@@ -48,6 +48,35 @@ describe("isForbiddenCommand whitespace normalization", () => {
     }
   });
 
+  it("blocks backslash line-continuation bypass variants", () => {
+    // `bash -c` deletes a backslash immediately before a newline before it
+    // tokenizes, so these spell the canonical forbidden commands to the shell
+    // even though the raw string does not start with the blocklist entry.
+    const continuationVariants = [
+      "rm \\\n-rf /",
+      "rm \\\n-rf \\\n/home",
+      "kill \\\n-9 1234",
+      "sudo \\\nrm -rf",
+      "dd \\\nif=/dev/zero",
+      "rm -rf \\\r\n/",
+    ];
+    for (const command of continuationVariants) {
+      expect(
+        isForbiddenCommand(command, forbidden),
+        `expected blocked: ${JSON.stringify(command)}`,
+      ).toBe(true);
+    }
+  });
+
+  it("keeps allowing benign backslash line continuations", () => {
+    for (const command of ["echo \\\nhello", "git \\\nstatus"]) {
+      expect(
+        isForbiddenCommand(command, forbidden),
+        `expected allowed: ${JSON.stringify(command)}`,
+      ).toBe(false);
+    }
+  });
+
   it("blocks leading whitespace and trailing-argument whitespace variants", () => {
     expect(isForbiddenCommand("  rm   -rf   /  ", forbidden)).toBe(true);
     expect(isForbiddenCommand("\trm -rf /home/user", forbidden)).toBe(true);

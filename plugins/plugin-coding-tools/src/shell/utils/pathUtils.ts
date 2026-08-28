@@ -141,14 +141,24 @@ export function extractBaseCommand(fullCommand: string): string {
   return parts[0] || "";
 }
 
-// Collapse runs of any whitespace (spaces, tabs, newlines) to a single space
-// and lowercase, so the blocklist tokenizes commands the same way the shell
-// executor does. `bash -c` collapses inter-token whitespace and
-// runCommandSimple splits on /\s+/, so without this normalization a
-// prefix comparison on the raw string lets `rm  -rf  /` or `rm\t-rf /`
-// slip past a `rm -rf /` entry that the shell would still run destructively.
+// Canonicalize a command the same way the shell executor tokenizes it before
+// the blocklist compares it. Two shell behaviours are folded in:
+//   1. A backslash immediately before a newline is a line continuation that
+//      `bash -c` removes entirely before tokenization, so `rm \<newline>-rf /`
+//      reaches the same argv as `rm -rf /`. Strip these first, otherwise the
+//      stray backslash survives whitespace collapse and defeats the match.
+//   2. Runs of any remaining whitespace (spaces, tabs, newlines) collapse to a
+//      single space and lowercase, because `bash -c` collapses inter-token
+//      whitespace and runCommandSimple splits on /\s+/.
+// Without this normalization a prefix comparison on the raw string lets
+// `rm  -rf  /`, `rm\t-rf /`, or a line-continuation spelling slip past a
+// `rm -rf /` entry that the shell would still run destructively.
 function collapseWhitespace(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return value
+    .replace(/\\\r?\n/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 export function isForbiddenCommand(

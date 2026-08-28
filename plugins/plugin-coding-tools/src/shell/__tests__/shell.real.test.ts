@@ -169,10 +169,15 @@ describePosixShell("shell plugin real local integration", () => {
 
   it("refuses whitespace-bypass variants of forbidden commands via exec() without spawning", async () => {
     // Regression for #29519: the blocklist and the executor disagreed on
-    // tokenization, so `rm  -rf  /` (extra whitespace) slipped past the gate
-    // while `bash -c` would still collapse it back to a destructive command.
+    // tokenization, so `rm  -rf  /` (extra whitespace) or a `\<newline>` line
+    // continuation slipped past the gate while `bash -c` would still collapse
+    // it back to a destructive command.
     const marker = path.join(allowedDirectory, "forbidden-bypass-marker");
-    for (const command of [`rm  -rf  ${marker}`, `rm\t-rf ${marker}`]) {
+    for (const command of [
+      `rm  -rf  ${marker}`,
+      `rm\t-rf ${marker}`,
+      `rm \\\n-rf ${marker}`,
+    ]) {
       const result = await service.exec(command);
       expect(result.status, JSON.stringify(result)).toBe("failed");
       expect(result.reason).toBe("Forbidden command");
