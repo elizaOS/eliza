@@ -372,7 +372,10 @@ export const agentBackupAdmissionWork = pgTable(
         table.source_lifecycle_revision,
         table.source_due_at,
       )
-      .where(sql`${table.work_kind} = 'schedule_capture'`),
+      .where(
+        sql`${table.work_kind} = 'schedule_capture'
+          AND ${table.settled_reason} IS DISTINCT FROM 'RETRY_EXHAUSTED'`,
+      ),
     unsettled_schedule_uidx: uniqueIndex("agent_backup_admission_work_unsettled_schedule_uidx")
       .on(table.sandbox_id, table.source_activation_generation, table.source_lifecycle_revision)
       .where(sql`${table.work_kind} = 'schedule_capture' AND ${table.state} <> 'settled'`),
