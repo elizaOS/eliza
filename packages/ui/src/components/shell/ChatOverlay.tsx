@@ -170,6 +170,7 @@ import {
   renderOverlayMessageBody,
   SpeakingStatusAccessory,
   selectFirstRunDisplayMessages,
+  selectSemanticNewestFirstRunMessage,
   shellToChatMessageData,
 } from "./chat-overlay-transcript";
 import {
@@ -1614,34 +1615,10 @@ export function ChatOverlay({
     transcriptionMode || transcriptionFinishing;
   const cloudLoginWaiting = React.useMemo(() => {
     if (!firstRunOpen) return false;
-    let newest: { message: ShellMessage; index: number } | null = null;
-    for (const [index, message] of messages.entries()) {
-      if (message.role !== "assistant" || !isFirstRunShellMessage(message)) {
-        continue;
-      }
-      if (!newest) {
-        newest = { message, index };
-        continue;
-      }
-      const candidateTime = Number.isFinite(message.createdAt)
-        ? message.createdAt
-        : null;
-      const newestTime = Number.isFinite(newest.message.createdAt)
-        ? newest.message.createdAt
-        : null;
-      const candidateIsNewer =
-        candidateTime != null &&
-        newestTime != null &&
-        candidateTime !== newestTime
-          ? candidateTime > newestTime
-          : index > newest.index;
-      if (candidateIsNewer) newest = { message, index };
-    }
-
     // The conductor keeps earlier setup turns in transcript history and can
     // refresh one in place. Only the newest semantic first-run state may
     // minimize the sheet; a later tutorial/error/status must take ownership.
-    const activeMessage: ShellMessage | undefined = newest?.message;
+    const activeMessage = selectSemanticNewestFirstRunMessage(messages);
     return (
       activeMessage?.id === "first-run:cloud-login-waiting" &&
       activeMessage.content.startsWith("Waiting for sign-in in the browser")

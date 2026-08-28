@@ -254,6 +254,37 @@ export function isFirstRunShellMessage(m: ShellMessage): boolean {
   );
 }
 
+/**
+ * Select the newest first-run turn by semantic timestamp, using transcript
+ * order as the deterministic tie-break and fallback for legacy missing dates.
+ */
+export function selectSemanticNewestFirstRunMessage(
+  messages: readonly ShellMessage[],
+): ShellMessage | undefined {
+  let newest: { message: ShellMessage; index: number } | null = null;
+  for (const [index, message] of messages.entries()) {
+    if (!isFirstRunShellMessage(message)) continue;
+    if (!newest) {
+      newest = { message, index };
+      continue;
+    }
+    const candidateTime = Number.isFinite(message.createdAt)
+      ? message.createdAt
+      : null;
+    const newestTime = Number.isFinite(newest.message.createdAt)
+      ? newest.message.createdAt
+      : null;
+    const candidateIsNewer =
+      candidateTime != null &&
+      newestTime != null &&
+      candidateTime !== newestTime
+        ? candidateTime > newestTime
+        : index > newest.index;
+    if (candidateIsNewer) newest = { message, index };
+  }
+  return newest?.message;
+}
+
 export function selectFirstRunDisplayMessages(
   messages: readonly ShellMessage[],
   showFallback: boolean,
@@ -263,9 +294,13 @@ export function selectFirstRunDisplayMessages(
     return showFallback ? FIRST_RUN_SIGN_IN_FALLBACK_MESSAGES : [];
   }
 
-  const latest = firstRunMessages.at(-1);
+  const latest = selectSemanticNewestFirstRunMessage(firstRunMessages);
   if (!latest) return [];
-  const previous = firstRunMessages.at(-2);
+  const latestIndex = firstRunMessages.indexOf(latest);
+  const earlierMessages = firstRunMessages.filter(
+    (_message, index) => index !== latestIndex,
+  );
+  const previous = selectSemanticNewestFirstRunMessage(earlierMessages);
 
   // A free-text answer is additive context, not a replacement for the live
   // setup control. Keep the most recent choice-bearing turn immediately above
@@ -273,10 +308,9 @@ export function selectFirstRunDisplayMessages(
   // Earlier choices stay hidden after the conductor advances because each
   // step seeds a newer choice-bearing turn.
   if (latest.id.startsWith("first-run:reply:choice:")) {
-    const activeChoice = firstRunMessages
-      .slice()
-      .reverse()
-      .find((message) => message.content.includes("[CHOICE:"));
+    const activeChoice = selectSemanticNewestFirstRunMessage(
+      earlierMessages.filter((message) => message.content.includes("[CHOICE:")),
+    );
     if (activeChoice && activeChoice !== latest) return [activeChoice, latest];
   }
 

@@ -813,8 +813,13 @@ describe("ChatOverlay first-run gating", () => {
         {
           id: "first-run:cloud-login-waiting",
           role: "assistant",
-          content:
+          content: [
             "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+            "",
+            "[CHOICE:first-run id=cloud-login-retry-2]",
+            "__first_run__:cloud-login:retry=Open sign-in again",
+            "[/CHOICE]",
+          ].join("\n"),
           createdAt: 4,
         },
         {
@@ -837,6 +842,13 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
       "collapsed",
     );
+    fireEvent.click(screen.getByTestId("chat-composer-textarea"));
+    expect(
+      screen.getByTestId("choice-__first_run__:cloud-login:retry"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId("choice-__first_run__:tutorial:start"),
+    ).toBeNull();
   });
 
   it.each([
