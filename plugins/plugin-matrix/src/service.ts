@@ -1596,8 +1596,28 @@ export class MatrixService extends Service implements IMatrixService {
     // direct room), so the count must not gate degradation. Rooms that were
     // never snapshotted (true DMs, unpublished rooms) are skipped inside
     // degradeScope — no scope row, nothing authorizing.
+    //
+    // Per-room containment is load-bearing: one failed durable write must not
+    // abort the loop, or every later room keeps authorizing stale evidence
+    // for the whole reconnect gap. Attempt ALL rooms, retain the first
+    // failure, and rethrow it after the loop so the reconnect handler's
+    // catch logs it and the next sync retries — a swallow would disguise a
+    // scope that never degraded (error policy: J2, rethrow with cause).
+    let firstFailure: unknown = null;
     for (const room of state.client.getRooms().filter((r) => r.getMyMembership() === "join")) {
-      await authority.markScopeStale({ roomId: room.roomId, reason });
+      try {
+        await authority.markScopeStale({ roomId: room.roomId, reason });
+      } catch (error) {
+        if (firstFailure === null) {
+          firstFailure = error;
+        }
+        logger.error(
+          `Matrix membership scope stale-degrade failed for ${room.roomId}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+    if (firstFailure !== null) {
+      throw firstFailure;
     }
   }
 

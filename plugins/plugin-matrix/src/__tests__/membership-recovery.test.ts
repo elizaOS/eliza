@@ -28,8 +28,10 @@ function createRuntime(): IAgentRuntime {
 /** Minimal authority double exposing only what the publication pass uses. */
 function createAuthority() {
   const snapshots: { roomId: string; members: string[] }[] = [];
+  const staleCalls: { roomId: string; reason: string }[] = [];
   return {
     snapshots,
+    staleCalls,
     isRoomIncomplete: vi.fn((): boolean => false),
     reportIncomplete: vi.fn(async () => {}),
     clearTransientRoomIncompleteness: vi.fn(() => true),
@@ -37,6 +39,9 @@ function createAuthority() {
     clearScopeRemoval: vi.fn(() => {}),
     markScopeUnavailable: vi.fn(async () => {}),
     recordTransition: vi.fn(async () => {}),
+    markScopeStale: vi.fn(async (input: { roomId: string; reason: string }) => {
+      staleCalls.push({ roomId: input.roomId, reason: input.reason });
+    }),
     publishSnapshot: vi.fn(
       async (input: { roomId: string; members: { canonicalPrincipalId: string }[] }) => {
         snapshots.push({
@@ -487,5 +492,43 @@ describe("fresh roster parsing matches the homeserver /members envelope", () => 
     expect(h.authority.snapshots).toHaveLength(0);
     expect(h.authority.reportIncomplete).toHaveBeenCalled();
     expect(h.authority.clearTransientRoomIncompleteness).not.toHaveBeenCalled();
+  });
+});
+
+describe("reconnect degrade attempts every joined room even when one durable write fails", () => {
+  it("one failed markScopeStale write does not abort degradation of later rooms (ss251 CR control)", async () => {
+    const h = createHarness();
+    const first = createRoomDouble({ roomId: "!first:example" });
+    const second = createRoomDouble({ roomId: "!second:example" });
+    h.client.getRooms.mockReturnValue([first, second]);
+    h.authority.markScopeStale.mockImplementation(
+      async (input: { roomId: string; reason: string }) => {
+        if (input.roomId === "!first:example") {
+          throw new Error("durable write failed");
+        }
+        h.authority.staleCalls.push({ roomId: input.roomId, reason: input.reason });
+      }
+    );
+    // The aggregate failure must surface (the reconnect handler logs it and
+    // the next sync retries) — never swallowed silently.
+    await expect(
+      (
+        h.service as unknown as {
+          degradeAllMembershipScopes: (s: unknown, reason: string) => Promise<void>;
+        }
+      ).degradeAllMembershipScopes(h.state, "sync_error")
+    ).rejects.toThrow("durable write failed");
+    // The failing room's write rejected, but the SECOND room must still have
+    // been attempted (its principals must not stay authorized on stale
+    // evidence across the reconnect gap).
+    expect(h.authority.markScopeStale).toHaveBeenCalledTimes(2);
+    expect(h.authority.markScopeStale).toHaveBeenNthCalledWith(1, {
+      roomId: "!first:example",
+      reason: "sync_error",
+    });
+    expect(h.authority.markScopeStale).toHaveBeenNthCalledWith(2, {
+      roomId: "!second:example",
+      reason: "sync_error",
+    });
   });
 });
