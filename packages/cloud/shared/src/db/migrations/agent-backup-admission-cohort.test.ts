@@ -238,6 +238,7 @@ describe("backup admission cohort migrations", () => {
       "agent_backup_admission_claim_shards_cycle_shape_check",
       "agent_backup_admission_claim_shards_proof_shape_check",
       "agent_backup_admission_work_claim_proof_shape_check",
+      "agent_backup_admission_work_retry_exhaustion_check",
       "agent_backup_admission_work_organization_id_fkey",
       "agent_backup_admission_work_node_history_id_fkey",
       "agent_backup_admission_work_sandbox_tenant_fkey",
@@ -346,6 +347,7 @@ describe("backup admission cohort migrations", () => {
         'agent_backup_admission_work_deferred_ready_shard_idx',
         'agent_backup_admission_work_expired_lease_shard_idx',
         'agent_backup_admission_work_organization_idx',
+        'agent_backup_admission_work_schedule_uidx',
         'agent_backup_admission_work_unsettled_schedule_uidx',
         'agent_sandbox_backups_admission_active_org_idx',
         'agent_sandbox_backups_admission_capture_history_idx',
@@ -373,6 +375,11 @@ describe("backup admission cohort migrations", () => {
       {
         name: "agent_backup_admission_work_organization_idx",
         columns: "organization_id,id",
+      },
+      {
+        name: "agent_backup_admission_work_schedule_uidx",
+        columns:
+          "sandbox_id,node_history_id,source_activation_generation,source_lifecycle_revision,source_due_at",
       },
       {
         name: "agent_backup_admission_work_unsettled_schedule_uidx",
@@ -405,6 +412,13 @@ describe("backup admission cohort migrations", () => {
       /state.*leased/i,
     );
     expect(predicateByIndex.get("agent_backup_admission_work_organization_idx")).toBeNull();
+    expect(predicateByIndex.get("agent_backup_admission_work_schedule_uidx")).toMatch(
+      /work_kind.*schedule_capture.*NOT.*state.*settled.*settled_reason.*RETRY_EXHAUSTED.*attempts.*12/is,
+    );
+    expect(
+      indexShapes.rows.find(({ name }) => name === "agent_backup_admission_work_schedule_uidx")
+        ?.unique,
+    ).toBe(true);
     expect(predicateByIndex.get("agent_backup_admission_work_unsettled_schedule_uidx")).toMatch(
       /work_kind.*schedule_capture.*state.*settled/is,
     );
@@ -452,7 +466,9 @@ describe("backup admission cohort migrations", () => {
         WHERE work_kind = 'schedule_capture' AND sandbox_id = '${SANDBOX_A}'
           AND node_history_id = '${HISTORY_A}'
           AND source_activation_generation = '${ACTIVATION}'
-          AND source_lifecycle_revision = 7 AND source_due_at = '${DUE}'`),
+          AND source_lifecycle_revision = 7 AND source_due_at = '${DUE}'
+          AND NOT (state = 'settled' AND settled_reason = 'RETRY_EXHAUSTED'
+            AND attempts = 12)`),
     ).toContain("agent_backup_admission_work_schedule_uidx");
     expect(
       await explainIndex(`SELECT 1 FROM agent_sandbox_backups
@@ -1158,6 +1174,83 @@ describe("backup admission cohort migrations", () => {
         WHERE id = '${WORK_A}'`),
     ).rejects.toThrow(/settled.*immutable/i);
     await insertSchedule(db, "80000000-0000-4000-8000-000000000005", ORG_A, SANDBOX_A, HISTORY_B);
+  });
+
+  test("preserves exhausted retry epochs without disabling the exact due backup", async () => {
+    const db = await database();
+    const exhaustedWork = "80000000-0000-4000-8000-000000000101";
+    const freshWork = "80000000-0000-4000-8000-000000000102";
+    await startScheduleClaimCycle(db);
+    await insertSchedule(db, exhaustedWork, ORG_A, SANDBOX_A, HISTORY_A);
+
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET state = 'settled', settled_at = clock_timestamp(),
+          settled_reason = 'RETRY_EXHAUSTED'
+        WHERE id = '${exhaustedWork}'`),
+    ).rejects.toThrow(/retry_exhaustion_check/i);
+
+    for (let attempt = 1; attempt <= 12; attempt += 1) {
+      await db.exec(`UPDATE agent_backup_admission_work
+        SET state = 'leased', lease_owner = 'retry-epoch-${attempt}',
+          lease_generation = gen_random_uuid(),
+          lease_expires_at = clock_timestamp() + interval '1 hour',
+          attempts = attempts + 1
+        WHERE id = '${exhaustedWork}'`);
+      if (attempt < 12) {
+        await db.exec(`UPDATE agent_backup_admission_work
+          SET state = 'queued', lease_owner = NULL, lease_generation = NULL,
+            lease_expires_at = NULL, ready_cohort = ready_cohort + 1
+          WHERE id = '${exhaustedWork}'`);
+      }
+    }
+    await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'settled', lease_owner = NULL, lease_generation = NULL,
+        lease_expires_at = NULL, settled_at = clock_timestamp(),
+        settled_reason = 'RETRY_EXHAUSTED'
+      WHERE id = '${exhaustedWork}'`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work SET updated_at = clock_timestamp()
+        WHERE id = '${exhaustedWork}'`),
+    ).rejects.toThrow(/settled.*immutable/i);
+
+    await insertSchedule(db, freshWork, ORG_A, SANDBOX_A, HISTORY_A);
+    await expect(
+      insertSchedule(db, "80000000-0000-4000-8000-000000000103", ORG_A, SANDBOX_A, HISTORY_A),
+    ).rejects.toThrow();
+    const epochs = await db.query<{
+      id: string;
+      state: string;
+      attempts: number;
+      settled_reason: string | null;
+    }>(`SELECT id::text, state, attempts, settled_reason
+      FROM agent_backup_admission_work
+      WHERE sandbox_id = '${SANDBOX_A}' AND source_due_at = '${DUE}'
+      ORDER BY id`);
+    expect(epochs.rows).toEqual([
+      {
+        id: exhaustedWork,
+        state: "settled",
+        attempts: 12,
+        settled_reason: "RETRY_EXHAUSTED",
+      },
+      { id: freshWork, state: "queued", attempts: 0, settled_reason: null },
+    ]);
+
+    await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'leased', lease_owner = 'fresh-epoch',
+        lease_generation = gen_random_uuid(),
+        lease_expires_at = clock_timestamp() + interval '1 hour',
+        attempts = attempts + 1
+      WHERE id = '${freshWork}'`);
+    await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'settled', lease_owner = NULL, lease_generation = NULL,
+        lease_expires_at = NULL, settled_at = clock_timestamp(),
+        settled_reason = 'CAPTURE_RESERVED'
+      WHERE id = '${freshWork}'`);
+    await expect(
+      insertSchedule(db, "80000000-0000-4000-8000-000000000104", ORG_A, SANDBOX_A, HISTORY_A),
+    ).rejects.toThrow(/schedule_uidx/i);
   });
 
   test("rejects forged inserts, cross-tenant work, replay, and authority removal", async () => {
