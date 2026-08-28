@@ -20,7 +20,10 @@ import { ElizaError } from "../../../errors.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
-import { hasMemoryContentPageCapability } from "../../../memory/content-segmentation.ts";
+import {
+	hasMemoryContentPageCapability,
+	isSegmentedContentMarker,
+} from "../../../memory/content-segmentation.ts";
 import { authorizeManageServerDestination } from "../../../messaging/manage-server-authorization.ts";
 import {
 	deterministicOwnerEntityId,
@@ -3510,6 +3513,16 @@ async function handleReadStoredMemory(
 	const pageCapable = hasMemoryContentPageCapability(runtime)
 		? runtime.getMemoryContentPage
 		: null;
+	// #25140 review R4: a segmented-content marker is an internal storage
+	// descriptor, never message text. Without the paging capability there is
+	// no legitimate way to read the source, so fail explicitly instead of
+	// paging/serving the descriptor string.
+	if (!pageCapable && isSegmentedContentMarker(sourceText)) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_SEGMENTED_READ_UNAVAILABLE",
+			"This stored message is kept in segmented form and the current database cannot page it, so it can't be read directly.",
+		);
+	}
 	if (pageCapable) {
 		const offset = safeMemoryReadInteger(
 			numberParam(params.offset),

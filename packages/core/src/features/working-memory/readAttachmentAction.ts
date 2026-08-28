@@ -25,6 +25,7 @@ import {
 import {
 	hasMemoryContentPageCapability,
 	isSegmentedContentMarker,
+	parseSegmentedContentMarker,
 } from "../../memory/content-segmentation.ts";
 import {
 	linkShareOwnText,
@@ -804,7 +805,20 @@ async function reassembleSegmentedAttachmentContent(
 		const parts: string[] = [];
 		let offset = 0;
 		let total = Number.POSITIVE_INFINITY;
-		let revision: string | undefined;
+		// #25140 review R4 integrity fence: the record's inline marker carries
+		// the published descriptor (revision, total bytes, source digest). The
+		// first page MUST be served from that exact generation — adopting
+		// whatever generation the store happens to return could silently save
+		// a newer rewrite of the attachment. Later pages must hold the same
+		// generation and a coherent window; the whole is verified against the
+		// descriptor digest before the document is written.
+		const descriptor = parseSegmentedContentMarker(record.content);
+		if (!descriptor) {
+			return await saveFailure(
+				"The segmented attachment's storage descriptor is malformed, so it cannot be saved as a document.",
+				"ATTACHMENT_SAVE_DESCRIPTOR_INVALID",
+			);
+		}
 		// 4096 pages at the 256 KiB ceiling bounds reassembly at 1 GiB — far
 		// above any real attachment while guaranteeing termination.
 		for (let guard = 0; offset < total; guard += 1) {
@@ -820,7 +834,9 @@ async function reassembleSegmentedAttachmentContent(
 					memoryId: ownerMessageId,
 					field: { kind: "attachment.text", attachmentId },
 					byteStart: offset,
-					...(revision === undefined ? {} : { expectedRevision: revision }),
+					// The marker's revision fences the FIRST page too: a
+					// newer generation must fail loudly, not save silently.
+					expectedRevision: descriptor.revision,
 					accessContext,
 				});
 			} catch (error) {
@@ -841,12 +857,38 @@ async function reassembleSegmentedAttachmentContent(
 					"ATTACHMENT_SAVE_REASSEMBLY_FAILED",
 				);
 			}
+			if (
+				!Number.isSafeInteger(page.start) ||
+				!Number.isSafeInteger(page.end) ||
+				page.start !== offset ||
+				page.end <= page.start ||
+				page.end > page.total ||
+				page.total !== descriptor.totalBytes ||
+				page.revision !== descriptor.revision ||
+				page.sourceSha256 !== descriptor.totalSha256
+			) {
+				return await saveFailure(
+					"The segmented attachment's stored pages did not match its published descriptor, so it cannot be saved as a document.",
+					"ATTACHMENT_SAVE_REASSEMBLY_INCONSISTENT",
+				);
+			}
 			parts.push(page.text);
 			offset = page.end;
 			total = page.total;
-			revision = page.revision;
 		}
-		reassembled.push({ ...record, content: parts.join("") });
+		const reassembledText = parts.join("");
+		const reassembledBytes = Buffer.from(reassembledText, "utf8");
+		if (
+			reassembledBytes.length !== descriptor.totalBytes ||
+			createHash("sha256").update(reassembledBytes).digest("hex") !==
+				descriptor.totalSha256
+		) {
+			return await saveFailure(
+				"The reassembled attachment content did not match its published digest, so it cannot be saved as a document.",
+				"ATTACHMENT_SAVE_REASSEMBLY_DIGEST_MISMATCH",
+			);
+		}
+		reassembled.push({ ...record, content: reassembledText });
 	}
 	return { records: reassembled };
 }
@@ -1177,11 +1219,34 @@ export const readAttachmentAction: Action = {
 				? runtime.getMemoryContentPage
 				: null;
 			const segmentedRecord =
-				pageCapable &&
 				pagedRecords.length === 1 &&
 				isSegmentedContentMarker(pagedRecords[0].content)
 					? pagedRecords[0]
 					: null;
+			// #25140 review R4: the inline text of a segmented record is an
+			// internal storage descriptor, never attachment content. When it
+			// cannot be paged (capability absent or wrong capability shape),
+			// fail explicitly — do not fall through and serve the descriptor
+			// string to the model or the user.
+			if (segmentedRecord && !pageCapable) {
+				return {
+					success: false,
+					text: "This attachment is stored in segmented form and the current database cannot page it, so it can't be read directly.",
+					error: "ATTACHMENT_SEGMENTED_READ_UNAVAILABLE",
+					data: {
+						actionName: "ATTACHMENT",
+						action: "read",
+						error: "segmented_read_unavailable",
+						attachmentId: segmentedRecord.attachment.id,
+					},
+					promptData: {
+						actionName: "ATTACHMENT",
+						action: "read",
+						error: "segmented_read_unavailable",
+						attachmentId: segmentedRecord.attachment.id,
+					},
+				};
+			}
 			if (pageCapable && segmentedRecord) {
 				const ownerMessageId = segmentedRecord.attachment._messageId;
 				const attachmentId = segmentedRecord.attachment.id;
