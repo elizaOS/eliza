@@ -6,7 +6,7 @@
  * the module under test is not mocked.
  */
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { ModelType, NoModelProviderConfiguredError } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   extractActionResultsFromState,
@@ -432,6 +432,33 @@ describe("renderGroundedActionReply", () => {
       fallback: "Canonical fallback.",
     });
     expect(reply).toBe("Canonical fallback.");
+  });
+
+  it("returns the grounded fallback when the runtime has no model provider", async () => {
+    const { reply } = await renderWith({
+      useModel: vi.fn(async () => {
+        throw new NoModelProviderConfiguredError();
+      }) as IAgentRuntime["useModel"],
+      fallback: "Canonical fallback.",
+    });
+    expect(reply).toBe("Canonical fallback.");
+  });
+
+  it("propagates an intentionally disabled model capability", async () => {
+    await expect(
+      renderWith({
+        useModel: vi.fn(async () => {
+          throw new NoModelProviderConfiguredError(
+            "Canonical service routing does not configure llmText.",
+            "capability-disabled",
+          );
+        }) as IAgentRuntime["useModel"],
+        fallback: "Canonical fallback.",
+      }),
+    ).rejects.toMatchObject({
+      name: "NoModelProviderConfiguredError",
+      reason: "capability-disabled",
+    });
   });
 
   it("propagates a model failure instead of fabricating fallback success", async () => {
