@@ -159,6 +159,8 @@ jobs:
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/agent-backup-admission-gc-authority.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-enrollment-postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
             packages/cloud/scripts/admin/migrate-with-diagnostics.concurrent-index-mode.postgres.test.ts
       - name: Run PostgreSQL container admission tests
         env:
