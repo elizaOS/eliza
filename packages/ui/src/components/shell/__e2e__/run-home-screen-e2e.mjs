@@ -1219,7 +1219,7 @@ try {
   );
 
   // ── Glyph-only app icons (#13453 "deslop the launcher grid"): a launcher tile
-  // is a deterministic branded gradient plate + centered Lucide glyph, never a
+  // is the canonical uniform Card plate + centered official Ionicon, never a
   // generated hero <img> — the hero PNG painted a cartoon over the real glyph
   // (a virus for Settings, a ladybug for Memories: the "icons are slop" report).
   // Each curated tile exposes its `data-view-visual` plate and NO hero image.
@@ -1252,10 +1252,9 @@ try {
   );
 
   // ── Every launcher tile is a glyph-only visual (#13453): a `data-view-visual`
-  // gradient plate carrying its Lucide glyph, and never a hero <img>. The plate
-  // gradients are deterministic per id (id-hashed palette), so distinct tiles
-  // get distinct gradients — a launcher of one flat placeholder would be the
-  // regression this guards against.
+  // canonical Card plate carrying a named official Ionicon, and never a hero
+  // <img>. Plates are intentionally uniform now; distinct `data-ionicon` names
+  // prove the launcher did not regress to one repeated placeholder glyph.
   const visualCount = await mobile.locator("[data-view-visual]").count();
   assert(
     visualCount >= 5,
@@ -1265,18 +1264,27 @@ try {
     (await mobile.locator('[data-testid^="launcher-image-"]').count()) === 0,
     "no launcher tile renders a hero <img> (glyph-only launcher)",
   );
-  const tileGradients = await mobile.$$eval("[data-view-visual]", (els) =>
-    Array.from(
-      new Set(
-        els
-          .map((el) => getComputedStyle(el).backgroundImage)
-          .filter((v) => Boolean(v) && v !== "none"),
-      ),
-    ),
+  const launcherGlyphs = await mobile.$$eval("[data-view-visual]", (els) =>
+    els.map((el) => {
+      const glyph = el.querySelector("[data-launcher-glyph]");
+      return {
+        kind: glyph?.getAttribute("data-launcher-glyph-kind"),
+        ionicon: glyph?.getAttribute("data-ionicon"),
+      };
+    }),
   );
   assert(
-    tileGradients.length >= 3,
-    `launcher glyph plates use varied gradients, not one placeholder (${tileGradients.length} distinct)`,
+    launcherGlyphs.every(
+      ({ kind, ionicon }) => kind === "ionicon" && Boolean(ionicon),
+    ),
+    "every launcher plate carries a named official Ionicon",
+  );
+  const distinctIonicons = new Set(
+    launcherGlyphs.map(({ ionicon }) => ionicon),
+  );
+  assert(
+    distinctIonicons.size >= 3,
+    `launcher uses distinct Ionicons, not one placeholder (${distinctIonicons.size} distinct)`,
   );
 
   // ── The curated launcher is READ-ONLY: a long-press never enters edit mode

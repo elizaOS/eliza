@@ -94,6 +94,7 @@ export function HomeWidgetCard({
       variant="surface"
       size="card"
       align="start"
+      className={HOME_WIDGET_SOLID_TILE_CLASS}
       data-testid={testId}
       aria-label={ariaLabel}
       title={label}
