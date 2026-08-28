@@ -1090,7 +1090,9 @@ describe("backup admission reservation on real PostgreSQL", () => {
         `);
       }
       await expectNoPartialReservation();
-      expect(rearmedHistoryId).not.toBeNull();
+      if (!rearmedHistoryId) {
+        throw new Error("Production occurrence trigger did not mint a rearm history id");
+      }
       expect(rearmedHistoryId).not.toBe(NODE_HISTORY_ID);
       const occurrence = await control.query<{
         current_node_history_id: string;
