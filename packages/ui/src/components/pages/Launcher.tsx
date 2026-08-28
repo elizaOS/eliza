@@ -183,6 +183,8 @@ export function Launcher({
 
   const showSkeleton = loading && entries.length === 0;
   const showError = !showSkeleton && error !== null && entries.length === 0;
+  const showSourceStatus =
+    !showSkeleton && error !== null && entries.length > 0;
   const showEmpty = !showSkeleton && !showError && entries.length === 0;
 
   return (
@@ -266,13 +268,38 @@ export function Launcher({
                 </p>
               </div>
             ) : (
-              <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 max-sm:portrait:gap-y-8 sm:grid-cols-5">
-                {entries.map((entry) => (
-                  <div key={entry.id} className="flex justify-center">
-                    <IconTile entry={entry} onLaunch={handleLaunch} />
+              <>
+                <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 max-sm:portrait:gap-y-8 sm:grid-cols-5">
+                  {entries.map((entry) => (
+                    <div key={entry.id} className="flex justify-center">
+                      <IconTile entry={entry} onLaunch={handleLaunch} />
+                    </div>
+                  ))}
+                </div>
+                {showSourceStatus ? (
+                  <div
+                    role="status"
+                    data-testid="launcher-source-status"
+                    className={cn(
+                      "mx-auto flex min-h-11 items-center gap-2 text-xs",
+                      WALLPAPER_TEXT.muted,
+                    )}
+                  >
+                    <span>More apps unavailable</span>
+                    {onRetry ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="overlayEdge"
+                        className="min-h-9"
+                        onClick={onRetry}
+                      >
+                        Retry
+                      </Button>
+                    ) : null}
                   </div>
-                ))}
-              </div>
+                ) : null}
+              </>
             )}
           </div>
         </div>

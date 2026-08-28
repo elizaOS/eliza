@@ -55,7 +55,10 @@ vi.mock("./useAvailableViews", () => ({
 }));
 
 import { getActiveAgentAuthority } from "./useActiveAgentAuthority";
-import { useViewCatalog } from "./useViewCatalog";
+import {
+  __resetViewCatalogSourceStateForTests,
+  useViewCatalog,
+} from "./useViewCatalog";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -88,6 +91,7 @@ function catalogApp(name: string): RegistryAppInfo {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __resetViewCatalogSourceStateForTests();
   mocks.loadAppsCatalog.mockReset();
   mocks.client.listInstalledApps.mockReset();
   mocks.client.launchApp.mockReset();
@@ -109,7 +113,6 @@ describe("useViewCatalog authority isolation", () => {
     expect(result.current.entries).toEqual([]);
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
-    expect(result.current.sourceErrors).toEqual([]);
     expect(mocks.loadAppsCatalog).not.toHaveBeenCalled();
     expect(mocks.client.listInstalledApps).not.toHaveBeenCalled();
 
@@ -128,16 +131,11 @@ describe("useViewCatalog authority isolation", () => {
     expect(result.current.entries).toEqual([]);
     expect(result.current.loading).toBe(false);
     expect(result.current.error?.message).toBe("views unavailable");
-    expect(result.current.sourceErrors).toEqual([
-      { source: "views", error: mocks.routableViews.error },
-    ]);
     expect(mocks.loadAppsCatalog).not.toHaveBeenCalled();
     expect(mocks.client.listInstalledApps).not.toHaveBeenCalled();
 
-    act(() => result.current.retrySource("views"));
+    act(() => result.current.refresh());
     expect(mocks.refreshViews).toHaveBeenCalledTimes(1);
-    act(() => result.current.retrySource("catalog"));
-    act(() => result.current.retrySource("installed"));
     expect(mocks.loadAppsCatalog).not.toHaveBeenCalled();
     expect(mocks.client.listInstalledApps).not.toHaveBeenCalled();
   });
@@ -159,13 +157,12 @@ describe("useViewCatalog authority isolation", () => {
     mocks.client.listInstalledApps.mockResolvedValue([]);
 
     const { result } = renderHook(() => useViewCatalog());
-    await waitFor(() => expect(result.current.sourceErrors).toHaveLength(1));
+    await waitFor(() => expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(1));
 
     expect(result.current.entries.map((entry) => entry.id)).toEqual(["notes"]);
     expect(result.current.error).toBeNull();
-    expect(result.current.sourceErrors[0]?.source).toBe("catalog");
 
-    act(() => result.current.retrySource("catalog"));
+    act(() => result.current.refresh());
     await waitFor(() => expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(2));
     expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
     expect(mocks.refreshViews).not.toHaveBeenCalled();
@@ -184,7 +181,6 @@ describe("useViewCatalog authority isolation", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(result.current.sourceErrors).toHaveLength(1);
       expect(result.current.error?.message).toBe(
         "catalog temporarily unavailable",
       );
@@ -204,7 +200,6 @@ describe("useViewCatalog authority isolation", () => {
       expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(2);
       expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
       expect(mocks.refreshViews).not.toHaveBeenCalled();
-      expect(result.current.sourceErrors).toEqual([]);
       expect(result.current.error).toBeNull();
 
       mocks.loadAppsCatalog
@@ -212,23 +207,16 @@ describe("useViewCatalog authority isolation", () => {
         .mockResolvedValueOnce([catalogApp("recovered-again")]);
       act(() => {
         invalidate(`view-catalog:apps:${getActiveAgentAuthority()}`);
-        result.current.retrySource("catalog");
+        result.current.refresh();
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(result.current.sourceErrors).toEqual([
-        {
-          source: "catalog",
-          error: expect.objectContaining({ message: "later catalog outage" }),
-        },
-      ]);
-
       await act(async () => {
         await vi.advanceTimersByTimeAsync(499);
       });
       expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(3);
-      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1);
@@ -237,8 +225,7 @@ describe("useViewCatalog authority isolation", () => {
         "recovered-again",
       ]);
       expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(4);
-      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
-      expect(result.current.sourceErrors).toEqual([]);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }
@@ -262,14 +249,7 @@ describe("useViewCatalog authority isolation", () => {
       expect(result.current.entries.map((entry) => entry.id)).toEqual([
         "catalog-app",
       ]);
-      expect(result.current.sourceErrors).toEqual([
-        {
-          source: "installed",
-          error: expect.objectContaining({
-            message: "installed apps temporarily unavailable",
-          }),
-        },
-      ]);
+      expect(result.current.error).toBeNull();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(499);
@@ -283,7 +263,6 @@ describe("useViewCatalog authority isolation", () => {
       expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(1);
       expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
       expect(mocks.refreshViews).not.toHaveBeenCalled();
-      expect(result.current.sourceErrors).toEqual([]);
       expect(result.current.error).toBeNull();
     } finally {
       vi.useRealTimers();
@@ -302,7 +281,7 @@ describe("useViewCatalog authority isolation", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(result.current.sourceErrors).toHaveLength(1);
+      expect(result.current.error?.message).toBe("agent A catalog unavailable");
 
       act(() => {
         mocks.authority.value = "https://agent-b.test";
@@ -358,7 +337,7 @@ describe("useViewCatalog authority isolation", () => {
         agentACatalog.reject(new Error("late agent A rejection"));
         await Promise.resolve();
       });
-      expect(result.current.sourceErrors).toEqual([]);
+      expect(result.current.error).toBeNull();
       await act(async () => {
         await vi.advanceTimersByTimeAsync(750);
       });
@@ -375,17 +354,12 @@ describe("useViewCatalog authority isolation", () => {
 
       act(() => {
         invalidate(`view-catalog:apps:${getActiveAgentAuthority()}`);
-        result.current.retrySource("catalog");
+        result.current.refresh();
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(result.current.sourceErrors).toEqual([
-        {
-          source: "catalog",
-          error: expect.objectContaining({ message: "later agent B outage" }),
-        },
-      ]);
+      expect(result.current.error?.message).toBe("later agent B outage");
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(499);
@@ -395,11 +369,11 @@ describe("useViewCatalog authority isolation", () => {
         await vi.advanceTimersByTimeAsync(1);
       });
       expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(4);
-      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(3);
       expect(result.current.entries.map((entry) => entry.id)).toEqual([
         "agent-b-recovered",
       ]);
-      expect(result.current.sourceErrors).toEqual([]);
+      expect(result.current.error).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -414,7 +388,87 @@ describe("useViewCatalog authority isolation", () => {
 
     expect(result.current.entries).toEqual([]);
     expect(result.current.error?.message).toBe("catalog unavailable");
-    expect(result.current.sourceErrors[0]?.source).toBe("catalog");
+  });
+
+  it("shares failure settlement and exactly one retry across a remount", async () => {
+    vi.useFakeTimers();
+    try {
+      const sharedCatalog = deferred<RegistryAppInfo[]>();
+      mocks.loadAppsCatalog
+        .mockReturnValueOnce(sharedCatalog.promise)
+        .mockResolvedValueOnce([catalogApp("recovered-app")]);
+      mocks.client.listInstalledApps.mockResolvedValue([]);
+
+      const first = renderHook(() => useViewCatalog());
+      const survivor = renderHook(() => useViewCatalog());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(1);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
+
+      first.unmount();
+      await act(async () => {
+        sharedCatalog.reject(new Error("shared catalog unavailable"));
+        await Promise.resolve();
+      });
+      expect(survivor.result.current.loading).toBe(false);
+      expect(survivor.result.current.error?.message).toBe(
+        "shared catalog unavailable",
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(2);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
+      expect(survivor.result.current.entries.map((entry) => entry.id)).toEqual([
+        "recovered-app",
+      ]);
+      expect(survivor.result.current.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("exposes persistent partial degradation and retries only that source", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.routableViews.views = [
+        {
+          id: "notes",
+          label: "Notes",
+          path: "/notes",
+          available: true,
+          builtin: true,
+          pluginName: "@elizaos/builtin",
+          viewType: "gui",
+          viewKind: "release",
+        },
+      ];
+      mocks.loadAppsCatalog.mockRejectedValue(new Error("catalog unavailable"));
+      mocks.client.listInstalledApps.mockResolvedValue([]);
+
+      const { result } = renderHook(() => useViewCatalog());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(2);
+      expect(result.current.entries.map((entry) => entry.id)).toEqual([
+        "notes",
+      ]);
+      expect(result.current.error?.message).toBe("catalog unavailable");
+
+      act(() => result.current.refresh());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(3);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
+      expect(mocks.refreshViews).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("clears old entries on switch and ignores superseded catalog responses", async () => {

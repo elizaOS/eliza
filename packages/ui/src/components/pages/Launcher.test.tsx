@@ -214,7 +214,7 @@ describe("Launcher", () => {
     expect(screen.getByTestId("launcher-empty")).toBeTruthy();
   });
 
-  it("keeps available tiles calm when an optional source is degraded", () => {
+  it("keeps available tiles and offers quiet recovery when a source stays degraded", () => {
     const retry = vi.fn();
     render(
       <Launcher
@@ -225,10 +225,11 @@ describe("Launcher", () => {
       />,
     );
 
-    expect(screen.queryByTestId("launcher-partial-error")).toBeNull();
+    expect(screen.getByTestId("launcher-source-status")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByTestId("launcher-tile-chat")).toBeTruthy();
-    expect(retry).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it("drops a tile when its entry is removed on re-render", () => {
