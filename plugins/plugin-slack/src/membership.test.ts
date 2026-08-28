@@ -121,6 +121,18 @@ describe("readChannelMembershipSnapshot", () => {
     expect(result.memberIds).toHaveLength(0);
   });
 
+  it("a page-level error body classifies through the walk, not as malformed", async () => {
+    // Slack Web SDK can surface failures as a resolved page carrying the
+    // error payload instead of throwing. The walk must classify the code
+    // (missing_scope) rather than degrade it to malformed_response.
+    const { client } = makeClient([{ error: { code: "missing_scope" } }]);
+    const result = await readChannelMembershipSnapshot(client as never, "C123");
+    const unavailable = result as SlackMembershipUnavailable;
+    expect(unavailable.kind).toBe("unavailable");
+    expect(unavailable.reason).toBe("missing_scope");
+    expect(unavailable.slackErrorCode).toBe("missing_scope");
+  });
+
   it("a mid-walk API failure invalidates the whole walk as unavailable", async () => {
     const { client } = makeClient([page(["U1"], "c1")], () =>
       slackError("missing_scope"),

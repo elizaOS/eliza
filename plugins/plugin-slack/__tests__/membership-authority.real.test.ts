@@ -87,8 +87,8 @@ vi.mock("@slack/bolt", () => ({
   },
 }));
 
-import { slackMembershipPrincipalId } from "./membership-authority";
-import { SlackService } from "./service";
+import { slackMembershipPrincipalId } from "../src/membership-authority";
+import { SlackService } from "../src/service";
 
 const OPS = "C0123ABCD";
 const ALICE = "U0123ABCD";
@@ -170,7 +170,9 @@ afterAll(async () => {
 }, 60_000);
 
 async function membershipScope() {
-  const { slackMembershipAccountId } = await import("./membership-authority");
+  const { slackMembershipAccountId } = await import(
+    "../src/membership-authority"
+  );
   return {
     agentId: runtime.agentId,
     connectorId: "slack",
