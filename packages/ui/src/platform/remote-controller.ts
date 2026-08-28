@@ -230,6 +230,11 @@ export async function acknowledgeRemoteCommandEnqueue(input: {
   commandId: string;
   bindingDigest: string;
 }): Promise<boolean> {
+  if (isUnsupportedNativeIOS()) {
+    throw new Error(
+      "Secure mobile session cleanup is unavailable until the native iOS plugin is installed.",
+    );
+  }
   if (isNativeController()) {
     const result = await nativeRemoteController.acknowledgeEnqueue(input);
     if (!isRecord(result) || typeof result.acknowledged !== "boolean") {
