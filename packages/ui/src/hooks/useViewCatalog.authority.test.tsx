@@ -324,6 +324,80 @@ describe("useViewCatalog authority isolation", () => {
     }
   });
 
+  it("does not spend a new authority's retry budget on an inherited error", async () => {
+    vi.useFakeTimers();
+    try {
+      const agentBCatalog = deferred<RegistryAppInfo[]>();
+      mocks.loadAppsCatalog
+        .mockRejectedValueOnce(new Error("agent A catalog unavailable"))
+        .mockReturnValueOnce(agentBCatalog.promise);
+      mocks.client.listInstalledApps.mockResolvedValue([]);
+
+      const { result } = renderHook(() => useViewCatalog());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.sourceErrors).toHaveLength(1);
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        mocks.authority.value = "https://agent-b.test";
+        for (const onChange of mocks.authority.listeners) onChange();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(2);
+
+      mocks.loadAppsCatalog
+        .mockRejectedValueOnce(new Error("later agent B outage"))
+        .mockResolvedValueOnce([catalogApp("agent-b-recovered")]);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(750);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(2);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        agentBCatalog.resolve([catalogApp("agent-b-initial")]);
+        await Promise.resolve();
+      });
+      expect(result.current.entries.map((entry) => entry.id)).toEqual([
+        "agent-b-initial",
+      ]);
+
+      act(() => {
+        invalidate(`view-catalog:apps:${getActiveAgentAuthority()}`);
+        result.current.retrySource("catalog");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.sourceErrors).toEqual([
+        {
+          source: "catalog",
+          error: expect.objectContaining({ message: "later agent B outage" }),
+        },
+      ]);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(499);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(3);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(4);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
+      expect(result.current.entries.map((entry) => entry.id)).toEqual([
+        "agent-b-recovered",
+      ]);
+      expect(result.current.sourceErrors).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps a source failure fatal when no usable launcher entry remains", async () => {
     mocks.loadAppsCatalog.mockRejectedValue(new Error("catalog unavailable"));
     mocks.client.listInstalledApps.mockResolvedValue([]);

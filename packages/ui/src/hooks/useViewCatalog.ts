@@ -145,7 +145,19 @@ export function useViewCatalog(): UseViewCatalogResult {
     authority: string;
     catalog: number;
     installed: number;
-  }>({ authority, catalog: 0, installed: 0 });
+    inheritedCatalogError: Error | null;
+    inheritedInstalledError: Error | null;
+    catalogRequestObserved: boolean;
+    installedRequestObserved: boolean;
+  }>({
+    authority,
+    catalog: 0,
+    installed: 0,
+    inheritedCatalogError: null,
+    inheritedInstalledError: null,
+    catalogRequestObserved: catalogRes.status === "loading",
+    installedRequestObserved: installedRes.status === "loading",
+  });
   useEffect(() => {
     const attempts = optionalRetryAttemptsRef.current;
     if (attempts.authority !== authority) {
@@ -153,17 +165,52 @@ export function useViewCatalog(): UseViewCatalogResult {
         authority,
         catalog: 0,
         installed: 0,
+        // useCachedResource owns error state outside its cache key, so its
+        // first render after an authority switch can still expose the departed
+        // key's error while the new request starts. Quarantine that exact
+        // inherited error until this authority has observed its own request.
+        inheritedCatalogError: catalogError,
+        inheritedInstalledError: installedError,
+        catalogRequestObserved:
+          catalogRes.status === "loading" || catalogRes.isValidating,
+        installedRequestObserved:
+          installedRes.status === "loading" || installedRes.isValidating,
       };
     }
     if (!appShellRoutesSupported) return;
 
     const currentAttempts = optionalRetryAttemptsRef.current;
+    if (catalogRes.status === "loading" || catalogRes.isValidating) {
+      currentAttempts.catalogRequestObserved = true;
+    }
+    if (installedRes.status === "loading" || installedRes.isValidating) {
+      currentAttempts.installedRequestObserved = true;
+    }
     // A successful settlement closes that source's failure episode. Loading
     // and error states deliberately keep the consumed budget so one failing
     // request cannot loop forever, while a later independent outage still gets
     // its own single recovery attempt.
-    if (catalogRes.status === "success") currentAttempts.catalog = 0;
-    if (installedRes.status === "success") currentAttempts.installed = 0;
+    if (catalogRes.status === "success") {
+      currentAttempts.catalog = 0;
+      currentAttempts.inheritedCatalogError = null;
+      currentAttempts.catalogRequestObserved = true;
+    }
+    if (installedRes.status === "success") {
+      currentAttempts.installed = 0;
+      currentAttempts.inheritedInstalledError = null;
+      currentAttempts.installedRequestObserved = true;
+    }
+
+    const catalogFailureBelongsToAuthority =
+      catalogError !== null &&
+      !catalogRes.isValidating &&
+      (currentAttempts.catalogRequestObserved ||
+        catalogError !== currentAttempts.inheritedCatalogError);
+    const installedFailureBelongsToAuthority =
+      installedError !== null &&
+      !installedRes.isValidating &&
+      (currentAttempts.installedRequestObserved ||
+        installedError !== currentAttempts.inheritedInstalledError);
 
     const timers: number[] = [];
     const scheduleRetry = (
@@ -188,8 +235,16 @@ export function useViewCatalog(): UseViewCatalogResult {
       );
     };
 
-    scheduleRetry("catalog", catalogError !== null, catalogRes.refetch);
-    scheduleRetry("installed", installedError !== null, installedRes.refetch);
+    scheduleRetry(
+      "catalog",
+      catalogFailureBelongsToAuthority,
+      catalogRes.refetch,
+    );
+    scheduleRetry(
+      "installed",
+      installedFailureBelongsToAuthority,
+      installedRes.refetch,
+    );
     return () => {
       for (const timer of timers) window.clearTimeout(timer);
     };
@@ -198,6 +253,8 @@ export function useViewCatalog(): UseViewCatalogResult {
     appShellRoutesSupported,
     catalogRes.status,
     installedRes.status,
+    catalogRes.isValidating,
+    installedRes.isValidating,
     catalogError,
     installedError,
     catalogRes.refetch,
