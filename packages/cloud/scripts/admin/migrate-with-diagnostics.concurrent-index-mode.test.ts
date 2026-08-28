@@ -71,6 +71,7 @@ function mockCanonicalDefinition(statement: string): string {
 }
 
 function migrationClient(options?: {
+  attachAfterCommentOnce?: string;
   collideBeforeCreateOnce?: string;
   failCommentOnce?: string;
   failCreateOnce?: string;
@@ -93,6 +94,7 @@ function migrationClient(options?: {
     params?: unknown[];
     text: string;
   }> = [];
+  let attachAfterCommentOnce = options?.attachAfterCommentOnce;
   let collideBeforeCreateOnce = options?.collideBeforeCreateOnce;
   let failCommentOnce = options?.failCommentOnce;
   let failCreateOnce = options?.failCreateOnce;
@@ -262,7 +264,19 @@ function migrationClient(options?: {
           );
         }
         const state = indexes.get(commentMatch[1]);
-        if (state) state.marker = commentMatch[2];
+        if (state) {
+          state.marker = commentMatch[2];
+          if (attachAfterCommentOnce === commentMatch[1]) {
+            attachAfterCommentOnce = undefined;
+            state.partitionAttached = true;
+            // Model a separate transaction winning the ATTACH race: rollback
+            // removes our COMMENT but must preserve the external attachment.
+            const snapshotted = transactionSnapshot?.indexes.get(
+              commentMatch[1],
+            );
+            if (snapshotted) snapshotted.partitionAttached = true;
+          }
+        }
       }
       const dropMatch =
         /DROP\s+INDEX(?:\s+CONCURRENTLY)?\s+(?:"[a-z_][a-z0-9_]*"\.)?"([a-z_][a-z0-9_]*)"/i.exec(
@@ -541,6 +555,27 @@ describe("nontransactional concurrent-index migrations", () => {
         text.includes('INSERT INTO "drizzle"."__drizzle_migrations"'),
       ),
     ).toBe(false);
+  });
+
+  test("refuses an index attached between validation and publication without stamping or ledgering it", async () => {
+    const harness = migrationClient({
+      attachAfterCommentOnce: "attached_during_publication_idx",
+    });
+
+    await expect(
+      applyMigration(
+        harness.client,
+        concurrentMigration([createIndex("attached_during_publication_idx")]),
+        OPTIONS,
+      ),
+    ).rejects.toThrow("partition-attached");
+    expect(
+      harness.indexes.get("attached_during_publication_idx"),
+    ).toMatchObject({
+      marker: null,
+      partitionAttached: true,
+    });
+    expect(harness.ledgerRows()).toBe(0);
   });
 
   test("fails closed on an unmarked incomplete remnant after exact definition comparison", async () => {

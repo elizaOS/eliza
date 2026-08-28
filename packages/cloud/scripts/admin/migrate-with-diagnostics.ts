@@ -1010,6 +1010,7 @@ async function publishConcurrentIndexMigration(
         // after that lock is held: table SHARE UPDATE EXCLUSIVE alone does not
         // conflict with every ALTER INDEX variant.
         const completed = await readConcurrentIndexState(client, source);
+        assertConcurrentIndexIsStandalone(completed, source);
         await assertConcurrentIndexDefinition(
           client,
           completed,

@@ -429,6 +429,67 @@ realPostgresTest(
         DROP INDEX publication_swap_expected_saved_idx;
       `);
 
+      await migrator.query(`
+        CREATE TABLE publication_attach_parent (id integer)
+          PARTITION BY RANGE (id);
+        CREATE TABLE publication_attach_child
+          PARTITION OF publication_attach_parent
+          FOR VALUES FROM (0) TO (100);
+        CREATE INDEX publication_attach_parent_idx
+          ON ONLY publication_attach_parent (id);
+        CREATE INDEX publication_attach_child_idx
+          ON publication_attach_child (id);
+      `);
+      let publicationAttachInjected = false;
+      await expect(
+        applyMigration(
+          migrationClient(migrator, {
+            beforeQuery: async (text) => {
+              if (
+                !publicationAttachInjected &&
+                text.includes(
+                  'COMMENT ON INDEX "backup_admission_index_lock_budget_test"."publication_attach_child_idx"',
+                )
+              ) {
+                publicationAttachInjected = true;
+                await writer.query(`
+                  ALTER INDEX publication_attach_parent_idx
+                    ATTACH PARTITION publication_attach_child_idx
+                `);
+              }
+            },
+          }),
+          concurrentMigration(
+            "0361_test_concurrent_index_publication_attach",
+            migrationWhen - 12,
+            "publication-attach-hash",
+            [
+              `CREATE INDEX CONCURRENTLY "publication_attach_child_idx" ON "publication_attach_child" ("id")`,
+            ],
+          ),
+          MIGRATION_OPTIONS,
+        ),
+      ).rejects.toThrow("partition-attached");
+      expect(publicationAttachInjected).toBe(true);
+      const attached = await migrator.query<{
+        attached: boolean;
+        ledger_rows: number;
+        marker: string | null;
+      }>(`SELECT EXISTS (
+            SELECT 1 FROM pg_catalog.pg_inherits
+            WHERE inhparent = 'publication_attach_parent_idx'::regclass
+              AND inhrelid = 'publication_attach_child_idx'::regclass
+          ) AS attached,
+          pg_catalog.obj_description(
+            'publication_attach_child_idx'::regclass,
+            'pg_class'
+          ) AS marker,
+          (SELECT count(*)::int FROM drizzle.__drizzle_migrations
+            WHERE created_at = ${migrationWhen - 12}) AS ledger_rows`);
+      expect(attached.rows).toEqual([
+        { attached: true, ledger_rows: 0, marker: null },
+      ]);
+
       await migrator.query(`CREATE TABLE crash_recovery_table (id integer)`);
       const crashMigration = concurrentMigration(
         "0361_test_concurrent_index_crash_recovery",
