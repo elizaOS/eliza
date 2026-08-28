@@ -22,6 +22,7 @@ import {
   seedAppStorage,
 } from "./helpers";
 import {
+  CLOUD_AGENT_NAME,
   completeCloudOnlyOnboardingToHome,
   completeCloudOnlySessionInjectionToHome,
   expectCloudOnlySignInOnboarding,
@@ -29,6 +30,7 @@ import {
   installCloudRoutes,
   installHomeRoutes,
   makeScreenshotter,
+  PERSONAL_ELIZA_ID,
   settleHomeEntrance,
 } from "./onboarding-to-home.shared";
 
@@ -129,5 +131,143 @@ test.describe("cloud-only onboarding (production default)", () => {
     await screenshot(page, "cloud-only-auto-adopt-home");
     expect(await surface.getAttribute("data-page")).toBe("home");
     await expectNoCharacterSelectLanding(page);
+  });
+
+  test("an existing Dedicated row shows status, balance, and runway before one confirmed POST", async ({
+    page,
+  }) => {
+    await injectCloudAuthToken(page);
+    await installHomeRoutes(page);
+    await installCloudRoutes(page);
+    const dedicatedAgentId = "22222222-2222-4222-8222-222222222222";
+    const quoteId = "b".repeat(64);
+    let adoptionPosts = 0;
+    await page.unroute("**/api/v1/eliza/personal");
+    await page.route("**/api/v1/eliza/personal", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            identity: {
+              id: PERSONAL_ELIZA_ID,
+              displayName: CLOUD_AGENT_NAME,
+              runtime: "shared",
+            },
+          },
+        }),
+      });
+    });
+    await page.route("**/upgrade-tier/adopt-existing", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            success: true,
+            data: {
+              quoteId,
+              dedicatedAgentId,
+              adoptionState: "available",
+              status: "stopped",
+              startsCompute: true,
+              hourlyRateUsd: 0.01,
+              dailyRateUsd: 0.24,
+              minimumBalanceUsd: 0.72,
+              minimumRunwayDays: 3,
+              balanceUsd: 115.54059,
+              deficitUsd: 0,
+              stateDisposition: "verified_backup_present",
+              canAdopt: true,
+              requiresCatalogRestore: false,
+              requiresConfirmation: true,
+              action: "adopt_existing_dedicated",
+            },
+          }),
+        });
+        return;
+      }
+      adoptionPosts += 1;
+      expect(JSON.parse(route.request().postData() ?? "{}")).toEqual({
+        action: "adopt_existing_dedicated",
+        quoteId,
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            dedicatedAgentId,
+            runtime: "dedicated_pending_cutover",
+            status: "running",
+          },
+        }),
+      });
+    });
+    await page.route("**/upgrade-tier/cutover", async (route) => {
+      const origin = new URL(page.url()).origin;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            personalElizaId: PERSONAL_ELIZA_ID,
+            activeAgentId: dedicatedAgentId,
+            runtime: "dedicated",
+            apiBase: origin,
+            importedMessages: 0,
+          },
+        }),
+      });
+    });
+    await page.route("**/upgrade-tier", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            success: true,
+            data: {
+              quoteId: "a".repeat(64),
+              canActivate: true,
+              activation: {
+                state: "in_progress",
+                dedicatedAgentId,
+                status: "stopped",
+              },
+            },
+          }),
+        });
+        return;
+      }
+      throw new Error("The generic activation POST must not be dispatched");
+    });
+    await seedAppStorage(page, {
+      "eliza:first-run-complete": "",
+      "eliza:enable-runtime-chooser": "0",
+    });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const confirm = page.getByTestId(
+      "choice-__first_run__:dedicated-adoption:confirm",
+    );
+    await expect(confirm).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Current status: stopped.")).toBeVisible();
+    await expect(
+      page.getByText(
+        /Balance: \$115\.54; minimum required: \$0\.72 \(3 days of runway\)/,
+      ),
+    ).toBeVisible();
+    expect(adoptionPosts).toBe(0);
+
+    await confirm.click();
+    await expect.poll(() => adoptionPosts).toBe(1);
+    await expect(page.getByTestId("home-screen")).toBeVisible({
+      timeout: 20_000,
+    });
+    await settleHomeEntrance(page);
   });
 });

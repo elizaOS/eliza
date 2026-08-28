@@ -2034,6 +2034,12 @@ declare module "./client-base" {
       authToken: string;
       signal?: AbortSignal;
       onProgress?: (status: string, detail?: string) => void;
+      /**
+       * User-gesture boundary for an existing-row adoption. Silent startup
+       * must leave this unset; interactive onboarding supplies it and resolves
+       * only after rendering the server quote and receiving a visible choice.
+       */
+      requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
       pollIntervalMs?: number;
       timeoutMs?: number;
     }): Promise<{
@@ -4609,6 +4615,305 @@ type EnsurePersonalDedicatedElizaOptions = Parameters<
   ElizaClient["ensurePersonalDedicatedEliza"]
 >[0];
 
+export type DedicatedAdoptionStateDisposition =
+  | "fresh_boot_no_verified_backup"
+  | "verified_backup_present"
+  | "unreviewed_existing_target";
+
+export interface DedicatedAdoptionConfirmationQuote {
+  quoteId: string;
+  dedicatedAgentId: string;
+  adoptionState: "available" | "adopted";
+  status: string;
+  startsCompute: boolean;
+  hourlyRateUsd: number;
+  dailyRateUsd: number;
+  minimumBalanceUsd: number;
+  minimumRunwayDays: number;
+  balanceUsd: number;
+  deficitUsd: number;
+  stateDisposition: DedicatedAdoptionStateDisposition;
+  canAdopt: boolean;
+  requiresCatalogRestore: boolean;
+  requiresConfirmation: true;
+  action: "adopt_existing_dedicated";
+  unavailableReason?: string;
+}
+
+export type DedicatedAdoptionConfirmationRequester = (
+  quote: DedicatedAdoptionConfirmationQuote,
+  context: {
+    reason: "initial" | "quote_changed";
+    signal?: AbortSignal;
+  },
+) => Promise<{
+  action: "adopt_existing_dedicated";
+  quoteId: string;
+} | null>;
+
+const DEDICATED_ADOPTION_SELECTION_REQUIRED =
+  "dedicated_adoption_selection_required";
+const DEDICATED_ADOPTION_QUOTE_CHANGED = "dedicated_adoption_quote_changed";
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parseDedicatedAdoptionQuote(
+  value: unknown,
+): DedicatedAdoptionConfirmationQuote | null {
+  const quote = recordOrNull(value);
+  const quoteId = firstString(quote?.quoteId);
+  const dedicatedAgentId = firstString(quote?.dedicatedAgentId);
+  const adoptionState = firstString(quote?.adoptionState);
+  const status = firstString(quote?.status);
+  const hourlyRateUsd = finiteNumber(quote?.hourlyRateUsd);
+  const dailyRateUsd = finiteNumber(quote?.dailyRateUsd);
+  const minimumBalanceUsd = finiteNumber(quote?.minimumBalanceUsd);
+  const minimumRunwayDays = finiteNumber(quote?.minimumRunwayDays);
+  const balanceUsd = finiteNumber(quote?.balanceUsd);
+  const deficitUsd = finiteNumber(quote?.deficitUsd);
+  const stateDisposition = firstString(quote?.stateDisposition);
+  const unavailableReason = firstString(quote?.unavailableReason);
+  if (
+    !quoteId ||
+    !dedicatedAgentId ||
+    (adoptionState !== "available" && adoptionState !== "adopted") ||
+    !status ||
+    typeof quote?.startsCompute !== "boolean" ||
+    hourlyRateUsd === null ||
+    dailyRateUsd === null ||
+    minimumBalanceUsd === null ||
+    minimumRunwayDays === null ||
+    balanceUsd === null ||
+    deficitUsd === null ||
+    (stateDisposition !== "fresh_boot_no_verified_backup" &&
+      stateDisposition !== "verified_backup_present" &&
+      stateDisposition !== "unreviewed_existing_target") ||
+    typeof quote?.canAdopt !== "boolean" ||
+    typeof quote?.requiresCatalogRestore !== "boolean" ||
+    quote.requiresConfirmation !== true ||
+    quote.action !== "adopt_existing_dedicated"
+  ) {
+    return null;
+  }
+  return {
+    quoteId,
+    dedicatedAgentId,
+    adoptionState,
+    status,
+    startsCompute: quote.startsCompute,
+    hourlyRateUsd,
+    dailyRateUsd,
+    minimumBalanceUsd,
+    minimumRunwayDays,
+    balanceUsd,
+    deficitUsd,
+    stateDisposition,
+    canAdopt: quote.canAdopt,
+    requiresCatalogRestore: quote.requiresCatalogRestore,
+    requiresConfirmation: true,
+    action: "adopt_existing_dedicated",
+    ...(unavailableReason ? { unavailableReason } : {}),
+  };
+}
+
+function dedicatedAdoptionError(options: {
+  message: string;
+  code: string;
+  status: number;
+  data: unknown;
+  url: string;
+}): ElizaError & { status: number; data: unknown; url: string } {
+  return Object.assign(
+    new ElizaError(options.message, {
+      code: options.code,
+      context: { phase: "adoption-confirmation" },
+    }),
+    { status: options.status, data: options.data, url: options.url },
+  );
+}
+
+function dedicatedAdoptionUnavailableError(
+  quote: DedicatedAdoptionConfirmationQuote,
+): ElizaError {
+  return new ElizaError(
+    quote.unavailableReason ??
+      "The selected Dedicated agent cannot be adopted right now.",
+    {
+      code: quote.requiresCatalogRestore
+        ? "CLOUD_DEDICATED_ADOPTION_CATALOG_RESTORE_REQUIRED"
+        : "CLOUD_DEDICATED_ADOPTION_UNAVAILABLE",
+      context: { phase: "adoption-quote", field: "canAdopt" },
+    },
+  );
+}
+
+async function adoptSelectedPersonalDedicatedEliza(
+  upgradeUrl: string,
+  options: EnsurePersonalDedicatedElizaOptions,
+  deadline: number,
+): Promise<string | null> {
+  const adoptionUrl = `${upgradeUrl}/adopt-existing`;
+  const fetchCurrentQuote = async () => {
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    const response = await directCloudJsonResponse<unknown>(adoptionUrl, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${options.authToken}`,
+      },
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    return response;
+  };
+  let quoteResponse = await fetchCurrentQuote();
+  let confirmationReason: "initial" | "quote_changed" = "initial";
+  let firstTargetId: string | null = null;
+  for (;;) {
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    const quoteRoot = recordOrNull(quoteResponse.data);
+    const responseCode = directCloudErrorMetadata(quoteResponse.data).code;
+    if (
+      quoteResponse.status === 404 &&
+      quoteRoot?.success === false &&
+      responseCode === "dedicated_adoption_unavailable"
+    ) {
+      return null;
+    }
+    const quote = parseDedicatedAdoptionQuote(quoteRoot?.data);
+    const renewedQuote =
+      confirmationReason === "quote_changed" &&
+      quoteResponse.status === 409 &&
+      quoteRoot?.success === false &&
+      responseCode === DEDICATED_ADOPTION_QUOTE_CHANGED;
+    if ((!quoteResponse.ok || quoteRoot?.success !== true) && !renewedQuote) {
+      throw dedicatedAdoptionError({
+        message: directCloudResponseErrorMessage(
+          quoteResponse.status,
+          quoteResponse.data,
+        ),
+        code: "CLOUD_DEDICATED_ADOPTION_QUOTE_INVALID",
+        status: quoteResponse.status,
+        data: quoteResponse.data,
+        url: adoptionUrl,
+      });
+    }
+    if (!quote) {
+      throw dedicatedAdoptionError({
+        message: "Eliza Cloud returned an invalid Dedicated adoption quote.",
+        code: "CLOUD_DEDICATED_ADOPTION_QUOTE_INVALID",
+        status: quoteResponse.status,
+        data: quoteResponse.data,
+        url: adoptionUrl,
+      });
+    }
+    firstTargetId ??= quote.dedicatedAgentId;
+    if (quote.dedicatedAgentId !== firstTargetId) {
+      throw new ElizaError(
+        "Eliza Cloud changed the selected Dedicated target while awaiting confirmation.",
+        {
+          code: "CLOUD_DEDICATED_ADOPTION_TARGET_MISMATCH",
+          context: { phase: "adoption-quote", field: "dedicatedAgentId" },
+        },
+      );
+    }
+    if (!quote.canAdopt) {
+      throw dedicatedAdoptionUnavailableError(quote);
+    }
+    const requester = options.requestDedicatedAdoptionConfirmation;
+    if (!requester) {
+      throw dedicatedAdoptionError({
+        message:
+          "Review and confirm the current Dedicated hosting quote before this existing agent can be adopted.",
+        code: "CLOUD_DEDICATED_ADOPTION_CONFIRMATION_REQUIRED",
+        status: 409,
+        data: quoteResponse.data,
+        url: adoptionUrl,
+      });
+    }
+    const confirmation = await requester(quote, {
+      reason: confirmationReason,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    if (
+      confirmation?.action !== "adopt_existing_dedicated" ||
+      confirmation.quoteId !== quote.quoteId
+    ) {
+      throw dedicatedAdoptionError({
+        message: "Dedicated adoption was not confirmed.",
+        code: "CLOUD_DEDICATED_ADOPTION_CONFIRMATION_REQUIRED",
+        status: 409,
+        data: quoteResponse.data,
+        url: adoptionUrl,
+      });
+    }
+
+    const adoptionResponse = await directCloudJsonResponse<unknown>(
+      adoptionUrl,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.authToken}`,
+        },
+        body: JSON.stringify(confirmation),
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+    );
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    const adoptionRoot = recordOrNull(adoptionResponse.data);
+    const adoptionCode = directCloudErrorMetadata(adoptionResponse.data).code;
+    if (
+      adoptionResponse.status === 409 &&
+      adoptionRoot?.success === false &&
+      adoptionCode === DEDICATED_ADOPTION_QUOTE_CHANGED
+    ) {
+      // Some server versions return the replacement quote in the 409 body;
+      // others return only the typed quote-changed code. Preserve the former
+      // fast path, but always reconcile the latter with a fresh read before
+      // asking for renewed consent. The original absolute startup deadline and
+      // first-target lock remain authoritative across both reads.
+      quoteResponse = parseDedicatedAdoptionQuote(adoptionRoot.data)
+        ? adoptionResponse
+        : await fetchCurrentQuote();
+      confirmationReason = "quote_changed";
+      continue;
+    }
+    const adoption = recordOrNull(adoptionRoot?.data);
+    const adoptedTargetId = firstString(adoption?.dedicatedAgentId);
+    if (
+      !adoptionResponse.ok ||
+      adoptionRoot?.success !== true ||
+      !adoptedTargetId ||
+      adoption?.runtime !== "dedicated_pending_cutover"
+    ) {
+      throw dedicatedAdoptionError({
+        message: directCloudResponseErrorMessage(
+          adoptionResponse.status,
+          adoptionResponse.data,
+        ),
+        code: "CLOUD_DEDICATED_ADOPTION_REJECTED",
+        status: adoptionResponse.status,
+        data: adoptionResponse.data,
+        url: adoptionUrl,
+      });
+    }
+    if (adoptedTargetId !== quote.dedicatedAgentId) {
+      throw new ElizaError(
+        "Eliza Cloud adopted a different Dedicated target than the quoted selection.",
+        {
+          code: "CLOUD_DEDICATED_ADOPTION_TARGET_MISMATCH",
+          context: { phase: "adoption", field: "dedicatedAgentId" },
+        },
+      );
+    }
+    return adoptedTargetId;
+  }
+}
+
 async function ensurePersonalDedicatedElizaWithinDeadline(
   this: ElizaClient,
   options: EnsurePersonalDedicatedElizaOptions,
@@ -4690,11 +4995,30 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
       // resume cutover without replaying the paid activation POST.
       dedicatedAgentId = existingTargetId;
     } else if (statusPolicy === "resume-with-confirmed-post") {
-      // The server deliberately reports retained resumable targets as
-      // in_progress too, but POST is still required to re-arm compute under
-      // the freshly confirmed quote. Validate that response against the exact
-      // quoted target below; this is a resume, not an ambiguous replay.
-      activationPostRequired = true;
+      // An already-selected/adopted retained row must re-enter through the
+      // adoption service. The generic activation route can re-arm the same
+      // row without carrying its reviewed restore authority into the new job.
+      // A 404 here means there is no selection receipt, so the ordinary
+      // quote-bound activation path remains valid for that account.
+      const adoptedTargetId = await adoptSelectedPersonalDedicatedEliza(
+        upgradeUrl,
+        options,
+        deadline,
+      );
+      if (adoptedTargetId) {
+        if (adoptedTargetId !== existingTargetId) {
+          throw new ElizaError(
+            "Eliza Cloud resumed a different Dedicated target than the quoted activation.",
+            {
+              code: "CLOUD_DEDICATED_TARGET_MISMATCH",
+              context: { phase: "adoption", field: "dedicatedAgentId" },
+            },
+          );
+        }
+        dedicatedAgentId = adoptedTargetId;
+      } else {
+        activationPostRequired = true;
+      }
     } else {
       throw new ElizaError(
         "Eliza Cloud returned an invalid in-progress Dedicated status.",
@@ -4733,10 +5057,33 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
     throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
     const activationRoot = recordOrNull(activationResponse.data);
     const activation = recordOrNull(activationRoot?.data);
-    const activatedTargetId = firstString(activation?.dedicatedAgentId);
+    let activatedTargetId = firstString(activation?.dedicatedAgentId);
+    const activationCode = directCloudErrorMetadata(
+      activationResponse.data,
+    ).code;
+    const adoptionRequired =
+      activationResponse.status === 409 &&
+      activationRoot?.success === false &&
+      activationCode === DEDICATED_ADOPTION_SELECTION_REQUIRED;
+    if (adoptionRequired) {
+      activatedTargetId = await adoptSelectedPersonalDedicatedEliza(
+        upgradeUrl,
+        options,
+        deadline,
+      );
+      if (!activatedTargetId) {
+        throw new ElizaError(
+          "Eliza Cloud required an existing-row adoption but no selected target was available.",
+          {
+            code: "CLOUD_DEDICATED_ADOPTION_UNAVAILABLE",
+            context: { phase: "adoption", field: "selection" },
+          },
+        );
+      }
+    }
     if (
-      !activationResponse.ok ||
-      activationRoot?.success !== true ||
+      (!activationResponse.ok && !adoptionRequired) ||
+      (activationResponse.ok && activationRoot?.success !== true) ||
       !activatedTargetId
     ) {
       throw Object.assign(
