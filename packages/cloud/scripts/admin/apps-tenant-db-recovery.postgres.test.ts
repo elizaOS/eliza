@@ -236,6 +236,24 @@ let pgbouncerDir: string | undefined;
  */
 const POOLER_ENABLED = ENABLED;
 
+/**
+ * pgbouncer is resolved portably (Linux CI, Intel Macs, non-default
+ * prefixes): explicit override first, then PATH lookup via Bun.which.
+ * A missing binary fails fast with the override instruction instead of
+ * surfacing as an opaque ENOENT deep inside the drill.
+ */
+function resolvePgbouncerBin(): string {
+  return (
+    process.env.DRILL_TEST_PGBOUNCER_BIN ??
+    Bun.which("pgbouncer") ??
+    (() => {
+      throw new Error(
+        "pgbouncer executable not found on PATH; install pgbouncer or set DRILL_TEST_PGBOUNCER_BIN to its absolute path",
+      );
+    })()
+  );
+}
+
 function startPgbouncer(): void {
   pgbouncerDir = mkdtempSync(join(tmpdir(), "drill-pgbouncer-"));
   const ini = join(pgbouncerDir, "pgbouncer.ini");
@@ -267,11 +285,10 @@ pool_mode = transaction
     users,
     `"drill23453test_tenant_a" "tenantpw23453"\n"drill23453test_tenant_b" "tenantpw23453"\n"drill23453test_tenant_c" "tenantpw23453"\n"drill23453test_mt_a" "tenantpw23453"\n"drill23453test_mt_b" "tenantpw23453"\n"drill23453test_mt_c" "tenantpw23453"\n`,
   );
-  const child = execFileCb(
-    "/opt/homebrew/opt/pgbouncer/bin/pgbouncer",
-    ["-q", ini],
-    { detached: true, stdio: "ignore" },
-  );
+  const child = execFileCb(resolvePgbouncerBin(), ["-q", ini], {
+    detached: true,
+    stdio: "ignore",
+  });
   child.unref();
 }
 
