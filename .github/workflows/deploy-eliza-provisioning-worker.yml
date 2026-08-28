@@ -319,6 +319,8 @@ jobs:
           ref: ${{ needs.determine-env.outputs.deployment_sha }}
           fetch-depth: 1
           persist-credentials: false
+          submodules: false
+          clean: true
 
       - name: Verify exact migration source
         if: steps.deploy_config.outputs.configured == 'true'
@@ -338,8 +340,23 @@ jobs:
           # not enter deployment logs.
           git reset --hard --quiet "$EXPECTED_DEPLOY_SHA"
           git clean -ffdx -q
-          [ -z "$(git status --porcelain)" ] || {
+          # A reused runner may still have initialized submodule worktrees from
+          # another workflow even though this checkout requests none. Remove
+          # those worktrees without exposing runner-local paths, then verify
+          # both the superproject and submodule initialization state.
+          if ! git submodule deinit -f --all >/dev/null 2>&1; then
+            echo "::error::Could not clear retained migration submodules"
+            exit 1
+          fi
+          git clean -ffdx -q
+          status_output="$(git status --porcelain=v1 --untracked-files=all --ignore-submodules=none)"
+          [ -z "$status_output" ] || {
             echo "::error::Migration checkout is not clean"
+            exit 1
+          }
+          populated_submodules="$(git submodule status --recursive | awk '$1 !~ /^-/ { count++ } END { print count + 0 }')"
+          [ "$populated_submodules" = "0" ] || {
+            echo "::error::Migration checkout retained initialized submodules"
             exit 1
           }
           helper_sha256=$(sha256sum \

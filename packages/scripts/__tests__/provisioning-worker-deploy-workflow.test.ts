@@ -1,5 +1,17 @@
+/**
+ * Guards the provisioning-worker deployment workflow with deterministic static
+ * contracts and disposable Git repositories for checkout hygiene behavior.
+ */
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const root = join(import.meta.dir, "../../..");
@@ -45,6 +57,7 @@ const generatedKeywordServices = [
 interface WorkflowStep {
   env?: Record<string, string>;
   name?: string;
+  run?: string;
   "timeout-minutes"?: number;
   uses?: string;
   with?: Record<string, string>;
@@ -66,6 +79,31 @@ function deployStep(name: string): WorkflowStep {
   );
   if (!found) throw new Error(`Missing deploy step: ${name}`);
   return found;
+}
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_EMAIL: "workflow-test@example.invalid",
+      GIT_AUTHOR_NAME: "Workflow Test",
+      GIT_COMMITTER_EMAIL: "workflow-test@example.invalid",
+      GIT_COMMITTER_NAME: "Workflow Test",
+    },
+  }).trim();
+}
+
+function exactCheckoutCleanupScript(): string {
+  const run = deployStep("Verify exact migration source").run;
+  if (!run) throw new Error("Verify exact migration source has no run script");
+  const start = run.indexOf('actual_sha="$(git rev-parse HEAD)"');
+  const end = run.indexOf("helper_sha256=");
+  if (start < 0 || end <= start) {
+    throw new Error("Could not isolate exact migration checkout cleanup");
+  }
+  return `set -euo pipefail\n${run.slice(start, end)}`;
 }
 
 describe("provisioning worker deployment contract", () => {
@@ -153,15 +191,95 @@ describe("provisioning worker deployment contract", () => {
       verify,
     );
     const clean = workflow.indexOf("git clean -ffdx -q", verify);
+    const deinit = workflow.indexOf(
+      "git submodule deinit -f --all",
+      verify,
+    );
     const cleanVerdict = workflow.indexOf(
-      '[ -z "$(git status --porcelain)" ] || {',
+      '[ -z "$status_output" ] || {',
       verify,
     );
     expect(reset).toBeGreaterThan(exactSourceCheck);
     expect(clean).toBeGreaterThan(reset);
-    expect(cleanVerdict).toBeGreaterThan(clean);
+    expect(deinit).toBeGreaterThan(clean);
+    expect(cleanVerdict).toBeGreaterThan(deinit);
     expect(migration).toBeGreaterThan(cleanVerdict);
+    expect(
+      deployStep("Checkout exact deployment source for migration gate").with,
+    ).toMatchObject({ clean: true, submodules: false });
+    expect(workflow).toContain(
+      "git status --porcelain=v1 --untracked-files=all --ignore-submodules=none",
+    );
+    expect(workflow).toContain("git submodule status --recursive");
     expect(workflow).toContain("bun run db:cloud:migrate");
+  });
+
+  it("clears retained initialized submodules before accepting the migration checkout", () => {
+    const fixtureRoot = mkdtempSync(
+      join(tmpdir(), "eliza-provisioning-checkout-"),
+    );
+    const moduleRoot = join(fixtureRoot, "module-source");
+    const checkoutRoot = join(fixtureRoot, "checkout");
+
+    try {
+      mkdirSync(moduleRoot);
+      git(moduleRoot, ["init", "--quiet"]);
+      writeFileSync(join(moduleRoot, ".gitignore"), "ignored/\n");
+      writeFileSync(join(moduleRoot, "tracked.txt"), "committed\n");
+      git(moduleRoot, ["add", "."]);
+      git(moduleRoot, ["commit", "--quiet", "-m", "module fixture"]);
+
+      mkdirSync(checkoutRoot);
+      git(checkoutRoot, ["init", "--quiet"]);
+      git(checkoutRoot, [
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "--quiet",
+        moduleRoot,
+        "plugins/retained",
+      ]);
+      writeFileSync(join(checkoutRoot, "tracked-root.txt"), "committed\n");
+      git(checkoutRoot, ["add", "."]);
+      git(checkoutRoot, ["commit", "--quiet", "-m", "checkout fixture"]);
+      const expectedSha = git(checkoutRoot, ["rev-parse", "HEAD"]);
+
+      writeFileSync(
+        join(checkoutRoot, "plugins/retained/tracked.txt"),
+        "dirty retained state\n",
+      );
+      mkdirSync(join(checkoutRoot, "plugins/retained/ignored"));
+      writeFileSync(
+        join(checkoutRoot, "plugins/retained/ignored/build-output"),
+        "stale\n",
+      );
+      writeFileSync(join(checkoutRoot, "runner-artifact"), "stale\n");
+
+      const result = spawnSync(
+        "bash",
+        ["-c", exactCheckoutCleanupScript()],
+        {
+          cwd: checkoutRoot,
+          encoding: "utf8",
+          env: { ...process.env, EXPECTED_DEPLOY_SHA: expectedSha },
+        },
+      );
+
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(
+        git(checkoutRoot, [
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=all",
+          "--ignore-submodules=none",
+        ]),
+      ).toBe("");
+      expect(git(checkoutRoot, ["submodule", "status"])).toStartWith("-");
+      expect(`${result.stdout}${result.stderr}`).not.toContain(fixtureRoot);
+    } finally {
+      rmSync(fixtureRoot, { force: true, recursive: true });
+    }
   });
 
   it("fails closed on missing protected DB authority and uses the pinned toolchain", () => {
