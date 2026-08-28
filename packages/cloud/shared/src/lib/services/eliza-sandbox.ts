@@ -3929,6 +3929,11 @@ export class ElizaSandboxService {
     for (let attempt = 1; attempt <= MAX_PROVISION_ATTEMPTS; attempt++) {
       attemptsMade = attempt;
       let handle;
+      // Once the temporary replacement fence is transferred to the primary
+      // row, retain the exact returned generation. A later restore/billing
+      // tail failure must CAS this same generation back into durable cleanup
+      // ownership before any remote resource can be removed.
+      let adoptedGeneration: AgentSandbox | null = null;
 
       try {
         const retryHandle =
@@ -4165,15 +4170,7 @@ export class ElizaSandboxService {
           rec.environment_revision,
           updateData,
         );
-
-        // Re-enter the billable set on every successful provision. A
-        // credit-suspended agent (billing_status='suspended') that a user tops
-        // up and resumes/wakes via the user-facing routes would otherwise run
-        // (status='running') permanently EXCLUDED from listBillableSandboxes =
-        // free dedicated compute forever. The service-key resume/restart routes
-        // already reactivate; do it here so ALL provision paths re-enter billing.
-        // Idempotent + exempt-guarded (ne billing_status 'exempt').
-        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
+        adoptedGeneration = updated;
 
         // 5. Restore from backup (reconstructs incrementals back to a full).
         //
@@ -4391,7 +4388,16 @@ export class ElizaSandboxService {
             });
           }
           completed = ready;
+          adoptedGeneration = ready;
         }
+
+        // Re-enter the billable set only after the complete provision tail is
+        // successful. Keeping this after restore/readiness also leaves the
+        // adopted lifecycle_revision unchanged while a failed tail is fenced
+        // back into durable cleanup ownership. A credit-suspended agent that a
+        // user funds and resumes would otherwise run outside the billable set;
+        // the update remains idempotent and exempt-guarded.
+        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
 
         logger.info("[agent-sandbox] Provisioned", {
           agentId: rec.id,
@@ -4446,7 +4452,23 @@ export class ElizaSandboxService {
             await this.retirePersistedReplacementCleanup(rec.id, rec.organization_id);
           } else {
             const provider = await this.getProvider();
-            await this.retireFailedProvisionHandle(provider, handle, rec.id);
+            if (isDockerBackedMetadata(handle.metadata)) {
+              if (!adoptedGeneration) {
+                throw new Error(
+                  "Failed Docker provision has no durable cleanup fence or adopted generation",
+                );
+              }
+              await this.persistAdoptedFailedProvisionCleanupFence(
+                rec.id,
+                rec.organization_id,
+                adoptedGeneration,
+                handle,
+                msg,
+              );
+              await this.retirePersistedReplacementCleanup(rec.id, rec.organization_id);
+            } else {
+              await this.retireFailedNonDockerProvisionHandle(provider, handle);
+            }
           }
         } catch (stopErr) {
           // error-policy:J1 provisioning boundary translation — failed ghost
@@ -12058,28 +12080,13 @@ export class ElizaSandboxService {
     };
   }
 
-  /**
-   * Retire the exact container returned by a failed provision tail.
-   *
-   * Docker container names are deterministic per agent and therefore mutable
-   * across attempts. A delayed cleanup must never resolve that name again: a
-   * healthy successor may already own it. Preserve the returned immutable
-   * Docker id + attempt label all the way into the provider's inspect-before-
-   * stop fence. Non-Docker providers retain their historical sandbox-id path.
-   */
-  private async retireFailedProvisionHandle(
-    provider: SandboxProvider,
+  private exactFailedDockerProvisionLocator(
     handle: SandboxHandle,
     expectedAgentId: string,
-  ): Promise<void> {
-    if (!isDockerBackedMetadata(handle.metadata)) {
-      if (!provider.stopForReplacement) {
-        throw new Error("Sandbox provider cannot prove failed provision absent");
-      }
-      await provider.stopForReplacement(handle.sandboxId);
-      return;
-    }
-
+  ): {
+    metadata: DockerSandboxMetadata;
+    locator: Omit<ReplacementCleanupLocator, "createdAt">;
+  } {
     const metadata = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
     if (!metadata) {
       throw new Error("Failed Docker provision has incomplete placement metadata");
@@ -12096,25 +12103,6 @@ export class ElizaSandboxService {
     if (!locator.containerId || !/^[a-f0-9]{12,64}$/.test(locator.containerId)) {
       throw new Error("Failed Docker provision cleanup has no immutable container id");
     }
-    if (!provider.stopOnSpecificNodeForReplacement) {
-      throw new Error("Sandbox provider cannot retire an exact failed Docker provision");
-    }
-
-    // Legacy replacement callbacks freeze the immutable container/attempt but
-    // may carry only part of the newer node-record authority tuple. Supplying a
-    // partial tuple would correctly fail the provider's exact-authority gate,
-    // so omit it unless the handle explicitly declares the v1 cleanup protocol.
-    const exactNodeAuthority =
-      metadata.replacementSecretCleanupVersion === 1
-        ? {
-            nodeRecordId: metadata.nodeRecordId,
-            nodeHostname: metadata.hostname,
-            nodeSshPort: metadata.nodeSshPort,
-            nodeSshUser: metadata.nodeSshUser,
-            nodeHostKeyFingerprint: metadata.nodeHostKeyFingerprint,
-            replacementSecretCleanupVersion: 1 as const,
-          }
-        : {};
     if (
       metadata.replacementSecretCleanupVersion === 1 &&
       (!metadata.nodeRecordId ||
@@ -12125,21 +12113,170 @@ export class ElizaSandboxService {
     ) {
       throw new Error("Failed Docker provision cleanup has incomplete exact node authority");
     }
+    return { metadata, locator };
+  }
 
-    await provider.stopOnSpecificNodeForReplacement(
-      locator.nodeId,
-      locator.containerName,
-      locator.vpnNodeId,
-      {
-        ...exactNodeAuthority,
-        replacementAttemptId: locator.replacementAttemptId,
-        containerId: locator.containerId,
-        vpnNodeName: locator.vpnNodeName,
-        previousVpnNodeId: locator.previousVpnNodeId,
-        vpnRegistrationStartedAt: locator.vpnRegistrationStartedAt?.toISOString() ?? null,
-        allocationCounted: locator.allocationCounted,
-      },
-    );
+  /**
+   * Move an already-adopted Docker generation back into durable cleanup
+   * ownership before any remote side effect.
+   *
+   * `transferReplacementToPrimary` deliberately clears the temporary cleanup
+   * locator when the container becomes the primary runtime. A later restore or
+   * readiness-tail failure must reverse that ownership transfer atomically:
+   * make the row non-serving, clear every primary runtime locator, and preserve
+   * the exact immutable Docker/VPN identity plus its EXISTING capacity slot.
+   * The locked runtime tuple proves that the primary row is still the exact
+   * generation returned by adoption. The CAS uses the freshly locked revision
+   * so benign heartbeat/billing writes after adoption do not strand cleanup.
+   * No capacity increment/decrement occurs here;
+   * `retirePersistedReplacementCleanup` releases the same slot exactly once
+   * after remote absence is proven.
+   */
+  private async persistAdoptedFailedProvisionCleanupFence(
+    agentId: string,
+    orgId: string,
+    adopted: AgentSandbox,
+    handle: SandboxHandle,
+    failureMessage: string,
+  ): Promise<void> {
+    const { metadata, locator } = this.exactFailedDockerProvisionLocator(handle, agentId);
+    if (!locator.allocationCounted) {
+      throw new Error("Adopted Docker provision has no owned capacity slot to transfer");
+    }
+    if (
+      adopted.id !== agentId ||
+      adopted.organization_id !== orgId ||
+      (adopted.status !== "running" && adopted.status !== "provisioning") ||
+      adopted.sandbox_id !== locator.sandboxId ||
+      adopted.node_id !== locator.nodeId ||
+      adopted.container_name !== locator.containerName ||
+      adopted.bridge_url !== handle.bridgeUrl ||
+      adopted.health_url !== handle.healthUrl ||
+      adopted.bridge_port !== metadata.bridgePort ||
+      adopted.web_ui_port !== metadata.webUiPort ||
+      (metadata.headscaleIp !== undefined && adopted.headscale_ip !== metadata.headscaleIp)
+    ) {
+      throw new Error("Adopted Docker cleanup handle does not match its primary runtime");
+    }
+
+    await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current) throw new Error("Agent disappeared before failed provision cleanup fencing");
+      const tierRejection = containerBackedServiceRejection(current, "replacement");
+      if (tierRejection) throw new Error(tierRejection);
+
+      const existing = this.getReplacementCleanupLocator(current);
+      if (existing) {
+        this.assertSameReplacementIdentity(existing, locator);
+        if (
+          existing.containerId !== locator.containerId ||
+          existing.vpnNodeId !== locator.vpnNodeId ||
+          current.status === "running" ||
+          current.sandbox_id !== null ||
+          current.bridge_url !== null ||
+          current.health_url !== null ||
+          current.node_id !== null ||
+          current.container_name !== null
+        ) {
+          throw new Error("Failed provision cleanup fence conflicts with the current generation");
+        }
+        return;
+      }
+
+      if (
+        current.deletion_attempt_id !== null ||
+        current.status !== adopted.status ||
+        current.environment_revision !== adopted.environment_revision ||
+        current.lifecycle_job_id !== adopted.lifecycle_job_id ||
+        current.lifecycle_execution_generation !== adopted.lifecycle_execution_generation ||
+        current.sandbox_id !== adopted.sandbox_id ||
+        current.node_id !== adopted.node_id ||
+        current.container_name !== adopted.container_name ||
+        current.bridge_url !== adopted.bridge_url ||
+        current.health_url !== adopted.health_url ||
+        current.bridge_port !== adopted.bridge_port ||
+        current.web_ui_port !== adopted.web_ui_port ||
+        current.headscale_ip !== adopted.headscale_ip ||
+        current.docker_image !== adopted.docker_image ||
+        current.image_digest !== adopted.image_digest
+      ) {
+        throw new Error(
+          "Primary runtime generation changed before failed provision cleanup fencing",
+        );
+      }
+
+      const fencedAt = new Date();
+      const [fenced] = await tx
+        .update(agentSandboxes)
+        .set({
+          status: "error",
+          error_message: `Provisioning cleanup pending: ${failureMessage}`,
+          sandbox_id: null,
+          bridge_url: null,
+          health_url: null,
+          last_heartbeat_at: null,
+          node_id: null,
+          container_name: null,
+          bridge_port: null,
+          web_ui_port: null,
+          headscale_ip: null,
+          pool_ready_at: null,
+          replacement_cleanup_sandbox_id: locator.sandboxId,
+          replacement_cleanup_node_id: locator.nodeId,
+          replacement_cleanup_container_name: locator.containerName,
+          replacement_cleanup_attempt_id: locator.replacementAttemptId,
+          replacement_cleanup_container_id: locator.containerId,
+          replacement_cleanup_vpn_node_id: locator.vpnNodeId,
+          replacement_cleanup_vpn_node_name: locator.vpnNodeName,
+          replacement_cleanup_preserved_vpn_node_id: locator.previousVpnNodeId,
+          replacement_cleanup_vpn_registration_started_at: locator.vpnRegistrationStartedAt,
+          replacement_cleanup_allocation_counted: true,
+          replacement_cleanup_created_at: fencedAt,
+          updated_at: fencedAt,
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            eq(agentSandboxes.status, current.status),
+            eq(agentSandboxes.environment_revision, current.environment_revision),
+            eq(agentSandboxes.lifecycle_revision, current.lifecycle_revision),
+            sql`${agentSandboxes.lifecycle_job_id} IS NOT DISTINCT FROM ${current.lifecycle_job_id}`,
+            sql`${agentSandboxes.lifecycle_execution_generation} IS NOT DISTINCT FROM ${current.lifecycle_execution_generation}`,
+            sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${current.sandbox_id}`,
+            sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${current.node_id}`,
+            sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${current.container_name}`,
+            sql`${agentSandboxes.bridge_url} IS NOT DISTINCT FROM ${current.bridge_url}`,
+            sql`${agentSandboxes.health_url} IS NOT DISTINCT FROM ${current.health_url}`,
+            sql`${agentSandboxes.bridge_port} IS NOT DISTINCT FROM ${current.bridge_port}`,
+            sql`${agentSandboxes.web_ui_port} IS NOT DISTINCT FROM ${current.web_ui_port}`,
+            sql`${agentSandboxes.headscale_ip} IS NOT DISTINCT FROM ${current.headscale_ip}`,
+            sql`${agentSandboxes.docker_image} IS NOT DISTINCT FROM ${current.docker_image}`,
+            sql`${agentSandboxes.image_digest} IS NOT DISTINCT FROM ${current.image_digest}`,
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
+          ),
+        )
+        .returning({ id: agentSandboxes.id });
+      if (!fenced) {
+        throw new Error("Failed provision cleanup ownership CAS failed");
+      }
+    });
+  }
+
+  private async retireFailedNonDockerProvisionHandle(
+    provider: SandboxProvider,
+    handle: SandboxHandle,
+  ): Promise<void> {
+    if (isDockerBackedMetadata(handle.metadata)) {
+      throw new Error("Docker cleanup requires durable failed-provision ownership");
+    }
+    if (!provider.stopForReplacement) {
+      throw new Error("Sandbox provider cannot prove failed provision absent");
+    }
+    await provider.stopForReplacement(handle.sandboxId);
   }
 
   private replacementLocatorFromCleanupError(

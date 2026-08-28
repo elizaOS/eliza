@@ -190,6 +190,13 @@ type ReplacementLifecycleHarnessService = {
     expectedEnvironmentRevision: number,
     updateData: Partial<AgentSandbox>,
   ): Promise<AgentSandbox>;
+  persistAdoptedFailedProvisionCleanupFence(
+    agentId: string,
+    orgId: string,
+    adopted: AgentSandbox,
+    handle: SandboxHandle,
+    failureMessage: string,
+  ): Promise<void>;
   retirePersistedReplacementCleanup(agentId: string, orgId: string): Promise<boolean>;
   getReplacementCleanupLocator(rec: AgentSandbox): TestReplacementLocator | null;
   getProvider(): Promise<SandboxProvider>;
@@ -197,6 +204,9 @@ type ReplacementLifecycleHarnessService = {
 
 const replacementLifecycleHarnessState = new WeakMap<object, ReplacementLifecycleHarnessState>();
 let restoreReplacementLifecycleHarness: (() => void) | null = null;
+let realPersistAdoptedFailedProvisionCleanupFence:
+  | ReplacementLifecycleHarnessService["persistAdoptedFailedProvisionCleanupFence"]
+  | null = null;
 const replacementAwareProviderMarker = Symbol("replacement-aware-provider");
 let replacementAttemptSequence = 0;
 
@@ -377,9 +387,12 @@ beforeAll(async () => {
   const originals = {
     persistReplacementCleanupStage: prototype.persistReplacementCleanupStage,
     transferReplacementToPrimary: prototype.transferReplacementToPrimary,
+    persistAdoptedFailedProvisionCleanupFence: prototype.persistAdoptedFailedProvisionCleanupFence,
     retirePersistedReplacementCleanup: prototype.retirePersistedReplacementCleanup,
     getReplacementCleanupLocator: prototype.getReplacementCleanupLocator,
   };
+  realPersistAdoptedFailedProvisionCleanupFence =
+    originals.persistAdoptedFailedProvisionCleanupFence;
 
   prototype.persistReplacementCleanupStage = async function (
     _agentId,
@@ -480,6 +493,57 @@ beforeAll(async () => {
     return replacementLifecycleHarnessState.get(this)?.candidate ?? null;
   };
 
+  prototype.persistAdoptedFailedProvisionCleanupFence = async function (
+    agentId,
+    _orgId,
+    adopted,
+    handle,
+    failureMessage,
+  ): Promise<void> {
+    const locator = replacementLocatorFromTestHandle(handle);
+    if (
+      adopted.id !== agentId ||
+      adopted.sandbox_id !== locator.sandboxId ||
+      adopted.node_id !== locator.nodeId ||
+      adopted.container_name !== locator.containerName ||
+      adopted.bridge_url !== handle.bridgeUrl ||
+      adopted.health_url !== handle.healthUrl ||
+      !locator.replacementAttemptId ||
+      !locator.containerId ||
+      !locator.allocationCounted
+    ) {
+      throw new Error("Failed provision fixture cannot fence a different runtime generation");
+    }
+    const state = replacementLifecycleHarnessState.get(this) ?? {
+      candidate: null,
+      expected: null,
+    };
+    if (state.candidate) expectSameReplacement(state.candidate, locator);
+    state.candidate = locator;
+    state.expected = {
+      status: adopted.status,
+      environmentRevision: adopted.environment_revision,
+      sandboxId: adopted.sandbox_id,
+      nodeId: adopted.node_id,
+      containerName: adopted.container_name,
+    };
+    replacementLifecycleHarnessState.set(this, state);
+    await agentSandboxesRepository.update(agentId, {
+      status: "error",
+      error_message: `Provisioning cleanup pending: ${failureMessage}`,
+      sandbox_id: null,
+      bridge_url: null,
+      health_url: null,
+      last_heartbeat_at: null,
+      node_id: null,
+      container_name: null,
+      bridge_port: null,
+      web_ui_port: null,
+      headscale_ip: null,
+      pool_ready_at: null,
+    });
+  };
+
   prototype.retirePersistedReplacementCleanup = async function (): Promise<boolean> {
     const state = replacementLifecycleHarnessState.get(this);
     if (!state?.candidate) return false;
@@ -534,6 +598,8 @@ beforeAll(async () => {
   restoreReplacementLifecycleHarness = () => {
     prototype.persistReplacementCleanupStage = originals.persistReplacementCleanupStage;
     prototype.transferReplacementToPrimary = originals.transferReplacementToPrimary;
+    prototype.persistAdoptedFailedProvisionCleanupFence =
+      originals.persistAdoptedFailedProvisionCleanupFence;
     prototype.retirePersistedReplacementCleanup = originals.retirePersistedReplacementCleanup;
     prototype.getReplacementCleanupLocator = originals.getReplacementCleanupLocator;
   };
@@ -8099,8 +8165,24 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       expect(runningWrites).toBe(1);
       expect(markErrorSpy).toHaveBeenCalledTimes(1);
       // The row already adopted and cleared its temporary cleanup fence before
-      // restore failed. The catch must retain the returned immutable handle;
-      // resolving the deterministic name here could kill a healthy retry.
+      // restore failed. Before remote retirement, the catch moves that exact
+      // handle back into durable cleanup ownership and removes every serving
+      // locator so a partial provider failure cannot advertise/reuse it.
+      expect(updateSpy).toHaveBeenCalledWith(
+        AGENT,
+        expect.objectContaining({
+          status: "error",
+          sandbox_id: null,
+          bridge_url: null,
+          health_url: null,
+          node_id: null,
+          container_name: null,
+          bridge_port: null,
+          web_ui_port: null,
+          headscale_ip: null,
+        }),
+      );
+      // Resolving the deterministic name here could kill a healthy retry.
       expect(stopForReplacement).not.toHaveBeenCalled();
       expect(stopOnSpecificNodeForReplacement).toHaveBeenCalledWith(
         "node-2",
@@ -8128,6 +8210,304 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       ensureStartedSpy.mockRestore();
       pushStateSpy.mockRestore();
       getProviderSpy.mockRestore();
+    }
+  });
+
+  test("(9a) adopted failure CAS moves the existing slot into cleanup without capacity mutation", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    if (!realPersistAdoptedFailedProvisionCleanupFence) {
+      throw new Error("real failed-provision fence implementation was not captured");
+    }
+    const handle = exactFailedProvisionHandle();
+    const adopted: AgentSandbox = {
+      ...provisioningReadyRow(),
+      execution_tier: "dedicated-lazy",
+      status: "running",
+      sandbox_id: handle.sandboxId,
+      bridge_url: handle.bridgeUrl,
+      health_url: handle.healthUrl,
+      node_id: "node-2",
+      container_name: `agent-${AGENT}`,
+      bridge_port: 21070,
+      web_ui_port: 23900,
+      headscale_ip: null,
+      lifecycle_revision: 41,
+    };
+    let setValues: Record<string, unknown> | undefined;
+    let whereClause: SQL | undefined;
+    const returning = mock(async () => [{ id: AGENT }]);
+    const where = mock((clause: SQL) => {
+      whereClause = clause;
+      return { returning };
+    });
+    const set = mock((values: Record<string, unknown>) => {
+      setValues = values;
+      return { where };
+    });
+    const update = mock(() => ({ set }));
+    const execute = mock(async () => ({ rows: [] as Array<{ id: string }> }));
+    upgradeTransactionImpl = async (fn) => fn({ update, execute } as unknown as UpgradeTx);
+    const svc = new ElizaSandboxService();
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...args: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...args: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue({
+      ...adopted,
+      // A heartbeat is allowed to advance the whole-row revision after
+      // adoption. The locked runtime tuple is unchanged, so cleanup must use
+      // this fresh revision instead of stranding the exact generation.
+      lifecycle_revision: 42,
+      last_heartbeat_at: new Date("2026-08-27T00:00:30.000Z"),
+    });
+
+    try {
+      await realPersistAdoptedFailedProvisionCleanupFence.call(
+        svc as unknown as ReplacementLifecycleHarnessService,
+        AGENT,
+        ORG,
+        adopted,
+        handle,
+        "State restore failed: HTTP 500",
+      );
+      expect(setValues).toMatchObject({
+        status: "error",
+        sandbox_id: null,
+        bridge_url: null,
+        health_url: null,
+        last_heartbeat_at: null,
+        node_id: null,
+        container_name: null,
+        bridge_port: null,
+        web_ui_port: null,
+        headscale_ip: null,
+        pool_ready_at: null,
+        replacement_cleanup_sandbox_id: `agent-${AGENT}`,
+        replacement_cleanup_node_id: "node-2",
+        replacement_cleanup_container_name: `agent-${AGENT}`,
+        replacement_cleanup_attempt_id: "55555555-5555-4555-8555-555555555555",
+        replacement_cleanup_container_id: "b".repeat(64),
+        replacement_cleanup_allocation_counted: true,
+      });
+      expect(update).toHaveBeenCalledTimes(1);
+      // This ownership transfer represents the already-counted primary slot;
+      // it must not update docker_nodes. The persisted cleanup convergence owns
+      // the single decrement after exact remote absence is proven.
+      expect(execute).not.toHaveBeenCalled();
+      expect(returning).toHaveBeenCalledTimes(1);
+      if (!whereClause) throw new Error("failed-provision fence built no CAS predicate");
+      const query = new PgDialect().sqlToQuery(whereClause);
+      expect(query.sql).toContain("lifecycle_revision");
+      expect(query.params).toContain(42);
+      expect(query.params).toContain(`agent-${AGENT}`);
+      expect(query.params).toContain("node-2");
+    } finally {
+      upgradeTransactionImpl = null;
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+    }
+  });
+
+  test("(9b) Docker-removed/VPN-failed cleanup stays fenced and a retry cannot reuse the dead bridge", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    let current: AgentSandbox = {
+      ...provisioningReadyRow(),
+      execution_tier: "dedicated-lazy",
+    };
+    const backup: AgentSandboxBackup = {
+      id: "49494949-4949-4949-8949-494949494949",
+      sandbox_record_id: current.id,
+      snapshot_type: "pre-shutdown",
+      state_data: { memories: [], config: {}, workspaceFiles: {} },
+      state_data_storage: "inline",
+      state_data_key: null,
+      size_bytes: 2,
+      backup_kind: "full",
+      parent_backup_id: null,
+      content_hash: null,
+      created_at: new Date("2026-08-27T00:00:00.000Z"),
+    };
+    const failedHandle: SandboxHandle = {
+      ...exactFailedProvisionHandle(),
+      metadata: {
+        ...exactFailedProvisionHandle().metadata,
+        vpnNodeId: "vpn-failed-generation",
+        vpnNodeName: `agent-${AGENT}`,
+        vpnRegistrationStartedAt: "2026-08-27T00:00:00.000Z",
+      },
+    };
+    const successorHandle: SandboxHandle = {
+      ...failedHandle,
+      bridgeUrl: "https://runtime-successor.example",
+      healthUrl: "https://runtime-successor.example/health",
+      metadata: {
+        ...failedHandle.metadata,
+        bridgePort: 21071,
+        webUiPort: 23901,
+        headscaleIp: "100.64.0.202",
+        vpnNodeId: "vpn-successor-generation",
+        replacementAttemptId: "66666666-6666-4666-8666-666666666666",
+        containerId: "c".repeat(64),
+      },
+    };
+
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+      async () => current,
+    );
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockImplementation(
+      async () => current,
+    );
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockImplementation(
+      async () => {
+        current = {
+          ...current,
+          status: "provisioning",
+          error_message: null,
+          lifecycle_revision: current.lifecycle_revision + 1,
+        };
+        return current;
+      },
+    );
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup")
+      .mockResolvedValueOnce(backup)
+      .mockResolvedValue(undefined);
+    const reconstructedSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue({ memories: [], config: {}, workspaceFiles: {} });
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => {
+        current = {
+          ...current,
+          ...data,
+          lifecycle_revision: current.lifecycle_revision + 1,
+          updated_at: new Date(),
+        } as AgentSandbox;
+        return current;
+      },
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const create = mock().mockResolvedValueOnce(failedHandle).mockResolvedValue(successorHandle);
+    let exactCleanupCalls = 0;
+    let failedDockerPresent = true;
+    let failedVpnPresent = true;
+    const stopOnSpecificNodeForReplacement = mock(async () => {
+      exactCleanupCalls += 1;
+      // The first provider call removes Docker, then Headscale deletion fails.
+      // The second call proves Docker already absent and finishes the same VPN.
+      failedDockerPresent = false;
+      if (exactCleanupCalls === 1) {
+        throw new Error("Headscale delete failed after Docker absence");
+      }
+      failedVpnPresent = false;
+    });
+    const stopForReplacement = mock(async () => {});
+    const provider: SandboxProvider = {
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement,
+      stopOnSpecificNodeForReplacement,
+      checkHealth: async () => true,
+    };
+    const svc = new ElizaSandboxService(provider);
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const pushStateSpy = spyOn(svc as unknown as { pushState: () => Promise<unknown> }, "pushState")
+      .mockRejectedValueOnce(new Error("State restore failed: HTTP 500"))
+      .mockResolvedValue(undefined);
+    const markErrorSpy = spyOn(
+      svc as unknown as { markError: (rec: AgentSandbox, msg: string) => Promise<void> },
+      "markError",
+    ).mockImplementation(async (_rec, msg) => {
+      current = { ...current, status: "error", error_message: msg };
+    });
+
+    try {
+      const first = await svc.provision(AGENT, ORG);
+      expect(first.success).toBe(false);
+      expect(first.retryable).toBe(true);
+      expect(first.error).toContain("Headscale delete failed after Docker absence");
+      expect(failedDockerPresent).toBe(false);
+      expect(failedVpnPresent).toBe(true);
+      expect(current).toMatchObject({
+        status: "error",
+        sandbox_id: null,
+        bridge_url: null,
+        health_url: null,
+        node_id: null,
+        container_name: null,
+        bridge_port: null,
+        web_ui_port: null,
+        headscale_ip: null,
+      });
+      const retained = (
+        svc as unknown as ReplacementLifecycleHarnessService
+      ).getReplacementCleanupLocator(current);
+      expect(retained).toMatchObject({
+        sandboxId: `agent-${AGENT}`,
+        nodeId: "node-2",
+        containerName: `agent-${AGENT}`,
+        replacementAttemptId: "55555555-5555-4555-8555-555555555555",
+        containerId: "b".repeat(64),
+        vpnNodeId: "vpn-failed-generation",
+        allocationCounted: true,
+      });
+      expect(markErrorSpy).not.toHaveBeenCalled();
+
+      const retry = await svc.provision(AGENT, ORG);
+      expect(retry.success).toBe(true);
+      expect(failedVpnPresent).toBe(false);
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(current).toMatchObject({
+        status: "running",
+        sandbox_id: `agent-${AGENT}`,
+        bridge_url: successorHandle.bridgeUrl,
+        health_url: successorHandle.healthUrl,
+        node_id: "node-2",
+        bridge_port: 21071,
+        headscale_ip: "100.64.0.202",
+      });
+      expect(
+        (svc as unknown as ReplacementLifecycleHarnessService).getReplacementCleanupLocator(
+          current,
+        ),
+      ).toBeNull();
+      expect(stopForReplacement).not.toHaveBeenCalled();
+      expect(stopOnSpecificNodeForReplacement).toHaveBeenCalledTimes(2);
+      for (const call of stopOnSpecificNodeForReplacement.mock.calls) {
+        expect(call).toEqual([
+          "node-2",
+          `agent-${AGENT}`,
+          "vpn-failed-generation",
+          expect.objectContaining({
+            replacementAttemptId: "55555555-5555-4555-8555-555555555555",
+            containerId: "b".repeat(64),
+            allocationCounted: true,
+          }),
+        ]);
+      }
+    } finally {
+      findSpy.mockRestore();
+      findByIdSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      reconstructedSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      pushStateSpy.mockRestore();
+      markErrorSpy.mockRestore();
     }
   });
 
