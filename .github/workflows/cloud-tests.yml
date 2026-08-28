@@ -171,6 +171,13 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-claim-postgres.integration.test.ts
+      - name: Run PostgreSQL backup admission reservation tests
+        env:
+          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
+          REQUIRE_REAL_POSTGRES_BACKUP_ADMISSION_RESERVATION_TESTS: "1"
+        run: >-
+          bun test --config=/dev/null --isolate
+          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-reservation-postgres.integration.test.ts
       - name: Run PostgreSQL container admission tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
