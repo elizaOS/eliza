@@ -236,6 +236,7 @@ describe("backup admission cohort migrations", () => {
       "agent_backup_admission_claim_shards_cycle_shape_check",
       "agent_backup_admission_claim_shards_proof_shape_check",
       "agent_backup_admission_work_claim_proof_shape_check",
+      "agent_backup_admission_work_retry_exhaustion_check",
       "agent_backup_admission_work_organization_id_fkey",
       "agent_backup_admission_work_node_history_id_fkey",
       "agent_backup_admission_work_sandbox_tenant_fkey",
@@ -409,7 +410,7 @@ describe("backup admission cohort migrations", () => {
     );
     expect(predicateByIndex.get("agent_backup_admission_work_organization_idx")).toBeNull();
     expect(predicateByIndex.get("agent_backup_admission_work_schedule_uidx")).toMatch(
-      /work_kind.*schedule_capture.*settled_reason.*IS DISTINCT FROM.*RETRY_EXHAUSTED/is,
+      /work_kind.*schedule_capture.*NOT.*state.*settled.*settled_reason.*RETRY_EXHAUSTED.*attempts.*12/is,
     );
     expect(
       indexShapes.rows.find(({ name }) => name === "agent_backup_admission_work_schedule_uidx")
@@ -463,7 +464,8 @@ describe("backup admission cohort migrations", () => {
           AND node_history_id = '${HISTORY_A}'
           AND source_activation_generation = '${ACTIVATION}'
           AND source_lifecycle_revision = 7 AND source_due_at = '${DUE}'
-          AND settled_reason IS DISTINCT FROM 'RETRY_EXHAUSTED'`),
+          AND NOT (state = 'settled' AND settled_reason = 'RETRY_EXHAUSTED'
+            AND attempts = 12)`),
     ).toContain("agent_backup_admission_work_schedule_uidx");
     expect(
       await explainIndex(`SELECT 1 FROM agent_sandbox_backups
@@ -1177,6 +1179,13 @@ describe("backup admission cohort migrations", () => {
     const freshWork = "80000000-0000-4000-8000-000000000102";
     await startScheduleClaimCycle(db);
     await insertSchedule(db, exhaustedWork, ORG_A, SANDBOX_A, HISTORY_A);
+
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET state = 'settled', settled_at = clock_timestamp(),
+          settled_reason = 'RETRY_EXHAUSTED'
+        WHERE id = '${exhaustedWork}'`),
+    ).rejects.toThrow(/retry_exhaustion_check/i);
 
     for (let attempt = 1; attempt <= 12; attempt += 1) {
       await db.exec(`UPDATE agent_backup_admission_work

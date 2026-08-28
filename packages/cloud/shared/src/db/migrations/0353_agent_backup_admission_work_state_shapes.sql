@@ -30,6 +30,19 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE
+    conname = 'agent_backup_admission_work_retry_exhaustion_check'
+    AND conrelid = 'agent_backup_admission_work'::regclass) THEN
+    ALTER TABLE "agent_backup_admission_work" ADD CONSTRAINT
+      "agent_backup_admission_work_retry_exhaustion_check" CHECK ((
+        "settled_reason" IS DISTINCT FROM 'RETRY_EXHAUSTED'
+        OR ("work_kind" = 'schedule_capture' AND "state" = 'settled'
+          AND "attempts" = 12)
+      ) IS TRUE);
+  END IF;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE
     conname = 'agent_backup_admission_work_schedule_source_shape_check'
     AND conrelid = 'agent_backup_admission_work'::regclass) THEN
     ALTER TABLE "agent_backup_admission_work" ADD CONSTRAINT
