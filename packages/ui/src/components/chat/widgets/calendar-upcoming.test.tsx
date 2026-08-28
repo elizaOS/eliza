@@ -204,8 +204,8 @@ describe("CalendarUpcomingWidget", () => {
     // and leaves the card transparent with inherited black text.
     expect(widget.className).toContain("relative");
     expect(widget.className).toContain("w-full");
-    expect(widget.className).toContain("bg-[var(--brand-black)]");
-    expect(widget.className).toContain("text-[var(--brand-white)]");
+    expect(widget.className).toContain("bg-bg-wallpaper-overlay");
+    expect(widget.className).toContain("text-txt-launcher-icon");
     // Only the soonest event renders; later events do not (just a count badge).
     expect(widget.textContent).toContain("Standup");
     expect(widget.textContent).not.toContain("Lunch");

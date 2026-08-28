@@ -49,9 +49,6 @@ export function useWidgetNavigation(): {
 
 export type HomeWidgetTone = "default" | "danger" | "warn";
 
-export const HOME_WIDGET_SOLID_TILE_CLASS =
-  "group relative flex h-auto w-full overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--brand-white)_20%,var(--brand-black))] bg-[var(--brand-black)] text-left text-[var(--brand-white)]";
-
 const TONE_VALUE_CLASS: Record<HomeWidgetTone, string> = {
   default: "text-[var(--brand-white)]",
   danger: "text-[var(--brand-white)]",
@@ -91,10 +88,9 @@ export function HomeWidgetCard({
 }: HomeWidgetCardProps): React.JSX.Element {
   return (
     <Button
-      variant="surface"
+      variant="homeWidget"
       size="card"
       align="start"
-      className={HOME_WIDGET_SOLID_TILE_CLASS}
       data-testid={testId}
       aria-label={ariaLabel}
       title={label}

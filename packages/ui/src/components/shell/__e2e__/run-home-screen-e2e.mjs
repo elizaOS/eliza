@@ -230,14 +230,12 @@ const stubElizaCore = {
 // The real app's viewport meta + the shell's runtime CSS vars: without the meta,
 // a mobile page falls back to the 980px layout viewport, so CSS `vw` units (the
 // sheet's `w-[min(440px,100vw-1rem)]`) mis-measure and the overlay mis-centers.
-// The brand palette vars (`styles/base.css` :root) are seeded here too: the
-// calendar up-next card colors its text through `var(--brand-white)` /
-// `color-mix(..., var(--brand-white))`, and an undefined var resolves to black —
-// unreadable on the dark ember field, tripping the foreground-contrast gate. The
-// fixture loads no app CSS, so the handful of brand vars the home widgets read
-// must be declared inline.
+// The brand palette and Home surface vars (`styles/base.css` :root) are seeded
+// here too. The fixture loads no app CSS, so leaving the canonical Home Button
+// recipe unresolved would make its foreground fall back to black on the dark
+// ember field and turn this into a fixture failure instead of a product check.
 const headHtml = `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<style>:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px;--brand-white:#fdfaf7;--brand-black:#000000;--brand-orange:#ff6a1f}</style>`;
+<style>:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px;--brand-white:#fdfaf7;--brand-black:#000000;--brand-orange:#ff6a1f;--bg-wallpaper-overlay:rgb(0 0 0 / 85%);--border-launcher-icon:rgb(255 255 255 / 24%);--txt-launcher-icon:rgb(255 255 255);--bg-launcher-icon-hover:rgb(28 29 32 / 74%)}.bg-bg-wallpaper-overlay{background-color:var(--bg-wallpaper-overlay)}.border-border-launcher-icon{border-color:var(--border-launcher-icon)}.text-txt-launcher-icon{color:var(--txt-launcher-icon)}.hover\\:bg-bg-launcher-icon-hover:hover{background-color:var(--bg-launcher-icon-hover)}</style>`;
 const url = await writeFixturePage({
   entry: join(here, "home-screen-fixture.tsx"),
   outDir,
