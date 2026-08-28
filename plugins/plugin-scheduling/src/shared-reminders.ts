@@ -14,12 +14,15 @@ import type {
   ActionResult,
   EffectReceipt,
   HandlerCallback,
+  IAgentRuntime,
   Memory,
   Plugin,
 } from "@elizaos/core/edge";
+import { stableStringify } from "@elizaos/core/edge";
 import type {
   ScheduledTask,
   ScheduledTaskApplyResult,
+  ScheduledTaskInput,
   ScheduledTaskRunner,
   ScheduledTaskTrigger,
 } from "./scheduled-task/types.js";
@@ -272,6 +275,14 @@ export interface SharedRemindersEdgePluginOptions {
   runner: ScheduledTaskRunner;
   agentId: string;
   delivery: SharedReminderDelivery;
+  /** Server-owned provenance that the current turn corrects a grounded reminder. */
+  clockCorrection?: boolean;
+  /** Server-owned provenance for the immediately preceding clear-all warning. */
+  clearConfirmationChallenge?: boolean;
+  /** Server-owned classification that the current request targets all reminders. */
+  clearAllIntent?: boolean;
+  /** High-confidence server classification that dominates a confused planner. */
+  operationIntent?: "create" | "list" | "delete";
   now?: () => Date;
 }
 
@@ -309,14 +320,145 @@ function positiveNumber(
 async function actionFailure(
   text: string,
   callback?: HandlerCallback,
+  data: Record<string, unknown> = {},
 ): Promise<ActionResult> {
   await callback?.({ text });
   return {
     success: false,
     text,
     error: text,
-    data: { actionName: "REMINDERS" },
+    data: { actionName: "REMINDERS", ...data },
+    verifiedUserFacing: true,
+    userFacingText: text,
+    turnComplete: true,
   };
+}
+
+function reportReminderError(
+  runtime: Pick<IAgentRuntime, "reportError">,
+  scope: string,
+  error: unknown,
+  context: Record<string, unknown>,
+): void {
+  try {
+    runtime.reportError?.(scope, error, context);
+  } catch {
+    // Diagnostics are best-effort and must never hide the grounded result.
+  }
+}
+
+const ACTIVE_REMINDER_STATUSES = new Set([
+  "scheduled",
+  "fired",
+  "acknowledged",
+] as const);
+
+function isActiveReminder(task: ScheduledTask): boolean {
+  return ACTIVE_REMINDER_STATUSES.has(
+    task.state.status as "scheduled" | "fired" | "acknowledged",
+  );
+}
+
+function normalizeReminderText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function normalizeReminderTargetTitle(value: string): string {
+  return normalizeReminderText(value).replace(
+    /\b(?:in|to) (?:my|your) todo(?: list)?\b/gu,
+    "to your todo",
+  );
+}
+
+function normalizeReminderTargetReference(value: string): string {
+  return normalizeReminderTargetTitle(value).replace(
+    /^(?:remove|delete|dismiss|cancel) (?:the )?reminder(?: (?:named|called))? /u,
+    "",
+  );
+}
+
+function deliveryScopeKey(delivery: SharedReminderDelivery): string {
+  if (isSharedGroupReminderDelivery(delivery)) {
+    const { ownerLabel: _ownerLabel, ...immutableAuthority } = delivery;
+    return stableStringify(immutableAuthority);
+  }
+  return stableStringify(delivery);
+}
+
+function taskDelivery(task: ScheduledTask): SharedReminderDelivery | undefined {
+  return parseSharedReminderDelivery(task.metadata?.delivery);
+}
+
+function isReminderInDeliveryScope(
+  task: ScheduledTask,
+  delivery: SharedReminderDelivery,
+): boolean {
+  const persistedDelivery = taskDelivery(task);
+  // Shared has always persisted a trusted destination. A malformed or absent
+  // destination is not legacy authority and must never become reachable from
+  // whichever transport happens to ask first.
+  return (
+    persistedDelivery !== undefined &&
+    deliveryScopeKey(persistedDelivery) === deliveryScopeKey(delivery)
+  );
+}
+
+function sameReminderSemantics(
+  task: ScheduledTask,
+  body: string,
+  trigger: ScheduledTaskTrigger,
+  delivery: SharedReminderDelivery,
+  timezone?: string,
+  includeTimezone = false,
+): boolean {
+  return (
+    isReminderInDeliveryScope(task, delivery) &&
+    normalizeReminderText(reminderText(task)) === normalizeReminderText(body) &&
+    stableStringify(task.trigger) === stableStringify(trigger) &&
+    (!includeTimezone || taskDisplayTimezone(task) === validTimeZone(timezone))
+  );
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function semanticCreateIdempotencyKey(args: {
+  agentId: string;
+  body: string;
+  trigger: ScheduledTaskTrigger;
+  delivery: SharedReminderDelivery;
+  timezone?: string;
+  includeTimezone?: boolean;
+  generation: number;
+}): Promise<string> {
+  const digest = await sha256Hex(
+    stableStringify({
+      agentId: args.agentId,
+      body: normalizeReminderText(args.body),
+      trigger: args.trigger,
+      deliveryScope: deliveryScopeKey(args.delivery),
+      ...(args.includeTimezone
+        ? { timezone: validTimeZone(args.timezone) ?? null }
+        : {}),
+    }),
+  );
+  return `shared-reminder:semantic:${digest}:${args.generation}`;
+}
+
+function scheduledTaskInput(task: ScheduledTask): ScheduledTaskInput {
+  const { taskId: _taskId, state: _state, ...input } = task;
+  return input;
 }
 
 function reminderTrigger(
@@ -345,7 +487,11 @@ function reminderTrigger(
     };
   }
   const atIso = textParameter(input, "atIso", "at");
-  if (atIso && Number.isFinite(Date.parse(atIso))) {
+  if (
+    atIso &&
+    /(?:Z|[+-]\d{2}:\d{2})$/iu.test(atIso) &&
+    Number.isFinite(Date.parse(atIso))
+  ) {
     return { kind: "once", atIso: new Date(atIso).toISOString() };
   }
   const everyMinutes = positiveNumber(input, "everyMinutes");
@@ -353,9 +499,14 @@ function reminderTrigger(
     return { kind: "interval", everyMinutes };
   }
   const expression = textParameter(input, "cronExpression", "cron");
-  const tz = textParameter(input, "timezone", "tz");
+  const tz = validTimeZone(textParameter(input, "timezone", "tz"));
   if (expression && tz) return { kind: "cron", expression, tz };
   return undefined;
+}
+
+function hasOffsetlessAtIso(input: Record<string, unknown>): boolean {
+  const atIso = textParameter(input, "atIso", "at");
+  return Boolean(atIso && !/(?:Z|[+-]\d{2}:\d{2})$/iu.test(atIso));
 }
 
 const UTC_MONTHS = [
@@ -387,6 +538,25 @@ function reminderText(task: ScheduledTask): string {
   return task.output?.fallback?.body ?? task.promptInstructions;
 }
 
+function validTimeZone(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: value,
+    }).resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+}
+
+function taskDisplayTimezone(task: ScheduledTask): string | undefined {
+  const stored = task.metadata?.displayTimezone;
+  if (typeof stored === "string") return validTimeZone(stored);
+  return task.trigger.kind === "cron"
+    ? validTimeZone(task.trigger.tz)
+    : undefined;
+}
+
 function formatUtcInstant(atIso: string): string {
   const instant = new Date(atIso);
   if (!Number.isFinite(instant.getTime())) {
@@ -405,6 +575,37 @@ function formatUtcInstant(atIso: string): string {
         }`;
   const meridiem = hour < 12 ? "AM" : "PM";
   return `on ${UTC_MONTHS[instant.getUTCMonth()]} ${instant.getUTCDate()}, ${instant.getUTCFullYear()} at ${preciseTime} ${meridiem} UTC`;
+}
+
+function formatZonedInstant(atIso: string, timezone?: string): string {
+  const safeTimezone = validTimeZone(timezone);
+  if (!safeTimezone || safeTimezone === "UTC") return formatUtcInstant(atIso);
+  const instant = new Date(atIso);
+  if (!Number.isFinite(instant.getTime())) {
+    throw new Error("Shared reminder has an invalid one-off schedule");
+  }
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: safeTimezone,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second:
+      instant.getUTCSeconds() === 0 && instant.getUTCMilliseconds() === 0
+        ? undefined
+        : "2-digit",
+    hour12: true,
+  }).formatToParts(instant);
+  const part = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+  const seconds = part("second");
+  const milliseconds = instant.getUTCMilliseconds();
+  const preciseTime = `${part("hour")}:${part("minute")}${
+    seconds ? `:${seconds}` : ""
+  }${milliseconds === 0 ? "" : `.${String(milliseconds).padStart(3, "0")}`}`;
+  const local = `on ${part("month")} ${part("day")}, ${part("year")} at ${preciseTime} ${part("dayPeriod")} ${safeTimezone}`;
+  return `${local} (${formatUtcInstant(atIso).slice(3)})`;
 }
 
 function formatDuration(milliseconds: number): string {
@@ -473,10 +674,13 @@ function cronScheduleDescription(expression: string, timezone: string): string {
   return `on its recurring schedule in ${timezone}`;
 }
 
-function scheduleDescription(trigger: ScheduledTaskTrigger): string {
+function scheduleDescription(
+  trigger: ScheduledTaskTrigger,
+  timezone?: string,
+): string {
   switch (trigger.kind) {
     case "once":
-      return formatUtcInstant(trigger.atIso);
+      return formatZonedInstant(trigger.atIso, timezone);
     case "interval":
       return `every ${trigger.everyMinutes} ${trigger.everyMinutes === 1 ? "minute" : "minutes"}`;
     case "cron":
@@ -506,7 +710,7 @@ function requestedScheduleDescription(
   const inMilliseconds =
     inMinutes === undefined ? undefined : minuteDurationMilliseconds(inMinutes);
   return inMilliseconds === undefined
-    ? scheduleDescription(trigger)
+    ? scheduleDescription(trigger, textParameter(input, "timezone", "tz"))
     : `in ${formatDuration(inMilliseconds)}`;
 }
 
@@ -516,9 +720,9 @@ function taskSummary(task: ScheduledTask): string {
 
 function taskScheduleDescription(task: ScheduledTask): string {
   if (task.state.status === "scheduled" && task.state.firedAt) {
-    return formatUtcInstant(task.state.firedAt);
+    return formatZonedInstant(task.state.firedAt, taskDisplayTimezone(task));
   }
-  return scheduleDescription(task.trigger);
+  return scheduleDescription(task.trigger, taskDisplayTimezone(task));
 }
 
 function creationReceipt(args: {
@@ -612,6 +816,327 @@ function lifecycleReceipt(
       };
 }
 
+type SemanticScheduleResult =
+  | {
+      kind: "persisted";
+      result: Awaited<ReturnType<ScheduledTaskRunner["scheduleWithResult"]>>;
+    }
+  | { kind: "legacy-existing"; task: ScheduledTask };
+
+async function scheduleSemanticReminder(args: {
+  runner: ScheduledTaskRunner;
+  agentId: string;
+  delivery: SharedReminderDelivery;
+  input: ScheduledTaskInput;
+  includeTimezoneInSemantics?: boolean;
+  requestIdempotencyKey?: string;
+}): Promise<SemanticScheduleResult> {
+  const displayTimezone =
+    typeof args.input.metadata?.displayTimezone === "string"
+      ? args.input.metadata.displayTimezone
+      : args.input.trigger.kind === "cron"
+        ? args.input.trigger.tz
+        : undefined;
+  const allTasks = (
+    await args.runner.list({ kind: "reminder", ownerVisibleOnly: true })
+  ).filter((task) => isReminderInDeliveryScope(task, args.delivery));
+  const semanticMatches = allTasks.filter((task) =>
+    sameReminderSemantics(
+      task,
+      args.input.promptInstructions,
+      args.input.trigger,
+      args.delivery,
+      displayTimezone,
+      args.includeTimezoneInSemantics,
+    ),
+  );
+  const { idempotencyKey: _idempotencyKey, ...input } = args.input;
+  const scheduleGeneration = async (
+    generation: number,
+  ): Promise<SemanticScheduleResult> => ({
+    kind: "persisted",
+    result: await args.runner.scheduleWithResult({
+      ...input,
+      idempotencyKey:
+        args.requestIdempotencyKey ??
+        (await semanticCreateIdempotencyKey({
+          agentId: args.agentId,
+          body: input.promptInstructions,
+          trigger: input.trigger,
+          delivery: args.delivery,
+          timezone: displayTimezone,
+          includeTimezone: args.includeTimezoneInSemantics,
+          generation,
+        })),
+    }),
+  });
+  const activeMatch = semanticMatches.find(isActiveReminder);
+  if (activeMatch) {
+    if (!activeMatch.idempotencyKey) {
+      return { kind: "legacy-existing", task: activeMatch };
+    }
+    const replayed = await args.runner.scheduleWithResult(
+      scheduledTaskInput(activeMatch),
+    );
+    if (isActiveReminder(replayed.task)) {
+      return { kind: "persisted", result: replayed };
+    }
+    // A lifecycle mutation may win between list() and idempotency replay.
+    // Retry once at the next semantic generation; the generation key makes a
+    // concurrent recreator converge on the same durable row.
+    const nextGeneration =
+      semanticMatches.filter((task) => !isActiveReminder(task)).length + 1;
+    return scheduleGeneration(nextGeneration);
+  }
+
+  const generation = semanticMatches.filter(
+    (task) => !isActiveReminder(task),
+  ).length;
+  return scheduleGeneration(generation);
+}
+
+function booleanParameter(
+  input: Record<string, unknown>,
+  ...names: string[]
+): boolean {
+  return names.some((name) => input[name] === true);
+}
+
+function normalizedOperation(value: string | undefined): string | undefined {
+  switch (
+    value
+      ?.trim()
+      .toLowerCase()
+      .replace(/[\s-]+/gu, "_")
+  ) {
+    case "set":
+    case "add":
+      return "create";
+    case "show":
+      return "list";
+    case "change":
+    case "edit":
+    case "reschedule":
+      return "update";
+    case "remove":
+    case "delete":
+    case "cancel":
+      return "delete";
+    case "clear":
+    case "clean":
+    case "clear_all":
+    case "clean_all":
+    case "delete_all":
+    case "remove_all":
+      return "clear";
+    case "create":
+    case "list":
+    case "update":
+    case "snooze":
+    case "complete":
+    case "dismiss":
+      return value
+        ?.trim()
+        .toLowerCase()
+        .replace(/[\s-]+/gu, "_");
+    default:
+      return undefined;
+  }
+}
+
+type ReminderTargetResolution =
+  | { kind: "match"; task: ScheduledTask; semanticDuplicates: ScheduledTask[] }
+  | { kind: "missing"; text: string }
+  | { kind: "ambiguous"; text: string };
+
+function ambiguityText(tasks: ScheduledTask[]): string {
+  return (
+    "More than one reminder matches that. Which one do you mean?\n" +
+    tasks.map((task) => `• ${taskSummary(task)}`).join("\n")
+  );
+}
+
+async function resolveReminderTarget(args: {
+  runner: ScheduledTaskRunner;
+  delivery: SharedReminderDelivery;
+  reference?: string;
+  coalesceExactSemanticDuplicates?: boolean;
+}): Promise<ReminderTargetResolution> {
+  const tasks = (
+    await args.runner.list({
+      kind: "reminder",
+      ownerVisibleOnly: true,
+      status: ["scheduled", "fired", "acknowledged"],
+    })
+  ).filter((task) => isReminderInDeliveryScope(task, args.delivery));
+  if (tasks.length === 0) {
+    return { kind: "missing", text: "You have no active reminders." };
+  }
+  const reference = args.reference?.trim();
+  if (!reference) {
+    if (tasks.length === 1) {
+      return { kind: "match", task: tasks[0], semanticDuplicates: [tasks[0]] };
+    }
+    const [first] = tasks;
+    const semanticDuplicates = tasks.filter((task) =>
+      sameReminderSemantics(
+        task,
+        reminderText(first),
+        first.trigger,
+        args.delivery,
+        taskDisplayTimezone(first),
+        true,
+      ),
+    );
+    return args.coalesceExactSemanticDuplicates &&
+      semanticDuplicates.length === tasks.length
+      ? { kind: "match", task: first, semanticDuplicates }
+      : { kind: "ambiguous", text: ambiguityText(tasks) };
+  }
+
+  const idMatch = tasks.find((task) => task.taskId === reference);
+  if (idMatch) {
+    return { kind: "match", task: idMatch, semanticDuplicates: [idMatch] };
+  }
+
+  const normalizedReference = normalizeReminderText(reference);
+  const normalizedTargetReference = normalizeReminderTargetReference(reference);
+  const exact = tasks.filter(
+    (task) =>
+      normalizeReminderTargetTitle(reminderText(task)) ===
+        normalizedTargetReference ||
+      normalizeReminderText(taskSummary(task)) === normalizedReference,
+  );
+  if (exact.length === 1) {
+    return { kind: "match", task: exact[0], semanticDuplicates: exact };
+  }
+  if (exact.length > 1) {
+    const [first] = exact;
+    const semanticDuplicates = exact.filter((task) =>
+      sameReminderSemantics(
+        task,
+        reminderText(first),
+        first.trigger,
+        args.delivery,
+        taskDisplayTimezone(first),
+        true,
+      ),
+    );
+    if (
+      args.coalesceExactSemanticDuplicates &&
+      semanticDuplicates.length === exact.length
+    ) {
+      return { kind: "match", task: first, semanticDuplicates };
+    }
+    return { kind: "ambiguous", text: ambiguityText(exact) };
+  }
+
+  const partial = tasks.filter((task) => {
+    const title = normalizeReminderTargetTitle(reminderText(task));
+    return (
+      title.length > 0 &&
+      (normalizedTargetReference.includes(title) ||
+        title.includes(normalizedTargetReference))
+    );
+  });
+  if (partial.length === 1) {
+    return {
+      kind: "match",
+      task: partial[0],
+      semanticDuplicates: partial,
+    };
+  }
+  if (partial.length > 1) {
+    return { kind: "ambiguous", text: ambiguityText(partial) };
+  }
+  return {
+    kind: "missing",
+    text: `I couldn't find an active reminder named “${reference}”.`,
+  };
+}
+
+function explicitClearConfirmation(
+  input: Record<string, unknown>,
+  message: Memory,
+  challengeActive: boolean,
+): boolean {
+  if (!challengeActive) return false;
+  if (!booleanParameter(input, "confirmed", "confirmClearAll")) return false;
+  const text = (message.content?.text?.trim() ?? "")
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (!text || text.length > 120) return false;
+  const confirmation =
+    "(?:yes|yep|oui|confirm|confirmed|confirmé|confirmée|i confirm|je confirme|do it|go ahead|vas y|allez y)";
+  const clearCommand =
+    "(?:(?:clear|clean|delete|remove) (?:all (?:my )?reminders|the reminder list|the list)|(?:efface|supprime|vide) (?:tous mes rappels|la liste des rappels))";
+  return new RegExp(
+    `^(?:${confirmation})(?: (?:${confirmation}))* ${clearCommand}$`,
+    "iu",
+  ).test(text);
+}
+
+function reminderScheduleInput(args: {
+  agentId: string;
+  body: string;
+  trigger: ScheduledTaskTrigger;
+  delivery: SharedReminderDelivery;
+  timezone?: string;
+}): ScheduledTaskInput {
+  return {
+    kind: "reminder",
+    promptInstructions: args.body,
+    trigger: args.trigger,
+    priority: "medium",
+    escalation: {
+      steps: [{ delayMinutes: 0, channelKey: "current_dm" }],
+    },
+    output: {
+      destination: "channel",
+      target: "current_dm",
+      fallback: { body: args.body },
+    },
+    subject: { kind: "self", id: args.agentId },
+    respectsGlobalPause: true,
+    source: "user_chat",
+    createdBy: args.agentId,
+    ownerVisible: true,
+    metadata: {
+      delivery: args.delivery,
+      ...(args.timezone ? { displayTimezone: args.timezone } : {}),
+    },
+    executionProfile: "notify-only",
+  };
+}
+
+function updatedReminderInput(args: {
+  task: ScheduledTask;
+  body: string;
+  trigger: ScheduledTaskTrigger;
+  delivery: SharedReminderDelivery;
+  timezone?: string;
+}): ScheduledTaskInput {
+  const existing = scheduledTaskInput(args.task);
+  return {
+    ...existing,
+    promptInstructions: args.body,
+    trigger: args.trigger,
+    output: {
+      ...existing.output,
+      destination: "channel",
+      target: "current_dm",
+      fallback: { ...existing.output?.fallback, body: args.body },
+    },
+    metadata: {
+      delivery: args.delivery,
+      ...(args.timezone ? { displayTimezone: args.timezone } : {}),
+    },
+  };
+}
+
 export function createSharedRemindersEdgeAction(
   options: SharedRemindersEdgePluginOptions,
 ): Action {
@@ -630,15 +1155,18 @@ export function createSharedRemindersEdgeAction(
       "REMIND_ME",
       "SET_REMINDER",
       "LIST_REMINDERS",
+      "UPDATE_REMINDER",
+      "DELETE_REMINDER",
       "SNOOZE_REMINDER",
       "DISMISS_REMINDER",
+      "CLEAR_REMINDERS",
     ],
     tags: ["resource:scheduled-item", "capability:read", "capability:write"],
     contexts: ["reminders", "general"],
     roleGate: { minRole: "GUEST" },
     description: groupDelivery
-      ? "Create, list, snooze, complete, or dismiss free reminders delivered only to this linked group chat. For create, supply reminderText and one schedule: inMinutes, atIso, everyMinutes, or cronExpression plus timezone."
-      : "Create, list, snooze, complete, or dismiss free reminders delivered only to this current verified private chat. For create, supply reminderText and one schedule: inMinutes, atIso, everyMinutes, or cronExpression plus timezone.",
+      ? "Create, list, update, snooze, complete, delete/dismiss, or confirmation-gated clear free reminders delivered only to this linked group chat. Resolve mutations by the visible reminder title; never ask the user for a task id. For create or update, supply reminderText and a schedule when it changes: inMinutes, atIso, everyMinutes, or cronExpression plus timezone."
+      : "Create, list, update, snooze, complete, delete/dismiss, or confirmation-gated clear free reminders delivered only to this current verified private chat. Resolve mutations by the visible reminder title; never ask the user for a task id. For create or update, supply reminderText and a schedule when it changes: inMinutes, atIso, everyMinutes, or cronExpression plus timezone.",
     parameters: [
       {
         name: "operation",
@@ -646,7 +1174,16 @@ export function createSharedRemindersEdgeAction(
         required: true,
         schema: {
           type: "string",
-          enum: ["create", "list", "snooze", "complete", "dismiss"],
+          enum: [
+            "create",
+            "list",
+            "update",
+            "snooze",
+            "complete",
+            "delete",
+            "dismiss",
+            "clear",
+          ],
         },
       },
       {
@@ -655,8 +1192,20 @@ export function createSharedRemindersEdgeAction(
         schema: { type: "string" },
       },
       {
+        name: "target",
+        description:
+          "Visible reminder title for update, snooze, complete, delete, or dismiss. Omit only when exactly one active reminder exists.",
+        schema: { type: "string" },
+      },
+      {
+        name: "newReminderText",
+        description: "Replacement reminder text when operation is update.",
+        schema: { type: "string" },
+      },
+      {
         name: "taskId",
-        description: "Reminder id for snooze, complete, or dismiss.",
+        description:
+          "Internal compatibility identifier for a reminder mutation. Never request or display it to the user; prefer target.",
         schema: { type: "string" },
       },
       {
@@ -666,7 +1215,8 @@ export function createSharedRemindersEdgeAction(
       },
       {
         name: "atIso",
-        description: "One-off absolute ISO-8601 timestamp.",
+        description:
+          "One-off absolute ISO-8601 timestamp with an explicit Z or ±HH:MM offset.",
         schema: { type: "string" },
       },
       {
@@ -681,7 +1231,8 @@ export function createSharedRemindersEdgeAction(
       },
       {
         name: "timezone",
-        description: "IANA timezone required with cronExpression.",
+        description:
+          "Canonical IANA timezone used to display one-off atIso times in local time; required with cronExpression.",
         schema: { type: "string" },
       },
       {
@@ -689,225 +1240,649 @@ export function createSharedRemindersEdgeAction(
         description: "Positive snooze duration in minutes.",
         schema: { type: "number" },
       },
+      {
+        name: "confirmed",
+        description:
+          "Set true for operation=clear only after the user explicitly confirms the immediately preceding clear-all warning. Never set it on the initial clear request.",
+        schema: { type: "boolean" },
+      },
     ],
     validate: async () => true,
     handler: async (
-      _runtime,
+      runtime,
       message: Memory,
       _state,
       rawOptions,
       callback?: HandlerCallback,
     ): Promise<ActionResult> => {
       const input = parameters(rawOptions);
-      const operation = textParameter(
-        input,
-        "operation",
-        "action",
-      )?.toLowerCase();
-      if (operation === "list") {
-        const tasks = await options.runner.list({
-          kind: "reminder",
-          ownerVisibleOnly: true,
-          status: ["scheduled", "fired", "acknowledged"],
-        });
-        const text =
-          tasks.length === 0
-            ? "You have no reminders."
-            : `Your reminders:\n${tasks.map((task) => `• ${taskSummary(task)}`).join("\n")}`;
-        await callback?.({ text });
-        return {
-          success: true,
-          text,
-          data: { actionName: "REMINDERS", operation, tasks },
-          verifiedUserFacing: true,
-          userFacingText: text,
-          turnComplete: true,
-        };
-      }
-
-      if (operation === "create") {
-        const body = textParameter(input, "reminderText", "text", "body");
-        if (!body)
-          return await actionFailure("Reminder text is required.", callback);
-        // Group sends reserve the fire-time owner prefix inside the limit.
-        const maxBodyLength = sharedReminderMaxBodyLength(delivery);
-        if (body.length > maxBodyLength) {
-          return await actionFailure(
-            `Reminder text must be ${maxBodyLength} characters or fewer.`,
-            callback,
-          );
-        }
-        const explicitDelay = resolveExplicitSharedReminderDelay(
-          message.content?.text,
-        );
-        if (explicitDelay.kind === "invalid") {
-          return await actionFailure(explicitDelay.reason, callback);
-        }
-        const inputMinutes = positiveNumber(
-          input,
-          "inMinutes",
-          "minutesFromNow",
-        );
-        if (
-          explicitDelay.kind === "absent" &&
-          inputMinutes !== undefined &&
-          minuteDurationMilliseconds(inputMinutes) === undefined
-        ) {
-          return await actionFailure(
-            "Reminder delay must resolve to a positive whole millisecond.",
-            callback,
-          );
-        }
-        const trigger = reminderTrigger(
-          input,
-          now(),
-          explicitDelay.kind === "resolved"
-            ? explicitDelay.milliseconds
-            : undefined,
-        );
-        if (!trigger) {
-          return await actionFailure(
-            "A reminder time is required: inMinutes, atIso, everyMinutes, or cronExpression with timezone.",
-            callback,
-          );
-        }
-        const scheduled = await options.runner.scheduleWithResult({
-          kind: "reminder",
-          promptInstructions: body,
-          trigger,
-          priority: "medium",
-          escalation: {
-            steps: [{ delayMinutes: 0, channelKey: "current_dm" }],
-          },
-          output: {
-            destination: "channel",
-            target: "current_dm",
-            fallback: { body },
-          },
-          subject: { kind: "self", id: options.agentId },
-          idempotencyKey: `shared-reminder:${String(message.id)}:create`,
-          respectsGlobalPause: true,
-          source: "user_chat",
-          createdBy: options.agentId,
-          ownerVisible: true,
-          metadata: { delivery },
-          executionProfile: "notify-only",
-        });
-        const schedule = scheduled.replayed
-          ? taskScheduleDescription(scheduled.task)
-          : requestedScheduleDescription(
-              input,
-              scheduled.task.trigger,
-              explicitDelay.kind === "resolved"
-                ? explicitDelay.milliseconds
-                : undefined,
-            );
-        const persistedBody = reminderText(scheduled.task);
-        const text = scheduled.replayed
-          ? `That reminder is already set ${schedule}: ${persistedBody}`
-          : `Got it — I'll remind ${groupDelivery ? "this group" : "you"} ${schedule}: ${persistedBody}`;
-        const receipt = creationReceipt(scheduled);
-        await callback?.({ text });
-        return {
-          success: true,
-          text,
-          data: {
-            actionName: "REMINDERS",
-            operation,
-            task: scheduled.task,
-            replayed: scheduled.replayed,
-          },
-          verifiedUserFacing: true,
-          userFacingText: text,
-          effectReceipts: [receipt],
-          userFacingEffectReceiptIds: [receipt.receiptId],
-          turnComplete: true,
-        };
-      }
-
-      if (operation === "snooze") {
-        const taskId = textParameter(input, "taskId");
-        const minutes = positiveNumber(input, "snoozeMinutes", "minutes");
-        if (!taskId || minutes === undefined) {
-          return await actionFailure(
-            "Snoozing requires taskId and snoozeMinutes.",
-            callback,
-          );
-        }
-        const snoozeMilliseconds = minuteDurationMilliseconds(minutes);
-        if (snoozeMilliseconds === undefined) {
-          return await actionFailure(
-            "Snooze duration must resolve to a positive whole millisecond.",
-            callback,
-          );
-        }
-        const applied = await options.runner.applyWithResult(
-          taskId,
-          "snooze",
-          { minutes },
-          {
-            idempotencyKey: `shared-reminder:${String(message.id)}:snooze:${taskId}`,
-          },
-        );
-        const text = `Reminder snoozed for ${formatDuration(snoozeMilliseconds)}: ${reminderText(applied.task)}`;
-        const receipt = lifecycleReceipt("snooze", applied);
-        await callback?.({ text });
-        return {
-          success: true,
-          text,
-          data: {
-            actionName: "REMINDERS",
-            operation,
-            task: applied.task,
-            replayed: applied.replayed,
-          },
-          verifiedUserFacing: true,
-          userFacingText: text,
-          effectReceipts: [receipt],
-          userFacingEffectReceiptIds: [receipt.receiptId],
-          turnComplete: true,
-        };
-      }
-
-      if (operation === "complete" || operation === "dismiss") {
-        const taskId = textParameter(input, "taskId");
-        if (!taskId)
-          return await actionFailure(
-            "A reminder taskId is required.",
-            callback,
-          );
-        const applied = await options.runner.applyWithResult(
-          taskId,
-          operation,
-          undefined,
-          {
-            idempotencyKey: `shared-reminder:${String(message.id)}:${operation}:${taskId}`,
-          },
-        );
-        const text = `Reminder ${operation === "complete" ? "completed" : "dismissed"}: ${reminderText(applied.task)}`;
-        const receipt = lifecycleReceipt(operation, applied);
-        await callback?.({ text });
-        return {
-          success: true,
-          text,
-          data: {
-            actionName: "REMINDERS",
-            operation,
-            task: applied.task,
-            replayed: applied.replayed,
-          },
-          verifiedUserFacing: true,
-          userFacingText: text,
-          effectReceipts: [receipt],
-          userFacingEffectReceiptIds: [receipt.receiptId],
-          turnComplete: true,
-        };
-      }
-
-      return await actionFailure(
-        "Choose create, list, snooze, complete, or dismiss.",
-        callback,
+      const requestedOperation = normalizedOperation(
+        textParameter(input, "operation", "action"),
       );
+      // Server-owned intent classifications dominate the planner's operation:
+      // otherwise delete-without-target could bypass clear confirmation or a
+      // grounded correction could delete the user's sole reminder.
+      const operation = options.clearAllIntent
+        ? "clear"
+        : options.clockCorrection
+          ? "update"
+          : (options.operationIntent ?? requestedOperation);
+      if (
+        (options.operationIntent === "create" ||
+          options.operationIntent === "list") &&
+        requestedOperation !== options.operationIntent
+      ) {
+        return await actionFailure(
+          "I couldn't safely verify that reminder operation, so I didn't run it. Please try again.",
+          callback,
+          {
+            operation: options.operationIntent,
+            failureCode: "REMINDER_OPERATION_MISMATCH",
+          },
+        );
+      }
+      try {
+        if (operation === "list") {
+          const tasks = (
+            await options.runner.list({
+              kind: "reminder",
+              ownerVisibleOnly: true,
+              status: ["scheduled", "fired", "acknowledged"],
+            })
+          ).filter((task) => isReminderInDeliveryScope(task, delivery));
+          const text =
+            tasks.length === 0
+              ? "You have no reminders."
+              : `Your reminders:\n${tasks.map((task) => `• ${taskSummary(task)}`).join("\n")}`;
+          await callback?.({ text });
+          return {
+            success: true,
+            text,
+            data: { actionName: "REMINDERS", operation, tasks },
+            verifiedUserFacing: true,
+            userFacingText: text,
+            turnComplete: true,
+          };
+        }
+
+        if (operation === "create") {
+          const body = textParameter(input, "reminderText", "text", "body");
+          if (!body) {
+            return await actionFailure("Reminder text is required.", callback, {
+              operation,
+            });
+          }
+          const maxBodyLength = sharedReminderMaxBodyLength(delivery);
+          if (body.length > maxBodyLength) {
+            return await actionFailure(
+              `Reminder text must be ${maxBodyLength} characters or fewer.`,
+              callback,
+              { operation },
+            );
+          }
+          const requestedTimezone = textParameter(input, "timezone", "tz");
+          const timezone = validTimeZone(requestedTimezone);
+          if (requestedTimezone && !timezone) {
+            return await actionFailure(
+              "Use a valid IANA timezone such as Europe/Paris.",
+              callback,
+              { operation },
+            );
+          }
+          if (hasOffsetlessAtIso(input)) {
+            return await actionFailure(
+              "Use an absolute atIso time with an explicit Z or ±HH:MM offset so I don't guess the timezone.",
+              callback,
+              { operation },
+            );
+          }
+          const explicitDelay = resolveExplicitSharedReminderDelay(
+            message.content?.text,
+          );
+          if (explicitDelay.kind === "invalid") {
+            return await actionFailure(explicitDelay.reason, callback, {
+              operation,
+            });
+          }
+          const inputMinutes = positiveNumber(
+            input,
+            "inMinutes",
+            "minutesFromNow",
+          );
+          if (
+            explicitDelay.kind === "absent" &&
+            inputMinutes !== undefined &&
+            minuteDurationMilliseconds(inputMinutes) === undefined
+          ) {
+            return await actionFailure(
+              "Reminder delay must resolve to a positive whole millisecond.",
+              callback,
+              { operation },
+            );
+          }
+          const trigger = reminderTrigger(
+            input,
+            now(),
+            explicitDelay.kind === "resolved"
+              ? explicitDelay.milliseconds
+              : undefined,
+          );
+          if (!trigger) {
+            return await actionFailure(
+              "A reminder time is required: inMinutes, atIso, everyMinutes, or cronExpression with timezone.",
+              callback,
+              { operation },
+            );
+          }
+          const outcome = await scheduleSemanticReminder({
+            runner: options.runner,
+            agentId: options.agentId,
+            delivery,
+            requestIdempotencyKey:
+              (explicitDelay.kind === "resolved" ||
+                inputMinutes !== undefined) &&
+              message.id
+                ? `shared-reminder:${String(message.id)}:create`
+                : undefined,
+            input: reminderScheduleInput({
+              agentId: options.agentId,
+              body,
+              trigger,
+              delivery,
+              timezone,
+            }),
+          });
+          if (outcome.kind === "legacy-existing") {
+            const text = `That reminder is already set ${taskScheduleDescription(outcome.task)}: ${reminderText(outcome.task)}`;
+            await callback?.({ text });
+            return {
+              success: true,
+              text,
+              data: {
+                actionName: "REMINDERS",
+                operation,
+                deduplicated: true,
+              },
+              verifiedUserFacing: true,
+              userFacingText: text,
+              turnComplete: true,
+            };
+          }
+          if (!isActiveReminder(outcome.result.task)) {
+            return await actionFailure(
+              "That retried reminder request is no longer active, so I didn't create another reminder.",
+              callback,
+              { operation, replayedTerminalRequest: true },
+            );
+          }
+          const scheduled = outcome.result;
+          const schedule = scheduled.replayed
+            ? taskScheduleDescription(scheduled.task)
+            : requestedScheduleDescription(
+                input,
+                scheduled.task.trigger,
+                explicitDelay.kind === "resolved"
+                  ? explicitDelay.milliseconds
+                  : undefined,
+              );
+          const persistedBody = reminderText(scheduled.task);
+          const text = scheduled.replayed
+            ? `That reminder is already set ${schedule}: ${persistedBody}`
+            : `Got it — I'll remind ${groupDelivery ? "this group" : "you"} ${schedule}: ${persistedBody}`;
+          const receipt = creationReceipt(scheduled);
+          await callback?.({ text });
+          return {
+            success: true,
+            text,
+            data: {
+              actionName: "REMINDERS",
+              operation,
+              task: scheduled.task,
+              replayed: scheduled.replayed,
+              deduplicated: scheduled.replayed,
+            },
+            verifiedUserFacing: true,
+            userFacingText: text,
+            effectReceipts: [receipt],
+            userFacingEffectReceiptIds: [receipt.receiptId],
+            turnComplete: true,
+          };
+        }
+
+        if (operation === "update") {
+          const target = await resolveReminderTarget({
+            runner: options.runner,
+            delivery,
+            reference: textParameter(
+              input,
+              "taskId",
+              "target",
+              "targetTitle",
+              "existingTitle",
+              "title",
+            ),
+            coalesceExactSemanticDuplicates: true,
+          });
+          if (target.kind !== "match") {
+            return await actionFailure(target.text, callback, { operation });
+          }
+          const body =
+            textParameter(
+              input,
+              "newReminderText",
+              "replacementText",
+              "reminderText",
+            ) ?? reminderText(target.task);
+          const maxBodyLength = sharedReminderMaxBodyLength(delivery);
+          if (body.length > maxBodyLength) {
+            return await actionFailure(
+              `Reminder text must be ${maxBodyLength} characters or fewer.`,
+              callback,
+              { operation },
+            );
+          }
+          const requestedTimezone = textParameter(input, "timezone", "tz");
+          const timezone = requestedTimezone
+            ? validTimeZone(requestedTimezone)
+            : taskDisplayTimezone(target.task);
+          if (requestedTimezone && !timezone) {
+            return await actionFailure(
+              "Use a valid IANA timezone such as Europe/Paris.",
+              callback,
+              { operation },
+            );
+          }
+          if (hasOffsetlessAtIso(input)) {
+            return await actionFailure(
+              "Use an absolute atIso time with an explicit Z or ±HH:MM offset so I don't guess the timezone. Nothing was changed.",
+              callback,
+              { operation },
+            );
+          }
+          const explicitDelay = resolveExplicitSharedReminderDelay(
+            message.content?.text,
+          );
+          if (explicitDelay.kind === "invalid") {
+            return await actionFailure(explicitDelay.reason, callback, {
+              operation,
+            });
+          }
+          const hasSchedulePatch =
+            explicitDelay.kind === "resolved" ||
+            [
+              "inMinutes",
+              "minutesFromNow",
+              "atIso",
+              "at",
+              "everyMinutes",
+              "cronExpression",
+              "cron",
+            ].some((name) => input[name] !== undefined);
+          const usesRelativeSchedule =
+            explicitDelay.kind === "resolved" ||
+            ["inMinutes", "minutesFromNow"].some(
+              (name) => input[name] !== undefined,
+            );
+          const trigger = hasSchedulePatch
+            ? reminderTrigger(
+                input,
+                now(),
+                explicitDelay.kind === "resolved"
+                  ? explicitDelay.milliseconds
+                  : undefined,
+              )
+            : requestedTimezone &&
+                timezone &&
+                target.task.trigger.kind === "cron"
+              ? { ...target.task.trigger, tz: timezone }
+              : target.task.trigger;
+          if (!trigger) {
+            return await actionFailure(
+              "I couldn't understand the replacement reminder time. Nothing was changed.",
+              callback,
+              { operation },
+            );
+          }
+          const outcome = await scheduleSemanticReminder({
+            runner: options.runner,
+            agentId: options.agentId,
+            delivery,
+            includeTimezoneInSemantics: true,
+            requestIdempotencyKey:
+              usesRelativeSchedule && message.id
+                ? `shared-reminder:${String(message.id)}:update-replacement`
+                : undefined,
+            input: updatedReminderInput({
+              task: target.task,
+              body,
+              trigger,
+              delivery,
+              timezone,
+            }),
+          });
+          if (
+            outcome.kind === "persisted" &&
+            !isActiveReminder(outcome.result.task)
+          ) {
+            return await actionFailure(
+              "That retried reminder update is no longer active, so I didn't create another reminder or dismiss anything else.",
+              callback,
+              { operation, replayedTerminalRequest: true },
+            );
+          }
+          const replacement =
+            outcome.kind === "persisted" ? outcome.result.task : outcome.task;
+          const receipts: EffectReceipt[] =
+            outcome.kind === "persisted"
+              ? [creationReceipt(outcome.result)]
+              : [];
+          const originalsToDismiss = target.semanticDuplicates.filter(
+            (task) => task.taskId !== replacement.taskId,
+          );
+          let failedDismissals = 0;
+          for (const original of originalsToDismiss) {
+            try {
+              const dismissed = await options.runner.applyWithResult(
+                original.taskId,
+                "dismiss",
+                { reason: "replaced by reminder update" },
+                {
+                  idempotencyKey: `shared-reminder:${String(message.id)}:update-dismiss:${original.taskId}`,
+                },
+              );
+              receipts.push(lifecycleReceipt("dismiss", dismissed));
+            } catch (error) {
+              failedDismissals += 1;
+              reportReminderError(
+                runtime,
+                "SharedReminders.updateDismiss",
+                error,
+                {
+                  operation,
+                  phase: "replacement-dismiss",
+                  failedCount: failedDismissals,
+                },
+              );
+            }
+          }
+          if (failedDismissals > 0) {
+            const removedCount = originalsToDismiss.length - failedDismissals;
+            const text = `I saved the replacement reminder and removed ${removedCount} ${removedCount === 1 ? "old copy" : "old copies"}, but couldn't verify removal of ${failedDismissals} ${failedDismissals === 1 ? "other copy" : "other copies"}. Please list your reminders before retrying.`;
+            await callback?.({ text });
+            return {
+              success: false,
+              text,
+              error: text,
+              data: {
+                actionName: "REMINDERS",
+                operation,
+                partial: true,
+                replacement,
+                removedCount,
+                failedCount: failedDismissals,
+              },
+              verifiedUserFacing: true,
+              userFacingText: text,
+              effectReceipts: receipts,
+              userFacingEffectReceiptIds: receipts.map(
+                (receipt) => receipt.receiptId,
+              ),
+              turnComplete: true,
+            };
+          }
+          const text =
+            replacement.taskId === target.task.taskId
+              ? `That reminder is already set ${taskScheduleDescription(replacement)}: ${reminderText(replacement)}`
+              : `Updated reminder: ${taskSummary(replacement)}`;
+          await callback?.({ text });
+          return {
+            success: true,
+            text,
+            data: {
+              actionName: "REMINDERS",
+              operation,
+              task: replacement,
+              replayed: outcome.kind === "persisted" && outcome.result.replayed,
+            },
+            verifiedUserFacing: true,
+            userFacingText: text,
+            ...(receipts.length
+              ? {
+                  effectReceipts: receipts,
+                  userFacingEffectReceiptIds: receipts.map(
+                    (receipt) => receipt.receiptId,
+                  ),
+                }
+              : {}),
+            turnComplete: true,
+          };
+        }
+
+        if (operation === "clear") {
+          if (
+            !explicitClearConfirmation(
+              input,
+              message,
+              options.clearConfirmationChallenge === true,
+            )
+          ) {
+            return await actionFailure(
+              "Clearing removes every active reminder. Please confirm by replying “yes, clear all reminders”.",
+              callback,
+              { operation, requiresConfirmation: true },
+            );
+          }
+          const tasks = (
+            await options.runner.list({
+              kind: "reminder",
+              ownerVisibleOnly: true,
+              status: ["scheduled", "fired", "acknowledged"],
+            })
+          ).filter((task) => isReminderInDeliveryScope(task, delivery));
+          if (tasks.length === 0) {
+            const text = "You have no active reminders to clear.";
+            await callback?.({ text });
+            return {
+              success: true,
+              text,
+              data: {
+                actionName: "REMINDERS",
+                operation,
+                dismissedCount: 0,
+                failedCount: 0,
+              },
+              verifiedUserFacing: true,
+              userFacingText: text,
+              turnComplete: true,
+            };
+          }
+          const receipts: EffectReceipt[] = [];
+          let failedCount = 0;
+          for (const task of tasks) {
+            try {
+              const applied = await options.runner.applyWithResult(
+                task.taskId,
+                "dismiss",
+                { reason: "confirmed clear all reminders" },
+                {
+                  idempotencyKey: `shared-reminder:${String(message.id)}:clear:${task.taskId}`,
+                },
+              );
+              receipts.push(lifecycleReceipt("dismiss", applied));
+            } catch (error) {
+              failedCount += 1;
+              reportReminderError(
+                runtime,
+                "SharedReminders.clearDismiss",
+                error,
+                {
+                  operation,
+                  phase: "confirmed-clear-dismiss",
+                  failedCount,
+                },
+              );
+            }
+          }
+          const dismissedCount = receipts.length;
+          const text =
+            failedCount === 0
+              ? `Cleared ${dismissedCount} ${dismissedCount === 1 ? "reminder" : "reminders"}.`
+              : `Cleared ${dismissedCount} ${dismissedCount === 1 ? "reminder" : "reminders"}, but couldn't verify ${failedCount} ${failedCount === 1 ? "other reminder" : "other reminders"}.`;
+          await callback?.({ text });
+          return {
+            success: failedCount === 0,
+            text,
+            ...(failedCount > 0 ? { error: text } : {}),
+            data: {
+              actionName: "REMINDERS",
+              operation,
+              dismissedCount,
+              failedCount,
+            },
+            verifiedUserFacing: true,
+            userFacingText: text,
+            effectReceipts: receipts,
+            userFacingEffectReceiptIds: receipts.map(
+              (receipt) => receipt.receiptId,
+            ),
+            turnComplete: true,
+          };
+        }
+
+        if (
+          operation === "snooze" ||
+          operation === "complete" ||
+          operation === "dismiss" ||
+          operation === "delete"
+        ) {
+          const target = await resolveReminderTarget({
+            runner: options.runner,
+            delivery,
+            reference:
+              textParameter(
+                input,
+                "taskId",
+                "target",
+                "targetTitle",
+                "title",
+                "reminderText",
+              ) ??
+              (options.operationIntent === "delete"
+                ? message.content?.text
+                : undefined),
+            coalesceExactSemanticDuplicates: operation === "delete",
+          });
+          if (target.kind !== "match") {
+            return await actionFailure(target.text, callback, { operation });
+          }
+          const verb = operation === "delete" ? "dismiss" : operation;
+          const minutes = positiveNumber(input, "snoozeMinutes", "minutes");
+          if (verb === "snooze" && minutes === undefined) {
+            return await actionFailure(
+              "Tell me how many minutes to snooze that reminder.",
+              callback,
+              { operation },
+            );
+          }
+          const snoozeMilliseconds =
+            verb === "snooze" && minutes !== undefined
+              ? minuteDurationMilliseconds(minutes)
+              : undefined;
+          if (verb === "snooze" && snoozeMilliseconds === undefined) {
+            return await actionFailure(
+              "Snooze duration must resolve to a positive whole millisecond.",
+              callback,
+              { operation },
+            );
+          }
+          const mutationTargets =
+            operation === "delete" ? target.semanticDuplicates : [target.task];
+          const appliedResults: ScheduledTaskApplyResult[] = [];
+          let failedCount = 0;
+          for (const task of mutationTargets) {
+            try {
+              appliedResults.push(
+                await options.runner.applyWithResult(
+                  task.taskId,
+                  verb,
+                  verb === "snooze" ? { minutes } : undefined,
+                  {
+                    idempotencyKey: `shared-reminder:${String(message.id)}:${operation}:${task.taskId}`,
+                  },
+                ),
+              );
+            } catch (error) {
+              reportReminderError(
+                runtime,
+                "SharedReminders.lifecycleMutation",
+                error,
+                {
+                  operation,
+                  phase: verb,
+                  failedCount: failedCount + 1,
+                },
+              );
+              if (operation !== "delete") throw error;
+              failedCount += 1;
+            }
+          }
+          const applied = appliedResults[0];
+          const appliedTask = applied?.task ?? target.task;
+          const text =
+            verb === "snooze"
+              ? `Reminder snoozed for ${formatDuration(snoozeMilliseconds as number)}: ${reminderText(appliedTask)}`
+              : operation === "delete"
+                ? failedCount > 0
+                  ? `Deleted ${appliedResults.length} ${appliedResults.length === 1 ? "reminder" : "reminders"}, but couldn't verify ${failedCount} ${failedCount === 1 ? "other matching reminder" : "other matching reminders"}: ${reminderText(appliedTask)}`
+                  : appliedResults.length === 1
+                    ? `Reminder deleted: ${reminderText(appliedTask)}`
+                    : `Deleted ${appliedResults.length} identical reminders: ${reminderText(appliedTask)}`
+                : `Reminder ${verb === "complete" ? "completed" : "dismissed"}: ${reminderText(appliedTask)}`;
+          const receipts = appliedResults.map((result) =>
+            lifecycleReceipt(verb, result),
+          );
+          await callback?.({ text });
+          return {
+            success: failedCount === 0,
+            text,
+            ...(failedCount > 0 ? { error: text } : {}),
+            data: {
+              actionName: "REMINDERS",
+              operation,
+              task: appliedTask,
+              replayed: applied?.replayed ?? false,
+              affectedCount: appliedResults.length,
+              failedCount,
+            },
+            verifiedUserFacing: true,
+            userFacingText: text,
+            effectReceipts: receipts,
+            userFacingEffectReceiptIds: receipts.map(
+              (receipt) => receipt.receiptId,
+            ),
+            turnComplete: true,
+          };
+        }
+
+        return await actionFailure(
+          "Choose create, list, update, snooze, complete, delete, dismiss, or clear.",
+          callback,
+          { operation: operation ?? "unknown" },
+        );
+      } catch (error) {
+        reportReminderError(runtime, "SharedReminders.handler", error, {
+          operation: operation ?? "unknown",
+          phase: "durable-operation",
+        });
+        return await actionFailure(
+          "I couldn't verify that reminder change, so I won't claim it succeeded. Please list your reminders before retrying.",
+          callback,
+          {
+            operation: operation ?? "unknown",
+            failureCode: "REMINDER_MUTATION_UNVERIFIED",
+          },
+        );
+      }
     },
   };
 }
