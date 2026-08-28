@@ -2025,7 +2025,7 @@ export function useShellController(): ShellController {
   const startRealtimeVoice = React.useCallback(async () => {
     if (authGateRef.current.gated) return;
     if (!realtimeVoiceCanStart) return;
-    if (captureRef.current || recording) return;
+    if (captureRef.current || recording || sttPending) return;
     if (
       realtimeVoiceWantedRef.current ||
       realtimeVoiceRef.current.active ||
@@ -2090,6 +2090,7 @@ export function useShellController(): ShellController {
     realtimeVoiceCanStart,
     recording,
     setActionNotice,
+    sttPending,
     stopCapture,
   ]);
   startRealtimeVoiceRef.current = () => {
@@ -2130,6 +2131,7 @@ export function useShellController(): ShellController {
       realtimeVoice.connecting ||
       captureRef.current ||
       recording ||
+      sttPending ||
       chatSending ||
       voiceOutput.speaking
     ) {
@@ -2146,6 +2148,7 @@ export function useShellController(): ShellController {
     realtimeVoice.connecting,
     realtimeVoiceEnabled,
     recording,
+    sttPending,
     voiceOutput.speaking,
   ]);
 

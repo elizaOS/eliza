@@ -2272,6 +2272,69 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
   });
 
+  it("keeps recovered realtime parked until a deferred batch STT stop drains", async () => {
+    realtimeVoiceMock.state.available = false;
+    const { result, rerender } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("ptt");
+      await Promise.resolve();
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+    expect(result.current.recording).toBe(true);
+
+    const captureOptions = lastCaptureOpts;
+    let releaseStop: (() => void) | undefined;
+    const stopDrain = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    captureHandles[0]?.stop.mockImplementation(async () => {
+      await stopDrain;
+      captureOptions?.onStateChange?.("stopped");
+    });
+
+    await act(async () => {
+      realtimeVoiceMock.state.available = true;
+      rerender();
+      await Promise.resolve();
+    });
+    expect(result.current.realtimeVoice?.enabled).toBe(false);
+
+    // Releasing PTT closes the visible mic immediately, but the batch owner is
+    // still draining STT. A recovered probe must stay latched to batch and a
+    // second Talk tap must not hand microphone/audio ownership to realtime.
+    await act(async () => {
+      result.current.stopRecording();
+      await Promise.resolve();
+    });
+    expect(result.current.recording).toBe(false);
+    expect(result.current.phase).toBe("processing");
+    expect(captureHandles[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(result.current.realtimeVoice?.enabled).toBe(false);
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+    expect(result.current.handsFree).toBe(false);
+
+    await act(async () => {
+      releaseStop?.();
+      await stopDrain;
+      await Promise.resolve();
+    });
+    expect(result.current.realtimeVoice?.enabled).toBe(true);
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(result.current.handsFree).toBe(true);
+  });
+
   it("latches a recovered probe to batch until the current Talk session ends", async () => {
     vi.useFakeTimers();
     try {
