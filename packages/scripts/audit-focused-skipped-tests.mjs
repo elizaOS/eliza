@@ -735,10 +735,88 @@ function trustedNodeOsIdentifier(identifier) {
     ts.isIdentifier(initializer.expression) &&
     initializer.expression.text === "require" &&
     nearestBinding(initializer.expression) === undefined &&
+    !hasPriorWriteToImplicitRoot(initializer.expression) &&
     initializer.arguments.length === 1 &&
     ts.isStringLiteralLike(initializer.arguments[0]) &&
     initializer.arguments[0].text === "node:os"
   );
+}
+
+function assignmentTargetHasImplicitRoot(node, rootName) {
+  const value = unwrapExpression(node);
+  if (
+    ts.isIdentifier(value) ||
+    ts.isPropertyAccessExpression(value) ||
+    ts.isElementAccessExpression(value)
+  ) {
+    const root = baseIdentifier(value);
+    return root?.text === rootName && nearestBinding(root) === undefined;
+  }
+  if (ts.isArrayLiteralExpression(value)) {
+    return value.elements.some((element) =>
+      assignmentTargetHasImplicitRoot(
+        ts.isSpreadElement(element) ? element.expression : element,
+        rootName,
+      ),
+    );
+  }
+  if (ts.isObjectLiteralExpression(value)) {
+    return value.properties.some((property) => {
+      if (ts.isShorthandPropertyAssignment(property)) {
+        return assignmentTargetHasImplicitRoot(property.name, rootName);
+      }
+      if (ts.isPropertyAssignment(property)) {
+        return assignmentTargetHasImplicitRoot(property.initializer, rootName);
+      }
+      if (ts.isSpreadAssignment(property)) {
+        return assignmentTargetHasImplicitRoot(property.expression, rootName);
+      }
+      return false;
+    });
+  }
+  if (
+    ts.isBinaryExpression(value) &&
+    value.operatorToken.kind === ts.SyntaxKind.EqualsToken
+  ) {
+    return assignmentTargetHasImplicitRoot(value.left, rootName);
+  }
+  return false;
+}
+
+function hasPriorWriteToImplicitRoot(identifier) {
+  const sourceFile = identifier.getSourceFile();
+  const identifierStart = identifier.getStart(sourceFile);
+  let found = false;
+  const visit = (node) => {
+    if (found || node.getStart(sourceFile) >= identifierStart) return;
+    if (
+      ts.isBinaryExpression(node) &&
+      ts.isAssignmentOperator(node.operatorToken.kind) &&
+      assignmentTargetHasImplicitRoot(node.left, identifier.text)
+    ) {
+      found = true;
+      return;
+    }
+    if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      (node.operator === ts.SyntaxKind.PlusPlusToken ||
+        node.operator === ts.SyntaxKind.MinusMinusToken) &&
+      assignmentTargetHasImplicitRoot(node.operand, identifier.text)
+    ) {
+      found = true;
+      return;
+    }
+    if (
+      ts.isDeleteExpression(node) &&
+      assignmentTargetHasImplicitRoot(node.expression, identifier.text)
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
 }
 
 function trustedRuntimeCallChain(node) {
@@ -747,7 +825,10 @@ function trustedRuntimeCallChain(node) {
   const root = baseIdentifier(node);
   if (!root) return null;
   if (chain[0] === "process") {
-    return nearestBinding(root) === undefined ? chain : null;
+    return nearestBinding(root) === undefined &&
+      !hasPriorWriteToImplicitRoot(root)
+      ? chain
+      : null;
   }
   if (chain[0] === "os") {
     return trustedNodeOsIdentifier(root) ? chain : null;
