@@ -159,10 +159,15 @@ async function lockAdmissionWork(tx: DbTransaction, workId: string) {
   return work;
 }
 
-async function lockActiveOrganization(
+async function lockOrganization(
   tx: DbTransaction,
   claim: AgentBackupAdmissionClaim,
-): Promise<void> {
+): Promise<{
+  lifecycleState: string;
+  deletionRequestId: string | null;
+  paidWorkFencedAt: Date | null;
+  isActive: boolean;
+}> {
   const [organization] = await tx
     .select({
       lifecycleState: organizations.account_lifecycle_state,
@@ -174,8 +179,14 @@ async function lockActiveOrganization(
     .where(eq(organizations.id, claim.organizationId))
     .for("share")
     .limit(1);
+  if (!organization) conflict("Backup admission organization disappeared before reservation");
+  return organization;
+}
+
+function assertOrganizationPermitsPaidWork(
+  organization: Awaited<ReturnType<typeof lockOrganization>>,
+): void {
   if (
-    !organization ||
     organization.lifecycleState !== "active" ||
     organization.deletionRequestId !== null ||
     organization.paidWorkFencedAt !== null ||
@@ -327,9 +338,10 @@ export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
     // Account deletion owns this row before publishing its paid-work fence.
     // Keep the same organization-before-work order as claim recovery so the
     // live claim cannot cross a deletion activation boundary.
-    await lockActiveOrganization(tx, claim);
+    const organization = await lockOrganization(tx, claim);
     const work = await lockAdmissionWork(tx, claim.workId);
     assertClaimMatchesWork(claim, work);
+    if (work.state === "leased") assertOrganizationPermitsPaidWork(organization);
     const source = await readSourceOccurrence(tx, claim);
     const [existingBackup] = await tx
       .select()

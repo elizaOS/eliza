@@ -351,9 +351,18 @@ describe("agent backup admission reservation on primary PGlite", () => {
     expect(node?.allocatedCount).toBe(2);
   });
 
-  test("returns the same durable reservation for an exact settled replay", async () => {
+  test("returns the same durable reservation after a paid-work fence for an exact settled replay", async () => {
     const claim = await seedClaim();
     const first = await reserveAndSettleAgentBackupAdmissionClaim({ claim });
+    await dbWrite
+      .update(organizations)
+      .set({
+        account_lifecycle_state: "deletion_recovery",
+        account_deletion_request_id: STALE_CLAIM_GENERATION,
+        paid_work_fenced_at: new Date(),
+        is_active: false,
+      })
+      .where(eq(organizations.id, ORGANIZATION_ID));
 
     const replay = await reserveAndSettleAgentBackupAdmissionClaim({ claim });
 
