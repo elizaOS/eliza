@@ -68,7 +68,7 @@ export function FocusSpatialView({
 }: FocusSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   return (
-    <Card gap={1} padding={1}>
+    <Card gap={1} padding={1} grow={1} shrink={0}>
       <FocusBody snapshot={snapshot} dispatch={dispatch} />
     </Card>
   );
@@ -137,9 +137,11 @@ function FocusBody({
       return <FocusActiveBody snapshot={snapshot} dispatch={dispatch} />;
     default:
       return (
-        <VStack gap={1}>
-          <Text bold>No focus session active</Text>
-          <Text tone="muted" style="caption">
+        <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+          <Text bold align="center">
+            No focus session active
+          </Text>
+          <Text tone="muted" style="caption" align="center">
             Start a session to temporarily block distracting websites. Eliza
             keeps them unavailable until the session ends.
           </Text>

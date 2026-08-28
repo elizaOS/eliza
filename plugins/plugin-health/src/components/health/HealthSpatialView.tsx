@@ -19,6 +19,7 @@ import {
   Button,
   Card,
   Escape,
+  Field,
   HStack,
   Text,
   VStack,
@@ -87,7 +88,7 @@ export function HealthSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1} grow={1}>
+    <Card gap={1} padding={1} grow={1} shrink={0}>
       <WindowRange windowDays={snapshot.windowDays} dispatch={dispatch} />
 
       {snapshot.state === "loading" ? (
@@ -113,26 +114,19 @@ function WindowRange({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <HStack gap={1} align="center">
-      <Text style="caption" tone="muted" shrink={0}>
-        Range
-      </Text>
-      {WINDOW_OPTIONS.map((days) => {
-        const selected = days === windowDays;
-        return (
-          <Button
-            key={days}
-            agent={`window-${days}`}
-            tone={selected ? "primary" : "default"}
-            variant={selected ? "solid" : "ghost"}
-            pressed={selected}
-            onPress={dispatch(`window:${days}`)}
-          >
-            {`${days}d`}
-          </Button>
+    <Field
+      kind="select"
+      label="Range"
+      value={`Last ${windowDays} days`}
+      options={WINDOW_OPTIONS.map((days) => `Last ${days} days`)}
+      agent="health-range-filter"
+      onChange={(label) => {
+        const selected = WINDOW_OPTIONS.find(
+          (days) => `Last ${days} days` === label,
         );
-      })}
-    </HStack>
+        if (selected) dispatch(`window:${selected}`)();
+      }}
+    />
   );
 }
 
@@ -160,9 +154,11 @@ function HealthErrorBody({
 
 function HealthEmptyBody() {
   return (
-    <VStack gap={1}>
-      <Text bold>No sleep data yet</Text>
-      <Text tone="muted" style="caption">
+    <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+      <Text bold align="center">
+        No sleep data yet
+      </Text>
+      <Text tone="muted" style="caption" align="center">
         Connect a health source or record sleep to see patterns here.
       </Text>
     </VStack>

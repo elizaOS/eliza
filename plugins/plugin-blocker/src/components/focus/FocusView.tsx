@@ -64,9 +64,7 @@ function defaultReleaseBlock(): Promise<unknown> {
 }
 
 function requestFocusSession(): void {
-  (client as { sendChatMessage?: (text: string) => void }).sendChatMessage?.(
-    "Start a focus session for me.",
-  );
+  client.sendChatMessage("Start a focus session for me.");
 }
 
 type LoadState =

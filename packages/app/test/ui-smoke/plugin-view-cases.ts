@@ -34,7 +34,7 @@ export const VIEW_CASES: ViewCase[] = (
     // so it deliberately has no assistant pill/composer at its root.
     ["cloud", "gui", "/cloud", { shellPill: "suppressed" }],
     ["contacts", "gui", "/contacts"],
-    ["focus", "gui", "/focus", { minVisibleTextLength: 4 }],
+    ["focus", "gui", "/focus"],
     ["calendar", "gui", "/calendar"],
     ["family-operations", "gui", "/lifeops/family"],
     ["computer-use-sessions", "gui", "/computer-use-sessions"],

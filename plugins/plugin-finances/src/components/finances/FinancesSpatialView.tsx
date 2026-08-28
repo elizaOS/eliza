@@ -164,7 +164,7 @@ export function FinancesSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1} shrink={0}>
+    <Card gap={1} padding={1} grow={1} shrink={0}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
           Loading
@@ -210,9 +210,11 @@ function FinancesEmptyBody({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <>
-      <Text bold>No accounts connected</Text>
-      <Text tone="muted" style="caption">
+    <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+      <Text bold align="center">
+        No accounts connected
+      </Text>
+      <Text tone="muted" style="caption" align="center">
         Connect a payment source to see balances and activity here.
       </Text>
       <HStack gap={1}>
@@ -220,7 +222,7 @@ function FinancesEmptyBody({
           Connect account
         </Button>
       </HStack>
-    </>
+    </VStack>
   );
 }
 

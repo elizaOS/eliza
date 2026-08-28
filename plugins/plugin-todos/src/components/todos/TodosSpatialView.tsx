@@ -80,7 +80,7 @@ export function TodosSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1}>
+    <Card gap={1} padding={1} grow={1} shrink={0}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
           Loading
@@ -124,9 +124,11 @@ function TodosEmptyBody({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <>
-      <Text bold>No todos yet</Text>
-      <Text tone="muted" style="caption">
+    <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+      <Text bold align="center">
+        No todos yet
+      </Text>
+      <Text tone="muted" style="caption" align="center">
         Add something you want Eliza to keep track of.
       </Text>
       <HStack gap={1}>
@@ -134,7 +136,7 @@ function TodosEmptyBody({
           Add todo
         </Button>
       </HStack>
-    </>
+    </VStack>
   );
 }
 
@@ -166,23 +168,41 @@ function TodosReadyBody({
           Add todo
         </Button>
       </HStack>
-      {LANES.map((lane) => (
-        <Lane key={lane.id} lane={lane} todos={snapshot.lanes[lane.id]} />
+      {LANES.map((lane, index) => (
+        <Lane
+          key={lane.id}
+          lane={lane}
+          todos={snapshot.lanes[lane.id]}
+          isLast={index === LANES.length - 1}
+        />
       ))}
     </>
   );
 }
 
-function Lane({ lane, todos }: { lane: LaneDef; todos: TodoCard[] }) {
+function Lane({
+  lane,
+  todos,
+  isLast,
+}: {
+  lane: LaneDef;
+  todos: TodoCard[];
+  isLast: boolean;
+}) {
   return (
-    <>
-      <Divider label={`${lane.label} (${todos.length})`} />
+    <VStack gap={1} padding={isLast ? undefined : { bottom: 2 }}>
+      <HStack gap={1} align="center">
+        <Text bold style="caption" wrap={false} shrink={0}>
+          {`${lane.label} (${todos.length})`}
+        </Text>
+        <Divider grow={1} />
+      </HStack>
       {todos.length > 0 ? (
         <List gap={0}>
           {todos.map((todo) => (
             <HStack
               key={todo.id}
-              gap={1}
+              gap={2}
               align="center"
               agent={`todo-${todo.id}`}
             >
@@ -203,6 +223,6 @@ function Lane({ lane, todos }: { lane: LaneDef; todos: TodoCard[] }) {
           ))}
         </List>
       ) : null}
-    </>
+    </VStack>
   );
 }

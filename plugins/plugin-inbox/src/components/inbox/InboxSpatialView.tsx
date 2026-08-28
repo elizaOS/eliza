@@ -145,7 +145,7 @@ export function InboxSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={2} padding={1}>
+    <Card gap={2} padding={1} grow={1} shrink={0}>
       {snapshot.status === "loading" ||
       snapshot.hasConnectedChannels ||
       snapshot.items.length > 0 ? (
@@ -281,9 +281,11 @@ function InboxEmptyBody({
       .map((source) => source.label)
       .join(", ");
     return (
-      <VStack gap={1}>
-        <Text bold>No messages from reachable channels</Text>
-        <Text tone="muted" style="caption">
+      <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+        <Text bold align="center">
+          No messages from reachable channels
+        </Text>
+        <Text tone="muted" style="caption" align="center">
           {`${labels} could not be checked; this may not be everything.`}
         </Text>
       </VStack>
@@ -293,9 +295,11 @@ function InboxEmptyBody({
     !snapshot.hasConnectedChannels && snapshot.activeFilterCount === 0;
   if (noChannels) {
     return (
-      <VStack gap={1}>
-        <Text bold>No inboxes connected</Text>
-        <Text tone="muted" style="caption">
+      <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+        <Text bold align="center">
+          No inboxes connected
+        </Text>
+        <Text tone="muted" style="caption" align="center">
           Connect a messaging channel to review conversations here.
         </Text>
         <HStack gap={1}>
@@ -307,9 +311,11 @@ function InboxEmptyBody({
     );
   }
   return (
-    <VStack gap={1}>
-      <Text bold>Inbox zero</Text>
-      <Text tone="muted" style="caption">
+    <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+      <Text bold align="center">
+        Inbox zero
+      </Text>
+      <Text tone="muted" style="caption" align="center">
         Nothing needs your attention right now.
       </Text>
     </VStack>
