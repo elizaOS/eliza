@@ -17,9 +17,10 @@
  *      when its nearby window carries one of: a tracking ref (`#<number>`, an
  *      issue/PR URL, `TODO(#<number>)`, or a `.pr-deny-list.json` reference), a
  *      self-documenting reason (env/platform/dependency gate), or a Playwright
- *      skip `annotation` with a `description`. Runtime *conditional* skips whose
- *      first argument is not a string literal (`cond ? describe : describe.skip`,
- *      `test.skip(!process.env.X, "…")`) are always allowed. A bare
+ *      skip `annotation` with a `description`. Runtime *conditional* skips
+ *      (`cond ? describe : describe.skip`, `test.skip(!process.env.X, "…")`,
+ *      or Node's documented `{ skip: process.platform !== "…" }` option) are
+ *      allowed. A bare
  *      `it.skip("adds two numbers", fn)` — a real test name, no reason, no owner
  *      — is the orphaned case: a test that silently stopped running.
  *
@@ -132,6 +133,8 @@ const TRACKING_REF =
 // type: "skip", description: "…" }` form.
 const REASON_MARKER =
   /\b(?:requires?|missing|unavailable|lacks?\b[^\n]*\baccess|not\s+(?:run|on|available|installed|supported|enabled|configured)|set\b[^\n]*\b(?:enable|run)|enable\b[^\n]*\b(?:test|suite|run)|only\s+(?:on|under|runs?)|not on PATH|process\.(?:platform|env)|os\.platform|isCI|un-?skip|once\b[^\n]*\blands?\b|until\b|blocked\s+(?:by|on)|no\s+[^\n]{1,80}\s+(?:available|installed|found|loaded|backend|store)|no shared)\b/i;
+const RUNTIME_OPTION_REASON =
+  /\b(?:process\.(?:platform|env|versions)|os\.platform|[A-Za-z_$][\w$]*(?:Platform|Runtime|Node\d*|Windows|Linux|Darwin|Available|Supported|Enabled|Configured|Installed)[\w$]*)\b/;
 
 function normalizeRelativePath(value) {
   return normalizeGitRepositoryPath(value, "anti-larp test source");
@@ -597,31 +600,390 @@ function unwrapExpression(node) {
   return current;
 }
 
+const UNKNOWN_STATIC_VALUE = Symbol("unknown-static-value");
+
+function staticPrimitive(node) {
+  if (!node) return UNKNOWN_STATIC_VALUE;
+  const value = unwrapExpression(node);
+  if (value.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (value.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (value.kind === ts.SyntaxKind.NullKeyword) return null;
+  if (ts.isIdentifier(value) && value.text === "undefined") return undefined;
+  if (ts.isStringLiteralLike(value)) return value.text;
+  if (ts.isNumericLiteral(value)) return Number(value.text);
+  if (ts.isBigIntLiteral(value)) return BigInt(value.text.slice(0, -1));
+  if (
+    ts.isPrefixUnaryExpression(value) &&
+    (value.operator === ts.SyntaxKind.PlusToken ||
+      value.operator === ts.SyntaxKind.MinusToken)
+  ) {
+    const operand = staticPrimitive(value.operand);
+    if (typeof operand !== "number") return UNKNOWN_STATIC_VALUE;
+    return value.operator === ts.SyntaxKind.MinusToken ? -operand : operand;
+  }
+  return UNKNOWN_STATIC_VALUE;
+}
+
+const NODE_OPTION_RUN = "run";
+const NODE_OPTION_SKIP = "skip";
+const NODE_OPTION_CONDITIONAL = "conditional";
+const NODE_OPTION_UNKNOWN = "unknown";
+
+function nodeOptionFromPrimitive(value) {
+  return value === false || value === undefined
+    ? NODE_OPTION_RUN
+    : NODE_OPTION_SKIP;
+}
+
+function knownNodeOptionSkipValue(node) {
+  const value = unwrapExpression(node);
+  if (
+    ts.isObjectLiteralExpression(value) ||
+    ts.isArrayLiteralExpression(value) ||
+    ts.isFunctionExpression(value) ||
+    ts.isArrowFunction(value) ||
+    ts.isClassExpression(value) ||
+    ts.isNewExpression(value) ||
+    ts.isRegularExpressionLiteral(value) ||
+    ts.isNoSubstitutionTemplateLiteral(value) ||
+    ts.isTemplateExpression(value)
+  ) {
+    return true;
+  }
+  if (
+    ts.isIdentifier(value) &&
+    ["globalThis", "Infinity", "NaN"].includes(value.text)
+  ) {
+    return true;
+  }
+  const chain = callChain(value);
+  if (
+    chain?.join(".") === "os.platform" ||
+    (chain?.length === 1 &&
+      [
+        "Array",
+        "BigInt",
+        "Date",
+        "Function",
+        "Number",
+        "Object",
+        "String",
+        "Symbol",
+      ].includes(chain[0]))
+  ) {
+    return true;
+  }
+  return knownTruthyRuntimeValue(value);
+}
+
+function knownOptionalRuntimeString(node) {
+  const chain = callChain(node);
+  return (
+    chain?.[0] === "process" &&
+    chain.length === 3 &&
+    (chain[1] === "env" || chain[1] === "versions")
+  );
+}
+
+function recognizedRuntimeSignal(node) {
+  const value = unwrapExpression(node);
+  if (ts.isIdentifier(value)) {
+    return /(?:Platform|Runtime|Node\d*|Windows|Linux|Darwin|Available|Supported|Enabled|Configured|Installed)/.test(
+      value.text,
+    );
+  }
+  if (
+    ts.isPropertyAccessExpression(value) ||
+    ts.isElementAccessExpression(value)
+  ) {
+    const chain = callChain(value);
+    return (
+      chain?.[0] === "process" &&
+      (chain[1] === "platform" ||
+        (chain.length >= 3 && (chain[1] === "env" || chain[1] === "versions")))
+    );
+  }
+  if (ts.isPrefixUnaryExpression(value)) {
+    return recognizedRuntimeSignal(value.operand);
+  }
+  if (ts.isBinaryExpression(value)) {
+    return (
+      recognizedRuntimeSignal(value.left) ||
+      recognizedRuntimeSignal(value.right)
+    );
+  }
+  if (ts.isConditionalExpression(value)) {
+    return recognizedRuntimeSignal(value.condition);
+  }
+  if (ts.isCallExpression(value)) {
+    const chain = callChain(value.expression);
+    return (
+      chain?.join(".") === "os.platform" ||
+      (chain?.length === 1 &&
+        /(?:Platform|Runtime|Node\d*|Windows|Linux|Darwin|Available|Supported|Enabled|Configured|Installed)/.test(
+          chain[0],
+        ))
+    );
+  }
+  return false;
+}
+
+/**
+ * Classify Node's `test(name, { skip }, fn)` option by Node semantics.
+ * Unlike skipIf/focus truthiness, Node runs only for exact false/undefined;
+ * every other value is a skip reason, including 0, an empty string, null,
+ * objects, functions, and known runtime strings such as os.platform().
+ */
+function nodeOptionDisposition(node) {
+  if (!node) return NODE_OPTION_UNKNOWN;
+  const value = unwrapExpression(node);
+  const primitive = staticPrimitive(value);
+  if (primitive !== UNKNOWN_STATIC_VALUE) {
+    return nodeOptionFromPrimitive(primitive);
+  }
+  if (knownNodeOptionSkipValue(value)) return NODE_OPTION_SKIP;
+  if (ts.isVoidExpression(value)) return NODE_OPTION_RUN;
+  if (
+    ts.isTypeOfExpression(value) ||
+    (ts.isPrefixUnaryExpression(value) &&
+      [
+        ts.SyntaxKind.PlusToken,
+        ts.SyntaxKind.MinusToken,
+        ts.SyntaxKind.TildeToken,
+      ].includes(value.operator))
+  ) {
+    return NODE_OPTION_SKIP;
+  }
+  if (ts.isPrefixUnaryExpression(value)) {
+    if (value.operator === ts.SyntaxKind.ExclamationToken) {
+      const truthy = staticTruthiness(value.operand);
+      return truthy === undefined
+        ? recognizedRuntimeSignal(value.operand)
+          ? NODE_OPTION_CONDITIONAL
+          : NODE_OPTION_UNKNOWN
+        : nodeOptionFromPrimitive(!truthy);
+    }
+  }
+  if (ts.isDeleteExpression(value)) return NODE_OPTION_UNKNOWN;
+  if (ts.isConditionalExpression(value)) {
+    const condition = staticTruthiness(value.condition);
+    if (condition === true) return nodeOptionDisposition(value.whenTrue);
+    if (condition === false) return nodeOptionDisposition(value.whenFalse);
+    const whenTrue = nodeOptionDisposition(value.whenTrue);
+    const whenFalse = nodeOptionDisposition(value.whenFalse);
+    if (whenTrue === whenFalse) return whenTrue;
+    return recognizedRuntimeSignal(value.condition)
+      ? NODE_OPTION_CONDITIONAL
+      : NODE_OPTION_UNKNOWN;
+  }
+  if (ts.isBinaryExpression(value)) {
+    if (value.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      return nodeOptionDisposition(value.right);
+    }
+    if (value.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+      const left = staticPrimitive(value.left);
+      if (left !== UNKNOWN_STATIC_VALUE) {
+        return left === null || left === undefined
+          ? nodeOptionDisposition(value.right)
+          : nodeOptionFromPrimitive(left);
+      }
+      if (knownNodeOptionSkipValue(value.left)) return NODE_OPTION_SKIP;
+      if (knownOptionalRuntimeString(value.left)) {
+        return nodeOptionDisposition(value.right) === NODE_OPTION_SKIP
+          ? NODE_OPTION_SKIP
+          : NODE_OPTION_CONDITIONAL;
+      }
+      return NODE_OPTION_UNKNOWN;
+    }
+    if (value.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+      const left = staticTruthiness(value.left);
+      if (left === false) return nodeOptionDisposition(value.left);
+      if (left === true) return nodeOptionDisposition(value.right);
+      return recognizedRuntimeSignal(value.left)
+        ? NODE_OPTION_CONDITIONAL
+        : NODE_OPTION_UNKNOWN;
+    }
+    if (value.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+      const left = staticTruthiness(value.left);
+      if (left === true) return nodeOptionDisposition(value.left);
+      if (left === false) return nodeOptionDisposition(value.right);
+      return nodeOptionDisposition(value.right) === NODE_OPTION_SKIP
+        ? NODE_OPTION_SKIP
+        : recognizedRuntimeSignal(value.left)
+          ? NODE_OPTION_CONDITIONAL
+          : NODE_OPTION_UNKNOWN;
+    }
+    const comparison = staticComparison(value);
+    if (comparison !== undefined) return nodeOptionFromPrimitive(comparison);
+    if (
+      [
+        ts.SyntaxKind.EqualsEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsToken,
+        ts.SyntaxKind.EqualsEqualsEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsEqualsToken,
+        ts.SyntaxKind.LessThanToken,
+        ts.SyntaxKind.LessThanEqualsToken,
+        ts.SyntaxKind.GreaterThanToken,
+        ts.SyntaxKind.GreaterThanEqualsToken,
+        ts.SyntaxKind.InKeyword,
+        ts.SyntaxKind.InstanceOfKeyword,
+      ].includes(value.operatorToken.kind)
+    ) {
+      return recognizedRuntimeSignal(value)
+        ? NODE_OPTION_CONDITIONAL
+        : NODE_OPTION_UNKNOWN;
+    }
+    if (
+      [
+        ts.SyntaxKind.PlusToken,
+        ts.SyntaxKind.MinusToken,
+        ts.SyntaxKind.AsteriskToken,
+        ts.SyntaxKind.AsteriskAsteriskToken,
+        ts.SyntaxKind.SlashToken,
+        ts.SyntaxKind.PercentToken,
+        ts.SyntaxKind.AmpersandToken,
+        ts.SyntaxKind.BarToken,
+        ts.SyntaxKind.CaretToken,
+        ts.SyntaxKind.LessThanLessThanToken,
+        ts.SyntaxKind.GreaterThanGreaterThanToken,
+        ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken,
+      ].includes(value.operatorToken.kind)
+    ) {
+      return NODE_OPTION_SKIP;
+    }
+  }
+  if (
+    ts.isCallExpression(value) &&
+    ts.isIdentifier(value.expression) &&
+    value.expression.text === "Boolean"
+  ) {
+    const firstArgument = value.arguments[0];
+    if (!firstArgument) return NODE_OPTION_RUN;
+    const truthy = staticTruthiness(firstArgument);
+    return truthy === undefined
+      ? recognizedRuntimeSignal(firstArgument)
+        ? NODE_OPTION_CONDITIONAL
+        : NODE_OPTION_UNKNOWN
+      : nodeOptionFromPrimitive(truthy);
+  }
+  return recognizedRuntimeSignal(value)
+    ? NODE_OPTION_CONDITIONAL
+    : NODE_OPTION_UNKNOWN;
+}
+
+function staticComparison(node) {
+  if (!ts.isBinaryExpression(node)) return undefined;
+  const left = staticPrimitive(node.left);
+  const right = staticPrimitive(node.right);
+  if (left === UNKNOWN_STATIC_VALUE || right === UNKNOWN_STATIC_VALUE) {
+    return undefined;
+  }
+  switch (node.operatorToken.kind) {
+    case ts.SyntaxKind.EqualsEqualsEqualsToken:
+      return left === right;
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+      return left !== right;
+    case ts.SyntaxKind.EqualsEqualsToken:
+    case ts.SyntaxKind.ExclamationEqualsToken: {
+      const comparable =
+        typeof left === typeof right ||
+        ((left === null || left === undefined) &&
+          (right === null || right === undefined));
+      if (!comparable) return undefined;
+      const equal =
+        left === right ||
+        (left === null && right === undefined) ||
+        (left === undefined && right === null);
+      return node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken
+        ? equal
+        : !equal;
+    }
+    case ts.SyntaxKind.LessThanToken:
+      return left < right;
+    case ts.SyntaxKind.LessThanEqualsToken:
+      return left <= right;
+    case ts.SyntaxKind.GreaterThanToken:
+      return left > right;
+    case ts.SyntaxKind.GreaterThanEqualsToken:
+      return left >= right;
+    default:
+      return undefined;
+  }
+}
+
+function knownTruthyRuntimeValue(node) {
+  const chain = callChain(node);
+  return (
+    chain?.join(".") === "os.platform" ||
+    (chain?.[0] === "process" &&
+      ((chain.length === 2 &&
+        (chain[1] === "env" ||
+          chain[1] === "platform" ||
+          chain[1] === "versions")) ||
+        (chain.length === 3 && chain[1] === "versions" && chain[2] === "node")))
+  );
+}
+
+function knownTruthyObjectValue(node) {
+  const value = unwrapExpression(node);
+  return (
+    ts.isObjectLiteralExpression(value) ||
+    ts.isArrayLiteralExpression(value) ||
+    ts.isFunctionExpression(value) ||
+    ts.isArrowFunction(value) ||
+    ts.isClassExpression(value) ||
+    ts.isNewExpression(value) ||
+    ts.isRegularExpressionLiteral(value)
+  );
+}
+
 function staticTruthiness(node) {
   if (!node) return undefined;
   const value = unwrapExpression(node);
-  if (value.kind === ts.SyntaxKind.TrueKeyword) return true;
-  if (
-    value.kind === ts.SyntaxKind.FalseKeyword ||
-    value.kind === ts.SyntaxKind.NullKeyword ||
-    (ts.isIdentifier(value) && value.text === "undefined")
-  ) {
-    return false;
+  const primitive = staticPrimitive(value);
+  if (primitive !== UNKNOWN_STATIC_VALUE) return Boolean(primitive);
+  if (knownTruthyRuntimeValue(value) || knownTruthyObjectValue(value)) {
+    return true;
   }
-  if (ts.isStringLiteralLike(value)) return value.text.length > 0;
-  if (ts.isNumericLiteral(value)) return Number(value.text) !== 0;
   if (ts.isPrefixUnaryExpression(value)) {
     if (value.operator === ts.SyntaxKind.ExclamationToken) {
       const operand = staticTruthiness(value.operand);
       return operand === undefined ? undefined : !operand;
     }
-    if (
-      value.operator === ts.SyntaxKind.PlusToken ||
-      value.operator === ts.SyntaxKind.MinusToken
-    ) {
-      const number = Number(value.getText());
-      return Number.isNaN(number) ? undefined : number !== 0;
+  }
+  if (ts.isConditionalExpression(value)) {
+    const condition = staticTruthiness(value.condition);
+    if (condition === true) return staticTruthiness(value.whenTrue);
+    if (condition === false) return staticTruthiness(value.whenFalse);
+    const whenTrue = staticTruthiness(value.whenTrue);
+    const whenFalse = staticTruthiness(value.whenFalse);
+    return whenTrue === whenFalse ? whenTrue : undefined;
+  }
+  if (ts.isBinaryExpression(value)) {
+    if (value.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+      const left = staticPrimitive(value.left);
+      if (left !== UNKNOWN_STATIC_VALUE) {
+        return left === null || left === undefined
+          ? staticTruthiness(value.right)
+          : Boolean(left);
+      }
+      return undefined;
     }
+    if (value.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+      const left = staticTruthiness(value.left);
+      if (left === false) return false;
+      const right = staticTruthiness(value.right);
+      if (left === true) return right;
+      return right === false ? false : undefined;
+    }
+    if (value.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+      const left = staticTruthiness(value.left);
+      if (left === true) return true;
+      const right = staticTruthiness(value.right);
+      if (left === false) return right;
+      return right === true ? true : undefined;
+    }
+    return staticComparison(value);
   }
   if (
     ts.isCallExpression(value) &&
@@ -682,7 +1044,7 @@ function hasOuterFocusedCall(node, sourceFile, aliases) {
   return false;
 }
 
-function staticOptionCalls(node) {
+function classifiedOptionCalls(node, sourceFile) {
   const options = [];
   for (const argument of node.arguments) {
     const value = unwrapExpression(argument);
@@ -706,15 +1068,36 @@ function staticOptionCalls(node) {
       }
       if (!["only", "skip", "todo"].includes(property.name.text)) continue;
       const truthy = staticTruthiness(property.initializer);
+      const skipDisposition =
+        property.name.text === "skip"
+          ? nodeOptionDisposition(property.initializer)
+          : undefined;
       if (
         (property.name.text === "only" && truthy !== false) ||
-        (property.name.text !== "only" && truthy === true)
+        (property.name.text !== "only" &&
+          (truthy === true ||
+            (property.name.text === "skip" &&
+              skipDisposition !== NODE_OPTION_RUN)))
       ) {
         const reason = unwrapExpression(property.initializer);
+        const propertyEvidence = sourceFile.text.slice(
+          property.getFullStart(),
+          property.getEnd(),
+        );
         options.push({
           modifier: property.name.text,
+          conditional:
+            property.name.text === "skip"
+              ? skipDisposition === NODE_OPTION_CONDITIONAL
+              : truthy === undefined,
           documented:
-            ts.isStringLiteralLike(reason) && reason.text.trim().length >= 8,
+            (ts.isStringLiteralLike(reason) &&
+              reason.text.trim().length >= 8) ||
+            TRACKING_REF.test(propertyEvidence) ||
+            REASON_MARKER.test(propertyEvidence) ||
+            RUNTIME_OPTION_REASON.test(
+              property.initializer.getText(sourceFile),
+            ),
         });
       }
     }
@@ -862,7 +1245,7 @@ export function findViolations(filePath, content) {
       const alias = resolvedAlias(node.expression, aliases);
       const optionCalls =
         chain && RUNNER_ROOTS.has(chain[0]) && RUNNER_ROOTS.has(chain.at(-1))
-          ? staticOptionCalls(node)
+          ? classifiedOptionCalls(node, sourceFile)
           : [];
       const position = node.getStart(sourceFile);
       if (
@@ -955,11 +1338,12 @@ export function findViolations(filePath, content) {
  * A site is runtime-conditional when whether the test skips is decided at run
  * time, not in the source text: a runner ternary (`cond ? describe :
  * describe.skip`), a `skipIf`/`todoIf` whose condition is not statically
- * decidable, or a `skip`/`fixme` whose first argument is a non-literal,
- * non-function condition. Unconditional skips — even documented ones — are
- * never returned, and a file with any gate violation yields zero sites, so
- * consumers (the script-lane JUnit evidence gate) cannot bless a file the
- * anti-larp gate itself rejects. Throws on unparseable input.
+ * decidable, a `skip`/`fixme` whose first argument is a non-literal,
+ * non-function condition, or a documented dynamic `skip` property in a runner
+ * options object. Unconditional skips — even documented ones — are never
+ * returned, and a file with any gate violation yields zero sites, so consumers
+ * (the script-lane JUnit evidence gate) cannot bless a file the anti-larp gate
+ * itself rejects. Throws on unparseable input.
  *
  * @param {string} filePath
  * @param {string} content
@@ -1035,6 +1419,18 @@ export function findConditionalSkipSites(filePath, content) {
           staticTruthiness(firstValue) === undefined
         ) {
           record(node, `conditional-${modifier}`);
+        }
+      } else if (
+        chain &&
+        RUNNER_ROOTS.has(chain[0]) &&
+        RUNNER_ROOTS.has(chain.at(-1))
+      ) {
+        const conditionalOption = classifiedOptionCalls(node, sourceFile).find(
+          ({ modifier: optionModifier, conditional }) =>
+            optionModifier === "skip" && conditional,
+        );
+        if (conditionalOption) {
+          record(node, "conditional-option-skip");
         }
       }
     }
@@ -1290,6 +1686,41 @@ function selfTest() {
       name: "conditional: skipIf with a runtime condition is a site",
       src: 'describe.skipIf(!hasBackend)("store", () => {});',
       expect: ["skipIf"],
+    },
+    {
+      name: "conditional: documented Node option skip is a site",
+      src: 'test("Windows contract", { skip: process.platform !== "win32" ? "Windows contract" : false }, () => {});',
+      expect: ["conditional-option-skip"],
+    },
+    {
+      name: "conditional: undocumented Node option skip does not bless",
+      src: 'test("ordinary title", { skip: shouldSkip }, () => {});',
+      expect: [],
+    },
+    {
+      name: "conditional: non-runner option skip is ignored",
+      src: 'customRunner("x", { skip: process.platform !== "win32" ? "Windows contract" : false });',
+      expect: [],
+    },
+    {
+      name: "conditional: same-branch option skip is statically truthy",
+      src: 'test("x", { skip: process.platform === "win32" ? true : true }, () => {});',
+      expect: [],
+    },
+    {
+      name: "conditional: logical option dominance stays static",
+      src: 'test("x", { skip: true || process.platform === "win32" }, () => {});',
+      expect: [],
+    },
+    {
+      name: "conditional: literal comparison option stays static",
+      src: 'test("x", { /* requires Windows */ skip: 1 === 1 }, () => {});',
+      expect: [],
+    },
+    {
+      name: "conditional: bare platform value is always truthy",
+      src: 'test("x", { skip: process.platform }, () => {});',
+      expect: [],
     },
     {
       name: "conditional: statically-true skipIf is not runtime-conditional",
