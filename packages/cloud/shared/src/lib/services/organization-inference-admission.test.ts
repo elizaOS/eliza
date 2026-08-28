@@ -418,6 +418,7 @@ test("warm Worker admission writes only the Durable Object lease before provider
     },
     0.01,
     "deferred",
+    { preserveBalanceHintDuringFencedHandoff: true },
   );
   expect(settleInferenceAdmissionLease).toHaveBeenCalledTimes(1);
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBe(0.01);
@@ -472,6 +473,9 @@ test("unknown provider cost retains the admitted estimate and wins a later zero 
   expect(debitInferenceCost).toHaveBeenCalledTimes(1);
   expect(debitInferenceCost.mock.calls[0]?.[1]).toBe(leaseParams.estimatedCostUsd);
   expect(debitInferenceCost.mock.calls[0]?.[2]).toBe("deferred");
+  expect(debitInferenceCost.mock.calls[0]?.[3]).toEqual({
+    preserveBalanceHintDuringFencedHandoff: true,
+  });
   expect(settleInferenceAdmissionLease).toHaveBeenCalledTimes(1);
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBeCloseTo(
     leaseParams.estimatedCostUsd,

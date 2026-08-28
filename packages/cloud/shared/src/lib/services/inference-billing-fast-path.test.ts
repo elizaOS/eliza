@@ -17,6 +17,7 @@ interface DeductCall {
   amount: number;
   source: unknown;
   idempotencyKey: string | undefined;
+  preserveInferenceBalanceHint: boolean | undefined;
 }
 let deductCalls: DeductCall[] = [];
 let deductResult:
@@ -39,6 +40,8 @@ let deductResult:
 let deductError: Error | null = null;
 let freshBalanceUsd: number;
 let freshBalanceCalls = 0;
+let freshBalanceGate: Promise<void> | null = null;
+let freshBalanceReadStarted: (() => void) | null = null;
 const invalidateUserCalls: string[] = [];
 let invalidateUserShouldReject = false;
 
@@ -49,20 +52,20 @@ mock.module("./credits", () => ({
       amount: number;
       metadata?: { source?: unknown; requestId?: string };
       stripePaymentIntentId?: string;
+      preserveInferenceBalanceHint?: boolean;
     }) => {
       deductCalls.push({
         organizationId: args.organizationId,
         amount: args.amount,
         source: args.metadata?.source,
         idempotencyKey: args.stripePaymentIntentId,
+        preserveInferenceBalanceHint: args.preserveInferenceBalanceHint,
       });
       if (deductError) throw deductError;
-      // Mirror production: a committed debit runs
-      // `CacheInvalidation.onCreditMutation`, which DELETES the org-balance
-      // gate hint before the settler's post-debit cache step runs. Modelling
-      // this is what makes the "next turn is warm" assertions real — without
-      // it the hint survives and the test cannot observe the 503 flap.
-      if (deductResult.success) {
+      // Mirror production credit invalidation. Inference settlement now opts
+      // into a fenced handoff: the prior hint stays present until the
+      // authoritative post-debit read below replaces it.
+      if (deductResult.success && !args.preserveInferenceBalanceHint) {
         const { CacheKeys: Keys } = await import("../cache/keys");
         const { cache: c } = await import("../cache/client");
         await c.del(Keys.inference.orgBalance(args.organizationId));
@@ -82,6 +85,8 @@ mock.module("./credits", () => ({
     },
     getOrganizationBalanceSnapshot: async () => {
       freshBalanceCalls++;
+      freshBalanceReadStarted?.();
+      if (freshBalanceGate) await freshBalanceGate;
       return { balanceUsd: freshBalanceUsd, revision: "2" };
     },
   },
@@ -107,6 +112,7 @@ const {
   getGateBalanceUsd,
   InferenceBalanceCacheWarmingError,
   writePendingInferenceCharge,
+  debitInferenceCost,
   createOptimisticDebitSettler,
   sweepStalePendingInferenceCharges,
 } = await import("./inference-billing-fast-path");
@@ -156,6 +162,8 @@ beforeEach(async () => {
   deductError = null;
   freshBalanceUsd = 50;
   freshBalanceCalls = 0;
+  freshBalanceGate = null;
+  freshBalanceReadStarted = null;
   invalidateUserCalls.length = 0;
   invalidateUserShouldReject = false;
   // Drop any pending entries left by a prior test.
@@ -388,11 +396,14 @@ describe("createOptimisticDebitSettler", () => {
     expect(deductCalls[0].idempotencyKey).toBe(
       `inference-debit:${input.organizationId}:${input.requestId}`,
     );
+    // Legacy non-Worker settlement has no active admission lease, so it keeps
+    // the normal delete-then-republish path.
+    expect(deductCalls[0].preserveInferenceBalanceHint).toBeUndefined();
     // Entry was claimed (deleted), so the sweep can never double-charge it.
     expect(await cache.get(CacheKeys.inference.pendingCharge(input.requestId))).toBeNull();
   });
 
-  test("on debit success republishes the org-balance hint the credit mutation evicted", async () => {
+  test("on debit success publishes the authoritative org-balance hint", async () => {
     const input = chargeInput();
     deductResult = { success: true, newBalance: 7.5, transaction: { id: "debit-2" } };
     // Authoritative post-debit balance the republish must pick up.
@@ -423,6 +434,42 @@ describe("createOptimisticDebitSettler", () => {
     // And the next turn's hot-path read must succeed instead of throwing the
     // cache-warming error the route surfaces as a 503.
     await expect(getGateBalanceUsd(input.organizationId, { cacheOnly: true })).resolves.toBe(4.25);
+  });
+
+  test("a 0ms next turn remains warm while the post-stream authoritative republish is paused", async () => {
+    const input = chargeInput();
+    deductResult = { success: true, newBalance: 4.25, transaction: { id: "debit-handoff" } };
+    freshBalanceUsd = 4.25;
+    await writeOrgBalanceHint(input.organizationId, 9, Date.now(), "1");
+    let releaseFreshBalance!: () => void;
+    freshBalanceGate = new Promise<void>((resolve) => {
+      releaseFreshBalance = resolve;
+    });
+    let markFreshBalanceReadStarted!: () => void;
+    const freshBalanceStarted = new Promise<void>((resolve) => {
+      markFreshBalanceReadStarted = resolve;
+    });
+    freshBalanceReadStarted = markFreshBalanceReadStarted;
+
+    // Model stream completion starts off-response settlement. Pause at the
+    // authoritative snapshot to model the exact 0-300ms interval after [DONE].
+    const settlement = debitInferenceCost(input, 0.02, "deferred", {
+      preserveBalanceHintDuringFencedHandoff: true,
+    });
+    await freshBalanceStarted;
+
+    expect(deductCalls[0]?.preserveInferenceBalanceHint).toBe(true);
+
+    // The rapid next call must consume the last revisioned projection instead
+    // of observing a deletion and surfacing billing_cache_warming.
+    await expect(getGateBalanceUsd(input.organizationId, { cacheOnly: true })).resolves.toBe(9);
+
+    releaseFreshBalance();
+    await settlement;
+    expect(await readOrgBalanceHint(input.organizationId)).toMatchObject({
+      balanceUsd: 4.25,
+      balanceRevision: "2",
+    });
   });
 
   // Opposite direction: the republish must not resurrect a hint for an org the
@@ -672,10 +719,10 @@ describe("#9899 hardening: backstop durability, lower-only hint, claim atomicity
 
   // The gate must never be raised above authoritative state by an out-of-order
   // debit (#9899 over-admit bound). The settler no longer trusts the debit's
-  // own `newBalance` for this at all: the committed debit's `onCreditMutation`
-  // evicts the hint, so the settler re-reads AUTHORITATIVE state and republishes
-  // that. A transaction reporting a stale-high balance therefore cannot raise
-  // the gate, because its reported number is never written.
+  // own `newBalance` for this at all: after normal eviction (or a DO-fenced
+  // preserved handoff), the settler re-reads AUTHORITATIVE state and republishes
+  // it. A transaction reporting a stale-high balance therefore cannot raise the
+  // gate, because its reported number is never written.
   test("a stale-high debit report never raises the gate; authoritative state wins", async () => {
     const input = chargeInput();
     await writeOrgBalanceHint(input.organizationId, 10, Date.now(), "1");

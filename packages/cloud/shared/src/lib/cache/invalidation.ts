@@ -18,20 +18,26 @@ export class CacheInvalidation {
    *
    * @param organizationId - Organization ID.
    */
-  static async onCreditMutation(organizationId: string): Promise<void> {
+  static async onCreditMutation(
+    organizationId: string,
+    options: { preserveInferenceBalanceHint?: boolean } = {},
+  ): Promise<void> {
     logger.debug(`[Cache Invalidation] Credit mutation for org=${organizationId}`);
 
-    await Promise.all([
+    const invalidations = [
       cache.del(CacheKeys.org.credits(organizationId)),
       cache.del(CacheKeys.org.data(organizationId)),
       cache.del(CacheKeys.org.dashboard(organizationId)),
       // Invalidate Eliza org balance cache on credit changes
       cache.del(CacheKeys.eliza.orgBalance(organizationId)),
+    ];
+    if (!options.preserveInferenceBalanceHint) {
       // Best-effort early eviction after a top-up, refund, or non-inference
       // debit. The admission hint's short TTL and safety margin remain the
       // correctness backstop when KV propagation or deletion is delayed.
-      cache.del(CacheKeys.inference.orgBalance(organizationId)),
-    ]);
+      invalidations.push(cache.del(CacheKeys.inference.orgBalance(organizationId)));
+    }
+    await Promise.all(invalidations);
   }
 
   /**

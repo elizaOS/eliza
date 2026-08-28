@@ -65,6 +65,20 @@ test("onCreditMutation drops the optimistic inference balance hint", async () =>
   expect(deleted).toContain(CacheKeys.eliza.orgBalance(organizationId));
 });
 
+test("inference settlement preserves only its handoff hint while invalidating every balance view", async () => {
+  const organizationId = "org-inference-settlement";
+
+  await CacheInvalidation.onCreditMutation(organizationId, {
+    preserveInferenceBalanceHint: true,
+  });
+
+  expect(deleted).not.toContain(CacheKeys.inference.orgBalance(organizationId));
+  expect(deleted).toContain(CacheKeys.org.credits(organizationId));
+  expect(deleted).toContain(CacheKeys.org.data(organizationId));
+  expect(deleted).toContain(CacheKeys.org.dashboard(organizationId));
+  expect(deleted).toContain(CacheKeys.eliza.orgBalance(organizationId));
+});
+
 test("each central invalidation method targets only its own cache scope", async () => {
   const organizationId = "org-invalidation-contract";
 

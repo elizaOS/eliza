@@ -243,6 +243,11 @@ async function recoverOrganizationCharge(
     },
     estimatedCostUsd,
     "backstop",
+    {
+      // Recovery owns the still-active Durable Object lease and settles it only
+      // after this debit, preserving the same projection handoff as live turns.
+      preserveBalanceHintDuringFencedHandoff: true,
+    },
   );
   const collectedUsd = outcome.collectedAmountUsd;
   if (

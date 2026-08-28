@@ -350,6 +350,7 @@ export async function debitInferenceCost(
   ctx: DebitContext,
   amountUsd: number,
   source: "inline" | "backstop" | "deferred",
+  options: { preserveBalanceHintDuringFencedHandoff?: boolean } = {},
 ): Promise<InferenceDebitCollectionOutcome> {
   let result: Awaited<ReturnType<typeof creditsService.deductCredits>>;
   try {
@@ -361,6 +362,15 @@ export async function debitInferenceCost(
       // claimed by a backstop after an acknowledgement loss. One key across
       // sources makes the database row the exactly-once collection gate.
       stripePaymentIntentId: `inference-debit:${ctx.organizationId}:${ctx.requestId}`,
+      ...(options.preserveBalanceHintDuringFencedHandoff
+        ? {
+            // Keep the previous revisioned projection present until the
+            // authoritative post-debit snapshot below replaces it. This opt-in
+            // is valid only while the admission Durable Object still accounts
+            // the active lease; legacy non-Worker debits keep normal eviction.
+            preserveInferenceBalanceHint: true,
+          }
+        : {}),
       metadata: {
         user_id: ctx.userId,
         requestId: ctx.requestId,
@@ -437,9 +447,9 @@ export async function debitInferenceCost(
         persistedAmountUsd,
       });
     }
-    // The committed debit already evicted the gate hint via onCreditMutation.
-    // Republish authoritative balance + revision so the NEXT turn hits a warm
-    // entry instead of a fail-closed cache-warming 503. The revision-aware
+    // Replace the preserved handoff hint (DO-fenced Worker lane), or seed the
+    // entry normal invalidation evicted (legacy lane), with authoritative
+    // balance + revision so the NEXT turn stays warm. The revision-aware
     // Durable Object remains the Worker dispatch authority if concurrent cache
     // writers arrive out of order.
     try {

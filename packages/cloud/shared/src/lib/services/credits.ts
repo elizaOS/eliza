@@ -385,6 +385,13 @@ export interface DeductCreditsParams {
    * Omit it (all existing callers) for the unchanged non-idempotent behavior.
    */
   stripePaymentIntentId?: string;
+  /**
+   * Internal inference-settlement handoff. Keep the last valid admission
+   * projection present while the caller reads and publishes the authoritative
+   * post-debit balance. This is safe only while a serialized admission lease
+   * fences provider dispatch; every other credit mutation must evict the hint.
+   */
+  preserveInferenceBalanceHint?: boolean;
 }
 
 export interface ReserveAndDeductParams extends DeductCreditsParams {
@@ -797,6 +804,7 @@ export class CreditsService {
       tokens_consumed,
       minimumBalanceRequired = 0,
       stripePaymentIntentId,
+      preserveInferenceBalanceHint = false,
       db,
       deferPostCommitEffects = false,
     } = params;
@@ -976,7 +984,9 @@ export class CreditsService {
           logger.error("[CreditsService] Failed to invalidate org cache:", error);
         });
         // Invalidate balance cache immediately after successful deduction
-        await CacheInvalidation.onCreditMutation(organizationId);
+        await CacheInvalidation.onCreditMutation(organizationId, {
+          preserveInferenceBalanceHint,
+        });
 
         // Track session usage if session_token is provided
         if (session_token) {

@@ -470,7 +470,12 @@ export async function admitOrganizationInference(
           adjustmentType: "none",
         };
       }
-      const outcome = await debitInferenceCost(debit, actualCostUsd, "deferred");
+      const outcome = await debitInferenceCost(debit, actualCostUsd, "deferred", {
+        // The attached admission lease remains active until this authoritative
+        // debit and gate settlement finish, so the last valid projection can
+        // stay present during the post-stream republish handoff.
+        preserveBalanceHintDuringFencedHandoff: true,
+      });
       return {
         reservedAmount: outcome.collectedAmountUsd,
         actualCost: actualCostUsd,
