@@ -261,6 +261,9 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
       );
     }
 
+    // Reuse any unsettled authority for the same sandbox activation when a
+    // later cohort changes the RPO. Once it settles, the exact old due remains
+    // a replay fence while a genuinely new due may be enrolled.
     const candidateRows = await sqlRows<ScheduleEnrollmentCandidateRow>(
       tx,
       sql`
@@ -355,10 +358,15 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                 SELECT 1 FROM ${agentBackupAdmissionWork} AS existing
                 WHERE existing.work_kind = 'schedule_capture'
                   AND existing.sandbox_id = eligible.id
-                  AND existing.node_history_id = eligible.node_history_id
                   AND existing.source_activation_generation = eligible.activation_generation
                   AND existing.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND existing.source_due_at = eligible.activation_completed_at
+                  AND (
+                    existing.state <> 'settled'
+                    OR (
+                      existing.node_history_id = eligible.node_history_id
+                      AND existing.source_due_at = eligible.activation_completed_at
+                    )
+                  )
               )
             ORDER BY eligible.activation_completed_at, eligible.id
             LIMIT ${limit + 1}
@@ -380,10 +388,15 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                 SELECT 1 FROM ${agentBackupAdmissionWork} AS existing
                 WHERE existing.work_kind = 'schedule_capture'
                   AND existing.sandbox_id = eligible.id
-                  AND existing.node_history_id = eligible.node_history_id
                   AND existing.source_activation_generation = eligible.activation_generation
                   AND existing.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND existing.source_due_at = eligible.next_backup_at
+                  AND (
+                    existing.state <> 'settled'
+                    OR (
+                      existing.node_history_id = eligible.node_history_id
+                      AND existing.source_due_at = eligible.next_backup_at
+                    )
+                  )
               )
             ORDER BY eligible.next_backup_at, eligible.id
             LIMIT ${limit + 1}
@@ -412,11 +425,16 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                 SELECT 1 FROM ${agentBackupAdmissionWork} AS existing
                 WHERE existing.work_kind = 'schedule_capture'
                   AND existing.sandbox_id = eligible.id
-                  AND existing.node_history_id = eligible.node_history_id
                   AND existing.source_activation_generation = eligible.activation_generation
                   AND existing.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND existing.source_due_at = eligible.rpo_anchor_at
-                    + (${cohortRpoMs} * INTERVAL '1 millisecond')
+                  AND (
+                    existing.state <> 'settled'
+                    OR (
+                      existing.node_history_id = eligible.node_history_id
+                      AND existing.source_due_at = eligible.rpo_anchor_at
+                        + (${cohortRpoMs} * INTERVAL '1 millisecond')
+                    )
+                  )
               )
             ORDER BY eligible.rpo_anchor_at, eligible.id
             LIMIT ${limit + 1}

@@ -12,13 +12,24 @@ import { readFileSync } from "node:fs";
 import { pushSchema } from "drizzle-kit/api";
 import { sql } from "drizzle-orm";
 
-process.env.DATABASE_URL ||= "pglite://memory";
-process.env.NODE_ENV ||= "test";
+const PGLITE_DATABASE_URL = "pglite://memory";
+const ORIGINAL_ENV = {
+  DATABASE_URL: process.env.DATABASE_URL,
+  TEST_DATABASE_URL: process.env.TEST_DATABASE_URL,
+  NODE_ENV: process.env.NODE_ENV,
+  MOCK_REDIS: process.env.MOCK_REDIS,
+  SKIP_AGENT_SANDBOX_ENSURE: process.env.SKIP_AGENT_SANDBOX_ENSURE,
+};
+
+// The client is imported dynamically below. Force both selectors first so an
+// ambient integration-test DSN can never receive this suite's destructive DDL.
+process.env.DATABASE_URL = PGLITE_DATABASE_URL;
+process.env.TEST_DATABASE_URL = PGLITE_DATABASE_URL;
+process.env.NODE_ENV = "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
-import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { sqlRows } from "../../execute-helpers";
 import {
   agentBackupAdmissionEnrollmentShards,
@@ -38,10 +49,6 @@ import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
-import {
-  enrollDueAgentBackupScheduleAdmissionCohort,
-  requireAgentBackupAdmissionEnrollmentLeaseOwner,
-} from "../agent-backup-admission-enrollment";
 
 const TIMEOUT = 60_000;
 const ORGANIZATION_ID = "70000000-0000-4000-8000-00000000e001";
@@ -70,7 +77,35 @@ const COHORT_MIGRATIONS = [
   "0359_agent_backup_admission_shard_guard",
 ] as const;
 
+type ClientModule = typeof import("../../client");
+type EnrollmentRepository = typeof import("../agent-backup-admission-enrollment");
+
 let schemaFailure = "";
+let dbWrite: ClientModule["dbWrite"];
+let closeDatabaseConnectionsForTests: ClientModule["closeDatabaseConnectionsForTests"] | undefined;
+let getPgliteClientForTests: ClientModule["getPgliteClientForTests"] | undefined;
+let enrollDueAgentBackupScheduleAdmissionCohort: EnrollmentRepository["enrollDueAgentBackupScheduleAdmissionCohort"];
+let requireAgentBackupAdmissionEnrollmentLeaseOwner: EnrollmentRepository["requireAgentBackupAdmissionEnrollmentLeaseOwner"];
+
+function restoreEnvironment(): void {
+  for (const [name, value] of Object.entries(ORIGINAL_ENV)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+}
+
+function requirePGliteHarness(): ReturnType<ClientModule["getPgliteClientForTests"]> {
+  if (
+    process.env.DATABASE_URL !== PGLITE_DATABASE_URL ||
+    process.env.TEST_DATABASE_URL !== PGLITE_DATABASE_URL
+  ) {
+    throw new Error("Backup admission enrollment cleanup requires isolated PGlite URLs");
+  }
+  if (!getPgliteClientForTests) {
+    throw new Error("Backup admission enrollment PGlite client was not initialized");
+  }
+  return getPgliteClientForTests();
+}
 
 function uuidForShard(shardId: number, suffix: number): string {
   const firstByte = shardId.toString(16).padStart(2, "0");
@@ -143,6 +178,19 @@ async function enroll(ownerId: string, limit: number, rpoMs = 60_000) {
 
 beforeAll(async () => {
   try {
+    const [clientModule, repositoryModule] = await Promise.all([
+      import("../../client"),
+      import("../agent-backup-admission-enrollment"),
+    ]);
+    dbWrite = clientModule.dbWrite;
+    closeDatabaseConnectionsForTests = clientModule.closeDatabaseConnectionsForTests;
+    getPgliteClientForTests = clientModule.getPgliteClientForTests;
+    enrollDueAgentBackupScheduleAdmissionCohort =
+      repositoryModule.enrollDueAgentBackupScheduleAdmissionCohort;
+    requireAgentBackupAdmissionEnrollmentLeaseOwner =
+      repositoryModule.requireAgentBackupAdmissionEnrollmentLeaseOwner;
+    requirePGliteHarness();
+
     const { apply } = await pushSchema(
       {
         organizations,
@@ -175,6 +223,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(schemaFailure).toBe("");
+  requirePGliteHarness();
   await dbWrite.execute(sql`
     UPDATE ${agentBackupAdmissionEnrollmentShards}
     SET lease_owner = 'enrollment-test-reset',
@@ -242,7 +291,11 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await closeDatabaseConnectionsForTests();
+  try {
+    await closeDatabaseConnectionsForTests?.();
+  } finally {
+    restoreEnvironment();
+  }
 });
 
 describe("agent backup admission enrollment", () => {
@@ -488,6 +541,118 @@ describe("agent backup admission enrollment", () => {
         rpo_deadline_at: first?.rpo_deadline_at,
       },
     ]);
+  });
+
+  test("reuses one unsettled schedule authority when the RPO tightens", async () => {
+    await prioritizeShardZero();
+    const sandboxId = uuidForShard(0, 0xe451);
+    const generation = uuidForShard(32, 0xf451);
+    const activationCompletedAt = new Date(Date.now() - 20 * 60_000);
+    const originalDueAt = new Date(activationCompletedAt.getTime() + 15 * 60_000);
+    await insertAgent({
+      id: sandboxId,
+      generation,
+      index: 1,
+      activationCompletedAt,
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ next_backup_at: originalDueAt })
+      .where(sql`${agentSandboxes.id} = ${sandboxId}`);
+
+    expect(await enroll("rpo-policy-original", 100, 15 * 60_000)).toMatchObject({
+      shardId: 0,
+      enrolled: 1,
+      queued: 1,
+      cohortComplete: true,
+    });
+    const [before] = await sqlRows<{
+      document: string;
+      id: string;
+      work_kind: string;
+      work_stage: string;
+      source_due_at: string;
+    }>(
+      dbWrite,
+      sql`
+        SELECT row_to_json(work)::text AS document, id, work_kind, work_stage,
+          source_due_at::text AS source_due_at
+        FROM ${agentBackupAdmissionWork} AS work
+        WHERE sandbox_id = ${sandboxId}
+      `,
+    );
+    expect(before).toMatchObject({
+      work_kind: "schedule_capture",
+      work_stage: "reserve_capture",
+    });
+    expect(new Date(before?.source_due_at ?? 0).getTime()).toBe(originalDueAt.getTime());
+
+    for (const ownerId of ["rpo-policy-tightened-a", "rpo-policy-tightened-b"]) {
+      expect(await enroll(ownerId, 100, 60_000)).toMatchObject({
+        shardId: 0,
+        enrolled: 0,
+        queued: 0,
+        cohortComplete: true,
+      });
+    }
+    const unchanged = await sqlRows<{
+      document: string;
+      unsettled: number;
+      next_backup_at: string;
+    }>(
+      dbWrite,
+      sql`
+        SELECT row_to_json(work)::text AS document,
+          count(*) FILTER (WHERE work.state <> 'settled') OVER ()::integer AS unsettled,
+          sandbox.next_backup_at::text AS next_backup_at
+        FROM ${agentBackupAdmissionWork} AS work
+        JOIN ${agentSandboxes} AS sandbox ON sandbox.id = work.sandbox_id
+        WHERE work.sandbox_id = ${sandboxId}
+      `,
+    );
+    expect(unchanged).toHaveLength(1);
+    expect(unchanged[0]).toMatchObject({ document: before?.document, unsettled: 1 });
+    expect(new Date(unchanged[0]?.next_backup_at ?? 0).getTime()).toBe(originalDueAt.getTime());
+
+    await dbWrite.execute(sql`
+      UPDATE ${agentBackupAdmissionWork}
+      SET state = 'settled', settled_at = clock_timestamp(),
+        settled_reason = 'CAPTURE_COMPLETED', updated_at = clock_timestamp()
+      WHERE id = ${before?.id}::uuid
+    `);
+    expect(await enroll("rpo-policy-after-settlement", 100, 60_000)).toMatchObject({
+      shardId: 0,
+      enrolled: 1,
+      queued: 1,
+      cohortComplete: true,
+    });
+    const [replacement] = await sqlRows<{
+      total: number;
+      unsettled: number;
+      source_due_at: string;
+      work_kind: string;
+      work_stage: string;
+    }>(
+      dbWrite,
+      sql`
+        SELECT count(*) OVER ()::integer AS total,
+          count(*) FILTER (WHERE state <> 'settled') OVER ()::integer AS unsettled,
+          source_due_at::text AS source_due_at, work_kind, work_stage
+        FROM ${agentBackupAdmissionWork}
+        WHERE sandbox_id = ${sandboxId}
+        ORDER BY source_due_at
+        LIMIT 1
+      `,
+    );
+    expect(replacement).toMatchObject({
+      total: 2,
+      unsettled: 1,
+      work_kind: "schedule_capture",
+      work_stage: "reserve_capture",
+    });
+    expect(new Date(replacement?.source_due_at ?? 0).getTime()).toBe(
+      activationCompletedAt.getTime() + 60_000,
+    );
   });
 
   test("does not enroll backup work after account lifecycle leaves active", async () => {
