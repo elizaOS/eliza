@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "contracts": [
     {
       "id": "auth-result-shell",
@@ -7,6 +7,8 @@
       "symbol": "AuthResultShell",
       "requiredAtomicDependencies": ["card"],
       "requiredRenderedTags": ["main"],
+      "renderedStory": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.stories.tsx",
+      "behavioralTest": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/cloud/public-pages/pages/auth/auth-error-page.tsx",
         "packages/ui/src/cloud/public-pages/pages/auth/auth-success-page.tsx"
@@ -20,6 +22,8 @@
       "symbol": "ConnectionCapabilityTile",
       "requiredAtomicDependencies": ["card"],
       "requiredRenderedTags": ["p"],
+      "renderedStory": "packages/ui/src/cloud/connectors/connection-capability-tile.stories.tsx",
+      "behavioralTest": "packages/ui/src/cloud/connectors/connection-capability-tile.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/cloud/connectors/google-connection.tsx",
         "packages/ui/src/cloud/connectors/microsoft-connection.tsx"
@@ -33,6 +37,8 @@
       "symbol": "ContentState",
       "requiredAtomicDependencies": ["card", "spinner"],
       "requiredRenderedTags": ["LoadingContent", "PlainEmptyContent"],
+      "renderedStory": "packages/ui/src/components/composites/page-panel/content-state.stories.tsx",
+      "behavioralTest": "packages/ui/src/components/composites/page-panel/content-state.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/components/composites/page-panel/page-panel-empty.tsx",
         "packages/ui/src/components/composites/page-panel/page-panel-loading.tsx"
@@ -46,6 +52,8 @@
       "symbol": "SettingsRow",
       "requiredAtomicDependencies": ["button", "card"],
       "requiredRenderedTags": ["Button"],
+      "renderedStory": "packages/ui/src/components/settings/settings-layout.stories.tsx",
+      "behavioralTest": "packages/ui/src/components/settings/settings-layout.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/components/settings/settings-agent-rows.tsx",
         "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx"
@@ -59,6 +67,8 @@
       "symbol": "ActionListRow",
       "requiredAtomicDependencies": ["button", "card"],
       "requiredRenderedTags": ["Button"],
+      "renderedStory": "packages/ui/src/components/shared/ActionListRow.stories.tsx",
+      "behavioralTest": "packages/ui/src/components/shared/ActionListRow.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/components/settings/LoadedPacksList.tsx",
         "packages/ui/src/components/composites/skills/skill-sidebar-item.tsx"

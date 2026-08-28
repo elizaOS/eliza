@@ -15,14 +15,11 @@ export {
   type ExportButtonProps,
 } from "../cloud-ui/components/analytics";
 export type {
-  BrandButtonProps,
   KeyMetric,
   TabItem,
 } from "../cloud-ui/components/brand";
 export {
   AgentCard,
-  BrandButton,
-  BrandCard,
   BrandTabs,
   BrandTabsContent,
   BrandTabsList,

@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanup, render, screen } from "@testing-library/react";
-import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
+import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -30,15 +30,6 @@ vi.mock("../../shell/CloudI18nProvider", () => ({
 }));
 
 vi.mock("../../../cloud-ui", () => ({
-  BrandButton: ({
-    children,
-    ...props
-  }: PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>>) => (
-    <button type="button" {...props}>
-      {children}
-    </button>
-  ),
-  BrandCard: ({ children }: PropsWithChildren) => <section>{children}</section>,
   CornerBrackets: () => null,
   Switch: ({
     checked,

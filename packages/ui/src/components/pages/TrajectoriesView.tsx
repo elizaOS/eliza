@@ -30,6 +30,11 @@ import {
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import {
+  FramedPage,
+  FramedPageBody,
+  FramedPageHeader,
+} from "../../layouts/framed-page";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
@@ -40,9 +45,7 @@ import {
 } from "../../utils/trajectory-format";
 import { PagePanel } from "../composites/page-panel";
 import { TrajectorySidebarItem } from "../composites/trajectories/trajectory-sidebar-item";
-import { SettingsGroup } from "../settings/settings-layout";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
-import { ViewHeader } from "../shared/ViewHeader";
 import { Button, type ButtonProps } from "../ui/button";
 import {
   DropdownMenu,
@@ -54,7 +57,7 @@ import { ListSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
-const MOBILE_WORKSPACE_QUERY = "(max-width: 799px)";
+const MOBILE_WORKSPACE_QUERY = "(max-width: 799px), (max-height: 599px)";
 const PAGE_SIZE = 50;
 
 type TrajectoryLoadIssue =
@@ -282,14 +285,6 @@ function issueCopy(issue: TrajectoryLoadIssue, hasSavedData: boolean) {
         description: "Try again in a moment.",
       };
   }
-}
-
-function TrajectoryStateSurface({ children }: { children: ReactNode }) {
-  return (
-    <div className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
-      {children}
-    </div>
-  );
 }
 
 export interface TrajectoriesViewProps {
@@ -605,11 +600,6 @@ function TrajectoriesViewForAuthority({
     setActionNotice,
   ]);
 
-  const deleteDisabled =
-    loading ||
-    clearingAll ||
-    deletingTrajectoryId !== null ||
-    detailTrajectoryId === null;
   const clearAllDisabled =
     loading || clearingAll || deletingTrajectoryId !== null || total === 0;
   const issue = loadIssue
@@ -680,27 +670,26 @@ function TrajectoriesViewForAuthority({
             </AgentDropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <ConfirmDeleteControl
-          agentId="trajectories-delete-current-open"
-          agentLabel="Delete current trajectory"
-          agentGroup="trajectories-toolbar"
-          agentDescription="Delete the selected trajectory"
-          confirmAgentId="trajectories-delete-current-confirm"
-          cancelAgentId="trajectories-delete-current-cancel"
-          triggerVariant="ghost"
-          triggerClassName="h-11 w-11 text-danger hover:bg-danger/10 hover:text-danger"
-          confirmClassName="h-11 border border-danger/25 bg-danger/10 px-4 text-sm font-semibold text-danger hover:bg-danger/15"
-          cancelClassName="h-11 border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] px-4 text-sm font-semibold text-[color:var(--settings-muted)] hover:bg-[var(--settings-fill)]"
-          disabled={deleteDisabled}
-          triggerLabel={<Trash2 className="size-4" />}
-          triggerTitle="Delete current"
-          promptText="Delete this trajectory?"
-          busyLabel="Deleting..."
-          onConfirm={() => {
-            if (detailTrajectoryId)
-              void handleDeleteTrajectory(detailTrajectoryId);
-          }}
-        />
+        {detailTrajectoryId ? (
+          <ConfirmDeleteControl
+            agentId="trajectories-delete-current-open"
+            agentLabel="Delete current trajectory"
+            agentGroup="trajectories-toolbar"
+            agentDescription="Delete the selected trajectory"
+            confirmAgentId="trajectories-delete-current-confirm"
+            cancelAgentId="trajectories-delete-current-cancel"
+            triggerVariant="ghost"
+            triggerClassName="h-11 w-11 text-danger hover:bg-danger/10 hover:text-danger"
+            confirmClassName="h-11 border border-danger/25 bg-danger/10 px-4 text-sm font-semibold text-danger hover:bg-danger/15"
+            cancelClassName="h-11 border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] px-4 text-sm font-semibold text-[color:var(--settings-muted)] hover:bg-[var(--settings-fill)]"
+            disabled={loading || clearingAll || deletingTrajectoryId !== null}
+            triggerLabel={<Trash2 className="size-4" />}
+            triggerTitle="Delete current"
+            promptText="Delete this trajectory?"
+            busyLabel="Deleting..."
+            onConfirm={() => void handleDeleteTrajectory(detailTrajectoryId)}
+          />
+        ) : null}
         <ConfirmDeleteControl
           agentId="trajectories-clear-all-open"
           agentLabel="Clear all trajectories"
@@ -724,11 +713,12 @@ function TrajectoriesViewForAuthority({
 
   return (
     <ShellViewAgentSurface viewId="trajectories">
-      <div
-        className="settings-surface settings-canvas flex h-full min-h-0 w-full flex-col overflow-hidden"
+      <FramedPage
+        gutterOwner="framed-page"
+        className="settings-surface"
         data-testid="trajectories-view"
       >
-        <ViewHeader
+        <FramedPageHeader
           title={
             showingMobileDetail
               ? t("trajectorydetailview.Title", {
@@ -748,196 +738,197 @@ function TrajectoriesViewForAuthority({
                 })
               : undefined
           }
-          right={contentHeader}
+          actions={contentHeader}
           className="text-[color:var(--settings-foreground)]"
         />
-        <div className="mx-auto grid min-h-0 w-full max-w-[88rem] flex-1 min-[800px]:grid-cols-[21rem_minmax(0,1fr)] min-[800px]:gap-4 min-[800px]:px-5 min-[800px]:pt-4">
-          <aside
-            className={cn(
-              "min-h-0 flex-col px-4 pt-2 min-[800px]:rounded-t-[20px] min-[800px]:border min-[800px]:border-b-0 min-[800px]:border-[color:var(--settings-hairline)] min-[800px]:bg-[var(--settings-secondary)] min-[800px]:px-3 min-[800px]:pt-3",
-              showList ? "flex" : "hidden",
-            )}
-            aria-label="Trajectory history"
-          >
-            <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 px-1">
-              <div className="min-w-0">
-                <h2 className="text-[15px] font-semibold text-[color:var(--settings-foreground)]">
-                  Activity
-                </h2>
-                <p className="text-xs leading-5 text-[color:var(--settings-muted)]">
-                  {hasActiveFilters
-                    ? `${total} matching ${total === 1 ? "run" : "runs"}`
-                    : `${total} recorded ${total === 1 ? "run" : "runs"}`}
-                </p>
-              </div>
-              {managementActions}
-            </div>
-
-            {issue && trajectories.length > 0 ? (
-              <div
-                role="status"
-                className="mt-2 flex items-start gap-2 rounded-[12px] bg-[var(--settings-fill)] px-3 py-2.5 text-[13px] leading-5 text-[color:var(--settings-muted)]"
-              >
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium text-[color:var(--settings-foreground)]">
-                    {issue.title}
-                  </div>
-                  <div>{issue.description}</div>
-                </div>
-                {canRetryIssue ? (
-                  <Button
-                    type="button"
-                    size="touch"
-                    variant="ghostMuted"
-                    className="shrink-0"
-                    onClick={() => void loadTrajectories()}
-                  >
-                    Retry
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4 pt-3">
-              {loading && trajectories.length === 0 ? (
-                <TrajectoryStateSurface>
-                  <div
-                    role="status"
-                    aria-label="Loading trajectory history"
-                    aria-busy="true"
-                    className="p-3"
-                  >
-                    <ListSkeleton rows={6} />
-                  </div>
-                </TrajectoryStateSurface>
-              ) : issue && trajectories.length === 0 ? (
-                <TrajectoryStateSurface>
-                  <PagePanel.ContentState
-                    state="error"
-                    placement="workspace"
-                    tone="warning"
-                    role="status"
-                    className="min-h-[18rem]"
-                    icon={<AlertTriangle className="size-5" />}
-                    title={issue.title}
-                    description={issue.description}
-                    action={
-                      canRetryIssue ? (
-                        <Button
-                          type="button"
-                          size="touch"
-                          variant="outline"
-                          onClick={() => void loadTrajectories()}
-                        >
-                          Retry
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                </TrajectoryStateSurface>
-              ) : trajectories.length === 0 ? (
-                <TrajectoryStateSurface>
-                  <PagePanel.ContentState
-                    state="empty"
-                    placement="workspace"
-                    className="min-h-[18rem]"
-                    icon={<Route className="size-5" />}
-                    title={
-                      hasActiveFilters
-                        ? "No matching activity"
-                        : "No recorded activity yet"
-                    }
-                    description={
-                      hasActiveFilters
-                        ? "Try a shorter search."
-                        : "Agent runs will appear here when trajectory recording is enabled."
-                    }
-                  />
-                </TrajectoryStateSurface>
-              ) : (
-                <SettingsGroup>
-                  {trajectories.map((trajectory) => (
-                    <AgentTrajectorySidebarItem
-                      key={trajectory.id}
-                      trajectory={trajectory}
-                      selected={selectedTrajectoryId === trajectory.id}
-                      onSelect={() => onSelectTrajectory(trajectory.id)}
-                    />
-                  ))}
-                </SettingsGroup>
-              )}
-
-              {totalPages > 1 ? (
-                <nav
-                  className="mt-3 flex min-h-11 items-center justify-between gap-2 px-1 text-xs text-[color:var(--settings-muted)]"
-                  aria-label="Trajectory pages"
+        <FramedPageBody scroll="view" className="pt-2">
+          {trajectories.length === 0 ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              {loading ? (
+                <div
+                  role="status"
+                  aria-label="Loading trajectory history"
+                  aria-busy="true"
+                  className="py-3"
                 >
-                  <span>
-                    {page * PAGE_SIZE + 1}-
-                    {Math.min((page + 1) * PAGE_SIZE, total)} of {total}
-                  </span>
-                  <div className="flex gap-1">
-                    <AgentToolbarButton
-                      agentId="trajectories-page-prev"
-                      agentLabel="Previous trajectories page"
-                      agentStatus={page === 0 ? "disabled" : "ready"}
-                      onActivate={() =>
-                        setPage((current) => Math.max(0, current - 1))
-                      }
-                      variant="ghostMuted"
-                      size="touch"
-                      className="px-3"
-                      onClick={() =>
-                        setPage((current) => Math.max(0, current - 1))
-                      }
-                      disabled={page === 0}
-                    >
-                      Previous
-                    </AgentToolbarButton>
-                    <AgentToolbarButton
-                      agentId="trajectories-page-next"
-                      agentLabel="Next trajectories page"
-                      agentStatus={
-                        page >= totalPages - 1 ? "disabled" : "ready"
-                      }
-                      onActivate={() => setPage((current) => current + 1)}
-                      variant="ghostMuted"
-                      size="touch"
-                      className="px-3"
-                      onClick={() => setPage((current) => current + 1)}
-                      disabled={page >= totalPages - 1}
-                    >
-                      Next
-                    </AgentToolbarButton>
-                  </div>
-                </nav>
-              ) : null}
-            </div>
-          </aside>
-
-          <main
-            className={cn(
-              "eliza-chat-scroll min-h-0 overflow-y-auto px-4 pb-4 pt-2 min-[800px]:px-0 min-[800px]:pt-0",
-              showDetail ? "block" : "hidden",
-            )}
-          >
-            {detailTrajectoryId ? (
-              <TrajectoryDetailView trajectoryId={detailTrajectoryId} />
-            ) : (
-              <TrajectoryStateSurface>
+                  <ListSkeleton rows={6} rowClassName="h-16" />
+                </div>
+              ) : issue ? (
+                <PagePanel.ContentState
+                  state="error"
+                  placement="workspace"
+                  tone="warning"
+                  role="status"
+                  className="flex-1"
+                  icon={<AlertTriangle className="size-5" />}
+                  title={issue.title}
+                  description={issue.description}
+                  action={
+                    canRetryIssue ? (
+                      <Button
+                        type="button"
+                        size="touch"
+                        variant="outline"
+                        onClick={() => void loadTrajectories()}
+                      >
+                        Retry
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : (
                 <PagePanel.ContentState
                   state="empty"
                   placement="workspace"
-                  className="min-h-[24rem]"
-                  title="Select a run"
-                  description="Choose recorded activity to inspect its timeline and model calls."
+                  className="flex-1"
+                  icon={<Route className="size-5" />}
+                  title={
+                    hasActiveFilters
+                      ? "No matching activity"
+                      : "No recorded activity yet"
+                  }
+                  description={
+                    hasActiveFilters
+                      ? "Try a shorter search."
+                      : "Agent runs will appear here when trajectory recording is enabled."
+                  }
                 />
-              </TrajectoryStateSurface>
-            )}
-          </main>
-        </div>
-      </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid min-h-0 flex-1 [@media(min-width:800px)_and_(min-height:600px)]:grid-cols-[19rem_minmax(0,1fr)]">
+              <aside
+                className={cn(
+                  "min-h-0 flex-col [@media(min-width:800px)_and_(min-height:600px)]:border-r [@media(min-width:800px)_and_(min-height:600px)]:border-[color:var(--settings-hairline)] [@media(min-width:800px)_and_(min-height:600px)]:pr-4",
+                  showList ? "flex" : "hidden",
+                )}
+                aria-label="Trajectory history"
+              >
+                <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 px-4">
+                  <div className="min-w-0">
+                    <h2 className="text-[15px] font-semibold text-[color:var(--settings-foreground)]">
+                      Activity
+                    </h2>
+                    <p className="text-xs leading-5 text-[color:var(--settings-muted)]">
+                      {hasActiveFilters
+                        ? `${total} matching ${total === 1 ? "run" : "runs"}`
+                        : `${total} recorded ${total === 1 ? "run" : "runs"}`}
+                    </p>
+                  </div>
+                  {managementActions}
+                </div>
+
+                {issue && trajectories.length > 0 ? (
+                  <div
+                    role="status"
+                    className="mt-2 flex items-start gap-2 rounded-[12px] bg-[var(--settings-fill)] px-3 py-2.5 text-[13px] leading-5 text-[color:var(--settings-muted)]"
+                  >
+                    <AlertTriangle
+                      className="mt-0.5 size-4 shrink-0"
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-[color:var(--settings-foreground)]">
+                        {issue.title}
+                      </div>
+                      <div>{issue.description}</div>
+                    </div>
+                    {canRetryIssue ? (
+                      <Button
+                        type="button"
+                        size="touch"
+                        variant="ghostMuted"
+                        className="shrink-0"
+                        onClick={() => void loadTrajectories()}
+                      >
+                        Retry
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4 pt-3">
+                  <div className="divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)]">
+                    {trajectories.map((trajectory) => (
+                      <AgentTrajectorySidebarItem
+                        key={trajectory.id}
+                        trajectory={trajectory}
+                        selected={selectedTrajectoryId === trajectory.id}
+                        onSelect={() => onSelectTrajectory(trajectory.id)}
+                      />
+                    ))}
+                  </div>
+
+                  {totalPages > 1 ? (
+                    <nav
+                      className="mt-3 flex min-h-11 items-center justify-between gap-2 px-1 text-xs text-[color:var(--settings-muted)]"
+                      aria-label="Trajectory pages"
+                    >
+                      <span>
+                        {page * PAGE_SIZE + 1}-
+                        {Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+                      </span>
+                      <div className="flex gap-1">
+                        <AgentToolbarButton
+                          agentId="trajectories-page-prev"
+                          agentLabel="Previous trajectories page"
+                          agentStatus={page === 0 ? "disabled" : "ready"}
+                          onActivate={() =>
+                            setPage((current) => Math.max(0, current - 1))
+                          }
+                          variant="ghostMuted"
+                          size="touch"
+                          className="px-3"
+                          onClick={() =>
+                            setPage((current) => Math.max(0, current - 1))
+                          }
+                          disabled={page === 0}
+                        >
+                          Previous
+                        </AgentToolbarButton>
+                        <AgentToolbarButton
+                          agentId="trajectories-page-next"
+                          agentLabel="Next trajectories page"
+                          agentStatus={
+                            page >= totalPages - 1 ? "disabled" : "ready"
+                          }
+                          onActivate={() => setPage((current) => current + 1)}
+                          variant="ghostMuted"
+                          size="touch"
+                          className="px-3"
+                          onClick={() => setPage((current) => current + 1)}
+                          disabled={page >= totalPages - 1}
+                        >
+                          Next
+                        </AgentToolbarButton>
+                      </div>
+                    </nav>
+                  ) : null}
+                </div>
+              </aside>
+
+              <main
+                className={cn(
+                  "eliza-chat-scroll min-h-0 overflow-y-auto pb-4 [@media(min-width:800px)_and_(min-height:600px)]:pl-4",
+                  showDetail ? "block" : "hidden",
+                )}
+              >
+                {detailTrajectoryId ? (
+                  <TrajectoryDetailView trajectoryId={detailTrajectoryId} />
+                ) : (
+                  <PagePanel.ContentState
+                    state="empty"
+                    placement="workspace"
+                    className="min-h-[24rem]"
+                    title="Select a run"
+                    description="Choose recorded activity to inspect its timeline and model calls."
+                  />
+                )}
+              </main>
+            </div>
+          )}
+        </FramedPageBody>
+      </FramedPage>
     </ShellViewAgentSurface>
   );
 }

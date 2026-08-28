@@ -112,7 +112,11 @@ describe("FilesView", () => {
     renderFiles();
     await screen.findByText("photo.png");
 
-    fireEvent.click(screen.getByTestId("file-facet-document"));
+    fireEvent.pointerDown(screen.getByTestId("file-type-filter"), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(await screen.findByTestId("file-facet-document"));
 
     await waitFor(() => {
       expect(screen.getAllByTestId("file-card")).toHaveLength(1);
@@ -121,7 +125,11 @@ describe("FilesView", () => {
     expect(screen.queryByText("photo.png")).toBeNull();
 
     // Images facet shows only the image.
-    fireEvent.click(screen.getByTestId("file-facet-image"));
+    fireEvent.pointerDown(screen.getByTestId("file-type-filter"), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(await screen.findByTestId("file-facet-image"));
     await waitFor(() => {
       expect(screen.getAllByTestId("file-card")).toHaveLength(1);
     });
@@ -182,7 +190,11 @@ describe("FilesView", () => {
       .getAllByTestId("file-card")
       .find((c) => c.getAttribute("data-file-name") === "photo.png");
 
-    fireEvent.click(within(imageCard as HTMLElement).getByTestId("file-share"));
+    fireEvent.pointerDown(
+      within(imageCard as HTMLElement).getByTestId("file-actions"),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(await screen.findByTestId("file-share"));
 
     await waitFor(() => {
       expect(downloadShareMock.shareAttachment).toHaveBeenCalledTimes(1);
@@ -209,7 +221,11 @@ describe("FilesView", () => {
       .getAllByTestId("file-card")
       .find((c) => c.getAttribute("data-file-name") === "report.pdf");
 
-    fireEvent.click(within(pdfCard as HTMLElement).getByTestId("file-delete"));
+    fireEvent.pointerDown(
+      within(pdfCard as HTMLElement).getByTestId("file-actions"),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(await screen.findByTestId("file-delete"));
 
     expect(window.confirm).toHaveBeenCalledTimes(1);
 
@@ -231,7 +247,11 @@ describe("FilesView", () => {
     const pdfCard = screen
       .getAllByTestId("file-card")
       .find((c) => c.getAttribute("data-file-name") === "report.pdf");
-    fireEvent.click(within(pdfCard as HTMLElement).getByTestId("file-delete"));
+    fireEvent.pointerDown(
+      within(pdfCard as HTMLElement).getByTestId("file-actions"),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(await screen.findByTestId("file-delete"));
 
     expect(clientMock.deleteFile).not.toHaveBeenCalled();
     expect(screen.getByText("report.pdf")).toBeTruthy();
@@ -245,7 +265,11 @@ describe("FilesView", () => {
     const pdfCard = screen
       .getAllByTestId("file-card")
       .find((c) => c.getAttribute("data-file-name") === "report.pdf");
-    fireEvent.click(within(pdfCard as HTMLElement).getByTestId("file-delete"));
+    fireEvent.pointerDown(
+      within(pdfCard as HTMLElement).getByTestId("file-actions"),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(await screen.findByTestId("file-delete"));
 
     await waitFor(() => {
       expect(clientMock.deleteFile).toHaveBeenCalledWith("report.pdf");

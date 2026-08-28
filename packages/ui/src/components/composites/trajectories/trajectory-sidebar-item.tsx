@@ -14,7 +14,7 @@ function InlineMeta({
 }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-[color:var(--settings-muted)]">
-      <StatusDot size="compact" color={color} />
+      {color ? <StatusDot size="compact" color={color} /> : null}
       <span>{label}</span>
     </span>
   );

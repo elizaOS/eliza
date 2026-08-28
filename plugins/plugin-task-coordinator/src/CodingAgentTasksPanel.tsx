@@ -850,7 +850,7 @@ export function CodingAgentTasksPanel({
   if (selectedThreadId && selectedThreadSummary) {
     return (
       <div
-        className="flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto bg-bg px-4 pb-28 pt-4 text-txt"
+        className="flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto px-4 pb-28 pe-[var(--eliza-chat-side-clearance,0px)] pt-4 text-txt"
         data-testid="task-coordinator-panel"
       >
         {detailError ? (
@@ -881,7 +881,7 @@ export function CodingAgentTasksPanel({
 
   return (
     <div
-      className="relative flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto bg-bg px-4 pb-28 pt-4 text-txt"
+      className="relative flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto px-4 pb-28 pe-[var(--eliza-chat-side-clearance,0px)] pt-4 text-txt"
       data-testid="task-coordinator-panel"
     >
       {fullPage ? (
@@ -982,7 +982,7 @@ export function CodingAgentTasksPanel({
 
       {threads.length > 0 ? (
         <>
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col">
             {threads.map((thread) => (
               <TaskCard
                 key={thread.id}

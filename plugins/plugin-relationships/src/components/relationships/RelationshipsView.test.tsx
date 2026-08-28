@@ -9,9 +9,9 @@
  *
  * The default fetchers hit those URLs via `client.getBaseUrl()`; every test here
  * injects the `fetchers` seam so the suite stays offline. We assert the rendered
- * spatial DOM across the four states (loading / error / empty / populated), plus
- * the add-someone, open-entity, retry, and quiet background-poll affordances —
- * all addressed through the agent surface (`data-agent-id`).
+ * spatial DOM across loading, error, empty, populated, and filtered no-result
+ * presentation, plus the add-someone, open-entity, retry, and quiet
+ * background-poll affordances — all addressed through the agent surface.
  */
 
 import {
@@ -20,6 +20,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -35,6 +36,10 @@ vi.mock("@elizaos/ui/api", () => ({
   },
 }));
 
+import {
+  type RelationshipsSnapshot,
+  RelationshipsSpatialView,
+} from "./RelationshipsSpatialView.js";
 import {
   type RelationshipsFetchers,
   RelationshipsView,
@@ -125,7 +130,10 @@ describe("RelationshipsView — states", () => {
         })}
       />,
     );
-    expect(screen.getByText("Loading relationships")).toBeTruthy();
+    const loading = screen.getByRole("status", {
+      name: "Loading relationships",
+    });
+    expect(within(loading).getByText("Loading relationships")).toBeTruthy();
   });
 
   it("renders the populated graph with entity nodes and their edges", async () => {
@@ -189,6 +197,14 @@ describe("RelationshipsView — states", () => {
       />,
     );
     await screen.findByRole("heading", { name: "No relationships yet" });
+    expect(
+      screen.getByText(
+        "Add a person to start building the relationship graph.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add someone" })).toBe(
+      agent("add"),
+    );
     expect(screen.queryByText("Pat Doe")).toBeNull();
   });
 
@@ -231,7 +247,12 @@ describe("RelationshipsView — states", () => {
       return { entities: [entity({ preferredName: "Pat Doe" })] };
     };
     render(<RelationshipsView fetchers={makeFetchers({ fetchEntities })} />);
-    await screen.findByText("boom");
+    const alert = await screen.findByRole("alert");
+    expect(
+      within(alert).getByText("Could not load relationships"),
+    ).toBeTruthy();
+    expect(within(alert).getByText("boom")).toBeTruthy();
+    expect(within(alert).getByRole("button", { name: "Retry" })).toBeTruthy();
     fireEvent.click(agent("retry"));
     await screen.findByText("Pat Doe");
   });
@@ -285,6 +306,42 @@ describe("RelationshipsView — filtering + freshness", () => {
     );
     await waitFor(() => expect(screen.queryByText("Pat Doe")).toBeNull());
     expect(screen.getByText("Acme Corp")).toBeTruthy();
+  });
+
+  it("keeps a ready graph with no filter matches distinct from an empty graph", async () => {
+    const snapshot: RelationshipsSnapshot = {
+      state: "ready",
+      nodes: [
+        {
+          id: "ent-pat",
+          kind: "person",
+          kindLabel: "People",
+          name: "Pat Doe",
+          identityLine: "",
+          edges: [],
+        },
+      ],
+      filters: [
+        { kind: "person", label: "People" },
+        { kind: "organization", label: "Organizations" },
+      ],
+    };
+
+    render(<RelationshipsSpatialView snapshot={snapshot} />);
+    fireEvent.pointerDown(agent("relationships-kind-filter"), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Organizations" }),
+    );
+
+    await screen.findByRole("heading", {
+      name: "No matching relationships.",
+    });
+    expect(screen.getByText("0 entities")).toBeTruthy();
+    expect(screen.queryByText("No relationships yet")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add someone" })).toBeNull();
   });
 
   it("refetches both endpoints on the background poll without manual interaction", async () => {

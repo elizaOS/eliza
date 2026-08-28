@@ -3234,6 +3234,7 @@
   "filesview.facet.video": "Video",
   "filesview.filterByType": "Filter files by type",
   "filesview.listLabel": "Files",
+  "filesview.moreActions": "More actions",
   "filesview.loadFailed": "Failed to load files: {{message}}",
   "filesview.loading": "Loading files…",
   "filesview.noMatchesDescription": "Try a different type filter.",

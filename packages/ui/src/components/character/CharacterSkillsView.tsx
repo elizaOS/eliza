@@ -17,7 +17,7 @@ export function CharacterSkillsView({
 }) {
   return (
     <ShellViewAgentSurface viewId="character-skills">
-      <FramedPage>
+      <FramedPage gutterOwner="framed-page">
         {pageChrome}
         <FramedPageBody className="gap-4 pt-1">
           <CharacterLearnedSkillsSection showTitle={false} />

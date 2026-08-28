@@ -6,7 +6,6 @@
  */
 
 import type { ReactNode } from "react";
-import { useAgentElement } from "../../agent-surface";
 import {
   FramedPage,
   FramedPageBody,
@@ -26,33 +25,6 @@ import { MediaGalleryView } from "./MediaGalleryView";
 // never with the always-loaded Database page.
 const VECTOR_BROWSER_BUNDLE_URL = "/api/views/vector-browser/bundle.js";
 const VECTOR_BROWSER_COMPONENT_EXPORT = "VectorBrowserView";
-
-// The SegmentedControl is a composite that renders its own internal buttons and
-// does not forward refs to them, so each tab registers with the agent surface
-// through a tiny ref-less child that drives selection via onActivate (mirrors
-// SettingsNavButton in SettingsView.tsx).
-function DatabaseTabButton({
-  id,
-  label,
-  isActive,
-  onSelect,
-}: {
-  id: "tables" | "media" | "vectors";
-  label: string;
-  isActive: boolean;
-  onSelect: (id: "tables" | "media" | "vectors") => void;
-}) {
-  useAgentElement({
-    id: `tab-${id}`,
-    role: "tab",
-    label,
-    group: "database-views",
-    status: isActive ? "active" : "inactive",
-    description: `Switch to the ${label} database view`,
-    onActivate: () => onSelect(id),
-  });
-  return null;
-}
 
 export function DatabasePageView({
   contentHeader,
@@ -85,19 +57,16 @@ export function DatabasePageView({
       <SegmentedControl
         value={databaseSubTab}
         onValueChange={selectTab}
-        items={dbTabs.map((tab) => ({ value: tab.id, label: tab.label }))}
+        items={dbTabs.map((tab) => ({
+          value: tab.id,
+          label: tab.label,
+          agentId: `tab-${tab.id}`,
+          agentLabel: tab.label,
+          agentGroup: "database-views",
+        }))}
         role="tablist"
         aria-label={t("aria.databaseViews")}
       />
-      {dbTabs.map((tab) => (
-        <DatabaseTabButton
-          key={tab.id}
-          id={tab.id}
-          label={tab.label}
-          isActive={databaseSubTab === tab.id}
-          onSelect={selectTab}
-        />
-      ))}
     </>
   );
 
@@ -118,7 +87,7 @@ export function DatabasePageView({
   }
   return (
     <ShellViewAgentSurface viewId="database">
-      <FramedPage>
+      <FramedPage gutterOwner="framed-page">
         <FramedPageHeader title="Databases" actions={contentHeader} />
         <FramedPageNavigation>{leftNav}</FramedPageNavigation>
         <FramedPageBody scroll="view" padded={false}>

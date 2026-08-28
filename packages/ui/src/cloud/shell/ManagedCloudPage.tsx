@@ -6,6 +6,7 @@
  * session rather than the currently selected agent runtime.
  */
 
+import type { PageLayoutManifest } from "@elizaos/core";
 import { type ComponentType, Suspense } from "react";
 import {
   matchPath,
@@ -28,6 +29,14 @@ import {
   getCloudRouteGate,
   listCloudRoutes,
 } from "./cloud-route-registry";
+
+const DEFAULT_MANAGED_CLOUD_LAYOUT: PageLayoutManifest = Object.freeze({
+  kind: "content",
+  topology: "framed",
+  width: "standard",
+  scroll: "shell",
+  gutter: "standard",
+});
 
 function managedRouteForPath(pathname: string): CloudRouteDef | null {
   return (
@@ -85,13 +94,7 @@ function ManagedCloudRouteFrame({
   const location = useLocation();
   const navigate = useNavigate();
   const isCloudOverview = location.pathname === "/cloud";
-  const layout = route.surface?.layout ?? {
-    kind: "content",
-    topology: "framed",
-    width: "standard",
-    scroll: "view",
-    gutter: "standard",
-  };
+  const layout = route.surface?.layout ?? DEFAULT_MANAGED_CLOUD_LAYOUT;
   return (
     <div className="theme-cloud flex min-h-0 min-w-0 flex-1 flex-col bg-bg text-txt">
       <ViewHeader
@@ -111,7 +114,14 @@ function ManagedCloudRouteFrame({
       {pageInfo?.description ? (
         <p className="sr-only">{pageInfo.description}</p>
       ) : null}
-      <PageFrame layout={layout}>{renderManagedRoute(route)}</PageFrame>
+      <PageFrame
+        layout={layout}
+        data-shell-scroll-region={
+          layout.scroll === "shell" ? "true" : undefined
+        }
+      >
+        {renderManagedRoute(route)}
+      </PageFrame>
     </div>
   );
 }

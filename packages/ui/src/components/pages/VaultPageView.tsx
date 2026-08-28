@@ -16,7 +16,11 @@ import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 export function VaultPageView(): React.JSX.Element {
   return (
     <ShellViewAgentSurface viewId="vault">
-      <FramedPage data-testid="vault-page" data-chat-clearance-aware="true">
+      <FramedPage
+        gutterOwner="framed-page"
+        data-testid="vault-page"
+        data-chat-clearance-aware="true"
+      >
         <FramedPageHeader
           title="Vault"
           description="Encrypted credentials and references available to this agent. Organization credential pools remain managed in Eliza Cloud."

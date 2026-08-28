@@ -8,7 +8,6 @@ import * as React from "react";
 
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
-import { PagePanel } from "../page-panel";
 import { TrajectoryCodeBlock } from "./trajectory-code-block";
 
 interface CallMetricProps {
@@ -19,7 +18,7 @@ interface CallMetricProps {
 
 function CallMetric({ label, value, meta }: CallMetricProps) {
   return (
-    <PagePanel.SummaryCard compact className="px-4 py-3">
+    <div className="px-3 py-3 first:pl-0 last:pr-0">
       <div className="text-xs text-[color:var(--settings-muted)]">{label}</div>
       <div className="mt-1 truncate text-sm font-semibold text-[color:var(--settings-foreground)]">
         {value}
@@ -29,7 +28,7 @@ function CallMetric({ label, value, meta }: CallMetricProps) {
           {meta}
         </div>
       ) : null}
-    </PagePanel.SummaryCard>
+    </div>
   );
 }
 
@@ -98,7 +97,7 @@ export function TrajectoryLlmCallCard({
   const purposeValue = tags?.length ? tags.join(", ") : "Inference";
 
   return (
-    <PagePanel as="section" variant="section" className="p-5">
+    <section className="border-t border-[color:var(--settings-hairline)] pt-5">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1.5">
@@ -142,7 +141,7 @@ export function TrajectoryLlmCallCard({
           ) : null}
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)] md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-5">
           <CallMetric
             label={purposeLabel}
             value={purposeValue}
@@ -206,6 +205,6 @@ export function TrajectoryLlmCallCard({
           onCopy={onCopy}
         />
       </div>
-    </PagePanel>
+    </section>
   );
 }

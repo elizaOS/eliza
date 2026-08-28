@@ -26,7 +26,7 @@ import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
-import { BrandButton, BrandCard, CornerBrackets } from "../primitives";
+import { CornerBrackets } from "../primitives";
 import {
   buildAppAuthorizeCancelRedirect,
   buildAppAuthorizeCompletionRedirect,
@@ -645,9 +645,9 @@ function AuthorizationErrorFrame({
       </Card>
       <h3 className="text-lg font-semibold text-white">Authorization Error</h3>
       <p className="text-sm text-white/60 max-w-xs text-center">{error}</p>
-      <BrandButton variant="outline" onClick={onHome} className="mt-4">
+      <Button variant="outline" onClick={onHome} className="mt-4">
         {actionLabel}
-      </BrandButton>
+      </Button>
     </Frame>
   );
 }
@@ -667,12 +667,12 @@ function Frame({ children }: { children: React.ReactNode }) {
         aria-hidden
       />
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
-        <BrandCard className="w-full max-w-md">
+        <Card variant="brand" className="w-full max-w-md">
           <CornerBrackets size="md" className="opacity-50" />
           <div className="relative z-10 flex flex-col items-center gap-6 py-8 px-2">
             {children}
           </div>
-        </BrandCard>
+        </Card>
       </div>
     </div>
   );
@@ -726,9 +726,9 @@ function SignedInActions({
 }) {
   return (
     <div className="flex w-full flex-col items-center gap-3">
-      <BrandButton onClick={onAuthorize} className="w-full">
+      <Button onClick={onAuthorize} className="w-full">
         Authorize {appName}
-      </BrandButton>
+      </Button>
       <InlineCancelButton onCancel={onCancel} />
     </div>
   );

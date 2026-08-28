@@ -806,10 +806,14 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
       <Card
         asChild
         surface={
-          variant === "default" && showsCollapsedState ? "transparent" : "card"
+          variant === "mobile" || (variant === "default" && showsCollapsedState)
+            ? "transparent"
+            : "card"
         }
         border={
-          variant === "default" && showsCollapsedState ? "none" : "standard"
+          variant === "mobile" || (variant === "default" && showsCollapsedState)
+            ? "none"
+            : "standard"
         }
         shadow={
           variant === "mobile" || showsCollapsedState ? "none" : undefined
@@ -863,7 +867,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
           ) : null}
           <React.Fragment key={renderedContentIdentity}>
             {variant === "mobile" ? (
-              <Card asChild surface="card">
+              <Card asChild surface="transparent">
                 <div className={sidebarMobileHeaderBarClassName}>
                   <div className="space-y-1">
                     {mobileTitle ? <div>{mobileTitle}</div> : null}
