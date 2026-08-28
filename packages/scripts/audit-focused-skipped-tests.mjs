@@ -314,7 +314,11 @@ function bindingIdentifiers(name, identifiers = []) {
 function directScopeBindings(scope) {
   const bindings = new Map();
   const statements =
-    ts.isSourceFile(scope) || ts.isBlock(scope) ? scope.statements : [];
+    ts.isSourceFile(scope) || ts.isBlock(scope) || ts.isModuleBlock(scope)
+      ? scope.statements
+      : ts.isCaseBlock(scope)
+        ? scope.clauses.flatMap((clause) => [...clause.statements])
+        : [];
   for (const statement of statements) {
     if (ts.isImportDeclaration(statement)) {
       const clause = statement.importClause;
@@ -344,13 +348,79 @@ function directScopeBindings(scope) {
   return bindings;
 }
 
+function loopInitializerBinding(scope, identifier) {
+  if (
+    !(
+      ts.isForStatement(scope) ||
+      ts.isForInStatement(scope) ||
+      ts.isForOfStatement(scope)
+    ) ||
+    !scope.initializer ||
+    !ts.isVariableDeclarationList(scope.initializer) ||
+    !(scope.initializer.flags & ts.NodeFlags.BlockScoped)
+  ) {
+    return undefined;
+  }
+  if (
+    (ts.isForInStatement(scope) || ts.isForOfStatement(scope)) &&
+    identifier.getStart() >= scope.expression.getStart() &&
+    identifier.getEnd() <= scope.expression.getEnd()
+  ) {
+    return undefined;
+  }
+  for (const declaration of scope.initializer.declarations) {
+    const binding = bindingIdentifiers(declaration.name).find(
+      (candidate) => candidate.text === identifier.text,
+    );
+    if (binding) return binding;
+  }
+  return undefined;
+}
+
+function hoistedVarBinding(scope, identifier) {
+  const root = ts.isSourceFile(scope) ? scope : scope.body;
+  if (!root || (!ts.isBlock(root) && !ts.isSourceFile(root))) return undefined;
+  let binding;
+  const visit = (node) => {
+    if (binding) return;
+    if (
+      node !== root &&
+      (ts.isFunctionLike(node) ||
+        ts.isClassLike(node) ||
+        ts.isModuleDeclaration(node))
+    ) {
+      return;
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isVariableDeclarationList(node.parent) &&
+      !(node.parent.flags & ts.NodeFlags.BlockScoped)
+    ) {
+      binding = bindingIdentifiers(node.name).find(
+        (candidate) => candidate.text === identifier.text,
+      );
+      if (binding) return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return binding;
+}
+
 function nearestBinding(identifier) {
   let current = identifier.parent;
   while (current) {
-    if (ts.isBlock(current) || ts.isSourceFile(current)) {
+    if (
+      ts.isBlock(current) ||
+      ts.isSourceFile(current) ||
+      ts.isModuleBlock(current) ||
+      ts.isCaseBlock(current)
+    ) {
       const binding = directScopeBindings(current).get(identifier.text);
       if (binding) return binding;
     }
+    const loopBinding = loopInitializerBinding(current, identifier);
+    if (loopBinding) return loopBinding;
     if (ts.isFunctionLike(current)) {
       for (const parameter of current.parameters) {
         const binding = bindingIdentifiers(parameter.name).find(
@@ -365,11 +435,17 @@ function nearestBinding(identifier) {
       ) {
         return current.name;
       }
+      const binding = hoistedVarBinding(current, identifier);
+      if (binding) return binding;
     }
     if (ts.isCatchClause(current) && current.variableDeclaration) {
       const binding = bindingIdentifiers(current.variableDeclaration.name).find(
         (candidate) => candidate.text === identifier.text,
       );
+      if (binding) return binding;
+    }
+    if (ts.isSourceFile(current)) {
+      const binding = hoistedVarBinding(current, identifier);
       if (binding) return binding;
     }
     current = current.parent;

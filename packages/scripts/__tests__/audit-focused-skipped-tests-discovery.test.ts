@@ -344,6 +344,53 @@ describe("anti-larp test discovery", () => {
       findConditionalSkipSites("fixture.test.mjs", shadowedRuntimeRoots),
     ).toEqual([]);
 
+    const scopeShadowedRuntimeRoots = [
+      `
+        import test from "node:test";
+        for (const process of [{ platform: "win32" }]) {
+          const gate = process.platform === "win32";
+          test("loop binding", { skip: gate }, () => {});
+        }
+      `,
+      `
+        import test from "node:test";
+        for (let process = { platform: "win32" }; false;) {
+          const gate = process.platform === "win32";
+          test("loop initializer", { skip: gate }, () => {});
+        }
+      `,
+      `
+        import test from "node:test";
+        switch (1) {
+          case 1:
+            const process = { platform: "win32" };
+            const gate = process.platform === "win32";
+            test("switch binding", { skip: gate }, () => {});
+            break;
+        }
+      `,
+      `
+        import test from "node:test";
+        function register() {
+          if (false) var process = { platform: "win32" };
+          const gate = process.platform === "win32";
+          test("hoisted function binding", { skip: gate }, () => {});
+        }
+      `,
+      `
+        import test from "node:test";
+        if (false) var process = { platform: "win32" };
+        const gate = process.platform === "win32";
+        test("hoisted source binding", { skip: gate }, () => {});
+      `,
+    ];
+    for (const source of scopeShadowedRuntimeRoots) {
+      expect(
+        findViolations("fixture.test.mjs", source).map(({ kind }) => kind),
+      ).toEqual(["orphaned-skip"]);
+      expect(findConditionalSkipSites("fixture.test.mjs", source)).toEqual([]);
+    }
+
     const reassignedRuntimeRoots = [
       `
         const test = require("node:test");
