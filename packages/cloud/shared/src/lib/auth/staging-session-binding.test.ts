@@ -98,8 +98,6 @@ import {
   loadExistingStagingSessionSubjectForMint,
   loadVerifiedStagingSessionUser,
   readStagingSessionSigningConfig,
-  STAGING_SESSION_ISSUER_CLOCK_SKEW_SECONDS,
-  STAGING_SESSION_MAX_TTL_SECONDS,
   type StagingSessionBinding,
   StagingSessionConfigurationError,
   validateStagingSessionBinding,
@@ -183,7 +181,7 @@ function makeBinding(overrides: Partial<TestBinding> = {}): StagingSessionBindin
     organizationId: ORG_ID,
     credentialFingerprint: expectedFingerprint(),
     sessionIssuedAt: NOW_SECONDS,
-    sessionMaxExpiresAt: NOW_SECONDS + STAGING_SESSION_MAX_TTL_SECONDS,
+    sessionMaxExpiresAt: NOW_SECONDS + 3600,
     ...overrides,
   };
   return binding as StagingSessionBinding;
@@ -538,6 +536,50 @@ describe("validateStagingSessionBinding", () => {
     expect(await validateStagingSessionBinding(validValidationInput(binding))).toBe(true);
   });
 
+  test("pins the exact five-second issuer skew boundary on both sides", async () => {
+    // Literals, not the production export: this test fails if the allowance
+    // is widened past five seconds (the +6 cases above) or narrowed below it
+    // (the exact-boundary acceptances here), so a silent policy change in
+    // either direction is caught.
+    expect(
+      await validateStagingSessionBinding({
+        ...validValidationInput(
+          makeBinding({
+            sessionIssuedAt: NOW_SECONDS + 5,
+            sessionMaxExpiresAt: NOW_SECONDS + 3600,
+          }),
+        ),
+        issuedAt: NOW_SECONDS + 5,
+      }),
+    ).toBe(true);
+    expect(
+      await validateStagingSessionBinding({
+        ...validValidationInput(
+          makeBinding({ sessionIssuedAt: NOW_SECONDS, sessionMaxExpiresAt: NOW_SECONDS + 3600 }),
+        ),
+        issuedAt: NOW_SECONDS + 5,
+      }),
+    ).toBe(true);
+    // A binding minted beyond the skew allowance cannot be isolated from the
+    // token-iat bound: iat >= sessionIssuedAt always drags the token past the
+    // same allowance, so the "+6" reject case below (iat NOW+6 against a NOW
+    // binding) is the one that flips if the policy is widened past five
+    // seconds, and the accept pins above flip if it is narrowed.
+  });
+
+  test("pins the exact one-hour absolute-window cap on both sides", async () => {
+    expect(
+      await validateStagingSessionBinding(
+        validValidationInput(
+          makeBinding({
+            sessionIssuedAt: NOW_SECONDS,
+            sessionMaxExpiresAt: NOW_SECONDS + 3600,
+          }),
+        ),
+      ),
+    ).toBe(true);
+  });
+
   test("rejects a binding when the bearer logged out at or after mint", async () => {
     const { binding } = await mintSubjectBinding();
     logoutMarkerBehavior = async () => ({
@@ -584,14 +626,12 @@ describe("validateStagingSessionBinding", () => {
       "fractional sessionMaxExpiresAt within the TTL",
       makeBinding({ sessionMaxExpiresAt: NOW_SECONDS + 3599.5 }),
     ],
-    [
-      "minted more than the issuer skew allowance in the future",
-      makeBinding({ sessionIssuedAt: NOW_SECONDS + STAGING_SESSION_ISSUER_CLOCK_SKEW_SECONDS + 1 }),
-    ],
     ["empty absolute window", makeBinding({ sessionMaxExpiresAt: NOW_SECONDS })],
     [
+      // one second past the documented one-hour cap; literal for the same
+      // reason as the skew case above
       "absolute window beyond the max TTL",
-      makeBinding({ sessionMaxExpiresAt: NOW_SECONDS + STAGING_SESSION_MAX_TTL_SECONDS + 1 }),
+      makeBinding({ sessionMaxExpiresAt: NOW_SECONDS + 3601 }),
     ],
     ["already-expired session bound", makeBinding({ sessionMaxExpiresAt: NOW_SECONDS - 1 })],
   ] as const)(
@@ -606,14 +646,18 @@ describe("validateStagingSessionBinding", () => {
   test.each([
     ["token iat before the session window", { issuedAt: NOW_SECONDS - 1 }],
     [
+      // one second past the documented five-second token-iat skew; literal so
+      // widening the production constant fails this case rather than moving it
       "token iat more than the issuer skew allowance in the future",
-      { issuedAt: NOW_SECONDS + STAGING_SESSION_ISSUER_CLOCK_SKEW_SECONDS + 1 },
+      { issuedAt: NOW_SECONDS + 6 },
     ],
     ["fractional token iat inside the skew allowance", { issuedAt: NOW_SECONDS + 2.5 }],
     ["token exp not after iat", { issuedAt: NOW_SECONDS + 2, expiration: NOW_SECONDS + 2 }],
     [
+      // one second past the documented one-hour bound cap; literal for the
+      // same reason as the skew case above
       "token exp beyond the session bound",
-      { expiration: NOW_SECONDS + STAGING_SESSION_MAX_TTL_SECONDS + 1 },
+      { expiration: NOW_SECONDS + 3601 },
     ],
     ["fractional token exp", { expiration: NOW_SECONDS + 1800.5 }],
   ] as const)("structurally rejects %s", async (_label, patch) => {
