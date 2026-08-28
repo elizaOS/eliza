@@ -193,7 +193,9 @@ async function readBluetoothPairedIphones(
           const entry = rawEntry as BluetoothRawEntry;
           const minorType =
             normalizeString(entry.device_minorType)?.toLowerCase() ?? "";
-          if (!minorType.includes("phone")) continue;
+          // Match the phone device class as a whole word — "Headphones",
+          // "Phone cases" etc. must not be treated as iPhones.
+          if (!/\bphone\b/.test(minorType)) continue;
           const address = normalizeString(entry.device_address);
           if (!address) continue;
           results.push({
