@@ -6,6 +6,8 @@
  *   - Public paths pass through with no auth.
  *   - Programmatic auth (X-API-Key, Bearer eliza_*) — pass through; per-route
  *     handlers validate the key against the DB.
+ *   - The two remote-host activation routes accept their exact host credential;
+ *     their handlers still validate the revocable token against the DB.
  *   - Steward cookie / Steward Bearer JWT — verify via `getCurrentUser` and
  *     fall through on success. Failure on a protected /api/ path → 401.
  *
@@ -19,6 +21,7 @@ import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parseRemoteHostCredential } from "../../v1/remote/host-auth";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 const publicPathPrefixes = [
@@ -262,6 +265,32 @@ export function isRouteAuthenticatedInferencePath(
   );
 }
 
+/**
+ * Remote hosts reach these activation handlers before they have a Cloud
+ * session. Keep this pre-auth delegation exact: a syntactically valid,
+ * host-bound credential may reach only the two handlers introduced by the
+ * generated router, which perform the authoritative database validation.
+ */
+export function isRouteAuthenticatedRemoteHostRequest(
+  request: Request,
+): boolean {
+  if (request.method !== "POST") return false;
+  const credential = parseRemoteHostCredential(request);
+  if (!credential) return false;
+  const pathname = new URL(request.url).pathname;
+  if (
+    pathname === "/api/v1/remote/sessions/activate" ||
+    pathname === "/api/v1/remote/sessions/activate/"
+  ) {
+    return true;
+  }
+  const managedNetworkMatch =
+    /^\/api\/v1\/remote\/hosts\/([^/]+)\/managed-network\/activate\/?$/.exec(
+      pathname,
+    );
+  return managedNetworkMatch?.[1] === credential.hostId;
+}
+
 function isLoopbackHostname(hostname: string): boolean {
   return (
     hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
@@ -332,6 +361,11 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   if (isRouteAuthenticatedInferencePath(c.req.method, pathname)) {
+    await next();
+    return;
+  }
+
+  if (isRouteAuthenticatedRemoteHostRequest(c.req.raw)) {
     await next();
     return;
   }
