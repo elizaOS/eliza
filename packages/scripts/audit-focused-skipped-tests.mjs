@@ -685,30 +685,33 @@ function knownOptionalRuntimeString(node) {
   );
 }
 
-function uniquePriorVariableDeclaration(identifier) {
+function immutablePriorVariableDeclaration(identifier) {
   const sourceFile = identifier.getSourceFile();
   const identifierStart = identifier.getStart(sourceFile);
-  const matches = [];
-  const visit = (node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === identifier.text &&
-      node.initializer &&
-      node.getEnd() <= identifierStart
-    ) {
-      matches.push(node);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  return matches.length === 1 ? matches[0] : undefined;
+  const binding = nearestBinding(identifier);
+  if (!binding || !ts.isVariableDeclaration(binding.parent)) return undefined;
+  const declaration = binding.parent;
+  if (
+    declaration.name !== binding ||
+    !declaration.initializer ||
+    declaration.getEnd() > identifierStart
+  ) {
+    return undefined;
+  }
+  const declarationList = declaration.parent;
+  if (
+    !ts.isVariableDeclarationList(declarationList) ||
+    !(declarationList.flags & ts.NodeFlags.Const)
+  ) {
+    return undefined;
+  }
+  return declaration;
 }
 
 function recognizedRuntimeSignal(node, seenDeclarations = new Set()) {
   const value = unwrapExpression(node);
   if (ts.isIdentifier(value)) {
-    const declaration = uniquePriorVariableDeclaration(value);
+    const declaration = immutablePriorVariableDeclaration(value);
     if (!declaration || seenDeclarations.has(declaration)) return false;
     const nextSeen = new Set(seenDeclarations);
     nextSeen.add(declaration);

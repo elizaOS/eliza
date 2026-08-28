@@ -294,6 +294,26 @@ describe("anti-larp test discovery", () => {
       findConditionalSkipSites("fixture.test.mjs", deceptiveNames),
     ).toEqual([]);
 
+    const shadowedAndMutable = `
+      import test from "node:test";
+      const isWindows = process.platform === "win32";
+      function register(isWindows) {
+        test("shadowed parameter", { skip: isWindows }, () => {});
+      }
+      register(true);
+      let hostIsWindows = process.platform === "win32";
+      hostIsWindows = true;
+      test("reassigned binding", { skip: hostIsWindows }, () => {});
+    `;
+    expect(
+      findViolations("fixture.test.mjs", shadowedAndMutable).map(
+        ({ kind }) => kind,
+      ),
+    ).toEqual(["orphaned-skip", "orphaned-skip"]);
+    expect(
+      findConditionalSkipSites("fixture.test.mjs", shadowedAndMutable),
+    ).toEqual([]);
+
     const adversarial = `
       import test from "node:test";
       test("unowned condition", { skip: shouldSkip }, () => {});
