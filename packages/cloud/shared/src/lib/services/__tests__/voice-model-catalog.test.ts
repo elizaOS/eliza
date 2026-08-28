@@ -243,7 +243,9 @@ describe("fingerprintPublicKey", () => {
     // rather than canonicalizing (mirrors the signing-key fail-closed
     // contract above — a mistyped key must be rejected, not silently
     // decoded).
-    expect(() => fingerprintPublicKey(`${rawB64}!`)).toThrow(/Invalid base64/);
+    expect(() => fingerprintPublicKey(`${rawB64}!`)).toThrow(
+      /outside the canonical base64 alphabet/,
+    );
     // A final quantum with non-zero discarded slack bits (here the last
     // char bumped so the two unused bits are set — decodes to the same
     // 32 bytes) is a hand-mangled spelling, not a legitimate one: it
