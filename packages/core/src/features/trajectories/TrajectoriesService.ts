@@ -24,8 +24,8 @@ export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
 
 import { deriveCompactionContentManifest } from "../../runtime/content-access-manifest";
 import {
-	manifestHeadKey,
-	manifestShardKey,
+	contentManifestLedgerKeys,
+	loadManifestLedger,
 	publishManifestLedger,
 } from "../../runtime/content-manifest-ledger";
 import {
@@ -3415,7 +3415,74 @@ export class TrajectoriesService extends Service {
 
 		const row = result.rows[0];
 		const trajectory = this.rowToTrajectory(row);
+		await this.attachContentManifestLedger(trajectory);
 		return trajectory;
+	}
+
+	/**
+	 * Restart-safe ledger consumption (#25141 review): the persisted manifest
+	 * shard ledger is reloaded and fully verified (chain, totals, digest) from
+	 * the database cache domain by the production detail reader, so durable
+	 * ledger bytes are reachable after a writer exits — not write-only. The
+	 * verified entries surface on the detail wire as
+	 * `metadata.contentManifest` (empty array when the trajectory never
+	 * authorized content). Integrity failures become an explicit
+	 * unavailable marker on the same field, never silent corruption or a
+	 * failed trajectory read.
+	 */
+	private async attachContentManifestLedger(
+		trajectory: Trajectory,
+	): Promise<void> {
+		const ledgerId = `${this.runtime.agentId}:trajectory:${trajectory.trajectoryId}`;
+		const runtime = this.runtime as IAgentRuntime & {
+			adapter?: {
+				getCaches?: unknown;
+			};
+		};
+		const adapter = runtime.adapter;
+		if (!adapter || typeof adapter.getCaches !== "function") {
+			return;
+		}
+		try {
+			const loaded = await loadManifestLedger(adapter as never, ledgerId);
+			// Entries are validated, JSON-shaped records; the wire metadata
+			// type is the JsonValue boundary the viewer consumes.
+			trajectory.metadata = {
+				...trajectory.metadata,
+				contentManifest: loaded.entries as unknown as JsonValue,
+			};
+		} catch (error) {
+			if (
+				error instanceof ElizaError &&
+				error.code === "CONTENT_MANIFEST_HEAD_MISSING"
+			) {
+				// No ledger was ever published for this trajectory (it
+				// authorized no content refs) — the honest empty state, not
+				// an error.
+				trajectory.metadata = {
+					...trajectory.metadata,
+					contentManifest: [],
+				};
+				return;
+			}
+			// error-policy:J4 the verified-ledger projection is an explicit
+			// unavailable state: a damaged or unreadable ledger must surface
+			// as a distinct marker, never as a silently partial manifest and
+			// never as a failed trajectory read.
+			trajectory.metadata = {
+				...trajectory.metadata,
+				contentManifest: { unavailable: true },
+			};
+			logger.warn(
+				{ err: error, ledgerId },
+				"[trajectory-logger] content-manifest ledger load failed",
+			);
+			this.runtime.reportError?.(
+				"TrajectoriesService.attachContentManifestLedger",
+				error,
+				{ ledgerId },
+			);
+		}
 	}
 
 	async getStats(): Promise<TrajectoryStats> {
@@ -3528,6 +3595,64 @@ export class TrajectoriesService extends Service {
 		});
 		await this.discardContentManifestLedgers(deleted);
 		return this.releaseDeletedTrajectories(deletedRows);
+	}
+
+	/**
+	 * Remove the manifest-ledger cache rows (head + every shard generation's
+	 * sequences recorded on the head) for pruned trajectories (#25141). The
+	 * durable ledger must not outlive the trajectory rows it describes;
+	 * failure to clean is reported, never fatal to the prune.
+	 */
+	private async discardContentManifestLedgers(
+		trajectoryIds: string[],
+	): Promise<void> {
+		if (trajectoryIds.length === 0) return;
+		const runtimeAdapter = (
+			this.runtime as IAgentRuntime & {
+				adapter?: unknown;
+			}
+		).adapter;
+		const adapter =
+			runtimeAdapter !== null &&
+			typeof runtimeAdapter === "object" &&
+			typeof (runtimeAdapter as { getCaches?: unknown }).getCaches ===
+				"function" &&
+			typeof (runtimeAdapter as { deleteCaches?: unknown }).deleteCaches ===
+				"function"
+				? (runtimeAdapter as unknown as {
+						getCaches: (keys: string[]) => Promise<Map<string, unknown>>;
+						deleteCaches: (keys: string[]) => Promise<boolean>;
+					})
+				: undefined;
+		if (!adapter) return;
+		try {
+			const keys: string[] = [];
+			for (const trajectoryId of trajectoryIds) {
+				const ledgerKeys = await contentManifestLedgerKeys(
+					{
+						getCaches: <T>(keysToRead: string[]) =>
+							adapter.getCaches(keysToRead) as Promise<Map<string, T>>,
+					},
+					`${this.runtime.agentId}:trajectory:${trajectoryId}`,
+				);
+				if (ledgerKeys) keys.push(...ledgerKeys);
+			}
+			if (keys.length > 0) {
+				await adapter.deleteCaches(keys);
+			}
+		} catch (error) {
+			// error-policy:J7 ledger cleanup is diagnostic continuity state;
+			// its failure must not fail the trajectory prune that owns it.
+			logger.warn(
+				{ err: error, trajectoryIds },
+				"[trajectory-logger] content-manifest ledger cleanup failed",
+			);
+			this.runtime.reportError?.(
+				"TrajectoriesService.discardContentManifestLedgers",
+				error,
+				{ trajectoryIds },
+			);
+		}
 	}
 
 	async clearAllTrajectories(): Promise<number> {

@@ -27,8 +27,6 @@ import {
 
 /** Minimal adapter surface the ledger needs; satisfied by IDatabaseAdapter. */
 export interface ContentManifestLedgerStore {
-	getCache<T>(key: string): Promise<T | undefined>;
-	setCache<T>(key: string, value: T): Promise<boolean>;
 	getCaches<T>(keys: string[]): Promise<Map<string, T>>;
 	setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean>;
 	/** Optional best-effort cleanup of inert superseded shard rows. */
@@ -39,6 +37,20 @@ export interface ContentManifestLedgerStore {
 		nextRevision: number,
 		value: T,
 	): Promise<boolean>;
+}
+
+/**
+ * Read one key through the store's official batch surface. All ledger reads
+ * go through `getCaches` — the only cache-read operation `IDatabaseAdapter`
+ * guarantees across every adapter — so the ledger never depends on an
+ * adapter-specific singular `getCache`.
+ */
+async function getCacheViaBatch<T>(
+	store: Pick<ContentManifestLedgerStore, "getCaches">,
+	key: string,
+): Promise<T | undefined> {
+	const map = await store.getCaches<T>([key]);
+	return map.get(key);
 }
 
 export const CONTENT_MANIFEST_SHARD_KEY_PREFIX = "content-manifest-shard:";
@@ -377,7 +389,10 @@ export async function publishManifestLedger(
 		ledgerId,
 		...options,
 	});
-	const existingHead = await store.getCache<unknown>(manifestHeadKey(ledgerId));
+	const existingHead = await getCacheViaBatch<unknown>(
+		store,
+		manifestHeadKey(ledgerId),
+	);
 	let expectedRevision: number | null = null;
 	let superseded: { generation: string; shardCount: number } | null = null;
 	if (existingHead !== undefined) {
@@ -460,7 +475,10 @@ export async function publishManifestLedger(
 		// when the winning writer published identical content this call is
 		// idempotent and must succeed; only a genuinely divergent winner is
 		// an error the caller observes (its next persist republishes).
-		const reread = await store.getCache<unknown>(manifestHeadKey(ledgerId));
+		const reread = await getCacheViaBatch<unknown>(
+			store,
+			manifestHeadKey(ledgerId),
+		);
 		if (reread !== undefined) {
 			const winner = validateManifestHead(reread);
 			if (
@@ -533,10 +551,13 @@ export async function publishManifestLedger(
  * so ledgers can never outlive their trajectory rows (#25141).
  */
 export async function contentManifestLedgerKeys(
-	store: Pick<ContentManifestLedgerStore, "getCache">,
+	store: Pick<ContentManifestLedgerStore, "getCaches">,
 	ledgerId: string,
 ): Promise<string[] | null> {
-	const rawHead = await store.getCache<unknown>(manifestHeadKey(ledgerId));
+	const rawHead = await getCacheViaBatch<unknown>(
+		store,
+		manifestHeadKey(ledgerId),
+	);
 	if (rawHead === undefined) return null;
 	const head = validateManifestHead(rawHead);
 	return [
@@ -561,10 +582,13 @@ export interface LoadedLedger {
  * mismatch throws a typed integrity error — never a silent accept.
  */
 export async function loadManifestLedger(
-	store: Pick<ContentManifestLedgerStore, "getCache" | "getCaches">,
+	store: Pick<ContentManifestLedgerStore, "getCaches">,
 	ledgerId: string,
 ): Promise<LoadedLedger> {
-	const rawHead = await store.getCache<unknown>(manifestHeadKey(ledgerId));
+	const rawHead = await getCacheViaBatch<unknown>(
+		store,
+		manifestHeadKey(ledgerId),
+	);
 	if (rawHead === undefined) {
 		throw new ElizaError("Manifest ledger head is missing", {
 			code: "CONTENT_MANIFEST_HEAD_MISSING",
