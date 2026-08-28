@@ -81,7 +81,9 @@ export function reconcilePendingActionNotifications(
   const pendingIds = new Set(pending.map((item) => item.id));
   const ordinaryNotifications = notifications.filter((notification) => {
     const actionId = persistedNotificationActionId(notification);
-    return actionId === null || !pendingIds.has(actionId);
+    if (actionId === null) return true;
+    if (pendingIds.has(actionId)) return false;
+    return notification.readAt === undefined;
   });
   const projected = pending.map((item): AgentNotification => {
     const activation = derivePendingActionActivation(item);

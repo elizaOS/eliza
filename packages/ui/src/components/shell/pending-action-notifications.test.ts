@@ -83,6 +83,25 @@ describe("pending-action notification projection", () => {
     expect(next).toEqual(first);
   });
 
+  it("does not resurrect a resolved approval from its read persisted event", () => {
+    const resolved = persistedApproval();
+    const first = reconcilePendingActionNotifications(
+      [resolved],
+      [pending()],
+      NOW,
+    );
+    expect(first).toHaveLength(1);
+    const projected = first[0];
+    if (!projected) throw new Error("Expected the unresolved projection");
+    expect(pendingActionIdFromNotification(projected)).toBe("request-1");
+
+    resolved.readAt = NOW + 1_000;
+
+    expect(reconcilePendingActionNotifications([resolved], [], NOW)).toEqual(
+      [],
+    );
+  });
+
   it("covers task approvals and free prompts without inventing one response", () => {
     expect(
       derivePendingActionActivation(
