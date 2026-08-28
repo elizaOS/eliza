@@ -988,6 +988,13 @@ export class TelegramService extends Service {
     // A launch failure before polling becomes stoppable leaves the flag false,
     // so the startup retry can still relaunch.
     if (!wiring.poller) {
+      // Install the gate-bootstrap promise BEFORE the poller goes live so a
+      // my_chat_member transition delivered in the startup window finds a
+      // pending promise to queue against (never a silently-absent gate):
+      // the poller can deliver updates before finishBotStartup's getMe
+      // resolves, and the transition handler queues while this promise is
+      // pending rather than discarding the update.
+      this.beginMembershipGateBootstrap(bot, accountId);
       await this.launchPollerSupervised(bot, state.account.botToken, accountId);
       wiring.poller = true;
     }
@@ -1081,42 +1088,85 @@ export class TelegramService extends Service {
     );
 
     // Seed this account's membership-authority gate once its bot identity is
-    // known. Every account (default and secondary) gets its own gate.
+    // known. Every account (default and secondary) gets its own gate. When
+    // beginMembershipGateBootstrap already installed the promise ahead of the
+    // poller, reuse it — only the manager binding and failure marking below
+    // still belong here.
     if (!this.membershipGates.has(accountId)) {
-      const gatePromise = createTelegramMembershipGate({
+      this.membershipGates.set(
+        accountId,
+        createTelegramMembershipGate({
+          runtime: this.runtime,
+          botTelegramUserId: String(botInfo.id),
+        }),
+      );
+    }
+    const gatePromise = this.membershipGates.get(
+      accountId,
+    ) as Promise<TelegramMembershipGate | null>;
+    // error-policy:J4 Absent authority service resolves to null (legacy
+    // degrade-with-warning mode). A bootstrap FAILURE throws and is
+    // recorded here so admission can distinguish "never configured" from
+    // "broken" and fail closed on the latter.
+    try {
+      const gate = await gatePromise;
+      const manager = this.getAccountState(accountId)?.messageManager;
+      if (gate) {
+        // Bind ONLY this account's own manager: a fallback to the default
+        // manager would gate the wrong connector (and leave the secondary
+        // ungated) when the account state is not installed yet. If the
+        // manager is not ready, defer to bindAccountMembershipGates(),
+        // which runs at account-state installation.
+        manager?.bindMembershipGate(gate);
+      } else {
+        // Gate settled absent (no authority service): settle the pending
+        // marker into the documented legacy allow mode.
+        manager?.telegramMembershipGate.markAbsent();
+      }
+    } catch (error) {
+      this.membershipGateFailures.add(accountId);
+      this.getAccountState(
+        accountId,
+      )?.messageManager?.markMembershipGateBroken();
+      this.runtime.reportError("telegram:membership-bootstrap", error, {
+        accountId,
+      });
+    }
+  }
+
+  /**
+   * Installs the account's membership-gate bootstrap promise WITHOUT awaiting
+   * it, ahead of the poller going live. `ensureWiredOnce` launches the poller
+   * before `finishBotStartup`'s `setMyCommands`/`getMe` awaits resolve, so a
+   * `my_chat_member` transition delivered in that window would otherwise find
+   * no gate promise at all — the queueing path in
+   * `handleMyChatMemberUpdate` engages on a PENDING promise, and a missing
+   * promise is indistinguishable from absent-authority legacy mode, silently
+   * dropping the transition (an untombstoned kick, or a re-add that leaves a
+   * persisted tombstone denying the chat indefinitely). The bot identity comes
+   * from this method's own `getMe`; `finishBotStartup` later awaits the same
+   * promise for manager binding and failure marking.
+   */
+  private beginMembershipGateBootstrap(
+    bot: Telegraf<Context>,
+    accountId: string,
+  ): void {
+    if (this.membershipGates.has(accountId)) {
+      return;
+    }
+    const gatePromise = bot.telegram.getMe().then((botInfo) =>
+      createTelegramMembershipGate({
         runtime: this.runtime,
         botTelegramUserId: String(botInfo.id),
-      });
-      this.membershipGates.set(accountId, gatePromise);
-      // error-policy:J4 Absent authority service resolves to null (legacy
-      // degrade-with-warning mode). A bootstrap FAILURE throws and is
-      // recorded here so admission can distinguish "never configured" from
-      // "broken" and fail closed on the latter.
-      try {
-        const gate = await gatePromise;
-        const manager = this.getAccountState(accountId)?.messageManager;
-        if (gate) {
-          // Bind ONLY this account's own manager: a fallback to the default
-          // manager would gate the wrong connector (and leave the secondary
-          // ungated) when the account state is not installed yet. If the
-          // manager is not ready, defer to bindAccountMembershipGates(),
-          // which runs at account-state installation.
-          manager?.bindMembershipGate(gate);
-        } else {
-          // Gate settled absent (no authority service): settle the pending
-          // marker into the documented legacy allow mode.
-          manager?.telegramMembershipGate.markAbsent();
-        }
-      } catch (error) {
-        this.membershipGateFailures.add(accountId);
-        this.getAccountState(
-          accountId,
-        )?.messageManager?.markMembershipGateBroken();
-        this.runtime.reportError("telegram:membership-bootstrap", error, {
-          accountId,
-        });
-      }
-    }
+      }),
+    );
+    this.membershipGates.set(accountId, gatePromise);
+    // The promise may reject before finishBotStartup attaches its await;
+    // suppress that window's unhandled rejection (finishBotStartup's catch
+    // still records the failure and marks admission broken).
+    void gatePromise.catch(() => {
+      // error-policy:J5 observed and handled by finishBotStartup's await.
+    });
   }
 
   /**

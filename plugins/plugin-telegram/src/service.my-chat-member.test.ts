@@ -12,6 +12,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TelegramService } from "./service";
 
+// Controllable override for the gate factory: only the bootstrap-ordering
+// test below swaps it in (via gateFactory.create) so the REAL production
+// chain (beginMembershipGateBootstrap -> getMe -> factory -> replay) runs
+// against a deferred fake gate instead of the fake runtime's absent
+// authority service. Every other test stubs getMembershipGate directly and
+// never reaches the factory.
+const gateFactory = vi.hoisted(() => ({
+  create: null as
+    | null
+    | ((input: { botTelegramUserId: string }) => Promise<unknown>),
+}));
+vi.mock("./membership-gate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./membership-gate")>();
+  return {
+    ...actual,
+    createTelegramMembershipGate: (
+      input: Parameters<typeof actual.createTelegramMembershipGate>[0],
+    ) =>
+      gateFactory.create
+        ? gateFactory.create(input)
+        : actual.createTelegramMembershipGate(input),
+  };
+});
+
 interface GateFake {
   authority: {
     markScopeUnavailable: ReturnType<typeof vi.fn>;
@@ -414,6 +438,73 @@ describe("my_chat_member delivery contract", () => {
     expect(
       settled.get("acct")?.authority.markScopeUnavailable,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("installs the gate-bootstrap promise synchronously before the poller goes live (pre-getMe window)", async () => {
+    // The residual startup-window hole: ensureWiredOnce launches the poller
+    // BEFORE finishBotStartup's setMyCommands/getMe awaits resolve. A
+    // my_chat_member transition delivered in that window must find a PENDING
+    // gate promise to queue against — a missing promise reads as
+    // absent-authority legacy mode and silently drops the transition.
+    // beginMembershipGateBootstrap must therefore register the promise
+    // synchronously (its own getMe feeds it), before any update can arrive.
+    const { service } = makeService(null);
+    let resolveGetMe: (info: { id: number; username?: string }) => void =
+      () => {};
+    const getMe = vi.fn(
+      () =>
+        new Promise<{ id: number; username?: string }>((resolve) => {
+          resolveGetMe = resolve;
+        }),
+    );
+    const internals = service as unknown as {
+      membershipGates: Map<string, Promise<unknown>>;
+      settledMembershipGates: Map<string, unknown>;
+      pendingMembershipTransitions: Map<string, unknown[]>;
+      handleMyChatMemberUpdate: (
+        update: unknown,
+        accountId?: string,
+      ) => Promise<void>;
+      beginMembershipGateBootstrap: (bot: unknown, accountId: string) => void;
+    };
+    internals.pendingMembershipTransitions = new Map();
+    internals.beginMembershipGateBootstrap({ telegram: { getMe } }, "acct");
+
+    // Synchronous pin: the promise exists BEFORE getMe has resolved.
+    const gatePromise = internals.membershipGates.get("acct");
+    expect(gatePromise).toBeDefined();
+    expect(getMe).toHaveBeenCalledTimes(1);
+
+    // A transition arriving while the bootstrap is still pending queues
+    // (production dispatch path), instead of dropping on a missing promise.
+    await internals.handleMyChatMemberUpdate(botMemberUpdate("kicked"), "acct");
+    expect(internals.pendingMembershipTransitions.get("acct")?.length).toBe(1);
+
+    // Resolve the bootstrap: getMe resolves, the factory returns the fake
+    // gate, and the queued transition replays through the real dispatch
+    // path — the tombstone lands. Re-stub getMembershipGate BEFORE the
+    // resolution (the replay runs on the promise's microtask chain;
+    // makeService's null stub would read as absent authority and skip it).
+    const authority = {
+      markScopeUnavailable: vi.fn().mockResolvedValue(undefined),
+      clearScopeRemoval: vi.fn().mockResolvedValue(undefined),
+    };
+    const gate = {
+      authority,
+      connectorAccountId: "connector-1",
+      botTelegramUserId: "777",
+    };
+    gateFactory.create = async () => gate;
+    (
+      service as unknown as { getMembershipGate: ReturnType<typeof vi.fn> }
+    ).getMembershipGate = vi.fn().mockResolvedValue(gate);
+    resolveGetMe({ id: 777, username: "test_bot" });
+    await expect(gatePromise).resolves.toEqual(
+      expect.objectContaining({ botTelegramUserId: "777" }),
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    expect(authority.markScopeUnavailable).toHaveBeenCalledTimes(1);
+    gateFactory.create = null;
   });
 
   it("registers a my_chat_member handler during message-handler setup", async () => {
