@@ -1099,7 +1099,10 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     // total, and findPaymentStateById resolves any row by stable id — so row
     // 201 must remain reachable from every surface (#26752 review).
     const seeds: Array<Promise<unknown>> = [];
-    for (let i = 0; i < 130; i++) {
+    // 230 requests + 10 orders = 240 rows: strictly more than the old 200-row
+    // clamp so the detail-lookup target below genuinely sits beyond the
+    // newest-200 window the clamp served (#26752 r5).
+    for (let i = 0; i < 230; i++) {
       seeds.push(
         insertStripePaymentRequest({
           organizationId,
@@ -1121,7 +1124,7 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     }
     await Promise.all(seeds);
     const total = await paymentHistoryService.countPaymentStates(organizationId);
-    expect(total).toBe(140);
+    expect(total).toBe(240);
 
     // Ordering divergence: the OLDEST-created request (created first, at
     // index 0 of the seed loop) receives the NEWEST event — a reversal
@@ -1140,6 +1143,7 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       reversedUsd: 1,
     });
     const allRows = await paymentHistoryService.listPaymentStates(organizationId, 500, 0);
+    expect(allRows.length).toBe(240);
     // The divergent purchase is identifiable by its reversal projection: it
     // is the only request carrying cumulativeRefundedChargeCurrency = 1.
     const oldestId = allRows.find(
@@ -1152,18 +1156,24 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     expect(oldestId?.id).toBeTruthy();
     // ...and it still appears exactly once in a full page walk at limit 50.
     const seen = new Set<string>();
-    for (let offset = 0; offset < 140; offset += 50) {
+    for (let offset = 0; offset < 240; offset += 50) {
       const page = await paymentHistoryService.listPaymentStates(organizationId, 50, offset);
       for (const row of page) {
         expect(seen.has(row.id)).toBe(false);
         seen.add(row.id);
       }
     }
-    expect(seen.size).toBe(140);
+    expect(seen.size).toBe(240);
     expect(seen.has(oldestId?.id as string)).toBe(true);
 
     // A row beyond the old 200-clamp position is reachable by stable detail id.
     const hiddenRow = [...seen].find((id) => id === oldestId?.id) as string;
+    // The window guard: the target must genuinely sit outside the newest 200
+    // rows, so a regression of findPaymentStateById to scanning only
+    // listPaymentStates(org, 200, 0) fails here instead of passing vacuously.
+    const newest200 = await paymentHistoryService.listPaymentStates(organizationId, 200, 0);
+    expect(newest200.length).toBe(200);
+    expect(newest200.some((row) => row.id === hiddenRow)).toBe(false);
     const detail = await paymentHistoryService.findPaymentStateById(organizationId, hiddenRow);
     expect(detail).not.toBeNull();
     expect(detail?.id).toBe(hiddenRow);
@@ -1173,7 +1183,7 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
 
     // The page cap is the pagination family's list maximum, not 200.
     const wide = await paymentHistoryService.listPaymentStates(organizationId, 600);
-    expect(wide.length).toBe(140);
+    expect(wide.length).toBe(240);
   });
 
   test("sub-millisecond created_at precision keeps SQL and page ranking identical within a surface", async () => {
