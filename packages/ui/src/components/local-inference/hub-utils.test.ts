@@ -176,6 +176,15 @@ describe("findInstalled — install detection incl. external basename fallback",
       "/models/ELIZA-1-9B-Q4_K_M.GGUF",
     );
     expect(findInstalled(model, [upperPath])).toBe(upperPath);
+    // The other half of the same contract: an uppercase catalog ggufFile
+    // against a lowercase installed path. Pin both sides so a regression in
+    // either .toLowerCase() branch is caught independently.
+    const upperCatalog = { ...model, ggufFile: "ELIZA-1-9B-Q4_K_M.GGUF" };
+    const lowerPath = installed(
+      "external-hf-lower",
+      "/models/eliza-1-9b-q4_k_m.gguf",
+    );
+    expect(findInstalled(upperCatalog, [lowerPath])).toBe(lowerPath);
   });
 
   it("ignores files that merely contain the gguf name mid-path", () => {
