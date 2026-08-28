@@ -304,7 +304,13 @@ test.describe("views deep UX audit capture", () => {
           .getByRole("button", { name: "Hide wallet details" })
           .click();
       }
-      for (const tab of ["tokens", "defi", "nfts"] as const) {
+      for (const tab of [
+        "tokens",
+        "defi",
+        "nfts",
+        "activity",
+        "markets",
+      ] as const) {
         const tabButton = sidebar.getByTestId(`wallet-tab-${tab}`);
         if (await tabButton.isVisible().catch(() => false)) {
           await tabButton.click();
@@ -323,23 +329,6 @@ test.describe("views deep UX audit capture", () => {
           await tokenMenu.click();
           await screenshot(page, `${viewport.name}-wallet-token-actions`);
           await page.keyboard.press("Escape");
-        }
-      }
-      for (const insight of ["Activity", "Markets"] as const) {
-        const disclosure = page.getByRole("button", {
-          name: "Show activity and markets",
-        });
-        if (await disclosure.isVisible().catch(() => false)) {
-          await disclosure.click();
-        }
-        const tabButton = page.getByRole("tab", { name: insight });
-        if (await tabButton.isVisible().catch(() => false)) {
-          await tabButton.click();
-          await page.waitForTimeout(300);
-          await screenshot(
-            page,
-            `${viewport.name}-wallet-${insight.toLowerCase()}`,
-          );
         }
       }
     });

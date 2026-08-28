@@ -330,12 +330,6 @@ function showWalletDetails(): void {
   fireEvent.click(screen.getByRole("button", { name: "Show wallet details" }));
 }
 
-function showWalletInsights(): void {
-  fireEvent.click(
-    screen.getByRole("button", { name: "Show activity and markets" }),
-  );
-}
-
 const EVM_ADDRESS = "0x1111111111111111111111111111111111111111";
 const SOL_ADDRESS = "So1ana1111111111111111111111111111111111111";
 const AERO_ADDRESS = "0xAERO000000000000000000000000000000000000";
@@ -636,25 +630,19 @@ describe("InventoryView GUI — populated holdings", () => {
     expect(within(sidebar).getByText("$80.00")).toBeTruthy();
     expect(within(sidebar).getByText("$750.00")).toBeTruthy();
 
-    // One grouped holdings surface and one progressive insights surface keep
-    // the same data scan-friendly without five duplicate dashboard cards.
+    // All peer content modes share one navigation layer; account management
+    // remains the only progressively disclosed region.
+    const contentModes = within(sidebar).getByRole("tablist", {
+      name: "Wallet asset type",
+    });
     expect(
-      within(sidebar).getByRole("tablist", { name: "Wallet asset type" }),
+      within(contentModes).getByRole("tab", { name: "Activity" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Wallet insights" }),
+      within(contentModes).getByRole("tab", { name: "Markets" }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole("tablist", { name: "Wallet insights" }),
-    ).toBeNull();
-    showWalletInsights();
-    const insights = screen.getByRole("tablist", { name: "Wallet insights" });
-    expect(
-      within(insights).getByRole("tab", { name: "Activity" }),
-    ).toBeTruthy();
-    expect(within(insights).getByRole("tab", { name: "Markets" })).toBeTruthy();
-    expect(
-      within(insights).queryByRole("tab", { name: "Performance" }),
+      within(contentModes).queryByRole("tab", { name: "Performance" }),
     ).toBeNull();
     expect(
       screen.queryByRole("heading", { name: "DeFi positions" }),
@@ -1003,9 +991,8 @@ describe("InventoryView GUI — loading hierarchy", () => {
     ).toBeNull();
     showWalletDetails();
     expect(screen.getByTitle(/EVM ready.*Solana ready/)).toBeTruthy();
-    showWalletInsights();
     expect(
-      screen.getByRole("tablist", { name: "Wallet insights" }),
+      screen.getByRole("tablist", { name: "Wallet asset type" }),
     ).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
 
@@ -1051,9 +1038,6 @@ describe("InventoryView GUI — loading hierarchy", () => {
     expect(screen.queryByText("$0.00")).toBeNull();
     expect(
       screen.queryByRole("tablist", { name: "Wallet asset type" }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("tablist", { name: "Wallet insights" }),
     ).toBeNull();
   });
 
@@ -1192,7 +1176,6 @@ describe("InventoryView GUI — loading hierarchy", () => {
     expect(
       screen.queryByText("Failed to refresh balances: API unavailable"),
     ).toBeNull();
-    showWalletInsights();
     expect(screen.getByRole("tab", { name: "Markets" })).toBeTruthy();
 
     state.loadBalances.mockClear();
@@ -1433,7 +1416,6 @@ describe("InventoryView GUI — progressive insights", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    showWalletInsights();
     fireEvent.click(screen.getByRole("tab", { name: "Activity" }));
     // The agent activity remains; legacy BSC swap history stays under the hood.
     expect(screen.getByText("Rebalanced portfolio")).toBeTruthy();
@@ -1507,9 +1489,6 @@ describe("InventoryView GUI — calm empty-wallet hero", () => {
     // The "Keys" marketing CTA is gone.
     expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();
     // The empty hero no longer pads itself with a market dashboard.
-    expect(
-      screen.queryByRole("tablist", { name: "Wallet insights" }),
-    ).toBeNull();
     expect(screen.queryByText("Cap rank #5")).toBeNull();
 
     // The one functional setup control (Enable wallet) remains and reloads.
@@ -1547,7 +1526,6 @@ describe("InventoryView GUI — calm empty-wallet hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    showWalletInsights();
     fireEvent.click(screen.getByRole("tab", { name: "Markets" }));
     expect(await screen.findByText("Market data unavailable")).toBeTruthy();
     expect(screen.getByTitle("Top movers unavailable")).toBeTruthy();
@@ -1573,7 +1551,6 @@ describe("InventoryView GUI — calm empty-wallet hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    showWalletInsights();
     fireEvent.click(screen.getByRole("tab", { name: "Markets" }));
     expect(await screen.findByText("Market data unavailable")).toBeTruthy();
     expect(screen.queryByText("network down")).toBeNull();

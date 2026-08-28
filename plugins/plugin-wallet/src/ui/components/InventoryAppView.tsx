@@ -78,8 +78,7 @@ import { useInventoryData } from "../inventory/useInventoryData.ts";
 // Keep the namespace live even though the standalone view uses the automatic runtime.
 void React;
 
-type WalletRailTab = "tokens" | "defi" | "nfts";
-type WalletInsightTab = "activity" | "markets";
+type WalletRailTab = "tokens" | "defi" | "nfts" | "activity" | "markets";
 
 const ALL_INVENTORY_FILTERS: InventoryChainFilters = {
   ethereum: true,
@@ -1553,6 +1552,9 @@ function WalletHoldingsSection({
   hiddenTokenIds,
   walletConfig,
   profile,
+  events,
+  marketOverview,
+  marketOverviewLoading,
   onHideToken,
   onOpenRpcSettings,
   walletEnabled,
@@ -1575,6 +1577,9 @@ function WalletHoldingsSection({
   hiddenTokenIds: Set<string>;
   walletConfig: WalletConfigStatus | null;
   profile: WalletTradingProfileResponse | null;
+  events: ActivityEvent[];
+  marketOverview: WalletMarketOverviewResponse | null;
+  marketOverviewLoading: boolean;
   onHideToken: (row: TokenRow) => void;
   onOpenRpcSettings: () => void;
   walletEnabled: boolean | null;
@@ -1620,6 +1625,8 @@ function WalletHoldingsSection({
     { id: "tokens", label: "Tokens", icon: Wallet },
     { id: "defi", label: "DeFi", icon: Layers3 },
     { id: "nfts", label: "NFTs", icon: ImageIcon },
+    { id: "activity", label: "Activity", icon: Activity },
+    { id: "markets", label: "Markets", icon: TrendingUp },
   ];
   const { ref: enableWalletRef, agentProps: enableWalletAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -1775,144 +1782,22 @@ function WalletHoldingsSection({
                 error={nftsError}
                 onRetry={onRetryNfts}
               />
-            ) : null}
-          </div>
-        </>
-      )}
-    </section>
-  );
-}
-
-function WalletInsightTabButton({
-  tab,
-  active,
-  onSelect,
-}: {
-  tab: { id: WalletInsightTab; label: string };
-  active: boolean;
-  onSelect: (tab: WalletInsightTab) => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `wallet-insight-${tab.id}`,
-    role: "tab",
-    label: tab.label,
-    group: "wallet-insights",
-    status: active ? "active" : "inactive",
-    description: `Show wallet ${tab.label.toLowerCase()}`,
-  });
-
-  return (
-    <Button
-      ref={ref}
-      variant="selection"
-      size="compact"
-      type="button"
-      className="min-w-0 shrink-0"
-      role="tab"
-      id={`wallet-insight-tab-${tab.id}`}
-      aria-controls={`wallet-insight-panel-${tab.id}`}
-      aria-selected={active}
-      data-state={active ? "on" : "off"}
-      onClick={() => onSelect(tab.id)}
-      {...agentProps}
-    >
-      <span className="truncate">{tab.label}</span>
-    </Button>
-  );
-}
-
-function WalletInsightsPanel({
-  activeTab,
-  onSelectTab,
-  profile,
-  events,
-  rows,
-  marketOverview,
-  marketOverviewLoading,
-}: {
-  activeTab: WalletInsightTab;
-  onSelectTab: (tab: WalletInsightTab) => void;
-  profile: WalletTradingProfileResponse | null;
-  events: ActivityEvent[];
-  rows: TokenRow[];
-  marketOverview: WalletMarketOverviewResponse | null;
-  marketOverviewLoading: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const tabs: Array<{
-    id: WalletInsightTab;
-    label: string;
-  }> = [
-    { id: "activity", label: "Activity" },
-    { id: "markets", label: "Markets" },
-  ];
-
-  return (
-    <Collapsible open={open} onOpenChange={setOpen} asChild>
-      <section
-        aria-labelledby="wallet-insights-title"
-        className="overflow-hidden border-t border-border/70"
-      >
-        <h2 id="wallet-insights-title" className="sr-only">
-          Wallet insights
-        </h2>
-        <CollapsibleTrigger asChild>
-          <Button
-            variant="ghostMuted"
-            size="default"
-            align="between"
-            className="w-full px-0 py-3"
-            aria-label={`${open ? "Hide" : "Show"} activity and markets`}
-          >
-            <span className="font-medium text-txt">Activity & markets</span>
-            <ChevronDown
-              className={cn(
-                "size-4 transition-transform",
-                open && "rotate-180",
-              )}
-              aria-hidden
-            />
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="border-t border-border/70 py-2">
-            <div
-              className="flex items-center gap-1"
-              role="tablist"
-              aria-label="Wallet insights"
-            >
-              {tabs.map((tab) => (
-                <WalletInsightTabButton
-                  key={tab.id}
-                  tab={tab}
-                  active={activeTab === tab.id}
-                  onSelect={onSelectTab}
-                />
-              ))}
-            </div>
-          </div>
-          <div
-            id={`wallet-insight-panel-${activeTab}`}
-            role="tabpanel"
-            aria-labelledby={`wallet-insight-tab-${activeTab}`}
-            className="border-t border-border/70"
-          >
-            {activeTab === "activity" ? (
+            ) : activeTab === "activity" ? (
               <ActivityLog profile={profile} events={events} />
-            ) : (
+            ) : activeTab === "markets" ? (
               <div className="py-4 sm:py-5">
                 <PortfolioMoversPanel
-                  rows={rows}
+                  rows={visibleRows}
                   profile={profile}
                   marketOverview={marketOverview}
                   loading={marketOverviewLoading}
                 />
               </div>
-            )}
+            ) : null}
           </div>
-        </CollapsibleContent>
-      </section>
-    </Collapsible>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -2041,7 +1926,6 @@ export function InventoryAppView() {
   const [hiddenTokenIds, setHiddenTokenIds] = useState<Set<string>>(() =>
     readHiddenTokenIds(),
   );
-  const [insightTab, setInsightTab] = useState<WalletInsightTab>("markets");
   const [marketOverview, setMarketOverview] =
     useState<WalletMarketOverviewResponse | null>(null);
   const [marketOverviewLoading, setMarketOverviewLoading] = useState(false);
@@ -2362,6 +2246,9 @@ export function InventoryAppView() {
                 hiddenTokenIds={hiddenTokenIds}
                 walletConfig={walletConfig}
                 profile={primaryTradingProfile}
+                events={activityEvents}
+                marketOverview={activeMarketOverview}
+                marketOverviewLoading={activeMarketOverviewLoading}
                 onHideToken={handleHideToken}
                 onOpenRpcSettings={handleOpenRpcSettings}
                 walletEnabled={walletEnabled}
@@ -2376,18 +2263,6 @@ export function InventoryAppView() {
                 showWalletEmptyState={showWalletEmptyState}
                 onRestoreHiddenTokens={handleRestoreHiddenTokens}
               />
-
-              {!showWalletEmptyState ? (
-                <WalletInsightsPanel
-                  activeTab={insightTab}
-                  onSelectTab={setInsightTab}
-                  profile={primaryTradingProfile}
-                  events={activityEvents}
-                  rows={displayedAssetRows}
-                  marketOverview={activeMarketOverview}
-                  marketOverviewLoading={activeMarketOverviewLoading}
-                />
-              ) : null}
             </>
           )}
         </PagePanel.ContentRail>
