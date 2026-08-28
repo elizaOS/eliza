@@ -19,7 +19,9 @@ export function usePairingState() {
   const pairingBusyRef = useRef(false);
 
   const handlePairingSubmit = useCallback(async () => {
-    if (pairingBusyRef.current || pairingBusy) return;
+    // The ref is the synchronous submit lock. React state only renders the busy
+    // indicator and may still hold the previous request's value for one render.
+    if (pairingBusyRef.current) return;
     const code = pairingCodeInput.trim();
     if (!code) {
       setPairingError("Enter the pairing code from your server.");
@@ -34,6 +36,8 @@ export function usePairingState() {
       client.setToken(token);
       window.location.reload();
     } catch (err) {
+      // error-policy:J4 known HTTP statuses become distinct pairing guidance;
+      // every other failure remains a visibly generic retry state.
       const status = (err as { status?: number }).status;
       if (status === 410)
         setPairingError(
@@ -46,7 +50,7 @@ export function usePairingState() {
       pairingBusyRef.current = false;
       setPairingBusy(false);
     }
-  }, [pairingBusy, pairingCodeInput]);
+  }, [pairingCodeInput]);
 
   return {
     state: {
