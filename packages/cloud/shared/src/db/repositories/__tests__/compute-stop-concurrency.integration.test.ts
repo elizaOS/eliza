@@ -233,7 +233,14 @@ beforeAll(async () => {
         created_at timestamp NOT NULL, updated_at timestamp NOT NULL
       );
       CREATE TABLE agent_sandboxes (
-        id uuid PRIMARY KEY, organization_id uuid NOT NULL
+        id uuid PRIMARY KEY, organization_id uuid NOT NULL, user_id uuid NOT NULL,
+        status text NOT NULL DEFAULT 'pending',
+        lifecycle_revision bigint NOT NULL DEFAULT 0,
+        billing_status text NOT NULL DEFAULT 'active',
+        scheduled_shutdown_at timestamptz,
+        execution_tier text NOT NULL DEFAULT 'shared',
+        pool_status text, deletion_attempt_id uuid, deleted_at timestamptz,
+        replacement_cleanup_sandbox_id text
       );
       CREATE TABLE compute_billing_rate_segments (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
@@ -579,7 +586,9 @@ realPostgres("compute stop concurrency", () => {
           VALUES (${userId}, ${organizationId}, ${stewardUserId}, 'owner')`,
     );
     await dbWrite.execute(
-      sql`INSERT INTO agent_sandboxes(id, organization_id) VALUES (${agentId}, ${organizationId})`,
+      sql`INSERT INTO agent_sandboxes
+        (id, organization_id, user_id, status, lifecycle_revision, execution_tier)
+        VALUES (${agentId}, ${organizationId}, ${userId}, 'running', 5, 'dedicated-lazy')`,
     );
     const [seededJob] = await dbWrite
       .insert(jobsTable)
@@ -1129,10 +1138,21 @@ realPostgres("compute stop concurrency", () => {
       throw new Error("harness unavailable");
     }
     const organizationId = randomUUID();
+    const userId = randomUUID();
     const agentId = randomUUID();
+    const stewardUserId = `steward:${userId}`;
     await dbWrite.execute(
       sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
     );
+    await dbWrite.execute(
+      sql`INSERT INTO users(id, organization_id, steward_user_id, role)
+          VALUES (${userId}, ${organizationId}, ${stewardUserId}, 'owner')`,
+    );
+    await dbWrite.execute(sql`INSERT INTO agent_sandboxes
+      (id, organization_id, user_id, status, lifecycle_revision, billing_status,
+       scheduled_shutdown_at, execution_tier)
+      VALUES (${agentId}, ${organizationId}, ${userId}, 'running', 5, 'shutdown_pending',
+        NOW() - interval '1 minute', 'dedicated-lazy')`);
     await dbWrite.execute(sql`INSERT INTO agent_compute_stop_intents
       (organization_id, agent_id, lifecycle_revision, status, attempts, next_attempt_at)
       VALUES (${organizationId}, ${agentId}, 5, 'terminal_attention', 3, NOW() - interval '1 minute')`);
