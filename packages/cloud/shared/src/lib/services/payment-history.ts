@@ -27,7 +27,7 @@
  * can never collide with a real Stripe intent.
  */
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { dbRead } from "../../db/client";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { paymentRequestReceipts } from "../../db/schemas/payment-request-receipts";
@@ -559,16 +559,242 @@ function normalizeUppercaseCurrency(value: string): string {
   return value.trim().toUpperCase();
 }
 
+interface RequestAuthorityRow {
+  id: string;
+  provider: PaymentRequestProvider;
+  amountCents: number | bigint;
+  currency: string;
+  status: string;
+  settledAt: Date | null;
+  settlementTxRef: string | null;
+  createdAt: Date;
+}
+
+interface OrderAuthorityRow {
+  id: string;
+  stripePaymentIntentId: string | null;
+  chargeAmountCents: number | bigint;
+  currency: string;
+  status: string;
+  settledAt: Date | null;
+  createdAt: Date;
+}
+
+/**
+ * Reversal aggregates for a set of Stripe intents, batched by intent until
+ * every intent is covered. No global row cap — an org with deep refund
+ * history on one purchase must not lose older rows to a sibling purchase's
+ * volume.
+ */
+async function fetchReversalsByIntents(
+  organizationId: string,
+  intents: Iterable<string>,
+): Promise<Map<string, ReversalAggregate>> {
+  const reversalRows: Array<{
+    id: string;
+    type: string;
+    amount: string;
+    stripePaymentIntentId: string | null;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+  }> = [];
+  const intentList = [...intents];
+  const BATCH = 100;
+  for (let i = 0; i < intentList.length; i += BATCH) {
+    const slice = intentList.slice(i, i + BATCH);
+    const rows = await dbRead
+      .select({
+        id: creditTransactions.id,
+        type: creditTransactions.type,
+        amount: creditTransactions.amount,
+        stripePaymentIntentId: creditTransactions.stripe_payment_intent_id,
+        metadata: creditTransactions.metadata,
+        createdAt: creditTransactions.created_at,
+      })
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.organization_id, organizationId),
+          inArray(creditTransactions.type, ["clawback", "refund"]),
+          inArray(sql`${creditTransactions.metadata}->>'payment_intent_id'`, slice),
+        ),
+      )
+      .orderBy(desc(creditTransactions.created_at), desc(creditTransactions.id));
+    reversalRows.push(...rows);
+  }
+  return aggregateReversals(reversalRows);
+}
+
+/**
+ * Projects one payment-request authority into its customer-visible row.
+ * Purchase facts come from the immutable receipt when one exists (#22427
+ * authority); the mutable request row is the legacy fallback only.
+ */
+function projectRequestRow(
+  request: RequestAuthorityRow,
+  receipt: {
+    id: string;
+    provider: PaymentRequestProvider;
+    providerTxRef: string | null;
+    amountCents: number | bigint;
+    currency: string;
+    settledAt: Date | null;
+  } | null,
+  reversal: ReversalAggregate | undefined,
+): PaymentStateRow {
+  // Reversal association follows the same immutable authority: when the
+  // receipt exists, its provider and provider tx ref decide which Stripe
+  // intent the reversals attach to.
+  const reversed = Boolean(reversal?.lastReversalSource);
+  const amountCents = receipt ? Number(receipt.amountCents) : Number(request.amountCents);
+  const settlementAt = receipt ? receipt.settledAt : request.settledAt;
+  const paymentState = derivePaymentRequestState(
+    request.status,
+    receipt !== null,
+    reversal,
+    amountCents,
+  );
+  const eventTime = reversal?.lastReversalSource
+    ? new Date(reversal.lastReversalAt).toISOString()
+    : settlementAt
+      ? settlementAt.toISOString()
+      : request.createdAt.toISOString();
+  const eventTimeKind: PaymentStateRow["eventTimeKind"] = reversal?.lastReversalSource
+    ? "reversal_ledger_observation"
+    : settlementAt
+      ? "provider_settlement"
+      : "server_creation";
+  return {
+    id: `payment_request:${request.id}`,
+    surface: "payment_request",
+    authorityId: request.id,
+    receiptId: receipt?.id ?? null,
+    provider: receipt ? receipt.provider : request.provider,
+    amountCents,
+    currency: receipt
+      ? normalizeUppercaseCurrency(receipt.currency)
+      : normalizeUppercaseCurrency(request.currency),
+    eventTime,
+    eventTimeKind,
+    paymentState,
+    cumulativeRefundedChargeCurrency: reversal?.cumulativeRefundedChargeCurrency ?? 0,
+    cumulativeDisputedChargeCurrency: reversal?.cumulativeDisputedChargeCurrency ?? 0,
+    cumulativeClawbackCredits: reversal?.cumulativeClawbackCredits ?? 0,
+    reinstatedCredits: reversal?.reinstatedCredits ?? 0,
+    unrecoveredShortfallCredits: reversal?.unrecoveredShortfallCredits ?? 0,
+    disputeReinstated: reversal?.disputeReinstated ?? false,
+    policyEffect: reversed
+      ? {
+          status: "unavailable",
+          reason: POLICY_EFFECT_REASONS.refundPolicyPending,
+        }
+      : null,
+    supportState: reversed ? "contact_support" : "none",
+  };
+}
+
+/** Projects one checkout-order authority into its customer-visible row. */
+function projectOrderRow(
+  order: OrderAuthorityRow,
+  reversal: ReversalAggregate | undefined,
+): PaymentStateRow {
+  const amountCents = Number(order.chargeAmountCents);
+  const reversed = Boolean(reversal?.lastReversalSource);
+  return {
+    id: `checkout_order:${order.id}`,
+    surface: "checkout_order",
+    authorityId: order.id,
+    receiptId: null,
+    provider: "stripe",
+    amountCents,
+    currency: normalizeUppercaseCurrency(order.currency),
+    eventTime: reversal?.lastReversalSource
+      ? new Date(reversal.lastReversalAt).toISOString()
+      : order.settledAt
+        ? order.settledAt.toISOString()
+        : order.createdAt.toISOString(),
+    eventTimeKind: reversal?.lastReversalSource
+      ? "reversal_ledger_observation"
+      : order.settledAt
+        ? "provider_settlement"
+        : "server_creation",
+    paymentState: deriveCheckoutOrderState(
+      order.status,
+      order.stripePaymentIntentId,
+      reversal,
+      amountCents,
+    ),
+    cumulativeRefundedChargeCurrency: reversal?.cumulativeRefundedChargeCurrency ?? 0,
+    cumulativeDisputedChargeCurrency: reversal?.cumulativeDisputedChargeCurrency ?? 0,
+    cumulativeClawbackCredits: reversal?.cumulativeClawbackCredits ?? 0,
+    reinstatedCredits: reversal?.reinstatedCredits ?? 0,
+    unrecoveredShortfallCredits: reversal?.unrecoveredShortfallCredits ?? 0,
+    disputeReinstated: reversal?.disputeReinstated ?? false,
+    policyEffect: reversed
+      ? {
+          status: "unavailable",
+          reason: POLICY_EFFECT_REASONS.refundPolicyPending,
+        }
+      : null,
+    supportState: reversed ? "contact_support" : "none",
+  };
+}
+
+/** Maximum page size across the payment-states surfaces. */
+export const PAYMENT_STATES_MAX_PAGE = 500;
+
 export class PaymentHistoryService {
   /**
-   * Lists the organization's purchase payment states from server authorities.
-   * Purchases are selected first (bounded); reversal rows are then fetched in
-   * id-ordered batches covering EVERY selected intent with no truncation, so
-   * a purchase's refund history cannot be split across a query boundary.
+   * Lists the organization's purchase payment states from server authorities
+   * as one page of a stable, exactly traversable ordering. The page window
+   * is selected by ONE SQL UNION of both authority surfaces ranked by the
+   * authority rows' own (created_at DESC, id DESC) — the full-precision
+   * PostgreSQL timestamp and collation decide, never a JS-Date millisecond
+   * truncation — windowed to global ranks [offset, offset + limit). Walking
+   * pages (offset 0, limit, 2*limit, ...) visits every persisted purchase
+   * exactly once, no matter how receipts/reversals later moved its derived
+   * eventTime (#26752). Derived eventTime still orders the rows WITHIN a
+   * page for display continuity.
    */
-  async listPaymentStates(organizationId: string, limit = 50): Promise<PaymentStateRow[]> {
-    const boundedLimit = Math.min(Math.max(limit, 1), 200);
+  async listPaymentStates(
+    organizationId: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<PaymentStateRow[]> {
+    const boundedLimit = Math.min(Math.max(limit, 1), PAYMENT_STATES_MAX_PAGE);
+    const boundedOffset = Math.max(offset, 0);
 
+    // Window selection: rank the union in SQL. Each leg carries the key
+    // columns (created_at, id); the outer query orders by the SAME key and
+    // applies limit/offset, so the window is exactly the page — no JS
+    // re-ranking that could disagree with SQL across pages.
+    const requestLeg = dbRead
+      .select({
+        id: paymentRequests.id,
+        createdAt: paymentRequests.created_at,
+      })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.organization_id, organizationId));
+    const orderLeg = dbRead
+      .select({
+        id: stripeCheckoutOrders.id,
+        createdAt: stripeCheckoutOrders.created_at,
+      })
+      .from(stripeCheckoutOrders)
+      .where(eq(stripeCheckoutOrders.organization_id, organizationId));
+    const ranked = requestLeg.unionAll(orderLeg).as("ranked_authorities");
+    const windowRows = await dbRead
+      .select({ id: ranked.id, createdAt: ranked.createdAt })
+      .from(ranked)
+      .orderBy(desc(ranked.createdAt), desc(ranked.id))
+      .limit(boundedLimit)
+      .offset(boundedOffset);
+
+    const windowIds = new Set(windowRows.map((row) => row.id));
+    if (windowIds.size === 0) return [];
+
+    // Hydrate only the page's authority rows, then project exactly as
+    // before: receipts by request id, reversals by every associated intent.
     const requestRows = await dbRead
       .select({
         id: paymentRequests.id,
@@ -581,9 +807,12 @@ export class PaymentHistoryService {
         createdAt: paymentRequests.created_at,
       })
       .from(paymentRequests)
-      .where(eq(paymentRequests.organization_id, organizationId))
-      .orderBy(desc(paymentRequests.created_at))
-      .limit(boundedLimit);
+      .where(
+        and(
+          eq(paymentRequests.organization_id, organizationId),
+          inArray(paymentRequests.id, [...windowIds]),
+        ),
+      );
 
     const orderRows = await dbRead
       .select({
@@ -596,9 +825,12 @@ export class PaymentHistoryService {
         createdAt: stripeCheckoutOrders.created_at,
       })
       .from(stripeCheckoutOrders)
-      .where(eq(stripeCheckoutOrders.organization_id, organizationId))
-      .orderBy(desc(stripeCheckoutOrders.created_at))
-      .limit(boundedLimit);
+      .where(
+        and(
+          eq(stripeCheckoutOrders.organization_id, organizationId),
+          inArray(stripeCheckoutOrders.id, [...windowIds]),
+        ),
+      );
 
     const stripeIntentIds = new Set<string>();
     for (const request of requestRows) {
@@ -647,43 +879,9 @@ export class PaymentHistoryService {
       }
     }
 
-    // Reversals: batched by intent until every selected intent is covered.
-    // No global row cap — an org with deep refund history on one purchase
-    // must not lose older rows to a sibling purchase's volume.
-    const reversalRows: Array<{
-      id: string;
-      type: string;
-      amount: string;
-      stripePaymentIntentId: string | null;
-      metadata: Record<string, unknown> | null;
-      createdAt: Date;
-    }> = [];
-    const intentList = [...stripeIntentIds];
-    const BATCH = 100;
-    for (let i = 0; i < intentList.length; i += BATCH) {
-      const slice = intentList.slice(i, i + BATCH);
-      const rows = await dbRead
-        .select({
-          id: creditTransactions.id,
-          type: creditTransactions.type,
-          amount: creditTransactions.amount,
-          stripePaymentIntentId: creditTransactions.stripe_payment_intent_id,
-          metadata: creditTransactions.metadata,
-          createdAt: creditTransactions.created_at,
-        })
-        .from(creditTransactions)
-        .where(
-          and(
-            eq(creditTransactions.organization_id, organizationId),
-            inArray(creditTransactions.type, ["clawback", "refund"]),
-            inArray(sql`${creditTransactions.metadata}->>'payment_intent_id'`, slice),
-          ),
-        )
-        .orderBy(desc(creditTransactions.created_at), desc(creditTransactions.id));
-      reversalRows.push(...rows);
-    }
-
-    const reversals = aggregateReversals(reversalRows);
+    // Reversals: batched by intent until every selected intent is covered
+    // (see fetchReversalsByIntents — no global row cap).
+    const reversals = await fetchReversalsByIntents(organizationId, stripeIntentIds);
 
     const rows: PaymentStateRow[] = [];
     for (const request of requestRows) {
@@ -700,108 +898,149 @@ export class PaymentHistoryService {
           ? request.settlementTxRef
           : null;
       const reversal = reversalKey ? reversals.get(reversalKey) : undefined;
-      const reversed = Boolean(reversal?.lastReversalSource);
-      // Settled requests project purchase facts from the immutable receipt:
-      // amount, currency, settlement time, and provider all prefer the
-      // receipt (#22427 authority) over the mutable request row.
-      const amountCents = receipt ? Number(receipt.amountCents) : Number(request.amountCents);
-      const settlementAt = receipt ? receipt.settledAt : request.settledAt;
-      const paymentState = derivePaymentRequestState(
-        request.status,
-        receipt !== null,
-        reversal,
-        amountCents,
-      );
-      const eventTime = reversal?.lastReversalSource
-        ? new Date(reversal.lastReversalAt).toISOString()
-        : settlementAt
-          ? settlementAt.toISOString()
-          : request.createdAt.toISOString();
-      const eventTimeKind: PaymentStateRow["eventTimeKind"] = reversal?.lastReversalSource
-        ? "reversal_ledger_observation"
-        : settlementAt
-          ? "provider_settlement"
-          : "server_creation";
-      rows.push({
-        id: `payment_request:${request.id}`,
-        surface: "payment_request",
-        authorityId: request.id,
-        receiptId: receipt?.id ?? null,
-        provider: receipt ? receipt.provider : request.provider,
-        amountCents,
-        currency: receipt
-          ? normalizeUppercaseCurrency(receipt.currency)
-          : normalizeUppercaseCurrency(request.currency),
-        eventTime,
-        eventTimeKind,
-        paymentState,
-        cumulativeRefundedChargeCurrency: reversal?.cumulativeRefundedChargeCurrency ?? 0,
-        cumulativeDisputedChargeCurrency: reversal?.cumulativeDisputedChargeCurrency ?? 0,
-        cumulativeClawbackCredits: reversal?.cumulativeClawbackCredits ?? 0,
-        reinstatedCredits: reversal?.reinstatedCredits ?? 0,
-        unrecoveredShortfallCredits: reversal?.unrecoveredShortfallCredits ?? 0,
-        disputeReinstated: reversal?.disputeReinstated ?? false,
-        policyEffect: reversed
-          ? {
-              status: "unavailable",
-              reason: POLICY_EFFECT_REASONS.refundPolicyPending,
-            }
-          : null,
-        supportState: reversed ? "contact_support" : "none",
-      });
+      rows.push(projectRequestRow(request, receipt, reversal));
     }
 
     for (const order of orderRows) {
-      const amountCents = Number(order.chargeAmountCents);
       const reversal = order.stripePaymentIntentId
         ? reversals.get(order.stripePaymentIntentId)
         : undefined;
-      const reversed = Boolean(reversal?.lastReversalSource);
-      rows.push({
-        id: `checkout_order:${order.id}`,
-        surface: "checkout_order",
-        authorityId: order.id,
-        receiptId: null,
-        provider: "stripe",
-        amountCents,
-        currency: normalizeUppercaseCurrency(order.currency),
-        eventTime: reversal?.lastReversalSource
-          ? new Date(reversal.lastReversalAt).toISOString()
-          : order.settledAt
-            ? order.settledAt.toISOString()
-            : order.createdAt.toISOString(),
-        eventTimeKind: reversal?.lastReversalSource
-          ? "reversal_ledger_observation"
-          : order.settledAt
-            ? "provider_settlement"
-            : "server_creation",
-        paymentState: deriveCheckoutOrderState(
-          order.status,
-          order.stripePaymentIntentId,
-          reversal,
-          amountCents,
-        ),
-        cumulativeRefundedChargeCurrency: reversal?.cumulativeRefundedChargeCurrency ?? 0,
-        cumulativeDisputedChargeCurrency: reversal?.cumulativeDisputedChargeCurrency ?? 0,
-        cumulativeClawbackCredits: reversal?.cumulativeClawbackCredits ?? 0,
-        reinstatedCredits: reversal?.reinstatedCredits ?? 0,
-        unrecoveredShortfallCredits: reversal?.unrecoveredShortfallCredits ?? 0,
-        disputeReinstated: reversal?.disputeReinstated ?? false,
-        policyEffect: reversed
-          ? {
-              status: "unavailable",
-              reason: POLICY_EFFECT_REASONS.refundPolicyPending,
-            }
-          : null,
-        supportState: reversed ? "contact_support" : "none",
-      });
+      rows.push(projectOrderRow(order, reversal));
     }
 
+    // The window is already the exact page (SQL-ranked); order it for
+    // display by derived eventTime with the stable row-id tie-break.
     rows.sort((a, b) => {
       const timeDelta = Date.parse(b.eventTime) - Date.parse(a.eventTime);
       return timeDelta !== 0 ? timeDelta : a.id.localeCompare(b.id);
     });
-    return rows.slice(0, boundedLimit);
+    return rows;
+  }
+
+  /**
+   * Total number of payment-state rows the organization can see across both
+   * authority surfaces. Callers use it to size offset pagination of
+   * {@link listPaymentStates}: `total` from this count is the real number of
+   * persisted purchases, never the current page's length.
+   */
+  async countPaymentStates(organizationId: string): Promise<number> {
+    const [requestCount] = await dbRead
+      .select({ value: count() })
+      .from(paymentRequests)
+      .where(eq(paymentRequests.organization_id, organizationId));
+    const [orderCount] = await dbRead
+      .select({ value: count() })
+      .from(stripeCheckoutOrders)
+      .where(eq(stripeCheckoutOrders.organization_id, organizationId));
+    return Number(requestCount?.value ?? 0) + Number(orderCount?.value ?? 0);
+  }
+
+  /**
+   * Resolves one payment state by its stable `{surface}:{authorityId}` id,
+   * scoped to the organization. Unlike the list, this is a direct indexed
+   * lookup on the owning authority row — a persisted purchase stays reachable
+   * from its stable detail id no matter how many newer purchases exist
+   * (#26752), and a foreign org's id never resolves.
+   */
+  async findPaymentStateById(organizationId: string, id: string): Promise<PaymentStateRow | null> {
+    const separator = id.indexOf(":");
+    const surface = id.slice(0, separator);
+    const authorityId = id.slice(separator + 1);
+
+    if (surface === "payment_request" && authorityId) {
+      const [request] = await dbRead
+        .select({
+          id: paymentRequests.id,
+          provider: paymentRequests.provider,
+          amountCents: paymentRequests.amount_cents,
+          currency: paymentRequests.currency,
+          status: paymentRequests.status,
+          settledAt: paymentRequests.settled_at,
+          settlementTxRef: paymentRequests.settlement_tx_ref,
+          createdAt: paymentRequests.created_at,
+        })
+        .from(paymentRequests)
+        .where(
+          and(
+            eq(paymentRequests.organization_id, organizationId),
+            eq(paymentRequests.id, authorityId),
+          ),
+        );
+      if (!request) return null;
+      // Receipts join by payment_request_id (provider-scoped), never by intent.
+      // The receipt is the immutable authority for which Stripe intent a
+      // settled purchase's reversals attach to (it may diverge from the
+      // request row).
+      const [receipt] = await dbRead
+        .select({
+          id: paymentRequestReceipts.id,
+          paymentRequestId: paymentRequestReceipts.payment_request_id,
+          provider: paymentRequestReceipts.provider,
+          providerTxRef: paymentRequestReceipts.provider_tx_ref,
+          amountCents: paymentRequestReceipts.amount_cents,
+          currency: paymentRequestReceipts.currency,
+          settledAt: paymentRequestReceipts.settled_at,
+        })
+        .from(paymentRequestReceipts)
+        .where(
+          and(
+            eq(paymentRequestReceipts.organization_id, organizationId),
+            eq(paymentRequestReceipts.payment_request_id, authorityId),
+          ),
+        );
+      const receiptRow = receipt ?? null;
+      const reversalKey = receiptRow
+        ? receiptRow.provider === "stripe"
+          ? receiptRow.providerTxRef
+          : null
+        : request.provider === "stripe"
+          ? request.settlementTxRef
+          : null;
+      const reversals = reversalKey
+        ? await fetchReversalsByIntents(organizationId, [reversalKey])
+        : null;
+      return projectRequestRow(
+        request,
+        receiptRow
+          ? {
+              id: receiptRow.id,
+              provider: receiptRow.provider,
+              providerTxRef: receiptRow.providerTxRef,
+              amountCents: receiptRow.amountCents,
+              currency: receiptRow.currency,
+              settledAt: receiptRow.settledAt,
+            }
+          : null,
+        reversals?.get(reversalKey ?? "") ?? undefined,
+      );
+    }
+
+    if (surface === "checkout_order" && authorityId) {
+      const [order] = await dbRead
+        .select({
+          id: stripeCheckoutOrders.id,
+          stripePaymentIntentId: stripeCheckoutOrders.stripe_payment_intent_id,
+          chargeAmountCents: stripeCheckoutOrders.charge_amount_cents,
+          currency: stripeCheckoutOrders.currency,
+          status: stripeCheckoutOrders.status,
+          settledAt: stripeCheckoutOrders.settled_at,
+          createdAt: stripeCheckoutOrders.created_at,
+        })
+        .from(stripeCheckoutOrders)
+        .where(
+          and(
+            eq(stripeCheckoutOrders.organization_id, organizationId),
+            eq(stripeCheckoutOrders.id, authorityId),
+          ),
+        );
+      if (!order) return null;
+      const reversals = order.stripePaymentIntentId
+        ? await fetchReversalsByIntents(organizationId, [order.stripePaymentIntentId])
+        : null;
+      return projectOrderRow(order, reversals?.get(order.stripePaymentIntentId ?? "") ?? undefined);
+    }
+
+    return null;
   }
 }
 

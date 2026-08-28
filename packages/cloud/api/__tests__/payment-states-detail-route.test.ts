@@ -1,9 +1,10 @@
 /**
  * GET /api/v1/billing/payment-states/:id contract tests (#22966 linked
- * order/receipt surface): org-scoped lookup over the paymentHistoryService
- * projection, 400 on malformed ids, real 404 when the row is outside the
- * org's bounded history window, and the authenticated org's own rows only.
- * Auth middleware is stubbed to a fixed org; the route module is real.
+ * order/receipt surface): direct org-scoped lookup by the stable
+ * `{surface}:{authorityId}` id, 400 on malformed ids, real 404 when no
+ * persisted authority row matches the org, and the authenticated org's own
+ * rows only. Auth middleware is stubbed to a fixed org; the route module is
+ * real.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -15,34 +16,36 @@ import * as paymentHistoryActual from "@/lib/services/payment-history";
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 
-const listPaymentStates = mock(
-  async (organizationId: string, _limit: number) => {
-    // Real service behavior at test scope: rows belong to the caller's org.
-    if (organizationId === ORG_A) {
-      return [
-        {
-          id: "checkout_order:o1",
-          surface: "checkout_order",
-          authorityId: "o1",
-          receiptId: null,
-          provider: "stripe",
-          amountCents: 2500,
-          currency: "USD",
-          eventTime: "2026-08-23T12:00:00.000Z",
-          eventTimeKind: "provider_settlement",
-          paymentState: "succeeded",
-          cumulativeRefundedChargeCurrency: 0,
-          cumulativeDisputedChargeCurrency: 0,
-          cumulativeClawbackCredits: 0,
-          reinstatedCredits: 0,
-          unrecoveredShortfallCredits: 0,
-          disputeReinstated: false,
-          policyEffect: null,
-          supportState: "none",
-        },
-      ];
+const sampleRow = (id: string) => ({
+  id,
+  surface: "checkout_order",
+  authorityId: id.split(":")[1] ?? "",
+  receiptId: null,
+  provider: "stripe",
+  amountCents: 2500,
+  currency: "USD",
+  eventTime: "2026-08-23T12:00:00.000Z",
+  eventTimeKind: "provider_settlement",
+  paymentState: "succeeded",
+  cumulativeRefundedChargeCurrency: 0,
+  cumulativeDisputedChargeCurrency: 0,
+  cumulativeClawbackCredits: 0,
+  reinstatedCredits: 0,
+  unrecoveredShortfallCredits: 0,
+  disputeReinstated: false,
+  policyEffect: null,
+  supportState: "none",
+});
+
+// Real service behavior at test scope: rows belong to the caller's org, and
+// a row the org owns resolves by stable id regardless of any list-window
+// position (#26752).
+const findPaymentStateById = mock(
+  async (organizationId: string, id: string) => {
+    if (organizationId === ORG_A && id === "checkout_order:o1") {
+      return sampleRow(id);
     }
-    return [];
+    return null;
   },
 );
 
@@ -63,7 +66,7 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 
 mock.module("@/lib/services/payment-history", () => ({
   ...paymentHistoryActual,
-  paymentHistoryService: { listPaymentStates },
+  paymentHistoryService: { findPaymentStateById },
 }));
 
 const paymentStateRoute = (
@@ -85,7 +88,7 @@ afterAll(() => {
 
 beforeEach(() => {
   currentOrg = ORG_A;
-  listPaymentStates.mockClear();
+  findPaymentStateById.mockClear();
 });
 
 async function getState(id: string) {
@@ -108,10 +111,13 @@ describe("GET /api/v1/billing/payment-states/:id (#22966 detail)", () => {
     expect(body.success).toBe(true);
     expect(body.state.id).toBe("checkout_order:o1");
     expect(body.state.paymentState).toBe("succeeded");
-    expect(listPaymentStates).toHaveBeenCalledWith(ORG_A, 200);
+    expect(findPaymentStateById).toHaveBeenCalledWith(
+      ORG_A,
+      "checkout_order:o1",
+    );
   });
 
-  test("404s a well-formed id outside the org's window", async () => {
+  test("404s a well-formed id the org does not own or that never existed", async () => {
     const res = await getState("checkout_order:missing");
     expect(res.status).toBe(404);
     const body = (await res.json()) as Record<string, unknown>;
@@ -123,6 +129,10 @@ describe("GET /api/v1/billing/payment-states/:id (#22966 detail)", () => {
     currentOrg = ORG_B;
     const res = await getState("checkout_order:o1");
     expect(res.status).toBe(404);
+    expect(findPaymentStateById).toHaveBeenCalledWith(
+      ORG_B,
+      "checkout_order:o1",
+    );
   });
 
   test("rejects malformed ids with 400 before any service call", async () => {
@@ -143,6 +153,6 @@ describe("GET /api/v1/billing/payment-states/:id (#22966 detail)", () => {
       const body = (await res.json()) as Record<string, unknown>;
       expect(body.error).toBe("INVALID_PAYMENT_STATE_ID");
     }
-    expect(listPaymentStates).not.toHaveBeenCalled();
+    expect(findPaymentStateById).not.toHaveBeenCalled();
   });
 });
