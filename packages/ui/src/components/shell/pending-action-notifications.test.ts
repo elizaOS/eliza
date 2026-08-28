@@ -22,8 +22,16 @@ const NOW = 2_000_000;
 class MemoryStorage {
   private readonly values = new Map<string, string>();
 
+  get length(): number {
+    return this.values.size;
+  }
+
   getItem(key: string): string | null {
     return this.values.get(key) ?? null;
+  }
+
+  key(index: number): string | null {
+    return [...this.values.keys()][index] ?? null;
   }
 
   setItem(key: string, value: string): void {
@@ -32,6 +40,20 @@ class MemoryStorage {
 
   removeItem(key: string): void {
     this.values.delete(key);
+  }
+}
+
+class UnavailableStorage extends MemoryStorage {
+  override getItem(_key: string): string | null {
+    throw new DOMException("Storage disabled", "SecurityError");
+  }
+
+  override setItem(_key: string, _value: string): void {
+    throw new DOMException("Storage full", "QuotaExceededError");
+  }
+
+  override removeItem(_key: string): void {
+    throw new DOMException("Storage disabled", "SecurityError");
   }
 }
 
@@ -160,7 +182,15 @@ describe("pending-action notification projection", () => {
       [],
       new Set(),
     );
-    persistResolvedPendingActionIds(storage, key, mountedResolvedIds);
+    expect(
+      persistResolvedPendingActionIds(
+        storage,
+        key,
+        new Set(),
+        mountedResolvedIds,
+        NOW,
+      ),
+    ).toEqual({ status: "persisted" });
 
     const remounted = readPersistedResolvedPendingActionIds(storage, key);
     expect(remounted.status).toBe("valid");
@@ -179,6 +209,63 @@ describe("pending-action notification projection", () => {
       new Set(["request-1"]),
     );
     expect([...next]).toEqual([]);
+  });
+
+  it("merges independent tab transitions without losing either tombstone", () => {
+    const storage = new MemoryStorage();
+    const key = resolvedPendingActionIdsStorageKey("owner-1", "");
+    expect(
+      persistResolvedPendingActionIds(
+        storage,
+        key,
+        new Set(),
+        new Set(["resolved-a"]),
+        NOW,
+      ),
+    ).toEqual({ status: "persisted" });
+    expect(
+      persistResolvedPendingActionIds(
+        storage,
+        key,
+        new Set(),
+        new Set(["resolved-b"]),
+        NOW + 1,
+      ),
+    ).toEqual({ status: "persisted" });
+
+    const merged = readPersistedResolvedPendingActionIds(storage, key);
+    expect(merged.status).toBe("valid");
+    if (merged.status !== "valid") throw new Error("Expected merged fences");
+    expect([...merged.ids].sort()).toEqual(["resolved-a", "resolved-b"]);
+
+    persistResolvedPendingActionIds(
+      storage,
+      key,
+      new Set(["resolved-a"]),
+      new Set(),
+      NOW + 2,
+    );
+    const cleared = readPersistedResolvedPendingActionIds(storage, key);
+    expect(cleared.status).toBe("valid");
+    if (cleared.status !== "valid") throw new Error("Expected cleared fence");
+    expect([...cleared.ids]).toEqual(["resolved-b"]);
+  });
+
+  it("reports unavailable storage without crashing the notification surface", () => {
+    const storage = new UnavailableStorage();
+    const key = resolvedPendingActionIdsStorageKey("owner-1", "");
+    expect(readPersistedResolvedPendingActionIds(storage, key)).toEqual({
+      status: "unavailable",
+    });
+    expect(
+      persistResolvedPendingActionIds(
+        storage,
+        key,
+        new Set(),
+        new Set(["request-1"]),
+        NOW,
+      ),
+    ).toEqual({ status: "unavailable" });
   });
 
   it("isolates durable resolution fences by owner and authority", () => {
@@ -203,6 +290,27 @@ describe("pending-action notification projection", () => {
     storage.setItem(key, '{"not":"an id list"}');
     expect(readPersistedResolvedPendingActionIds(storage, key)).toEqual({
       status: "invalid",
+      ids: new Set(),
+      keys: [key],
+    });
+  });
+
+  it("retains valid per-action fences while repairing a malformed record", () => {
+    const storage = new MemoryStorage();
+    const key = resolvedPendingActionIdsStorageKey("owner-1", "");
+    persistResolvedPendingActionIds(
+      storage,
+      key,
+      new Set(),
+      new Set(["resolved-valid"]),
+      NOW,
+    );
+    storage.setItem(key, '{"not":"an id list"}');
+
+    expect(readPersistedResolvedPendingActionIds(storage, key)).toEqual({
+      status: "invalid",
+      ids: new Set(["resolved-valid"]),
+      keys: [key],
     });
   });
 

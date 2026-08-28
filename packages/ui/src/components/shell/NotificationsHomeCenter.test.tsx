@@ -97,10 +97,24 @@ import {
   notificationPullOvershootOffset,
   PULL_TRAVEL_PX,
 } from "./notification-shade-presentation";
-import { resolvedPendingActionIdsStorageKey } from "./pending-action-notifications";
+import {
+  readPersistedResolvedPendingActionIds,
+  resolvedPendingActionIdsStorageKey,
+} from "./pending-action-notifications";
 
 let seq = 0;
 let restoreMatchMediaForTest: (() => void) | null = null;
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 describe("notificationScrollFadeEdges", () => {
   it("reports only edges with hidden content across the full scroll range", () => {
@@ -1165,11 +1179,15 @@ describe("NotificationsHomeCenter", () => {
       await Promise.resolve();
     });
     expect(screen.queryByText("Approval needed")).toBeNull();
-    expect(
-      window.localStorage.getItem(
-        resolvedPendingActionIdsStorageKey(AUTHENTICATED_OWNER.identity.id, ""),
-      ),
-    ).toContain("request-remount");
+    const persisted = readPersistedResolvedPendingActionIds(
+      window.localStorage,
+      resolvedPendingActionIdsStorageKey(AUTHENTICATED_OWNER.identity.id, ""),
+    );
+    expect(persisted.status).toBe("valid");
+    if (persisted.status !== "valid") {
+      throw new Error("Expected a durable resolution fence");
+    }
+    expect(persisted.ids).toContain("request-remount");
 
     firstMount.unmount();
     renderRestedNotifications();
@@ -1178,6 +1196,105 @@ describe("NotificationsHomeCenter", () => {
       await Promise.resolve();
     });
     expect(screen.queryByText("Approval needed")).toBeNull();
+  });
+
+  it("ignores an older same-owner poll that resolves after newer canonical state", async () => {
+    const pendingAction: PendingUserAction = {
+      id: "request-order",
+      kind: "approval",
+      source: "lifeops",
+      title: "Approve the ordered transition?",
+      createdAt: 1_700_000_000_000,
+    };
+    const older = deferred<{ pending: PendingUserAction[] }>();
+    const newer = deferred<{ pending: PendingUserAction[] }>();
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    __ingestNotificationForTests(
+      makeNotification({
+        title: "Approval needed",
+        category: "approval",
+        source: "lifeops",
+        groupKey: "approval:request-order",
+        data: { requestId: "request-order" },
+        readAt: null,
+      }),
+    );
+    vi.mocked(client.listPendingActions)
+      .mockResolvedValueOnce({ pending: [pendingAction] })
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Approve the ordered transition?")).toBeTruthy();
+
+    act(() => vi.advanceTimersByTime(20_000));
+    act(() => vi.advanceTimersByTime(20_000));
+    await act(async () => {
+      newer.resolve({ pending: [] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+
+    await act(async () => {
+      older.resolve({ pending: [pendingAction] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+    expect(screen.queryByText("Approve the ordered transition?")).toBeNull();
+  });
+
+  it("drops an old-owner response after the authenticated owner changes", async () => {
+    const ownerAResponse = deferred<{ pending: PendingUserAction[] }>();
+    const ownerB: AuthStatusState = {
+      ...AUTHENTICATED_OWNER,
+      identity: { ...AUTHENTICATED_OWNER.identity, id: "u-2" },
+      session: { ...AUTHENTICATED_OWNER.session, id: "s-2" },
+    };
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    vi.mocked(client.listPendingActions)
+      .mockImplementationOnce(() => ownerAResponse.promise)
+      .mockResolvedValue({ pending: [] });
+
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      __setAuthStatusForTests(ownerB);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    ownerAResponse.resolve({
+      pending: [
+        {
+          id: "owner-a-request",
+          kind: "approval",
+          source: "lifeops",
+          title: "Owner A only",
+          createdAt: 1_700_000_000_000,
+        },
+      ],
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Owner A only")).toBeNull();
+    expect(
+      window.localStorage.getItem(
+        resolvedPendingActionIdsStorageKey(ownerB.identity.id, ""),
+      ) ?? "",
+    ).not.toContain("owner-a-request");
   });
 
   it("acting on a row removes it; surviving rows keep their stable order", () => {

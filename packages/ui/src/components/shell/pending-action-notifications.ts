@@ -23,9 +23,24 @@ const EMPTY_RESOLVED_PENDING_ACTION_IDS: ReadonlySet<string> = new Set();
 const RESOLVED_PENDING_ACTION_IDS_STORAGE_NAMESPACE =
   "eliza:pending-actions:resolved";
 const MAX_PERSISTED_RESOLVED_PENDING_ACTION_IDS = 512;
+const inMemoryResolvedPendingActionIds = new Map<string, ReadonlySet<string>>();
+
+type PersistedPendingActionResolutionState = "pending" | "resolved";
+
+interface PersistedPendingActionResolutionEntry {
+  state: PersistedPendingActionResolutionState;
+  observedAt: number;
+}
+
+interface PersistedPendingActionResolutionDocument {
+  version: 1;
+  entries: Record<string, PersistedPendingActionResolutionEntry>;
+}
 
 export interface PendingActionResolutionStorage {
+  readonly length: number;
   getItem(key: string): string | null;
+  key(index: number): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
 }
@@ -33,7 +48,64 @@ export interface PendingActionResolutionStorage {
 export type PersistedResolvedPendingActionIds =
   | { status: "missing"; ids: ReadonlySet<string> }
   | { status: "valid"; ids: ReadonlySet<string> }
-  | { status: "invalid" };
+  | {
+      status: "invalid";
+      ids: ReadonlySet<string>;
+      keys: readonly string[];
+    }
+  | { status: "unavailable" };
+
+export type PersistResolvedPendingActionIdsResult =
+  | { status: "persisted" }
+  | { status: "unavailable" };
+
+function resolvedPendingActionIdEntryPrefix(key: string): string {
+  return `${key}:id:`;
+}
+
+function resolvedPendingActionIdEntryKey(key: string, id: string): string {
+  return `${resolvedPendingActionIdEntryPrefix(key)}${encodeURIComponent(id)}`;
+}
+
+function decodePersistedPendingActionResolutionDocument(
+  raw: string,
+): PersistedPendingActionResolutionDocument | null {
+  const parsed: unknown = JSON.parse(raw);
+  if (Array.isArray(parsed)) {
+    if (parsed.some((id) => typeof id !== "string" || id.length === 0)) {
+      return null;
+    }
+    return {
+      version: 1,
+      entries: Object.fromEntries(
+        parsed.map((id) => [id, { state: "resolved", observedAt: 0 }]),
+      ),
+    };
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    (parsed as { version?: unknown }).version !== 1
+  ) {
+    return null;
+  }
+  const entries = (parsed as { entries?: unknown }).entries;
+  if (typeof entries !== "object" || entries === null) return null;
+  for (const [id, entry] of Object.entries(entries)) {
+    if (
+      id.length === 0 ||
+      typeof entry !== "object" ||
+      entry === null ||
+      ((entry as { state?: unknown }).state !== "pending" &&
+        (entry as { state?: unknown }).state !== "resolved") ||
+      typeof (entry as { observedAt?: unknown }).observedAt !== "number" ||
+      !Number.isFinite((entry as { observedAt: number }).observedAt)
+    ) {
+      return null;
+    }
+  }
+  return parsed as PersistedPendingActionResolutionDocument;
+}
 
 export function resolvedPendingActionIdsStorageKey(
   ownerId: string,
@@ -51,38 +123,142 @@ export function readPersistedResolvedPendingActionIds(
   storage: PendingActionResolutionStorage,
   key: string,
 ): PersistedResolvedPendingActionIds {
-  const raw = storage.getItem(key);
-  if (raw === null) {
+  let legacyRaw: string | null;
+  let entryKeys: string[];
+  try {
+    legacyRaw = storage.getItem(key);
+    const prefix = resolvedPendingActionIdEntryPrefix(key);
+    entryKeys = Array.from({ length: storage.length }, (_, index) =>
+      storage.key(index),
+    ).flatMap((candidate) =>
+      candidate?.startsWith(prefix) ? [candidate] : [],
+    );
+  } catch {
+    // error-policy:J4 restricted storage degrades to the in-memory fence; the
+    // canonical pending read model remains authoritative and visible.
+    return { status: "unavailable" };
+  }
+  if (legacyRaw === null && entryKeys.length === 0) {
     return { status: "missing", ids: EMPTY_RESOLVED_PENDING_ACTION_IDS };
   }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      !Array.isArray(parsed) ||
-      parsed.some((id) => typeof id !== "string" || id.length === 0)
-    ) {
-      return { status: "invalid" };
+  const entries: Record<string, PersistedPendingActionResolutionEntry> = {};
+  const invalidKeys: string[] = [];
+  if (legacyRaw !== null) {
+    try {
+      const legacy = decodePersistedPendingActionResolutionDocument(legacyRaw);
+      if (legacy === null) invalidKeys.push(key);
+      else Object.assign(entries, legacy.entries);
+    } catch {
+      invalidKeys.push(key);
     }
-    return {
-      status: "valid",
-      ids: new Set(parsed.slice(-MAX_PERSISTED_RESOLVED_PENDING_ACTION_IDS)),
-    };
-  } catch {
-    // error-policy:J3 persisted browser bytes are untrusted; the caller must
-    // explicitly repair this invalid signal before canonical polling resumes.
-    return { status: "invalid" };
   }
+  const prefix = resolvedPendingActionIdEntryPrefix(key);
+  for (const entryKey of entryKeys) {
+    let raw: string | null;
+    try {
+      raw = storage.getItem(entryKey);
+    } catch {
+      // error-policy:J4 restricted storage degrades to the in-memory fence;
+      // canonical polling remains visible instead of crashing Home.
+      return { status: "unavailable" };
+    }
+    if (raw === null) continue;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      const id = decodeURIComponent(entryKey.slice(prefix.length));
+      if (
+        id.length === 0 ||
+        typeof parsed !== "object" ||
+        parsed === null ||
+        ((parsed as { state?: unknown }).state !== "pending" &&
+          (parsed as { state?: unknown }).state !== "resolved") ||
+        typeof (parsed as { observedAt?: unknown }).observedAt !== "number" ||
+        !Number.isFinite((parsed as { observedAt: number }).observedAt)
+      ) {
+        invalidKeys.push(entryKey);
+        continue;
+      }
+      entries[id] = parsed as PersistedPendingActionResolutionEntry;
+    } catch {
+      invalidKeys.push(entryKey);
+    }
+  }
+  const ids = new Set(
+    Object.entries(entries).flatMap(([id, entry]) =>
+      entry.state === "resolved" ? [id] : [],
+    ),
+  );
+  if (invalidKeys.length > 0) {
+    // error-policy:J3 persisted browser bytes are untrusted; repair only the
+    // malformed records while retaining independently valid fences.
+    return { status: "invalid", ids, keys: invalidKeys };
+  }
+  return { status: "valid", ids };
 }
 
 export function persistResolvedPendingActionIds(
   storage: PendingActionResolutionStorage,
   key: string,
-  ids: ReadonlySet<string>,
-): void {
-  storage.setItem(
-    key,
-    JSON.stringify([...ids].slice(-MAX_PERSISTED_RESOLVED_PENDING_ACTION_IDS)),
-  );
+  previousIds: ReadonlySet<string>,
+  nextIds: ReadonlySet<string>,
+  observedAt: number,
+): PersistResolvedPendingActionIdsResult {
+  try {
+    for (const id of previousIds) {
+      if (!nextIds.has(id)) {
+        storage.setItem(
+          resolvedPendingActionIdEntryKey(key, id),
+          JSON.stringify({ state: "pending", observedAt }),
+        );
+      }
+    }
+    for (const id of nextIds) {
+      if (!previousIds.has(id)) {
+        storage.setItem(
+          resolvedPendingActionIdEntryKey(key, id),
+          JSON.stringify({ state: "resolved", observedAt }),
+        );
+      }
+    }
+
+    const prefix = resolvedPendingActionIdEntryPrefix(key);
+    const entries = Array.from({ length: storage.length }, (_, index) =>
+      storage.key(index),
+    ).flatMap((entryKey) => {
+      if (!entryKey?.startsWith(prefix)) return [];
+      const raw = storage.getItem(entryKey);
+      if (raw === null) return [];
+      const parsed = JSON.parse(raw) as { observedAt?: unknown };
+      return typeof parsed.observedAt === "number" &&
+        Number.isFinite(parsed.observedAt)
+        ? [{ entryKey, observedAt: parsed.observedAt }]
+        : [];
+    });
+    entries
+      .sort((left, right) => left.observedAt - right.observedAt)
+      .slice(0, -MAX_PERSISTED_RESOLVED_PENDING_ACTION_IDS)
+      .forEach(({ entryKey }) => {
+        storage.removeItem(entryKey);
+      });
+  } catch {
+    // error-policy:J4 storage quota/privacy restrictions retain the process-
+    // local fence instead of crashing the Home surface.
+    return { status: "unavailable" };
+  }
+  return { status: "persisted" };
+}
+
+function removeInvalidResolvedPendingActionIds(
+  storage: PendingActionResolutionStorage,
+  keys: readonly string[],
+): boolean {
+  try {
+    for (const key of keys) storage.removeItem(key);
+    return true;
+  } catch {
+    // error-policy:J4 restricted storage keeps the in-memory fence active.
+    return false;
+  }
 }
 
 export type PendingActionActivation =
@@ -253,6 +429,10 @@ export function usePendingActions(): {
   const [loaded, setLoaded] = useState(false);
   const [observedAt, setObservedAt] = useState(0);
   const mountedRef = useRef(true);
+  const persistedResolutionIdsRef = useRef<{
+    ownerKey: string | null;
+    ids: ReadonlySet<string>;
+  }>({ ownerKey: null, ids: EMPTY_RESOLVED_PENDING_ACTION_IDS });
   const { state: authStatus } = useAuthStatus({ observeOnly: true });
   const authenticated = authStatus.phase === "authenticated";
   const ownerKey = authenticated
@@ -261,6 +441,13 @@ export function usePendingActions(): {
         client.getBaseUrl(),
       )
     : null;
+  const requestScope =
+    authStatus.phase === "authenticated"
+      ? `${ownerKey}:${authStatus.session.id}`
+      : null;
+  const requestScopeRef = useRef(requestScope);
+  requestScopeRef.current = requestScope;
+  const requestGenerationRef = useRef(0);
   const resolutionFenceLoaded = snapshot.ownerKey === ownerKey;
 
   useEffect(() => {
@@ -273,6 +460,10 @@ export function usePendingActions(): {
   useEffect(() => {
     setLoaded(false);
     if (ownerKey === null) {
+      persistedResolutionIdsRef.current = {
+        ownerKey: null,
+        ids: EMPTY_RESOLVED_PENDING_ACTION_IDS,
+      };
       setSnapshot({
         ownerKey: null,
         pending: [],
@@ -289,28 +480,55 @@ export function usePendingActions(): {
     if (persisted.status === "invalid") {
       // error-policy:J3 the resolution fence is rebuildable from canonical
       // transitions; discard malformed storage before treating it as empty.
-      window.localStorage.removeItem(ownerKey);
+      removeInvalidResolvedPendingActionIds(
+        window.localStorage,
+        persisted.keys,
+      );
     }
+    const resolvedActionIds =
+      persisted.status === "valid" || persisted.status === "invalid"
+        ? persisted.ids
+        : persisted.status === "unavailable"
+          ? (inMemoryResolvedPendingActionIds.get(ownerKey) ??
+            EMPTY_RESOLVED_PENDING_ACTION_IDS)
+          : EMPTY_RESOLVED_PENDING_ACTION_IDS;
+    inMemoryResolvedPendingActionIds.set(ownerKey, resolvedActionIds);
+    persistedResolutionIdsRef.current = {
+      ownerKey,
+      ids: resolvedActionIds,
+    };
     setSnapshot({
       ownerKey,
       pending: [],
-      resolvedActionIds:
-        persisted.status === "valid"
-          ? persisted.ids
-          : EMPTY_RESOLVED_PENDING_ACTION_IDS,
+      resolvedActionIds,
     });
   }, [ownerKey]);
 
   useEffect(() => {
     if (snapshot.ownerKey === null) return;
-    persistResolvedPendingActionIds(
-      window.localStorage,
+    const persistedPrevious =
+      persistedResolutionIdsRef.current.ownerKey === snapshot.ownerKey
+        ? persistedResolutionIdsRef.current.ids
+        : EMPTY_RESOLVED_PENDING_ACTION_IDS;
+    inMemoryResolvedPendingActionIds.set(
       snapshot.ownerKey,
       snapshot.resolvedActionIds,
     );
+    persistResolvedPendingActionIds(
+      window.localStorage,
+      snapshot.ownerKey,
+      persistedPrevious,
+      snapshot.resolvedActionIds,
+      Date.now(),
+    );
+    persistedResolutionIdsRef.current = {
+      ownerKey: snapshot.ownerKey,
+      ids: snapshot.resolvedActionIds,
+    };
   }, [snapshot.ownerKey, snapshot.resolvedActionIds]);
 
   const load = useCallback(async () => {
+    const requestGeneration = ++requestGenerationRef.current;
     if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       if (mountedRef.current) {
         setSnapshot({
@@ -323,10 +541,18 @@ export function usePendingActions(): {
       return;
     }
     if (!resolutionFenceLoaded) return;
+    const activeRequestScope = requestScope;
     try {
       const { pending: next } = await client.listPendingActions();
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        requestScopeRef.current !== activeRequestScope ||
+        requestGenerationRef.current !== requestGeneration
+      ) {
+        return;
+      }
       setSnapshot((previous) => {
+        if (previous.ownerKey !== ownerKey) return previous;
         const pendingEqual = pendingActionsEqual(previous.pending, next);
         const resolvedActionIds = reconcileResolvedPendingActionIds(
           previous.pending,
@@ -347,9 +573,15 @@ export function usePendingActions(): {
       // error-policy:J4 the last confirmed projection stays visible while the
       // next bounded poll retries; a transport failure never fabricates empty.
     } finally {
-      if (mountedRef.current) setLoaded(true);
+      if (
+        mountedRef.current &&
+        requestScopeRef.current === activeRequestScope &&
+        requestGenerationRef.current === requestGeneration
+      ) {
+        setLoaded(true);
+      }
     }
-  }, [authenticated, ownerKey, resolutionFenceLoaded]);
+  }, [authenticated, ownerKey, requestScope, resolutionFenceLoaded]);
 
   useEffect(() => {
     void load();
