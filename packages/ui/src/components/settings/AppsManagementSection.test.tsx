@@ -108,6 +108,6 @@ describe("AppsManagementSection failure states", () => {
     await waitFor(() => {
       expect(clientMock.listInstalledApps).toHaveBeenCalledTimes(2);
     });
-    expect(await screen.findByText("No apps installed yet.")).toBeTruthy();
+    expect(await screen.findByRole("status")).toBeTruthy();
   });
 });

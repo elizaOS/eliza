@@ -177,9 +177,6 @@ export function TasksPageView() {
               data-testid="projects-apps-segment"
             >
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6">
-                <p className="text-sm text-muted">
-                  Install, create, and run your elizaOS apps.
-                </p>
                 <AppsManagementSection />
                 {cloudStudioPath && cloudConnected ? (
                   // Same signed-in gate the launcher applies to cloud surfaces
