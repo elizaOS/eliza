@@ -2,6 +2,7 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import type { CloudLiveDedicatedConfirmationKind } from "./cloud-live-optional-action";
 
 const LANE = "app-live-e2e-cloud-staging";
 
@@ -166,13 +167,40 @@ export interface CloudLiveContinuityEvidenceInput {
     serviceWorkersBlocked: boolean;
   };
   bindingReuse: CloudLiveBindingReuse;
-  forbiddenAgentMutationCount: number;
+  dedicatedMutationProof: CloudLiveDedicatedMutationProofInput;
   cleanupDisposition: "no-test-owned-agent";
   conversationHistoryDisposition: "preserved";
 }
 
-const VERIFIED_EVIDENCE = {
-  schemaVersion: 1,
+export interface CloudLiveDedicatedMutationProofInput {
+  approvalGrantedCount: 0 | 1;
+  confirmationClickCount: number;
+  confirmationKind: CloudLiveDedicatedConfirmationKind;
+  adoptionConfirmationPostCount: number;
+  activationPostCount: number;
+  cutoverPostCount: number;
+  forbiddenAgentMutationCount: number;
+}
+
+type CloudLiveDedicatedApprovalDisposition =
+  | "not-approved"
+  | "approval-unused"
+  | "approved-ui-confirmation";
+
+interface CloudLiveDedicatedMutationEvidence {
+  dedicatedApprovalDisposition: CloudLiveDedicatedApprovalDisposition;
+  dedicatedApprovalGrantedCount: 0 | 1;
+  dedicatedConfirmationKind: CloudLiveDedicatedConfirmationKind;
+  dedicatedConfirmationClickCount: 0 | 1;
+  dedicatedAdoptionConfirmationPostCount: 0 | 1;
+  dedicatedActivationPostCount: 0 | 1;
+  dedicatedCutoverPostCount: number;
+  forbiddenAgentMutationCount: number;
+  otherForbiddenAgentMutationCount: 0;
+}
+
+const VERIFIED_EVIDENCE_BASE = {
+  schemaVersion: 2,
   lane: LANE,
   challengeTurnCount: 1,
   noAdditionalChatSendAfterChallenge: true,
@@ -182,12 +210,12 @@ const VERIFIED_EVIDENCE = {
   personalIdentityReused: true,
   runtimeBindingReused: true,
   apiBaseReused: true,
-  forbiddenAgentMutationCount: 0,
   cleanupDisposition: "no-test-owned-agent",
   conversationHistoryDisposition: "preserved",
 } as const;
 
-export type CloudLiveContinuityEvidence = typeof VERIFIED_EVIDENCE;
+export type CloudLiveContinuityEvidence = typeof VERIFIED_EVIDENCE_BASE &
+  CloudLiveDedicatedMutationEvidence;
 
 function fail(message: string): never {
   throw new Error(`[cloud-live-continuity] ${message}`);
@@ -1414,9 +1442,158 @@ function requireObservation(
   );
 }
 
-const EVIDENCE_KEYS = Object.keys(VERIFIED_EVIDENCE) as Array<
-  keyof CloudLiveContinuityEvidence
->;
+function requireCounter(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    fail(`${label} must be a non-negative integer`);
+  }
+  return Number(value);
+}
+
+function createDedicatedMutationEvidence(input: {
+  approvalGrantedCount: unknown;
+  confirmationClickCount: unknown;
+  confirmationKind: unknown;
+  adoptionConfirmationPostCount: unknown;
+  activationPostCount: unknown;
+  cutoverPostCount: unknown;
+  forbiddenAgentMutationCount: unknown;
+}): CloudLiveDedicatedMutationEvidence {
+  const approvalGrantedCount = requireCounter(
+    input.approvalGrantedCount,
+    "dedicatedMutationProof.approvalGrantedCount",
+  );
+  if (approvalGrantedCount !== 0 && approvalGrantedCount !== 1) {
+    fail("dedicatedMutationProof.approvalGrantedCount must be zero or one");
+  }
+  const confirmationClickCount = requireCounter(
+    input.confirmationClickCount,
+    "dedicatedMutationProof.confirmationClickCount",
+  );
+  const adoptionConfirmationPostCount = requireCounter(
+    input.adoptionConfirmationPostCount,
+    "dedicatedMutationProof.adoptionConfirmationPostCount",
+  );
+  const activationPostCount = requireCounter(
+    input.activationPostCount,
+    "dedicatedMutationProof.activationPostCount",
+  );
+  const cutoverPostCount = requireCounter(
+    input.cutoverPostCount,
+    "dedicatedMutationProof.cutoverPostCount",
+  );
+  const forbiddenAgentMutationCount = requireCounter(
+    input.forbiddenAgentMutationCount,
+    "dedicatedMutationProof.forbiddenAgentMutationCount",
+  );
+  const confirmationKind = input.confirmationKind;
+  if (
+    confirmationKind !== "none" &&
+    confirmationKind !== "adoption" &&
+    confirmationKind !== "activation"
+  ) {
+    fail("dedicatedMutationProof.confirmationKind is invalid");
+  }
+  const otherForbiddenAgentMutationCount =
+    forbiddenAgentMutationCount - activationPostCount - cutoverPostCount;
+  if (otherForbiddenAgentMutationCount !== 0) {
+    fail(
+      "dedicatedMutationProof contains an unauthorized agent lifecycle mutation",
+    );
+  }
+
+  if (confirmationClickCount === 0) {
+    if (
+      confirmationKind !== "none" ||
+      adoptionConfirmationPostCount !== 0 ||
+      activationPostCount !== 0 ||
+      cutoverPostCount !== 0 ||
+      forbiddenAgentMutationCount !== 0
+    ) {
+      fail(
+        "dedicatedMutationProof without a confirmation click must remain mutation-free",
+      );
+    }
+    return {
+      dedicatedApprovalDisposition:
+        approvalGrantedCount === 1 ? "approval-unused" : "not-approved",
+      dedicatedApprovalGrantedCount: approvalGrantedCount,
+      dedicatedConfirmationKind: confirmationKind,
+      dedicatedConfirmationClickCount: confirmationClickCount,
+      dedicatedAdoptionConfirmationPostCount: adoptionConfirmationPostCount,
+      dedicatedActivationPostCount: activationPostCount,
+      dedicatedCutoverPostCount: cutoverPostCount,
+      forbiddenAgentMutationCount,
+      otherForbiddenAgentMutationCount: 0,
+    };
+  }
+  if (approvalGrantedCount !== 1 || confirmationClickCount !== 1) {
+    fail(
+      "dedicatedMutationProof confirmation requires one explicit approval and one click",
+    );
+  }
+  if (cutoverPostCount < 1) {
+    fail(
+      "dedicatedMutationProof approved lifecycle must reach server-owned cutover",
+    );
+  }
+  if (confirmationKind === "adoption") {
+    if (
+      adoptionConfirmationPostCount !== 1 ||
+      (activationPostCount !== 0 && activationPostCount !== 1)
+    ) {
+      fail(
+        "dedicatedMutationProof adoption requires one adoption POST and at most one selection POST",
+      );
+    }
+    return {
+      dedicatedApprovalDisposition: "approved-ui-confirmation",
+      dedicatedApprovalGrantedCount: approvalGrantedCount,
+      dedicatedConfirmationKind: confirmationKind,
+      dedicatedConfirmationClickCount: confirmationClickCount,
+      dedicatedAdoptionConfirmationPostCount: adoptionConfirmationPostCount,
+      dedicatedActivationPostCount: activationPostCount,
+      dedicatedCutoverPostCount: cutoverPostCount,
+      forbiddenAgentMutationCount,
+      otherForbiddenAgentMutationCount: 0,
+    };
+  }
+  if (confirmationKind === "activation") {
+    if (adoptionConfirmationPostCount !== 0 || activationPostCount !== 1) {
+      fail(
+        "dedicatedMutationProof activation requires exactly one activation POST",
+      );
+    }
+    return {
+      dedicatedApprovalDisposition: "approved-ui-confirmation",
+      dedicatedApprovalGrantedCount: approvalGrantedCount,
+      dedicatedConfirmationKind: confirmationKind,
+      dedicatedConfirmationClickCount: confirmationClickCount,
+      dedicatedAdoptionConfirmationPostCount: adoptionConfirmationPostCount,
+      dedicatedActivationPostCount: activationPostCount,
+      dedicatedCutoverPostCount: cutoverPostCount,
+      forbiddenAgentMutationCount,
+      otherForbiddenAgentMutationCount: 0,
+    };
+  }
+  fail("dedicatedMutationProof clicked confirmation kind must be explicit");
+}
+
+const DEDICATED_MUTATION_EVIDENCE_KEYS = [
+  "dedicatedApprovalDisposition",
+  "dedicatedApprovalGrantedCount",
+  "dedicatedConfirmationKind",
+  "dedicatedConfirmationClickCount",
+  "dedicatedAdoptionConfirmationPostCount",
+  "dedicatedActivationPostCount",
+  "dedicatedCutoverPostCount",
+  "forbiddenAgentMutationCount",
+  "otherForbiddenAgentMutationCount",
+] as const satisfies readonly (keyof CloudLiveDedicatedMutationEvidence)[];
+
+const EVIDENCE_KEYS = [
+  ...Object.keys(VERIFIED_EVIDENCE_BASE),
+  ...DEDICATED_MUTATION_EVIDENCE_KEYS,
+] as Array<keyof CloudLiveContinuityEvidence>;
 
 export function createCloudLiveContinuityEvidence(
   input: CloudLiveContinuityEvidenceInput,
@@ -1447,9 +1624,9 @@ export function createCloudLiveContinuityEvidence(
   ] as const) {
     requireTrue(input.bindingReuse[key], `bindingReuse.${key}`);
   }
-  if (input.forbiddenAgentMutationCount !== 0) {
-    fail("forbiddenAgentMutationCount must be zero");
-  }
+  const dedicatedMutationEvidence = createDedicatedMutationEvidence(
+    input.dedicatedMutationProof,
+  );
   if (input.cleanupDisposition !== "no-test-owned-agent") {
     fail("cleanupDisposition must be no-test-owned-agent");
   }
@@ -1457,19 +1634,32 @@ export function createCloudLiveContinuityEvidence(
     fail("conversationHistoryDisposition must be preserved");
   }
 
-  return { ...VERIFIED_EVIDENCE };
+  return { ...VERIFIED_EVIDENCE_BASE, ...dedicatedMutationEvidence };
 }
 
 export function parseCloudLiveContinuityEvidence(
   value: unknown,
 ): CloudLiveContinuityEvidence {
   const evidence = requireClosedRecord(value, EVIDENCE_KEYS, "artifact");
+  const parsed = {
+    ...VERIFIED_EVIDENCE_BASE,
+    ...createDedicatedMutationEvidence({
+      approvalGrantedCount: evidence.dedicatedApprovalGrantedCount,
+      confirmationClickCount: evidence.dedicatedConfirmationClickCount,
+      confirmationKind: evidence.dedicatedConfirmationKind,
+      adoptionConfirmationPostCount:
+        evidence.dedicatedAdoptionConfirmationPostCount,
+      activationPostCount: evidence.dedicatedActivationPostCount,
+      cutoverPostCount: evidence.dedicatedCutoverPostCount,
+      forbiddenAgentMutationCount: evidence.forbiddenAgentMutationCount,
+    }),
+  } satisfies CloudLiveContinuityEvidence;
   for (const key of EVIDENCE_KEYS) {
-    if (evidence[key] !== VERIFIED_EVIDENCE[key]) {
+    if (evidence[key] !== parsed[key]) {
       fail(`artifact.${key} is invalid`);
     }
   }
-  return { ...VERIFIED_EVIDENCE };
+  return parsed;
 }
 
 export async function writeCloudLiveContinuityEvidence(

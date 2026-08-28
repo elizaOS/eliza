@@ -592,7 +592,7 @@ async function resolvePersonalIdentity(
             )
           ) {
             await dedicatedAdoptionProof.confirmVisibleConsent(confirmation);
-            return;
+            return "adoption";
           }
           if (
             !testId?.startsWith(
@@ -604,6 +604,7 @@ async function resolvePersonalIdentity(
             );
           }
           await confirmation.click({ timeout: 15_000 });
+          return "activation";
         },
       },
       timeoutMs: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS,
@@ -1301,7 +1302,22 @@ test.describe("real cloud login + personal identity + chat", () => {
     const forbiddenAgentMutationCount =
       primarySnapshot.forbiddenAgentMutationCount +
       freshResult.audit.forbiddenAgentMutationCount;
-    expect(forbiddenAgentMutationCount).toBe(0);
+    const dedicatedConsentSnapshot = dedicatedConsentGate.snapshot();
+    const dedicatedMutationProof = {
+      approvalGrantedCount: dedicatedConsentSnapshot.approvalGrantedCount,
+      confirmationClickCount: dedicatedConsentSnapshot.confirmationClickCount,
+      confirmationKind: dedicatedConsentGate.confirmedKind(),
+      adoptionConfirmationPostCount:
+        primarySnapshot.dedicatedAdoptionConfirmationPostRequestCount +
+        freshResult.audit.dedicatedAdoptionConfirmationPostRequestCount,
+      activationPostCount:
+        primarySnapshot.dedicatedActivationPostRequestCount +
+        freshResult.audit.dedicatedActivationPostRequestCount,
+      cutoverPostCount:
+        primarySnapshot.dedicatedCutoverPostRequestCount +
+        freshResult.audit.dedicatedCutoverPostRequestCount,
+      forbiddenAgentMutationCount,
+    } as const;
     const bindingReuse: CloudLiveBindingReuse = {
       personalIdentityReused:
         reloadBindingReuse.personalIdentityReused &&
@@ -1324,7 +1340,7 @@ test.describe("real cloud login + personal identity + chat", () => {
       reload,
       freshContext: freshResult.history,
       bindingReuse,
-      forbiddenAgentMutationCount,
+      dedicatedMutationProof,
       cleanupDisposition: "no-test-owned-agent",
       conversationHistoryDisposition: "preserved",
     } satisfies CloudLiveContinuityEvidenceInput;

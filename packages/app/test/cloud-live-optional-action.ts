@@ -22,6 +22,11 @@ export type CloudLiveDedicatedConfirmationRequiredReason =
   | "cancelled"
   | "interaction-failed";
 
+export type CloudLiveDedicatedConfirmationKind =
+  | "none"
+  | "adoption"
+  | "activation";
+
 export interface CloudLiveDedicatedConsentEnvironment {
   ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION?: string;
   ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV?: string;
@@ -40,8 +45,11 @@ export interface CloudLiveDedicatedConsentGate {
     | "approved"
     | "approval-required"
     | "quote-changed";
-  recordConfirmationClick(): void;
+  recordConfirmationClick(
+    kind: Exclude<CloudLiveDedicatedConfirmationKind, "none">,
+  ): void;
   recordCancellation(): void;
+  confirmedKind(): CloudLiveDedicatedConfirmationKind;
   snapshot(): CloudLiveDedicatedConsentSnapshot;
 }
 
@@ -61,6 +69,7 @@ class CloudLiveDedicatedConsentGateImpl
   private confirmationClickCount = 0;
   private cancellationCount = 0;
   private approvalConsumed = false;
+  private confirmationKind: CloudLiveDedicatedConfirmationKind = "none";
 
   constructor(private readonly approvalGranted: boolean) {}
 
@@ -77,12 +86,24 @@ class CloudLiveDedicatedConsentGateImpl
     return "approved";
   }
 
-  recordConfirmationClick(): void {
+  recordConfirmationClick(
+    kind: Exclude<CloudLiveDedicatedConfirmationKind, "none">,
+  ): void {
+    if (this.confirmationClickCount !== 0 || this.confirmationKind !== "none") {
+      throw new Error(
+        "[cloud-live] Dedicated confirmation click was already recorded",
+      );
+    }
     this.confirmationClickCount += 1;
+    this.confirmationKind = kind;
   }
 
   recordCancellation(): void {
     this.cancellationCount += 1;
+  }
+
+  confirmedKind(): CloudLiveDedicatedConfirmationKind {
+    return this.confirmationKind;
   }
 
   snapshot(): CloudLiveDedicatedConsentSnapshot {
@@ -172,7 +193,9 @@ interface WaitForCloudLivePersonalIdentityOptions<T> {
     /** All activation/adoption cancel choices in DOM order. */
     cancellationChoices: Locator;
     /** Performs the one approved rendered-UI interaction. */
-    performConfirmation: (confirmation: Locator) => Promise<void>;
+    performConfirmation: (
+      confirmation: Locator,
+    ) => Promise<Exclude<CloudLiveDedicatedConfirmationKind, "none">>;
   };
   timeoutMs: number;
   runtimeCloudGraceMs: number;
@@ -297,10 +320,20 @@ export async function waitForCloudLivePersonalIdentity<T>({
           throw new CloudLiveDedicatedConfirmationRequiredError(decision);
         }
         try {
-          await withinCloudLivePersonalIdentityDeadline(
-            () => dedicatedConsent.performConfirmation(confirmation),
-            deadline,
-          );
+          const confirmationKind =
+            await withinCloudLivePersonalIdentityDeadline(
+              () => dedicatedConsent.performConfirmation(confirmation),
+              deadline,
+            );
+          if (
+            confirmationKind !== "adoption" &&
+            confirmationKind !== "activation"
+          ) {
+            throw new Error(
+              "[cloud-live] Dedicated confirmation kind was not recognized",
+            );
+          }
+          dedicatedConsent.gate.recordConfirmationClick(confirmationKind);
         } catch (error) {
           if (error instanceof CloudLivePersonalIdentityDeadlineError) {
             throw error;
@@ -311,7 +344,6 @@ export async function waitForCloudLivePersonalIdentity<T>({
             "interaction-failed",
           );
         }
-        dedicatedConsent.gate.recordConfirmationClick();
         continue;
       }
 

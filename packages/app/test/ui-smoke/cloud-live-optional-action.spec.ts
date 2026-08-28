@@ -55,7 +55,10 @@ test.describe("Cloud live optional action boundary", () => {
         cancellationChoices: page.locator(
           '[data-testid="activation-cancel"], [data-testid="adoption-cancel"]',
         ),
-        performConfirmation: (confirmation) => confirmation.click(),
+        performConfirmation: async (confirmation) => {
+          await confirmation.click();
+          return "activation";
+        },
       },
       timeoutMs: 500,
       runtimeCloudGraceMs: 50,
@@ -87,6 +90,7 @@ test.describe("Cloud live optional action boundary", () => {
       confirmationClickCount: 0,
       cancellationCount: 0,
     });
+    expect(gate.confirmedKind()).toBe("none");
   });
 
   test("permits exactly one visible UI confirmation for an explicitly approved staging dispatch", async ({
@@ -128,7 +132,10 @@ test.describe("Cloud live optional action boundary", () => {
           gate,
           confirmationChoices: page.getByTestId("activation-confirm"),
           cancellationChoices: page.getByTestId("activation-cancel"),
-          performConfirmation: (confirmation) => confirmation.click(),
+          performConfirmation: async (confirmation) => {
+            await confirmation.click();
+            return "activation";
+          },
         },
         timeoutMs: 500,
         runtimeCloudGraceMs: 50,
@@ -142,6 +149,7 @@ test.describe("Cloud live optional action boundary", () => {
       confirmationClickCount: 1,
       cancellationCount: 0,
     });
+    expect(gate.confirmedKind()).toBe("activation");
   });
 
   test("ignores a stale locked confirmation while a binding resolves", async ({
@@ -168,7 +176,10 @@ test.describe("Cloud live optional action boundary", () => {
           gate,
           confirmationChoices: page.getByTestId("adoption-confirm"),
           cancellationChoices: page.getByTestId("adoption-cancel"),
-          performConfirmation: (confirmation) => confirmation.click(),
+          performConfirmation: async (confirmation) => {
+            await confirmation.click();
+            return "adoption";
+          },
         },
         timeoutMs: 500,
         runtimeCloudGraceMs: 50,
@@ -222,7 +233,10 @@ test.describe("Cloud live optional action boundary", () => {
           cancellationChoices: page.locator(
             '[data-testid="activation-cancel"], [data-testid="adoption-cancel"]',
           ),
-          performConfirmation: (confirmation) => confirmation.click(),
+          performConfirmation: async (confirmation) => {
+            await confirmation.click();
+            return "activation";
+          },
         },
         timeoutMs: 500,
         runtimeCloudGraceMs: 50,
@@ -272,7 +286,10 @@ test.describe("Cloud live optional action boundary", () => {
           gate,
           confirmationChoices: page.getByTestId("adoption-confirm"),
           cancellationChoices: page.getByTestId("adoption-cancel"),
-          performConfirmation: (confirmation) => confirmation.click(),
+          performConfirmation: async (confirmation) => {
+            await confirmation.click();
+            return "adoption";
+          },
         },
         timeoutMs: 500,
         runtimeCloudGraceMs: 50,
@@ -289,6 +306,7 @@ test.describe("Cloud live optional action boundary", () => {
       confirmationClickCount: 1,
       cancellationCount: 0,
     });
+    expect(gate.confirmedKind()).toBe("adoption");
   });
 
   test("classifies cancellation without replaying confirmation", async ({
@@ -313,7 +331,10 @@ test.describe("Cloud live optional action boundary", () => {
           gate,
           confirmationChoices: page.getByTestId("activation-confirm"),
           cancellationChoices: page.getByTestId("activation-cancel"),
-          performConfirmation: (confirmation) => confirmation.click(),
+          performConfirmation: async (confirmation) => {
+            await confirmation.click();
+            return "activation";
+          },
         },
         timeoutMs: 500,
         runtimeCloudGraceMs: 50,
@@ -636,6 +657,7 @@ test.describe("Cloud live optional action boundary", () => {
             performConfirmation: async (confirmation) => {
               consentHandlerCalls += 1;
               await dedicatedAdoptionProof.confirmVisibleConsent(confirmation);
+              return "adoption";
             },
           },
           timeoutMs: 500,
@@ -653,6 +675,7 @@ test.describe("Cloud live optional action boundary", () => {
         confirmationClickCount: 1,
         cancellationCount: 0,
       });
+      expect(gate.confirmedKind()).toBe("adoption");
     } finally {
       dedicatedAdoptionProof.dispose();
     }

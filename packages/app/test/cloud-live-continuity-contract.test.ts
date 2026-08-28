@@ -83,7 +83,15 @@ function passingInput(): CloudLiveContinuityEvidenceInput {
       runtimeBindingReused: true,
       apiBaseReused: true,
     },
-    forbiddenAgentMutationCount: 0,
+    dedicatedMutationProof: {
+      approvalGrantedCount: 0,
+      confirmationClickCount: 0,
+      confirmationKind: "none",
+      adoptionConfirmationPostCount: 0,
+      activationPostCount: 0,
+      cutoverPostCount: 0,
+      forbiddenAgentMutationCount: 0,
+    },
     cleanupDisposition: "no-test-owned-agent",
     conversationHistoryDisposition: "preserved",
   };
@@ -975,7 +983,7 @@ describe("privacy-safe continuity evidence", () => {
 
   it("emits the flat closed proof and honest cleanup semantics", () => {
     expect(createCloudLiveContinuityEvidence(passingInput())).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       lane: "app-live-e2e-cloud-staging",
       challengeTurnCount: 1,
       noAdditionalChatSendAfterChallenge: true,
@@ -985,7 +993,15 @@ describe("privacy-safe continuity evidence", () => {
       personalIdentityReused: true,
       runtimeBindingReused: true,
       apiBaseReused: true,
+      dedicatedApprovalDisposition: "not-approved",
+      dedicatedApprovalGrantedCount: 0,
+      dedicatedConfirmationKind: "none",
+      dedicatedConfirmationClickCount: 0,
+      dedicatedAdoptionConfirmationPostCount: 0,
+      dedicatedActivationPostCount: 0,
+      dedicatedCutoverPostCount: 0,
       forbiddenAgentMutationCount: 0,
+      otherForbiddenAgentMutationCount: 0,
       cleanupDisposition: "no-test-owned-agent",
       conversationHistoryDisposition: "preserved",
     });
@@ -1013,9 +1029,118 @@ describe("privacy-safe continuity evidence", () => {
     expect(() =>
       createCloudLiveContinuityEvidence({
         ...passingInput(),
-        forbiddenAgentMutationCount: 1,
+        dedicatedMutationProof: {
+          ...passingInput().dedicatedMutationProof,
+          forbiddenAgentMutationCount: 1,
+        },
       }),
-    ).toThrow("must be zero");
+    ).toThrow("unauthorized agent lifecycle mutation");
+  });
+
+  it("allows only the exact explicitly approved Dedicated lifecycle", () => {
+    const adoption = createCloudLiveContinuityEvidence({
+      ...passingInput(),
+      dedicatedMutationProof: {
+        approvalGrantedCount: 1,
+        confirmationClickCount: 1,
+        confirmationKind: "adoption",
+        adoptionConfirmationPostCount: 1,
+        activationPostCount: 1,
+        cutoverPostCount: 2,
+        forbiddenAgentMutationCount: 3,
+      },
+    });
+    expect(adoption).toMatchObject({
+      dedicatedApprovalDisposition: "approved-ui-confirmation",
+      dedicatedConfirmationKind: "adoption",
+      dedicatedAdoptionConfirmationPostCount: 1,
+      dedicatedActivationPostCount: 1,
+      dedicatedCutoverPostCount: 2,
+      forbiddenAgentMutationCount: 3,
+      otherForbiddenAgentMutationCount: 0,
+    });
+    expect(parseCloudLiveContinuityEvidence(adoption)).toEqual(adoption);
+    expect(() =>
+      parseCloudLiveContinuityEvidence({
+        ...adoption,
+        otherForbiddenAgentMutationCount: 1,
+      }),
+    ).toThrow("artifact.otherForbiddenAgentMutationCount is invalid");
+
+    const activation = createCloudLiveContinuityEvidence({
+      ...passingInput(),
+      dedicatedMutationProof: {
+        approvalGrantedCount: 1,
+        confirmationClickCount: 1,
+        confirmationKind: "activation",
+        adoptionConfirmationPostCount: 0,
+        activationPostCount: 1,
+        cutoverPostCount: 1,
+        forbiddenAgentMutationCount: 2,
+      },
+    });
+    expect(activation).toMatchObject({
+      dedicatedApprovalDisposition: "approved-ui-confirmation",
+      dedicatedConfirmationKind: "activation",
+      dedicatedActivationPostCount: 1,
+      dedicatedCutoverPostCount: 1,
+      otherForbiddenAgentMutationCount: 0,
+    });
+
+    const approvalUnused = createCloudLiveContinuityEvidence({
+      ...passingInput(),
+      dedicatedMutationProof: {
+        ...passingInput().dedicatedMutationProof,
+        approvalGrantedCount: 1,
+      },
+    });
+    expect(approvalUnused.dedicatedApprovalDisposition).toBe("approval-unused");
+
+    for (const dedicatedMutationProof of [
+      {
+        ...passingInput().dedicatedMutationProof,
+        approvalGrantedCount: 1 as const,
+        confirmationClickCount: 1,
+        confirmationKind: "adoption" as const,
+        adoptionConfirmationPostCount: 1,
+        cutoverPostCount: 1,
+        forbiddenAgentMutationCount: 2,
+      },
+      {
+        approvalGrantedCount: 0 as const,
+        confirmationClickCount: 1,
+        confirmationKind: "activation" as const,
+        adoptionConfirmationPostCount: 0,
+        activationPostCount: 1,
+        cutoverPostCount: 1,
+        forbiddenAgentMutationCount: 2,
+      },
+      {
+        approvalGrantedCount: 1 as const,
+        confirmationClickCount: 1,
+        confirmationKind: "adoption" as const,
+        adoptionConfirmationPostCount: 2,
+        activationPostCount: 0,
+        cutoverPostCount: 1,
+        forbiddenAgentMutationCount: 1,
+      },
+      {
+        approvalGrantedCount: 1 as const,
+        confirmationClickCount: 1,
+        confirmationKind: "activation" as const,
+        adoptionConfirmationPostCount: 0,
+        activationPostCount: 1,
+        cutoverPostCount: 0,
+        forbiddenAgentMutationCount: 1,
+      },
+    ]) {
+      expect(() =>
+        createCloudLiveContinuityEvidence({
+          ...passingInput(),
+          dedicatedMutationProof,
+        }),
+      ).toThrow();
+    }
   });
 
   it("rejects any extra or non-passing JSON field", () => {
