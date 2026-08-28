@@ -67,6 +67,7 @@ import type {
   SharedAgentTurnStreamPart,
   SharedAgentTurnUsage,
   SharedMediaGenerationPort,
+  SharedReminderOperation,
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
@@ -116,7 +117,9 @@ type SharedElizaRuntimeTurnInput = Omit<RunSharedAgentTurnInput, "execution"> & 
   /** Server-owned classification that the current request targets all reminders. */
   reminderClearAllIntent?: boolean;
   /** High-confidence server classification that dominates a confused planner. */
-  reminderOperationIntent?: "create" | "list" | "delete";
+  reminderOperationIntent?: Exclude<SharedReminderOperation, "clear">;
+  /** Server-authenticated visible title or exact prior receipt resource id. */
+  reminderTargetIntent?: string;
   /** Server-executed current-turn public read, never transport supplied. */
   realtimeGrounding?: SharedRuntimePublicGrounding;
   /** Traceable action receipt for the server-executed public read. */
@@ -778,10 +781,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           runner: input.execution.reminders.runner,
           agentId: input.agentKey,
           delivery: input.execution.reminders.delivery,
+          operationIntentRequired: true,
           clockCorrection: input.reminderClockCorrection === true,
           clearConfirmationChallenge: input.reminderClearConfirmationChallenge === true,
           clearAllIntent: input.reminderClearAllIntent === true,
           operationIntent: input.reminderOperationIntent,
+          targetIntent: input.reminderTargetIntent,
         })
       : undefined;
   const todoPlugin =

@@ -388,7 +388,11 @@ describe("In-memory scheduled task store receipt commits", () => {
         followupCount: 0,
         lastDecisionLog: decision,
       },
-      metadata: { schedulingApplyReceipts: { [receiptKey]: true } },
+      metadata: {
+        schedulingApplyReceipts: {
+          [receiptKey]: { manifest: receiptKey },
+        },
+      },
     });
     const commit = (
       logId: string,
@@ -427,8 +431,8 @@ describe("In-memory scheduled task store receipt commits", () => {
     const stored = await store.get(original.taskId);
     if (!stored) throw new Error("expected committed in-memory task");
     expect(stored.metadata?.schedulingApplyReceipts).toEqual({
-      "receipt-a": true,
-      "receipt-b": true,
+      "receipt-a": { manifest: "receipt-a" },
+      "receipt-b": { manifest: "receipt-b" },
     });
     expect(stored.state.lastDecisionLog).toBe("second proposal");
 

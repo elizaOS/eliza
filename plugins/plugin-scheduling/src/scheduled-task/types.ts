@@ -401,7 +401,11 @@ export interface ScheduledTaskRunner {
     taskId: string,
     verb: ScheduledTaskReceiptVerb,
     payload: unknown,
-    options: { idempotencyKey: string },
+    options: {
+      idempotencyKey: string;
+      /** Internal durable context bound to this exact receipt-keyed effect. */
+      receiptContext?: Record<string, unknown>;
+    },
   ): Promise<ScheduledTaskApplyResult>;
   pipeline(taskId: string, outcome: TerminalState): Promise<ScheduledTask[]>;
 }

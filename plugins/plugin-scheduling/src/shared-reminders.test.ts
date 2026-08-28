@@ -2,6 +2,21 @@
 
 import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
 import { describe, expect, it, vi } from "vitest";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
+} from "./scheduled-task/index.js";
 import type {
   ScheduledTask,
   ScheduledTaskInput,
@@ -146,6 +161,33 @@ function harness(): {
       now: () => new Date(NOW),
     },
   };
+}
+
+function durableRunner(): ScheduledTaskRunnerHandle {
+  const gates = createTaskGateRegistry();
+  registerBuiltInGates(gates);
+  const completionChecks = createCompletionCheckRegistry();
+  registerBuiltInCompletionChecks(completionChecks);
+  const ladders = createEscalationLadderRegistry();
+  registerDefaultEscalationLadders(ladders);
+  let taskCounter = 0;
+  return createScheduledTaskRunner({
+    agentId: "personal:user-1",
+    store: createInMemoryScheduledTaskStore(),
+    logStore: createInMemoryScheduledTaskLogStore(),
+    gates,
+    completionChecks,
+    ladders,
+    anchors: createAnchorRegistry(),
+    consolidation: createConsolidationRegistry(),
+    ownerFacts: async () => ({ timezone: "UTC" }),
+    globalPause: { current: async () => ({ active: false }) },
+    activity: { hasSignalSince: () => false },
+    subjectStore: { wasUpdatedSince: () => false },
+    dispatcher: TestNoopScheduledTaskDispatcher,
+    newTaskId: () => `durable-reminder-${++taskCounter}`,
+    now: () => new Date(NOW),
+  });
 }
 
 describe("Shared reminders edge plugin", () => {
@@ -485,7 +527,15 @@ describe("Shared reminders edge plugin", () => {
     expect(list).toHaveBeenCalledWith({
       kind: "reminder",
       ownerVisibleOnly: true,
-      status: ["scheduled", "fired", "acknowledged"],
+      status: [
+        "scheduled",
+        "fired",
+        "acknowledged",
+        "completed",
+        "skipped",
+        "expired",
+        "failed",
+      ],
     });
     expect(result).toMatchObject({
       verifiedUserFacing: true,
@@ -554,6 +604,60 @@ describe("Shared reminders edge plugin", () => {
       /8:02 PM|every Monday|9:00 AM|2026-08-14T/,
     );
   });
+
+  it.each(["completed", "skipped", "expired", "failed"] as const)(
+    "lists and clears a recurring reminder parked as %s",
+    async (status) => {
+      const { options, list, applyWithResult } = harness();
+      const recurring = {
+        ...scheduledTask(
+          reminderInput(`Recurring ${status}`, {
+            kind: "interval" as const,
+            everyMinutes: 30,
+          }),
+        ),
+        taskId: `recurring-${status}`,
+        state: { status, followupCount: 0 },
+      };
+      list.mockImplementation(async (filter) => {
+        const statuses = Array.isArray(filter?.status)
+          ? filter.status
+          : [filter?.status];
+        return statuses.includes(recurring.state.status) ? [recurring] : [];
+      });
+      const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+
+      const listed = await action?.handler(
+        {} as IAgentRuntime,
+        { id: `list-recurring-${status}` } as Memory,
+        undefined,
+        { parameters: { operation: "list" } },
+      );
+      expect(listed?.text).toContain(`Recurring ${status} — every 30 minutes`);
+
+      options.clearAllIntent = true;
+      options.clearConfirmationChallenge = true;
+      const cleared = await action?.handler(
+        {} as IAgentRuntime,
+        {
+          id: `clear-recurring-${status}`,
+          content: { text: "yes, clear all reminders" },
+        } as Memory,
+        undefined,
+        { parameters: { operation: "clear", confirmed: true } },
+      );
+      expect(cleared).toMatchObject({
+        success: true,
+        data: { dismissedCount: 1, failedCount: 0 },
+      });
+      expect(applyWithResult).toHaveBeenCalledWith(
+        recurring.taskId,
+        "dismiss",
+        { reason: "confirmed clear all reminders" },
+        expect.any(Object),
+      );
+    },
+  );
 
   it("does not list or mutate a reminder pinned to another trusted destination", async () => {
     const { options, list, applyWithResult } = harness();
@@ -734,6 +838,219 @@ describe("Shared reminders edge plugin", () => {
     ]);
   });
 
+  it.each(["complete", "dismiss"] as const)(
+    "recovers the original durable %s receipt after the row becomes terminal",
+    async (operation) => {
+      const runner = durableRunner();
+      const task = await runner.schedule(
+        reminderInput("Stretch", {
+          kind: "once",
+          atIso: "2026-08-14T20:02:00.000Z",
+        }),
+      );
+      const [action] =
+        createSharedRemindersEdgePlugin({
+          runner,
+          agentId: "personal:user-1",
+          delivery: PRIVATE_DELIVERY,
+          now: () => new Date(NOW),
+        }).actions ?? [];
+      const invoke = () =>
+        action?.handler(
+          {} as IAgentRuntime,
+          { id: `terminal-${operation}-retry` } as Memory,
+          undefined,
+          {
+            parameters: {
+              operation,
+              taskId: task.taskId,
+            },
+          },
+        );
+
+      const first = await invoke();
+      const replay = await invoke();
+
+      expect(first?.effectReceipts?.[0]).toMatchObject({
+        outcome: "applied",
+        operation: `shared.reminder.${operation}`,
+      });
+      expect(replay?.effectReceipts?.[0]).toMatchObject({
+        receiptId: first?.effectReceipts?.[0]?.receiptId,
+        outcome: "noop",
+        operation: `shared.reminder.${operation}`,
+        idempotency: { replayed: true },
+      });
+      expect(replay?.userFacingEffectReceiptIds).toEqual(
+        first?.userFacingEffectReceiptIds,
+      );
+    },
+  );
+
+  it("recovers every clear receipt when the terminal response is retried", async () => {
+    const runner = durableRunner();
+    await runner.schedule(
+      reminderInput("Stretch", {
+        kind: "once",
+        atIso: "2026-08-14T20:02:00.000Z",
+      }),
+    );
+    await runner.schedule(
+      reminderInput("Call mom", {
+        kind: "once",
+        atIso: "2026-08-14T20:03:00.000Z",
+      }),
+    );
+    const [action] =
+      createSharedRemindersEdgePlugin({
+        runner,
+        agentId: "personal:user-1",
+        delivery: PRIVATE_DELIVERY,
+        clearAllIntent: true,
+        clearConfirmationChallenge: true,
+        now: () => new Date(NOW),
+      }).actions ?? [];
+    const invoke = () =>
+      action?.handler(
+        {} as IAgentRuntime,
+        {
+          id: "terminal-clear-retry",
+          content: { text: "yes, clear all reminders" },
+        } as Memory,
+        undefined,
+        { parameters: { operation: "clear", confirmed: true } },
+      );
+
+    const first = await invoke();
+    const replay = await invoke();
+
+    expect(first).toMatchObject({
+      success: true,
+      data: { dismissedCount: 2, failedCount: 0 },
+    });
+    expect(replay).toMatchObject({
+      success: true,
+      data: { dismissedCount: 2, failedCount: 0 },
+      effectReceipts: [{ outcome: "noop" }, { outcome: "noop" }],
+    });
+    expect(replay?.userFacingEffectReceiptIds).toEqual(
+      first?.userFacingEffectReceiptIds,
+    );
+  });
+
+  it("replays the original clear target set without dismissing a later reminder", async () => {
+    const runner = durableRunner();
+    await runner.schedule(
+      reminderInput("Original reminder", {
+        kind: "once",
+        atIso: "2026-08-14T20:02:00.000Z",
+      }),
+    );
+    const [action] =
+      createSharedRemindersEdgePlugin({
+        runner,
+        agentId: "personal:user-1",
+        delivery: PRIVATE_DELIVERY,
+        clearAllIntent: true,
+        clearConfirmationChallenge: true,
+        now: () => new Date(NOW),
+      }).actions ?? [];
+    const invoke = () =>
+      action?.handler(
+        {} as IAgentRuntime,
+        {
+          id: "terminal-clear-stable-set",
+          content: { text: "yes, clear all reminders" },
+        } as Memory,
+        undefined,
+        { parameters: { operation: "clear", confirmed: true } },
+      );
+
+    const first = await invoke();
+    const later = await runner.schedule(
+      reminderInput("Later reminder", {
+        kind: "once",
+        atIso: "2026-08-14T20:03:00.000Z",
+      }),
+    );
+    const replay = await invoke();
+    const tasks = await runner.list({ kind: "reminder" });
+
+    expect(first).toMatchObject({
+      success: true,
+      data: { dismissedCount: 1, failedCount: 0 },
+    });
+    expect(replay).toMatchObject({
+      success: true,
+      data: { dismissedCount: 1, failedCount: 0 },
+      effectReceipts: [{ outcome: "noop" }],
+    });
+    expect(
+      tasks.find((task) => task.taskId === later.taskId)?.state.status,
+    ).toBe("scheduled");
+  });
+
+  it("keeps a completed recurring reminder live for list, deduplication, and delete", async () => {
+    const runner = durableRunner();
+    const task = await runner.schedule({
+      ...reminderInput("Daily stretch", {
+        kind: "cron",
+        expression: "0 9 * * *",
+        tz: "UTC",
+      }),
+      idempotencyKey: "daily-stretch-original",
+    });
+    await runner.applyWithResult(task.taskId, "complete", undefined, {
+      idempotencyKey: "complete-current-occurrence",
+    });
+    const [action] =
+      createSharedRemindersEdgePlugin({
+        runner,
+        agentId: "personal:user-1",
+        delivery: PRIVATE_DELIVERY,
+        now: () => new Date(NOW),
+      }).actions ?? [];
+
+    const listed = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "list-completed-recurring" } as Memory,
+      undefined,
+      { parameters: { operation: "list" } },
+    );
+    expect(listed?.text).toContain(
+      "Daily stretch — every day at 9:00 AM in UTC",
+    );
+
+    const recreated = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "recreate-completed-recurring" } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "create",
+          reminderText: "Daily stretch",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+        },
+      },
+    );
+    expect(recreated).toMatchObject({
+      success: true,
+      data: { task: { taskId: task.taskId }, replayed: true },
+    });
+
+    const deleted = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "delete-completed-recurring" } as Memory,
+      undefined,
+      { parameters: { operation: "delete", target: "Daily stretch" } },
+    );
+    expect(deleted).toMatchObject({
+      success: true,
+      data: { task: { taskId: task.taskId }, affectedCount: 1 },
+    });
+  });
+
   it("deduplicates the screenshot correction across distinct message ids and renders Paris time first", async () => {
     const { options, list, scheduleWithResult } = harness();
     let persisted: ScheduledTask | undefined;
@@ -794,6 +1111,7 @@ describe("Shared reminders edge plugin", () => {
       { parameters: { ...parameters, timezone: "europe/paris" } },
     );
     options.clockCorrection = true;
+    options.targetIntent = "semantic-reminder-1";
     const correction = await action?.handler(
       {} as IAgentRuntime,
       {
@@ -801,7 +1119,7 @@ describe("Shared reminders edge plugin", () => {
         content: { text: "3 06 no 1:06" },
       } as Memory,
       undefined,
-      { parameters },
+      { parameters: { ...parameters, operation: "update" } },
     );
 
     expect(durableCreates).toBe(1);
@@ -881,9 +1199,10 @@ describe("Shared reminders edge plugin", () => {
     );
   });
 
-  it("coerces an adversarial planner operation into the trusted screenshot update", async () => {
+  it("refuses an adversarial planner delete during a receipt-bound correction", async () => {
     const { options, list, scheduleWithResult, applyWithResult } = harness();
     options.clockCorrection = true;
+    options.targetIntent = "clock-correction-original";
     const original = {
       ...scheduledTask(
         reminderInput("add something to your todo", {
@@ -932,18 +1251,14 @@ describe("Shared reminders edge plugin", () => {
     );
 
     expect(result).toMatchObject({
-      success: true,
-      data: { operation: "update" },
+      success: false,
+      data: {
+        operation: "update",
+        failureCode: "REMINDER_OPERATION_MISMATCH",
+      },
     });
-    expect(result?.effectReceipts?.map((receipt) => receipt.operation)).toEqual(
-      ["shared.reminder.create", "shared.reminder.dismiss"],
-    );
-    expect(applyWithResult).toHaveBeenCalledWith(
-      "clock-correction-original",
-      "dismiss",
-      { reason: "replaced by reminder update" },
-      expect.any(Object),
-    );
+    expect(scheduleWithResult).not.toHaveBeenCalled();
+    expect(applyWithResult).not.toHaveBeenCalled();
   });
 
   it("does not overwrite an unrelated sole reminder from raw correction language", async () => {
@@ -988,6 +1303,7 @@ describe("Shared reminders edge plugin", () => {
   it.each([
     ["list" as const, "List my reminders"],
     ["create" as const, "Create a reminder to call mom"],
+    ["update" as const, "Update the reminder Stretch to 4pm"],
   ])(
     "prevents planner delete from overriding trusted %s intent",
     async (operationIntent, text) => {
@@ -1012,6 +1328,153 @@ describe("Shared reminders edge plugin", () => {
         },
       });
       expect(list).not.toHaveBeenCalled();
+      expect(applyWithResult).not.toHaveBeenCalled();
+      expect(scheduleWithResult).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects a planner mutation when the Shared boundary supplied no operation intent", async () => {
+    const { options, list, applyWithResult, scheduleWithResult } = harness();
+    options.operationIntentRequired = true;
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      {
+        id: "negated-update-planner-call",
+        content: { text: "Could you not update my reminder?" },
+      } as Memory,
+      undefined,
+      { parameters: { operation: "delete", target: "Stretch" } },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        operation: "delete",
+        failureCode: "REMINDER_OPERATION_UNVERIFIED",
+      },
+    });
+    expect(list).not.toHaveBeenCalled();
+    expect(applyWithResult).not.toHaveBeenCalled();
+    expect(scheduleWithResult).not.toHaveBeenCalled();
+  });
+
+  it("rejects planner targeting when a trusted mutation has no exact server target", async () => {
+    const { options, list, applyWithResult } = harness();
+    options.operationIntentRequired = true;
+    options.operationIntent = "delete";
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "contextual-delete-without-target" } as Memory,
+      undefined,
+      { parameters: { operation: "delete", target: "Stretch" } },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        operation: "delete",
+        failureCode: "REMINDER_TARGET_UNVERIFIED",
+      },
+    });
+    expect(list).not.toHaveBeenCalled();
+    expect(applyWithResult).not.toHaveBeenCalled();
+  });
+
+  it("lets the trusted delete text override a planner-selected different reminder", async () => {
+    const { options, list, applyWithResult } = harness();
+    options.operationIntent = "delete";
+    options.targetIntent = "Remove the reminder Stretch";
+    const tasks = ["Stretch", "Take meds"].map((title, index) => ({
+      ...scheduledTask(
+        reminderInput(title, {
+          kind: "once" as const,
+          atIso: `2026-08-28T0${index + 1}:06:00.000Z`,
+        }),
+      ),
+      taskId: `trusted-target-${index}`,
+    }));
+    list.mockResolvedValue(tasks);
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      {
+        id: "trusted-delete-target",
+        content: { text: "Remove the reminder Stretch" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "delete",
+          target: "Take meds",
+          taskId: "trusted-target-1",
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: { task: { taskId: "trusted-target-0" }, affectedCount: 1 },
+    });
+    expect(applyWithResult).toHaveBeenCalledTimes(1);
+    expect(applyWithResult.mock.calls[0]?.[0]).toBe("trusted-target-0");
+  });
+
+  it.each([
+    {
+      operation: "update" as const,
+      taskTitle: "4pm",
+      planner: {
+        operation: "update",
+        taskId: "wrong-target",
+        target: "4pm",
+        newReminderText: "Changed",
+        atIso: "2026-08-28T14:00:00.000Z",
+      },
+    },
+    {
+      operation: "delete" as const,
+      taskTitle: "Take meds",
+      planner: {
+        operation: "delete",
+        taskId: "wrong-target",
+        target: "Take meds",
+        newReminderText: "unused",
+        atIso: "2026-08-28T14:00:00.000Z",
+      },
+    },
+  ])(
+    "does not fuzzy-match a planner target for trusted $operation intent",
+    async ({ operation, taskTitle, planner }) => {
+      const { options, list, applyWithResult, scheduleWithResult } = harness();
+      options.operationIntent = operation;
+      options.targetIntent = "stretch";
+      list.mockResolvedValue([
+        {
+          ...scheduledTask(
+            reminderInput(taskTitle, {
+              kind: "once",
+              atIso: "2026-08-28T01:06:00.000Z",
+            }),
+          ),
+          taskId: "wrong-target",
+        },
+      ]);
+      const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+
+      const result = await action?.handler(
+        {} as IAgentRuntime,
+        { id: `exact-${operation}-target` } as Memory,
+        undefined,
+        { parameters: planner },
+      );
+
+      expect(result).toMatchObject({ success: false });
+      expect(result?.text).toContain("stretch");
       expect(applyWithResult).not.toHaveBeenCalled();
       expect(scheduleWithResult).not.toHaveBeenCalled();
     },
@@ -1274,7 +1737,7 @@ describe("Shared reminders edge plugin", () => {
     expect(applyWithResult).toHaveBeenCalledTimes(2);
   });
 
-  it("resolves the exact screenshot delete phrase to its visible reminder title", async () => {
+  it("refuses a planner list when trusted text requires a delete", async () => {
     const { options, list, applyWithResult } = harness();
     options.operationIntent = "delete";
     const task = {
@@ -1306,15 +1769,13 @@ describe("Shared reminders edge plugin", () => {
     );
 
     expect(result).toMatchObject({
-      success: true,
-      data: { operation: "delete", affectedCount: 1 },
+      success: false,
+      data: {
+        operation: "delete",
+        failureCode: "REMINDER_OPERATION_MISMATCH",
+      },
     });
-    expect(applyWithResult).toHaveBeenCalledWith(
-      "screenshot-visible-title",
-      "dismiss",
-      undefined,
-      expect.any(Object),
-    );
+    expect(applyWithResult).not.toHaveBeenCalled();
   });
 
   it("clarifies instead of mutating when target-only todo wording matches two close titles", async () => {

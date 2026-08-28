@@ -360,8 +360,14 @@ describe("scheduling SQL persistence", () => {
         pipeline: { onComplete: [child as never] },
       });
       const requests = [
-        { idempotencyKey: "message-distinct-a:complete" },
-        { idempotencyKey: "message-distinct-b:complete" },
+        {
+          idempotencyKey: "message-distinct-a:complete",
+          receiptContext: { manifest: "manifest-a" },
+        },
+        {
+          idempotencyKey: "message-distinct-b:complete",
+          receiptContext: { manifest: "manifest-b" },
+        },
       ] as const;
 
       const applied = await Promise.all(
@@ -405,6 +411,12 @@ describe("scheduling SQL persistence", () => {
       if (!receiptMarkers)
         throw new Error("expected lifecycle receipt markers");
       expect(Object.keys(receiptMarkers)).toHaveLength(2);
+      expect(Object.values(receiptMarkers)).toEqual(
+        expect.arrayContaining([
+          { manifest: "manifest-a" },
+          { manifest: "manifest-b" },
+        ]),
+      );
 
       const replayed = await Promise.all(
         requests.map((options) =>

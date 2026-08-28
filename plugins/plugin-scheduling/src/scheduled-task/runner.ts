@@ -274,11 +274,18 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
       // mutation remains authoritative, but receipt identity is monotonic and
       // must merge from the current stored row just like the SQL adapter does.
       const committedTask = structuredClone(task);
+      const proposedReceipts = committedTask.metadata?.schedulingApplyReceipts;
+      const proposedReceiptValue =
+        proposedReceipts !== null &&
+        typeof proposedReceipts === "object" &&
+        !Array.isArray(proposedReceipts)
+          ? ((proposedReceipts as Record<string, unknown>)[receiptKey] ?? true)
+          : true;
       committedTask.metadata = {
         ...(committedTask.metadata ?? {}),
         schedulingApplyReceipts: {
           ...receiptMarkers,
-          [receiptKey]: true,
+          [receiptKey]: proposedReceiptValue,
         },
       };
       map.set(task.taskId, committedTask);
@@ -500,6 +507,51 @@ async function applyReceiptKey(
   return sha256Hex(`${verb}\0${idempotencyKey}`);
 }
 
+/**
+ * Returns whether this exact lifecycle request already committed on a task.
+ * Consumers use it only to recover a receipt after a response/claim crash;
+ * terminal rows without the exact marker remain invisible to fresh mutations.
+ */
+export async function hasScheduledTaskApplyReceipt(
+  task: ScheduledTask,
+  verb: ScheduledTaskReceiptVerb,
+  idempotencyKey: string,
+): Promise<boolean> {
+  const normalizedKey = normalizeApplyIdempotencyKey(idempotencyKey);
+  const receiptKey = await applyReceiptKey(verb, normalizedKey);
+  const receipts = task.metadata?.[APPLY_RECEIPTS_METADATA_KEY];
+  return (
+    receipts !== null &&
+    typeof receipts === "object" &&
+    !Array.isArray(receipts) &&
+    Object.hasOwn(receipts, receiptKey)
+  );
+}
+
+/** Read context committed atomically with one exact lifecycle receipt. */
+export async function scheduledTaskApplyReceiptContext(
+  task: ScheduledTask,
+  verb: ScheduledTaskReceiptVerb,
+  idempotencyKey: string,
+): Promise<Record<string, unknown> | undefined> {
+  const normalizedKey = normalizeApplyIdempotencyKey(idempotencyKey);
+  const receiptKey = await applyReceiptKey(verb, normalizedKey);
+  const receipts = task.metadata?.[APPLY_RECEIPTS_METADATA_KEY];
+  if (
+    receipts === null ||
+    typeof receipts !== "object" ||
+    Array.isArray(receipts)
+  ) {
+    return undefined;
+  }
+  const context = (receipts as Record<string, unknown>)[receiptKey];
+  return context !== null &&
+    typeof context === "object" &&
+    !Array.isArray(context)
+    ? (context as Record<string, unknown>)
+    : undefined;
+}
+
 async function applyReceiptLogId(args: {
   agentId: string;
   taskId: string;
@@ -514,6 +566,7 @@ async function applyReceiptLogId(args: {
 function writeApplyReceiptMarker(
   task: ScheduledTask,
   receiptKey: string,
+  context?: Record<string, unknown>,
 ): void {
   const existing = task.metadata?.[APPLY_RECEIPTS_METADATA_KEY];
   const receipts =
@@ -526,7 +579,7 @@ function writeApplyReceiptMarker(
     ...(task.metadata ?? {}),
     [APPLY_RECEIPTS_METADATA_KEY]: {
       ...receipts,
-      [receiptKey]: true,
+      [receiptKey]: context ? structuredClone(context) : true,
     },
   };
 }
@@ -548,6 +601,13 @@ function isRecurringTrigger(trigger: ScheduledTask["trigger"]): boolean {
     trigger.kind === "relative_to_anchor" ||
     trigger.kind === "during_window"
   );
+}
+
+/** Public consumer classifier for rows that retain a future scheduler occurrence. */
+export function isScheduledTaskRecurring(
+  task: Pick<ScheduledTask, "trigger">,
+): boolean {
+  return isRecurringTrigger(task.trigger);
 }
 
 function setEscalationCursor(
@@ -1574,7 +1634,10 @@ export function createScheduledTaskRunner(
     taskId: string,
     verb: ScheduledTaskReceiptVerb,
     payload: unknown,
-    options: { idempotencyKey: string },
+    options: {
+      idempotencyKey: string;
+      receiptContext?: Record<string, unknown>;
+    },
   ): Promise<ScheduledTaskApplyResult> {
     const idempotencyKey = normalizeApplyIdempotencyKey(options.idempotencyKey);
     const receiptKey = await applyReceiptKey(verb, idempotencyKey);
@@ -1594,7 +1657,11 @@ export function createScheduledTaskRunner(
         }
       : lifecycleMutation(structuredClone(existingTask), verb, payload);
     if (!replayCandidate) {
-      writeApplyReceiptMarker(mutation.task, receiptKey);
+      writeApplyReceiptMarker(
+        mutation.task,
+        receiptKey,
+        options.receiptContext,
+      );
     }
     const proposedCommit: ScheduledTaskLogEntry = {
       logId: await applyReceiptLogId({

@@ -13,7 +13,11 @@ describe("Shared capability wall", () => {
     ["Clean the reminder list please", "reminders"],
     ["Remove the reminder add something in my todo", "reminders"],
     ["update my Stretch reminder", "reminders"],
+    ["Snooze my reminder Stretch for 5 minutes", "reminders"],
+    ["Complete the reminder Stretch", "reminders"],
     ["clear all my reminders", "reminders"],
+    ["Dismiss all reminders", "reminders"],
+    ["Cancel all my reminders", "reminders"],
     ["delete the Stretch reminder", "reminders"],
     ["add milk to my todo list", "todos"],
     ["add milk to my tasks", "todos"],
@@ -64,6 +68,9 @@ describe("Shared capability wall", () => {
     "Remember this code word for my next message: apricot-816.",
     "Make this message shorter.",
     "Can you clear the list?",
+    "Could you not update my reminder?",
+    "I don't want you to update my reminder to 3pm",
+    "Don’t update my reminder",
   ])("keeps discussion and research in Shared: %s", (message) => {
     expect(resolveSharedCapabilityWall(message)).toBeNull();
   });

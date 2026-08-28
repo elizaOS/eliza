@@ -22,6 +22,16 @@ export type SharedRuntimePublicGrounding =
       observedAt: number;
     };
 
+/** Server-owned receipt retained only to authorize a scoped reminder follow-up. */
+export type SharedRuntimeReminderActionProvenance = {
+  actionName: "REMINDERS";
+  operation: "create" | "list" | "update" | "snooze" | "complete" | "delete" | "dismiss" | "clear";
+  success: boolean;
+  requiresConfirmation?: boolean;
+  taskIds: string[];
+  deliveryScope: string;
+};
+
 /** One persisted turn in a shared-runtime conversation. Mirrors `SharedTurnMessage`. */
 export type SharedRuntimeHistoryMessage = {
   /** Stable message id used to merge DO and Postgres writes without clobbering. */
@@ -34,6 +44,8 @@ export type SharedRuntimeHistoryMessage = {
   interrupted?: boolean;
   /** Successful public read attached to this reply; never mutation or private-account data. */
   grounding?: SharedRuntimePublicGrounding;
+  /** Authenticated reminder receipt; never projected as model/user content. */
+  reminderAction?: SharedRuntimeReminderActionProvenance;
 };
 
 /**

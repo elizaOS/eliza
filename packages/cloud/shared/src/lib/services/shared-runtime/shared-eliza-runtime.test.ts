@@ -2511,7 +2511,15 @@ describe("Shared Eliza Workerd runtime", () => {
             expect(filter).toEqual({
               kind: "reminder",
               ownerVisibleOnly: true,
-              status: ["scheduled", "fired", "acknowledged"],
+              status: [
+                "scheduled",
+                "fired",
+                "acknowledged",
+                "completed",
+                "skipped",
+                "expired",
+                "failed",
+              ],
             });
           }
           return [task];
@@ -2667,7 +2675,10 @@ describe("Shared Eliza Workerd runtime", () => {
           model: "gemma-4-31b",
         },
         history: [],
-        message: `Please ${operation} my reminder`,
+        message:
+          operation === "list"
+            ? "Please list my reminders"
+            : `Please ${operation} my reminder Stretch`,
         messageIds: {
           user: "7d734b8f-1ac5-456a-8bf3-9cd61dd546ef",
           assistant: "83de2c02-ec48-48d6-a734-c665b27d23cf",

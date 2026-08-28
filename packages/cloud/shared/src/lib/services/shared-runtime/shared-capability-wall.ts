@@ -37,14 +37,14 @@ export type SharedCapabilityResolution =
     };
 
 const NON_EXECUTION_CONTEXT =
-  /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:do\s+not|don't|dont|never|explain|describe|define|translate|teach\s+me|tell\s+me\s+how|show\s+me\s+how|how\s+(?:do|would|can|to)|what\s+(?:is|are|would|happens?)|why\s+(?:do|would|can|is|are)|if\s+(?:i|we|you)|before\s+you)\b/i;
+  /^(?:please\s+)?(?:(?:(?:can|could|would)\s+you\s+(?:please\s+)?(?:not|avoid|refrain\s+from|explain|describe|define|translate|tell\s+me\s+how|show\s+me\s+how))|(?:i\s+)?(?:do\s+not|don['’]?t|dont)(?:\s+want\s+(?:you\s+)?to)?|never|explain|describe|define|translate|teach\s+me|tell\s+me\s+how|show\s+me\s+how|how\s+(?:do|would|can|to)|what\s+(?:is|are|would|happens?)|why\s+(?:do|would|can|is|are)|if\s+(?:i|we|you)|before\s+you)\b/i;
 
 const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
   {
     capability: "reminders",
     label: "Reminders",
     pattern:
-      /\b(?:remind\s+me|(?:set|create|add|schedule|cancel|delete|remove|dismiss|change|update|edit|reschedule|list|show|clear|clean)\b[\s\S]{0,48}\breminders?)\b/i,
+      /\b(?:remind\s+me|(?:set|create|add|schedule|cancel|delete|remove|dismiss|change|update|edit|reschedule|snooze|complete|list|show|clear|clean)\b[\s\S]{0,48}\breminders?)\b/i,
     constraint:
       "This transport has no trusted reminder delivery, so it cannot create, change, list, or deliver reminders.",
   },

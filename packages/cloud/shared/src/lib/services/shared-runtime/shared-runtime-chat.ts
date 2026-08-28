@@ -97,7 +97,10 @@ import {
 } from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
-import { sharedRuntimeModelHistoryMessages } from "./shared-runtime-history-policy";
+import {
+  parseSharedReminderActionProvenance,
+  sharedRuntimeModelHistoryMessages,
+} from "./shared-runtime-history-policy";
 import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 import {
   replayedSharedProviderTiming,
@@ -1802,6 +1805,11 @@ export class SharedRuntimeChatService {
     }
 
     const encoder = new TextEncoder();
+    const terminalReminderAction = parseSharedReminderActionProvenance(
+      turn.history?.findLast(
+        (message) => message.role === "assistant" && message.id === messageIds.assistant,
+      )?.reminderAction,
+    );
     const makeTurnMessages = (
       reply: string,
       interrupted: boolean,
@@ -1820,6 +1828,9 @@ export class SharedRuntimeChatService {
           createdAt: sentAt + 1,
           interrupted,
           ...(grounding ? { grounding } : {}),
+          ...(terminalReminderAction && !interrupted
+            ? { reminderAction: terminalReminderAction }
+            : {}),
         });
       }
       return messages;
