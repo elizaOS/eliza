@@ -11,6 +11,7 @@ import {
   acquireInferenceAdmissionLease,
   consumeInferenceRateLimit,
   createInferenceAdmissionBalanceFence,
+  fenceInferenceAdmissionLeaseForSettlement,
   InferenceAdmissionGateUnavailableError,
   InferenceAdmissionLeaseRejectedError,
   markInferenceAdmissionLeaseDispatched,
@@ -248,6 +249,7 @@ function post(
     | "/hydrate"
     | "/lease"
     | "/dispatch"
+    | "/settlement-fence"
     | "/release"
     | "/settle"
     | "/rate-limit"
@@ -1047,6 +1049,104 @@ describe("InferenceAdmissionGate", () => {
     });
   });
 
+  test("a settlement fence widens monotonically and rejects a stale second Worker before DB settlement", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 1, "1");
+
+    await runWithCloudBindingsAsync(gateBindings(gate), async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "resize-a",
+        balanceUsd: 1,
+        balanceRevision: "1",
+        estimatedCostUsd: 0.1,
+        recovery: organizationRecovery("resize-a"),
+      });
+      await markInferenceAdmissionLeaseDispatched(lease);
+
+      // Provider A reports a $0.90 actual cost. Its Postgres debit is paused;
+      // the durable transition must consume the delta before stale Worker B
+      // can lease against its old $1/rev1 projection.
+      await fenceInferenceAdmissionLeaseForSettlement(lease, 0.9);
+      expect(lease.estimatedCostUsd).toBe(0.9);
+      const fencedLedger = storage.read<{
+        availableUsd: number;
+        activeEstimateUsd: number;
+      }>("ledger");
+      expect(fencedLedger?.availableUsd).toBeCloseTo(0.1);
+      expect(fencedLedger?.activeEstimateUsd).toBeCloseTo(0.9);
+      await expect(
+        acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "stale-resize-b",
+          balanceUsd: 1,
+          balanceRevision: "1",
+          estimatedCostUsd: 0.2,
+          recovery: organizationRecovery("stale-resize-b"),
+        }),
+      ).rejects.toBeInstanceOf(InferenceAdmissionLeaseRejectedError);
+
+      // A lower replay is an acknowledged no-op and cannot shrink either the
+      // persisted or local lease.
+      await fenceInferenceAdmissionLeaseForSettlement(lease, 0.2);
+      expect(lease.estimatedCostUsd).toBe(0.9);
+      expect(
+        storage.read<{ estimatedCostUsd: number }>(storedLeaseKey("resize-a")),
+      ).toMatchObject({ estimatedCostUsd: 0.9 });
+    });
+  });
+
+  test("a lost settlement-fence acknowledgement replays before billing can continue", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10, "1");
+    let fenceAttempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            const response = await gate.fetch(incoming);
+            if (new URL(incoming.url).pathname === "/settlement-fence") {
+              fenceAttempts++;
+              if (fenceAttempts === 1) {
+                throw new Error("injected lost settlement-fence response");
+              }
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "resize-lost-ack",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 2,
+        recovery: organizationRecovery("resize-lost-ack"),
+      });
+      await markInferenceAdmissionLeaseDispatched(lease);
+      await fenceInferenceAdmissionLeaseForSettlement(lease, 8);
+      expect(lease.estimatedCostUsd).toBe(8);
+    });
+
+    expect(fenceAttempts).toBe(2);
+    expect(
+      storage.read<{ estimatedCostUsd: number }>(
+        storedLeaseKey("resize-lost-ack"),
+      ),
+    ).toMatchObject({ estimatedCostUsd: 8 });
+    expect(storage.read<{ activeEstimateUsd: number }>("ledger")).toMatchObject(
+      {
+        activeEstimateUsd: 8,
+      },
+    );
+  });
+
   test("repeat hydration cannot double-count an active authoritative hold", async () => {
     const gate = createGate();
     await hydrateGate(gate, 100, "1");
@@ -1609,6 +1709,63 @@ describe("InferenceAdmissionGate", () => {
       await gate.alarm();
       expect(storage.alarm).toBeUndefined();
       expect(recoverExpiredLease).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("alarm recovery inherits a widened settlement fence after the live Worker crashes", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10, "1");
+      expect(
+        (
+          await post(gate, "/lease", {
+            requestId: "resize-crash-a",
+            balanceUsd: 10,
+            balanceRevision: "1",
+            estimatedCostUsd: 2,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(gate, "/dispatch", {
+            requestId: "resize-crash-a",
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(gate, "/settlement-fence", {
+            requestId: "resize-crash-a",
+            estimatedCostUsd: 8,
+          })
+        ).status,
+      ).toBe(200);
+
+      // The live Worker disappears before Postgres. The alarm must recover
+      // the widened $8 exposure, not the original $2 estimate.
+      clock.mockReturnValue(1_300_000);
+      await expect(gate.alarm()).rejects.toThrow(
+        "Inference admission lease recovery failed",
+      );
+      expect(recoverExpiredLease).toHaveBeenCalledTimes(1);
+      expect(recoverExpiredLease.mock.calls[0]?.[1]).toBe(8);
+      expect(
+        storage.read<{
+          estimatedCostUsd: number;
+          phase: string;
+        }>(storedLeaseKey("resize-crash-a")),
+      ).toMatchObject({ estimatedCostUsd: 8, phase: "recovering" });
+      expect(
+        storage.read<{
+          activeEstimateUsd: number;
+          availableUsd: number;
+        }>("ledger"),
+      ).toMatchObject({ activeEstimateUsd: 8, availableUsd: 2 });
     } finally {
       clock.mockRestore();
     }

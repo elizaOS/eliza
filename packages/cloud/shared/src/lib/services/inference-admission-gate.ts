@@ -32,6 +32,8 @@ const HYDRATION_GATE_TIMEOUT_MS = 5_000;
 const GATE_OPERATION_TIMEOUT_MS = 1_500;
 const DISPATCH_GATE_TIMEOUT_MS = 1_500;
 const DISPATCH_GATE_MAX_ATTEMPTS = 3;
+const SETTLEMENT_FENCE_GATE_TIMEOUT_MS = 1_500;
+const SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS = 3;
 const RATE_LIMIT_WARM_TTL_MS = 5 * 60_000;
 const RATE_LIMIT_WARM_MAX_ENTRIES = 4_096;
 
@@ -51,6 +53,11 @@ interface DispatchResponse {
 
 interface ReleaseResponse {
   released: boolean;
+}
+
+interface SettlementFenceResponse {
+  settlementFenced: boolean;
+  estimatedCostUsd: number;
 }
 
 interface HydrateResponse {
@@ -245,6 +252,31 @@ async function parseLeaseTransitionResponse<Field extends "dispatched" | "releas
     // error-policy:J3 malformed transition responses never advance a lease.
     throw new InferenceAdmissionGateUnavailableError(
       `Inference admission gate returned invalid ${field} JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    );
+  }
+}
+
+async function parseSettlementFenceResponse(response: Response): Promise<SettlementFenceResponse> {
+  try {
+    const value = await response.json();
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      (value as Record<string, unknown>).settlementFenced !== true ||
+      !Number.isFinite((value as Record<string, unknown>).estimatedCostUsd) ||
+      ((value as Record<string, unknown>).estimatedCostUsd as number) <= 0
+    ) {
+      throw new TypeError("response does not confirm the settlement fence");
+    }
+    return value as SettlementFenceResponse;
+  } catch (error) {
+    // A committed transition can lose its response. Treat malformed 2xx as
+    // acknowledgement ambiguity so the caller replays the monotonic request.
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate returned invalid settlement-fence JSON: ${
         error instanceof Error ? error.message : String(error)
       }`,
       { cause: error },
@@ -730,6 +762,74 @@ export async function markInferenceAdmissionLeaseDispatched(
   // the lease so a live error settlement can prove no provider was invoked.
   throw new InferenceAdmissionDispatchMarkError(
     `Inference admission gate dispatch acknowledgement remained ambiguous after ${DISPATCH_GATE_MAX_ATTEMPTS} attempts`,
+    { cause: lastAmbiguousError },
+  );
+}
+
+/**
+ * Before post-provider billing mutates money, widen the durable lease to the
+ * known actual cost. The DO transition is monotonic and idempotent, so an
+ * acknowledgement-ambiguous call is replayed and billing never starts until a
+ * valid acknowledgement confirms the durable exposure.
+ */
+export async function fenceInferenceAdmissionLeaseForSettlement(
+  lease: InferenceAdmissionLease,
+  knownActualCostUsd: number,
+): Promise<void> {
+  if (!lease.providerDispatched) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission settlement fence requires a dispatched lease",
+    );
+  }
+  const targetEstimateUsd = Math.max(
+    lease.estimatedCostUsd,
+    finiteNonNegative(knownActualCostUsd, "knownActualCostUsd"),
+  );
+  let lastAmbiguousError: unknown;
+  for (let attempt = 1; attempt <= SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS; attempt += 1) {
+    let response: Response;
+    try {
+      response = await gateFetch(
+        lease.organizationId,
+        "/settlement-fence",
+        {
+          requestId: lease.requestId,
+          estimatedCostUsd: targetEstimateUsd,
+        },
+        lease.gate,
+        AbortSignal.timeout(SETTLEMENT_FENCE_GATE_TIMEOUT_MS),
+      );
+    } catch (error) {
+      lastAmbiguousError = error;
+      if (attempt < SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS) continue;
+      break;
+    }
+    if (!response.ok) {
+      const error = new InferenceAdmissionGateUnavailableError(
+        `Inference admission settlement fence failed with status ${response.status}`,
+      );
+      if (response.status < 500) throw error;
+      lastAmbiguousError = error;
+      if (attempt < SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS) continue;
+      break;
+    }
+    try {
+      const payload = await parseSettlementFenceResponse(response);
+      if (payload.estimatedCostUsd + 0.0000001 < targetEstimateUsd) {
+        throw new InferenceAdmissionGateUnavailableError(
+          "Inference admission settlement fence acknowledged a lower estimate",
+        );
+      }
+      lease.estimatedCostUsd = Math.max(lease.estimatedCostUsd, payload.estimatedCostUsd);
+      return;
+    } catch (error) {
+      lastAmbiguousError = error;
+      if (attempt < SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS) continue;
+      break;
+    }
+  }
+  throw new InferenceAdmissionGateUnavailableError(
+    `Inference admission settlement-fence acknowledgement remained ambiguous after ${SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS} attempts`,
     { cause: lastAmbiguousError },
   );
 }

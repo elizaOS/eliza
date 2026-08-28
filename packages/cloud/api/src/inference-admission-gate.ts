@@ -81,6 +81,11 @@ interface LeaseIdentityRequest {
   preProviderCancellationToken?: string;
 }
 
+interface SettlementFenceRequest {
+  requestId: string;
+  estimatedCostUsd: number;
+}
+
 interface RateLimitRequest {
   endpointType: string;
   windowMs: number;
@@ -964,6 +969,84 @@ export class InferenceAdmissionGate {
     return Response.json({ dispatched: true, duplicate: false });
   }
 
+  /**
+   * Widen a dispatched lease to the known post-provider cost before any money
+   * mutation starts. This transition never shrinks and never rejects for lack
+   * of available balance: the provider work already happened, so its job is to
+   * make every subsequent admission account for the full known exposure.
+   */
+  private async settlementFence(
+    request: SettlementFenceRequest,
+  ): Promise<Response> {
+    if (
+      !validRequestId(request.requestId) ||
+      !nonNegativeFinite(request.estimatedCostUsd) ||
+      request.estimatedCostUsd === 0
+    ) {
+      return jsonError("Invalid inference admission settlement fence", 400);
+    }
+    const existing = await this.load();
+    if (!existing) {
+      return jsonError("Inference admission ledger is unavailable", 503);
+    }
+    if (existing.settledRequestIds.includes(request.requestId)) {
+      return jsonError("Request ID was already settled", 409);
+    }
+    const ledger = cloneLedger(existing);
+    const lease = await this.loadLease(request.requestId);
+    if (!lease) {
+      return jsonError("Inference admission lease was not found", 409);
+    }
+    if (lease.phase !== "dispatched") {
+      return jsonError(
+        lease.phase === "recovering"
+          ? "Inference admission lease recovery is in progress"
+          : "Inference admission lease was not dispatched to a provider",
+        409,
+      );
+    }
+    if (
+      ledger.activeLeaseCount <= 0 ||
+      ledger.activeEstimateUsd + 0.0000001 < lease.estimatedCostUsd
+    ) {
+      throw new Error("Inference admission lease summary is inconsistent");
+    }
+
+    const fencedEstimateUsd = Math.max(
+      lease.estimatedCostUsd,
+      request.estimatedCostUsd,
+    );
+    if (fencedEstimateUsd === lease.estimatedCostUsd) {
+      return Response.json({
+        settlementFenced: true,
+        estimatedCostUsd: lease.estimatedCostUsd,
+        duplicate: true,
+      });
+    }
+    const activeEstimateUsd =
+      ledger.activeEstimateUsd + (fencedEstimateUsd - lease.estimatedCostUsd);
+    if (!nonNegativeFinite(activeEstimateUsd)) {
+      throw new Error(
+        "Inference admission settlement fence exceeds the ledger budget",
+      );
+    }
+    ledger.activeEstimateUsd = activeEstimateUsd;
+    recomputeAvailable(ledger);
+    const fencedLease: ActiveLease = {
+      ...lease,
+      estimatedCostUsd: fencedEstimateUsd,
+    };
+    await this.save(ledger, {
+      delete: [{ requestId: request.requestId, lease }],
+      put: [{ requestId: request.requestId, lease: fencedLease }],
+    });
+    return Response.json({
+      settlementFenced: true,
+      estimatedCostUsd: fencedEstimateUsd,
+      duplicate: false,
+    });
+  }
+
   private async release(request: LeaseIdentityRequest): Promise<Response> {
     if (
       !validRequestId(request.requestId) ||
@@ -1249,6 +1332,7 @@ export class InferenceAdmissionGate {
       | HydrateRequest
       | SettleRequest
       | LeaseIdentityRequest
+      | SettlementFenceRequest
       | RateLimitRequest
       | CredentialCheckRequest
       | CredentialRevokeRequest
@@ -1263,6 +1347,7 @@ export class InferenceAdmissionGate {
         | HydrateRequest
         | SettleRequest
         | LeaseIdentityRequest
+        | SettlementFenceRequest
         | RateLimitRequest
         | CredentialCheckRequest
         | CredentialRevokeRequest
@@ -1289,6 +1374,11 @@ export class InferenceAdmissionGate {
     if (path === "/dispatch") {
       return await this.serialize(() =>
         this.dispatch(body as LeaseIdentityRequest),
+      );
+    }
+    if (path === "/settlement-fence") {
+      return await this.serialize(() =>
+        this.settlementFence(body as SettlementFenceRequest),
       );
     }
     if (path === "/release") {
