@@ -1128,7 +1128,7 @@ echo "public Headscale overlap is healthy on one exact dual-SAN leaf"
 const cpRouterSteps = skipCpRouter
   ? `echo "skip-cp-router set: leaving CP tailscale enrollment untouched"`
   : `
-echo "--- CP self-enrollment: ${cpRouterHostname} (tag:eliza-proxy) ---"
+echo "--- CP self-enrollment: role=eliza-proxy ---"
 CP_ROUTER_HOST=${shellQuote(cpRouterHostname)}
 LOGIN_SERVER=${shellQuote(publicUrl)}
 
@@ -1139,18 +1139,18 @@ sudo systemctl enable --now tailscaled
 # headscale node 'name'). If so, this whole step is a no-op.
 if sudo headscale nodes list -o json 2>/dev/null \\
     | jq -e --arg h "$CP_ROUTER_HOST" 'any(.[]; .name == $h)' >/dev/null 2>&1; then
-  echo "$CP_ROUTER_HOST already enrolled in headscale; skipping tailscale up"
+  echo "CP router enrollment already present (category=cp-router-already-enrolled)"
 else
   # Resolve the 'tunnel' user id (preauthkeys create -u wants a uint in v0.28).
   TUNNEL_UID=$(sudo headscale users list -o json 2>/dev/null \\
     | jq -r '.[] | select(.name == "tunnel") | .id')
-  [ -n "$TUNNEL_UID" ] || { echo "tunnel user not found; cannot mint preauth key"; exit 1; }
+  [ -n "$TUNNEL_UID" ] || { echo "required Headscale role is absent (category=cp-router-role-missing)"; exit 1; }
 
   # Short-lived, single-use, pre-tagged preauth key. Tagged tag:eliza-proxy so
   # the node lands tagged at join (ownership enforced by acl.hujson tagOwners).
   PREAUTH_KEY=$(sudo headscale preauthkeys create -u "$TUNNEL_UID" \\
     --tags tag:eliza-proxy --expiration 1h -o json 2>/dev/null | jq -r '.key')
-  [ -n "$PREAUTH_KEY" ] || { echo "failed to mint preauth key for cp-router"; exit 1; }
+  [ -n "$PREAUTH_KEY" ] || { echo "CP router enrollment credential could not be minted (category=cp-router-key-failed)"; exit 1; }
 
   # This branch already proved the expected router is absent and minted a
   # fresh, single-use key. Force reauthentication so a daemon still signed in
@@ -1161,12 +1161,15 @@ else
     --authkey="$PREAUTH_KEY" \\
     --hostname="$CP_ROUTER_HOST" \\
     --advertise-tags=tag:eliza-proxy \\
-    --accept-routes
-  echo "$CP_ROUTER_HOST enrolled"
+    --accept-routes >/dev/null 2>&1
+  echo "CP router enrollment completed (category=cp-router-enrolled)"
 fi
 
-sudo tailscale status 2>/dev/null | grep -F "$CP_ROUTER_HOST" \\
-  || echo "WARN: $CP_ROUTER_HOST not visible in tailscale status yet"
+if sudo tailscale status 2>/dev/null | grep -F "$CP_ROUTER_HOST" >/dev/null; then
+  echo "CP router visibility check passed (category=cp-router-visible)"
+else
+  echo "WARN: CP router visibility is pending (category=cp-router-visibility-pending)"
+fi
 `;
 
 const legacyVhostInspectionRemote = `
@@ -1301,15 +1304,24 @@ sudo chmod 0640 ${HEADSCALE_CONFIG} || true
 sudo systemctl enable --now headscale
 sudo systemctl restart headscale
 
+report_headscale_unit_state() {
+  local active_class="other"
+  if sudo systemctl is-active --quiet headscale; then
+    active_class="active"
+  elif sudo systemctl is-failed --quiet headscale; then
+    active_class="failed"
+  fi
+  echo "headscale-unit-state category=headscale-unit-state active=$active_class"
+}
+
 for attempt in $(seq 1 30); do
   if curl -sf -m 3 "$API_URL/health" >/dev/null; then
     echo "headscale local health passed on attempt $attempt"
     break
   fi
   if [ "$attempt" = 30 ]; then
-    echo "headscale local health failed"
-    sudo systemctl status headscale --no-pager || true
-    sudo journalctl -u headscale -n 80 --no-pager || true
+    echo "headscale local health failed (category=headscale-local-health-failed; attempts=30)"
+    report_headscale_unit_state
     exit 1
   fi
   sleep 2
@@ -1317,7 +1329,7 @@ done
 
 for user in agent tunnel; do
   if ! sudo headscale users list -o json 2>/dev/null | grep -q "\\"name\\"[[:space:]]*:[[:space:]]*\\"$user\\""; then
-    sudo headscale users create "$user"
+    sudo headscale users create "$user" >/dev/null
   fi
 done
 

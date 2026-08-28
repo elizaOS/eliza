@@ -178,6 +178,9 @@ describe("buildManagedElizaRuntimeConfig", () => {
       linkedAccounts: {
         elizacloud: { status: "linked", source: "api-key" },
       },
+      serviceRouting: {
+        embeddings: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
       cloud: {
         enabled: true,
         apiKey: "agent-api-key",
@@ -188,6 +191,48 @@ describe("buildManagedElizaRuntimeConfig", () => {
     expect(topology.runtime).toBe("cloud");
     expect(topology.services.inference).toBe(true);
     expect(topology.shouldLoadPlugin).toBe(true);
+  });
+
+  test("persists configured direct embedding ownership for managed containers", () => {
+    const config = buildManagedElizaRuntimeConfig({
+      ELIZAOS_CLOUD_API_KEY: "agent-api-key",
+      ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+      EMBEDDING_BASE_URL: "http://eliza-embedding-sidecar:80/v1",
+    });
+
+    expect(config).toMatchObject({
+      serviceRouting: {
+        embeddings: { backend: "embeddings", transport: "direct" },
+      },
+    });
+  });
+
+  test("does not invent direct embedding ownership without a configured provider", () => {
+    const config = buildManagedElizaRuntimeConfig({
+      ELIZAOS_CLOUD_API_KEY: "agent-api-key",
+      ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+    });
+
+    expect(config).toMatchObject({
+      serviceRouting: {
+        embeddings: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    });
+  });
+
+  test("keeps explicit Cloud embedding opt-in on the canonical cloud-proxy route", () => {
+    const config = buildManagedElizaRuntimeConfig({
+      ELIZAOS_CLOUD_API_KEY: "agent-api-key",
+      ELIZAOS_CLOUD_USE_EMBEDDINGS: "true",
+      // A stale direct endpoint must not beat the explicit Cloud opt-in.
+      EMBEDDING_BASE_URL: "http://eliza-embedding-sidecar:80/v1",
+    });
+
+    expect(config).toMatchObject({
+      serviceRouting: {
+        embeddings: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    });
   });
 });
 

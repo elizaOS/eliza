@@ -11,6 +11,7 @@ const workflowPath = new URL(
   repoRoot,
 );
 const source = readFileSync(workflowPath, "utf8");
+const cleanupArrayExpansion = '"$' + '{cleanup_paths[@]}"';
 
 interface WorkflowStep {
   env?: Record<string, string>;
@@ -90,6 +91,14 @@ describe("protected tunnel-proxy deployment workflow", () => {
       '--environment "$RAILWAY_ENVIRONMENT_ID"',
     );
     expect(verifyTarget.run).toContain('.node.name == "tunnel-proxy"');
+    expect(verifyTarget.run).toContain(
+      '> "$status_path" 2> "$provider_stderr"',
+    );
+    expect(verifyTarget.run).toContain("category=railway-target-verified");
+    expect(verifyTarget.run).toContain(`shred -u -- ${cleanupArrayExpansion}`);
+    expect(verifyTarget.run).toContain(`rm -f -- ${cleanupArrayExpansion}`);
+    expect(verifyTarget.run).not.toContain('cat "$status_path"');
+    expect(verifyTarget.run).not.toContain('cat "$provider_stderr"');
 
     const volume = step("Converge persistent tsnet volume");
     expect(volume.run).toContain("railway volume");
@@ -99,6 +108,13 @@ describe("protected tunnel-proxy deployment workflow", () => {
     expect(volume.run).toContain('.status == "Ready"');
     expect(volume.run).toContain('.serviceName == "tunnel-proxy"');
     expect(volume.run).toContain("target_mount_count");
+    expect(volume.run).toContain('> "$volumes_path" 2> "$provider_stderr"');
+    expect(volume.run).toContain('> "$mutation_stdout" 2> "$provider_stderr"');
+    expect(volume.run).toContain("category=railway-volume-ready");
+    expect(volume.run).toContain(`shred -u -- ${cleanupArrayExpansion}`);
+    expect(volume.run).toContain(`rm -f -- ${cleanupArrayExpansion}`);
+    expect(volume.run).not.toContain('cat "$volumes_path"');
+    expect(volume.run).not.toContain('cat "$provider_stderr"');
 
     const volumeIndex = steps.findIndex(
       (candidate) => candidate.name === "Converge persistent tsnet volume",
@@ -129,6 +145,14 @@ describe("protected tunnel-proxy deployment workflow", () => {
     expect(variables.run).toContain("TUNNEL_HOSTNAME_SIGNING_SECRET");
     expect(variables.run).toContain("--stdin");
     expect(variables.run).toContain('"TUNNEL_ALLOW_UNSIGNED_HOSTNAMES=false"');
+    expect(variables.run).toContain(
+      '> "$provider_stdout" 2> "$provider_stderr"',
+    );
+    expect(variables.run).toContain("category=railway-variables-published");
+    expect(variables.run).toContain(`shred -u -- ${cleanupArrayExpansion}`);
+    expect(variables.run).toContain(`rm -f -- ${cleanupArrayExpansion}`);
+    expect(variables.run).not.toContain('cat "$provider_stdout"');
+    expect(variables.run).not.toContain('cat "$provider_stderr"');
 
     const headscale = step(
       "Mint proxy key and publish it without exposing the value",
@@ -146,7 +170,13 @@ describe("protected tunnel-proxy deployment workflow", () => {
     );
     expect(headscale.run).toContain("TUNNEL_PROXY_TS_AUTHKEY");
     expect(headscale.run).toContain("--stdin");
+    expect(headscale.run).toContain('> "$railway_stdout" 2> "$railway_stderr"');
+    expect(headscale.run).toContain("category=railway-proxy-key-published");
+    expect(headscale.run).toContain(`shred -u -- ${cleanupArrayExpansion}`);
+    expect(headscale.run).toContain(`rm -f -- ${cleanupArrayExpansion}`);
     expect(headscale.run).not.toContain('echo "$new_key"');
+    expect(headscale.run).not.toContain('cat "$railway_stdout"');
+    expect(headscale.run).not.toContain('cat "$railway_stderr"');
     expect(source).not.toContain("ssh-keyscan");
     expect(source).not.toContain("StrictHostKeyChecking=accept-new");
 
@@ -156,21 +186,41 @@ describe("protected tunnel-proxy deployment workflow", () => {
 
   test("attaches and verifies the exact apex and wildcard domains", () => {
     const converge = step("Converge exact Railway custom domains");
+    expect(converge.run).toContain("for domain_role in apex wildcard");
     expect(converge.run).toContain(
-      'for domain in "$TUNNEL_PROXY_HOST" "*.$TUNNEL_PROXY_HOST"',
+      'apex) requested_domain="$TUNNEL_PROXY_HOST"',
+    );
+    expect(converge.run).toContain(
+      'wildcard) requested_domain="*.$TUNNEL_PROXY_HOST"',
     );
     expect(converge.run).toContain("railway domain list");
-    expect(converge.run).toContain('railway domain "$domain"');
+    expect(converge.run).toContain('railway domain "$requested_domain"');
     expect(converge.run).toContain("--port 8080");
+    expect(converge.run).toContain('> "$domains_path" 2> "$provider_stderr"');
+    expect(converge.run).toContain('> "$created_path" 2> "$provider_stderr"');
+    expect(converge.run).toContain("role=$domain_role");
+    expect(converge.run).toContain("category=railway-domain-created");
+    expect(converge.run).toContain(`shred -u -- ${cleanupArrayExpansion}`);
+    expect(converge.run).toContain(`rm -f -- ${cleanupArrayExpansion}`);
+    expect(converge.run).not.toMatch(
+      /echo[^\n]*\$(?:domain(?!_)|requested_domain\b|TUNNEL_PROXY_HOST\b)/,
+    );
+    expect(converge.run).not.toContain('cat "$domains_path"');
+    expect(converge.run).not.toContain('cat "$created_path"');
+    expect(converge.run).not.toContain('cat "$provider_stderr"');
 
     const handoff = step("Validate reviewed Railway DNS handoff");
     expect(deploy?.env?.RAILWAY_TUNNEL_DNS_RECORDS_JSON).toContain(
       "vars.RAILWAY_TUNNEL_DNS_RECORDS_JSON",
     );
-    expect(handoff.run).toContain('railway domain status "$TUNNEL_PROXY_HOST"');
+    expect(handoff.run).toContain('railway domain status "$requested_domain"');
     expect(handoff.run).toContain(
-      'railway domain status "*.$TUNNEL_PROXY_HOST"',
+      'run_domain_status apex "$TUNNEL_PROXY_HOST" "$apex_status"',
     );
+    expect(handoff.run).toContain(
+      'run_domain_status wildcard "*.$TUNNEL_PROXY_HOST" "$wildcard_status"',
+    );
+    expect(handoff.run).toContain("role=$domain_role");
     for (const logicalKey of [
       "apex-routing",
       "apex-verification",
@@ -194,14 +244,23 @@ describe("protected tunnel-proxy deployment workflow", () => {
     );
 
     const verify = step("Verify Railway domain ownership and certificates");
-    expect(verify.run).toContain('railway domain status "$domain"');
+    expect(verify.run).toContain("for domain_role in apex wildcard");
+    expect(verify.run).toContain('railway domain status "$requested_domain"');
     expect(verify.run).toContain(".domain.verification.verified == true");
     expect(verify.run).toContain('.domain.syncStatus == "ACTIVE"');
     expect(verify.run).toContain(
       '.domain.certificate.status == "CERTIFICATE_STATUS_TYPE_VALID"',
     );
-    expect(verify.run).toContain("RAILWAY_TUNNEL_DNS_RECORDS_JSON");
-    expect(verify.run).toContain("pages-domains Terraform plan");
+    expect(verify.run).toContain('> "$status_path" 2> "$provider_stderr"');
+    expect(verify.run).toContain("role=$domain_role");
+    expect(verify.run).toContain("category=railway-domain-verified");
+    expect(verify.run).toContain(`shred -u -- ${cleanupArrayExpansion}`);
+    expect(verify.run).toContain(`rm -f -- ${cleanupArrayExpansion}`);
+    expect(verify.run).not.toMatch(
+      /echo[^\n]*\$(?:domain(?!_)|requested_domain\b|TUNNEL_PROXY_HOST\b)/,
+    );
+    expect(verify.run).not.toContain('cat "$status_path"');
+    expect(verify.run).not.toContain('cat "$provider_stderr"');
   });
 
   test("proves live health and 404 before revoking superseded keys", () => {
