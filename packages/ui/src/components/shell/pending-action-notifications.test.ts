@@ -239,18 +239,28 @@ describe("pending-action notification projection", () => {
         NOW,
       ),
     ).toEqual({ status: "persisted", ids: new Set(["resolved-a"]) });
-    expect(
-      persistResolvedPendingActionIds(
-        storage,
-        key,
-        new Set(),
-        new Set(["resolved-b"]),
-        NOW + 1,
-      ),
-    ).toEqual({
+    const tabB = persistResolvedPendingActionIds(
+      storage,
+      key,
+      new Set(),
+      new Set(["resolved-b"]),
+      NOW + 1,
+    );
+    expect(tabB).toEqual({
       status: "persisted",
-      ids: new Set(["resolved-a", "resolved-b"]),
+      ids: new Set(["resolved-b"]),
     });
+    if (tabB.status === "unavailable") {
+      throw new Error("Expected Tab B transition acknowledgement");
+    }
+
+    persistResolvedPendingActionIds(
+      storage,
+      key,
+      tabB.ids,
+      new Set(["resolved-b"]),
+      NOW + 2,
+    );
 
     const merged = readPersistedResolvedPendingActionIds(storage, key);
     expect(merged.status).toBe("valid");
@@ -262,7 +272,7 @@ describe("pending-action notification projection", () => {
       key,
       new Set(["resolved-a"]),
       new Set(),
-      NOW + 2,
+      NOW + 3,
     );
     const cleared = readPersistedResolvedPendingActionIds(storage, key);
     expect(cleared.status).toBe("valid");

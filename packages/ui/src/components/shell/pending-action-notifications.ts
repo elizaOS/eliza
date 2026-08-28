@@ -209,14 +209,29 @@ export function persistResolvedPendingActionIds(
   nextIds: ReadonlySet<string>,
   observedAt: number,
 ): PersistResolvedPendingActionIdsResult {
+  const confirmedIds = new Set(previousIds);
   let partial = false;
+  let attemptedTransitions = 0;
+  let confirmedTransitions = 0;
   for (const id of previousIds) {
     if (!nextIds.has(id)) {
+      attemptedTransitions += 1;
       try {
+        const entryKey = resolvedPendingActionIdEntryKey(key, id);
         storage.setItem(
-          resolvedPendingActionIdEntryKey(key, id),
+          entryKey,
           JSON.stringify({ state: "pending", observedAt }),
         );
+        const written = storage.getItem(entryKey);
+        if (
+          written === null ||
+          (JSON.parse(written) as { state?: unknown }).state !== "pending"
+        ) {
+          partial = true;
+          continue;
+        }
+        confirmedIds.delete(id);
+        confirmedTransitions += 1;
       } catch {
         partial = true;
       }
@@ -224,11 +239,23 @@ export function persistResolvedPendingActionIds(
   }
   for (const id of nextIds) {
     if (!previousIds.has(id)) {
+      attemptedTransitions += 1;
       try {
+        const entryKey = resolvedPendingActionIdEntryKey(key, id);
         storage.setItem(
-          resolvedPendingActionIdEntryKey(key, id),
+          entryKey,
           JSON.stringify({ state: "resolved", observedAt }),
         );
+        const written = storage.getItem(entryKey);
+        if (
+          written === null ||
+          (JSON.parse(written) as { state?: unknown }).state !== "resolved"
+        ) {
+          partial = true;
+          continue;
+        }
+        confirmedIds.add(id);
+        confirmedTransitions += 1;
       } catch {
         partial = true;
       }
@@ -259,14 +286,12 @@ export function persistResolvedPendingActionIds(
     partial = true;
   }
 
-  const confirmed = readPersistedResolvedPendingActionIds(storage, key);
-  if (confirmed.status === "unavailable") return confirmed;
+  if (partial && attemptedTransitions > 0 && confirmedTransitions === 0) {
+    return { status: "unavailable" };
+  }
   return {
     status: partial ? "partial" : "persisted",
-    ids:
-      confirmed.status === "missing"
-        ? EMPTY_RESOLVED_PENDING_ACTION_IDS
-        : confirmed.ids,
+    ids: confirmedIds,
   };
 }
 
@@ -457,7 +482,7 @@ export function usePendingActions(): {
   });
   const [loaded, setLoaded] = useState(false);
   const [observedAt, setObservedAt] = useState(0);
-  const [storageRetryObservedAt, setStorageRetryObservedAt] = useState(0);
+  const [storageRetryRequestedAt, setStorageRetryRequestedAt] = useState(0);
   const mountedRef = useRef(true);
   const storageRetryCountRef = useRef(0);
   const persistedResolutionIdsRef = useRef<{
@@ -554,7 +579,7 @@ export function usePendingActions(): {
       snapshot.ownerKey,
       persistedPrevious,
       snapshot.resolvedActionIds,
-      storageRetryObservedAt || Date.now(),
+      Date.now(),
     );
     if (result.status !== "unavailable") {
       persistedResolutionIdsRef.current = {
@@ -563,16 +588,17 @@ export function usePendingActions(): {
       };
       if (resolutionIdSetsEqual(result.ids, snapshot.resolvedActionIds)) {
         storageRetryCountRef.current = 0;
+        if (storageRetryRequestedAt !== 0) setStorageRetryRequestedAt(0);
         return;
       }
     }
     if (storageRetryCountRef.current >= MAX_STORAGE_RETRY_ATTEMPTS) return;
     storageRetryCountRef.current += 1;
     const retry = window.setTimeout(() => {
-      setStorageRetryObservedAt(Date.now());
+      setStorageRetryRequestedAt(Date.now());
     }, STORAGE_RETRY_DELAY_MS);
     return () => window.clearTimeout(retry);
-  }, [snapshot.ownerKey, snapshot.resolvedActionIds, storageRetryObservedAt]);
+  }, [snapshot.ownerKey, snapshot.resolvedActionIds, storageRetryRequestedAt]);
 
   const load = useCallback(async () => {
     const requestGeneration = ++requestGenerationRef.current;
