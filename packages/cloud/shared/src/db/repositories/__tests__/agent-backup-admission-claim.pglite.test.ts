@@ -14,12 +14,16 @@ const { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } = a
 );
 const {
   claimAgentBackupAdmissionWork,
+  claimAgentBackupAdmissionWorkTurn,
   countUnsettledAgentBackupAdmissionWork,
   deferAgentBackupAdmissionClaim,
   heartbeatAgentBackupAdmissionClaim,
   MIN_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS,
   settleAgentBackupAdmissionClaim,
 } = await import("../agent-backup-admission-claim");
+const { MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS } = await import(
+  "../../schemas/agent-backup-admission"
+);
 
 const TIMEOUT = 60_000;
 const IMAGE = `sha256:${"9".repeat(64)}`;
@@ -378,6 +382,39 @@ afterAll(async () => {
 });
 
 describe("schedule-capture admission claims on primary PGlite", () => {
+  test("distinguishes a truly idle authority from durable claim progress", async () => {
+    expect(
+      await claimAgentBackupAdmissionWorkTurn({
+        ownerId: OWNER_A,
+        limit: 1,
+        leaseMs: 60_000,
+      }),
+    ).toEqual({ outcome: "idle", claims: [] });
+
+    const due = source(90, {
+      priorityClass: "active_rpo",
+      basePriority: 1,
+    });
+    await seedSource(due);
+    const outcomes: string[] = [];
+    let claimed: ClaimBatch = [];
+    for (let turn = 0; turn < MAX_TEST_PROGRESS_TURNS && claimed.length === 0; turn += 1) {
+      const result = await claimAgentBackupAdmissionWorkTurn({
+        ownerId: OWNER_A,
+        limit: 1,
+        leaseMs: 60_000,
+      });
+      outcomes.push(result.outcome);
+      claimed = result.claims;
+    }
+
+    expect(outcomes.at(0)).toBe("progressed");
+    expect(outcomes.at(-1)).toBe("claimed");
+    expect(outcomes).not.toContain("idle");
+    expect(outcomes).not.toContain("contended");
+    expect(claimed.map(({ workId }) => workId)).toEqual([due.workId]);
+  });
+
   test("rejects lease horizons too short to return a consumable fence", async () => {
     await expect(
       claimAgentBackupAdmissionWork({
@@ -1201,75 +1238,122 @@ describe("schedule-capture admission claims on primary PGlite", () => {
     expect(await readyCohort(expired.workId)).toBeGreaterThan(initialExpiredCohort);
   });
 
-  test("settles an expired maximum attempt and advances the now-idle shard", async () => {
-    const exhausted = source(28);
-    await seedSource(exhausted);
+  test(
+    "settles an expired maximum attempt and advances the now-idle shard",
+    async () => {
+      const exhausted = source(28);
+      await seedSource(exhausted);
 
-    for (let attempt = 1; attempt <= 11; attempt += 1) {
-      const retryBatch = await driveUntilClaim({
-        ownerId: `retry-worker-${attempt}`,
+      for (let attempt = 1; attempt < MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS; attempt += 1) {
+        const retryBatch = await driveUntilClaim({
+          ownerId: `retry-worker-${attempt}`,
+          limit: 1,
+          leaseMs: 60_000,
+        });
+        const [claim] = retryBatch.claims;
+        expect(claim?.workAttempt).toBe(attempt);
+        if (!claim) throw new Error(`Expected retry claim ${attempt}`);
+        expect(
+          await deferAgentBackupAdmissionClaim({
+            fence: fence(claim),
+            retryDelayMs: 1,
+            reason: "TEST_RETRY",
+          }),
+        ).toBe("deferred");
+        await Bun.sleep(10);
+      }
+
+      const lastBatch = await driveUntilClaim({
+        ownerId: "crashed-final-worker",
+        limit: 1,
+        leaseMs: MIN_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS,
+      });
+      const [lastClaim] = lastBatch.claims;
+      expect(lastClaim?.workAttempt).toBe(MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS);
+      const beforeIdle = await dbWrite.execute(sql`SELECT last_turn::text AS last_turn
+      FROM agent_backup_admission_claim_shards
+      WHERE work_kind = 'schedule_capture' AND shard_id = 0`);
+      await Bun.sleep(MIN_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS + 100);
+
+      let settled = false;
+      for (let recoveryTurn = 0; recoveryTurn < 4 && !settled; recoveryTurn += 1) {
+        expect(
+          await claimAgentBackupAdmissionWork({ ownerId: OWNER_B, limit: 1, leaseMs: 60_000 }),
+        ).toEqual([]);
+        const state = await dbWrite.execute(sql`SELECT state
+        FROM agent_backup_admission_work WHERE id = ${exhausted.workId}::uuid`);
+        settled = (state.rows[0] as { state: string } | undefined)?.state === "settled";
+      }
+      expect(settled).toBe(true);
+      const work = await dbWrite.execute(sql`SELECT state, attempts, settled_reason
+      FROM agent_backup_admission_work WHERE id = ${exhausted.workId}::uuid`);
+      expect(work.rows).toEqual([
+        {
+          state: "settled",
+          attempts: MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS,
+          settled_reason: "RETRY_EXHAUSTED",
+        },
+      ]);
+      const idleProgress = await driveUntilScheduleShardIdle({
+        ownerId: OWNER_B,
         limit: 1,
         leaseMs: 60_000,
       });
-      const [claim] = retryBatch.claims;
-      expect(claim?.workAttempt).toBe(attempt);
-      if (!claim) throw new Error(`Expected retry claim ${attempt}`);
-      expect(
-        await deferAgentBackupAdmissionClaim({
-          fence: fence(claim),
-          retryDelayMs: 1,
-          reason: "TEST_RETRY",
-        }),
-      ).toBe("deferred");
-      await Bun.sleep(10);
-    }
-
-    const lastBatch = await driveUntilClaim({
-      ownerId: "crashed-final-worker",
-      limit: 1,
-      leaseMs: MIN_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS,
-    });
-    const [lastClaim] = lastBatch.claims;
-    expect(lastClaim?.workAttempt).toBe(12);
-    const beforeIdle = await dbWrite.execute(sql`SELECT last_turn::text AS last_turn
-      FROM agent_backup_admission_claim_shards
-      WHERE work_kind = 'schedule_capture' AND shard_id = 0`);
-    await Bun.sleep(MIN_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS + 100);
-
-    let settled = false;
-    for (let recoveryTurn = 0; recoveryTurn < 4 && !settled; recoveryTurn += 1) {
-      expect(
-        await claimAgentBackupAdmissionWork({ ownerId: OWNER_B, limit: 1, leaseMs: 60_000 }),
-      ).toEqual([]);
-      const state = await dbWrite.execute(sql`SELECT state
-        FROM agent_backup_admission_work WHERE id = ${exhausted.workId}::uuid`);
-      settled = (state.rows[0] as { state: string } | undefined)?.state === "settled";
-    }
-    expect(settled).toBe(true);
-    const work = await dbWrite.execute(sql`SELECT state, attempts, settled_reason
-      FROM agent_backup_admission_work WHERE id = ${exhausted.workId}::uuid`);
-    expect(work.rows).toEqual([
-      { state: "settled", attempts: 12, settled_reason: "RETRY_EXHAUSTED" },
-    ]);
-    const idleProgress = await driveUntilScheduleShardIdle({
-      ownerId: OWNER_B,
-      limit: 1,
-      leaseMs: 60_000,
-    });
-    expect(idleProgress.batches.every((batch) => batch.length === 0)).toBe(true);
-    const afterIdle = await dbWrite.execute(sql`SELECT last_turn::text AS last_turn,
+      expect(idleProgress.batches.every((batch) => batch.length === 0)).toBe(true);
+      const afterIdle = await dbWrite.execute(sql`SELECT last_turn::text AS last_turn,
         cycle_observed_at
       FROM agent_backup_admission_claim_shards
       WHERE work_kind = 'schedule_capture' AND shard_id = 0`);
-    const beforeTurn = BigInt(
-      (beforeIdle.rows[0] as { last_turn: string } | undefined)?.last_turn ?? "0",
-    );
-    const after = afterIdle.rows[0] as
-      | { last_turn: string; cycle_observed_at: Date | null }
-      | undefined;
-    expect(BigInt(after?.last_turn ?? "0")).toBeGreaterThan(beforeTurn);
-    expect(after?.cycle_observed_at).toBeNull();
-  });
+      const beforeTurn = BigInt(
+        (beforeIdle.rows[0] as { last_turn: string } | undefined)?.last_turn ?? "0",
+      );
+      const after = afterIdle.rows[0] as
+        | { last_turn: string; cycle_observed_at: Date | null }
+        | undefined;
+      expect(BigInt(after?.last_turn ?? "0")).toBeGreaterThan(beforeTurn);
+      expect(after?.cycle_observed_at).toBeNull();
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "reports retry exhaustion when the final deferral settles the claim",
+    async () => {
+      const exhausted = source(132);
+      await seedSource(exhausted);
+
+      for (let attempt = 1; attempt <= MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS; attempt += 1) {
+        const batch = await driveUntilClaim({
+          ownerId: `defer-exhaustion-worker-${attempt}`,
+          limit: 1,
+          leaseMs: 60_000,
+        });
+        const [claim] = batch.claims;
+        expect(claim?.workAttempt).toBe(attempt);
+        if (!claim) throw new Error(`Expected retry-exhaustion claim ${attempt}`);
+        expect(
+          await deferAgentBackupAdmissionClaim({
+            fence: fence(claim),
+            retryDelayMs: 1,
+            reason: "TEST_RETRY",
+          }),
+        ).toBe(attempt === MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS ? "retry_exhausted" : "deferred");
+        if (attempt < MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS) await Bun.sleep(10);
+      }
+
+      const work = await dbWrite.execute(sql`SELECT state, attempts, settled_reason
+      FROM agent_backup_admission_work WHERE id = ${exhausted.workId}::uuid`);
+      expect(work.rows).toEqual([
+        {
+          state: "settled",
+          attempts: MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS,
+          settled_reason: "RETRY_EXHAUSTED",
+        },
+      ]);
+      expect(await countUnsettledAgentBackupAdmissionWork()).toBe(0);
+    },
+    TIMEOUT,
+  );
 
   test("settles ABA and activation drift instead of returning a fresh-boot candidate", async () => {
     const aba = source(30);

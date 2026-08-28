@@ -957,7 +957,7 @@ describe("backup admission reservation on real PostgreSQL", () => {
         if (!claimRepository)
           throw new Error("real PostgreSQL claim repository was not initialized");
         const claim = await claimOne(claimRepository.MIN_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS);
-        const result = await withLockedRow<Date | "deferred" | "settled" | boolean | null>({
+        const result = await withLockedRow<Date | "deferred" | "retry_exhausted" | boolean | null>({
           selectSql: "SELECT id FROM agent_backup_admission_work WHERE id = $1::uuid FOR UPDATE",
           selectValues: [WORK_ID],
           run: () => {
@@ -972,7 +972,7 @@ describe("backup admission reservation on real PostgreSQL", () => {
                 fence: fence(claim),
                 retryDelayMs: 60_000,
                 reason: "TEST_BACKPRESSURE",
-              }) as Promise<"deferred" | "settled" | null>;
+              }) as Promise<"deferred" | "retry_exhausted" | null>;
             }
             return claimRepository?.settleAgentBackupAdmissionClaim({
               fence: fence(claim),
@@ -1169,6 +1169,51 @@ describe("backup admission reservation on real PostgreSQL", () => {
         await reservation?.catch(() => undefined);
       }
       await expectNoPartialReservation();
+    },
+    TEST_TIMEOUT,
+  );
+
+  realPostgresTest(
+    "returns an exact committed replay after the account-deletion paid-work fence",
+    async () => {
+      if (!reservationRepository || !control) {
+        throw new Error("real PostgreSQL reservation harness was not initialized");
+      }
+      const claim = await claimOne(60_000);
+      const first = await reservationRepository.reserveAndSettleAgentBackupAdmissionClaim({
+        claim,
+      });
+      await control.query(
+        `UPDATE organizations SET
+           account_lifecycle_state = 'deletion_recovery',
+           account_deletion_request_id = $2::uuid,
+           paid_work_fenced_at = clock_timestamp(),
+           is_active = FALSE
+         WHERE id = $1::uuid`,
+        [ORGANIZATION_ID, DELETION_REQUEST_ID],
+      );
+
+      const replay = await reservationRepository.reserveAndSettleAgentBackupAdmissionClaim({
+        claim,
+      });
+      expect(replay).toEqual({ ...first, replayed: true });
+      const durable = await control.query<{
+        backups: number;
+        authorities: number;
+        state: string;
+        settled_reason: string;
+      }>(
+        `SELECT
+           (SELECT count(*)::integer FROM agent_sandbox_backups) AS backups,
+           (SELECT count(*)::integer FROM agent_backup_catalog_authorities) AS authorities,
+           work.state, work.settled_reason
+         FROM agent_backup_admission_work AS work
+         WHERE work.id = $1::uuid`,
+        [WORK_ID],
+      );
+      expect(durable.rows).toEqual([
+        { backups: 1, authorities: 1, state: "settled", settled_reason: "CAPTURE_RESERVED" },
+      ]);
     },
     TEST_TIMEOUT,
   );

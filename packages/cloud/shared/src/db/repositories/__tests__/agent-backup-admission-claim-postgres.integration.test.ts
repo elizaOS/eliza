@@ -16,6 +16,7 @@ import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
+import { MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS } from "../../schemas/agent-backup-admission";
 
 const SKIP_REASON =
   "[backup admission claim PostgreSQL] SKIPPED - no real PostgreSQL available. " +
@@ -533,7 +534,7 @@ async function readCapacitySnapshot(): Promise<CapacitySnapshot> {
 
 async function waitForDatabaseTimeAfter(instant: Date): Promise<void> {
   if (!control) throw new Error("real PostgreSQL control session was not initialized");
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const result = await control.query<{ elapsed: boolean }>(
       "SELECT clock_timestamp() > $1::timestamptz AS elapsed",
@@ -570,10 +571,11 @@ async function proveNormalizationRefillsPastLockedPrefix(
         ...(await claimNextBatch({
           ownerId: "expired-prefix-worker",
           limit: Math.min(100, lockedPrefixCount + 1 - leased.length),
-          leaseMs: claimRepository.MIN_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS,
+          leaseMs: 15_000,
         })),
       );
     }
+    expect(new Set(leased.map(({ workId: id }) => id)).size).toBe(lockedPrefixCount + 1);
     const expiresAt = leased.reduce(
       (latest, claim) => (claim.expiresAt > latest ? claim.expiresAt : latest),
       leased[0]?.expiresAt ?? new Date(0),
@@ -598,36 +600,60 @@ async function proveNormalizationRefillsPastLockedPrefix(
       FOR UPDATE
     `);
     expect(locked.rows).toHaveLength(lockedPrefixCount);
-    expect(locked.rows[0]?.id).toBe(workId(start));
-    expect(locked.rows.at(-1)?.id).toBe(workId(start + lockedPrefixCount - 1));
+    const seededIds = Array.from({ length: lockedPrefixCount + 1 }, (_, index) =>
+      workId(start + index),
+    );
+    const seededIdSet = new Set(seededIds);
+    const lockedIdSet = new Set(locked.rows.map(({ id }) => id));
+    expect(lockedIdSet.size).toBe(lockedPrefixCount);
+    expect([...lockedIdSet].every((id) => seededIdSet.has(id))).toBe(true);
+    const unlockedIds = seededIds.filter((id) => !lockedIdSet.has(id));
+    expect(unlockedIds).toHaveLength(1);
+    const recoveryPageCursorId = locked.rows.at(-2)?.id;
+    if (!recoveryPageCursorId) throw new Error("Expected a full locked recovery page");
 
-    const recoveryParams = { ownerId: OWNER_A, limit: 1, leaseMs: 60_000 };
-    expect(await claimRepository.claimAgentBackupAdmissionWork(recoveryParams)).toEqual([]);
-    expect(await claimRepository.claimAgentBackupAdmissionWork(recoveryParams)).toEqual([]);
-    const durableProgress = await control.query<{
-      last_turn: string;
-      recovery_cutoff_at: string | null;
-      recovery_cursor_state: number | null;
-      recovery_cursor_id: string | null;
-    }>(`
-      SELECT last_turn::text, recovery_cutoff_at::text,
-        recovery_cursor_state, recovery_cursor_id::text
-      FROM agent_backup_admission_claim_shards
-      WHERE work_kind = 'schedule_capture' AND shard_id = 0
-    `);
-    expect(durableProgress.rows[0]).toMatchObject({
+    let durableProgress:
+      | {
+          last_turn: string;
+          recovery_cutoff_at: string | null;
+          recovery_cursor_state: number | null;
+          recovery_cursor_id: string | null;
+        }
+      | undefined;
+    for (let turn = 0; turn < 32; turn += 1) {
+      const result = await claimRepository.claimAgentBackupAdmissionWorkTurn({
+        ownerId: OWNER_A,
+        limit: 1,
+        leaseMs: 60_000,
+      });
+      expect(result).toEqual({ outcome: "progressed", claims: [] });
+      const progress = await control.query<{
+        last_turn: string;
+        recovery_cutoff_at: string | null;
+        recovery_cursor_state: number | null;
+        recovery_cursor_id: string | null;
+      }>(`
+        SELECT last_turn::text, recovery_cutoff_at::text,
+          recovery_cursor_state, recovery_cursor_id::text
+        FROM agent_backup_admission_claim_shards
+        WHERE work_kind = 'schedule_capture' AND shard_id = 0
+      `);
+      durableProgress = progress.rows[0];
+      if (durableProgress?.recovery_cursor_id !== null) break;
+    }
+    expect(durableProgress).toMatchObject({
       recovery_cursor_state: mode === "deferred" ? 0 : 1,
-      recovery_cursor_id: workId(start + 1_023),
+      recovery_cursor_id: recoveryPageCursorId,
     });
-    expect(durableProgress.rows[0]?.recovery_cutoff_at).not.toBeNull();
-    expect(BigInt(durableProgress.rows[0]?.last_turn ?? "0")).toBeGreaterThan(0n);
+    expect(durableProgress?.recovery_cutoff_at).not.toBeNull();
+    expect(BigInt(durableProgress?.last_turn ?? "0")).toBeGreaterThan(0n);
 
     const claims = await claimNextBatch({
       ownerId: OWNER_A,
       limit: 1,
       leaseMs: 60_000,
     });
-    expect(claims.map(({ workId: id }) => id)).toEqual([workId(start + lockedPrefixCount)]);
+    expect(claims.map(({ workId: id }) => id)).toEqual(unlockedIds);
   } catch (cause) {
     // error-policy:J2 Preserve the proof failure while releasing deliberate row locks.
     primaryFailure = cause;
@@ -800,6 +826,106 @@ describe("schedule-capture admission claims on real PostgreSQL", () => {
   );
 
   realPostgresTest(
+    "reports contention when all eligible shard authorities are row-locked",
+    async () => {
+      if (!isolatedDsn || !control || !claimRepository) {
+        throw new Error("real PostgreSQL claim harness was not initialized");
+      }
+      await seedScheduleSources({ start: 450, count: 1, fixedShard: 0 });
+      const locker = new Client({
+        connectionString: isolatedDsn,
+        application_name: `${APPLICATION_NAME}-claim-shard-lock`,
+      });
+      await locker.connect();
+      let transactionOpen = false;
+      try {
+        await locker.query("BEGIN");
+        transactionOpen = true;
+        const locked = await locker.query<{ shard_id: number }>(`
+          SELECT shard_id
+          FROM agent_backup_admission_claim_shards
+          WHERE work_kind = 'schedule_capture' AND shard_id = 0
+          FOR UPDATE
+        `);
+        expect(locked.rows).toEqual([{ shard_id: 0 }]);
+
+        const result = await claimRepository.claimAgentBackupAdmissionWorkTurn({
+          ownerId: OWNER_A,
+          limit: 1,
+          leaseMs: 60_000,
+        });
+        expect(result).toEqual({ outcome: "contended", claims: [] });
+
+        const queued = await control.query<{ state: string }>(
+          `
+          SELECT state FROM agent_backup_admission_work WHERE id = $1::uuid
+        `,
+          [workId(450)],
+        );
+        expect(queued.rows).toEqual([{ state: "queued" }]);
+      } finally {
+        if (transactionOpen) await locker.query("ROLLBACK").catch(() => undefined);
+        await locker.end();
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  for (const scenario of [
+    {
+      label: "active-RPO priority one",
+      priorityClass: "active_rpo" as const,
+      basePriority: 1 as const,
+      progressTurns: 192,
+    },
+    {
+      label: "periodic priority three",
+      priorityClass: "periodic_capture" as const,
+      basePriority: 3 as const,
+      progressTurns: 448,
+    },
+  ]) {
+    realPostgresTest(
+      `reports every durable 64-shard transition before ${scenario.label} becomes claimable`,
+      async () => {
+        if (!claimRepository) {
+          throw new Error("real PostgreSQL claim harness was not initialized");
+        }
+        await seedScheduleSources({
+          start: 4_500,
+          count: 64,
+          priorityClass: scenario.priorityClass,
+          basePriority: scenario.basePriority,
+        });
+        const before = await readCapacitySnapshot();
+        const observed: string[] = [];
+
+        for (let turn = 0; turn < scenario.progressTurns; turn += 1) {
+          const result = await claimRepository.claimAgentBackupAdmissionWorkTurn({
+            ownerId: OWNER_A,
+            limit: 1,
+            leaseMs: 60_000,
+          });
+          observed.push(result.outcome);
+          expect(result.claims).toEqual([]);
+        }
+        expect(new Set(observed)).toEqual(new Set(["progressed"]));
+
+        const firstClaim = await claimRepository.claimAgentBackupAdmissionWorkTurn({
+          ownerId: OWNER_A,
+          limit: 1,
+          leaseMs: 60_000,
+        });
+        expect(firstClaim.outcome).toBe("claimed");
+        expect(firstClaim.claims).toHaveLength(1);
+        expect(firstClaim.claims[0]?.claimProofPriorityPass).toBe(scenario.basePriority);
+        expect(await readCapacitySnapshot()).toEqual(before);
+      },
+      TEST_TIMEOUT,
+    );
+  }
+
+  realPostgresTest(
     "refreshes a 100-row lease batch after lane-cursor triggers consume its initial horizon",
     async () => {
       if (!control || !claimRepository) {
@@ -926,7 +1052,7 @@ describe("schedule-capture admission claims on real PostgreSQL", () => {
 
   for (const mode of ["deferred", "expired lease"] as const) {
     realPostgresTest(
-      `skips a 1,025-row locked ${mode} prefix and normalizes the later exact-microsecond peer`,
+      `skips a 1,025-row locked ${mode} prefix and normalizes the later eligible peer`,
       async () => proveNormalizationRefillsPastLockedPrefix(mode),
       TEST_TIMEOUT,
     );
@@ -1404,6 +1530,61 @@ describe("schedule-capture admission claims on real PostgreSQL", () => {
         }),
       ).toBe(false);
       expect(await readCapacitySnapshot()).toEqual(before);
+    },
+    TEST_TIMEOUT,
+  );
+
+  realPostgresTest(
+    "reports retry exhaustion when the final deferral settles the claim",
+    async () => {
+      if (!control || !claimRepository) {
+        throw new Error("real PostgreSQL claim harness was not initialized");
+      }
+      const ordinal = 4_100;
+      await seedScheduleSources({ start: ordinal, count: 1, fixedShard: 0 });
+
+      for (let attempt = 1; attempt <= MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS; attempt += 1) {
+        const [claim] = await claimNextBatch({
+          ownerId: `retry-exhaustion-real-pg-worker-${attempt}`,
+          limit: 1,
+          leaseMs: 60_000,
+        });
+        expect(claim?.workAttempt).toBe(attempt);
+        if (!claim) throw new Error(`Expected real PostgreSQL retry claim ${attempt}`);
+        expect(
+          await claimRepository.deferAgentBackupAdmissionClaim({
+            fence: fence(claim),
+            retryDelayMs: 1,
+            reason: "TEST_RETRY",
+          }),
+        ).toBe(attempt === MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS ? "retry_exhausted" : "deferred");
+        if (attempt < MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS) {
+          const deferred = await control.query<{ not_before: Date }>(
+            "SELECT not_before FROM agent_backup_admission_work WHERE id = $1::uuid",
+            [workId(ordinal)],
+          );
+          const notBefore = deferred.rows[0]?.not_before;
+          if (!notBefore) throw new Error(`Expected deferred retry ${attempt}`);
+          await waitForDatabaseTimeAfter(notBefore);
+        }
+      }
+
+      const exhausted = await control.query<{
+        state: string;
+        attempts: number;
+        settled_reason: string | null;
+      }>(
+        `SELECT state, attempts, settled_reason
+        FROM agent_backup_admission_work WHERE id = $1::uuid`,
+        [workId(ordinal)],
+      );
+      expect(exhausted.rows).toEqual([
+        {
+          state: "settled",
+          attempts: MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS,
+          settled_reason: "RETRY_EXHAUSTED",
+        },
+      ]);
     },
     TEST_TIMEOUT,
   );

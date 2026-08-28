@@ -18,6 +18,7 @@ import {
   agentBackupAdmissionWork,
   agentBackupNodeAdmissionCursors,
   agentBackupOrganizationAdmissionCursors,
+  MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS,
 } from "../schemas/agent-backup-admission";
 import { agentNodeIncarnationHistories } from "../schemas/agent-node-incarnation-histories";
 import { agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
@@ -33,7 +34,7 @@ export const MAX_AGENT_BACKUP_ADMISSION_CLAIM_BATCH = 100;
 export const MIN_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS = 1_000;
 export const MAX_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS = 5 * 60_000;
 export const MAX_AGENT_BACKUP_ADMISSION_DEFER_MS = 5 * 60_000;
-export const MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS = 12;
+export { MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS };
 export const AGENT_BACKUP_ADMISSION_CLAIM_RAW_PAGE = 256;
 export const MAX_AGENT_BACKUP_ADMISSION_CLAIM_SCAN_BUDGET =
   4 * AGENT_BACKUP_ADMISSION_CLAIM_RAW_PAGE;
@@ -210,6 +211,26 @@ export interface AgentBackupAdmissionClaim {
   claimProofPriorityPass: number;
 }
 
+/**
+ * Authoritative outcome of one bounded claim transaction.
+ *
+ * An empty claim array alone cannot distinguish durable shard/cycle progress
+ * from a truly empty queue or from every eligible shard being row-locked by a
+ * concurrent claimant. Callers must use this outcome to decide whether another
+ * turn can make progress without manufacturing a magic empty-turn threshold.
+ */
+export type AgentBackupAdmissionClaimTurnOutcome = "claimed" | "progressed" | "contended" | "idle";
+
+export type AgentBackupAdmissionClaimTurn =
+  | {
+      outcome: "claimed";
+      claims: [AgentBackupAdmissionClaim, ...AgentBackupAdmissionClaim[]];
+    }
+  | {
+      outcome: Exclude<AgentBackupAdmissionClaimTurnOutcome, "claimed">;
+      claims: [];
+    };
+
 export type AgentBackupAdmissionFence = Pick<
   AgentBackupAdmissionClaim,
   | "workId"
@@ -222,7 +243,7 @@ export type AgentBackupAdmissionFence = Pick<
   | "claimProofPriorityPass"
 >;
 
-export type AgentBackupAdmissionDeferResult = "deferred" | "settled" | null;
+export type AgentBackupAdmissionDeferResult = "deferred" | "retry_exhausted" | null;
 
 type AgentBackupAdmissionClaimFailureCode =
   | "BACKUP_ADMISSION_CLAIM_AUTHORITY_CORRUPT"
@@ -690,6 +711,36 @@ function queueLanesAvailableSql(): ReturnType<typeof sql> {
   )`;
 }
 
+function scheduleClaimShardReadySql(): ReturnType<typeof sql> {
+  return sql`(
+    claim_shard.recovery_cutoff_at IS NOT NULL
+    OR claim_shard.cycle_observed_at IS NOT NULL
+    OR EXISTS (
+      SELECT 1
+      FROM ${agentBackupAdmissionWork} AS pending
+      WHERE pending.work_kind = 'schedule_capture'
+        AND pending.shard_id = claim_shard.shard_id
+        AND pending.state = 'queued'
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM ${agentBackupAdmissionWork} AS pending_deferred
+      WHERE pending_deferred.work_kind = 'schedule_capture'
+        AND pending_deferred.shard_id = claim_shard.shard_id
+        AND pending_deferred.state = 'deferred'
+        AND pending_deferred.not_before <= clock_timestamp()
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM ${agentBackupAdmissionWork} AS pending_expired
+      WHERE pending_expired.work_kind = 'schedule_capture'
+        AND pending_expired.shard_id = claim_shard.shard_id
+        AND pending_expired.state = 'leased'
+        AND pending_expired.lease_expires_at <= clock_timestamp()
+    )
+  )`;
+}
+
 async function readPrimaryClock(tx: DbTransaction): Promise<string> {
   const [clock] = await sqlRows<{ at: string }>(tx, sql`SELECT clock_timestamp()::text AS at`);
   if (!clock) {
@@ -726,39 +777,31 @@ async function lockLeastServedScheduleClaimShard(
         claim_shard.last_admission_proof_turn
       FROM ${agentBackupAdmissionClaimShards} AS claim_shard
       WHERE claim_shard.work_kind = 'schedule_capture'
-        AND (
-          claim_shard.recovery_cutoff_at IS NOT NULL
-          OR
-          claim_shard.cycle_observed_at IS NOT NULL
-          OR EXISTS (
-            SELECT 1
-            FROM ${agentBackupAdmissionWork} AS pending
-            WHERE pending.work_kind = 'schedule_capture'
-              AND pending.shard_id = claim_shard.shard_id
-              AND pending.state = 'queued'
-          )
-          OR EXISTS (
-            SELECT 1
-            FROM ${agentBackupAdmissionWork} AS pending_deferred
-            WHERE pending_deferred.work_kind = 'schedule_capture'
-              AND pending_deferred.shard_id = claim_shard.shard_id
-              AND pending_deferred.state = 'deferred'
-              AND pending_deferred.not_before <= clock_timestamp()
-          )
-          OR EXISTS (
-            SELECT 1
-            FROM ${agentBackupAdmissionWork} AS pending_expired
-            WHERE pending_expired.work_kind = 'schedule_capture'
-              AND pending_expired.shard_id = claim_shard.shard_id
-              AND pending_expired.state = 'leased'
-              AND pending_expired.lease_expires_at <= clock_timestamp()
-          )
-        )
+        AND ${scheduleClaimShardReadySql()}
       ORDER BY claim_shard.last_turn, claim_shard.shard_id
       FOR UPDATE OF claim_shard SKIP LOCKED
       LIMIT 1`,
   );
   return row ? requireClaimShard(row) : null;
+}
+
+async function scheduleClaimWorkRemains(tx: DbTransaction): Promise<boolean> {
+  const [row] = await sqlRows<{ work_remains: boolean }>(
+    tx,
+    sql`SELECT EXISTS (
+        SELECT 1
+        FROM ${agentBackupAdmissionClaimShards} AS claim_shard
+        WHERE claim_shard.work_kind = 'schedule_capture'
+          AND ${scheduleClaimShardReadySql()}
+      ) AS work_remains`,
+  );
+  if (!row || typeof row.work_remains !== "boolean") {
+    throw new AgentBackupAdmissionClaimError(
+      "Backup admission could not prove whether claim work remains",
+      "BACKUP_ADMISSION_CLAIM_AUTHORITY_CORRUPT",
+    );
+  }
+  return row.work_remains;
 }
 
 async function startScheduleRecoveryCycle(
@@ -2421,11 +2464,11 @@ async function leaseScheduleCandidates(params: {
  * 1,024-key scan-and-claim turn. Raw LIMIT happens before organization, work,
  * source, and lane locks; a caller polls again after an empty progress turn.
  */
-export async function claimAgentBackupAdmissionWork(params: {
+export async function claimAgentBackupAdmissionWorkTurn(params: {
   ownerId: string;
   limit: number;
   leaseMs: number;
-}): Promise<AgentBackupAdmissionClaim[]> {
+}): Promise<AgentBackupAdmissionClaimTurn> {
   const ownerId = requireLeaseOwner(params.ownerId);
   const limit = requireBoundedInteger({
     value: params.limit,
@@ -2443,16 +2486,23 @@ export async function claimAgentBackupAdmissionWork(params: {
 
   return dbWrite.transaction(async (tx) => {
     const lockedShard = await lockLeastServedScheduleClaimShard(tx);
-    if (!lockedShard) return [];
+    if (!lockedShard) {
+      return {
+        outcome: (await scheduleClaimWorkRemains(tx)) ? "contended" : "idle",
+        claims: [],
+      };
+    }
     if (lockedShard.recovery !== null) {
       await normalizeOneReadyScheduleRecoveryWindow(tx, lockedShard, lockedShard.recovery);
-      return [];
+      return { outcome: "progressed", claims: [] };
     }
-    if (await startScheduleRecoveryCycle(tx, lockedShard)) return [];
+    if (await startScheduleRecoveryCycle(tx, lockedShard)) {
+      return { outcome: "progressed", claims: [] };
+    }
 
     if (lockedShard.cycle === null) {
       await startScheduleClaimCycle({ tx, lockedShard });
-      return [];
+      return { outcome: "progressed", claims: [] };
     }
     const transactionObservedAt = await readPrimaryClock(tx);
     const cycle = lockedShard.cycle;
@@ -2462,7 +2512,7 @@ export async function claimAgentBackupAdmissionWork(params: {
       } else {
         await advanceSchedulePriorityPass(tx, cycle);
       }
-      return [];
+      return { outcome: "progressed", claims: [] };
     }
 
     const rawKeys = await readRawSchedulePage({
@@ -2472,7 +2522,7 @@ export async function claimAgentBackupAdmissionWork(params: {
     });
     if (rawKeys.length === 0) {
       await markScheduleClaimHighWater(tx, cycle);
-      return [];
+      return { outcome: "progressed", claims: [] };
     }
 
     const admissibleOrganizations = await lockAdmissibleOrganizations(tx, rawKeys);
@@ -2535,8 +2585,8 @@ export async function claimAgentBackupAdmissionWork(params: {
       cycle,
       rawKeys.at(-1) as RawScheduleKey,
     );
-    if (selected.length === 0) return [];
-    return leaseScheduleCandidates({
+    if (selected.length === 0) return { outcome: "progressed", claims: [] };
+    const claims = await leaseScheduleCandidates({
       tx,
       cycle: advancedCycle,
       candidates: selected,
@@ -2544,7 +2594,28 @@ export async function claimAgentBackupAdmissionWork(params: {
       generation,
       leaseMs,
     });
+    const [firstClaim, ...remainingClaims] = claims;
+    if (!firstClaim) {
+      throw new AgentBackupAdmissionClaimError(
+        "Backup admission selected work but did not lease any claim",
+        "BACKUP_ADMISSION_CLAIM_AUTHORITY_CORRUPT",
+      );
+    }
+    return { outcome: "claimed", claims: [firstClaim, ...remainingClaims] };
   });
+}
+
+/**
+ * Compatibility wrapper for repository consumers that only need claimed rows.
+ * Scheduler callers must use `claimAgentBackupAdmissionWorkTurn` so durable
+ * progress is never mistaken for an idle queue.
+ */
+export async function claimAgentBackupAdmissionWork(params: {
+  ownerId: string;
+  limit: number;
+  leaseMs: number;
+}): Promise<AgentBackupAdmissionClaim[]> {
+  return (await claimAgentBackupAdmissionWorkTurn(params)).claims;
 }
 
 function exactLeasedScheduleFenceAuthoritySql(
@@ -2620,7 +2691,7 @@ export async function deferAgentBackupAdmissionClaim(params: {
     max: MAX_AGENT_BACKUP_ADMISSION_DEFER_MS,
   });
   const reason = requireReason(params.reason, "reason");
-  const [updated] = await sqlRows<{ state: "deferred" | "settled" }>(
+  const [updated] = await sqlRows<{ outcome: Exclude<AgentBackupAdmissionDeferResult, null> }>(
     dbWrite,
     sql`WITH locked AS MATERIALIZED (
         SELECT work.id
@@ -2665,9 +2736,13 @@ export async function deferAgentBackupAdmissionClaim(params: {
       WHERE work.id = locked.id
         AND ${exactLeasedScheduleFenceAuthoritySql(fence)}
         AND work.lease_expires_at > observed.at
-      RETURNING work.state`,
+      RETURNING CASE
+        WHEN work.attempts >= ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS}
+          THEN 'retry_exhausted'
+        ELSE 'deferred'
+      END AS outcome`,
   );
-  return updated?.state ?? null;
+  return updated?.outcome ?? null;
 }
 
 /** Terminally settle one exact unexpired claim. */
