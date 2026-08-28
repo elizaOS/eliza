@@ -19,10 +19,12 @@ import {
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { sqlRows } from "../../execute-helpers";
 import {
+  agentBackupAdmissionClaimShards,
   agentBackupAdmissionEnrollmentShards,
   agentBackupAdmissionWork,
   agentBackupNodeAdmissionCursors,
   agentBackupOrganizationAdmissionCursors,
+  MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS,
 } from "../../schemas/agent-backup-admission";
 import {
   agentBackupCatalogAuthorities,
@@ -72,6 +74,11 @@ const ENROLLMENT_MIGRATIONS = [
   "0357_agent_backup_admission_work_state_guard",
   "0358_agent_backup_admission_work_delete_guard",
   "0359_agent_backup_admission_shard_guard",
+  "0360_agent_backup_admission_claim_authority",
+  "0361_agent_backup_admission_claim_seed",
+  "0362_agent_backup_admission_claim_indexes",
+  "0363_agent_backup_admission_claim_guard",
+  "0364_agent_backup_admission_claim_eligibility",
   "0365_agent_backup_admission_unsettled_schedule_index",
 ] as const;
 const ORIGINAL_ENV = {
@@ -116,6 +123,82 @@ function postgresErrorCode(error: unknown): string | null {
     current = record.cause;
   }
   return null;
+}
+
+function errorChainText(error: unknown): string {
+  const details: string[] = [];
+  let current = error;
+  for (let depth = 0; current && depth < 8; depth += 1) {
+    if (current instanceof Error) details.push(current.message);
+    if (typeof current !== "object") break;
+    const record = current as { cause?: unknown; constraint?: unknown };
+    if (typeof record.constraint === "string") details.push(record.constraint);
+    current = record.cause;
+  }
+  return details.join("\n");
+}
+
+async function startClaimCycleForWork(workId: string): Promise<void> {
+  if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
+  await dbWrite.execute(sql`
+    UPDATE ${agentBackupAdmissionClaimShards} AS shard
+    SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+      cycle_observed_at = clock_timestamp(),
+      cycle_max_cohort = 9223372036854775807,
+      cycle_max_ordinal = 2147483647,
+      cycle_max_id = work.id,
+      cycle_aging_interval_ms = 900000,
+      priority_pass = 0,
+      updated_at = clock_timestamp()
+    FROM ${agentBackupAdmissionWork} AS work
+    WHERE work.id = ${workId}::uuid
+      AND shard.work_kind = work.work_kind
+      AND shard.shard_id = work.shard_id
+  `);
+}
+
+async function exhaustRetryEpoch(workId: string, ownerPrefix: string): Promise<void> {
+  if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
+  let forgedExhaustionError: unknown;
+  try {
+    await dbWrite.execute(sql`
+      UPDATE ${agentBackupAdmissionWork}
+      SET state = 'settled', settled_at = clock_timestamp(),
+        settled_reason = 'RETRY_EXHAUSTED', updated_at = clock_timestamp()
+      WHERE id = ${workId}::uuid
+    `);
+  } catch (error) {
+    forgedExhaustionError = error;
+  }
+  expect(errorChainText(forgedExhaustionError)).toMatch(/retry_exhaustion_check/i);
+
+  await startClaimCycleForWork(workId);
+  for (let attempt = 1; attempt <= MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS; attempt += 1) {
+    await dbWrite.execute(sql`
+      UPDATE ${agentBackupAdmissionWork}
+      SET state = 'leased', lease_owner = ${`${ownerPrefix}-${attempt}`},
+        lease_generation = ${randomUUID()}::uuid,
+        lease_expires_at = clock_timestamp() + INTERVAL '1 hour',
+        attempts = attempts + 1, updated_at = clock_timestamp()
+      WHERE id = ${workId}::uuid
+    `);
+    if (attempt < MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS) {
+      await dbWrite.execute(sql`
+        UPDATE ${agentBackupAdmissionWork}
+        SET state = 'queued', lease_owner = NULL, lease_generation = NULL,
+          lease_expires_at = NULL, ready_cohort = ready_cohort + 1,
+          updated_at = clock_timestamp()
+        WHERE id = ${workId}::uuid
+      `);
+    }
+  }
+  await dbWrite.execute(sql`
+    UPDATE ${agentBackupAdmissionWork}
+    SET state = 'settled', lease_owner = NULL, lease_generation = NULL,
+      lease_expires_at = NULL, settled_at = clock_timestamp(),
+      settled_reason = 'RETRY_EXHAUSTED', updated_at = clock_timestamp()
+    WHERE id = ${workId}::uuid
+  `);
 }
 
 function flattenExplainPlan(node: ExplainPlanNode): ExplainPlanNode[] {
@@ -637,7 +720,8 @@ realPostgres("backup admission enrollment row-lock evidence", () => {
              AND source_activation_generation = $3::uuid
              AND source_lifecycle_revision = 7
              AND source_due_at = '2025-01-01 00:00:01+00'::timestamptz
-             AND settled_reason IS DISTINCT FROM 'RETRY_EXHAUSTED'`,
+             AND NOT (state = 'settled' AND settled_reason = 'RETRY_EXHAUSTED'
+               AND attempts = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS})`,
         [SHARD_ZERO_SANDBOX_ID, historyId, "72000000-0000-4000-8000-00000000d010"],
       );
       expect(replayPlan.map((node) => node["Index Name"])).toContain(
@@ -781,12 +865,7 @@ realPostgres("backup admission enrollment row-lock evidence", () => {
         WHERE sandbox_id = ${RETRY_SANDBOX_ID}`,
     );
     if (!initial) throw new Error("Initial PostgreSQL retry epoch was not enrolled");
-    await dbWrite.execute(sql`
-      UPDATE ${agentBackupAdmissionWork}
-      SET state = 'settled', settled_at = clock_timestamp(),
-        settled_reason = 'RETRY_EXHAUSTED', updated_at = clock_timestamp()
-      WHERE id = ${initial.id}::uuid
-    `);
+    await exhaustRetryEpoch(initial.id, "backup-admission-retry");
     const [exhausted] = await sqlRows<{ document: string }>(
       dbWrite,
       sql`SELECT row_to_json(work)::text AS document
@@ -814,7 +893,7 @@ realPostgres("backup admission enrollment row-lock evidence", () => {
     );
     expect(epochs).toHaveLength(2);
     expect(epochs.find(({ id }) => id === initial.id)).toEqual({
-      attempts: 0,
+      attempts: MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS,
       id: initial.id,
       settled_reason: "RETRY_EXHAUSTED",
       source_due_at: initial.source_due_at,
@@ -839,7 +918,16 @@ realPostgres("backup admission enrollment row-lock evidence", () => {
     if (!fresh) throw new Error("Fresh PostgreSQL retry epoch was not enrolled");
     await dbWrite.execute(sql`
       UPDATE ${agentBackupAdmissionWork}
-      SET state = 'settled', settled_at = clock_timestamp(),
+      SET state = 'leased', lease_owner = 'backup-admission-retry-success',
+        lease_generation = ${randomUUID()}::uuid,
+        lease_expires_at = clock_timestamp() + INTERVAL '1 hour',
+        attempts = attempts + 1, updated_at = clock_timestamp()
+      WHERE id = ${fresh.id}::uuid
+    `);
+    await dbWrite.execute(sql`
+      UPDATE ${agentBackupAdmissionWork}
+      SET state = 'settled', lease_owner = NULL, lease_generation = NULL,
+        lease_expires_at = NULL, settled_at = clock_timestamp(),
         settled_reason = 'CAPTURE_RESERVED', updated_at = clock_timestamp()
       WHERE id = ${fresh.id}::uuid
     `);

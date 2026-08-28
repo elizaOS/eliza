@@ -19,6 +19,7 @@ import {
   agentBackupAdmissionWork,
   agentBackupNodeAdmissionCursors,
   agentBackupOrganizationAdmissionCursors,
+  MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS,
 } from "../schemas/agent-backup-admission";
 import { agentNodeIncarnationHistories } from "../schemas/agent-node-incarnation-histories";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
@@ -32,6 +33,9 @@ export const MAX_AGENT_BACKUP_ADMISSION_RPO_MS = 15 * 60_000;
 export const MAX_AGENT_BACKUP_ADMISSION_LEASE_OWNER_BYTES = 128;
 
 const MAX_COHORT_ORDINAL = 2_147_483_647;
+const MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS_SQL = sql.raw(
+  String(MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS),
+);
 
 interface ScheduleEnrollmentCandidateRow {
   id: string;
@@ -370,7 +374,11 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                   AND replay.source_activation_generation = eligible.activation_generation
                   AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
                   AND replay.source_due_at = eligible.activation_completed_at
-                  AND replay.settled_reason IS DISTINCT FROM 'RETRY_EXHAUSTED'
+                  AND NOT (
+                    replay.state = 'settled'
+                    AND replay.settled_reason = 'RETRY_EXHAUSTED'
+                    AND replay.attempts = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS_SQL}
+                  )
               )
             ORDER BY eligible.activation_completed_at, eligible.id
             LIMIT ${limit + 1}
@@ -404,7 +412,11 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                   AND replay.source_activation_generation = eligible.activation_generation
                   AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
                   AND replay.source_due_at = eligible.next_backup_at
-                  AND replay.settled_reason IS DISTINCT FROM 'RETRY_EXHAUSTED'
+                  AND NOT (
+                    replay.state = 'settled'
+                    AND replay.settled_reason = 'RETRY_EXHAUSTED'
+                    AND replay.attempts = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS_SQL}
+                  )
               )
             ORDER BY eligible.next_backup_at, eligible.id
             LIMIT ${limit + 1}
@@ -446,7 +458,11 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                   AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
                   AND replay.source_due_at = eligible.rpo_anchor_at
                     + (${cohortRpoMs} * INTERVAL '1 millisecond')
-                  AND replay.settled_reason IS DISTINCT FROM 'RETRY_EXHAUSTED'
+                  AND NOT (
+                    replay.state = 'settled'
+                    AND replay.settled_reason = 'RETRY_EXHAUSTED'
+                    AND replay.attempts = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS_SQL}
+                  )
               )
             ORDER BY eligible.rpo_anchor_at, eligible.id
             LIMIT ${limit + 1}
@@ -707,7 +723,11 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
               source_lifecycle_revision, source_due_at
             )
               WHERE work_kind = 'schedule_capture'
-                AND settled_reason IS DISTINCT FROM 'RETRY_EXHAUSTED'
+                AND NOT (
+                  state = 'settled'
+                  AND settled_reason = 'RETRY_EXHAUSTED'
+                  AND attempts = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS_SQL}
+                )
               DO NOTHING
             RETURNING id
           `,
