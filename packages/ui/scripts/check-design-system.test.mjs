@@ -10,6 +10,7 @@ import {
   auditCanonicalTokenRoles,
   buildCardVariantMigrationInventory,
   buildComplianceReport,
+  collectAtomicDuplicateFindings,
   compareToBaseline,
   compareToTightBaseline,
   extractButtonAxisDefinitions,
@@ -27,6 +28,83 @@ import {
   validateExceptions,
   validatePublicCardVariantCompatibility,
 } from "./check-design-system.mjs";
+
+test("atomic consolidation ledger survives relabel, deletion, and reintroduction", () => {
+  const componentId = "packages/ui/src/example.tsx:ExampleButton";
+  const canonicalOwner = "packages/ui/src/components/ui/button.tsx";
+  const candidate = {
+    classification: "canonical-wrapper",
+    decision: {
+      canonicalOwner,
+      disposition: "intentional-specialization",
+    },
+    file: "packages/ui/src/example.tsx",
+    line: 12,
+    name: "ExampleButton",
+  };
+  const inventory = {
+    atoms: { button: { candidates: [candidate] } },
+    components: [{ file: candidate.file, name: candidate.name }],
+  };
+  const unresolved = {
+    schemaVersion: 1,
+    entries: [{ componentId, canonicalOwner, status: "unresolved" }],
+  };
+  const ownerExists = {
+    fileExists: (file) => file === canonicalOwner,
+  };
+
+  assert.deepEqual(
+    collectAtomicDuplicateFindings(inventory, unresolved, ownerExists),
+    [
+      {
+        detail: `Consolidate with ${canonicalOwner}.`,
+        file: candidate.file,
+        line: 12,
+        rule: "atomic-duplicate",
+        symbol: candidate.name,
+      },
+    ],
+  );
+  assert.equal(
+    collectAtomicDuplicateFindings(
+      { atoms: { button: { candidates: [] } }, components: [] },
+      unresolved,
+      ownerExists,
+    )[0]?.file,
+    candidate.file,
+  );
+
+  assert.throws(
+    () =>
+      collectAtomicDuplicateFindings(
+        inventory,
+        {
+          schemaVersion: 1,
+          entries: [
+            { componentId, canonicalOwner, status: "resolved-deleted" },
+          ],
+        },
+        ownerExists,
+      ),
+    /reintroduced after deletion/,
+  );
+
+  assert.throws(
+    () =>
+      collectAtomicDuplicateFindings(
+        { atoms: { button: { candidates: [] } }, components: [] },
+        {
+          schemaVersion: 1,
+          entries: [
+            { componentId, canonicalOwner, status: "resolved-deleted" },
+          ],
+        },
+        { fileExists: () => false },
+      ),
+    /lost canonical owner/,
+  );
+});
 
 test("named CSS cannot hide paint on a canonical atom", () => {
   const paintedCssClasses = indexPaintedCssClasses([

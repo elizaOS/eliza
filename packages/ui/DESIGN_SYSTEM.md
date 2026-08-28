@@ -69,6 +69,16 @@ compositions, count drift, and attempts to reuse an adapter's local recipe from
 another caller. Exceptions remain reserved for renderer, native, or external
 system boundaries; they do not waive the Button reuse rule.
 
+`scripts/component-inventory-decisions.json` classifies the current atomic
+inventory. `scripts/atomic-consolidation-ledger.json` separately records every
+component accepted as consolidation debt and its resolution. An unresolved
+entry remains an `atomic-duplicate` finding after deletion, rename, or decision
+relabeling. A deleted resolution stays valid only while the old component and
+any retired module remain absent and the canonical owner remains present. An
+adapter resolution must keep composing that exact canonical owner. The
+ordinary baseline may only hold or reduce the count. Completion uses the tight
+zero baseline.
+
 ## Token-role contracts
 
 Canonical recipes are fail-closed. Every `cva` helper in `components/ui`, each
@@ -145,21 +155,32 @@ density presentation stay in the table primitives.
 
 Repeated multi-atom structures belong in a shared pattern only when they own
 the same behavior and state lifecycle. Dependency similarity alone is not a
-pattern. `scripts/molecule-contracts.json` records the exact owner, composition
-signals, consumer floor, and required consumers for established shared
-molecules. The audit fails when any of those contracts drift, including for
-molecules that compose only one or no canonical atoms. Rendered stories and
-the app visual audit own geometry proof; source-text class assertions are not
-an acceptable substitute for rendered behavior.
+pattern.
 
-Structural duplicate discovery is a separate review queue. The molecular
-inventory records a final disposition and rationale for every detected cluster;
-unresolved candidates and duplicate implementations must not pass the
-completion gate. The accepted final dispositions are
-`distinct-domain-compositions` and `shared-lifecycle-owner`; adding another
-requires a gate and policy change in the same review. Run
-`audit:molecular-inventory` to update the committed report after source,
-contract, or decision changes. Package lint checks that the report is current.
+The molecular review follows this enforced sequence:
+
+1. Discovery groups components by role and atomic dependencies. Each decision
+   records the exact `file:symbol` member IDs and a semantic fingerprint of
+   every member's atomic dependencies and rendered tags. Membership or
+   rendered-structure drift invalidates the decision even when the broad
+   dependency signature stays the same.
+2. Review records `distinct-domain-compositions` or
+   `shared-lifecycle-owner` only after ownership is settled. `unresolved` and
+   `canonicalize` are explicit working states. Both fail the completion gate.
+   A `canonicalize` decision also names the canonical contract that will own
+   the result.
+3. Before broad caller migration, a new entry in
+   `scripts/molecule-contracts.json` must name at least two maintained
+   consumers from different files. It must also name a Storybook story and a
+   behavioral test that each render the contracted owner through its resolved
+   import, including aliases and barrels. The audit verifies the owner,
+   required composition signals, consumers, story, and test.
+4. Migrate the remaining callers, remove the non-final cluster decision, and
+   regenerate the report. `audit:molecular-inventory --check` derives JSON and
+   Markdown from one in-memory report and rejects either artifact when stale.
+
+Rendered stories and the app visual audit own geometry proof. Source-text class
+assertions are not a substitute for rendered behavior.
 
 ## Design contract graph
 

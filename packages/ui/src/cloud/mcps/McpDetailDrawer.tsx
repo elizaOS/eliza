@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
 import {
   Drawer,
   DrawerClose,
@@ -313,7 +312,7 @@ export function McpDetailDrawer({
             >
               <div className="flex flex-wrap items-center gap-2">
                 {mcp.documentation_url && (
-                  <BrandButton variant="outline" size="sm" asChild>
+                  <Button variant="outline" size="sm" asChild>
                     <TextLink
                       href={mcp.documentation_url}
                       target="_blank"
@@ -322,20 +321,20 @@ export function McpDetailDrawer({
                       <ExternalLink className="size-4" />
                       {t("cloud.mcps.docs", { defaultValue: "Docs" })}
                     </TextLink>
-                  </BrandButton>
+                  </Button>
                 )}
                 {isOwner && (
                   <>
-                    <BrandButton
+                    <Button
                       variant="outline"
                       size="sm"
                       onClick={() => onEdit(mcp)}
                     >
                       <Pencil className="size-4" />
                       {t("cloud.mcps.edit", { defaultValue: "Edit" })}
-                    </BrandButton>
+                    </Button>
                     {mcp.status === "live" ? (
-                      <BrandButton
+                      <Button
                         variant="outline"
                         size="sm"
                         onClick={() => void doUnpublish()}
@@ -344,9 +343,9 @@ export function McpDetailDrawer({
                         {t("cloud.mcps.unpublish", {
                           defaultValue: "Unpublish",
                         })}
-                      </BrandButton>
+                      </Button>
                     ) : (
-                      <BrandButton
+                      <Button
                         variant="outline"
                         size="sm"
                         onClick={() => void doPublish()}
@@ -354,7 +353,7 @@ export function McpDetailDrawer({
                       >
                         <Upload className="size-4" />
                         {t("cloud.mcps.publish", { defaultValue: "Publish" })}
-                      </BrandButton>
+                      </Button>
                     )}
                     <Button
                       variant="dangerGhost"
@@ -368,8 +367,8 @@ export function McpDetailDrawer({
                   </>
                 )}
               </div>
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 onClick={() => void runTest()}
                 disabled={testing || mcp.status !== "live"}
@@ -389,7 +388,7 @@ export function McpDetailDrawer({
                 {t("cloud.mcps.testConnection", {
                   defaultValue: "Test connection",
                 })}
-              </BrandButton>
+              </Button>
             </Card>
           </>
         )}

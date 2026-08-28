@@ -5,7 +5,7 @@
 
 "use client";
 
-import { BrandCard, CornerBrackets } from "@elizaos/ui/cloud-ui";
+import { Card, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { ArrowLeft, Download, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -81,7 +81,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
       </div>
 
       {/* Invoice Header Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
 
         <div className="relative z-10 space-y-6">
@@ -157,10 +157,10 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             </div>
           </div>
         </div>
-      </BrandCard>
+      </Card>
 
       {/* Transaction Summary Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
 
         <div className="relative z-10 space-y-6">
@@ -247,10 +247,10 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             )}
           </div>
         </div>
-      </BrandCard>
+      </Card>
 
       {/* Payment Information Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
 
         <div className="relative z-10 space-y-6">
@@ -327,7 +327,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             </div>
           )}
         </div>
-      </BrandCard>
+      </Card>
     </div>
   );
 }

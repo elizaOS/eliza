@@ -167,13 +167,13 @@ export function TasksPageView() {
   );
   return (
     <ShellViewAgentSurface viewId="tasks">
-      <FramedPage data-testid="tasks-view" reserveComposer={false}>
+      <FramedPage data-testid="tasks-view">
         <FramedPageHeader title="Projects" />
         <FramedPageNavigation>{segmentControl}</FramedPageNavigation>
         <FramedPageBody scroll="view" padded={false} className="device-layout">
           {segment === "apps" ? (
             <div
-              className="min-h-0 flex-1 overflow-y-auto eliza-chat-scroll pb-[var(--eliza-chat-clearance,5.25rem)]"
+              className="min-h-0 flex-1 overflow-y-auto eliza-chat-scroll"
               data-testid="projects-apps-segment"
             >
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6">

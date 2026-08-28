@@ -17,6 +17,10 @@ const canonicalRoot = "packages/ui/src/components/ui";
 const baselinePath = path.join(scriptDir, "design-system-baseline.json");
 const exceptionsPath = path.join(scriptDir, "design-system-exceptions.json");
 const adaptersPath = path.join(scriptDir, "design-system-adapters.json");
+const atomicConsolidationLedgerPath = path.join(
+  scriptDir,
+  "atomic-consolidation-ledger.json",
+);
 const publicCardVariantsPath = path.join(
   scriptDir,
   "design-system-public-card-variants.json",
@@ -3560,28 +3564,153 @@ export function validatePublicCardVariantCompatibility({
   });
 }
 
-export function buildComplianceReport(options = {}) {
-  const now = options.now ?? new Date();
-  const inventory = buildInventory();
-  const findings = [];
+export function parseAtomicConsolidationLedger(document) {
+  if (
+    !document ||
+    typeof document !== "object" ||
+    Array.isArray(document) ||
+    document.schemaVersion !== 1 ||
+    !Array.isArray(document.entries)
+  ) {
+    throw new Error(
+      "atomic-consolidation-ledger.json must use schemaVersion 1 with entries",
+    );
+  }
+  const componentIds = new Set();
+  const statuses = {
+    unresolved: true,
+    "resolved-adapter": true,
+    "resolved-deleted": true,
+  };
+  const allowedFields = {
+    canonicalOwner: true,
+    componentId: true,
+    removedFile: true,
+    status: true,
+  };
+  for (const entry of document.entries) {
+    if (
+      !entry ||
+      typeof entry !== "object" ||
+      Array.isArray(entry) ||
+      typeof entry.componentId !== "string" ||
+      !/^(packages|plugins)\/.*\.[jt]sx?:[^:]+$/.test(entry.componentId) ||
+      typeof entry.canonicalOwner !== "string" ||
+      !/^(packages|plugins)\/.*\.[jt]sx?$/.test(entry.canonicalOwner) ||
+      !Object.hasOwn(statuses, entry.status) ||
+      Object.keys(entry).some(
+        (field) => !Object.hasOwn(allowedFields, field),
+      ) ||
+      componentIds.has(entry.componentId) ||
+      (entry.removedFile !== undefined &&
+        (typeof entry.removedFile !== "string" ||
+          !/^(packages|plugins)\/.*\.[jt]sx?$/.test(entry.removedFile))) ||
+      (entry.status !== "resolved-deleted" && entry.removedFile !== undefined)
+    ) {
+      throw new Error(
+        `Invalid atomic consolidation ledger entry: ${JSON.stringify(entry)}`,
+      );
+    }
+    componentIds.add(entry.componentId);
+  }
+  return document.entries;
+}
+
+export function collectAtomicDuplicateFindings(
+  inventory,
+  ledgerDocument,
+  options = {},
+) {
+  const entries = parseAtomicConsolidationLedger(ledgerDocument);
+  const ledgerComponentIds = new Set(entries.map((entry) => entry.componentId));
+  const fileExists =
+    options.fileExists ?? ((file) => fs.existsSync(path.join(repoRoot, file)));
+  const candidates = new Map();
   for (const group of Object.values(inventory.atoms)) {
     for (const candidate of group.candidates) {
-      if (
-        candidate.classification !== "parallel-primitive" ||
-        candidate.decision?.disposition !== "consolidation-candidate"
-      )
-        continue;
-      findings.push(
-        finding({
-          rule: "atomic-duplicate",
-          file: candidate.file,
-          line: candidate.line,
-          symbol: candidate.name,
-          detail: `Consolidate with ${candidate.decision.canonicalOwner}.`,
-        }),
+      const key = `${candidate.file}:${candidate.name}`;
+      if (!candidates.has(key)) candidates.set(key, candidate);
+    }
+  }
+  const componentIds = new Set(
+    (inventory.components ?? []).map(
+      (component) => `${component.file}:${component.name}`,
+    ),
+  );
+  const findings = new Map();
+  const errors = [];
+  const addFinding = (componentId, canonicalOwner, candidate) => {
+    const separator = componentId.lastIndexOf(":");
+    const file = componentId.slice(0, separator);
+    const symbol = componentId.slice(separator + 1);
+    findings.set(
+      componentId,
+      finding({
+        rule: "atomic-duplicate",
+        file,
+        line: candidate?.line ?? 1,
+        symbol,
+        detail: `Consolidate with ${canonicalOwner}.`,
+      }),
+    );
+  };
+
+  for (const entry of entries) {
+    const candidate = candidates.get(entry.componentId);
+    if (!fileExists(entry.canonicalOwner)) {
+      errors.push(
+        `${entry.componentId} lost canonical owner ${entry.canonicalOwner}`,
+      );
+    }
+    if (entry.status === "unresolved") {
+      addFinding(entry.componentId, entry.canonicalOwner, candidate);
+      continue;
+    }
+    if (entry.status === "resolved-deleted") {
+      if (componentIds.has(entry.componentId)) {
+        errors.push(`${entry.componentId} was reintroduced after deletion`);
+      }
+      if (entry.removedFile && fileExists(entry.removedFile)) {
+        errors.push(`${entry.removedFile} was reintroduced after deletion`);
+      }
+      continue;
+    }
+    if (
+      candidate?.classification !== "canonical-wrapper" ||
+      candidate.decision?.disposition !== "intentional-specialization" ||
+      candidate.decision.canonicalOwner !== entry.canonicalOwner
+    ) {
+      errors.push(
+        `${entry.componentId} no longer resolves as the reviewed adapter for ${entry.canonicalOwner}`,
       );
     }
   }
+
+  for (const candidate of candidates.values()) {
+    if (candidate.decision?.disposition !== "consolidation-candidate") continue;
+    const componentId = `${candidate.file}:${candidate.name}`;
+    if (!ledgerComponentIds.has(componentId)) {
+      errors.push(
+        `${componentId} must be recorded in the atomic consolidation ledger`,
+      );
+    }
+    addFinding(componentId, candidate.decision.canonicalOwner, candidate);
+  }
+  if (errors.length > 0) {
+    throw new Error(
+      `Atomic consolidation ledger validation failed: ${errors.join("; ")}`,
+    );
+  }
+  return [...findings.values()];
+}
+
+export function buildComplianceReport(options = {}) {
+  const now = options.now ?? new Date();
+  const inventory = buildInventory();
+  const findings = collectAtomicDuplicateFindings(
+    inventory,
+    JSON.parse(fs.readFileSync(atomicConsolidationLedgerPath, "utf8")),
+  );
   const files = [
     ...walk(path.join(repoRoot, "packages")),
     ...walk(path.join(repoRoot, "plugins")),

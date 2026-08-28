@@ -17,11 +17,11 @@ import {
   Wallet,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { EmptyState } from "../../../components/ui/empty-state";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { cn } from "../../lib/utils";
-import { BrandButton } from "../brand/brand-button";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
 import { DashboardRoutePage } from "../layout/dashboard-route-page";
 
@@ -283,11 +283,7 @@ export function ContainersEmptyState() {
         ))}
       </div>
 
-      <BrandButton
-        variant="outline"
-        asChild
-        className="h-10 border-border text-muted hover:border-border-strong hover:text-txt"
-      >
+      <Button variant="outlineMuted" asChild className="h-10">
         <a
           href="https://elizaos.github.io/eliza/docs/cli"
           target="_blank"
@@ -296,7 +292,7 @@ export function ContainersEmptyState() {
           <Terminal className="size-4" />
           CLI Documentation
         </a>
-      </BrandButton>
+      </Button>
     </div>
   );
 }
