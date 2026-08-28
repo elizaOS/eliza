@@ -445,4 +445,53 @@ describe("segmented save reassembly integrity fence (#25140 R4)", () => {
 		expect(seenRevisions).toEqual([PLAN.descriptor.revision]);
 		expect(saved).toHaveLength(0);
 	});
+
+	it("detects the marker before inline pagination: a small limit truncating the prefix still routes to native paging", async () => {
+		const endpoint = fakePageEndpoint();
+		const base = {
+			...runtimeWithRecords(baseRuntime(true), MEMORY_ID),
+			// answerAttachmentRequest summarizes the page with a small model;
+			// a deterministic stub keeps the probe on the paging contract.
+			useModel: async () => "summarized page answer",
+			getMemoryContentPage: endpoint.getMemoryContentPage,
+		} as unknown as IAgentRuntime;
+		// A 16-byte limit slices the marker prefix in pageAttachmentRecords;
+		// detection must still happen on the ORIGINAL record content.
+		const result = await readAttachmentAction.handler(
+			base,
+			makeMessage(),
+			undefined,
+			{
+				parameters: { action: "read", attachmentId: ATTACHMENT_ID, limit: 16 },
+			},
+			async () => [] as Memory[],
+			undefined,
+		);
+		expect(result?.success).toBe(true);
+		expect(endpoint.getMemoryContentPage.mock.calls.length).toBeGreaterThan(0);
+		// The served text is a page of the real SOURCE, never the marker.
+		expect(result?.text).not.toContain("[elizaos:segmented-content");
+	});
+
+	it("fails explicitly when a capable adapter returns null for a segmented record (authorization gone)", async () => {
+		const base = runtimeWithRecords(baseRuntime(true), MEMORY_ID);
+		const runtime = {
+			...base,
+			getMemoryContentPage: async () => null,
+		} as unknown as IAgentRuntime;
+		const result = await readAttachmentAction.handler(
+			runtime,
+			makeMessage(),
+			undefined,
+			{
+				parameters: { action: "read", attachmentId: ATTACHMENT_ID },
+			},
+			async () => [] as Memory[],
+			undefined,
+		);
+		expect(result?.success).toBe(false);
+		expect((result?.data as { error?: string } | undefined)?.error).toBe(
+			"segmented_page_unavailable",
+		);
+	});
 });
