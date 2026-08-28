@@ -30,7 +30,7 @@ interface WorkflowJob {
   environment?: string;
   steps?: Array<{
     name?: string;
-    with?: { script?: string };
+    with?: { envs?: string; script?: string };
   }>;
 }
 
@@ -143,5 +143,36 @@ describe("provisioning-worker approval/concurrency topology (#18092)", () => {
       "/tmp/eliza-provisioning-worker-deploy.lock",
     );
     expect(hostStep?.with?.script).toContain("flock -w 1200 9");
+  });
+
+  it("serializes deployment identity through health or fails as superseded", () => {
+    const steps = provisioning.jobs?.deploy?.steps ?? [];
+    const deployStep = steps.find(
+      (step) => step.name === "Deploy and restart worker",
+    );
+    const healthStep = steps.find((step) => step.name === "Health check");
+    const deployScript = deployStep?.with?.script ?? "";
+    const healthScript = healthStep?.with?.script ?? "";
+    const lockPath = "/tmp/eliza-provisioning-worker-deploy.lock";
+
+    expect(deployScript).toContain(`exec 9>${lockPath}`);
+    expect(healthScript).toContain(`exec 9>${lockPath}`);
+    expect(healthStep?.with?.envs?.split(",")).toContain("DEPLOY_SHA");
+
+    const healthLockIndex = healthScript.indexOf("flock -w 120 9");
+    const checkoutReadIndex = healthScript.indexOf(
+      "ACTUAL_DEPLOY_SHA=$(git rev-parse HEAD)",
+    );
+    const identityCheckIndex = healthScript.indexOf(
+      'if [ "$ACTUAL_DEPLOY_SHA" != "$DEPLOY_SHA" ]',
+    );
+    const healthLoopIndex = healthScript.indexOf("for attempt in $(seq 1 18)");
+    expect(healthLockIndex).toBeGreaterThanOrEqual(0);
+    expect(checkoutReadIndex).toBeGreaterThan(healthLockIndex);
+    expect(identityCheckIndex).toBeGreaterThan(checkoutReadIndex);
+    expect(healthLoopIndex).toBeGreaterThan(identityCheckIndex);
+    expect(healthScript).toContain(
+      "Provisioning deployment was superseded before health verification",
+    );
   });
 });

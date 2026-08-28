@@ -1457,9 +1457,29 @@ jobs:
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 5m
-          envs: SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,WARM_POOL_ENABLED
+          envs: DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,WARM_POOL_ENABLED
           script: |
             set -euo pipefail
+
+            # Keep deployment identity serialized through health. A newer run
+            # may acquire the host mutation lock between this run's deploy and
+            # health SSH steps; in that ordering this run waits, then fails as
+            # superseded instead of certifying the newer checkout.
+            exec 9>/tmp/eliza-provisioning-worker-deploy.lock
+            flock -w 120 9 || {
+              echo "::error::Timed out acquiring the provisioning health identity lease"
+              exit 1
+            }
+            cd /opt/eliza
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0=safe.directory
+            export GIT_CONFIG_VALUE_0=/opt/eliza
+            ACTUAL_DEPLOY_SHA=$(git rev-parse HEAD)
+            if [ "$ACTUAL_DEPLOY_SHA" != "$DEPLOY_SHA" ]; then
+              echo "::error::Provisioning deployment was superseded before health verification"
+              exit 1
+            fi
+
             ENV_FILE=/opt/eliza/cloud/.env.local
             ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs
             NODE_BIN=/usr/bin/node
