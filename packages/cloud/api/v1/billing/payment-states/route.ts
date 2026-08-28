@@ -27,15 +27,47 @@ app.get("/", async (c) => {
     if (!limitResult.ok) {
       return c.json({ success: false, error: limitResult.error }, 400);
     }
-    const states = await paymentHistoryService.listPaymentStates(
-      user.organization_id,
-      limitResult.value,
+    const offsetResult = parsePaginationParam(
+      c.req.query("offset"),
+      "offset",
+      0,
     );
+    if (!offsetResult.ok) {
+      return c.json({ success: false, error: offsetResult.error }, 400);
+    }
+    // Bound the traversal: each page re-reads its prefix windows on both
+    // authority surfaces, so an unbounded offset would let one request
+    // project the tenant's entire history. The bound is finite and generous
+    // (200 pages at the default limit); deeper history stays reachable
+    // through the detail endpoint's direct stable-id lookup.
+    const MAX_LIST_OFFSET = 10_000;
+    if (offsetResult.value > MAX_LIST_OFFSET) {
+      return c.json(
+        {
+          success: false,
+          error: `Invalid offset ${JSON.stringify(c.req.query("offset"))}: must be at most ${MAX_LIST_OFFSET}`,
+        },
+        400,
+      );
+    }
+    const [states, total] = await Promise.all([
+      paymentHistoryService.listPaymentStates(
+        user.organization_id,
+        limitResult.value,
+        offsetResult.value,
+      ),
+      paymentHistoryService.countPaymentStates(user.organization_id),
+    ]);
 
+    // `total` is the org's real persisted purchase count (both authority
+    // surfaces), never the returned page's length — clients page through the
+    // full history with limit/offset and size "load more" off total.
     return c.json({
       success: true,
       states,
-      total: states.length,
+      total,
+      offset: offsetResult.value,
+      hasMore: offsetResult.value + states.length < total,
     });
   } catch (error) {
     // error-policy:J1 boundary translation: the transport boundary returns a

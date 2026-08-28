@@ -2,10 +2,10 @@
  * GET /api/v1/billing/payment-states/:id
  * Server-authoritative single payment state (receipt, refund/dispute
  * reversals) for the authenticated organization (#22966 linked-detail
- * surface). Rows are served from the same paymentHistoryService projection
- * the list endpoint uses; the id is the row's stable
- * `{surface}:{authorityId}` identity, so this is a scoped lookup over the
- * org's own recent history — never a cross-tenant probe.
+ * surface). The id is the row's stable `{surface}:{authorityId}` identity;
+ * the lookup resolves the owning authority row directly, org-scoped — a
+ * persisted purchase stays reachable from its stable detail URL no matter
+ * how many newer purchases exist, and never a cross-tenant probe.
  */
 
 import { Hono } from "hono";
@@ -18,17 +18,6 @@ import {
 import { paymentHistoryService } from "@/lib/services/payment-history";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-/**
- * Detail lookups scan the org's full bounded history window: 200 is the
- * paymentHistoryService projection's hard clamp (Math.min(limit, 200)) and
- * the pagination family's list maximum is 500 — passing a value above the
- * service clamp would silently shrink the reachable window, and passing one
- * below the list max would make listable rows unlinkable. Any change to
- * either cap must move with this constant so every listable row stays
- * reachable from its linked detail.
- */
-const DETAIL_WINDOW_LIMIT = 200;
 
 const app = new Hono<AppEnv>();
 
@@ -52,23 +41,21 @@ app.get("/", async (c) => {
         400,
       );
     }
-    // The detail surface reads the org's full recent history — the same
-    // bounded window the list view exposes — and selects the requested row.
-    // A row that no longer projects (older than the window) is a real 404:
-    // the projection is derived, not persisted, so "exists in the window"
-    // is the honest authority for a linked detail view.
-    const states = await paymentHistoryService.listPaymentStates(
+    // Direct tenant-scoped resolution by the stable id: the projection is
+    // derived from persisted authority rows, so any well-formed id that
+    // belongs to the org resolves regardless of list-window position. An id
+    // the org does not own (or that no longer projects) is a real 404.
+    const state = await paymentHistoryService.findPaymentStateById(
       user.organization_id,
-      DETAIL_WINDOW_LIMIT,
+      id,
     );
-    const row = states.find((candidate) => candidate.id === id);
-    if (!row) {
+    if (!state) {
       return c.json({ success: false, error: "PAYMENT_STATE_NOT_FOUND" }, 404);
     }
 
     return c.json({
       success: true,
-      state: row,
+      state,
     });
   } catch (error) {
     // error-policy:J1 boundary translation: the transport boundary returns a

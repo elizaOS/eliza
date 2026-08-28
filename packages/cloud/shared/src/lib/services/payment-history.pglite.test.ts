@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pushSchema } from "drizzle-kit/api";
+import { sql } from "drizzle-orm";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -183,6 +184,7 @@ async function insertCheckoutOrder(params: {
   stripeCheckoutSessionId?: string | null;
   stripeCustomerId?: string | null;
   settledAt?: Date | null;
+  createdAt?: Date;
 }) {
   const settled = params.status === "settled";
   const delivered = params.status === "delivered";
@@ -210,6 +212,7 @@ async function insertCheckoutOrder(params: {
         : null,
       status: params.status,
       settled_at: params.settledAt ?? null,
+      ...(params.createdAt ? { created_at: params.createdAt } : {}),
       metadata: {},
     })
     .returning();
@@ -1087,12 +1090,16 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     expect(rows.length).toBe(7);
   });
 
-  test("limit above the hard clamp still returns exactly 200 rows (M2: clamp removal)", async () => {
-    // DETAIL_WINDOW_LIMIT (200) in the detail route is coupled to this
-    // clamp: removing Math.min(.., 200) would let the two surfaces return
-    // up to 2x limit combined, changing the reachable window contract.
+  test("history beyond 200 rows stays reachable: page 2 via offset and direct detail lookup (M2: clamp removal → losslessness)", async () => {
+    // A hard 200-row clamp made persisted purchases beyond the newest 200
+    // unreachable from BOTH the list and the detail route (which scanned the
+    // same window). The contract is now lossless: limit is bounded by
+    // PAYMENT_STATES_MAX_PAGE (500, the pagination family's list maximum),
+    // pages compose through offset, countPaymentStates reports the real
+    // total, and findPaymentStateById resolves any row by stable id — so row
+    // 201 must remain reachable from every surface (#26752 review).
     const seeds: Array<Promise<unknown>> = [];
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 130; i++) {
       seeds.push(
         insertStripePaymentRequest({
           organizationId,
@@ -1101,6 +1108,8 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
           settlementTxRef: `pi_clamp_${i}`,
         }),
       );
+    }
+    for (let i = 0; i < 10; i++) {
       seeds.push(
         insertCheckoutOrder({
           organizationId,
@@ -1111,12 +1120,184 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       );
     }
     await Promise.all(seeds);
-    // Above the clamp: exactly 200, not 240.
-    const rows = await paymentHistoryService.listPaymentStates(organizationId, 240);
-    expect(rows.length).toBe(200);
-    // At the clamp: same window.
-    const atClamp = await paymentHistoryService.listPaymentStates(organizationId, 200);
-    expect(atClamp.length).toBe(200);
+    const total = await paymentHistoryService.countPaymentStates(organizationId);
+    expect(total).toBe(140);
+
+    // Ordering divergence: the OLDEST-created request (created first, at
+    // index 0 of the seed loop) receives the NEWEST event — a reversal
+    // ledger row written after everything else, attaching through its
+    // settlement tx ref `pi_clamp_0`. Its derived eventTime jumps to the
+    // front while its pagination key stays at the very back of the merged
+    // ordering: under the old design (prefix by created_at, page by
+    // eventTime) this row fell out of every page. Full traversal must
+    // still visit it exactly once (#26752 review P1).
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-1",
+      paymentIntentId: "pi_clamp_0",
+      source: "charge.refunded",
+      reversedUsd: 1,
+    });
+    const allRows = await paymentHistoryService.listPaymentStates(organizationId, 500, 0);
+    // The divergent purchase is identifiable by its reversal projection: it
+    // is the only request carrying cumulativeRefundedChargeCurrency = 1.
+    const oldestId = allRows.find(
+      (r) =>
+        r.surface === "payment_request" &&
+        r.amountCents === 100 &&
+        r.cumulativeRefundedChargeCurrency === 1,
+    );
+    expect(oldestId).toBeDefined();
+    expect(oldestId?.id).toBeTruthy();
+    // ...and it still appears exactly once in a full page walk at limit 50.
+    const seen = new Set<string>();
+    for (let offset = 0; offset < 140; offset += 50) {
+      const page = await paymentHistoryService.listPaymentStates(organizationId, 50, offset);
+      for (const row of page) {
+        expect(seen.has(row.id)).toBe(false);
+        seen.add(row.id);
+      }
+    }
+    expect(seen.size).toBe(140);
+    expect(seen.has(oldestId?.id as string)).toBe(true);
+
+    // A row beyond the old 200-clamp position is reachable by stable detail id.
+    const hiddenRow = [...seen].find((id) => id === oldestId?.id) as string;
+    const detail = await paymentHistoryService.findPaymentStateById(organizationId, hiddenRow);
+    expect(detail).not.toBeNull();
+    expect(detail?.id).toBe(hiddenRow);
+    expect(detail?.amountCents).toBe(100);
+    // The divergence reversal projected onto the detail path identically.
+    expect(detail?.cumulativeRefundedChargeCurrency).toBe(1);
+
+    // The page cap is the pagination family's list maximum, not 200.
+    const wide = await paymentHistoryService.listPaymentStates(organizationId, 600);
+    expect(wide.length).toBe(140);
+  });
+
+  test("sub-millisecond created_at precision keeps SQL and page ranking identical across surfaces", async () => {
+    // Two checkout orders whose created_at values differ ONLY in
+    // PostgreSQL microseconds (identical after JS Date ms conversion),
+    // inserted via raw SQL so the µs digits survive, with CONTROLLED ids:
+    // the SQL-newer row (later µs) carries the lexicographically SMALLER
+    // id, so any JS re-ranking (Date.getTime() + localeCompare) inverts the
+    // SQL order — the exact round-2 P1 stranding setup. With the window
+    // selected entirely in SQL, walking limit=1 pages returns both rows
+    // exactly once.
+    await dbWrite.execute(sql`
+      INSERT INTO stripe_checkout_orders (
+        id, organization_id, initiated_by_user_id, client_request_key,
+        request_digest, purchase_type, credits_to_grant, charge_amount_cents,
+        currency, status, created_at, metadata
+      ) VALUES
+        ('11111111-1111-4111-8111-00000000000a', ${organizationId}, ${userId},
+         'prec-key-a', repeat('a', 64), 'custom_amount', '1', 100, 'usd',
+         'quoted', '2026-08-27T12:00:00.000900Z', '{}'),
+        ('11111111-1111-4111-8111-00000000000b', ${organizationId}, ${userId},
+         'prec-key-b', repeat('a', 64), 'custom_amount', '2', 200, 'usd',
+         'quoted', '2026-08-27T12:00:00.000200Z', '{}')
+    `);
+
+    // SQL ranking: ...900Z (id ...b) is newer → page 1 = ...b, page 2 = ...a.
+    // A JS ms-truncating merge sees identical times and orders by id
+    // descending (...a first) while each surface prefix already contains
+    // both rows — the rank inversion duplicates one and strands the other.
+    const seen: string[] = [];
+    for (let offset = 0; offset < 4; offset++) {
+      const page = await paymentHistoryService.listPaymentStates(organizationId, 1, offset);
+      if (page.length === 0) break;
+      expect(seen.includes(page[0].id)).toBe(false);
+      seen.push(page[0].id);
+    }
+    expect(seen.length).toBe(2);
+    expect(new Set(seen)).toEqual(
+      new Set([
+        "checkout_order:11111111-1111-4111-8111-00000000000a",
+        "checkout_order:11111111-1111-4111-8111-00000000000b",
+      ]),
+    );
+  });
+
+  test("findPaymentStateById resolves either surface by stable id, org-scoped, with full reversal parity", async () => {
+    // The detail surface must agree with the list projection row-for-row
+    // (same projector), reject foreign orgs, and 404 (null) on ids no
+    // authority ever produced.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 5000,
+      status: "settled",
+      settlementTxRef: "pi_detail_parity",
+      settledAt: new Date("2026-08-20T09:00:00Z"),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_detail_parity",
+      amountCents: 5000,
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-25",
+      paymentIntentId: "pi_detail_parity",
+      source: "charge.refunded",
+      reversedUsd: 25,
+      reference: "charge ch_detail",
+    });
+    const order = await insertCheckoutOrder({
+      organizationId,
+      userId,
+      amountCents: 3000,
+      status: "settled",
+      stripePaymentIntentId: "pi_order_detail",
+      settledAt: new Date("2026-08-21T10:00:00Z"),
+    });
+
+    const listRows = await paymentHistoryService.listPaymentStates(organizationId);
+    const requestListRow = listRows.find((r) => r.id === `payment_request:${request.id}`);
+    const orderListRow = listRows.find((r) => r.id === `checkout_order:${order.id}`);
+    expect(requestListRow).toBeDefined();
+    expect(orderListRow).toBeDefined();
+
+    const requestDetail = await paymentHistoryService.findPaymentStateById(
+      organizationId,
+      `payment_request:${request.id}`,
+    );
+    expect(requestDetail).not.toBeNull();
+    expect(requestDetail).toEqual(requestListRow);
+    expect(requestDetail?.paymentState).toBe("partially_refunded");
+    expect(requestDetail?.cumulativeRefundedChargeCurrency).toBe(25);
+
+    const orderDetail = await paymentHistoryService.findPaymentStateById(
+      organizationId,
+      `checkout_order:${order.id}`,
+    );
+    expect(orderDetail).not.toBeNull();
+    expect(orderDetail).toEqual(orderListRow);
+
+    // Tenant isolation: the other org never resolves this org's rows.
+    const foreign = await paymentHistoryService.findPaymentStateById(
+      otherOrganizationId,
+      `payment_request:${request.id}`,
+    );
+    expect(foreign).toBeNull();
+    const foreignOrder = await paymentHistoryService.findPaymentStateById(
+      otherOrganizationId,
+      `checkout_order:${order.id}`,
+    );
+    expect(foreignOrder).toBeNull();
+
+    // Unknown surfaces and nonexistent authorities are null, not errors.
+    expect(
+      await paymentHistoryService.findPaymentStateById(organizationId, "wire_transfer:nope"),
+    ).toBeNull();
+    expect(
+      await paymentHistoryService.findPaymentStateById(
+        organizationId,
+        `checkout_order:${"0".repeat(32)}`,
+      ),
+    ).toBeNull();
   });
 
   test("currency is uppercased from the ledger's lowercase storage (M3: .toUpperCase() drop)", async () => {
@@ -1170,6 +1351,18 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       settlementTxRef: "pi_tie_req",
       settledAt: stamp,
     });
+    // This request is created AFTER the order but settles to the SAME
+    // eventTime: its newer createdAt places it FIRST in the window while
+    // the id tie-break must still sort `checkout_order:*` before it. This
+    // is exactly the prefix/eventTime divergence the stable ordering
+    // guarantees survives.
+    const lateRequest = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 300,
+      status: "settled",
+      settlementTxRef: "pi_tie_late",
+      settledAt: stamp,
+    });
     await insertReceipt({
       organizationId,
       paymentRequestId: request.id,
@@ -1187,19 +1380,20 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     });
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
-    expect(rows.length).toBe(2);
-    // Exact expected order: checkout_order id sorts first even though the
-    // request row was collected first.
-    expect(rows.map((r) => r.id)).toEqual([
-      `checkout_order:${order.id}`,
-      `payment_request:${request.id}`,
-    ]);
+    expect(rows.length).toBe(3);
+    // Exact expected order: all three rows share the eventTime, so the id
+    // tie-break alone decides — `checkout_order:*` sorts before BOTH
+    // payment_request rows regardless of creation order.
+    expect(rows.map((r) => r.id)).toEqual(
+      [
+        `checkout_order:${order.id}`,
+        `payment_request:${request.id}`,
+        `payment_request:${lateRequest.id}`,
+      ].sort((a, b) => a.localeCompare(b)),
+    );
     // Repeated calls produce the IDENTICAL order (the UI stability promise).
     const again = await paymentHistoryService.listPaymentStates(organizationId);
-    expect(again.map((r) => r.id)).toEqual([
-      `checkout_order:${order.id}`,
-      `payment_request:${request.id}`,
-    ]);
+    expect(again.map((r) => r.id)).toEqual(rows.map((r) => r.id));
   });
 
   test("clawback shortfall projects into unrecoveredShortfallCredits (M8: += 0)", async () => {
