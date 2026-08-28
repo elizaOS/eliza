@@ -30,6 +30,7 @@ import {
 import { getWindowNavigationPath } from "../../navigation";
 import { CodingAgentTasksPanel } from "../../slots/task-coordinator-slots.js";
 import { useAppSelector } from "../../state";
+import { PagePanel } from "../composites/page-panel";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { SettingsGroup, SettingsRow } from "../settings/settings-layout";
 import { useShellControllerContext } from "../shell/ShellControllerContext.hooks";
@@ -98,6 +99,33 @@ function ProjectsSegmentButton({
     onActivate: () => onSelect(id),
   });
   return null;
+}
+
+function CloudAppsStudioRow({ path }: { path: string }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "apps-cloud-studio",
+    role: "link",
+    label: "Cloud Apps",
+    group: "apps-management",
+    onActivate: () => navigateBrowserPath(path),
+  });
+  return (
+    <SettingsGroup title="Eliza Cloud">
+      <SettingsRow
+        icon={Cloud}
+        label="Cloud Apps"
+        description="Manage, deploy, and monetize your apps published on Eliza Cloud."
+        onClick={() => navigateBrowserPath(path)}
+        buttonRef={ref}
+        buttonProps={{
+          "data-testid": "my-apps-cloud-studio-row",
+          "data-agent-id": agentProps["data-agent-id"],
+          "data-agent-role": agentProps["data-agent-role"],
+          "data-agent-label": agentProps["data-agent-label"],
+        }}
+      />
+    </SettingsGroup>
+  );
 }
 
 /**
@@ -176,7 +204,10 @@ export function TasksPageView() {
               className="min-h-0 flex-1 overflow-y-auto eliza-chat-scroll"
               data-testid="projects-apps-segment"
             >
-              <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6">
+              <PagePanel.ContentRail
+                width="compact"
+                className="flex flex-col gap-4 py-4 pe-[calc(1rem+var(--eliza-chat-side-clearance,0px))] sm:py-6 sm:pe-[calc(1.5rem+var(--eliza-chat-side-clearance,0px))]"
+              >
                 <p className="text-sm text-muted">
                   Install, create, and run your elizaOS apps.
                 </p>
@@ -185,19 +216,9 @@ export function TasksPageView() {
                   // Same signed-in gate the launcher applies to cloud surfaces
                   // (LAUNCHER_CLOUD_IDS): the studio is useless without a cloud
                   // session, and sign-in lives upstream in Settings → Eliza Cloud.
-                  <SettingsGroup title="Eliza Cloud">
-                    <SettingsRow
-                      icon={Cloud}
-                      label="Cloud Apps"
-                      description="Manage, deploy, and monetize your apps published on Eliza Cloud."
-                      onClick={() => navigateBrowserPath(cloudStudioPath)}
-                      buttonProps={{
-                        "data-testid": "my-apps-cloud-studio-row",
-                      }}
-                    />
-                  </SettingsGroup>
+                  <CloudAppsStudioRow path={cloudStudioPath} />
                 ) : null}
-              </div>
+              </PagePanel.ContentRail>
             </div>
           ) : (
             <CodingAgentTasksPanel fullPage />

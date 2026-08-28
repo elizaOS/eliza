@@ -15,9 +15,8 @@
  * the consolidated UI wiring; the endpoints' own contracts are covered by the
  * agent package suites.
  *
- * Desktop and mobile viewports are both exercised, with rest/hover/focus
- * captures written under `test-results/ui-smoke-artifacts/17031-projects-apps`
- * for PR evidence.
+ * The canonical hub's empty and populated collection states are captured at
+ * mobile portrait, short landscape, tablet portrait, and desktop landscape.
  *
  * Run:
  *   bun run --cwd packages/app test:e2e test/ui-smoke/projects-apps-lifecycle.spec.ts
@@ -27,6 +26,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, type Route, test } from "@playwright/test";
+import { DASHBOARD_E2E_DEVICE_MATRIX } from "./device-matrix";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -55,9 +55,37 @@ const APP_RUN = {
   startedAt: "2026-08-01T00:05:00.000Z",
 };
 
+const AVAILABLE_APP = {
+  name: "aurora-tracker",
+  displayName: "Aurora Tracker",
+  description: "Track aurora sightings and receive alerts at dusk.",
+  category: "productivity",
+  launchType: "page",
+  launchUrl: null,
+  icon: null,
+  heroImage: null,
+  capabilities: [],
+  stars: 12,
+  repository: "https://github.com/elizaOS/aurora-tracker",
+  latestVersion: "2.0.0",
+  supports: { v0: false, v1: true, v2: true },
+  npm: {
+    package: "@elizaos/plugin-aurora-tracker",
+    v0Version: null,
+    v1Version: "2.0.0",
+    v2Version: "2.0.0",
+  },
+};
+
 type CapturedPosts = {
   create: unknown[];
   load: unknown[];
+  launch: unknown[];
+};
+
+type AppsFixtureState = {
+  installed: Array<typeof INSTALLED_APP>;
+  catalog: Array<typeof AVAILABLE_APP>;
 };
 
 async function fulfillJson(
@@ -80,9 +108,16 @@ async function fulfillJson(
 async function installAppsApiMocks(
   page: Page,
   posts: CapturedPosts,
+  state: AppsFixtureState = {
+    installed: [INSTALLED_APP],
+    catalog: [AVAILABLE_APP],
+  },
 ): Promise<void> {
   await page.route("**/api/apps/installed", async (route) => {
-    await fulfillJson(route, 200, [INSTALLED_APP]);
+    await fulfillJson(route, 200, state.installed);
+  });
+  await page.route("**/api/catalog/apps", async (route) => {
+    await fulfillJson(route, 200, state.catalog);
   });
   await page.route("**/api/apps/runs", async (route) => {
     await fulfillJson(route, 200, [APP_RUN]);
@@ -99,6 +134,19 @@ async function installAppsApiMocks(
   await page.route("**/api/apps/load-from-directory", async (route) => {
     posts.load.push(route.request().postDataJSON());
     await fulfillJson(route, 200, { ok: true, loaded: 1, count: 1 });
+  });
+  await page.route("**/api/apps/launch", async (route) => {
+    posts.launch.push(route.request().postDataJSON());
+    await fulfillJson(route, 200, {
+      pluginInstalled: true,
+      needsRestart: false,
+      displayName: AVAILABLE_APP.displayName,
+      launchType: AVAILABLE_APP.launchType,
+      launchUrl: null,
+      viewer: null,
+      session: null,
+      run: null,
+    });
   });
 }
 
@@ -121,7 +169,7 @@ test.beforeEach(async ({ page }) => {
 test("Projects → Apps keeps the retired My Apps lifecycle controls working", async ({
   page,
 }) => {
-  const posts: CapturedPosts = { create: [], load: [] };
+  const posts: CapturedPosts = { create: [], load: [], launch: [] };
   await installAppsApiMocks(page, posts);
 
   // Retired standalone slug resolves onto Projects with Apps pre-selected.
@@ -142,6 +190,7 @@ test("Projects → Apps keeps the retired My Apps lifecycle controls working", a
   // Hover state on the inventory row's launch control.
   const launchButton = page.getByRole("button", {
     name: `Launch ${INSTALLED_APP.displayName}`,
+    exact: true,
   });
   await launchButton.hover();
   await page.screenshot({
@@ -201,7 +250,7 @@ test("Projects → Apps keeps the retired My Apps lifecycle controls working", a
 test("bare /apps and /apps/tasks resolve to the right Projects segment", async ({
   page,
 }) => {
-  const posts: CapturedPosts = { create: [], load: [] };
+  const posts: CapturedPosts = { create: [], load: [], launch: [] };
   await installAppsApiMocks(page, posts);
 
   // Bare retired route → Apps segment.
@@ -218,7 +267,7 @@ test("bare /apps and /apps/tasks resolve to the right Projects segment", async (
 test("mobile Projects → Apps keeps every lifecycle control reachable", async ({
   page,
 }) => {
-  const posts: CapturedPosts = { create: [], load: [] };
+  const posts: CapturedPosts = { create: [], load: [], launch: [] };
   await installAppsApiMocks(page, posts);
   await page.setViewportSize({ width: 390, height: 844 });
 
@@ -250,4 +299,74 @@ test("mobile Projects → Apps keeps every lifecycle control reachable", async (
     path: `${EVIDENCE_DIR}/mobile-03-inventory.png`,
     fullPage: true,
   });
+});
+
+test("Apps hub proves empty and populated collections across canonical viewports", async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  const posts: CapturedPosts = { create: [], load: [], launch: [] };
+  const state: AppsFixtureState = { installed: [], catalog: [] };
+  await installAppsApiMocks(page, posts, state);
+
+  for (const device of DASHBOARD_E2E_DEVICE_MATRIX) {
+    await page.setViewportSize(device.viewport);
+    state.installed = [];
+    state.catalog = [];
+    await openProjectsApps(page, "/apps");
+    await expect(
+      page.getByText("No apps installed", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("No additional apps available", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Filter apps")).toHaveAttribute(
+      "data-agent-id",
+      "apps-filter",
+    );
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+      .toBeLessThanOrEqual(device.viewport.width);
+    await page.screenshot({
+      path: `${EVIDENCE_DIR}/${device.id}-empty.png`,
+      fullPage: true,
+    });
+
+    state.installed = [INSTALLED_APP];
+    state.catalog = [AVAILABLE_APP];
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(
+      page.getByTestId(`apps-mgmt-row-${INSTALLED_APP.name}`),
+    ).toBeVisible({ timeout: 30_000 });
+    const availableRow = page.getByTestId(
+      `apps-available-row-${AVAILABLE_APP.name}`,
+    );
+    await expect(availableRow).toBeVisible();
+    await page.screenshot({
+      path: `${EVIDENCE_DIR}/${device.id}-populated.png`,
+      fullPage: true,
+    });
+
+    const filter = page.getByLabel("Filter apps");
+    await filter.fill("aurora");
+    await expect(
+      page.getByTestId(`apps-mgmt-row-${INSTALLED_APP.name}`),
+    ).toBeHidden();
+    await expect(availableRow).toBeVisible();
+    await filter.fill("");
+
+    const launchesBefore = posts.launch.length;
+    const getButton = page.getByRole("button", {
+      name: `Get ${AVAILABLE_APP.displayName}`,
+    });
+    await expect(getButton).toHaveAttribute(
+      "data-agent-id",
+      `apps-get-${AVAILABLE_APP.name}`,
+    );
+    await getButton.click();
+    await expect
+      .poll(() => posts.launch.length, { timeout: 20_000 })
+      .toBe(launchesBefore + 1);
+    expect(posts.launch.at(-1)).toEqual({ name: AVAILABLE_APP.name });
+  }
 });
