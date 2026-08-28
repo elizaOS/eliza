@@ -29,6 +29,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 const USER_A = "aaaaaaaa-1111-4111-8111-111111111111";
+const USER_A_OPERATOR = "aaaaaaaa-2222-4222-8222-222222222222";
 const USER_B = "bbbbbbbb-1111-4111-8111-111111111111";
 const CHARACTER_A = "eeeeeeee-1111-4111-8111-111111111111";
 const SHARED_A = "cccccccc-1111-4111-8111-111111111111";
@@ -65,8 +66,8 @@ const PERSONAL_C = personalSharedAgentId({
   organizationId: ORG_C,
 });
 
-// Caller identity is switchable so the cross-org denial path is exercised for
-// real (org A's user probing org B's agent).
+// Caller identity is switchable so both cross-org denial and same-org
+// operator lineage authority are exercised through the real route.
 const currentUser = {
   id: USER_A,
   email: "owner-a@test.test",
@@ -231,6 +232,13 @@ beforeAll(async () => {
         organization_id: ORG_A,
         role: "owner",
         steward_user_id: `steward-${USER_A}`,
+      },
+      {
+        id: USER_A_OPERATOR,
+        email: "operator-a@test.test",
+        organization_id: ORG_A,
+        role: "member",
+        steward_user_id: `steward-${USER_A_OPERATOR}`,
       },
       {
         id: USER_B,
@@ -435,7 +443,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     });
   });
 
-  test("a retained authority with no target returns an actionable 409 before mint", async () => {
+  test("a same-org operator cannot bypass another user's retained source authority", async () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
@@ -463,45 +471,53 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
 
     const agentsBefore = await dbWrite.select().from(agentSandboxes);
     const keysBefore = await dbWrite.select().from(apiKeys);
-    const response = await upgrade(SHARED_RETAINED_AUTHORITY);
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({
-      success: false,
-      code: "dedicated_activation_reset_required",
-      retryable: false,
-    });
-    expect(await dbWrite.select().from(agentSandboxes)).toEqual(agentsBefore);
-    expect(await dbWrite.select().from(apiKeys)).toEqual(keysBefore);
-    expect(
+    const previousUserId = currentUser.id;
+    const previousEmail = currentUser.email;
+    currentUser.id = USER_A_OPERATOR;
+    currentUser.email = "operator-a@test.test";
+    try {
+      const response = await upgrade(SHARED_RETAINED_AUTHORITY);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: "dedicated_activation_reset_required",
+        retryable: false,
+      });
+      expect(await dbWrite.select().from(agentSandboxes)).toEqual(agentsBefore);
+      expect(await dbWrite.select().from(apiKeys)).toEqual(keysBefore);
+      expect(
+        await dbWrite
+          .select()
+          .from(jobs)
+          .where(eq(jobs.agent_id, MISSING_RETAINED_TARGET)),
+      ).toHaveLength(0);
+      expect(
+        await dbWrite
+          .select()
+          .from(personalDedicatedUpgradeAuthorities)
+          .where(
+            eq(
+              personalDedicatedUpgradeAuthorities.source_agent_id,
+              SHARED_RETAINED_AUTHORITY,
+            ),
+          ),
+      ).toHaveLength(1);
+    } finally {
+      currentUser.id = previousUserId;
+      currentUser.email = previousEmail;
       await dbWrite
-        .select()
-        .from(jobs)
-        .where(eq(jobs.agent_id, MISSING_RETAINED_TARGET)),
-    ).toHaveLength(0);
-    expect(
-      await dbWrite
-        .select()
-        .from(personalDedicatedUpgradeAuthorities)
+        .delete(personalDedicatedUpgradeAuthorities)
         .where(
           eq(
             personalDedicatedUpgradeAuthorities.source_agent_id,
             SHARED_RETAINED_AUTHORITY,
           ),
-        ),
-    ).toHaveLength(1);
-
-    await dbWrite
-      .delete(personalDedicatedUpgradeAuthorities)
-      .where(
-        eq(
-          personalDedicatedUpgradeAuthorities.source_agent_id,
-          SHARED_RETAINED_AUTHORITY,
-        ),
-      );
-    await dbWrite
-      .delete(agentSandboxes)
-      .where(eq(agentSandboxes.id, SHARED_RETAINED_AUTHORITY));
-    await setOrgBalance(ORG_A, "0.50");
+        );
+      await dbWrite
+        .delete(agentSandboxes)
+        .where(eq(agentSandboxes.id, SHARED_RETAINED_AUTHORITY));
+      await setOrgBalance(ORG_A, "0.50");
+    }
   });
 
   test("quotes Dedicated from server-owned pricing for only the caller's personal Eliza", async () => {

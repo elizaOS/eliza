@@ -334,7 +334,10 @@ export class PersonalDedicatedSelectionRequiredError extends ElizaError {
  * rewrite history or collide with the source-unique authority constraint, so
  * the ordinary mint path must stop before preparing credentials. An explicit
  * operator reconciliation may retire the tombstone after proving the target
- * is absent; request-serving code never does that implicitly.
+ * is absent; request-serving code never does that implicitly. Lineage is
+ * organization/source scoped because another same-organization operator may
+ * invoke the row-backed route; the receipt user identifies its target owner,
+ * not a separate lineage that the operator may recreate.
  */
 export class PersonalDedicatedAuthorityRetainedError extends ElizaError {
   override readonly name = "PersonalDedicatedAuthorityRetainedError";
@@ -342,7 +345,7 @@ export class PersonalDedicatedAuthorityRetainedError extends ElizaError {
 
 async function assertNoRetainedUpgradeAuthorityInTx(
   tx: DbTransaction,
-  params: Pick<CreateTierUpgradeTargetParams, "organizationId" | "userId" | "sourceAgentId">,
+  params: Pick<CreateTierUpgradeTargetParams, "organizationId" | "sourceAgentId">,
 ): Promise<void> {
   const [authority] = await tx
     .select({ id: personalDedicatedUpgradeAuthorities.id })
@@ -350,7 +353,6 @@ async function assertNoRetainedUpgradeAuthorityInTx(
     .where(
       and(
         eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
-        eq(personalDedicatedUpgradeAuthorities.user_id, params.userId),
         eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
         eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
       ),
@@ -363,7 +365,6 @@ async function assertNoRetainedUpgradeAuthorityInTx(
         code: "PERSONAL_DEDICATED_AUTHORITY_RETAINED",
         context: {
           organizationId: params.organizationId,
-          userId: params.userId,
           sourceAgentId: params.sourceAgentId,
         },
       },
