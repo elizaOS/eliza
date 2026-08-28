@@ -3344,9 +3344,10 @@ export class TrajectoriesService extends Service {
 	 * ledger bytes are reachable after a writer exits — not write-only. The
 	 * verified entries surface on the detail wire as
 	 * `metadata.contentManifest` (empty array when the trajectory never
-	 * authorized content). Integrity failures become an explicit
-	 * unavailable marker on the same field, never silent corruption or a
-	 * failed trajectory read.
+	 * authorized content). Integrity failures — and a missing head on a
+	 * trajectory whose own carriers say a manifest SHOULD exist — become an
+	 * explicit unavailable marker on the same field, never silent corruption,
+	 * a fabricated empty success, or a failed trajectory read.
 	 */
 	private async attachContentManifestLedger(
 		trajectory: Trajectory,
@@ -3359,6 +3360,7 @@ export class TrajectoriesService extends Service {
 		};
 		const adapter = runtime.adapter;
 		if (!adapter || typeof adapter.getCaches !== "function") {
+			this.projectContentManifestAbsence(trajectory);
 			return;
 		}
 		try {
@@ -3372,11 +3374,12 @@ export class TrajectoriesService extends Service {
 		} catch (error) {
 			if (
 				error instanceof ElizaError &&
-				error.code === "CONTENT_MANIFEST_HEAD_MISSING"
+				error.code === "CONTENT_MANIFEST_HEAD_MISSING" &&
+				this.expectedContentRefCount(trajectory) === 0
 			) {
-				// No ledger was ever published for this trajectory (it
-				// authorized no content refs) — the honest empty state, not
-				// an error.
+				// The trajectory's own carriers authorize no content refs, so
+				// the publisher correctly never wrote a head — the honest
+				// empty state, not an error.
 				trajectory.metadata = {
 					...trajectory.metadata,
 					contentManifest: [],
@@ -3384,9 +3387,11 @@ export class TrajectoriesService extends Service {
 				return;
 			}
 			// error-policy:J4 the verified-ledger projection is an explicit
-			// unavailable state: a damaged or unreadable ledger must surface
-			// as a distinct marker, never as a silently partial manifest and
-			// never as a failed trajectory read.
+			// unavailable state: a damaged or unreadable ledger — or a
+			// missing head where carriers say content was authorized
+			// (publication failed or the head was lost) — must surface as a
+			// distinct marker, never as a silently partial manifest, a
+			// fabricated empty one, or a failed trajectory read.
 			trajectory.metadata = {
 				...trajectory.metadata,
 				contentManifest: { unavailable: true },
@@ -3401,6 +3406,49 @@ export class TrajectoriesService extends Service {
 				{ ledgerId },
 			);
 		}
+	}
+
+	/**
+	 * Whether the trajectory's persisted tool-result carriers authorize any
+	 * content refs — the exact derivation the publisher ran to decide whether
+	 * a ledger head should exist. A reader uses it to distinguish the honest
+	 * "nothing was ever authorized" empty state from a lost or failed
+	 * publication.
+	 */
+	private expectedContentRefCount(trajectory: Trajectory): number {
+		const carriers = trajectory.steps
+			.flatMap((step) => {
+				const stages = (step.semanticStages ?? []).filter(
+					(stage) => stage.kind === "tool",
+				);
+				return stages.map((stage) => ({
+					result: (stage.payload.tool as { result?: unknown } | undefined)
+						?.result,
+				}));
+			})
+			.filter((step) => step.result !== undefined);
+		if (carriers.length === 0) return 0;
+		const manifest = deriveCompactionContentManifest(
+			{ steps: carriers as never, archivedSteps: [] },
+			{ lastUsedAt: new Date().toISOString() },
+		);
+		return manifest.contentRefs.length;
+	}
+
+	/**
+	 * No cache domain exists at all: project the manifest field from the
+	 * trajectory's carriers alone so the wire shape stays stable — empty when
+	 * nothing was authorized, explicitly unavailable when content was
+	 * authorized but no ledger can be read.
+	 */
+	private projectContentManifestAbsence(trajectory: Trajectory): void {
+		trajectory.metadata = {
+			...trajectory.metadata,
+			contentManifest:
+				this.expectedContentRefCount(trajectory) === 0
+					? []
+					: ({ unavailable: true } as unknown as JsonValue),
+		};
 	}
 
 	async getStats(): Promise<TrajectoryStats> {
