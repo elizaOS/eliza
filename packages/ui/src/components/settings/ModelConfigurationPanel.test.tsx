@@ -22,6 +22,7 @@ import type {
 interface CapturedAgentElement {
   id: string;
   options?: string[];
+  getValue?: () => unknown;
   onFill?: (value: string) => void;
   onActivate?: () => void;
 }
@@ -54,6 +55,7 @@ const { clientMock, agentElements } = vi.hoisted(() => ({
     string,
     {
       options?: string[];
+      getValue?: () => unknown;
       onFill?: (v: string) => void;
       onActivate?: () => void;
     }
@@ -82,6 +84,7 @@ vi.mock("../../agent-surface", () => ({
   useAgentElement: (spec: CapturedAgentElement) => {
     agentElements.set(spec.id, {
       options: spec.options,
+      getValue: spec.getValue,
       onFill: spec.onFill,
       onActivate: spec.onActivate,
     });
@@ -190,6 +193,36 @@ function fixtureConfig(): ModelsConfigResponse {
           source: "config.env",
         },
         ELIZA_ELIZAOS_MODEL_POWERFUL: null,
+      },
+    },
+  };
+}
+
+function fixtureCatalogWithSmallModel(model: string): ModelCatalog {
+  const catalog = fixtureCatalog();
+  return {
+    providers: {
+      ...catalog.providers,
+      cerebras: [
+        {
+          id: model,
+          display: model,
+          efforts: ["low"],
+          roles: ["small"],
+        },
+      ],
+    },
+  };
+}
+
+function fixtureConfigWithSmallModel(model: string): ModelsConfigResponse {
+  const config = fixtureConfig();
+  return {
+    targets: {
+      ...config.targets,
+      small: {
+        ...config.targets.small,
+        OPENAI_SMALL_MODEL: { value: model, source: "process.env" },
       },
     },
   };
@@ -374,6 +407,80 @@ describe("catalog load states", () => {
       expect(agentElements.has("models-small-provider")).toBe(true),
     );
   });
+
+  it.each(["success", "error"] as const)(
+    "keeps the newer overlapping Retry result when the older load settles with %s",
+    async (olderSettlement) => {
+      const olderCatalog = deferred<unknown>();
+      const olderConfig = deferred<ModelsConfigResponse>();
+      const newerCatalog = deferred<unknown>();
+      const newerConfig = deferred<ModelsConfigResponse>();
+      clientMock.getModelsCatalog
+        .mockReset()
+        .mockRejectedValueOnce(new Error("initial catalog failure"))
+        .mockReturnValueOnce(olderCatalog.promise)
+        .mockReturnValueOnce(newerCatalog.promise);
+      clientMock.getModelsConfig
+        .mockReset()
+        .mockResolvedValueOnce(fixtureConfig())
+        .mockReturnValueOnce(olderConfig.promise)
+        .mockReturnValueOnce(newerConfig.promise);
+
+      render(<ModelConfigurationPanel />);
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        "initial catalog failure",
+      );
+      const retry = agentElements.get("models-retry")?.onActivate;
+      expect(retry).toBeTypeOf("function");
+
+      act(() => {
+        retry?.();
+        retry?.();
+      });
+      await waitFor(() => {
+        expect(clientMock.getModelsCatalog).toHaveBeenCalledTimes(3);
+        expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(3);
+      });
+
+      await act(async () => {
+        newerCatalog.resolve({
+          providers: {},
+          catalog: fixtureCatalogWithSmallModel("current-small"),
+        });
+        newerConfig.resolve(fixtureConfigWithSmallModel("current-small"));
+      });
+      await waitFor(() =>
+        expect(agentElements.get("models-small-model")?.getValue?.()).toBe(
+          "current-small",
+        ),
+      );
+      expect(agentElements.get("models-small-model")?.options).toEqual([
+        "current-small",
+      ]);
+
+      await act(async () => {
+        if (olderSettlement === "success") {
+          olderCatalog.resolve({
+            providers: {},
+            catalog: fixtureCatalogWithSmallModel("stale-small"),
+          });
+          olderConfig.resolve(fixtureConfigWithSmallModel("stale-small"));
+          return;
+        }
+        olderCatalog.reject(new Error("stale catalog failure"));
+        olderConfig.resolve(fixtureConfigWithSmallModel("stale-small"));
+      });
+
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByText("Loading model catalog…")).toBeNull();
+      expect(agentElements.get("models-small-model")?.options).toEqual([
+        "current-small",
+      ]);
+      expect(agentElements.get("models-small-model")?.getValue?.()).toBe(
+        "current-small",
+      );
+    },
+  );
 
   it("renders a readable error for a runtime that predates the model-config API", async () => {
     // An older runtime (or a shapeless stub) answers without the catalog /
