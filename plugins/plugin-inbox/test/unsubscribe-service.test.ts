@@ -277,6 +277,63 @@ describe("InboxUnsubscribeService", () => {
       expect(result.summary.mailtoOnlyCount).toBe(0);
     });
 
+    it("downgrades a mailto+cleartext-http one-click sender to http_get (RFC 8058 https-only)", async () => {
+      // RFC 8058 §2 mandates an https URI for the one-click POST. A cleartext
+      // http target with a one-click post header must NOT be classified
+      // http_one_click; it stays an HTTP GET so unsubscribe credentials are
+      // never POSTed over an unencrypted transport, while still agreeing with
+      // the executor's URL-first dispatch (never "mailto").
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<mailto:unsub@brand.com>, <http://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+      expect(brand?.unsubscribeMethod).toBe("http_get");
+      expect(brand?.unsubscribeHttpUrl).toBe("http://brand.com/unsub");
+      expect(result.summary.oneClickEligibleCount).toBe(0);
+      expect(result.summary.mailtoOnlyCount).toBe(0);
+    });
+
+    it("prefers the https target over a cleartext http one for one-click", async () => {
+      // When a sender lists both an http and an https unsubscribe URL, the
+      // https entry must win so the one-click POST goes to the compliant
+      // secure target regardless of header order.
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<http://brand.com/unsub>, <https://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+      expect(brand?.unsubscribeMethod).toBe("http_one_click");
+      expect(brand?.unsubscribeHttpUrl).toBe("https://brand.com/unsub");
+      expect(result.summary.oneClickEligibleCount).toBe(1);
+    });
+
     it("classifies a mailto+https sender WITHOUT a one-click post as http_get", async () => {
       const gateway = makeGateway({
         messages: [

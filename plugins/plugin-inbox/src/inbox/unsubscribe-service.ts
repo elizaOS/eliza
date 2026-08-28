@@ -98,17 +98,23 @@ function listUnsubscribeOptions(value: string | null): {
   httpUrl: string | null;
   mailto: string | null;
 } {
+  let httpsUrl: string | null = null;
   let httpUrl: string | null = null;
   let mailto: string | null = null;
   for (const entry of listUnsubscribeEntries(value)) {
-    if (!httpUrl && /^https?:\/\//i.test(entry)) {
+    if (!httpsUrl && /^https:\/\//i.test(entry)) {
+      httpsUrl = entry;
+    } else if (!httpUrl && /^http:\/\//i.test(entry)) {
       httpUrl = entry;
     }
     if (!mailto && /^mailto:/i.test(entry)) {
       mailto = entry;
     }
   }
-  return { httpUrl, mailto };
+  // RFC 8058 §2 requires an https target for the one-click POST, so prefer a
+  // compliant https entry over a cleartext http one when a sender publishes
+  // both; the executor then dispatches to the secure URL.
+  return { httpUrl: httpsUrl ?? httpUrl, mailto };
 }
 
 function unsubscribeMethod(args: {
@@ -122,9 +128,15 @@ function unsubscribeMethod(args: {
   // mailto and an https target with `List-Unsubscribe-Post:
   // List-Unsubscribe=One-Click`; classifying that common case as "mailto"
   // desynced the summary and the recorded method from the request actually
-  // sent, firing an HTTP GET instead of the required one-click POST.
+  // sent, firing an HTTP GET instead of the required one-click POST. Any http
+  // target (including cleartext) still routes through an HTTP method so the
+  // summary never disagrees with the executor's URL-first dispatch.
   if (options.httpUrl) {
-    return /one-click/i.test(args.listUnsubscribePost ?? "")
+    // RFC 8058 §2 mandates an https URI for one-click. A cleartext http target
+    // is downgraded to an HTTP GET so unsubscribe credentials are never POSTed
+    // over an unencrypted transport.
+    return /one-click/i.test(args.listUnsubscribePost ?? "") &&
+      /^https:\/\//i.test(options.httpUrl)
       ? "http_one_click"
       : "http_get";
   }
