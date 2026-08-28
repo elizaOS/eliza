@@ -1179,8 +1179,19 @@ export class TelegramMembershipAuthority {
    * from persisted health, so re-authorization requires fresh evidence —
    * pre-removal member facts alone stay non-authorizing because point-query
    * evidence carries a bounded validUntil.
+   *
+   * Runs inside the same per-scope serialized chain as markScopeUnavailable:
+   * Telegraf dispatches one polling batch concurrently
+   * (`Promise.all(updates.map(handleUpdate))`), so a re-add callback can
+   * interleave with an in-flight removal that is still awaiting its durable
+   * health write. Without serialization the clear observes no tombstone and
+   * returns; the removal then resumes and installs the tombstone AFTER the
+   * clear, permanently denying a chat the bot is present in again.
    */
-  clearScopeRemoval(input: { chatId: string; chatRoomKey: string }): void {
+  clearScopeRemoval(input: {
+    chatId: string;
+    chatRoomKey: string;
+  }): Promise<void> {
     const scope = telegramMembershipScope({
       agentId: this.runtime.agentId,
       connectorAccountId: this.connectorAccountId,
@@ -1188,12 +1199,15 @@ export class TelegramMembershipAuthority {
       chatRoomKey: input.chatRoomKey,
     });
     const key = scopeKey(scope);
-    this.removedScopes.delete(key);
-    // Watermark the re-add: backlogged evidence stamped BEFORE this moment
-    // (queued updates from while the bot was absent) must not re-authorize
-    // anything after the clear — only observations made while the bot was
-    // actually present may establish authority again.
-    this.scopeReaddWatermarks.set(key, Date.now());
+    // The chain swallows link rejections; only the mutation runs inside.
+    return this.serialized(key, async () => {
+      this.removedScopes.delete(key);
+      // Watermark the re-add: backlogged evidence stamped BEFORE this moment
+      // (queued updates from while the bot was absent) must not re-authorize
+      // anything after the clear — only observations made while the bot was
+      // actually present may establish authority again.
+      this.scopeReaddWatermarks.set(key, Date.now());
+    });
   }
 
   /** Read-only scope health accessor (used by tests and diagnostics). */

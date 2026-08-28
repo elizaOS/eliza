@@ -67,6 +67,9 @@ function makeService(gate: GateFake | null) {
     service as unknown as { membershipGates: Map<string, unknown> }
   ).membershipGates = new Map();
   (
+    service as unknown as { settledMembershipGates: Map<string, unknown> }
+  ).settledMembershipGates = new Map();
+  (
     service as unknown as {
       messageManager: { markMembershipGateBroken: ReturnType<typeof vi.fn> };
     }
@@ -334,7 +337,7 @@ describe("my_chat_member delivery contract", () => {
     });
   });
 
-  it("does nothing without a membership gate", async () => {
+  it("does nothing without a membership gate (absent authority: legacy mode)", async () => {
     const { service, getMembershipGate } = makeService(null);
     const dispatch = (
       service as unknown as {
@@ -348,6 +351,69 @@ describe("my_chat_member delivery contract", () => {
     await dispatch(botMemberUpdate("kicked"));
 
     expect(getMembershipGate).toHaveBeenCalledTimes(1);
+  });
+
+  it("queues a transition that arrives while the gate is bootstrapping and replays it once resolved", async () => {
+    // Startup window: the poller is live but finishBotStartup has not
+    // resolved the gate yet. A kick arriving here must be queued and
+    // replayed — discarding it would leave stale active authority
+    // untombstoned (and a re-add would leave a persisted tombstone
+    // denying the chat indefinitely).
+    let resolveGate: (gate: GateFake | null) => void = () => {};
+    const gatePromise = new Promise<GateFake | null>((resolve) => {
+      resolveGate = resolve;
+    });
+    const { service } = makeService(null);
+    const internals = service as unknown as {
+      membershipGates: Map<string, Promise<GateFake | null>>;
+      settledMembershipGates: Map<string, GateFake | null>;
+      pendingMembershipTransitions: Map<string, unknown[]>;
+      handleMyChatMemberUpdate: (
+        update: unknown,
+        accountId?: string,
+      ) => Promise<void>;
+    };
+    internals.membershipGates.set("acct", gatePromise);
+    // Object.assign harness: field initializers never ran, so provide the
+    // queue registry the production class declares.
+    internals.pendingMembershipTransitions = new Map();
+    // Production getMembershipGate: settled registry first, else the promise.
+    const settled = new Map<string, GateFake | null>();
+    (
+      service as unknown as {
+        getMembershipGate: ReturnType<typeof vi.fn>;
+      }
+    ).getMembershipGate = vi.fn(async () => {
+      if (settled.has("acct")) {
+        return settled.get("acct") ?? null;
+      }
+      return gatePromise.then((gate) => {
+        settled.set("acct", gate);
+        return gate;
+      });
+    });
+    internals.settledMembershipGates = settled as never;
+    const dispatch = internals.handleMyChatMemberUpdate.bind(service);
+
+    // Transition arrives while the gate promise is pending: queued, not dropped.
+    await dispatch(botMemberUpdate("kicked"));
+
+    // Once the gate resolves, the queued transition is replayed through the
+    // normal dispatch path — the tombstone lands.
+    resolveGate({
+      authority: {
+        markScopeUnavailable: vi.fn().mockResolvedValue(undefined),
+        clearScopeRemoval: vi.fn().mockResolvedValue(undefined),
+      },
+      connectorAccountId: "connector-1",
+      botTelegramUserId: "777",
+    });
+    await gatePromise;
+    // Let the replay microtask chain drain.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(
+      settled.get("acct")?.authority.markScopeUnavailable,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it("registers a my_chat_member handler during message-handler setup", async () => {

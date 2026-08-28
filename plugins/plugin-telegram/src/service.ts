@@ -419,6 +419,23 @@ export class TelegramService extends Service {
     Promise<TelegramMembershipGate | null>
   >();
   private membershipGateFailures = new Set<string>();
+  /**
+   * Settled gate outcomes keyed by account: once a bootstrap promise
+   * resolves, the concrete gate (or null-for-absent) is cached here so the
+   * startup-window path can check SYNCHRONOUSLY whether an account's gate
+   * is still bootstrapping — awaiting the pending promise inside the update
+   * handler would deadlock or delay poller dispatch instead of queueing.
+   */
+  private settledMembershipGates = new Map<
+    string,
+    TelegramMembershipGate | null
+  >();
+  /**
+   * my_chat_member transitions that arrived while the account's gate was
+   * still bootstrapping (the poller goes live before finishBotStartup's
+   * getMe resolves). Replayed — in arrival order — once the gate settles.
+   */
+  private pendingMembershipTransitions = new Map<string, ChatMemberUpdated[]>();
 
   /**
    * Constructor for TelegramService class.
@@ -493,6 +510,10 @@ export class TelegramService extends Service {
       this.runtime,
       account.accountId,
     );
+    // The poller goes live before finishBotStartup resolves the membership
+    // gate; group admission must fail closed (not degrade to the absent-
+    // authority allow mode) until the gate settles.
+    messageManager.telegramMembershipGate.markPending();
     return {
       accountId: account.accountId,
       account,
@@ -1073,15 +1094,18 @@ export class TelegramService extends Service {
       // "broken" and fail closed on the latter.
       try {
         const gate = await gatePromise;
+        const manager = this.getAccountState(accountId)?.messageManager;
         if (gate) {
           // Bind ONLY this account's own manager: a fallback to the default
           // manager would gate the wrong connector (and leave the secondary
           // ungated) when the account state is not installed yet. If the
           // manager is not ready, defer to bindAccountMembershipGates(),
           // which runs at account-state installation.
-          this.getAccountState(accountId)?.messageManager?.bindMembershipGate(
-            gate,
-          );
+          manager?.bindMembershipGate(gate);
+        } else {
+          // Gate settled absent (no authority service): settle the pending
+          // marker into the documented legacy allow mode.
+          manager?.telegramMembershipGate.markAbsent();
         }
       } catch (error) {
         this.membershipGateFailures.add(accountId);
@@ -1119,6 +1143,10 @@ export class TelegramService extends Service {
       const gate = await promise;
       if (gate) {
         manager.bindMembershipGate(gate);
+      } else {
+        // Gate settled absent (no authority service): settle the manager's
+        // pending marker into the documented legacy allow mode.
+        manager.telegramMembershipGate.markAbsent();
       }
     } catch {
       // error-policy:J2 The seeding path already recorded this gate failure
@@ -1132,18 +1160,66 @@ export class TelegramService extends Service {
   private async getMembershipGate(
     accountId = this.defaultAccountId,
   ): Promise<TelegramMembershipGate | null> {
+    const settled = this.settledMembershipGates.get(accountId);
+    if (settled !== undefined) {
+      return settled;
+    }
     const promise = this.membershipGates.get(accountId);
     if (!promise) {
       return null;
     }
     try {
-      return await promise;
+      const gate = await promise;
+      this.settledMembershipGates.set(accountId, gate);
+      return gate;
     } catch {
       // error-policy:J4 The gate seeding path already recorded the failure,
       // marked the manager's gate broken, and reported it; callers treat null
       // as "no gate" and the broken marker keeps group admission closed.
+      this.settledMembershipGates.set(accountId, null);
       return null;
     }
+  }
+
+  /**
+   * Queues a my_chat_member transition that arrived before the account's
+   * gate settled, then replays the queue once the gate promise resolves.
+   * Replayed transitions run the same dispatch path as live ones; on a null
+   * (absent) or failed gate the queue is dropped — absent is legacy
+   * no-authority mode, failed already fails admission closed.
+   */
+  private queuePendingMembershipTransition(
+    update: ChatMemberUpdated,
+    accountId: string,
+  ): void {
+    const queue = this.pendingMembershipTransitions.get(accountId) ?? [];
+    queue.push(update);
+    this.pendingMembershipTransitions.set(accountId, queue);
+    const promise = this.membershipGates.get(accountId);
+    if (!promise) {
+      return;
+    }
+    void promise
+      .then(async (gate) => {
+        // Prime the settled registry so the replayed dispatch takes the
+        // normal (non-queueing) path.
+        this.settledMembershipGates.set(accountId, gate);
+        if (!gate) {
+          this.pendingMembershipTransitions.delete(accountId);
+          return;
+        }
+        const pending = this.pendingMembershipTransitions.get(accountId);
+        this.pendingMembershipTransitions.delete(accountId);
+        for (const pendingUpdate of pending ?? []) {
+          await this.handleMyChatMemberUpdate(pendingUpdate, accountId);
+        }
+      })
+      .catch(() => {
+        // error-policy:J4 A failed bootstrap already marked the admission
+        // gate broken; the queued transitions are dropped fail-closed.
+        this.settledMembershipGates.set(accountId, null);
+        this.pendingMembershipTransitions.delete(accountId);
+      });
   }
 
   /** Chat room key for membership scopes: the chat's main room, not a topic room. */
@@ -1507,6 +1583,65 @@ export class TelegramService extends Service {
     }
 
     const chatId = ctx.chat.id.toString();
+
+    // Membership admission runs BEFORE any chat/entity preprocessing. The
+    // preprocessing below (handleNewChat, processExistingChat/syncEntity)
+    // mutates room-participant state via ensureConnection; running the
+    // membership authority only inside MessageManager.handleMessage (after
+    // next()) let an unauthorized or revoked sender create/attach an entity
+    // to the room first. Only ctx.message-bearing GROUP updates are gated:
+    // my_chat_member must pass through ungated or a kicked bot could never
+    // tombstone its own scope, and DMs/channels stay under the DM policy /
+    // have no inbound admission surface here. The authority bootstraps the
+    // principal entity itself (reconcile path), so a denied sender mutates
+    // no participant state; on admission the normal sync path runs.
+    if (
+      ctx.message &&
+      (ctx.chat.type === "group" || ctx.chat.type === "supergroup")
+    ) {
+      const manager =
+        this.getAccountState(accountId)?.messageManager ?? this.messageManager;
+      // Same canonical-principal derivation the message path uses, so the
+      // middleware gate and the manager gate agree on the principal.
+      const principalEntityId = ctx.from?.id
+        ? await resolveTelegramRuntimeEntityId(
+            this.runtime,
+            accountId,
+            ctx.from.id.toString(),
+          )
+        : null;
+      const admitted = await manager?.telegramMembershipGate.authorizeMessage({
+        chatId,
+        chatRoomKey: this.membershipChatRoomKey(chatId, accountId),
+        chatType: ctx.chat.type,
+        principalEntityId: principalEntityId as UUID,
+        telegramUserId: ctx.from?.id?.toString() ?? "",
+        runtimeMapping: {
+          worldId: createUniqueUuid(
+            this.runtime,
+            this.scopedTelegramKey(chatId, accountId),
+          ) as UUID,
+          roomId: createUniqueUuid(
+            this.runtime,
+            this.scopedTelegramKey(
+              ctx.message.message_thread_id
+                ? `${chatId}-${ctx.message.message_thread_id}`
+                : chatId,
+              accountId,
+            ),
+          ) as UUID,
+          entityId: principalEntityId as UUID,
+        },
+        getChatMember: async () =>
+          ctx.telegram.getChatMember(
+            (ctx.chat as { id: number }).id,
+            ctx.from?.id as number,
+          ),
+      });
+      if (!admitted) {
+        return;
+      }
+    }
 
     // If we haven't seen this chat before, process it as a new chat
     if (!this.knownChats.has(this.scopedTelegramKey(chatId, accountId))) {
@@ -1888,7 +2023,7 @@ export class TelegramService extends Service {
    * message path does.
    */
   private async recordMembershipEvent(
-    ctx: Context,
+    _ctx: Context,
     chatId: string,
     chatRoomKey: string,
     accountId: string,
@@ -1910,17 +2045,20 @@ export class TelegramService extends Service {
     }
     try {
       // The authority requires an entity row for the principal before
-      // evidence can be applied; ensureConnection creates it when missing.
-      await this.runtime.ensureConnection({
-        entityId: event.canonicalPrincipalId,
-        roomId: event.runtime.roomId,
-        roomName: getTelegramChatDisplayName(ctx.chat, chatId),
-        userName: undefined,
-        name: "Unknown User",
-        source: "telegram",
-        channelId: chatId,
-        type: ChannelType.GROUP,
-        worldId: event.runtime.worldId,
+      // evidence can be applied. Only the ENTITY row is bootstrapped here —
+      // NEVER room participation: a revocation must not (re)create a room
+      // participant for the departed principal, and room-derived
+      // authorization (e.g. DocumentService grants via
+      // getRoomsForParticipants) must stop resolving for them.
+      await this.runtime.createEntity({
+        id: event.canonicalPrincipalId,
+        agentId: this.runtime.agentId,
+        names: [`telegram-${event.telegramUserId}`],
+        metadata: {
+          accountId,
+          source: "telegram",
+          telegramUserId: event.telegramUserId,
+        },
       });
     } catch (error) {
       // error-policy:J7 Entity bootstrap failure must not kill the update
@@ -2055,8 +2193,10 @@ export class TelegramService extends Service {
           // tombstone so fresh evidence can re-establish authority for this
           // scope. Stored pre-removal facts alone still do not authorize —
           // point-query evidence carries a bounded validUntil, so admission
-          // requires a fresh join/reconcile observation.
-          (
+          // requires a fresh join/reconcile observation. The clear joins the
+          // per-scope serialized chain so it cannot interleave with an
+          // in-flight removal's durable health write.
+          await (
             await this.getMembershipGate(accountId)
           )?.authority.clearScopeRemoval({
             chatId,
@@ -2187,6 +2327,38 @@ export class TelegramService extends Service {
       // for a later re-join in the same process.
       this.syncedEntityIds.delete(entityId);
 
+      // Remove the departed principal's CURRENT room participation in the
+      // same logical leave operation: ensureConnection-created participants
+      // would otherwise keep resolving room-derived authorization (e.g.
+      // DocumentService grants via getRoomsForParticipants) for a principal
+      // the authority already revoked. The observed `roomId` (topic-aware)
+      // and the chat's main room are both cleared. The principal's ENTITY
+      // row stays (the authority's FK needs it) — only participation goes.
+      try {
+        await this.runtime.removeParticipant(entityId, roomId);
+        // The observed roomId is topic-aware; also clear the chat's MAIN room
+        // (same derivation syncEntity uses) when this leave arrived through a
+        // topic thread, so participation does not survive in the main room.
+        const mainRoomId = createUniqueUuid(
+          this.runtime,
+          this.scopedTelegramKey(chat, accountId),
+        ) as UUID;
+        if (mainRoomId !== roomId) {
+          await this.runtime.removeParticipant(entityId, mainRoomId);
+        }
+      } catch (error) {
+        // error-policy:J7 Participation removal is a best-effort supplement:
+        // the durable revocation above is the authoritative deny, and a
+        // failed row delete must not kill the entity-status update below.
+        this.runtime.reportError("telegram:membership-participation", error, {
+          chatId: chat,
+          accountId,
+          telegramUserId: telegramId,
+          entityId,
+          roomId,
+        });
+      }
+
       const existingEntity = await this.runtime.getEntityById(entityId);
       if (existingEntity) {
         existingEntity.metadata = {
@@ -2226,8 +2398,24 @@ export class TelegramService extends Service {
       if (!update?.chat || !update.new_chat_member) {
         return;
       }
+      // Startup-window check, SYNCHRONOUSLY: the poller goes live before
+      // finishBotStartup's getMe resolves. Awaiting a pending bootstrap here
+      // would stall poller dispatch; instead, queue the transition and
+      // return — discarding it would drop a kick (stale active authority
+      // stays untombstoned) or a re-add (a persisted tombstone keeps denying
+      // the chat indefinitely).
+      if (
+        !this.settledMembershipGates.has(accountId) &&
+        this.membershipGates.has(accountId)
+      ) {
+        this.queuePendingMembershipTransition(update, accountId);
+        return;
+      }
       const gate = await this.getMembershipGate(accountId);
       if (!gate) {
+        // An absent gate (no authority service) is the documented legacy
+        // mode: nothing to record. A FAILED bootstrap already marked the
+        // message gate broken, so group admission fails closed.
         return;
       }
       const botId = update.new_chat_member.user.id.toString();
@@ -2256,7 +2444,9 @@ export class TelegramService extends Service {
       // on those would spuriously invalidate in-flight valid evidence.
       // A present→present update must be a no-op.
       if (previous.state === "revoked") {
-        gate.authority.clearScopeRemoval({ chatId, chatRoomKey });
+        // Awaits the per-scope serialized clear so a concurrently in-flight
+        // removal's tombstone install cannot land after this clear.
+        await gate.authority.clearScopeRemoval({ chatId, chatRoomKey });
       }
     } catch (error) {
       // error-policy:J2 The tombstone/clear could not be applied: the scope

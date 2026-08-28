@@ -17,6 +17,7 @@ import {
 } from "@elizaos/core";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "../dm-policy";
 import { resolveTelegramRuntimeEntityId } from "../identity";
+import type { TelegramMembershipMessageGate } from "../membership-gate";
 
 function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -135,6 +136,16 @@ function telegramStandaloneDedupeKey(
 export async function handleTelegramStandaloneMessage(
   runtime: IAgentRuntime,
   ctx: TelegramStandaloneContext,
+  options?: {
+    /**
+     * Membership admission gate for group/supergroup chats. When omitted
+     * (legacy callers/tests) group admission falls back to the previous
+     * allow-by-default behavior; the standalone service always passes its
+     * authority-backed gate so group senders cannot bypass the membership
+     * authority in standalone mode.
+     */
+    admissionGate?: TelegramMembershipMessageGate;
+  },
 ): Promise<void> {
   try {
     const message = ctx.message;
@@ -198,6 +209,46 @@ export async function handleTelegramStandaloneMessage(
     logger.info(
       `[telegram-standalone] Telegram message from @${username} chat=${chatId} length=${text.length}`,
     );
+
+    // Membership admission for group/supergroup chats: the standalone
+    // poller must not bypass the membership authority. Runs BEFORE
+    // ensureConnection below so a denied sender mutates no participant
+    // state (the authority's reconcile path bootstraps the principal
+    // entity itself when evidence needs the row).
+    if (
+      options?.admissionGate &&
+      (chat.type === "group" || chat.type === "supergroup")
+    ) {
+      const entityId = await resolveTelegramRuntimeEntityId(
+        runtime,
+        accountId,
+        telegramUserId,
+      );
+      const roomId = createUniqueUuid(
+        runtime,
+        `telegram-room:${telegramRoomId}`,
+      ) as UUID;
+      const worldId = createUniqueUuid(runtime, `telegram-world:${chatId}`);
+      const admitted = await options.admissionGate.authorizeMessage({
+        chatId,
+        chatRoomKey: chatId,
+        chatType: chat.type,
+        principalEntityId: entityId,
+        telegramUserId,
+        runtimeMapping: { worldId, roomId, entityId },
+        getChatMember: async () => {
+          // The standalone context carries no telegram client; the gate's
+          // reconcile path handles a throwing provider query by staying
+          // denied (fail closed), which is the correct standalone default.
+          throw new Error(
+            "standalone handler has no getChatMember provider access",
+          );
+        },
+      });
+      if (!admitted) {
+        return;
+      }
+    }
 
     if (!runtime.messageService) {
       throw new ElizaError("Telegram runtime message service is unavailable", {

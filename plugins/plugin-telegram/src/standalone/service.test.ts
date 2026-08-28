@@ -134,7 +134,9 @@ describe("TelegramStandaloneService lifecycle", () => {
     expect(launchMock).toHaveBeenCalledOnce();
     expect(launchMock.mock.calls[0][0]).toMatchObject({
       dropPendingUpdates: false,
-      allowedUpdates: ["message", "message_reaction"],
+      // my_chat_member is delivered so kick/re-add transitions reach the
+      // membership authority — the standalone poller must not bypass it.
+      allowedUpdates: ["message", "message_reaction", "my_chat_member"],
     });
 
     await service.stop();
