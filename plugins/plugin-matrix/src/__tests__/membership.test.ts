@@ -480,6 +480,37 @@ describe("MatrixMembershipMessageGate", () => {
     expect(commands.some((c) => c.op === "applyMembership")).toBe(false);
   });
 
+  it("roster-miss denial never reaches the authority roster-evidence seam (review control)", async () => {
+    // The suite-level double above has no publisher binding registered for
+    // the room, so its applyMembership assertion passes even when the gate
+    // reconciles a roster-miss: the write is swallowed into reportError and
+    // the test observes the fake, not the gate. Against a real authority
+    // with a live binding, a forced reconcile would fabricate a join
+    // transition for a user the live roster does not contain. This control
+    // observes the authority surface directly — a roster-miss denial must
+    // never reach recordTransitionFromRoster.
+    const recordSpy = vi.fn(async () => true);
+    const authority = {
+      authorize: vi.fn(async () => ({
+        decision: "denied",
+        reason: "no_membership",
+        generation: null,
+        health: null,
+      })),
+      recordTransitionFromRoster: recordSpy,
+    } as unknown as MatrixMembershipAuthority;
+    const gate = gateWith(authority);
+    const allowed = await gate.authorizeMessage({
+      roomId: ROOM,
+      isDirectRoom: false,
+      principalEntityId: PRINCIPAL_A,
+      matrixUserId: "@alice:example",
+      getJoinedMemberIds: () => ["@someone-else:example"],
+    });
+    expect(allowed).toBe(false);
+    expect(recordSpy).not.toHaveBeenCalled();
+  });
+
   it("reconciles a roster-present sender and re-authorizes", async () => {
     let call = 0;
     const decisions: MembershipAuthorizationDecision[] = [

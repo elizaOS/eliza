@@ -7,6 +7,7 @@
  * membership values being reported instead of recorded as leave. All SDK and
  * authority surfaces are in-memory doubles — no live homeserver.
  */
+import { EventEmitter } from "node:events";
 import type { IAgentRuntime } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -19,6 +20,7 @@ function createRuntime(): IAgentRuntime {
   return {
     agentId: AGENT_ID,
     reportError: vi.fn(),
+    emitEvent: vi.fn(),
     createWorld: vi.fn().mockResolvedValue(undefined),
     createRoom: vi.fn().mockResolvedValue(undefined),
     createEntity: vi.fn().mockResolvedValue(undefined),
@@ -81,9 +83,12 @@ interface Harness {
 function createHarness(): Harness {
   const runtime = createRuntime();
   const authority = createAuthority();
-  const client = {
+  const client = Object.assign(new EventEmitter(), {
     getRooms: vi.fn(() => [] as unknown[]),
     getRoom: vi.fn(() => null),
+    // Absent crypto: the verification-auto-accept tail of
+    // setupEventHandlers is inert for these sync-path tests.
+    getCrypto: vi.fn(() => undefined),
     // Real boundary shape (matrix-js-sdk 41.x): client.members() resolves the
     // raw homeserver /members envelope consumed via response.chunk — see
     // Room.loadMembersFromServer() — not a userId -> event-arrays map.
@@ -95,7 +100,7 @@ function createHarness(): Harness {
         { state_key: "@bot:example", content: { membership: "join" } },
       ],
     })),
-  };
+  });
   const state: Record<string, unknown> = {
     accountId: "work",
     settings: { userId: "@bot:example", accountId: "work" },
@@ -552,5 +557,66 @@ describe("non-Error rejection values still surface from the degrade loop", () =>
       ).degradeAllMembershipScopes(h.state, "sync_error")
     ).rejects.toBeNull();
     expect(h.authority.markScopeStale).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("a CACHED PREPARED must not publish the SDK store as fresh evidence", () => {
+  // Drives the REAL setupEventHandlers sync listener (not a direct
+  // publishMembershipSnapshots call): a restart that resumes from the SDK
+  // store reports PREPARED with syncData.fromCache=true. The firstPrepared
+  // predicate must treat it as non-first, so publication can only come from
+  // a genuinely fresh server roster — with the network down the room stays
+  // unpublished rather than restoring a possibly-stale cached roster as
+  // current evidence.
+  function emitPrepared(
+    h: Harness,
+    syncData: { oldSyncToken: string | null; fromCache: boolean } | undefined
+  ): void {
+    // Wire the REAL sync listener (setupEventHandlers registers it against
+    // sdk.ClientEvent.Sync === "sync"), then emit through it. getCrypto is
+    // absent on the double, so the verification tail is inert.
+    const svc = h.service as unknown as { setupEventHandlers: (s: unknown) => void };
+    svc.setupEventHandlers(h.state);
+    (h.client as unknown as EventEmitter).emit("sync", "PREPARED", null, syncData);
+  }
+
+  async function waitForPass(): Promise<void> {
+    // The sync handler fires publication as a void promise; let pending
+    // microtasks (and any awaited authority calls inside the pass) settle.
+    for (let i = 0; i < 10; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  it("skips publication on a fromCache PREPARED even when the SDK room model is complete", async () => {
+    const h = createHarness();
+    // A complete, healthy room in the SDK store: no incompleteness flag,
+    // current persisted health, joined members present. Only a fresh server
+    // roster could legitimately publish it — and the network is down.
+    h.authority.scopeHealth = vi.fn(async () => ({ health: "current" }));
+    h.client.members.mockRejectedValue(new Error("network down"));
+    const room = createRoomDouble();
+    h.client.getRooms.mockReturnValue([room]);
+    emitPrepared(h, { oldSyncToken: null, fromCache: true });
+    await waitForPass();
+    // Fail closed: a cached PREPARED is not fresh evidence, and the dead
+    // network means no fresh roster — nothing may be published.
+    expect(h.authority.snapshots).toHaveLength(0);
+    expect(h.client.members).toHaveBeenCalled();
+    expect(h.authority.reportIncomplete).toHaveBeenCalled();
+  });
+
+  it("publishes on a fresh PREPARED (no syncData) when the roster is complete", async () => {
+    const h = createHarness();
+    h.authority.scopeHealth = vi.fn(async () => ({ health: "current" }));
+    h.client.members.mockRejectedValue(new Error("network down"));
+    const room = createRoomDouble();
+    h.client.getRooms.mockReturnValue([room]);
+    // Fresh PREPARED with no syncData at all: firstPrepared is true, and the
+    // SDK room model is complete (5 joined members) so the snapshot path
+    // publishes directly without a fresh-roster fetch.
+    emitPrepared(h, undefined);
+    await waitForPass();
+    expect(h.authority.snapshots).toHaveLength(1);
   });
 });
