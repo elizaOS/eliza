@@ -62,6 +62,101 @@ export interface ViewCatalogSourceError {
   error: Error;
 }
 
+type AuthorityScopedFetchStatus = "idle" | "loading" | "success" | "error";
+
+interface AuthorityScopedFetchState {
+  scope: symbol;
+  requestId: number;
+  status: AuthorityScopedFetchStatus;
+  error: Error | null;
+}
+
+/**
+ * Keeps completion state local to one authority visit. useCachedResource keys
+ * its data cache, but its local error/validation state intentionally survives
+ * key changes; without this boundary, a departed request can reject after a
+ * switch and masquerade as the new authority's failure.
+ */
+function useAuthorityScopedFetcher<T>(
+  authority: string,
+  enabled: boolean,
+  fetcher: (signal: AbortSignal) => Promise<T>,
+): {
+  fetch: (signal: AbortSignal) => Promise<T>;
+  state: AuthorityScopedFetchState;
+} {
+  const scopeRef = useRef<{
+    authority: string;
+    enabled: boolean;
+    token: symbol;
+  }>(undefined);
+  if (
+    !scopeRef.current ||
+    scopeRef.current.authority !== authority ||
+    scopeRef.current.enabled !== enabled
+  ) {
+    scopeRef.current = {
+      authority,
+      enabled,
+      token: Symbol("view-catalog-authority"),
+    };
+  }
+  const scope = scopeRef.current.token;
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
+  const requestIdRef = useRef(0);
+  const [storedState, setStoredState] = useState<AuthorityScopedFetchState>(
+    () => ({
+      scope,
+      requestId: 0,
+      status: enabled ? "loading" : "idle",
+      error: null,
+    }),
+  );
+
+  const state =
+    storedState.scope === scope
+      ? storedState
+      : {
+          scope,
+          requestId: 0,
+          status: enabled ? ("loading" as const) : ("idle" as const),
+          error: null,
+        };
+
+  const fetch = useCallback(
+    async (signal: AbortSignal): Promise<T> => {
+      const requestId = ++requestIdRef.current;
+      setStoredState({
+        scope,
+        requestId,
+        status: "loading",
+        error: null,
+      });
+      try {
+        const data = await fetcherRef.current(signal);
+        setStoredState((current) =>
+          current.scope === scope && current.requestId === requestId
+            ? { ...current, status: "success", error: null }
+            : current,
+        );
+        return data;
+      } catch (cause) {
+        const error = cause instanceof Error ? cause : new Error(String(cause));
+        setStoredState((current) =>
+          current.scope === scope && current.requestId === requestId
+            ? { ...current, status: "error", error }
+            : current,
+        );
+        throw cause;
+      }
+    },
+    [scope],
+  );
+
+  return { fetch, state };
+}
+
 export function useViewCatalog(): UseViewCatalogResult {
   const authority = useActiveAgentAuthority();
   const {
@@ -78,9 +173,20 @@ export function useViewCatalog(): UseViewCatalogResult {
   const catalogCacheKey = `${CATALOG_CACHE_KEY}:${authority}`;
   const installedCacheKey = `${INSTALLED_CACHE_KEY}:${authority}`;
 
+  const catalogFetch = useAuthorityScopedFetcher(
+    authority,
+    appShellRoutesSupported,
+    () => loadAppsCatalog(),
+  );
+  const installedFetch = useAuthorityScopedFetcher(
+    authority,
+    appShellRoutesSupported,
+    () => client.listInstalledApps(),
+  );
+
   const catalogRes = useCachedResource(
     appShellRoutesSupported ? catalogCacheKey : null,
-    () => loadAppsCatalog(),
+    catalogFetch.fetch,
     {
       staleTime: CATALOG_STALE_MS,
       enabled: appShellRoutesSupported,
@@ -88,7 +194,7 @@ export function useViewCatalog(): UseViewCatalogResult {
   );
   const installedRes = useCachedResource(
     appShellRoutesSupported ? installedCacheKey : null,
-    () => client.listInstalledApps(),
+    installedFetch.fetch,
     { staleTime: CATALOG_STALE_MS, enabled: appShellRoutesSupported },
   );
 
@@ -121,9 +227,10 @@ export function useViewCatalog(): UseViewCatalogResult {
 
   const catalog = catalogRes.status === "success" ? catalogRes.data : [];
   const installed = installedRes.status === "success" ? installedRes.data : [];
-  const catalogError = catalogRes.status === "error" ? catalogRes.error : null;
+  const catalogError =
+    catalogFetch.state.status === "error" ? catalogFetch.state.error : null;
   const installedError =
-    installedRes.status === "error" ? installedRes.error : null;
+    installedFetch.state.status === "error" ? installedFetch.state.error : null;
   const sourceErrors = useMemo<readonly ViewCatalogSourceError[]>(() => {
     const failures: ViewCatalogSourceError[] = [];
     if (viewsError) failures.push({ source: "views", error: viewsError });
@@ -145,18 +252,10 @@ export function useViewCatalog(): UseViewCatalogResult {
     authority: string;
     catalog: number;
     installed: number;
-    inheritedCatalogError: Error | null;
-    inheritedInstalledError: Error | null;
-    catalogRequestObserved: boolean;
-    installedRequestObserved: boolean;
   }>({
     authority,
     catalog: 0,
     installed: 0,
-    inheritedCatalogError: null,
-    inheritedInstalledError: null,
-    catalogRequestObserved: catalogRes.status === "loading",
-    installedRequestObserved: installedRes.status === "loading",
   });
   useEffect(() => {
     const attempts = optionalRetryAttemptsRef.current;
@@ -165,52 +264,21 @@ export function useViewCatalog(): UseViewCatalogResult {
         authority,
         catalog: 0,
         installed: 0,
-        // useCachedResource owns error state outside its cache key, so its
-        // first render after an authority switch can still expose the departed
-        // key's error while the new request starts. Quarantine that exact
-        // inherited error until this authority has observed its own request.
-        inheritedCatalogError: catalogError,
-        inheritedInstalledError: installedError,
-        catalogRequestObserved:
-          catalogRes.status === "loading" || catalogRes.isValidating,
-        installedRequestObserved:
-          installedRes.status === "loading" || installedRes.isValidating,
       };
     }
     if (!appShellRoutesSupported) return;
 
     const currentAttempts = optionalRetryAttemptsRef.current;
-    if (catalogRes.status === "loading" || catalogRes.isValidating) {
-      currentAttempts.catalogRequestObserved = true;
-    }
-    if (installedRes.status === "loading" || installedRes.isValidating) {
-      currentAttempts.installedRequestObserved = true;
-    }
     // A successful settlement closes that source's failure episode. Loading
     // and error states deliberately keep the consumed budget so one failing
     // request cannot loop forever, while a later independent outage still gets
     // its own single recovery attempt.
-    if (catalogRes.status === "success") {
+    if (catalogFetch.state.status === "success") {
       currentAttempts.catalog = 0;
-      currentAttempts.inheritedCatalogError = null;
-      currentAttempts.catalogRequestObserved = true;
     }
-    if (installedRes.status === "success") {
+    if (installedFetch.state.status === "success") {
       currentAttempts.installed = 0;
-      currentAttempts.inheritedInstalledError = null;
-      currentAttempts.installedRequestObserved = true;
     }
-
-    const catalogFailureBelongsToAuthority =
-      catalogError !== null &&
-      !catalogRes.isValidating &&
-      (currentAttempts.catalogRequestObserved ||
-        catalogError !== currentAttempts.inheritedCatalogError);
-    const installedFailureBelongsToAuthority =
-      installedError !== null &&
-      !installedRes.isValidating &&
-      (currentAttempts.installedRequestObserved ||
-        installedError !== currentAttempts.inheritedInstalledError);
 
     const timers: number[] = [];
     const scheduleRetry = (
@@ -235,26 +303,16 @@ export function useViewCatalog(): UseViewCatalogResult {
       );
     };
 
-    scheduleRetry(
-      "catalog",
-      catalogFailureBelongsToAuthority,
-      catalogRes.refetch,
-    );
-    scheduleRetry(
-      "installed",
-      installedFailureBelongsToAuthority,
-      installedRes.refetch,
-    );
+    scheduleRetry("catalog", catalogError !== null, catalogRes.refetch);
+    scheduleRetry("installed", installedError !== null, installedRes.refetch);
     return () => {
       for (const timer of timers) window.clearTimeout(timer);
     };
   }, [
     authority,
     appShellRoutesSupported,
-    catalogRes.status,
-    installedRes.status,
-    catalogRes.isValidating,
-    installedRes.isValidating,
+    catalogFetch.state.status,
+    installedFetch.state.status,
     catalogError,
     installedError,
     catalogRes.refetch,
@@ -266,7 +324,12 @@ export function useViewCatalog(): UseViewCatalogResult {
   // otherwise a views-only runtime with no entries can skeleton forever.
   const optionalSourcesLoading =
     appShellRoutesSupported &&
-    (catalogRes.status === "loading" || installedRes.status === "loading");
+    (catalogFetch.state.status === "loading" ||
+      installedFetch.state.status === "loading" ||
+      (catalogFetch.state.status === "success" &&
+        catalogRes.status !== "success") ||
+      (installedFetch.state.status === "success" &&
+        installedRes.status !== "success"));
   const sourcesLoading = viewsLoading || optionalSourcesLoading;
 
   const entries = useMemo(() => {

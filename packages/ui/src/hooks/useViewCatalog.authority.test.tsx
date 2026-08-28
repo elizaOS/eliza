@@ -59,10 +59,12 @@ import { useViewCatalog } from "./useViewCatalog";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((promiseResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve;
+    reject = promiseReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function catalogApp(name: string): RegistryAppInfo {
@@ -327,9 +329,10 @@ describe("useViewCatalog authority isolation", () => {
   it("does not spend a new authority's retry budget on an inherited error", async () => {
     vi.useFakeTimers();
     try {
+      const agentACatalog = deferred<RegistryAppInfo[]>();
       const agentBCatalog = deferred<RegistryAppInfo[]>();
       mocks.loadAppsCatalog
-        .mockRejectedValueOnce(new Error("agent A catalog unavailable"))
+        .mockReturnValueOnce(agentACatalog.promise)
         .mockReturnValueOnce(agentBCatalog.promise);
       mocks.client.listInstalledApps.mockResolvedValue([]);
 
@@ -337,7 +340,6 @@ describe("useViewCatalog authority isolation", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(result.current.sourceErrors).toHaveLength(1);
       expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(1);
 
       act(() => {
@@ -352,6 +354,11 @@ describe("useViewCatalog authority isolation", () => {
       mocks.loadAppsCatalog
         .mockRejectedValueOnce(new Error("later agent B outage"))
         .mockResolvedValueOnce([catalogApp("agent-b-recovered")]);
+      await act(async () => {
+        agentACatalog.reject(new Error("late agent A rejection"));
+        await Promise.resolve();
+      });
+      expect(result.current.sourceErrors).toEqual([]);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(750);
       });
