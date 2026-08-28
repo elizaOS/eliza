@@ -132,6 +132,7 @@ function planRevisionFor(
  */
 class FakeSqlAdapter {
   readonly rows = new Map<string, Record<string, unknown>>();
+  beforeConditionalUpdate?: () => Promise<void> | void;
   private projectColumn = false;
 
   async execute(sql: string, params: unknown[] = []): Promise<void> {
@@ -159,6 +160,39 @@ class FakeSqlAdapter {
         lastActivityAt,
         document,
       ] = params;
+      this.rows.set(id as string, {
+        id,
+        status,
+        archived,
+        priority,
+        title,
+        project_id: projectId,
+        search_text: searchText,
+        updated_at: updatedAt,
+        last_activity_at: lastActivityAt,
+        document,
+      });
+      return;
+    }
+    if (head === "UPDATE") {
+      const beforeConditionalUpdate = this.beforeConditionalUpdate;
+      this.beforeConditionalUpdate = undefined;
+      await beforeConditionalUpdate?.();
+      const [
+        status,
+        archived,
+        priority,
+        title,
+        projectId,
+        searchText,
+        updatedAt,
+        lastActivityAt,
+        document,
+        id,
+        expectedDocument,
+      ] = params;
+      const current = this.rows.get(id as string);
+      if (!current || current.document !== expectedDocument) return;
       this.rows.set(id as string, {
         id,
         status,
@@ -534,28 +568,37 @@ describe("InMemoryTaskStore", () => {
 describe("FileTaskStore", () => {
   it("persists one atomic stuck-task reap and rejects a stale snapshot", async () => {
     const file = await tempFile();
-    const store = new FileTaskStore(file);
-    const { task } = await store.createTask(
+    const staleWriter = new FileTaskStore(file);
+    const { task } = await staleWriter.createTask(
       createInput({ title: "file reap" }),
     );
-    await store.updateTask(task.id, { status: "active", lastActivityAt: 1 });
-    await store.addSession(sessionFor(task.id));
-    const snapshot = await store.getTask(task.id);
+    await staleWriter.updateTask(task.id, {
+      status: "active",
+      lastActivityAt: 1,
+    });
+    await staleWriter.addSession(sessionFor(task.id));
+    const snapshot = await staleWriter.getTask(task.id);
     expect(snapshot).not.toBeNull();
 
-    await store.addSession(
+    const liveWriter = new FileTaskStore(file);
+    await liveWriter.addSession(
       sessionFor(task.id, { id: "row-2", sessionId: "late-session" }),
     );
     expect(
-      await store.interruptStuckTaskIfUnchanged(
+      await staleWriter.interruptStuckTaskIfUnchanged(
         stuckReapInput(must(snapshot, "file task snapshot")),
       ),
     ).toBe(false);
-    const current = await store.getTask(task.id);
+    const current = await staleWriter.getTask(task.id);
     expect(current).not.toBeNull();
+    expect(current?.sessions.map((session) => session.sessionId)).toContain(
+      "late-session",
+    );
+    expect(current?.task.status).toBe("active");
+    expect(current?.events).toHaveLength(0);
     const input = stuckReapInput(must(current, "current file task"));
     input.deadSessionIds = ["session-1", "late-session"];
-    expect(await store.interruptStuckTaskIfUnchanged(input)).toBe(true);
+    expect(await staleWriter.interruptStuckTaskIfUnchanged(input)).toBe(true);
 
     const reopened = new FileTaskStore(file);
     const persisted = await reopened.getTask(task.id);
@@ -734,19 +777,38 @@ class PgliteBareScanRejectingAdapter extends FakeSqlAdapter {
 describe("RuntimeDbTaskStore", () => {
   it("persists an atomic stuck-task reap through the runtime DB backend", async () => {
     const adapter = new FakeSqlAdapter();
-    const store = new RuntimeDbTaskStore(adapter);
-    const { task } = await store.createTask(
+    const staleWriter = new RuntimeDbTaskStore(adapter);
+    const { task } = await staleWriter.createTask(
       createInput({ title: "runtime DB reap" }),
     );
-    await store.updateTask(task.id, { status: "active", lastActivityAt: 1 });
-    await store.addSession(sessionFor(task.id));
-    const snapshot = await store.getTask(task.id);
+    await staleWriter.updateTask(task.id, {
+      status: "active",
+      lastActivityAt: 1,
+    });
+    await staleWriter.addSession(sessionFor(task.id));
+    const snapshot = await staleWriter.getTask(task.id);
     expect(snapshot).not.toBeNull();
+
+    const liveWriter = new RuntimeDbTaskStore(adapter);
+    adapter.beforeConditionalUpdate = () =>
+      liveWriter.addSession(
+        sessionFor(task.id, { id: "row-2", sessionId: "late-session" }),
+      );
     expect(
-      await store.interruptStuckTaskIfUnchanged(
+      await staleWriter.interruptStuckTaskIfUnchanged(
         stuckReapInput(must(snapshot, "runtime DB task snapshot")),
       ),
-    ).toBe(true);
+    ).toBe(false);
+
+    const current = await staleWriter.getTask(task.id);
+    expect(current?.sessions.map((session) => session.sessionId)).toContain(
+      "late-session",
+    );
+    expect(current?.task.status).toBe("active");
+    expect(current?.events).toHaveLength(0);
+    const input = stuckReapInput(must(current, "current runtime DB task"));
+    input.deadSessionIds = ["session-1", "late-session"];
+    expect(await staleWriter.interruptStuckTaskIfUnchanged(input)).toBe(true);
 
     const reopened = new RuntimeDbTaskStore(adapter);
     const persisted = await reopened.getTask(task.id);
@@ -757,6 +819,42 @@ describe("RuntimeDbTaskStore", () => {
     });
     expect(
       persisted?.events.filter(
+        (event) => event.eventType === "task_stalled_reaped",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("compares against the exact legacy runtime DB document serialization", async () => {
+    const adapter = new FakeSqlAdapter();
+    const store = new RuntimeDbTaskStore(adapter);
+    const { task } = await store.createTask(
+      createInput({ title: "legacy runtime DB reap" }),
+    );
+    await store.updateTask(task.id, {
+      status: "active",
+      lastActivityAt: 1,
+    });
+    await store.addSession(sessionFor(task.id));
+
+    const row = must(adapter.rows.get(task.id), "runtime DB row");
+    const legacyDocument = JSON.parse(String(row.document)) as Record<
+      string,
+      unknown
+    >;
+    delete legacyDocument.planRevisions;
+    row.document = JSON.stringify(legacyDocument);
+
+    const snapshot = must(await store.getTask(task.id), "legacy task snapshot");
+    expect(snapshot.planRevisions).toEqual([]);
+    expect(
+      await store.interruptStuckTaskIfUnchanged(stuckReapInput(snapshot)),
+    ).toBe(true);
+
+    const persisted = must(await store.getTask(task.id), "reaped legacy task");
+    expect(persisted.task.status).toBe("interrupted");
+    expect(persisted.planRevisions).toEqual([]);
+    expect(
+      persisted.events.filter(
         (event) => event.eventType === "task_stalled_reaped",
       ),
     ).toHaveLength(1);
