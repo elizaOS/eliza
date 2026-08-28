@@ -145,7 +145,12 @@ describe("adminChatProvider", () => {
 				adminUserId: ADMIN_USER_ID,
 			});
 			expect(getMemories).toHaveBeenCalledWith({
+				agentId: AGENT_ID,
 				entityId: ADMIN_ID,
+				roomId: ROOM_ID,
+				limit: 15,
+				orderBy: "createdAt",
+				orderDirection: "desc",
 				unique: false,
 				tableName: "memories",
 			});
@@ -193,6 +198,48 @@ describe("adminChatProvider", () => {
 			adminHistoryWindowCount: 6,
 		});
 		vi.useRealTimers();
+	});
+
+	test("scopes and bounds history to the newest fifteen messages", async () => {
+		const getMemories = vi.fn(async () =>
+			Array.from({ length: 20 }, (_, index) =>
+				historyMemory(ADMIN_ID, `admin message ${index + 1}`, index + 1),
+			),
+		);
+		const runtime = runtimeWithService(autonomyService(), {
+			getSetting: () => ADMIN_USER_ID,
+			getMemories,
+		});
+
+		const result = await adminChatProvider.get(runtime, message());
+
+		expect(getMemories).toHaveBeenCalledWith({
+			agentId: AGENT_ID,
+			entityId: ADMIN_ID,
+			roomId: ROOM_ID,
+			limit: 15,
+			orderBy: "createdAt",
+			orderDirection: "desc",
+			unique: false,
+			tableName: "memories",
+		});
+		for (let index = 1; index <= 5; index += 1) {
+			expect(result.text).not.toContain(`Admin: admin message ${index}\n`);
+		}
+		for (let index = 6; index <= 20; index += 1) {
+			expect(result.text).toContain(`Admin: admin message ${index}`);
+		}
+		expect(result.text?.indexOf("admin message 6")).toBeLessThan(
+			result.text?.indexOf("admin message 20") ?? -1,
+		);
+		expect(result.data).toMatchObject({
+			messageCount: 15,
+			historyWindowCount: 15,
+		});
+		expect(result.values).toMatchObject({
+			adminHistoryCount: 15,
+			adminHistoryWindowCount: 15,
+		});
 	});
 
 	test("marks old history inactive and renders an empty last admin message as N/A", async () => {
