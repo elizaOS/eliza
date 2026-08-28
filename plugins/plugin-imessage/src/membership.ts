@@ -17,13 +17,7 @@ import type {
   MembershipService,
   UUID,
 } from "@elizaos/core";
-import {
-  ChannelType,
-  createUniqueUuid,
-  ElizaError,
-  logger,
-  ServiceType,
-} from "@elizaos/core";
+import { ChannelType, createUniqueUuid, ElizaError, logger, ServiceType } from "@elizaos/core";
 
 /** Connector id the authority's connector_accounts.provider expects. */
 export const IMESSAGE_MEMBERSHIP_CONNECTOR_ID = "imessage";
@@ -97,9 +91,7 @@ export interface IMessageMembershipRosterSource {
   listChatIds(): readonly string[];
 }
 
-export function isMembershipService(
-  service: unknown,
-): service is MembershipService {
+export function isMembershipService(service: unknown): service is MembershipService {
   return (
     typeof service === "object" &&
     service !== null &&
@@ -108,9 +100,7 @@ export function isMembershipService(
   );
 }
 
-export function resolveMembershipService(
-  runtime: IAgentRuntime,
-): MembershipService | null {
+export function resolveMembershipService(runtime: IAgentRuntime): MembershipService | null {
   const service = runtime.getService(ServiceType.MEMBERSHIP);
   return isMembershipService(service) ? service : null;
 }
@@ -122,10 +112,7 @@ export function resolveMembershipService(
  * [1-8] version-nibble check (stringToUuid-derived ids carry the custom
  * 0x0 version nibble and are rejected).
  */
-export function imessageMembershipPrincipalId(
-  accountKey: string,
-  handle: string,
-): UUID {
+export function imessageMembershipPrincipalId(accountKey: string, handle: string): UUID {
   return uuidV5(`${accountKey}:${handle}`);
 }
 
@@ -185,10 +172,7 @@ interface ScopeTracker {
  * the governed scope health must go unavailable — a denial, never an admit.
  */
 export class IMessageRosterUnavailableError extends ElizaError {
-  constructor(
-    message: string,
-    options?: { cause?: unknown; context?: Record<string, unknown> },
-  ) {
+  constructor(message: string, options?: { cause?: unknown; context?: Record<string, unknown> }) {
     super(message, {
       code: "IMESSAGE_ROSTER_UNAVAILABLE",
       context: options?.context,
@@ -206,10 +190,7 @@ export class IMessageRosterUnavailableError extends ElizaError {
  * as committed.
  */
 export class IMessageSnapshotCommitError extends ElizaError {
-  constructor(
-    message: string,
-    options?: { cause?: unknown; context?: Record<string, unknown> },
-  ) {
+  constructor(message: string, options?: { cause?: unknown; context?: Record<string, unknown> }) {
     super(message, {
       code: "IMESSAGE_SNAPSHOT_COMMIT_FAILED",
       context: options?.context,
@@ -251,10 +232,7 @@ export class IMessageMembershipPublisher {
    * input) so variant spellings resolve to one gate entry while the
    * principal id keeps deriving from the roster's own spelling.
    */
-  private readonly directChatByHandle = new Map<
-    string,
-    { chatId: string; rosterHandle: string }
-  >();
+  private readonly directChatByHandle = new Map<string, { chatId: string; rosterHandle: string }>();
   /**
    * Canonical outbound-target spelling function (the connector's shared
    * normalizeIMessageConnectorHandle). Applied to every index key and every
@@ -267,9 +245,7 @@ export class IMessageMembershipPublisher {
    * scope inventory (e.g. on the connector account row) and fail closed
    * across restarts when chat.db is unavailable.
    */
-  private readonly onRosterCommitted?: (
-    chatIds: readonly string[],
-  ) => Promise<void>;
+  private readonly onRosterCommitted?: (chatIds: readonly string[]) => Promise<void>;
 
   constructor(input: {
     runtime: IAgentRuntime;
@@ -285,16 +261,23 @@ export class IMessageMembershipPublisher {
      * normalizer). Defaults to identity; the service passes the real one.
      */
     normalizeTarget?: (value: string) => string;
+    /**
+     * The governed-chat inventory persisted by a previous process, read
+     * from connector account metadata at startup. Seeds the deletion
+     * ratchet so the first sweep of a restarted process cannot silently
+     * replace a persisted inventory it never degraded.
+     */
+    initialInventory?: readonly string[];
   }) {
     this.runtime = input.runtime;
     this.connectorAccountId = input.connectorAccountId;
     this.accountKey = input.accountKey;
     this.service = input.service;
-    this.publisherInstanceId =
-      input.publisherInstanceId ?? `imessage-${randomUUID()}`;
+    this.publisherInstanceId = input.publisherInstanceId ?? `imessage-${randomUUID()}`;
     this.ownHandle = input.ownHandle ?? null;
     this.onRosterCommitted = input.onRosterCommitted;
     this.normalizeTarget = input.normalizeTarget ?? ((value: string) => value);
+    this.persistedInventory = new Set(input.initialInventory ?? []);
   }
 
   /** Per-scope serialization: authority mutations for one scope must chain. */
@@ -329,9 +312,7 @@ export class IMessageMembershipPublisher {
    * durable health row already belongs to this stable publisher identity,
    * re-bind at the same generation instead of resetting the evidence chain.
    */
-  private async ensureRegistered(
-    scope: MembershipScope,
-  ): Promise<ScopeTracker> {
+  private async ensureRegistered(scope: MembershipScope): Promise<ScopeTracker> {
     const tracker = this.trackerFor(scope);
     if (tracker.generation > 0) return tracker;
 
@@ -371,9 +352,7 @@ export class IMessageMembershipPublisher {
   }
 
   /** Re-adopt durable state after a fence collision. */
-  private async readoptFromHealth(
-    scope: MembershipScope,
-  ): Promise<ScopeTracker> {
+  private async readoptFromHealth(scope: MembershipScope): Promise<ScopeTracker> {
     const tracker = this.trackerFor(scope);
     const health = await this.service.getScopeHealth(scope);
     if (health) {
@@ -416,7 +395,7 @@ export class IMessageMembershipPublisher {
       await this.markSourceUnavailable(source, error);
       throw new IMessageRosterUnavailableError(
         "chat.db roster enumeration failed; degrading all imessage membership scopes",
-        { cause: error, context: { accountKey: this.accountKey } },
+        { cause: error, context: { accountKey: this.accountKey } }
       );
     }
     let published = 0;
@@ -429,7 +408,7 @@ export class IMessageMembershipPublisher {
         await this.markSourceUnavailable(source, error);
         throw new IMessageRosterUnavailableError(
           `chat.db roster read failed for chat ${chatId}; degrading all imessage membership scopes`,
-          { cause: error, context: { accountKey: this.accountKey, chatId } },
+          { cause: error, context: { accountKey: this.accountKey, chatId } }
         );
       }
       if (!roster) continue;
@@ -469,6 +448,7 @@ export class IMessageMembershipPublisher {
         const committedSet = new Set(committedChatIds);
         const reason =
           "governed chat absent from the committed roster sweep; stale evidence degraded";
+        const failedScopes: string[] = [];
         for (const priorId of this.persistedInventory) {
           if (!committedSet.has(priorId)) {
             try {
@@ -476,12 +456,30 @@ export class IMessageMembershipPublisher {
             } catch (error) {
               // error-policy:J4 Degrade-path failure keeps the local flag
               // and continues with the remaining removed scopes.
+              failedScopes.push(priorId);
               this.runtime.reportError?.("imessage:membership:degrade", error, {
                 chatId: priorId,
                 accountKey: this.accountKey,
               });
             }
           }
+        }
+        if (failedScopes.length > 0) {
+          // At least one removed scope's durable degrade could not commit.
+          // Persisting ONLY the committed set would erase the restart
+          // ratchet for the failed scopes (a restart would forget a scope
+          // that was never made durably unavailable), while persisting
+          // nothing would starve additions of newly governed chats. Persist
+          // the conservative union — newly committed chats plus every
+          // still-undegraded removed scope — so the next sweep re-attempts
+          // the degrade and additions still enter the durable inventory.
+          const conservative = [...committedSet, ...failedScopes];
+          logger.warn(
+            `[imessage][membership] ${failedScopes.length} scope degrade(s) failed to commit; persisting conservative inventory (${conservative.length} chat(s)) for degrade re-attempt`
+          );
+          await this.onRosterCommitted(conservative);
+          this.persistedInventory = new Set(conservative);
+          return published;
         }
         // Persist the governed scope inventory (including the empty set —
         // an emptied roster must not leave the durable inventory claiming
@@ -501,7 +499,7 @@ export class IMessageMembershipPublisher {
   /** Start the periodic roster sweep. No-op when already running. */
   startSweeping(
     source: IMessageMembershipRosterSource,
-    intervalMs: number = IMESSAGE_MEMBERSHIP_SWEEP_INTERVAL_MS,
+    intervalMs: number = IMESSAGE_MEMBERSHIP_SWEEP_INTERVAL_MS
   ): void {
     if (this.sweepTimer) return;
     this.sweepTimer = setInterval(() => {
@@ -509,13 +507,11 @@ export class IMessageMembershipPublisher {
         // error-policy:J7 Diagnostics must not kill the sweep timer: report
         // through the runtime so RECENT_ERRORS surfaces the failure.
         logger.warn(
-          `[imessage][membership] periodic roster sweep failed: ${error instanceof Error ? error.message : String(error)}`,
+          `[imessage][membership] periodic roster sweep failed: ${error instanceof Error ? error.message : String(error)}`
         );
-        this.runtime.reportError?.(
-          "imessage:membership:periodic-sweep",
-          error,
-          { accountKey: this.accountKey },
-        );
+        this.runtime.reportError?.("imessage:membership:periodic-sweep", error, {
+          accountKey: this.accountKey,
+        });
       });
     }, intervalMs);
   }
@@ -557,17 +553,14 @@ export class IMessageMembershipPublisher {
       // observation.
       const observedAtMs = Date.parse(observedAt);
       if (!Number.isFinite(observedAtMs)) {
-        throw new Error(
-          `membership snapshot observedAt is not a finite timestamp: ${observedAt}`,
-        );
+        throw new Error(`membership snapshot observedAt is not a finite timestamp: ${observedAt}`);
       }
       const observedToken = observedAtMs.toString(36);
       const snapshotKey = `imessage:snapshot:${roster.chatId}:${observedToken}`;
       for (let attempt = 0; attempt < 2; attempt++) {
         const sourceVersion = tracker.sourceVersion + 1;
         const sourceCursor = `imessage:${roster.chatId}:${sourceVersion}`;
-        const attemptKey =
-          attempt === 0 ? snapshotKey : `${snapshotKey}:r${attempt}`;
+        const attemptKey = attempt === 0 ? snapshotKey : `${snapshotKey}:r${attempt}`;
         try {
           await this.service.applyCompleteSnapshot({
             ...scope,
@@ -578,9 +571,7 @@ export class IMessageMembershipPublisher {
             sourceVersion,
             previousSourceCursor: tracker.sourceCursor,
             sourceCursor,
-            validUntil: new Date(
-              Date.parse(observedAt) + IMESSAGE_MEMBERSHIP_TTL_MS,
-            ).toISOString(),
+            validUntil: new Date(Date.parse(observedAt) + IMESSAGE_MEMBERSHIP_TTL_MS).toISOString(),
             completeness: "complete",
             members,
             idempotencyKey: attemptKey,
@@ -592,10 +583,7 @@ export class IMessageMembershipPublisher {
           tracker.lastSweepAt = Date.now();
           tracker.degraded = false;
           for (const member of members) {
-            tracker.renewedAt.set(
-              member.canonicalPrincipalId as string,
-              Date.now(),
-            );
+            tracker.renewedAt.set(member.canonicalPrincipalId as string, Date.now());
           }
           return true;
         } catch (error) {
@@ -618,10 +606,9 @@ export class IMessageMembershipPublisher {
           throw error;
         }
       }
-      throw new IMessageSnapshotCommitError(
-        "roster snapshot commit exhausted its fenced retries",
-        { context: { accountKey: this.accountKey, chatId: roster.chatId } },
-      );
+      throw new IMessageSnapshotCommitError("roster snapshot commit exhausted its fenced retries", {
+        context: { accountKey: this.accountKey, chatId: roster.chatId },
+      });
     });
   }
 
@@ -648,16 +635,9 @@ export class IMessageMembershipPublisher {
   > {
     const roomKey = roster.chatId;
     const derivedRoomId = createUniqueUuid(this.runtime, roomKey);
-    const derivedWorldId = createUniqueUuid(
-      this.runtime,
-      `imessage-world-${roomKey}`,
-    );
-    const runtimeRoomId = AUTHORITY_UUID_PATTERN.test(derivedRoomId)
-      ? derivedRoomId
-      : null;
-    const runtimeWorldId = AUTHORITY_UUID_PATTERN.test(derivedWorldId)
-      ? derivedWorldId
-      : null;
+    const derivedWorldId = createUniqueUuid(this.runtime, `imessage-world-${roomKey}`);
+    const runtimeRoomId = AUTHORITY_UUID_PATTERN.test(derivedRoomId) ? derivedRoomId : null;
+    const runtimeWorldId = AUTHORITY_UUID_PATTERN.test(derivedWorldId) ? derivedWorldId : null;
 
     if (runtimeRoomId) {
       await this.ensureRuntimeRoomRow(runtimeRoomId, roster);
@@ -669,15 +649,9 @@ export class IMessageMembershipPublisher {
     const members = [];
     for (const participant of roster.participants) {
       if (!participant.handle) continue;
-      const principalId = imessageMembershipPrincipalId(
-        this.accountKey,
-        participant.handle,
-      );
+      const principalId = imessageMembershipPrincipalId(this.accountKey, participant.handle);
       await this.ensurePrincipalEntity(principalId, participant.handle);
-      const connectorEntityId = createUniqueUuid(
-        this.runtime,
-        participant.handle,
-      );
+      const connectorEntityId = createUniqueUuid(this.runtime, participant.handle);
       members.push({
         canonicalPrincipalId: principalId,
         roles:
@@ -691,19 +665,14 @@ export class IMessageMembershipPublisher {
         runtime: {
           worldId: runtimeWorldId,
           roomId: runtimeRoomId,
-          entityId: AUTHORITY_UUID_PATTERN.test(connectorEntityId)
-            ? connectorEntityId
-            : null,
+          entityId: AUTHORITY_UUID_PATTERN.test(connectorEntityId) ? connectorEntityId : null,
         },
       });
     }
     return members;
   }
 
-  private async ensurePrincipalEntity(
-    principalId: UUID,
-    handle: string,
-  ): Promise<void> {
+  private async ensurePrincipalEntity(principalId: UUID, handle: string): Promise<void> {
     const existing = await this.runtime.getEntityById?.(principalId);
     if (existing) return;
     await this.runtime.createEntities?.([
@@ -720,10 +689,7 @@ export class IMessageMembershipPublisher {
     ]);
   }
 
-  private async ensureRuntimeRoomRow(
-    roomId: UUID,
-    roster: IMessageRosterRead,
-  ): Promise<void> {
+  private async ensureRuntimeRoomRow(roomId: UUID, roster: IMessageRosterRead): Promise<void> {
     if (this.runtime.getRoom) {
       const room = await this.runtime.getRoom(roomId);
       if (room) return;
@@ -737,10 +703,7 @@ export class IMessageMembershipPublisher {
     });
   }
 
-  private async ensureRuntimeWorldRow(
-    worldId: UUID,
-    roster: IMessageRosterRead,
-  ): Promise<void> {
+  private async ensureRuntimeWorldRow(worldId: UUID, roster: IMessageRosterRead): Promise<void> {
     await this.runtime.createWorld?.({
       id: worldId,
       name: roster.displayName ?? roster.chatId,
@@ -768,10 +731,7 @@ export class IMessageMembershipPublisher {
     return this.serialized(key, async () => {
       const tracker = this.trackerFor(scope);
       if (tracker.degraded) return false;
-      const principalId = imessageMembershipPrincipalId(
-        this.accountKey,
-        input.handle,
-      );
+      const principalId = imessageMembershipPrincipalId(this.accountKey, input.handle);
       const last = tracker.renewedAt.get(principalId as string) ?? 0;
       if (Date.now() - last < IMESSAGE_MEMBERSHIP_RENEWAL_MS) {
         return false;
@@ -803,9 +763,7 @@ export class IMessageMembershipPublisher {
           sourceVersion,
           previousSourceCursor: tracker.sourceCursor,
           sourceCursor,
-          validUntil: new Date(
-            Date.parse(observedAt) + IMESSAGE_MEMBERSHIP_TTL_MS,
-          ).toISOString(),
+          validUntil: new Date(Date.parse(observedAt) + IMESSAGE_MEMBERSHIP_TTL_MS).toISOString(),
           idempotencyKey: renewKey,
           observedAt,
         });
@@ -824,7 +782,7 @@ export class IMessageMembershipPublisher {
           // baseline: skip — the sweep is the authoritative evidence path and
           // the sender's committed snapshot is still valid inside its window.
           logger.debug(
-            `[imessage][membership] renewal skipped (no complete baseline in this publisher generation); roster sweep will re-publish: ${input.chatId}`,
+            `[imessage][membership] renewal skipped (no complete baseline in this publisher generation); roster sweep will re-publish: ${input.chatId}`
           );
           return false;
         }
@@ -874,12 +832,14 @@ export class IMessageMembershipPublisher {
           observedAt: input.observedAt ?? new Date().toISOString(),
         });
       } catch (error) {
-        // error-policy:J4 The authority itself is unreachable; keep the
-        // local degraded flag (fail-closed admission) and surface the
-        // failure — admission still denies.
+        // error-policy:J2 The durable authority write failed. The local
+        // degraded flag above still fails admission closed for this process,
+        // but the caller must learn the durable degrade never committed so it
+        // can retain any restart ratchet that depends on it.
         logger.warn(
-          `[imessage][membership] scope degrade commit failed (staying degraded): ${error instanceof Error ? error.message : String(error)}`,
+          `[imessage][membership] scope degrade commit failed (staying degraded locally): ${error instanceof Error ? error.message : String(error)}`
         );
+        throw error instanceof Error ? error : new Error(String(error));
       }
     });
   }
@@ -902,10 +862,7 @@ export class IMessageMembershipPublisher {
    * legacy-ungated: when the durable authority carries ANY health record
    * for the chat's scope, an unresolvable target fails closed.
    */
-  async authorizeOutboundInChat(
-    target: string,
-    chatId: string,
-  ): Promise<boolean | null> {
+  async authorizeOutboundInChat(target: string, chatId: string): Promise<boolean | null> {
     const direct = await this.authorizeOutbound(target);
     if (direct !== null) return direct;
     const scope = imessageMembershipScope({
@@ -934,7 +891,7 @@ export class IMessageMembershipPublisher {
    */
   async reconcileRemovedScopes(
     persistedChatIds: readonly string[],
-    source: IMessageMembershipRosterSource,
+    source: IMessageMembershipRosterSource
   ): Promise<void> {
     if (persistedChatIds.length === 0) return;
     let currentIds: ReadonlySet<string>;
@@ -944,18 +901,34 @@ export class IMessageMembershipPublisher {
       // error-policy:J4 Enumeration failed: degrade every persisted scope
       // rather than trust possibly-stale evidence against an unreadable
       // source.
-      const reason =
-        "chat.db roster enumeration failed during startup reconciliation";
+      const reason = "chat.db roster enumeration failed during startup reconciliation";
       for (const chatId of persistedChatIds) {
-        await this.degradeScope({ chatId, reason });
+        try {
+          await this.degradeScope({ chatId, reason });
+        } catch (error) {
+          // error-policy:J4 One scope's durable degrade failing must not
+          // abandon the remaining scopes to ungoverned.
+          this.runtime.reportError?.("imessage:membership:degrade", error, {
+            chatId,
+            accountKey: this.accountKey,
+          });
+        }
       }
       return;
     }
-    const reason =
-      "governed chat absent from the fresh roster; stale evidence degraded";
+    const reason = "governed chat absent from the fresh roster; stale evidence degraded";
     for (const chatId of persistedChatIds) {
       if (!currentIds.has(chatId)) {
-        await this.degradeScope({ chatId, reason });
+        try {
+          await this.degradeScope({ chatId, reason });
+        } catch (error) {
+          // error-policy:J4 Keep degrading the remaining removed scopes;
+          // the failed scope keeps its local degraded flag.
+          this.runtime.reportError?.("imessage:membership:degrade", error, {
+            chatId,
+            accountKey: this.accountKey,
+          });
+        }
       }
     }
   }
@@ -976,10 +949,7 @@ export class IMessageMembershipPublisher {
     }
   }
 
-  private setIndexEntry(
-    key: string,
-    entry: { chatId: string; rosterHandle: string },
-  ): void {
+  private setIndexEntry(key: string, entry: { chatId: string; rosterHandle: string }): void {
     const existing = this.directChatByHandle.get(key);
     if (existing && existing.chatId !== entry.chatId) {
       this.directChatByHandle.set(key, { chatId: "", rosterHandle: "" });
@@ -997,28 +967,37 @@ export class IMessageMembershipPublisher {
    */
   async markSourceUnavailable(
     source: IMessageMembershipRosterSource,
-    cause: unknown,
+    cause: unknown
   ): Promise<void> {
     const reason = `chat.db roster source unavailable: ${cause instanceof Error ? cause.message : String(cause)}`;
     for (const chatId of this.knownChatIds(source)) {
-      await this.degradeScope({ chatId, reason });
+      try {
+        await this.degradeScope({ chatId, reason });
+      } catch (error) {
+        // error-policy:J4 One scope's durable degrade failing must not
+        // abandon the remaining scopes to ungoverned; the failed scope
+        // keeps its local degraded flag and denies in this process.
+        this.runtime.reportError?.("imessage:membership:degrade", error, {
+          chatId,
+          accountKey: this.accountKey,
+        });
+      }
     }
   }
 
   private knownChatIds(source: IMessageMembershipRosterSource): string[] {
+    const fromInventory = [...this.persistedInventory];
     try {
-      return [...source.listChatIds()];
+      return [...new Set([...fromInventory, ...source.listChatIds()])];
     } catch {
       // error-policy:J6 Best-effort enumeration fallback: fall back to the
       // in-memory scope table (keys are <account>:<chatId>) plus the
-      // direct-handle index built by prior sweeps.
-      const fromScopes = [...this.scopes.keys()].map((k) =>
-        k.split(":").slice(1).join(":"),
-      );
-      const fromIndex = [...this.directChatByHandle.values()].map(
-        (entry) => entry.chatId,
-      );
-      return [...new Set([...fromScopes, ...fromIndex])];
+      // direct-handle index built by prior sweeps. The persisted inventory
+      // is always included: when enumeration fails, scopes a previous
+      // process governed must degrade, not vanish from the known set.
+      const fromScopes = [...this.scopes.keys()].map((k) => k.split(":").slice(1).join(":"));
+      const fromIndex = [...this.directChatByHandle.values()].map((entry) => entry.chatId);
+      return [...new Set([...fromInventory, ...fromScopes, ...fromIndex])];
     }
   }
 
@@ -1032,8 +1011,7 @@ export class IMessageMembershipPublisher {
    * treating them as ungoverned.
    */
   async degradePersistedScopes(chatIds: readonly string[]): Promise<void> {
-    const reason =
-      "chat.db unavailable at service start; persisted scope inventory degraded";
+    const reason = "chat.db unavailable at service start; persisted scope inventory degraded";
     for (const chatId of chatIds) {
       // Per-chat resilient: a failure degrading one scope (authority
       // registration or health write) must not abandon the remaining
@@ -1070,10 +1048,7 @@ export class IMessageMembershipPublisher {
    * failure whose durable unavailable commit may itself have failed, so a
    * decision from possibly-stale authority evidence is never trusted.
    */
-  async authorizeSend(input: {
-    chatId: string;
-    handle: string;
-  }): Promise<boolean> {
+  async authorizeSend(input: { chatId: string; handle: string }): Promise<boolean> {
     const scope = imessageMembershipScope({
       agentId: this.runtime.agentId,
       connectorAccountId: this.connectorAccountId,
@@ -1081,10 +1056,7 @@ export class IMessageMembershipPublisher {
     });
     const tracker = this.scopes.get(scopeKey(scope));
     if (tracker?.degraded) return false;
-    const principalId = imessageMembershipPrincipalId(
-      this.accountKey,
-      input.handle,
-    );
+    const principalId = imessageMembershipPrincipalId(this.accountKey, input.handle);
     try {
       const decision = await this.service.authorize(scope, principalId);
       return decision.decision === "allowed";
@@ -1109,9 +1081,7 @@ export class IMessageMembershipPublisher {
     // of one counterparty resolve to one gate entry.
     const canonical = this.normalizeTarget(target) || target;
     const entry =
-      this.directChatByHandle.get(canonical) ??
-      this.directChatByHandle.get(target) ??
-      null;
+      this.directChatByHandle.get(canonical) ?? this.directChatByHandle.get(target) ?? null;
     // A tombstoned (ambiguous) key carries an empty chat id: deny rather
     // than resolve a possibly-wrong scope.
     if (entry && entry.chatId === "") return false;
@@ -1120,9 +1090,7 @@ export class IMessageMembershipPublisher {
     if (chatId === null) {
       // A chat id used directly as the target names its own scope; accept
       // the canonical `chat_id:` prefix used by the connector target shape.
-      const bare = target.startsWith("chat_id:")
-        ? target.slice("chat_id:".length)
-        : target;
+      const bare = target.startsWith("chat_id:") ? target.slice("chat_id:".length) : target;
       for (const key of this.scopes.keys()) {
         if (key.endsWith(`:${bare}`)) {
           chatId = key.split(":").slice(1).join(":");
@@ -1140,10 +1108,7 @@ export class IMessageMembershipPublisher {
     if (tracker?.degraded) return false;
     try {
       if (principalHandle !== null) {
-        const principalId = imessageMembershipPrincipalId(
-          this.accountKey,
-          principalHandle,
-        );
+        const principalId = imessageMembershipPrincipalId(this.accountKey, principalHandle);
         const decision = await this.service.authorize(scope, principalId);
         return decision.decision === "allowed";
       }

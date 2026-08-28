@@ -11,12 +11,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  AgentRuntime,
-  type MembershipScope,
-  MembershipService,
-  type UUID,
-} from "@elizaos/core";
+import { AgentRuntime, type MembershipScope, MembershipService, type UUID } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -49,18 +44,11 @@ let restartDir: string;
  * path is what needs the real database here.
  */
 class SyntheticRosterSource implements IMessageMembershipRosterSource {
-  private chats = new Map<
-    string,
-    { chatType: "direct" | "group"; handles: string[] }
-  >();
+  private chats = new Map<string, { chatType: "direct" | "group"; handles: string[] }>();
   private counter = 0;
   failure: Error | null = null;
 
-  setChat(
-    chatId: string,
-    chatType: "direct" | "group",
-    handles: string[],
-  ): void {
+  setChat(chatId: string, chatType: "direct" | "group", handles: string[]): void {
     this.chats.set(chatId, { chatType, handles });
   }
 
@@ -98,9 +86,7 @@ async function scopeFor(chatId: string): Promise<MembershipScope> {
 }
 
 beforeAll(async () => {
-  restartDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "imessage-membership-24370-"),
-  );
+  restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "imessage-membership-24370-"));
   // The membership authority validates UUID version nibbles, so the test
   // agent id must be a real v4. Build the runtime directly over a real
   // PGlite adapter, the same shape plugin-sql's own authority tests use.
@@ -123,17 +109,12 @@ beforeAll(async () => {
     default?: { plugins?: unknown[] };
     plugin?: { plugins?: unknown[] };
   };
-  const sqlPlugin =
-    sqlModule.default ?? (sqlModule.plugin as { plugins?: unknown[] });
+  const sqlPlugin = sqlModule.default ?? (sqlModule.plugin as { plugins?: unknown[] });
   if (sqlPlugin) {
-    await runtime.registerPlugin(
-      sqlPlugin as Parameters<AgentRuntime["registerPlugin"]>[0],
-    );
+    await runtime.registerPlugin(sqlPlugin as Parameters<AgentRuntime["registerPlugin"]>[0]);
   }
   await runtime.initialize();
-  const services = runtime.getServicesByType<MembershipService>(
-    MembershipService.serviceType,
-  );
+  const services = runtime.getServicesByType<MembershipService>(MembershipService.serviceType);
   expect(services.length).toBeGreaterThan(0);
   membership = services[0];
 
@@ -155,7 +136,7 @@ beforeAll(async () => {
     metadata: { source: "imessage-membership" },
   });
   expect(stored.id).toMatch(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   );
   connectorAccountId = stored.id as UUID;
 
@@ -181,9 +162,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     const c = imessageMembershipPrincipalId("default", "+15550002222");
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
-    expect(a).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-    );
+    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
   });
 
   it("publishes a complete roster snapshot and admits its members", async () => {
@@ -202,7 +181,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     for (const handle of ["+15550001111", "+15550002222", "+15550003333"]) {
       const decision = await membership.authorize(
         scope,
-        imessageMembershipPrincipalId("default", handle),
+        imessageMembershipPrincipalId("default", handle)
       );
       expect(decision.decision).toBe("allowed");
     }
@@ -210,7 +189,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     // A handle not in the roster must be denied: the roster is the truth.
     const outsider = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550009999"),
+      imessageMembershipPrincipalId("default", "+15550009999")
     );
     expect(outsider.decision).toBe("denied");
   });
@@ -228,12 +207,12 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     const scope = await scopeFor(chatId);
     const removed = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550005555"),
+      imessageMembershipPrincipalId("default", "+15550005555")
     );
     expect(removed.decision).toBe("denied");
     const kept = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550004444"),
+      imessageMembershipPrincipalId("default", "+15550004444")
     );
     expect(kept.decision).toBe("allowed");
   });
@@ -254,7 +233,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     expect(health?.health).toBe("unavailable");
     const decision = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550006666"),
+      imessageMembershipPrincipalId("default", "+15550006666")
     );
     expect(decision.decision).toBe("denied");
 
@@ -264,7 +243,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     expect(restored).toBeGreaterThanOrEqual(1);
     const after = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550006666"),
+      imessageMembershipPrincipalId("default", "+15550006666")
     );
     expect(after.decision).toBe("allowed");
   });
@@ -278,7 +257,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     const scope = await scopeFor(chatId);
     const before = await membership.getMembership(
       scope,
-      imessageMembershipPrincipalId("default", "+15550007777"),
+      imessageMembershipPrincipalId("default", "+15550007777")
     );
     expect(before?.state).toBe("active");
 
@@ -295,7 +274,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     // carries the authorization, not the in-memory renewal map.
     const decision = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550007777"),
+      imessageMembershipPrincipalId("default", "+15550007777")
     );
     expect(decision.decision).toBe("allowed");
   });
@@ -321,7 +300,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     const scope = await scopeFor(chatId);
     const decision = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550008888"),
+      imessageMembershipPrincipalId("default", "+15550008888")
     );
     expect(decision.decision).toBe("allowed");
   });
@@ -359,7 +338,7 @@ describe("iMessage membership failure semantics (RP R1 fixes)", () => {
     for (const handle of ["+155****9001", "+155****9002"]) {
       const decision = await membership.authorize(
         scope,
-        imessageMembershipPrincipalId("default", handle),
+        imessageMembershipPrincipalId("default", handle)
       );
       expect(decision.decision).toBe("allowed");
     }
@@ -382,7 +361,7 @@ describe("iMessage membership failure semantics (RP R1 fixes)", () => {
     expect(tracker).toBeDefined();
     tracker?.renewedAt.set(
       imessageMembershipPrincipalId("default", "+155****9011") as string,
-      Date.now() - 60 * 60 * 1000,
+      Date.now() - 60 * 60 * 1000
     );
     const first = await publisher.renewSender({
       chatId,
@@ -395,7 +374,7 @@ describe("iMessage membership failure semantics (RP R1 fixes)", () => {
     // window to expire again by backdating the in-process renewal stamp.
     tracker?.renewedAt.set(
       imessageMembershipPrincipalId("default", "+155****9011") as string,
-      Date.now() - 60 * 60 * 1000,
+      Date.now() - 60 * 60 * 1000
     );
     const second = await publisher.renewSender({
       chatId,
@@ -480,7 +459,7 @@ describe("iMessage membership failure semantics (RP R1 fixes)", () => {
     expect(health?.health).toBe("unavailable");
     const decision = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+155****9041"),
+      imessageMembershipPrincipalId("default", "+155****9041")
     );
     expect(decision.decision).toBe("denied");
   });
@@ -498,8 +477,7 @@ describe("iMessage membership R2 fixes (canonical index + reconciliation)", () =
     const chatId = "Imessage;-;+155****9051";
     source.setChat(chatId, "direct", ["+155****9051"]);
 
-    const canonical = (raw: string) =>
-      raw.replace(/^(\+\d{3})\*{4}(\d{4})$/, "$1$2");
+    const canonical = (raw: string) => raw.replace(/^(\+\d{3})\*{4}(\d{4})$/, "$1$2");
     const gated = new IMessageMembershipPublisher({
       runtime,
       connectorAccountId,
@@ -546,12 +524,8 @@ describe("iMessage membership R2 fixes (canonical index + reconciliation)", () =
 
     const scope = await scopeFor(chatId);
     expect(
-      (
-        await membership.authorize(
-          scope,
-          imessageMembershipPrincipalId("default", "+155****9071"),
-        )
-      ).decision,
+      (await membership.authorize(scope, imessageMembershipPrincipalId("default", "+155****9071")))
+        .decision
     ).toBe("allowed");
 
     // The chat vanished from the fresh roster: the persisted inventory
@@ -562,12 +536,8 @@ describe("iMessage membership R2 fixes (canonical index + reconciliation)", () =
     const health = await membership.getScopeHealth(scope);
     expect(health?.health).toBe("unavailable");
     expect(
-      (
-        await membership.authorize(
-          scope,
-          imessageMembershipPrincipalId("default", "+155****9071"),
-        )
-      ).decision,
+      (await membership.authorize(scope, imessageMembershipPrincipalId("default", "+155****9071")))
+        .decision
     ).toBe("denied");
   });
 
@@ -599,13 +569,273 @@ describe("iMessage membership R2 fixes (canonical index + reconciliation)", () =
     const health = await membership.getScopeHealth(scope);
     expect(health?.health).toBe("unavailable");
     expect(
-      (
-        await membership.authorize(
-          scope,
-          imessageMembershipPrincipalId("default", "+155****9091"),
-        )
-      ).decision,
+      (await membership.authorize(scope, imessageMembershipPrincipalId("default", "+155****9091")))
+        .decision
     ).toBe("denied");
+  });
+
+  it("retains the persisted inventory when the durable degrade fails, so a restart re-attempts it", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;-;+155****9097";
+    source.setChat(chatId, "direct", ["+155****9097"]);
+
+    let persistedInventory: readonly string[] = [];
+    // The authority's durable setScopeHealth write can be switched off
+    // while every other operation still runs against the real service.
+    let healthWriteFailing = false;
+    const flaky = new Proxy(membership, {
+      get(target, prop, receiver) {
+        if (prop === "setScopeHealth" && healthWriteFailing) {
+          return async () => {
+            throw new Error("health write unavailable");
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const publisher = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: flaky,
+      onRosterCommitted: async (chatIds) => {
+        persistedInventory = [...chatIds];
+      },
+    });
+
+    // Baseline: a healthy sweep commits the snapshot and persists the
+    // governed inventory (the authority is the real PGlite service).
+    await publisher.sweepRoster(source);
+    expect(persistedInventory).toEqual([chatId]);
+
+    // The roster empties (chat deleted) while the authority's durable
+    // health write fails: the sweep must keep the removed chat in the
+    // persisted inventory (the conservative union of committed chats and
+    // still-undegraded removed scopes) — dropping it would erase the
+    // restart ratchet and let a restart forget a scope that was never
+    // made durably unavailable.
+    healthWriteFailing = true;
+    const empty = new SyntheticRosterSource();
+    await publisher.sweepRoster(empty);
+    expect(persistedInventory).toEqual([chatId]);
+
+    // In THIS process admission still denies: the local degraded flag
+    // survives the failed durable write.
+    expect(await publisher.authorizeOutbound("+155****9097")).toBe(false);
+
+    // ... and a restart (fresh publisher over the REAL service, consuming
+    // the retained inventory) re-attempts the degrade and fails closed:
+    // the never-degraded durable evidence must not authorize ungated.
+    const restarted = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: membership,
+    });
+    await restarted.degradePersistedScopes(persistedInventory);
+    expect(await restarted.authorizeOutbound("+155****9097")).toBe(false);
+
+    // Control on the same fixtures: with the health write healthy again,
+    // the same empty sweep DOES persist the empty inventory (the ratchet
+    // only holds while the durable degrade cannot commit).
+    const recovered = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: membership,
+      initialInventory: persistedInventory,
+      onRosterCommitted: async (chatIds) => {
+        persistedInventory = [...chatIds];
+      },
+    });
+    await recovered.sweepRoster(empty);
+    expect(persistedInventory).toEqual([]);
+  });
+
+  it("keeps a never-degradable removed scope in the durable inventory across repeated failing sweeps", async () => {
+    const chatId = "Imessage;-;+155****9099";
+    const source = new SyntheticRosterSource();
+    source.setChat(chatId, "direct", ["+155****9099"]);
+
+    let persistedInventory: readonly string[] = [];
+    const alwaysFailing = new Proxy(membership, {
+      get(target, prop, receiver) {
+        if (prop === "setScopeHealth") {
+          return async () => {
+            throw new Error("health write permanently unavailable");
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const publisher = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: alwaysFailing,
+      onRosterCommitted: async (chatIds) => {
+        persistedInventory = [...chatIds];
+      },
+    });
+    await publisher.sweepRoster(source);
+    expect(persistedInventory).toEqual([chatId]);
+
+    // The roster is permanently empty and the durable degrade is
+    // permanently broken: EVERY subsequent sweep must re-attempt the
+    // degrade and keep the scope in the durable inventory — dropping it
+    // after any number of failed attempts would let a restart forget a
+    // scope that was never made durably unavailable.
+    const empty = new SyntheticRosterSource();
+    for (let i = 0; i < 3; i += 1) {
+      await publisher.sweepRoster(empty);
+      expect(persistedInventory).toEqual([chatId]);
+    }
+
+    // And when the authority finally recovers, a restart consuming the
+    // retained inventory degrades the scope durably and fails closed.
+    const restarted = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: membership,
+    });
+    await restarted.degradePersistedScopes(persistedInventory);
+    expect(await restarted.authorizeOutbound("+155****9099")).toBe(false);
+    const scope = await scopeFor(chatId);
+    expect((await membership.getScopeHealth(scope))?.health).toBe("unavailable");
+  });
+
+  it("startup account metadata preserves the prior governed inventory across upserts (real connector-account manager)", async () => {
+    const { getConnectorAccountManager } = await import("@elizaos/core");
+    const manager = getConnectorAccountManager(runtime);
+    const { governedChatInventoryMetadata, readGovernedChatInventory } = await import(
+      "./service.js"
+    );
+
+    const chatId = "Imessage;-;+155****9098";
+    const accountId = `imessage-${"default"}`;
+
+    // A previous process persisted a governed inventory.
+    const now = Date.now();
+    await manager.upsertAccount("imessage", {
+      id: accountId,
+      provider: "imessage",
+      label: "iMessage (local Apple account)",
+      role: "AGENT",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      createdAt: now,
+      updatedAt: now,
+      metadata: governedChatInventoryMetadata([chatId]),
+    });
+
+    // The startup path reads the prior inventory BEFORE its own upsert
+    // (which replaces metadata wholesale) and rebuilds the replacement
+    // metadata through the SAME production helper initMembership uses —
+    // if startup regressed to omitting the inventory key, this shared
+    // implementation is what fails, not a test-side re-enactment.
+    const priorAccount = await manager.getAccount("imessage", accountId);
+    const priorInventory = readGovernedChatInventory(priorAccount?.metadata);
+    expect(priorInventory).toEqual([chatId]);
+    await manager.upsertAccount("imessage", {
+      id: accountId,
+      provider: "imessage",
+      label: "iMessage (local Apple account)",
+      role: "AGENT",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      createdAt: priorAccount?.createdAt ?? now,
+      updatedAt: Date.now(),
+      metadata: governedChatInventoryMetadata(priorInventory),
+    });
+
+    // A restart reading the account after the startup upsert still finds
+    // the inventory: the ratchet survived the metadata replacement. This
+    // assertion fails against the pre-fix startup upsert, which wrote
+    // metadata: { source } only and erased the inventory.
+    const after = await manager.getAccount("imessage", accountId);
+    expect(readGovernedChatInventory(after?.metadata)).toEqual([chatId]);
+
+    // Control proving the hazard this pins: an upsert that omits the
+    // inventory key replaces metadata wholesale and erases it — exactly
+    // the startup regression this suite guards against.
+    await manager.upsertAccount("imessage", {
+      id: accountId,
+      provider: "imessage",
+      label: "iMessage (local Apple account)",
+      role: "AGENT",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      createdAt: now,
+      updatedAt: Date.now(),
+      metadata: { source: "imessage-membership" },
+    });
+    const erased = await manager.getAccount("imessage", accountId);
+    expect(readGovernedChatInventory(erased?.metadata)).toEqual([]);
+  });
+
+  it("persists the conservative union when a removal degrade fails while another chat is added", async () => {
+    const chatA = "Imessage;-;+155****9093";
+    const chatB = "Imessage;-;+155****9094";
+
+    let persistedInventory: readonly string[] = [];
+    let healthWriteFailing = false;
+    const flaky = new Proxy(membership, {
+      get(target, prop, receiver) {
+        if (prop === "setScopeHealth" && healthWriteFailing) {
+          return async () => {
+            throw new Error("health write unavailable");
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const publisher = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: flaky,
+      onRosterCommitted: async (chatIds) => {
+        persistedInventory = [...chatIds];
+      },
+    });
+
+    // Baseline: chat A governed.
+    const withA = new SyntheticRosterSource();
+    withA.setChat(chatA, "direct", ["+155****9093"]);
+    await publisher.sweepRoster(withA);
+    expect(persistedInventory).toEqual([chatA]);
+
+    // Next sweep: A deleted (degrade fails durably) AND B added (commits).
+    // The persisted inventory must be the union {A, B}: A stays so a
+    // restart re-attempts its degrade; B enters so a restart without
+    // chat.db degrades it instead of treating it as ungoverned.
+    healthWriteFailing = true;
+    const withB = new SyntheticRosterSource();
+    withB.setChat(chatB, "direct", ["+155****9094"]);
+    await publisher.sweepRoster(withB);
+    expect([...persistedInventory].sort()).toEqual([chatA, chatB].sort());
+
+    // B's fresh committed evidence admits it right now (A denies locally
+    // through its degraded flag, not the durable health it failed to write).
+    expect(await publisher.authorizeOutbound("+155****9094")).toBe(true);
+    expect(await publisher.authorizeOutbound("+155****9093")).toBe(false);
+
+    // And a restart consuming the union still degrades BOTH scopes
+    // fail-closed (A never committed its degrade; B's snapshot is stale
+    // after the restart's degrade-all persisted scopes path).
+    const restarted = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: membership,
+    });
+    await restarted.degradePersistedScopes(persistedInventory);
+    expect(await restarted.authorizeOutbound("+155****9093")).toBe(false);
+    expect(await restarted.authorizeOutbound("+155****9094")).toBe(false);
   });
 
   it("authorizeOutboundInChat fails closed for governed chats with unresolvable targets", async () => {
@@ -616,26 +846,17 @@ describe("iMessage membership R2 fixes (canonical index + reconciliation)", () =
 
     const scope = await scopeFor(chatId);
     expect(
-      (
-        await membership.authorize(
-          scope,
-          imessageMembershipPrincipalId("default", "+155****9095"),
-        )
-      ).decision,
+      (await membership.authorize(scope, imessageMembershipPrincipalId("default", "+155****9095")))
+        .decision
     ).toBe("allowed");
 
     // A variant spelling the index cannot resolve, inside a durably
     // governed chat: DENY, not legacy-ungated null.
-    expect(await publisher.authorizeOutboundInChat("+1559095", chatId)).toBe(
-      false,
-    );
+    expect(await publisher.authorizeOutboundInChat("+1559095", chatId)).toBe(false);
 
     // An ungoverned chat with no durable scope stays null (legacy).
     expect(
-      await publisher.authorizeOutboundInChat(
-        "+155****7777",
-        "Imessage;-;+155****7777",
-      ),
+      await publisher.authorizeOutboundInChat("+155****7777", "Imessage;-;+155****7777")
     ).toBeNull();
   });
 

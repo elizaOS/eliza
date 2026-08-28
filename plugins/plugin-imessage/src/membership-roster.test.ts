@@ -51,9 +51,7 @@ function makeReader(opts: {
 describe("createChatDbRosterSource failure semantics", () => {
   it("enumerates healthy reads normally", () => {
     const reader = makeReader({
-      chats: [
-        { chatId: "Imessage;-;+155****101", participants: ["+155****101"] },
-      ],
+      chats: [{ chatId: "Imessage;-;+155****101", participants: ["+155****101"] }],
     });
     const source = createChatDbRosterSource(reader);
     expect([...source.listChatIds()]).toEqual(["Imessage;-;+155****101"]);
@@ -71,9 +69,7 @@ describe("createChatDbRosterSource failure semantics", () => {
     // TCC revocation mid-run: the query fails, the reader returns [], and
     // the adapter must convert the observation into a thrown failure.
     reader.failNext();
-    expect(() => source.listChatIds()).toThrow(
-      /roster enumeration query failed/,
-    );
+    expect(() => source.listChatIds()).toThrow(/roster enumeration query failed/);
   });
 
   it("an empty healthy database stays a legitimate empty roster", () => {
