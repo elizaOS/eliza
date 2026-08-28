@@ -1465,6 +1465,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		const effectiveLimit = params.limit ?? 10;
 		let filtered = this.logs;
 
+		// SQL prunes log rows attributed to a deleted entity (logTable
+		// entityId FK cascades); fail closed on reads so logs of deleted
+		// entities are not surfaced.
+		filtered = filtered.filter((log) =>
+			this.entities.has(String(log.entityId)),
+		);
+
 		// Filter by entityId if provided
 		if (params.entityId !== undefined) {
 			filtered = filtered.filter((log) => log.entityId === params.entityId);
@@ -1493,7 +1500,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	// Batch log methods
 	async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
 		const idSet = new Set(logIds.map(String));
-		return this.logs.filter((l) => idSet.has(String(l.id)));
+		return this.logs.filter(
+			(l) => idSet.has(String(l.id)) && this.entities.has(String(l.entityId)),
+		);
 	}
 
 	async createLogs(
@@ -2081,6 +2090,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 					item.sourceEntityId === pair.sourceEntityId &&
 					item.targetEntityId === pair.targetEntityId,
 			);
+			if (
+				relationship &&
+				(!this.entities.has(String(relationship.sourceEntityId)) ||
+					!this.entities.has(String(relationship.targetEntityId)))
+			) {
+				// SQL cascades relationship rows when either endpoint entity
+				// is removed; treat the pair as absent once an endpoint is gone.
+				return null;
+			}
 			return relationship ? this.cloneRelationship(relationship) : null;
 		});
 	}
@@ -2107,6 +2125,16 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		const entitySet = new Set(entityIds);
 		const filtered = Array.from(this.relationships.values()).filter(
 			(relationship) => {
+				// Fail closed for deleted entities: SQL cascades relationship
+				// rows when either endpoint entity is removed, so reads must
+				// not surface edges touching entities that no longer exist.
+				if (
+					!this.entities.has(String(relationship.sourceEntityId)) ||
+					!this.entities.has(String(relationship.targetEntityId))
+				) {
+					return false;
+				}
+
 				const matchesEntity =
 					entitySet.has(relationship.sourceEntityId) ||
 					entitySet.has(relationship.targetEntityId);
@@ -2170,8 +2198,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<Relationship[]> {
 		return relationshipIds
 			.map((relationshipId) => this.relationships.get(String(relationshipId)))
-			.filter((relationship): relationship is Relationship =>
-				Boolean(relationship),
+			.filter(
+				(relationship): relationship is Relationship =>
+					relationship !== undefined &&
+					this.entities.has(String(relationship.sourceEntityId)) &&
+					this.entities.has(String(relationship.targetEntityId)),
 			)
 			.map((relationship) => this.cloneRelationship(relationship));
 	}

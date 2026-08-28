@@ -4,7 +4,7 @@
  * protects stored records from caller mutation. Runs against the real adapter.
  */
 import { describe, expect, it } from "vitest";
-import type { UUID } from "../types";
+import type { Entity, UUID } from "../types";
 import { DEFAULT_UUID } from "../types/primitives";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 
@@ -12,10 +12,26 @@ const sourceEntityId = "10000000-0000-0000-0000-000000000001" as UUID;
 const targetEntityId = "10000000-0000-0000-0000-000000000002" as UUID;
 const alternateEntityId = "10000000-0000-0000-0000-000000000003" as UUID;
 
+function entity(id: UUID, name: string): Entity {
+	return {
+		id,
+		agentId: DEFAULT_UUID,
+		names: [name],
+		metadata: {},
+	};
+}
+
 describe("InMemoryDatabaseAdapter relationships", () => {
 	it("stores and queries relationships by pair, entity, tags, and ids", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.initialize();
+		// SQL-backed adapters require both endpoint entities to exist
+		// (relationship FKs); mirror that invariant in the setup.
+		await adapter.createEntities([
+			entity(sourceEntityId, "source"),
+			entity(targetEntityId, "target"),
+			entity(alternateEntityId, "alternate"),
+		]);
 
 		const ids = await adapter.createRelationships([
 			{
@@ -79,6 +95,10 @@ describe("InMemoryDatabaseAdapter relationships", () => {
 	it("updates, deletes, and protects stored relationships from caller mutation", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.initialize();
+		await adapter.createEntities([
+			entity(sourceEntityId, "source"),
+			entity(targetEntityId, "target"),
+		]);
 
 		const [relationshipId] = await adapter.createRelationships([
 			{
