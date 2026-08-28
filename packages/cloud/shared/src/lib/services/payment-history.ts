@@ -414,6 +414,11 @@ function aggregateReversals(
     }
     if (basis !== null) {
       const netApplied = agg.cumulativeClawbackCredits - agg.reinstatedCredits;
+      // The >= 0 clamp is defense in depth: an over-reinstatement that drove
+      // netApplied past basis would otherwise surface as a negative
+      // "unrecovered balance". Reviewer-verified 2026-08-28 that no current
+      // writer can produce that state (M4 mutant survives unobserved), so it
+      // is untestable at this seam without fabricating an unreachable input.
       agg.unrecoveredShortfallCredits = Math.max(basis - netApplied, 0);
     } else if (agg.sawAnyTarget) {
       // Every recorded target belonged to an overturned authority.
@@ -453,6 +458,16 @@ function reversalAuthority(
     }
     if (kind === "dispute" && text.startsWith("dispute ")) {
       // "dispute dp_1 (charge ch_1)" — the dispute id is the authority.
+      // Producer contract (packages/cloud/api/src/queue/stripe-event.ts,
+      // dispute handler): dispute rows ALWAYS set `metadata.reference`
+      // (`dispute <id> (charge <id>)`) and their idempotency key
+      // `stripe:dispute:<dispute id>` carries no cumulative suffix, so the
+      // unique ledger index permits exactly one row per dispute. This branch
+      // is therefore the only production path and never reaches the raw
+      // `${kind}:fallback:` below, where two keys would sum instead of
+      // max-collapse. If the producer ever moves to cumulative keys the way
+      // refunds already have, this projection silently starts summing —
+      // update the charge-side suffix-strip contract here in the same change.
       return text.split(" (")[0];
     }
   }
