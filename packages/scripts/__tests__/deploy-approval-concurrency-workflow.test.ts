@@ -30,7 +30,7 @@ interface WorkflowJob {
   environment?: string;
   steps?: Array<{
     name?: string;
-    with?: { envs?: string; script?: string };
+    with?: { command_timeout?: string; envs?: string; script?: string };
   }>;
 }
 
@@ -157,9 +157,10 @@ describe("provisioning-worker approval/concurrency topology (#18092)", () => {
 
     expect(deployScript).toContain(`exec 9>${lockPath}`);
     expect(healthScript).toContain(`exec 9>${lockPath}`);
+    expect(healthStep?.with?.command_timeout).toBe("25m");
     expect(healthStep?.with?.envs?.split(",")).toContain("DEPLOY_SHA");
 
-    const healthLockIndex = healthScript.indexOf("flock -w 120 9");
+    const healthLockIndex = healthScript.indexOf("flock -w 1200 9");
     const checkoutReadIndex = healthScript.indexOf(
       "ACTUAL_DEPLOY_SHA=$(git rev-parse HEAD)",
     );

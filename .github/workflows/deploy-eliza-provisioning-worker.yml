@@ -1456,7 +1456,10 @@ jobs:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
-          command_timeout: 5m
+          # A prior run may still own the same host deployment lock for its
+          # bounded build. Wait through that lease, then verify whether this
+          # run's immutable SHA is still deployed before certifying health.
+          command_timeout: 25m
           envs: DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,WARM_POOL_ENABLED
           script: |
             set -euo pipefail
@@ -1466,7 +1469,7 @@ jobs:
             # health SSH steps; in that ordering this run waits, then fails as
             # superseded instead of certifying the newer checkout.
             exec 9>/tmp/eliza-provisioning-worker-deploy.lock
-            flock -w 120 9 || {
+            flock -w 1200 9 || {
               echo "::error::Timed out acquiring the provisioning health identity lease"
               exit 1
             }
