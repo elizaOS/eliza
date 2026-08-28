@@ -765,12 +765,17 @@ export class PaymentHistoryService {
     const boundedOffset = Math.max(offset, 0);
 
     // Window selection: rank the union in SQL. Each leg carries the key
-    // columns (created_at, id); the outer query orders by the SAME key and
-    // applies limit/offset, so the window is exactly the page — no JS
-    // re-ranking that could disagree with SQL across pages.
+    // columns (created_at, id) plus the surface discriminator — authority
+    // ids are unique per TABLE, not across tables, so a raw UUID alone
+    // cannot identify a row and the surface must travel with it (both as
+    // the final SQL tie-breaker and to partition hydration). The outer
+    // query orders by the SAME key and applies limit/offset, so the window
+    // is exactly the page — no JS re-ranking that could disagree with SQL
+    // across pages.
     const requestLeg = dbRead
       .select({
         id: paymentRequests.id,
+        surface: sql`'payment_request'`.as("surface"),
         createdAt: paymentRequests.created_at,
       })
       .from(paymentRequests)
@@ -778,59 +783,83 @@ export class PaymentHistoryService {
     const orderLeg = dbRead
       .select({
         id: stripeCheckoutOrders.id,
+        surface: sql`'checkout_order'`.as("surface"),
         createdAt: stripeCheckoutOrders.created_at,
       })
       .from(stripeCheckoutOrders)
       .where(eq(stripeCheckoutOrders.organization_id, organizationId));
     const ranked = requestLeg.unionAll(orderLeg).as("ranked_authorities");
-    const windowRows = await dbRead
-      .select({ id: ranked.id, createdAt: ranked.createdAt })
+    // The union's inferred selection carries the first leg's literal
+    // surface type; the runtime value is either surface, so read the window
+    // through a widened row type.
+    const windowRows = (await dbRead
+      .select({
+        id: ranked.id,
+        surface: ranked.surface,
+        createdAt: ranked.createdAt,
+      })
       .from(ranked)
-      .orderBy(desc(ranked.createdAt), desc(ranked.id))
+      .orderBy(desc(ranked.createdAt), desc(ranked.id), desc(ranked.surface))
       .limit(boundedLimit)
-      .offset(boundedOffset);
+      .offset(boundedOffset)) as Array<{
+      id: string;
+      surface: "payment_request" | "checkout_order";
+      createdAt: Date;
+    }>;
 
-    const windowIds = new Set(windowRows.map((row) => row.id));
-    if (windowIds.size === 0) return [];
+    // Partition the window by surface BEFORE hydration: a payment-request
+    // id and a checkout-order id may collide as raw UUIDs, so each table is
+    // queried only with ITS OWN window ids.
+    const requestWindowIds = windowRows
+      .filter((row) => row.surface === "payment_request")
+      .map((row) => row.id);
+    const orderWindowIds = windowRows
+      .filter((row) => row.surface === "checkout_order")
+      .map((row) => row.id);
+    if (requestWindowIds.length === 0 && orderWindowIds.length === 0) return [];
 
     // Hydrate only the page's authority rows, then project exactly as
     // before: receipts by request id, reversals by every associated intent.
-    const requestRows = await dbRead
-      .select({
-        id: paymentRequests.id,
-        provider: paymentRequests.provider,
-        amountCents: paymentRequests.amount_cents,
-        currency: paymentRequests.currency,
-        status: paymentRequests.status,
-        settledAt: paymentRequests.settled_at,
-        settlementTxRef: paymentRequests.settlement_tx_ref,
-        createdAt: paymentRequests.created_at,
-      })
-      .from(paymentRequests)
-      .where(
-        and(
-          eq(paymentRequests.organization_id, organizationId),
-          inArray(paymentRequests.id, [...windowIds]),
-        ),
-      );
+    const requestRows = requestWindowIds.length
+      ? await dbRead
+          .select({
+            id: paymentRequests.id,
+            provider: paymentRequests.provider,
+            amountCents: paymentRequests.amount_cents,
+            currency: paymentRequests.currency,
+            status: paymentRequests.status,
+            settledAt: paymentRequests.settled_at,
+            settlementTxRef: paymentRequests.settlement_tx_ref,
+            createdAt: paymentRequests.created_at,
+          })
+          .from(paymentRequests)
+          .where(
+            and(
+              eq(paymentRequests.organization_id, organizationId),
+              inArray(paymentRequests.id, requestWindowIds),
+            ),
+          )
+      : [];
 
-    const orderRows = await dbRead
-      .select({
-        id: stripeCheckoutOrders.id,
-        stripePaymentIntentId: stripeCheckoutOrders.stripe_payment_intent_id,
-        chargeAmountCents: stripeCheckoutOrders.charge_amount_cents,
-        currency: stripeCheckoutOrders.currency,
-        status: stripeCheckoutOrders.status,
-        settledAt: stripeCheckoutOrders.settled_at,
-        createdAt: stripeCheckoutOrders.created_at,
-      })
-      .from(stripeCheckoutOrders)
-      .where(
-        and(
-          eq(stripeCheckoutOrders.organization_id, organizationId),
-          inArray(stripeCheckoutOrders.id, [...windowIds]),
-        ),
-      );
+    const orderRows = orderWindowIds.length
+      ? await dbRead
+          .select({
+            id: stripeCheckoutOrders.id,
+            stripePaymentIntentId: stripeCheckoutOrders.stripe_payment_intent_id,
+            chargeAmountCents: stripeCheckoutOrders.charge_amount_cents,
+            currency: stripeCheckoutOrders.currency,
+            status: stripeCheckoutOrders.status,
+            settledAt: stripeCheckoutOrders.settled_at,
+            createdAt: stripeCheckoutOrders.created_at,
+          })
+          .from(stripeCheckoutOrders)
+          .where(
+            and(
+              eq(stripeCheckoutOrders.organization_id, organizationId),
+              inArray(stripeCheckoutOrders.id, orderWindowIds),
+            ),
+          )
+      : [];
 
     const stripeIntentIds = new Set<string>();
     for (const request of requestRows) {
