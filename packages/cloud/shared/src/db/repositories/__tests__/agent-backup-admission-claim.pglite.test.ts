@@ -14,6 +14,7 @@ const { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } = a
 );
 const {
   claimAgentBackupAdmissionWork,
+  claimAgentBackupAdmissionWorkTurn,
   countUnsettledAgentBackupAdmissionWork,
   deferAgentBackupAdmissionClaim,
   heartbeatAgentBackupAdmissionClaim,
@@ -378,6 +379,39 @@ afterAll(async () => {
 });
 
 describe("schedule-capture admission claims on primary PGlite", () => {
+  test("distinguishes a truly idle authority from durable claim progress", async () => {
+    expect(
+      await claimAgentBackupAdmissionWorkTurn({
+        ownerId: OWNER_A,
+        limit: 1,
+        leaseMs: 60_000,
+      }),
+    ).toEqual({ outcome: "idle", claims: [] });
+
+    const due = source(90, {
+      priorityClass: "active_rpo",
+      basePriority: 1,
+    });
+    await seedSource(due);
+    const outcomes: string[] = [];
+    let claimed: ClaimBatch = [];
+    for (let turn = 0; turn < MAX_TEST_PROGRESS_TURNS && claimed.length === 0; turn += 1) {
+      const result = await claimAgentBackupAdmissionWorkTurn({
+        ownerId: OWNER_A,
+        limit: 1,
+        leaseMs: 60_000,
+      });
+      outcomes.push(result.outcome);
+      claimed = result.claims;
+    }
+
+    expect(outcomes.at(0)).toBe("progressed");
+    expect(outcomes.at(-1)).toBe("claimed");
+    expect(outcomes).not.toContain("idle");
+    expect(outcomes).not.toContain("contended");
+    expect(claimed.map(({ workId }) => workId)).toEqual([due.workId]);
+  });
+
   test("rejects lease horizons too short to return a consumable fence", async () => {
     await expect(
       claimAgentBackupAdmissionWork({

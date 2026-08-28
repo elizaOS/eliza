@@ -800,6 +800,106 @@ describe("schedule-capture admission claims on real PostgreSQL", () => {
   );
 
   realPostgresTest(
+    "reports contention when all eligible shard authorities are row-locked",
+    async () => {
+      if (!isolatedDsn || !control || !claimRepository) {
+        throw new Error("real PostgreSQL claim harness was not initialized");
+      }
+      await seedScheduleSources({ start: 450, count: 1, fixedShard: 0 });
+      const locker = new Client({
+        connectionString: isolatedDsn,
+        application_name: `${APPLICATION_NAME}-claim-shard-lock`,
+      });
+      await locker.connect();
+      let transactionOpen = false;
+      try {
+        await locker.query("BEGIN");
+        transactionOpen = true;
+        const locked = await locker.query<{ shard_id: number }>(`
+          SELECT shard_id
+          FROM agent_backup_admission_claim_shards
+          WHERE work_kind = 'schedule_capture' AND shard_id = 0
+          FOR UPDATE
+        `);
+        expect(locked.rows).toEqual([{ shard_id: 0 }]);
+
+        const result = await claimRepository.claimAgentBackupAdmissionWorkTurn({
+          ownerId: OWNER_A,
+          limit: 1,
+          leaseMs: 60_000,
+        });
+        expect(result).toEqual({ outcome: "contended", claims: [] });
+
+        const queued = await control.query<{ state: string }>(
+          `
+          SELECT state FROM agent_backup_admission_work WHERE id = $1::uuid
+        `,
+          [workId(450)],
+        );
+        expect(queued.rows).toEqual([{ state: "queued" }]);
+      } finally {
+        if (transactionOpen) await locker.query("ROLLBACK").catch(() => undefined);
+        await locker.end();
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  for (const scenario of [
+    {
+      label: "active-RPO priority one",
+      priorityClass: "active_rpo" as const,
+      basePriority: 1 as const,
+      progressTurns: 192,
+    },
+    {
+      label: "periodic priority three",
+      priorityClass: "periodic_capture" as const,
+      basePriority: 3 as const,
+      progressTurns: 448,
+    },
+  ]) {
+    realPostgresTest(
+      `reports every durable 64-shard transition before ${scenario.label} becomes claimable`,
+      async () => {
+        if (!claimRepository) {
+          throw new Error("real PostgreSQL claim harness was not initialized");
+        }
+        await seedScheduleSources({
+          start: 4_500,
+          count: 64,
+          priorityClass: scenario.priorityClass,
+          basePriority: scenario.basePriority,
+        });
+        const before = await readCapacitySnapshot();
+        const observed: string[] = [];
+
+        for (let turn = 0; turn < scenario.progressTurns; turn += 1) {
+          const result = await claimRepository.claimAgentBackupAdmissionWorkTurn({
+            ownerId: OWNER_A,
+            limit: 1,
+            leaseMs: 60_000,
+          });
+          observed.push(result.outcome);
+          expect(result.claims).toEqual([]);
+        }
+        expect(new Set(observed)).toEqual(new Set(["progressed"]));
+
+        const firstClaim = await claimRepository.claimAgentBackupAdmissionWorkTurn({
+          ownerId: OWNER_A,
+          limit: 1,
+          leaseMs: 60_000,
+        });
+        expect(firstClaim.outcome).toBe("claimed");
+        expect(firstClaim.claims).toHaveLength(1);
+        expect(firstClaim.claims[0]?.claimProofPriorityPass).toBe(scenario.basePriority);
+        expect(await readCapacitySnapshot()).toEqual(before);
+      },
+      TEST_TIMEOUT,
+    );
+  }
+
+  realPostgresTest(
     "refreshes a 100-row lease batch after lane-cursor triggers consume its initial horizon",
     async () => {
       if (!control || !claimRepository) {
