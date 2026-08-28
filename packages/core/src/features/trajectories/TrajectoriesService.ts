@@ -25,6 +25,7 @@ export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
 import { deriveCompactionContentManifest } from "../../runtime/content-access-manifest";
 import {
 	contentManifestLedgerKeys,
+	loadManifestLedger,
 	publishManifestLedger,
 } from "../../runtime/content-manifest-ledger";
 import {
@@ -3332,7 +3333,74 @@ export class TrajectoriesService extends Service {
 
 		const row = result.rows[0];
 		const trajectory = this.rowToTrajectory(row);
+		await this.attachContentManifestLedger(trajectory);
 		return trajectory;
+	}
+
+	/**
+	 * Restart-safe ledger consumption (#25141 review): the persisted manifest
+	 * shard ledger is reloaded and fully verified (chain, totals, digest) from
+	 * the database cache domain by the production detail reader, so durable
+	 * ledger bytes are reachable after a writer exits — not write-only. The
+	 * verified entries surface on the detail wire as
+	 * `metadata.contentManifest` (empty array when the trajectory never
+	 * authorized content). Integrity failures become an explicit
+	 * unavailable marker on the same field, never silent corruption or a
+	 * failed trajectory read.
+	 */
+	private async attachContentManifestLedger(
+		trajectory: Trajectory,
+	): Promise<void> {
+		const ledgerId = `${this.runtime.agentId}:trajectory:${trajectory.trajectoryId}`;
+		const runtime = this.runtime as IAgentRuntime & {
+			adapter?: {
+				getCaches?: unknown;
+			};
+		};
+		const adapter = runtime.adapter;
+		if (!adapter || typeof adapter.getCaches !== "function") {
+			return;
+		}
+		try {
+			const loaded = await loadManifestLedger(adapter as never, ledgerId);
+			// Entries are validated, JSON-shaped records; the wire metadata
+			// type is the JsonValue boundary the viewer consumes.
+			trajectory.metadata = {
+				...trajectory.metadata,
+				contentManifest: loaded.entries as unknown as JsonValue,
+			};
+		} catch (error) {
+			if (
+				error instanceof ElizaError &&
+				error.code === "CONTENT_MANIFEST_HEAD_MISSING"
+			) {
+				// No ledger was ever published for this trajectory (it
+				// authorized no content refs) — the honest empty state, not
+				// an error.
+				trajectory.metadata = {
+					...trajectory.metadata,
+					contentManifest: [],
+				};
+				return;
+			}
+			// error-policy:J4 the verified-ledger projection is an explicit
+			// unavailable state: a damaged or unreadable ledger must surface
+			// as a distinct marker, never as a silently partial manifest and
+			// never as a failed trajectory read.
+			trajectory.metadata = {
+				...trajectory.metadata,
+				contentManifest: { unavailable: true },
+			};
+			logger.warn(
+				{ err: error, ledgerId },
+				"[trajectory-logger] content-manifest ledger load failed",
+			);
+			this.runtime.reportError?.(
+				"TrajectoriesService.attachContentManifestLedger",
+				error,
+				{ ledgerId },
+			);
+		}
 	}
 
 	async getStats(): Promise<TrajectoryStats> {
@@ -3465,12 +3533,12 @@ export class TrajectoriesService extends Service {
 		const adapter =
 			runtimeAdapter !== null &&
 			typeof runtimeAdapter === "object" &&
-			typeof (runtimeAdapter as { getCache?: unknown }).getCache ===
+			typeof (runtimeAdapter as { getCaches?: unknown }).getCaches ===
 				"function" &&
 			typeof (runtimeAdapter as { deleteCaches?: unknown }).deleteCaches ===
 				"function"
 				? (runtimeAdapter as unknown as {
-						getCache: (key: string) => Promise<unknown>;
+						getCaches: (keys: string[]) => Promise<Map<string, unknown>>;
 						deleteCaches: (keys: string[]) => Promise<boolean>;
 					})
 				: undefined;
@@ -3480,8 +3548,8 @@ export class TrajectoriesService extends Service {
 			for (const trajectoryId of trajectoryIds) {
 				const ledgerKeys = await contentManifestLedgerKeys(
 					{
-						getCache: <T>(key: string) =>
-							adapter.getCache(key) as Promise<T | undefined>,
+						getCaches: <T>(keysToRead: string[]) =>
+							adapter.getCaches(keysToRead) as Promise<Map<string, T>>,
 					},
 					`${this.runtime.agentId}:trajectory:${trajectoryId}`,
 				);

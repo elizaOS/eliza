@@ -2251,13 +2251,28 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Cache CRUD ────────────────────────────────────────────────────────
 
+  /**
+   * Cache rows are namespaced by the owning agent's id, mirroring the SQL
+   * adapters' composite (key, agent_id) cache primary key: adapters for
+   * different agents sharing one IStorage (the global MemoryStorage
+   * singleton) must never read or overwrite each other's cache rows (#29753
+   * review). All cache CRUD goes through this key; raw keys never touch
+   * storage directly.
+   */
+  private agentScopedCacheKey(key: string): string {
+    return `${this.agentId}:${key}`;
+  }
+
   async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
     const out = new Map<string, T>();
     for (const key of keys) {
-      const entry = await this.storage.get<StoredCacheEntry<T>>(COLLECTIONS.CACHE, key);
+      const entry = await this.storage.get<StoredCacheEntry<T>>(
+        COLLECTIONS.CACHE,
+        this.agentScopedCacheKey(key)
+      );
       if (!entry) continue;
       if (entry.expiresAt && Date.now() > entry.expiresAt) {
-        await this.storage.delete(COLLECTIONS.CACHE, key);
+        await this.storage.delete(COLLECTIONS.CACHE, this.agentScopedCacheKey(key));
         continue;
       }
       out.set(key, entry.value);
@@ -2267,7 +2282,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean> {
     for (const { key, value } of entries) {
-      await this.storage.set(COLLECTIONS.CACHE, key, { value });
+      await this.storage.set(COLLECTIONS.CACHE, this.agentScopedCacheKey(key), { value });
     }
     return true;
   }
@@ -2275,7 +2290,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async deleteCaches(keys: string[]): Promise<boolean> {
     let removed = false;
     for (const key of keys) {
-      const ok = await this.storage.delete(COLLECTIONS.CACHE, key);
+      const ok = await this.storage.delete(COLLECTIONS.CACHE, this.agentScopedCacheKey(key));
       if (ok) removed = true;
     }
     return removed;
@@ -2295,19 +2310,22 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     // on the same revision — even through different adapter instances —
     // can never both succeed.
     return this.withStorageCasLock(async () => {
-      const entry = await this.storage.get<StoredCacheEntry<T>>(COLLECTIONS.CACHE, key);
+      const entry = await this.storage.get<StoredCacheEntry<T>>(
+        COLLECTIONS.CACHE,
+        this.agentScopedCacheKey(key)
+      );
       if (entry === null || entry === undefined) {
         if (expectedRevision !== null) return false;
-        await this.storage.set(COLLECTIONS.CACHE, key, {
+        await this.storage.set(COLLECTIONS.CACHE, this.agentScopedCacheKey(key), {
           value: { ...(value as object), revision: nextRevision } as T,
           expiresAt: undefined,
         });
         return true;
       }
       if (entry.expiresAt && Date.now() > entry.expiresAt) {
-        await this.storage.delete(COLLECTIONS.CACHE, key);
+        await this.storage.delete(COLLECTIONS.CACHE, this.agentScopedCacheKey(key));
         if (expectedRevision !== null) return false;
-        await this.storage.set(COLLECTIONS.CACHE, key, {
+        await this.storage.set(COLLECTIONS.CACHE, this.agentScopedCacheKey(key), {
           value: { ...(value as object), revision: nextRevision } as T,
           expiresAt: undefined,
         });
@@ -2317,7 +2335,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const stored =
         storedValue !== null && typeof storedValue === "object" ? (storedValue.revision ?? 0) : 0;
       if (stored !== expectedRevision) return false;
-      await this.storage.set(COLLECTIONS.CACHE, key, {
+      await this.storage.set(COLLECTIONS.CACHE, this.agentScopedCacheKey(key), {
         ...entry,
         value: { ...(value as object), revision: nextRevision } as T,
       });
