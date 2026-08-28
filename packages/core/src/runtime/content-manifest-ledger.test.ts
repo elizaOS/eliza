@@ -331,6 +331,20 @@ describe("publishManifestLedger / loadManifestLedger", () => {
 		);
 	});
 
+	it("mutant HEADSWAP: a head whose ledgerSha256 does not match the shard tail is detected", async () => {
+		const { store } = await publishForMutants();
+		const headKey = manifestHeadKey(LEDGER);
+		const head = store.raw(headKey) as ManifestHead;
+		// Shards untouched and internally consistent, so the per-shard chain
+		// check still passes. Only the HEAD row diverges — the shape a
+		// partially-written head takes after exactly the crash this ledger
+		// exists to survive.
+		store.put(headKey, { ...head, ledgerSha256: "f".repeat(64) });
+		await expect(loadManifestLedger(store, LEDGER)).rejects.toThrow(
+			ContentManifestIntegrityError,
+		);
+	});
+
 	it("a single entry larger than the byte bound is rejected, not silently emitted", () => {
 		const huge = makeManifest(1, 64);
 		expect(() =>
