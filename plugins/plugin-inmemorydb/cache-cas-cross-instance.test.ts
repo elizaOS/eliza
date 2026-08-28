@@ -44,12 +44,7 @@ describe("compareAndSwapCache across adapter instances sharing one storage", () 
     await adapterA.init();
     await adapterB.init();
 
-    const seeded = await adapterA.compareAndSwapCache(
-      "cas-seed-key",
-      null,
-      0,
-      { v: "seed" },
-    );
+    const seeded = await adapterA.compareAndSwapCache("cas-seed-key", null, 0, { v: "seed" });
     expect(seeded).toBe(true);
 
     const [a, b] = await Promise.all([
