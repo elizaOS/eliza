@@ -565,9 +565,6 @@ describe("InventoryView GUI — populated holdings", () => {
     );
     expect(walletRail.parentElement?.parentElement).toBe(walletShell);
     expect(walletRail.parentElement?.tabIndex).toBe(0);
-    expect(sidebar.className).toContain("bg-card");
-    expect(sidebar.className).toContain("rounded-xl");
-
     // One EVM identity covers every supported EVM network; Solana stays
     // separate because it has its own address format and signing path.
     expect(within(sidebar).getByTitle("EVM RPC ready")).toBeTruthy();

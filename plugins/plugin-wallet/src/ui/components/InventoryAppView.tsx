@@ -1393,10 +1393,10 @@ function WalletRailTabButton({
   return (
     <Button
       variant="selection"
-      size="default"
+      size="compact"
       ref={ref}
       type="button"
-      className="min-w-0"
+      className="min-w-0 shrink-0"
       data-state={active ? "on" : "off"}
       onClick={() => onSelect(tab.id)}
       aria-label={tab.label}
@@ -1409,7 +1409,7 @@ function WalletRailTabButton({
       {...agentProps}
     >
       <tab.icon className="size-3.5 shrink-0" />
-      <span className="truncate">{tab.label}</span>
+      <span>{tab.label}</span>
     </Button>
   );
 }
@@ -1436,7 +1436,7 @@ function TokenRailRowImpl({
     });
   return (
     <div
-      className="group flex min-h-[4.75rem] min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-hover focus-within:bg-bg-hover"
+      className="group flex min-h-[4.75rem] min-w-0 items-center gap-3 py-3 transition-colors hover:bg-bg-hover focus-within:bg-bg-hover"
       data-testid={`wallet-token-row-${slug}`}
     >
       <TokenIdentityIcon row={row} size={42} />
@@ -1558,7 +1558,7 @@ function RailNftList({
       {nfts.slice(0, 20).map((nft) => (
         <div
           key={`${nft.chain}:${nft.collectionName}:${nft.name}:${nft.imageUrl}`}
-          className="flex min-h-[4.75rem] min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-hover"
+          className="flex min-h-[4.75rem] min-w-0 items-center gap-3 py-3 transition-colors hover:bg-bg-hover"
         >
           {nft.imageUrl ? (
             <img
@@ -1606,7 +1606,7 @@ function RailPositionList({
       {positions.map((position) => (
         <div
           key={position.id}
-          className="flex min-h-[4.75rem] min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-hover"
+          className="flex min-h-[4.75rem] min-w-0 items-center gap-3 py-3 transition-colors hover:bg-bg-hover"
         >
           {position.imageUrl ? (
             <img
@@ -1736,9 +1736,9 @@ function WalletHoldingsSection({
       <section
         data-testid="wallets-sidebar"
         aria-label="Wallet holdings"
-        className="overflow-hidden rounded-xl border border-border bg-card"
+        className="overflow-hidden"
       >
-        <div className="flex min-h-40 items-center justify-between gap-4 p-4 sm:p-5">
+        <div className="flex min-h-40 items-center justify-between gap-4 py-4 sm:py-5">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-accent">
               <Wallet className="size-4.5" aria-hidden />
@@ -1769,9 +1769,9 @@ function WalletHoldingsSection({
     <section
       data-testid="wallets-sidebar"
       aria-label="Wallet holdings"
-      className="overflow-hidden rounded-xl border border-border bg-card"
+      className="overflow-hidden"
     >
-      <div className="space-y-4 p-4 sm:p-5">
+      <div className="space-y-4 py-4 sm:py-5">
         <WalletRailAccount
           addresses={addresses}
           portfolioValueUsd={portfolioValueUsd}
@@ -1784,7 +1784,7 @@ function WalletHoldingsSection({
       </div>
 
       {walletEnabled === false ? (
-        <div className="border-t border-border/70 p-4">
+        <div className="border-t border-border/70 py-4">
           <WalletEmptyHero />
           <Button
             ref={enableWalletRef}
@@ -1797,9 +1797,9 @@ function WalletHoldingsSection({
         </div>
       ) : (
         <>
-          <div className="flex flex-col gap-2 border-t border-border/70 p-2 sm:flex-row sm:items-center">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 py-2">
             <div
-              className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-sm bg-surface p-1"
+              className="flex min-w-0 max-w-full items-center gap-1 overflow-x-auto"
               role="tablist"
               aria-label="Wallet asset type"
             >
@@ -1816,7 +1816,7 @@ function WalletHoldingsSection({
               <Button
                 variant="ghostMuted"
                 size="compact"
-                className="w-full sm:w-auto"
+                className="shrink-0"
                 onClick={onRestoreHiddenTokens}
                 aria-label={`Show ${hiddenRowsCount} hidden ${hiddenRowsCount === 1 ? "token" : "tokens"}`}
               >
@@ -1903,9 +1903,9 @@ function WalletInsightTabButton({
     <Button
       ref={ref}
       variant="selection"
-      size="touch"
+      size="compact"
       type="button"
-      className="min-w-0"
+      className="min-w-0 shrink-0"
       role="tab"
       id={`wallet-insight-tab-${tab.id}`}
       aria-controls={`wallet-insight-panel-${tab.id}`}
@@ -1947,14 +1947,14 @@ function WalletInsightsPanel({
   return (
     <section
       aria-labelledby="wallet-insights-title"
-      className="overflow-hidden rounded-xl border border-border bg-card"
+      className="overflow-hidden border-t border-border/70"
     >
       <h2 id="wallet-insights-title" className="sr-only">
         Wallet insights
       </h2>
-      <div className="p-2">
+      <div className="py-2">
         <div
-          className="grid grid-cols-2 gap-1 rounded-sm bg-surface p-1"
+          className="flex items-center gap-1"
           role="tablist"
           aria-label="Wallet insights"
         >
@@ -1978,7 +1978,7 @@ function WalletInsightsPanel({
         {activeTab === "activity" ? (
           <ActivityLog profile={profile} events={events} />
         ) : (
-          <div className="p-4 sm:p-5">
+          <div className="py-4 sm:py-5">
             <PortfolioMoversPanel
               rows={rows}
               profile={profile}
@@ -2026,7 +2026,7 @@ function ActivityLog({
                 ? "bg-danger/10 text-danger"
                 : "bg-bg/55 text-muted";
         const body = (
-          <div className="flex min-h-[4.5rem] min-w-0 items-center gap-3 px-4 py-3 text-sm transition-colors hover:bg-bg-hover">
+          <div className="flex min-h-[4.5rem] min-w-0 items-center gap-3 py-3 text-sm transition-colors hover:bg-bg-hover">
             <span
               className={cn(
                 "flex size-8 shrink-0 items-center justify-center rounded-sm",
@@ -2385,7 +2385,7 @@ export function InventoryAppView() {
         <PagePanel.ContentRail
           width="standard"
           data-testid="wallet-content-rail"
-          className="flex flex-col gap-5 pt-3 pb-[var(--view-pad-bottom)] sm:pt-5"
+          className="flex flex-col gap-4 pt-3 pb-[var(--view-pad-bottom)] sm:pt-5"
         >
           {balanceLoadingWithoutSnapshot ||
           walletIdentityLoadingWithoutSnapshot ? (
