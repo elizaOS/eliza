@@ -571,10 +571,6 @@ describe("InventoryView GUI — populated holdings", () => {
     expect(within(sidebar).getByTitle("Solana RPC ready")).toBeTruthy();
     expect(within(sidebar).queryByTitle("ETH RPC ready")).toBeNull();
     expect(within(sidebar).queryByTitle("BASE RPC ready")).toBeNull();
-    expect(
-      within(sidebar).getAllByTestId(/^wallet-identity-chip-/),
-    ).toHaveLength(2);
-
     // Exactly two address identities render, with no duplicate Base address.
     expect(within(sidebar).getByText("0x111...1111")).toBeTruthy();
     expect(within(sidebar).getByText("So1an...1111")).toBeTruthy();

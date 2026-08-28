@@ -18,13 +18,7 @@ import type {
   WalletNftsResponse,
   WalletTradingProfileResponse,
 } from "@elizaos/shared";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-  Badge,
-  Button,
-} from "@elizaos/ui";
+import { Avatar, AvatarFallback, AvatarImage, Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client, isApiError } from "@elizaos/ui/api";
 import { shellLocalStorage } from "@elizaos/ui/bridge";
@@ -83,11 +77,6 @@ const ALL_INVENTORY_FILTERS: InventoryChainFilters = {
   avax: true,
   solana: true,
 };
-const WALLET_IDENTITY_CHAINS = [
-  { chain: "ethereum", label: "EVM", id: "evm" },
-  { chain: "solana", label: "Solana", id: "solana" },
-] as const;
-
 function isSupportedWalletAssetChain(chain: string): boolean {
   const config = getChainConfig(chain);
   return config?.isEvm === true || config?.chainKey === "solana";
@@ -384,17 +373,6 @@ function tokenValueAvailable(
   return chain?.error === null;
 }
 
-function assetAllocationRows(rows: TokenRow[]): TokenRow[] {
-  return rows
-    .filter((row) => Number.isFinite(row.valueUsd) && row.valueUsd > 0)
-    .sort(
-      (left, right) =>
-        (Number.isFinite(right.valueUsd) ? right.valueUsd : 0) -
-        (Number.isFinite(left.valueUsd) ? left.valueUsd : 0),
-    )
-    .slice(0, 5);
-}
-
 function looksLikeLpPosition(value: string): boolean {
   const text = ` ${value.toLowerCase()} `;
   return (
@@ -587,80 +565,6 @@ function TokenIdentityIcon({
         className="-bottom-0.5 -right-0.5 absolute"
       />
     </span>
-  );
-}
-
-function AssetAllocationStrip({
-  rows,
-  compact = false,
-}: {
-  rows: TokenRow[];
-  compact?: boolean;
-}) {
-  const allocationRows = useMemo(() => assetAllocationRows(rows), [rows]);
-  const total = allocationRows.reduce((sum, row) => sum + row.valueUsd, 0);
-  if (total <= 0 || allocationRows.length === 0) return null;
-
-  return (
-    <div className={cn("space-y-2", compact && "space-y-3")}>
-      <Badge
-        asChild
-        variant="chainDot"
-        tone="muted"
-        className={cn("flex overflow-hidden", compact ? "h-2.5" : "h-2")}
-      >
-        <div>
-          {allocationRows.map((row, index) => (
-            <Badge
-              asChild
-              variant="chainDot"
-              tone={index < 3 ? "accent" : "muted"}
-              key={tokenId(row)}
-              className="h-full"
-            >
-              <span
-                style={{ width: `${(row.valueUsd / total) * 100}%` }}
-                title={`${row.symbol}: ${formatUsd(row.valueUsd)}`}
-              />
-            </Badge>
-          ))}
-        </div>
-      </Badge>
-      {compact ? (
-        <div className="flex flex-wrap gap-2">
-          {allocationRows.slice(0, 3).map((row, index) => (
-            <div
-              key={tokenId(row)}
-              className="inline-flex items-center gap-1.5 text-[0.68rem] font-medium text-txt"
-            >
-              <Badge
-                asChild
-                variant="chainDot"
-                tone={index < 3 ? "accent" : "muted"}
-                className="size-1.5"
-              >
-                <span />
-              </Badge>
-              <span>{row.symbol}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid gap-1">
-          {allocationRows.slice(0, 3).map((row) => (
-            <div
-              key={tokenId(row)}
-              className="flex items-center justify-between gap-2 text-[0.68rem]"
-            >
-              <span className="truncate text-muted">{row.symbol}</span>
-              <span className="shrink-0 font-mono text-txt">
-                {formatUsd(row.valueUsd)}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1222,23 +1126,6 @@ function WalletConnectionChip({
   );
 }
 
-function WalletIdentityCluster() {
-  return (
-    <span className="flex shrink-0 -space-x-1.5">
-      {WALLET_IDENTITY_CHAINS.map((identity) => (
-        <ChainLogoBadge
-          key={identity.id}
-          chain={identity.chain}
-          label={identity.label}
-          size={18}
-          className="ring-1 ring-bg"
-          testId={`wallet-identity-chip-${identity.id}`}
-        />
-      ))}
-    </span>
-  );
-}
-
 function WalletAddressCluster({
   addresses,
 }: {
@@ -1352,11 +1239,10 @@ function WalletRailAccount({
           <h2 className="text-xs-tight font-medium text-muted">
             Portfolio balance
           </h2>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="mt-1">
             <div className="font-mono text-3xl font-semibold leading-none tracking-tight tabular-nums text-txt">
               {portfolioValueUsd === null ? "—" : formatUsd(portfolioValueUsd)}
             </div>
-            <WalletIdentityCluster />
           </div>
           <div className="mt-2 flex flex-wrap gap-3">
             <WalletConnectionChip label="EVM" ready={evmReady} />
@@ -1778,9 +1664,6 @@ function WalletHoldingsSection({
           walletConfig={walletConfig}
           onOpenSettings={onOpenRpcSettings}
         />
-        {visibleRows.length > 0 ? (
-          <AssetAllocationStrip rows={visibleRows} compact />
-        ) : null}
       </div>
 
       {walletEnabled === false ? (
@@ -2376,11 +2259,7 @@ export function InventoryAppView() {
     (walletConfigStatus === "idle" || walletConfigStatus === "loading");
 
   return (
-    <PagePanel.Frame
-      as="main"
-      data-testid="wallet-shell"
-      className="flex-col bg-bg"
-    >
+    <PagePanel.Frame as="main" data-testid="wallet-shell" className="flex-col">
       <PagePanel.ContentArea>
         <PagePanel.ContentRail
           width="standard"

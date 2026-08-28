@@ -293,6 +293,17 @@ test.describe("views deep UX audit capture", () => {
           await screenshot(page, `${viewport.name}-wallet-${tab}`);
         }
       }
+      for (const insight of ["Activity", "Markets"] as const) {
+        const tabButton = page.getByRole("tab", { name: insight });
+        if (await tabButton.isVisible().catch(() => false)) {
+          await tabButton.click();
+          await page.waitForTimeout(300);
+          await screenshot(
+            page,
+            `${viewport.name}-wallet-${insight.toLowerCase()}`,
+          );
+        }
+      }
     });
 
     test(`capture browser workspace states @ ${viewport.name}`, async ({
