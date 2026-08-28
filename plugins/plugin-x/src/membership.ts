@@ -29,7 +29,7 @@ import {
   MembershipService,
   type UUID,
 } from "@elizaos/core";
-import { v5 as uuidv5 } from "uuid";
+import { createHash } from "node:crypto";
 
 /** Connector id this publisher registers under (matches XService). */
 export const X_MEMBERSHIP_CONNECTOR_ID = "x";
@@ -52,7 +52,25 @@ const MEMBERSHIP_IDEMPOTENCY_KEY_MAX = 1_000;
  * minted from (account key, X user id), and a matching entity row is ensured
  * before the first publish for that principal.
  */
-const X_MEMBERSHIP_NAMESPACE = "c3b1a0f9-3333-4c4d-9d5e-7f6a5b4c3d02";
+const X_MEMBERSHIP_NAMESPACE = createHash("sha1")
+  .update("elizaos:plugin-x:membership:v1")
+  .digest()
+  .subarray(0, 16);
+
+/** RFC-4122 v5 from node:crypto so this plugin carries no uuid dependency. */
+function xUuidV5(name: string): UUID {
+  // RFC 4122 4.3: SHA-1 over namespace bytes || name, then set version 5 and
+  // variant bits (same construction as plugin-slack membership-authority).
+  const digest = createHash("sha1")
+    .update(X_MEMBERSHIP_NAMESPACE)
+    .update(Buffer.from(name, "utf8"))
+    .digest();
+  const bytes = digest.subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50; // version 5
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC variant
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as UUID;
+}
 
 interface ScopePublisherState {
   /** Scope generation as of the last successful command (fencing token). */
@@ -858,10 +876,7 @@ export async function xMembershipPrincipal(
   accountId: string,
   xUserId: string,
 ): Promise<{ principalId: UUID; runtimeEntityId?: UUID }> {
-  const principalId = uuidv5(
-    `${accountId}:${xUserId}`,
-    X_MEMBERSHIP_NAMESPACE,
-  ) as UUID;
+  const principalId = xUuidV5(`${accountId}:${xUserId}`);
   // The authority requires the principal's entity row to exist in this
   // tenant; ensure it idempotently (createEntities skips existing ids).
   const existing = await runtime.getEntityById(principalId);
