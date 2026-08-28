@@ -162,8 +162,12 @@ function lexicalScore(
   candidate: ImplicitReferentCandidate,
 ): { score: number; evidence: string[] } {
   if (askTokens.length === 0) return { score: 0, evidence: [] };
-  const haystack = candidateText(candidate);
-  const matched = askTokens.filter((token) => haystack.includes(token));
+  const haystackWords = new Set(
+    candidateText(candidate)
+      .split(/\s+/)
+      .filter((word) => word.length > 0),
+  );
+  const matched = askTokens.filter((token) => haystackWords.has(token));
   return {
     score: matched.length / askTokens.length,
     evidence: matched.map((token) => `matched "${token}"`),
