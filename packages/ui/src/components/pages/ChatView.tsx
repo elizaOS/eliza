@@ -393,10 +393,10 @@ export function ChatView({
     : undefined;
   // Resolve the realtime-voice mint inputs (agent UUID + consent nonce) from the
   // same auth/runtime source the app uses for every other /api/v1 call. A
-  // local/self-hosted runtime yields a null agentId, so the realtime path never
-  // arms and the mic runs the batch flow unchanged.
+  // self-hosted runtime arms only when its gateway proves the active
+  // conversation; otherwise agentId stays null and batch owns the mic.
   const { agentId: realtimeAgentId, getConsentNonce: getRealtimeConsentNonce } =
-    useRealtimeVoiceMint();
+    useRealtimeVoiceMint({ conversationId: activeConversationId });
   const {
     beginVoiceCapture,
     composerVoice,
