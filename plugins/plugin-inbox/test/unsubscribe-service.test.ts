@@ -357,6 +357,35 @@ describe("InboxUnsubscribeService", () => {
       expect(result.summary.mailtoOnlyCount).toBe(0);
     });
 
+    it("downgrades a malformed one-click marker to http_get (RFC 8058 exact key/value)", async () => {
+      // RFC 8058 §2 fixes `List-Unsubscribe-Post` to the exact pair
+      // `List-Unsubscribe=One-Click`. A substring match on `one-click` would
+      // promote a sender whose header only CONTAINS the token — e.g.
+      // `List-Unsubscribe=Not-One-Click` — to a state-changing one-click POST
+      // with a fabricated canonical body. The classifier must reject the
+      // malformed marker and stay an HTTP GET.
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<mailto:unsub@brand.com>, <https://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=Not-One-Click",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+      expect(brand?.unsubscribeMethod).toBe("http_get");
+      expect(result.summary.oneClickEligibleCount).toBe(0);
+    });
+
     it("falls back to manual_only when no List-Unsubscribe header is present", async () => {
       const gateway = makeGateway({
         messages: [gmailMessage({ id: "m1", fromEmail: "x@y.com" })],
@@ -543,6 +572,45 @@ describe("InboxUnsubscribeService", () => {
       expect(record.status).toBe("succeeded");
       expect(record.httpStatusCode).toBe(200);
       expect(records).toHaveLength(1);
+    });
+
+    it("fires an HTTP GET (not POST) for a malformed one-click marker", async () => {
+      // Executor-level regression for the malformed-marker finding: a header
+      // that merely contains `one-click` (here `List-Unsubscribe=Not-One-Click`)
+      // must not reach the state-changing POST branch. The wire request stays a
+      // GET with no fabricated one-click body, and the record reflects that.
+      const tracked = trackedResponse(200);
+      let observedMethod: string | undefined;
+      let observedBody: string | undefined;
+      fetchSpy.mockImplementation(
+        async (_input: RequestInfo | URL, init?: RequestInit) => {
+          observedMethod = init?.method;
+          observedBody = typeof init?.body === "string" ? init.body : undefined;
+          return tracked.response;
+        },
+      );
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<mailto:unsub@brand.com>, <https://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=Not-One-Click",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const { record } = await service.unsubscribeEmailSender({
+        senderEmail: "news@brand.com",
+        userAuthorization: true,
+      });
+
+      expect(observedMethod).toBe("GET");
+      expect(observedBody).toBeUndefined();
+      expect(record.method).toBe("http_get");
+      expect(record.status).toBe("succeeded");
     });
 
     it("fires an HTTP GET for a mailto+https sender without a one-click post", async () => {
