@@ -35,6 +35,7 @@ const pgXid8 = customType<{ data: string }>({
 });
 
 export const AGENT_BACKUP_ADMISSION_SHARD_COUNT = 64;
+export const MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS = 12;
 
 export const AGENT_BACKUP_ADMISSION_WORK_KINDS = [
   "schedule_capture",
@@ -409,7 +410,12 @@ export const agentBackupAdmissionWork = pgTable(
         table.source_lifecycle_revision,
         table.source_due_at,
       )
-      .where(sql`${table.work_kind} = 'schedule_capture'`),
+      .where(
+        sql`${table.work_kind} = 'schedule_capture'
+          AND NOT (${table.state} = 'settled'
+            AND ${table.settled_reason} = 'RETRY_EXHAUSTED'
+            AND ${table.attempts} = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS})`,
+      ),
     unsettled_schedule_uidx: uniqueIndex("agent_backup_admission_work_unsettled_schedule_uidx")
       .on(table.sandbox_id, table.source_activation_generation, table.source_lifecycle_revision)
       .where(sql`${table.work_kind} = 'schedule_capture' AND ${table.state} <> 'settled'`),
@@ -585,6 +591,14 @@ export const agentBackupAdmissionWork = pgTable(
         AND ${table.settled_at} IS NOT NULL
         AND ${table.settled_reason} ~ '^[A-Z][A-Z0-9_]{0,95}$'
       )) IS TRUE`,
+    ),
+    retry_exhaustion_check: check(
+      "agent_backup_admission_work_retry_exhaustion_check",
+      sql`(${table.settled_reason} IS DISTINCT FROM 'RETRY_EXHAUSTED'
+        OR (${table.work_kind} = 'schedule_capture'
+          AND ${table.state} = 'settled'
+          AND ${table.attempts} = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS})
+      ) IS TRUE`,
     ),
     counters_check: check(
       "agent_backup_admission_work_counters_check",
