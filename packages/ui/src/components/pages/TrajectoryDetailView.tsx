@@ -692,9 +692,9 @@ export function TrajectoryDetailView({
       : null;
 
   return (
-    <div className="flex min-h-0 flex-col gap-4">
-      <section className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
-        <div className="flex min-h-16 items-center gap-2 px-4 py-3">
+    <div className="flex min-h-0 flex-col gap-6">
+      <section>
+        <div className="flex min-h-16 items-center gap-3 py-3">
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-[17px] font-semibold text-[color:var(--settings-foreground)]">
               {formatTrajectoryTimestamp(trajectory.createdAt, "smart")}
@@ -708,7 +708,7 @@ export function TrajectoryDetailView({
             {trajectory.status}
           </span>
         </div>
-        <dl className="grid grid-cols-2 border-t border-[color:var(--settings-hairline)] min-[620px]:grid-cols-4">
+        <dl className="grid grid-cols-2 border-y border-[color:var(--settings-hairline)] min-[620px]:grid-cols-4">
           {[
             {
               label: "Duration",
@@ -726,7 +726,7 @@ export function TrajectoryDetailView({
           ].map((metric) => (
             <div
               key={metric.label}
-              className="border-b border-[color:var(--settings-hairline)] px-4 py-3 odd:border-r min-[620px]:border-b-0 min-[620px]:border-r min-[620px]:last:border-r-0"
+              className="border-b border-[color:var(--settings-hairline)] px-3 py-3 first:pl-0 odd:border-r min-[620px]:border-b-0 min-[620px]:border-r min-[620px]:last:border-r-0 min-[620px]:last:pr-0"
             >
               <dt className="text-xs text-[color:var(--settings-muted)]">
                 {metric.label}
@@ -739,11 +739,11 @@ export function TrajectoryDetailView({
         </dl>
       </section>
       {orchestratorData ? (
-        <section className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
-          <h3 className="px-4 pb-2 pt-4 text-sm font-semibold text-[color:var(--settings-foreground)]">
+        <section>
+          <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
             Orchestration
           </h3>
-          <dl className="divide-y divide-[color:var(--settings-hairline)]">
+          <dl className="divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)]">
             {[
               {
                 label: t("trajectorydetailview.DecisionType"),
@@ -760,7 +760,7 @@ export function TrajectoryDetailView({
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex min-h-12 items-start justify-between gap-4 px-4 py-3 text-sm"
+                className="flex min-h-12 items-start justify-between gap-4 py-3 text-sm"
               >
                 <dt className="text-[color:var(--settings-muted)]">
                   {item.label}
@@ -777,8 +777,8 @@ export function TrajectoryDetailView({
       {trajectory.metadata &&
       Object.keys(trajectory.metadata).length > 0 &&
       formatProviderPayload(trajectory.metadata).trim().length > 0 ? (
-        <details className="group overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
-          <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-[color:var(--settings-foreground)] hover:bg-[var(--settings-fill)]">
+        <details className="group border-y border-[color:var(--settings-hairline)]">
+          <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between py-3 text-sm font-medium text-[color:var(--settings-foreground)] hover:text-primary">
             Run metadata
             <span className="text-xs text-[color:var(--settings-muted)] group-open:hidden">
               Show
@@ -787,14 +787,14 @@ export function TrajectoryDetailView({
               Hide
             </span>
           </summary>
-          <pre className="max-h-[20rem] overflow-auto whitespace-pre-wrap break-words border-t border-[color:var(--settings-hairline)] bg-[var(--settings-secondary)] p-4 text-xs leading-6 text-[color:var(--settings-foreground)]">
+          <pre className="max-h-[20rem] overflow-auto whitespace-pre-wrap break-words border-t border-[color:var(--settings-hairline)] py-4 text-xs leading-6 text-[color:var(--settings-foreground)]">
             {formatProviderPayload(trajectory.metadata)}
           </pre>
         </details>
       ) : null}
 
       {llmCalls.length > 0 ? (
-        <section className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] px-4 py-4">
+        <section>
           <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
             Pipeline
           </h3>
@@ -838,7 +838,7 @@ export function TrajectoryDetailView({
       />
 
       {toolEvents.length > 0 ? (
-        <section className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] px-4 py-4">
+        <section>
           <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
             Tool activity
           </h3>
@@ -878,17 +878,14 @@ export function TrajectoryDetailView({
       ) : null}
 
       {providerAccesses.length > 0 ? (
-        <section className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] px-4 py-4">
+        <section>
           <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
             Provider activity
           </h3>
-          <div className="space-y-4">
+          <div className="divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)]">
             {providerAccesses.map((access, index) => (
-              <details
-                key={access.id}
-                className="group overflow-hidden rounded-[12px] bg-[var(--settings-secondary)]"
-              >
-                <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-4 py-3">
+              <details key={access.id} className="group overflow-hidden">
+                <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 py-3">
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-[color:var(--settings-foreground)]">
                       {access.providerName || "Unknown provider"}
@@ -907,7 +904,7 @@ export function TrajectoryDetailView({
                     Hide
                   </span>
                 </summary>
-                <div className="border-t border-[color:var(--settings-hairline)] p-4">
+                <div className="border-t border-[color:var(--settings-hairline)] py-4">
                   {access.query ? (
                     <div>
                       <div className="text-xs font-medium text-[color:var(--settings-muted)]">
