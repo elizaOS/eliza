@@ -688,7 +688,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	 * Compare-and-swap a cache row under an optimistic revision; see
 	 * IDatabaseAdapter.compareAndSwapCache for the contract. Concrete base is
 	 * provided so adapters written before the contract keep compiling; SQL and
-	 * in-memory adapters override with real conditional updates.
+	 * in-memory adapters override with real conditional updates. The base
+	 * throws the typed capability error so callers gate on
+	 * CONTENT_MANIFEST_CAS_UNSUPPORTED uniformly.
 	 */
 	compareAndSwapCache<T>(
 		_key: string,
@@ -697,7 +699,13 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		_value: T,
 	): Promise<boolean> {
 		return Promise.reject(
-			new Error("compareAndSwapCache is not supported by this adapter"),
+			new ElizaError(
+				"compareAndSwapCache is not supported by this adapter",
+				{
+					code: "CONTENT_MANIFEST_CAS_UNSUPPORTED",
+					context: { operation: "compareAndSwapCache" },
+				},
+			),
 		);
 	}
 
