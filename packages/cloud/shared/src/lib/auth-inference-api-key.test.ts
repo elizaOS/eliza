@@ -25,6 +25,10 @@ mock.module("../db/repositories/api-keys", () => ({
     },
     findActiveByHashConsistent: async (keyHash: string) => {
       consistentKeyLookups.push(keyHash);
+      return apiKeyRecord;
+    },
+    findByHashConsistent: async (keyHash: string) => {
+      consistentKeyLookups.push(keyHash);
       if (repositoryError) throw repositoryError;
       return apiKeyRecord;
     },
@@ -195,6 +199,69 @@ describe("requireInferenceApiKeyWithOrg", () => {
       }),
     ).rejects.toThrow("database unavailable");
     expect(rejected).toBe(false);
+    expect(usageCalls).toEqual([]);
+  });
+
+  // Focused classifications (#29493): the authoritative path must reach
+  // the new findByHashConsistent lookup and classify inactive/deleted
+  // credentials distinctly, and membership_missing before org-inactive.
+  test("inactive key on authoritative path returns credential_inactive (403), not invalid", async () => {
+    apiKeyRecord = { ...apiKeyRecord, is_active: false };
+    let rejected = false;
+    await expect(
+      requireInferenceApiKeyWithOrg("eliza_valid", {
+        bypassCache: true,
+        rejected: () => {
+          rejected = true;
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: "ForbiddenError",
+      status: 403,
+      message: "API key is inactive",
+    });
+    expect(rejected).toBe(true);
+    expect(usageCalls).toEqual([]);
+  });
+
+  test("soft-deleted key on authoritative path returns credential_invalid (401)", async () => {
+    apiKeyRecord = { ...apiKeyRecord, deleted_at: new Date() };
+    await expect(
+      requireInferenceApiKeyWithOrg("eliza_valid", {
+        bypassCache: true,
+      }),
+    ).rejects.toMatchObject({
+      name: "AuthenticationError",
+      status: 401,
+      message: "Invalid or expired API key",
+    });
+    expect(usageCalls).toEqual([]);
+  });
+
+  test("missing organization membership is reported before organization-inactive", async () => {
+    userRecord = {
+      id: "user-1",
+      organization_id: "org-1",
+      is_active: true,
+      organization: { ...activeOrganization, is_active: false },
+    };
+    // Same fixture as the org-inactive test but with a null organization:
+    // membership_missing must win.
+    userRecord = {
+      id: "user-1",
+      organization_id: null as never,
+      is_active: true,
+      organization: null as never,
+    };
+    await expect(
+      requireInferenceApiKeyWithOrg("eliza_valid", {
+        bypassCache: true,
+      }),
+    ).rejects.toMatchObject({
+      name: "ForbiddenError",
+      status: 403,
+      message: "This feature requires a full account. Please sign up to continue.",
+    });
     expect(usageCalls).toEqual([]);
   });
 });
