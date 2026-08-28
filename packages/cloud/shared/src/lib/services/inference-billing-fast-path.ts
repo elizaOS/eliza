@@ -13,7 +13,11 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
-import { type CreditReconciliationResult, creditsService } from "./credits";
+import {
+  type CreditReconciliationResult,
+  creditsService,
+  type InferenceBalanceFence,
+} from "./credits";
 import {
   invalidateOrgBalanceHint,
   lowerOrgBalanceHint,
@@ -351,8 +355,18 @@ export async function debitInferenceCost(
   ctx: DebitContext,
   amountUsd: number,
   source: "inline" | "backstop" | "deferred",
-  options: { preserveBalanceHintDuringFencedHandoff?: boolean } = {},
+  options: {
+    preserveBalanceHintDuringFencedHandoff?: boolean;
+    inferenceBalanceFence?: InferenceBalanceFence;
+  } = {},
 ): Promise<InferenceDebitCollectionOutcome> {
+  if (options.preserveBalanceHintDuringFencedHandoff && !options.inferenceBalanceFence) {
+    throw new InferenceDebitInfrastructureError(
+      ctx.requestId,
+      ctx.organizationId,
+      new Error("Fenced inference debit requires an admission fence"),
+    );
+  }
   let result: Awaited<ReturnType<typeof creditsService.deductCredits>>;
   try {
     result = await creditsService.deductCredits({
@@ -370,6 +384,7 @@ export async function debitInferenceCost(
             // is valid only while the admission Durable Object still accounts
             // the active lease; legacy non-Worker debits keep normal eviction.
             preserveInferenceBalanceHint: true,
+            inferenceBalanceFence: options.inferenceBalanceFence,
           }
         : {}),
       metadata: {
@@ -452,6 +467,7 @@ export async function debitInferenceCost(
         ctx.organizationId,
         result.newBalance,
         result.balanceRevision,
+        { publishAuthoritativeBalance: options.inferenceBalanceFence?.publishAuthoritativeBalance },
       );
     } catch (cause) {
       try {

@@ -35,7 +35,19 @@ mock.module("./inference-billing-fast-path", () => ({
   debitInferenceCost,
 }));
 
-const { recoverExpiredInferenceAdmissionLease } = await import("./inference-admission-recovery");
+const { recoverExpiredInferenceAdmissionLease: recoverExpiredInferenceAdmissionLeaseImpl } =
+  await import("./inference-admission-recovery");
+const inferenceBalanceFence = {
+  lowerCommittedBalance: mock(async () => undefined),
+  publishAuthoritativeBalance: mock(async () => undefined),
+};
+const recoverExpiredInferenceAdmissionLease = (
+  context: Parameters<typeof recoverExpiredInferenceAdmissionLeaseImpl>[0],
+  estimatedCostUsd: number,
+) =>
+  recoverExpiredInferenceAdmissionLeaseImpl(context, estimatedCostUsd, {
+    inferenceBalanceFence,
+  });
 
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
 const USER_ID = "00000000-0000-4000-8000-000000000002";
@@ -108,6 +120,8 @@ beforeEach(() => {
   findAppById.mockReset();
   reserveInferenceCredits.mockReset();
   debitInferenceCost.mockReset();
+  inferenceBalanceFence.lowerCommittedBalance.mockClear();
+  inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
 
   getOrganizationBalanceSnapshot.mockResolvedValue({
     balanceUsd: 9.5,
@@ -144,7 +158,10 @@ test("direct recovery replays one deterministic debit and returns the persisted 
     },
     0.3,
     "backstop",
-    { preserveBalanceHintDuringFencedHandoff: true },
+    {
+      preserveBalanceHintDuringFencedHandoff: true,
+      inferenceBalanceFence,
+    },
   );
   expect(first).toEqual({
     balanceUsd: 9.5,
@@ -196,6 +213,7 @@ test("affiliate recovery replays the atomic debit and payout identity", async ()
     billingSource: "gateway",
     actualCost: 0.3,
     preserveInferenceBalanceHint: true,
+    inferenceBalanceFence,
     reservationMetadata: {
       tenantTrace: "trace-1",
       affiliatePayout: {

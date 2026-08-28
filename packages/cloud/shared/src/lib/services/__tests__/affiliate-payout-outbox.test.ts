@@ -4,7 +4,7 @@
  * acknowledgements, and global source-id replay protection without mocks.
  */
 
-import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -373,6 +373,10 @@ describe("affiliate payout outbox", () => {
         return await originalSnapshot(organizationId);
       },
     );
+    const inferenceBalanceFence = {
+      lowerCommittedBalance: mock(async () => undefined),
+      publishAuthoritativeBalance: mock(async () => undefined),
+    };
     const params = {
       organizationId: payerOrg.id,
       userId: payer.id,
@@ -383,11 +387,16 @@ describe("affiliate payout outbox", () => {
       actualCost: 0.9,
       reservationMetadata: reservationMetadata(uniq("affiliate-fenced-source"), attribution),
       preserveInferenceBalanceHint: true,
+      inferenceBalanceFence,
     };
 
     try {
       const settlement = creditsService.collectAffiliateInferenceFallback(params);
       await snapshotStarted.promise;
+      expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledWith(
+        0.1,
+        expect.stringMatching(/^(0|[1-9]\d*)$/),
+      );
 
       // The debit committed, but its revisioned snapshot is deliberately
       // paused. A concurrent admission sees the committed lower balance, not
@@ -407,6 +416,14 @@ describe("affiliate payout outbox", () => {
       const authoritative = await originalSnapshot(payerOrg.id);
       expect(published?.balanceUsd).toBeCloseTo(0.1, 6);
       expect(published?.balanceRevision).toBe(authoritative.revision);
+      expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledWith(
+        0.1,
+        authoritative.revision,
+      );
+      expect(inferenceBalanceFence.publishAuthoritativeBalance).toHaveBeenCalledWith(
+        authoritative.balanceUsd,
+        authoritative.revision,
+      );
     } finally {
       releaseSnapshot.resolve();
       snapshotSpy.mockRestore();
