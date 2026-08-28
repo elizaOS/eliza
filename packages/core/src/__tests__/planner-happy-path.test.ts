@@ -2168,6 +2168,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			vi.fn<
 				(payload: import("../types/streaming").StreamingToolCallPayload) => void
 			>();
+		const onToolResult =
+			vi.fn<
+				(
+					payload: import("../types/streaming").StreamingToolResultPayload,
+				) => void
+			>();
 
 		const result = await runWithStreamingContext(
 			{
@@ -2175,6 +2181,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				onToolCall: (payload) => {
 					order.push("onToolCall");
 					onToolCall(payload);
+				},
+				onToolResult: (payload) => {
+					order.push("onToolResult");
+					onToolResult(payload);
 				},
 			},
 			() =>
@@ -2189,8 +2199,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(result.kind).toBe("planned_reply");
 		// The running_tool announcement precedes execution so the chat SSE
 		// surface shows activity while the tool runs, not after.
-		expect(order).toEqual(["onToolCall", "handler"]);
+		expect(order).toEqual(["onToolCall", "handler", "onToolResult"]);
 		expect(onToolCall).toHaveBeenCalledTimes(1);
+		expect(onToolResult).toHaveBeenCalledTimes(1);
 		const payload = onToolCall.mock.calls[0]?.[0];
 		expect(payload?.toolCall).toMatchObject({
 			name: "VIEWS",
@@ -2198,6 +2209,211 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			arguments: { action: "show", view: "notes" },
 		});
 		expect(payload?.metadata).toMatchObject({ deterministic: true });
+		expect(onToolResult.mock.calls[0]?.[0]).toMatchObject({
+			toolCallId: payload?.toolCall.id,
+			status: "completed",
+		});
+	});
+
+	it("does not announce a deterministic parent that the dispatcher gate refuses", async () => {
+		const parent = makeMockAction({
+			name: "OWNER_PARENT",
+			roleGate: "OWNER",
+			subActions: ["OWNER_CHILD"],
+			handler: async () => ({ success: true, text: "must not run" }),
+		});
+		const evaluator = {
+			name: "test.force_refused_deterministic_parent",
+			priority: 10,
+			deterministicActions: ["OWNER_PARENT"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "OWNER_PARENT" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [parent],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["OWNER_PARENT"],
+						thought: "The parent is deterministic.",
+					}),
+				},
+			],
+		});
+		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
+		const results: import("../types/streaming").StreamingToolResultPayload[] =
+			[];
+
+		await runWithStreamingContext(
+			{
+				onToolCall: (payload) => calls.push(payload),
+				onToolResult: (payload) => results.push(payload),
+			},
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage("run owner parent"),
+					state: makeState(),
+					responseId: RESPONSE_ID,
+				}),
+		);
+
+		expect(
+			calls.filter((payload) =>
+				payload.toolCall.id.startsWith("response-handler:"),
+			),
+		).toHaveLength(0);
+		expect(
+			results.filter((payload) =>
+				payload.toolCallId?.startsWith("response-handler:"),
+			),
+		).toHaveLength(0);
+	});
+
+	it("lets a deterministic sub-planner own streaming without an orphan parent announcement", async () => {
+		const parent = makeMockAction({
+			name: "CALENDAR_PARENT",
+			subActions: ["CALENDAR_CHILD"],
+			handler: async () => ({ success: true, text: "must not run" }),
+		});
+		const child = makeMockAction({
+			name: "CALENDAR_CHILD",
+			handler: async () => ({ success: true, text: "child complete" }),
+		});
+		const evaluator = {
+			name: "test.force_deterministic_subplanner",
+			priority: 10,
+			deterministicActions: ["CALENDAR_PARENT"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "CALENDAR_PARENT" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [parent, child],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["CALENDAR_PARENT"],
+						thought: "Use the deterministic calendar parent.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Run the child.",
+						toolCalls: [{ id: "child-1", name: "CALENDAR_CHILD", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "The child completed.",
+						messageToUser: "Calendar complete.",
+					}),
+				},
+			],
+		});
+		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
+		const results: import("../types/streaming").StreamingToolResultPayload[] =
+			[];
+
+		await runWithStreamingContext(
+			{
+				onToolCall: (payload) => calls.push(payload),
+				onToolResult: (payload) => results.push(payload),
+			},
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage("check calendar"),
+					state: makeState(),
+					responseId: RESPONSE_ID,
+				}),
+		);
+
+		expect(
+			calls.some((payload) =>
+				payload.toolCall.id.startsWith("response-handler:"),
+			),
+		).toBe(false);
+		for (const call of calls) {
+			expect(
+				results.filter((result) => result.toolCallId === call.toolCall.id),
+			).toHaveLength(1);
+		}
+	});
+
+	it("settles a deterministic announcement exactly once when its handler throws", async () => {
+		const action = makeMockAction({
+			name: "THROWING_ACTION",
+			handler: async () => {
+				throw new Error("deterministic boom");
+			},
+		});
+		const evaluator = {
+			name: "test.force_throwing_deterministic_action",
+			priority: 10,
+			deterministicActions: ["THROWING_ACTION"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "THROWING_ACTION" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [action],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["THROWING_ACTION"],
+						thought: "Run the deterministic action.",
+					}),
+				},
+			],
+		});
+		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
+		const results: import("../types/streaming").StreamingToolResultPayload[] =
+			[];
+
+		await runWithStreamingContext(
+			{
+				onToolCall: (payload) => calls.push(payload),
+				onToolResult: (payload) => results.push(payload),
+			},
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage("run the throwing action"),
+					state: makeState(),
+					responseId: RESPONSE_ID,
+				}),
+		);
+
+		expect(calls).toHaveLength(1);
+		expect(results).toHaveLength(1);
+		expect(results[0]).toMatchObject({
+			toolCallId: calls[0]?.toolCall.id,
+			status: "failed",
+		});
 	});
 
 	// tj-a835d4c6da235f: an accepted, internal VIEWS effect must produce an
