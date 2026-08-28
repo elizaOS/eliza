@@ -211,11 +211,38 @@ This explicit direct-distribution variant keeps the Cloud-only renderer but
 adds the Light Phone III display-color guard from issue #16888. It is not a
 Play artifact: the build preserves a `specialUse` foreground service, boot
 receiver, and `WRITE_SECURE_SETTINGS` solely when
-`ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1`. Ordinary `android-cloud` and
+`ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1`. The overlay declares both the base
+`FOREGROUND_SERVICE` permission and its `FOREGROUND_SERVICE_SPECIAL_USE`
+subtype; omitting the base permission makes Android reject `startForeground`
+even when the specialized permission is present. Ordinary `android-cloud` and
 `android-cloud-debug` builds strip the components, Java sources, and all three
 direct-only policy permissions. The overlay also repeats the shared
 `POST_NOTIFICATIONS` declaration because the color guard will not run without
 a visible foreground notification on Android 13 and newer.
+
+For the dedicated LP3 VPS fallback, build the same native package with its
+single remote origin compiled in:
+
+```bash
+VITE_ELIZA_REMOTE_FALLBACK_API_BASE=https://your-agent.example \
+  bun run --cwd packages/app build:android:lp3-vps:debug
+```
+
+That profile enables the LP3 guard and requires the operator to supply a
+credential-free root HTTPS origin through
+`VITE_ELIZA_REMOTE_FALLBACK_API_BASE`; the build fails before Android tooling
+starts when the origin is absent or widened. Before React mounts, the
+app replaces any stale Cloud/local target with that exact remote server and
+marks remote setup complete. The compiled origin remains authoritative for the
+lifetime of the app: live client repoints and active-server writes targeting
+Cloud, local, or a different remote are rejected, including their accompanying
+credentials. The target is also written through the awaited native storage
+bridge before first render so a stale native Cloud record cannot rehydrate on
+the next cold launch. A paired bearer is retained only when it already belongs
+to the compiled origin; switching the compiled origin drops it and requires
+pairing again. The origin is a fetch target, not an extra Capacitor WebView
+navigation host. No pairing code, bearer, SSH address, or other credential is
+compiled into the APK.
 
 The build flag alone cannot activate the guard. On a Light/TLP301 device, the
 operator must grant the declared privileged permission, then send the explicit

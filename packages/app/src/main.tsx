@@ -68,6 +68,7 @@ import {
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
 import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
+import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
 import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
 import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";
 import { client } from "@elizaos/ui/api";
@@ -138,6 +139,10 @@ import {
 } from "@elizaos/ui/platform/browser-launch";
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
+import {
+  dispatchRemoteControllerPairingIntent,
+  parseRemoteControllerPairingDeepLink,
+} from "@elizaos/ui/platform/remote-target-pairing-intent";
 import { startRendererServiceHost } from "@elizaos/ui/platform/renderer-services";
 import {
   clearStandaloneBottomReclaim,
@@ -232,6 +237,10 @@ import {
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
+import {
+  getMobileRemoteFallbackApiBase,
+  installMobileRemoteFallback,
+} from "./mobile-remote-fallback";
 import { installNativeTranscriptPlatformBridge } from "./native-transcript-bridge";
 import { installPackagedShellStorageTestBridge } from "./packaged-shell-storage-test-bridge";
 import {
@@ -454,11 +463,15 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   // opted into cloud-only mode, which remains authoritative over a loopback base.
   cloudOnly: resolveAppCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
-    bootApiBase: getBootConfig().apiBase,
+    bootApiBase:
+      getBootConfig().apiBase ?? getMobileRemoteFallbackApiBase() ?? undefined,
     legacyInjectedApiBase:
       typeof window === "undefined" ? undefined : getLegacyInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
-    nativeRuntimeMode: isAndroidCloudBuild() ? "cloud" : undefined,
+    nativeRuntimeMode:
+      isAndroidCloudBuild() && !getMobileRemoteFallbackApiBase()
+        ? "cloud"
+        : undefined,
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
@@ -471,6 +484,7 @@ const isStoreBuild =
   typeof __ELIZA_BUILD_VARIANT__ === "string" &&
   __ELIZA_BUILD_VARIANT__ === "store";
 const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
+configureStoredStewardTokenScope(IOS_RUNTIME_ENV_CONFIG.cloudApiBase);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
@@ -871,6 +885,7 @@ function buildAppBootConfig(): AppBootConfig {
       (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
       undefined,
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
+    autoUpgradeSharedToDedicated: true,
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
     codingAgentTasksPanel: CodingAgentTasksPanel,
@@ -2003,9 +2018,8 @@ function getMobileLifecycle(): MobileLifecycle {
   return mobileLifecycleInstance;
 }
 
-// Universal/App-Link hosts whose `https://<host>/<path>` links route into the
-// app (paired with the iOS associated-domains entitlement + the Android/web
-// `assetlinks.json` + `apple-app-site-association` served from eliza.app).
+// Universal/App-Link hosts whose `https://<host>/<path>` links can route inside
+// the app after a platform host associates the domain with its native build.
 const APP_LINK_HOSTS = ["eliza.app"];
 
 // Device/desktop "connect to a remote agent at a URL" first-run onboarding:
@@ -2218,6 +2232,27 @@ async function handleAuthCallbackDeepLink(
  * can await it instead of acking on dispatch alone.
  */
 function handleDeepLink(url: string): undefined | Promise<boolean> {
+  const remotePairing = parseRemoteControllerPairingDeepLink(
+    url,
+    APP_URL_SCHEME,
+  );
+  if (remotePairing) {
+    if (
+      !isElectrobunRuntime() ||
+      !navigator.platform.toLowerCase().includes("linux")
+    ) {
+      console.warn(
+        `${APP_LOG_PREFIX} Remote target pairing is available only on the enrolled Linux desktop target`,
+      );
+      return;
+    }
+    dispatchRemoteControllerPairingIntent(remotePairing);
+    return dispatchDeepLinkNavigation({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "my-runtimes",
+    });
+  }
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
     url,
     APP_URL_SCHEME,
@@ -2241,8 +2276,8 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
   }
 
   // Accept both the custom `<scheme>://` links and `https://eliza.app/<path>`
-  // universal/App links (iOS associated-domains + Android assetlinks hand these
-  // to the installed app); both route into the same hash routes below.
+  // universal/App links when a host has configured an operating-system domain
+  // association; both route into the same hash routes below.
   const isAppLink = isTrustedAppLink(parsed, APP_LINK_HOSTS);
   if (parsed.protocol !== `${APP_URL_SCHEME}:` && !isAppLink) return;
   const path = isAppLink
@@ -3581,6 +3616,9 @@ async function main(): Promise<void> {
   // hydration lands. The voice chunk (kicked off above) downloads in parallel
   // with this wait.
   await initializeStorageBridge();
+  if (isAndroid) {
+    await installMobileRemoteFallback(undefined, client);
+  }
   if (isIOS) {
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();

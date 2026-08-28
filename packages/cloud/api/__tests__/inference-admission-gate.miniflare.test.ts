@@ -146,7 +146,9 @@ describe("Miniflare Durable Object integration", () => {
       throw new Error("Admission test Worker bundle was not emitted");
 
     miniflare = new Miniflare({
-      compatibilityDate: "2026-06-01",
+      // Match the deployed API Worker so synchronous SQLite KV is exercised
+      // under the exact production compatibility contract.
+      compatibilityDate: "2026-04-01",
       compatibilityFlags: ["nodejs_compat"],
       modules: true,
       script: await output.text(),
@@ -245,6 +247,34 @@ describe("Miniflare Durable Object integration", () => {
     }
     expect([first.status, second.status].sort()).toEqual([200, 402]);
   }, 120_000);
+
+  test("credential checks bypass a blocked billing queue on the same object", async () => {
+    expect((await post("/test-block-billing-queue", {})).status).toBe(202);
+    const credentialCheck = await Promise.race([
+      post("/credential/check", {
+        organizationId: "org-miniflare",
+        kind: "api_key",
+        credentialId: "00000000-0000-0000-0000-000000000104",
+        userId: "00000000-0000-0000-0000-000000000204",
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("credential check waited behind billing")),
+          500,
+        );
+      }),
+    ]);
+    expect(credentialCheck.status).toBe(200);
+    expect((await post("/test-release-billing-queue", {})).status).toBe(204);
+  });
+
+  test("the revocation queue preserves read-write ordering", async () => {
+    const response = await post("/test-revocation-queue-order", {});
+    expect(response.status).toBe(200);
+    expect(JSON.parse(await response.text())).toEqual({
+      order: ["first:start", "first:end", "second"],
+    });
+  });
 
   test("independent callers observe API-key revocation immediately", async () => {
     const credential = {
@@ -439,6 +469,91 @@ describe("Miniflare Durable Object integration", () => {
     expect(body.cutoverAt % 60_000).toBe(0);
     expect(body.cutoverAt).toBeGreaterThan(Date.now());
     expect(body.cutoverAt - Date.now()).toBeLessThanOrEqual(60_000);
+  }, 120_000);
+
+  test("the active v2 rate-limit identity answers while the obsolete cutover coordinator is blocked", async () => {
+    expect(
+      (await post("/test-block-ledger", {}, "rate-limit:v2:cutover")).status,
+    ).toBe(202);
+
+    const blockedCutover = post(
+      "/rate-limit-v2-cutover",
+      { windowMs: 60_000 },
+      "rate-limit:v2:cutover",
+    );
+    const cutoverAnsweredEarly = await Promise.race([
+      blockedCutover.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 300)),
+    ]);
+    expect(cutoverAnsweredEarly).toBe(false);
+
+    const isolated = await Promise.race([
+      post(
+        "/rate-limit",
+        {
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 1,
+          windowStartedAt: Math.floor(Date.now() / 60_000) * 60_000,
+        },
+        "rate-limit:v2:org-miniflare-cutover-blocked",
+      ),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error("v2 rate limit waited behind cutover coordinator"),
+            ),
+          500,
+        );
+      }),
+    ]);
+    expect(isolated.status).toBe(200);
+    expect((await blockedCutover).status).toBe(200);
+  }, 120_000);
+
+  test("synchronous SQLite KV continues the exact async-KV quota window", async () => {
+    const gateName = "rate-limit:v2:org-miniflare-sync-kv-compat";
+    const windowMs = 60_000;
+    const windowStartedAt = Math.floor(Date.now() / windowMs) * windowMs;
+    expect(
+      (
+        await post(
+          "/test-seed-legacy-rate-limits",
+          {
+            completions: {
+              windowStartedAt,
+              windowMs,
+              maxRequests: 1,
+              count: 1,
+            },
+          },
+          gateName,
+        )
+      ).status,
+    ).toBe(204);
+
+    const denied = await post(
+      "/rate-limit",
+      {
+        endpointType: "completions",
+        windowMs,
+        maxRequests: 1,
+        windowStartedAt,
+      },
+      gateName,
+    );
+    expect(denied.status).toBe(429);
+
+    const persisted = await post("/test-read-legacy-rate-limits", {}, gateName);
+    expect(JSON.parse(await persisted.text())).toEqual({
+      completions: {
+        windowStartedAt,
+        windowMs,
+        maxRequests: 1,
+        count: 2,
+      },
+    });
   }, 120_000);
 
   test("clearing one subject denial cannot clear an independent denial", async () => {

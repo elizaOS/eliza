@@ -20,7 +20,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { ApiError, api } from "../lib/api-client";
 
 export interface ConnectionStatusResult<TStatus> {
@@ -67,11 +66,9 @@ export function useConnectionStatus<TStatus>(
                 : errorMessage;
           const resolved = message || errorMessage;
           // error-policy:J4 status probe failed — surface a distinguishable
-          // error state (not a fabricated "disconnected"). The toast stays for
-          // immediacy; `isError` is the durable signal the connector card reads
-          // so a broken/unreachable backend never renders as "not connected".
+          // error state (not a fabricated "disconnected"). Do not emit one
+          // toast per provider: the parent section owns a single durable notice.
           setError(resolved);
-          toast.error(resolved);
         }
       } finally {
         if (!signal?.aborted) {

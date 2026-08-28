@@ -21,6 +21,7 @@ import type {
 	ConnectorAccountRecord,
 	ConsumeOAuthFlowStateParams,
 	CreateOAuthFlowStateParams,
+	DeleteConnectorAccountCredentialRefsParams,
 	DeleteConnectorAccountParams,
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
@@ -361,6 +362,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	 */
 	abstract getMemories(params: {
 		entityId?: UUID;
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		limit?: number;
 		count?: number;
@@ -371,6 +373,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		start?: number;
 		end?: number;
 		roomId?: UUID;
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		textContains?: string;
@@ -790,6 +793,12 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	listConnectorAccountCredentialRefs(
 		_params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	deleteConnectorAccountCredentialRefs(
+		_params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number> {
 		this.unsupportedConnectorAccountStorage();
 	}
 

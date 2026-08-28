@@ -73,6 +73,17 @@ export default defineConfig({
         find: "@elizaos/ui/state",
         replacement: path.join(here, "stubs/elizaos-ui-state.ts"),
       },
+      {
+        find: "@elizaos/ui/components/composites/page-panel",
+        replacement: path.join(
+          elizaRoot,
+          "packages/ui/src/components/composites/page-panel/index.ts",
+        ),
+      },
+      {
+        find: "@elizaos/ui/components/shared/ViewHeader",
+        replacement: path.join(here, "stubs/elizaos-ui.tsx"),
+      },
       // The components/hooks/api subpath surfaces the views touch are the
       // same primitives the bare-stub exports (Button, Popover*, Spinner,
       // SegmentedControl, useMediaQuery, client).

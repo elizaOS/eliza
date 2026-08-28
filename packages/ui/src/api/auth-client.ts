@@ -120,13 +120,16 @@ export type AuthMeResult =
     }
   | {
       ok: false;
-      status: 401 | 503;
+      status: 401 | 429 | 503;
       reason?:
         | "remote_auth_required"
         | "remote_password_not_configured"
+        | "rate_limited"
         | "server_error"
         | "cloud_unavailable";
       access?: AuthAccessInfo;
+      /** Server-directed pause before the next auth probe, when supplied. */
+      retryAfterMs?: number;
     };
 
 export type AuthSessionsResult =
@@ -164,6 +167,49 @@ function authBase(): string {
   if (typeof window === "undefined") return "";
   const apiBase = getBootConfig().apiBase;
   return apiBase ? apiBase.replace(/\/$/, "") : window.location.origin;
+}
+
+function retryAfterMs(headers: Headers): number | undefined {
+  const raw = headers.get("retry-after")?.trim();
+  if (!raw) return undefined;
+
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.round(seconds * 1000);
+  }
+
+  const retryAt = Date.parse(raw);
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.max(0, retryAt - Date.now());
+}
+
+async function resolvePairingFallback(
+  base: string,
+): Promise<AuthMeResult | null> {
+  let statusResponse: Response;
+  try {
+    statusResponse = await fetchWithCsrf(`${base}/api/auth/status`);
+  } catch {
+    // error-policy:J4 the original 401 remains the explicit auth failure when
+    // the optional public pairing contract cannot be reached.
+    return null;
+  }
+  if (!statusResponse.ok) return null;
+  const status = (await statusResponse.json()) as {
+    required?: boolean;
+    pairingEnabled?: boolean;
+  };
+  if (status.required !== true || status.pairingEnabled !== true) return null;
+  return {
+    ok: false,
+    status: 401,
+    reason: "remote_auth_required",
+    access: {
+      mode: "remote",
+      passwordConfigured: true,
+      ownerConfigured: false,
+    },
+  };
 }
 
 // ── Endpoint callers ──────────────────────────────────────────────────────────
@@ -500,7 +546,7 @@ export async function authMe(): Promise<AuthMeResult> {
       reason?: string;
       access?: AuthAccessInfo;
     };
-    return {
+    const result: AuthMeResult = {
       ok: false,
       status: 401,
       reason:
@@ -510,6 +556,21 @@ export async function authMe(): Promise<AuthMeResult> {
             ? "remote_auth_required"
             : "server_error",
       access: body.access,
+    };
+    if (result.reason !== "server_error" || result.access) return result;
+
+    // Some standalone deployments enforce auth in outer middleware before the
+    // agent route can return its richer 401 body. The public status contract is
+    // authoritative for the supported one-time pairing flow in that case.
+    return (await resolvePairingFallback(authBase())) ?? result;
+  }
+
+  if (res.status === 429) {
+    return {
+      ok: false,
+      status: 429,
+      reason: "rate_limited",
+      retryAfterMs: retryAfterMs(res.headers),
     };
   }
 

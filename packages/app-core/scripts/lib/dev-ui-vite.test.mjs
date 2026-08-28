@@ -11,7 +11,7 @@ const appDir = path.resolve(
   "../../../app",
 );
 
-test("resolveViteCommand uses the source-aware runner config loader", () => {
+test("resolveViteCommand keeps the Vite 8 config and React plugin on one loader", () => {
   const resolved = resolveViteCommand({
     appDir,
     nodePath: "/test/node",
@@ -25,7 +25,7 @@ test("resolveViteCommand uses the source-aware runner config loader", () => {
     "tsx",
     path.join(appDir, "node_modules", "vite", "bin", "vite.js"),
     "--configLoader",
-    "runner",
+    "bundle",
     "--port",
     "2138",
   ]);

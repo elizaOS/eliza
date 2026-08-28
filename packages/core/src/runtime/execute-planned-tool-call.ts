@@ -554,6 +554,16 @@ export async function executePlannedToolCall(
 	options: ExecutePlannedToolCallOptions = {},
 ): Promise<ActionResult> {
 	options.abortSignal?.throwIfAborted();
+	// Perf probe (#latency): per-segment wall clock for one executed tool call,
+	// logged as a single summary line. Diagnostic only; never alters behavior.
+	const perfT0 = Date.now();
+	const perfMarks: [string, number][] = [];
+	let perfPrev = perfT0;
+	const perfMark = (label: string) => {
+		const now = Date.now();
+		perfMarks.push([label, now - perfPrev]);
+		perfPrev = now;
+	};
 	// Diagnostic projection for every copy of the arguments that leaves the
 	// execution path (streaming observers, lifecycle events, trajectories).
 	// The handler itself receives the exact validated values.
@@ -580,6 +590,7 @@ export async function executePlannedToolCall(
 	}
 
 	const executorCtx = await withResolvedUserRoles(runtime, ctx);
+	perfMark("roles");
 	const gateFailure = actionGateFailure(action, executorCtx);
 	if (gateFailure) {
 		return emitToolResult(
@@ -630,6 +641,7 @@ export async function executePlannedToolCall(
 			executorCtx.state,
 			executorCtx.userRoles,
 		));
+	perfMark("aliases");
 	const validation = validateToolArgs(
 		action,
 		resolveEntityAliasRefs(entityAliases, argsForValidation),
@@ -726,6 +738,7 @@ export async function executePlannedToolCall(
 		}
 	}
 
+	perfMark("validate");
 	const accountPolicy = await evaluateConnectorAccountPolicies(
 		runtime,
 		action,
@@ -745,6 +758,7 @@ export async function executePlannedToolCall(
 			),
 		);
 	}
+	perfMark("accountPolicy");
 	options.abortSignal?.throwIfAborted();
 
 	const messageId = executorCtx.message.id as UUID | undefined;
@@ -821,6 +835,7 @@ export async function executePlannedToolCall(
 					);
 				}
 			: executorCtx.callback;
+	perfMark("startedEvent");
 	let resultForEvent = await runWithMessageTrajectoryContext(
 		runtime,
 		executorCtx.message,
@@ -890,6 +905,7 @@ export async function executePlannedToolCall(
 	);
 	// The handler result is the completion barrier. Publish it before event
 	// emission or disclosure revalidation can strand a committed side effect.
+	perfMark("handler");
 	publishSettledResult(runtime, action, resultForEvent, onSettledResult);
 	if (ownerExclusive) {
 		const disclosure = await revalidateOwnerExclusiveDisclosure(
@@ -964,6 +980,19 @@ export async function executePlannedToolCall(
 				privacyDenied: true,
 				privacyReason: disclosure.reason,
 			});
+		}
+	}
+	perfMark("post");
+	{
+		const perfTotal = Date.now() - perfT0;
+		if (perfTotal > 400) {
+			runtime.logger.info(
+				{ src: "execute-planned-tool-call" },
+				`[perf-probe] tool=${action.name} total=${perfTotal}ms ${perfMarks
+					.filter(([, ms]) => ms >= 5)
+					.map(([label, ms]) => `${label}=${ms}ms`)
+					.join(" ")}`,
+			);
 		}
 	}
 	return emitToolResult(toolCall, redactDiagnosticText, resultForEvent, {

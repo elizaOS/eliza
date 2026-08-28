@@ -5,7 +5,11 @@
  * (flipping `meta.firstRunComplete`). When the run is cloud-linked it resolves
  * the Eliza Cloud API key from config, sealed secrets, or env and writes it
  * back so the upstream config save keeps it, then mirrors the merged config to
- * the live runtime through a loopback `PUT /api/config`.
+ * the live runtime through a loopback `PUT /api/config`. A launcher-owned dev
+ * Cloud authority is the exception: only its frozen launch key is visible,
+ * durable credentials stay untouched, and loopback state sync omits every
+ * Cloud-owned topology field so the generic config route cannot materialize
+ * the ephemeral authority view back onto disk.
  *
  * A committed local-target run is also the boot trigger for a fresh install
  * that deferred its runtime at startup (deferred-runtime-boot.ts): once the
@@ -24,6 +28,7 @@
 import type http from "node:http";
 import {
   applyCanonicalFirstRunConfig,
+  loadEffectiveElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent";
@@ -36,6 +41,8 @@ import {
   normalizeFirstRunProviderId,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
@@ -59,6 +66,7 @@ export const MAX_FIRST_RUN_BODY_BYTES = 1_048_576;
 async function syncFirstRunConfigState(
   req: http.IncomingMessage,
   config: Record<string, unknown>,
+  includeCloudTopology = true,
 ): Promise<void> {
   const loopbackPort = req.socket.localPort;
   if (!loopbackPort) {
@@ -66,18 +74,18 @@ async function syncFirstRunConfigState(
   }
 
   const syncPatch: Record<string, unknown> = {};
-  for (const key of [
+  const syncKeys = [
     "meta",
     "agents",
     "ui",
     "messages",
-    "deploymentTarget",
-    "linkedAccounts",
-    "serviceRouting",
     "features",
     "connectors",
-    "cloud",
-  ]) {
+    ...(includeCloudTopology
+      ? ["deploymentTarget", "linkedAccounts", "serviceRouting", "cloud"]
+      : []),
+  ];
+  for (const key of syncKeys) {
     if (Object.hasOwn(config, key)) {
       syncPatch[key] = config[key];
     }
@@ -135,6 +143,11 @@ const CLOUD_API_KEY_RESAVE_DELAY_MS = 3000;
  * silent `catch {}` previously here masked real bugs.
  */
 function scheduleCloudApiKeyResave(apiKey: string): void {
+  // Dev launchers own an immutable process-lifetime Cloud tuple. Persisting a
+  // key from any first-run fallback would turn temporary staging credentials
+  // (or a later-mutated ambient env value) into durable account state.
+  if (resolveDevCloudEnvAuthority()) return;
+
   setTimeout(() => {
     try {
       const freshConfig = loadElizaConfig();
@@ -159,14 +172,22 @@ function scheduleCloudApiKeyResave(apiKey: string): void {
 }
 
 /**
- * Resolve the cloud apiKey from the three sources we accept, in priority order.
- * Returns the first hit (or `undefined` if none) and writes it back into the
- * `config.cloud` slot when found via the secrets/env fallbacks so the
- * subsequent `saveElizaConfig` persists it.
+ * Resolve the cloud apiKey from the accepted sources. Under a launcher-owned
+ * development authority, only the frozen launch value is visible and the
+ * durable config is never mutated. Outside authority mode, retain the legacy
+ * config → sealed secret → environment priority and persist fallback hits.
  */
 function resolveCloudApiKeyForFirstRun(
   config: Record<string, unknown>,
+  devCloudAuthority = resolveDevCloudEnvAuthority(),
 ): string | undefined {
+  if (devCloudAuthority) {
+    const launchValue = resolveDevCloudAuthorityEnvValue(
+      "ELIZAOS_CLOUD_API_KEY",
+    )?.trim();
+    return launchValue || undefined;
+  }
+
   if (!config.cloud || typeof config.cloud !== "object") {
     config.cloud = {};
   }
@@ -188,6 +209,31 @@ function resolveCloudApiKeyForFirstRun(
   }
 
   return undefined;
+}
+
+/** Keep direct-provider setup writable while launcher authority owns Cloud. */
+function withoutAuthorityOwnedCloudCredential(
+  body: Record<string, unknown>,
+  devCloudAuthority: ReturnType<typeof resolveDevCloudEnvAuthority>,
+): Record<string, unknown> {
+  if (!devCloudAuthority) return body;
+  const credentialInputs = body.credentialInputs;
+  if (
+    !credentialInputs ||
+    typeof credentialInputs !== "object" ||
+    Array.isArray(credentialInputs) ||
+    !Object.hasOwn(credentialInputs, "cloudApiKey")
+  ) {
+    return body;
+  }
+  const sanitizedCredentialInputs = {
+    ...(credentialInputs as Record<string, unknown>),
+  };
+  delete sanitizedCredentialInputs.cloudApiKey;
+  return {
+    ...body,
+    credentialInputs: sanitizedCredentialInputs,
+  };
 }
 
 export async function handleFirstRunRoute(
@@ -238,6 +284,9 @@ export async function handleFirstRunRoute(
     return true;
   }
   const body = parsed as Record<string, unknown>;
+  // Freeze and retain the launcher tuple before any credential helper can
+  // mutate process.env from the request body.
+  const devCloudAuthority = resolveDevCloudEnvAuthority();
 
   let capturedCloudApiKey: string | undefined;
   let committedRuntimeTarget: DeploymentTargetRuntime | undefined;
@@ -250,7 +299,9 @@ export async function handleFirstRunRoute(
       });
       return true;
     }
-    await extractAndPersistFirstRunApiKey(body);
+    await extractAndPersistFirstRunApiKey(
+      withoutAuthorityOwnedCloudCredential(body, devCloudAuthority),
+    );
     persistFirstRunDefaults(body);
     if (typeof body.name === "string" && body.name.trim()) {
       state.pendingAgentName = body.name.trim();
@@ -298,12 +349,15 @@ export async function handleFirstRunRoute(
       if (shouldResolveCloudApiKey) {
         resolvedCloudApiKey = resolveCloudApiKeyForFirstRun(
           config as Record<string, unknown>,
+          devCloudAuthority,
         );
 
         if (!resolvedCloudApiKey) {
           logger.warn(
-            "[api] Cloud-linked first-run but no API key found on disk, in sealed secrets, or in env. " +
-              "The upstream handler will save config WITHOUT cloud.apiKey.",
+            devCloudAuthority
+              ? "[api] Cloud-linked first-run has no launcher-authoritative API key; durable, sealed, request, and ambient credentials were ignored."
+              : "[api] Cloud-linked first-run but no API key found on disk, in sealed secrets, or in env. " +
+                  "The upstream handler will save config WITHOUT cloud.apiKey.",
           );
         } else {
           logger.info(
@@ -314,7 +368,25 @@ export async function handleFirstRunRoute(
         capturedCloudApiKey = resolvedCloudApiKey;
       }
       saveElizaConfig(config);
-      await syncFirstRunConfigState(req, config as Record<string, unknown>);
+      // Durable first-run mutations preserve unrelated account state, while
+      // the live process receives only the launcher-authoritative Cloud view.
+      const operationalConfig = devCloudAuthority
+        ? loadEffectiveElizaConfig()
+        : config;
+      // The authority view removes Cloud-owned keys from per-agent settings.
+      // `agents.list` is an array, so the generic config route replaces it
+      // wholesale rather than deep-merging its entries. Use the just-saved
+      // durable agent graph for this loopback-only state refresh; otherwise a
+      // harmless first-run sync would delete unrelated durable credentials.
+      const syncConfig = devCloudAuthority
+        ? {
+            ...(operationalConfig as Record<string, unknown>),
+            ...(Object.hasOwn(config, "agents")
+              ? { agents: (config as Record<string, unknown>).agents }
+              : {}),
+          }
+        : (operationalConfig as Record<string, unknown>);
+      await syncFirstRunConfigState(req, syncConfig, !devCloudAuthority);
     } catch (err) {
       // error-policy:J1 a failed config commit is a server failure, never a
       // successful onboarding acknowledgement.
@@ -338,7 +410,7 @@ export async function handleFirstRunRoute(
 
   sendJsonResponse(res, 200, { ok: true });
 
-  if (capturedCloudApiKey) {
+  if (capturedCloudApiKey && !devCloudAuthority) {
     scheduleCloudApiKeyResave(capturedCloudApiKey);
   }
 

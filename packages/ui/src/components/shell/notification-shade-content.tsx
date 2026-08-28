@@ -7,6 +7,7 @@ import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import { tierForPriority } from "@elizaos/core";
 import { X } from "lucide-react";
 import {
+  createElement,
   type JSX,
   memo,
   useCallback,
@@ -16,6 +17,7 @@ import {
 } from "react";
 import { useSharedNow } from "../../hooks/useSharedNow";
 import { cn } from "../../lib/utils";
+import { categoryIcon } from "../../state/notifications/category-icon";
 import { formatRelativeTimeShort } from "../../utils/format";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import {
@@ -23,7 +25,9 @@ import {
   hasChatSourceMeta,
   normalizeChatSourceKey,
 } from "../composites/chat/chat-source.helpers";
+import { getBrandIcon } from "../conversations/brand-icons";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { notificationPullRevealStyle } from "./notification-shade-presentation";
 import { RelativeTime } from "./RelativeTime";
 
@@ -161,11 +165,13 @@ export function ClearConfirmationContent({
 }
 
 function NotificationSourceIcon({
+  category,
   count,
   countVisibility = 1,
   decorative = false,
   source,
 }: {
+  category: NotificationCategory;
   count?: number;
   countVisibility?: number;
   decorative?: boolean;
@@ -174,54 +180,76 @@ function NotificationSourceIcon({
   const meta = getChatSourceMeta(source);
   const Icon = meta.Icon;
   const registered = hasChatSourceMeta(source);
-  return (
-    <span
-      data-testid={decorative ? undefined : "notification-source-icon"}
-      data-source={normalizeChatSourceKey(source) ?? undefined}
-      role="img"
-      aria-hidden={decorative ? true : undefined}
-      aria-label={
-        decorative
-          ? undefined
-          : count && count > 1
-            ? `${meta.label}, ${count} notifications`
-            : meta.label
-      }
-      title={decorative ? undefined : meta.label}
-      className={cn(
-        "eliza-notif-source-icon relative flex size-10 shrink-0 items-center justify-center rounded-[9px] border border-white/15 bg-black/30",
-        registered && meta.iconClassName,
-      )}
-    >
-      {registered ? (
-        <Icon className="size-5" />
-      ) : decorative ? (
-        <span
-          data-notification-stack-preview-source-initial={
-            meta.label.trim().charAt(0).toUpperCase() || "E"
-          }
-          className="text-sm font-semibold text-white/85"
-        />
-      ) : (
-        <span aria-hidden className="text-sm font-semibold text-white/85">
-          {meta.label.trim().charAt(0).toUpperCase() || "E"}
-        </span>
-      )}
-      {count && count > 1 ? (
-        <span
-          data-testid={decorative ? undefined : "notification-source-count"}
-          data-notification-source-count=""
-          data-notification-stack-preview-count={
-            decorative ? (count > 99 ? "99+" : count) : undefined
-          }
-          aria-hidden
-          style={{ opacity: countVisibility }}
-          className="eliza-notif-shade-transition absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-xs-tight font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(16,10,5,0.7),0_1px_4px_rgba(16,10,5,0.45)]"
-        >
-          {decorative ? null : count > 99 ? "99+" : count}
-        </span>
-      ) : null}
+  const BrandIcon = registered ? null : getBrandIcon(source);
+  const glyph = registered ? (
+    <Icon className="size-5" />
+  ) : BrandIcon ? (
+    <BrandIcon className="size-5" />
+  ) : (
+    <span aria-hidden className="flex size-5 items-center justify-center">
+      {categoryIcon(category)}
     </span>
+  );
+  const counter =
+    count && count > 1 ? (
+      <Card
+        asChild
+        radius="full"
+        border="none"
+        className="eliza-notif-shade-transition absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center px-1.5 text-center text-xs-tight font-semibold leading-none tabular-nums"
+        visualStyle={{
+          backgroundColor: "var(--notification-count-background)",
+          boxShadow: "var(--notification-count-shadow)",
+          color: "var(--notification-count-foreground)",
+        }}
+        data-testid={decorative ? undefined : "notification-source-count"}
+        data-notification-source-count=""
+        data-notification-stack-preview-count={
+          decorative ? (count > 99 ? "99+" : count) : undefined
+        }
+        aria-hidden
+        style={{ opacity: countVisibility }}
+      >
+        <span>{decorative ? null : count > 99 ? "99+" : count}</span>
+      </Card>
+    ) : null;
+
+  return (
+    <Card
+      asChild
+      border="standard"
+      visualStyle={{
+        backgroundColor: "var(--notification-source-background)",
+        borderColor: "var(--notification-source-border)",
+        borderRadius: "var(--notification-source-radius)",
+      }}
+    >
+      {createElement(
+        "span",
+        {
+          "data-testid": decorative ? undefined : "notification-source-icon",
+          "data-source": normalizeChatSourceKey(source) ?? undefined,
+          "data-notification-source-visual": registered
+            ? "registered"
+            : BrandIcon
+              ? "brand"
+              : "category",
+          role: "img",
+          "aria-hidden": decorative ? true : undefined,
+          "aria-label": decorative
+            ? undefined
+            : count && count > 1
+              ? `${meta.label}, ${count} notifications`
+              : meta.label,
+          title: decorative ? undefined : meta.label,
+          className: cn(
+            "eliza-notif-source-icon relative flex size-10 shrink-0 items-center justify-center text-white",
+          ),
+        },
+        glyph,
+        counter,
+      )}
+    </Card>
   );
 }
 
@@ -246,6 +274,7 @@ function NotificationStackPreviewContent({
       className="pointer-events-none flex min-h-touch min-w-0 items-center gap-3 px-3 py-2 text-left"
     >
       <NotificationSourceIcon
+        category={notification.category}
         source={notification.source}
         count={stackCount}
         decorative
@@ -566,6 +595,7 @@ export const NotificationRow = memo(function NotificationRow({
           className="eliza-notif-row-content min-w-0"
         >
           <NotificationSourceIcon
+            category={notification.category}
             source={notification.source}
             count={stackCount}
             countVisibility={stackCountVisibility}

@@ -17,6 +17,7 @@ import {
   canNavigateSameTabForBlockedPopup,
   claimCloudLoginWindow,
   hasSameOriginStewardLogin,
+  isCliReturnLoopbackWebOrigin,
   isTouchPrimaryWebBrowser,
   preOpenCloudLoginWindow,
   prepareDesktopCloudLoginSession,
@@ -91,6 +92,7 @@ afterEach(() => {
   // never leak into (or be closed by) the next test's claim.
   void takeClaimedCloudLoginWindow();
   __resetPreparedDesktopCloudLoginSessionForTests();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   restoreDescriptor("location", originalLocationDescriptor);
   restoreDescriptor("matchMedia", originalMatchMediaDescriptor);
@@ -183,6 +185,40 @@ describe("shouldUseSameTabCloudLogin", () => {
     expect(shouldUseSameTabCloudLogin(makePopup(false))).toBe(false);
   });
 
+  it("never uses local /login on loopback staging", () => {
+    stubHostname("localhost", "http:");
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+
+    expect(
+      shouldUseSameTabCloudLogin(makePopup(false), { hasAgentProxy: true }),
+    ).toBe(false);
+    expect(shouldUseSameTabCloudLogin(null)).toBe(false);
+  });
+
+  it("keeps explicit production loopback on agent-proxied device-code auth", () => {
+    stubHostname("localhost", "http:");
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud");
+
+    expect(
+      shouldUseSameTabCloudLogin(makePopup(false), { hasAgentProxy: true }),
+    ).toBe(false);
+    expect(shouldUseSameTabCloudLogin(null)).toBe(false);
+  });
+
+  it("keeps hosted and self-hosted agent-proxied flows on device-code auth", () => {
+    expect(shouldUseSameTabCloudLogin(null, { hasAgentProxy: true })).toBe(
+      false,
+    );
+
+    stubHostname("self-hosted.example.test");
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://identity.example.test/steward");
+    expect(shouldUseSameTabCloudLogin(null, { hasAgentProxy: true })).toBe(
+      false,
+    );
+  });
+
   it("prefers same-tab outright on touch-primary browsers even with a live popup", () => {
     stubMatchMedia(true);
     expect(shouldUseSameTabCloudLogin(makePopup(false))).toBe(true);
@@ -212,6 +248,35 @@ describe("hasSameOriginStewardLogin", () => {
   it("is false on unknown origins with no Steward API override", () => {
     stubHostname("localhost");
     expect(hasSameOriginStewardLogin()).toBe(false);
+  });
+
+  it("is true on loopback with an explicit Steward API override", () => {
+    stubHostname("127.0.0.1", "http:");
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+    expect(hasSameOriginStewardLogin()).toBe(true);
+  });
+});
+
+describe("isCliReturnLoopbackWebOrigin", () => {
+  it.each(["localhost", "ui.localhost", "127.0.0.1", "::1"])(
+    "accepts the hosted CLI returnTo loopback host %s",
+    (hostname) => {
+      stubHostname(hostname, "http:");
+      expect(isCliReturnLoopbackWebOrigin()).toBe(true);
+    },
+  );
+
+  it.each(["127.0.0.2", "192.168.1.8", "attacker.example"])(
+    "does not broaden the hosted CLI returnTo allowlist to %s",
+    (hostname) => {
+      stubHostname(hostname, "http:");
+      expect(isCliReturnLoopbackWebOrigin()).toBe(false);
+    },
+  );
+
+  it("rejects a localhost name outside HTTP(S)", () => {
+    stubHostname("localhost", "file:");
+    expect(isCliReturnLoopbackWebOrigin()).toBe(false);
   });
 });
 
@@ -274,6 +339,40 @@ describe("preOpenCloudLoginWindow", () => {
   it("pre-opens the popup on non-touch web (desktop keeps the popup path)", () => {
     const popup = makePopup(false);
     const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
+    expect(preOpenCloudLoginWindow()).toBe(popup);
+    expect(openSpy).toHaveBeenCalledWith("about:blank", CLOUD_LOGIN_POPUP_NAME);
+  });
+
+  it("pre-opens hosted staging auth on non-touch loopback development", () => {
+    stubHostname("127.0.0.1", "http:");
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+    const popup = makePopup(false);
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
+
+    expect(preOpenCloudLoginWindow()).toBe(popup);
+    expect(openSpy).toHaveBeenCalledWith("about:blank", CLOUD_LOGIN_POPUP_NAME);
+  });
+
+  it("keeps touch-primary loopback staging in one tab for the hosted CLI return", () => {
+    stubHostname("127.0.0.1", "http:");
+    stubMatchMedia(true);
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+    const openSpy = vi.spyOn(window, "open");
+
+    expect(preOpenCloudLoginWindow()).toBeNull();
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it("pre-opens production loopback auth for the device-code flow", () => {
+    stubHostname("127.0.0.1", "http:");
+    stubMatchMedia(true);
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud");
+    const popup = makePopup(false);
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
+
     expect(preOpenCloudLoginWindow()).toBe(popup);
     expect(openSpy).toHaveBeenCalledWith("about:blank", CLOUD_LOGIN_POPUP_NAME);
   });

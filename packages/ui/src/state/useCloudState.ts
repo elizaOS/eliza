@@ -30,10 +30,14 @@ import {
   type AndroidCloudAuthResult,
   beginAndroidCloudSignIn,
   cancelAndroidCloudSignIn,
+  clearAndroidCloudAccountSwitchPending,
+  isAndroidCloudAccountSwitchPending,
+  markAndroidCloudAccountSwitchPending,
   navigateAndroidCloudSignInInApp,
+  signOutAndroidCloud,
   takeLatestAndroidCloudCompletion,
 } from "../android-cloud/android-cloud-auth";
-import { client } from "../api";
+import { type CloudCredits, type CloudStatus, client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   cloudTokenSecsRemaining,
@@ -41,6 +45,7 @@ import {
   refreshCloudStewardSession,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
+  verifyDirectCloudStewardSession,
 } from "../api/client-cloud";
 import {
   invokeDesktopBridgeRequestWithTimeout,
@@ -71,6 +76,7 @@ import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import { bindDirectCloudLoginToPersonalAgent } from "./bind-direct-cloud-login";
 import {
   CLOUD_LOGIN_POPUP_NAME,
+  isLoopbackStagingStewardDevelopment,
   navigateToSameTabCloudLogin,
   shouldUseSameTabCloudLogin,
   takeClaimedCloudLoginWindow,
@@ -87,8 +93,13 @@ import {
   launchStewardLogin,
 } from "./cloud-steward-login";
 
-import { scrubPersistedActiveServerToken } from "./persistence";
+import {
+  savePersistedFirstRunComplete,
+  scrubPersistedActiveServerToken,
+} from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
+import { getBuildConfiguredRemoteApiBaseUrl } from "./runtime-url-trust";
+import { clearManagedCloudAccountBinding } from "./shared-cloud-account-binding";
 import type { CloudLoginOptions } from "./types";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -100,10 +111,20 @@ const ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS = 3;
 const ANDROID_CLOUD_AUTH_TIMEOUT_MS = 5 * 60_000;
 const ANDROID_CLOUD_BROWSER_FINISH_GRACE_MS = 1_500;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://eliza.app";
+const CLOUD_SESSION_VERIFICATION_TRANSIENT_MESSAGE =
+  "Eliza Cloud is temporarily unavailable. Retry in a moment.";
 const ELIZA_CLOUD_LOGIN_COMPLETE_PARAM = "elizaCloudLogin";
 const ELIZA_CLOUD_LOGIN_SESSION_PARAM = "elizaCloudLoginSession";
 
 let activeCloudLoginPopup: Window | null = null;
+
+class CloudSessionVerificationTransientError extends Error {
+  override readonly name = "CloudSessionVerificationTransientError";
+
+  constructor(cause: unknown) {
+    super(CLOUD_SESSION_VERIFICATION_TRANSIENT_MESSAGE, { cause });
+  }
+}
 
 /** Cloud=Steward token-lifecycle: how often to check the JWT for expiry. */
 const STEWARD_REFRESH_CHECK_INTERVAL_MS = 60_000;
@@ -406,12 +427,19 @@ function hasCloudLoginBackend(): boolean {
 }
 
 function canPollCloudStatus(): boolean {
+  // A dedicated remote build gets models and voice from its paired runtime.
+  // Polling that runtime's optional Cloud billing integration misclassifies an
+  // unrelated server credential as the mobile app's own authentication state.
+  if (getBuildConfiguredRemoteApiBaseUrl()) return false;
+
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
   if (isCapacitorNativeRuntime() || isElectrobunRuntime()) return true;
   if (explicitBase && isConfiguredCloudSiteBase(explicitBase)) return true;
   return hasCloudLoginBackend() && supportsFullAppShellRoutes(explicitBase);
 }
+
+type PollIntent = "ambient" | "session-verification";
 
 /**
  * Resolve the Steward refresh endpoint for the current target. On hosted web
@@ -538,8 +566,11 @@ export function useCloudState({
 
   // ── Callbacks ──────────────────────────────────────────────────────
 
-  const pollCloudCredits = useCallback(async (): Promise<boolean> => {
-    if (!canPollCloudStatus()) {
+  async function runCloudPoll(
+    intent: PollIntent = "ambient",
+  ): Promise<boolean> {
+    const buildPinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
+    if (intent === "ambient" && !canPollCloudStatus()) {
       if (elizaCloudPollInterval.current) {
         clearInterval(elizaCloudPollInterval.current);
         elizaCloudPollInterval.current = null;
@@ -549,10 +580,32 @@ export function useCloudState({
     if (elizaCloudDisconnectInFlightRef.current) {
       return lastElizaCloudPollConnectedRef.current;
     }
-    // error-policy:J4 transient poll failure degrades to the last known
-    // snapshot (below) rather than flapping the UI into a false "disconnected"
-    // state; a persistent failure surfaces via that stale-but-visible state.
-    const cloudStatus = await client.getCloudStatus().catch(() => null);
+
+    let cloudStatus: CloudStatus | null;
+    let prefetchedCloudCredits: CloudCredits | null | undefined;
+    if (intent === "session-verification" && buildPinnedRemoteApiBase) {
+      const stewardToken = readStoredStewardToken()?.trim();
+      const cloudApiBase =
+        getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
+      if (!stewardToken) return false;
+      const verification = await verifyDirectCloudStewardSession({
+        cloudApiBase,
+        stewardToken,
+      }).catch((err: unknown) => {
+        logger.warn(
+          { err },
+          "[useCloudState] direct Cloud session verification failed",
+        );
+        throw new CloudSessionVerificationTransientError(err);
+      });
+      cloudStatus = verification.status;
+      prefetchedCloudCredits = verification.credits;
+    } else {
+      // error-policy:J4 transient poll failure degrades to the last known
+      // snapshot (below) rather than flapping the UI into a false "disconnected"
+      // state; a persistent failure surfaces via that stale-but-visible state.
+      cloudStatus = await client.getCloudStatus().catch(() => null);
+    }
     if (elizaCloudDisconnectInFlightRef.current) {
       return lastElizaCloudPollConnectedRef.current;
     }
@@ -603,11 +656,18 @@ export function useCloudState({
       // state below — the balance widget renders a real error, never
       // healthy-empty; the next poll interval retries.
       let creditsFetchError: string | null = null;
-      const credits = await client.getCloudCredits().catch((err: unknown) => {
-        creditsFetchError = err instanceof Error ? err.message : String(err);
-        logger.warn({ err }, "[useCloudState] cloud credits fetch failed");
-        return null;
-      });
+      const credits =
+        prefetchedCloudCredits !== undefined
+          ? prefetchedCloudCredits
+          : await client.getCloudCredits().catch((err: unknown) => {
+              creditsFetchError =
+                err instanceof Error ? err.message : String(err);
+              logger.warn(
+                { err },
+                "[useCloudState] cloud credits fetch failed",
+              );
+              return null;
+            });
       if (elizaCloudDisconnectInFlightRef.current) {
         return lastElizaCloudPollConnectedRef.current;
       }
@@ -650,9 +710,14 @@ export function useCloudState({
     }
     lastElizaCloudPollConnectedRef.current = isConnected;
     // Self-manage the recurring poll interval: start when connected, stop when not.
-    // This covers login during first-run setup (interval wasn't started at mount) and
-    // disconnect (interval should stop to avoid useless API calls).
-    if (isConnected && !elizaCloudPollInterval.current) {
+    // A build-pinned remote may verify a deliberate login against the Cloud
+    // control plane, but must never turn that one request into ambient polling.
+    const canScheduleAmbientPolling = canPollCloudStatus();
+    if (
+      isConnected &&
+      canScheduleAmbientPolling &&
+      !elizaCloudPollInterval.current
+    ) {
       elizaCloudPollInterval.current = window.setInterval(() => {
         if (
           typeof document !== "undefined" &&
@@ -660,14 +725,18 @@ export function useCloudState({
         ) {
           return;
         }
-        void pollCloudCredits();
+        void runCloudPoll();
       }, 60_000);
-    } else if (!isConnected && elizaCloudPollInterval.current) {
+    } else if (
+      (!isConnected || !canScheduleAmbientPolling) &&
+      elizaCloudPollInterval.current
+    ) {
       clearInterval(elizaCloudPollInterval.current);
       elizaCloudPollInterval.current = null;
     }
     return isConnected;
-  }, []);
+  }
+  const pollCloudCredits = useCallback(runCloudPoll, []);
 
   const reconcileAndroidCloudSession = useCallback(
     async (cloudApiBase?: string): Promise<boolean> => {
@@ -682,9 +751,11 @@ export function useCloudState({
         ...getBootConfig(),
         cloudApiBase: authenticatedCloudApiBase,
       });
-      client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
-      client.setToken(token);
-      const connected = await pollCloudCredits();
+      if (!getBuildConfiguredRemoteApiBaseUrl()) {
+        client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
+        client.setToken(token);
+      }
+      const connected = await pollCloudCredits("session-verification");
       try {
         await loadWalletConfig();
       } catch (err) {
@@ -709,11 +780,27 @@ export function useCloudState({
     let cancelled = false;
 
     const reconcile = async (apiBase?: string) => {
-      const connected = await reconcileAndroidCloudSession(apiBase);
-      if (!cancelled && !connected && readStoredStewardToken()?.trim()) {
-        setElizaCloudLoginError(
-          "Could not verify your Eliza Cloud session. Please sign in again.",
+      try {
+        const connected = await reconcileAndroidCloudSession(apiBase);
+        if (!cancelled && !connected && readStoredStewardToken()?.trim()) {
+          setElizaCloudLoginError(
+            "Could not verify your Eliza Cloud session. Please sign in again.",
+          );
+        }
+      } catch (err) {
+        // error-policy:J4 designed degrade — a transient Android session probe
+        // retains the credential and becomes an explicit user-visible retry.
+        logger.warn(
+          { err },
+          "[useCloudState] Android Cloud session reconciliation failed",
         );
+        if (!cancelled) {
+          setElizaCloudLoginError(
+            err instanceof CloudSessionVerificationTransientError
+              ? CLOUD_SESSION_VERIFICATION_TRANSIENT_MESSAGE
+              : "Could not verify your Eliza Cloud session. Retry in a moment.",
+          );
+        }
       }
     };
     const onResult = (event: Event) => {
@@ -847,7 +934,9 @@ export function useCloudState({
                 onResult,
               );
           });
-          const attempt = await beginAndroidCloudSignIn(cloudApiBase);
+          const attempt = await beginAndroidCloudSignIn(cloudApiBase, {
+            switchAccount: isAndroidCloudAccountSwitchPending(),
+          });
           attemptId = attempt.state;
           if (isAndroidLauncherBuild()) {
             if (!navigateAndroidCloudSignInInApp(attempt.browserUrl)) {
@@ -914,6 +1003,17 @@ export function useCloudState({
               "Could not verify your Eliza Cloud session. Please sign in again.",
             );
           }
+          try {
+            clearAndroidCloudAccountSwitchPending();
+          } catch (error) {
+            // error-policy:J4 the replacement session is already verified;
+            // retaining this non-secret marker only forces another explicit
+            // account choice on a future login instead of weakening auth.
+            logger.warn(
+              { error },
+              "[useCloudState] Could not clear Android account-switch marker",
+            );
+          }
         } catch (error) {
           androidLoginError = error;
           setElizaCloudLoginError(
@@ -962,7 +1062,7 @@ export function useCloudState({
           const apiKey = await siweLoginWithInjectedWallet(siweBase);
           if (apiKey) {
             closePrePoppedWindow();
-            const connected = await pollCloudCredits();
+            const connected = await pollCloudCredits("session-verification");
             // error-policy:J4 wallet config is a secondary panel; a failed
             // load must not undo a verified login.
             await loadWalletConfig().catch(() => undefined);
@@ -1019,7 +1119,7 @@ export function useCloudState({
           // declaring "connected" + toasting here would be a false success that
           // 401s the agent picker in a loop. Only celebrate a verified session;
           // otherwise surface the re-auth path the login UI already renders.
-          let connected = await pollCloudCredits();
+          let connected = await pollCloudCredits("session-verification");
           // A direct identity 401 clears only the exact rejected Steward
           // credential. When launchStewardLogin reused that credential, invoke
           // the mounted sign-in surface now and verify the replacement on this
@@ -1032,7 +1132,7 @@ export function useCloudState({
             if (hasStewardLoginLauncher()) {
               closePrePoppedWindow();
               await launchStewardLogin();
-              connected = await pollCloudCredits();
+              connected = await pollCloudCredits("session-verification");
             } else {
               // The opaque token was the only reason this branch was usable.
               // With it authoritatively rejected and no in-app provider,
@@ -1058,8 +1158,18 @@ export function useCloudState({
           }
         } catch (err) {
           setElizaCloudLoginError(
-            err instanceof Error ? err.message : "Eliza Cloud login failed",
+            err instanceof CloudSessionVerificationTransientError
+              ? CLOUD_SESSION_VERIFICATION_TRANSIENT_MESSAGE
+              : err instanceof Error
+                ? err.message
+                : "Eliza Cloud login failed",
           );
+          if (
+            options.requireClientAuth &&
+            err instanceof CloudSessionVerificationTransientError
+          ) {
+            throw err;
+          }
         } finally {
           if (!fallThroughToLegacyLogin) {
             elizaCloudLoginBusyRef.current = false;
@@ -1083,7 +1193,9 @@ export function useCloudState({
       // direct cloud auth (no local backend) or go through the agent proxy.
       const hasBackend = hasCloudLoginBackend();
       const cloudApiBase = getBootConfig().cloudApiBase ?? "https://eliza.app";
-      let useDirectAuth = !hasBackend;
+      const usesHostedLoopbackStagingSession =
+        isLoopbackStagingStewardDevelopment();
+      let useDirectAuth = !hasBackend || usesHostedLoopbackStagingSession;
 
       if (hasBackend) {
         // error-policy:J4 a null status here is a designed branch: a
@@ -1105,7 +1217,7 @@ export function useCloudState({
           hasRequiredClientAuth()
         ) {
           closePrePoppedWindow();
-          await pollCloudCredits();
+          await pollCloudCredits("session-verification");
           await loadWalletConfig().catch((err: unknown) => {
             // error-policy:J4 already-authenticated login has succeeded; a
             // wallet config refresh failure must not wedge the login button.
@@ -1122,6 +1234,8 @@ export function useCloudState({
           return loginCompletion;
         }
       }
+      const shouldBindClientToDirectCloud =
+        useDirectAuth && !(usesHostedLoopbackStagingSession && hasBackend);
 
       // #15143 mobile-web sign-in: when the popup path cannot work — the
       // pre-opened handle came back null (popup blocked; the runtime signal on
@@ -1131,10 +1245,18 @@ export function useCloudState({
       // session whose browser window would never open. The returnTo round
       // trip lands back here and the stored Steward token completes the login
       // (first-run resumes via its marker + mount-time token poll). Direct
-      // cloud targets only: an agent-proxied (hasBackend) login stays on the
-      // device-code flow, whose copyable fallback link is the designed
-      // degrade for blocked popups there.
-      if (useDirectAuth && shouldUseSameTabCloudLogin(prePoppedWindow)) {
+      // cloud targets normally require direct auth: an agent-proxied
+      // (hasBackend) login stays on the device-code flow, whose copyable
+      // fallback link is the designed degrade for blocked popups there. The
+      // Loopback staging is intentionally excluded: its tenant rejects a local
+      // OAuth callback, so it uses the hosted CLI-session flow below. Production
+      // and self-hosted agent proxies retain device-code auth because their
+      // CORS/pairing contracts differ.
+      if (
+        shouldUseSameTabCloudLogin(prePoppedWindow, {
+          hasAgentProxy: !useDirectAuth,
+        })
+      ) {
         closePrePoppedWindow();
         navigateToSameTabCloudLogin();
         elizaCloudLoginBusyRef.current = false;
@@ -1209,6 +1331,20 @@ export function useCloudState({
         // open without crashing but never surface a usable window.
         if (resp.browserUrl && isSafeNavigationUrl(resp.browserUrl)) {
           setElizaCloudLoginFallbackUrl(resp.browserUrl);
+          // Popup-hostile localhost browsers carry this tab through hosted
+          // staging auth. The opaque CLI session returns to localhost for the
+          // mount-time poll below; Steward never receives localhost as its
+          // OAuth redirect_uri.
+          if (
+            usesHostedLoopbackStagingSession &&
+            (!prePoppedWindow || prePoppedWindow.closed)
+          ) {
+            window.location.assign(resp.browserUrl);
+            elizaCloudLoginBusyRef.current = false;
+            setElizaCloudLoginBusy(false);
+            completeLogin();
+            return loginCompletion;
+          }
           // Electrobun's `window.open` is another renderer/WebView surface,
           // not the user's browser. Sending Cloud authentication there makes a
           // click appear to activate Eliza while no system login window opens.
@@ -1334,7 +1470,7 @@ export function useCloudState({
                     cloudApiBase: authenticatedCloudApiBase,
                     token: poll.token,
                   });
-                } else {
+                } else if (shouldBindClientToDirectCloud) {
                   client.setBaseUrl(authenticatedCloudApiBase, {
                     persist: false,
                   });
@@ -1465,8 +1601,12 @@ export function useCloudState({
               ...getBootConfig(),
               cloudApiBase: authenticatedCloudApiBase,
             });
-            client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
-            client.setToken(poll.token);
+            const preservesLocalBackend =
+              isLoopbackStagingStewardDevelopment() && hasCloudLoginBackend();
+            if (!preservesLocalBackend) {
+              client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
+              client.setToken(poll.token);
+            }
             setElizaCloudConnected(true);
             setElizaCloudLoginError(null);
             if (poll.userId) {
@@ -1774,7 +1914,22 @@ export function useCloudState({
       // inherits the retired console's sign-out menu. Preserve the hardened
       // cross-origin teardown here: synchronously suppress auto-bridging,
       // revoke the server session, then scrub the local Steward session.
-      await signOutFromSsoBridgedHost();
+      const nativeAndroidCloud =
+        isAndroidCloudBuild() && Capacitor.isNativePlatform();
+      if (nativeAndroidCloud) {
+        const cloudApiBase =
+          getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
+        await signOutAndroidCloud(cloudApiBase);
+        markAndroidCloudAccountSwitchPending();
+      } else {
+        await signOutFromSsoBridgedHost();
+      }
+      // A managed agent selection is scoped to the account that proved
+      // ownership. Account switching must not restore that target under the
+      // next account or strand the cloud-only app in backend-unreachable.
+      await clearManagedCloudAccountBinding();
+      clearCloudPairApiToken();
+      savePersistedFirstRunComplete(false);
       setElizaCloudEnabled(false);
       setElizaCloudConnected(false);
       publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {

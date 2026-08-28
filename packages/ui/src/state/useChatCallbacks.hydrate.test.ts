@@ -197,6 +197,9 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
       expect(setActiveConversationId).toHaveBeenCalledWith("c1"),
     );
     expect(setConversationMessages).not.toHaveBeenCalled();
+    expect(document.documentElement.dataset.conversationHistoryApplied).toBe(
+      "false",
+    );
 
     resolveMessages({
       messages: [{ id: "m1", role: "user", text: "hello", timestamp: 1 }],
@@ -205,6 +208,9 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     expect(setConversationMessages).toHaveBeenCalledWith([
       { id: "m1", role: "user", text: "hello", timestamp: 1 },
     ]);
+    expect(document.documentElement.dataset.conversationHistoryApplied).toBe(
+      "true",
+    );
   });
 
   it("leaves the thread holder UNKNOWN when the restore fetch fails (placeholder [] must never feed draft cleanup)", async () => {
@@ -223,8 +229,11 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     // Restored, but its messages were NEVER loaded — the [] in the thread is a
     // placeholder. Binding it to "c1" would let the select/new-chat cleanup
     // judge a possibly-real conversation as an empty draft and delete it.
-    expect(result).toBe("c1");
+    expect(result).toBeNull();
     expect(loadedConversationIdRef.current).toBeNull();
+    expect(document.documentElement.dataset.conversationHistoryApplied).toBe(
+      "false",
+    );
   });
 
   it("skips a saved greeting-only draft when a real conversation exists", async () => {

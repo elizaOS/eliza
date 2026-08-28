@@ -118,6 +118,25 @@ describe("host-external importer resolution (factory hostImport)", () => {
     expect(typeof api.fetchWithCsrf).toBe("function");
   });
 
+  it("provides the canonical view header to plugin view bundles", async () => {
+    const header = await resolveHostExternal(
+      "@elizaos/ui/components/shared/ViewHeader",
+    );
+    expect(typeof header.ViewHeader).toBe("function");
+  });
+
+  it("provides the scoped capability recovery hooks used by plugin views", async () => {
+    const recovery = await resolveHostExternal(
+      "@elizaos/ui/hooks/runtime-capability-retry",
+    );
+    const authority = await resolveHostExternal(
+      "@elizaos/ui/hooks/useActiveAgentAuthority",
+    );
+
+    expect(typeof recovery.loadAfterCapabilityWarmup).toBe("function");
+    expect(typeof authority.useActiveAgentAuthority).toBe("function");
+  });
+
   it("throws for an unknown specifier that is neither framework nor registered", async () => {
     await expect(
       resolveHostExternal("@test/never-registered-external"),
@@ -221,11 +240,8 @@ describe("DynamicViewLoader", () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        /require a frameUrl HTML document; bundleUrl is a JavaScript module/,
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("This view couldn’t open")).toBeTruthy();
+    expect(screen.queryByText(/require a frameUrl HTML document/)).toBeNull();
     expect(
       screen.queryByTestId("sandboxed-view-frame-sandboxed.panel"),
     ).toBeNull();
@@ -946,8 +962,8 @@ describe("DynamicViewLoader", () => {
 
     render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="broken.view" />);
 
-    await screen.findByText("Failed to load view");
-    expect(screen.getByText("View ID: broken.view")).toBeTruthy();
+    await screen.findByText("This view couldn’t open");
+    expect(screen.queryByText("View ID: broken.view")).toBeNull();
     expect(consoleError).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(String),
@@ -957,7 +973,7 @@ describe("DynamicViewLoader", () => {
 
   it("shows the recoverable card (never a blank screen) when the bundle import rejects, and Retry re-imports", async () => {
     // Mode 1: a rejected dynamic import (bundle 404 / network / fetch error)
-    // must land on the SAME "Failed to load view" card with a working Retry —
+    // must land on the same plain-language recovery card with a working Retry —
     // not a blank/white render.
     const consoleError = vi
       .spyOn(console, "error")
@@ -982,11 +998,11 @@ describe("DynamicViewLoader", () => {
 
     const retry = await screen.findByRole("button", { name: /retry/i });
     // The actual card is in the DOM (not an empty container).
-    expect(screen.getByText("Failed to load view")).toBeTruthy();
-    expect(screen.getByText("View ID: network.view")).toBeTruthy();
+    expect(screen.getByText("This view couldn’t open")).toBeTruthy();
+    expect(screen.queryByText("View ID: network.view")).toBeNull();
     expect(
-      screen.getByText("Failed to fetch dynamically imported module"),
-    ).toBeTruthy();
+      screen.queryByText("Failed to fetch dynamically imported module"),
+    ).toBeNull();
     expect(container.textContent).not.toBe("");
 
     await act(async () => {
@@ -995,7 +1011,7 @@ describe("DynamicViewLoader", () => {
 
     // Retry actually re-attempts the import — the fixed bundle mounts.
     await screen.findByText("Network recovered v2");
-    expect(screen.queryByText("Failed to load view")).toBeNull();
+    expect(screen.queryByText("This view couldn’t open")).toBeNull();
     expect(window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__).toHaveBeenCalledTimes(
       2,
     );
@@ -1028,8 +1044,8 @@ describe("DynamicViewLoader", () => {
 
     // First import renders a component that throws → ErrorBoundary fallback.
     const retry = await screen.findByRole("button", { name: /retry/i });
-    expect(screen.getByText("Failed to load view")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /back to views/i })).toBeTruthy();
+    expect(screen.getByText("This view couldn’t open")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /back to views/i })).toBeNull();
 
     await act(async () => {
       retry.click();
@@ -1037,7 +1053,30 @@ describe("DynamicViewLoader", () => {
 
     // Second import returns a component that renders cleanly.
     await screen.findByText("Recovered panel v2");
-    expect(screen.queryByText("Failed to load view")).toBeNull();
+    expect(screen.queryByText("This view couldn’t open")).toBeNull();
+    consoleError.mockRestore();
+  });
+
+  it("keeps a launcher escape action when fullscreen chrome owns no back button", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => {
+      throw new Error("fullscreen bundle unavailable");
+    });
+
+    render(
+      <DynamicViewLoader
+        bundleUrl="https://capability.example.test/assets/fullscreen-fail.js"
+        viewId="fullscreen.view"
+        surface={{ header: "fullscreen" }}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /back to views/i }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
     consoleError.mockRestore();
   });
 

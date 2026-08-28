@@ -70,6 +70,10 @@ export function createMockRuntime(
 		services: new Map(),
 		stateCache: new Map(),
 		reportError: () => undefined,
+		// An unset setting reads as null on the real runtime; defaulting it here
+		// keeps setting-gated code paths on their default branch in unit tests
+		// unless a test overrides specific keys.
+		getSetting: () => null,
 		...overrides,
 	};
 

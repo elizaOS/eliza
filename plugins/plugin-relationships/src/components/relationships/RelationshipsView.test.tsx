@@ -188,7 +188,7 @@ describe("RelationshipsView — states", () => {
         })}
       />,
     );
-    await screen.findByText("None");
+    await screen.findByRole("heading", { name: "No relationships yet" });
     expect(screen.queryByText("Pat Doe")).toBeNull();
   });
 
@@ -201,7 +201,7 @@ describe("RelationshipsView — states", () => {
         })}
       />,
     );
-    await screen.findByText("None");
+    await screen.findByRole("heading", { name: "No relationships yet" });
     fireEvent.click(agent("add"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
@@ -251,7 +251,7 @@ describe("RelationshipsView — states", () => {
 });
 
 describe("RelationshipsView — filtering + freshness", () => {
-  it("narrows the visible entity nodes when a kind filter chip is toggled", async () => {
+  it("narrows the visible entity nodes when a type menu option is selected", async () => {
     render(
       <RelationshipsView
         fetchers={makeFetchers({
@@ -275,8 +275,14 @@ describe("RelationshipsView — filtering + freshness", () => {
     await screen.findByText("Pat Doe");
     expect(screen.getByText("Acme Corp")).toBeTruthy();
 
-    // Toggle the Organizations filter: only the org node should remain.
-    fireEvent.click(agent("relationships-kind-organization"));
+    // Select Organizations from the type menu: only the org node should remain.
+    fireEvent.pointerDown(agent("relationships-kind-filter"), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Organizations" }),
+    );
     await waitFor(() => expect(screen.queryByText("Pat Doe")).toBeNull());
     expect(screen.getByText("Acme Corp")).toBeTruthy();
   });

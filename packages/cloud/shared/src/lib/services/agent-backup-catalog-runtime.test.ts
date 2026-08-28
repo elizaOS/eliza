@@ -2,7 +2,11 @@
 
 import { describe, expect, test } from "bun:test";
 import { ElizaError } from "@elizaos/core";
-import type { AgentBackupOperationClaim } from "../../db/repositories/agent-backup-catalog";
+import {
+  AGENT_BACKUP_ADMISSION_CONTENDED_CODE,
+  AgentBackupAdmissionContendedError,
+  type AgentBackupOperationClaim,
+} from "../../db/repositories/agent-backup-catalog";
 import type { AgentBackupGcClaim } from "../../db/repositories/agent-backup-gc";
 import type { AgentBackupObjectStoreRegistry } from "../storage/agent-backup-object-store";
 import {
@@ -10,6 +14,10 @@ import {
   normalizeAgentBackupCaptureV2TerminalFailure,
 } from "./agent-backup-capture-v2-failure-disposition";
 import { AgentBackupCaptureV2PipelineError } from "./agent-backup-capture-v2-pipeline";
+import {
+  createAgentBackupCaptureV3RuntimeContextResolver,
+  isResolvedAgentBackupCaptureV3RuntimeAuthorityStale,
+} from "./agent-backup-capture-v3-runtime-context";
 import type { AgentBackupCaptureV3TerminalSpoolCleanupAuthority } from "./agent-backup-capture-v3-spool-cleanup";
 import {
   type AgentBackupCatalogRuntimeConfig,
@@ -27,6 +35,8 @@ const BACKUP_ID = "00000000-0000-4000-8000-000000000002";
 const OPERATION_ID = "00000000-0000-4000-8000-000000000003";
 const LIFECYCLE_GENERATION = "00000000-0000-4000-8000-000000000004";
 const CLAIM_GENERATION = "00000000-0000-4000-8000-000000000005";
+const RUNTIME_AGENT_ID = "00000000-0000-4000-8000-000000000006";
+const ROTATED_RUNTIME_AGENT_ID = "00000000-0000-4000-8000-000000000008";
 
 function trustedTerminalCaptureFailure(
   code: string,
@@ -159,6 +169,88 @@ function claimOperationsInOrder(
 }
 
 const UNUSED_REGISTRY = Object.freeze({}) as AgentBackupObjectStoreRegistry;
+
+async function resolvedRuntimeAuthorityStaleFailure(): Promise<unknown> {
+  const source = {
+    kind: "robot" as const,
+    provider: "hetzner" as const,
+    nodeRecordId: BACKUP_ID,
+    nodeId: "robot-01",
+    nodeIncarnation: CLAIM_GENERATION,
+    containerId: "a".repeat(64),
+  };
+  let authorityReads = 0;
+  const resolve = createAgentBackupCaptureV3RuntimeContextResolver(
+    {
+      spool: {
+        stateDirectory: "/var/lib/eliza-backup-catalog/spool",
+        maxSpoolBytes: 1024 ** 3,
+        minFreeBytes: 1024,
+      },
+      keyBundle: { kind: "shared-key-bundle" } as never,
+      runtime: {
+        agentSchemaVersion: "2.0.0",
+        databaseSchemaVersion: "238",
+        plugins: [{ id: "@elizaos/plugin-sql", version: "2.0.0" }],
+      },
+    },
+    {
+      async loadAuthority() {
+        authorityReads += 1;
+        return {
+          organizationId: ORG_ID,
+          catalogAgentId: AGENT_ID,
+          runtimeAgentId: authorityReads === 1 ? RUNTIME_AGENT_ID : ROTATED_RUNTIME_AGENT_ID,
+          activationGeneration: LIFECYCLE_GENERATION,
+          lifecycleRevision: "7",
+          status: "running",
+          activationPhase: "active",
+          source,
+          imageDigest: `sha256:${"b".repeat(64)}`,
+          providerHandle: "agent-runtime-name",
+          bridgeUrl: "https://exact-agent.invalid/",
+          bridgePort: null,
+          headscaleIp: null,
+          nodeHostname: "robot-01.example.test",
+          environmentVars: { ELIZA_API_TOKEN: "encrypted-token" },
+        };
+      },
+      async loadVaultAuthority() {
+        return {
+          kms: {
+            provider: "steward" as const,
+            keyId: `org:${ORG_ID}/dek/v1`,
+            keyVersion: 1,
+          },
+          vaultKeyAuthority: {
+            format: "kms-aead-vault-passphrase-v1" as const,
+            generationId: CLAIM_GENERATION,
+            receiptDerivation: "elizaos.agent-vault-key.authority-receipt.v1" as const,
+            receiptDigest: "c".repeat(64),
+          },
+        };
+      },
+      async decryptEnvironmentVars() {
+        return { ELIZA_API_TOKEN: "exact-agent-token" };
+      },
+      async authorizePublicUrl(rawUrl) {
+        return new URL(rawUrl);
+      },
+    },
+  );
+  const context = await resolve({
+    claim: operationClaim(),
+    request: { agentId: AGENT_ID } as never,
+    expectedSource: source,
+    heartbeat: async () => true,
+  });
+  try {
+    await context.revalidateAttestation();
+  } catch (error) {
+    return error;
+  }
+  throw new Error("Expected resolver revalidation to mint stale-authority evidence");
+}
 
 describe("agent backup catalogue runtime config", () => {
   test("gate off does not require or inspect storage configuration", async () => {
@@ -460,6 +552,31 @@ describe("agent backup catalogue runtime scheduling", () => {
         "BACKUP_DELETION_FINALIZE_RECONCILE_REQUIRED",
       ]),
     );
+  });
+
+  test("reports operation admission contention instead of treating it as no work", async () => {
+    const contention = new AgentBackupAdmissionContendedError();
+    expect(contention).toMatchObject({
+      code: AGENT_BACKUP_ADMISSION_CONTENDED_CODE,
+      context: {
+        operation: "claim",
+        retryAction: "retry-operation-claim",
+      },
+      severity: "ephemeral",
+    });
+    const summary = await runAgentBackupCatalogRuntimeCycle({
+      config: ENABLED_CONFIG,
+      registry: UNUSED_REGISTRY,
+      dependencies: dependencies({
+        claimOperations: async () => {
+          throw contention;
+        },
+      }),
+    });
+
+    expect(summary.operationClaimed).toBe(0);
+    expect(summary.operationIndeterminate).toBe(1);
+    expect(summary.alertCodes).toContain(AGENT_BACKUP_ADMISSION_CONTENDED_CODE);
   });
 
   test("defers a failed admission without inventing success and fences response loss", async () => {
@@ -877,10 +994,11 @@ describe("agent backup catalogue runtime scheduling", () => {
 
   test("keeps an injected stale ElizaError retryable without exact spool cleanup", async () => {
     const claim = operationClaim();
-    let terminal: boolean | undefined;
+    let failure: { terminal: boolean; code: string; retryDelayMs: number | undefined } | undefined;
     const summary = await runAgentBackupCatalogRuntimeCycle({
       config: ENABLED_CONFIG,
       registry: UNUSED_REGISTRY,
+      random: () => 0.5,
       dependencies: dependencies({
         claimOperations: claimOperationsInOrder(claim),
         transitionOperation: async (params) => ({
@@ -888,7 +1006,11 @@ describe("agent backup catalogue runtime scheduling", () => {
           catalog_state: params.to,
         }),
         failOperation: async (params) => {
-          terminal = params.terminal;
+          failure = {
+            terminal: params.terminal,
+            code: params.error.code,
+            retryDelayMs: params.retryDelayMs,
+          };
           return claim.backup;
         },
       }),
@@ -902,12 +1024,90 @@ describe("agent backup catalogue runtime scheduling", () => {
       },
     });
 
-    expect(terminal).toBe(false);
+    expect(failure).toEqual({
+      terminal: false,
+      code: "BACKUP_CAPTURE_V2_RETRY_SCHEDULED",
+      retryDelayMs: 60_000,
+    });
     expect(summary).toMatchObject({
       operationCaptureTerminal: 0,
       operationCaptureRetryScheduled: 1,
       operationIndeterminate: 0,
     });
+    expect(summary.alertCodes).toContain("BACKUP_CAPTURE_V2_RETRY_SCHEDULED");
+    expect(summary.alertCodes).not.toContain("AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE");
+  });
+
+  test("persists trusted resolver staleness as a dedicated retry without terminal cleanup", async () => {
+    const claim = operationClaim();
+    const trustedStale = await resolvedRuntimeAuthorityStaleFailure();
+    expect(isResolvedAgentBackupCaptureV3RuntimeAuthorityStale(trustedStale)).toBe(true);
+    let failure: { terminal: boolean; code: string; retryDelayMs: number | undefined } | undefined;
+    let terminalCleanupStages = 0;
+    const summary = await runAgentBackupCatalogRuntimeCycle({
+      config: ENABLED_CONFIG,
+      registry: UNUSED_REGISTRY,
+      random: () => 0.5,
+      dependencies: dependencies({
+        claimOperations: claimOperationsInOrder(claim),
+        transitionOperation: async (params) => ({
+          ...claim.backup,
+          catalog_state: params.to,
+        }),
+        failOperation: async (params) => {
+          failure = {
+            terminal: params.terminal,
+            code: params.error.code,
+            retryDelayMs: params.retryDelayMs,
+          };
+          return claim.backup;
+        },
+      }),
+      captureExecutor: {
+        async execute() {
+          throw trustedStale;
+        },
+      },
+      spoolCleanupJanitor: {
+        async enqueueProtectedBackup() {
+          throw new Error("Retryable stale authority must not enqueue protected cleanup");
+        },
+        async stageTerminalFailure() {
+          terminalCleanupStages += 1;
+          return "pending";
+        },
+        async runCycle() {
+          return {
+            discovered: 0,
+            authorized: 0,
+            completed: 0,
+            pending: 0,
+            skippedUnprotected: 0,
+            indeterminate: 0,
+          };
+        },
+      },
+    });
+
+    expect(failure).toEqual({
+      terminal: false,
+      code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+      retryDelayMs: 60_000,
+    });
+    expect(terminalCleanupStages).toBe(0);
+    expect(summary).toMatchObject({
+      operationCaptureTerminal: 0,
+      operationCaptureRetryScheduled: 1,
+      operationIndeterminate: 0,
+      spoolCleanup: {
+        authorized: 0,
+        completed: 0,
+        pending: 0,
+        indeterminate: 0,
+      },
+    });
+    expect(summary.alertCodes).toContain("AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE");
+    expect(summary.alertCodes).not.toContain("BACKUP_CAPTURE_V2_RETRY_SCHEDULED");
   });
 
   test("rejects forged and nested terminal dispositions from an injected executor", async () => {

@@ -402,8 +402,13 @@ function readAppIdentity() {
     process.env.ELIZA_APP_ID?.trim() ||
     process.env.ELIZA_IOS_APP_ID?.trim() ||
     configAppId;
-  const appName = src.match(/appName:\s*["']([^"']+)["']/)?.[1];
-  const urlScheme = src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId;
+  const appName =
+    process.env.ELIZA_APP_NAME?.trim() ||
+    src.match(/appName:\s*["']([^"']+)["']/)?.[1];
+  const urlScheme =
+    process.env.ELIZA_APP_URL_SCHEME?.trim() ||
+    src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ||
+    appId;
   if (!appId || !appName) {
     throw new Error("Could not parse appId/appName from app.config.ts");
   }
@@ -5536,6 +5541,7 @@ export const ANDROID_LP3_COLOR_POLICY_COMPONENTS = [
 export const ANDROID_LP3_COLOR_POLICY_PERMISSIONS = [
   "WRITE_SECURE_SETTINGS",
   "RECEIVE_BOOT_COMPLETED",
+  "FOREGROUND_SERVICE",
   "FOREGROUND_SERVICE_SPECIAL_USE",
 ];
 
@@ -5741,6 +5747,76 @@ export function resolveAndroidLp3ColorPolicyBuildEnv(env = process.env) {
   };
 }
 
+export function isAndroidLp3RemoteFallbackRequired(env = process.env) {
+  return ["1", "true", "yes"].includes(
+    String(env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED ?? "")
+      .trim()
+      .toLowerCase(),
+  );
+}
+
+export function isAndroidVpsSidecarBuild(env = process.env) {
+  return isTruthyEnv(env.ELIZA_ANDROID_VPS_SIDECAR);
+}
+
+export function enforceAndroidLp3RemoteFallbackBuildPolicy({
+  targetName,
+  env = process.env,
+}) {
+  const lp3Required = isAndroidLp3RemoteFallbackRequired(env);
+  const sidecarRequired = isAndroidVpsSidecarBuild(env);
+  if (!lp3Required && !sidecarRequired) return;
+  if (lp3Required && sidecarRequired) {
+    throw new Error(
+      "[mobile-build] LP3 and VPS sidecar remote profiles are mutually exclusive.",
+    );
+  }
+  if (targetName !== "android-cloud-debug") {
+    throw new Error(
+      "[mobile-build] remote fallback profiles are restricted to android-cloud-debug.",
+    );
+  }
+  if (lp3Required && !isAndroidLp3ColorPolicyEnabled(env)) {
+    throw new Error(
+      "[mobile-build] ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED is restricted to the LP3 android-cloud-debug direct profile.",
+    );
+  }
+  if (sidecarRequired && isAndroidLp3ColorPolicyEnabled(env)) {
+    throw new Error(
+      "[mobile-build] ELIZA_ANDROID_VPS_SIDECAR must not enable the LP3 color policy.",
+    );
+  }
+  const raw = String(env.VITE_ELIZA_REMOTE_FALLBACK_API_BASE ?? "").trim();
+  if (!raw) {
+    throw new Error(
+      "[mobile-build] the remote fallback profile requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE",
+    );
+  }
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch (cause) {
+    // error-policy:J2 preserve the parser cause while adding build-profile context.
+    throw new Error(
+      "[mobile-build] VITE_ELIZA_REMOTE_FALLBACK_API_BASE must be a valid root HTTPS origin",
+      { cause },
+    );
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    parsed.search ||
+    parsed.hash ||
+    parsed.pathname.replace(/\/+$/, "") !== ""
+  ) {
+    throw new Error(
+      "[mobile-build] VITE_ELIZA_REMOTE_FALLBACK_API_BASE must be a credential-free root HTTPS origin without a custom port",
+    );
+  }
+}
+
 // LP3 is an elizaOS direct-debug policy, never a whitelabel capability. Build
 // entrypoints pass their resolved identity explicitly so nested hosts cannot
 // leak ambient branding into these pure policy helpers.
@@ -5771,38 +5847,57 @@ export function enforceAndroidLp3ColorPolicyBuildPolicy({
   }
 }
 
+function isAndroidFirebaseIndependentRemoteBuild(env = process.env) {
+  return (
+    isAndroidLp3RemoteFallbackRequired(env) || isAndroidVpsSidecarBuild(env)
+  );
+}
+
 export function resolveAndroidCloudStripPolicy(env = process.env) {
-  if (!isAndroidLp3ColorPolicyEnabled(env)) {
-    return {
-      components: ANDROID_CLOUD_STRIPPED_COMPONENTS,
-      permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS,
-      mergerRemovedPermissions:
-        ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
-      javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
-      testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
-    };
+  const stripPolicy = !isAndroidLp3ColorPolicyEnabled(env)
+    ? {
+        components: ANDROID_CLOUD_STRIPPED_COMPONENTS,
+        permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+        mergerRemovedPermissions:
+          ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
+        javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
+        testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
+      }
+    : (() => {
+        const allowedComponents = new Set(ANDROID_LP3_COLOR_POLICY_COMPONENTS);
+        const allowedPermissions = new Set(
+          ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
+        );
+        const allowedJavaFiles = new Set(ANDROID_LP3_COLOR_POLICY_JAVA_FILES);
+        return {
+          components: ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
+            (component) => !allowedComponents.has(component),
+          ),
+          permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
+            (permission) => !allowedPermissions.has(permission),
+          ),
+          mergerRemovedPermissions:
+            ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter(
+              (permission) => !allowedPermissions.has(permission),
+            ),
+          javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
+            (file) => !allowedJavaFiles.has(file),
+          ),
+          testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
+        };
+      })();
+
+  if (!isAndroidFirebaseIndependentRemoteBuild(env)) {
+    return { ...stripPolicy, safePushNotifications: true };
   }
 
-  const allowedComponents = new Set(ANDROID_LP3_COLOR_POLICY_COMPONENTS);
-  const allowedPermissions = new Set(
-    ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
-  );
-  const allowedJavaFiles = new Set(ANDROID_LP3_COLOR_POLICY_JAVA_FILES);
   return {
-    components: ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
-      (component) => !allowedComponents.has(component),
-    ),
-    permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
-      (permission) => !allowedPermissions.has(permission),
-    ),
-    mergerRemovedPermissions:
-      ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter(
-        (permission) => !allowedPermissions.has(permission),
-      ),
-    javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-      (file) => !allowedJavaFiles.has(file),
-    ),
-    testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
+    ...stripPolicy,
+    safePushNotifications: false,
+    // This wrapper subclasses the native FCM plugin. The dedicated fallback
+    // intentionally excludes that dependency because it has no Firebase
+    // project, so its Java wrapper must leave the generated tree with it.
+    javaFiles: [...stripPolicy.javaFiles, "SafePushNotificationsPlugin.java"],
   };
 }
 
@@ -5914,6 +6009,16 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@elizaos/capacitor-secure-store",
 ]);
 
+export function resolveAndroidCloudAllowedNativePluginPackages(
+  env = process.env,
+) {
+  return isAndroidFirebaseIndependentRemoteBuild(env)
+    ? ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES.filter(
+        (pkg) => pkg !== "@capacitor/push-notifications",
+      )
+    : [...ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES];
+}
+
 export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
   "CapacitorHttp",
   "Keyboard",
@@ -5963,7 +6068,7 @@ export function sanitizeAndroidCloudCapacitorConfig(
     appId: APP.appId,
     appName: APP.appName,
     webDir: "dist",
-    ...(launcherKiosk ? { loggingBehavior: "none" } : {}),
+    loggingBehavior: "none",
     server: {
       androidScheme: "https",
       ...(allowInAppAuthNavigation
@@ -6058,6 +6163,7 @@ export const ANDROID_PLAY_ALLOWED_ACTIONS = Object.freeze([
   "android.intent.action.PROCESS_TEXT",
   "android.intent.action.QUICKBOOT_POWERON",
   "android.intent.action.SEND",
+  "android.intent.action.TTS_SERVICE",
   "android.intent.action.VIEW",
   "android.speech.RecognitionService",
   "android.support.customtabs.action.CustomTabsService",
@@ -6087,6 +6193,7 @@ export const ANDROID_PLAY_ALLOWED_METADATA_NAMES = Object.freeze([
 ]);
 
 export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
+  "android.intent.action.TTS_SERVICE",
   "android.speech.RecognitionService",
   "android.support.customtabs.action.CustomTabsService",
 ]);
@@ -6100,6 +6207,42 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([
   "lib/x86/libdatastore_shared_counter.so",
   "lib/x86_64/libdatastore_shared_counter.so",
 ]);
+
+export function resolveAndroidCloudAllowedNativeLibraries(env = process.env) {
+  return isAndroidFirebaseIndependentRemoteBuild(env)
+    ? []
+    : [...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES];
+}
+
+/** Enforce the exact Play JNI set at each archive format's native-library root. */
+export function assertAndroidCloudNativeLibraryAllowlist({
+  artifact,
+  entries,
+  env = process.env,
+} = {}) {
+  const artifactKind = resolveAndroidArtifactKind(artifact);
+  const artifactRoot = artifactKind === "aab" ? "base/" : "";
+  const expectedNativeLibraries = resolveAndroidCloudAllowedNativeLibraries(env)
+    .map((entry) => `${artifactRoot}${entry}`)
+    .sort();
+  const nativeLibraries = entries
+    .filter((entry) => /(?:^|\/)lib\/[^/]+\/[^/]+\.so$/i.test(entry))
+    .sort();
+  if (
+    JSON.stringify(nativeLibraries) !== JSON.stringify(expectedNativeLibraries)
+  ) {
+    throw mobileBuildError(
+      `[mobile-build] android-cloud native libraries differ from the Play allowlist:\n${nativeLibraries
+        .map((entry) => `  - ${entry}`)
+        .join("\n")}`,
+      {
+        code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+        context: { artifact, artifactKind, nativeLibraries },
+      },
+    );
+  }
+  return nativeLibraries;
+}
 
 export const ANDROID_PLAY_DATA_EXTRACTION_RULES = `<?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
@@ -6230,8 +6373,11 @@ export function findAndroidPlayIndexHtmlFindings(entries, buffers) {
   return [...new Set(findings)].sort();
 }
 
-export function createAndroidPlayManifestPolicy({ debug = false } = {}) {
-  return {
+export function createAndroidPlayManifestPolicy({
+  debug = false,
+  firebaseIndependent = false,
+} = {}) {
+  const policy = {
     actions: [...ANDROID_PLAY_ALLOWED_ACTIONS],
     application: {
       allowBackup: "false",
@@ -6244,6 +6390,45 @@ export function createAndroidPlayManifestPolicy({ debug = false } = {}) {
     queryActions: [...ANDROID_PLAY_ALLOWED_QUERY_ACTIONS],
     queryPackages: [],
     targetSdkVersion: "36",
+  };
+  if (!firebaseIndependent) return policy;
+  const firebaseComponents = [
+    "provider:com.google.firebase.provider.FirebaseInitProvider",
+    "receiver:com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
+    "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
+    "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
+    "service:com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
+    "service:com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
+    "service:com.google.firebase.components.ComponentDiscoveryService",
+    "service:com.google.firebase.messaging.FirebaseMessagingService",
+  ];
+  const firebaseMetadata = [
+    "backend:com.google.android.datatransport.cct.CctBackendFactory",
+    "com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED",
+    "com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar",
+    "com.google.firebase.components:com.google.firebase.FirebaseCommonKtxRegistrar",
+    "com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsKtxRegistrar",
+    "com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsRegistrar",
+    "com.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingKtxRegistrar",
+    "com.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingRegistrar",
+  ];
+  return {
+    ...policy,
+    actions: policy.actions.filter(
+      (action) =>
+        action !== "com.google.android.c2dm.intent.RECEIVE" &&
+        action !== "com.google.firebase.MESSAGING_EVENT",
+    ),
+    components: policy.components.filter(
+      (component) => !firebaseComponents.includes(component),
+    ),
+    metadataNames: policy.metadataNames.filter(
+      (metadata) => !firebaseMetadata.includes(metadata),
+    ),
+    permissions: policy.permissions.filter(
+      (permission) =>
+        permission !== "com.google.android.c2dm.permission.RECEIVE",
+    ),
   };
 }
 
@@ -6273,10 +6458,12 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
     (permission) => !ANDROID_SMS_GATEWAY_PERMISSIONS.has(permission),
   );
 
-export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES =
-  ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
+export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES = [
+  ...ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
     (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
-  );
+  ),
+  "SafePushNotificationsPlugin.java",
+];
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
   ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
@@ -6348,7 +6535,11 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
 
 export function cloudSafeMainActivityJava(
   androidPackage,
-  { launcherKiosk = false, immersiveNavigation = false } = {},
+  {
+    launcherKiosk = false,
+    immersiveNavigation = false,
+    safePushNotifications = true,
+  } = {},
 ) {
   const launcherImports = launcherKiosk
     ? `import android.app.admin.DevicePolicyManager;
@@ -6415,6 +6606,7 @@ import androidx.activity.OnBackPressedCallback;
     @Override
     public void onResume() {
         super.onResume();
+        keepScreenAwake();
         // Only a managed-device owner may contain the launcher task. Android's
         // unmanaged screen-pinning mode blocks the secure browser that Google
         // OAuth requires, preventing the callback from ever reaching the app.
@@ -6433,17 +6625,29 @@ import androidx.activity.OnBackPressedCallback;
     }
 `
     : "";
+  const resumeHandler = launcherKiosk
+    ? ""
+    : `
+    @Override
+    public void onResume() {
+        super.onResume();
+        keepScreenAwake();
+    }
+`;
   const navigationBarPolicy = immersiveNavigation
     ? `            systemBars.hide(WindowInsetsCompat.Type.navigationBars());
             systemBars.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);`
     : "            systemBars.setAppearanceLightNavigationBars(false);";
-  const focusHandler = immersiveNavigation
-    ? `
+  const focusHandler = `
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (!hasFocus) return;
+        keepScreenAwake();
+${
+  immersiveNavigation
+    ? `
         WindowInsetsControllerCompat controller =
             WindowCompat.getInsetsController(
                 getWindow(), getWindow().getDecorView());
@@ -6452,7 +6656,19 @@ import androidx.activity.OnBackPressedCallback;
             controller.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         }
-    }
+`
+    : ""
+}    }
+`;
+  const safePushRegistration = safePushNotifications
+    ? `
+        // Capacitor discovers the community push plugin before Firebase is
+        // available in builds without google-services.json. Replace it after
+        // bridge creation so registration reports unavailable instead of
+        // terminating the process when the renderer requests notifications.
+        if (getBridge() != null) {
+            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
+        }
 `
     : "";
   return `package ${androidPackage};
@@ -6461,6 +6677,7 @@ import android.os.Bundle;
 import android.content.Intent;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.view.WindowManager;
 
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
@@ -6494,6 +6711,8 @@ ${launcherConstants}
         registerPlugin(ElizaPlaySettingsPlugin.class);
 
         super.onCreate(savedInstanceState);
+        keepScreenAwake();
+${safePushRegistration}
 
 ${launcherSetup}
 
@@ -6522,7 +6741,12 @@ ${navigationBarPolicy}
 ${launcherKiosk ? "        restoreBundledRendererAfterAuthCallback(intent);" : ""}
     }
 ${launcherMethods}
+${resumeHandler}
 ${focusHandler}
+
+    private void keepScreenAwake() {
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
 
 }
 `;
@@ -7038,8 +7262,26 @@ import java.util.UUID;
     permissions = @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO })
 )
 public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionListener {
+    private static final long TTS_START_WATCHDOG_MS = 60_000L;
+    private static final long TTS_STALL_POLL_MS = 30_000L;
+    private static final long TTS_TERMINAL_GRACE_MS = 10_000L;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private SpeechRecognizer recognizer;
+    private SpeechSession activeSpeech;
+
+    private static final class SpeechSession {
+        private final PluginCall call;
+        private final String utteranceId;
+        private TextToSpeech tts;
+        private Runnable watchdog;
+        private boolean playbackStarted;
+        private boolean terminalGraceArmed;
+
+        private SpeechSession(PluginCall call) {
+            this.call = call;
+            this.utteranceId = UUID.randomUUID().toString();
+        }
+    }
 
     @PluginMethod
     public void requestPermission(PluginCall call) {
@@ -7112,39 +7354,219 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
     }
 
     private void speakOnMainThread(PluginCall call, String text, String language) {
-        final TextToSpeech[] holder = new TextToSpeech[1];
-        holder[0] = new TextToSpeech(getContext(), status -> {
-            TextToSpeech tts = holder[0];
-            if (status != TextToSpeech.SUCCESS || tts == null) {
-                if (tts != null) tts.shutdown();
-                call.reject("System text to speech is unavailable.", "TTS_UNAVAILABLE");
-                return;
+        stopActiveSpeechOnMainThread(
+                "Speech playback was replaced by a newer request.",
+                "TTS_REPLACED");
+        SpeechSession session = new SpeechSession(call);
+        activeSpeech = session;
+        try {
+            session.tts = new TextToSpeech(
+                    getContext(),
+                    status -> mainHandler.post(
+                            () -> initializeSpeechOnMainThread(session, text, language, status)));
+        } catch (RuntimeException error) {
+            // error-policy:J1 Translate native construction failures to the pending Capacitor call.
+            if (activeSpeech == session) activeSpeech = null;
+            call.reject("System text to speech is unavailable.", "TTS_UNAVAILABLE", error);
+        }
+    }
+
+    private void initializeSpeechOnMainThread(
+            SpeechSession session,
+            String text,
+            String language,
+            int status) {
+        if (activeSpeech != session) return;
+        TextToSpeech tts = session.tts;
+        if (status != TextToSpeech.SUCCESS || tts == null) {
+            rejectActiveSpeechOnMainThread(
+                    session,
+                    "System text to speech is unavailable.",
+                    "TTS_UNAVAILABLE");
+            return;
+        }
+        Locale locale = Locale.forLanguageTag(language == null ? "" : language);
+        if (tts.setLanguage(locale) < TextToSpeech.LANG_AVAILABLE) {
+            rejectActiveSpeechOnMainThread(
+                    session,
+                    "The selected speech language is unavailable.",
+                    "TTS_LANGUAGE_UNAVAILABLE");
+            return;
+        }
+        int listenerStatus = tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+            @Override public void onStart(String id) {
+                markPlaybackProgress(session, id);
             }
-            Locale locale = Locale.forLanguageTag(language == null ? "" : language);
-            if (tts.setLanguage(locale) < TextToSpeech.LANG_AVAILABLE) {
-                tts.shutdown();
-                call.reject("The selected speech language is unavailable.", "TTS_LANGUAGE_UNAVAILABLE");
-                return;
+            @Override public void onRangeStart(String id, int start, int end, int frame) {
+                markPlaybackProgress(session, id);
             }
-            String utteranceId = UUID.randomUUID().toString();
-            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                @Override public void onStart(String id) {}
-                @Override public void onDone(String id) { tts.shutdown(); }
-                @Override public void onError(String id) { tts.shutdown(); }
-            });
-            int accepted = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
-            if (accepted != TextToSpeech.SUCCESS) {
-                tts.shutdown();
-                call.reject("System text to speech could not start.", "TTS_START_FAILED");
-                return;
+            @Override public void onDone(String id) {
+                if (!session.utteranceId.equals(id)) return;
+                mainHandler.post(() -> resolveActiveSpeechOnMainThread(session));
             }
+            @Override public void onError(String id) {
+                rejectPlayback(
+                        session,
+                        id,
+                        "System text to speech failed during playback.",
+                        "TTS_PLAYBACK_FAILED");
+            }
+            @Override public void onError(String id, int errorCode) {
+                rejectPlayback(
+                        session,
+                        id,
+                        "System text to speech failed during playback.",
+                        "TTS_PLAYBACK_FAILED");
+            }
+            @Override public void onStop(String id, boolean interrupted) {
+                rejectPlayback(
+                        session,
+                        id,
+                        "System text to speech was interrupted.",
+                        "TTS_INTERRUPTED");
+            }
+        });
+        if (listenerStatus != TextToSpeech.SUCCESS) {
+            rejectActiveSpeechOnMainThread(
+                    session,
+                    "System text to speech callbacks are unavailable.",
+                    "TTS_LISTENER_FAILED");
+            return;
+        }
+        int accepted = tts.speak(
+                text,
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                session.utteranceId);
+        if (accepted != TextToSpeech.SUCCESS) {
+            rejectActiveSpeechOnMainThread(
+                    session,
+                    "System text to speech could not start.",
+                    "TTS_START_FAILED");
+            return;
+        }
+        armSpeechWatchdogOnMainThread(session, TTS_START_WATCHDOG_MS);
+    }
+
+    private void rejectPlayback(
+            SpeechSession session,
+            String utteranceId,
+            String message,
+            String code) {
+        if (!session.utteranceId.equals(utteranceId)) return;
+        mainHandler.post(() -> rejectActiveSpeechOnMainThread(
+                session,
+                message,
+                code));
+    }
+
+    private void markPlaybackProgress(
+            SpeechSession session,
+            String utteranceId) {
+        if (!session.utteranceId.equals(utteranceId)) return;
+        mainHandler.post(() -> {
+            if (activeSpeech != session) return;
+            session.playbackStarted = true;
+            session.terminalGraceArmed = false;
+            armSpeechWatchdogOnMainThread(session, TTS_STALL_POLL_MS);
+        });
+    }
+
+    private void resolveActiveSpeechOnMainThread(SpeechSession session) {
+        if (activeSpeech != session) return;
+        cancelSpeechWatchdogOnMainThread(session);
+        activeSpeech = null;
+        if (session.tts != null) session.tts.shutdown();
+        session.call.resolve();
+    }
+
+    private void rejectActiveSpeechOnMainThread(
+            SpeechSession session,
+            String message,
+            String code) {
+        if (activeSpeech != session) return;
+        cancelSpeechWatchdogOnMainThread(session);
+        activeSpeech = null;
+        if (session.tts != null) {
+            session.tts.stop();
+            session.tts.shutdown();
+        }
+        session.call.reject(message, code);
+    }
+
+    private void stopActiveSpeechOnMainThread(String message, String code) {
+        SpeechSession session = activeSpeech;
+        if (session == null) return;
+        cancelSpeechWatchdogOnMainThread(session);
+        activeSpeech = null;
+        if (session.tts != null) {
+            session.tts.stop();
+            session.tts.shutdown();
+        }
+        session.call.reject(message, code);
+    }
+
+    private void armSpeechWatchdogOnMainThread(
+            SpeechSession session,
+            long delayMs) {
+        if (activeSpeech != session) return;
+        cancelSpeechWatchdogOnMainThread(session);
+        session.watchdog = () -> checkSpeechWatchdogOnMainThread(session);
+        mainHandler.postDelayed(session.watchdog, delayMs);
+    }
+
+    private void checkSpeechWatchdogOnMainThread(SpeechSession session) {
+        if (activeSpeech != session) return;
+        boolean speaking = false;
+        try {
+            speaking = session.tts != null && session.tts.isSpeaking();
+        } catch (RuntimeException ignored) {
+            // error-policy:J1 The watchdog translates a disconnected engine to
+            // the bounded TTS_TIMEOUT rejection below.
+            // A disconnected engine reports as stalled and follows the same
+            // bounded terminal-grace path below.
+        }
+        if (speaking) {
+            session.playbackStarted = true;
+            session.terminalGraceArmed = false;
+            armSpeechWatchdogOnMainThread(session, TTS_STALL_POLL_MS);
+            return;
+        }
+        if (session.playbackStarted && !session.terminalGraceArmed) {
+            session.terminalGraceArmed = true;
+            armSpeechWatchdogOnMainThread(session, TTS_TERMINAL_GRACE_MS);
+            return;
+        }
+        rejectActiveSpeechOnMainThread(
+                session,
+                "System text to speech did not report a terminal playback event.",
+                "TTS_TIMEOUT");
+    }
+
+    private void cancelSpeechWatchdogOnMainThread(SpeechSession session) {
+        if (session.watchdog == null) return;
+        mainHandler.removeCallbacks(session.watchdog);
+        session.watchdog = null;
+    }
+
+    @PluginMethod
+    public void stop(PluginCall call) {
+        runOnMainThread(() -> {
+            stopActiveSpeechOnMainThread(
+                    "Speech playback was stopped.",
+                    "TTS_STOPPED");
             call.resolve();
         });
     }
 
     @Override
     protected void handleOnDestroy() {
-        runOnMainThread(this::stopRecognizerOnMainThread);
+        runOnMainThread(() -> {
+            stopRecognizerOnMainThread();
+            stopActiveSpeechOnMainThread(
+                    "Speech playback stopped because the voice bridge was destroyed.",
+                    "TTS_DESTROYED");
+        });
         super.handleOnDestroy();
     }
 
@@ -7387,7 +7809,11 @@ public class ElizaTasksWorker extends Worker {
 function rewriteCloudJavaSources(
   javaRoots,
   androidPackage,
-  { launcherKiosk = false, immersiveNavigation = false } = {},
+  {
+    launcherKiosk = false,
+    immersiveNavigation = false,
+    safePushNotifications = true,
+  } = {},
 ) {
   let touched = 0;
   for (const root of javaRoots) {
@@ -7399,6 +7825,7 @@ function rewriteCloudJavaSources(
         cloudSafeMainActivityJava(androidPackage, {
           launcherKiosk,
           immersiveNavigation,
+          safePushNotifications,
         }),
         "utf8",
       );
@@ -7723,6 +8150,11 @@ function auditAndroidCloudSource(
           );
         }
       }
+      if (!lp3Manifest.includes('android:screenOrientation="portrait"')) {
+        failures.push(
+          "LP3 direct-debug manifest does not lock MainActivity to portrait",
+        );
+      }
     }
     const lp3JavaRoot = path.join(lp3DebugRoot, "java", "ai", "elizaos", "app");
     for (const file of ANDROID_LP3_COLOR_POLICY_JAVA_FILES) {
@@ -7903,9 +8335,8 @@ function auditAndroidCloudSource(
             .filter(Boolean)
             .sort()
         : [];
-      const allowedPackages = [
-        ...ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
-      ].sort();
+      const allowedPackages =
+        resolveAndroidCloudAllowedNativePluginPackages(env).sort();
       if (JSON.stringify(actualPackages) !== JSON.stringify(allowedPackages)) {
         failures.push(
           `capacitor.plugins.json packages differ from the Play allowlist: ${JSON.stringify(actualPackages)}`,
@@ -8318,6 +8749,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   rewriteCloudJavaSources([activeJavaRoot], androidPackage, {
     launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
     immersiveNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+    safePushNotifications: stripPolicy.safePushNotifications,
   });
 
   const testJavaRoots = [
@@ -8451,7 +8883,9 @@ function stripAndroidForSmsGateway() {
       `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
     );
   }
-  rewriteCloudJavaSources(javaRoots, androidPackage);
+  rewriteCloudJavaSources(javaRoots, androidPackage, {
+    safePushNotifications: false,
+  });
 
   const resRoot = path.join(androidDir, "app", "src", "main", "res");
   for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {
@@ -8632,6 +9066,10 @@ export async function runAndroidBuild(
     targetName: target.target,
     env: resolvedEnv,
     appId: APP.appId,
+  });
+  enforceAndroidLp3RemoteFallbackBuildPolicy({
+    targetName: target.target,
+    env: resolvedEnv,
   });
   runAndroidTargetPhase(target, ANDROID_PREFLIGHTS, "preflightKey", {
     env: resolvedEnv,
@@ -9644,6 +10082,11 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
     "receiver",
     receiverName,
   );
+  const mainActivity = findAndroidManifestElementBlock(
+    manifestText,
+    "activity",
+    `${APP.appId}.MainActivity`,
+  );
   if (!initializer) {
     throw new Error(
       `[mobile-build] opted-in LP3 artifact is missing ${initializerName}`,
@@ -9657,6 +10100,14 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
   if (!receiver) {
     throw new Error(
       `[mobile-build] opted-in LP3 artifact is missing ${receiverName}`,
+    );
+  }
+  if (
+    !mainActivity ||
+    !/android:screenOrientation[^\n]*0x1/.test(mainActivity)
+  ) {
+    throw new Error(
+      "[mobile-build] opted-in LP3 MainActivity must be locked to portrait",
     );
   }
   if (!/android:exported[^\n]*(?:0x0|false)/.test(service)) {
@@ -9827,23 +10278,7 @@ export function auditAndroidCloudArtifact(
     );
   }
   if (!lp3ColorPolicyEnabled) {
-    const nativeLibraries = entries
-      .filter((entry) => /(?:^|\/)lib\/[^/]+\/[^/]+\.so$/i.test(entry))
-      .sort();
-    if (
-      JSON.stringify(nativeLibraries) !==
-      JSON.stringify([...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES].sort())
-    ) {
-      throw mobileBuildError(
-        `[mobile-build] android-cloud native libraries differ from the Play allowlist:\n${nativeLibraries
-          .map((entry) => `  - ${entry}`)
-          .join("\n")}`,
-        {
-          code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
-          context: { artifact, nativeLibraries },
-        },
-      );
-    }
+    assertAndroidCloudNativeLibraryAllowlist({ artifact, entries, env });
     const textAssetEntries = entries.filter(
       (entry) =>
         /(?:^|\/)assets\//.test(entry) &&
@@ -9974,7 +10409,10 @@ export function auditAndroidCloudArtifact(
         });
         assertAndroidPlayManifestPolicyEvidence(
           androidPlayManifestEvidenceFromAapt(manifestText),
-          createAndroidPlayManifestPolicy({ debug: true }),
+          createAndroidPlayManifestPolicy({
+            debug: true,
+            firebaseIndependent: isAndroidFirebaseIndependentRemoteBuild(env),
+          }),
         );
       }
       auditAndroidArtifactDexLp3Policy(

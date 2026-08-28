@@ -34,6 +34,7 @@ import {
   isReservedLegacyChatTitle,
   normalizeConversationList,
 } from "./chat-conversation-guards";
+import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
 import { appendGreetingOnce } from "./greeting-dedupe";
 import type { AppState, LifecycleAction } from "./internal";
 import {
@@ -267,6 +268,7 @@ async function resolveRestoredConversationWithMessages(
 export async function hydrateInitialConversation(
   deps: HydrateInitialConversationDeps,
 ): Promise<string | null> {
+  markConversationHistoryApplied(false);
   const {
     client: api,
     conversationHydrationEpochRef,
@@ -338,7 +340,10 @@ export async function hydrateInitialConversation(
           ? restoredConversation.id
           : null;
         setConversationMessages(nextMessages);
-        return nextMessages.length === 0 && seedSyntheticGreeting
+        markConversationHistoryApplied(messagesLoaded);
+        return messagesLoaded &&
+          nextMessages.length === 0 &&
+          seedSyntheticGreeting
           ? restoredConversation.id
           : null;
       } catch {
@@ -351,7 +356,7 @@ export async function hydrateInitialConversation(
         conversationMessagesRef.current = [];
         loadedConversationIdRef.current = null;
         setConversationMessages([]);
-        return restoredConversation.id;
+        return null;
       }
     }
 
@@ -396,6 +401,7 @@ export async function hydrateInitialConversation(
       // construction, so the [] in conversationMessagesRef IS this
       // conversation's content.
       loadedConversationIdRef.current = conversation.id;
+      markConversationHistoryApplied(true);
       api.sendWsMessage({
         type: "active-conversation",
         conversationId: conversation.id,
@@ -421,6 +427,7 @@ export async function hydrateInitialConversation(
         conversationMessagesRef.current = nextMessages;
         loadedConversationIdRef.current = conversation.id;
         setConversationMessages(nextMessages);
+        markConversationHistoryApplied(true);
         return null;
       }
 

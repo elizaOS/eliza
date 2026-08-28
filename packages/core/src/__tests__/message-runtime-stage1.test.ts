@@ -27,6 +27,7 @@ import {
 } from "../security/index.js";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+	messageContinuesAfterRecentAgentCorrection,
 	messageHandlerFromFieldResult,
 	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
@@ -231,6 +232,7 @@ function makeRuntime(
 		providers: [],
 		getService: vi.fn(() => null),
 		getRoom: vi.fn(async () => null),
+		getModelRegistrations: vi.fn(() => []),
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
@@ -3183,6 +3185,79 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it.each([
+		{
+			caseName: "currently-open adjective order",
+			prompt:
+				'Reply in one concise sentence beginning with "BUDGET-READONLY" and identify the currently open view. Do not use tools or change anything.',
+			reply:
+				"BUDGET-READONLY the notes view is open, where I can list notes or read one.",
+		},
+		{
+			caseName: "current-open adjective order",
+			prompt:
+				"Identify the current open view. Reply with the view name and exact nonce CEREBRAS-E1F-20260826-0952. Do not use tools or change anything.",
+			reply: "notes CEREBRAS-E1F-20260826-0952",
+		},
+	] as const)(
+		"keeps read-only current-view inspection direct when the view tool surface would overflow a planner call: $caseName",
+		async ({ prompt, reply }) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: reply,
+				}),
+			]);
+			const viewsHandler = vi.fn(async () => ({
+				success: true,
+				text: "unexpected navigation",
+			}));
+			runtime.actions = [
+				{
+					name: "VIEWS",
+					similes: ["VIEW", "SHOW_VIEW", "OPEN_VIEW", "OPEN_SETTINGS"],
+					tags: ["views", "ui", "panel", "view-capability", "notes"],
+					description: `Manage and navigate UI views. ${"x".repeat(500_000)}`,
+					parameters: [
+						{
+							name: "action",
+							description: "Operation",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+					examples: [],
+					validate: async () => true,
+					handler: viewsHandler,
+				},
+			] as never;
+			const message = makeMessage();
+			message.content = {
+				...message.content,
+				text: prompt,
+				mentionContext: { isMention: true },
+			};
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			expect(viewsHandler).not.toHaveBeenCalled();
+			// The complete Stage-1 answer is the whole read-only turn. Adding the
+			// intentionally oversized tool definition to a planner request would cross
+			// the provider boundary, so this also fences the redundant-call overflow.
+			expect(useModelCalls(runtime)).toHaveLength(1);
+			expect(reportErrorCalls(runtime)).toHaveLength(0);
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(reply);
+			}
+		},
+	);
+
 	it("keeps external-content armor out of deterministic action inference", async () => {
 		const directAnswer =
 			"Dinner is at 6:30 PM for four people at Saffron House.";
@@ -4174,6 +4249,221 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "terminal") {
 			expect(result.action).toBe("IGNORE");
 		}
+	});
+
+	it("recognizes a bounded continuation from the participant who corrected the agent", () => {
+		const runtime = makeRuntime([]);
+		const correctingEntityId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const otherEntityId = "00000000-0000-0000-0000-000000000005" as UUID;
+		const recentMessages: Memory[] = [
+			{
+				...makeMessage({ text: "You should send a follow-up email." }),
+				id: "00000000-0000-0000-0000-000000000010" as UUID,
+				entityId: runtime.agentId,
+			},
+			{
+				...makeMessage({
+					text: "Please don't fix it. In this chat we listen unless someone asks for ideas.",
+				}),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: correctingEntityId,
+			},
+			{
+				...makeMessage({ text: "yeah, no homework assignment right now" }),
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				entityId: otherEntityId,
+			},
+		];
+		const state: State = {
+			...makeState(),
+			data: { providers: { RECENT_MESSAGES: { data: { recentMessages } } } },
+		};
+		const continuation = makeMessage({
+			text: "and now I remembered I blanked on the easiest question",
+			channelType: ChannelType.GROUP,
+		});
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(runtime, continuation, state),
+		).toBe(true);
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{ ...continuation, entityId: otherEntityId },
+				state,
+			),
+		).toBe(false);
+	});
+
+	it("does not treat incidental or third-party correction language as agent repair", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const agentMessage = {
+			...makeMessage({ text: "Here is my thought." }),
+			id: "00000000-0000-0000-0000-000000000010" as UUID,
+			entityId: runtime.agentId,
+		};
+		const continuation = {
+			...makeMessage({
+				text: "and now I remembered another part",
+				channelType: ChannelType.GROUP,
+			}),
+			entityId: speakerId,
+		};
+		for (const text of [
+			"The bus stop is nearby.",
+			"That quote is too much for us.",
+			"Please do not deploy that.",
+			"Bob, stop explaining it to me.",
+		]) {
+			const correction = {
+				...makeMessage({ text }),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: speakerId,
+			};
+			const state: State = {
+				...makeState(),
+				data: {
+					providers: {
+						RECENT_MESSAGES: {
+							data: { recentMessages: [agentMessage, correction] },
+						},
+					},
+				},
+			};
+			expect(
+				messageContinuesAfterRecentAgentCorrection(
+					runtime,
+					continuation,
+					state,
+				),
+			).toBe(false);
+		}
+	});
+
+	it("fails closed when the current continuation has no stable message id", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const state: State = {
+			...makeState(),
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									...makeMessage({ text: "You should follow up." }),
+									id: "00000000-0000-0000-0000-000000000010" as UUID,
+									entityId: runtime.agentId,
+								},
+								{
+									...makeMessage({ text: "Please don't fix it." }),
+									id: "00000000-0000-0000-0000-000000000011" as UUID,
+									entityId: speakerId,
+								},
+							],
+						},
+					},
+				},
+			},
+		};
+		const continuation = {
+			...makeMessage({
+				text: "and now I remembered another part",
+				channelType: ChannelType.GROUP,
+			}),
+			id: undefined,
+			entityId: speakerId,
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(runtime, continuation, state),
+		).toBe(false);
+	});
+
+	it("expires repair permission after the correcting participant's first continuation", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const recentMessages: Memory[] = [
+			{
+				...makeMessage({ text: "You should send a follow-up email." }),
+				id: "00000000-0000-0000-0000-000000000010" as UUID,
+				entityId: runtime.agentId,
+			},
+			{
+				...makeMessage({ text: "Please don't fix it." }),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: speakerId,
+			},
+			{
+				...makeMessage({ text: "and now I remembered another part" }),
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				entityId: speakerId,
+			},
+		];
+		const state: State = {
+			...makeState(),
+			data: { providers: { RECENT_MESSAGES: { data: { recentMessages } } } },
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{
+					...makeMessage({
+						text: "also, lunch at noon?",
+						channelType: ChannelType.GROUP,
+					}),
+					entityId: speakerId,
+				},
+				state,
+			),
+		).toBe(false);
+	});
+
+	it("expires a sparse-room repair exchange after fifteen minutes", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const correction = {
+			...makeMessage({ text: "Please don't fix it." }),
+			id: "00000000-0000-0000-0000-000000000011" as UUID,
+			entityId: speakerId,
+			createdAt: 1_000,
+		};
+		const state: State = {
+			...makeState(),
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									...makeMessage({ text: "You should follow up." }),
+									id: "00000000-0000-0000-0000-000000000010" as UUID,
+									entityId: runtime.agentId,
+								},
+								correction,
+							],
+						},
+					},
+				},
+			},
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{
+					...makeMessage({
+						text: "and I remembered another part",
+						channelType: ChannelType.GROUP,
+					}),
+					entityId: speakerId,
+					createdAt: 15 * 60_000 + 1_001,
+				},
+				state,
+			),
+		).toBe(false);
 	});
 
 	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {
@@ -6598,6 +6888,293 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent).toBeNull();
 			expect(result.result.responseMessages).toEqual([]);
 		}
+	});
+
+	it("reconciles the exact Computer Use fallback candidates before planner selection", async () => {
+		const delivered = "Telegram launch dispatched through Computer Use.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["browser", "automation"],
+				intents: ["open telegram using computer use"],
+				candidateActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Use the requested host-control capability.",
+				toolCalls: [
+					{
+						id: "computer-use-1",
+						name: "COMPUTER_USE",
+						args: { action: "launch", app: "Telegram" },
+					},
+				],
+			},
+		]);
+		const computerUseHandler = vi.fn(
+			async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({
+					text: delivered,
+					source: "action",
+					action: "COMPUTER_USE",
+				});
+				return {
+					success: true,
+					text: delivered,
+					userFacingText: delivered,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					data: {
+						actionName: "COMPUTER_USE",
+						action: "launch",
+						app: "Telegram",
+					},
+				};
+			},
+		);
+		runtime.actions = [
+			{
+				name: "COMPUTER_USE",
+				tags: [
+					"domain:computer-use",
+					"capability:desktop-control",
+					"effect:host-action",
+				],
+				description: "Control native applications on the owner's computer.",
+				contexts: ["browser", "automation", "admin"],
+				suppressPostActionContinuation: true,
+				parameters: [
+					{
+						name: "action",
+						description: "Desktop action",
+						required: true,
+						schema: { type: "string", enum: ["launch"] },
+					},
+					{
+						name: "app",
+						description: "Application name",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: async () => true,
+				handler: computerUseHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.computer-use.explicit-host-control",
+			actionNames: ["COMPUTER_USE"],
+			replacesActionNames: [
+				"BROWSER",
+				"BROWSER_NAVIGATE",
+				"AUTOMATION_TRIGGER",
+				"TRIGGER",
+				"VIEWS",
+			],
+			requiredActionTags: [
+				"domain:computer-use",
+				"capability:desktop-control",
+				"effect:host-action",
+			],
+			contexts: ["automation", "admin"],
+			matches: (text) => /\bcomputer[\s_-]*use\s+to\b/iu.test(text),
+		});
+		const directRouteEvaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) =>
+				evaluator.name === "core.direct_registered_capability_request",
+		);
+		if (!directRouteEvaluator)
+			throw new Error("direct route evaluator missing");
+		runtime.responseHandlerEvaluators = [directRouteEvaluator];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "can u use computer use to open telegram",
+			}),
+			state: {
+				...makeState(),
+				values: {
+					availableContexts: "general, browser, automation, admin",
+				},
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(result.messageHandler.plan.candidateActions).toEqual([
+			"COMPUTER_USE",
+		]);
+		expect(result.messageHandler.plan.candidateActions).not.toContain(
+			"BROWSER_NAVIGATE",
+		);
+		expect(result.messageHandler.plan.candidateActions).not.toContain(
+			"AUTOMATION_TRIGGER",
+		);
+		expect(computerUseHandler).toHaveBeenCalledTimes(1);
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+	});
+
+	it("does not execute browser or automation fallbacks when explicit Computer Use is unavailable", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["browser", "automation"],
+				intents: ["open telegram using computer use"],
+				candidateActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+		]);
+		const browserHandler = vi.fn(async () => ({
+			success: true,
+			text: "Browser fallback ran.",
+		}));
+		const automationHandler = vi.fn(async () => ({
+			success: true,
+			text: "Automation fallback ran.",
+		}));
+		runtime.actions = [
+			{
+				name: "BROWSER_NAVIGATE",
+				description: "Navigate a browser.",
+				contexts: ["browser"],
+				validate: async () => true,
+				handler: browserHandler,
+			},
+			{
+				name: "AUTOMATION_TRIGGER",
+				description: "Run an automation.",
+				contexts: ["automation"],
+				validate: async () => true,
+				handler: automationHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.computer-use.explicit-host-control",
+			actionNames: ["COMPUTER_USE"],
+			replacesActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+			requiredActionTags: [
+				"domain:computer-use",
+				"capability:desktop-control",
+				"effect:host-action",
+			],
+			contexts: ["automation", "admin"],
+			unavailable: {
+				code: "COMPUTER_USE_UNAVAILABLE",
+				reply:
+					"Computer Use is unavailable in this app session. Enable Computer Use, restart the app session, and try again. (COMPUTER_USE_UNAVAILABLE)",
+			},
+			matches: (text) => /\bcomputer[\s_-]*use\s+to\b/iu.test(text),
+		});
+		const directRouteEvaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) =>
+				evaluator.name === "core.direct_registered_capability_request",
+		);
+		if (!directRouteEvaluator)
+			throw new Error("direct route evaluator missing");
+		runtime.responseHandlerEvaluators = [directRouteEvaluator];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "can u use computer use to open telegram",
+			}),
+			state: {
+				...makeState(),
+				values: {
+					availableContexts: "general, browser, automation, admin",
+				},
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(result.messageHandler.plan.requiresTool).toBe(false);
+		expect(result.messageHandler.plan.candidateActions).toBeUndefined();
+		expect(browserHandler).not.toHaveBeenCalled();
+		expect(automationHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Computer Use is unavailable in this app session. Enable Computer Use, restart the app session, and try again. (COMPUTER_USE_UNAVAILABLE)",
+			);
+		}
+	});
+
+	it("does not execute an unrelated Stage-1 tool for explicit unavailable Computer Use", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["terminal"],
+				intents: ["open telegram using computer use"],
+				candidateActionNames: ["SHELL"],
+				replyText: "Running that now.",
+				extra: { requiresTool: true },
+			}),
+		]);
+		const shellHandler = vi.fn(async () => ({
+			success: true,
+			text: "Shell fallback ran.",
+		}));
+		runtime.actions = [
+			{
+				name: "SHELL",
+				description: "Execute a local shell command.",
+				contexts: ["terminal"],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.computer-use.explicit-host-control",
+			actionNames: ["COMPUTER_USE"],
+			replacesActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+			requiredActionTags: [
+				"domain:computer-use",
+				"capability:desktop-control",
+				"effect:host-action",
+			],
+			contexts: ["automation", "admin"],
+			unavailable: {
+				code: "COMPUTER_USE_UNAVAILABLE",
+				reply:
+					"Computer Use is unavailable in this app session. Enable Computer Use, restart the app session, and try again. (COMPUTER_USE_UNAVAILABLE)",
+			},
+			matches: (text) => /\bcomputer[\s_-]*use\s+to\b/iu.test(text),
+		});
+		const directRouteEvaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) =>
+				evaluator.name === "core.direct_registered_capability_request",
+		);
+		if (!directRouteEvaluator)
+			throw new Error("direct route evaluator missing");
+		runtime.responseHandlerEvaluators = [directRouteEvaluator];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "can u use computer use to open telegram",
+			}),
+			state: {
+				...makeState(),
+				values: {
+					availableContexts: "general, terminal, automation, admin",
+				},
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(result.messageHandler.plan.requiresTool).toBe(false);
+		expect(result.messageHandler.plan.candidateActions).toBeUndefined();
+		expect(shellHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
 	});
 
 	it("reconciles the owner reminder route without dropping a compound Stage-1 candidate", async () => {

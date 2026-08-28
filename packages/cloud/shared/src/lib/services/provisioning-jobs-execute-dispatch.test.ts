@@ -8,8 +8,10 @@
  *
  * The only stubs are the genuine boundaries the daemon dispatch sits on:
  * `jobsRepository`, the lifecycle-ownership preflight, and
- * `elizaSandboxService`. They are per-test spies rather than module-global DB
- * mocks so this suite can compose with real PGlite schema tests safely.
+ * `elizaSandboxService`. Suspend cases additionally replace the service's
+ * durable-authority boundary per test because authority and lifecycle fencing
+ * are resolved before transport dispatch. No module-global DB mock is used, so
+ * this suite remains safe inside the composed PGlite lane.
  */
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
@@ -18,12 +20,7 @@ import { jobsRepository, StaleJobExecutionError } from "../../db/repositories/jo
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { ProvisioningJobService } from "./provisioning-jobs";
-
-const provisioningJobService = new ProvisioningJobService({
-  acquireProviderAdmission: async () => true,
-  releaseProviderAdmission: async () => undefined,
-});
+import { ProvisioningJobService, provisioningJobService } from "./provisioning-jobs";
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -93,7 +90,47 @@ function makeJob(
  * building — but not invoking — the permanent-failure writeback, matching the
  * daemon's mid-retry behavior.
  */
-function harness(job: Job, service = provisioningJobService) {
+function harness(
+  job: Job,
+  service = provisioningJobService,
+  suspendIntent?: {
+    authorization: "user_request" | "billing_request";
+    lifecycleRevision: number;
+  },
+) {
+  const authoritySpy =
+    job.type === JOB_TYPES.AGENT_SUSPEND
+      ? spyOn(
+          service as unknown as {
+            resolveAgentSuspendAuthority(job: Job): Promise<{
+              authorization: "user_request" | "billing_request";
+              lifecycleRevision?: number;
+              intentBound: boolean;
+            }>;
+          },
+          "resolveAgentSuspendAuthority",
+        ).mockResolvedValue({
+          ...(suspendIntent ?? {
+            authorization:
+              job.data.authorization === "billing_request" ? "billing_request" : "user_request",
+            lifecycleRevision:
+              typeof job.data.lifecycleRevision === "number" ? job.data.lifecycleRevision : 0,
+          }),
+          intentBound: suspendIntent !== undefined,
+        })
+      : undefined;
+  const snapshotMarkerSpy =
+    job.type === JOB_TYPES.AGENT_SNAPSHOT
+      ? spyOn(
+          service as unknown as {
+            recordSnapshotAttemptMarkers(
+              agentId: string,
+              outcome: "success" | "unsupported" | "other",
+            ): Promise<void>;
+          },
+          "recordSnapshotAttemptMarkers",
+        ).mockResolvedValue(undefined)
+      : undefined;
   const conflictSpy = spyOn(
     service as unknown as {
       assertNoConflictingLifecycleExecution(job: Job): Promise<void>;
@@ -114,6 +151,8 @@ function harness(job: Job, service = provisioningJobService) {
   ).mockImplementation(async (f: { type: string }) => (f.type === job.type ? [job] : []));
   const claimSpy = {
     mockRestore() {
+      authoritySpy?.mockRestore();
+      snapshotMarkerSpy?.mockRestore();
       conflictSpy.mockRestore();
       ordinaryClaimSpy.mockRestore();
       sharedClaimSpy.mockRestore();
@@ -1351,6 +1390,27 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_suspend dispatch recovers the durable revision omitted by a user envelope", async () => {
+    const job = makeJob(JOB_TYPES.AGENT_SUSPEND);
+    const ctx = harness(job, provisioningJobService, {
+      authorization: "user_request",
+      lifecycleRevision: 7,
+    });
+    const suspendSpy = stub("executeSuspend", { success: true, containerStopped: true });
+    try {
+      const res = await run(JOB_TYPES.AGENT_SUSPEND);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(suspendSpy).toHaveBeenCalledWith(AGENT, ORG, job.id, "user_request", 7);
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   for (const jobType of [JOB_TYPES.AGENT_RESUME, JOB_TYPES.AGENT_WAKE] as const) {
     test(`${jobType} keeps deletion fenced through provider response and durable settlement`, async () => {
       const arm = AGENT_ARMS.find((candidate) => candidate.type === jobType);
@@ -1404,6 +1464,27 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       }
     });
   }
+
+  test("agent_suspend dispatch honors a billing intent promoted to user authority", async () => {
+    const job = makeJob(JOB_TYPES.AGENT_SUSPEND, { authorization: "billing_request" });
+    const ctx = harness(job, provisioningJobService, {
+      authorization: "user_request",
+      lifecycleRevision: 9,
+    });
+    const suspendSpy = stub("executeSuspend", { success: true, containerStopped: true });
+    try {
+      const res = await run(JOB_TYPES.AGENT_SUSPEND);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(suspendSpy).toHaveBeenCalledWith(AGENT, ORG, job.id, "user_request", 9);
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
 
   test("organization-id mismatch between payload and column fails before any transport call", async () => {
     const ctx = harness(

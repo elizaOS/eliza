@@ -10,7 +10,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent";
 import { stringToUuid } from "@elizaos/core";
-import { getDefaultStylePreset, getStylePresets } from "@elizaos/shared";
+import {
+  getDefaultStylePreset,
+  getStylePresets,
+  resetDevCloudEnvAuthorityForTests,
+} from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   deriveFirstRunReplayBody,
@@ -40,6 +44,9 @@ const CONFIG_ENV_KEYS = [
 
 const CLOUD_ENV_KEYS = [
   "ELIZA_CLOUD_PROVISIONED",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZA_DEV_CLOUD_TARGET",
+  "ELIZA_DEV_SOURCE",
   "STEWARD_AGENT_TOKEN",
   "ELIZA_API_TOKEN",
   "ELIZAOS_CLOUD_ENABLED",
@@ -247,11 +254,13 @@ describe("isCloudProvisioned", () => {
   const previous = snapshotEnv(CLOUD_ENV_KEYS);
 
   beforeEach(() => {
+    resetDevCloudEnvAuthorityForTests();
     clearEnv(CLOUD_ENV_KEYS);
   });
 
   afterEach(() => {
     restoreEnv(previous);
+    resetDevCloudEnvAuthorityForTests();
   });
 
   it("is false when the cloud flag and every token source are missing", () => {
@@ -322,6 +331,32 @@ describe("isCloudProvisioned", () => {
     process.env.ELIZAOS_CLOUD_ENABLED = "false";
     process.env.ELIZAOS_CLOUD_API_KEY = "ck-live";
     expect(isCloudProvisioned()).toBe(false);
+  });
+
+  it("staging-default cannot become provisioned through late env pollution", () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-default";
+
+    expect(isCloudProvisioned()).toBe(false);
+
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.STEWARD_AGENT_TOKEN = "late-production-token";
+
+    expect(isCloudProvisioned()).toBe(false);
+  });
+
+  it("explicit production remains provisioned after late env clearing", () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "production";
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZA_API_TOKEN = "launch-api-token";
+
+    expect(isCloudProvisioned()).toBe(true);
+
+    delete process.env.ELIZA_CLOUD_PROVISIONED;
+    delete process.env.ELIZA_API_TOKEN;
+
+    expect(isCloudProvisioned()).toBe(true);
   });
 });
 

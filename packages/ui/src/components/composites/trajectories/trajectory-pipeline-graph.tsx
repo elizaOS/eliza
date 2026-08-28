@@ -7,6 +7,7 @@
  */
 
 import type { LucideIcon } from "lucide-react";
+import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 
 // ---------------------------------------------------------------------------
@@ -89,30 +90,18 @@ function PipelineNodeButton({
 }) {
   const Icon = node.icon;
 
-  const _statusClasses = {
-    active: selected
-      ? "border-primary/40 bg-primary/5   "
-      : "border-border/40 hover:border-border/60 ",
-    skipped: selected
-      ? "border-primary/30 bg-primary/5   opacity-70"
-      : "border-border/25 border-dashed hover:bg-bg-muted/40",
-    error: selected
-      ? "border-danger/40 bg-danger/5  "
-      : "border-danger/30 hover:border-danger/40",
-  };
-
   const iconColor = {
-    active: selected ? "text-accent-fg" : "text-muted-strong",
-    skipped: "text-muted/50",
+    active: selected
+      ? "text-[color:var(--settings-foreground)]"
+      : "text-[color:var(--settings-muted)]",
+    skipped: "text-[color:var(--settings-muted)] opacity-50",
     error: "text-danger/80",
   };
 
-  const countBg = {
-    active: selected
-      ? "bg-accent-fg/15 text-accent-fg"
-      : "bg-muted/10 text-txt/60",
-    skipped: "bg-muted/8 text-muted/40",
-    error: "bg-danger/10 text-danger/70",
+  const countTone = {
+    active: selected ? ("accent" as const) : ("muted" as const),
+    skipped: "muted" as const,
+    error: "danger" as const,
   };
 
   return (
@@ -121,24 +110,21 @@ function PipelineNodeButton({
       size="card"
       data-state={selected ? "on" : "off"}
       onClick={onClick}
-      className="min-w-[90px] items-center"
+      className="min-w-[7rem] items-center"
     >
       <Icon className={`size-5 ${iconColor[node.status]}`} />
-      <span
-        className={`text-2xs font-semibold uppercase tracking-[0.12em] whitespace-nowrap ${
-          selected ? "text-accent-fg" : "text-muted-strong"
-        }`}
-      >
+      <span className="whitespace-nowrap text-xs font-medium">
         {node.label}
       </span>
-      <span
-        className={`
-          rounded-sm px-2 py-0.5 text-2xs font-bold leading-none
-          ${countBg[node.status]}
-        `}
+      <Badge
+        asChild
+        variant="secondary"
+        size="compact"
+        tone={countTone[node.status]}
+        className="px-2 py-0.5 text-xs font-medium normal-case leading-none"
       >
-        {node.id === "input" ? "\u2713" : node.callCount}
-      </span>
+        <span>{node.id === "input" ? "Ready" : `${node.callCount} calls`}</span>
+      </Badge>
     </Button>
   );
 }
@@ -153,7 +139,7 @@ export function TrajectoryPipelineGraph({
   onStageClick,
 }: TrajectoryPipelineGraphProps) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto py-1">
+    <div className="flex items-center overflow-x-auto py-1">
       {nodes.map((node, i) => (
         <div key={node.id} className="contents">
           {i > 0 && (

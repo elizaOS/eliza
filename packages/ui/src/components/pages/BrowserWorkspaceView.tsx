@@ -5,9 +5,9 @@
  * receipts) when the bridge plugin is available.
  *
  * The builtin registry declares this view `header: "fullscreen"`, so the shell
- * mounts it edge-to-edge and the view owns its chrome: a floating glass
- * toolbar and a rounded web-surface panel over the opaque app background —
- * the same fullscreen framing the Notes and Calendar views use.
+ * mounts it edge-to-edge and the view owns a compact, familiar navigation rail
+ * plus the isolated web-content surface. Responsive layout changes only the
+ * chrome density; browsing, storage, and security policy stay canonical.
  *
  * Tabs, navigation, and snapshots flow through the `client` browser API; on
  * native the tabs render via a registered renderer impl
@@ -15,7 +15,15 @@
  * companion bridge. Mounted in `App.tsx` under the `browser` route key.
  */
 import { Capacitor } from "@capacitor/core";
-import { ExternalLink, Globe, Plus, RefreshCw, X } from "lucide-react";
+import {
+  ArrowRight,
+  EllipsisVertical,
+  ExternalLink,
+  Globe,
+  Plus,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import {
@@ -23,12 +31,15 @@ import {
   type BrowserWorkspaceTab,
   client,
 } from "../../api";
+import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
+import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { usesAndroidLp3SharedBrowserStorage } from "../../platform/android-runtime";
 import { useAppSelectorShallow } from "../../state";
 import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
@@ -45,6 +56,12 @@ import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
 import { TooltipHint } from "../ui/tooltip";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -89,6 +106,14 @@ const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://www.google.com/webhp?igu=1";
 const BROWSER_IFRAME_FOCUS_SETTLE_MS = 1_500;
 const BROWSER_IFRAME_FOCUS_ARM_TIMEOUT_MS = 30_000;
 const BROWSER_IFRAME_FOCUS_POLL_MS = 16;
+const BROWSER_WORKSPACE_RUNTIME_UNAVAILABLE_CODE =
+  "browser_workspace_runtime_unavailable";
+
+type BrowserWorkspaceLoadError = {
+  message: string;
+  code?: string;
+  retryable: boolean;
+};
 
 type BrowserIframeFocusHandoff = {
   returnTarget: HTMLElement | null;
@@ -127,7 +152,17 @@ const BROWSER_NATIVE_SURFACE_PLACEMENT = deriveSurfacePlacement(
 );
 const BROWSER_NATIVE_SURFACE_POLICY =
   BROWSER_NATIVE_SURFACE_PLACEMENT.target === "native-surface"
-    ? BROWSER_NATIVE_SURFACE_PLACEMENT.policy
+    ? {
+        ...BROWSER_NATIVE_SURFACE_PLACEMENT.policy,
+        // LP3's WebView 113 has an out-of-app renderer but no multi-profile
+        // API. The dedicated fallback build therefore explicitly requests the
+        // plugin's supported shared Browser profile. This is not a native
+        // silent downgrade: every other build keeps the manifest-derived
+        // isolated storage policy and still fails closed when unsupported.
+        storage: usesAndroidLp3SharedBrowserStorage()
+          ? ("shared" as const)
+          : BROWSER_NATIVE_SURFACE_PLACEMENT.policy.storage,
+      }
     : (() => {
         throw new Error(
           "Browser surface manifest must declare native-webview isolation to host native mobile tab surfaces",
@@ -298,6 +333,50 @@ function isBrowserWorkspaceSessionMode(
   // mode renders <electrobun-webview> tags directly into the React tree, so
   // there's no need to poll for screenshot data.
   return mode === "cloud";
+}
+
+function resolveBrowserWorkspaceLoadError(
+  error: unknown,
+  t: TranslateFn,
+): BrowserWorkspaceLoadError {
+  const apiError = isApiError(error) ? error : null;
+  const errorData = apiError?.data;
+  const structuredRetryable =
+    typeof errorData === "object" &&
+    errorData !== null &&
+    "retryable" in errorData &&
+    typeof (errorData as { retryable?: unknown }).retryable === "boolean"
+      ? (errorData as { retryable: boolean }).retryable
+      : undefined;
+  const code = apiError?.code;
+
+  if (code === BROWSER_WORKSPACE_RUNTIME_UNAVAILABLE_CODE) {
+    return {
+      code,
+      message: t("browserworkspace.DedicatedRuntimeRequired", {
+        defaultValue: "In-app browsing isn’t available with this connection.",
+      }),
+      retryable: false,
+    };
+  }
+
+  if (apiError?.status === 404) {
+    return {
+      ...(code ? { code } : {}),
+      message: t("browserworkspace.ServiceUnavailable", {
+        defaultValue: "In-app browsing isn’t available here.",
+      }),
+      retryable: false,
+    };
+  }
+
+  return {
+    ...(code ? { code } : {}),
+    message: t("browserworkspace.ConnectionFailed", {
+      defaultValue: "Browser couldn’t connect. Try again in a moment.",
+    }),
+    retryable: structuredRetryable ?? true,
+  };
 }
 
 export function normalizeBrowserWorkspaceInputUrl(
@@ -531,6 +610,18 @@ function BrowserAddressInput({
 }
 
 export function BrowserWorkspaceView(): React.JSX.Element {
+  const authority = useActiveAgentAuthority();
+  return <BrowserWorkspaceForAuthority key={authority} />;
+}
+
+/**
+ * Browser state includes live tabs, snapshots, native surfaces, wallet grants,
+ * and in-flight agent requests. Keying that complete state owner by authority
+ * makes an in-place profile switch equivalent to a clean mount: the prior
+ * profile disappears before the next paint and its late promises target an
+ * unmounted tree instead of the newly active agent.
+ */
+function BrowserWorkspaceForAuthority(): React.JSX.Element {
   useRenderGuard("BrowserWorkspaceView");
   const {
     getStewardPending,
@@ -568,7 +659,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const [locationInput, setLocationInput] = useState("");
   const [locationDirty, setLocationDirty] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<BrowserWorkspaceLoadError | null>(
+    null,
+  );
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -576,6 +669,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   // this one switcher instead of a permanent sidebar strip, so this is the only
   // multi-tab surface — opened from the toolbar's fold control.
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const switcherReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
     readPersistedMobileRuntimeMode,
   );
@@ -587,6 +681,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   // single-flight, and order every response so a late poll cannot roll back a
   // newer user action or turn stale-state refresh noise into a page failure.
   const workspaceLoadVersionRef = useRef(0);
+  const workspaceLoadAbortControllerRef = useRef<AbortController | null>(null);
+  const snapshotAbortControllerRef = useRef<AbortController | null>(null);
+  const lifecycleAbortControllerRef = useRef(new AbortController());
+  const lifecycleEffectEpochRef = useRef(0);
   const foregroundWorkspaceLoadsRef = useRef(0);
   const visibleWorkspaceLoadsRef = useRef(0);
   const workspaceActionsInFlightRef = useRef(0);
@@ -676,6 +774,20 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     mode: workspace.mode,
     nativeMobileShell,
   });
+  // The native mobile shell owns its tabs locally, so an absent server-side
+  // workspace is a usable empty state there. Every other renderer depends on
+  // the workspace API: a failed initial read is unavailability, never an empty
+  // browser. Keep that distinction central so the surface and every mutating
+  // control agree on what the user can actually do.
+  const browserWorkspaceUsesLocalTabs =
+    browserTabRenderPath === "native-mobile-webview";
+  const browserWorkspaceUnavailable =
+    !browserWorkspaceUsesLocalTabs &&
+    loadError !== null &&
+    workspace.tabs.length === 0;
+  const browserWorkspaceCanRetryLoad =
+    loadError?.retryable === true &&
+    loadError.code !== BROWSER_WORKSPACE_RUNTIME_UNAVAILABLE_CODE;
 
   const selectedTab = useMemo(
     () => workspace.tabs.find((tab) => tab.id === selectedTabId) ?? null,
@@ -702,6 +814,28 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     Capacitor.isNativePlatform() && mobileRuntimeMode === "local";
 
   workspaceSnapshotRef.current = workspace;
+
+  useEffect(() => {
+    const epoch = ++lifecycleEffectEpochRef.current;
+    return () => {
+      // React StrictMode performs a setup/cleanup/setup probe without actually
+      // discarding this state owner. Defer one microtask so the second setup can
+      // supersede that probe; a real unmount or authority-key replacement has
+      // no next setup and therefore aborts every lifecycle-owned read.
+      queueMicrotask(() => {
+        if (lifecycleEffectEpochRef.current !== epoch) return;
+        lifecycleAbortControllerRef.current.abort(
+          "Browser workspace unmounted",
+        );
+        workspaceLoadAbortControllerRef.current?.abort(
+          "Browser workspace unmounted",
+        );
+        snapshotAbortControllerRef.current?.abort(
+          "Browser workspace unmounted",
+        );
+      });
+    };
+  }, []);
 
   useEffect(() => {
     getStewardPendingRef.current = getStewardPending;
@@ -1013,6 +1147,18 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       silent?: boolean;
       background?: boolean;
     }) => {
+      const lifecycleSignal = lifecycleAbortControllerRef.current.signal;
+      if (lifecycleSignal.aborted) return;
+      workspaceLoadAbortControllerRef.current?.abort(
+        "Browser workspace refresh superseded",
+      );
+      const abortController = new AbortController();
+      workspaceLoadAbortControllerRef.current = abortController;
+      const abortForLifecycle = () =>
+        abortController.abort(lifecycleSignal.reason);
+      lifecycleSignal.addEventListener("abort", abortForLifecycle, {
+        once: true,
+      });
       const background = options?.background === true;
       const showLoading = options?.silent !== true;
       if (!background) {
@@ -1024,7 +1170,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         setLoading(true);
       }
       try {
-        const snapshot = await client.getBrowserWorkspace();
+        const snapshot = await client.getBrowserWorkspace({
+          signal: abortController.signal,
+        });
         if (loadVersion !== workspaceLoadVersionRef.current) return;
         const previousSnapshot = workspaceSnapshotRef.current;
         for (const nextTab of snapshot.tabs) {
@@ -1069,19 +1217,18 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           ),
         );
       } catch (error) {
+        if (abortController.signal.aborted) return;
         if (background || loadVersion !== workspaceLoadVersionRef.current) {
           // error-policy:J4 poll — retain the last successful workspace on a
           // transient background failure; the next visible tick retries.
           return;
         }
-        const message =
-          error instanceof Error
-            ? error.message
-            : tRef.current("browserworkspace.LoadFailed", {
-                defaultValue: "Failed to load browser workspace.",
-              });
-        setLoadError(message);
+        setLoadError(resolveBrowserWorkspaceLoadError(error, tRef.current));
       } finally {
+        lifecycleSignal.removeEventListener("abort", abortForLifecycle);
+        if (workspaceLoadAbortControllerRef.current === abortController) {
+          workspaceLoadAbortControllerRef.current = null;
+        }
         if (!background) {
           foregroundWorkspaceLoadsRef.current -= 1;
         }
@@ -1137,6 +1284,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   );
 
   const refreshWorkspaceInBackground = useCallback(async () => {
+    // Native-mobile tabs are authoritative client state: the remote agent's
+    // workspace endpoint deliberately has no matching native WebView tabs.
+    // Polling that empty server snapshot would erase a tab (and its permanent
+    // capability/error recovery surface) moments after the user opened it.
+    if (browserTabRenderPath === "native-mobile-webview") return;
     if (
       backgroundWorkspaceRefreshInFlightRef.current ||
       foregroundWorkspaceLoadsRef.current > 0 ||
@@ -1154,16 +1306,33 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     } finally {
       backgroundWorkspaceRefreshInFlightRef.current = false;
     }
-  }, [loadWorkspace, selectedTabId]);
+  }, [browserTabRenderPath, loadWorkspace, selectedTabId]);
 
   const loadSelectedBrowserWorkspaceSnapshot = useCallback(
     async (tabId: string, mode: BrowserWorkspaceSnapshot["mode"]) => {
       if (!isBrowserWorkspaceSessionMode(mode)) {
+        snapshotAbortControllerRef.current?.abort(
+          "Browser preview is no longer active",
+        );
         setSnapshotError(null);
         return;
       }
+      const lifecycleSignal = lifecycleAbortControllerRef.current.signal;
+      if (lifecycleSignal.aborted) return;
+      snapshotAbortControllerRef.current?.abort(
+        "Browser preview refresh superseded",
+      );
+      const abortController = new AbortController();
+      snapshotAbortControllerRef.current = abortController;
+      const abortForLifecycle = () =>
+        abortController.abort(lifecycleSignal.reason);
+      lifecycleSignal.addEventListener("abort", abortForLifecycle, {
+        once: true,
+      });
       try {
-        const snapshot = await client.snapshotBrowserWorkspaceTab(tabId);
+        const snapshot = await client.snapshotBrowserWorkspaceTab(tabId, {
+          signal: abortController.signal,
+        });
         setTabSnapshots((current) => {
           if (current[tabId] === snapshot.data) {
             return current;
@@ -1171,14 +1340,18 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           return { ...current, [tabId]: snapshot.data };
         });
         setSnapshotError(null);
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : tRef.current("browserworkspace.SnapshotFailed", {
-                defaultValue: "Failed to load browser session preview.",
-              });
-        setSnapshotError(message);
+      } catch {
+        if (abortController.signal.aborted) return;
+        setSnapshotError(
+          tRef.current("browserworkspace.SnapshotFailed", {
+            defaultValue: "Preview couldn’t refresh. Retrying automatically.",
+          }),
+        );
+      } finally {
+        lifecycleSignal.removeEventListener("abort", abortForLifecycle);
+        if (snapshotAbortControllerRef.current === abortController) {
+          snapshotAbortControllerRef.current = null;
+        }
       }
     },
     [],
@@ -2143,7 +2316,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       }
       await client.closeBrowserWorkspaceTab(tabId);
       revokeBrowserWalletFrame(tabId);
-      const snapshot = await client.getBrowserWorkspace();
+      const snapshot = await client.getBrowserWorkspace({
+        signal: lifecycleAbortControllerRef.current.signal,
+      });
       const nextId =
         snapshot.tabs.find((tab) => tab.id === selectedTabId)?.id ??
         snapshot.tabs[0]?.id ??
@@ -2168,11 +2343,29 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     const closableTabs = workspace.tabs.filter(
       (tab) => !isInternalBrowserWorkspaceTab(tab),
     );
+    // Native mobile follows the same client-owned lifecycle as opening and
+    // closing one tab. Calling the server here can only fail because no remote
+    // workspace exists for these native WebViews.
+    if (browserTabRenderPath === "native-mobile-webview") {
+      const remainingTabs = workspace.tabs.filter((tab) =>
+        isInternalBrowserWorkspaceTab(tab),
+      );
+      const nextId = remainingTabs[0]?.id ?? null;
+      setWorkspace((current) => ({ ...current, tabs: remainingTabs }));
+      setSelectedTabId(nextId);
+      setLocationInput(
+        remainingTabs.find((tab) => tab.id === nextId)?.url ?? "",
+      );
+      setLocationDirty(false);
+      return;
+    }
     for (const tab of closableTabs) {
       await client.closeBrowserWorkspaceTab(tab.id);
       revokeBrowserWalletFrame(tab.id);
     }
-    const snapshot = await client.getBrowserWorkspace();
+    const snapshot = await client.getBrowserWorkspace({
+      signal: lifecycleAbortControllerRef.current.signal,
+    });
     const nextId = snapshot.tabs[0]?.id ?? null;
     if (nextId) {
       await client.showBrowserWorkspaceTab(nextId);
@@ -2181,7 +2374,12 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     setLocationInput(snapshot.tabs.find((tab) => tab.id === nextId)?.url ?? "");
     setLocationDirty(false);
     await loadWorkspace({ preferTabId: nextId, silent: true });
-  }, [loadWorkspace, revokeBrowserWalletFrame, workspace.tabs]);
+  }, [
+    browserTabRenderPath,
+    loadWorkspace,
+    revokeBrowserWalletFrame,
+    workspace.tabs,
+  ]);
 
   useEffect(() => {
     if (initialWorkspaceLoadStartedRef.current) return;
@@ -2237,7 +2435,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     if (
       !initialBrowseUrlRef.current ||
       initialBrowseHandledRef.current ||
-      loading
+      loading ||
+      browserWorkspaceUnavailable
     ) {
       return;
     }
@@ -2270,6 +2469,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     );
   }, [
     activateBrowserWorkspaceTab,
+    browserWorkspaceUnavailable,
     loading,
     openNewBrowserWorkspaceTab,
     runBrowserWorkspaceAction,
@@ -2372,8 +2572,16 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     count: foldedTabs.count,
   });
 
+  const openTabSwitcher = useCallback(() => {
+    setSwitcherOpen(true);
+  }, []);
+
+  const handleTabSwitcherOpenChange = useCallback((open: boolean) => {
+    setSwitcherOpen(open);
+  }, []);
+
   const navNode = (
-    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_repeat(3,2.75rem)] items-center gap-1 px-1.5 py-1 md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-1.5 md:px-2 md:py-1.5 lg:gap-2 lg:px-3 lg:py-2">
+    <div className="flex items-center gap-1 p-1 md:grid md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-x-2 md:gap-y-1 md:px-2 md:py-0.5">
       <TooltipHint
         content={t("common.backToLauncher", {
           defaultValue: "Back to launcher",
@@ -2393,7 +2601,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         activeLabel={foldControlActiveLabel}
         count={foldedTabs.count}
         openLabel={openTabSwitcherLabel}
-        onOpen={() => setSwitcherOpen(true)}
+        onOpen={openTabSwitcher}
+        controlRef={switcherReturnFocusRef}
       />
       <BrowserNavButton
         agentId="new-tab"
@@ -2410,9 +2619,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="size-11 shrink-0"
+        className="hidden size-11 shrink-0 md:inline-flex"
         aria-label={newTabLabel}
-        disabled={busyAction !== null}
+        disabled={busyAction !== null || browserWorkspaceUnavailable}
         onClick={() =>
           void runBrowserWorkspaceAction("open:new", async () => {
             await openNewBrowserWorkspaceTab(
@@ -2437,7 +2646,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="size-11"
+        className="hidden size-11 md:inline-flex"
         aria-label={t("common.refresh", { defaultValue: "Refresh" })}
         disabled={!selectedTab || busyAction !== null}
         onClick={() =>
@@ -2448,37 +2657,39 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       >
         <RefreshCw className="size-4" />
       </BrowserNavButton>
-      <BrowserNavButton
-        agentId="close-all-tabs"
-        agentLabel={t("browserworkspace.CloseAllTabs", {
-          defaultValue: "Close all tabs",
-        })}
-        agentDescription="Close every user browser tab"
-        group="browser-nav"
-        onActivate={() =>
-          void runBrowserWorkspaceAction("close:all", async () => {
-            await closeAllBrowserWorkspaceTabs();
-          })
-        }
-        variant="ghost"
-        size="icon"
-        className="size-11"
-        aria-label={t("browserworkspace.CloseAllTabs", {
-          defaultValue: "Close all tabs",
-        })}
-        disabled={
-          busyAction !== null ||
-          !workspace.tabs.some((tab) => !isInternalBrowserWorkspaceTab(tab))
-        }
-        onClick={() =>
-          void runBrowserWorkspaceAction("close:all", async () => {
-            await closeAllBrowserWorkspaceTabs();
-          })
-        }
-        data-testid="browser-workspace-close-all-tabs"
-      >
-        <X className="size-4" />
-      </BrowserNavButton>
+      <span className="max-md:hidden">
+        <BrowserNavButton
+          agentId="close-all-tabs"
+          agentLabel={t("browserworkspace.CloseAllTabs", {
+            defaultValue: "Close all tabs",
+          })}
+          agentDescription="Close every user browser tab"
+          group="browser-nav"
+          onActivate={() =>
+            void runBrowserWorkspaceAction("close:all", async () => {
+              await closeAllBrowserWorkspaceTabs();
+            })
+          }
+          variant="ghost"
+          size="icon"
+          className="size-11"
+          aria-label={t("browserworkspace.CloseAllTabs", {
+            defaultValue: "Close all tabs",
+          })}
+          disabled={
+            busyAction !== null ||
+            !workspace.tabs.some((tab) => !isInternalBrowserWorkspaceTab(tab))
+          }
+          onClick={() =>
+            void runBrowserWorkspaceAction("close:all", async () => {
+              await closeAllBrowserWorkspaceTabs();
+            })
+          }
+          data-testid="browser-workspace-close-all-tabs"
+        >
+          <X className="size-4" />
+        </BrowserNavButton>
+      </span>
       <BrowserAddressInput
         agentLabel={t("browserworkspace.AddressPlaceholder", {
           defaultValue: selectedTabIsInternal
@@ -2510,8 +2721,12 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             : "Enter a URL",
         })}
         data-testid="browser-workspace-address-input"
-        disabled={busyAction !== null || selectedTabIsInternal}
-        className="col-span-2 h-11 min-w-[10rem] flex-1 rounded-full border-transparent bg-card/70 px-4 text-sm text-txt shadow-inset md:col-span-1"
+        disabled={
+          busyAction !== null ||
+          selectedTabIsInternal ||
+          browserWorkspaceUnavailable
+        }
+        className="h-11 min-w-0 flex-1 rounded-full border-border/70 bg-bg/80 px-3 text-sm text-txt md:col-span-1 md:min-w-[10rem] md:px-4"
       />
       <BrowserNavButton
         agentId="go"
@@ -2523,13 +2738,14 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             await navigateSelectedBrowserWorkspaceTab(locationInput);
           })
         }
-        variant="outline"
-        size="sm"
-        className="h-11 shrink-0 px-3"
+        variant="ghost"
+        size="icon"
+        className="size-11 shrink-0"
         aria-label={goLabel}
         disabled={
           busyAction !== null ||
           selectedTabIsInternal ||
+          browserWorkspaceUnavailable ||
           locationInput.trim().length === 0
         }
         onClick={() =>
@@ -2538,37 +2754,139 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           })
         }
       >
-        {goLabel}
+        <ArrowRight className="size-4" aria-hidden />
       </BrowserNavButton>
-      <BrowserNavButton
-        agentId="open-external"
-        agentLabel={t("browserworkspace.OpenExternal", {
-          defaultValue: "Open external",
+      <span className="max-md:hidden">
+        <BrowserNavButton
+          agentId="open-external"
+          agentLabel={t("browserworkspace.OpenExternal", {
+            defaultValue: "Open external",
+          })}
+          agentDescription="Open the active tab URL in an external browser"
+          group="browser-nav"
+          onActivate={() =>
+            void runBrowserWorkspaceAction("open:external", async () => {
+              if (!selectedTab) return;
+              await openExternalUrl(selectedTab.url);
+            })
+          }
+          variant="ghost"
+          size="icon"
+          className="size-11"
+          aria-label={t("browserworkspace.OpenExternal", {
+            defaultValue: "Open external",
+          })}
+          disabled={!selectedTab || busyAction !== null}
+          onClick={() =>
+            void runBrowserWorkspaceAction("open:external", async () => {
+              if (!selectedTab) return;
+              await openExternalUrl(selectedTab.url);
+            })
+          }
+        >
+          <ExternalLink className="size-4" />
+        </BrowserNavButton>
+      </span>
+      {/* Mobile overflow (#29261): the toolbar stays one 44px row, so the
+          secondary actions live behind one touch-sized menu instead of a
+          second row. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-11 shrink-0 md:hidden"
+            aria-label={t("browserworkspace.MoreActions", {
+              defaultValue: "More browser actions",
+            })}
+            data-testid="browser-workspace-mobile-more"
+          >
+            <EllipsisVertical className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-52 md:hidden">
+          <DropdownMenuItem
+            className="min-h-12 gap-3"
+            disabled={busyAction !== null || browserWorkspaceUnavailable}
+            onSelect={() =>
+              void runBrowserWorkspaceAction("open:new", async () => {
+                await openNewBrowserWorkspaceTab(
+                  newBrowserWorkspaceTabSeedUrl,
+                  "user",
+                );
+              })
+            }
+          >
+            <Plus className="size-4" />
+            {newTabLabel}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="min-h-12 gap-3"
+            disabled={!selectedTab || busyAction !== null}
+            onSelect={() =>
+              void runBrowserWorkspaceAction("reload:selected", async () => {
+                await reloadSelectedBrowserWorkspaceTab();
+              })
+            }
+          >
+            <RefreshCw className="size-4" />
+            {t("common.refresh", { defaultValue: "Refresh" })}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="min-h-12 gap-3"
+            disabled={
+              busyAction !== null ||
+              !workspace.tabs.some((tab) => !isInternalBrowserWorkspaceTab(tab))
+            }
+            onSelect={() =>
+              void runBrowserWorkspaceAction("close:all", async () => {
+                await closeAllBrowserWorkspaceTabs();
+              })
+            }
+          >
+            <X className="size-4" />
+            {t("browserworkspace.CloseAllTabs", {
+              defaultValue: "Close all tabs",
+            })}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="min-h-12 gap-3"
+            disabled={!selectedTab || busyAction !== null}
+            onSelect={() =>
+              void runBrowserWorkspaceAction("open:external", async () => {
+                if (!selectedTab) return;
+                await openExternalUrl(selectedTab.url);
+              })
+            }
+          >
+            <ExternalLink className="size-4" />
+            {t("browserworkspace.OpenExternal", {
+              defaultValue: "Open external",
+            })}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+
+  const minimalNavNode = (
+    <div className="grid h-12 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center px-2">
+      <TooltipHint
+        content={t("common.backToLauncher", {
+          defaultValue: "Back to launcher",
         })}
-        agentDescription="Open the active tab URL in an external browser"
-        group="browser-nav"
-        onActivate={() =>
-          void runBrowserWorkspaceAction("open:external", async () => {
-            if (!selectedTab) return;
-            await openExternalUrl(selectedTab.url);
-          })
-        }
-        variant="ghost"
-        size="icon"
-        className="size-11"
-        aria-label={t("browserworkspace.OpenExternal", {
-          defaultValue: "Open external",
-        })}
-        disabled={!selectedTab || busyAction !== null}
-        onClick={() =>
-          void runBrowserWorkspaceAction("open:external", async () => {
-            if (!selectedTab) return;
-            await openExternalUrl(selectedTab.url);
-          })
-        }
       >
-        <ExternalLink className="size-4" />
-      </BrowserNavButton>
+        <ViewBackButton
+          label={t("common.backToLauncher", {
+            defaultValue: "Back to launcher",
+          })}
+          className="shrink-0"
+        />
+      </TooltipHint>
+      <h1 className="truncate text-center text-sm font-semibold text-txt">
+        {t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
+      </h1>
+      <span aria-hidden />
     </div>
   );
 
@@ -2598,12 +2916,14 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           <span className="truncate">{watchBannerLabel}</span>
         </div>
       ) : null}
-      {loadError ? (
+      {loadError &&
+      !browserWorkspaceUsesLocalTabs &&
+      workspace.tabs.length > 0 ? (
         <div
-          className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-sm border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
+          className="absolute left-4 right-4 top-3 z-20 rounded-xl border border-warning/30 bg-bg/95 px-3 py-2 text-xs text-muted md:left-1/2 md:right-auto md:w-max md:max-w-[min(32rem,calc(100%-2rem))] md:-translate-x-1/2"
           role="alert"
         >
-          {loadError}
+          {loadError.message}
         </div>
       ) : null}
 
@@ -2619,31 +2939,54 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       ) : null}
 
       {workspace.tabs.length === 0 ? (
-        loading ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-sm text-muted">
-              {t("browserworkspace.Loading", {
-                defaultValue: "Loading browser workspace",
-              })}
-            </div>
-          </div>
+        browserWorkspaceUnavailable ? (
+          <PagePanel.ContentState
+            state="error"
+            placement="workspace"
+            role="alert"
+            tone="warning"
+            aria-busy={browserWorkspaceCanRetryLoad && loading}
+            icon={<Globe className="size-5" aria-hidden />}
+            title={t("browserworkspace.NativeSurfaceUnavailable", {
+              defaultValue: "Browser view unavailable",
+            })}
+            description={loadError.message}
+            action={
+              browserWorkspaceCanRetryLoad ? (
+                <Button
+                  type="button"
+                  size="touch"
+                  variant="outline"
+                  disabled={loading || busyAction !== null}
+                  onClick={() => void loadWorkspace()}
+                >
+                  <RefreshCw
+                    className={`size-4 ${loading ? "animate-spin" : ""}`}
+                    aria-hidden
+                  />
+                  {t("common.retry", { defaultValue: "Retry" })}
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : loading ? (
+          <PagePanel.ContentState
+            state="loading"
+            placement="workspace"
+            aria-busy
+            heading={t("browserworkspace.Loading", {
+              defaultValue: "Opening Browser",
+            })}
+          />
         ) : (
-          // The designed-empty column centers with margin-auto INSIDE the
-          // scroller (not justify-center on the scroller itself) so a short
-          // viewport degrades to a scrollable top-aligned column instead of
-          // clipping the heading above the scroll origin.
-          <div className="flex h-full min-h-0 flex-col overflow-y-auto pt-3 pb-[calc(var(--eliza-chat-clearance,5.25rem)+1rem)] pe-[var(--eliza-chat-side-clearance,0px)]">
-            <div className="m-auto flex w-full min-w-0 flex-col items-center">
-              <PagePanel.Empty
-                variant="inset"
-                className="flex-none py-1 sm:py-2"
-                icon={<Globe className="size-6" aria-hidden />}
-                title={t("browserworkspace.EmptyTitle", {
-                  defaultValue: "No page open",
-                })}
-              />
-            </div>
-          </div>
+          <PagePanel.ContentState
+            state="empty"
+            placement="workspace"
+            icon={<Globe className="size-5" aria-hidden />}
+            title={t("browserworkspace.EmptyTitle", {
+              defaultValue: "No page open",
+            })}
+          />
         )
       ) : browserTabRenderPath === "native-child-webview" ? (
         workspace.tabs.map((tab) => {
@@ -2677,36 +3020,40 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })
       ) : browserTabRenderPath === "native-mobile-webview" ? (
         nativeTabSurfaces.error ? (
-          <div
+          <PagePanel.ContentState
+            state="error"
+            placement="workspace"
             role="alert"
-            className="absolute inset-0 flex h-full w-full items-center justify-center bg-bg px-6 text-center"
-          >
-            <div className="flex max-w-sm flex-col items-center gap-3 rounded-3xl border border-border bg-bg-elevated p-6 shadow-lg">
-              <div className="text-sm font-semibold text-txt">
-                {nativeTabSurfaces.error.permanent
-                  ? t("browserworkspace.NativeSurfaceUnsupported", {
-                      defaultValue: "Secure browsing not supported here",
-                    })
-                  : t("browserworkspace.NativeSurfaceUnavailable", {
-                      defaultValue: "Browser view unavailable",
-                    })}
-              </div>
-              <div className="text-xs leading-5 text-muted">
-                {nativeTabSurfaces.error.permanent
-                  ? t("browserworkspace.NativeSurfaceUnsupportedDescription", {
-                      defaultValue:
-                        "This device's system WebView cannot provide the isolation Eliza requires, so Eliza will not open pages inside the app. You can open the page in the device browser instead.",
-                    })
-                  : t("browserworkspace.NativeSurfaceUnavailableDescription", {
-                      defaultValue:
-                        "The secure browser surface could not connect. Retry without losing your tabs.",
-                    })}
-              </div>
-              {nativeTabSurfaces.error.permanent ? (
+            data-native-surface-error-key={nativeTabSurfaces.error.key}
+            data-native-surface-error-message={nativeTabSurfaces.error.message}
+            tone="warning"
+            className="absolute inset-0 bg-bg"
+            title={
+              nativeTabSurfaces.error.permanent
+                ? t("browserworkspace.NativeSurfaceUnsupported", {
+                    defaultValue: "Secure browsing not supported here",
+                  })
+                : t("browserworkspace.NativeSurfaceUnavailable", {
+                    defaultValue: "Browser view unavailable",
+                  })
+            }
+            description={
+              nativeTabSurfaces.error.permanent
+                ? t("browserworkspace.NativeSurfaceUnsupportedDescription", {
+                    defaultValue:
+                      "This device can’t keep in-app browsing isolated. Open the page in your browser instead.",
+                  })
+                : t("browserworkspace.NativeSurfaceUnavailableDescription", {
+                    defaultValue:
+                      "The secure browser couldn’t connect. Try again without losing your tabs.",
+                  })
+            }
+            action={
+              nativeTabSurfaces.error.permanent ? (
                 selectedTab ? (
                   <Button
                     type="button"
-                    size="sm"
+                    size="touch"
                     variant="outline"
                     disabled={busyAction !== null}
                     onClick={() =>
@@ -2727,15 +3074,15 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               ) : (
                 <Button
                   type="button"
-                  size="sm"
+                  size="touch"
                   variant="outline"
                   onClick={nativeTabSurfaces.retry}
                 >
                   {t("common.retry", { defaultValue: "Retry" })}
                 </Button>
-              )}
-            </div>
-          </div>
+              )
+            }
+          />
         ) : (
           workspace.tabs.map((tab) => {
             const active = tab.id === selectedTabId;
@@ -2769,24 +3116,22 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             : "pointer-events-none opacity-0";
           if (frameBlocked) {
             return (
-              <div
+              <PagePanel.ContentState
                 key={tab.id}
-                className={`absolute inset-0 flex h-full w-full items-center justify-center bg-bg px-6 text-center transition-opacity ${visibilityClass}`}
-              >
-                <div className="flex max-w-md flex-col items-center gap-3">
-                  <div className="text-sm font-semibold text-txt">
-                    {t("browserworkspace.FrameBlockedTitle", {
-                      defaultValue: "Open this site outside the iframe",
-                    })}
-                  </div>
-                  <div className="text-xs leading-5 text-muted">
-                    {t("browserworkspace.FrameBlockedDescription", {
-                      defaultValue: "This site blocks embedded frames.",
-                    })}
-                  </div>
+                state="error"
+                placement="workspace"
+                tone="warning"
+                className={`absolute inset-0 bg-bg transition-opacity ${visibilityClass}`}
+                title={t("browserworkspace.FrameBlockedTitle", {
+                  defaultValue: "Open this site in your browser",
+                })}
+                description={t("browserworkspace.FrameBlockedDescription", {
+                  defaultValue: "This site doesn’t allow in-app viewing.",
+                })}
+                action={
                   <Button
                     type="button"
-                    size="sm"
+                    size="touch"
                     variant="outline"
                     disabled={busyAction !== null}
                     onClick={() =>
@@ -2803,8 +3148,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                       defaultValue: "Open external",
                     })}
                   </Button>
-                </div>
-              </div>
+                }
+              />
             );
           }
           return (
@@ -2840,32 +3185,20 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })
       ) : (
         <div className="flex h-full flex-1 flex-col bg-bg">
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs text-muted">
+          <div className="flex min-h-11 items-center gap-2 border-b border-border/70 px-4 text-xs text-muted">
             <span className="font-medium text-txt">
               {t("browserworkspace.CloudSession", {
-                defaultValue: "Cloud browser session",
+                defaultValue: "Cloud session",
               })}
             </span>
-            {selectedTab?.provider ? (
-              <span>
-                {t("common.provider", {
-                  defaultValue: "Provider",
-                })}
-                {`: ${selectedTab.provider}`}
-              </span>
-            ) : null}
             {selectedTab?.status ? (
-              <span>
-                {t("common.status", {
-                  defaultValue: "Status",
-                })}
-                {`: ${selectedTab.status}`}
-              </span>
+              <span className="truncate">{selectedTab.status}</span>
             ) : null}
             {selectedTabLiveViewUrl ? (
               <Button
                 variant="surface"
                 size="tiny"
+                className="ml-auto"
                 onClick={() =>
                   void runBrowserWorkspaceAction(
                     "open:live-session",
@@ -2885,7 +3218,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
             {snapshotError ? (
               <div
-                className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-sm border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
+                className="absolute left-4 right-4 top-3 z-20 rounded-xl border border-warning/30 bg-bg/95 px-3 py-2 text-xs text-muted"
                 role="alert"
               >
                 {snapshotError}
@@ -2907,39 +3240,22 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                 className="h-full w-full object-contain"
               />
             ) : (
-              <div className="flex max-w-sm flex-col items-center gap-2 px-6 text-center">
-                <div className="text-sm font-semibold text-txt">
-                  {t("browserworkspace.SessionPreviewPending", {
-                    defaultValue: "Waiting for browser session preview",
-                  })}
-                </div>
-                <div className="text-xs text-muted">
-                  {t("browserworkspace.SessionPreviewPendingDescription", {
-                    defaultValue:
-                      "The page is running in a real browser session. A fresh preview will appear here as the session updates.",
-                  })}
-                </div>
-              </div>
+              <PagePanel.ContentState
+                state="loading"
+                placement="workspace"
+                heading={t("browserworkspace.SessionPreviewPending", {
+                  defaultValue: "Preparing preview",
+                })}
+              />
             )}
           </div>
 
           {selectedTab ? (
-            <div className="px-3 py-2 text-xs text-muted">
+            <div className="border-t border-border/70 px-4 py-2 text-xs text-muted">
               <div className="truncate font-medium text-txt">
                 {getBrowserWorkspaceTabLabel(selectedTab, t)}
               </div>
               <div className="truncate">{selectedTab.url}</div>
-              <div className="mt-1">
-                {selectedTabIsInternal
-                  ? t("browserworkspace.InternalSessionDescription", {
-                      defaultValue:
-                        "This is an internal app-managed browser session. Use LifeOps actions to steer it; the URL is locked in the Browser view.",
-                    })
-                  : t("browserworkspace.RealSessionDescription", {
-                      defaultValue:
-                        "This is a real browser session, not a raw iframe embed. Use chat or browser actions to navigate and interact with sites like Google and Discord.",
-                    })}
-              </div>
             </div>
           ) : null}
         </div>
@@ -2947,37 +3263,30 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     </div>
   );
 
-  // Fullscreen surface framing (parity with Notes/Calendar): the shell mounts
-  // this view edge-to-edge (`header: "fullscreen"` in the builtin registry), so
-  // the view owns its whole chrome — no host ViewHeader row, no workspace
-  // chrome. The toolbar (folded-tab control + URL bar) floats as a glass panel
-  // over the opaque app background. Compact mobile gutters leave more room for
-  // the page without shrinking touch targets; large screens retain the shared
-  // Notes/Calendar clamp rhythm. The web surface fills the remaining height as
-  // a second rounded panel. Tabs stay folded into the switcher (no permanent
-  // tab strip), matching #13596.
+  // The fullscreen view owns one flat navigation rail and one content surface.
+  // Compact layouts keep a 16px canvas inset and fold secondary actions away;
+  // every remaining control still meets the 44px touch floor.
+  const showMinimalToolbar =
+    workspace.tabs.length === 0 && (loading || browserWorkspaceUnavailable);
   const mainNode = (
     <main
       ref={workspaceRootRef}
       aria-label={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
       data-testid="browser-workspace-view"
       data-chat-clearance-aware="true"
+      aria-busy={loading || busyAction !== null}
       tabIndex={-1}
-      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-1.5 overflow-hidden bg-bg px-1.5 pt-[calc(0.375rem+var(--safe-area-top,0px))] pb-[calc(0.5rem+var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem))] lg:gap-[clamp(8px,1.6vw,14px)] lg:px-[clamp(8px,2.4vw,24px)] lg:pt-[calc(clamp(8px,2.4vw,24px)+var(--safe-area-top,0px))] lg:pb-[calc(clamp(8px,2.4vw,24px)+var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem))]"
+      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-hidden bg-bg px-4 pt-[calc(0.75rem+var(--safe-area-top,0px))] pb-[calc(1rem+var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem))] lg:px-6 lg:pt-[calc(1.5rem+var(--safe-area-top,0px))] lg:pb-[calc(1.5rem+var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem))]"
     >
       <div
         data-testid="browser-workspace-toolbar"
-        className="shrink-0 rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_48px_rgba(16,10,5,.20)] backdrop-blur-[24px] backdrop-saturate-[1.45]"
+        className="shrink-0 overflow-hidden rounded-2xl border border-border bg-card"
       >
-        {navNode}
+        {showMinimalToolbar ? minimalNavNode : navNode}
       </div>
-      {/* The web-surface panel carries fill + radius only — no box-shadow.
-          A shadow on this near-full-viewport panel reads as visual furniture
-          (and the minimalism occupancy scan rightly counts it as such in
-          short landscape); the toolbar above keeps the full glass treatment. */}
       <div
         data-testid="browser-workspace-surface-panel"
-        className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)]"
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card"
       >
         {browserSurface}
       </div>
@@ -2989,7 +3298,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       {mainNode}
       <BrowserTabSwitcher
         open={switcherOpen}
-        onOpenChange={setSwitcherOpen}
+        onOpenChange={handleTabSwitcherOpenChange}
         folded={foldedTabs}
         activeTabId={selectedTabId}
         title={tabsLabel}
@@ -2999,7 +3308,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         emptyLabel={t("browserworkspace.NoTabsYet", {
           defaultValue: "No tabs open yet",
         })}
-        actionsDisabled={busyAction !== null}
+        returnFocusRef={switcherReturnFocusRef}
+        actionsDisabled={busyAction !== null || browserWorkspaceUnavailable}
         onActivateTab={(id) =>
           void runBrowserWorkspaceAction(`show:${id}`, async () => {
             await activateBrowserWorkspaceTab(id);

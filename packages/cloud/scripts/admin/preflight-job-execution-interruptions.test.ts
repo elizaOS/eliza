@@ -61,49 +61,91 @@ describe("job interruption catalog preflight", () => {
           query++;
           const rows =
             query === 1
-              ? [
-                  {
-                    data_type: "integer",
-                    attnotnull: true,
-                    default_expression: "0",
-                    attgenerated: "",
-                  },
-                ]
-              : await journalRows();
+              ? [{ agent_sandboxes_present: true }]
+              : query === 2
+                ? [
+                    {
+                      data_type: "integer",
+                      attnotnull: true,
+                      default_expression: "0",
+                      attgenerated: "",
+                    },
+                  ]
+                : await journalRows();
           return { rows };
         },
       }),
     ).resolves.toBeUndefined();
-    expect(query).toBe(2);
+    expect(query).toBe(3);
+  });
+
+  test("refuses worker activation when public.agent_sandboxes is missing", async () => {
+    let ended = false;
+    let queries = 0;
+    const errorLog = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        runJobExecutionInterruptionsPreflight(
+          {
+            query: async () => {
+              queries++;
+              return { rows: [{ agent_sandboxes_present: false }] };
+            },
+            end: async () => {
+              ended = true;
+            },
+          },
+          { maxAttempts: 1, delayMs: 1, attemptTimeoutMs: 100 },
+        ),
+      ).rejects.toThrow("public.agent_sandboxes relation is missing");
+    } finally {
+      errorLog.mockRestore();
+    }
+    expect(queries).toBe(1);
+    expect(ended).toBe(true);
+  });
+
+  test("fails closed when the sandbox catalog presence result is invalid", async () => {
+    await expect(
+      verifyJobExecutionInterruptionsCatalog({
+        query: async () => ({ rows: [{ agent_sandboxes_present: "t" }] }),
+      }),
+    ).rejects.toThrow(
+      "public.agent_sandboxes catalog presence result is invalid",
+    );
   });
 
   test("rejects incompatible shape and duplicate journal rows", async () => {
     await expect(
       verifyJobExecutionInterruptionsCatalog({
-        query: async () => ({
-          rows: [
-            {
-              data_type: "text",
-              attnotnull: false,
-              default_expression: "'wrong'::text",
-              attgenerated: "",
-            },
-          ],
+        query: async (text) => ({
+          rows: text.includes("to_regclass('public.agent_sandboxes')")
+            ? [{ agent_sandboxes_present: true }]
+            : [
+                {
+                  data_type: "text",
+                  attnotnull: false,
+                  default_expression: "'wrong'::text",
+                  attgenerated: "",
+                },
+              ],
         }),
       }),
     ).rejects.toThrow("catalog mismatch");
 
     await expect(
       verifyJobExecutionInterruptionsCatalog({
-        query: async () => ({
-          rows: [
-            {
-              data_type: "integer",
-              attnotnull: true,
-              default_expression: "0",
-              attgenerated: "s",
-            },
-          ],
+        query: async (text) => ({
+          rows: text.includes("to_regclass('public.agent_sandboxes')")
+            ? [{ agent_sandboxes_present: true }]
+            : [
+                {
+                  data_type: "integer",
+                  attnotnull: true,
+                  default_expression: "0",
+                  attgenerated: "s",
+                },
+              ],
         }),
       }),
     ).rejects.toThrow("expected writable integer");
@@ -117,15 +159,17 @@ describe("job interruption catalog preflight", () => {
           return {
             rows:
               query === 1
-                ? [
-                    {
-                      data_type: "integer",
-                      attnotnull: true,
-                      default_expression: "0",
-                      attgenerated: "",
-                    },
-                  ]
-                : [rows[0], rows[0]],
+                ? [{ agent_sandboxes_present: true }]
+                : query === 2
+                  ? [
+                      {
+                        data_type: "integer",
+                        attnotnull: true,
+                        default_expression: "0",
+                        attgenerated: "",
+                      },
+                    ]
+                  : [rows[0], rows[0]],
           };
         },
       }),
@@ -143,15 +187,17 @@ describe("job interruption catalog preflight", () => {
       await expect(
         runJobExecutionInterruptionsPreflight(
           {
-            query: async () => ({
-              rows: [
-                {
-                  data_type: "text",
-                  attnotnull: false,
-                  default_expression: "'wrong'::text",
-                  attgenerated: "",
-                },
-              ],
+            query: async (text) => ({
+              rows: text.includes("to_regclass('public.agent_sandboxes')")
+                ? [{ agent_sandboxes_present: true }]
+                : [
+                    {
+                      data_type: "text",
+                      attnotnull: false,
+                      default_expression: "'wrong'::text",
+                      attgenerated: "",
+                    },
+                  ],
             }),
             end: async () => {
               throw closeFailure;
@@ -287,13 +333,6 @@ describe("job interruption catalog preflight", () => {
       "timeout --foreground --signal=TERM --kill-after=5s 8m",
     );
     expect(deployStep).toContain("command_timeout: 40m");
-    expect(workflow).toContain(
-      "- 'packages/cloud/scripts/admin/preflight-job-execution-interruptions.ts'",
-    );
-    expect(workflow).toContain(
-      "- 'packages/cloud/scripts/admin/error-preserving-cleanup.ts'",
-    );
-
     const service = await readFile(
       path.join(
         ROOT,

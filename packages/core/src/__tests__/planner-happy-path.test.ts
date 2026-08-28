@@ -38,13 +38,18 @@ const RESPONSE_ID = "00000000-0000-0000-0000-000000000005" as UUID;
 
 function makeMessage(
 	text = "search for eliza and tell me what you found",
+	// The harness has no world store, so the sender role resolves through the
+	// source-aware floor: "test" floors to USER; a non-local source (e.g.
+	// "webhook") floors to GUEST. Lets parity tests model a genuinely
+	// underprivileged sender without faking a world.
+	source = "test",
 ): Memory {
 	return {
 		id: MSG_ID,
 		entityId: SENDER_ID,
 		agentId: AGENT_ID,
 		roomId: ROOM_ID,
-		content: { text, source: "test" },
+		content: { text, source },
 		createdAt: 1,
 	};
 }
@@ -140,6 +145,7 @@ function makeRuntime(opts: {
 			: {}),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
+		getModelRegistrations: vi.fn(() => []),
 		getSetting: vi.fn((key: string) =>
 			opts.owner && key === "ELIZA_ADMIN_ENTITY_ID" ? SENDER_ID : undefined,
 		),
@@ -2098,6 +2104,174 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		).toMatchObject({ tool: { name: "VIEWS", success: true } });
 	});
 
+	// tj-a835d4c6da235f: an accepted, internal VIEWS effect must produce an
+	// honest confirmation instead of falling through to the no-result apology.
+	const runDeterministicViewsTurn = async (
+		handlerResult: ActionResult,
+		options: {
+			stageOneReply?: string;
+			postToolReply?: string;
+		} = {},
+	): Promise<string | undefined> => {
+		const stageOneReply = options.stageOneReply ?? "Opening Home now.";
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			handler: async () => handlerResult,
+		});
+		const deterministicViewEvaluator = {
+			name: "test.force_deterministic_view_effect",
+			priority: 10,
+			deterministicActions: ["VIEWS"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "VIEWS",
+					params: { action: "show", view: "chat" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views],
+			responseHandlerEvaluators: [deterministicViewEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS"],
+						replyText: stageOneReply,
+						thought: "The view switch is deterministic.",
+					}),
+				},
+				...(options.postToolReply
+					? [
+							{
+								expectModelType: ModelType.ACTION_PLANNER,
+								body: { text: options.postToolReply, toolCalls: [] },
+							},
+						]
+					: []),
+			],
+		});
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("go home"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(result.kind).toBe("planned_reply");
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual(
+			options.postToolReply
+				? [ModelType.RESPONSE_HANDLER, ModelType.ACTION_PLANNER]
+				: [ModelType.RESPONSE_HANDLER],
+		);
+		return result.kind === "planned_reply"
+			? result.result.responseContent?.text
+			: undefined;
+	};
+
+	it("releases the model-authored view reply after the accepted effect receipt without another inference", async () => {
+		const text = await runDeterministicViewsTurn({
+			success: true,
+			text: JSON.stringify({
+				effect: "view_navigation",
+				status: "accepted",
+				viewId: "chat",
+				label: "Home",
+				path: "/",
+			}),
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+		});
+		expect(text).toBe("Opening Home now.");
+	});
+
+	it("keeps a natural navigation acknowledgement through reply egress when the label is a tracked-work noun", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					viewId: "settings",
+					label: "Settings",
+					path: "/settings",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{ stageOneReply: "You're in Settings now." },
+		);
+		expect(text).toBe("You're in Settings now.");
+	});
+
+	it("uses post-tool synthesis when Stage 1 supplied no user-facing prose", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					viewId: "notes",
+					label: "Notes",
+					path: "/notes",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "",
+				postToolReply: "Notes are open whenever you're ready.",
+			},
+		);
+		expect(text).toBe("Notes are open whenever you're ready.");
+	});
+
+	it("uses post-tool synthesis instead of releasing an unrelated mutation claim", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					viewId: "notes",
+					label: "Notes",
+					path: "/notes",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "Done — I saved your note and opened Notes.",
+				postToolReply: "Notes are open. I didn't change any of them.",
+			},
+		);
+		expect(text).toBe("Notes are open. I didn't change any of them.");
+	});
+
+	it("keeps the no-result fallback for a deterministic success with no receipt at all", async () => {
+		const text = await runDeterministicViewsTurn({ success: true });
+		expect(text).toBe(NO_REPORTABLE_TOOL_OUTCOME_MESSAGE);
+	});
+
 	it("lets the model write the final reply after a deterministic tool completes", async () => {
 		let appCalls = 0;
 		const modelReply =
@@ -2198,6 +2372,110 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					transcriptVisibility: "internal",
 				},
 			]);
+		}
+	});
+
+	it("synthesizes a natural Calendar answer from sanitized read-only view state", async () => {
+		const modelReply = "The calendar is showing August 2026.";
+		const views = makeMockAction({
+			name: "VIEWS",
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "capability",
+					description: "Registered view capability",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => ({
+				success: true,
+				text: 'Interacted with view "calendar" — capability "get-agent-state" (returned structured state).',
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+				promptData: {
+					operation: "read_view_state",
+					viewId: "calendar",
+					capability: "get-agent-state",
+					interactionResult: {
+						elements: [
+							{
+								id: "calendar.month-heading",
+								label: "August 2026",
+								visible: true,
+							},
+						],
+					},
+				},
+			}),
+		});
+		const evaluator = {
+			name: "test.force_calendar_state_read",
+			priority: 10,
+			deterministicActions: ["VIEWS"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "VIEWS",
+					params: {
+						action: "interact",
+						view: "calendar",
+						capability: "get-agent-state",
+					},
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: "Checking the Calendar view.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: { text: modelReply, toolCalls: [] },
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("what month and year is shown on the calendar"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		const synthesisParams = JSON.stringify(getCalls(runtime)[1]?.params);
+		expect(synthesisParams).toContain("August 2026");
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(modelReply);
+			expect(result.result.responseContent?.text).not.toContain(
+				"Interacted with view",
+			);
 		}
 	});
 
@@ -2318,6 +2596,210 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				/owner|role|permission/i,
 			);
 		}
+	});
+
+	// Authorization-context parity between the two tool-execution paths (the
+	// direct-nav fast path from 4b136d3edd7): a deterministic evaluator call and
+	// a planner-selected call for the SAME message + identity must reach the
+	// canonical role gate with the SAME derived context (userRoles from the
+	// turn's one resolved sender role, via the shared buildV5ExecutorContext)
+	// and settle with the IDENTICAL gate outcome. Pinned in both directions:
+	// allowed at minRole, and denied below it — the invariant is path-equality,
+	// never permissiveness.
+	function parityViewsAction(onRun: () => void): Action {
+		return makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			roleGate: { minRole: "USER" },
+			suppressEarlyReply: true,
+			handler: async () => {
+				onRun();
+				return { success: true, text: "view_navigation accepted" };
+			},
+		});
+	}
+
+	const parityNavEvaluator = {
+		name: "test.parity_direct_nav",
+		priority: 10,
+		deterministicActions: ["VIEWS"],
+		shouldRun: () => true,
+		evaluate: () => ({
+			requiresTool: true,
+			clearReply: true,
+			clearCandidateActions: true,
+			addCandidateActions: ["VIEWS"],
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: { action: "show", view: "chat" },
+			},
+		}),
+	} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+
+	async function runParityDeterministicPath(source: string) {
+		let handlerRuns = 0;
+		const runtime = makeRuntime({
+			actions: [parityViewsAction(() => handlerRuns++)],
+			responseHandlerEvaluators: [parityNavEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS"],
+						replyText: "on it.",
+					}),
+				},
+			],
+		});
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("go home", source),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		return { result, handlerRuns };
+	}
+
+	async function runParityPlannerPath(source: string) {
+		let handlerRuns = 0;
+		const runtime = makeRuntime({
+			actions: [parityViewsAction(() => handlerRuns++)],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS"],
+						replyText: "on it.",
+					}),
+				},
+				// The planner selects the identical call the deterministic route
+				// would force. For the underprivileged case this models a forced or
+				// hallucinated selection — the gate keeps VIEWS off the exposed
+				// surface, and the executor must still deny it identically.
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "opening",
+						toolCalls: [
+							{
+								id: "call-1",
+								name: "VIEWS",
+								args: { action: "show", view: "chat" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Navigation settled.",
+						messageToUser: "done.",
+					}),
+				},
+			],
+		});
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("go home", source),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		return { result, handlerRuns };
+	}
+
+	function recordedViewsToolStages(): Array<{
+		success?: boolean;
+		errorText?: string;
+		result?: unknown;
+	}> {
+		const stages: Array<{
+			success?: boolean;
+			errorText?: string;
+			result?: unknown;
+		}> = [];
+		for (const doc of readRecordedTrajectories(AGENT_ID)) {
+			const recorded = doc as {
+				stages?: Array<{
+					kind?: string;
+					tool?: { name?: string; success?: boolean; errorText?: string };
+				}>;
+			};
+			for (const stage of recorded.stages ?? []) {
+				if (stage.kind === "tool" && stage.tool?.name === "VIEWS") {
+					stages.push(stage.tool);
+				}
+			}
+		}
+		return stages;
+	}
+
+	it("executes the same VIEWS call with an identical role-gate outcome on the deterministic and planner paths (parity: allowed)", async () => {
+		const deterministic = await runParityDeterministicPath("test");
+		const planner = await runParityPlannerPath("test");
+
+		expect(deterministic.handlerRuns).toBe(1);
+		expect(planner.handlerRuns).toBe(1);
+		for (const run of [deterministic, planner]) {
+			expect(run.result.kind).toBe("planned_reply");
+			if (run.result.kind === "planned_reply") {
+				expect(run.result.result.actionResults).toMatchObject([
+					{ success: true, text: "view_navigation accepted" },
+				]);
+			}
+		}
+		// Both recorded tool stages settle with the same gate verdict and the
+		// identical result payload — path-equality at the trajectory boundary.
+		const stages = recordedViewsToolStages();
+		expect(stages).toHaveLength(2);
+		expect(stages.map((stage) => stage.success)).toEqual([true, true]);
+		expect(stages[0]?.result).toEqual(stages[1]?.result);
+	});
+
+	it("denies a genuinely-underprivileged sender's VIEWS call identically on the deterministic and planner paths (parity: denied)", async () => {
+		const deterministic = await runParityDeterministicPath("webhook");
+		const planner = await runParityPlannerPath("webhook");
+
+		expect(deterministic.handlerRuns).toBe(0);
+		expect(planner.handlerRuns).toBe(0);
+		const denial = {
+			success: false,
+			error: "Action VIEWS is not allowed for the current role",
+		};
+		for (const run of [deterministic, planner]) {
+			expect(run.result.kind).toBe("planned_reply");
+			if (run.result.kind === "planned_reply") {
+				expect(run.result.result.actionResults).toMatchObject([denial]);
+				// The visible reply never leaks role/permission diagnostics.
+				expect(run.result.result.responseContent?.text).not.toMatch(
+					/role|permission/i,
+				);
+			}
+		}
+		const stages = recordedViewsToolStages();
+		expect(stages).toHaveLength(2);
+		expect(stages.map((stage) => stage.success)).toEqual([false, false]);
+		expect(stages.map((stage) => stage.errorText)).toEqual([
+			"Action VIEWS is not allowed for the current role",
+			"Action VIEWS is not allowed for the current role",
+		]);
+		expect(stages[0]?.result).toEqual(stages[1]?.result);
 	});
 
 	it("fails a deterministic call outside the action context without invoking it", async () => {

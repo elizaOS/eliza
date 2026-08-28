@@ -22,6 +22,7 @@ import type {
   ConnectorOwnerBindingRecord,
   ConsumeOAuthFlowStateParams,
   CreateOAuthFlowStateParams,
+  DeleteConnectorAccountCredentialRefsParams,
   DeleteConnectorAccountParams,
   GetConnectorAccountCredentialRefParams,
   GetConnectorAccountParams,
@@ -528,6 +529,21 @@ export class ConnectorAccountStore implements Store {
         );
       return rows.map(mapCredentialRow);
     }, "ConnectorAccountStore.listCredentialRefs");
+  }
+
+  async deleteCredentialRefs(params: DeleteConnectorAccountCredentialRefsParams): Promise<number> {
+    return this.ctx.withRetry(async () => {
+      const deleted = await this.db
+        .delete(connectorAccountCredentialsTable)
+        .where(
+          and(
+            eq(connectorAccountCredentialsTable.agentId, this.ctx.agentId as UUID),
+            eq(connectorAccountCredentialsTable.accountId, params.accountId)
+          )
+        )
+        .returning();
+      return deleted.length;
+    }, "ConnectorAccountStore.deleteCredentialRefs");
   }
 
   async appendAuditEvent(

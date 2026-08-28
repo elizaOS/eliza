@@ -31,6 +31,7 @@ import {
   mintSsoCode,
   pairedAppOrigin,
   performSsoExchange,
+  prepareSsoAccountSwitch,
   sanitizeBridgeReturnTo,
   shouldAttemptSsoBridge,
   shouldAutoBridgeToSso,
@@ -76,6 +77,7 @@ function clearCookies(): void {
   for (const part of document.cookie.split(";")) {
     const name = part.split("=")[0]?.trim();
     if (name)
+      // biome-ignore lint/suspicious/noDocumentCookie: jsdom must clear the synchronous cookie jar the bridge reads.
       document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
   }
 }
@@ -559,6 +561,26 @@ describe("signOutFromSsoBridgedHost", () => {
       expect(calls[0].url).toBe("https://cloud.eliza.app/api/auth/logout");
       expect(proofAtServerLogoutIssue).toBe(false);
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});
+
+describe("prepareSsoAccountSwitch", () => {
+  it("fails closed when the previous hosted session cannot be ended", async () => {
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(json(200, { ok: true }))) as typeof fetch;
+    try {
+      const { fn } = fetchStub(() => json(503, { success: false }));
+      await expect(prepareSsoAccountSwitch("eliza.app", fn)).rejects.toThrow(
+        "could not end the previous browser session (503)",
+      );
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(isSsoLoggedOut()).toBe(true);
     } finally {
       globalThis.fetch = realFetch;
     }

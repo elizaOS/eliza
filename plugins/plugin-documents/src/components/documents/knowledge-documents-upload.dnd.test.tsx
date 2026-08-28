@@ -52,7 +52,10 @@ vi.mock("@elizaos/ui/state", () => ({
     bindingMock.value = binding;
   },
 }));
-vi.mock("@elizaos/ui/api/client", () => ({ client: clientMock }));
+vi.mock("@elizaos/ui/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui/api/client")>()),
+  client: clientMock,
+}));
 vi.mock("@elizaos/ui/utils/desktop-dialogs", () => ({
   confirmDesktopAction: vi.fn(async () => true),
 }));
@@ -334,6 +337,40 @@ describe("KnowledgeDocumentsView — anchored transcript search", () => {
       const audio = document.querySelector("audio") as HTMLAudioElement | null;
       expect(audio?.currentTime).toBeCloseTo(1.25, 3);
     });
+  });
+
+  it("keeps filename matches when semantic search has no ranked hits", async () => {
+    clientMock.listDocuments.mockResolvedValue({
+      documents: [
+        {
+          id: "privacy-doc",
+          filename: "eliza-help-privacy-data.txt",
+          contentType: "text/plain",
+          fileSize: 263,
+          createdAt: 1000,
+          fragmentCount: 1,
+          source: "bundled",
+          scope: "global",
+          canEditText: false,
+          canDelete: false,
+        },
+      ],
+    });
+    clientMock.getDocumentFacetCounts.mockResolvedValue({
+      counts: { all: 1, doc: 1, image: 0, audio: 0, video: 0, transcript: 0 },
+    });
+    clientMock.searchDocuments.mockResolvedValue({ results: [] });
+
+    render(<KnowledgeDocumentsView />);
+    await screen.findByText("eliza-help-privacy-data.txt");
+    await waitFor(() => expect(bindingMock.value).not.toBeNull());
+
+    act(() => bindingMock.value?.onQuery("privacy"));
+
+    await waitFor(() => expect(clientMock.searchDocuments).toHaveBeenCalled());
+    expect(screen.getByText("eliza-help-privacy-data.txt")).toBeTruthy();
+    expect(screen.queryByText("No matching items")).toBeNull();
+    expect(clientMock.searchDocuments).toHaveBeenCalledTimes(1);
   });
 });
 

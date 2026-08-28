@@ -14,6 +14,7 @@ import {
   test,
 } from "bun:test";
 import { runInNewContext } from "node:vm";
+import { hasDbCacheContext } from "@/db/client";
 import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
 import * as authActual from "@/lib/auth";
@@ -52,6 +53,8 @@ const browserClaimCalls: Array<{
   binding: { agentId: string; expectedOrigin: string };
 }> = [];
 const authRequests: Request[] = [];
+const authDbCacheContexts: boolean[] = [];
+const sandboxDbCacheContexts: boolean[] = [];
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   ...cloudBindingsActual,
@@ -61,6 +64,7 @@ mock.module("@/lib/auth", () => ({
   ...authActual,
   requireAuthOrApiKeyWithOrg: async (request: Request) => {
     authRequests.push(request);
+    authDbCacheContexts.push(hasDbCacheContext());
     if (authResult === "throw") throw new AuthenticationError("unauthorized");
     if (authResult === "forbidden") throw new ForbiddenError("forbidden");
     if (authResult === "unexpected") throw new Error("auth dependency failed");
@@ -71,7 +75,10 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
   ...agentSandboxesActual,
   agentSandboxesRepository: {
     ...agentSandboxesActual.agentSandboxesRepository,
-    findByIdAndOrg: async () => sandboxResult,
+    findByIdAndOrg: async () => {
+      sandboxDbCacheContexts.push(hasDbCacheContext());
+      return sandboxResult;
+    },
   },
 }));
 mock.module("@/lib/services/provisioning-jobs", () => ({
@@ -150,6 +157,7 @@ afterAll(() => {
 
 const {
   handleDedicatedAgentProxy,
+  createOwnedDedicatedVoiceConversationFetch,
   dedicatedProxyOriginHeadersTimeoutMs,
   __dedicatedProxyTestHooks,
 } = await import("../src/dedicated-agent-proxy");
@@ -244,9 +252,131 @@ beforeEach(() => {
   browserClaimError = null;
   browserClaimCalls.length = 0;
   authRequests.length = 0;
+  authDbCacheContexts.length = 0;
+  sandboxDbCacheContexts.length = 0;
   rateLimitResult = { success: true };
   rateLimitError = null;
   rateLimitKeys.length = 0;
+});
+
+describe("dedicated-agent-proxy — scoped voice conversation transport", () => {
+  const ORGANIZATION_ID = "22222222-2222-4222-8222-222222222222";
+  const USER_ID = "33333333-3333-4333-8333-333333333333";
+  const CONVERSATION_ID = "44444444-4444-4444-8444-444444444444";
+  const claims = {
+    agentId: AGENT,
+    conversationId: CONVERSATION_ID,
+    organizationId: ORGANIZATION_ID,
+    userId: USER_ID,
+  };
+
+  test("reuses the owned agent-router stream and swaps every Cloud credential", async () => {
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: USER_ID,
+    };
+    const resolved = await createOwnedDedicatedVoiceConversationFetch(
+      {
+        AGENT_ROUTER_ORIGIN_HOST: "cp.example.test",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+      } as never,
+      claims,
+    );
+    expect(resolved.kind).toBe("dedicated");
+    if (resolved.kind !== "dedicated") {
+      throw new Error("expected an owned Dedicated voice transport");
+    }
+
+    const response = await resolved.fetch(
+      `https://voice.internal/api/v1/eliza/agents/${AGENT}/api/conversations/${CONVERSATION_ID}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          Cookie: "cloud-session=secret",
+          "Content-Type": "application/json",
+          "X-API-Key": "cloud-api-key",
+          "X-Eliza-Csrf": "cloud-csrf",
+        },
+        body: JSON.stringify({ text: "go to settings" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const upstream = requireCapturedRequest();
+    expect(upstream.url).toBe(
+      `https://cp.example.test/api/conversations/${CONVERSATION_ID}/messages/stream`,
+    );
+    expect(upstream.headers.get("authorization")).toBe(
+      "Bearer agent-secret-token",
+    );
+    expect(upstream.headers.get("x-forwarded-host")).toBe(
+      `${AGENT}.cloud.eliza.app`,
+    );
+    expect(upstream.headers.get("cookie")).toBeNull();
+    expect(upstream.headers.get("x-api-key")).toBeNull();
+    expect(upstream.headers.get("x-eliza-csrf")).toBeNull();
+    await expect(upstream.json()).resolves.toEqual({
+      text: "go to settings",
+    });
+  });
+
+  test("falls through only for the exact owned Shared tier", async () => {
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: USER_ID,
+      execution_tier: "shared",
+    };
+    await expect(
+      createOwnedDedicatedVoiceConversationFetch(ENV, claims),
+    ).resolves.toEqual({ kind: "not_dedicated" });
+
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: "different-user",
+    };
+    const denied = await createOwnedDedicatedVoiceConversationFetch(
+      ENV,
+      claims,
+    );
+    expect(denied.kind).toBe("dedicated");
+    if (denied.kind !== "dedicated") {
+      throw new Error("expected a terminal scoped response");
+    }
+    const response = await denied.fetch("https://voice.internal/ignored");
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "agent_not_found",
+    });
+    expect(captured).toBeNull();
+  });
+
+  test("fails closed for an unrecognized non-container execution tier", async () => {
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: USER_ID,
+      execution_tier: "future-runtime-tier",
+    };
+    const denied = await createOwnedDedicatedVoiceConversationFetch(
+      ENV,
+      claims,
+    );
+    expect(denied.kind).toBe("dedicated");
+    if (denied.kind !== "dedicated") {
+      throw new Error("expected a terminal fail-closed response");
+    }
+
+    const response = await denied.fetch("https://voice.internal/ignored");
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "agent_unavailable",
+    });
+    expect(captured).toBeNull();
+  });
 });
 
 function executePairHandoff(html: string): {
@@ -779,6 +909,8 @@ describe("dedicated-agent-proxy — unified auth", () => {
 
     expect(res.status).toBe(200);
     expect(authRequests).toHaveLength(1);
+    expect(authDbCacheContexts).toEqual([true]);
+    expect(sandboxDbCacheContexts).toEqual([true]);
     expect(authRequests[0]?.headers.get("cookie")).toBeNull();
     expect(captured).not.toBeNull();
     // The container gets the agent's own token, NOT the cloud token.
@@ -890,16 +1022,19 @@ describe("dedicated-agent-proxy — unified auth", () => {
     expect(captured).toBeNull();
   });
 
-  test("shared-tier row on a dedicated host → 403 at the edge, no injection", async () => {
+  test("non-container row on a dedicated host → 403 at the edge, no injection", async () => {
     authResult = { user: { id: "u1", organization_id: "org1" } };
-    sandboxResult = {
-      ...runningDedicated,
-      execution_tier: "shared",
-    };
-    const r = makeRequest("cloud-token");
-    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
-    expect(res.status).toBe(403);
-    expect(captured).toBeNull();
+    for (const executionTier of ["shared", "future-runtime-tier"]) {
+      captured = null;
+      sandboxResult = {
+        ...runningDedicated,
+        execution_tier: executionTier,
+      };
+      const r = makeRequest("cloud-token");
+      const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+      expect(res.status).toBe(403);
+      expect(captured).toBeNull();
+    }
   });
 
   test("static asset pass-through strips parent-domain Cloud cookies", async () => {
@@ -1196,6 +1331,8 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-max-age")).toBe("600");
+    expect(res.headers.get("cache-control")).toBe("no-store");
     expect(captured).toBeNull(); // preflight is answered at the edge
   });
 
@@ -1226,6 +1363,7 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(
       deniedPreflight.headers.get("access-control-allow-origin"),
     ).toBeNull();
+    expect(deniedPreflight.headers.get("access-control-max-age")).toBeNull();
 
     const request = makeRequest("victim-cloud-token", attackerOrigin, {
       cookie: "steward-token=victim-session",

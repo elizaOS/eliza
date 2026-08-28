@@ -8,6 +8,7 @@
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
   Button,
+  Grid,
   Select,
   SelectContent,
   SelectItem,
@@ -20,8 +21,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@elizaos/ui/components";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
 import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
-import { ChevronDown, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import {
   type CSSProperties,
   useCallback,
@@ -29,7 +37,11 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useCalendarWeek } from "../../hooks/useCalendarWeek.js";
+import {
+  type CalendarIssue,
+  useCalendarWeek,
+} from "../../hooks/useCalendarWeek.js";
+import { CalendarSourceManager } from "../CalendarSourceManager.js";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = Array.from({ length: 12 }, (_, month) =>
@@ -39,99 +51,11 @@ const MONTHS = Array.from({ length: 12 }, (_, month) =>
 );
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-const ROOT_STYLE: CSSProperties = {
-  boxSizing: "border-box",
-  position: "relative",
-  width: "100%",
-  height: "100%",
-  minHeight: 0,
-  overflow: "hidden",
-  color: "var(--txt, #f5f5f5)",
-  fontFamily: "inherit",
-};
-
-const SCROLL_STYLE: CSSProperties = {
-  boxSizing: "border-box",
-  position: "absolute",
-  inset: 0,
-  minWidth: 0,
-  minHeight: 0,
-  overflowX: "hidden",
-  overflowY: "auto",
-  overscrollBehavior: "contain",
-  padding: "clamp(8px, 2.4vw, 24px)",
-  paddingTop: "calc(clamp(8px, 2.4vw, 24px) + var(--safe-area-top, 0px))",
-  // Content remains visible through the translucent chat chrome, while the
-  // clearance keeps the final agenda row reachable above it on every layout.
-  paddingBottom:
-    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-clearance, 5.25rem))",
-  paddingInlineEnd:
-    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-side-clearance, 0px))",
-  scrollPaddingBottom:
-    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-clearance, 5.25rem))",
-};
-
-const PANEL_STYLE: CSSProperties = {
-  boxSizing: "border-box",
-  border: "none",
-  borderRadius: 24,
-  background:
-    "color-mix(in srgb, var(--card, rgba(16,16,16,.88)) 76%, transparent)",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), 0 18px 48px rgba(0,0,0,.20)",
-  backdropFilter: "blur(24px) saturate(145%)",
-  WebkitBackdropFilter: "blur(24px) saturate(145%)",
-};
-
 const SECONDARY_STYLE: CSSProperties = {
   margin: 0,
   color: "var(--muted, rgba(255,255,255,.58))",
   fontSize: 13,
   lineHeight: 1.45,
-};
-
-// Static fragments of the per-day cell / header controls, hoisted so month
-// re-renders only allocate the selection-dependent fields.
-const DAY_CELL_BASE_STYLE: CSSProperties = {
-  boxSizing: "border-box",
-  minWidth: 0,
-  minHeight: "clamp(38px, 7vw, 62px)",
-  border: 0,
-  borderRadius: 11,
-  padding: "6px clamp(4px, .8vw, 8px)",
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "space-between",
-  gap: 5,
-  cursor: "pointer",
-  fontFamily: "inherit",
-  textAlign: "start",
-  transition:
-    "background-color 140ms ease, box-shadow 140ms ease, color 140ms ease, transform 140ms ease",
-};
-
-const DAY_EVENT_BADGE_STYLE: CSSProperties = {
-  alignSelf: "flex-start",
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 3,
-  color: "var(--muted-strong, rgba(255,255,255,.76))",
-  fontSize: 9,
-  fontVariantNumeric: "tabular-nums",
-  fontWeight: 700,
-  lineHeight: 1,
-};
-
-const YEAR_SELECT_STYLE: CSSProperties = {
-  minHeight: 36,
-  border: "1px solid var(--border, rgba(255,255,255,.14))",
-  borderRadius: 10,
-  padding: "0 28px 0 12px",
-  background: "var(--surface, #171717)",
-  color: "var(--txt, #f5f5f5)",
-  fontFamily: "inherit",
-  fontSize: 16,
-  fontWeight: 720,
-  cursor: "pointer",
 };
 
 function localDateKey(date: Date): string {
@@ -188,6 +112,15 @@ function formatSelectedDate(value: string): string {
   }).format(parseLocalDateKey(value));
 }
 
+function formatAgendaDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: TIME_ZONE,
+  }).format(parseLocalDateKey(value));
+}
+
 function eventDateKey(event: LifeOpsCalendarEvent): string {
   return localDateKey(new Date(event.startAt));
 }
@@ -215,12 +148,14 @@ function CalendarDay({
   cursor,
   selectedDate,
   events,
+  coverage,
   onSelect,
 }: {
   day: Date;
   cursor: Date;
   selectedDate: string;
   events: LifeOpsCalendarEvent[];
+  coverage: "available" | "loading" | "partial" | "unavailable";
   onSelect: (day: Date) => void;
 }) {
   const key = localDateKey(day);
@@ -229,15 +164,22 @@ function CalendarDay({
   const currentMonth = day.getMonth() === cursor.getMonth();
   const today = key === localDateKey(new Date());
   const selectDay = useCallback(() => onSelect(day), [day, onSelect]);
+  const eventSummary =
+    dayEvents.length > 0
+      ? `${dayEvents.length} ${dayEvents.length === 1 ? "event" : "events"}`
+      : coverage === "loading"
+        ? "Events loading"
+        : coverage === "unavailable"
+          ? "Events unavailable"
+          : coverage === "partial"
+            ? "No events from available sources"
+            : "No events";
   const cell = useAgentElement<HTMLButtonElement>({
     id: `calendar-day-${key}`,
     label: formatSelectedDate(key),
     role: "button",
     group: "calendar-grid",
-    description:
-      dayEvents.length === 0
-        ? "No events"
-        : `${dayEvents.length} ${dayEvents.length === 1 ? "event" : "events"}`,
+    description: eventSummary,
     status: selected
       ? "selected"
       : currentMonth
@@ -251,68 +193,24 @@ function CalendarDay({
       ref={cell.ref}
       {...cell.agentProps}
       className="eliza-calendar-day"
-      data-selected={selected ? "true" : "false"}
+      data-state={selected ? "on" : "off"}
+      data-outside-month={currentMonth ? undefined : "true"}
       variant="selection"
-      size="row"
+      size="tile"
       onClick={selectDay}
-      aria-label={formatSelectedDate(key)}
+      aria-label={`${formatSelectedDate(key)}. ${eventSummary}`}
       aria-pressed={selected}
       aria-current={today ? "date" : undefined}
-      style={{
-        ...DAY_CELL_BASE_STYLE,
-        background: selected
-          ? "color-mix(in srgb, var(--accent, #ff6a1f) 22%, var(--surface, rgba(255,255,255,.08)))"
-          : currentMonth
-            ? "color-mix(in srgb, var(--surface, rgba(255,255,255,.06)) 78%, transparent)"
-            : "transparent",
-        color: currentMonth
-          ? "var(--txt, #f5f5f5)"
-          : "var(--muted, rgba(255,255,255,.5))",
-        boxShadow: selected
-          ? "inset 0 0 0 2px color-mix(in srgb, var(--accent, #ff6a1f) 82%, white), 0 8px 20px rgba(0,0,0,.18)"
-          : "none",
-      }}
+      style={{ minWidth: 0, width: "100%", position: "relative" }}
     >
-      <span
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 3,
-          fontSize: 12,
-          fontWeight: selected ? 760 : 650,
-        }}
-      >
+      <span className="eliza-calendar-day-marker" aria-hidden>
         {day.getDate()}
         {today ? (
-          <span
-            aria-hidden
-            title="Today"
-            style={{
-              width: 5,
-              height: 5,
-              borderRadius: 9999,
-              background: "var(--accent, #ff6a1f)",
-            }}
-          />
+          <span className="eliza-calendar-today-dot" title="Today" />
         ) : null}
       </span>
       {dayEvents.length > 0 ? (
-        <span
-          role="img"
-          aria-label={`${dayEvents.length} ${dayEvents.length === 1 ? "event" : "events"} on ${formatSelectedDate(key)}`}
-          style={DAY_EVENT_BADGE_STYLE}
-        >
-          <span
-            aria-hidden
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 9999,
-              background: "#35df8d",
-            }}
-          />
-          <span aria-hidden>{dayEvents.length}</span>
-        </span>
+        <span className="eliza-calendar-event-dot" aria-hidden />
       ) : null}
     </Button>
   );
@@ -385,24 +283,24 @@ function MonthControls({
   );
   return (
     <div
+      data-testid="calendar-month-toolbar"
       style={{
         display: "grid",
-        gridTemplateColumns: "44px minmax(0, 1fr) 44px",
+        gridTemplateColumns: "minmax(64px, 88px) minmax(0, 1fr) 88px",
         alignItems: "center",
-        gap: 8,
-        marginBottom: 12,
+        minHeight: 44,
+        marginBottom: 10,
       }}
     >
       <Button
-        ref={prevControl.ref}
-        {...prevControl.agentProps}
-        variant="surface"
-        size="icon-lg"
-        aria-label={`Previous month, ${month}`}
-        title="Previous month"
-        onClick={onPrevious}
+        ref={todayControl.ref}
+        {...todayControl.agentProps}
+        variant="ghostMuted"
+        size="touch"
+        onClick={onToday}
+        style={{ justifySelf: "start", paddingInline: 8 }}
       >
-        <ChevronLeft size={19} aria-hidden />
+        Today
       </Button>
       <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
         <PopoverTrigger asChild>
@@ -413,6 +311,7 @@ function MonthControls({
             size="touch"
             className="min-w-0"
             aria-label={`Choose month and year. Current month is ${month}`}
+            style={{ maxWidth: "100%", justifySelf: "center" }}
           >
             <span>{month}</span>
             <ChevronDown size={15} aria-hidden />
@@ -420,7 +319,7 @@ function MonthControls({
         </PopoverTrigger>
         <PopoverContent
           align="center"
-          className="w-[min(19rem,calc(100vw-2rem))] rounded-2xl border-border/70 bg-card/95 p-3 shadow-2xl backdrop-blur-xl"
+          style={{ width: "min(19rem, calc(100vw - 2rem))" }}
         >
           <div
             style={{
@@ -433,8 +332,7 @@ function MonthControls({
           >
             <Button
               variant="surface"
-              size="regularCompact"
-              className="w-9"
+              size="icon-lg"
               aria-label="Previous year"
               onClick={() => setPickerYear((year) => year - 1)}
             >
@@ -444,10 +342,7 @@ function MonthControls({
               value={String(pickerYear)}
               onValueChange={(value) => setPickerYear(Number(value))}
             >
-              <SelectTrigger
-                aria-label="Calendar year"
-                style={YEAR_SELECT_STYLE}
-              >
+              <SelectTrigger aria-label="Calendar year" variant="settingsTouch">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -460,8 +355,7 @@ function MonthControls({
             </Select>
             <Button
               variant="surface"
-              size="regularCompact"
-              className="w-9"
+              size="icon-lg"
               aria-label="Next year"
               onClick={() => setPickerYear((year) => year + 1)}
             >
@@ -483,7 +377,7 @@ function MonthControls({
                 <Button
                   key={label}
                   variant={active ? "default" : "surface"}
-                  size="compact"
+                  size="touch"
                   aria-pressed={active}
                   onClick={() => chooseMonth(monthIndex)}
                 >
@@ -494,28 +388,36 @@ function MonthControls({
           </div>
         </PopoverContent>
       </Popover>
-      <Button
-        ref={nextControl.ref}
-        {...nextControl.agentProps}
-        variant="surface"
-        size="icon-lg"
-        aria-label={`Next month, ${month}`}
-        title="Next month"
-        onClick={onNext}
+      <div
+        style={{
+          display: "flex",
+          justifySelf: "end",
+          width: 88,
+        }}
       >
-        <ChevronRight size={19} aria-hidden />
-      </Button>
-      <Button
-        ref={todayControl.ref}
-        {...todayControl.agentProps}
-        variant="ghostMuted"
-        size="tiny"
-        shape="circle"
-        className="col-start-2 justify-self-center"
-        onClick={onToday}
-      >
-        Today
-      </Button>
+        <Button
+          ref={prevControl.ref}
+          {...prevControl.agentProps}
+          variant="ghostMuted"
+          size="icon-lg"
+          aria-label={`Previous month, ${month}`}
+          title="Previous month"
+          onClick={onPrevious}
+        >
+          <ChevronLeft size={19} aria-hidden />
+        </Button>
+        <Button
+          ref={nextControl.ref}
+          {...nextControl.agentProps}
+          variant="ghostMuted"
+          size="icon-lg"
+          aria-label={`Next month, ${month}`}
+          title="Next month"
+          onClick={onNext}
+        >
+          <ChevronRight size={19} aria-hidden />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -542,7 +444,10 @@ function EventRow({ event }: { event: LifeOpsCalendarEvent }) {
         padding: "10px 0",
       }}
     >
-      <span aria-hidden style={{ borderRadius: 9999, background: "#35df8d" }} />
+      <span
+        aria-hidden
+        style={{ borderRadius: 9999, background: "var(--accent)" }}
+      />
       <div style={{ minWidth: 0 }}>
         <div
           style={{
@@ -579,15 +484,101 @@ function EventRow({ event }: { event: LifeOpsCalendarEvent }) {
   );
 }
 
-function StatusCard({ message }: { message: string }) {
+function issueTitle(issue: CalendarIssue): string {
+  switch (issue.kind) {
+    case "runtime_unavailable":
+      return "Calendar needs a dedicated agent";
+    case "authentication":
+      return "Sign-in needed";
+    case "permission":
+      return "Calendar access is restricted";
+    case "offline":
+      return "You’re offline";
+    case "network":
+      return "Calendar couldn’t connect";
+    case "timeout":
+      return "Calendar took too long";
+    case "server":
+      return "Calendar unavailable";
+    default:
+      return "Calendar couldn’t load";
+  }
+}
+
+function issueDetail(issue: CalendarIssue): string | undefined {
+  switch (issue.kind) {
+    case "runtime_unavailable":
+      return "Connect a dedicated agent to use calendar sources.";
+    case "offline":
+      return "Reconnect to load your calendar.";
+    case "network":
+      return "Check your connection and try again.";
+    case "timeout":
+      return "Try again.";
+    case "server":
+      return undefined;
+    default:
+      return issue.message;
+  }
+}
+
+function isGenericIssue(issue: CalendarIssue): boolean {
+  if (issue.kind === "unknown") return true;
+  const message = issue.message.trim().toLocaleLowerCase();
   return (
-    <div role="alert" style={{ ...PANEL_STYLE, padding: 18 }}>
-      <strong style={{ display: "block", fontSize: 14 }}>{message}</strong>
-    </div>
+    message.includes("calendar is temporarily unavailable") ||
+    message.includes("calendar failed to load") ||
+    message.includes("calendar couldn’t load") ||
+    message.includes("calendar couldn't load")
   );
 }
 
-export function SimpleCalendarView() {
+function CalendarStatusRow({
+  title,
+  detail,
+  tone,
+  role,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  detail?: string;
+  tone: "warning" | "danger";
+  role: "alert" | "status";
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <section
+      className="eliza-calendar-status"
+      data-tone={tone}
+      aria-label={title}
+      role={role}
+    >
+      <span className="eliza-calendar-status-icon" aria-hidden>
+        <AlertTriangle size={15} strokeWidth={2} />
+      </span>
+      <p className="eliza-calendar-status-copy">
+        <strong>{title}</strong>
+        {detail ? <span>{detail}</span> : null}
+      </p>
+      {actionLabel && onAction ? (
+        <Button variant="surface" size="touch" onClick={onAction}>
+          {actionLabel}
+        </Button>
+      ) : null}
+    </section>
+  );
+}
+
+export interface SimpleCalendarViewProps {
+  /** Render the shared route header. Embedded projections turn this off. */
+  standalone?: boolean;
+}
+
+export function SimpleCalendarView({
+  standalone = false,
+}: SimpleCalendarViewProps = {}) {
   const calendar = useCalendarWeek({ viewMode: "month" });
   useViewEvent(VIEW_EVENTS.VIEW_REFRESH, () => {
     void calendar.refresh();
@@ -625,21 +616,90 @@ export function SimpleCalendarView() {
     (month: Date) => calendar.goToDate(month),
     [calendar.goToDate],
   );
-  const loaded = calendar.feedState !== null;
-  const detail = calendar.error
-    ? loaded
-      ? `${calendar.events.length} events · refresh unavailable`
-      : "Calendar unavailable"
-    : calendar.loading && !loaded
-      ? "Loading calendar…"
-      : `${calendar.events.length} ${calendar.events.length === 1 ? "event" : "events"}`;
+  // Keep the deprecated string field as a compatibility bridge for signed
+  // native bundles or screenshot harnesses that have not adopted typed issues.
+  const issue =
+    calendar.issue ??
+    (calendar.error
+      ? {
+          kind: "unknown" as const,
+          message: calendar.error,
+          retryable: true,
+          upgradeRequired: false,
+        }
+      : null);
+  const initialLoading = calendar.status === "loading";
+  const sourcesUnavailable = calendar.status === "unavailable" && !issue;
+  const genericIssue = issue ? isGenericIssue(issue) : false;
+  const eventCount = `${calendar.events.length} ${calendar.events.length === 1 ? "event" : "events"}`;
+  const detail = initialLoading
+    ? "Loading calendar…"
+    : issue
+      ? calendar.events.length > 0
+        ? `${eventCount} · refresh unavailable`
+        : "Calendar unavailable"
+      : calendar.status === "partial"
+        ? `${eventCount} · some sources need attention`
+        : sourcesUnavailable
+          ? "Calendar sources unavailable"
+          : eventCount;
+  const selectedEventCount = `${selectedEvents.length} ${selectedEvents.length === 1 ? "event" : "events"}`;
+  const agendaSummary = initialLoading
+    ? "Loading events…"
+    : issue && selectedEvents.length === 0
+      ? ""
+      : sourcesUnavailable
+        ? ""
+        : calendar.refreshing
+          ? `${selectedEventCount} · Refreshing…`
+          : selectedEvents.length === 0
+            ? calendar.status === "partial"
+              ? "Available calendars only"
+              : "No plans yet"
+            : selectedEventCount;
+  const dayCoverage = initialLoading
+    ? "loading"
+    : issue || sourcesUnavailable
+      ? "unavailable"
+      : calendar.status === "partial"
+        ? "partial"
+        : "available";
+  const showAgenda =
+    initialLoading ||
+    selectedEvents.length > 0 ||
+    (!issue && !sourcesUnavailable);
+  const sourceNotice = sourcesUnavailable
+    ? ({
+        label: "Calendar sources unavailable",
+        tone: "warning",
+      } as const)
+    : calendar.status === "partial"
+      ? ({
+          label: "Some calendars are delayed",
+          tone: "warning",
+        } as const)
+      : undefined;
+  const sourceManager = (
+    <div
+      className="eliza-calendar-source-slot"
+      data-testid="simple-calendar-source-manager"
+      data-placement={sourceNotice ? "promoted" : "secondary"}
+    >
+      <CalendarSourceManager
+        sourceHealth={calendar.sources}
+        sourceNotice={sourceNotice}
+        onSelectionChanged={() => void calendar.refresh()}
+      />
+    </div>
+  );
 
   return (
-    <main
+    <PagePanel.Frame
+      as="main"
       aria-busy={calendar.loading}
       aria-label={`Calendar. ${detail}`}
       data-testid="simple-calendar-view"
-      style={ROOT_STYLE}
+      className="relative flex-col overflow-hidden text-txt"
     >
       <style>{`
         .eliza-calendar-day:focus { outline: none; }
@@ -647,162 +707,355 @@ export function SimpleCalendarView() {
           outline: 2px solid var(--accent, #ff6a1f);
           outline-offset: 2px;
         }
-        .eliza-calendar-day:active { transform: scale(.98); }
+        .eliza-calendar-day[data-outside-month="true"]:not([data-state="on"]) {
+          opacity: .48;
+        }
+        .eliza-calendar-day[data-state="on"] {
+          background: transparent !important;
+          color: var(--txt, #f5f5f5) !important;
+        }
+        .eliza-calendar-day-marker {
+          position: relative;
+          display: inline-grid;
+          width: 34px;
+          height: 34px;
+          margin: auto;
+          place-items: center;
+          border-radius: 9999px;
+          font-variant-numeric: tabular-nums;
+          font-size: 13px;
+          font-weight: 650;
+        }
+        .eliza-calendar-day[data-state="on"] .eliza-calendar-day-marker {
+          background: var(--accent, #ff6a1f);
+          color: var(--accent-foreground, #080808);
+          font-weight: 760;
+        }
+        .eliza-calendar-day[data-state="on"] .eliza-calendar-today-dot {
+          background: currentColor;
+          opacity: .72;
+        }
+        .eliza-calendar-today-dot {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          width: 4px;
+          height: 4px;
+          border-radius: 9999px;
+          background: var(--accent, #ff6a1f);
+        }
+        .eliza-calendar-event-dot {
+          position: absolute;
+          bottom: 2px;
+          left: 50%;
+          width: 5px;
+          height: 5px;
+          border-radius: 9999px;
+          background: var(--accent, #ff6a1f);
+          transform: translateX(-50%);
+        }
+        .eliza-calendar-layout {
+          container-name: eliza-calendar;
+          container-type: inline-size;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 10px;
+        }
+        .eliza-calendar-status-slot {
+          grid-column: 1 / -1;
+          min-width: 0;
+          padding: 0;
+        }
+        .eliza-calendar-status {
+          display: flex;
+          min-height: 44px;
+          align-items: center;
+          gap: 9px;
+          border-radius: 12px;
+          background: color-mix(in srgb, var(--card, #161616) 70%, transparent);
+          padding: 4px 8px;
+        }
+        .eliza-calendar-status-icon {
+          display: inline-flex;
+          width: 20px;
+          height: 20px;
+          flex: 0 0 20px;
+          align-items: center;
+          justify-content: center;
+        }
+        .eliza-calendar-status[data-tone="warning"] .eliza-calendar-status-icon {
+          color: var(--warning, #d99a2b);
+        }
+        .eliza-calendar-status[data-tone="danger"] .eliza-calendar-status-icon {
+          color: var(--danger, #e05a5a);
+        }
+        .eliza-calendar-status-copy {
+          min-width: 0;
+          flex: 1;
+          margin: 0;
+          color: var(--muted, rgba(255,255,255,.58));
+          font-size: 12px;
+          line-height: 1.4;
+        }
+        .eliza-calendar-status-copy strong {
+          color: var(--txt, #f5f5f5);
+          font-weight: 650;
+        }
+        .eliza-calendar-status-copy span {
+          display: block;
+          margin-top: 1px;
+        }
+        .eliza-calendar-panel {
+          box-sizing: border-box;
+          min-width: 0;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          box-shadow: none;
+        }
+        .eliza-calendar-content {
+          display: grid;
+          min-width: 0;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 10px;
+        }
+        .eliza-calendar-month {
+          padding: 4px 0 14px;
+        }
+        .eliza-calendar-agenda {
+          border-radius: 16px;
+          background: color-mix(in srgb, var(--card, #161616) 70%, transparent);
+          padding: 14px;
+        }
+        .eliza-calendar-source-slot {
+          min-width: 0;
+          margin: 0;
+        }
+        .eliza-calendar-source-slot[data-placement="promoted"] {
+          margin: 0;
+        }
+        @container eliza-calendar (min-width: 720px) {
+          .eliza-calendar-layout {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 10px;
+          }
+          .eliza-calendar-status-slot {
+            padding: 0 0 10px;
+          }
+          .eliza-calendar-status {
+            border-radius: 12px;
+            padding: 5px 10px;
+          }
+          .eliza-calendar-status[data-tone="warning"] {
+            background: color-mix(in srgb, var(--warning, #d99a2b) 5%, transparent);
+          }
+          .eliza-calendar-status[data-tone="danger"] {
+            background: color-mix(in srgb, var(--danger, #e05a5a) 5%, transparent);
+          }
+          .eliza-calendar-panel {
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+          }
+          .eliza-calendar-content {
+            grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+            gap: 0;
+            overflow: hidden;
+            border: 1px solid color-mix(in srgb, var(--border, #737373) 34%, transparent);
+            border-radius: 16px;
+            background: color-mix(in srgb, var(--card, #161616) 72%, transparent);
+          }
+          .eliza-calendar-month {
+            padding: 14px 16px 16px;
+          }
+          .eliza-calendar-agenda {
+            border-radius: 0;
+            background: transparent;
+            border-top: 0;
+            border-left: 1px solid color-mix(in srgb, var(--border, #737373) 34%, transparent);
+            padding: 16px;
+          }
+          .eliza-calendar-source-slot { margin: 0; }
+          .eliza-calendar-source-slot[data-placement="promoted"] { margin: 0; }
+          .eliza-calendar-source-slot[data-placement="promoted"] > [data-notice-tone][data-state="closed"] {
+            width: max-content;
+            max-width: 100%;
+          }
+        }
         @media (prefers-reduced-motion: reduce) {
           .eliza-calendar-day { transition: none !important; }
         }
-        @keyframes eliza-calendar-hydrate {
-          0%, 100% { opacity: .35; }
-          50% { opacity: .7; }
-        }
       `}</style>
-      <div
-        data-testid="simple-calendar-scroll-region"
-        style={{
-          ...SCROLL_STYLE,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-          gap: 14,
-          alignItems: "start",
-          alignContent: "start",
-          maxWidth: 1040,
-          marginInline: "auto",
-        }}
-      >
-        {calendar.error ? (
-          <div style={{ gridColumn: "1 / -1" }}>
-            <StatusCard message={calendar.error} />
-          </div>
-        ) : calendar.status === "unavailable" ? (
-          <div style={{ gridColumn: "1 / -1" }}>
-            <StatusCard message="Calendar sources are unavailable." />
-          </div>
-        ) : null}
-
-        <section
-          aria-label="Calendar month"
+      {standalone ? <ViewHeader title="Calendar" /> : null}
+      <PagePanel.ContentArea data-testid="simple-calendar-scroll-region">
+        <PagePanel.ContentRail
+          width="wide"
+          className="eliza-calendar-layout"
           style={{
-            ...PANEL_STYLE,
-            padding: "14px clamp(4px, 1.6vw, 16px)",
+            alignItems: "start",
+            alignContent: "start",
+            paddingBlockStart: "var(--view-pad-top, .5rem)",
+            paddingBlockEnd: "var(--view-pad-bottom, 1rem)",
           }}
         >
-          <MonthControls
-            cursor={cursor}
-            onPrevious={calendar.goPrevious}
-            onNext={calendar.goNext}
-            onToday={calendar.goToToday}
-            onMonthChange={chooseMonth}
-          />
-          <div
-            aria-hidden
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-              gap: 3,
-              marginBottom: 5,
-            }}
-          >
-            {WEEKDAYS.map((weekday) => (
-              <span
-                key={weekday}
-                style={{
-                  color: "var(--muted, rgba(255,255,255,.58))",
-                  fontSize: 10,
-                  fontWeight: 680,
-                  textAlign: "center",
-                }}
-              >
-                {weekday.slice(0, 1)}
-              </span>
-            ))}
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-              gap: 3,
-            }}
-          >
-            {days.map((day) => (
-              <CalendarDay
-                key={localDateKey(day)}
-                day={day}
-                cursor={cursor}
-                selectedDate={selectedDate}
-                events={calendar.events}
-                onSelect={selectDay}
+          {issue ? (
+            <div className="eliza-calendar-status-slot">
+              <CalendarStatusRow
+                role="alert"
+                tone={
+                  issue.kind === "offline" ||
+                  issue.kind === "runtime_unavailable"
+                    ? "warning"
+                    : "danger"
+                }
+                title={
+                  genericIssue ? "Calendar unavailable" : issueTitle(issue)
+                }
+                detail={genericIssue ? undefined : issueDetail(issue)}
+                actionLabel={issue.retryable ? "Retry" : undefined}
+                onAction={
+                  issue.retryable ? () => void calendar.refresh() : undefined
+                }
               />
-            ))}
-          </div>
-        </section>
+            </div>
+          ) : null}
 
-        <section
-          aria-label={`Events for ${selectedDate}`}
-          style={{ ...PANEL_STYLE, padding: 16 }}
-        >
+          {sourceNotice ? sourceManager : null}
+
           <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginBottom: selectedEvents.length > 0 ? 6 : 12,
-            }}
+            className="eliza-calendar-content"
+            data-testid="simple-calendar-content"
           >
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <h2
+            <PagePanel
+              as="section"
+              className="eliza-calendar-panel eliza-calendar-month"
+              aria-label="Calendar month"
+            >
+              <MonthControls
+                cursor={cursor}
+                onPrevious={calendar.goPrevious}
+                onNext={calendar.goNext}
+                onToday={calendar.goToToday}
+                onMonthChange={chooseMonth}
+              />
+              <Grid
+                aria-hidden
+                spacing="none"
                 style={{
-                  margin: 0,
-                  fontSize: 15,
-                  lineHeight: 1.35,
-                  fontWeight: 720,
+                  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                  gap: 3,
                 }}
               >
-                {formatSelectedDate(selectedDate)}
-              </h2>
-              <p style={{ ...SECONDARY_STYLE, marginTop: 3, fontSize: 12 }}>
-                {!loaded
-                  ? "Loading calendar\u2026"
-                  : selectedEvents.length === 0
-                    ? "No plans yet"
-                    : `${selectedEvents.length} ${selectedEvents.length === 1 ? "event" : "events"}`}
-              </p>
-            </div>
-            <Clock3 size={16} aria-hidden style={{ color: "var(--muted)" }} />
-          </div>
-          {!loaded ? (
-            <div
-              role="status"
-              aria-label="Calendar events are loading"
-              style={{ display: "grid", gap: 8, paddingBlock: 2 }}
-            >
-              {["72%", "48%"].map((width) => (
-                <span
-                  key={width}
-                  aria-hidden
+                {WEEKDAYS.map((weekday) => (
+                  <span
+                    key={weekday}
+                    style={{
+                      paddingBottom: 5,
+                      color: "var(--muted, rgba(255,255,255,.58))",
+                      fontSize: 10,
+                      fontWeight: 680,
+                      textAlign: "center",
+                    }}
+                  >
+                    {weekday.slice(0, 1)}
+                  </span>
+                ))}
+              </Grid>
+              <Grid
+                role="group"
+                aria-label={`${formatMonth(cursor)} calendar days`}
+                spacing="none"
+                style={{
+                  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                  gap: 3,
+                }}
+              >
+                {days.map((day) => (
+                  <CalendarDay
+                    key={localDateKey(day)}
+                    day={day}
+                    cursor={cursor}
+                    selectedDate={selectedDate}
+                    events={calendar.events}
+                    coverage={dayCoverage}
+                    onSelect={selectDay}
+                  />
+                ))}
+              </Grid>
+            </PagePanel>
+
+            {showAgenda ? (
+              <PagePanel
+                as="section"
+                className="eliza-calendar-panel eliza-calendar-agenda"
+                aria-label={`Events for ${selectedDate}`}
+              >
+                <div
                   style={{
-                    width,
-                    height: 9,
-                    borderRadius: 9999,
-                    background:
-                      "color-mix(in srgb, var(--surface, rgba(255,255,255,.08)) 82%, transparent)",
-                    animation:
-                      "eliza-calendar-hydrate 1.2s ease-in-out infinite",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: selectedEvents.length > 0 ? 6 : 12,
                   }}
-                />
-              ))}
-            </div>
-          ) : selectedEvents.length === 0 ? (
-            <p style={SECONDARY_STYLE}>
-              Ask Eliza in chat to schedule something for today.
-            </p>
-          ) : (
-            selectedEvents.map((event) => (
-              <EventRow key={event.id} event={event} />
-            ))
-          )}
-        </section>
-      </div>
-    </main>
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <h2
+                      style={{
+                        margin: 0,
+                        fontSize: 15,
+                        lineHeight: 1.35,
+                        fontWeight: 720,
+                      }}
+                    >
+                      {formatAgendaDate(selectedDate)}
+                    </h2>
+                    {agendaSummary ? (
+                      <p
+                        style={{
+                          ...SECONDARY_STYLE,
+                          marginTop: 3,
+                          fontSize: 12,
+                        }}
+                      >
+                        {agendaSummary}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                {calendar.refreshing ? (
+                  <span className="sr-only" role="status">
+                    Refreshing calendar events
+                  </span>
+                ) : null}
+                {initialLoading ? (
+                  <PagePanel.Loading
+                    role="status"
+                    aria-label="Calendar events are loading"
+                    heading="Loading events"
+                    description="Fetching your calendar events"
+                    style={{ minHeight: 128 }}
+                  />
+                ) : selectedEvents.length === 0 &&
+                  !issue &&
+                  !sourcesUnavailable ? (
+                  <p style={SECONDARY_STYLE}>
+                    {calendar.status === "partial"
+                      ? "No events in available calendars."
+                      : "Ask Eliza in chat to schedule something for this day."}
+                  </p>
+                ) : (
+                  selectedEvents.map((event) => (
+                    <EventRow key={event.id} event={event} />
+                  ))
+                )}
+              </PagePanel>
+            ) : null}
+          </div>
+
+          {sourceNotice ? null : sourceManager}
+        </PagePanel.ContentRail>
+      </PagePanel.ContentArea>
+    </PagePanel.Frame>
   );
 }
 

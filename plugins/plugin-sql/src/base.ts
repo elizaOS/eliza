@@ -29,6 +29,7 @@ import {
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   DatabaseAdapter,
+  type DeleteConnectorAccountCredentialRefsParams,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
@@ -506,6 +507,7 @@ import {
   isNull,
   lt,
   lte,
+  notInArray,
   or,
   type SQL,
   type SQLWrapper,
@@ -2792,6 +2794,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async getMemories(params: {
     entityId?: UUID;
+    authorEntityIds?: UUID[];
     agentId?: UUID;
     limit?: number;
     count?: number;
@@ -2802,6 +2805,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     start?: number;
     end?: number;
     roomId?: UUID;
+    excludeRoomIds?: UUID[];
     worldId?: UUID;
     textContains?: string;
     orderBy?: "createdAt";
@@ -2860,8 +2864,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       // RLS handles access control - no explicit entityId filter needed
 
+      if (params.authorEntityIds) {
+        conditions.push(
+          params.authorEntityIds.length === 0
+            ? sql`false`
+            : inArray(memoryTable.entityId, params.authorEntityIds)
+        );
+      }
+
       if (roomId) {
         conditions.push(eq(memoryTable.roomId, roomId));
+      }
+
+      if (params.excludeRoomIds && params.excludeRoomIds.length > 0) {
+        conditions.push(notInArray(memoryTable.roomId, params.excludeRoomIds));
       }
 
       // Add worldId condition
@@ -7589,6 +7605,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: ListConnectorAccountCredentialRefsParams
   ): Promise<ConnectorAccountCredentialRefRecord[]> {
     return this.getConnectorAccountStore().listCredentialRefs(params);
+  }
+
+  async deleteConnectorAccountCredentialRefs(
+    params: DeleteConnectorAccountCredentialRefsParams
+  ): Promise<number> {
+    return this.getConnectorAccountStore().deleteCredentialRefs(params);
   }
 
   async appendConnectorAccountAuditEvent(

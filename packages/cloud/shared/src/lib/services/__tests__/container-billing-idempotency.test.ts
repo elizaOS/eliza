@@ -124,6 +124,36 @@ beforeAll(async () => {
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       )`,
+      `CREATE TABLE IF NOT EXISTS jobs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        type text NOT NULL,
+        status text NOT NULL DEFAULT 'pending',
+        data jsonb NOT NULL DEFAULT '{}',
+        data_storage text NOT NULL DEFAULT 'inline',
+        data_key text,
+        organization_id uuid NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      )`,
+      `CREATE TABLE IF NOT EXISTS container_compute_stop_intents (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id uuid NOT NULL,
+        container_id uuid NOT NULL,
+        lifecycle_revision bigint NOT NULL,
+        "authorization" text NOT NULL DEFAULT 'billing_request',
+        status text NOT NULL DEFAULT 'pending',
+        job_id uuid,
+        attempts integer NOT NULL DEFAULT 0,
+        last_error text,
+        next_attempt_at timestamp NOT NULL DEFAULT now(),
+        provider_started_at timestamp,
+        provider_confirmed_at timestamp,
+        provider_node_id text,
+        slot_released_at timestamp,
+        superseded_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      )`,
       `CREATE TABLE IF NOT EXISTS container_billing_records (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         container_id uuid NOT NULL,
@@ -139,7 +169,7 @@ beforeAll(async () => {
       )`,
       `CREATE UNIQUE INDEX IF NOT EXISTS container_billing_records_period_unique
         ON container_billing_records (container_id, billing_period_start)
-        WHERE status = 'success'`,
+        WHERE status IN ('success', 'uncollected')`,
       `CREATE TABLE IF NOT EXISTS compute_billing_rate_segments (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         organization_id uuid NOT NULL,
@@ -795,6 +825,65 @@ describe("earnings-first settlement order (#22951)", () => {
       ).toMatchObject({ n: 0 });
       expect(
         (await dbWrite.execute(`SELECT count(*)::int AS n FROM container_billing_records;`))
+          .rows[0],
+      ).toMatchObject({ n: 0 });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "terminal lifecycle settlement records uncollected debt and advances only the cursor",
+    async () => {
+      if (!pgliteReady) return;
+      await seedEarnFirstCase("0.2", "0.1");
+
+      const result = await dbWrite.transaction((tx) =>
+        containerBillingRepository.recordSuccessfulDailyBillingInTransaction(
+          tx,
+          earnFirstInput(true),
+          {
+            forceLifecycleSettlement: true,
+            terminalInsufficientDisposition: "uncollected",
+          },
+        ),
+      );
+
+      expect(result).toMatchObject({
+        insufficient: true,
+        uncollected: true,
+        transactionId: null,
+      });
+      const receipt = await dbWrite.execute(
+        `SELECT amount, rate_segments, billing_period_start, billing_period_end, status,
+                credit_transaction_id
+           FROM container_billing_records`,
+      );
+      expect(receipt.rows).toHaveLength(1);
+      expect(receipt.rows[0]).toMatchObject({
+        status: "uncollected",
+        credit_transaction_id: null,
+      });
+      expect(Number((receipt.rows[0] as { amount: string }).amount)).toBeCloseTo(CHARGE, 6);
+      expect((receipt.rows[0] as { rate_segments: unknown[] }).rate_segments).toHaveLength(1);
+
+      const [container] = (
+        await dbWrite.execute(
+          `SELECT last_billed_at, next_billing_at, total_billed
+             FROM containers WHERE id = '${CONTAINER_ID}'`,
+        )
+      ).rows as Array<{
+        last_billed_at: Date | string;
+        next_billing_at: Date | null;
+        total_billed: string;
+      }>;
+      expect(new Date(String(container?.last_billed_at)).getTime()).toBe(NOW.getTime());
+      expect(container?.next_billing_at).toBeNull();
+      expect(Number(container?.total_billed)).toBe(0);
+      expect(
+        (await dbWrite.execute(`SELECT count(*)::int AS n FROM credit_transactions`)).rows[0],
+      ).toMatchObject({ n: 0 });
+      expect(
+        (await dbWrite.execute(`SELECT count(*)::int AS n FROM redeemable_earnings_ledger`))
           .rows[0],
       ).toMatchObject({ n: 0 });
     },

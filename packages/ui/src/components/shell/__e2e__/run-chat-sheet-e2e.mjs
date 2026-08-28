@@ -88,7 +88,8 @@ const url = await writeFixturePage({
   plugins: [stubElizaCore(), stubNodeBuiltins()],
   processShim: true,
   background: "#0a0d16",
-  headHtml: "<style>.bg-bg{background-color:#0a0d16}</style>",
+  headHtml:
+    "<style>.bg-bg{background-color:#0a0d16}:root{--shell-overlay-grabber-background:rgb(255 255 255 / 96%)}.chat-handle-bar-surface{background-color:var(--shell-overlay-grabber-background)!important}</style>",
 });
 
 async function gotoFixture(p, href = url) {
@@ -2048,10 +2049,10 @@ async function runAnimationAppearanceSuite(page) {
   };
   const barColor = async (testid) =>
     page.evaluate((id) => {
-      const span = document
+      const handle = document
         .querySelector(`[data-testid="${id}"]`)
         ?.querySelector("span[aria-hidden='true']");
-      return span ? getComputedStyle(span).backgroundColor : "n/a";
+      return handle ? getComputedStyle(handle).backgroundColor : "n/a";
     }, testid);
   const composerBorder = async () =>
     page.evaluate(() => {

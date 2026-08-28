@@ -1,3 +1,8 @@
+/**
+ * Assembles the browser-safe Eliza Cloud plugin surface: inference handlers,
+ * account providers, services, lifecycle hooks, and its app-shell view manifest.
+ */
+
 import type { IAgentRuntime, Plugin, ProcessEnvLike } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 // Cloud account actions
@@ -127,8 +132,9 @@ export function registerTextInferenceModels(runtime: IAgentRuntime): void {
   // Host routing policy is process-owned. Read the captured environment first
   // so a packaged core resolver that lacks dotenv fallback cannot silently
   // re-enable the priority-50 Cloud brain inside a managed container.
+  const envFlag = env.ELIZAOS_CLOUD_USE_INFERENCE?.trim();
   const flag =
-    env.ELIZAOS_CLOUD_USE_INFERENCE ??
+    (envFlag ? envFlag : undefined) ??
     getSetting(runtime, "ELIZAOS_CLOUD_USE_INFERENCE");
   if (flag?.trim().toLowerCase() === "false") {
     logger.info(
@@ -341,6 +347,10 @@ export const elizaOSCloudPlugin: Plugin = {
         "Your Eliza Cloud account — credits, hosted agents, API keys, and billing",
       icon: "Cloud",
       path: "/cloud",
+      responseContext: {
+        primaryContext: "admin",
+        secondaryContexts: ["settings"],
+      },
       // Plain array literal on purpose: plugin.ts is not part of the view
       // bundle, and a core runtime export reaching the bundle build breaks it
       // (the wallet-ui lesson).
@@ -562,6 +572,7 @@ export {
 export {
   normalizeCloudSecret,
   resolveCloudApiKey,
+  resolveCloudApiKeyWithRuntimeOverride,
 } from "./cloud/cloud-api-key";
 export {
   clearCloudSecrets,

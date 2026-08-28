@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:cloud-only": "node scripts/dev-cloud-only.mjs",
+    "dev:local": "node scripts/dev.mjs --cloud-target=offline",
     "dev:chat-harness": "ELIZA_CHAT_UI_HARNESS=1 node scripts/dev.mjs",
     "preview": "bun --bun vite preview",
     "design-review": "node --import tsx test/design-review/run-design-review.ts",
@@ -22,6 +23,8 @@
     "analyze:login-eager-chunks": "node scripts/list-eager-login-chunks.mjs",
     "test:dev-smoke": "node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts",
     "test:dev-smoke:cloud-only": "ELIZA_DEV_SMOKE_CLOUD_ONLY=1 node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts test/dev-smoke/cloud-only-mode.spec.ts",
+    "test:dev-smoke:staging-live-auth": "ELIZA_DEV_CLOUD_TARGET=staging ELIZA_DEV_CLOUD_API_KEY= ELIZA_DEV_SMOKE_STAGING_LIVE_AUTH=1 node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts test/dev-smoke/staging-live-auth-boundary.spec.ts",
+    "test:dev-smoke:local": "ELIZA_DEV_SMOKE_OFFLINE=1 node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts test/dev-smoke/runtime-chooser-default.spec.ts test/dev-smoke/bun-dev-onboarding-chat.spec.ts",
     "test:hmr": "node scripts/run-ui-playwright.mjs --config playwright.hmr.config.ts",
     "test:e2e": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts",
     "test:e2e:chat-stream-real": "ELIZA_UI_SMOKE_REAL_LOCAL_STACK=1 ELIZA_UI_SMOKE_DISABLE_VIDEO=1 node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts --project=chromium test/ui-smoke/chat-stream-real-runtime-perf.spec.ts",
@@ -130,6 +133,8 @@
     "build:android:cloud:debug": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
     "build:android:launcher": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-launcher",
     "build:android:lp3-cloud:debug": "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
+    "build:android:lp3-vps:debug": "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1 ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
+    "build:android:vps-sidecar:debug": "ELIZA_ANDROID_VPS_SIDECAR=1 ELIZA_APP_ID=ai.elizaos.app.vps ELIZA_APP_NAME='Eliza VPS' ELIZA_APP_URL_SCHEME=elizavps node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
     "build:android:system": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-system",
     "preflight:android:sideload": "node scripts/mobile-release-preflight.mjs --platform=android --sideload",
     "preflight:android:store": "node scripts/mobile-release-preflight.mjs --platform=android --store",
@@ -272,6 +277,11 @@
   "elizaos": {
     "app": {
       "defaults": {
+        "computeruse": {
+          "enabled": false,
+          "requiredForReady": true,
+          "routingOnlyWhenDisabled": true
+        },
         "personal-assistant": {
           "enabled": true,
           "requiredForReady": true

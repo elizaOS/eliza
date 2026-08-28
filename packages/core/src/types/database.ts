@@ -605,6 +605,10 @@ export interface ListConnectorAccountCredentialRefsParams {
 	accountId: UUID;
 }
 
+export interface DeleteConnectorAccountCredentialRefsParams {
+	accountId: UUID;
+}
+
 export interface ConnectorAccountAuditEventRecord {
 	id: UUID;
 	accountId?: UUID | null;
@@ -1161,6 +1165,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 */
 	getMemories(params: {
 		entityId?: UUID;
+		/** Restrict returned rows by author while `entityId` remains the RLS principal. */
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		limit?: number;
 		count?: number;
@@ -1171,6 +1177,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		start?: number;
 		end?: number;
 		roomId?: UUID;
+		/** Exclude internal rooms before ordering and LIMIT are applied. */
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		/**
@@ -1789,6 +1797,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	listConnectorAccountCredentialRefs(
 		params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]>;
+	deleteConnectorAccountCredentialRefs(
+		params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number>;
 	/**
 	 * Append a connector account audit event. Implementations must redact
 	 * credential-like metadata values before persistence.

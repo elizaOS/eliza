@@ -53,10 +53,12 @@ export class AgentsRepository {
   // ============================================================================
 
   /**
-   * Gets an agent by ID.
+   * Gets an agent by ID, using the caller's writer transaction when supplied
+   * so mutation readback cannot escape to the read-intent connection.
    */
-  async findById(agentId: string): Promise<AgentInfo | null> {
-    const result = await dbRead
+  async findById(agentId: string, tx?: DbTransaction): Promise<AgentInfo | null> {
+    const database = tx ?? dbRead;
+    const result = await database
       .select({
         id: agentTable.id,
         name: agentTable.name,

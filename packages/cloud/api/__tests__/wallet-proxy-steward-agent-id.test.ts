@@ -1,5 +1,9 @@
 /** Exercises Steward wallet routing with deterministic Cloud auth, mapping, and upstream fixtures. */
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import type {
+  WalletBalancesResponse,
+  WalletConfigStatus,
+} from "@elizaos/shared";
 // Spread the real module into the partial mock below — `mock.module` is
 // process-global, so dropping the other real exports breaks every later
 // importer of this shared auth module (e.g. cron routes' `requireCronSecret`).
@@ -45,7 +49,13 @@ type StewardClientMock = {
   getBalance: ReturnType<
     typeof mock<
       (agentId: string) => Promise<{
-        balances: { native: string; chainId: number; symbol: string };
+        walletAddress?: string;
+        balances: {
+          native: string;
+          nativeFormatted?: string;
+          chainId: number;
+          symbol: string;
+        };
       }>
     >
   >;
@@ -224,6 +234,141 @@ describe("wallet proxy steward agent id resolution", () => {
       "cloud-client-address",
     );
   });
+
+  test("balances emits the canonical WalletBalancesResponse DTO", async () => {
+    dbRows.push({ stewardAgentId: "cloud-client-address" });
+    stewardClient.getAddresses.mockResolvedValue({
+      addresses: [{ chainFamily: "evm", address: "0xwallet" }],
+    });
+    stewardClient.getBalance.mockResolvedValue({
+      walletAddress: "0xwallet",
+      balances: {
+        native: "1250000000000000000",
+        nativeFormatted: "1.25",
+        chainId: 56,
+        symbol: "BNB",
+      },
+    });
+
+    const response = await callWallet("balances");
+    const body = (await response.json()) as WalletBalancesResponse;
+    const expected = {
+      evm: {
+        address: "0xwallet",
+        chains: [
+          {
+            chain: "BNB Smart Chain",
+            chainId: 56,
+            nativeBalance: "1.25",
+            nativeSymbol: "BNB",
+            nativeValueUsd: "0",
+            tokens: [],
+            error: "USD valuation is unavailable for this managed wallet",
+          },
+        ],
+      },
+      solana: null,
+    } satisfies WalletBalancesResponse;
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual(expected);
+    expect(Array.isArray(body.evm?.chains)).toBe(true);
+  });
+
+  test("zero native balance is a canonical, fully-valued zero", async () => {
+    dbRows.push({ stewardAgentId: "cloud-client-address" });
+    stewardClient.getAddresses.mockResolvedValue({
+      addresses: [{ chainFamily: "evm", address: "0xwallet" }],
+    });
+    stewardClient.getBalance.mockResolvedValue({
+      walletAddress: "0xwallet",
+      balances: {
+        native: "0",
+        nativeFormatted: "0",
+        chainId: 8453,
+        symbol: "ETH",
+      },
+    });
+
+    const response = await callWallet("balances");
+    const body = (await response.json()) as WalletBalancesResponse;
+
+    expect(body.evm?.chains[0]).toMatchObject({
+      chain: "Base",
+      nativeBalance: "0",
+      nativeValueUsd: "0",
+      error: null,
+    });
+  });
+
+  test("config reports managed addresses without inventing local credentials or Solana balance readiness", async () => {
+    dbRows.push({ stewardAgentId: "cloud-client-address" });
+    stewardClient.getAddresses.mockResolvedValue({
+      addresses: [
+        { chainFamily: "evm", address: "0xwallet" },
+        { chainFamily: "solana", address: "So1wallet" },
+      ],
+    });
+
+    const response = await callWallet("config");
+    const body = (await response.json()) as WalletConfigStatus;
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      evmAddress: "0xwallet",
+      solanaAddress: "So1wallet",
+      selectedRpcProviders: {
+        evm: "eliza-cloud",
+        bsc: "eliza-cloud",
+        solana: "eliza-cloud",
+      },
+      alchemyKeySet: false,
+      infuraKeySet: false,
+      ankrKeySet: false,
+      heliusKeySet: false,
+      birdeyeKeySet: false,
+      evmBalanceReady: true,
+      solanaBalanceReady: false,
+      walletSource: "managed",
+      evmSigningCapability: "steward-cloud",
+      solanaSigningAvailable: true,
+    });
+    expect(body.wallets).toEqual([
+      {
+        source: "cloud",
+        chain: "evm",
+        address: "0xwallet",
+        provider: "steward",
+        primary: true,
+      },
+      {
+        source: "cloud",
+        chain: "solana",
+        address: "So1wallet",
+        provider: "steward",
+        primary: true,
+      },
+    ]);
+  });
+
+  test.each([
+    ["nfts", "wallet_nfts_unavailable"],
+    ["market-overview", "wallet_market_overview_unavailable"],
+    ["trading-profile", "wallet_trading_profile_unavailable"],
+  ])(
+    "%s is an explicit optional capability, not a fake empty feed",
+    async (path, code) => {
+      const response = await callWallet(path);
+
+      expect(response.status).toBe(501);
+      await expect(response.json()).resolves.toMatchObject({
+        success: false,
+        code,
+        capability: path,
+      });
+      expect(createStewardClient).not.toHaveBeenCalled();
+    },
+  );
 
   test("uses the only organization wallet as a safe fallback when sandbox mapping lookup is unavailable", async () => {
     dbRows.push({ stewardAgentId: "cloud-only-org-wallet" });

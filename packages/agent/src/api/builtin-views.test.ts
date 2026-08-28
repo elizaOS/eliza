@@ -21,6 +21,9 @@ const SOURCE_ORDER_IDS = [
   "trajectories",
   "transcripts",
   "memories",
+  "files",
+  "stream",
+  "pendant-transcript",
   "database",
   "logs",
   "vault",
@@ -79,6 +82,9 @@ describe("BUILTIN_VIEWS", () => {
       "trajectories",
       "transcripts",
       "memories",
+      "files",
+      "stream",
+      "pendant-transcript",
       "database",
       "logs",
       "vault",
@@ -134,7 +140,16 @@ describe("BUILTIN_VIEWS", () => {
       "browser",
       "cloud-apps",
       "transcripts",
+      "files",
+      "stream",
+      "pendant-transcript",
     ]);
+  });
+
+  it("declares authoritative response context for every routable builtin", () => {
+    for (const view of BUILTIN_VIEWS.filter((entry) => entry.path)) {
+      expect(view.responseContext?.primaryContext, view.id).toBeTruthy();
+    }
   });
 
   it("marks developer views with both viewKind and developerOnly", () => {

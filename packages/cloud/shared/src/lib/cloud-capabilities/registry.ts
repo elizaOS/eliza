@@ -216,8 +216,9 @@ export const CLOUD_CAPABILITIES = [
   capability({
     id: "billing.cancel_resource",
     category: "billing",
-    title: "Cancel billable resource",
-    summary: "Stop or delete a billable resource so future billing stops.",
+    title: "Stop billable resource",
+    summary:
+      "Queue a revision-fenced resource stop and return a durable receipt for polling and replay.",
     auth: { modes: ["session"], organizationRoles: ["owner", "admin"] },
     billing: { effect: "recurring_compute", account: "organization", cancellable: true },
     surfaces: {

@@ -1,0 +1,10 @@
+{
+  "extends": "../cloud/shared/tsconfig.json",
+  "compilerOptions": {
+    "customConditions": ["eliza-source"],
+    "incremental": false,
+    "types": ["node", "bun-types"]
+  },
+  "include": ["src/**/*.ts", "test/cloud-command-journal.pglite.test.ts"],
+  "exclude": ["node_modules"]
+}

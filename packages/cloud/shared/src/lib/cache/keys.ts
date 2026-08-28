@@ -320,7 +320,7 @@ export const CacheTTL = {
     authContext: 60, // 1 min physical bound; active entries refresh off-response after 30s
     orgAdmission: 30, // shared-runtime combined balance + rate policy projection
     orgBalance: 15, // 15 seconds - FRESHNESS window: getGateBalanceUsd serves a hint older than this stale-while-revalidate (background refresh) instead of blocking on an authoritative read
-    orgBalanceStale: 300, // 5 min - PHYSICAL KV lifetime so a stale hint can be served + background-refreshed; over-admit stays bounded by the debit settler's lowerOrgBalanceHint + top-up invalidate, exactly as before
+    orgBalanceStale: 300, // 5 min - physical KV lifetime for stale-while-revalidate; authoritative admission is revisioned/serialized or synchronous
     pendingCharge: 3600, // 60 min - sweep window = TTL - grace(20m) = 40m, survives cron hiccups
   },
   /**

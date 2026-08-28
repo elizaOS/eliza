@@ -59,8 +59,8 @@ describe("DynamicViewLoader sandboxed iframe document contract", () => {
       />,
     );
 
-    expect(screen.getByText("Failed to load view")).toBeTruthy();
-    expect(screen.getByText(/require a frameUrl HTML document/)).toBeTruthy();
+    expect(screen.getByText("This view couldn’t open")).toBeTruthy();
+    expect(screen.queryByText(/require a frameUrl HTML document/)).toBeNull();
     expect(
       screen.queryByTestId("sandboxed-view-frame-broken.sandbox"),
     ).toBeNull();

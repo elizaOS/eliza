@@ -6,17 +6,113 @@
  * model normalization, compat header bidirectional mirroring, and candidate URL builders.
  */
 
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  _resetCloudSecretsForTesting,
+  scrubCloudSecretsFromEnv,
+} from "./cloud-secrets.js";
+import { resetDevCloudEnvAuthorityForTests } from "./dev-cloud-env-authority.js";
+import {
+  _internalResolveCloudApiKey,
   ELIZA_CLOUD_TTS_MAX_TEXT_CHARS,
+  ensureCloudTtsApiKeyAlias,
   mirrorCompatHeaders,
   normalizeElizaCloudTtsModelId,
   resolveCloudProxyTtsModel,
+  resolveCloudTtsBaseUrl,
+  resolveElevenLabsApiKeyForCloudMode,
   resolveElizaCloudTtsVoiceId,
   shouldRetryCloudTtsUpstream,
 } from "./server-cloud-tts.js";
 
 describe("server-cloud-tts", () => {
+  describe("development Cloud environment authority", () => {
+    const originalConfigPath = process.env.ELIZA_CONFIG_PATH;
+    const originalCloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
+    let testDirectory: string;
+
+    beforeEach(() => {
+      resetDevCloudEnvAuthorityForTests();
+      _resetCloudSecretsForTesting();
+      delete process.env.ELIZAOS_CLOUD_API_KEY;
+      testDirectory = fs.mkdtempSync(
+        path.join(os.tmpdir(), "server-cloud-tts-authority-"),
+      );
+      const configPath = path.join(testDirectory, "eliza.json");
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify({
+          cloud: {
+            apiKey: "persisted-production-key",
+            baseUrl: "https://api.eliza.app/api/v1",
+          },
+          serviceRouting: {
+            tts: { backend: "elizacloud", transport: "cloud-proxy" },
+          },
+        }),
+      );
+      process.env.ELIZA_CONFIG_PATH = configPath;
+
+      process.env.ELIZAOS_CLOUD_API_KEY = "sealed-production-key";
+      scrubCloudSecretsFromEnv();
+    });
+
+    afterEach(() => {
+      resetDevCloudEnvAuthorityForTests();
+      _resetCloudSecretsForTesting();
+      if (originalCloudApiKey === undefined) {
+        delete process.env.ELIZAOS_CLOUD_API_KEY;
+      } else {
+        process.env.ELIZAOS_CLOUD_API_KEY = originalCloudApiKey;
+      }
+      if (originalConfigPath === undefined) {
+        delete process.env.ELIZA_CONFIG_PATH;
+      } else {
+        process.env.ELIZA_CONFIG_PATH = originalConfigPath;
+      }
+      fs.rmSync(testDirectory, { recursive: true });
+    });
+
+    it.each(["staging-default", "offline"])(
+      "does not fall back to persisted or sealed production credentials for %s",
+      (authority) => {
+        const env: NodeJS.ProcessEnv = {
+          ELIZA_DEV_SOURCE: "1",
+          ELIZA_DEV_CLOUD_ENV_AUTHORITY: authority,
+        };
+
+        expect(_internalResolveCloudApiKey(env)).toBeNull();
+        expect(resolveElevenLabsApiKeyForCloudMode(env)).toBeNull();
+        expect(ensureCloudTtsApiKeyAlias(env)).toBe(false);
+        expect(env.ELEVENLABS_API_KEY).toBeUndefined();
+        expect(resolveCloudTtsBaseUrl(env)).toBe(
+          "https://api-staging.eliza.app/api/v1",
+        );
+      },
+    );
+
+    it("uses the explicit staging credential from the canonical launcher key", () => {
+      const env: NodeJS.ProcessEnv = {
+        ELIZA_DEV_SOURCE: "1",
+        ELIZA_DEV_CLOUD_ENV_AUTHORITY: "staging-explicit",
+        ELIZAOS_CLOUD_API_KEY: "staging-key",
+        ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+        ELIZAOS_CLOUD_USE_TTS: "true",
+      };
+
+      expect(_internalResolveCloudApiKey(env)).toBe("staging-key");
+      expect(resolveElevenLabsApiKeyForCloudMode(env)).toBe("staging-key");
+      expect(ensureCloudTtsApiKeyAlias(env)).toBe(true);
+      expect(env.ELEVENLABS_API_KEY).toBe("staging-key");
+      expect(resolveCloudTtsBaseUrl(env)).toBe(
+        "https://api-staging.eliza.app/api/v1",
+      );
+    });
+  });
+
   describe("constants and retry heuristics", () => {
     it("defines ELIZA_CLOUD_TTS_MAX_TEXT_CHARS as 5000", () => {
       expect(ELIZA_CLOUD_TTS_MAX_TEXT_CHARS).toBe(5000);

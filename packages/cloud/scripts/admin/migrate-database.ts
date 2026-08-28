@@ -34,6 +34,17 @@ import {
   phoneErrorDiagnostic,
   phoneErrorHasCode,
 } from "../../shared/src/lib/services/phone-error-diagnostics";
+import {
+  requirePhoneJsonObject,
+  validatePhoneMediaUrls,
+} from "../../shared/src/lib/services/phone-payload-validation";
+import { putTrajectoryPayload } from "../../shared/src/lib/services/trajectory-object-storage";
+import { ObjectNamespaces } from "../../shared/src/lib/storage/object-namespace";
+import {
+  buildObjectFieldKey,
+  putObjectText,
+} from "../../shared/src/lib/storage/object-store";
+import { objectStorageConfigured } from "../../shared/src/lib/storage/s3-compatible-client";
 import { runCleanupSteps } from "./error-preserving-cleanup";
 import { loadEnvFiles } from "./local-dev-helpers";
 import {
@@ -51,23 +62,6 @@ import {
 // Existing shell env wins so a one-off `NEW_POSTGRES_URL=… bun run …` works.
 // Then .env.local fills gaps; then .env fills the rest.
 loadEnvFiles([".env.local", ".env"]);
-
-// Imports below depend on env being loaded first because they read process.env at module init.
-const { buildObjectFieldKey, putObjectText } = await import(
-  "../../shared/src/lib/storage/object-store"
-);
-const { ObjectNamespaces } = await import(
-  "../../shared/src/lib/storage/object-namespace"
-);
-const { requirePhoneJsonObject, validatePhoneMediaUrls } = await import(
-  "../../shared/src/lib/services/phone-payload-validation"
-);
-const { putTrajectoryPayload } = await import(
-  "../../shared/src/lib/services/trajectory-object-storage"
-);
-const { objectStorageConfigured } = await import(
-  "../../shared/src/lib/storage/s3-compatible-client"
-);
 
 const { Client } = pg;
 export type PgClient = pg.Client;

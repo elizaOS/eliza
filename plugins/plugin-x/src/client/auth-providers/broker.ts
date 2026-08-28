@@ -18,6 +18,7 @@ import {
   isPrivateIpAddress,
   logger,
 } from "@elizaos/core";
+import { resolveCloudApiKeyForXEndpoint } from "../../utils/cloud-credential-boundary";
 import { getSetting } from "../../utils/settings";
 import type { BrokerAuthCredentials, TwitterBrokerProvider } from "./types";
 
@@ -388,23 +389,15 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
 
   private brokerToken(baseUrl: string): string {
     const explicit = getSetting(this.runtime, "TWITTER_BROKER_TOKEN");
-    const origin = new URL(baseUrl).origin.toLowerCase();
-    const trustedCloudOrigin = new Set([
-      "https://api.eliza.app",
-      "https://api-staging.eliza.app",
-      "https://cloud.eliza.app",
-      "https://cloud-staging.eliza.app",
-    ]).has(origin);
     const token =
       explicit ??
-      (trustedCloudOrigin
-        ? getSetting(this.runtime, "ELIZAOS_CLOUD_API_KEY")
-        : undefined);
+      resolveCloudApiKeyForXEndpoint(
+        baseUrl,
+        getSetting(this.runtime, "ELIZAOS_CLOUD_API_KEY"),
+      );
     if (!token) {
       throw brokerError(
-        trustedCloudOrigin
-          ? "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY"
-          : "A custom X broker requires an explicit TWITTER_BROKER_TOKEN",
+        "X broker requires an explicit TWITTER_BROKER_TOKEN unless it belongs to the selected Eliza Cloud target",
         "X_BROKER_CREDENTIAL_MISSING",
       );
     }

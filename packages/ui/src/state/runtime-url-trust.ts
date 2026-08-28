@@ -19,6 +19,118 @@ import {
   isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
 
+const REMOTE_FALLBACK_API_BASE_ENV_KEY = "VITE_ELIZA_REMOTE_FALLBACK_API_BASE";
+const REMOTE_FALLBACK_RUNTIME_GLOBAL =
+  "__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__";
+
+type RemoteFallbackRuntimeGlobal = typeof globalThis & {
+  __ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__?: unknown;
+};
+
+function configuredRemoteFallbackApiBase(): string | undefined {
+  // `@elizaos/ui` can be consumed as a pre-built package. In that shape Vite
+  // does not necessarily rewrite `import.meta.env` inside this module even
+  // though the app entrypoint sees the build variable. The app therefore
+  // installs the already-validated origin here before React renders, keeping
+  // every runtime trust/persistence gate on the same immutable build target.
+  const runtimeValue = (globalThis as RemoteFallbackRuntimeGlobal)[
+    REMOTE_FALLBACK_RUNTIME_GLOBAL
+  ];
+  if (typeof runtimeValue === "string") return runtimeValue;
+
+  const env =
+    typeof import.meta !== "undefined"
+      ? (import.meta as { env?: Record<string, unknown> }).env
+      : undefined;
+  const value = env?.[REMOTE_FALLBACK_API_BASE_ENV_KEY];
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Publish the app-entrypoint's validated remote origin to pre-built UI code.
+ * A second, different target is rejected so late runtime code cannot repoint a
+ * dedicated build after its bootstrap contract has been established.
+ */
+export function installBuildConfiguredRemoteApiBaseUrl(apiBase: string): void {
+  const resolved = getBuildConfiguredRemoteApiBaseUrl(apiBase);
+  if (!resolved) {
+    throw new Error(
+      "[runtime-url-trust] build-configured remote target must be a root HTTPS origin",
+    );
+  }
+
+  const runtime = globalThis as RemoteFallbackRuntimeGlobal;
+  const current = runtime[REMOTE_FALLBACK_RUNTIME_GLOBAL];
+  if (typeof current === "string" && current !== resolved) {
+    throw new Error(
+      "[runtime-url-trust] build-configured remote target is already locked",
+    );
+  }
+  runtime[REMOTE_FALLBACK_RUNTIME_GLOBAL] = resolved;
+}
+
+/**
+ * Return the exact root HTTPS origin compiled into a dedicated remote build.
+ * Invalid build input fails closed so callers can use a non-null result as the
+ * runtime-lock contract, not merely as a restore allow-list entry.
+ */
+export function getBuildConfiguredRemoteApiBaseUrl(
+  configuredBase = configuredRemoteFallbackApiBase(),
+): string | null {
+  if (!configuredBase?.trim()) return null;
+
+  try {
+    const configured = new URL(configuredBase.trim());
+    if (
+      configured.protocol !== "https:" ||
+      configured.username ||
+      configured.password ||
+      configured.port ||
+      configured.search ||
+      configured.hash ||
+      configured.pathname.replace(/\/+$/, "") !== ""
+    ) {
+      return null;
+    }
+    return configured.origin;
+  } catch {
+    // error-policy:J3 malformed build input cannot authorize or pin a target.
+    return null;
+  }
+}
+
+/**
+ * Trust one exact HTTPS origin compiled into a dedicated remote-fallback app.
+ * The configured value is a root origin only: credentials, custom ports,
+ * query/fragment state, and path-scoped targets are rejected.
+ */
+export function isTrustedBuildConfiguredRemoteApiBaseUrl(
+  apiBase: string | undefined,
+  configuredBase = configuredRemoteFallbackApiBase(),
+): boolean {
+  if (!apiBase) return false;
+
+  const configuredOrigin = getBuildConfiguredRemoteApiBaseUrl(configuredBase);
+  if (!configuredOrigin) return false;
+
+  try {
+    const candidate = new URL(apiBase);
+    return (
+      candidate.protocol === "https:" &&
+      !candidate.username &&
+      !candidate.password &&
+      !candidate.port &&
+      !candidate.search &&
+      !candidate.hash &&
+      candidate.pathname.replace(/\/+$/, "") === "" &&
+      candidate.origin === configuredOrigin
+    );
+  } catch {
+    // error-policy:J3 malformed build/runtime URL input is never trusted.
+    return false;
+  }
+}
+
 function isLoopbackHostname(hostname: string): boolean {
   const h = hostname.toLowerCase();
   // RFC 1122 reserves the entire 127.0.0.0/8 block for IPv4 loopback, not
@@ -45,6 +157,8 @@ export function isTrustedRestoreApiBaseUrl(
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return false;
   }
+
+  if (isTrustedBuildConfiguredRemoteApiBaseUrl(apiBase)) return true;
 
   const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (isLoopbackHostname(host) || host === "0.0.0.0") return true;

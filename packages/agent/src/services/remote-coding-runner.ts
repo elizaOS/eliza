@@ -55,6 +55,10 @@ import {
   type LocalWorkspaceDeltaObservation,
   type WorkspaceDeltaFs,
 } from "@elizaos/plugin-coding-tools/lib/workspace-delta";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 
 export type {
   RemoteRunnerClient,
@@ -1597,7 +1601,21 @@ function requestTimeoutWithinDeadline(
   return Math.max(1, Math.min(requestTimeoutMs, remainingMs));
 }
 
+function isCloudOwnedRunnerSetting(key: string): boolean {
+  return (
+    key.startsWith("ELIZAOS_CLOUD_") ||
+    key.startsWith("ELIZA_CLOUD_") ||
+    key.startsWith("ELIZACLOUD_") ||
+    key.startsWith("ELIZA_DEV_CLOUD_") ||
+    key.startsWith("WAIFU_ELIZA_CLOUD_")
+  );
+}
+
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
+  if (resolveDevCloudEnvAuthority() && isCloudOwnedRunnerSetting(key)) {
+    const authoritative = resolveDevCloudAuthorityEnvValue(key)?.trim();
+    return authoritative || undefined;
+  }
   const fromRuntime = runtime.getSetting(key);
   if (typeof fromRuntime === "string" && fromRuntime.trim().length > 0) {
     return fromRuntime.trim();

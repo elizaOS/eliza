@@ -207,7 +207,9 @@ describe("open-sheet blackout (sheetBlackoutProgress)", () => {
     now.mockReturnValue(400);
     fireEvent.pointerMove(el, { clientY: 300, pointerId: 1 });
     await waitFor(() =>
-      expect(surface().style.backgroundColor).toContain("var(--bg) 100"),
+      expect(
+        surface().style.getPropertyValue("--chat-sheet-background"),
+      ).toContain("var(--bg) 100"),
     );
     now.mockReturnValue(3000);
     fireEvent.pointerUp(el, { clientY: 300, pointerId: 1 });
@@ -218,7 +220,9 @@ describe("open-sheet blackout (sheetBlackoutProgress)", () => {
     // left it): the blackout holds — no glass re-frost.
     await waitFor(() => {
       expect(sheet().getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
-      expect(surface().style.backgroundColor).toContain("var(--bg) 100");
+      expect(
+        surface().style.getPropertyValue("--chat-sheet-background"),
+      ).toContain("var(--bg) 100");
     });
   });
 });
@@ -320,6 +324,6 @@ describe("handle glow while recording (pill-only pulse)", () => {
     expect(pillBar()?.className ?? "").toContain("eliza-chat-handle-breathe");
     expect(pillBar()?.className ?? "").not.toContain("animate-pulse");
     expect(pillBar()?.className ?? "").not.toContain("bg-accent");
-    expect(pillBar()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
+    expect(pillBar()?.className ?? "").toContain("chat-handle-bar-surface");
   });
 });

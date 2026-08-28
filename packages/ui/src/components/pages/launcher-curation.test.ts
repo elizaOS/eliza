@@ -694,6 +694,20 @@ describe("curateLauncherPages — full realistic view set", () => {
     }
   });
 
+  it("hides Stream when its build feature is disabled without hiding other preview apps", () => {
+    const page = ids(
+      curateLauncherPages(REAL_VIEWS, {
+        isAosp: false,
+        enabledKinds: { developer: true, preview: true },
+        cloudActive: true,
+        streamEnabled: false,
+      }),
+    );
+    expect(page).not.toContain("stream");
+    expect(page).toContain("pendant-transcript");
+    expect(page).toContain("trajectories");
+  });
+
   it("appends the native-OS tiles to the single page on the AOSP fork", () => {
     const appsPage = ids(
       curateLauncherPages(REAL_VIEWS, {

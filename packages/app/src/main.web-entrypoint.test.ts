@@ -6,7 +6,12 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
-import { DEFAULT_BOOT_CONFIG, setBootConfig } from "@elizaos/ui/config";
+import { STEWARD_ACTIVE_SCOPE_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  DEFAULT_BOOT_CONFIG,
+  getBootConfig,
+  setBootConfig,
+} from "@elizaos/ui/config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const webBoot = vi.hoisted(() => ({
@@ -84,6 +89,7 @@ beforeEach(() => {
     }),
   );
   document.body.innerHTML = '<div id="root"></div>';
+  window.localStorage.clear();
 });
 
 describe("renderer web composition", () => {
@@ -101,6 +107,13 @@ describe("renderer web composition", () => {
     expect(webBoot.registerServiceWorker).toHaveBeenCalledOnce();
     expect(webBoot.cloudApiBaseAtServiceWorkerModuleLoad).toBe(
       "https://cloud-staging.eliza.app",
+    );
+    expect(getBootConfig()).toMatchObject({
+      preferSharedCloudTier: true,
+      autoUpgradeSharedToDedicated: true,
+    });
+    expect(window.localStorage.getItem(STEWARD_ACTIVE_SCOPE_KEY)).toBe(
+      "eliza-cloud:staging",
     );
     expect(webBoot.initializeStorage).toHaveBeenCalledTimes(2);
     expect(webBoot.initializeCapacitor).toHaveBeenCalledOnce();

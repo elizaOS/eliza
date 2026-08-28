@@ -13,14 +13,18 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { configureDevCloudEnvironment } from "../../app-core/scripts/lib/dev-cloud-target.mjs";
 import {
   allocatePortsForWorktree,
+  createDevServerCloudProfileFingerprint,
   createEmptyRegistry,
   normalizeWorktreePath,
   portsForUiPort,
   preferredUiPortForWorktree,
   readRegistry,
   reservePortsForWorktree,
+  resolveDevServerCloudCredentialIdentity,
+  resolveDevServerCloudPolicyIdentity,
   updateRegistryEntry,
   writeRegistry,
 } from "./dev-server-registry.mjs";
@@ -28,6 +32,83 @@ import {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
 const devSharedScript = path.join(here, "dev-shared.mjs");
+const CLEAN_DEV_CLOUD_ENV = {
+  ELIZA_DEV_CLOUD_TARGET: "",
+  ELIZAOS_CLOUD_BASE_URL: "",
+  ELIZAOS_CLOUD_API_KEY: "",
+  ELIZAOS_CLOUD_ENABLED: "",
+  ELIZA_CLOUD_API_KEY: "",
+  ELIZACLOUD_API_KEY: "",
+  ELIZA_DEV_CLOUD_API_KEY: "",
+  ELIZAOS_CLOUD_SERVICE_KEY: "",
+  ELIZAOS_CLOUD_EMBEDDING_API_KEY: "",
+  ELIZAOS_CLOUD_AGENT_ID: "",
+  ELIZA_CLOUD_PROVISIONED: "",
+  ELIZA_CLOUD_SERVICE_KEY: "",
+  ELIZA_CLOUD_SERVICE_TOKEN: "",
+  ELIZA_CLOUD_SESSION_TOKEN: "",
+  ELIZA_CLOUD_TOKEN: "",
+  ELIZACLOUD_TOKEN: "",
+  ELIZA_CLOUD_AUTH_TOKEN: "",
+  ELIZA_CLOUD_SANDBOX_TOKEN: "",
+  ELIZA_CLOUD_AGENT_ID: "",
+  WAIFU_ELIZA_CLOUD_AGENT_ID: "",
+  VITE_ELIZA_CLOUD_BASE: "",
+  VITE_STEWARD_API_URL: "",
+  VITE_STEWARD_TENANT_ID: "",
+  VITE_ELIZA_DESKTOP_RUNTIME_MODE: "",
+};
+
+function cloudProfileFromConfiguredEnvironment(configured) {
+  return createDevServerCloudProfileFingerprint({
+    effectiveTarget: configured.effectiveTarget,
+    authorityMode: configured.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY,
+    credentialIdentity: resolveDevServerCloudCredentialIdentity(configured.env),
+    policyIdentity: resolveDevServerCloudPolicyIdentity(configured.env),
+    serverApiBase: configured.env.ELIZAOS_CLOUD_BASE_URL,
+    rendererCloudBase: configured.env.VITE_ELIZA_CLOUD_BASE,
+    stewardApiUrl: configured.env.VITE_STEWARD_API_URL,
+    stewardTenantId: configured.env.VITE_STEWARD_TENANT_ID,
+    runtimeMode: configured.env.VITE_ELIZA_DESKTOP_RUNTIME_MODE,
+  });
+}
+
+function defaultDevSharedCloudProfile() {
+  return cloudProfileFromConfiguredEnvironment(
+    configureDevCloudEnvironment([], {
+      ...process.env,
+      ...CLEAN_DEV_CLOUD_ENV,
+    }),
+  );
+}
+
+const TEST_CLOUD_PROFILE_INPUT = {
+  effectiveTarget: "staging",
+  authorityMode: "staging-explicit",
+  credentialIdentity: { apiKey: "test-staging-key" },
+  policyIdentity: resolveDevServerCloudPolicyIdentity({}),
+  serverApiBase: "https://api-staging.example.test/api/v1",
+  rendererCloudBase: "https://cloud-staging.example.test",
+  stewardApiUrl: "https://staging.example.test/steward",
+  stewardTenantId: "example-staging",
+  runtimeMode: "cloud",
+};
+const TEST_CLOUD_PROFILE = createDevServerCloudProfileFingerprint(
+  TEST_CLOUD_PROFILE_INPUT,
+);
+const OTHER_CLOUD_PROFILE = createDevServerCloudProfileFingerprint({
+  effectiveTarget: "production",
+  authorityMode: "production",
+  credentialIdentity: { apiKey: "test-production-key" },
+  policyIdentity: resolveDevServerCloudPolicyIdentity({
+    ELIZAOS_CLOUD_ENABLED: "true",
+  }),
+  serverApiBase: "https://api.example.test/api/v1",
+  rendererCloudBase: "https://cloud.example.test",
+  stewardApiUrl: "https://example.test/steward",
+  stewardTenantId: "example-production",
+  runtimeMode: "cloud",
+});
 
 function makeRegistryPath(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-dev-registry-"));
@@ -154,6 +235,43 @@ async function runNode(scriptPath, { env, timeoutMs = 3_000 } = {}) {
 }
 
 describe("shared dev server registry", () => {
+  it("fingerprints routing, authority, and credential identity without retaining credentials", () => {
+    assert.match(TEST_CLOUD_PROFILE, /^cloud-v2:[0-9a-f]{64}$/);
+    assert.equal(TEST_CLOUD_PROFILE.includes("example-staging"), false);
+    assert.equal(TEST_CLOUD_PROFILE.includes("test-staging-key"), false);
+    assert.notEqual(
+      createDevServerCloudProfileFingerprint({
+        ...TEST_CLOUD_PROFILE_INPUT,
+        credentialIdentity: { apiKey: "different-staging-key" },
+      }),
+      TEST_CLOUD_PROFILE,
+    );
+
+    const replacements = {
+      effectiveTarget: "production",
+      authorityMode: "staging-default",
+      credentialIdentity: { apiKey: "replacement-key" },
+      policyIdentity: resolveDevServerCloudPolicyIdentity({
+        ELIZAOS_CLOUD_USE_RPC: "false",
+      }),
+      serverApiBase: "https://api-alt.example.test/api/v1",
+      rendererCloudBase: "https://cloud-alt.example.test",
+      stewardApiUrl: "https://identity-alt.example.test/steward",
+      stewardTenantId: "example-alt",
+      runtimeMode: "",
+    };
+    for (const [field, value] of Object.entries(replacements)) {
+      assert.notEqual(
+        createDevServerCloudProfileFingerprint({
+          ...TEST_CLOUD_PROFILE_INPUT,
+          [field]: value,
+        }),
+        TEST_CLOUD_PROFILE,
+        `${field} must participate in the fingerprint`,
+      );
+    }
+  });
+
   it("allocates stable deterministic ports for a worktree", () => {
     const worktree = "/tmp/eliza-workers/wt-alpha";
     const first = allocatePortsForWorktree(worktree, {
@@ -205,6 +323,7 @@ describe("shared dev server registry", () => {
 
     const alpha = await reservePortsForWorktree("/tmp/eliza-workers/wt-alpha", {
       registryPath,
+      cloudProfileFingerprint: TEST_CLOUD_PROFILE,
     });
     const beta = await reservePortsForWorktree("/tmp/eliza-workers/wt-beta", {
       registryPath,
@@ -215,16 +334,27 @@ describe("shared dev server registry", () => {
     assert.equal(beta.reused, false);
     assert.equal(registry.entries.length, 2);
     assert.notEqual(alpha.entry.uiPort, beta.entry.uiPort);
+    assert.equal(alpha.entry.cloudProfileFingerprint, TEST_CLOUD_PROFILE);
+    assert.equal(
+      registry.entries.find(
+        (entry) =>
+          entry.worktree ===
+          normalizeWorktreePath("/tmp/eliza-workers/wt-alpha"),
+      )?.cloudProfileFingerprint,
+      TEST_CLOUD_PROFILE,
+    );
   });
 
-  it("reuses an established same-worktree server without rewriting it", async (t) => {
+  it("reuses an established same-worktree server only with the same Cloud profile", async (t) => {
     const registryPath = makeRegistryPath(t);
     const server = await listenOnLoopback();
     t.after(() => closeServer(server));
     const address = server.address();
     assert.ok(address && typeof address !== "string");
     const worktree = path.join(path.dirname(registryPath), "worktree");
-    const existing = registryEntry(worktree, address.port);
+    const existing = registryEntry(worktree, address.port, {
+      cloudProfileFingerprint: TEST_CLOUD_PROFILE,
+    });
     writeRegistry({ version: 1, entries: [existing] }, registryPath);
     const before = fs.readFileSync(registryPath, "utf8");
 
@@ -232,11 +362,133 @@ describe("shared dev server registry", () => {
       registryPath,
       base: address.port,
       span: 1,
+      cloudProfileFingerprint: TEST_CLOUD_PROFILE,
     });
 
     assert.equal(reservation.reused, true);
     assert.deepEqual(reservation.entry, existing);
     assert.equal(fs.readFileSync(registryPath, "utf8"), before);
+  });
+
+  it("refuses to reuse a live same-worktree server with a missing or different Cloud profile", async (t) => {
+    const registryPath = makeRegistryPath(t);
+    const server = await listenOnLoopback();
+    t.after(() => closeServer(server));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const worktree = path.join(path.dirname(registryPath), "worktree");
+
+    for (const existingFingerprint of [undefined, OTHER_CLOUD_PROFILE]) {
+      const existing = registryEntry(worktree, address.port, {
+        ...(existingFingerprint
+          ? { cloudProfileFingerprint: existingFingerprint }
+          : {}),
+      });
+      writeRegistry({ version: 1, entries: [existing] }, registryPath);
+      const before = fs.readFileSync(registryPath, "utf8");
+
+      await assert.rejects(
+        reservePortsForWorktree(worktree, {
+          registryPath,
+          base: address.port,
+          span: 1,
+          cloudProfileFingerprint: TEST_CLOUD_PROFILE,
+        }),
+        (error) => {
+          assert.match(error.message, /different or missing Cloud profile/);
+          assert.match(error.message, /Stop it with Ctrl-C/);
+          assert.match(error.message, /running server was left untouched/);
+          return true;
+        },
+      );
+      assert.equal(fs.readFileSync(registryPath, "utf8"), before);
+      assert.equal(server.listening, true);
+    }
+  });
+
+  it("does not reuse across authority, credential, or activation-policy changes", async (t) => {
+    const registryPath = makeRegistryPath(t);
+    const server = await listenOnLoopback();
+    t.after(() => closeServer(server));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const worktree = path.join(path.dirname(registryPath), "worktree");
+
+    const defaultStaging = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment([], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+      }),
+    );
+    const explicitStaging = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment(["--cloud-target=staging"], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+      }),
+    );
+    const credentialA = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment(["--cloud-target=staging"], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+        ELIZA_DEV_CLOUD_API_KEY: "credential-A-must-not-be-stored",
+      }),
+    );
+    const credentialB = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment(["--cloud-target=staging"], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+        ELIZA_DEV_CLOUD_API_KEY: "credential-B-must-not-be-stored",
+      }),
+    );
+    const policyEnabled = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment(["--cloud-target=production"], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+        ELIZAOS_CLOUD_API_KEY: "same-credential-must-not-be-stored",
+        ELIZAOS_CLOUD_USE_RPC: "true",
+      }),
+    );
+    const policyDisabled = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment(["--cloud-target=production"], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+        ELIZAOS_CLOUD_API_KEY: "same-credential-must-not-be-stored",
+        ELIZAOS_CLOUD_USE_RPC: "false",
+      }),
+    );
+
+    assert.notEqual(defaultStaging, explicitStaging);
+    assert.notEqual(credentialA, credentialB);
+    assert.notEqual(policyEnabled, policyDisabled);
+    for (const [existingFingerprint, requestedFingerprint] of [
+      [defaultStaging, explicitStaging],
+      [credentialA, credentialB],
+      [policyEnabled, policyDisabled],
+    ]) {
+      const existing = registryEntry(worktree, address.port, {
+        cloudProfileFingerprint: existingFingerprint,
+      });
+      writeRegistry({ version: 1, entries: [existing] }, registryPath);
+      const before = fs.readFileSync(registryPath, "utf8");
+      assert.equal(before.includes("credential-A-must-not-be-stored"), false);
+      assert.equal(before.includes("credential-B-must-not-be-stored"), false);
+      assert.equal(
+        before.includes("same-credential-must-not-be-stored"),
+        false,
+      );
+
+      await assert.rejects(
+        reservePortsForWorktree(worktree, {
+          registryPath,
+          base: address.port,
+          span: 1,
+          cloudProfileFingerprint: requestedFingerprint,
+        }),
+        /different or missing Cloud profile/,
+      );
+      assert.equal(fs.readFileSync(registryPath, "utf8"), before);
+      assert.equal(server.listening, true);
+    }
   });
 
   it("does not reuse a stale reservation from its live PID alone", async (t) => {
@@ -435,12 +687,15 @@ describe("shared dev server registry", () => {
     t.after(() => closeServer(server));
     const address = server.address();
     assert.ok(address && typeof address !== "string");
-    const existing = registryEntry(repoRoot, address.port);
+    const existing = registryEntry(repoRoot, address.port, {
+      cloudProfileFingerprint: defaultDevSharedCloudProfile(),
+    });
     writeRegistry({ version: 1, entries: [existing] }, registryPath);
     const before = fs.readFileSync(registryPath, "utf8");
 
     const result = await runNode(devSharedScript, {
       env: {
+        ...CLEAN_DEV_CLOUD_ENV,
         ELIZA_DEV_SERVER_REGISTRY: registryPath,
         ELIZA_NODE_PATH: path.join(
           path.dirname(registryPath),
@@ -460,5 +715,37 @@ describe("shared dev server registry", () => {
       new RegExp(`ui=http://127\\.0\\.0\\.1:${address.port}`),
     );
     assert.equal(fs.readFileSync(registryPath, "utf8"), before);
+  });
+
+  it("dev:shared rejects a live server with another Cloud profile without stopping it", async (t) => {
+    const registryPath = makeRegistryPath(t);
+    const server = await listenOnLoopback();
+    t.after(() => closeServer(server));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const existing = registryEntry(repoRoot, address.port, {
+      cloudProfileFingerprint: OTHER_CLOUD_PROFILE,
+    });
+    writeRegistry({ version: 1, entries: [existing] }, registryPath);
+    const before = fs.readFileSync(registryPath, "utf8");
+
+    const result = await runNode(devSharedScript, {
+      env: {
+        ...CLEAN_DEV_CLOUD_ENV,
+        ELIZA_DEV_SERVER_REGISTRY: registryPath,
+        ELIZA_NODE_PATH: path.join(
+          path.dirname(registryPath),
+          "must-not-exist",
+        ),
+      },
+    });
+
+    assert.notEqual(result.code, 0);
+    assert.equal(result.signal, null);
+    assert.match(result.stderr, /different or missing Cloud profile/);
+    assert.match(result.stderr, /Stop it with Ctrl-C/);
+    assert.match(result.stderr, /running server was left untouched/);
+    assert.equal(fs.readFileSync(registryPath, "utf8"), before);
+    assert.equal(server.listening, true);
   });
 });

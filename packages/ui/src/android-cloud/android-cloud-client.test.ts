@@ -124,13 +124,14 @@ describe("AndroidCloudClient", () => {
         }),
       );
     const client = new AndroidCloudClient({ credentialStore, fetchImpl });
-    const attempt = await client.beginLogin();
+    const attempt = await client.beginLogin({ switchAccount: true });
     const loginUrl = new URL(attempt.browserUrl);
     const returnTo = loginUrl.searchParams.get("returnTo");
     const authorizeUrl = new URL(returnTo ?? "", loginUrl.origin);
 
     expect(loginUrl.origin).toBe("https://cloud.eliza.app");
     expect(loginUrl.pathname).toBe("/login");
+    expect(loginUrl.searchParams.get("switchAccount")).toBe("1");
     expect(authorizeUrl.pathname).toBe("/app-auth/authorize");
     expect(authorizeUrl.searchParams.get("flow")).toBe("mobile_pkce");
     expect(authorizeUrl.searchParams.get("client_id")).toBe("ai.elizaos.app");
@@ -905,21 +906,32 @@ describe("AndroidCloudClient", () => {
     ).rejects.toThrow("invalid runtime binding");
   });
 
-  it("clears the local Steward token even when remote logout fails", async () => {
+  it("preserves the local credential when exact remote revocation fails", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "steward-token");
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockRejectedValueOnce(new Error("network unavailable"));
     const client = new AndroidCloudClient({ fetchImpl });
-    await expect(client.signOut()).resolves.toBeUndefined();
-    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    await expect(client.signOut()).rejects.toThrow("network unavailable");
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("steward-token");
     expect(fetchImpl).toHaveBeenCalledWith(
-      "https://api.eliza.app/api/auth/logout",
+      "https://api.eliza.app/api/v1/api-keys/current",
       {
-        method: "POST",
+        method: "DELETE",
         headers: { Authorization: "Bearer steward-token" },
       },
     );
+  });
+
+  it("clears the local credential after exact remote revocation succeeds", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, "steward-token");
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json(200, { success: true }));
+    const client = new AndroidCloudClient({ fetchImpl });
+
+    await expect(client.signOut()).resolves.toBeUndefined();
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
   it("creates a server conversation and sends a text turn to that id", async () => {

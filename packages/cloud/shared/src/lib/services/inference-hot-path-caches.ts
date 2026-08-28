@@ -13,9 +13,11 @@
  */
 
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { logger } from "../utils/logger";
 import { isInferenceStrongRevocationEnabled } from "./inference-credential-revocation";
 
 type EnvLike = Record<string, unknown>;
+let warnedUnsafeAuthCacheConfiguration = false;
 
 export function isHotPathCachesEnabled(env: EnvLike = getCloudAwareEnv()): boolean {
   const flag = env.INFERENCE_HOT_PATH_CACHES;
@@ -29,7 +31,15 @@ export function isHotPathCachesEnabled(env: EnvLike = getCloudAwareEnv()): boole
  */
 export function isInferenceAuthCacheEnabled(env: EnvLike = getCloudAwareEnv()): boolean {
   const flag = env.INFERENCE_AUTH_CACHE_ENABLED;
-  return (
-    typeof flag === "string" && flag.trim() === "true" && isInferenceStrongRevocationEnabled(env)
-  );
+  const requested = typeof flag === "string" && flag.trim() === "true";
+  const strongRevocation = isInferenceStrongRevocationEnabled(env);
+  if (requested && !strongRevocation && !warnedUnsafeAuthCacheConfiguration) {
+    warnedUnsafeAuthCacheConfiguration = true;
+    logger.error("[InferenceAuth] positive cache requested without strong revocation", {
+      authCacheEnabled: true,
+      strongRevocationEnabled: false,
+      effectiveAuthCacheEnabled: false,
+    });
+  }
+  return requested && strongRevocation;
 }

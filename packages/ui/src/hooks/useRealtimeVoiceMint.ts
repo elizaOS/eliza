@@ -1,8 +1,9 @@
 /**
  * Resolves the cloud agent identity and one-time consent required before
- * realtime voice may own the microphone. Self-hosted runtimes stay on batch
- * voice unless an explicit force build also passes its same-origin health
- * probe; failed consent or availability checks never fabricate eligibility.
+ * realtime voice may own the microphone. A production self-hosted build may
+ * arm only after its paired same-origin runtime proves the voice-session
+ * contract for the active conversation; failed consent or availability checks
+ * never fabricate eligibility.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -35,6 +36,21 @@ export function isRealtimeVoiceForceEnabled(): boolean {
     return v === "1" || v === "true" || v === "yes" || v === "on";
   } catch {
     // error-policy:J4 An unreadable build flag leaves force-arming explicitly disabled.
+    return false;
+  }
+}
+
+/** Read the production self-hosted realtime capability stamp. */
+export function isRealtimeVoiceSelfHostedEnabled(): boolean {
+  try {
+    const raw = import.meta.env?.VITE_VOICE_REALTIME_SELF_HOSTED as unknown;
+    if (typeof raw !== "string") return false;
+    const value = raw.trim().toLowerCase();
+    return (
+      value === "1" || value === "true" || value === "yes" || value === "on"
+    );
+  } catch {
+    // error-policy:J4 An unreadable build stamp leaves self-hosted realtime disabled.
     return false;
   }
 }
@@ -107,14 +123,54 @@ async function fetchConsentNonce(
 async function probeRealtimeVoiceAvailability(
   doFetch: (url: string, init?: RequestInit) => Promise<Response>,
   probePath: string,
+  expectedConversationId: string | null,
 ): Promise<boolean> {
   try {
-    const res = await doFetch(probePath, { method: "GET" });
-    return res.ok;
+    const res = await doFetch(probePath, {
+      method: "GET",
+      redirect: "error",
+    });
+    if (res.status !== 200 || res.redirected || res.type === "opaqueredirect") {
+      return false;
+    }
+    const mediaType = res.headers
+      .get("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLowerCase();
+    if (mediaType !== "application/json") return false;
+    const body: unknown = await res.json();
+    const ready =
+      typeof body === "object" &&
+      body !== null &&
+      !Array.isArray(body) &&
+      (body as { ready?: unknown }).ready === true;
+    if (!ready) return false;
+    return (
+      expectedConversationId === null ||
+      (body as { conversationId?: unknown }).conversationId ===
+        expectedConversationId
+    );
   } catch {
-    // error-policy:J4 An unreachable probe leaves realtime unavailable to the caller.
+    // error-policy:J4 An unreachable or malformed probe leaves realtime unavailable to the caller.
     return false;
   }
+}
+
+function normalizeRealtimeConversationId(
+  value: string | null | undefined,
+): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized && normalized.length <= 128 ? normalized : null;
+}
+
+function conversationScopedProbePath(
+  probePath: string,
+  conversationId: string,
+): string {
+  const separator = probePath.includes("?") ? "&" : "?";
+  return `${probePath}${separator}conversationId=${encodeURIComponent(conversationId)}`;
 }
 
 export function useRealtimeVoiceMint(options?: {
@@ -127,17 +183,32 @@ export function useRealtimeVoiceMint(options?: {
   /** Non-consuming availability probe path for force-arm builds. */
   probePath?: string;
   /**
+   * Active conversation identity. Production self-hosted eligibility is bound
+   * to this exact value so a gateway pinned to another conversation cannot arm
+   * realtime and take the microphone before refusing the mint.
+   */
+  conversationId?: string | null;
+  /**
    * Injectable force-arm flag (tests). Defaults to the VITE-side
    * `VITE_VOICE_REALTIME_FORCE` read. When true and normal resolution yields
    * null, `agentId` falls back to the sentinel only after the non-consuming
    * health probe succeeds. Never overrides a real resolved agent id.
    */
   forceEnabled?: boolean;
+  /** Production self-hosted capability stamp (tests may inject it). */
+  selfHostedEnabled?: boolean;
+  /** Whether the selected runtime is a paired self-hosted remote. */
+  resolveSelfHostedRuntime?: () => boolean;
 }): UseRealtimeVoiceMintResult {
   const doFetch = options?.fetch ?? defaultConsentFetch;
   const consentPath = options?.consentPath ?? "/api/v1/voice/session/consent";
   const probePath = options?.probePath ?? "/api/v1/voice/session/health";
   const forceEnabled = options?.forceEnabled ?? isRealtimeVoiceForceEnabled();
+  const selfHostedEnabled =
+    options?.selfHostedEnabled ?? isRealtimeVoiceSelfHostedEnabled();
+  const persistedActiveServer = options?.resolveAgentId
+    ? null
+    : loadPersistedActiveServer();
 
   const resolvedAgentId = useMemo(() => {
     // A real, resolvable cloud agent id ALWAYS wins over the sentinel.
@@ -145,39 +216,68 @@ export function useRealtimeVoiceMint(options?: {
       const id = options.resolveAgentId();
       return isUuid(id) ? id : null;
     }
-    const active = loadPersistedActiveServer();
-    const id = active ? resolveDedicatedAgentId(active) : null;
+    const id = persistedActiveServer
+      ? resolveDedicatedAgentId(persistedActiveServer)
+      : null;
     return isUuid(id) ? id : null;
     // resolveAgentId identity is stable in practice; the persisted server read
     // is intentionally per-mount (a runtime switch remounts the chat surface).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options?.resolveAgentId]);
+  }, [options?.resolveAgentId, persistedActiveServer]);
 
-  const forceProbeEligible = forceEnabled && !resolvedAgentId;
-  const [forceProbeArmed, setForceProbeArmed] = useState(false);
+  const selfHostedRuntime = options?.resolveSelfHostedRuntime
+    ? options.resolveSelfHostedRuntime()
+    : persistedActiveServer?.kind === "remote";
+
+  const probeConversationId = normalizeRealtimeConversationId(
+    options?.conversationId,
+  );
+  const selfHostedProbeEligible = Boolean(
+    selfHostedEnabled && selfHostedRuntime && probeConversationId,
+  );
+  const availabilityProbeEligible =
+    !resolvedAgentId && (forceEnabled || selfHostedProbeEligible);
+  const availabilityProbePath =
+    selfHostedProbeEligible && probeConversationId
+      ? conversationScopedProbePath(probePath, probeConversationId)
+      : probePath;
+  const availabilityProbeKey = availabilityProbeEligible
+    ? availabilityProbePath
+    : null;
+  const expectedProbeConversationId = selfHostedProbeEligible
+    ? probeConversationId
+    : null;
+  const [armedProbeKey, setArmedProbeKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!forceProbeEligible) {
-      setForceProbeArmed(false);
+    if (!availabilityProbeKey) {
+      setArmedProbeKey(null);
       return;
     }
 
     let cancelled = false;
-    setForceProbeArmed(false);
-    void probeRealtimeVoiceAvailability(doFetch, probePath).then(
-      (available) => {
-        if (!cancelled) setForceProbeArmed(available);
-      },
-    );
+    setArmedProbeKey(null);
+    void probeRealtimeVoiceAvailability(
+      doFetch,
+      availabilityProbeKey,
+      expectedProbeConversationId,
+    ).then((available) => {
+      if (!cancelled) {
+        setArmedProbeKey(available ? availabilityProbeKey : null);
+      }
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [doFetch, forceProbeEligible, probePath]);
+  }, [availabilityProbeKey, doFetch, expectedProbeConversationId]);
+
+  const availabilityProbeArmed =
+    availabilityProbeKey !== null && armedProbeKey === availabilityProbeKey;
 
   const agentId =
     resolvedAgentId ??
-    (forceProbeArmed ? REALTIME_FORCE_SENTINEL_AGENT_ID : null);
+    (availabilityProbeArmed ? REALTIME_FORCE_SENTINEL_AGENT_ID : null);
 
   const getConsentNonce = useCallback(async (): Promise<string | null> => {
     return fetchConsentNonce(doFetch, consentPath);

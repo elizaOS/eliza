@@ -26,9 +26,11 @@ import {
   EventType,
   emitInferenceTiming,
   executePlannedToolCall,
+  getEntityRole,
   getInferenceTimer,
   getSwarmCoordinatorService,
   hasAppliedUserFacingEffectProof,
+  hasAtLeastRole,
   INFERENCE_MARKS,
   INSUFFICIENT_CREDITS_REPLY,
   InferenceTurnTimer,
@@ -45,6 +47,7 @@ import {
   type RoomHandlerLease,
   type RouteRequestContext,
   recordOwnerGrant,
+  recordRoleGrant,
   renderInteractionsAsPlainText,
   revertedEffectReceiptIds,
   runWithInferenceTiming,
@@ -103,6 +106,7 @@ import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.ts";
+import { enrichChatUiViewMetadata } from "./chat-view-metadata.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import {
   extractAnthropicSystemAndLastUser,
@@ -3148,12 +3152,13 @@ export async function readChatRequestPayload(
     typeof body.source === "string" && body.source.trim().length > 0
       ? body.source.trim()
       : undefined;
-  const metadata =
+  const rawMetadata =
     body.metadata &&
     typeof body.metadata === "object" &&
     !Array.isArray(body.metadata)
       ? body.metadata
       : undefined;
+  const metadata = enrichChatUiViewMetadata(rawMetadata);
   const clientMessageId = normalizeClientMessageId(body.clientMessageId);
   if (body.clientMessageId !== undefined && clientMessageId === null) {
     helpers.error(
@@ -4606,7 +4611,11 @@ export function resolveChatAdminEntityId(state: ChatRouteState): UUID {
   return resolveClientChatAdminEntityId(state);
 }
 
-async function ensureCompatChatConnection(
+/**
+ * Exported for the machine-session role-grant regression suite; runtime callers
+ * are the chat POST paths in this module.
+ */
+export async function ensureCompatChatConnection(
   state: ChatRouteState,
   runtime: AgentRuntime,
   agentName: string,
@@ -4643,6 +4652,9 @@ async function ensureCompatChatConnection(
   });
 
   if (!ownerPrincipal) {
+    if (principal.kind === "service_gateway" && principal.sessionRole) {
+      await grantSessionUserWorldRole(runtime, worldId, userId);
+    }
     return { userId, roomId, worldId };
   }
 
@@ -4676,6 +4688,51 @@ async function ensureCompatChatConnection(
   return { userId, roomId, worldId };
 }
 
+/**
+ * Grant-on-first-contact USER world membership for an authenticated
+ * machine-session (paired-device) principal's minted external entity, so its
+ * turns resolve at least the session's boundary role through
+ * `checkSenderRole`/`resolveEntityRole` (which read `world.metadata.roles`).
+ *
+ * Bounded by construction: the grant is always exactly "USER" with audit
+ * source "session", and an existing USER-or-higher grant (e.g. a manual ADMIN
+ * grant by the owner) is never overwritten or downgraded.
+ *
+ * Revocation semantics: the grant itself is durable world metadata, but acting
+ * as the granted entity requires re-entering through the HTTP session boundary
+ * on every turn — the entity id is derived from the session's auth-identity id,
+ * and `resolveTrustedApiPrincipal` only attaches `sessionRole` when the store
+ * resolves a live session. A revoked or expired session fails boundary auth
+ * (401) or classifies as a plain external principal, which mints a DIFFERENT
+ * entity that resolves GUEST; unpairing the device (deleting the identity)
+ * removes the only path to the granted entity entirely. New turns therefore
+ * never retain elevated attribution after revocation.
+ */
+async function grantSessionUserWorldRole(
+  runtime: AgentRuntime,
+  worldId: UUID,
+  entityId: UUID,
+): Promise<void> {
+  const world = await runtime.getWorld(worldId);
+  if (!world) {
+    // ensureConnection creates the world before this runs; a missing world
+    // fails closed (the entity stays GUEST) rather than failing the turn.
+    runtime.logger.warn(
+      { src: "eliza-api", worldId, entityId },
+      "[eliza-api] machine-session USER grant skipped: web-chat world missing",
+    );
+    return;
+  }
+  world.metadata ??= {};
+  const metadata = world.metadata as RolesWorldMetadata;
+  if (hasAtLeastRole(getEntityRole(metadata, entityId), "USER")) {
+    return;
+  }
+  if (recordRoleGrant(metadata, entityId, "USER", "session")) {
+    await runtime.updateWorld(world);
+  }
+}
+
 function ensureAdminEntityIdForChat(state: ChatRouteState): UUID {
   return resolveChatAdminEntityId(state);
 }
@@ -4700,12 +4757,32 @@ export function resolveTrustedApiPrincipal(
     };
   }
   if (authorization?.ok) {
+    const principalId =
+      authorization.identityId ??
+      authorization.principal ??
+      "authenticated-external-session";
+    // A DB-backed machine session (device pairing) authenticates with boundary
+    // role USER (roleForIdentityKind: "machine" -> USER). Carry that boundary
+    // role on the still-external principal so chat ingress can grant the minted
+    // entity USER world membership — clamped to the literal "USER" tier, so
+    // this seam can never mint ADMIN/OWNER attribution. Restricted to callers
+    // with an `identityId` (a revocable, store-backed session identity):
+    // principal-only token authorities and sub-USER boundary roles stay plain
+    // external principals.
+    if (
+      authorization.identityId &&
+      hasAtLeastRole(authorization.role, "USER")
+    ) {
+      return {
+        kind: "service_gateway",
+        principalId,
+        sessionRole: "USER",
+        sessionIdentityId: authorization.identityId,
+      };
+    }
     return {
       kind: "service_gateway",
-      principalId:
-        authorization.identityId ??
-        authorization.principal ??
-        "authenticated-external-session",
+      principalId,
     };
   }
   if (isAuthorized(req)) {
@@ -5576,7 +5653,10 @@ export async function handleChatRoutes(
       const messagePrincipal: TrustedApiPrincipal =
         trustedApiPrincipal.kind === "service_gateway"
           ? {
-              kind: "service_gateway",
+              // Keep sessionRole/sessionIdentityId: the per-user surrogate is
+              // still a turn of the same authenticated session, and its minted
+              // entity stays scoped under the session's principal id.
+              ...trustedApiPrincipal,
               principalId: `${trustedApiPrincipal.principalId}:${userId}`,
             }
           : trustedApiPrincipal;

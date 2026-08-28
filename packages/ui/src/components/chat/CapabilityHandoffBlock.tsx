@@ -13,6 +13,7 @@ import {
 } from "../../capability-handoff";
 import { dispatchNavigateViewRequest } from "../../events";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 
 export function CapabilityHandoffBlock({
   request,
@@ -47,41 +48,43 @@ export function CapabilityHandoffBlock({
   }, [inContainedCloudRouter, opening, request]);
 
   return (
-    <section
+    <Card
+      asChild
+      variant="insetPadded"
+      stack="compact"
       aria-labelledby={`capability-handoff-${request.capabilityId}`}
-      className="rounded-sm border border-accent/30 bg-accent/5 p-3 text-sm"
       data-testid="capability-handoff"
     >
-      <div
-        className="mb-1 font-medium"
-        id={`capability-handoff-${request.capabilityId}`}
-      >
-        Set up {request.label}
-      </div>
-      <div className="mb-2 whitespace-pre-wrap text-muted">
-        {request.reason}
-      </div>
-      <Button
-        aria-busy={opening}
-        disabled={opening}
-        type="button"
-        size="sm"
-        onClick={beginSetup}
-      >
-        {opening ? "Opening…" : request.cta.label}
-      </Button>
-      {navigationFailed ? (
-        <div className="mt-2 text-xs text-danger" role="alert">
-          Setup can’t open inside this app yet. Use Eliza on the web and try
-          again.
+      <section>
+        <div
+          className="font-medium"
+          id={`capability-handoff-${request.capabilityId}`}
+        >
+          Set up {request.label}
         </div>
-      ) : null}
-      {request.continuation?.originalIntent ? (
-        <div className="mt-2 text-xs text-muted">
-          I’ll put your request back in the composer for review when setup is
-          done.
-        </div>
-      ) : null}
-    </section>
+        <div className="whitespace-pre-wrap text-muted">{request.reason}</div>
+        <Button
+          aria-busy={opening}
+          disabled={opening}
+          type="button"
+          size="sm"
+          onClick={beginSetup}
+        >
+          {opening ? "Opening…" : request.cta.label}
+        </Button>
+        {navigationFailed ? (
+          <div className="text-xs text-danger" role="alert">
+            Setup can’t open inside this app yet. Use Eliza on the web and try
+            again.
+          </div>
+        ) : null}
+        {request.continuation?.originalIntent ? (
+          <div className="text-xs text-muted">
+            I’ll put your request back in the composer for review when setup is
+            done.
+          </div>
+        ) : null}
+      </section>
+    </Card>
   );
 }

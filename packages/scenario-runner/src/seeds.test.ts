@@ -854,6 +854,58 @@ describe("scenario memory seeds", () => {
     }
   }, 120_000);
 
+  it("binds agent-message seeds to the runtime agent instead of a spoofable display name", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "ScenarioAgent",
+    });
+    try {
+      const roomId = stringToUuid("scenario-agent-message-room");
+      const ownerId = stringToUuid("scenario-agent-message-owner");
+      await harness.runtime.ensureConnection({
+        entityId: ownerId,
+        roomId,
+        worldId: stringToUuid("scenario-agent-message-world"),
+        userName: "Scenario owner",
+        source: "scenario-runner",
+        channelId: roomId,
+        type: "GROUP",
+      });
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "groupchat.behavior.scene-sanction.listen-before-advice",
+        now: "2026-07-06T14:00:00.000Z",
+        primaryRoomId: roomId,
+        primaryUserId: ownerId,
+        actionsCalled: [],
+      } as ScenarioContext;
+
+      const result = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "agent-message",
+          text: "You should send a follow-up email.",
+          messageId: "agent-advice",
+        },
+      } satisfies ScenarioSeedStep);
+
+      expect(result).toBeUndefined();
+      const [memory] = await harness.runtime.getMemories({
+        roomId,
+        tableName: "messages",
+        count: 1,
+      });
+      expect(memory?.entityId).toBe(harness.runtime.agentId);
+      expect(memory?.agentId).toBe(harness.runtime.agentId);
+      expect(memory?.metadata).toMatchObject({
+        kind: "agent-message",
+        entityName: "ScenarioAgent",
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
   it("maps appointment and scheduled-push-ladder seeds into calendar and scheduled-task state", async () => {
     const harness = await createRealTestRuntime({
       withLLM: false,

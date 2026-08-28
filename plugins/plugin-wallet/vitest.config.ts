@@ -77,6 +77,13 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/shared\/elizacloud$/,
+        replacement: path.resolve(
+          rootDir,
+          "../../packages/shared/src/elizacloud/index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/shared$/,
         replacement: path.resolve(
           rootDir,

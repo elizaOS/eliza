@@ -4085,6 +4085,7 @@
   "settings.sections.aimodel.desc": "Nhà cung cấp và cài đặt model",
   "settings.sections.appearance.desc": "Gói nội dung, avatar VRM, hình nền và giao diện",
   "settings.sections.appearance.label": "Giao diện",
+  "settings.sections.general.label": "Chung",
   "settings.sections.apps.basedOnLabel": "Dựa trên app có sẵn (tuỳ chọn)",
   "settings.sections.apps.basedOnNone": "Bắt đầu từ đầu",
   "settings.sections.apps.col.actions": "Thao tác",

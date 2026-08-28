@@ -200,12 +200,14 @@
       "plugins/plugin-app-control",
       "plugins/plugin-blocker",
       "plugins/plugin-calendar",
+      "plugins/plugin-computeruse",
       "plugins/plugin-documents",
       "plugins/plugin-finances",
       "plugins/plugin-form",
       "plugins/plugin-goals",
       "plugins/plugin-health",
       "plugins/plugin-inbox",
+      "plugins/plugin-linear",
       "plugins/plugin-messages",
       "plugins/plugin-native-settings",
       "plugins/plugin-personal-assistant",
@@ -228,6 +230,11 @@
     "file": "scripts/lifeops/hitl-credential-dashboard.mjs",
     "tokens": ["plugins/plugin-github"],
     "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
+  },
+  {
+    "file": "scripts/portable-linux-fused-inference.mjs",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "the portable fused-inference builder is intentionally coupled to the local-inference native source tree and its tracked ABI verification files"
   },
   {
     "file": "scripts/training-harvest/build-manifest.mjs",

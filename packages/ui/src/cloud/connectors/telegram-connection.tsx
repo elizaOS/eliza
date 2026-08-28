@@ -8,7 +8,7 @@
 
 "use client";
 
-import { Bot, ExternalLink, Loader2, MessageSquare } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -20,9 +20,13 @@ import {
   ConnectionIdentityPanel,
   ConnectionInstructions,
 } from "../../cloud-ui/components/connection-card";
+import { TelegramIcon } from "../../cloud-ui/components/icons";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { CodeBlock } from "../../components/ui/code-block";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
@@ -156,7 +160,9 @@ export function TelegramConnection() {
     return (
       <ConnectionCard
         name={t("cloud.telegram.cardName", { defaultValue: "Telegram Bot" })}
-        icon={<MessageSquare className="text-txt" />}
+        icon={
+          <TelegramIcon className="text-[#229ED9]" data-brand-icon="telegram" />
+        }
         description={t("cloud.telegram.cardDescription", {
           defaultValue: "Connect your Telegram bot for AI-powered automation",
         })}
@@ -168,7 +174,9 @@ export function TelegramConnection() {
   return (
     <ConnectionCard
       name={t("cloud.telegram.cardName", { defaultValue: "Telegram Bot" })}
-      icon={<MessageSquare className="text-txt" />}
+      icon={
+        <TelegramIcon className="text-[#229ED9]" data-brand-icon="telegram" />
+      }
       description={t("cloud.telegram.cardDescription", {
         defaultValue: "Connect your Telegram bot for AI-powered automation",
       })}
@@ -190,8 +198,8 @@ export function TelegramConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Bot className="size-6 text-txt-strong" />}
-            iconClassName="bg-accent"
+            icon={<TelegramIcon className="size-6 text-white" />}
+            iconClassName="bg-[#229ED9]"
             title={`@${status?.botUsername}`}
             subtitle={`Bot ID: ${status?.botId}`}
             actions={
@@ -273,20 +281,21 @@ export function TelegramConnection() {
                 {t("cloud.telegram.instructSearch", {
                   defaultValue: "Open Telegram and search for",
                 })}{" "}
-                <a
+                <TextLink
                   href="https://t.me/BotFather"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-accent hover:underline"
                 >
                   @BotFather
-                </a>
+                </TextLink>
               </li>
               <li>
                 {t("cloud.telegram.instructSendBefore", {
                   defaultValue: "Send",
                 })}{" "}
-                <code className="bg-background px-1 rounded-sm">/newbot</code>{" "}
+                <CodeBlock variant="inline" className="px-1">
+                  /newbot
+                </CodeBlock>{" "}
                 {t("cloud.telegram.instructSendAfter", {
                   defaultValue: "command",
                 })}
@@ -344,7 +353,7 @@ export function TelegramConnection() {
             </p>
           </div>
 
-          <div className="p-4 bg-muted rounded-sm">
+          <Card variant="flatPadded">
             <h4 className="font-medium mb-2">
               {t("cloud.telegram.whatYouCanDo", {
                 defaultValue: "What you can do with Telegram automation:",
@@ -372,7 +381,7 @@ export function TelegramConnection() {
                 })}
               </li>
             </ul>
-          </div>
+          </Card>
 
           <Button
             onClick={handleConnect}
@@ -388,7 +397,7 @@ export function TelegramConnection() {
               </>
             ) : (
               <>
-                <MessageSquare className="size-4 mr-2" />
+                <TelegramIcon className="mr-2 size-4" aria-hidden />
                 {t("cloud.telegram.connectButton", {
                   defaultValue: "Connect Telegram Bot",
                 })}

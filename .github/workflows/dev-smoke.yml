@@ -51,7 +51,7 @@ jobs:
       config: dev-smoke
 
   dev-smoke:
-    name: bun run dev onboarding chat
+    name: default staging + local onboarding
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.dev_smoke == 'true'
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -105,8 +105,11 @@ jobs:
       - name: Build @elizaos/core browser bundle
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
 
-      - name: Run bun dev onboarding chat smoke
+      - name: Run default staging dev smoke
         run: bun run --cwd packages/app test:dev-smoke
+
+      - name: Run explicit local onboarding smoke
+        run: bun run --cwd packages/app test:dev-smoke:local
 
       # The smoke has historically failed inside gotoChatComposer (the /chat
       # composer never paints) with no captured renderer state, making the

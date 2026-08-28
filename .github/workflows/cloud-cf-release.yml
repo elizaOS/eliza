@@ -21,6 +21,21 @@ on:
         required: false
         type: boolean
         default: false
+      production_binding_only_recovery:
+        description: Re-run the trusted production Hyperdrive recovery audit inside the mutation job
+        required: false
+        type: boolean
+        default: false
+      certified_production_base_sha:
+        description: Exact currently served base admitted by the caller
+        required: false
+        type: string
+        default: ""
+      certified_recovery_policy_sha:
+        description: Exact certified develop policy SHA admitted by the caller
+        required: false
+        type: string
+        default: ""
     outputs:
       superseded:
         description: >-
@@ -34,8 +49,121 @@ permissions:
   actions: read
 
 jobs:
+  resolve-pages-environment-config:
+    name: Preflight Pages environment configuration
+    runs-on: ubuntu-latest
+    # Map an invalid callable input to the non-production environment only so
+    # GitHub cannot create or enter an arbitrary environment before the shell
+    # rejects it. The target value itself is never normalized.
+    environment: ${{ inputs.target_environment == 'production' && 'production' || 'staging' }}
+    outputs:
+      telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
+      telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
+      whatsapp_phone_number: ${{ steps.whatsapp.outputs.phone_number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Validate Telegram public identity preflight
+        id: telegram
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          # GitHub Environment variables cannot overwrite values already
+          # resolved through the vars context. Treat this repository pair as
+          # staging-only input; production ignores it and uses source truth.
+          STAGING_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          STAGING_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            printf '%s\n' "::error::$1" >&2
+            exit 1
+          }
+
+          valid_bot_id() {
+            local candidate="$1"
+            [[ "$candidate" =~ ^[1-9][0-9]{0,15}$ ]] || return 1
+            (( 10#$candidate <= 4503599627370495 ))
+          }
+
+          case "$TARGET_ENVIRONMENT" in
+            staging|production) ;;
+            *) fail "target_environment must be exactly staging or production" ;;
+          esac
+
+          canonical_source="packages/homepage/src/lib/contact.ts"
+          canonical_bot_id="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_ID = "([^"]+)";$/\1/p' "$canonical_source")"
+          canonical_bot_username="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_USERNAME = "([^"]+)";$/\1/p' "$canonical_source")"
+          valid_bot_id "$canonical_bot_id" || \
+            fail "The homepage canonical Telegram bot ID is missing or invalid"
+          [[ "$canonical_bot_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+            fail "The homepage canonical Telegram username is missing or invalid"
+          canonical_bot_username_key="$(printf '%s' "$canonical_bot_username" | tr '[:upper:]' '[:lower:]')"
+          [[ "$canonical_bot_username_key" == *bot ]] || \
+            fail "The homepage canonical Telegram username must use the managed bot suffix"
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            resolved_bot_id="$canonical_bot_id"
+            resolved_bot_username="$canonical_bot_username"
+          else
+            if [ -z "$STAGING_TELEGRAM_BOT_ID" ] || \
+              [ -z "$STAGING_TELEGRAM_BOT_USERNAME" ]; then
+              fail "Repository VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME must configure the complete staging pair"
+            fi
+            valid_bot_id "$STAGING_TELEGRAM_BOT_ID" || \
+              fail "Repository VITE_TELEGRAM_BOT_ID must match the Telegram bot ID contract"
+            [[ "$STAGING_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+              fail "Repository VITE_TELEGRAM_BOT_USERNAME must match the Telegram username contract"
+            staging_bot_username_key="$(printf '%s' "$STAGING_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
+            [[ "$staging_bot_username_key" == *bot ]] || \
+              fail "Repository VITE_TELEGRAM_BOT_USERNAME must use the managed bot suffix"
+            if [ "$STAGING_TELEGRAM_BOT_ID" = "$canonical_bot_id" ] || \
+              [ "$staging_bot_username_key" = "$canonical_bot_username_key" ]; then
+              fail "Staging Telegram configuration must use an identity fully distinct from production"
+            fi
+            resolved_bot_id="$STAGING_TELEGRAM_BOT_ID"
+            resolved_bot_username="$STAGING_TELEGRAM_BOT_USERNAME"
+          fi
+
+          printf 'bot_id=%s\n' "$resolved_bot_id" >> "$GITHUB_OUTPUT"
+          printf 'bot_username=%s\n' "$resolved_bot_username" >> "$GITHUB_OUTPUT"
+          printf 'Validated Telegram public identity policy for %s.\n' \
+            "$TARGET_ENVIRONMENT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Resolve public WhatsApp configuration
+        id: whatsapp
+        env:
+          WHATSAPP_PUBLIC_ENABLED: ${{ vars.WHATSAPP_PUBLIC_ENABLED }}
+          WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
+        run: |
+          set -euo pipefail
+          enabled="$(printf '%s' "$WHATSAPP_PUBLIC_ENABLED" | tr '[:upper:]' '[:lower:]')"
+          case "$enabled" in
+            ""|0|false|no|off)
+              echo "phone_number=" >> "$GITHUB_OUTPUT"
+              ;;
+            1|true|yes|on)
+              [[ "$WHATSAPP_PHONE_NUMBER" =~ ^\+[1-9][0-9]{7,14}$ ]] || { echo "::error::VITE_WHATSAPP_PHONE_NUMBER must be an E.164 number when WHATSAPP_PUBLIC_ENABLED is true"; exit 1; }
+              case "$WHATSAPP_PHONE_NUMBER" in
+                +14155238886|+15551649988|+14159611510)
+                  echo "::error::The public WhatsApp CTA cannot use a shared sandbox, developer test, or unverified sender"
+                  exit 1
+                  ;;
+              esac
+              echo "phone_number=$WHATSAPP_PHONE_NUMBER" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::WHATSAPP_PUBLIC_ENABLED must be a boolean"
+              exit 1
+              ;;
+          esac
+
   migrate-db:
     name: Run Database Migrations
+    needs: resolve-pages-environment-config
+    if: ${{ !cancelled() && needs.resolve-pages-environment-config.result == 'success' }}
     # Hosted unconditionally: CI must never contend with production
     # agent-placement nodes for disk or CPU (#17881).
     runs-on: ubuntu-latest
@@ -47,7 +175,7 @@ jobs:
     # while cancel/force-cancel returned HTTP 500 (see #16705).
     # Release serialization is the caller job lock in cloud-cf-deploy.yml (#18092).
     environment: ${{ inputs.target_environment }}
-    timeout-minutes: 10
+    timeout-minutes: 25
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
       DATABASE_RESILIENCE_GATE_MODE: ${{ vars.DATABASE_RESILIENCE_GATE_MODE || 'off' }}
@@ -63,6 +191,9 @@ jobs:
       superseded: ${{ steps.source_guard.outputs.superseded }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -108,6 +239,8 @@ jobs:
           FORCE: ${{ inputs.force }}
           GITHUB_TOKEN: ${{ github.token }}
           NEUTRAL_WHEN_SUPERSEDED: ${{ inputs.target_environment == 'staging' && github.event_name == 'push' }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           # --neutral-when-superseded: this is the first mutation of the whole
@@ -120,6 +253,9 @@ jobs:
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
           if [ "$NEUTRAL_WHEN_SUPERSEDED" = "true" ]; then
             source_args+=(--neutral-when-superseded)
+          fi
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
           fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
@@ -310,6 +446,201 @@ jobs:
             exit "$gate_status"
           fi
 
+      - name: Validate database identity gate configuration
+        if: ${{ steps.source_guard.outputs.superseded != 'true' }}
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_ENVIRONMENT" != "production" ]; then
+            exit 0
+          fi
+          if [ "$DATABASE_IDENTITY_GATE_MODE" != "enforce" ]; then
+            echo "::error::Production migrations require DATABASE_IDENTITY_GATE_MODE=enforce"
+            exit 1
+          fi
+          for name in \
+            DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 \
+            DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256; do
+            value="${!name:-}"
+            if [[ ! "$value" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::$name must be a protected lowercase SHA-256 identity receipt"
+              exit 1
+            fi
+          done
+          echo "Production database identity enforcement is configured; receipt values were not printed."
+
+      - name: Re-admit bounded Hyperdrive recovery immediately before mutation
+        if: ${{ inputs.production_binding_only_recovery && steps.source_guard.outputs.superseded != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          BASE_SHA: ${{ inputs.certified_production_base_sha }}
+          POLICY_SHA: ${{ inputs.certified_recovery_policy_sha }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_ENVIRONMENT: production
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence_dir="$RUNNER_TEMP/production-binding-recovery-mutation-gate"
+          mkdir -m 0700 "$evidence_dir"
+          cleanup() {
+            set +e
+            if [ -d "$evidence_dir" ]; then
+              find "$evidence_dir" -type f -exec shred -u -- {} +
+              find "$evidence_dir" -depth -type d -empty -delete
+            fi
+          }
+          trap cleanup EXIT
+
+          [ "$TARGET_ENVIRONMENT" = "production" ] || {
+            echo "::error::Binding-only recovery mutation gate requires production."
+            exit 1
+          }
+          [ "$FORCE" = "false" ] || {
+            echo "::error::Binding-only recovery mutation gate forbids force."
+            exit 1
+          }
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ "$POLICY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::Binding-only recovery mutation gate requires exact base and policy SHAs."
+              exit 1
+            }
+          [ -n "$DATABASE_URL" ] && [ "$DATABASE_URL" = "$MIGRATION_DATABASE_URL" ] || {
+            echo "::error::Protected audit and migration database authorities differ."
+            exit 1
+          }
+          [ -n "$CLOUDFLARE_API_TOKEN" ] \
+            && [[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[0-9a-f]{32}$ ]] \
+            && [ "$DATABASE_IDENTITY_GATE_MODE" = "enforce" ] \
+            && [[ "$DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            && [[ "$DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+              echo "::error::Protected recovery authority settings are incomplete."
+              exit 1
+            }
+
+          git fetch --no-tags \
+            "https://github.com/${GITHUB_REPOSITORY}.git" \
+            develop:refs/remotes/origin/develop
+          git cat-file -e "${POLICY_SHA}^{commit}"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/develop || {
+            echo "::error::Certified recovery policy is no longer contained in develop."
+            exit 1
+          }
+          trusted_admission="$evidence_dir/trusted-production-hyperdrive-binding-admission.mjs"
+          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.mjs" \
+            > "$trusted_admission"
+          chmod 0500 "$trusted_admission"
+          bun "$trusted_admission" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --policy-sha "$POLICY_SHA" \
+            --base-sha "$BASE_SHA" \
+            --candidate-sha "$GITHUB_SHA"
+
+          health_file="$evidence_dir/production-health.json"
+          curl --fail --silent --show-error --location --retry 3 \
+            --header "Cache-Control: no-cache" \
+            --output "$health_file" \
+            "https://api.eliza.app/api/health?mutation_gate_run=${GITHUB_RUN_ID}"
+          jq -e --arg base "$BASE_SHA" \
+            '.status == "ok" and .environment == "production" and .commit == $base' \
+            "$health_file" >/dev/null || {
+              echo "::error::Served production base drifted before mutation."
+              exit 1
+            }
+
+          candidate_id="$(
+            bun -e '
+              const source = await Bun.file("packages/cloud/api/wrangler.toml").text();
+              const config = Bun.TOML.parse(source);
+              const bindings = config?.env?.production?.hyperdrive;
+              if (!Array.isArray(bindings) || bindings.length !== 1) process.exit(1);
+              const binding = bindings[0];
+              if (binding?.binding !== "HYPERDRIVE" || !/^[0-9a-f]{32}$/.test(binding?.id)) process.exit(1);
+              process.stdout.write(binding.id);
+            '
+          )"
+          echo "::add-mask::$candidate_id"
+          hyperdrive_file="$evidence_dir/hyperdrive.json"
+          curl --fail --silent --show-error --location --retry 3 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --output "$hyperdrive_file" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/hyperdrive/configs/${candidate_id}"
+          chmod 0600 "$hyperdrive_file"
+          bun "$trusted_admission" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --hyperdrive-json "$hyperdrive_file"
+          candidate_id=""
+
+          env -u GITHUB_STEP_SUMMARY \
+            bun packages/cloud/scripts/admin/preflight-database-identity.ts \
+            > "$evidence_dir/database-identity.stdout" \
+            2> "$evidence_dir/database-identity.stderr"
+          bun -e '
+            import { createRequire } from "node:module";
+            import { enforceTlsForRemote } from "./packages/cloud/shared/src/db/postgres-tls.ts";
+            import {
+              loadCanonicalMigrations,
+              validateAppliedMigrationLedger,
+            } from "./packages/cloud/scripts/admin/canonical-migration-ledger.ts";
+            const { Client } = createRequire(import.meta.url)("pg");
+            const databaseUrl = process.env.DATABASE_URL;
+            if (!databaseUrl) throw new Error("protected_database_url_missing");
+            const { url, ssl } = enforceTlsForRemote(databaseUrl);
+            const client = new Client({
+              application_name: "eliza-production-binding-recovery-ledger",
+              connectionString: url,
+              connectionTimeoutMillis: 8000,
+              options: "-c default_transaction_read_only=on",
+              query_timeout: 8000,
+              statement_timeout: 8000,
+              ...(ssl ? { ssl } : {}),
+            });
+            try {
+              await client.connect();
+              await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+              const migrations = await loadCanonicalMigrations();
+              const result = await client.query(
+                "SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id ASC",
+              );
+              const ledger = validateAppliedMigrationLedger(result.rows, migrations);
+              if (ledger.lastAppliedJournalIndex !== migrations.length - 1) {
+                throw new Error("production_migration_ledger_not_current");
+              }
+              await client.query("COMMIT");
+              process.stdout.write("Production migration ledger matches exact current main.\n");
+            } catch (error) {
+              await client.query("ROLLBACK").catch(() => {});
+              throw error;
+            } finally {
+              await client.end().catch(() => {});
+            }
+          ' > "$evidence_dir/migration-ledger.stdout" \
+            2> "$evidence_dir/migration-ledger.stderr"
+
+          bun run build:core > "$evidence_dir/build.stdout" 2> "$evidence_dir/build.stderr"
+          (
+            cd packages/cloud/api
+            bunx wrangler deploy --env production --dry-run \
+              --outdir "$evidence_dir/worker-bundle"
+          ) > "$evidence_dir/dry-run.stdout" 2> "$evidence_dir/dry-run.stderr"
+          node packages/cloud/scripts/canonical-deploy-source-guard.mjs \
+            --run-sha "$GITHUB_SHA" \
+            --canonical-ref refs/heads/main \
+            > "$evidence_dir/freshness.stdout" \
+            2> "$evidence_dir/freshness.stderr"
+          echo "Bounded Hyperdrive recovery re-admitted inside the mutation job."
+
       - name: Run migrations
         if: ${{ steps.source_guard.outputs.superseded != 'true' }}
         env:
@@ -324,6 +655,8 @@ jobs:
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
@@ -334,6 +667,9 @@ jobs:
           # can advance between workflow steps. Once this step is running, any
           # mismatch must fail immediately before the database mutation.
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -367,8 +703,8 @@ jobs:
     # Schema gate (#11208): the Worker talks to the database, so it only
     # deploys after migrate-db succeeded for this same commit. A failed or
     # cancelled migrate-db skips this job — fail-closed.
-    needs: migrate-db
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
+    needs: [resolve-pages-environment-config, migrate-db]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.resolve-pages-environment-config.result == 'success' && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -384,9 +720,9 @@ jobs:
           # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
           # a dir untouched for 90 min is a definitively-dead leak.
           # CONCURRENCY-SAFE: API, console, and app jobs within one release still
-          # materialize concurrently, and PR previews use independent groups. The
-          # age filter never deletes an actively-written checkout (its mtime stays
-          # fresh), and we also exclude this run's own dirs by name.
+          # materialize concurrently. The age filter never deletes an
+          # actively-written checkout (its mtime stays fresh), and we also
+          # exclude this run's own dirs by name.
           # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
           # same moment, so one sibling's rm -rf can race another's find into
           # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
@@ -691,6 +1027,19 @@ jobs:
           set -euo pipefail
           node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
 
+      - name: Verify Steward provider discovery before cutover
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          STEWARD_UPSTREAM_URL: https://steward-api-staging.up.railway.app
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+            --base-url "$STEWARD_UPSTREAM_URL" \
+            --environment "$DEPLOY_ENVIRONMENT" \
+            --surface upstream
+
       - name: Disable staging session exchange before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
@@ -699,9 +1048,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -1377,10 +1731,15 @@ jobs:
           WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.secrets_file }}
           CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           legacy_onboarding_secret_removed=false
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -1561,6 +1920,19 @@ jobs:
           echo "::error::API health did not serve the deployed commit ${expected_commit} for ${expected_environment}."
           exit 1
 
+      - name: Verify deployed API provider discovery
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          API_URL: https://api-staging.eliza.app
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+            --base-url "$API_URL" \
+            --environment "$DEPLOY_ENVIRONMENT" \
+            --surface proxy
+
       - name: Verify deployed mobile App Auth metadata
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -1659,7 +2031,7 @@ jobs:
           echo "::error::Authenticated staging realtime canary did not prove the deployed route"
           exit 1
 
-      - name: Activate and verify staging session exchange after deploy proof
+      - name: Activate and verify staging session exchange configuration after deploy proof
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
@@ -1721,14 +2093,24 @@ jobs:
           const [path, expectedCommit, expectedEnabled] = process.argv.slice(2);
           const body = JSON.parse(fs.readFileSync(path, "utf8"));
           const status = body.stagingSessionExchange;
-          const enabled = status?.enabled === true;
           const expected = expectedEnabled === "true";
+          const statusIsObject =
+            status !== null && typeof status === "object" && !Array.isArray(status);
+          const versionIsSupported =
+            statusIsObject && (status.version === null || status.version === "v1");
           if (
             body.commit !== expectedCommit ||
             body.environment !== "staging" ||
-            enabled !== expected ||
-            (expected && (status?.ready !== true || status?.version !== "v1")) ||
-            (!expected && status?.ready !== false)
+            !statusIsObject ||
+            typeof status.enabled !== "boolean" ||
+            status.enabled !== expected ||
+            typeof status.configured !== "boolean" ||
+            status.ready !== false ||
+            !versionIsSupported ||
+            (expected &&
+              (status.configured !== true || status.version !== "v1")) ||
+            (!expected &&
+              (status.configured !== false || status.version !== null))
           ) {
             process.exit(1);
           }
@@ -1736,7 +2118,7 @@ jobs:
             then
               rm -f "$tmp"
               rollback_needed=false
-              echo "Staging session exchange cutover matches the exact deployed commit and desired state."
+              echo "Staging session exchange configuration matches the exact deployed commit and desired state."
               exit 0
             fi
             rm -f "$tmp"
@@ -1769,64 +2151,6 @@ jobs:
   # ---------------------------------------------------------------------------
   # Pages build — one prepared workspace emits the host-aware frontend.
   # ---------------------------------------------------------------------------
-  resolve-pages-environment-config:
-    name: Resolve Pages environment configuration
-    needs: migrate-db
-    if: ${{ !cancelled() && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.target_environment }}
-    outputs:
-      telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
-      telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
-      whatsapp_phone_number: ${{ steps.whatsapp.outputs.phone_number }}
-    steps:
-      - name: Validate Telegram configuration
-        id: telegram
-        env:
-          TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
-          TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$TELEGRAM_BOT_ID" && -z "$TELEGRAM_BOT_USERNAME" ]]; then
-            TELEGRAM_BOT_ID=7684336618
-            TELEGRAM_BOT_USERNAME=Elizav2_Bot
-          elif [[ -z "$TELEGRAM_BOT_ID" || -z "$TELEGRAM_BOT_USERNAME" ]]; then
-            echo "::error::VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME must be configured together"
-            exit 1
-          fi
-          [[ "$TELEGRAM_BOT_ID" =~ ^[0-9]+$ ]] || { echo "::error::VITE_TELEGRAM_BOT_ID must be numeric"; exit 1; }
-          [[ "$TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]+$ ]] || { echo "::error::VITE_TELEGRAM_BOT_USERNAME must be a Telegram username without @"; exit 1; }
-          echo "bot_id=$TELEGRAM_BOT_ID" >> "$GITHUB_OUTPUT"
-          echo "bot_username=$TELEGRAM_BOT_USERNAME" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve public WhatsApp configuration
-        id: whatsapp
-        env:
-          WHATSAPP_PUBLIC_ENABLED: ${{ vars.WHATSAPP_PUBLIC_ENABLED }}
-          WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
-        run: |
-          set -euo pipefail
-          enabled="$(printf '%s' "$WHATSAPP_PUBLIC_ENABLED" | tr '[:upper:]' '[:lower:]')"
-          case "$enabled" in
-            ""|0|false|no|off)
-              echo "phone_number=" >> "$GITHUB_OUTPUT"
-              ;;
-            1|true|yes|on)
-              [[ "$WHATSAPP_PHONE_NUMBER" =~ ^\+[1-9][0-9]{7,14}$ ]] || { echo "::error::VITE_WHATSAPP_PHONE_NUMBER must be an E.164 number when WHATSAPP_PUBLIC_ENABLED is true"; exit 1; }
-              case "$WHATSAPP_PHONE_NUMBER" in
-                +14155238886|+15551649988|+14159611510)
-                  echo "::error::The public WhatsApp CTA cannot use a shared sandbox, developer test, or unverified sender"
-                  exit 1
-                  ;;
-              esac
-              echo "phone_number=$WHATSAPP_PHONE_NUMBER" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "::error::WHATSAPP_PUBLIC_ENABLED must be a boolean"
-              exit 1
-              ;;
-          esac
-
   build-pages:
     name: Build Pages artifacts
     needs: [migrate-db, resolve-pages-environment-config]
@@ -1845,25 +2169,6 @@ jobs:
       telegram_bot_username: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
       whatsapp_phone_number: ${{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}
     steps:
-      - name: Validate PR preview identity
-        if: github.event_name == 'pull_request'
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::Pull-request Pages branch requires a valid immutable PR number"
-            exit 1
-          fi
-          pages_branch="pr-${PR_NUMBER}"
-          case "$pages_branch" in
-            main|develop)
-              echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
-              exit 1
-              ;;
-          esac
-          echo "Pages artifacts are bound to trusted preview branch ${pages_branch}." >> "$GITHUB_STEP_SUMMARY"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Bind Pages artifacts to this producer attempt
@@ -1952,8 +2257,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     # Release gate (#11208/#18088): canonical Pages aliases wait for the matching
-    # API deployment; pull-request artifacts
-    # are consumed only by the separate trusted preview workflow.
+    # API deployment and the artifact built by this protected release.
     needs: [deploy-api, build-pages]
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
@@ -1978,9 +2282,9 @@ jobs:
           # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
           # a dir untouched for 90 min is a definitively-dead leak.
           # CONCURRENCY-SAFE: API, console, and app jobs within one release still
-          # materialize concurrently, and PR previews use independent groups. The
-          # age filter never deletes an actively-written checkout (its mtime stays
-          # fresh), and we also exclude this run's own dirs by name.
+          # materialize concurrently. The age filter never deletes an
+          # actively-written checkout (its mtime stays fresh), and we also
+          # exclude this run's own dirs by name.
           # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
           # same moment, so one sibling's rm -rf can race another's find into
           # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
@@ -2277,10 +2581,15 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" != "pull_request" ]; then
             source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+            if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+              source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+            fi
             if [ "$FORCE" = "true" ]; then
               source_args+=(--force)
             fi
@@ -2330,6 +2639,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         # Do NOT pass a positional `dist` argument: wrangler.toml already sets
         # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
         # ignore wrangler.toml — which silently drops the `functions/` upload.
@@ -2348,6 +2659,9 @@ jobs:
           trap cleanup_wrangler_output EXIT
           trap 'exit 1' HUP INT TERM
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -2488,6 +2802,12 @@ jobs:
             verify_exact_api_route "$served_url/api"
             verify_json_endpoint "$served_url/.well-known/openid-configuration" discovery
             verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks
+            if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+              node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+                --base-url "$served_url" \
+                --environment "$DEPLOY_ENVIRONMENT" \
+                --surface proxy
+            fi
             tenant_id="elizacloud"
             if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
               tenant_id="elizacloud-staging"
@@ -2532,10 +2852,9 @@ jobs:
   verify-routing:
     name: Verify ${{ inputs.target_environment }} routing
     needs: [deploy-api, deploy-app]
-    # Custom domains only exist for the real environments -- PR previews deploy to
-    # a preview branch alias, so skip them. Require both deploys to have landed
-    # (the beacon is served by the API Worker; both frontend domains by
-    # one Pages project), else there is nothing trustworthy to probe.
+    # Require both canonical deploys to have landed (the beacon is served by the
+    # API Worker; both frontend domains by one Pages project), else there is
+    # nothing trustworthy to probe. Retain the non-PR guard as defense in depth.
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.deploy-app.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

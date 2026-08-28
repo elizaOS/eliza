@@ -650,6 +650,9 @@ export default function StewardLoginSection() {
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [accountSwitchError, setAccountSwitchError] = useState<string | null>(
+    null,
+  );
   const [showPasskeyRecovery, setShowPasskeyRecovery] = useState(false);
   const [showPasskeyEnrollmentRecovery, setShowPasskeyEnrollmentRecovery] =
     useState(false);
@@ -962,6 +965,43 @@ export default function StewardLoginSection() {
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+    if (searchParams.get("switchAccount") !== "1") return;
+
+    setSessionRecoveryComplete(false);
+    setAccountSwitchError(null);
+    let cancelled = false;
+    void import("../../../sso-bridge/sso-bridge")
+      .then(({ prepareSsoAccountSwitch }) => prepareSsoAccountSwitch())
+      .then(() => {
+        if (cancelled) return;
+        const next = new URLSearchParams(searchParams);
+        next.delete("switchAccount");
+        navigate(
+          {
+            pathname,
+            search: next.size > 0 ? `?${next.toString()}` : "",
+          },
+          { replace: true },
+        );
+      })
+      .catch((accountSwitchError) => {
+        if (cancelled) return;
+        setAccountSwitchError(
+          getErrorMessage(
+            accountSwitchError,
+            "Could not end the previous Eliza Cloud session",
+          ),
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, pathname, searchParams]);
+
+  useEffect(() => {
+    if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+    if (searchParams.get("switchAccount") === "1") return;
     if (searchParams.get("code") || searchParams.get("error")) {
       setSessionRecoveryComplete(true);
       return;
@@ -1675,7 +1715,12 @@ export default function StewardLoginSection() {
   );
 
   useEffect(() => {
-    const requestedProvider = searchParams.get("nativeProvider");
+    // React Router does not observe raw history.replaceState calls. Read the
+    // live address bar so Strict Mode's second effect setup sees the marker
+    // removed by the first setup instead of launching a competing PKCE flow.
+    const requestedProvider = new URLSearchParams(window.location.search).get(
+      "nativeProvider",
+    );
     if (!requestedProvider || !providersLoaded) return;
 
     // Consume the marker before starting any async work so reloads, provider
@@ -1694,7 +1739,7 @@ export default function StewardLoginSection() {
     );
     if (!provider) return;
     void handleOAuth(provider);
-  }, [enabledOAuthProviders, handleOAuth, providersLoaded, searchParams]);
+  }, [enabledOAuthProviders, handleOAuth, providersLoaded]);
 
   function handleTelegramError(message: string) {
     setError(message);
@@ -2246,6 +2291,39 @@ export default function StewardLoginSection() {
           </Button>
         </div>
       </div>
+    );
+  }
+
+  if (accountSwitchError) {
+    return (
+      <ReservedLoginFrame>
+        <div
+          className="flex flex-col items-center gap-4 text-center"
+          role="alert"
+        >
+          <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertCircle className="size-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-txt-strong">
+              {t("cloud.login.accountSwitch.title", {
+                defaultValue: "Couldn't switch accounts",
+              })}
+            </p>
+            <p className="text-sm text-muted">{accountSwitchError}</p>
+          </div>
+          <Button
+            variant="default"
+            type="button"
+            className="hosted-signin-focus-emphasis w-full"
+            onClick={() => window.location.reload()}
+          >
+            {t("cloud.login.accountSwitch.retry", {
+              defaultValue: "Try again",
+            })}
+          </Button>
+        </div>
+      </ReservedLoginFrame>
     );
   }
 

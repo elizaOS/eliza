@@ -35,8 +35,8 @@ import {
   emitViewRuntimeTelemetry,
   installViewRuntimeTelemetryRing,
 } from "../../view-runtime-telemetry";
-import { Button } from "../ui/button";
 import { ErrorBoundary } from "../ui/error-boundary";
+import { ViewErrorState } from "./ViewStatusStates";
 
 export interface ViewErrorBoundaryProps {
   viewId: string;
@@ -68,34 +68,14 @@ function DefaultViewErrorFallback({
     <div
       data-testid="view-error-boundary-fallback"
       data-view-id={viewId}
-      className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
+      className="contents"
     >
-      <p className="text-sm font-semibold text-destructive">
-        This view ran into a problem
-      </p>
-      <p className="max-w-sm break-words font-mono text-xs text-muted opacity-70">
-        {error.message}
-      </p>
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          size="compact"
-          variant="outline"
-          onClick={onRetry}
-          data-testid="view-error-retry"
-        >
-          Retry
-        </Button>
-        <Button
-          type="button"
-          size="compact"
-          variant="ghostMuted"
-          onClick={goToLauncher}
-          data-testid="view-error-back"
-        >
-          Back to launcher
-        </Button>
-      </div>
+      <ViewErrorState
+        viewId={viewId}
+        error={error}
+        onRetry={onRetry}
+        onBack={goToLauncher}
+      />
     </div>
   );
 }

@@ -336,6 +336,7 @@ export async function previewPersonalDedicatedSelection(
       existing.activation_backup_chain,
     );
     if (
+      candidates.length !== existing.candidate_count ||
       currentFingerprint !== existing.inventory_fingerprint ||
       personalDedicatedStateDisposition(params.organizationId, retained.id, backups) !==
         existing.state_disposition ||
@@ -345,6 +346,18 @@ export async function previewPersonalDedicatedSelection(
       throw selectionError(
         "PERSONAL_DEDICATED_SELECTION_INVENTORY_CHANGED",
         "The selected Dedicated state provenance changed after review",
+        params,
+      );
+    }
+    const activeJob = await findActiveCandidateLifecycleJob(
+      dbWrite,
+      params.organizationId,
+      candidates.map((candidate) => candidate.id),
+    );
+    if (activeJob) {
+      throw selectionError(
+        "PERSONAL_DEDICATED_SELECTION_ACTIVE_JOB",
+        "The reviewed Dedicated inventory has active lifecycle work",
         params,
       );
     }
@@ -638,14 +651,23 @@ export async function executePersonalDedicatedSelection(
     });
   } catch (error) {
     // error-policy:J1 a lost commit acknowledgement is classified by a fresh
-    // exact receipt read; no cleanup is needed because no external work ran.
+    // full-inventory replay, not by receipt presence alone. No cleanup is
+    // needed because no external work ran.
     if (committed) {
-      const durable = await findSelection(params);
-      if (
-        durable?.dedicated_agent_id === params.retainedAgentId &&
-        durable.inventory_fingerprint === params.expectedInventoryFingerprint
-      ) {
-        return { ...committed, alreadySelected: true };
+      try {
+        const durable = await previewPersonalDedicatedSelection(params);
+        if (
+          durable.alreadySelected &&
+          durable.retainedAgentId === params.retainedAgentId &&
+          durable.inventoryFingerprint === params.expectedInventoryFingerprint &&
+          durable.stateDisposition === params.expectedStateDisposition &&
+          durable.candidateCount === committed.candidateCount
+        ) {
+          return durable;
+        }
+      } catch {
+        // Preserve the original ambiguous boundary rejection when fresh
+        // inventory authority cannot prove the exact committed decision.
       }
     }
     throw error;

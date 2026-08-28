@@ -14,7 +14,11 @@ import { remoteHostsRepository } from "@/db/repositories/remote-hosts";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { isRemoteControlIdentifier } from "../validation";
+import { enrollManagedNetwork, managedNetworkConfig } from "../managed-network";
+import {
+  isRemoteConnectionMode,
+  isRemoteControlIdentifier,
+} from "../validation";
 
 const app = new Hono<AppEnv>();
 const REMOTE_HOST_ONLINE_WINDOW_MS = 15_000;
@@ -42,11 +46,13 @@ app.get("/", async (c) => {
           status:
             host.status === "revoked"
               ? "revoked"
-              : host.last_seen_at &&
-                  Date.now() - host.last_seen_at.getTime() <=
-                    REMOTE_HOST_ONLINE_WINDOW_MS
-                ? "active"
-                : "offline",
+              : host.status === "pending"
+                ? "pending"
+                : host.last_seen_at &&
+                    Date.now() - host.last_seen_at.getTime() <=
+                      REMOTE_HOST_ONLINE_WINDOW_MS
+                  ? "active"
+                  : "offline",
           lastSeenAt: host.last_seen_at,
           createdAt: host.created_at,
           revokedAt: host.revoked_at,
@@ -80,6 +86,16 @@ app.post("/", async (c) => {
     }
     const body = value as Record<string, unknown>;
     const connectionMode = body.connectionMode ?? "relay";
+    if (
+      body.managedNetwork !== undefined &&
+      typeof body.managedNetwork !== "boolean"
+    ) {
+      return c.json(
+        { success: false, error: "Managed network must be a boolean" },
+        400,
+      );
+    }
+    const managedNetworkRequested = body.managedNetwork === true;
     const recoveryHostId =
       typeof body.recoveryHostId === "string" ? body.recoveryHostId.trim() : "";
     if (recoveryHostId && !isRemotePairingUuid(recoveryHostId)) {
@@ -87,6 +103,44 @@ app.post("/", async (c) => {
         { success: false, error: "Recovery host id must be a UUID" },
         400,
       );
+    }
+    if (recoveryHostId && managedNetworkRequested) {
+      return c.json(
+        {
+          success: false,
+          error:
+            "Recover the host credential first; managed-network enrollment is one-use.",
+        },
+        409,
+      );
+    }
+    let networkConfig = null;
+    if (managedNetworkRequested) {
+      try {
+        networkConfig = managedNetworkConfig(
+          c.env as unknown as Record<string, unknown>,
+        );
+      } catch (cause) {
+        return c.json(
+          {
+            success: false,
+            error:
+              cause instanceof Error
+                ? cause.message
+                : "Managed network is unavailable",
+          },
+          503,
+        );
+      }
+      if (!networkConfig) {
+        return c.json(
+          {
+            success: false,
+            error: "Managed-network enrollment is not configured.",
+          },
+          503,
+        );
+      }
     }
     const hostId = recoveryHostId || crypto.randomUUID();
     const identity = {
@@ -103,7 +157,7 @@ app.post("/", async (c) => {
     };
     if (
       !isRemoteControlIdentifier(body.deviceId) ||
-      !isRemoteControlIdentifier(connectionMode) ||
+      !isRemoteConnectionMode(connectionMode) ||
       !isRemoteTargetPublicIdentity(identity)
     ) {
       return c.json(
@@ -122,7 +176,7 @@ app.post("/", async (c) => {
           deviceId: body.deviceId as string,
           displayName: identity.displayName,
           platform: identity.platform,
-          connectionMode: connectionMode as string,
+          connectionMode,
           runtimeKeyId: identity.keyId,
           signingPublicJwk: identity.signingPublicKeyJwk,
           encryptionPublicJwk: identity.encryptionPublicKeyJwk,
@@ -140,7 +194,7 @@ app.post("/", async (c) => {
           signing_public_jwk: identity.signingPublicKeyJwk,
           encryption_public_jwk: identity.encryptionPublicKeyJwk,
           host_token_hash: hostTokenHash,
-          status: "active",
+          status: managedNetworkRequested ? "pending" : "active",
         });
     if (result.kind === "conflict") {
       return c.json(
@@ -166,6 +220,40 @@ app.post("/", async (c) => {
         409,
       );
     }
+    let managedNetworkEnrollment: Awaited<
+      ReturnType<typeof enrollManagedNetwork>
+    > | null = null;
+    const responseHost = result.host;
+    if (result.kind === "created" && networkConfig) {
+      try {
+        managedNetworkEnrollment = await enrollManagedNetwork({
+          hostId: result.host.id,
+          organizationId: user.organization_id,
+          userId: user.id,
+          config: networkConfig,
+          repository: remoteHostsRepository,
+        });
+      } catch (cause) {
+        // Managed hosts begin non-authoritative. Even if this compensation
+        // write fails, the pending bearer cannot authenticate or reach relay
+        // authority. A successful revoke retains Headscale metadata for the
+        // retry-safe cleanup endpoint.
+        try {
+          await remoteHostsRepository.revoke(
+            result.host.id,
+            user.organization_id,
+            user.id,
+          );
+        } catch (revokeCause) {
+          throw new AggregateError(
+            [cause, revokeCause],
+            "Managed-network enrollment failed; host revocation is pending retry.",
+            { cause },
+          );
+        }
+        throw cause;
+      }
+    }
     c.header("Cache-Control", "no-store");
     return c.json(
       {
@@ -173,10 +261,14 @@ app.post("/", async (c) => {
         data: {
           hostId: result.host.id,
           hostToken: token,
-          runtimeKeyId: result.host.runtime_key_id,
-          status: result.host.status,
-          createdAt: result.host.created_at,
+          runtimeKeyId: responseHost.runtime_key_id,
+          // Managed enrollment remains non-authoritative until the native
+          // client joins Headscale and redeems the host-scoped activation
+          // endpoint. Non-managed relay enrollment is active immediately.
+          status: managedNetworkEnrollment ? "pending" : responseHost.status,
+          createdAt: responseHost.created_at,
           recovered: result.kind === "recovered",
+          managedNetworkEnrollment,
         },
       },
       result.kind === "recovered" ? 200 : 201,

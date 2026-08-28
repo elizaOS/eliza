@@ -220,6 +220,7 @@ Representative examples:
   deployment branch/tag policy, and adding any credential are owner-only
   actions taken in the GitHub UI with authorized confirmation at action time.
   No automation in this repository creates them.
+
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret
@@ -285,14 +286,15 @@ Representative examples:
   The dispatch choice and selected GitHub Environment use the same exact name;
   Railway service names are separate targets:
 
-  | Dispatch / GitHub Environment | Source branch | Railway service |
-  | --- | --- | --- |
-  | `staging` | `develop` | `gateway-webhook-stg` |
-  | `production` | `main` | `gateway-webhook` |
+  | Dispatch / GitHub Environment | Source branch | Railway service       |
+  | ----------------------------- | ------------- | --------------------- |
+  | `staging`                     | `develop`     | `gateway-webhook-stg` |
+  | `production`                  | `main`        | `gateway-webhook`     |
 
   The pinned Railway CLI is invoked without a relative path so its explicit
   project selector archives the absolute current repository root. Passing `.`
   with Railway CLI v5.38.0 fails its pre-upload archive-prefix check.
+
 - `voice-code-bench.yml` retains the bounded real-ASR benchmark.
 
 These workflows use `workflow_dispatch` and never run for pull requests.
@@ -309,6 +311,18 @@ directories. Keep that source admission synchronized with package manifests
 through `cloud-release-dependency-trigger-workflow.test.ts`; otherwise a
 source-form package can change an artifact without creating a release
 candidate.
+
+The staging path of `cloud-cf-release.yml` uses the
+[anonymous Steward provider-discovery verifier](../../packages/cloud/scripts/verify-steward-provider-discovery.mjs)
+to fail closed at three boundaries: the canonical Steward upstream before
+session-exchange cutover, the deployed API after exact-source health verification
+and before Pages deployment, and both staging custom-domain Pages aliases during
+frontend-freshness verification. Proxy `GET` and `HEAD` must return HTTP 200,
+a JSON media type, and `x-eliza-steward-path: thin`; `GET` also validates the
+bounded provider document. These probes require no sign-in credentials and
+report only sanitized outcomes, never response bodies or header values.
+Production does not run these gates. They detect broken login discovery;
+restoring the upstream Railway service remains a separate authorized operation.
 
 Production Cloud admission is also tree-bound to staging. A staging release
 whose run SHA the `develop` head has fast-forwarded past ends neutrally before
@@ -327,11 +341,34 @@ reachable. The artifact id, GitHub digest, owning run, payload, current workflow
 bytes, and expiry are all checked. Different merge commits are accepted only
 when their root trees are byte-identical; `force` never bypasses this gate.
 
+Protected staging releases also preserve monotonic forward progress during
+sustained `develop` merge traffic. If a release was current when admitted and
+`develop` advances before a later mutation boundary, the source guard may
+continue only after proving both ancestry edges: the currently served staging
+commit is an ancestor of the release SHA, and the release SHA is an ancestor of
+the new `develop` head. Missing served identity, divergence, rollback, and
+unverifiable ancestry still fail closed. Production never enables this mode.
+
 Cloudflare application deploys require Workers and Pages write access. The
 Terraform domain workflow additionally requires zone-scoped DNS write and
 `SSL and Certificates Write` access because it manages advanced wildcard
 certificate packs. Prefer separate environment-scoped deploy and DNS/TLS
 tokens so staging automation cannot mutate production zones.
+
+The Cloud release resolves the public Telegram bot ID and username before
+database migration or API deployment. Staging consumes the complete
+repository-scoped `VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` pair
+and requires both components to differ from production. Production ignores
+that repository pair and derives its exact canonical identity from the checked
+out `packages/homepage/src/lib/contact.ts`. Missing, partial, malformed,
+out-of-range, or cross-environment staging values stop the release without
+printing either value. Do not expect same-named GitHub Environment variables
+to override the repository pair: GitHub makes Environment variables available
+after values in the `vars` context have already been resolved. Implicit Vite
+fallback use remains local/direct-only; protected production explicitly selects
+and validates the canonical source constants. Pull requests are validated by
+`pr-static-smoke.yml`; there is no credentialed or artifact-only Pages preview
+path in `cloud-cf-deploy.yml`.
 
 Cloudflare secret values are write-only and cannot be reconstructed into
 GitHub. Deploy workflows therefore publish shared Worker/control-plane secrets

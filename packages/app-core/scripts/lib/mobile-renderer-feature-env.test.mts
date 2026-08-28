@@ -20,7 +20,15 @@ describe("resolveMobileRendererFeatureEnv", () => {
     }
   });
 
-  it("enables the realtime voice client for the LP3 cloud-debug lane", () => {
+  it("enables realtime without forced eligibility for both Android Cloud lanes", () => {
+    for (const platform of ["android-cloud", "android-cloud-debug"]) {
+      expect(resolveMobileRendererFeatureEnv({ platform })).toEqual({
+        VITE_VOICE_REALTIME_WS: "1",
+        VITE_VOICE_REALTIME_SELF_HOSTED: "0",
+        VITE_VOICE_REALTIME_FORCE: "0",
+      });
+    }
+
     expect(
       resolveMobileRendererFeatureEnv({
         platform: "android-cloud-debug",
@@ -28,17 +36,54 @@ describe("resolveMobileRendererFeatureEnv", () => {
       }),
     ).toEqual({
       VITE_VOICE_REALTIME_WS: "1",
-      VITE_VOICE_REALTIME_FORCE: "1",
+      VITE_VOICE_REALTIME_SELF_HOSTED: "0",
+      VITE_VOICE_REALTIME_FORCE: "0",
     });
   });
 
-  it("does not change ordinary Android cloud-debug builds", () => {
+  it("overrides an ambient force flag in Android Cloud artifacts", () => {
+    for (const platform of ["android-cloud", "android-cloud-debug"]) {
+      expect(
+        resolveMobileRendererFeatureEnv({
+          platform,
+          env: { VITE_VOICE_REALTIME_FORCE: "1" },
+        }),
+      ).toEqual({
+        VITE_VOICE_REALTIME_WS: "1",
+        VITE_VOICE_REALTIME_SELF_HOSTED: "0",
+        VITE_VOICE_REALTIME_FORCE: "0",
+      });
+    }
+  });
+
+  it("enables server-probed realtime for the self-hosted VPS sidecar", () => {
     expect(
       resolveMobileRendererFeatureEnv({
         platform: "android-cloud-debug",
-        env: {},
+        env: { ELIZA_ANDROID_VPS_SIDECAR: "1" },
       }),
-    ).toEqual({});
+    ).toEqual({
+      VITE_VOICE_REALTIME_WS: "1",
+      VITE_VOICE_REALTIME_SELF_HOSTED: "1",
+      VITE_VOICE_REALTIME_FORCE: "0",
+    });
+  });
+  it("enables probed realtime and hides Stream only in the dedicated LP3 VPS fallback", () => {
+    expect(
+      resolveMobileRendererFeatureEnv({
+        platform: "android-cloud-debug",
+        env: {
+          ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
+          ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED: "yes",
+        },
+      }),
+    ).toEqual({
+      VITE_VOICE_REALTIME_WS: "1",
+      VITE_VOICE_REALTIME_SELF_HOSTED: "1",
+      VITE_VOICE_REALTIME_FORCE: "0",
+      VITE_ENABLE_STREAM: "false",
+      VITE_ELIZA_ANDROID_LP3_SHARED_BROWSER_STORAGE: "1",
+    });
   });
 
   it("stamps the launcher-only in-app auth renderer contract", () => {
@@ -47,13 +92,17 @@ describe("resolveMobileRendererFeatureEnv", () => {
     ).toEqual({ VITE_ELIZA_ANDROID_LAUNCHER_BUILD: "1" });
   });
 
-  it("does not leak LP3 renderer flags into another lane", () => {
+  it("does not leak LP3-only fallback flags into the Android Cloud release lane", () => {
     expect(
       resolveMobileRendererFeatureEnv({
         platform: "android-cloud",
         env: { ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1" },
       }),
-    ).toEqual({});
+    ).toEqual({
+      VITE_VOICE_REALTIME_WS: "1",
+      VITE_VOICE_REALTIME_SELF_HOSTED: "0",
+      VITE_VOICE_REALTIME_FORCE: "0",
+    });
   });
 
   it("requires an explicit platform", () => {
@@ -65,13 +114,16 @@ describe("resolveMobileRendererFeatureEnv", () => {
 
 describe("mobileRendererRequiresFreshBuild", () => {
   it("rebuilds renderers whose optional flags are not stamped", () => {
-    expect(
-      mobileRendererRequiresFreshBuild({ platform: "android-cloud-debug" }),
-    ).toBe(true);
-    for (const platform of ["android-launcher", "ios", "ios-local"]) {
+    for (const platform of [
+      "android-cloud",
+      "android-cloud-debug",
+      "android-launcher",
+      "ios",
+      "ios-local",
+    ]) {
       expect(mobileRendererRequiresFreshBuild({ platform })).toBe(true);
     }
-    for (const platform of ["android", "android-cloud", "ios-overlay"]) {
+    for (const platform of ["android", "ios-overlay"]) {
       expect(mobileRendererRequiresFreshBuild({ platform })).toBe(false);
     }
   });
@@ -88,9 +140,12 @@ describe("mobileRendererUnstampedFeatureProblem", () => {
       }),
     ).toContain("realtime voice flags");
     expect(
+      mobileRendererUnstampedFeatureProblem({ platform: "android-cloud" }),
+    ).toContain("realtime voice flags");
+    expect(
       mobileRendererUnstampedFeatureProblem({ platform: "android-launcher" }),
     ).toContain("in-app auth contract");
-    for (const platform of ["ios", "ios-overlay", "android", "android-cloud"]) {
+    for (const platform of ["ios", "ios-overlay", "android"]) {
       expect(mobileRendererUnstampedFeatureProblem({ platform })).toBeNull();
     }
   });

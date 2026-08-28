@@ -229,6 +229,7 @@ function makeResult(
     status: "ready",
     loading: false,
     refreshing: false,
+    issue: null,
     error: null,
     viewMode: "week",
     setViewMode,

@@ -24,6 +24,11 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import {
+  isDevCloudEnvOwnedKey,
+  isDevCloudInternalEnvKey,
+  resolveDevCloudEnvAuthority,
+} from "../config/dev-cloud-env-authority.ts";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
 import {
   hasBlockedObjectKeyDeep,
@@ -74,6 +79,62 @@ export interface ConfigRouteContext {
     servers: Record<string, unknown>,
     body: { terminalToken?: string },
   ) => { reason: string; status: number } | null;
+}
+
+const DEV_CLOUD_PROVIDER_IDS = new Set([
+  "elizacloud",
+  "eliza-cloud",
+  "@elizaos/plugin-elizacloud",
+]);
+
+function isDevCloudProxyRoute(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const route = value as Record<string, unknown>;
+  const backend =
+    typeof route.backend === "string" ? route.backend.trim().toLowerCase() : "";
+  return (
+    route.transport === "cloud-proxy" && DEV_CLOUD_PROVIDER_IDS.has(backend)
+  );
+}
+
+/**
+ * Remove only launcher-owned Cloud topology from a generic config patch.
+ * Unrelated linked accounts and direct-provider routes remain editable in the
+ * same request; the durable Cloud tuple is changed only outside dev authority.
+ */
+function stripDevCloudAuthorityOwnedTopology(
+  filtered: Record<string, unknown>,
+): void {
+  delete filtered.cloud;
+  delete filtered.deploymentTarget;
+
+  const linkedAccounts = filtered.linkedAccounts;
+  if (
+    linkedAccounts &&
+    typeof linkedAccounts === "object" &&
+    !Array.isArray(linkedAccounts)
+  ) {
+    const accounts = linkedAccounts as Record<string, unknown>;
+    for (const accountId of Object.keys(accounts)) {
+      if (DEV_CLOUD_PROVIDER_IDS.has(accountId.trim().toLowerCase())) {
+        delete accounts[accountId];
+      }
+    }
+    if (Object.keys(accounts).length === 0) delete filtered.linkedAccounts;
+  }
+
+  const serviceRouting = filtered.serviceRouting;
+  if (
+    serviceRouting &&
+    typeof serviceRouting === "object" &&
+    !Array.isArray(serviceRouting)
+  ) {
+    const routes = serviceRouting as Record<string, unknown>;
+    for (const capability of Object.keys(routes)) {
+      if (isDevCloudProxyRoute(routes[capability])) delete routes[capability];
+    }
+    if (Object.keys(routes).length === 0) delete filtered.serviceRouting;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +370,14 @@ export async function handleConfigRoutes(
   // still require a full restart (plugin list, provider/model registry,
   // database adapter).
   if (method === "POST" && pathname === "/api/config/reload") {
+    if (resolveDevCloudEnvAuthority()) {
+      error(
+        res,
+        "Config reload is disabled while the immutable local dev Cloud target owns runtime configuration; restart the development process to reload safely.",
+        409,
+      );
+      return true;
+    }
     let next: ElizaConfig;
     try {
       next = loadElizaConfig();
@@ -419,6 +488,10 @@ export async function handleConfigRoutes(
       error(res, "config patch exceeds the nesting-depth limit", 400);
       return true;
     }
+    // Capture authority before inspecting the untrusted patch. Persisted/API
+    // config must never be able to manufacture the launcher-only marker.
+    const devCloudAuthority = resolveDevCloudEnvAuthority();
+    if (devCloudAuthority) stripDevCloudAuthorityOwnedTopology(filtered);
 
     // Security: keep auth/step-up secrets out of API-driven config writes so
     // secret rotation remains an out-of-band operation.
@@ -460,7 +533,7 @@ export async function handleConfigRoutes(
       // chain is closed.
       for (const key of Object.keys(envPatch)) {
         if (key === "vars" || key === "shellEnv") continue;
-        if (isBlockedEnvKey(key)) {
+        if (isBlockedEnvKey(key) || isDevCloudInternalEnvKey(key)) {
           delete envPatch[key];
         }
       }
@@ -471,10 +544,36 @@ export async function handleConfigRoutes(
       ) {
         const innerVars = envPatch.vars as Record<string, unknown>;
         for (const key of Object.keys(innerVars)) {
-          if (isBlockedEnvKey(key)) {
+          if (isBlockedEnvKey(key) || isDevCloudInternalEnvKey(key)) {
             delete innerVars[key];
           }
         }
+      }
+
+      // A launcher authority owns Cloud-prefixed environment fields for the
+      // lifetime of this development process. Do not merely suppress their
+      // live process.env projection below: persisting a request value would
+      // silently replace the operator's durable production/self-hosted config
+      // for the next non-authoritative launch. Preserve unrelated env edits in
+      // the same request.
+      if (devCloudAuthority) {
+        for (const key of Object.keys(envPatch)) {
+          if (key !== "vars" && isDevCloudEnvOwnedKey(key)) {
+            delete envPatch[key];
+          }
+        }
+        if (
+          envPatch.vars &&
+          typeof envPatch.vars === "object" &&
+          !Array.isArray(envPatch.vars)
+        ) {
+          const vars = envPatch.vars as Record<string, unknown>;
+          for (const key of Object.keys(vars)) {
+            if (isDevCloudEnvOwnedKey(key)) delete vars[key];
+          }
+          if (Object.keys(vars).length === 0) delete envPatch.vars;
+        }
+        if (Object.keys(envPatch).length === 0) delete filtered.env;
       }
     }
 
@@ -642,7 +741,13 @@ export async function handleConfigRoutes(
       const vars = envPatch.vars;
       if (vars && typeof vars === "object" && !Array.isArray(vars)) {
         for (const [k, v] of Object.entries(vars as Record<string, unknown>)) {
-          if (isBlockedEnvKey(k)) continue;
+          if (
+            isBlockedEnvKey(k) ||
+            isDevCloudInternalEnvKey(k) ||
+            (devCloudAuthority && isDevCloudEnvOwnedKey(k))
+          ) {
+            continue;
+          }
           const str = typeof v === "string" ? v : "";
           if (str.trim()) {
             process.env[k] = str;
@@ -655,7 +760,13 @@ export async function handleConfigRoutes(
       // 2) Direct env.* string keys (legacy)
       for (const [k, v] of Object.entries(envPatch)) {
         if (k === "vars" || k === "shellEnv") continue;
-        if (isBlockedEnvKey(k)) continue;
+        if (
+          isBlockedEnvKey(k) ||
+          isDevCloudInternalEnvKey(k) ||
+          (devCloudAuthority && isDevCloudEnvOwnedKey(k))
+        ) {
+          continue;
+        }
         if (typeof v !== "string") continue;
         if (v.trim()) process.env[k] = v;
         else delete process.env[k];

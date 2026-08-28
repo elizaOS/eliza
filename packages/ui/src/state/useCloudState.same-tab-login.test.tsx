@@ -13,6 +13,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
+import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   markCloudLoginPending,
   readCloudLoginPending,
@@ -26,6 +27,7 @@ import { registerStewardLoginLauncher } from "./cloud-steward-login";
 import { useCloudState } from "./useCloudState";
 
 const DEVICE_CODE_SENTINEL = "device-code-flow-reached";
+const originalBootConfig = structuredClone(getBootConfig());
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
   window,
   "location",
@@ -33,6 +35,11 @@ const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
 const globalWithPlatform = globalThis as typeof globalThis & {
   Capacitor?: { isNativePlatform?: () => boolean };
 };
+const runtimeWithPinnedRemote = globalThis as typeof globalThis & {
+  __ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__?: string;
+};
+const originalPinnedRemote =
+  runtimeWithPinnedRemote.__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__;
 const windowWithElectrobun = window as Window & {
   __electrobunWindowId?: number;
   __ELIZA_DESKTOP_RUNTIME_MODE__?: string;
@@ -51,14 +58,36 @@ function makeParams() {
   };
 }
 
+function jsonResponse(status: number, body: unknown): Response {
+  return {
+    json: async () => body,
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: status >= 200 && status < 300 ? "OK" : "Error",
+    text: async () => JSON.stringify(body),
+  } as Response;
+}
+
+function restorePinnedRemote(): void {
+  if (originalPinnedRemote === undefined) {
+    delete runtimeWithPinnedRemote.__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__;
+  } else {
+    runtimeWithPinnedRemote.__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__ =
+      originalPinnedRemote;
+  }
+}
+
 describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", () => {
   let assignSpy: ReturnType<typeof vi.fn>;
   let cloudLoginSpy: ReturnType<typeof vi.spyOn>;
   let cloudLoginDirectSpy: ReturnType<typeof vi.spyOn>;
   let cloudLoginPollDirectSpy: ReturnType<typeof vi.spyOn>;
+  let setBaseUrlSpy: ReturnType<typeof vi.spyOn>;
+  let setTokenSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     localStorage.clear();
+    setBootConfig(structuredClone(originalBootConfig));
     // jsdom's window.focus logs "Not implemented" through console.error; the
     // auth-return path calls it best-effort, so stub it out of the run.
     vi.spyOn(window, "focus").mockImplementation(() => {});
@@ -84,17 +113,24 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     cloudLoginPollDirectSpy = vi
       .spyOn(client, "cloudLoginPollDirect")
       .mockResolvedValue({ status: "pending" });
-    vi.spyOn(client, "setBaseUrl").mockImplementation(() => undefined);
-    vi.spyOn(client, "setToken").mockImplementation(() => undefined);
+    setBaseUrlSpy = vi
+      .spyOn(client, "setBaseUrl")
+      .mockImplementation(() => undefined);
+    setTokenSpy = vi
+      .spyOn(client, "setToken")
+      .mockImplementation(() => undefined);
   });
 
   afterEach(() => {
     localStorage.clear();
+    setBootConfig(structuredClone(originalBootConfig));
     delete globalWithPlatform.Capacitor;
     delete windowWithElectrobun.__electrobunWindowId;
     delete windowWithElectrobun.__ELIZA_DESKTOP_RUNTIME_MODE__;
     delete windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__;
+    restorePinnedRemote();
     __resetPreparedDesktopCloudLoginSessionForTests();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     if (originalLocationDescriptor) {
       Object.defineProperty(window, "location", originalLocationDescriptor);
@@ -153,6 +189,191 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
 
     expect(assignSpy).not.toHaveBeenCalled();
     expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+  });
+
+  it("uses a hosted staging session with a local backend and preserves that backend after success", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        href: "http://127.0.0.1:2189/settings",
+        origin: "http://127.0.0.1:2189",
+        protocol: "http:",
+        hostname: "127.0.0.1",
+        port: "2189",
+        pathname: "/settings",
+        search: "",
+        assign: assignSpy,
+      },
+    });
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://api-staging.eliza.app",
+    });
+    vi.spyOn(client, "getBaseUrl").mockReturnValue("http://127.0.0.1:31337");
+    const getCloudStatusSpy = vi
+      .spyOn(client, "getCloudStatus")
+      .mockResolvedValue({
+        connected: false,
+        enabled: true,
+      } as Awaited<ReturnType<typeof client.getCloudStatus>>);
+    const popup = {
+      closed: false,
+      close: vi.fn(() => {
+        (popup as { closed: boolean }).closed = true;
+      }),
+      location: { href: "" },
+      opener: {},
+    } as unknown as Window;
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    const browserUrl =
+      "https://staging.eliza.app/auth/cli-login?session=hosted-session&returnTo=http%3A%2F%2F127.0.0.1%3A2189%2Fsettings%3FelizaCloudLogin%3Dcomplete%26elizaCloudLoginSession%3Dhosted-session";
+    cloudLoginDirectSpy.mockResolvedValue({
+      ok: true,
+      apiBase: "https://api-staging.eliza.app",
+      browserUrl,
+      sessionId: "hosted-session",
+    });
+    cloudLoginPollDirectSpy.mockResolvedValue({
+      status: "authenticated",
+      token: "staging-session-token",
+      organizationId: "org-staging",
+      userId: "user-staging",
+    });
+
+    try {
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      let login: Promise<void> | undefined;
+      await act(async () => {
+        login = result.current.handleCloudLogin(popup);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(getCloudStatusSpy).toHaveBeenCalled();
+      expect(cloudLoginDirectSpy).toHaveBeenCalledWith(
+        "https://api-staging.eliza.app",
+      );
+      expect(cloudLoginSpy).not.toHaveBeenCalled();
+      expect(assignSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("/login?returnTo="),
+      );
+      expect(popup.location.href).toBe(browserUrl);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+        await login;
+      });
+
+      expect(cloudLoginPollDirectSpy).toHaveBeenCalledWith(
+        "https://api-staging.eliza.app",
+        "hosted-session",
+      );
+      expect(localStorage.getItem("steward_session_token")).toBe(
+        "staging-session-token",
+      );
+      expect(setBaseUrlSpy).not.toHaveBeenCalled();
+      expect(setTokenSpy).not.toHaveBeenCalled();
+      expect(result.current.elizaCloudConnected).toBe(true);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("navigates popup-hostile loopback staging to the hosted CLI URL, never local /login", async () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        href: "http://127.0.0.1:2189/settings",
+        origin: "http://127.0.0.1:2189",
+        protocol: "http:",
+        hostname: "127.0.0.1",
+        port: "2189",
+        pathname: "/settings",
+        search: "",
+        assign: assignSpy,
+      },
+    });
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://api-staging.eliza.app",
+    });
+    vi.spyOn(client, "getBaseUrl").mockReturnValue("http://127.0.0.1:31337");
+    vi.spyOn(client, "getCloudStatus").mockResolvedValue({
+      connected: false,
+      enabled: true,
+    } as Awaited<ReturnType<typeof client.getCloudStatus>>);
+    const browserUrl =
+      "https://staging.eliza.app/auth/cli-login?session=hosted-session&returnTo=http%3A%2F%2F127.0.0.1%3A2189%2Fsettings%3FelizaCloudLogin%3Dcomplete%26elizaCloudLoginSession%3Dhosted-session";
+    cloudLoginDirectSpy.mockResolvedValue({
+      ok: true,
+      apiBase: "https://api-staging.eliza.app",
+      browserUrl,
+      sessionId: "hosted-session",
+    });
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.handleCloudLogin(null);
+    });
+
+    expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+    expect(cloudLoginSpy).not.toHaveBeenCalled();
+    expect(assignSpy).toHaveBeenCalledWith(browserUrl);
+    expect(assignSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("/login?returnTo="),
+    );
+    const returnTo = new URL(browserUrl).searchParams.get("returnTo");
+    expect(returnTo).toContain("http://127.0.0.1:2189/settings");
+    expect(setBaseUrlSpy).not.toHaveBeenCalled();
+    expect(setTokenSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps production loopback on the agent-proxied device-code flow", async () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        href: "http://127.0.0.1:2189/settings",
+        origin: "http://127.0.0.1:2189",
+        protocol: "http:",
+        hostname: "127.0.0.1",
+        port: "2189",
+        pathname: "/settings",
+        search: "",
+        assign: assignSpy,
+      },
+    });
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud");
+    vi.spyOn(client, "getBaseUrl").mockReturnValue("http://127.0.0.1:31337");
+    vi.spyOn(client, "getCloudStatus").mockResolvedValue({
+      connected: false,
+      enabled: true,
+    } as Awaited<ReturnType<typeof client.getCloudStatus>>);
+    const popup = {
+      closed: false,
+      close: vi.fn(),
+      location: { href: "" },
+      opener: {},
+    } as unknown as Window;
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.handleCloudLogin(popup);
+    });
+
+    expect(assignSpy).not.toHaveBeenCalled();
+    expect(cloudLoginSpy).toHaveBeenCalledTimes(1);
+    expect(cloudLoginDirectSpy).not.toHaveBeenCalled();
     expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
   });
 
@@ -336,6 +557,53 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       "sess-return",
     );
     expect(params.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("claims a hosted staging return without replacing the localhost backend", async () => {
+    const search =
+      "?elizaCloudLogin=complete&elizaCloudLoginSession=staging-return";
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        href: `http://127.0.0.1:2189/settings${search}`,
+        origin: "http://127.0.0.1:2189",
+        protocol: "http:",
+        hostname: "127.0.0.1",
+        port: "2189",
+        pathname: "/settings",
+        search,
+        assign: assignSpy,
+      },
+    });
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://api-staging.eliza.app",
+    });
+    vi.spyOn(client, "getBaseUrl").mockReturnValue("http://127.0.0.1:31337");
+    cloudLoginPollDirectSpy.mockResolvedValue({
+      status: "authenticated",
+      organizationId: "org-staging",
+      token: "staging-return-token",
+      userId: "user-staging",
+    });
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+
+    await waitFor(() => {
+      expect(localStorage.getItem("steward_session_token")).toBe(
+        "staging-return-token",
+      );
+      expect(result.current.elizaCloudConnected).toBe(true);
+    });
+    expect(cloudLoginPollDirectSpy).toHaveBeenCalledWith(
+      "https://api-staging.eliza.app",
+      "staging-return",
+    );
+    expect(setBaseUrlSpy).not.toHaveBeenCalled();
+    expect(setTokenSpy).not.toHaveBeenCalled();
   });
 
   it("preserves the cloud auth popup opener and closes it on the matching completion message", async () => {
@@ -644,6 +912,10 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
   it("bypasses a registered Steward launcher on Capacitor native and uses external direct device-code polling", async () => {
     vi.useFakeTimers();
     globalWithPlatform.Capacitor = { isNativePlatform: () => true };
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://api.elizacloud.ai",
+    });
     const launcher = vi.fn(async () => ({ token: "launcher-token" }));
     const unregister = registerStewardLoginLauncher(launcher);
     const popup = {
@@ -707,6 +979,212 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       vi.useRealTimers();
     }
   });
+
+  it("verifies a pinned-remote login only against the Cloud control plane and preserves the ambient snapshot without polling", async () => {
+    runtimeWithPinnedRemote.__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__ =
+      "https://bot.nubs.site";
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        href: "http://localhost:2138/settings",
+        origin: "http://localhost:2138",
+        protocol: "http:",
+        hostname: "localhost",
+        port: "2138",
+        pathname: "/settings",
+        search: "",
+        assign: assignSpy,
+      },
+    });
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://api-staging.eliza.app",
+    });
+    const stewardToken = "steward-session-token";
+    const requests: Array<{ init?: RequestInit; url: string }> = [];
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          requests.push({ init, url });
+          if (url === "https://api-staging.eliza.app/api/v1/user") {
+            return jsonResponse(200, {
+              data: { id: "user-pinned", organization_id: "org-pinned" },
+            });
+          }
+          if (url === "https://api-staging.eliza.app/api/v1/credits/balance") {
+            return jsonResponse(200, { balance: 8.5 });
+          }
+          throw new Error(`unexpected request: ${url}`);
+        },
+      );
+    const agentStatusSpy = vi.spyOn(client, "getCloudStatus");
+    const agentCreditsSpy = vi.spyOn(client, "getCloudCredits");
+    const launcher = vi.fn(async () => {
+      localStorage.setItem("steward_session_token", stewardToken);
+      return { token: stewardToken };
+    });
+    const unregister = registerStewardLoginLauncher(launcher);
+
+    try {
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+
+      let ambientConnected = true;
+      await act(async () => {
+        ambientConnected = await result.current.pollCloudCredits();
+      });
+      expect(ambientConnected).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(agentStatusSpy).not.toHaveBeenCalled();
+      expect(agentCreditsSpy).not.toHaveBeenCalled();
+      expect(result.current.elizaCloudPollInterval.current).toBeNull();
+
+      await act(async () => {
+        await result.current.handleCloudLogin();
+      });
+
+      expect(launcher).toHaveBeenCalledTimes(1);
+      expect(result.current.elizaCloudConnected).toBe(true);
+      expect(result.current.elizaCloudCredits).toBe(8.5);
+      expect(result.current.elizaCloudUserId).toBe("user-pinned");
+      expect(result.current.elizaCloudLoginError).toBeNull();
+      expect(requests.map(({ url }) => url)).toEqual([
+        "https://api-staging.eliza.app/api/v1/user",
+        "https://api-staging.eliza.app/api/v1/credits/balance",
+      ]);
+      for (const request of requests) {
+        expect(new Headers(request.init?.headers).get("Authorization")).toBe(
+          `Bearer ${stewardToken}`,
+        );
+      }
+      expect(setBaseUrlSpy).not.toHaveBeenCalled();
+      expect(setTokenSpy).not.toHaveBeenCalled();
+      expect(agentStatusSpy).not.toHaveBeenCalled();
+      expect(agentCreditsSpy).not.toHaveBeenCalled();
+      expect(result.current.elizaCloudPollInterval.current).toBeNull();
+
+      fetchSpy.mockClear();
+      await act(async () => {
+        ambientConnected = await result.current.pollCloudCredits();
+      });
+      expect(ambientConnected).toBe(true);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(result.current.lastElizaCloudPollConnectedRef.current).toBe(true);
+      expect(result.current.elizaCloudPollInterval.current).toBeNull();
+      unmount();
+    } finally {
+      unregister();
+    }
+  });
+
+  it("fails pinned-remote login verification on a control-plane 401", async () => {
+    runtimeWithPinnedRemote.__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__ =
+      "https://bot.nubs.site";
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        href: "http://localhost:2138/settings",
+        origin: "http://localhost:2138",
+        protocol: "http:",
+        hostname: "localhost",
+        port: "2138",
+        pathname: "/settings",
+        search: "",
+        assign: assignSpy,
+      },
+    });
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://api-staging.eliza.app",
+    });
+    const stewardToken = "rejected-steward-session-token";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse(401, { error: "unauthorized" }));
+    const launcher = vi.fn(async () => {
+      localStorage.setItem("steward_session_token", stewardToken);
+      return { token: stewardToken };
+    });
+    const unregister = registerStewardLoginLauncher(launcher);
+
+    try {
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      await act(async () => {
+        await result.current.handleCloudLogin();
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(result.current.elizaCloudConnected).toBe(false);
+      expect(result.current.elizaCloudLoginError).toBe(
+        "Could not verify your Eliza Cloud session. Please sign in again.",
+      );
+      expect(localStorage.getItem("steward_session_token")).toBeNull();
+      expect(result.current.elizaCloudPollInterval.current).toBeNull();
+      unmount();
+    } finally {
+      unregister();
+    }
+  });
+
+  it("keeps the pinned Steward token on a transient verification failure", async () => {
+    runtimeWithPinnedRemote.__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__ =
+      "https://bot.nubs.site";
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://api-staging.eliza.app",
+    });
+    const stewardToken = "durable-steward-session-token";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        jsonResponse(503, { error: "temporarily unavailable" }),
+      );
+    const launcher = vi.fn(async () => {
+      localStorage.setItem("steward_session_token", stewardToken);
+      return { token: stewardToken };
+    });
+    const unregister = registerStewardLoginLauncher(launcher);
+
+    try {
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      await act(async () => {
+        await result.current.handleCloudLogin();
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(result.current.elizaCloudConnected).toBe(false);
+      expect(result.current.elizaCloudLoginError).toBe(
+        "Eliza Cloud is temporarily unavailable. Retry in a moment.",
+      );
+      expect(result.current.elizaCloudLoginError).not.toContain(
+        "sign in again",
+      );
+      expect(localStorage.getItem("steward_session_token")).toBe(stewardToken);
+      expect(result.current.elizaCloudPollInterval.current).toBeNull();
+
+      let requiredClientAuthFailure: unknown;
+      await act(async () => {
+        try {
+          await result.current.handleCloudLogin(null, {
+            requireClientAuth: true,
+          });
+        } catch (error) {
+          requiredClientAuthFailure = error;
+        }
+      });
+      expect(requiredClientAuthFailure).toMatchObject({
+        message: "Eliza Cloud is temporarily unavailable. Retry in a moment.",
+        name: "CloudSessionVerificationTransientError",
+      });
+      expect(localStorage.getItem("steward_session_token")).toBe(stewardToken);
+      unmount();
+    } finally {
+      unregister();
+    }
+  });
 });
 
 // The same-tab login leg lands back in the app with only a session token; the
@@ -728,6 +1206,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
   afterEach(() => {
     localStorage.clear();
     delete globalWithPlatform.Capacitor;
+    restorePinnedRemote();
     vi.restoreAllMocks();
   });
 

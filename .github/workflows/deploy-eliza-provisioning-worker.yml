@@ -43,7 +43,7 @@ permissions:
 jobs:
   determine-env:
     name: Determine environment
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
@@ -51,6 +51,15 @@ jobs:
     steps:
       - id: env
         run: |
+          # Production is a protected release target. A manual dispatch from
+          # any non-main ref must never be able to select production secrets or
+          # deploy the current main snapshot while running unreviewed code.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+            && [ "${{ github.event.inputs.environment }}" = "production" ] \
+            && [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Production deployments must be dispatched from refs/heads/main"
+            exit 1
+          fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             env="${{ github.event.inputs.environment }}"
           elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
@@ -110,19 +119,19 @@ jobs:
 
   deploy:
     name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: [self-hosted, Linux, X64]
     needs: determine-env
     concurrency:
-      group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}
+      group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}-${{ format('run-{0}', github.run_id) }}
       cancel-in-progress: false
       queue: max
     environment: ${{ needs.determine-env.outputs.environment }}
     # Every pre-SSH step has its own fence (40m worst case total). The three
     # bounded remote phases (5m prerequisites, 40m deploy including a possible
-    # wait for an orphaned prior SSH process, 5m health) can then each use their
-    # ceiling without the enclosing job becoming the first timeout; the
-    # remaining seven minutes cover action startup and teardown.
-    timeout-minutes: 95
+    # wait for an orphaned prior SSH process, 25m identity-locked health) can
+    # then each use their ceiling without the enclosing job becoming the first
+    # timeout; the remaining fifteen minutes cover action startup and teardown.
+    timeout-minutes: 125
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
       BACKUP_SYSTEMD_UNIT: eliza-backup-catalog-worker.service
@@ -134,7 +143,10 @@ jobs:
       # hand-edited headscale URL/key again. The daemon API URL is derived from
       # the protected environment below and stays loopback-only; it is not an
       # operator variable that can redirect the protected bearer key.
-      HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
+      # Canonical per-environment routing is repository-owned, not an optional
+      # environment variable. Keeping the value here also lets a deploy repair
+      # a missing/stale host entry when the GitHub variable inventory is empty.
+      HEADSCALE_PUBLIC_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.eliza.app' || 'https://headscale-staging.eliza.app' }}
       # Base64 private key used by the daemon to reach dedicated-agent nodes.
       # Keep this in the protected environment instead of relying on a
       # hand-copied file that can drift or disappear when the CP host is rebuilt.
@@ -169,14 +181,13 @@ jobs:
       # leave it unset to preserve whatever is hand-set on the box.
       ELIZA_AGENT_IMAGE: ${{ vars.ELIZA_AGENT_IMAGE }}
       # Warm-pool daemon half (#16961). The replenish phase self-gates on
-      # WARM_POOL_ENABLED, so a host that loses this key silently degrades every
-      # dedicated provision to the 30-120s cold path. Reconciling it here makes
-      # the GitHub environment VARIABLE (not secret — a boolean flag is
-      # auditable config) the source of truth so a CP re-arm can never drop it;
-      # leaving the GH var unset preserves whatever is hand-set on the box.
-      # Activation policy stays with #16961's checklist: flip the environment
-      # var, do not hand-edit the box.
-      WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED }}
+      # WARM_POOL_ENABLED, so daemon and Worker must agree. The protected GitHub
+      # environment VARIABLE (not secret — a boolean flag is auditable config)
+      # is authoritative; an absent variable resolves to the safe disabled
+      # state instead of preserving unknown hand-set host state. Activation
+      # remains gated by #16961: flip this variable and the matching committed
+      # Worker flag only with the required staging evidence.
+      WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED || 'false' }}
       # The edge Worker forwards the original per-agent host to this daemon.
       # Keep the daemon's parser on the same environment-specific suffix or a
       # staging host (`<uuid>.cloud-staging.eliza.app`) is rejected as malformed.
@@ -248,7 +259,6 @@ jobs:
             DEPLOY_HOST
             DEPLOY_SSH_KEY
             HEADSCALE_PUBLIC_URL
-            HEADSCALE_API_KEY
             DATABASE_URL
           )
           missing=()
@@ -322,6 +332,12 @@ jobs:
             echo "::error::Migration checkout resolved $actual_sha, expected $EXPECTED_DEPLOY_SHA"
             exit 1
           }
+          # Self-hosted runners can retain files created after checkout's own
+          # cleanup hook. Re-establish the exact immutable tree immediately
+          # before migrations; suppress removed paths so runner-local names do
+          # not enter deployment logs.
+          git reset --hard --quiet "$EXPECTED_DEPLOY_SHA"
+          git clean -ffdx -q
           [ -z "$(git status --porcelain)" ] || {
             echo "::error::Migration checkout is not clean"
             exit 1
@@ -1153,6 +1169,20 @@ jobs:
             fi
             echo "Verified required provisioning-host setting names; values were not printed."
 
+            case "$WARM_POOL_ENABLED" in
+              true|false) ;;
+              *)
+                echo "::error::WARM_POOL_ENABLED must be exactly true or false"
+                exit 1
+                ;;
+            esac
+            if ! require_environment_setting_equals \
+              "$ENV_FILE" WARM_POOL_ENABLED "$WARM_POOL_ENABLED"; then
+              echo "::error::Provisioning host warm-pool state does not match the protected environment"
+              exit 1
+            fi
+            echo "Verified provisioning-host warm-pool state: $WARM_POOL_ENABLED"
+
             # Capture and scheduling remain off in both files. Only the
             # dedicated daemon receives deletion backup authority.
             if ! require_environment_setting_equals \
@@ -1426,10 +1456,33 @@ jobs:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
-          command_timeout: 5m
-          envs: SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST
+          # A prior run may still own the same host deployment lock for its
+          # bounded build. Wait through that lease, then verify whether this
+          # run's immutable SHA is still deployed before certifying health.
+          command_timeout: 25m
+          envs: DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,WARM_POOL_ENABLED
           script: |
             set -euo pipefail
+
+            # Keep deployment identity serialized through health. A newer run
+            # may acquire the host mutation lock between this run's deploy and
+            # health SSH steps; in that ordering this run waits, then fails as
+            # superseded instead of certifying the newer checkout.
+            exec 9>/tmp/eliza-provisioning-worker-deploy.lock
+            flock -w 1200 9 || {
+              echo "::error::Timed out acquiring the provisioning health identity lease"
+              exit 1
+            }
+            cd /opt/eliza
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0=safe.directory
+            export GIT_CONFIG_VALUE_0=/opt/eliza
+            ACTUAL_DEPLOY_SHA=$(git rev-parse HEAD)
+            if [ "$ACTUAL_DEPLOY_SHA" != "$DEPLOY_SHA" ]; then
+              echo "::error::Provisioning deployment was superseded before health verification"
+              exit 1
+            fi
+
             ENV_FILE=/opt/eliza/cloud/.env.local
             ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs
             NODE_BIN=/usr/bin/node
@@ -1457,6 +1510,13 @@ jobs:
               echo "::error::Agent router base-domain drift. Values were not printed."
               exit 1
             fi
+            if ! printf '%s' "$WARM_POOL_ENABLED" \
+              | sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+                  "$NODE_BIN" "$ENV_SERIALIZER" equals \
+                  "$ENV_FILE" WARM_POOL_ENABLED; then
+              echo "::error::Provisioning host warm-pool drift. Values were not printed."
+              exit 1
+            fi
             # The worker logs to journald via systemd's stdout/stderr capture.
             # Info-level logs are filtered unless VERBOSE_LOGGING=true, so we
             # rely on systemd's own signals: process is active AND no fatal
@@ -1464,12 +1524,48 @@ jobs:
             HEALTH_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
             STABLE_THRESHOLD_SEC=20
             FATAL_LOG_PATTERN="\[(provisioning-worker|agent-router|backup-catalog-worker)\] (fatal|unhandled rejection)|node:internal/.*Error:|Error \[ERR_|^[A-Za-z]+Error:"
+            report_unit_diagnostic() {
+              local category="$1"
+              local label="$2"
+              local unit="$3"
+              local raw_load raw_active raw_result
+              local load_class active_class result_class
+              case "$label" in
+                worker|router|backup|nginx) ;;
+                *) label=unknown ;;
+              esac
+              raw_load=$(sudo systemctl show "$unit" --property=LoadState --value 2>/dev/null || true)
+              raw_active=$(sudo systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)
+              raw_result=$(sudo systemctl show "$unit" --property=Result --value 2>/dev/null || true)
+              case "$raw_load" in
+                loaded) load_class=loaded ;;
+                masked) load_class=masked ;;
+                not-found) load_class=missing ;;
+                *) load_class=other ;;
+              esac
+              case "$raw_active" in
+                active) active_class=active ;;
+                failed) active_class=failed ;;
+                inactive) active_class=inactive ;;
+                activating|deactivating|reloading) active_class=transitioning ;;
+                *) active_class=other ;;
+              esac
+              case "$raw_result" in
+                "") result_class=none ;;
+                success) result_class=success ;;
+                exit-code|signal|core-dump|watchdog|timeout|start-limit-hit|oom-kill) result_class=failure ;;
+                *) result_class=other ;;
+              esac
+              echo "::error::unit-state category=${category} component=${label} load=${load_class} active=${active_class} result=${result_class}"
+            }
             report_public_route_failure() {
-              sudo nginx -t || true
-              sudo systemctl status nginx --no-pager || true
-              sudo journalctl -u nginx --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
-              sudo systemctl status eliza-agent-router.service --no-pager || true
-              sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
+              local nginx_config_class=invalid
+              if sudo nginx -t >/dev/null 2>&1; then
+                nginx_config_class=valid
+              fi
+              echo "::error::nginx-config category=public-route verdict=${nginx_config_class}"
+              report_unit_diagnostic public-route nginx nginx
+              report_unit_diagnostic public-route router eliza-agent-router.service
             }
             validate_deletion_authority_backup_health() {
               # DynamicUser owns the mode-0700 RuntimeDirectory and mode-0600
@@ -1527,9 +1623,9 @@ jobs:
                 continue
               fi
               BACKUP_JOURNAL=$(sudo journalctl -u "$BACKUP_SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
-              if echo "$BACKUP_JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
+              if grep -qE "$FATAL_LOG_PATTERN" <<<"$BACKUP_JOURNAL"; then
                 echo "::error::Backup catalogue worker logged a fatal error since deploy."
-                echo "$BACKUP_JOURNAL" | tail -n 50
+                report_unit_diagnostic fatal-log backup "$BACKUP_SYSTEMD_UNIT"
                 exit 1
               fi
               if ! validate_deletion_authority_backup_health; then
@@ -1539,9 +1635,9 @@ jobs:
               fi
               if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
                 JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
-                if echo "$JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
+                if grep -qE "$FATAL_LOG_PATTERN" <<<"$JOURNAL"; then
                   echo "::error::Worker logged a fatal error since deploy."
-                  echo "$JOURNAL" | tail -n 50
+                  report_unit_diagnostic fatal-log worker "$SYSTEMD_UNIT"
                   exit 1
                 fi
                 # Active + uptime past the threshold = healthy. systemd's Restart=always
@@ -1557,9 +1653,9 @@ jobs:
                     continue
                   fi
                   ROUTER_JOURNAL=$(sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
-                  if echo "$ROUTER_JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
+                  if grep -qE "$FATAL_LOG_PATTERN" <<<"$ROUTER_JOURNAL"; then
                     echo "::error::Agent router logged a fatal error since activation."
-                    echo "$ROUTER_JOURNAL" | tail -n 50
+                    report_unit_diagnostic fatal-log router eliza-agent-router.service
                     exit 1
                   fi
                   ROUTER_UPTIME_SEC=$(systemctl show eliza-agent-router.service --property=ActiveEnterTimestampMonotonic --value | awk '{ print int($1 / 1e6) }')
@@ -1577,33 +1673,33 @@ jobs:
                     PUBLIC_READINESS=""
                     public_route_ok=false
                     for public_attempt in 1 2 3; do
-                      if PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz") && \
-                         PUBLIC_READINESS=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/readyz"); then
+                      if PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz" 2>/dev/null) && \
+                         PUBLIC_READINESS=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/readyz" 2>/dev/null); then
                         public_route_ok=true
                         break
                       fi
-                      echo "Canonical health/readiness attempt ${public_attempt}/3 failed for ${AGENT_ROUTER_PUBLIC_HOST}; retrying in 2s."
+                      echo "Canonical health/readiness attempt ${public_attempt}/3 failed; response suppressed; retrying in 2s."
                       sleep 2
                     done
                     if [ "$public_route_ok" != "true" ]; then
-                      echo "::error::Canonical agent-router host failed after local readiness: ${AGENT_ROUTER_PUBLIC_HOST}"
+                      echo "::error::Canonical agent-router route failed after local readiness (category=public-route-transport)."
                       report_public_route_failure
                       exit 1
                     fi
                     if ! printf '%s' "$PUBLIC_HEALTH" | validate_public_health_payload; then
-                      echo "::error::Canonical agent-router host returned an unexpected health payload: ${AGENT_ROUTER_PUBLIC_HOST}"
+                      echo "::error::Canonical agent-router health contract failed (category=public-route-payload)."
                       report_public_route_failure
                       exit 1
                     fi
                     if ! printf '%s' "$PUBLIC_READINESS" | validate_public_health_payload; then
-                      echo "::error::Canonical agent-router host returned an unexpected readiness payload: ${AGENT_ROUTER_PUBLIC_HOST}"
+                      echo "::error::Canonical agent-router readiness contract failed (category=public-route-payload)."
                       report_public_route_failure
                       exit 1
                     fi
                     echo "Provisioning/router stable and backup worker disabled/healthy (worker ${AGE}s, router ${ROUTER_AGE}s) on attempt $attempt."
                     exit 0
                   fi
-                  echo "Health check attempt $attempt/18: worker stable (${AGE}s), router ${ROUTER_AGE}s but health/readiness not ready on port ${ROUTER_PORT}."
+                  echo "Health check attempt $attempt/18: worker and router stable but local health/readiness not ready."
                   sleep 5
                   continue
                 fi
@@ -1614,13 +1710,10 @@ jobs:
               sleep 5
             done
 
-            echo "::error::$SYSTEMD_UNIT failed to become healthy within 90s."
-            sudo systemctl status "$SYSTEMD_UNIT" --no-pager || true
-            sudo journalctl -u "$SYSTEMD_UNIT" -n 200 --no-pager || true
-            sudo systemctl status eliza-agent-router.service --no-pager || true
-            sudo journalctl -u eliza-agent-router.service -n 200 --no-pager || true
-            sudo systemctl status "$BACKUP_SYSTEMD_UNIT" --no-pager || true
-            sudo journalctl -u "$BACKUP_SYSTEMD_UNIT" -n 200 --no-pager || true
+            echo "::error::Provisioning health deadline exceeded (category=health-timeout)."
+            report_unit_diagnostic health-timeout worker "$SYSTEMD_UNIT"
+            report_unit_diagnostic health-timeout router eliza-agent-router.service
+            report_unit_diagnostic health-timeout backup "$BACKUP_SYSTEMD_UNIT"
             exit 1
 
       - name: Notify Discord (Success)

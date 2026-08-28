@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import {
+  resetDevCloudEnvAuthorityForTests,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   buildSkillExecutionEnv,
   isInheritableSkillEnvKey,
@@ -16,6 +20,29 @@ const FLEET_SCOPED = {
   STEWARD_REFRESH_SERVICE_TOKEN: "mints-a-jwt-for-any-agent-id",
   DATABASE_URL: "postgres://shared",
 };
+
+const CLOUD_TEST_ENV_KEYS = [
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZA_CLOUD_BASE_URL",
+  "ELIZA_CLOUD_PUBLIC_URL",
+  "ELIZA_CLOUD_URL",
+] as const;
+
+const originalCloudTestEnv = Object.fromEntries(
+  CLOUD_TEST_ENV_KEYS.map((key) => [key, process.env[key]]),
+) as Record<(typeof CLOUD_TEST_ENV_KEYS)[number], string | undefined>;
+
+afterEach(() => {
+  for (const key of CLOUD_TEST_ENV_KEYS) {
+    const value = originalCloudTestEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  resetDevCloudEnvAuthorityForTests();
+});
 
 describe("buildSkillExecutionEnv", () => {
   it("does not pass fleet-scoped credentials to a skill child process", () => {
@@ -47,6 +74,65 @@ describe("buildSkillExecutionEnv", () => {
     expect(env.ELIZAOS_CLOUD_BASE_URL).toBe("https://api.eliza.app");
     expect(env.ELIZA_CLOUD_BASE_URL).toBe("https://api.eliza.app");
   });
+
+  it.each(["staging-default", "offline"])(
+    "blocks hostile Cloud inheritance and overlays under %s authority",
+    (authority) => {
+      const env = buildSkillExecutionEnv(
+        {
+          ELIZA_DEV_SOURCE: "1",
+          ELIZA_DEV_CLOUD_ENV_AUTHORITY: authority,
+          ELIZAOS_CLOUD_API_KEY: "late-production-key",
+          ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app/api/v1",
+          ELIZA_CLOUD_BASE_URL: "https://api.eliza.app/api/v1",
+          ELIZA_CLOUD_PUBLIC_URL: "https://cloud.eliza.app",
+          ELIZA_CLOUD_URL: "https://api.eliza.app/api/v1",
+          PATH: "/usr/bin",
+        },
+        {
+          ELIZAOS_CLOUD_API_KEY: "overlay-production-key",
+          ELIZAOS_CLOUD_BASE_URL: "https://attacker.example/api/v1",
+        },
+      );
+
+      expect(env.ELIZAOS_CLOUD_API_KEY).toBe("");
+      expect(env.ELIZAOS_CLOUD_BASE_URL).toBe(
+        "https://api-staging.eliza.app/api/v1",
+      );
+      expect(env.ELIZA_CLOUD_BASE_URL).toBe("");
+      expect(env.ELIZA_CLOUD_PUBLIC_URL).toBe("");
+      expect(env.ELIZA_CLOUD_URL).toBe("");
+    },
+  );
+
+  it.each([
+    ["staging-explicit", "https://api-staging.eliza.app/api/v1"],
+    ["self-hosted", "https://api.private.example/api/v1"],
+  ])(
+    "pins the launch Cloud tuple for %s authority after live env pollution",
+    (authority, launchBaseUrl) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_API_KEY = "launch-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = launchBaseUrl;
+      process.env.ELIZA_CLOUD_BASE_URL = launchBaseUrl;
+      resolveDevCloudEnvAuthority();
+
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL =
+        "https://api.eliza.app/api/v1";
+      process.env.ELIZA_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+
+      const env = buildSkillExecutionEnv(process.env, {
+        ELIZAOS_CLOUD_API_KEY: "overlay-production-key",
+        ELIZAOS_CLOUD_BASE_URL: "https://attacker.example/api/v1",
+      });
+
+      expect(env.ELIZAOS_CLOUD_API_KEY).toBe("launch-key");
+      expect(env.ELIZAOS_CLOUD_BASE_URL).toBe(launchBaseUrl);
+      expect(env.ELIZA_CLOUD_BASE_URL).toBe(launchBaseUrl);
+    },
+  );
 
   it("passes the parent's own PATH through rather than a substitute", () => {
     const env = buildSkillExecutionEnv({ PATH: "/opt/custom/bin:/bin" }, {});

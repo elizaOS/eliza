@@ -314,6 +314,7 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
       .filter(Boolean);
     expect(uploadedPaths).toEqual([
       "artifacts/app-live-e2e/cloud-staging-receipt.json",
+      "packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json",
       "packages/app/test-results/**/privacy-safe-post-reload-history-network-diagnostics.json",
       "packages/app/test-results/**/privacy-safe-fresh-context-history-network-diagnostics.json",
     ]);

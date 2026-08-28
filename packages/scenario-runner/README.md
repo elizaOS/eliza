@@ -19,6 +19,56 @@ SCENARIO_USE_DETERMINISTIC_MODEL=1 eliza-scenarios run ./test/scenarios
 eliza-scenarios list ./test/scenarios
 ```
 
+## Multi-agent arena
+
+Run two independently stateful Eliza agents in one headless group room through
+the CLI inference provider:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:multi-agent-arena -- \
+  --output=../../reports/multi-agent-arena/live-codex.json
+```
+
+The arena creates a separate runtime, character identity, PGLite store, and
+CLI-backed inference path for each seat. Human turns reach every runtime
+concurrently. Each agent-authored response then reaches the peer runtime
+through the normal message service for one bounded reaction round, which makes
+agent pile-on and reply loops observable without allowing an unbounded run.
+
+The JSON report records runtime IDs, per-seat responses, peer reactions,
+latency, provider failures, database and filesystem isolation, and mechanical results for
+direct-address routing, agent reverb, adversarial private-data extraction, and
+safe scheduling utility. Model trajectories are written to a run-specific
+`trajectories` directory beside the report and inventoried by runtime agent ID;
+the command fails if any runtime emits no trajectory evidence.
+
+Run the four-runtime Lighthouse sales evaluation, where an account executive,
+solutions architect, and compliance lead sell elizaOS as an embeddable agentic
+operating system to an adversarial buyer agent:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:sales-lighthouse -- \
+  --output=../../reports/multi-agent-arena/lighthouse.json
+```
+
+Run the next-level autonomous variant with one human kickoff. Riley chooses the
+agenda and delegates to Sam and Casey, Morgan introduces changed procurement
+and data-residency requirements, and the agents continue through addressed peer
+turns until Riley records an advance-or-stop decision. Relationship-scoped
+facts are seeded only into their authorized runtime stores, and the negotiation
+is capped at six peer rounds as a safety bound:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:sales-lighthouse-autonomous -- \
+  --output=../../reports/multi-agent-arena/lighthouse-autonomous.json
+```
+
 ## When2Speak Stage-1 evaluation
 
 Run the full labeled JSONL through the same `runV5MessageRuntimeStage1` model

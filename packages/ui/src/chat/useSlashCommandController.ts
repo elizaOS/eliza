@@ -31,6 +31,9 @@ import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { loadSavedCustomCommands, normalizeSlashCommandName } from "./index";
 import { buildModelChoiceLabels, resolveModelChoices } from "./model-choices";
+
+export { reportUserViewSwitch } from "./view-navigation-report";
+
 import {
   filterCommandsForSurface,
   type SlashArgChoiceContext,
@@ -72,39 +75,8 @@ function isModelCatalogProviders(
   );
 }
 
-/** View-switch report POST — same 15s Fal #21205 family. */
-const SLASH_VIEW_SWITCH_FETCH_TIMEOUT_MS = 15_000;
 /** Shortcut report POST — independent hop, own 15s deadline. */
 const SLASH_SHORTCUT_FETCH_TIMEOUT_MS = 15_000;
-
-async function postViewSwitchReport(args: {
-  base: string;
-  token?: string | null;
-  viewId: string;
-  viewPath?: string;
-}): Promise<void> {
-  const res = await fetch(
-    `${args.base}/api/views/${encodeURIComponent(args.viewId)}/navigate`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(args.token ? { Authorization: `Bearer ${args.token}` } : {}),
-      },
-      body: JSON.stringify({
-        source: "user",
-        ...(args.viewPath ? { path: args.viewPath } : {}),
-      }),
-      signal: AbortSignal.timeout(SLASH_VIEW_SWITCH_FETCH_TIMEOUT_MS),
-    },
-  );
-  if (!res.ok) {
-    throw new Error(
-      `POST /api/views/${args.viewId}/navigate returned HTTP ${res.status}`,
-    );
-  }
-  await res.arrayBuffer();
-}
 
 async function postShortcutReport(args: {
   base: string;
@@ -130,33 +102,6 @@ async function postShortcutReport(args: {
     );
   }
   await res.arrayBuffer();
-}
-
-/**
- * Report a user-initiated view switch to the agent (#8792). Fire-and-forget,
- * fully guarded: a failure here must never break navigation. `source: "user"`
- * makes the server record state + emit VIEW_SWITCHED without echoing
- * shell:navigate:view back to the client. The surface id is any view/tab id
- * (e.g. a view id, a tab id, or "settings") the proactive decider keys off.
- */
-export function reportUserViewSwitch(viewId: string, viewPath?: string): void {
-  try {
-    const base = getElizaApiBase();
-    if (!base || typeof fetch === "undefined") return;
-    const token = getElizaApiToken();
-    void postViewSwitchReport({ base, token, viewId, viewPath }).catch(
-      (err) => {
-        // error-policy:J7 telemetry write must not break navigation; warn keeps
-        // a dead reporting endpoint observable in the console.
-        logger.warn(
-          `[useSlashCommandController] view-switch report failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      },
-    );
-  } catch {
-    // error-policy:J7 same guard for synchronous setup failures — telemetry
-    // must never break navigation.
-  }
 }
 
 /**
@@ -330,9 +275,8 @@ export function useSlashCommandController(
   options: SlashCommandControllerOptions = {},
 ): SlashCommandController {
   const { isAuthorized = false, isElevated = false } = options;
-  const { setTab, handleChatClear } = useAppSelectorShallow((s) => ({
+  const { setTab } = useAppSelectorShallow((s) => ({
     setTab: s.setTab,
-    handleChatClear: s.handleChatClear,
   }));
   const { views } = useAvailableViews();
   const [serverCommands, setServerCommands] = React.useState<
@@ -495,7 +439,12 @@ export function useSlashCommandController(
         surface: GUI_SURFACE,
         isAuthorized,
         isElevated,
-      }),
+      }).filter(
+        (command) =>
+          command.target.kind !== "client" ||
+          (command.target.clientAction !== "clear-chat" &&
+            command.target.clientAction !== "new-conversation"),
+      ),
     [serverCommands, customCommands, isAuthorized, isElevated],
   );
   // Natural language belongs to the agent model. Client-side shortcuts are
@@ -532,9 +481,6 @@ export function useSlashCommandController(
   const navigateTab = React.useCallback(
     (tab: string) => {
       setTab(tab as Tab);
-      // Report the tab id as a surface so the proactive decider can react to
-      // user-initiated tab navigation (#8792). Fire-and-forget.
-      reportUserViewSwitch(tab);
     },
     [setTab],
   );
@@ -546,9 +492,6 @@ export function useSlashCommandController(
         detail: { section },
       }),
     );
-    // Surface key is "settings" with the section threaded through as the path
-    // so the decider can distinguish settings sub-screens (#8792).
-    reportUserViewSwitch("settings", section);
   }, []);
 
   const navigateView = React.useCallback(
@@ -558,21 +501,13 @@ export function useSlashCommandController(
         viewId: target.viewId,
         viewPath: target.viewPath,
       });
-      // Report this user-initiated switch to the agent (#8792) so the server's
-      // current-view state stays accurate and a VIEW_SWITCHED event fires for the
-      // proactive decider. `source: "user"` tells the server to record + emit
-      // WITHOUT re-broadcasting shell:navigate:view (the client already
-      // navigated above), avoiding an echo loop. Fire-and-forget.
-      if (target.viewId) {
-        reportUserViewSwitch(target.viewId, target.viewPath);
-      }
     },
     [],
   );
 
-  const clearChat = React.useCallback(() => {
-    void handleChatClear();
-  }, [handleChatClear]);
+  // The canonical product has one continuous conversation. Keep the interface
+  // stable for generic slash execution, but never expose or execute a reset.
+  const clearChat = React.useCallback(() => {}, []);
 
   const openCommandPalette = React.useCallback(() => {
     if (typeof document === "undefined") return;

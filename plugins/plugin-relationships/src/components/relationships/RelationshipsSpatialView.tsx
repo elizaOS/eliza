@@ -1,32 +1,28 @@
 /**
  * RelationshipsSpatialView — the entity / relationship knowledge-graph viewer
- * authored once with the spatial vocabulary, so it renders correctly wherever it
- * is displayed:
- *
- *   - GUI today through `<SpatialSurface>` (DOM).
- *   - Future adapters can reuse the same snapshot contract behind the retained modality types.
- *
- * It is purely presentational (a snapshot + an action callback in, primitives
- * out) and imports only the cross-modality primitives, so it is safe to render
- * without pulling browser-only runtime imports into the presentational layer.
+ * projected into the canonical web component vocabulary used by the Character
+ * family. It is purely presentational: a snapshot and action callback enter;
+ * accessible filters and entity rows leave.
  *
  * The two graph payloads (entities + their outbound edges) are joined and
  * projected to {@link EntityNode}s in the data wrapper ({@link ./RelationshipsView.tsx});
  * this component never fetches or computes the graph — it displays the snapshot
  * and dispatches actions. The entity-kind filter is the one piece of interactive
- * state it owns locally (via {@link useSpatialState}); filtering the already-built
- * node list is presentation-only and works on every surface.
+ * state it owns locally; filtering the already-built node list is
+ * presentation-only.
  */
 
 import {
   Button,
   Card,
-  HStack,
-  List,
-  Text,
-  useSpatialState,
-  VStack,
-} from "@elizaos/ui/spatial";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@elizaos/ui";
+import { useState } from "react";
 
 /** A typed edge shown under its source entity, already projected for display. */
 export interface RelationshipEdge {
@@ -96,11 +92,11 @@ export function RelationshipsSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1} shrink={0} width="100%">
+    <Card variant="transparentSquare" className="w-full min-w-0">
       {snapshot.state === "loading" ? (
-        <Text tone="muted" align="center" style="caption">
+        <div className="py-8 text-center text-sm text-muted">
           Loading relationships
-        </Text>
+        </div>
       ) : snapshot.state === "error" ? (
         <RelationshipsErrorBody snapshot={snapshot} dispatch={dispatch} />
       ) : snapshot.state === "empty" ? (
@@ -121,15 +117,20 @@ function RelationshipsErrorBody({
 }) {
   return (
     <>
-      <Text bold>Could not load relationships</Text>
-      <Text tone="danger" style="caption">
+      <h2 className="text-sm font-semibold text-txt">
+        Could not load relationships
+      </h2>
+      <p className="mt-1 text-sm text-danger">
         {snapshot.error ?? "Could not load relationships."}
-      </Text>
-      <HStack gap={1}>
-        <Button agent="retry" onPress={dispatch("retry")}>
-          Retry
-        </Button>
-      </HStack>
+      </p>
+      <Button
+        className="mt-3"
+        size="sm"
+        data-agent-id="retry"
+        onClick={dispatch("retry")}
+      >
+        Retry
+      </Button>
     </>
   );
 }
@@ -140,14 +141,20 @@ function RelationshipsEmptyBody({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <>
-      <Text bold>None</Text>
-      <HStack gap={1}>
-        <Button agent="add" onPress={dispatch("add")}>
-          Add someone
-        </Button>
-      </HStack>
-    </>
+    <div className="py-8 text-center">
+      <h2 className="text-sm font-semibold text-txt">No relationships yet</h2>
+      <p className="mt-1 text-sm text-muted">
+        Add a person to start building the relationship graph.
+      </p>
+      <Button
+        className="mt-3"
+        size="sm"
+        data-agent-id="add"
+        onClick={dispatch("add")}
+      >
+        Add someone
+      </Button>
+    </div>
   );
 }
 
@@ -161,7 +168,7 @@ function RelationshipsReadyBody({
   // The active kind filter is the one piece of interactive local state. Empty
   // string = "all kinds". A single selection keeps the chips and the rendered
   // cards in agreement on every surface.
-  const [activeKind, setActiveKind] = useSpatialState<string>("");
+  const [activeKind, setActiveKind] = useState("");
 
   const visible =
     activeKind === ""
@@ -177,19 +184,19 @@ function RelationshipsReadyBody({
           onSelect={setActiveKind}
         />
       ) : null}
-      <Text style="caption" tone="muted">
-        Graph ({visible.length})
-      </Text>
+      <div className="mt-4 text-xs font-medium text-muted">
+        {visible.length} {visible.length === 1 ? "entity" : "entities"}
+      </div>
       {visible.length === 0 ? (
-        <Text tone="muted" style="caption">
-          None
-        </Text>
+        <div className="py-8 text-sm text-muted">
+          No matching relationships.
+        </div>
       ) : (
-        <List gap={1}>
+        <div className="mt-2 divide-y divide-border/45 border-y border-border/45">
           {visible.map((node) => (
             <EntityNodeBlock key={node.id} node={node} onAction={onAction} />
           ))}
-        </List>
+        </div>
       )}
     </>
   );
@@ -204,26 +211,54 @@ function KindFilters({
   active: string;
   onSelect: (kind: string) => void;
 }) {
+  const allKindsValue = "__all__";
+  const selectedLabel =
+    filters.find((filter) => filter.kind === active)?.label ?? "All";
+
   return (
-    <HStack gap={1} wrap align="center">
-      <Button
-        agent="relationships-kind-all"
-        variant={active === "" ? "solid" : "ghost"}
-        onPress={() => onSelect("")}
-      >
-        All
-      </Button>
-      {filters.map((filter) => (
-        <Button
-          key={filter.kind}
-          agent={`relationships-kind-${filter.kind}`}
-          variant={active === filter.kind ? "solid" : "ghost"}
-          onPress={() => onSelect(active === filter.kind ? "" : filter.kind)}
-        >
-          {filter.label}
-        </Button>
-      ))}
-    </HStack>
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <span className="text-sm text-muted">Type</span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            size="dense"
+            variant="ghostMuted"
+            className="min-w-32 justify-between"
+            data-agent-id="relationships-kind-filter"
+            aria-label={`Filter relationship type, ${selectedLabel} selected`}
+          >
+            <span>{selectedLabel}</span>
+            <span aria-hidden="true">▾</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-48">
+          <DropdownMenuLabel>Filter by type</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={active || allKindsValue}
+            onValueChange={(value) =>
+              onSelect(value === allKindsValue ? "" : value)
+            }
+          >
+            <DropdownMenuRadioItem
+              value={allKindsValue}
+              data-agent-id="relationships-kind-all"
+            >
+              All
+            </DropdownMenuRadioItem>
+            {filters.map((filter) => (
+              <DropdownMenuRadioItem
+                key={filter.kind}
+                value={filter.kind}
+                data-agent-id={`relationships-kind-${filter.kind}`}
+              >
+                {filter.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
@@ -235,43 +270,45 @@ function EntityNodeBlock({
   onAction?: (action: string) => void;
 }) {
   return (
-    <VStack gap={0} agent={`rel-${node.id}`}>
-      <HStack gap={1} align="center">
-        <VStack gap={0} grow={1}>
-          <Text bold wrap={false}>
+    <div className="min-w-0 py-3" data-agent-id={`rel-${node.id}`}>
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-txt">
             {node.name}
-          </Text>
-        </VStack>
-        <Text style="caption" tone="primary" wrap={false}>
-          {node.kindLabel}
-        </Text>
+          </div>
+          {node.identityLine ? (
+            <div className="mt-0.5 truncate text-xs text-muted">
+              {node.identityLine}
+            </div>
+          ) : null}
+        </div>
+        <span className="shrink-0 text-xs text-muted">{node.kindLabel}</span>
         <Button
-          agent={`open-${node.id}`}
-          onPress={() => onAction?.(`open:${node.id}`)}
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Open ${node.name}`}
+          data-agent-id={`open-${node.id}`}
+          onClick={() => onAction?.(`open:${node.id}`)}
         >
           ›
         </Button>
-      </HStack>
-      {node.identityLine ? (
-        <Text style="caption" tone="muted" wrap={false}>
-          {node.identityLine}
-        </Text>
-      ) : null}
+      </div>
       {node.edges.length > 0
         ? node.edges.map((edge) => (
-            <HStack key={edge.id} gap={1} align="center">
-              <Text tone="muted" wrap={false}>
-                ›
-              </Text>
-              <VStack gap={0} grow={1}>
-                <Text wrap={false}>{edge.toName}</Text>
-              </VStack>
-              <Text style="caption" tone="muted" wrap={false}>
-                {edge.meta}
-              </Text>
-            </HStack>
+            <div
+              key={edge.id}
+              className="mt-2 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 pl-1 text-xs"
+            >
+              <span aria-hidden="true" className="text-muted">
+                ↳
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-muted-strong">{edge.toName}</div>
+                <div className="truncate text-muted">{edge.meta}</div>
+              </div>
+            </div>
           ))
         : null}
-    </VStack>
+    </div>
   );
 }

@@ -1154,6 +1154,38 @@ describe("NotificationsHomeCenter", () => {
     // the notification header.
     expect(screen.queryByTestId("notification-count-chip")).toBeNull();
   });
+
+  it("renders a white connector mark for a known notification source", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        source: "discord",
+        category: "message",
+        title: "New Discord message",
+      }),
+    );
+    renderRestedNotifications();
+
+    const sourceIcon = screen.getByTestId("notification-source-icon");
+    expect(sourceIcon.dataset.notificationSourceVisual).toBe("brand");
+    expect(sourceIcon.dataset.source).toBe("discord");
+    expect(sourceIcon.className).toContain("text-white");
+    expect(sourceIcon.querySelector("svg")).toBeTruthy();
+  });
+
+  it("uses the notification category icon instead of a producer initial", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        source: "lifeops",
+        category: "health",
+        title: "Health check",
+      }),
+    );
+    renderRestedNotifications();
+
+    const sourceIcon = screen.getByTestId("notification-source-icon");
+    expect(sourceIcon.dataset.notificationSourceVisual).toBe("category");
+    expect(sourceIcon.querySelector("svg.lucide-heart-pulse")).toBeTruthy();
+  });
 });
 
 // ── Z-stacked groups (expanded shade) ───────────────────────────────────────

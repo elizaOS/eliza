@@ -18,7 +18,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useBranding } from "../../../config/branding";
 import { cn } from "../../../lib/utils";
+import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import {
   defaultStateFor,
   getPermissionLabel,
@@ -153,15 +155,14 @@ export function PermissionCard({
   // Defensive: agent shouldn't emit a card for already-granted permissions.
   if (state.status === "granted") {
     return (
-      <div
+      <Badge
+        variant="outline"
+        tone="success"
         data-testid="permission-card-granted"
-        className={cn(
-          "mt-2 inline-flex items-center gap-1.5 rounded-sm border border-success/30 bg-success/10 px-2 py-1 text-xs font-medium text-success",
-          className,
-        )}
+        className={cn("mt-2", className)}
       >
         {labels.granted ?? "Access granted"} ✓
-      </div>
+      </Badge>
     );
   }
 
@@ -187,27 +188,29 @@ export function PermissionCard({
     (permission === "reminders" ? "Use internal reminder" : "Use fallback");
 
   return (
-    <section
+    <Card
+      variant="insetPadded"
+      stack="compact"
+      role="region"
       data-testid="permission-card"
       data-permission={permission}
       data-feature={feature}
       data-status={state.status}
       aria-label={`Permission request: ${title}`}
-      className={cn(
-        "mt-2 rounded-sm border border-border/40 bg-bg-accent/60 p-3",
-        className,
-      )}
+      className={cn("mt-2", className)}
     >
       <header className="mb-1 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-txt-strong">{title}</h3>
-        <span className="rounded-full border border-border/50 px-2 py-0.5 text-2xs font-medium uppercase tracking-wider text-muted">
+        <Badge variant="outline" size="compact" tone="muted">
           {statusLabel(state)}
-        </span>
+        </Badge>
       </header>
       <p className="mb-3 text-sm leading-snug text-txt">{reason}</p>
-      <div className="mb-3 rounded-sm border border-border/40 bg-surface/60 p-2 text-xs leading-relaxed text-muted">
-        <p className="font-medium text-txt">{guidance.primary}</p>
-        <p className="mt-1">{guidance.secondary}</p>
+      <div className="mb-3 text-xs leading-relaxed text-muted">
+        <Card variant="insetCompact">
+          <p className="font-medium text-txt">{guidance.primary}</p>
+          <p className="mt-1">{guidance.secondary}</p>
+        </Card>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {isRestrictedEntitlement ? (
@@ -284,7 +287,7 @@ export function PermissionCard({
           {labels.notNow ?? "Not now"}
         </Button>
       </div>
-    </section>
+    </Card>
   );
 }
 

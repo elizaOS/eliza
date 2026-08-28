@@ -34,7 +34,9 @@ import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../../utils/asset-url";
 import { openEventSource } from "../../../utils/event-source";
 import { isSafeNavigationUrl } from "../../../utils/navigation-url";
+import { Badge, type BadgeProps } from "../../ui/badge";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Checkbox } from "../../ui/checkbox";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
@@ -164,92 +166,114 @@ export function OverviewTab(props: OverviewTabProps) {
   );
 
   return (
-    <div className="space-y-3">
+    <div className="w-full space-y-4">
+      <p
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {saving
+          ? "Saving Vault preferences."
+          : savedAt !== null
+            ? "Vault preferences saved."
+            : ""}
+      </p>
       {protection ? <ProtectionCard protection={protection} /> : null}
-      <div className="flex items-center justify-between pb-1">
-        <p className="text-2xs text-muted">
-          {t("vault.overview.routeHint", {
-            defaultValue:
-              "Sensitive values route to the first enabled backend.",
-          })}
-        </p>
-        <Button
-          ref={redetectRef}
-          {...redetectAgentProps}
-          variant="ghost"
-          size="icon-sm"
-          onClick={onReload}
-          aria-label={t("vault.overview.redetect", {
-            defaultValue: "Re-detect backends",
-          })}
-          title={t("vault.overview.redetect", {
-            defaultValue: "Re-detect backends",
-          })}
-        >
-          <RefreshCw className="size-3.5" aria-hidden />
-        </Button>
-      </div>
+      <section aria-labelledby="vault-backends-heading">
+        <div className="flex flex-wrap items-start justify-between gap-3 pb-3">
+          <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
+            <h2
+              id="vault-backends-heading"
+              className="text-sm font-semibold text-txt"
+            >
+              Secret backends
+            </h2>
+            <p className="text-xs text-muted">
+              {t("vault.overview.routeHint", {
+                defaultValue:
+                  "Sensitive values route to the first enabled backend.",
+              })}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              ref={redetectRef}
+              {...redetectAgentProps}
+              variant="ghost"
+              size="sm"
+              onClick={onReload}
+              aria-label={t("vault.overview.redetect", {
+                defaultValue: "Re-detect backends",
+              })}
+              title={t("vault.overview.redetect", {
+                defaultValue: "Re-detect backends",
+              })}
+            >
+              <RefreshCw className="size-3.5" aria-hidden />
+              Refresh
+            </Button>
+            <Button
+              ref={saveRef}
+              {...saveAgentProps}
+              variant="default"
+              size="sm"
+              onClick={onSave}
+              disabled={saving}
+            >
+              {saving
+                ? t("vault.overview.saving", { defaultValue: "Saving…" })
+                : savedAt !== null
+                  ? t("vault.overview.saved", { defaultValue: "Saved" })
+                  : t("vault.overview.savePreferences", {
+                      defaultValue: "Save preferences",
+                    })}
+            </Button>
+          </div>
+        </div>
 
-      <div className="space-y-1.5">
-        {orderedBackends(backends, preferences).map((backend) => (
-          <BackendRow
-            key={backend.id}
-            backend={backend}
-            enabled={isEnabled(backend.id)}
-            isPrimary={preferences.enabled[0] === backend.id}
-            position={preferences.enabled.indexOf(backend.id)}
-            totalEnabled={preferences.enabled.length}
-            methods={
-              backend.id === "in-house"
-                ? []
-                : (installMethods[backend.id as InstallableBackendId] ?? [])
-            }
-            installSheetOpen={installSheet === backend.id}
-            signinSheetOpen={signinSheet === backend.id}
-            onToggle={(on) => setEnabled(backend.id, on)}
-            onMoveUp={() => moveUp(backend.id)}
-            onMoveDown={() => moveDown(backend.id)}
-            onOpenInstallSheet={() =>
-              setInstallSheet(backend.id as InstallableBackendId)
-            }
-            onOpenSigninSheet={() =>
-              setSigninSheet(backend.id as InstallableBackendId)
-            }
-            onCloseSheets={() => {
-              setInstallSheet(null);
-              setSigninSheet(null);
-            }}
-            onInstallComplete={() => {
-              setInstallSheet(null);
-              onInstallComplete();
-            }}
-            onSigninComplete={() => {
-              setSigninSheet(null);
-              onSigninComplete();
-            }}
-            onSignout={() => onSignout(backend.id as InstallableBackendId)}
-          />
-        ))}
-      </div>
-
-      <div className="flex items-center justify-end gap-2 border-t border-border/30 pt-2">
-        <Button
-          ref={saveRef}
-          {...saveAgentProps}
-          variant="default"
-          size="sm"
-          onClick={onSave}
-          disabled={saving}
-        >
-          {saving
-            ? t("vault.overview.saving", { defaultValue: "Saving…" })
-            : savedAt !== null
-              ? t("vault.overview.saved", { defaultValue: "Saved" })
-              : t("vault.overview.savePreferences", {
-                  defaultValue: "Save preferences",
-                })}
-        </Button>
-      </div>
+        <div className="divide-y divide-line-subtle border-y border-line-subtle">
+          {orderedBackends(backends, preferences).map((backend) => (
+            <BackendRow
+              key={backend.id}
+              backend={backend}
+              enabled={isEnabled(backend.id)}
+              isPrimary={preferences.enabled[0] === backend.id}
+              position={preferences.enabled.indexOf(backend.id)}
+              totalEnabled={preferences.enabled.length}
+              methods={
+                backend.id === "in-house"
+                  ? []
+                  : (installMethods[backend.id as InstallableBackendId] ?? [])
+              }
+              installSheetOpen={installSheet === backend.id}
+              signinSheetOpen={signinSheet === backend.id}
+              onToggle={(on) => setEnabled(backend.id, on)}
+              onMoveUp={() => moveUp(backend.id)}
+              onMoveDown={() => moveDown(backend.id)}
+              onOpenInstallSheet={() =>
+                setInstallSheet(backend.id as InstallableBackendId)
+              }
+              onOpenSigninSheet={() =>
+                setSigninSheet(backend.id as InstallableBackendId)
+              }
+              onCloseSheets={() => {
+                setInstallSheet(null);
+                setSigninSheet(null);
+              }}
+              onInstallComplete={() => {
+                setInstallSheet(null);
+                onInstallComplete();
+              }}
+              onSigninComplete={() => {
+                setSigninSheet(null);
+                onSigninComplete();
+              }}
+              onSignout={() => onSignout(backend.id as InstallableBackendId)}
+            />
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
@@ -263,42 +287,47 @@ export function ProtectionCard({
   const protectedLocally =
     protection.localVault.encryptedAtRest && key.available;
   return (
-    <section
-      data-testid="vault-protection-card"
-      className="rounded-sm border border-border/50 bg-surface/40 p-3"
+    <Card
+      asChild
+      variant="transparent"
+      surface="raised"
+      border="subtle"
+      padding="default"
     >
-      <div className="flex items-start gap-2">
-        {protectedLocally ? (
-          <CheckCircle2
-            className="mt-0.5  size-4 shrink-0 text-success"
-            aria-hidden
-          />
-        ) : (
-          <AlertCircle
-            className="mt-0.5 size-4 shrink-0 text-warning"
-            aria-hidden
-          />
-        )}
-        <div className="min-w-0 space-y-1">
-          <p className="text-xs font-medium text-txt">
-            {protectedLocally
-              ? "Protected by this device"
-              : "Device key protection needs attention"}
-          </p>
-          <p className="text-2xs leading-relaxed text-muted">
-            Local Vault values use {protection.localVault.cipher}; the master
-            key is held by {key.backend.replaceAll("_", " ")}. Native app
-            session records require the platform protected store; sync and
-            plaintext fallback are off.
-          </p>
-          <p className="text-2xs leading-relaxed text-muted">
-            Eliza Cloud organization secrets remain in a separate KMS trust
-            domain. Telegram Personal session state is encrypted with the local
-            Vault master key.
-          </p>
+      <section data-testid="vault-protection-card">
+        <div className="flex items-start gap-2">
+          {protectedLocally ? (
+            <CheckCircle2
+              className="mt-0.5  size-4 shrink-0 text-success"
+              aria-hidden
+            />
+          ) : (
+            <AlertCircle
+              className="mt-0.5 size-4 shrink-0 text-warning"
+              aria-hidden
+            />
+          )}
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs font-medium text-txt">
+              {protectedLocally
+                ? "Protected by this device"
+                : "Device key protection needs attention"}
+            </p>
+            <p className="text-2xs leading-relaxed text-muted">
+              Local Vault values use {protection.localVault.cipher}; the master
+              key is held by {key.backend.replaceAll("_", " ")}. Native app
+              session records require the platform protected store; sync and
+              plaintext fallback are off.
+            </p>
+            <p className="text-2xs leading-relaxed text-muted">
+              Eliza Cloud organization secrets remain in a separate KMS trust
+              domain. Telegram Personal session state is encrypted with the
+              local Vault master key.
+            </p>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </Card>
   );
 }
 
@@ -429,12 +458,8 @@ export function BackendRow(props: BackendRowProps) {
   const installableId = backend.id as InstallableBackendId;
 
   return (
-    <div
-      className={`rounded-sm border bg-card/35 px-3 py-2.5 ${
-        enabled ? "border-border" : "border-border/40 opacity-70"
-      }`}
-    >
-      <div className="flex items-center gap-3">
+    <div className={enabled ? "p-3 sm:p-4" : "p-3 opacity-70 sm:p-4"}>
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2">
         <Checkbox
           ref={enableRef}
           {...enableAgentProps}
@@ -447,16 +472,16 @@ export function BackendRow(props: BackendRowProps) {
           })}
         />
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-txt">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-sm font-medium text-txt">
               {backend.label}
             </span>
             <StatusPill tone={tone} text={status} />
             {backend.authMode === "desktop-app" && (
-              <span
+              <Badge
                 data-testid={`auth-mode-badge-${backend.id}`}
-                className="rounded-full border border-status-info/40 bg-status-info/10 px-1.5 py-0.5 text-2xs font-medium text-status-info"
+                variant="vaultInfo"
                 title={t("vault.backend.desktopAppTitle", {
                   defaultValue: "Authenticated via 1Password desktop app",
                 })}
@@ -464,12 +489,12 @@ export function BackendRow(props: BackendRowProps) {
                 {t("vault.backend.viaDesktopApp", {
                   defaultValue: "via desktop app",
                 })}
-              </span>
+              </Badge>
             )}
             {isPrimary && enabled && (
-              <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+              <Badge variant="vaultAccent">
                 {t("vault.backend.primary", { defaultValue: "Primary" })}
-              </span>
+              </Badge>
             )}
           </div>
           {backend.detail && (
@@ -529,40 +554,43 @@ export function BackendRow(props: BackendRowProps) {
               {t("vault.backend.signOut", { defaultValue: "Sign out" })}
             </Button>
           )}
-          {enabled && backend.available && backend.signedIn !== false && (
-            <>
-              <Button
-                ref={moveUpRef}
-                {...moveUpAgentProps}
-                variant="ghost"
-                size="icon-sm"
-                onClick={onMoveUp}
-                disabled={position <= 0}
-                title={t("vault.backend.moveUp", { defaultValue: "Move up" })}
-                aria-label={t("vault.backend.moveUp", {
-                  defaultValue: "Move up",
-                })}
-              >
-                <ChevronUp className="size-3.5" aria-hidden />
-              </Button>
-              <Button
-                ref={moveDownRef}
-                {...moveDownAgentProps}
-                variant="ghost"
-                size="icon-sm"
-                onClick={onMoveDown}
-                disabled={position < 0 || position >= totalEnabled - 1}
-                title={t("vault.backend.moveDown", {
-                  defaultValue: "Move down",
-                })}
-                aria-label={t("vault.backend.moveDown", {
-                  defaultValue: "Move down",
-                })}
-              >
-                <ChevronDown className="size-3.5" aria-hidden />
-              </Button>
-            </>
-          )}
+          {enabled &&
+            backend.available &&
+            backend.signedIn !== false &&
+            totalEnabled > 1 && (
+              <>
+                <Button
+                  ref={moveUpRef}
+                  {...moveUpAgentProps}
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onMoveUp}
+                  disabled={position <= 0}
+                  title={t("vault.backend.moveUp", { defaultValue: "Move up" })}
+                  aria-label={t("vault.backend.moveUp", {
+                    defaultValue: "Move up",
+                  })}
+                >
+                  <ChevronUp className="size-3.5" aria-hidden />
+                </Button>
+                <Button
+                  ref={moveDownRef}
+                  {...moveDownAgentProps}
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onMoveDown}
+                  disabled={position < 0 || position >= totalEnabled - 1}
+                  title={t("vault.backend.moveDown", {
+                    defaultValue: "Move down",
+                  })}
+                  aria-label={t("vault.backend.moveDown", {
+                    defaultValue: "Move down",
+                  })}
+                >
+                  <ChevronDown className="size-3.5" aria-hidden />
+                </Button>
+              </>
+            )}
         </div>
       </div>
 
@@ -594,20 +622,21 @@ function StatusPill({
   tone: "ok" | "warn" | "muted";
   text: string;
 }) {
-  const classes =
+  const variant =
     tone === "ok"
-      ? "border-ok/30 bg-ok/10 text-ok"
+      ? "vaultStatusSuccess"
       : tone === "warn"
-        ? "border-warn/30 bg-warn/10 text-warn"
-        : "border-border/40 bg-bg/40 text-muted";
+        ? "vaultStatusWarning"
+        : "vaultStatusMuted";
   const Icon = tone === "ok" ? CheckCircle2 : AlertCircle;
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-2xs font-medium ${classes}`}
+    <Badge
+      variant={variant satisfies NonNullable<BadgeProps["variant"]>}
+      className="gap-1"
     >
       <Icon className="size-3" aria-hidden />
       {text}
-    </span>
+    </Badge>
   );
 }
 
@@ -766,7 +795,7 @@ export function InstallSheet({
   const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
   return (
-    <div className="mt-3 space-y-2 rounded-sm border border-border/50 bg-bg/30 p-3">
+    <Card variant="vaultInset" stack="compact" className="mt-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-txt">
           {t("vault.install.title", {
@@ -779,6 +808,7 @@ export function InstallSheet({
           {...closeAgentProps}
           variant="ghost"
           size="sm"
+          className="self-start"
           onClick={close}
           disabled={running}
         >
@@ -816,15 +846,23 @@ export function InstallSheet({
             {t("vault.install.installing", { defaultValue: "Installing…" })}
           </div>
           {lastLog && (
-            <pre className="overflow-x-auto whitespace-pre-wrap rounded-sm border border-border/40 bg-card/40 p-2 text-2xs text-muted">
-              {lastLog}
-            </pre>
+            <Card
+              asChild
+              variant="transparent"
+              surface="card"
+              border="subtle"
+              padding="compact"
+            >
+              <pre className="overflow-x-auto whitespace-pre-wrap text-2xs text-muted">
+                {lastLog}
+              </pre>
+            </Card>
           )}
         </div>
       )}
 
       {done && !error && (
-        <div className="flex items-center justify-between gap-2 border-l-2 border-ok/50 bg-ok/10 px-2 py-1.5 text-xs text-ok">
+        <Card variant="vaultSuccessStrip" flow="rowBetween" gap="compact">
           <span className="flex items-center gap-1.5">
             <CheckCircle2 className="size-3.5" aria-hidden />
             {t("vault.install.complete", { defaultValue: "Install complete." })}
@@ -838,15 +876,11 @@ export function InstallSheet({
           >
             {t("vault.install.continue", { defaultValue: "Continue" })}
           </Button>
-        </div>
+        </Card>
       )}
 
-      {error && (
-        <div className="border-l-2 border-danger/60 bg-danger/10 px-2 py-1.5 text-xs text-danger">
-          {error}
-        </div>
-      )}
-    </div>
+      {error && <Card variant="vaultDangerStrip">{error}</Card>}
+    </Card>
   );
 }
 
@@ -1051,190 +1085,185 @@ export function SigninSheet({
   };
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className="mt-3 space-y-2 rounded-sm border border-border/50 bg-bg/30 p-3"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-txt">
-          {t("vault.signin.title", {
-            label: backendLabel,
-            defaultValue: "Sign in to {{label}}",
-          })}
-        </p>
-        <Button
-          ref={cancelRef}
-          {...cancelAgentProps}
-          variant="ghost"
-          size="sm"
-          type="button"
-          onClick={onCancel}
-          disabled={submitting}
-        >
-          {t("vault.signin.cancel", { defaultValue: "Cancel" })}
-        </Button>
-      </div>
-
-      {backendId === "1password" && (
-        <>
-          <div className="space-y-1">
-            <Label htmlFor="op-email" className="text-2xs text-muted">
-              {t("vault.signin.email", { defaultValue: "Email" })}
-            </Label>
-            <Input
-              ref={emailRef}
-              {...emailAgentProps}
-              id="op-email"
-              type="email"
-              autoComplete="username"
-              density="compact"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="op-secret-key" className="text-2xs text-muted">
-              {t("vault.signin.secretKey", {
-                defaultValue: "Secret key (34 chars)",
-              })}
-            </Label>
-            <Input
-              ref={secretKeyRef}
-              {...secretKeyAgentProps}
-              id="op-secret-key"
-              type="text"
-              variant="config"
-              density="compact"
-              required
-              value={secretKey}
-              onChange={(e) => setSecretKey(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="op-address" className="text-2xs text-muted">
-              {t("vault.signin.address", {
-                defaultValue:
-                  "Sign-in address (optional, e.g. my.1password.com)",
-              })}
-            </Label>
-            <Input
-              ref={addressRef}
-              {...addressAgentProps}
-              id="op-address"
-              type="text"
-              density="compact"
-              value={signInAddress}
-              onChange={(e) => setSignInAddress(e.target.value)}
-            />
-          </div>
-        </>
-      )}
-
-      {backendId === "bitwarden" && (
-        <>
-          <p className="text-2xs text-muted">
-            {t("vault.signin.bitwardenHint", {
-              defaultValue:
-                "Bitwarden requires API key credentials for non-interactive sign-in. Create one at Settings → Security → Keys → API key.",
+    <Card asChild variant="vaultInset">
+      <form onSubmit={onSubmit} className="mt-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-txt">
+            {t("vault.signin.title", {
+              label: backendLabel,
+              defaultValue: "Sign in to {{label}}",
             })}
           </p>
-          <div className="space-y-1">
-            <Label htmlFor="bw-client-id" className="text-2xs text-muted">
-              {t("vault.signin.clientId", {
-                defaultValue: "client_id (BW_CLIENTID)",
-              })}
-            </Label>
-            <Input
-              ref={clientIdRef}
-              {...clientIdAgentProps}
-              id="bw-client-id"
-              type="text"
-              variant="config"
-              density="compact"
-              required
-              value={bwClientId}
-              onChange={(e) => setBwClientId(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="bw-client-secret" className="text-2xs text-muted">
-              {t("vault.signin.clientSecret", {
-                defaultValue: "client_secret (BW_CLIENTSECRET)",
-              })}
-            </Label>
-            <Input
-              ref={clientSecretRef}
-              {...clientSecretAgentProps}
-              id="bw-client-secret"
-              type="password"
-              variant="config"
-              density="compact"
-              autoComplete="off"
-              required
-              value={bwClientSecret}
-              onChange={(e) => setBwClientSecret(e.target.value)}
-            />
-          </div>
-        </>
-      )}
-
-      {backendId === "protonpass" && (
-        <p className="text-2xs text-warn">
-          {t("vault.signin.protonpassBeta", {
-            defaultValue:
-              "Proton Pass CLI is in closed beta — automated sign-in is not yet supported.",
-          })}
-        </p>
-      )}
-
-      <div className="space-y-1">
-        <Label htmlFor="master-password" className="text-2xs text-muted">
-          {t("vault.signin.masterPassword", {
-            defaultValue: "Master password",
-          })}
-        </Label>
-        <Input
-          ref={masterPasswordRef}
-          {...masterPasswordAgentProps}
-          id="master-password"
-          type="password"
-          density="compact"
-          autoComplete="current-password"
-          required
-          value={masterPassword}
-          onChange={(e) => setMasterPassword(e.target.value)}
-        />
-      </div>
-
-      {error && (
-        <div className="border-l-2 border-danger/60 bg-danger/10 px-2 py-1.5 text-xs text-danger">
-          {error}
+          <Button
+            ref={cancelRef}
+            {...cancelAgentProps}
+            variant="ghost"
+            size="sm"
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+          >
+            {t("vault.signin.cancel", { defaultValue: "Cancel" })}
+          </Button>
         </div>
-      )}
 
-      <div className="flex justify-end gap-2 pt-1">
-        <Button
-          ref={submitRef}
-          {...submitAgentProps}
-          type="submit"
-          variant="default"
-          size="sm"
-          disabled={submitting || backendId === "protonpass"}
-        >
-          {submitting ? (
-            <>
-              <Loader2 className="size-3.5 animate-spin" aria-hidden />
-              {t("vault.signin.signingIn", { defaultValue: "Signing in…" })}
-            </>
-          ) : (
-            <>
-              <LogIn className="size-3.5" aria-hidden />
-              {t("vault.signin.signIn", { defaultValue: "Sign in" })}
-            </>
-          )}
-        </Button>
-      </div>
-    </form>
+        {backendId === "1password" && (
+          <>
+            <div className="space-y-1">
+              <Label htmlFor="op-email" className="text-2xs text-muted">
+                {t("vault.signin.email", { defaultValue: "Email" })}
+              </Label>
+              <Input
+                ref={emailRef}
+                {...emailAgentProps}
+                id="op-email"
+                type="email"
+                autoComplete="username"
+                density="compact"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="op-secret-key" className="text-2xs text-muted">
+                {t("vault.signin.secretKey", {
+                  defaultValue: "Secret key (34 chars)",
+                })}
+              </Label>
+              <Input
+                ref={secretKeyRef}
+                {...secretKeyAgentProps}
+                id="op-secret-key"
+                type="text"
+                variant="config"
+                density="compact"
+                required
+                value={secretKey}
+                onChange={(e) => setSecretKey(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="op-address" className="text-2xs text-muted">
+                {t("vault.signin.address", {
+                  defaultValue:
+                    "Sign-in address (optional, e.g. my.1password.com)",
+                })}
+              </Label>
+              <Input
+                ref={addressRef}
+                {...addressAgentProps}
+                id="op-address"
+                type="text"
+                density="compact"
+                value={signInAddress}
+                onChange={(e) => setSignInAddress(e.target.value)}
+              />
+            </div>
+          </>
+        )}
+
+        {backendId === "bitwarden" && (
+          <>
+            <p className="text-2xs text-muted">
+              {t("vault.signin.bitwardenHint", {
+                defaultValue:
+                  "Bitwarden requires API key credentials for non-interactive sign-in. Create one at Settings → Security → Keys → API key.",
+              })}
+            </p>
+            <div className="space-y-1">
+              <Label htmlFor="bw-client-id" className="text-2xs text-muted">
+                {t("vault.signin.clientId", {
+                  defaultValue: "client_id (BW_CLIENTID)",
+                })}
+              </Label>
+              <Input
+                ref={clientIdRef}
+                {...clientIdAgentProps}
+                id="bw-client-id"
+                type="text"
+                variant="config"
+                density="compact"
+                required
+                value={bwClientId}
+                onChange={(e) => setBwClientId(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="bw-client-secret" className="text-2xs text-muted">
+                {t("vault.signin.clientSecret", {
+                  defaultValue: "client_secret (BW_CLIENTSECRET)",
+                })}
+              </Label>
+              <Input
+                ref={clientSecretRef}
+                {...clientSecretAgentProps}
+                id="bw-client-secret"
+                type="password"
+                variant="config"
+                density="compact"
+                autoComplete="off"
+                required
+                value={bwClientSecret}
+                onChange={(e) => setBwClientSecret(e.target.value)}
+              />
+            </div>
+          </>
+        )}
+
+        {backendId === "protonpass" && (
+          <p className="text-2xs text-warn">
+            {t("vault.signin.protonpassBeta", {
+              defaultValue:
+                "Proton Pass CLI is in closed beta — automated sign-in is not yet supported.",
+            })}
+          </p>
+        )}
+
+        <div className="space-y-1">
+          <Label htmlFor="master-password" className="text-2xs text-muted">
+            {t("vault.signin.masterPassword", {
+              defaultValue: "Master password",
+            })}
+          </Label>
+          <Input
+            ref={masterPasswordRef}
+            {...masterPasswordAgentProps}
+            id="master-password"
+            type="password"
+            density="compact"
+            autoComplete="current-password"
+            required
+            value={masterPassword}
+            onChange={(e) => setMasterPassword(e.target.value)}
+          />
+        </div>
+
+        {error && <Card variant="vaultDangerStrip">{error}</Card>}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button
+            ref={submitRef}
+            {...submitAgentProps}
+            type="submit"
+            variant="default"
+            size="sm"
+            disabled={submitting || backendId === "protonpass"}
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                {t("vault.signin.signingIn", { defaultValue: "Signing in…" })}
+              </>
+            ) : (
+              <>
+                <LogIn className="size-3.5" aria-hidden />
+                {t("vault.signin.signIn", { defaultValue: "Sign in" })}
+              </>
+            )}
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }

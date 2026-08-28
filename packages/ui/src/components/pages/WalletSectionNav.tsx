@@ -9,11 +9,9 @@
  * "Wallet" `ViewHeader` (icon-only launcher back) ABOVE the secondary tab strip,
  * rather than a tabs-only header with no title.
  *
- * The wallet root also carries the price surface (#16943): when the home spec
- * demoted the `wallet.balance` resident card, the routed wallet view became the
- * price surface's mandated home (NOTIFICATIONS-WIDGETS-SYSTEM.md §E item 3).
- * `WalletBalanceWidget` renders here on the root tab only — BTC/SOL/ETH by
- * default, top-3 held, 60s visibility-gated refresh, price-only (#10706).
+ * Balance, network, and asset state live in the canonical wallet body. Keeping
+ * this wrapper navigation-only avoids a second balance request and prevents a
+ * late-loading header card from shifting the routed view.
  */
 
 import { useSyncExternalStore } from "react";
@@ -22,7 +20,8 @@ import {
   getAppShellPageRegistrySnapshot,
   subscribeAppShellPages,
 } from "../../app-shell-registry";
-import { WalletBalanceWidget } from "../chat/widgets/wallet-balance";
+import { cn } from "../../lib/utils";
+import { getFrontendPlatform } from "../../platform/platform-guards";
 import {
   isSectionPath,
   normalizeSectionPath,
@@ -32,19 +31,12 @@ import {
   sectionTabs,
 } from "../shared/SectionNav";
 import { ViewHeader } from "../shared/ViewHeader";
+import { Card } from "../ui/card";
 
 const WALLET_SECTION_GROUP = "wallet";
 const WALLET_ROOT_PATH = "/wallet";
 /** Registration path of the root inventory page (aliased to `/wallet`). */
 const WALLET_INVENTORY_PATH = "/inventory";
-
-/** True on the wallet root tab (either alias), where the price surface lives. */
-function isWalletRootPath(path: string): boolean {
-  const normalized = normalizeSectionPath(path);
-  return (
-    normalized === WALLET_ROOT_PATH || normalized === WALLET_INVENTORY_PATH
-  );
-}
 
 /**
  * Canonical-root rewrite for the Wallet section: the inventory page registers
@@ -54,7 +46,7 @@ const walletRewrite: SectionPathRewrite = (
   registration: AppShellPageRegistration,
 ): SectionTab | null => {
   const registrationPath = normalizeSectionPath(registration.path);
-  if (registrationPath === "/inventory") {
+  if (registrationPath === WALLET_INVENTORY_PATH) {
     return {
       id: registration.id,
       label: registration.label,
@@ -91,24 +83,29 @@ export function WalletSectionNav({
     getAppShellPageRegistrySnapshot,
     getAppShellPageRegistrySnapshot,
   );
+  const frontendPlatform = getFrontendPlatform();
+  const isNativeWallet =
+    frontendPlatform === "ios" || frontendPlatform === "android";
   return (
-    <div className="flex shrink-0 flex-col border-b border-border/45">
-      <ViewHeader title="Wallet" />
-      <SectionNav
-        group={WALLET_SECTION_GROUP}
-        activePath={activePath}
-        rewrite={walletRewrite}
-        ariaLabel="Wallet sections"
-        className="pt-0"
-      />
-      {isWalletRootPath(activePath) ? (
+    <Card asChild variant="bottomDivider">
+      <div className="flex shrink-0 flex-col">
         <div
-          data-testid="wallet-section-price-surface"
-          className="mx-auto w-full max-w-md px-4 pb-3"
+          data-testid="wallet-section-header-inset"
+          className={cn(
+            isNativeWallet &&
+              "pt-[max(calc(var(--safe-area-top,0px)-2rem),0.75rem)]",
+          )}
         >
-          <WalletBalanceWidget spanClassName="w-full" />
+          <ViewHeader title="Wallet" />
         </div>
-      ) : null}
-    </div>
+        <SectionNav
+          group={WALLET_SECTION_GROUP}
+          activePath={activePath}
+          rewrite={walletRewrite}
+          ariaLabel="Wallet sections"
+          className="pt-0"
+        />
+      </div>
+    </Card>
   );
 }

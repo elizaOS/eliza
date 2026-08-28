@@ -27,7 +27,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/build-private-workspace-packages.mjs",
+    "postinstall": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/patch-electrobun-linux-cef-profile.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/build-private-workspace-packages.mjs",
     "install:light": "bun install",
     "cloud:mock": "bun scripts/cloud/mock-stack-up.mjs",
     "cloud:mock:fresh": "bun scripts/cloud/mock-stack-up.mjs --reset",
@@ -60,6 +60,7 @@
     "start:eliza": "node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/src/entry.ts start",
     "dev:prepare": "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/app... --filter=!@elizaos/app",
     "dev": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs",
+    "dev:local": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs --cloud-target=offline",
     "dev:ui": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs --ui-only",
     "dev:cloud-only": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun run --cwd packages/app dev:cloud-only",
     "dev:desktop": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza bun --conditions=eliza-source packages/app-core/scripts/dev-platform.mjs",
@@ -146,6 +147,7 @@
     "evidence:install-tools": "node scripts/evidence-install-tools.mjs",
     "linux:bootstrap": "bash scripts/bootstrap-linux-dev.sh",
     "linux:doctor": "bun scripts/linux-dev-doctor.mjs",
+    "linux:build-portable-fused-inference": "node scripts/portable-linux-fused-inference.mjs",
     "evidence:pr": "node scripts/pr-evidence.mjs",
     "evidence:certify": "bun packages/evidence/src/cli.ts certify",
     "evidence:review": "node scripts/evidence-review/generate.mjs --open",

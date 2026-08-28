@@ -61,6 +61,14 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
   ["@elizaos/ui/config", "../../config/index.ts"],
   ["@elizaos/ui/events", "../../events/index.ts"],
   ["@elizaos/ui/hooks", "../../hooks/index.ts"],
+  [
+    "@elizaos/ui/hooks/runtime-capability-retry",
+    "../../hooks/runtime-capability-retry.ts",
+  ],
+  [
+    "@elizaos/ui/hooks/useActiveAgentAuthority",
+    "../../hooks/useActiveAgentAuthority.ts",
+  ],
   ["@elizaos/ui/layouts", "../../layouts/index.ts"],
   ["@elizaos/ui/platform", "../../platform/index.ts"],
   ["@elizaos/ui/platform/ios-runtime", "../../platform/ios-runtime.ts"],

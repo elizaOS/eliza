@@ -15,6 +15,7 @@ import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service.ts";
 const AGENT_ID = "10000000-0000-0000-0000-000000000000" as UUID;
 const ROOM_ID = "20000000-0000-0000-0000-000000000000" as UUID;
 const OTHER_ROOM_ID = "30000000-0000-0000-0000-000000000000" as UUID;
+const ADMIN_ROOM_ID = "35000000-0000-0000-0000-000000000000" as UUID;
 const ADMIN_USER_ID = "admin-user";
 const ADMIN_ID = stringToUuid(ADMIN_USER_ID);
 
@@ -65,11 +66,12 @@ function historyMemory(
 	entityId: UUID,
 	text: string | undefined,
 	createdAt?: number,
+	roomId = ADMIN_ROOM_ID,
 ): Memory {
 	return {
 		agentId: AGENT_ID,
 		entityId,
-		roomId: ROOM_ID,
+		roomId,
 		createdAt,
 		content: text === undefined ? {} : { text },
 	};
@@ -145,11 +147,17 @@ describe("adminChatProvider", () => {
 				adminUserId: ADMIN_USER_ID,
 			});
 			expect(getMemories).toHaveBeenCalledWith({
+				agentId: AGENT_ID,
 				entityId: ADMIN_ID,
+				authorEntityIds: [ADMIN_ID, AGENT_ID],
+				excludeRoomIds: [ROOM_ID],
 				limit: 15,
+				orderBy: "createdAt",
+				orderDirection: "desc",
 				unique: false,
 				tableName: "memories",
 			});
+			expect(getMemories).toHaveBeenCalledTimes(1);
 		},
 	);
 
@@ -174,7 +182,7 @@ describe("adminChatProvider", () => {
 
 		expect(result.text).toContain("Admin: first admin");
 		expect(result.text).toContain("Agent: agent reply");
-		expect(result.text).toContain("Other: [No text content]");
+		expect(result.text).not.toContain("Other:");
 		expect(result.text).toContain("Admin: third � admin");
 		expect(result.text).toContain('Last admin message: "fourth admin"');
 		expect(result.text?.indexOf("first admin")).toBeLessThan(
@@ -182,18 +190,101 @@ describe("adminChatProvider", () => {
 		);
 		expect(result.data).toMatchObject({
 			adminConfigured: true,
-			messageCount: 6,
+			messageCount: 5,
 			recentMessageCount: 3,
 			lastAdminMessage: "fourth admin",
 			conversationActive: true,
-			historyWindowCount: 6,
+			historyWindowCount: 5,
 		});
 		expect(result.values).toEqual({
 			adminConfigured: true,
-			adminHistoryCount: 6,
-			adminHistoryWindowCount: 6,
+			adminHistoryCount: 5,
+			adminHistoryWindowCount: 5,
 		});
 		vi.useRealTimers();
+	});
+
+	test("globally orders and bounds history across two admin rooms", async () => {
+		const getMemories = vi.fn(async () =>
+			Array.from({ length: 20 }, (_, index) =>
+				historyMemory(
+					ADMIN_ID,
+					`admin message ${index + 1}`,
+					index + 1,
+					index % 2 === 0 ? ADMIN_ROOM_ID : OTHER_ROOM_ID,
+				),
+			),
+		);
+		const runtime = runtimeWithService(autonomyService(), {
+			getSetting: () => ADMIN_USER_ID,
+			getMemories,
+		});
+
+		const result = await adminChatProvider.get(runtime, message());
+
+		expect(getMemories).toHaveBeenCalledWith({
+			agentId: AGENT_ID,
+			entityId: ADMIN_ID,
+			authorEntityIds: [ADMIN_ID, AGENT_ID],
+			excludeRoomIds: [ROOM_ID],
+			limit: 15,
+			orderBy: "createdAt",
+			orderDirection: "desc",
+			unique: false,
+			tableName: "memories",
+		});
+		for (let index = 1; index <= 5; index += 1) {
+			expect(result.text).not.toContain(`Admin: admin message ${index}\n`);
+		}
+		for (let index = 6; index <= 20; index += 1) {
+			expect(result.text).toContain(`Admin: admin message ${index}`);
+		}
+		expect(result.text?.indexOf("admin message 6")).toBeLessThan(
+			result.text?.indexOf("admin message 20") ?? -1,
+		);
+		expect(result.data).toMatchObject({
+			messageCount: 15,
+			historyWindowCount: 15,
+		});
+		expect(result.values).toMatchObject({
+			adminHistoryCount: 15,
+			adminHistoryWindowCount: 15,
+		});
+	});
+
+	test("uses one bounded global query even when the admin has 512 rooms", async () => {
+		const getRoomsForParticipant = vi.fn(async () =>
+			Array.from({ length: 512 }, (_, index) =>
+				stringToUuid(`admin-room-${index}`),
+			),
+		);
+		let inFlight = 0;
+		let maxInFlight = 0;
+		const getMemories = vi.fn(async () => {
+			inFlight += 1;
+			maxInFlight = Math.max(maxInFlight, inFlight);
+			await Promise.resolve();
+			inFlight -= 1;
+			return [];
+		});
+		const runtime = runtimeWithService(autonomyService(), {
+			getSetting: () => ADMIN_USER_ID,
+			getRoomsForParticipant,
+			getMemories,
+		});
+
+		await adminChatProvider.get(runtime, message());
+
+		expect(getRoomsForParticipant).not.toHaveBeenCalled();
+		expect(getMemories).toHaveBeenCalledTimes(1);
+		expect(maxInFlight).toBe(1);
+		expect(getMemories).toHaveBeenCalledWith(
+			expect.objectContaining({
+				limit: 15,
+				authorEntityIds: [ADMIN_ID, AGENT_ID],
+				excludeRoomIds: [ROOM_ID],
+			}),
+		);
 	});
 
 	test("marks old history inactive and renders an empty last admin message as N/A", async () => {

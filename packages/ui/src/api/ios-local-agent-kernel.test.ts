@@ -3,11 +3,12 @@
  * Request/Response, no real device.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "./direct-cloud-endpoints";
+import { STAGING_DIRECT_CLOUD_API_BASE_URL } from "./direct-cloud-endpoints";
 import {
   CLOUD_BRIDGE_REQUEST_TIMEOUT_MS,
   handleIosLocalAgentRequest,
   IOS_BUNDLE_MANIFEST_TIMEOUT_MS,
+  resolveIosLocalCloudApiBase,
 } from "./ios-local-agent-kernel";
 
 async function getJson(pathname: string): Promise<unknown> {
@@ -64,6 +65,15 @@ describe("handleIosLocalAgentRequest", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("resolves the iOS bridge from the staging boot target", () => {
+    expect(
+      resolveIosLocalCloudApiBase("eliza-local-agent://ipc", {
+        bootCloudApiBase: "https://api-staging.eliza.app/api/v1",
+        pageHostname: "localhost",
+      }),
+    ).toBe(STAGING_DIRECT_CLOUD_API_BASE_URL);
   });
 
   it("matches app catalog response contracts", async () => {
@@ -144,7 +154,7 @@ describe("handleIosLocalAgentRequest", () => {
         id: "cloud:agent-1",
         kind: "cloud",
         label: "Cloud Agent",
-        apiBase: "eliza-local-agent://ipc",
+        apiBase: "https://api-staging.eliza.app/api/v1/eliza/agents/agent-1",
         accessToken: "cloud-token",
       }),
     );
@@ -184,7 +194,7 @@ describe("handleIosLocalAgentRequest", () => {
       modelId: "cloud-model",
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/v1/eliza/agents/agent-1/bridge`,
+      `${STAGING_DIRECT_CLOUD_API_BASE_URL}/api/v1/eliza/agents/agent-1/bridge`,
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({

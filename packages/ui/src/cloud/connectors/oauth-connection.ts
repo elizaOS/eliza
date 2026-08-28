@@ -45,6 +45,8 @@ interface UseOAuthConnectionsResult {
   connections: OAuthConnection[];
   activeConnections: OAuthConnection[];
   isLoading: boolean;
+  isError: boolean;
+  errorMessage: string | null;
   isConnecting: boolean;
   disconnectingId: string | null;
   connect: () => Promise<void>;
@@ -70,6 +72,7 @@ export function useOAuthConnections(
   const { platform, label } = config;
   const [connections, setConnections] = useState<OAuthConnection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
 
@@ -83,10 +86,19 @@ export function useOAuthConnections(
         );
         if (!signal?.aborted) {
           setConnections(data.connections ?? []);
+          setErrorMessage(null);
         }
-      } catch {
+      } catch (error) {
         if (!signal?.aborted) {
-          toast.error(`Failed to fetch ${label} connections`);
+          const message = errorBodyMessage(
+            error,
+            `Failed to fetch ${label} connections`,
+          );
+          // error-policy:J4 the provider list failed to load, so consumers get
+          // an explicit error state rather than a fabricated empty account list.
+          // The section aggregates probe failures, so this background request
+          // deliberately does not emit a provider-by-provider toast.
+          setErrorMessage(message);
         }
       } finally {
         if (!signal?.aborted) {
@@ -162,6 +174,8 @@ export function useOAuthConnections(
     connections,
     activeConnections,
     isLoading,
+    isError: errorMessage !== null,
+    errorMessage,
     isConnecting,
     disconnectingId,
     connect,

@@ -301,6 +301,14 @@ export type InventoryChainFilters = {
   solana: boolean;
 };
 
+/** Independent lifecycle for a wallet feed; optional feeds can be unsupported without poisoning core balances. */
+export type WalletResourceStatus =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "unavailable"
+  | "error";
+
 export interface AppState {
   // Core
   tab: Tab;
@@ -432,6 +440,12 @@ export interface AppState {
   walletNfts: WalletNftsResponse | null;
   walletLoading: boolean;
   walletNftsLoading: boolean;
+  walletConfigStatus: WalletResourceStatus;
+  walletConfigError: string | null;
+  walletBalancesStatus: WalletResourceStatus;
+  walletBalancesError: string | null;
+  walletNftsStatus: WalletResourceStatus;
+  walletNftsError: string | null;
   inventoryView: "tokens" | "nfts";
   walletExportData: WalletExportResult | null;
   walletExportVisible: boolean;

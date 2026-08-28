@@ -22,7 +22,7 @@ import fs from "node:fs";
 import { createCharacter } from "../character";
 import { logger } from "../logger";
 import { AgentRuntime } from "../runtime";
-import type { Plugin } from "../types";
+import type { Plugin, RuntimeSettings } from "../types";
 import {
 	createTestPgliteDataDir,
 	isInMemoryPgliteDataDir,
@@ -31,6 +31,8 @@ import {
 export interface TestRuntimeOptions {
 	/** Name for the test agent character. Defaults to "TestAgent". */
 	characterName?: string;
+	/** Runtime settings available before plugin registration and service startup. */
+	settings?: RuntimeSettings;
 	/** Additional plugins to register (plugin-sql is always included). */
 	plugins?: Plugin[];
 	/** Embedding width shared by the database vector schema and model provider. */
@@ -140,6 +142,7 @@ export async function createTestRuntime(
 	const runtime = new AgentRuntime({
 		character,
 		plugins: [],
+		settings: options?.settings,
 		logLevel: "warn",
 		enableAutonomy: false,
 	});

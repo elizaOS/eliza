@@ -14,7 +14,7 @@
  * older than the window are invisible to semantic recall by design.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, lt, or, type SQL, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
 import { type SharedAgentMemoryRow, sharedAgentMemories } from "../schemas/shared-agent-memories";
 import { jsonbParam } from "../utils/jsonb";
@@ -25,6 +25,7 @@ export const SHARED_AGENT_MEMORY_ID_CONFLICT = "SHARED_AGENT_MEMORY_ID_CONFLICT"
 /** Rows semantically scanned per embedding search (see module header). */
 export const SHARED_AGENT_MEMORY_SEARCH_WINDOW = 512;
 const MAX_LIST_LIMIT = 200;
+const MAX_LIST_OFFSET = 100_000;
 const MAX_EMBEDDING_DIMENSIONS = 4096;
 
 /** Tenant ownership + storage agent identity required on every call. */
@@ -53,6 +54,33 @@ export interface InsertSharedAgentMemoryResult {
   id: string;
   /** False when the same id already existed inside this tenant (a replay). */
   inserted: boolean;
+}
+
+export interface ListSharedAgentMemoriesInput {
+  type?: string;
+  entityIds?: string[];
+  roomId?: string;
+  /** Canonical browse semantics: whole query OR any query term of 2+ chars. */
+  textQuery?: string;
+  limit: number;
+  offset?: number;
+  before?: Date;
+  beforeId?: string;
+}
+
+export type CountSharedAgentMemoriesInput = Pick<
+  ListSharedAgentMemoriesInput,
+  "type" | "entityIds" | "roomId" | "textQuery"
+>;
+
+export interface ListSharedAgentMemoriesResult {
+  rows: SharedAgentMemoryRow[];
+  hasMore: boolean;
+}
+
+export interface SharedAgentMemoryTypeCount {
+  type: string;
+  count: number;
 }
 
 export interface MergeSharedAgentMessageMemoryInput
@@ -111,6 +139,42 @@ function tenantPins(scope: SharedAgentMemoryScope) {
     eq(sharedAgentMemories.user_id, scope.userId),
     eq(sharedAgentMemories.agent_id, scope.agentId),
   ] as const;
+}
+
+function memoryTextQueryPredicate(query: string): SQL | undefined {
+  const normalized = query.trim();
+  if (!normalized) return undefined;
+  const candidates = [
+    normalized,
+    ...normalized.split(/\s+/).filter((term) => term.length >= 2),
+  ].filter((candidate, index, all) => all.indexOf(candidate) === index);
+  return or(
+    ...candidates.map(
+      (candidate) =>
+        sql<boolean>`strpos(lower(COALESCE(${sharedAgentMemories.content}->>'text', '')), lower(${candidate})) > 0`,
+    ),
+  );
+}
+
+function productListPredicates(
+  scope: SharedAgentMemoryScope,
+  input: CountSharedAgentMemoriesInput,
+): SQL[] {
+  const predicates: SQL[] = [...tenantPins(requiredScope(scope))];
+  if (input.type) {
+    predicates.push(eq(sharedAgentMemories.type, input.type));
+  }
+  if (input.entityIds?.length) {
+    predicates.push(inArray(sharedAgentMemories.entity_id, input.entityIds));
+  }
+  if (input.roomId) {
+    predicates.push(eq(sharedAgentMemories.room_id, input.roomId));
+  }
+  if (input.textQuery) {
+    const textPredicate = memoryTextQueryPredicate(input.textQuery);
+    if (textPredicate) predicates.push(textPredicate);
+  }
+  return predicates;
 }
 
 export class SharedAgentMemoriesWriter {
@@ -251,6 +315,78 @@ export class SharedAgentMemoriesWriter {
 }
 
 export class SharedAgentMemoriesReader {
+  /**
+   * Tenant-pinned newest-first page for the product Memories surface. The
+   * caller supplies validated UUID filters; this repository still bounds the
+   * page and offset so a compatibility route cannot turn into an unbounded
+   * tenant scan. `limit + 1` is fetched only to produce an honest `hasMore`.
+   */
+  async listPage(
+    scope: SharedAgentMemoryScope,
+    input: ListSharedAgentMemoriesInput,
+  ): Promise<ListSharedAgentMemoriesResult> {
+    assertLimit(input.limit);
+    const offset = input.offset ?? 0;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > MAX_LIST_OFFSET) {
+      throw new ElizaError("Shared agent memory offset is outside bounds", {
+        code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+        context: { offset, max: MAX_LIST_OFFSET },
+      });
+    }
+
+    const predicates = productListPredicates(scope, input);
+    if (input.before) {
+      const cursor = input.beforeId
+        ? or(
+            lt(sharedAgentMemories.created_at, input.before),
+            and(
+              eq(sharedAgentMemories.created_at, input.before),
+              lt(sharedAgentMemories.id, input.beforeId),
+            ),
+          )
+        : lt(sharedAgentMemories.created_at, input.before);
+      if (cursor) predicates.push(cursor);
+    }
+
+    const rows = await dbRead
+      .select()
+      .from(sharedAgentMemories)
+      .where(and(...predicates))
+      .orderBy(desc(sharedAgentMemories.created_at), desc(sharedAgentMemories.id))
+      .limit(input.limit + 1)
+      .offset(offset);
+    return {
+      rows: rows.slice(0, input.limit),
+      hasMore: rows.length > input.limit,
+    };
+  }
+
+  /** Exact count over the same tenant-pinned filters used by product listing. */
+  async countMatching(
+    scope: SharedAgentMemoryScope,
+    input: CountSharedAgentMemoriesInput,
+  ): Promise<number> {
+    const [result] = await dbRead
+      .select({ count: sql<number>`count(*)::int` })
+      .from(sharedAgentMemories)
+      .where(and(...productListPredicates(scope, input)));
+    return result?.count ?? 0;
+  }
+
+  /** Exact per-type counts for one tenant-scoped Shared agent. */
+  async countByType(scope: SharedAgentMemoryScope): Promise<SharedAgentMemoryTypeCount[]> {
+    requiredScope(scope);
+    return await dbRead
+      .select({
+        type: sharedAgentMemories.type,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(sharedAgentMemories)
+      .where(and(...tenantPins(scope)))
+      .groupBy(sharedAgentMemories.type)
+      .orderBy(asc(sharedAgentMemories.type));
+  }
+
   /** Most recent rows for one room within the tenant scope, newest first. */
   async listRecentByRoom(
     scope: SharedAgentMemoryScope,

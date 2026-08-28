@@ -9,6 +9,7 @@
  * can neither observe nor be overwritten by another agent's token.
  */
 
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   autoFetchCloudGithubToken,
@@ -22,6 +23,8 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_BASE_URL",
   "ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT",
   "ELIZAOS_CLOUD_MANAGED_AGENTS_API_SEGMENT",
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
 ] as const;
 
 const savedEnv: Record<string, string | undefined> = {};
@@ -45,6 +48,7 @@ function fakeRuntime(initialSecrets: Record<string, string> = {}) {
 }
 
 beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
   for (const key of ENV_KEYS) {
     savedEnv[key] = process.env[key];
     delete process.env[key];
@@ -58,6 +62,7 @@ afterEach(() => {
   }
   globalThis.fetch = realFetch;
   vi.restoreAllMocks();
+  resetDevCloudEnvAuthorityForTests();
 });
 
 function armCloudEnv() {
@@ -128,6 +133,22 @@ describe("autoFetchCloudGithubToken", () => {
     expect(await autoFetchCloudGithubToken("agent-a")).toBeNull();
     armCloudEnv();
     expect(await autoFetchCloudGithubToken(undefined)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores production Cloud env injected after a staging-default launch", async () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-default";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+    // Freeze the launch tuple before simulating a late config/vault mutation.
+    expect(await autoFetchCloudGithubToken("agent-a")).toBeNull();
+
+    armCloudEnv();
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    expect(await autoFetchCloudGithubToken("agent-a")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

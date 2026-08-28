@@ -133,7 +133,14 @@ const result = await build({
   platform: "browser",
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
+  // This is a browser-only fixture. The modal graph can reach shared styling
+  // helpers that probe Node environment variables at module initialization;
+  // keep those probes deterministic instead of leaving a missing `process`
+  // global that prevents React from mounting.
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    "process.env": "{}",
+  },
   plugins: [stubClient, stubCore, shimNodeBuiltins],
   write: false,
 });

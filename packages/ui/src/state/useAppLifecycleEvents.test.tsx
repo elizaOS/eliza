@@ -14,6 +14,7 @@ import {
   APP_RESUME_EVENT,
   NAVIGATE_VIEW_EVENT,
   type NavigateViewDetail,
+  NETWORK_STATUS_CHANGE_EVENT,
 } from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
 import {
@@ -75,6 +76,7 @@ function makeMessages(...ms: ConversationMessage[]): ConversationMessage[] {
 interface SetupOpts {
   activeId?: string | null;
   messages?: ConversationMessage[];
+  hydrateInitialConversationState?: () => Promise<string | null>;
 }
 
 function setup(opts: SetupOpts = {}) {
@@ -93,6 +95,9 @@ function setup(opts: SetupOpts = {}) {
   const loadConversationMessages = vi.fn(
     async (): Promise<LoadConversationMessagesResult> => ({ ok: true }),
   );
+  const hydrateInitialConversationState = vi.fn(
+    opts.hydrateInitialConversationState ?? (async () => null),
+  );
 
   const view = renderHook(() =>
     useAppLifecycleEvents({
@@ -101,6 +106,7 @@ function setup(opts: SetupOpts = {}) {
       chatAbortRef,
       setConversationMessages,
       loadConversationMessages,
+      hydrateInitialConversationState,
     }),
   );
 
@@ -110,6 +116,7 @@ function setup(opts: SetupOpts = {}) {
     chatAbortRef,
     setConversationMessages,
     loadConversationMessages,
+    hydrateInitialConversationState,
     view,
   };
 }
@@ -129,6 +136,14 @@ function dispatchPageShow(persisted: boolean): void {
   };
   Object.defineProperty(event, "persisted", { value: persisted });
   window.dispatchEvent(event);
+}
+
+function dispatchNetworkStatus(connected: boolean): void {
+  document.dispatchEvent(
+    new CustomEvent(NETWORK_STATUS_CHANGE_EVENT, {
+      detail: { connected },
+    }),
+  );
 }
 
 describe("useAppLifecycleEvents", () => {
@@ -276,6 +291,80 @@ describe("useAppLifecycleEvents", () => {
     expect(mocks.client.resetConnection).not.toHaveBeenCalled();
     expect(mocks.fetchCurrentView).not.toHaveBeenCalled();
     expect(loadConversationMessages).not.toHaveBeenCalled();
+  });
+
+  it("reloads direct Cloud history when native connectivity returns", async () => {
+    mocks.androidCloudBuild.mockReturnValue(true);
+    mocks.client.getBaseUrl.mockReturnValue(
+      "https://cloud.eliza.app/api/v1/eliza/agents/personal%3Aowner",
+    );
+    const { loadConversationMessages, hydrateInitialConversationState } = setup(
+      {
+        activeId: "conv-cloud",
+      },
+    );
+
+    dispatchNetworkStatus(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(hydrateInitialConversationState).not.toHaveBeenCalled();
+    expect(loadConversationMessages).toHaveBeenCalledTimes(1);
+    expect(loadConversationMessages).toHaveBeenCalledWith("conv-cloud");
+  });
+
+  it("hydrates the persisted direct Cloud selection before reloading after reconnect", async () => {
+    mocks.androidCloudBuild.mockReturnValue(true);
+    mocks.client.getBaseUrl.mockReturnValue(
+      "https://cloud.eliza.app/api/v1/eliza/agents/personal%3Aowner",
+    );
+    window.localStorage.setItem(
+      "eliza:chat:activeConversationId",
+      "conv-restored",
+    );
+    let activeRef: MutableRefObject<string | null>;
+    const setupResult = setup({
+      activeId: null,
+      hydrateInitialConversationState: async () => {
+        activeRef.current = "conv-restored";
+        return null;
+      },
+    });
+    activeRef = setupResult.activeConversationIdRef;
+
+    dispatchNetworkStatus(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(setupResult.hydrateInitialConversationState).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(setupResult.loadConversationMessages).toHaveBeenCalledWith(
+      "conv-restored",
+    );
+  });
+
+  it("does not paint a stale direct Cloud conversation after its target changes during reconnect", async () => {
+    mocks.androidCloudBuild.mockReturnValue(true);
+    mocks.client.getBaseUrl.mockReturnValue(
+      "https://cloud.eliza.app/api/v1/eliza/agents/personal%3Aowner",
+    );
+    let activeRef: MutableRefObject<string | null>;
+    const setupResult = setup({
+      activeId: null,
+      hydrateInitialConversationState: async () => {
+        activeRef.current = "conv-old";
+        mocks.client.getBaseUrl.mockReturnValue(
+          "https://cloud.eliza.app/api/v1/eliza/agents/personal%3Aother",
+        );
+        return null;
+      },
+    });
+    activeRef = setupResult.activeConversationIdRef;
+    window.localStorage.setItem("eliza:chat:activeConversationId", "conv-old");
+
+    dispatchNetworkStatus(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(setupResult.loadConversationMessages).not.toHaveBeenCalled();
   });
 
   it("marks a stale empty streaming assistant placeholder as interrupted on resume", () => {

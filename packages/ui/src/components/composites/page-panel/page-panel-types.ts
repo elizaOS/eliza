@@ -65,10 +65,23 @@ export interface PageLoadingStateProps
 }
 
 export interface PagePanelFrameProps
-  extends React.HTMLAttributes<HTMLDivElement> {}
+  extends React.HTMLAttributes<HTMLDivElement> {
+  /** Semantic root for a full view. Defaults to a neutral layout div. */
+  as?: "div" | "main";
+}
 
 export interface PagePanelContentAreaProps
   extends React.HTMLAttributes<HTMLDivElement> {}
+
+export interface PagePanelContentRailProps
+  extends React.HTMLAttributes<HTMLDivElement> {
+  /**
+   * Bounded content widths shared by routed views. The rail owns only
+   * centering and horizontal insets; scroll, headers, safe areas, and chat
+   * clearance remain with their lifecycle owners.
+   */
+  width?: "compact" | "standard" | "wide";
+}
 
 export interface PagePanelToolbarProps
   extends React.HTMLAttributes<HTMLDivElement> {}

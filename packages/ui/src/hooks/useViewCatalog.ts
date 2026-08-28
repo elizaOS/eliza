@@ -13,12 +13,17 @@
  * no restart.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type AppLaunchResult, client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
 import { getActiveViewModality } from "../platform/platform-guards";
 import { useEnabledViewKinds } from "../state/useViewKinds";
+import { invalidate } from "./resource-cache";
+import {
+  getActiveAgentAuthority,
+  useActiveAgentAuthority,
+} from "./useActiveAgentAuthority";
 import { useRoutableViews } from "./useAvailableViews";
 import { useCachedResource } from "./useCachedResource";
 import { mergeViewCatalog, type ViewEntry } from "./view-catalog";
@@ -42,6 +47,7 @@ export interface UseViewCatalogResult {
 }
 
 export function useViewCatalog(): UseViewCatalogResult {
+  const authority = useActiveAgentAuthority();
   const {
     views,
     loading: viewsLoading,
@@ -53,9 +59,11 @@ export function useViewCatalog(): UseViewCatalogResult {
   const appShellRoutesSupported = supportsFullAppShellRoutes(
     client.getBaseUrl(),
   );
+  const catalogCacheKey = `${CATALOG_CACHE_KEY}:${authority}`;
+  const installedCacheKey = `${INSTALLED_CACHE_KEY}:${authority}`;
 
   const catalogRes = useCachedResource(
-    appShellRoutesSupported ? CATALOG_CACHE_KEY : null,
+    appShellRoutesSupported ? catalogCacheKey : null,
     () => loadAppsCatalog(),
     {
       staleTime: CATALOG_STALE_MS,
@@ -63,18 +71,44 @@ export function useViewCatalog(): UseViewCatalogResult {
     },
   );
   const installedRes = useCachedResource(
-    appShellRoutesSupported ? INSTALLED_CACHE_KEY : null,
+    appShellRoutesSupported ? installedCacheKey : null,
     () => client.listInstalledApps(),
     { staleTime: CATALOG_STALE_MS, enabled: appShellRoutesSupported },
   );
 
+  // Never retain a departed authority's catalogs. Authority-scoped keys make
+  // the render switch immediate; invalidation also retires any old in-flight
+  // completion so returning to an earlier base always reloads current truth.
+  const previousCacheKeysRef = useRef({
+    catalog: catalogCacheKey,
+    installed: installedCacheKey,
+  });
+  useEffect(() => {
+    const previous = previousCacheKeysRef.current;
+    previousCacheKeysRef.current = {
+      catalog: catalogCacheKey,
+      installed: installedCacheKey,
+    };
+    if (previous.catalog !== catalogCacheKey) invalidate(previous.catalog);
+    if (previous.installed !== installedCacheKey) {
+      invalidate(previous.installed);
+    }
+  }, [catalogCacheKey, installedCacheKey]);
+
   // Per-entry transient state for the get→open flow (keyed by ViewEntry.key).
-  const [pending, setPending] = useState<
-    Record<string, "installing" | "error">
-  >({});
+  const [pendingState, setPendingState] = useState<{
+    authority: string;
+    entries: Record<string, "installing" | "error">;
+  }>(() => ({ authority, entries: {} }));
+  const pending =
+    pendingState.authority === authority ? pendingState.entries : {};
 
   const catalog = catalogRes.status === "success" ? catalogRes.data : [];
   const installed = installedRes.status === "success" ? installedRes.data : [];
+  const error =
+    viewsError ??
+    (catalogRes.status === "error" ? catalogRes.error : null) ??
+    (installedRes.status === "error" ? installedRes.error : null);
 
   const entries = useMemo(() => {
     const merged = mergeViewCatalog({
@@ -92,41 +126,62 @@ export function useViewCatalog(): UseViewCatalogResult {
   }, [views, catalog, installed, activeModality, enabledKinds, pending]);
 
   const refresh = useCallback(() => {
+    if (getActiveAgentAuthority() !== authority) return;
     refreshViews();
     catalogRes.refetch();
     installedRes.refetch();
-  }, [refreshViews, catalogRes.refetch, installedRes.refetch]);
+  }, [authority, refreshViews, catalogRes.refetch, installedRes.refetch]);
 
   const get = useCallback(
     async (entry: ViewEntry) => {
       const name = entry.appName;
       if (!name) return null;
-      setPending((p) => ({ ...p, [entry.key]: "installing" }));
+      if (getActiveAgentAuthority() !== authority) return null;
+      setPendingState((current) => ({
+        authority,
+        entries: {
+          ...(current.authority === authority ? current.entries : {}),
+          [entry.key]: "installing",
+        },
+      }));
       try {
         const launch = await client.launchApp(name);
+        // The launch belonged to the authority captured by this callback. If
+        // the user switched agents while it was in flight, do not refresh the
+        // new agent or hand the old agent's launch target to navigation.
+        if (getActiveAgentAuthority() !== authority) return null;
         // Loading hot-registers the plugin's views; refetch so the entry flips
         // to the loaded view (Open) and drops out of the catalog section.
         refreshViews();
         await Promise.all([catalogRes.refetch(), installedRes.refetch()]);
-        setPending((p) => {
-          const next = { ...p };
+        if (getActiveAgentAuthority() !== authority) return null;
+        setPendingState((current) => {
+          if (current.authority !== authority) return current;
+          const next = { ...current.entries };
           delete next[entry.key];
-          return next;
+          return { authority, entries: next };
         });
         return launch;
       } catch (err) {
-        setPending((p) => ({ ...p, [entry.key]: "error" }));
+        if (getActiveAgentAuthority() !== authority) return null;
+        setPendingState((current) => ({
+          authority,
+          entries: {
+            ...(current.authority === authority ? current.entries : {}),
+            [entry.key]: "error",
+          },
+        }));
         throw err instanceof Error ? err : new Error(String(err));
       }
     },
-    [refreshViews, catalogRes.refetch, installedRes.refetch],
+    [authority, refreshViews, catalogRes.refetch, installedRes.refetch],
   );
 
   return {
     entries,
     // First paint waits on loaded views; the catalog fills in as it resolves.
     loading: viewsLoading && views.length === 0,
-    error: viewsError,
+    error,
     refresh,
     get,
   };

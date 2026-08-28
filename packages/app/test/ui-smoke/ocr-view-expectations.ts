@@ -59,15 +59,6 @@ export const VIEW_OCR_POLICIES = {
       "Submit the quarterly report",
     ],
   }),
-  "builtin-phone": expected({
-    requireAny: ["call-blocked", "dialer", "recent"],
-  }),
-  "builtin-messages": expected({
-    requireAny: ["Set default SMS", "bridge-only", "compose"],
-  }),
-  "builtin-contacts": expected({
-    requireAny: ["address book", "phone, or email", "search"],
-  }),
   "builtin-camera": exempt(
     "native-platform-gated",
     "The camera is an AOSP-native surface, so the browser audit intentionally renders the launcher fallback.",
@@ -168,7 +159,7 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-trajectories": expected({
     requireAll: ["Trajectories"],
-    requireAny: ["No trajectories yet", "Browse"],
+    requireAny: ["No trajectories yet", "No recorded activity yet", "Browse"],
   }),
   "builtin-transcripts": expected({
     requireAll: ["Live meeting"],
@@ -180,17 +171,6 @@ export const VIEW_OCR_POLICIES = {
       "No transcripts yet",
       "transcribe",
       "recordings",
-    ],
-  }),
-  "builtin-relationships": expected({
-    requireAny: [
-      "Relationships",
-      "Personality",
-      "Skills",
-      "Experience",
-      "No relationships yet",
-      "Search people",
-      "Connect your platforms",
     ],
   }),
   "builtin-memories": expected({

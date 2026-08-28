@@ -36,6 +36,7 @@ import {
   savePersistedActiveServer,
 } from "../state/persistence";
 import {
+  getBuildConfiguredRemoteApiBaseUrl,
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
 } from "../state/runtime-url-trust";
@@ -534,6 +535,41 @@ function isSharedRuntimeRestAdapterBase(
   }
 }
 
+function isRemoteRelayApiUrl(value: string | null | undefined): boolean {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized) return false;
+  try {
+    const url = new URL(normalized);
+    return (
+      url.protocol === "eliza-remote:" &&
+      url.host === "session" &&
+      !url.username &&
+      !url.password &&
+      /^\/[A-Za-z0-9._-]{1,256}(?:\/|$)/.test(url.pathname) &&
+      !url.hash
+    );
+  } catch {
+    // error-policy:J3 malformed pseudo-URLs are not relay API URLs.
+    return false;
+  }
+}
+
+export function isRemoteRelayRestAdapterBase(
+  value: string | null | undefined,
+): boolean {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized || !isRemoteRelayApiUrl(normalized)) return false;
+  try {
+    const url = new URL(normalized);
+    return (
+      /^\/[A-Za-z0-9._-]{1,256}$/.test(url.pathname) && !url.search && !url.hash
+    );
+  } catch {
+    // error-policy:J3 malformed pseudo-URLs are not REST-only runtimes.
+    return false;
+  }
+}
+
 function shouldTreatAsConnectedWithoutWebSocket(
   value: string | null | undefined,
 ): boolean {
@@ -541,6 +577,7 @@ function shouldTreatAsConnectedWithoutWebSocket(
     isIosInProcessLocalAgentBase(value) ||
     isLocalAgentIpcBase(value) ||
     isSharedRuntimeRestAdapterBase(value) ||
+    isRemoteRelayRestAdapterBase(value) ||
     isDedicatedCloudAgentBase(value) ||
     // Control-plane hosts structurally cannot serve `/ws`: the alias Worker
     // routes only `/api*`/`/steward*` to the API and strips
@@ -757,7 +794,7 @@ function resumeRetryDelayMs(res: Response): number {
 // bounded, so every surface keeps the send pending instead of surfacing an
 // expected warm-up as a user-visible failure. Only these named codes retry; a
 // generic 503 (or any 402) stays a real failure.
-const WARMING_RETRYABLE_CODES = new Set([
+const CACHE_WARMING_RETRYABLE_CODES = new Set([
   "agent_cache_warming",
   "shared_runtime_cache_warming",
 ]);
@@ -861,6 +898,12 @@ export class ElizaClient {
   // socket-less Cloud repoint path where ws-reconnected never fires — the
   // only observable signal for "the active agent/server target changed".
   private baseUrlChangeListeners = new Set<(baseUrl: string) => void>();
+  // Monotonic, non-secret revision for the complete request authority. A
+  // bearer rotation can change accounts without changing the selected profile
+  // or API host, so resource caches must not key authority on the base URL
+  // alone. The token itself must never enter a React key or diagnostic value.
+  private authorityRevision = 0;
+  private authorityChangeListeners = new Set<() => void>();
 
   // UI language propagation — set by AppContext so the backend can
   // localise responses when needed.
@@ -901,7 +944,6 @@ export class ElizaClient {
 
   constructor(baseUrl?: string, token?: string) {
     this.clientId = ElizaClient.generateClientId();
-    this._token = token?.trim() || null;
 
     const bootBase = getBootConfig().apiBase;
     const injectedBase = getElizaApiBase();
@@ -917,13 +959,32 @@ export class ElizaClient {
       ? null
       : storedBaseRaw;
 
-    this._userSetBase = baseUrl != null;
-
     // Priority: explicit arg > boot config > desktop injection > session storage > same origin.
     // `client.setBaseUrl()` updates the boot config, so it must beat the
     // shell-injected local default once the user has chosen a different
     // server. Injection still beats stale session state from prior sessions.
-    this._baseUrl = baseUrl ?? bootBase ?? injectedBase ?? storedBase ?? "";
+    const initialBase = normalizeBaseUrl(
+      baseUrl ?? bootBase ?? injectedBase ?? storedBase ?? "",
+    );
+    this._userSetBase = this.pinnedRemoteApiBase !== null || baseUrl != null;
+    this._baseUrl = this.pinnedRemoteApiBase ?? initialBase;
+    const initialToken = token?.trim() || null;
+    this._token =
+      !initialToken ||
+      !this.pinnedRemoteApiBase ||
+      (initialBase === this.pinnedRemoteApiBase &&
+        this.isPinnedRemoteCredential(initialToken))
+        ? initialToken
+        : null;
+  }
+
+  /**
+   * Resolve the immutable build target lazily. Android can publish the
+   * validated target after this module's singleton is constructed when the UI
+   * package was pre-built before Vite injected the app environment.
+   */
+  private get pinnedRemoteApiBase(): string | null {
+    return getBuildConfiguredRemoteApiBaseUrl();
   }
 
   /**
@@ -934,6 +995,9 @@ export class ElizaClient {
    * set at construction, or if the port changed dynamically (e.g. 2138→2139).
    */
   get baseUrl(): string {
+    const pinnedRemoteApiBase = this.pinnedRemoteApiBase;
+    if (pinnedRemoteApiBase) return pinnedRemoteApiBase;
+
     // Always re-read boot config — the main process may push a port update
     // via apiBaseUpdate RPC at any time (e.g. when the child runtime binds
     // to a different port than initially injected in the HTML).
@@ -950,6 +1014,17 @@ export class ElizaClient {
   }
 
   get apiToken(): string | null {
+    const pinnedRemoteApiBase = this.pinnedRemoteApiBase;
+    if (pinnedRemoteApiBase) {
+      const activeServer = loadPersistedActiveServer();
+      if (
+        activeServer?.kind === "remote" &&
+        activeServer.apiBase?.replace(/\/+$/, "") === pinnedRemoteApiBase
+      ) {
+        return activeServer.accessToken?.trim() || null;
+      }
+      return null;
+    }
     if (this._token) return this._token;
     const bootToken = getBootConfig().apiToken;
     if (typeof bootToken === "string" && bootToken.trim())
@@ -978,7 +1053,57 @@ export class ElizaClient {
   }
 
   setToken(token: string | null): void {
+    if (
+      this.pinnedRemoteApiBase &&
+      token?.trim() &&
+      !this.isPinnedRemoteCredential(token)
+    ) {
+      logger.warn(
+        "[ElizaClient] ignored a credential not bound to the build-pinned remote target",
+      );
+      return;
+    }
     this.installToken(token, true);
+  }
+
+  /** A pinned build accepts a bearer only after durable exact-origin binding. */
+  private isPinnedRemoteCredential(token: string): boolean {
+    if (!this.pinnedRemoteApiBase) return true;
+    const activeServer = loadPersistedActiveServer();
+    return (
+      activeServer?.kind === "remote" &&
+      activeServer.apiBase?.replace(/\/+$/, "") === this.pinnedRemoteApiBase &&
+      activeServer.accessToken?.trim() === token.trim()
+    );
+  }
+
+  /** Non-secret epoch that advances when the effective request bearer changes. */
+  getAuthorityRevision(): number {
+    return this.authorityRevision;
+  }
+
+  /**
+   * Subscribe to atomic API-authority changes. Unlike {@link onBaseUrlChange},
+   * this also covers a same-host credential/account swap.
+   */
+  onAuthorityChange(listener: () => void): () => void {
+    this.authorityChangeListeners.add(listener);
+    return () => {
+      this.authorityChangeListeners.delete(listener);
+    };
+  }
+
+  private notifyAuthorityChange(): void {
+    for (const listener of this.authorityChangeListeners) {
+      try {
+        listener();
+      } catch (err) {
+        logger.error(
+          { err },
+          "[ElizaClient] onAuthorityChange listener threw; other listeners still notified",
+        );
+      }
+    }
   }
 
   /**
@@ -988,12 +1113,20 @@ export class ElizaClient {
    * the credential.
    */
   private installToken(token: string | null, notify: boolean): void {
+    const previousInstalledToken = this._token?.trim() || null;
+    const previousEffectiveToken = this.apiToken;
     const nextToken = token?.trim() || null;
-    const tokenChanged = nextToken !== this._token;
     this._token = nextToken;
     // Boot config is the canonical source. fetchWithCsrf and authBase read here.
     const config = getBootConfig();
     setBootConfig({ ...config, apiToken: this._token ?? undefined });
+    const tokenChanged =
+      previousEffectiveToken !== this.apiToken ||
+      previousInstalledToken !== nextToken;
+    if (tokenChanged) {
+      this.authorityRevision += 1;
+      if (notify) this.notifyAuthorityChange();
+    }
     // A same-view sign-in/out (this is the only path that writes the token
     // without a page load) must refresh any mounted session gate — e.g. the
     // Apps tab — without a remount. `steward-token-sync` is the established
@@ -1011,6 +1144,12 @@ export class ElizaClient {
 
   setBaseUrl(baseUrl: string | null, options?: { persist?: boolean }): void {
     const normalized = normalizeBaseUrl(baseUrl);
+    if (this.pinnedRemoteApiBase && normalized !== this.pinnedRemoteApiBase) {
+      logger.warn(
+        "[ElizaClient] ignored a base change outside the build-pinned remote target",
+      );
+      return;
+    }
     const persist = options?.persist !== false;
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
@@ -1019,6 +1158,7 @@ export class ElizaClient {
       this.persistBaseUrlFailClosed(normalized);
     }
     this.notifyBaseUrlChange();
+    this.notifyAuthorityChange();
   }
 
   /** Subscribe to base-URL changes from {@link setBaseUrl} or {@link
@@ -1134,6 +1274,22 @@ export class ElizaClient {
   repointBaseUrl(baseUrl: string, token?: string | null): void {
     const normalized = normalizeBaseUrl(baseUrl);
     if (!normalized) return;
+    if (this.pinnedRemoteApiBase && normalized !== this.pinnedRemoteApiBase) {
+      logger.warn(
+        "[ElizaClient] ignored a repoint outside the build-pinned remote target",
+      );
+      return;
+    }
+    if (
+      this.pinnedRemoteApiBase &&
+      token?.trim() &&
+      !this.isPinnedRemoteCredential(token)
+    ) {
+      logger.warn(
+        "[ElizaClient] ignored a repoint credential not bound to the build-pinned remote target",
+      );
+      return;
+    }
     // Quietly drop the old socket. We intentionally do NOT call disconnectWs():
     // it sets connectionState = "disconnected" and emits, which would surface a
     // visible "reconnecting" flicker mid-handoff. Suppress onclose (which would
@@ -1166,6 +1322,9 @@ export class ElizaClient {
     this._baseUrl = normalized;
     this.persistBaseUrlFailClosed(normalized);
     this.notifyBaseUrlChange();
+    // Publish the complete target only after both bearer and base URL have
+    // been installed, so resource consumers never observe a mixed authority.
+    this.notifyAuthorityChange();
 
     // Reconnect immediately against the new base. connectWs() derives the WS
     // host from this.baseUrl, so the socket comes up on the dedicated host; its
@@ -1248,7 +1407,7 @@ export class ElizaClient {
 
     const resolver = (
       this as ElizaClient & {
-        getPersonalSharedEliza?: (options: {
+        ensurePersonalDedicatedEliza?: (options: {
           cloudApiBase: string;
           authToken: string;
           signal?: AbortSignal;
@@ -1261,7 +1420,7 @@ export class ElizaClient {
           runtime: "shared" | "dedicated";
         }>;
       }
-    ).getPersonalSharedEliza;
+    ).ensurePersonalDedicatedEliza;
     if (typeof resolver !== "function") return false;
 
     const cloudApiBase = new URL(normalizedRequestBase).origin;
@@ -1396,6 +1555,8 @@ export class ElizaClient {
     let resumeRetries = 0;
     let warmingRetries = 0;
     let warmingDeadline: number | null = null;
+    const logicalRequestDeadline =
+      Date.now() + (options?.timeoutMs ?? defaultFetchTimeoutMs(path, init));
     let requestAttempt = 0;
     const requestOnce = () =>
       this.rawRequestOnce(
@@ -1528,15 +1689,56 @@ export class ElizaClient {
           ? rawBodyRetryAfter
           : undefined;
       const retryAfter = bodyRetryAfter ?? headerRetryAfter;
-      // Named first-turn warming barrier: wait the advertised Retry-After and
-      // re-issue the same request, bounded by BOTH an attempt cap and a total
-      // elapsed deadline (see WARMING_* above) so the absorbed warm-up stays a
-      // ~5s first-turn budget rather than attempts × max-delay. `allowNonOk`
-      // probes keep the raw 503 — they render their own progress states.
+      // App-contributed routes are rejected before dispatch while their route
+      // tail registers, so reissuing reads and writes is safe. A caller-owned
+      // AbortSignal makes the mounted lifecycle the terminal budget and may
+      // therefore outlive the generic request deadline. An explicit timeout is
+      // still authoritative even when the caller also supplies a signal, while
+      // unsignaled callers remain bounded so an accidental fire-and-forget read
+      // cannot retry forever. `allowNonOk` probes still receive the first 503.
+      const featureStarting =
+        res.status === 503 &&
+        code === "feature_starting" &&
+        body.retryable === true;
+      if (featureStarting && !options?.allowNonOk && !init?.signal?.aborted) {
+        const now = Date.now();
+        const lifecycleBound =
+          init?.signal != null && options?.timeoutMs === undefined;
+        if (lifecycleBound || now < logicalRequestDeadline) {
+          notifyWaiting();
+          await sleepUnlessAborted(
+            lifecycleBound
+              ? warmingRetryDelayMs(retryAfter)
+              : Math.min(
+                  warmingRetryDelayMs(retryAfter),
+                  logicalRequestDeadline - now,
+                ),
+            init?.signal,
+          );
+          if (
+            !init?.signal?.aborted &&
+            (lifecycleBound || Date.now() < logicalRequestDeadline)
+          ) {
+            res = await requestOnce();
+            continue;
+          }
+        }
+      }
+      if (featureStarting && !options?.allowNonOk && init?.signal?.aborted) {
+        throw new ApiError({
+          kind: "network",
+          path,
+          message: "Request aborted",
+          cause: init.signal.reason,
+        });
+      }
+      // First-turn cache warming retains its deliberately short attempt and
+      // elapsed-time bounds. Unlike feature registration, a stuck cache warm
+      // surfaces its structured error after the ~5s absorption budget.
       if (
         res.status === 503 &&
         code !== undefined &&
-        WARMING_RETRYABLE_CODES.has(code) &&
+        CACHE_WARMING_RETRYABLE_CODES.has(code) &&
         !options?.allowNonOk &&
         warmingRetries < WARMING_MAX_RETRIES &&
         !init?.signal?.aborted
@@ -1745,12 +1947,15 @@ export class ElizaClient {
     requestAttempt: number,
   ): RequestInit {
     const isDedicatedCloudRequest = isDedicatedCloudAgentBase(requestUrl);
+    const isEncryptedRelayRequest = isRemoteRelayApiUrl(requestUrl);
     const method = (init?.method ?? "GET").toUpperCase();
     const headers: Record<string, string> = {
       ...(!isDedicatedCloudRequest
         ? { "X-ElizaOS-Client-Id": this.clientId }
         : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token && !isEncryptedRelayRequest
+        ? { Authorization: `Bearer ${token}` }
+        : {}),
       ...(!isDedicatedCloudRequest && this._uiLanguage
         ? { "X-ElizaOS-UI-Language": this._uiLanguage }
         : {}),
@@ -1761,6 +1966,7 @@ export class ElizaClient {
     );
     if (
       !isDedicatedCloudRequest &&
+      !isEncryptedRelayRequest &&
       !hasCsrfHeader &&
       CSRF_REQUIRED_METHODS.has(method)
     ) {

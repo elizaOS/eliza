@@ -460,10 +460,8 @@ export function LogViewer({
           </div>
         ) : (
           <ScrollArea
-            className={cn(
-              "w-full rounded-none border border-border",
-              heightClassName,
-            )}
+            variant="borderedSquare"
+            className={cn("w-full", heightClassName)}
           >
             <div
               ref={contentRef}

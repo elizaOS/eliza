@@ -1,8 +1,20 @@
 /** Persists elapsed container charges and their atomic credit and earnings ledgers. */
 
 import Decimal from "decimal.js";
-import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  notExists,
+  or,
+  type SQLWrapper,
+  sql,
+} from "drizzle-orm";
 import { type DbTransaction, dbRead, dbWrite } from "../client";
+import { containerComputeStopIntents } from "../schemas/compute-stop-intents";
 import { containerBillingRecords, containers } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
 import { organizations } from "../schemas/organizations";
@@ -12,6 +24,50 @@ import { settleComputeRateSegments } from "./compute-billing-segments";
 import { parseContainerBillingNumber } from "./container-billing-numeric";
 
 export type ContainerBillingStatus = "active" | "warning" | "suspended" | "shutdown_pending";
+
+/**
+ * Exact durable witness that a provider stop may already have crossed the
+ * control-plane boundary even though its intent proof transaction rolled back.
+ *
+ * The job marker is written in its own committed claim transaction before
+ * provider I/O. Match the full tenant/intent/lifecycle envelope so unrelated
+ * or poisoned jobs cannot suppress billing for another container. Active
+ * intents only: a dispatcher may legitimately write the marker and then mark
+ * the intent superseded before any provider call.
+ */
+export function unreconciledContainerStopProviderEffectExistsSql(
+  organizationId: string | SQLWrapper,
+  containerId: string | SQLWrapper,
+) {
+  return sql<boolean>`EXISTS (
+    SELECT 1
+    FROM "container_compute_stop_intents" AS "provider_effect_intent"
+    INNER JOIN "jobs" AS "provider_effect_job"
+      ON "provider_effect_job"."id" = "provider_effect_intent"."job_id"
+     AND "provider_effect_job"."organization_id" = "provider_effect_intent"."organization_id"
+     AND "provider_effect_job"."type" = 'container_stop'
+     AND "provider_effect_job"."data_storage" = 'inline'
+     AND "provider_effect_job"."data_key" IS NULL
+    WHERE "provider_effect_intent"."organization_id" = ${organizationId}
+      AND "provider_effect_intent"."container_id" = ${containerId}
+      AND "provider_effect_intent"."provider_confirmed_at" IS NULL
+      AND "provider_effect_intent"."status" IN
+        ('pending', 'dispatching', 'retry', 'terminal_attention')
+      AND jsonb_typeof("provider_effect_job"."data") = 'object'
+      AND "provider_effect_job"."data" ? 'providerEffectStartedAt'
+      AND jsonb_typeof(
+        "provider_effect_job"."data" -> 'providerEffectStartedAt'
+      ) = 'string'
+      AND lower("provider_effect_job"."data" ->> 'containerId') =
+        "provider_effect_intent"."container_id"::text
+      AND lower("provider_effect_job"."data" ->> 'organizationId') =
+        "provider_effect_intent"."organization_id"::text
+      AND lower("provider_effect_job"."data" ->> 'intentId') =
+        "provider_effect_intent"."id"::text
+      AND "provider_effect_job"."data" ->> 'lifecycleRevision' =
+        "provider_effect_intent"."lifecycle_revision"::text
+  )`;
+}
 
 function exactBillingDecimal(
   value: string | number | null | undefined,
@@ -88,6 +144,8 @@ export interface RecordSuccessfulBillingResult {
   transactionId: string | null;
   alreadyBilled: boolean;
   insufficient?: boolean;
+  /** The terminal lifecycle interval was audited but could not be collected. */
+  uncollected?: boolean;
   amount?: number;
   fromEarnings?: number;
 }
@@ -125,6 +183,27 @@ export class ContainerBillingRepository {
           eq(containers.status, "running"),
           inArray(containers.billing_status, ["active", "warning", "shutdown_pending"]),
           or(isNull(containers.next_billing_at), lte(containers.next_billing_at, now)),
+          // Replica discovery is only a best-effort filter; the canonical
+          // writer repeats this proof fence under row locks below.
+          notExists(
+            dbRead
+              .select({ id: containerComputeStopIntents.id })
+              .from(containerComputeStopIntents)
+              .where(
+                and(
+                  eq(containerComputeStopIntents.organization_id, containers.organization_id),
+                  eq(containerComputeStopIntents.container_id, containers.id),
+                  isNotNull(containerComputeStopIntents.provider_confirmed_at),
+                ),
+              ),
+          ),
+          // A committed provider-effect admission is a conservative absence
+          // cutoff until the daemon reconciles it to proof or a safe
+          // supersession. Do not discover it for another billing pass.
+          sql`NOT (${unreconciledContainerStopProviderEffectExistsSql(
+            containers.organization_id,
+            containers.id,
+          )})`,
         ),
       );
   }
@@ -162,8 +241,8 @@ export class ContainerBillingRepository {
     organizationId: string,
     now: Date,
     shutdownTime: Date,
-  ): Promise<void> {
-    await dbWrite
+  ): Promise<boolean> {
+    const [scheduled] = await dbWrite
       .update(containers)
       .set({
         billing_status: "shutdown_pending" as ContainerBillingStatus,
@@ -171,7 +250,34 @@ export class ContainerBillingRepository {
         scheduled_shutdown_at: shutdownTime,
         updated_at: now,
       })
-      .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)));
+      .where(
+        and(
+          eq(containers.id, containerId),
+          eq(containers.organization_id, organizationId),
+          eq(containers.status, "running"),
+          inArray(containers.billing_status, ["active", "warning"]),
+          // Discovery may be replica-stale. Never regress a provider-fenced
+          // runtime back to shutdown_pending or publish its warning effects.
+          notExists(
+            dbWrite
+              .select({ id: containerComputeStopIntents.id })
+              .from(containerComputeStopIntents)
+              .where(
+                and(
+                  eq(containerComputeStopIntents.organization_id, organizationId),
+                  eq(containerComputeStopIntents.container_id, containerId),
+                  isNotNull(containerComputeStopIntents.provider_confirmed_at),
+                ),
+              ),
+          ),
+          sql`NOT (${unreconciledContainerStopProviderEffectExistsSql(
+            organizationId,
+            containerId,
+          )})`,
+        ),
+      )
+      .returning({ id: containers.id });
+    return scheduled !== undefined;
   }
 
   async recordBillingFailure(input: RecordBillingFailureInput): Promise<void> {
@@ -199,8 +305,14 @@ export class ContainerBillingRepository {
   async recordSuccessfulDailyBillingInTransaction(
     tx: DbTransaction,
     input: RecordSuccessfulBillingInput,
-    options: { forceLifecycleSettlement?: boolean } = {},
+    options: {
+      forceLifecycleSettlement?: boolean;
+      terminalInsufficientDisposition?: "uncollected";
+    } = {},
   ): Promise<RecordSuccessfulBillingResult> {
+    if (options.terminalInsufficientDisposition && !options.forceLifecycleSettlement) {
+      throw new Error("Terminal container settlement requires a lifecycle settlement fence");
+    }
     // Idempotency guard: lock the container row and re-check whether it has
     // already been billed for this period. `next_billing_at` is the end of
     // the period last charged; if it is still in the future, the period is
@@ -224,8 +336,36 @@ export class ContainerBillingRepository {
       )
       .for("update");
 
+    // `listBillableContainers` may read from a lagging replica. Re-check the
+    // provider absence proof on the writer after locking the workload and lock
+    // the active intent before any settlement/debit. A provider-confirmed
+    // runtime must never be billed even if publishing billing_status=suspended
+    // failed in its own savepoint.
+    const [providerProofIntent] =
+      locked && !options.forceLifecycleSettlement
+        ? await tx
+            .select({ id: containerComputeStopIntents.id })
+            .from(containerComputeStopIntents)
+            .where(
+              and(
+                eq(containerComputeStopIntents.organization_id, input.organizationId),
+                eq(containerComputeStopIntents.container_id, input.containerId),
+                or(
+                  isNotNull(containerComputeStopIntents.provider_confirmed_at),
+                  unreconciledContainerStopProviderEffectExistsSql(
+                    input.organizationId,
+                    input.containerId,
+                  ),
+                ),
+              ),
+            )
+            .for("update")
+            .limit(1)
+        : [undefined];
+
     if (
       !locked ||
+      providerProofIntent ||
       (!options.forceLifecycleSettlement &&
         (locked.status !== "running" ||
           !["active", "warning", "shutdown_pending"].includes(locked.billing_status) ||
@@ -309,7 +449,51 @@ export class ContainerBillingRepository {
     const earningsAvailable = earningsRow
       ? exactBillingDecimal(earningsRow.available_balance, "available_balance")
       : new Decimal(0);
+
+    const recordTerminalUncollected = async (): Promise<RecordSuccessfulBillingResult> => {
+      await tx
+        .update(containers)
+        .set({
+          // The provider-confirmed lifecycle boundary is the terminal cursor.
+          // Advancing it prevents a later restart from fabricating a collectible
+          // debt for compute that no longer exists.
+          last_billed_at: input.now,
+          next_billing_at: null,
+          updated_at: input.now,
+        })
+        .where(
+          and(
+            eq(containers.id, input.containerId),
+            eq(containers.organization_id, input.organizationId),
+          ),
+        );
+      await tx.insert(containerBillingRecords).values({
+        container_id: input.containerId,
+        organization_id: input.organizationId,
+        amount: amount.toFixed(6),
+        rate_segments: settled.segments,
+        billing_period_start: periodStart,
+        billing_period_end: input.now,
+        status: "uncollected",
+        credit_transaction_id: null,
+        error_message: "Terminal container settlement exceeded available funding",
+        created_at: input.now,
+      });
+      return {
+        newBalance: creditAvailable.toNumber(),
+        transactionId: null,
+        alreadyBilled: false,
+        insufficient: true,
+        uncollected: true,
+        amount: amount.toNumber(),
+        fromEarnings: 0,
+      };
+    };
+
     if (creditAvailable.plus(earningsAvailable).lt(amount)) {
+      if (options.terminalInsufficientDisposition === "uncollected") {
+        return await recordTerminalUncollected();
+      }
       return {
         newBalance: creditAvailable.toNumber(),
         transactionId: null,
@@ -333,6 +517,9 @@ export class ContainerBillingRepository {
     // an unbacked credit debit for earnings-only tenants.
     const earningsConversion = earningsApplied.toDecimalPlaces(4, Decimal.ROUND_UP);
     if (earningsAvailable.lt(earningsConversion)) {
+      if (options.terminalInsufficientDisposition === "uncollected") {
+        return await recordTerminalUncollected();
+      }
       return {
         newBalance: creditAvailable.toNumber(),
         transactionId: null,

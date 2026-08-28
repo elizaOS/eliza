@@ -2,10 +2,11 @@
  * Renders the character experience page for inspecting and editing agent
  * persona-facing fields.
  */
-import { useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import type { ExperienceRecord } from "../../api/client-types";
 import { useFetchData } from "../../hooks/useFetchData";
+import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { CharacterExperienceWorkspace } from "./CharacterExperienceWorkspace";
 import { mapExperienceRecordToHubRecord } from "./character-hub-helpers";
@@ -13,11 +14,14 @@ import { mapExperienceRecordToHubRecord } from "./character-hub-helpers";
 /**
  * The Experience section of the Character family (#13591): the agent's learned
  * experiences, editable/deletable. Owns just the experiences fetch (not the
- * hub's other reads), so opening it never pulls data it doesn't render. Renders
- * a headerless body — the shared `CharacterSectionNav` supplies the "Character"
- * header + section strip in the shell nav slot.
+ * hub's other reads), so opening it never pulls data it doesn't render. The
+ * host supplies Character-family chrome as part of this view's framed page.
  */
-export function CharacterExperienceView() {
+export function CharacterExperienceView({
+  pageChrome,
+}: {
+  pageChrome?: ReactNode;
+}) {
   const fetchState = useFetchData<ExperienceRecord[]>(async () => {
     const response = await client.listExperiences({ limit: 100 });
     return response.experiences;
@@ -97,35 +101,42 @@ export function CharacterExperienceView() {
 
   return (
     <ShellViewAgentSurface viewId="experience">
-      <div className="custom-scrollbar mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col gap-4 overflow-y-auto px-4 pb-32 pt-1 sm:px-5 lg:px-6">
-        {error ? (
-          <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-            {error}
-          </div>
-        ) : null}
-        {loading ? (
-          <div className="text-sm text-muted">Loading experiences…</div>
-        ) : (
-          <CharacterExperienceWorkspace
-            showTitle={false}
-            experiences={hubRecords}
-            selectedExperienceId={selectedExperienceId}
-            onSelectExperience={setSelectedExperienceId}
-            onSaveExperience={(experience, draft) => {
-              const source = records.find((item) => item.id === experience.id);
-              if (!source) return;
-              void handleSaveExperience(source, draft);
-            }}
-            onDeleteExperience={(experience) => {
-              const source = records.find((item) => item.id === experience.id);
-              if (!source) return;
-              void handleDeleteExperience(source);
-            }}
-            savingExperienceId={savingExperienceId}
-            deletingExperienceId={deletingExperienceId}
-          />
-        )}
-      </div>
+      <FramedPage>
+        {pageChrome}
+        <FramedPageBody className="gap-4 pt-1">
+          {error ? (
+            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+              {error}
+            </div>
+          ) : null}
+          {loading ? (
+            <div className="text-sm text-muted">Loading experiences…</div>
+          ) : (
+            <CharacterExperienceWorkspace
+              showTitle={false}
+              experiences={hubRecords}
+              selectedExperienceId={selectedExperienceId}
+              onSelectExperience={setSelectedExperienceId}
+              onSaveExperience={(experience, draft) => {
+                const source = records.find(
+                  (item) => item.id === experience.id,
+                );
+                if (!source) return;
+                void handleSaveExperience(source, draft);
+              }}
+              onDeleteExperience={(experience) => {
+                const source = records.find(
+                  (item) => item.id === experience.id,
+                );
+                if (!source) return;
+                void handleDeleteExperience(source);
+              }}
+              savingExperienceId={savingExperienceId}
+              deletingExperienceId={deletingExperienceId}
+            />
+          )}
+        </FramedPageBody>
+      </FramedPage>
     </ShellViewAgentSurface>
   );
 }

@@ -125,14 +125,27 @@ describe("LifeOps Google plugin registration", () => {
     expect(routePaths).toContain("/api/connectors/google/oauth/start");
     expect(routePaths).toContain("/api/connectors/google/oauth/callback");
     expect(routePaths).toContain("/api/connectors/google/accounts");
-    expect(routePaths).not.toContain("/api/lifeops/connectors/google/status");
+    // The OAuth callback, account listing, and success page stay on the
+    // generic connector-account surface; LifeOps must not register a second
+    // callback or account store.
     expect(routePaths).not.toContain("/api/lifeops/connectors/google/accounts");
     expect(routePaths).not.toContain("/api/lifeops/connectors/google/success");
     expect(routePaths).not.toContain("/api/lifeops/connectors/google/start");
     expect(routePaths).not.toContain("/api/lifeops/connectors/google/callback");
-    expect(routePaths).not.toContain(
-      "/api/lifeops/connectors/google/disconnect",
+  });
+
+  it("exposes the LifeOps connection manager over the shared connector-account manager", () => {
+    const routePaths = (personalAssistantRoutesPlugin.routes ?? []).map(
+      (route) => route.path,
     );
+
+    // These three routes project connector accounts into LifeOps grant DTOs,
+    // map least-privilege capabilities onto Google scopes, and fail closed on
+    // an unusable callback origin before redirecting. They delegate to the
+    // same connector-account manager as the generic routes above.
+    expect(routePaths).toContain("/api/lifeops/connectors/google/status");
+    expect(routePaths).toContain("/api/lifeops/connectors/google/connect");
+    expect(routePaths).toContain("/api/lifeops/connectors/google/disconnect");
   });
 
   it("does not register plugin-google-workspace twice", async () => {

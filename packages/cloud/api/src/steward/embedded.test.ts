@@ -2,11 +2,13 @@
  * Unit coverage for the embedded Steward proxy. Drives the real handler
  * through a Hono shell: fetch is only the upstream network boundary.
  * Assertions record observed cache, upstream-selection, and patching
- * behaviour — not the stub's return value.
+ * behaviour, plus parity with the release verifier on adversarial wire bodies.
  */
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { verifyStewardProviderDiscovery } from "../../../scripts/verify-steward-provider-discovery.mjs";
 import {
   ageProvidersResponseCacheForTests,
   embeddedStewardHandler,
@@ -384,6 +386,15 @@ describe("embeddedStewardHandler proxy", () => {
     expect(calls[0]?.headers.get("x-steward-tenant")).toBeNull();
   });
 
+  it("preserves accept-encoding on non-providers passthrough requests", async () => {
+    const calls = stubFetch(async () => Response.json({ ok: true }));
+    await makeApp(baseEnv()).request(
+      "https://api.elizacloud.ai/steward/auth/nonce",
+      { headers: { "accept-encoding": "gzip, br" } },
+    );
+    expect(calls[0]?.headers.get("accept-encoding")).toBe("gzip, br");
+  });
+
   it("signs PUT, PATCH, and DELETE when a signing secret is configured", async () => {
     const calls = stubFetch(async () => new Response("ok", { status: 200 }));
     const env = baseEnv({
@@ -451,6 +462,127 @@ describe("embeddedStewardHandler proxy", () => {
 });
 
 describe("patchProvidersResponse", () => {
+  it("removes inbound accept-encoding before reading uncompressed provider JSON", async () => {
+    const calls = stubFetch(async (_input, init) => {
+      expect(new Headers(init?.headers).get("accept-encoding")).toBeNull();
+      return Response.json(providersJson());
+    });
+    const response = await makeApp(baseEnv()).request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { headers: { "accept-encoding": "gzip, br" } },
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-eliza-providers-cache")).toBe("miss");
+    expect(calls[0]?.headers.get("accept-encoding")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({ ok: true });
+  });
+
+  it("fails closed without caching when an upstream still returns compressed bytes", async () => {
+    let upstreamCalls = 0;
+    stubFetch(async () => {
+      upstreamCalls += 1;
+      const compressed = new Blob([JSON.stringify(providersJson())])
+        .stream()
+        .pipeThrough(new CompressionStream("gzip"));
+      return new Response(compressed, {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "content-encoding": "gzip",
+        },
+      });
+    });
+    const app = makeApp(baseEnv());
+    const first = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { headers: { "accept-encoding": "gzip, br" } },
+    );
+    expect(first.status).toBe(502);
+    expect(first.headers.get("cache-control")).toBe("no-store");
+    await expect(first.json()).resolves.toMatchObject({
+      code: "steward_upstream_invalid_response",
+    });
+
+    const retry = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { headers: { "accept-encoding": "gzip, br" } },
+    );
+    expect(retry.status).toBe(502);
+    expect(retry.headers.get("x-eliza-providers-cache")).toBeNull();
+    expect(upstreamCalls).toBe(2);
+  });
+
+  it("classifies an upstream 404 without logging its body", async () => {
+    const sensitiveBody = "private-upstream-diagnostic-must-not-be-logged";
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    stubFetch(
+      async () =>
+        new Response(sensitiveBody, {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const response = await makeApp(baseEnv()).request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+    );
+
+    expect(response.status).toBe(502);
+    expect(warn).toHaveBeenCalledWith(
+      "[embedded-steward] invalid providers response",
+      { reason: "upstream_status", upstreamStatus: 404 },
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(sensitiveBody);
+  });
+
+  it.each([
+    {
+      reason: "media_type",
+      response: () => new Response("not-json"),
+    },
+    {
+      reason: "body",
+      response: () =>
+        new Response(null, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    },
+    {
+      reason: "json",
+      response: () =>
+        new Response("{not-json", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    },
+    {
+      reason: "envelope",
+      response: () => Response.json({ ok: false, ...providersData() }),
+    },
+    {
+      reason: "provider_contract",
+      response: () =>
+        Response.json({
+          ok: true,
+          data: providersData({ passkey: "invalid" }),
+        }),
+    },
+  ])("logs only the bounded $reason reason", async ({ reason, response }) => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    stubFetch(async () => response());
+
+    const result = await makeApp(baseEnv()).request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+    );
+
+    expect(result.status).toBe(502);
+    expect(warn).toHaveBeenCalledWith(
+      "[embedded-steward] invalid providers response",
+      { reason },
+    );
+  });
+
   it("patches discord and github from env credentials without duplicating oauth entries", async () => {
     stubFetch(async () =>
       Response.json(
@@ -621,5 +753,241 @@ describe("patchProvidersResponse", () => {
     expect(head.status).toBe(200);
     expect(head.headers.get("x-eliza-providers-cache")).toBe("hit");
     expect(await head.text()).toBe("");
+  });
+});
+
+describe("provider contract parity with the release verifier", () => {
+  const upstreamOrigin = "https://steward-api-staging.up.railway.app";
+  const flatBody = JSON.stringify(providersJson());
+  const flatMembers = flatBody.slice(1, -1);
+  const encoder = new TextEncoder();
+  const withFuture = (rawJson: string): string =>
+    `{${flatMembers},"future":${rawJson}}`;
+
+  async function assertParity(
+    body: string | Uint8Array<ArrayBuffer>,
+    expectedAccepted: boolean,
+  ): Promise<void> {
+    vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const calls = stubFetch(
+      async () =>
+        new Response(body, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const response = await makeApp(
+      baseEnv({ STEWARD_API_URL: upstreamOrigin }),
+    ).request("https://api-staging.eliza.app/steward/auth/providers");
+    const [verification] = await Promise.allSettled([
+      verifyStewardProviderDiscovery(
+        {
+          baseUrl: upstreamOrigin,
+          environment: "staging",
+          surface: "upstream",
+        },
+        { fetchImpl: globalThis.fetch },
+      ),
+    ]);
+
+    expect(response.status).toBe(expectedAccepted ? 200 : 502);
+    expect(verification.status).toBe(
+      expectedAccepted ? "fulfilled" : "rejected",
+    );
+    expect(verification.status === "fulfilled").toBe(response.status === 200);
+    await expect(response.json()).resolves.toMatchObject(
+      expectedAccepted
+        ? { ok: true }
+        : { code: "steward_upstream_invalid_response" },
+    );
+    if (!expectedAccepted) {
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+    expect(calls.map(({ url, method }) => ({ url, method }))).toEqual([
+      { url: `${upstreamOrigin}/auth/providers`, method: "GET" },
+      { url: `${upstreamOrigin}/auth/providers`, method: "GET" },
+    ]);
+  }
+
+  it.each([
+    { name: "flat contract", payload: providersJson() },
+    { name: "nested contract", payload: { ok: true, data: providersData() } },
+    {
+      name: "flat contract with a future data field",
+      payload: providersJson({ data: { futureEnvelopeField: true } }),
+    },
+    {
+      name: "nested contract with unvalidated contract-named siblings",
+      payload: { ok: true, passkey: "invalid", data: providersData() },
+    },
+    {
+      name: "optional providers and Turnstile captcha",
+      payload: providersJson({
+        sms: true,
+        whatsapp: false,
+        telegram: true,
+        oidc: ["partner"],
+        disabled: ["github"],
+        captcha: {
+          enabled: true,
+          provider: "turnstile",
+          siteKey: "public-test-site-key",
+          requiredFor: ["email_otp", "sms_otp"],
+        },
+      }),
+    },
+    {
+      name: "nested hCaptcha with forward-compatible Unicode metadata",
+      payload: {
+        ok: true,
+        data: providersData({
+          captcha: { provider: "hcaptcha", future: "雪" },
+        }),
+      },
+    },
+  ])("accepts $name on both boundaries", async ({ payload }) => {
+    await assertParity(JSON.stringify(payload), true);
+  });
+
+  it.each([
+    { name: "failed envelope", payload: { ...providersJson(), ok: false } },
+    { name: "error envelope", payload: providersJson({ error: null }) },
+    { name: "failed success flag", payload: providersJson({ success: false }) },
+    { name: "array provider data", payload: { ok: true, data: [] } },
+    {
+      name: "invalid required boolean",
+      payload: { ok: true, data: providersData({ passkey: "true" }) },
+    },
+    { name: "invalid oauth list", payload: providersJson({ oauth: [false] }) },
+    {
+      name: "invalid optional boolean",
+      payload: providersJson({ telegram: "yes" }),
+    },
+    { name: "invalid oidc list", payload: providersJson({ oidc: [12] }) },
+    {
+      name: "invalid disabled list",
+      payload: providersJson({ disabled: "github" }),
+    },
+    { name: "null captcha", payload: providersJson({ captcha: null }) },
+    {
+      name: "invalid captcha enabled flag",
+      payload: providersJson({ captcha: { enabled: "true" } }),
+    },
+    {
+      name: "unsupported captcha provider",
+      payload: providersJson({ captcha: { provider: "unknown" } }),
+    },
+    {
+      name: "invalid captcha site key",
+      payload: providersJson({ captcha: { siteKey: 12 } }),
+    },
+    {
+      name: "invalid captcha requirement list",
+      payload: providersJson({ captcha: { requiredFor: "email_otp" } }),
+    },
+    {
+      name: "unsupported captcha requirement",
+      payload: providersJson({ captcha: { requiredFor: ["unknown"] } }),
+    },
+  ])("rejects $name on both boundaries", async ({ payload }) => {
+    await assertParity(JSON.stringify(payload), false);
+  });
+
+  it.each([
+    {
+      name: "duplicate provider key",
+      body: `{${flatMembers},"passkey":false}`,
+    },
+    {
+      name: "escaped duplicate provider key",
+      body: `{${flatMembers},"pass\\u006bey":false}`,
+    },
+    {
+      name: "escaped duplicate nested unknown key",
+      body: withFuture('{"key":1,"\\u006bey":2}'),
+    },
+    ...["__proto__", "prototype", "constructor"].map((key) => ({
+      name: `nested dangerous ${key} key`,
+      body: withFuture(`[{"${key}":{}}]`),
+    })),
+    {
+      name: "escaped nested dangerous key",
+      body: withFuture('{"\\u0063onstructor":{}}'),
+    },
+    { name: "second JSON document", body: `${flatBody} {"extra":true}` },
+    {
+      name: "invalid UTF-8 inside otherwise valid provider JSON",
+      body: Uint8Array.from([
+        ...encoder.encode(`{${flatMembers},"future":"`),
+        0xff,
+        ...encoder.encode('"}'),
+      ]),
+    },
+  ])("rejects $name on both wire parsers", async ({ body }) => {
+    await assertParity(body, false);
+  });
+
+  it.each([
+    { name: "depth 16", depth: 15, accepted: true },
+    { name: "depth 17", depth: 16, accepted: false },
+  ])("enforces $name on both boundaries", async ({ depth, accepted }) => {
+    await assertParity(
+      withFuture(`${"[".repeat(depth)}0${"]".repeat(depth)}`),
+      accepted,
+    );
+  });
+
+  it.each([
+    { entries: 256, accepted: true },
+    { entries: 257, accepted: false },
+  ])(
+    "enforces $entries entries per container",
+    async ({ entries, accepted }) => {
+      await assertParity(
+        withFuture(JSON.stringify(Array.from({ length: entries }, () => null))),
+        accepted,
+      );
+      resetProvidersResponseCacheForTests();
+      vi.restoreAllMocks();
+      await assertParity(
+        withFuture(
+          JSON.stringify(
+            Object.fromEntries(
+              Array.from({ length: entries }, (_, index) => [
+                `field${index}`,
+                null,
+              ]),
+            ),
+          ),
+        ),
+        accepted,
+      );
+    },
+  );
+
+  it.each([
+    { nodes: 2_048, tailEntries: 236, accepted: true },
+    { nodes: 2_049, tailEntries: 237, accepted: false },
+  ])("enforces $nodes parsed values", async ({ tailEntries, accepted }) => {
+    // The flat contract has 11 values. The extension adds one outer array,
+    // eight inner arrays, and 7 * 256 + tailEntries primitive values.
+    const extension = [
+      ...Array.from({ length: 7 }, () =>
+        Array.from({ length: 256 }, () => null),
+      ),
+      Array.from({ length: tailEntries }, () => null),
+    ];
+    await assertParity(withFuture(JSON.stringify(extension)), accepted);
+  });
+
+  it.each([
+    { bytes: 65_536, accepted: true },
+    { bytes: 65_537, accepted: false },
+  ])("enforces $bytes response bytes", async ({ bytes, accepted }) => {
+    const emptyBodyBytes = encoder.encode(withFuture('""')).byteLength;
+    await assertParity(
+      withFuture(JSON.stringify("a".repeat(bytes - emptyBodyBytes))),
+      accepted,
+    );
   });
 });

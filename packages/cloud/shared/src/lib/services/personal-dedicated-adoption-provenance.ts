@@ -1,11 +1,11 @@
 /** Non-secret, deterministic state binding for duplicate Dedicated selection. */
 
+import { hasAgentBackupRestoreAuthority } from "../../db/repositories/agent-backup-restore-authority";
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import type {
   AgentBackupCatalogState,
   StoredAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
-import { catalogStateAllowsRestore } from "./agent-backup-catalog-state";
 
 export type PersonalDedicatedStateDisposition =
   | "verified_backup_present"
@@ -42,7 +42,7 @@ export interface PersonalDedicatedBackupProvenance {
   verificationStatus: string | null;
   verifiedAt: Date | null;
   catalogVersion: number | null;
-  catalogState: string | null;
+  catalogState: AgentBackupCatalogState | null;
   catalogPayloadDigest: string | null;
   catalogRevision: bigint;
   catalogOrganizationId: string | null;
@@ -200,6 +200,10 @@ function backupCreatedAtDescending(
   return right.createdAt.getTime() - left.createdAt.getTime() || right.id.localeCompare(left.id);
 }
 
+function isSha256Digest(value: string | null): value is string {
+  return value !== null && /^[a-f0-9]{64}$/.test(value);
+}
+
 function reviewedLegacyBackupChain(
   selected: PersonalDedicatedBackupProvenance,
   retainedAgentId: string,
@@ -270,19 +274,18 @@ export function personalDedicatedActivationAuthority(
         );
       }
 
-      // Catalogue v2 intentionally leaves the legacy verification columns
-      // null. Bind its exact tenant, agent, payload, manifest, and inventory
-      // authority, but do not claim legacy provisioning can restore it.
+      // Canonical catalogue restore authority is catalog-v2 + manifest-v3
+      // protected by both providers. Earlier manifests and intermediate
+      // upload/verification states are not executable restore points.
       return (
         backup.catalogVersion === 2 &&
         backup.catalogOrganizationId === organizationId &&
         backup.catalogAgentId === retainedAgentId &&
-        (backup.manifestVersion === 2 || backup.manifestVersion === 3) &&
-        backup.catalogState !== null &&
-        catalogStateAllowsRestore(backup.catalogState as AgentBackupCatalogState) &&
-        Boolean(backup.catalogPayloadDigest) &&
-        Boolean(backup.manifestDigest) &&
-        Boolean(backup.objectInventoryDigest)
+        backup.manifestVersion === 3 &&
+        hasAgentBackupRestoreAuthority(backup.catalogState) &&
+        isSha256Digest(backup.catalogPayloadDigest) &&
+        isSha256Digest(backup.manifestDigest) &&
+        isSha256Digest(backup.objectInventoryDigest)
       );
     })
     .sort(backupCreatedAtDescending);

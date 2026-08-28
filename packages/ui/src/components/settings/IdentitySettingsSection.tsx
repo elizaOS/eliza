@@ -122,7 +122,12 @@ function normalizeVoiceConfigForSave(args: {
   };
 }
 
-export function IdentitySettingsSection() {
+/**
+ * Canonical voice-preset editor. The legacy `identity` route wraps this in its
+ * own SettingsStack, while the everyday Voice destination injects the same
+ * content into its existing stack so the control has one implementation.
+ */
+export function VoicePresetSettingsContent() {
   const { t, elizaCloudConnected, elizaCloudVoiceProxyAvailable } =
     useAppSelectorShallow((s) => ({
       t: s.t,
@@ -318,9 +323,11 @@ export function IdentitySettingsSection() {
   });
 
   return (
-    <SettingsStack>
+    <>
       <SettingsGroup
-        title={t("settings.identity.groupTitle", { defaultValue: "Identity" })}
+        title={t("settings.identity.groupTitle", {
+          defaultValue: "Voice selection",
+        })}
       >
         <SettingsSelectRow
           agentId="identity-voice"
@@ -354,7 +361,7 @@ export function IdentitySettingsSection() {
               type="button"
               variant={voiceTesting ? "destructive" : "ghost"}
               size="icon"
-              className="size-11 shrink-0 rounded-md"
+              className="size-11 shrink-0"
               onClick={voiceTesting ? stopVoicePreview : handlePreviewVoice}
               disabled={!activeVoicePreset?.previewUrl || voiceLoading}
             >
@@ -375,6 +382,15 @@ export function IdentitySettingsSection() {
         saveSuccess={saveSuccess}
         onSave={() => void handleSave()}
       />
+    </>
+  );
+}
+
+/** Legacy `#identity`/`basics` compatibility surface. */
+export function IdentitySettingsSection() {
+  return (
+    <SettingsStack>
+      <VoicePresetSettingsContent />
     </SettingsStack>
   );
 }

@@ -1,8 +1,9 @@
 # This workflow is the sole pull-request and merge-candidate validation authority.
 # It checks mergeability, changed secrets and workflow syntax, then builds and
 # statically validates the affected workspace closure. A narrow, mock-backed
-# billing replay E2E runs when its contract surface changes; provider, device,
-# deployment, and destructive-effect lanes remain excluded.
+# billing replay E2E and the bounded synthetic-world transaction suite are the
+# affected-path test exceptions; provider, device, deployment, and
+# destructive-effect lanes remain excluded.
 name: PR Static Smoke
 
 on:
@@ -30,7 +31,7 @@ jobs:
   source-smoke:
     name: Source static smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -66,6 +67,11 @@ jobs:
 
           echo "merge_base=$merge_base" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          if git diff --quiet "$merge_base"..."$HEAD_SHA" -- packages/synthetic-world; then
+            echo "synthetic_world_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "synthetic_world_changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install pinned gitleaks
         shell: bash
@@ -124,6 +130,15 @@ jobs:
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
+      - name: Test Cloud Pages workflow contracts
+        run: >-
+          bun test
+          packages/scripts/__tests__/homepage-deploy-workflow.test.ts
+          packages/scripts/__tests__/cloud-cf-canonical-source-guard-workflow.test.ts
+          packages/scripts/__tests__/cloud-cf-voice-deploy-workflow.test.ts
+          packages/scripts/__tests__/ci-bun-version-contract.test.ts
+          packages/scripts/__tests__/github-action-pinning.test.ts
+
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -134,6 +149,10 @@ jobs:
 
       - name: Build core contract
         run: bun run build:core
+
+      - name: Run synthetic-world transaction tests
+        if: steps.diff.outputs.synthetic_world_changed == 'true'
+        run: bun run --cwd packages/synthetic-world test
 
       - name: Lint affected workspace closure
         env:

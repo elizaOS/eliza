@@ -149,6 +149,17 @@ export interface AgentHostBridge {
     options: AgentHttpRequestAuthorizationOptions,
   ): Promise<AgentHttpRequestAuthorization> | AgentHttpRequestAuthorization;
   /**
+   * Resolve a bare session-id bearer presented outside an HTTP request —
+   * the WebSocket auth paths, where device pairing hands the client a
+   * revocable machine-session id instead of the static connection key
+   * (#13985). Only a live host session may resolve `ok`; hostless agents
+   * have no session store, so absence means deny.
+   */
+  resolveSessionTokenAuthorization?(
+    token: string,
+    runtime: AgentRuntime | null,
+  ): Promise<AgentHttpRequestAuthorization> | AgentHttpRequestAuthorization;
+  /**
    * Cloud-SSO popup handoff (`GET /pair?token=…`). Owned by the host; a
    * local-only agent never legitimately serves it, so absence is a no-op that
    * falls through to the normal request pipeline.
@@ -156,6 +167,16 @@ export interface AgentHostBridge {
   handleCloudPairRoute?(
     req: HttpIncomingMessage,
     res: HttpServerResponse,
+  ): Promise<boolean>;
+  /**
+   * One-shot desktop session bootstrap. The host owns browser-session
+   * persistence, while the agent owns the packaged HTTP listener, so this
+   * handler must cross the bridge before the generic API auth gate runs.
+   */
+  handleDesktopAuthBootstrapRoute?(
+    req: HttpIncomingMessage,
+    res: HttpServerResponse,
+    runtime: AgentRuntime | null,
   ): Promise<boolean>;
 }
 
@@ -195,19 +216,37 @@ export const defaultAgentHostBridge: AgentHostBridge = {
   isStoreBuild: () => defaultBuildVariant() === "store",
 };
 
-let installedBridge: AgentHostBridge | null = null;
+interface AgentHostBridgeProcessState {
+  installedBridge: AgentHostBridge | null;
+}
+
+const HOST_BRIDGE_STATE_SYMBOL = Symbol.for(
+  "elizaos.agent.host-bridge.state.v1",
+);
+
+function getHostBridgeProcessState(): AgentHostBridgeProcessState {
+  const processGlobal = globalThis as typeof globalThis & {
+    [key: symbol]: AgentHostBridgeProcessState | undefined;
+  };
+  const existing = processGlobal[HOST_BRIDGE_STATE_SYMBOL];
+  if (existing) return existing;
+
+  const state: AgentHostBridgeProcessState = { installedBridge: null };
+  processGlobal[HOST_BRIDGE_STATE_SYMBOL] = state;
+  return state;
+}
 
 /**
  * Install the host bridge. Called by the app-core boot funnel before the
  * runtime starts. Idempotent — the last installer wins.
  */
 export function setAgentHostBridge(bridge: AgentHostBridge): void {
-  installedBridge = bridge;
+  getHostBridgeProcessState().installedBridge = bridge;
 }
 
 /** Read the installed host bridge, falling back to the no-op default. */
 export function getAgentHostBridge(): AgentHostBridge {
-  return installedBridge ?? defaultAgentHostBridge;
+  return getHostBridgeProcessState().installedBridge ?? defaultAgentHostBridge;
 }
 
 /**
@@ -222,5 +261,5 @@ export function hasDurableHostVault(): boolean {
 
 /** Test-only: drop any installed bridge so the default is used again. */
 export function _resetAgentHostBridge(): void {
-  installedBridge = null;
+  getHostBridgeProcessState().installedBridge = null;
 }

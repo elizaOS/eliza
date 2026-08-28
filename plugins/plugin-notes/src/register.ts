@@ -7,6 +7,7 @@
  */
 
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { NOTES_SURFACE } from "./surface.js";
 
 registerAppShellPage({
   id: "notes",
@@ -16,7 +17,7 @@ registerAppShellPage({
   path: "/notes",
   order: 920,
   viewKind: "release",
-  surface: { header: "fullscreen" },
+  surface: NOTES_SURFACE,
   loader: () =>
     import("./views/NotesPage.tsx").then((module) => ({
       default: module.NotesPage,

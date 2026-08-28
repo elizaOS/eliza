@@ -19,10 +19,13 @@ import {
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
+  ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES,
+  ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
   androidPlayManifestEvidenceFromAapt,
   applyAndroidCloudSplashTheme,
   applyAndroidGeneratedBuildTargetProperties,
   applyAndroidPlayManifestHardening,
+  assertAndroidCloudNativeLibraryAllowlist,
   createAndroidPlayManifestPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
@@ -52,6 +55,9 @@ const AAPT_MANIFEST = `
       E: intent (line=5)
         E: action (line=6)
           A: android:name(0x01010003)="android.speech.RecognitionService" (Raw: "android.speech.RecognitionService")
+      E: intent (line=7)
+        E: action (line=8)
+          A: android:name(0x01010003)="android.intent.action.TTS_SERVICE" (Raw: "android.intent.action.TTS_SERVICE")
     E: uses-permission (line=7)
       A: android:name(0x01010003)="android.permission.INTERNET" (Raw: "android.permission.INTERNET")
     E: application (line=8)
@@ -175,10 +181,10 @@ describe("Android Play manifest policy", () => {
       /eliza\.app|localhost|127\.0\.0\.1|BackgroundRunner|bun-runtime|includePlugins/,
     );
     expect(sanitized).not.toHaveProperty("ios");
-    expect(sanitized).not.toHaveProperty("loggingBehavior");
+    expect(sanitized.loggingBehavior).toBe("none");
   });
 
-  it("preserves launcher-only logging suppression and opt-in WebView inspection", () => {
+  it("preserves Cloud logging suppression and launcher-only WebView inspection", () => {
     const sanitized = sanitizeAndroidCloudCapacitorConfig(
       {
         loggingBehavior: "debug",
@@ -189,6 +195,15 @@ describe("Android Play manifest policy", () => {
 
     expect(sanitized.loggingBehavior).toBe("none");
     expect(sanitized.android.webContentsDebuggingEnabled).toBe(true);
+  });
+
+  it("removes the SafePush source when SMS builds remove its native dependency", () => {
+    expect(ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES).toContain(
+      "SafePushNotificationsPlugin.java",
+    );
+    expect(
+      ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg),
+    ).toContain("@capacitor/push-notifications");
   });
 
   it("allows only canonical hosted-auth navigation in launcher config", () => {
@@ -256,6 +271,7 @@ describe("Android Play manifest policy", () => {
     expect(androidPlayManifestEvidenceFromAapt(AAPT_MANIFEST)).toEqual({
       actions: [
         "android.intent.action.MAIN",
+        "android.intent.action.TTS_SERVICE",
         "android.speech.RecognitionService",
       ],
       application: {
@@ -269,7 +285,10 @@ describe("Android Play manifest policy", () => {
       ],
       metadataNames: ["android.support.FILE_PROVIDER_PATHS"],
       permissions: ["android.permission.INTERNET"],
-      queryActions: ["android.speech.RecognitionService"],
+      queryActions: [
+        "android.intent.action.TTS_SERVICE",
+        "android.speech.RecognitionService",
+      ],
       queryPackages: [],
       targetSdkVersion: "36",
     });
@@ -428,6 +447,67 @@ describe("Android Play manifest policy", () => {
     });
   });
 
+  it("accepts only the exact DataStore JNI paths in a Cloud debug APK", () => {
+    expect(
+      assertAndroidCloudNativeLibraryAllowlist({
+        artifact: "/artifacts/app-debug.apk",
+        entries: [...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES],
+        env: {},
+      }),
+    ).toEqual([...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES]);
+  });
+
+  it("rejects extra native code in a Cloud debug APK", () => {
+    expect(() =>
+      assertAndroidCloudNativeLibraryAllowlist({
+        artifact: "/artifacts/app-debug.apk",
+        entries: [
+          ...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
+          "lib/arm64-v8a/libunexpected.so",
+        ],
+        env: {},
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+        message: expect.stringContaining("lib/arm64-v8a/libunexpected.so"),
+      }),
+    );
+  });
+
+  it("accepts only the exact module-rooted DataStore JNI paths in a Cloud AAB", () => {
+    const aabNativeLibraries = ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES.map(
+      (entry) => `base/${entry}`,
+    );
+    expect(
+      assertAndroidCloudNativeLibraryAllowlist({
+        artifact: "/artifacts/app-release.aab",
+        entries: aabNativeLibraries,
+        env: {},
+      }),
+    ).toEqual(aabNativeLibraries);
+  });
+
+  it("rejects extra native code in a Cloud AAB", () => {
+    expect(() =>
+      assertAndroidCloudNativeLibraryAllowlist({
+        artifact: "/artifacts/app-release.aab",
+        entries: [
+          ...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES.map(
+            (entry) => `base/${entry}`,
+          ),
+          "base/lib/arm64-v8a/libunexpected.so",
+        ],
+        env: {},
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+        message: expect.stringContaining("base/lib/arm64-v8a/libunexpected.so"),
+      }),
+    );
+  });
+
   it("targets API 36 and excludes background-worker dependencies in Cloud", () => {
     expect(VARIABLES_GRADLE).toContain("targetSdkVersion = 36");
     expect(APP_BUILD_GRADLE).toContain(
@@ -435,6 +515,12 @@ describe("Android Play manifest policy", () => {
     );
     expect(APP_BUILD_GRADLE).toContain(
       'implementation "androidx.work:work-runtime:2.11.0"',
+    );
+  });
+
+  it("exposes Firebase Messaging to the guarded push plugin in every lane", () => {
+    expect(APP_BUILD_GRADLE).toMatch(
+      /if \(project\.findProperty\('elizaCloudBuild'\) != 'true'\) \{\s*implementation "com\.google\.firebase:firebase-common-ktx:21\.0\.0"\s*\}\s*\/\/ The push plugin[\s\S]*compileOnly "com\.google\.firebase:firebase-messaging:25\.0\.1"/,
     );
   });
 

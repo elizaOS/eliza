@@ -6,7 +6,9 @@
  */
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
+  resetDevCloudEnvAuthorityForTests,
   resolveCloudApiBaseUrl,
+  resolveDevCloudEnvAuthority,
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
 } from "@elizaos/shared";
@@ -39,6 +41,7 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZAOS_CLOUD_BASE_URL",
   "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
   "ELIZA_WALLET_NETWORK",
   "ALCHEMY_API_KEY",
   "INFURA_API_KEY",
@@ -185,6 +188,7 @@ describe("resolveWalletNetworkMode", () => {
 
   afterEach(() => {
     restoreEnv(snap);
+    resetDevCloudEnvAuthorityForTests();
   });
 
   it("prefers an explicit fallback over config and env", () => {
@@ -277,12 +281,14 @@ describe("cloud RPC access and proxy URLs", () => {
   let snap: EnvSnapshot;
 
   beforeEach(() => {
+    resetDevCloudEnvAuthorityForTests();
     snap = snapshotEnv();
     clearWalletEnv();
   });
 
   afterEach(() => {
     restoreEnv(snap);
+    resetDevCloudEnvAuthorityForTests();
   });
 
   it("denies cloud RPC access without a usable API key", () => {
@@ -353,6 +359,54 @@ describe("cloud RPC access and proxy URLs", () => {
     );
     expect(built?.startsWith("http://127.0.0.1:8787/")).toBe(true);
   });
+
+  it.each(["staging-default", "offline"])(
+    "blocks managed RPC credentials and hostile options under %s authority",
+    (authority) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+
+      expect(
+        hasElizaCloudRpcAccess({
+          cloud: { apiKey: "persisted-production-key" },
+        }),
+      ).toBe(false);
+      expect(
+        buildCloudEvmRpcUrl("mainnet", {
+          cloudManagedAccess: true,
+          cloudApiKey: "option-production-key",
+          cloudBaseUrl: "https://api.eliza.app/api/v1",
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it.each([
+    ["staging-explicit", "https://api-staging.eliza.app/api/v1"],
+    ["self-hosted", "http://192.168.1.20:8787/api/v1"],
+  ])(
+    "pins managed RPC to the %s launch tuple after late pollution",
+    (authority, launchBaseUrl) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_API_KEY = "launcher-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = launchBaseUrl;
+      resolveDevCloudEnvAuthority();
+
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+
+      expect(
+        buildCloudEvmRpcUrl("mainnet", {
+          cloudManagedAccess: true,
+          cloudApiKey: "option-production-key",
+          cloudBaseUrl: "https://api.eliza.app/api/v1",
+        }),
+      ).toBe(expectedCloudEvmUrl("mainnet", "launcher-key", launchBaseUrl));
+    },
+  );
 });
 
 describe("resolveBscRpcUrls", () => {

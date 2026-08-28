@@ -1,8 +1,9 @@
 /**
  * Renders the registered Cloud management route that owns the current
  * `/cloud/*` URL inside the normal Eliza app-shell page. Route parameters,
- * authorization gates, loading, and error boundaries remain identical to the
- * former standalone console mount.
+ * session authentication, loading, and error boundaries remain identical to
+ * the former standalone console mount. Account access follows the Steward
+ * session rather than the currently selected agent runtime.
  */
 
 import { type ComponentType, Suspense } from "react";
@@ -12,14 +13,14 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
 import {
   EnsurePageHeaderProvider,
   usePageHeader,
 } from "../../cloud-ui/components/layout";
 import { ViewHeader } from "../../components/shared/ViewHeader";
-import { useAppSelector } from "../../state";
+import { PageFrame } from "../../layouts";
 import { useSessionAuth } from "../lib/use-session-auth";
-import { isManagedCloudRuntime } from "../managed-cloud-runtime";
 import { CloudAccountMenu } from "./CloudAccountMenu";
 import { CloudRouteErrorBoundary } from "./CloudRouteErrorBoundary";
 import {
@@ -40,7 +41,10 @@ function managedRouteForPath(pathname: string): CloudRouteDef | null {
 
 function ManagedCloudUnavailable({ message }: { message: string }) {
   return (
-    <div className="flex min-h-48 items-center justify-center px-6 text-center text-sm text-muted">
+    <div
+      className="flex min-h-48 items-center justify-center px-6 text-center text-sm text-muted"
+      role="alert"
+    >
       {message}
     </div>
   );
@@ -52,11 +56,9 @@ function renderManagedRoute(route: CloudRouteDef): React.ReactNode {
     <CloudRouteErrorBoundary routePath={route.path}>
       <Suspense
         fallback={
-          <div
-            aria-busy="true"
-            className="min-h-48"
-            data-testid="managed-cloud-route-loading"
-          />
+          <div className="min-h-48" data-testid="managed-cloud-route-loading">
+            <DashboardLoadingState label="Loading Cloud dashboard page" />
+          </div>
         }
       >
         <RouteComponent />
@@ -83,6 +85,13 @@ function ManagedCloudRouteFrame({
   const location = useLocation();
   const navigate = useNavigate();
   const isCloudOverview = location.pathname === "/cloud";
+  const layout = route.surface?.layout ?? {
+    kind: "content",
+    topology: "framed",
+    width: "standard",
+    scroll: "view",
+    gutter: "standard",
+  };
   return (
     <div className="theme-cloud flex min-h-0 min-w-0 flex-1 flex-col bg-bg text-txt">
       <ViewHeader
@@ -102,9 +111,7 @@ function ManagedCloudRouteFrame({
       {pageInfo?.description ? (
         <p className="sr-only">{pageInfo.description}</p>
       ) : null}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto p-4 md:p-6">
-        {renderManagedRoute(route)}
-      </div>
+      <PageFrame layout={layout}>{renderManagedRoute(route)}</PageFrame>
     </div>
   );
 }
@@ -112,20 +119,14 @@ function ManagedCloudRouteFrame({
 export function ManagedCloudPage(): React.JSX.Element {
   const location = useLocation();
   const session = useSessionAuth();
-  const runtimeTarget = useAppSelector(
-    (state) => state.startupCoordinator.target,
-  );
-  const managedCloudRuntime = isManagedCloudRuntime(runtimeTarget);
   const route = managedRouteForPath(location.pathname);
 
-  if (!managedCloudRuntime) {
-    return (
-      <ManagedCloudUnavailable message="Cloud management is available for agents deployed to Eliza Cloud." />
-    );
-  }
-
   if (!session.ready) {
-    return <ManagedCloudUnavailable message="Loading Cloud management…" />;
+    return (
+      <div className="theme-cloud min-h-48 p-4 text-txt md:p-6">
+        <DashboardLoadingState label="Loading Cloud dashboard" />
+      </div>
+    );
   }
   if (!session.authenticated) {
     const returnTo = encodeURIComponent(

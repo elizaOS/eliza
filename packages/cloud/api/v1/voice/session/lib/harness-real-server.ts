@@ -424,7 +424,18 @@ export async function startRealVoiceServer(
       req.method === "GET" &&
       url.pathname === "/api/v1/voice/session/health"
     ) {
-      writeJson(res, 200, { ready: true });
+      const requestedConversationIds =
+        url.searchParams.getAll("conversationId");
+      const conversationReady =
+        requestedConversationIds.length === 0 ||
+        (requestedConversationIds.length === 1 &&
+          requestedConversationIds[0] === config.conversationId);
+      writeJson(res, 200, {
+        ready: conversationReady,
+        ...(conversationReady && requestedConversationIds.length === 1
+          ? { conversationId: requestedConversationIds[0] }
+          : {}),
+      });
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/v1/voice/tts") {
@@ -562,6 +573,8 @@ export async function startRealVoiceServer(
           // actually does. Once the poll's request-scoped store parameter
           // lands (#16669), forward `rawRedis` here the way the route does.
           isRevoked: (j) => isVoiceSessionTokenRevoked(j),
+          onTurnMetrics: (receipt) =>
+            hooks.log("info", "voice turn metrics", { ...receipt }),
           downlink,
         }),
     });

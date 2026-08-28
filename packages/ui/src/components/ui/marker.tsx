@@ -24,19 +24,32 @@ function Marker({
   className,
   variant = "default",
   asChild = false,
+  turnStatus,
   ...props
 }: React.ComponentProps<"div"> &
   VariantProps<typeof markerVariants> & {
     asChild?: boolean;
+    turnStatus?: "compact" | "default";
   }) {
   const Comp = asChild ? Slot : "div";
+  const variantStyle =
+    turnStatus === "compact"
+      ? { color: "rgb(255 255 255 / 0.8)" }
+      : turnStatus === "default"
+        ? { color: "rgb(255 255 255 / 0.9)" }
+        : undefined;
 
   return (
     <Comp
       data-slot="marker"
       data-variant={variant}
-      className={cn(markerVariants({ variant, className }))}
+      className={cn(
+        markerVariants({ variant, className }),
+        turnStatus && "w-fit",
+        turnStatus === "compact" && "min-h-[1.4375rem]",
+      )}
       {...props}
+      style={{ ...variantStyle, ...props.style }}
     />
   );
 }

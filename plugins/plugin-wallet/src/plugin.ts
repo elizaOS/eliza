@@ -5,7 +5,7 @@
  * registers the Birdeye/DexScreener/TokenInfo analytics services. `init` and
  * `dispose` fan out to each composed piece in turn.
  */
-import { resolveCloudRoute, toRuntimeSettings } from "@elizaos/cloud-routing";
+import { resolveCloudRoute } from "@elizaos/cloud-routing";
 import {
   type IAgentRuntime,
   type Plugin,
@@ -21,6 +21,7 @@ import {
   BIRDEYE_ROUTE_SPEC,
   BirdeyeService,
 } from "./analytics/birdeye/service.js";
+import { toWalletCloudRoutingSettings } from "./analytics/cloud-routing-authority.js";
 import { registerDexScreenerSearchCategory } from "./analytics/dexscreener/search-category.js";
 import { DexScreenerService } from "./analytics/dexscreener/service.js";
 import { TokenInfoService } from "./analytics/token-info/service.js";
@@ -62,7 +63,7 @@ function concatPlugins<T>(...chunks: (readonly T[] | undefined)[]): T[] {
 
 async function initBirdeyeAnalytics(runtime: IAgentRuntime): Promise<void> {
   const birdeyeRoute = resolveCloudRoute(
-    toRuntimeSettings(runtime),
+    toWalletCloudRoutingSettings(runtime),
     BIRDEYE_ROUTE_SPEC,
   );
   registerBirdeyeSearchCategories(runtime, {

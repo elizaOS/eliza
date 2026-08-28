@@ -12,18 +12,46 @@ import type {
   SensitiveRequestKind,
   SensitiveRequestTarget,
 } from "@elizaos/core";
-import { getBootConfig, setBootConfig } from "@elizaos/shared";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  getBootConfig,
+  resetDevCloudEnvAuthorityForTests,
+  setBootConfig,
+} from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCloudLinkSensitiveRequestAdapter } from "./cloud-link-adapter";
 
 const EXPIRES_AT = "2099-01-01T00:00:00.000Z";
 const CREATED_AT = "2024-01-01T00:00:00.000Z";
 const SAVED_ENV_KEYS = [
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZA_CLOUD_API_KEY",
   "ELIZAOS_CLOUD_BASE_URL",
   "ELIZA_CLOUD_BASE_URL",
 ] as const;
+
+function setAuthority(
+  authority:
+    | "staging-default"
+    | "offline"
+    | "staging-explicit"
+    | "production"
+    | "self-hosted",
+): void {
+  process.env.ELIZA_DEV_SOURCE = "1";
+  process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+  process.env.ELIZAOS_CLOUD_API_KEY = "launch-key";
+  process.env.ELIZAOS_CLOUD_BASE_URL =
+    authority === "production"
+      ? "https://api.eliza.app/api/v1"
+      : authority === "self-hosted"
+        ? "http://127.0.0.1:8787/api/v1"
+        : "https://api-staging.eliza.app/api/v1";
+  resetDevCloudEnvAuthorityForTests();
+  captureDevCloudEnvAuthoritySnapshot();
+}
 function makeRequest(
   kind: SensitiveRequestKind,
   overrides: {
@@ -91,6 +119,7 @@ describe("cloudLinkSensitiveRequestAdapter", () => {
   let savedEnv: Record<(typeof SAVED_ENV_KEYS)[number], string | undefined>;
 
   beforeEach(() => {
+    resetDevCloudEnvAuthorityForTests();
     savedEnv = Object.fromEntries(
       SAVED_ENV_KEYS.map((key) => [key, process.env[key]]),
     ) as Record<(typeof SAVED_ENV_KEYS)[number], string | undefined>;
@@ -103,6 +132,7 @@ describe("cloudLinkSensitiveRequestAdapter", () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    resetDevCloudEnvAuthorityForTests();
   });
 
   it("returns the cloud sensitive-request URL for secret kind", async () => {
@@ -249,4 +279,67 @@ describe("cloudLinkSensitiveRequestAdapter", () => {
     expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
     expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBeUndefined();
   });
+
+  it.each([
+    ["staging-explicit", "https://cloud-staging.eliza.app"],
+    ["production", "https://cloud.eliza.app"],
+    ["self-hosted", "http://127.0.0.1:8787"],
+  ] as const)(
+    "uses only the frozen %s base and credential after late runtime pollution",
+    async (authority, expectedSiteBase) => {
+      setAuthority(authority);
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-process-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL =
+        "https://process-collector.example/api/v1";
+      const runtime = {
+        getSetting(key: string) {
+          if (key === "ELIZAOS_CLOUD_API_KEY") return "late-runtime-key";
+          if (key === "ELIZAOS_CLOUD_BASE_URL") {
+            return "https://runtime-collector.example/api/v1";
+          }
+          return undefined;
+        },
+      };
+
+      const result = await createCloudLinkSensitiveRequestAdapter().deliver({
+        request: makeRequest("secret", { id: "req-authority" }),
+        runtime,
+      });
+
+      expect(result.delivered).toBe(true);
+      if (!result.delivered) throw new Error("expected success");
+      expect(result.url).toBe(
+        `${expectedSiteBase}/sensitive-requests/req-authority`,
+      );
+    },
+  );
+
+  it.each(["staging-default", "offline"] as const)(
+    "does not activate authenticated links under %s after late credential pollution",
+    async (authority) => {
+      setAuthority(authority);
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-process-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL =
+        "https://process-collector.example/api/v1";
+
+      const result = await createCloudLinkSensitiveRequestAdapter().deliver({
+        request: makeRequest("secret"),
+        runtime: {
+          getSetting(key: string) {
+            if (key === "ELIZAOS_CLOUD_API_KEY") return "late-runtime-key";
+            if (key === "ELIZAOS_CLOUD_BASE_URL") {
+              return "https://runtime-collector.example/api/v1";
+            }
+            return undefined;
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        delivered: false,
+        target: "cloud_authenticated_link",
+        error: "cloud not paired",
+      });
+    },
+  );
 });

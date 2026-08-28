@@ -696,19 +696,20 @@ describe("#9899 hardening: backstop durability, lower-only hint, claim atomicity
     expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(4);
   });
 
-  // Clamp direction: if a concurrent debit published a STRICTER gate between
-  // this settler's authoritative read and its write, that stricter value must
-  // survive — while the entry still stays PRESENT (never absent).
-  test("republish is min-clamped against a concurrent stricter gate", async () => {
+  test("republish issues one direct authoritative write without a cache read", async () => {
     const { republishOrgBalanceHint } = await import("./inference-auth-cache");
     const orgId = uid("org");
     await writeOrgBalanceHint(orgId, 2, Date.now(), "5");
-    // An authoritative snapshot that is HIGHER than what a concurrent debit
-    // already published must not raise the gate back up.
-    await republishOrgBalanceHint(orgId, 9, Date.now(), "6");
+    const get = spyOn(cache, "get");
+    try {
+      await republishOrgBalanceHint(orgId, 9, Date.now(), "6");
+      expect(get).not.toHaveBeenCalled();
+    } finally {
+      get.mockRestore();
+    }
+
     const hint = await readOrgBalanceHint(orgId);
-    expect(hint?.balanceUsd).toBe(2);
-    expect(hint).not.toBeNull();
+    expect(hint).toMatchObject({ balanceUsd: 9, balanceRevision: "6" });
   });
 
   test("two concurrent inline claims of one request charge exactly once (atomic getAndDelete)", async () => {

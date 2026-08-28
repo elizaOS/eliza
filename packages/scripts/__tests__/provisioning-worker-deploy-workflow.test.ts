@@ -53,6 +53,7 @@ interface WorkflowStep {
 interface WorkflowJob {
   env?: Record<string, string>;
   steps?: WorkflowStep[];
+  "timeout-minutes"?: number;
 }
 
 const parsedWorkflow = Bun.YAML.parse(workflow) as {
@@ -68,12 +69,13 @@ function deployStep(name: string): WorkflowStep {
 }
 
 describe("provisioning worker deployment contract", () => {
-  it("routes both jobs only to the healthy Hetzner fleet", () => {
+  it("routes both jobs to the online generic self-hosted fleet", () => {
     expect(
-      workflow.match(
-        /^\s+runs-on: \$\{\{ fromJSON\(vars\.HETZNER_FLEET_ONLINE != 'true' && '\["ubuntu-24\.04"\]' \|\| '\["self-hosted","hetzner-robot"\]'\) \}\}$/gm,
-      ),
+      workflow.match(/^\s+runs-on: \[self-hosted, Linux, X64\]$/gm),
     ).toHaveLength(2);
+    expect(workflow).not.toContain("HETZNER_FLEET_ONLINE");
+    expect(workflow).not.toContain("ubuntu-24.04");
+    expect(workflow).not.toContain("hetzner-robot");
   });
 
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
@@ -142,6 +144,23 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain(
       '[ "$actual_sha" = "$EXPECTED_DEPLOY_SHA" ] || {',
     );
+    const exactSourceCheck = workflow.indexOf(
+      '[ "$actual_sha" = "$EXPECTED_DEPLOY_SHA" ] || {',
+      verify,
+    );
+    const reset = workflow.indexOf(
+      'git reset --hard --quiet "$EXPECTED_DEPLOY_SHA"',
+      verify,
+    );
+    const clean = workflow.indexOf("git clean -ffdx -q", verify);
+    const cleanVerdict = workflow.indexOf(
+      '[ -z "$(git status --porcelain)" ] || {',
+      verify,
+    );
+    expect(reset).toBeGreaterThan(exactSourceCheck);
+    expect(clean).toBeGreaterThan(reset);
+    expect(cleanVerdict).toBeGreaterThan(clean);
+    expect(migration).toBeGreaterThan(cleanVerdict);
     expect(workflow).toContain("bun run db:cloud:migrate");
   });
 
@@ -163,7 +182,7 @@ describe("provisioning worker deployment contract", () => {
     expect(migrationGate).toContain(
       "bun install --frozen-lockfile --no-save --ignore-scripts",
     );
-    expect(workflow).toContain("timeout-minutes: 95");
+    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(125);
   });
 
   it("scopes protected values away from checkout, setup, and install actions", () => {
@@ -247,18 +266,19 @@ describe("provisioning worker deployment contract", () => {
     ]) {
       expect(remoteDeploy.env?.[name]).toContain("secrets.");
     }
-    const dormantBackupSecrets = [
+    const deletionAuthoritySecrets = [
       "AGENT_BACKUP_R2_ACCESS_KEY_ID",
       "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
       "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID",
       "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY",
-      "AGENT_BACKUP_STEWARD_KMS_TOKEN",
     ];
     const forwardedNames = (remoteDeploy.with?.envs ?? "").split(",");
-    for (const name of dormantBackupSecrets) {
-      expect(remoteDeploy.env?.[name]).toBeUndefined();
-      expect(forwardedNames).not.toContain(name);
+    for (const name of deletionAuthoritySecrets) {
+      expect(remoteDeploy.env?.[name]).toContain("secrets.");
+      expect(forwardedNames).toContain(name);
     }
+    expect(remoteDeploy.env?.AGENT_BACKUP_STEWARD_KMS_TOKEN).toBeUndefined();
+    expect(forwardedNames).not.toContain("AGENT_BACKUP_STEWARD_KMS_TOKEN");
     expect(remoteDeploy.env?.DEPLOY_SSH_KEY).toBeUndefined();
     expect(remoteDeploy.with?.key).toContain(
       "secrets.ELIZA_PROVISIONING_SSH_KEY",
@@ -285,8 +305,26 @@ describe("provisioning worker deployment contract", () => {
     }
 
     expect(totalPreSshMinutes).toBe(40);
-    expect(workflow).toContain("timeout-minutes: 95");
-    expect(totalPreSshMinutes + 5 + 40 + 5).toBeLessThan(95);
+    const remoteSteps = parsedWorkflow.jobs?.deploy?.steps?.filter((step) =>
+      step.uses?.startsWith("appleboy/ssh-action@"),
+    );
+    const remoteBounds = (remoteSteps ?? []).map((step) => {
+      const timeout = step.with?.command_timeout;
+      expect(timeout).toMatch(/^\d+m$/);
+      return Number.parseInt(timeout ?? "", 10);
+    });
+    expect(remoteBounds).toEqual([5, 40, 25]);
+
+    const jobBound = parsedWorkflow.jobs?.deploy?.["timeout-minutes"];
+    expect(jobBound).toBe(125);
+    expect(
+      totalPreSshMinutes + remoteBounds.reduce((sum, n) => sum + n, 0),
+    ).toBeLessThan(jobBound ?? 0);
+    expect(
+      (jobBound ?? 0) -
+        totalPreSshMinutes -
+        remoteBounds.reduce((sum, n) => sum + n, 0),
+    ).toBeGreaterThanOrEqual(15);
   });
 
   it("reports the resolved branch and immutable deployment SHA in both Discord receipts", () => {
@@ -310,6 +348,11 @@ describe("provisioning worker deployment contract", () => {
   });
 
   it("serializes the SSH mutation on the target host after runner cancellation", () => {
+    expect(workflow).toContain(
+      "group: deploy-eliza-provisioning-worker-mutate-$" +
+        "{{ needs.determine-env.outputs.environment }}-$" +
+        "{{ format('run-{0}', github.run_id) }}",
+    );
     const lock = "exec 9>/tmp/eliza-provisioning-worker-deploy.lock";
     expect(workflow).toContain(lock);
     expect(workflow).toContain("flock -w 1200 9");
@@ -317,7 +360,7 @@ describe("provisioning worker deployment contract", () => {
       workflow.indexOf("cd /opt/eliza"),
     );
     expect(workflow).toContain("command_timeout: 40m");
-    expect(workflow).toContain("timeout-minutes: 95");
+    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(125);
   });
 
   it("regenerates before deploy and self-heals every service", () => {
@@ -370,7 +413,7 @@ describe("provisioning worker deployment contract", () => {
     expect(firstRestart).toBeGreaterThan(coreBuild);
   });
 
-  it("installs the dormant backup worker with persistent spool and exact disabled health", () => {
+  it("installs the deletion-only backup worker with persistent spool and live-cycle health", () => {
     expect(workflow).toContain(
       "packages/cloud/scripts/admin/eliza-backup-catalog-worker.service",
     );
@@ -424,8 +467,10 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain(
       'parsed.format === "elizaos.agent-backup.catalog-worker-health.v1"',
     );
-    expect(workflow).toContain('parsed.state === "disabled"');
-    expect(workflow).toContain("parsed.enabled === false");
+    expect(workflow).toContain('parsed.state === "idle"');
+    expect(workflow).toContain("parsed.enabled === true");
+    expect(workflow).toContain("Number.isSafeInteger(parsed.cycles)");
+    expect(workflow).toContain("parsed.cycles >= 1");
 
     expect(backupService).toContain("StateDirectory=eliza-backup-catalog");
     expect(backupService).toContain("RuntimeDirectory=eliza-backup-catalog");
@@ -459,7 +504,7 @@ describe("provisioning worker deployment contract", () => {
     );
   });
 
-  it("documents every enabled backup authority name for a future activation", () => {
+  it("documents deletion authority and dormant capture authority names", () => {
     for (const name of [
       "DATABASE_URL",
       "SECRETS_MASTER_KEY",
@@ -498,19 +543,32 @@ describe("provisioning worker deployment contract", () => {
     }
   });
 
-  it("keeps both backup gates uniquely off while treating enabled authority as optional", () => {
+  it("keeps capture and scheduling off while enabling only deletion backup authority", () => {
+    expect(
+      workflow.match(/^\s*ACCOUNT_DELETION_BACKUP_AUTHORITY_GATE=1$/gm),
+    ).toHaveLength(1);
     expect(workflow.match(/^\s*BACKUP_CATALOG_RUNTIME_GATE=0$/gm)).toHaveLength(
       1,
     );
     expect(workflow.match(/^\s*BACKUP_RPO_SCHEDULER_GATE=0$/gm)).toHaveLength(
       1,
     );
+    expect(workflow).not.toContain(
+      "ACCOUNT_DELETION_BACKUP_AUTHORITY_GATE=${{",
+    );
     expect(workflow).not.toContain("BACKUP_CATALOG_RUNTIME_GATE=${{");
     expect(workflow).not.toContain("BACKUP_RPO_SCHEDULER_GATE=${{");
-    expect(workflow).toContain('BACKUP_GATE="$BACKUP_CATALOG_RUNTIME_GATE"');
-    expect(workflow).toContain('if [ "$BACKUP_GATE" = "1" ]; then');
     expect(workflow).toContain(
-      "Verified disabled backup-catalogue gate and configuration names; values were not printed.",
+      'if [ "$ACCOUNT_DELETION_BACKUP_AUTHORITY_GATE" = "1" ] \\',
+    );
+    expect(workflow).toContain(
+      '"$BACKUP_ENV_FILE" ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED 1',
+    );
+    expect(workflow).toContain(
+      '"$ENV_FILE" ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED 0',
+    );
+    expect(workflow).toContain(
+      "Verified deletion-only backup authority and disabled capture/scheduler gates; values were not printed.",
     );
   });
 
@@ -582,7 +640,7 @@ describe("provisioning worker deployment contract", () => {
     expect(rename).toBeGreaterThan(injection);
   });
 
-  it("installs an exact disabled backup allowlist with no secret authority", () => {
+  it("installs an exact deletion-only allowlist without capture or host authority", () => {
     expect(workflow).toContain(
       "BACKUP_ENV_FILE=/etc/eliza/backup-catalog-worker.env",
     );
@@ -593,13 +651,15 @@ describe("provisioning worker deployment contract", () => {
       '"$(sudo stat -c \'%U:%G:%a\' "$BACKUP_ENV_FILE")" != "root:root:600"',
     );
 
-    const disabledPlan = workflow.slice(
+    const fixedPlan = workflow.slice(
       workflow.indexOf(
         "# The backup daemon receives a separate exact allowlist.",
       ),
-      workflow.indexOf("# Activation remains impossible in this changeset"),
+      workflow.indexOf(
+        'if [ "$ACCOUNT_DELETION_BACKUP_AUTHORITY_GATE" = "1" ]',
+      ),
     );
-    const disabledNames = [
+    const fixedNames = [
       "AGENT_BACKUP_CATALOG_RUNTIME_ENABLED",
       "AGENT_BACKUP_RPO_SCHEDULER_ENABLED",
       "AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS",
@@ -608,28 +668,42 @@ describe("provisioning worker deployment contract", () => {
       "AGENT_BACKUP_SPOOL_STATE_DIRECTORY",
       "AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE",
     ];
-    for (const name of disabledNames) {
-      expect(disabledPlan).toContain(name);
+    expect(fixedPlan).toContain("ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED");
+    for (const name of fixedNames) {
+      expect(fixedPlan).toContain(name);
     }
-    const plannedDisabledNames = [
+    const plannedFixedNames = [
       ...new Set(
-        [...disabledPlan.matchAll(/\bAGENT_BACKUP_[A-Z0-9_]+\b/g)].map(
+        [...fixedPlan.matchAll(/\bAGENT_BACKUP_[A-Z0-9_]+\b/g)].map(
           (match) => match[0],
         ),
       ),
     ].sort();
-    expect(plannedDisabledNames).toEqual([...disabledNames].sort());
-    for (const forbidden of [
+    expect(plannedFixedNames).toEqual([...fixedNames].sort());
+
+    const authorityPlan = workflow.slice(
+      workflow.indexOf("authority_backup_names=("),
+      workflow.indexOf('if [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then'),
+    );
+    for (const required of [
       "DATABASE_URL",
       "SECRETS_MASTER_KEY",
       "AGENT_BACKUP_R2_ACCESS_KEY_ID",
       "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID",
+      "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_SPOOL_MAX_BYTES",
+      "AGENT_BACKUP_SPOOL_MIN_FREE_BYTES",
+    ]) {
+      expect(authorityPlan).toContain(required);
+    }
+    for (const forbidden of [
       "AGENT_BACKUP_STEWARD_KMS_TOKEN",
       "CONTAINERS_SSH_KEY",
       "HEADSCALE_API_KEY",
       "SANDBOX_REGISTRY_REDIS_URL",
     ]) {
-      expect(disabledPlan).not.toContain(forbidden);
+      expect(authorityPlan).not.toContain(forbidden);
     }
 
     const sharedAssignmentLoopStart = workflow.indexOf(
@@ -651,20 +725,21 @@ describe("provisioning worker deployment contract", () => {
       'remove_environment_setting "$ENV_REPLACEMENTS" "$name"',
     );
 
-    const enabledAllowlist = workflow.slice(
-      workflow.indexOf("enabled_backup_names=("),
+    const runtimeAllowlist = workflow.slice(
+      workflow.indexOf("runtime_backup_names=("),
       workflow.indexOf(
         "# An EnvironmentFile replacement cannot revoke authority",
       ),
     );
-    expect(enabledAllowlist).toContain("DATABASE_URL");
-    expect(enabledAllowlist).toContain("AGENT_BACKUP_STEWARD_KMS_TOKEN");
+    expect(runtimeAllowlist).toContain("AGENT_BACKUP_STEWARD_KMS_TOKEN");
     for (const forbidden of [
+      "DATABASE_URL",
+      "SECRETS_MASTER_KEY",
       "CONTAINERS_SSH_KEY",
       "HEADSCALE_API_KEY",
       "SANDBOX_REGISTRY_REDIS_URL",
     ]) {
-      expect(enabledAllowlist).not.toContain(forbidden);
+      expect(runtimeAllowlist).not.toContain(forbidden);
     }
   });
 
@@ -711,12 +786,26 @@ describe("provisioning worker deployment contract", () => {
     // /opt/eliza/cloud/.env.local without it, every dedicated provision
     // silently falls back to the 30-120s cold path. The flag must flow from
     // the GitHub environment VARIABLE through the SSH env passthrough into the
-    // skip-empty EnvironmentFile reconcile loop.
+    // EnvironmentFile reconcile loop. An absent protected variable must force
+    // the safe disabled state instead of preserving unknown host drift.
     expect(workflow).toContain(
-      "WARM_POOL_ENABLED: $" + "{{ vars.WARM_POOL_ENABLED }}",
+      "WARM_POOL_ENABLED: $" + "{{ vars.WARM_POOL_ENABLED || 'false' }}",
     );
     expect(workflow).toMatch(/envs: [^\n]*\bWARM_POOL_ENABLED\b/);
     expect(workflow).toContain('"WARM_POOL_ENABLED=$WARM_POOL_ENABLED" \\');
+    expect(workflow).toContain('case "$WARM_POOL_ENABLED" in');
+    expect(workflow).toContain(
+      '"$ENV_FILE" WARM_POOL_ENABLED "$WARM_POOL_ENABLED"',
+    );
+    expect(workflow).toContain(
+      "Verified provisioning-host warm-pool state: $WARM_POOL_ENABLED",
+    );
+    const healthStep = workflow.slice(workflow.indexOf("- name: Health check"));
+    expect(healthStep).toMatch(/envs: [^\n]*\bWARM_POOL_ENABLED\b/);
+    expect(healthStep).toContain('"$ENV_FILE" WARM_POOL_ENABLED');
+    expect(healthStep).toContain(
+      "Provisioning host warm-pool drift. Values were not printed.",
+    );
   });
 
   it("keeps the Worker warm-pool claim flag committed per wrangler environment (#16961)", () => {
@@ -759,17 +848,13 @@ describe("provisioning worker deployment contract", () => {
       `"https://${publicHost}/healthz"`,
     );
     expect(workflow).toContain(
-      "Canonical agent-router host failed after local readiness",
+      "Canonical agent-router route failed after local readiness",
     );
+    expect(workflow).toContain("Canonical agent-router health contract failed");
     expect(workflow).toContain(
-      "Canonical agent-router host returned an unexpected health payload",
+      "Canonical agent-router readiness contract failed",
     );
-    expect(workflow).toContain(
-      "Canonical agent-router host returned an unexpected readiness payload",
-    );
-    expect(workflow).toContain(
-      "sudo systemctl status eliza-agent-router.service --no-pager || true",
-    );
+    expect(workflow).toContain("report_unit_diagnostic public-route");
   });
 
   it("settles both public-route failure branches with diagnostics then exit 1", () => {

@@ -38,6 +38,25 @@ function harness(
       source: { id: "source-1" },
       outcome: "complete",
     })),
+    purgeImportedCalendarData: vi.fn(async () => ({
+      provider: "google",
+      side: "owner",
+      grantId: "connector-account:account-a",
+      connectorAccountId: "account-a",
+      deletedEventCount: 3,
+      deletedSyncStateCount: 1,
+      providerMutation: false,
+      purgedAt: "2026-08-22T09:00:00.000Z",
+    })),
+    seedImportedCalendarData: vi.fn(async () => ({
+      timeMin: "2026-08-15T00:00:00.000Z",
+      timeMax: "2026-11-20T00:00:00.000Z",
+      feedState: "complete",
+      selectedSourceCount: 2,
+      eventCount: 5,
+      duplicateEventCount: 1,
+      seededAt: "2026-08-22T09:00:00.000Z",
+    })),
   };
   const jsonCalls: Array<{ data: unknown; status?: number }> = [];
   const mutationGateway = {
@@ -96,6 +115,62 @@ describe("handleCalendarRoutes", () => {
     expect(await handleCalendarRoutes(deps)).toBe(true);
     expect(service.listCalendars).toHaveBeenCalledTimes(1);
     expect(jsonCalls[0]?.data).toHaveProperty("calendars");
+  });
+
+  it("routes exact-identity local projection purge without a provider mutation", async () => {
+    const body = {
+      provider: "google",
+      side: "owner",
+      grantId: "connector-account:account-a",
+      connectorAccountId: "account-a",
+      confirmAction: true,
+    };
+    const { deps, service, jsonCalls } = harness({
+      method: "POST",
+      pathname: "/api/lifeops/calendar/imported-data/purge",
+      body,
+    });
+
+    expect(await handleCalendarRoutes(deps)).toBe(true);
+    expect(service.purgeImportedCalendarData).toHaveBeenCalledWith(body);
+    expect(jsonCalls[0]?.data).toMatchObject({
+      deletedEventCount: 3,
+      deletedSyncStateCount: 1,
+      providerMutation: false,
+    });
+  });
+
+  it("routes a bounded calendar seed to the server-side receipt use-case", async () => {
+    const body = {
+      side: "owner",
+      timeMin: "2026-08-15T00:00:00.000Z",
+      timeMax: "2026-11-20T00:00:00.000Z",
+      calendars: [
+        {
+          provider: "google",
+          side: "owner",
+          grantId: "connector-account:account-a",
+          connectorAccountId: "account-a",
+          calendarId: "primary",
+        },
+      ],
+    };
+    const { deps, service, jsonCalls } = harness({
+      method: "POST",
+      pathname: "/api/lifeops/calendar/seed",
+      body,
+    });
+
+    expect(await handleCalendarRoutes(deps)).toBe(true);
+    expect(service.seedImportedCalendarData).toHaveBeenCalledWith(
+      deps.url,
+      body,
+    );
+    expect(jsonCalls[0]?.data).toMatchObject({
+      feedState: "complete",
+      eventCount: 5,
+      duplicateEventCount: 1,
+    });
   });
 
   it("routes subscription source CRUD and manual sync", async () => {

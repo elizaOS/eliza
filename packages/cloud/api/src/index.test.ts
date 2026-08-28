@@ -1,8 +1,10 @@
 /** Verifies Cloud Worker routing and thin-inference dispatch with deterministic fixtures. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import cloudApiWorker, {
   decorateFullAppDispatchResponse,
+  dispatchFullApp,
   getFrontendAliasApiProxyTarget,
   getFrontendAliasProxyTarget,
   getGeneratedAgentId,
@@ -34,6 +36,189 @@ test("preserves Workerd WebSocket upgrade responses without rewrapping", () => {
       8,
     ),
   ).toBe(upgrade);
+});
+
+test("gates crypto payment confirmation before cold shard loading", async () => {
+  const env = { ENVIRONMENT: "staging" } as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+  const loadFullApp = mock(async () => {
+    throw new Error("payment shard must not load");
+  });
+
+  const missingCredentials = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      { method: "POST" },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+  const apiKeyCredentials = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { authorization: "Bearer eliza_test" },
+      },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+  const unrelatedCookie = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { cookie: "analytics-id=not-a-session" },
+      },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+  const malformedBearer = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { authorization: "Bearer not-a-jwt" },
+      },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+  const disabledTestSession = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { cookie: "eliza-test-session=payload.signature" },
+      },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+  const productionTestSession = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { cookie: "eliza-test-session=payload.signature" },
+      },
+    ),
+    {
+      ENVIRONMENT: "production",
+      PLAYWRIGHT_TEST_AUTH: "true",
+    } as AppEnv["Bindings"],
+    executionCtx,
+    loadFullApp,
+  );
+
+  expect(missingCredentials.status).toBe(401);
+  expect(await missingCredentials.json()).toMatchObject({
+    code: "authentication_required",
+  });
+  expect(apiKeyCredentials.status).toBe(401);
+  expect(await apiKeyCredentials.json()).toMatchObject({
+    code: "session_auth_required",
+  });
+  expect(unrelatedCookie.status).toBe(401);
+  expect(malformedBearer.status).toBe(401);
+  expect(disabledTestSession.status).toBe(401);
+  expect(productionTestSession.status).toBe(401);
+  expect(loadFullApp).not.toHaveBeenCalled();
+
+  const sessionFetch = mock(async () =>
+    Response.json({ error: "Payment not found" }, { status: 404 }),
+  );
+  const loadSessionApp = mock(
+    async () => ({ fetch: sessionFetch }) as unknown as Hono<AppEnv>,
+  );
+  const sessionCredentials = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { cookie: "steward-token-staging=session" },
+      },
+    ),
+    env,
+    executionCtx,
+    loadSessionApp,
+  );
+
+  expect(sessionCredentials.status).toBe(404);
+  expect(loadSessionApp).toHaveBeenCalledTimes(1);
+  expect(sessionFetch).toHaveBeenCalledTimes(1);
+
+  const enabledTestSession = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "POST",
+        headers: { cookie: "eliza-test-session=payload.signature" },
+      },
+    ),
+    {
+      ENVIRONMENT: "test",
+      NODE_ENV: "test",
+      PLAYWRIGHT_TEST_AUTH: "true",
+    } as AppEnv["Bindings"],
+    executionCtx,
+    loadSessionApp,
+  );
+
+  expect(enabledTestSession.status).toBe(404);
+  expect(loadSessionApp).toHaveBeenCalledTimes(2);
+  expect(sessionFetch).toHaveBeenCalledTimes(2);
+});
+
+test("answers crypto payment confirmation preflight before shard loading", async () => {
+  const env = { ENVIRONMENT: "staging" } as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+  const loadFullApp = mock(async () => {
+    throw new Error("payment shard must not load for preflight");
+  });
+
+  const response = await dispatchFullApp(
+    new Request(
+      "https://api.eliza.app/api/crypto/payments/missing-id/confirm",
+      {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://develop.eliza-app.pages.dev",
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "content-type, x-eliza-csrf",
+        },
+      },
+    ),
+    env,
+    executionCtx,
+    loadFullApp,
+  );
+
+  expect(response.status).toBe(204);
+  expect(response.headers.get("access-control-allow-origin")).toBe(
+    "https://develop.eliza-app.pages.dev",
+  );
+  expect(response.headers.get("access-control-allow-credentials")).toBe("true");
+  expect(response.headers.get("access-control-allow-methods")).toContain(
+    "POST",
+  );
+  expect(response.headers.get("access-control-allow-headers")).toContain(
+    "X-Eliza-CSRF",
+  );
+  expect(loadFullApp).not.toHaveBeenCalled();
 });
 
 test("dispatches provider webhooks without full-app bootstrap", async () => {
@@ -1174,7 +1359,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(text).not.toContain("never-return-this-webhook-secret");
   });
 
-  test("reports only value-free staging session cutover readiness", async () => {
+  test("reports configuration separately without inferring operational readiness", async () => {
     const response = await cloudApiWorker.fetch(
       new Request("https://api-staging.eliza.app/api/health", {
         headers: { host: "api-staging.eliza.app" },
@@ -1206,8 +1391,9 @@ describe("cloud-api worker entrypoint", () => {
       commit: "cutover-commit",
       environment: "staging",
       stagingSessionExchange: {
+        configured: true,
         enabled: true,
-        ready: true,
+        ready: false,
         version: "v1",
       },
     });
@@ -1237,7 +1423,12 @@ describe("cloud-api worker entrypoint", () => {
       {} as never,
     );
     expect(await malformedResponse.json()).toMatchObject({
-      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+      stagingSessionExchange: {
+        configured: false,
+        enabled: true,
+        ready: false,
+        version: "v1",
+      },
     });
 
     const serviceCollisionResponse = await cloudApiWorker.fetch(
@@ -1264,7 +1455,45 @@ describe("cloud-api worker entrypoint", () => {
       {} as never,
     );
     expect(await serviceCollisionResponse.json()).toMatchObject({
-      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+      stagingSessionExchange: {
+        configured: false,
+        enabled: true,
+        ready: false,
+        version: "v1",
+      },
+    });
+
+    const disabledConfiguredResponse = await cloudApiWorker.fetch(
+      new Request("https://api-staging.eliza.app/api/health", {
+        headers: { host: "api-staging.eliza.app" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        STAGING_SESSION_EXCHANGE_ENABLED: "false",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "never-return-this-secret-0123456789abcdef",
+        ELIZA_SERVICE_JWT_SECRET:
+          "separate-service-bridge-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS:
+          "11111111-1111-4111-8111-111111111111",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+    expect(await disabledConfiguredResponse.json()).toMatchObject({
+      stagingSessionExchange: {
+        configured: true,
+        enabled: false,
+        ready: false,
+        version: "v1",
+      },
     });
   });
 

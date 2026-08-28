@@ -21,6 +21,7 @@ import {
 import {
   AnimatePresence,
   animate,
+  type MotionStyle,
   type MotionValue,
   motion,
   useIsPresent,
@@ -32,6 +33,17 @@ import {
 } from "motion/react";
 import * as React from "react";
 import { type OrbState, ThinkingOrb } from "thinking-orbs";
+
+type ChatSheetMotionStyle = MotionStyle & {
+  "--chat-composer-background"?: string | MotionValue<string>;
+  "--chat-composer-border"?: string | MotionValue<string>;
+  "--chat-composer-shadow"?: string | MotionValue<string>;
+  "--chat-sheet-background"?: string | MotionValue<string>;
+  "--chat-sheet-backdrop-filter"?: string;
+  "--chat-sheet-image"?: string;
+  "--chat-sheet-radius"?: string | MotionValue<string>;
+  "--chat-sheet-shadow"?: string | MotionValue<string>;
+};
 
 import { client } from "../../api/client";
 import type {
@@ -97,6 +109,7 @@ import {
 } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { loadOlderConversationMessages } from "../../state/load-older-conversation-messages";
+import { goHome } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
 import { tryHandleTutorialText } from "../../tutorial/tutorial-action-channel";
@@ -123,7 +136,10 @@ import type {
   ChatMessageData,
   ChatMessageRenderContext,
 } from "../composites/chat/chat-types";
+import { TurnStatus } from "../composites/chat/chat-typing-indicator";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -139,6 +155,7 @@ import {
   MessageScrollerViewport,
   useMessageScroller,
 } from "../ui/message-scroller";
+import { Separator } from "../ui/separator";
 import { Textarea } from "../ui/textarea";
 import {
   clamp01,
@@ -153,11 +170,17 @@ import {
   renderOverlayMessageBody,
   SpeakingStatusAccessory,
   selectFirstRunDisplayMessages,
+  selectSemanticNewestFirstRunMessage,
   shellToChatMessageData,
 } from "./chat-overlay-transcript";
 import {
+  CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+  CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+} from "./chat-overlay-window-bounds";
+import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
+  resolveChatNativeKeyboardLift,
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
@@ -254,8 +277,8 @@ const CHAT_PANEL_THEME = {
 // token-based color there resolves to the ambient app theme — which is dark on a
 // light surface, making the handle render BLACK (the "handle is black sometimes"
 // bug: the open-sheet grabber was black while the in-panel pill bar was white).
-// Fixed white matches the panel's `--muted-strong` in every context.
-const HANDLE_BAR_COLOR = "rgba(255, 255, 255, 0.96)";
+// Fixed white matches the panel's `--muted-strong` in every context; Card owns
+// that paint through its typed visualStyle boundary.
 /** Keeps the rounded desktop sheet and handle inside the native host clip. */
 const DESKTOP_HOST_TOP_BREATHING_ROOM_PX = 12;
 
@@ -540,7 +563,7 @@ export function SoftButton({
         // pointers. Real target geometry avoids overlapping pseudo hit areas
         // when compact screens draw the two trailing controls closer together.
         "relative grid shrink-0 place-items-center [&_svg]:size-5",
-        "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt data-[state=on]:text-inverse data-[state=on]:hover:text-inverse aria-[disabled=true]:pointer-events-none aria-[disabled=true]:opacity-40",
+        "text-muted-strong hover:text-txt data-[state=on]:text-inverse data-[state=on]:hover:text-inverse aria-[disabled=true]:pointer-events-none aria-[disabled=true]:opacity-40",
         // Batch capture has no inline waveform, so its glyph breathes; realtime
         // voice keeps this control static because the composer owns the motion.
         pulse && "animate-pulse motion-reduce:animate-none",
@@ -706,26 +729,34 @@ function ComposerMicActivity({
           ? "Finishing transcription"
           : transcript.trim() || "Listening"}
       </span>
-      <span
+      <Separator
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-2 top-1/2 h-px -translate-y-1/2 bg-linear-to-r from-transparent via-white/15 to-transparent"
+        tone="subtle40"
+        className="pointer-events-none absolute inset-x-2 top-1/2 -translate-y-1/2"
       />
       {COMPOSER_MIC_BARS.map(({ id, height }, index) => (
-        <span
-          // Stable bar ids keep imperative analyser writes independent of React.
+        <Card
+          asChild
+          surface="inverseForeground"
+          border="none"
+          radius="full"
           key={id}
-          ref={(node) => {
-            barsRef.current[index] = node;
-          }}
-          aria-hidden="true"
-          className={cn(
-            "relative z-10 w-0.5 origin-center rounded-full bg-current shadow-[0_0_9px_rgba(255,255,255,0.4)] transition-transform duration-75 sm:w-1",
-            !finishing &&
-              !analyser &&
-              "animate-pulse motion-reduce:animate-none",
-          )}
-          style={{ height, transform: "scaleY(0.32)" }}
-        />
+        >
+          <span
+            // Stable bar ids keep imperative analyser writes independent of React.
+            ref={(node) => {
+              barsRef.current[index] = node;
+            }}
+            aria-hidden="true"
+            className={cn(
+              "relative z-10 w-0.5 origin-center transition-transform duration-75 sm:w-1",
+              !finishing &&
+                !analyser &&
+                "animate-pulse motion-reduce:animate-none",
+            )}
+            style={{ height, transform: "scaleY(0.32)" }}
+          />
+        </Card>
       ))}
     </div>
   );
@@ -954,97 +985,104 @@ function SheetGrabber({
 }): React.JSX.Element {
   const disabled = pilled || locked;
   return (
-    <motion.button
-      style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
-      // Invisible + inert while pilled: the pill capsule below owns the drag, so
-      // keep this out of the tab order and the a11y tree until it's the handle.
-      tabIndex={disabled ? -1 : undefined}
-      aria-hidden={disabled || undefined}
-      // A disclosure toggle for the chat history, not a value-bearing separator:
-      // button + aria-expanded is the accurate semantic and stays keyboard-
-      // operable (Enter/Space toggle, Arrow keys nudge) per WCAG 2.1.1.
-      type="button"
-      aria-expanded={open}
-      aria-disabled={locked || undefined}
-      aria-label={open ? "drag down to close chat" : "drag up to open chat"}
-      data-testid="chat-sheet-grabber"
-      data-open={open ? "true" : "false"}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          if (open) onClose();
-          else onOpen();
-        } else if (e.key === "ArrowUp") {
-          e.preventDefault();
-          onOpen();
-        } else if (e.key === "ArrowDown" || e.key === "Escape") {
-          e.preventDefault();
-          onClose();
-        }
-      }}
-      // Opening the sheet moves this handle before Chromium emits the touch
-      // gesture's compatibility click. Without suppressing that native follow-
-      // up, the click re-hit-tests onto the composer now underneath the release
-      // coordinate and focuses it; the next handle tap then dismisses the
-      // keyboard instead of closing the sheet. Pointer events remain the sole
-      // touch authority, matching PillHandle's moving-target contract below.
-      onTouchEnd={(e) => {
-        if (e.cancelable) e.preventDefault();
-      }}
-      {...binding}
-      onPointerDown={(event) => {
-        // This handle is a complete gesture owner. In the shell it can sit over
-        // a broad home/notification pull surface, whose native listener runs
-        // independently of React; do not let this press seed both systems.
-        event.stopPropagation();
-        binding.onPointerDown(event);
-      }}
-      className={cn(
-        "appearance-none border-0 bg-transparent text-left",
-        // ABSOLUTELY positioned over the panel top (zero layout height — it
-        // floats slightly on top of the input row, so collapsed height == the
-        // input bar). The grab target is WIDE (a swipe-up from anywhere across
-        // the composer's top edge opens the chat — the lock-screen "swipe up to
-        // open" affordance) but STAYS ABOVE the input row so it never steals
-        // taps meant for the textarea / +/mic controls below it.
-        // z-20 keeps it above the input row (z-10) so it always wins the drag.
-        "absolute top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center py-2 active:cursor-grabbing",
-        // In input mode, reserve a real gutter over BOTH edge controls. The
-        // prior full-width band began inside the + button and immediately to
-        // its right, so a tiny miss opened/flung the sheet instead of opening
-        // chat actions. Once the sheet is open, those controls are far below
-        // this top handle and the generous full-width drag lane is safe again.
-        open ? "inset-x-6" : "inset-x-[4.5rem]",
-        // The invisible hit target reaches a comfortable distance ABOVE the
-        // panel (a swipe-up begun in the empty field just over the composer is
-        // caught) and STOPS at the handle's own bottom, so it never overlaps the
-        // interactive composer row beneath — taps fall through to the input.
-        "before:absolute before:-inset-x-2 before:-top-6 before:bottom-0 before:content-['']",
-      )}
-    >
-      <span
-        aria-hidden="true"
+    <Button asChild variant="chatGestureTarget" size="content">
+      <motion.button
+        style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
+        // Invisible + inert while pilled: the pill capsule below owns the drag, so
+        // keep this out of the tab order and the a11y tree until it's the handle.
+        tabIndex={disabled ? -1 : undefined}
+        aria-hidden={disabled || undefined}
+        // A disclosure toggle for the chat history, not a value-bearing separator:
+        // button + aria-expanded is the accurate semantic and stays keyboard-
+        // operable (Enter/Space toggle, Arrow keys nudge) per WCAG 2.1.1.
+        type="button"
+        aria-expanded={open}
+        aria-disabled={locked || undefined}
+        aria-label={open ? "drag down to close chat" : "drag up to open chat"}
+        data-testid="chat-sheet-grabber"
+        data-open={open ? "true" : "false"}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (open) onClose();
+            else onOpen();
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            onOpen();
+          } else if (e.key === "ArrowDown" || e.key === "Escape") {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+        // Opening the sheet moves this handle before Chromium emits the touch
+        // gesture's compatibility click. Without suppressing that native follow-
+        // up, the click re-hit-tests onto the composer now underneath the release
+        // coordinate and focuses it; the next handle tap then dismisses the
+        // keyboard instead of closing the sheet. Pointer events remain the sole
+        // touch authority, matching PillHandle's moving-target contract below.
+        onTouchEnd={(e) => {
+          if (e.cancelable) e.preventDefault();
+        }}
+        {...binding}
+        onPointerDown={(event) => {
+          // This handle is a complete gesture owner. In the shell it can sit over
+          // a broad home/notification pull surface, whose native listener runs
+          // independently of React; do not let this press seed both systems.
+          event.stopPropagation();
+          binding.onPointerDown(event);
+        }}
         className={cn(
-          // The visible grabber line. Its show/hide is driven by the WRAPPER's
-          // `grabberOpacity` crossfade (fades in over [0.55, 0.95] of the open),
-          // strictly anti-phase with the pill bar so the two are never on screen
-          // together. The bar paints at full opacity — a prior regression pinned
-          // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
-          "rounded-full opacity-100 transition-all duration-300",
-          // CLOSED (input mode): same h-1.5 w-12 bar as the pill capsule — the
-          // two crossfade and must be pixel-identical. OPEN sheet: a quieter,
-          // smaller bar (the full-size handle over the transcript read as
-          // oversized chrome).
-          open ? "h-1 w-9" : "h-1.5 w-12",
-          // A dedicated opacity/scale breath marks live agent work without
-          // repurposing shadcn's text-only shimmer utility.
-          breathing && "eliza-chat-handle-breathe",
+          "appearance-none text-left",
+          // ABSOLUTELY positioned over the panel top (zero layout height — it
+          // floats slightly on top of the input row, so collapsed height == the
+          // input bar). The grab target is WIDE (a swipe-up from anywhere across
+          // the composer's top edge opens the chat — the lock-screen "swipe up to
+          // open" affordance) but STAYS ABOVE the input row so it never steals
+          // taps meant for the textarea / +/mic controls below it.
+          // z-20 keeps it above the input row (z-10) so it always wins the drag.
+          "absolute top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center py-2 active:cursor-grabbing",
+          // In input mode, reserve a real gutter over BOTH edge controls. The
+          // prior full-width band began inside the + button and immediately to
+          // its right, so a tiny miss opened/flung the sheet instead of opening
+          // chat actions. Once the sheet is open, those controls are far below
+          // this top handle and the generous full-width drag lane is safe again.
+          open ? "inset-x-6" : "inset-x-[4.5rem]",
+          // The invisible hit target reaches a comfortable distance ABOVE the
+          // panel (a swipe-up begun in the empty field just over the composer is
+          // caught) and STOPS at the handle's own bottom, so it never overlaps the
+          // interactive composer row beneath — taps fall through to the input.
+          "before:absolute before:-inset-x-2 before:-top-6 before:bottom-0 before:content-['']",
         )}
-        // Explicit fixed color (see HANDLE_BAR_COLOR) so the grabber — rendered
-        // outside the panel theme — never inherits a dark ambient token.
-        style={{ backgroundColor: HANDLE_BAR_COLOR }}
-      />
-    </motion.button>
+      >
+        <Card
+          asChild
+          surface="transparent"
+          border="none"
+          radius="full"
+          overlayHandle
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              // The visible grabber line. Its show/hide is driven by the WRAPPER's
+              // `grabberOpacity` crossfade (fades in over [0.55, 0.95] of the open),
+              // strictly anti-phase with the pill bar so the two are never on screen
+              // together. The bar paints at full opacity — a prior regression pinned
+              // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
+              "opacity-100 transition-all duration-300",
+              // CLOSED (input mode): same h-1.5 w-12 bar as the pill capsule — the
+              // two crossfade and must be pixel-identical. OPEN sheet: a quieter,
+              // smaller bar (the full-size handle over the transcript read as
+              // oversized chrome).
+              open ? "h-1 w-9" : "h-1.5 w-12",
+              // A dedicated opacity/scale breath marks live agent work without
+              // repurposing shadcn's text-only shimmer utility.
+              breathing && "eliza-chat-handle-breathe",
+            )}
+          />
+        </Card>
+      </motion.button>
+    </Button>
   );
 }
 
@@ -1059,6 +1097,7 @@ export function PillHandle({
   onOpen,
   breathing,
   pilled,
+  desktopOverlayHost = false,
 }: {
   binding: PullGestureBinding;
   // Inverse of the panel's pill-morph scale (see pillHandleCounterScale),
@@ -1076,19 +1115,81 @@ export function PillHandle({
   // opts back in), so the keyboard would never open. Gate on `pilled` so taps
   // pass through to the textarea once the input has formed.
   pilled: boolean;
+  desktopOverlayHost?: boolean;
 }): React.JSX.Element {
+  if (desktopOverlayHost) {
+    return (
+      <motion.div
+        className="h-1.5 w-12 origin-bottom"
+        style={{
+          scale: counterScale,
+          transformOrigin: desktopOverlayHost ? "center" : "bottom center",
+          ...(desktopOverlayHost
+            ? {
+                width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+                height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+              }
+            : {}),
+        }}
+      >
+        <Button
+          variant="transparent"
+          size="content"
+          shape="circle"
+          data-testid="chat-pill"
+          aria-label="open chat"
+          style={{
+            width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+            height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" ||
+              event.key === " " ||
+              event.key === "ArrowUp"
+            ) {
+              event.preventDefault();
+              onOpen();
+            }
+          }}
+          onTouchEnd={(event) => {
+            if (event.cancelable) event.preventDefault();
+          }}
+          {...binding}
+          tabIndex={pilled ? 0 : -1}
+          aria-hidden={pilled ? undefined : true}
+          className={cn(
+            "shrink-0 cursor-grab touch-none select-none active:scale-95 active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-inverse/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
+            pilled ? "pointer-events-auto" : "pointer-events-none",
+          )}
+        >
+          <Card
+            asChild
+            surface="transparent"
+            border="none"
+            radius="full"
+            overlayHandle
+          >
+            <span
+              aria-hidden="true"
+              data-testid="chat-pill-mark"
+              className={cn(
+                "pointer-events-none h-3 w-16 opacity-100",
+                breathing && "eliza-chat-handle-breathe",
+              )}
+            />
+          </Card>
+        </Button>
+      </motion.div>
+    );
+  }
+
   return (
     <Button
-      variant="transparent"
+      variant="chatGestureTarget"
       size="content"
       data-testid="chat-pill"
       aria-label="open chat"
-      // No onClick: the pull-gesture binding is the single tap authority (a tap
-      // routes through onPointerUp → onTap → openFromPill), matching the
-      // SheetGrabber. A native onClick would ALSO fire on every tap, opening the
-      // pill twice in one gesture (double haptic + a stale focus-suppress flag
-      // that swallowed the next focus→expand). Keyboard activation still routes
-      // through onKeyDown below.
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp") {
           e.preventDefault();
@@ -1106,49 +1207,56 @@ export function PillHandle({
       // to their touchstart element), i.e. while it was the pilled handle —
       // the render that formed the input has already flipped `pilled` false by
       // the time this fires, so the prop cannot gate it.
-      onTouchEnd={(e) => {
-        if (e.cancelable) e.preventDefault();
+      onTouchEnd={(event) => {
+        if (event.cancelable) event.preventDefault();
       }}
       {...binding}
       tabIndex={pilled ? undefined : -1}
       aria-hidden={pilled ? undefined : true}
       className={cn(
+        "h-auto w-full px-8 pb-1.5 pt-10",
         // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
         // floating mid-air; the tall pt + full width keep a generous upward grab/
         // flick zone so a swipe-up from anywhere across the bottom opens the chat
         // (the lock-screen affordance). Flex-center keeps the capsule centred
         // while the invisible hit area spans wide.
         "flex cursor-grab touch-none select-none items-end justify-center active:cursor-grabbing",
-        "h-auto w-full rounded-none px-8 pb-1.5 pt-10",
         // Interactive only while pilled. When NOT pilled the (faded) handle must
         // let taps fall through to the composer textarea below it — otherwise its
         // tall hit zone steals the tap and the keyboard never opens.
         pilled ? "pointer-events-auto" : "pointer-events-none",
       )}
     >
-      <motion.span
-        aria-hidden="true"
-        className={cn(
-          // Identical to the SheetGrabber's closed-state bar — same white shape
-          // + color whether the chat is open or collapsed to the pill. Its
-          // show/hide is driven by the WRAPPER's `pillOpacity` crossfade
-          // (anti-phase with the grabber). The bar paints at full opacity — a
-          // prior regression pinned it to `opacity-0`, leaving the pill handle
-          // grabbable but invisible (#9142).
-          "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
-          // Same compositor-only work-state breath as the SheetGrabber bar.
-          breathing && "eliza-chat-handle-breathe",
-        )}
-        // Same explicit color as the grabber bar so the two are pixel-identical
-        // through the crossfade (HANDLE_BAR_COLOR). The counter-scale cancels
-        // the panel's pill-morph shrink for the BAR alone, so the collapsed
-        // handle renders the same size as the input-mode grabber bar.
-        style={{
-          backgroundColor: HANDLE_BAR_COLOR,
-          scale: counterScale,
-          transformOrigin: "bottom center",
-        }}
-      />
+      <Card
+        asChild
+        surface="transparent"
+        border="none"
+        radius="full"
+        overlayHandle
+        layoutStyle={{ transformOrigin: "bottom center" }}
+      >
+        <motion.span
+          aria-hidden="true"
+          className={cn(
+            // Identical to the SheetGrabber's closed-state bar — same white shape
+            // + color whether the chat is open or collapsed to the pill. Its
+            // show/hide is driven by the WRAPPER's `pillOpacity` crossfade
+            // (anti-phase with the grabber). The bar paints at full opacity — a
+            // prior regression pinned it to `opacity-0`, leaving the pill handle
+            // grabbable but invisible (#9142).
+            "h-1.5 w-12 opacity-100 transition-colors duration-300",
+            // Same compositor-only work-state breath as the SheetGrabber bar.
+            breathing && "eliza-chat-handle-breathe",
+          )}
+          // The shared handle surface keeps both bars pixel-identical through the
+          // crossfade. The counter-scale cancels
+          // the panel's pill-morph shrink for the BAR alone, so the collapsed
+          // handle renders the same size as the input-mode grabber bar.
+          style={{
+            scale: counterScale,
+          }}
+        />
+      </Card>
     </Button>
   );
 }
@@ -1505,16 +1613,17 @@ export function ChatOverlay({
     React.useState(false);
   const transcriptionComposerActive =
     transcriptionMode || transcriptionFinishing;
-  const cloudLoginWaiting = React.useMemo(
-    () =>
-      firstRunOpen &&
-      messages.some(
-        (message) =>
-          message.id === "first-run:cloud-login-waiting" &&
-          message.content.startsWith("Waiting for sign-in in the browser"),
-      ),
-    [firstRunOpen, messages],
-  );
+  const cloudLoginWaiting = React.useMemo(() => {
+    if (!firstRunOpen) return false;
+    // The conductor keeps earlier setup turns in transcript history and can
+    // refresh one in place. Only the newest semantic first-run state may
+    // minimize the sheet; a later tutorial/error/status must take ownership.
+    const activeMessage = selectSemanticNewestFirstRunMessage(messages);
+    return (
+      activeMessage?.id === "first-run:cloud-login-waiting" &&
+      activeMessage.content.startsWith("Waiting for sign-in in the browser")
+    );
+  }, [firstRunOpen, messages]);
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
@@ -2889,11 +2998,19 @@ export function ChatOverlay({
   // iOS the layout doesn't shrink (layoutShrink = 0), so the full native height
   // lifts the fixed composer above the keyboard. Web (no native plugin) keeps
   // the visualViewport-derived inset.
-  const layoutShrink = Math.max(
-    0,
-    baseInnerHeightRef.current - viewport.innerHeight,
-  );
-  const nativeLift = Math.max(0, nativeKeyboardHeight - layoutShrink);
+  // The shipped Android window uses adjustResize, so the native bridge height
+  // must never be applied as an additional fixed-overlay bottom offset. In the
+  // observed race the WebView resized 919→520 before keyboardWillShow; the
+  // effect above then captured 520 as its baseline and a later 398px bridge
+  // event lifted the composer a second time, all the way to the status bar.
+  // iOS keeps the explicit bridge lift because its native window is configured
+  // not to resize around the keyboard.
+  const nativeLift = resolveChatNativeKeyboardLift({
+    platformNeedsNativeLift: isIOS,
+    nativeKeyboardHeight,
+    keyboardDownInnerHeight: baseInnerHeightRef.current,
+    currentInnerHeight: viewport.innerHeight,
+  });
   const effectiveKeyboardInset = Math.max(keyboardInset, nativeLift);
   const keyboardLiftActive = effectiveKeyboardInset > 0;
   // A REAL keyboard (not the few-px inset mobile emulation reports) blocks the
@@ -3281,7 +3398,7 @@ export function ChatOverlay({
   // grows); only the maximize shape morph squares it toward edge-to-edge.
   const morphRadius = useTransform(
     fullBleedT,
-    (t: number) => PANEL_RADIUS_PX * (1 - t),
+    (t: number) => `${PANEL_RADIUS_PX * (1 - t)}px`,
   );
   // Paint follows the drag itself: the resting composer keeps the translucent
   // glass fill, and pulling the sheet up blends the fill to the OPAQUE panel
@@ -3976,12 +4093,15 @@ export function ChatOverlay({
     const preserveFocusedComposer = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       const action = detail?.action;
+      const targetsHome =
+        detail?.viewId === "chat" || detail?.viewPath === "/chat";
       const staysInShell =
         action !== "close" &&
         action !== "close-all" &&
         action !== "open-window";
       const shouldPreserve =
         staysInShell &&
+        !targetsHome &&
         typeof document !== "undefined" &&
         document.activeElement === inputRef.current;
       preserveComposerFocusUntilRef.current = shouldPreserve
@@ -4346,11 +4466,8 @@ export function ChatOverlay({
         navigateTab: slash.navigateTab,
         navigateSettings: slash.navigateSettings,
         navigateView: slash.navigateView,
-        // One infinite thread (#13531): the overlay no longer resets/switches
-        // conversations (clear-chat / new-conversation) or toggles full-screen
-        // via a command — maximize is a vertical pull now. These slash paths are
-        // inert in the overlay; the shared subsystem plumbing (first-run/wipe/
-        // switch, CommandPalette, TUI) is untouched and handled elsewhere.
+        // One continuous thread: reset plumbing remains available to internal
+        // recovery flows, but slash/client actions cannot create or switch chats.
         clearChat: () => {},
         newConversation: () => {},
         toggleFullscreen: () => {},
@@ -4738,6 +4855,24 @@ export function ChatOverlay({
     return () =>
       window.removeEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
   }, [sheetOpen, pinnedOpen, collapse]);
+
+  // Agent-driven Home navigation targets the persistent `/chat` canvas. When
+  // the thread sheet is already open, changing the route alone is visually a
+  // no-op: the sheet keeps covering Home even though the server delivered and
+  // accepted the navigation. Match the manual Home gesture by returning the
+  // launcher rail to Home and collapsing the sheet in the same event.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onNavigateHome = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      if (detail?.viewId !== "chat" && detail?.viewPath !== "/chat") return;
+      goHome();
+      if (sheetOpen) collapse();
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigateHome);
+    return () =>
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigateHome);
+  }, [sheetOpen, collapse]);
 
   // Auto-grow the composer with multi-line input: snap to the content height
   // (capped by `max-h` in CSS, which then scrolls). Runs on every draft change
@@ -5761,68 +5896,69 @@ export function ChatOverlay({
             locked={firstRunOpen}
           />
         ) : null}
-        <motion.fieldset
-          ref={bindPanelRef}
-          aria-label="Chat composer"
-          data-testid="chat-sheet"
-          onWheel={onSheetWheel}
-          data-variant={sheetOpen ? "open" : "closed"}
-          data-detent={detentLabel}
-          data-maximized={fullBleed ? "true" : undefined}
-          data-revealed={threadPresented ? "true" : "false"}
-          data-chat-state={chatState}
-          data-header-shown={headerVisible ? "true" : "false"}
-          data-theme="dark"
-          // The active conversation id + its position in the most-recent-first
-          // list, surfaced so flows like the tutorial can observe a new-chat or a
-          // swipe-between-chats without reaching into controller internals.
-          data-conversation-id={conversationNav.activeId ?? undefined}
-          data-conversation-index={conversationNav.index}
-          // ONE persistent element across pill ↔ input ↔ chat (never remounts —
-          // that pop was the core jank). It's a transparent scale/position
-          // container; the liquid glass lives in an inner layer faded by
-          // openProgress, so pill → input is a continuous scale + crossfade.
-          // maxHeight keeps it from spilling off the top (thread scrolls instead).
-          style={{
-            ...CHAT_PANEL_THEME,
-            // The desktop overlay is its own dark product surface. Never let
-            // the host appearance, wallpaper, or a light app theme switch its
-            // native controls and form affordances into a light color scheme.
-            colorScheme: "dark",
-            // Morph-driven cap: the inset ceiling at rest, growing to the
-            // full-bleed ceiling in lock-step with the shape morph (see
-            // panelCapH) so an over-pull grows 1:1 under the finger.
-            maxHeight: panelCapH,
-            // Resting full-screen needs an explicit height because an intrinsic
-            // flexbox can shrink around the composer. During a drag and its
-            // release spring, however, the thread/content box is the geometry
-            // owner: forcing the outer fieldset to viewport height one frame
-            // earlier exposes an unpainted floor below the still-moving content.
-            // Returning to `auto` for that whole motion keeps surface, transcript,
-            // and composer bottom-anchored as one object; the settled full-screen
-            // endpoint switches to the same explicit cap only after they match.
-            height: fullBleed && !isDragging ? panelCapH : "auto",
-            // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
-            // bottom transform-origin would drop the top edge below the status
-            // bar (the "gap at the top when maximized" bug). While open (incl. a
-            // restore drag) panelScale is already 1; the height, not a scale,
-            // shrinks.
-            scale: fullBleed ? 1 : panelScale,
-            // Grow UP out of the pill at the bottom.
-            transformOrigin: "bottom center",
-            // Pilled: span the (invisible) input area but pass taps through to the
-            // home screen — only the pill-capsule child re-enables pointer events.
-            pointerEvents: pilled ? "none" : "auto",
-          }}
-          className={cn(
-            // overflow-VISIBLE on the outer fieldset: the pill's tall grab zone
-            // must bleed past the box. The rounded thread-clip lives on the inner
-            // content wrapper instead, so clipping the scroll never clips a hard
-            // square edge over the content.
-            "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0",
-          )}
-        >
-          {/* SURFACE — absolute fill; the frosted-glass bg/border + the live
+        <Card asChild variant="transparentSquare">
+          <motion.fieldset
+            ref={bindPanelRef}
+            aria-label="Chat composer"
+            data-testid="chat-sheet"
+            onWheel={onSheetWheel}
+            data-variant={sheetOpen ? "open" : "closed"}
+            data-detent={detentLabel}
+            data-maximized={fullBleed ? "true" : undefined}
+            data-revealed={threadPresented ? "true" : "false"}
+            data-chat-state={chatState}
+            data-header-shown={headerVisible ? "true" : "false"}
+            data-theme="dark"
+            // Preserve the active conversation identity for diagnostics and
+            // persistence without exposing thread creation or switching in the
+            // canonical one-conversation UI.
+            data-conversation-id={conversationNav.activeId ?? undefined}
+            data-conversation-index={conversationNav.index}
+            // ONE persistent element across pill ↔ input ↔ chat (never remounts —
+            // that pop was the core jank). It's a transparent scale/position
+            // container; the liquid glass lives in an inner layer faded by
+            // openProgress, so pill → input is a continuous scale + crossfade.
+            // maxHeight keeps it from spilling off the top (thread scrolls instead).
+            style={{
+              ...CHAT_PANEL_THEME,
+              // The desktop overlay is its own dark product surface. Never let
+              // the host appearance, wallpaper, or a light app theme switch its
+              // native controls and form affordances into a light color scheme.
+              colorScheme: "dark",
+              // Morph-driven cap: the inset ceiling at rest, growing to the
+              // full-bleed ceiling in lock-step with the shape morph (see
+              // panelCapH) so an over-pull grows 1:1 under the finger.
+              maxHeight: panelCapH,
+              // Resting full-screen needs an explicit height because an intrinsic
+              // flexbox can shrink around the composer. During a drag and its
+              // release spring, however, the thread/content box is the geometry
+              // owner: forcing the outer fieldset to viewport height one frame
+              // earlier exposes an unpainted floor below the still-moving content.
+              // Returning to `auto` for that whole motion keeps surface, transcript,
+              // and composer bottom-anchored as one object; the settled full-screen
+              // endpoint switches to the same explicit cap only after they match.
+              height: fullBleed && !isDragging ? panelCapH : "auto",
+              // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
+              // bottom transform-origin would drop the top edge below the status
+              // bar (the "gap at the top when maximized" bug). While open (incl. a
+              // restore drag) panelScale is already 1; the height, not a scale,
+              // shrinks.
+              scale: fullBleed ? 1 : panelScale,
+              // Grow UP out of the pill at the bottom.
+              transformOrigin: "bottom center",
+              // Pilled: span the (invisible) input area but pass taps through to the
+              // home screen — only the pill-capsule child re-enables pointer events.
+              pointerEvents: pilled ? "none" : "auto",
+            }}
+            className={cn(
+              // overflow-VISIBLE on the outer fieldset: the pill's tall grab zone
+              // must bleed past the box. The rounded thread-clip lives on the inner
+              // content wrapper instead, so clipping the scroll never clips a hard
+              // square edge over the content.
+              "relative m-0 flex w-full min-w-0 flex-col overflow-visible p-0",
+            )}
+          >
+            {/* SURFACE — absolute fill; the frosted-glass bg/border + the live
               corner radius. Crossfades in by openProgress (compositor opacity).
               An open native-tier conversation keeps an opaque DOM fill above
               the OS material. Native glass used to replace that fill with
@@ -5830,162 +5966,186 @@ export function ChatOverlay({
               visibly legible through the chat on iPad. The overlay already owns
               the shell's highest application layer; the opaque fill makes that
               paint-order contract visually true as well. */}
-          <motion.div
-            ref={glassSurfaceRef}
-            aria-hidden="true"
-            data-testid="chat-sheet-surface"
-            data-glass-tier={nativeSheetTier}
-            className="pointer-events-none absolute inset-0 z-0 bg-card"
-            style={{
-              opacity: glassOpacity,
-              // Corner radius eases with the full-screen shape spring: the inset
-              // sheet radius squares off as it maximizes and rounds back as it
-              // de-maximizes, in lockstep with the side/bottom insets.
-              borderRadius: morphRadius,
-              // Frosted glass at REST, black when OPEN. The resting composer
-              // keeps the token-system glass (`GLASS_SHEET_FILL` +
-              // `GLASS_SHEET_BACKDROP_FILTER` from `glass/tokens.ts`, heavy
-              // neutral blur, no saturate — saturate muddies the warm field to
-              // brown), and the drag-up blends the fill to the opaque panel
-              // `--bg` by the HALF detent (`surfaceBlackout`): the open sheet
-              // reads BLACK over any substrate — bright web pages and the warm
-              // wallpaper both washed the old translucent open sheet. `--card`
-              // / `--bg` are scoped by CHAT_PANEL_THEME on the fieldset, not
-              // the orange app theme behind. Full-bleed stays fully opaque (it
-              // covers the whole screen — there is nothing to see through, and
-              // the blur would be wasted battery).
-              backgroundColor:
-                firstRunOpen || nativeInsetSheet
-                  ? "var(--bg)"
-                  : surfaceBackgroundColor,
-              backdropFilter: cssSheetBackdropActive
-                ? GLASS_SHEET_BACKDROP_FILTER
-                : undefined,
-              WebkitBackdropFilter: cssSheetBackdropActive
-                ? GLASS_SHEET_BACKDROP_FILTER
-                : undefined,
-              // Liquid-glass bevel: a bright top-left rim over a soft
-              // bottom-right shade so the frosted edge catches light like a real
-              // glass slab. Only on the inset sheet — full-bleed has no edge to
-              // catch light. Depth here is the glass rim, not a drop shadow (the
-              // flat system keeps all shadow tokens none).
-              boxShadow: surfaceEdgeShadow,
-              // Specular sheen belongs to the inset glass slab, where there is
-              // an edge to catch light. Fullscreen is a flat view surface; the
-              // same image became a broad gray glow across its top edge.
-              backgroundImage:
-                firstRunOpen || fullBleed
-                  ? "none"
-                  : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
-              // Full-bleed: extend the glass UP through the safe-area-top so the
-              // dark background reaches the true top of the screen. The panel
-              // height comes from visualViewport (which excludes the Android
-              // status bar) while the panel sits in a screen-top fixed container,
-              // so without this the glass starts a status-bar-height below the top
-              // (the "safe-area gap" above maximized chat). overflow-visible on the
-              // panel lets it bleed up; content (header, with its own safe-area
-              // padding) is untouched. Rides the shape spring (0px at rest) so
-              // the extension eases in with the morph instead of popping at
-              // commit. Harmless when the inset is 0.
-              top: glassTopExtension,
-            }}
-          />
-          {/* AX-tree mirror of data-detent: the native gesture e2e suites
+            <Card
+              asChild
+              surface="transparent"
+              border="none"
+              radius="none"
+              visualStyle={{
+                WebkitBackdropFilter: "var(--chat-sheet-backdrop-filter, none)",
+                backdropFilter: "var(--chat-sheet-backdrop-filter, none)",
+                backgroundColor: "var(--chat-sheet-background)",
+                backgroundImage: "var(--chat-sheet-image, none)",
+                borderRadius: "var(--chat-sheet-radius)",
+                boxShadow: "var(--chat-sheet-shadow, none)",
+              }}
+            >
+              <motion.div
+                ref={glassSurfaceRef}
+                aria-hidden="true"
+                data-testid="chat-sheet-surface"
+                data-glass-tier={nativeSheetTier}
+                className="pointer-events-none absolute inset-0 z-0"
+                style={{
+                  opacity: glassOpacity,
+                  ...({
+                    // Corner radius eases with the full-screen shape spring: the inset
+                    // sheet radius squares off as it maximizes and rounds back as it
+                    // de-maximizes, in lockstep with the side/bottom insets.
+                    "--chat-sheet-radius": morphRadius,
+                    // Frosted glass at REST, black when OPEN. The resting composer
+                    // keeps the token-system glass (`GLASS_SHEET_FILL` +
+                    // `GLASS_SHEET_BACKDROP_FILTER` from `glass/tokens.ts`, heavy
+                    // neutral blur, no saturate — saturate muddies the warm field to
+                    // brown), and the drag-up blends the fill to the opaque panel
+                    // `--bg` by the HALF detent (`surfaceBlackout`): the open sheet
+                    // reads BLACK over any substrate — bright web pages and the warm
+                    // wallpaper both washed the old translucent open sheet. `--card`
+                    // / `--bg` are scoped by CHAT_PANEL_THEME on the fieldset, not
+                    // the orange app theme behind. Full-bleed stays fully opaque (it
+                    // covers the whole screen — there is nothing to see through, and
+                    // the blur would be wasted battery).
+                    "--chat-sheet-background":
+                      firstRunOpen || nativeInsetSheet
+                        ? "var(--bg)"
+                        : surfaceBackgroundColor,
+                    "--chat-sheet-backdrop-filter": cssSheetBackdropActive
+                      ? GLASS_SHEET_BACKDROP_FILTER
+                      : undefined,
+                    // Liquid-glass bevel: a bright top-left rim over a soft
+                    // bottom-right shade so the frosted edge catches light like a real
+                    // glass slab. Only on the inset sheet — full-bleed has no edge to
+                    // catch light. Depth here is the glass rim, not a drop shadow (the
+                    // flat system keeps all shadow tokens none).
+                    "--chat-sheet-shadow": surfaceEdgeShadow,
+                    // Specular sheen belongs to the inset glass slab, where there is
+                    // an edge to catch light. Fullscreen is a flat view surface; the
+                    // same image became a broad gray glow across its top edge.
+                    "--chat-sheet-image":
+                      firstRunOpen || fullBleed
+                        ? "none"
+                        : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
+                  } satisfies ChatSheetMotionStyle),
+                  // Full-bleed: extend the glass UP through the safe-area-top so the
+                  // dark background reaches the true top of the screen. The panel
+                  // height comes from visualViewport (which excludes the Android
+                  // status bar) while the panel sits in a screen-top fixed container,
+                  // so without this the glass starts a status-bar-height below the top
+                  // (the "safe-area gap" above maximized chat). overflow-visible on the
+                  // panel lets it bleed up; content (header, with its own safe-area
+                  // padding) is untouched. Rides the shape spring (0px at rest) so
+                  // the extension eases in with the morph instead of popping at
+                  // commit. Harmless when the inset is 0.
+                  top: glassTopExtension,
+                }}
+              />
+            </Card>
+            {/* AX-tree mirror of data-detent: the native gesture e2e suites
               (XCUITest) can only observe web state through the accessibility
               tree, and data attributes never surface there. sr-only text does.
               Not aria-live — it never announces on its own. Keep it after the
               visual surface so DOM e2e helpers that inspect the first child
               still read the glass layer. */}
-          <span className="sr-only" data-testid="chat-detent-probe">
-            {`chat-detent:${detentLabel}`}
-          </span>
-          {/* AX-tree mirror of data-maximized (#13531). `detentLabel` folds the
+            <span className="sr-only" data-testid="chat-detent-probe">
+              {`chat-detent:${detentLabel}`}
+            </span>
+            {/* AX-tree mirror of data-maximized (#13531). `detentLabel` folds the
               full-bleed MAXIMIZED state into "full" (both rest at the top), so the
               detent probe alone cannot tell them apart — the on-device XCUITest
               maximize/restore leg reads this separate probe to observe whether the
               chat committed to edge-to-edge full-bleed. */}
-          <span className="sr-only" data-testid="chat-maximized-probe">
-            {`chat-maximized:${fullBleed ? "true" : "false"}`}
-          </span>
-          {/* AX-tree mirror of data-glass-tier: the on-device XCUITest legs for
+            <span className="sr-only" data-testid="chat-maximized-probe">
+              {`chat-maximized:${fullBleed ? "true" : "false"}`}
+            </span>
+            {/* AX-tree mirror of data-glass-tier: the on-device XCUITest legs for
               #15891 read this to prove the sheet adopted (or correctly refused)
               the native material at each detent/drag state. The diag suffix
               says WHY a css tier is showing (the observable half of the
               tier system's silent J4 degrades). */}
-          <span className="sr-only" data-testid="chat-glass-tier-probe">
-            {`chat-glass-tier:${nativeSheetTier} chat-glass-diag:${nativeGlassDiag} chat-glass-gate:o${sheetOpen ? 1 : 0}s${sheetSettled ? 1 : 0}d${isDragging ? 1 : 0}r${restoreDragging ? 1 : 0}b${fullBleed ? 1 : 0}f${firstRunOpen ? 1 : 0}`}
-          </span>
-          {firstRunProbe ? (
-            <span className="sr-only" data-testid="onboarding-state-probe">
-              {`onboarding-step:${firstRunProbe.step} onboarding-choices:${firstRunProbe.choices}`}
+            <span className="sr-only" data-testid="chat-glass-tier-probe">
+              {`chat-glass-tier:${nativeSheetTier} chat-glass-diag:${nativeGlassDiag} chat-glass-gate:o${sheetOpen ? 1 : 0}s${sheetSettled ? 1 : 0}d${isDragging ? 1 : 0}r${restoreDragging ? 1 : 0}b${fullBleed ? 1 : 0}f${firstRunOpen ? 1 : 0}`}
             </span>
-          ) : null}
-          {/* CONTENT — sheen, glow, thread, composer. Crossfades with the glass
+            {firstRunProbe ? (
+              <span className="sr-only" data-testid="onboarding-state-probe">
+                {`onboarding-step:${firstRunProbe.step} onboarding-choices:${firstRunProbe.choices}`}
+              </span>
+            ) : null}
+            {/* CONTENT — sheen, glow, thread, composer. Crossfades with the glass
               and goes fully inert while pilled (opacity 0 + `inert` removes it
               from pointer, tab order, and the a11y tree) so it can't be reached
               behind the pill capsule. */}
-          <motion.div
-            ref={contentRef}
-            data-testid="chat-content"
-            inert={pilled || undefined}
-            // overflow-hidden + the live radius clips the sheen/thread to the
-            // panel's rounded shape (the clip the fieldset used to do) WITHOUT
-            // touching the sibling glass layer's shadow. Spans the FULL glass
-            // width (no maxWidth here): the restore-drag strip (inset-x-0) and
-            // the drag-and-drop file intake below both live on this element and
-            // must cover the whole panel, including the edge-to-edge glass at
-            // full-bleed on wide viewports — a pinned wrapper left dead margins
-            // where a restore pull did nothing and a dropped file navigated the
-            // tab away. Column width is pinned on the inner rows (header /
-            // thread / composer all carry `mx-auto max-w-3xl`), so the chat
-            // content never reflows through the maximize morph regardless.
-            className="relative z-10 flex min-h-0 w-full flex-col overflow-hidden"
-            style={{
-              opacity: glassOpacity,
-              pointerEvents: pilled ? "none" : "auto",
-              // Mirror the surface radius so the content clip matches it.
-              borderRadius: morphRadius,
-              clipPath: contentClipPath,
-              WebkitClipPath: contentClipPath,
-            }}
-            // Drag-and-drop attachment intake (#10722). The old ChatView chat
-            // surface accepted file drops; the overlay replaced it with only
-            // paste + the attach button. Dropped files run the SAME intake
-            // pipeline as both of those (addImageFiles → intakeAttachmentFiles),
-            // so size caps, type support, and the pending-attachment strip all
-            // behave identically. dragover must preventDefault for the browser
-            // to allow the drop at all; only file drags are claimed so
-            // text-selection drags keep their native behavior.
-            onDragOver={(event) => {
-              if (event.dataTransfer?.types?.includes("Files")) {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "copy";
-              }
-            }}
-            onDrop={(event) => {
-              // preventDefault for ANY claimed file drag (dragover advertised
-              // droppability): bailing on an empty file list would hand the
-              // drop to the browser default — navigating to the local file.
-              if (!event.dataTransfer?.types?.includes("Files")) return;
-              event.preventDefault();
-              const files = event.dataTransfer.files;
-              if (files.length > 0) {
-                addImageFiles(files);
-              }
-            }}
-          >
-            {/* The top-edge sheen belongs only to the inset glass slab.
+            <Card
+              asChild
+              surface="transparent"
+              border="none"
+              radius="none"
+              visualStyle={{ borderRadius: "var(--chat-sheet-radius)" }}
+            >
+              <motion.div
+                ref={contentRef}
+                data-testid="chat-content"
+                inert={pilled || undefined}
+                // overflow-hidden + the live radius clips the sheen/thread to the
+                // panel's rounded shape (the clip the fieldset used to do) WITHOUT
+                // touching the sibling glass layer's shadow. Spans the FULL glass
+                // width (no maxWidth here): the restore-drag strip (inset-x-0) and
+                // the drag-and-drop file intake below both live on this element and
+                // must cover the whole panel, including the edge-to-edge glass at
+                // full-bleed on wide viewports — a pinned wrapper left dead margins
+                // where a restore pull did nothing and a dropped file navigated the
+                // tab away. Column width is pinned on the inner rows (header /
+                // thread / composer all carry `mx-auto max-w-3xl`), so the chat
+                // content never reflows through the maximize morph regardless.
+                className="relative z-10 flex min-h-0 w-full flex-col overflow-hidden"
+                style={{
+                  opacity: glassOpacity,
+                  pointerEvents: pilled ? "none" : "auto",
+                  // Mirror the surface radius so the content clip matches it.
+                  ...({
+                    "--chat-sheet-radius": morphRadius,
+                  } satisfies ChatSheetMotionStyle),
+                  clipPath: contentClipPath,
+                  WebkitClipPath: contentClipPath,
+                }}
+                // Drag-and-drop attachment intake (#10722). The old ChatView chat
+                // surface accepted file drops; the overlay replaced it with only
+                // paste + the attach button. Dropped files run the SAME intake
+                // pipeline as both of those (addImageFiles → intakeAttachmentFiles),
+                // so size caps, type support, and the pending-attachment strip all
+                // behave identically. dragover must preventDefault for the browser
+                // to allow the drop at all; only file drags are claimed so
+                // text-selection drags keep their native behavior.
+                onDragOver={(event) => {
+                  if (event.dataTransfer?.types?.includes("Files")) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "copy";
+                  }
+                }}
+                onDrop={(event) => {
+                  // preventDefault for ANY claimed file drag (dragover advertised
+                  // droppability): bailing on an empty file list would hand the
+                  // drop to the browser default — navigating to the local file.
+                  if (!event.dataTransfer?.types?.includes("Files")) return;
+                  event.preventDefault();
+                  const files = event.dataTransfer.files;
+                  if (files.length > 0) {
+                    addImageFiles(files);
+                  }
+                }}
+              >
+                {/* The top-edge sheen belongs only to the inset glass slab.
                 Fullscreen is a flat view surface; carrying this highlight into
                 full-bleed creates an unwanted gray glow across the viewport. */}
-            {!fullBleed ? (
-              <div
-                data-testid="chat-sheet-top-sheen"
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-linear-to-b from-surface to-transparent"
-              />
-            ) : null}
+                {!fullBleed ? (
+                  <Separator
+                    tone="subtle40"
+                    data-testid="chat-sheet-top-sheen"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 top-0 z-0"
+                  />
+                ) : null}
 
-            {/* Top-bar pull-down-to-restore grab zone (#13531). Confined to the
+                {/* Top-bar pull-down-to-restore grab zone (#13531). Confined to the
                 safe-area + MAXIMIZE_RESTORE_ZONE_PX strip at the very top so the
                 transcript BELOW it stays freely scrollable (wheel + touch-drag)
                 and an accidental tap can't jog the sheet out of full-screen — a
@@ -5998,218 +6158,224 @@ export function ChatOverlay({
                 over the top bar fall THROUGH to this strip. Keyboard-operable
                 (Enter/Space/ArrowDown restore) so the gesture-only affordance
                 stays WCAG 2.1.1 operable. */}
-            {(fullBleed ||
-              restoreDragging ||
-              restorePressRef.current != null) &&
-            !pinnedOpen ? (
-              <div
-                className="pointer-events-auto absolute inset-x-0 top-0 z-[15]"
-                style={{
-                  height: `calc(env(safe-area-inset-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
-                }}
-              >
-                <Button
-                  {...restoreZoneBinding}
-                  type="button"
-                  variant="publicRow"
-                  size="fill"
-                  data-testid="chat-maximize-restore-zone"
-                  aria-label="drag down to exit full screen"
-                  onKeyDown={(e) => {
-                    if (
-                      e.key === "Enter" ||
-                      e.key === " " ||
-                      e.key === "ArrowDown"
-                    ) {
-                      e.preventDefault();
-                      restoreFromMaximizedGuarded();
-                    }
-                  }}
-                  className="touch-none"
-                />
-              </div>
-            ) : null}
+                {(fullBleed ||
+                  restoreDragging ||
+                  restorePressRef.current != null) &&
+                !pinnedOpen ? (
+                  <div
+                    className="pointer-events-auto absolute inset-x-0 top-0 z-[15]"
+                    style={{
+                      height: `calc(env(safe-area-inset-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
+                    }}
+                  >
+                    <Button
+                      {...restoreZoneBinding}
+                      type="button"
+                      variant="publicRow"
+                      size="fill"
+                      data-testid="chat-maximize-restore-zone"
+                      aria-label="drag down to exit full screen"
+                      onKeyDown={(e) => {
+                        if (
+                          e.key === "Enter" ||
+                          e.key === " " ||
+                          e.key === "ArrowDown"
+                        ) {
+                          e.preventDefault();
+                          restoreFromMaximizedGuarded();
+                        }
+                      }}
+                      className="touch-none"
+                    />
+                  </div>
+                ) : null}
 
-            {/* Sheet header — shown at the HALF detent and up (not just FULL).
+                {/* Sheet header — shown at the HALF detent and up (not just FULL).
               One infinite thread (#13531): no maximize/minimize (that's a
               vertical pull now) and no clear/new-chat (the thread never resets).
               It carries NO buttons — Home/search/upload live in the composer
               "+" menu — so the chat stops acting like a second app nav bar. The bar remains only to reserve
               the safe-area top inset at full-bleed and host the transcribe badge. */}
-            {threadPresented ? (
-              <motion.div
-                data-testid="chat-sheet-header"
-                // Mounted while the sheet is open, or while an upward drag is
-                // previewing the sheet before release. It can FADE + LERP its
-                // space as the live height crosses the header threshold.
-                // `headerVisible` gates interactivity + the a11y tree.
-                inert={!sheetOpen || !headerVisible || undefined}
-                style={{
-                  // Full-bleed is always fully open: show the header at full
-                  // opacity (headerOpacity is already 1 at any height ≥ half,
-                  // which full-bleed guarantees).
-                  opacity: fullBleed ? 1 : headerOpacity,
-                  // Height cap + safe-area top padding EASE with the shape
-                  // morph (headerMaxHMorph / headerPadTopMorph) — a discrete
-                  // swap at commit popped the header a status-bar height on
-                  // notch devices. Collapsed → 0 top padding (no leaked margin
-                  // above the composer); opens to ~10px as the header reveals;
-                  // grows to safe-area + 8px as the glass squares off under the
-                  // status bar. Set inline (not a Tailwind arbitrary class,
-                  // whose env(...,0px) comma breaks the parser).
-                  maxHeight: headerMaxHMorph,
-                  paddingTop: headerPadTopMorph,
-                }}
-                className={cn(
-                  // `pointer-events-none` on the bar itself so a pull-down that
-                  // starts over the EMPTY top-bar space falls through to the
-                  // restore strip beneath it (the "should work over the top bar"
-                  // fix); interactive content inside the strip opts back in only
-                  // when present.
-                  "pointer-events-none relative z-20 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
-                  // Always the centered reading column: pinned even mid-morph
-                  // and full-bleed so the header never reflows while the glass
-                  // widens (a no-op at rest, where the wrapper is the same 48rem).
-                  "mx-auto w-full max-w-3xl",
-                )}
-              >
-                {/* The header carries no nav/search buttons — Home, Search, and
+                {threadPresented ? (
+                  <motion.div
+                    data-testid="chat-sheet-header"
+                    // Mounted while the sheet is open, or while an upward drag is
+                    // previewing the sheet before release. It can FADE + LERP its
+                    // space as the live height crosses the header threshold.
+                    // `headerVisible` gates interactivity + the a11y tree.
+                    inert={!sheetOpen || !headerVisible || undefined}
+                    style={{
+                      // Full-bleed is always fully open: show the header at full
+                      // opacity (headerOpacity is already 1 at any height ≥ half,
+                      // which full-bleed guarantees).
+                      opacity: fullBleed ? 1 : headerOpacity,
+                      // Height cap + safe-area top padding EASE with the shape
+                      // morph (headerMaxHMorph / headerPadTopMorph) — a discrete
+                      // swap at commit popped the header a status-bar height on
+                      // notch devices. Collapsed → 0 top padding (no leaked margin
+                      // above the composer); opens to ~10px as the header reveals;
+                      // grows to safe-area + 8px as the glass squares off under the
+                      // status bar. Set inline (not a Tailwind arbitrary class,
+                      // whose env(...,0px) comma breaks the parser).
+                      maxHeight: headerMaxHMorph,
+                      paddingTop: headerPadTopMorph,
+                    }}
+                    className={cn(
+                      // `pointer-events-none` on the bar itself so a pull-down that
+                      // starts over the EMPTY top-bar space falls through to the
+                      // restore strip beneath it (the "should work over the top bar"
+                      // fix); interactive content inside the strip opts back in only
+                      // when present.
+                      "pointer-events-none relative z-20 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
+                      // Always the centered reading column: pinned even mid-morph
+                      // and full-bleed so the header never reflows while the glass
+                      // widens (a no-op at rest, where the wrapper is the same 48rem).
+                      "mx-auto w-full max-w-3xl",
+                    )}
+                  >
+                    {/* The header carries no nav/search buttons — Home, Search, and
                     Upload live in the composer "+" menu. This bar exists only to reserve the safe-area
                     top inset at full-bleed and host the transcription badge. */}
-                {transcriptionComposerActive ? (
-                  <div
-                    data-testid="chat-transcribing-badge"
-                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-white/10 px-3 py-2 text-xs-tight font-medium text-white/75"
-                  >
-                    {transcriptionFinishing
-                      ? "Finishing transcription…"
-                      : "Transcribing — say “exit transcription mode” to stop"}
-                  </div>
+                    {transcriptionComposerActive ? (
+                      <Badge
+                        variant="statusMuted"
+                        size="pill"
+                        data-testid="chat-transcribing-badge"
+                        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap"
+                      >
+                        {transcriptionFinishing
+                          ? "Finishing transcription…"
+                          : "Transcribing — say “exit transcription mode” to stop"}
+                      </Badge>
+                    ) : null}
+                  </motion.div>
                 ) : null}
-              </motion.div>
-            ) : null}
 
-            {/* The conversation. Height animates 0 (collapsed) → half → full; the
+                {/* The conversation. Height animates 0 (collapsed) → half → full; the
             inner log scrolls. The grabber owns the drag, so dragging the messages
             just scrolls them. Rendered while the sheet is open or while an
             upward drag is actively previewing the sheet; at rest collapsed it
             is unmounted, so there is no hidden transcript layer. */}
-            {threadPresented ? (
-              <motion.div
-                data-testid="chat-thread"
-                className={cn(
-                  // `flex flex-col`: the thread is now a flex COLUMN so its lone
-                  // child (the scroller) sizes via `flex-1 min-h-0` against this
-                  // element's bounded height instead of `height:100%`. A flex
-                  // item whose main size comes ONLY from `flex-basis` (the px
-                  // MotionValue below) is NOT a definite height for a percentage
-                  // `h-full` child on iOS Safari / WebKit (it resolves to auto →
-                  // the scroller sizes to CONTENT and never overflows → the
-                  // transcript can't scroll on mobile web, #chat-scroll-web). The
-                  // flex algorithm gives a `min-h-0` flex child a definite
-                  // resolved height regardless, so this makes the scroll viewport
-                  // reliably bounded on every engine.
-                  "relative z-10 flex min-h-0 w-full shrink grow-0 flex-col overflow-hidden",
-                  // Always the centered reading column (a no-op at rest): the
-                  // transcript stays this width THROUGH the maximize morph and
-                  // at full-bleed — only the glass grows, the text never reflows.
-                  // No top-edge fade mask and no grabber inset: the transcript
-                  // runs to the panel's top edge and hard-clips there (the
-                  // floating grabber overlays it).
-                  "mx-auto max-w-3xl",
-                )}
-                // Flex-basis IS the motion value (px string) — set 1:1 during a drag,
-                // spring-animated to a detent on release; no `animate`/`transition`,
-                // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
-                // win: a tall detent (or the keyboard) shrinks the thread (it
-                // scrolls) instead of pushing the panel off-screen.
-                // In-app onboarding (`pinnedOpen`) mounts locked at the shared
-                // HALF detent and
-                // never drags, but the `threadHeight` MotionValue that feeds
-                // `threadFlexBasis` starts at 0, so the FIRST paint renders the
-                // thread at 0 height and the composer stacks at the top — then a
-                // post-commit effect grows it to `halfH` and the composer drops a
-                // large panel distance to the bottom on the first frame a new
-                // user sees, #15214). During onboarding there is no drag to track,
-                // so pin the flex-basis to the settled open height statically at
-                // render time — first paint already matches the resting layout, no
-                // reflow. Reverts to the live MotionValue the moment onboarding
-                // releases. External browser sign-in is not pinned: it uses the
-                // enforced pill and therefore carries no hidden half-height box.
-                style={{
-                  flexBasis: pinnedOpen ? `${halfH}px` : threadFlexBasis,
-                }}
-              >
-                {/* Message search (#14279): an in-sheet panel that covers the
+                {threadPresented ? (
+                  <motion.div
+                    data-testid="chat-thread"
+                    className={cn(
+                      // `flex flex-col`: the thread is now a flex COLUMN so its lone
+                      // child (the scroller) sizes via `flex-1 min-h-0` against this
+                      // element's bounded height instead of `height:100%`. A flex
+                      // item whose main size comes ONLY from `flex-basis` (the px
+                      // MotionValue below) is NOT a definite height for a percentage
+                      // `h-full` child on iOS Safari / WebKit (it resolves to auto →
+                      // the scroller sizes to CONTENT and never overflows → the
+                      // transcript can't scroll on mobile web, #chat-scroll-web). The
+                      // flex algorithm gives a `min-h-0` flex child a definite
+                      // resolved height regardless, so this makes the scroll viewport
+                      // reliably bounded on every engine.
+                      "relative z-10 flex min-h-0 w-full shrink grow-0 flex-col overflow-hidden",
+                      // Always the centered reading column (a no-op at rest): the
+                      // transcript stays this width THROUGH the maximize morph and
+                      // at full-bleed — only the glass grows, the text never reflows.
+                      // No top-edge fade mask and no grabber inset: the transcript
+                      // runs to the panel's top edge and hard-clips there (the
+                      // floating grabber overlays it).
+                      "mx-auto max-w-3xl",
+                    )}
+                    // Flex-basis IS the motion value (px string) — set 1:1 during a drag,
+                    // spring-animated to a detent on release; no `animate`/`transition`,
+                    // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
+                    // win: a tall detent (or the keyboard) shrinks the thread (it
+                    // scrolls) instead of pushing the panel off-screen.
+                    // In-app onboarding (`pinnedOpen`) mounts locked at the shared
+                    // HALF detent and
+                    // never drags, but the `threadHeight` MotionValue that feeds
+                    // `threadFlexBasis` starts at 0, so the FIRST paint renders the
+                    // thread at 0 height and the composer stacks at the top — then a
+                    // post-commit effect grows it to `halfH` and the composer drops a
+                    // large panel distance to the bottom on the first frame a new
+                    // user sees, #15214). During onboarding there is no drag to track,
+                    // so pin the flex-basis to the settled open height statically at
+                    // render time — first paint already matches the resting layout, no
+                    // reflow. Reverts to the live MotionValue the moment onboarding
+                    // releases. External browser sign-in is not pinned: it uses the
+                    // enforced pill and therefore carries no hidden half-height box.
+                    style={{
+                      flexBasis: pinnedOpen ? `${halfH}px` : threadFlexBasis,
+                    }}
+                  >
+                    {/* Message search (#14279): an in-sheet panel that covers the
                     transcript while open. Selecting a hit closes it and jumps
                     (handleSearchJump). Reachable via the composer "+" menu
                     ("Search chat…"), which only exists while the sheet is open;
                     gate on sheetOpen so the panel never intrudes on the resting
                     composer. */}
-                {searchOpen && sheetOpen ? (
-                  <div
-                    data-testid="chat-message-search"
-                    data-keyboard-open={keyboardLiftActive ? "true" : undefined}
-                    // The sheet already owns the glass surface. Search reuses
-                    // that single layer while the transcript beneath is hidden
-                    // and inert, avoiding the opaque double-blur slab that a
-                    // second backdrop produced. Only the inner results list
-                    // scrolls, keeping the input pinned above the keyboard.
-                    className="absolute inset-0 z-30 flex flex-col overflow-hidden px-4 pb-3 pt-2"
-                  >
-                    <MessageSearchPanel
-                      search={runMessageSearch}
-                      onJump={handleSearchJump}
-                      onClose={closeSearch}
-                      layout="keyboard-anchored"
-                    />
-                  </div>
-                ) : null}
-                <MessageScrollerProvider
-                  key={activeConversationId ?? "unbound"}
-                  autoScroll={!firstRunOpen}
-                  defaultScrollPosition={firstRunOpen ? "start" : "end"}
-                  scrollEdgeThreshold={MESSAGE_SCROLLER_END_THRESHOLD_PX}
-                >
-                  <MessageScrollerSendFollow request={scrollToEndRequest} />
-                  <MessageScrollerSearchBridge
-                    scrollToMessageRef={searchScrollToMessageRef}
-                  />
-                  <MessageScroller>
-                    <motion.div
-                      inert={searchOpen || undefined}
-                      className="flex size-full min-h-0 flex-col"
-                      style={{ opacity: searchOpen ? 0 : threadContentOpacity }}
-                    >
-                      <MessageScrollerViewport
-                        id="continuous-thread"
-                        data-testid="chat-thread-scroll"
-                        // Fullscreen no longer changes flex-basis while the user
-                        // reads, so its top edge can use the real scroll mask and
-                        // dissolve into the sheet's nuanced surface. Resizable
-                        // detents retain the compositor overlay below.
-                        fade={fullBleed ? "both" : "bottom"}
-                        ref={threadRef}
-                        preserveScrollOnPrepend={false}
-                        onScroll={handleThreadScroll}
-                        aria-label="conversation history"
-                        aria-hidden={
-                          !sheetOpen || searchOpen ? true : undefined
+                    {searchOpen && sheetOpen ? (
+                      <div
+                        data-testid="chat-message-search"
+                        data-keyboard-open={
+                          keyboardLiftActive ? "true" : undefined
                         }
-                        tabIndex={sheetOpen && !searchOpen ? 0 : -1}
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape") {
-                            e.preventDefault();
-                            collapse();
-                          }
-                        }}
-                        // `flex-1 min-h-0` keeps the scroll viewport bounded by
-                        // the motion-sized sheet on iOS. Momentum scrolling and
-                        // the closed horizontal axis remain explicit because the
-                        // outer draggable surface only negotiates vertical input.
-                        className="scrollbar-hide relative min-h-0 w-full flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-5 outline-none [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+                        // The sheet already owns the glass surface. Search reuses
+                        // that single layer while the transcript beneath is hidden
+                        // and inert, avoiding the opaque double-blur slab that a
+                        // second backdrop produced. Only the inner results list
+                        // scrolls, keeping the input pinned above the keyboard.
+                        className="absolute inset-0 z-30 flex flex-col overflow-hidden px-4 pb-3 pt-2"
                       >
-                        {/* Empty-thread loading: a fresh/cleared chat awaiting its
+                        <MessageSearchPanel
+                          search={runMessageSearch}
+                          onJump={handleSearchJump}
+                          onClose={closeSearch}
+                          layout="keyboard-anchored"
+                        />
+                      </div>
+                    ) : null}
+                    <MessageScrollerProvider
+                      key={activeConversationId ?? "unbound"}
+                      autoScroll={!firstRunOpen}
+                      defaultScrollPosition={firstRunOpen ? "start" : "end"}
+                      scrollEdgeThreshold={MESSAGE_SCROLLER_END_THRESHOLD_PX}
+                    >
+                      <MessageScrollerSendFollow request={scrollToEndRequest} />
+                      <MessageScrollerSearchBridge
+                        scrollToMessageRef={searchScrollToMessageRef}
+                      />
+                      <MessageScroller>
+                        <motion.div
+                          inert={searchOpen || undefined}
+                          className="flex size-full min-h-0 flex-col"
+                          style={{
+                            opacity: searchOpen ? 0 : threadContentOpacity,
+                          }}
+                        >
+                          <MessageScrollerViewport
+                            id="continuous-thread"
+                            data-testid="chat-thread-scroll"
+                            // Fullscreen no longer changes flex-basis while the user
+                            // reads, so its top edge can use the real scroll mask and
+                            // dissolve into the sheet's nuanced surface. Resizable
+                            // detents retain the compositor overlay below.
+                            fade={fullBleed ? "both" : "bottom"}
+                            ref={threadRef}
+                            preserveScrollOnPrepend={false}
+                            onScroll={handleThreadScroll}
+                            aria-label="conversation history"
+                            aria-hidden={
+                              !sheetOpen || searchOpen ? true : undefined
+                            }
+                            tabIndex={sheetOpen && !searchOpen ? 0 : -1}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") {
+                                e.preventDefault();
+                                collapse();
+                              }
+                            }}
+                            // `flex-1 min-h-0` keeps the scroll viewport bounded by
+                            // the motion-sized sheet on iOS. Momentum scrolling and
+                            // the closed horizontal axis remain explicit because the
+                            // outer draggable surface only negotiates vertical input.
+                            className="scrollbar-hide relative min-h-0 w-full flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-5 outline-none [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+                          >
+                            {/* Empty-thread loading: a fresh/cleared chat awaiting its
                       greeting, a swipe past the prefetch window, or a sheet
                       opened before boot-time history hydration finished (a
                       programmatic open can land while the server transcript is
@@ -6217,659 +6383,714 @@ export function ChatOverlay({
                       as "loading," never as a broken empty box. Cache-hit
                       swipes paint instantly, so this only shows on a genuine
                       wait; first-run owns its own empty state. */}
-                        {visibleMessages.length === 0 &&
-                        !firstRunOpen &&
-                        (conversationLoading || booting) ? (
-                          <div
-                            data-testid="chat-thread-loading"
-                            className="pointer-events-none absolute inset-0 grid place-items-center"
-                          >
-                            <Loader2 className="size-6 animate-spin text-accent" />
-                          </div>
-                        ) : null}
-                        {/* Normal chat consumes only the free space in genuinely
+                            {visibleMessages.length === 0 &&
+                            !firstRunOpen &&
+                            (conversationLoading || booting) ? (
+                              <div
+                                data-testid="chat-thread-loading"
+                                className="pointer-events-none absolute inset-0 grid place-items-center"
+                              >
+                                <Loader2 className="size-6 animate-spin text-accent" />
+                              </div>
+                            ) : null}
+                            {/* Normal chat consumes only the free space in genuinely
                   short threads to keep their latest line near the composer.
                   Once content fills the viewport there is no free space to
                   distribute, so long transcripts retain their natural flow.
                   First-run starts at the top so the opening prompt reads like
                   the first turn. */}
-                        <MessageScrollerContent
-                          ref={threadContentRef}
-                          aria-busy={responding}
-                          className={cn(
-                            "flex flex-col gap-0",
-                            firstRunOpen
-                              ? "shrink-0 pt-8"
-                              : "mt-auto justify-end pb-3 pt-8",
-                          )}
-                        >
-                          {/* Top sentinel for infinite upward scroll (#13532, #14279):
+                            <MessageScrollerContent
+                              ref={threadContentRef}
+                              aria-busy={responding}
+                              className={cn(
+                                "flex flex-col gap-0",
+                                firstRunOpen
+                                  ? "shrink-0 pt-8"
+                                  : "mt-auto justify-end pb-3 pt-8",
+                              )}
+                            >
+                              {/* Top sentinel for infinite upward scroll (#13532, #14279):
                         a zero-height marker just above the oldest turn. When it
                         nears the top of the scroller, useLoadOlderOnScroll
                         prefetches + prepends an older page a viewport early and
                         preserves the reader's anchor so the thread never jumps. */}
-                          {!firstRunOpen &&
-                          renderWindow.canLoadOlder &&
-                          visibleMessages.length > 0 ? (
-                            <div
-                              ref={topSentinelRef}
-                              data-testid="chat-transcript-top-sentinel"
-                              aria-hidden="true"
-                              className="pointer-events-none h-px w-full shrink-0"
-                            />
-                          ) : null}
-                          {/* Topic metadata remains available to search and
+                              {!firstRunOpen &&
+                              renderWindow.canLoadOlder &&
+                              visibleMessages.length > 0 ? (
+                                <div
+                                  ref={topSentinelRef}
+                                  data-testid="chat-transcript-top-sentinel"
+                                  aria-hidden="true"
+                                  className="pointer-events-none h-px w-full shrink-0"
+                                />
+                              ) : null}
+                              {/* Topic metadata remains available to search and
                           memory consumers, but ordinary chat is always one
                           chronological transcript. */}
-                          {visibleMessages.map((m, i) =>
-                            renderThreadLine(m, i),
-                          )}
-                        </MessageScrollerContent>
-                      </MessageScrollerViewport>
-                    </motion.div>
-                    {/* Reply gets a dedicated lane below the viewport. Its
+                              {visibleMessages.map((m, i) =>
+                                renderThreadLine(m, i),
+                              )}
+                            </MessageScrollerContent>
+                          </MessageScrollerViewport>
+                        </motion.div>
+                        {/* Reply gets a dedicated lane below the viewport. Its
                         measured height eases into the fixed scroller, so the
                         latest turn glides clear without moving the sheet. */}
-                    <AnimatePresence initial={false}>
-                      {chatReplyTarget ? (
-                        <motion.div
-                          key="chat-reply-target"
-                          data-testid="chat-reply-lane"
-                          initial={
-                            reduce
-                              ? false
-                              : {
-                                  height: 0,
-                                  opacity: 0,
-                                  transform: "translateY(5px)",
-                                }
-                          }
-                          animate={{
-                            height: "auto",
-                            opacity: 1,
-                            transform: "translateY(0px)",
-                          }}
-                          exit={
-                            reduce
-                              ? undefined
-                              : {
-                                  height: 0,
-                                  opacity: 0,
-                                  transform: "translateY(5px)",
-                                }
-                          }
-                          transition={{
-                            duration: reduce ? 0 : 0.32,
-                            ease: OVERLAY_EASE,
-                          }}
-                          className="z-10 shrink-0 overflow-hidden"
-                        >
-                          <div className="px-3 pb-2 pt-1">
-                            <ChatReplyPill
-                              appearance="glass"
-                              target={chatReplyTarget}
-                              onCancel={() => setChatReplyTarget(null)}
-                            />
-                          </div>
-                        </motion.div>
-                      ) : null}
-                    </AnimatePresence>
-                  </MessageScroller>
-                </MessageScrollerProvider>
-                {!firstRunOpen && !fullBleed ? (
-                  <motion.div
-                    data-testid="chat-thread-top-fade"
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
-                    style={{
-                      opacity: threadContentOpacity,
-                      // A fixed compositor layer lets messages dissolve beneath
-                      // the floating grabber without masking the scrolling
-                      // subtree. WebKit re-rasterizes CSS-masked scrollers while
-                      // their flex basis changes, which makes the pull gesture
-                      // stutter. Hold the panel color through the grabber's
-                      // footprint before beginning the dissolve so no glyph can
-                      // ghost through the antialiased rim or the handle itself.
-                      backgroundImage:
-                        "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
-                    }}
-                  />
+                        <AnimatePresence initial={false}>
+                          {chatReplyTarget ? (
+                            <motion.div
+                              key="chat-reply-target"
+                              data-testid="chat-reply-lane"
+                              initial={
+                                reduce
+                                  ? false
+                                  : {
+                                      height: 0,
+                                      opacity: 0,
+                                      transform: "translateY(5px)",
+                                    }
+                              }
+                              animate={{
+                                height: "auto",
+                                opacity: 1,
+                                transform: "translateY(0px)",
+                              }}
+                              exit={
+                                reduce
+                                  ? undefined
+                                  : {
+                                      height: 0,
+                                      opacity: 0,
+                                      transform: "translateY(5px)",
+                                    }
+                              }
+                              transition={{
+                                duration: reduce ? 0 : 0.32,
+                                ease: OVERLAY_EASE,
+                              }}
+                              className="z-10 shrink-0 overflow-hidden"
+                            >
+                              <div className="px-3 pb-2 pt-1">
+                                <ChatReplyPill
+                                  appearance="glass"
+                                  target={chatReplyTarget}
+                                  onCancel={() => setChatReplyTarget(null)}
+                                />
+                              </div>
+                            </motion.div>
+                          ) : null}
+                        </AnimatePresence>
+                      </MessageScroller>
+                    </MessageScrollerProvider>
+                    {!firstRunOpen && !fullBleed ? (
+                      <motion.div
+                        data-testid="chat-thread-top-fade"
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
+                        style={{
+                          opacity: threadContentOpacity,
+                          // A fixed compositor layer lets messages dissolve beneath
+                          // the floating grabber without masking the scrolling
+                          // subtree. WebKit re-rasterizes CSS-masked scrollers while
+                          // their flex basis changes, which makes the pull gesture
+                          // stutter. Hold the panel color through the grabber's
+                          // footprint before beginning the dissolve so no glyph can
+                          // ghost through the antialiased rim or the handle itself.
+                          backgroundImage:
+                            "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
+                        }}
+                      />
+                    ) : null}
+                  </motion.div>
                 ) : null}
-              </motion.div>
-            ) : null}
-            {/* Cloud-agent provisioning status — rendered IN the chat, just
+                {/* Cloud-agent provisioning status — rendered IN the chat, just
                 above the composer, NOT as a home widget floating above the
                 sheet. The widget consumes the same `useCloudHandoffPhase` event
                 and self-hides entirely unless a dedicated cloud agent is booting
                 (or a credit/retry state is live), so this is inert in the common
                 case. Full chat-column width, styled to sit in the sheet. */}
-            <AgentProvisioningWidget spanClassName="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-3 pt-2" />
-            {/* Pending attachments share the sheet's pull binding so tile and
+                <AgentProvisioningWidget spanClassName="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-3 pt-2" />
+                {/* Pending attachments share the sheet's pull binding so tile and
                 gap pixels remain one continuous drag surface. Their remove
                 controls sit below the grabber's narrow top hit band and stop
                 the pointerdown from seeding a drag, preserving an independent
                 44px-class target for each file. */}
-            {hasImages || imageError ? (
-              <div
-                data-testid="chat-pending-attachments"
-                className="pointer-events-none relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2"
-              >
-                {hasImages ? (
+                {hasImages || imageError ? (
                   <div
-                    data-testid="chat-pending-attachment-list"
-                    {...pullBinding}
-                    className="pointer-events-auto flex touch-none flex-wrap gap-2"
+                    data-testid="chat-pending-attachments"
+                    className="pointer-events-none relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2"
                   >
-                    {pendingImages.map((img, i) => {
-                      const kind = chatUploadKind(img.mimeType);
-                      const removeButton = (
-                        <Button
-                          variant="outlineMuted"
-                          size="icon-sm"
-                          aria-label={`remove ${img.name}`}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onClick={() => removeImage(i)}
-                          // Small visual disc, but a 44px-class hit zone via the
-                          // invisible `before` overlay so it's thumb-tappable
-                          // without crowding the tile. Bottom placement keeps
-                          // that hit zone clear of the grabber above the sheet.
-                          shape="circle"
-                          className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 before:absolute before:-inset-3 before:content-['']"
-                        >
-                          ×
-                        </Button>
-                      );
-                      const tileKey = `${img.name}-${img.mimeType}-${img.data.length}`;
-                      if (kind === "image") {
-                        return (
-                          <div
-                            key={tileKey}
-                            className="group relative size-14 shrink-0"
-                          >
-                            <img
-                              src={`data:${img.mimeType};base64,${img.data}`}
-                              alt={img.name}
-                              className="size-14 rounded-lg border border-border-strong object-cover"
-                            />
-                            {removeButton}
-                          </div>
-                        );
-                      }
-                      const KindIcon =
-                        kind === "audio"
-                          ? Music
-                          : kind === "video"
-                            ? Film
-                            : FileText;
-                      return (
-                        <div
-                          key={tileKey}
-                          className="group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 rounded-lg border border-border-strong bg-surface px-2.5 text-txt"
-                          title={img.name}
-                        >
-                          <KindIcon className="size-5 shrink-0 text-muted-strong" />
-                          <span className="min-w-0 truncate text-xs-tight leading-tight">
-                            {img.name}
-                          </span>
-                          {removeButton}
-                        </div>
-                      );
-                    })}
+                    {hasImages ? (
+                      <div
+                        data-testid="chat-pending-attachment-list"
+                        {...pullBinding}
+                        className="pointer-events-auto flex touch-none flex-wrap gap-2"
+                      >
+                        {pendingImages.map((img, i) => {
+                          const kind = chatUploadKind(img.mimeType);
+                          const removeButton = (
+                            <Button
+                              variant="outlineMuted"
+                              size="icon-sm"
+                              aria-label={`remove ${img.name}`}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={() => removeImage(i)}
+                              // Small visual disc, but a 44px-class hit zone via the
+                              // invisible `before` overlay so it's thumb-tappable
+                              // without crowding the tile. Bottom placement keeps
+                              // that hit zone clear of the grabber above the sheet.
+                              shape="circle"
+                              className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 before:absolute before:-inset-3 before:content-['']"
+                            >
+                              ×
+                            </Button>
+                          );
+                          const tileKey = `${img.name}-${img.mimeType}-${img.data.length}`;
+                          if (kind === "image") {
+                            return (
+                              <div
+                                key={tileKey}
+                                className="group relative size-14 shrink-0"
+                              >
+                                <Card
+                                  asChild
+                                  surface="transparent"
+                                  border="strong"
+                                  radius="large"
+                                  className="overflow-hidden"
+                                >
+                                  <img
+                                    src={`data:${img.mimeType};base64,${img.data}`}
+                                    alt={img.name}
+                                    className="size-14 object-cover"
+                                  />
+                                </Card>
+                                {removeButton}
+                              </div>
+                            );
+                          }
+                          const KindIcon =
+                            kind === "audio"
+                              ? Music
+                              : kind === "video"
+                                ? Film
+                                : FileText;
+                          return (
+                            <Card
+                              surface="raised"
+                              border="strong"
+                              radius="large"
+                              tone="text"
+                              key={tileKey}
+                              className="group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 px-2.5"
+                              title={img.name}
+                            >
+                              <KindIcon className="size-5 shrink-0 text-muted-strong" />
+                              <span className="min-w-0 truncate text-xs-tight leading-tight">
+                                {img.name}
+                              </span>
+                              {removeButton}
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {imageError ? (
+                      <p
+                        role="alert"
+                        className={cn(
+                          "text-xs",
+                          WALLPAPER_TEXT.danger,
+                          WALLPAPER_FLOAT_SHADOW,
+                        )}
+                      >
+                        {imageError}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
-                {imageError ? (
-                  <p
-                    role="alert"
-                    className={cn(
-                      "text-xs",
-                      WALLPAPER_TEXT.danger,
-                      WALLPAPER_FLOAT_SHADOW,
-                    )}
-                  >
-                    {imageError}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-            <Input
-              ref={fileInputRef}
-              type="file"
-              accept={CHAT_UPLOAD_ACCEPT}
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files) addImageFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            {/* The input row — the base of the panel, always visible. A hairline
+                <Input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={CHAT_UPLOAD_ACCEPT}
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) addImageFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                {/* The input row — the base of the panel, always visible. A hairline
             divider sits above it whenever the history is open. The whole content
             wrapper crossfades + scales in from the pill (openProgress), so this
             row needs no separate entrance — it just sits at the panel base. */}
-            <motion.div
-              data-testid="chat-composer-row"
-              onPointerDownCapture={noteInputActivity}
-              className={cn(
-                // items-center vertically centers a single-line composer with
-                // the round +/mic buttons (the common case); a multi-line draft
-                // grows the textarea and the buttons stay centered. shrink-0
-                // keeps the input fully visible when the panel hits its
-                // maxHeight cap (only the thread above gives way).
-                // Equal inset on all sides (px == py): a round button nested in
-                // the pill's round end-cap reads as concentric, with the same
-                // gap on the sides as top/bottom.
-                // No divider above the composer — spacing separates it from the
-                // thread; the sheet is one continuous glass surface (#10710).
-                "relative z-10 flex min-w-0 shrink-0 items-center gap-[clamp(0.125rem,1.25vw,0.5rem)] px-[clamp(0.25rem,1.5vw,0.5rem)] py-[clamp(0.125rem,0.75dvh,0.375rem)] [&_textarea]:max-h-[8.5rem] [&_textarea]:min-h-8 [&_textarea]:border-none [&_textarea]:bg-transparent [&_textarea]:px-1.5 [&_textarea]:py-1 [&_textarea]:text-left [&_textarea]:text-sm [&_textarea]:text-txt [&_textarea]:outline-none [&_textarea]:placeholder:text-muted-strong pointer-coarse:[&_textarea]:text-base",
-                // While INSET the composer dissolves into the sheet (one
-                // continuous glass surface, #10710) — border/fill are morph-
-                // driven inline (transparent at rest). At FULL-BLEED they fade
-                // in to the resting input bar's own capsule chrome, so the
-                // maximized chat's input reads exactly like the default
-                // floating input. `border` reserves the hairline's layout.
-                "border",
-                // Always the transcript's centered column (a no-op at rest) so
-                // the composer sits under the messages through the morph and at
-                // full-bleed, never stretched edge-to-edge on a wide window.
-                "mx-auto max-w-3xl",
-              )}
-              // Full-bleed has no overlay bottom padding (the panel is
-              // edge-to-edge), so the composer carries the home-gesture
-              // clearance itself — as a MARGIN below the capsule, eased in
-              // with the shape morph (0 at rest). Skipped while the keyboard
-              // is up, which already covers that zone. The bevel shadow is
-              // discrete-on-commit (too subtle to morph); border/fill alphas
-              // ride the morph.
-              style={{
-                borderRadius: PANEL_RADIUS_PX,
-                borderColor: composerCapsuleBorder,
-                backgroundColor: composerCapsuleBg,
-                boxShadow: composerCapsuleShadow,
-                width: composerCapsuleWidth,
-                ...(keyboardLiftActive
-                  ? {}
-                  : { marginBottom: composerCapsuleMarginBottom }),
-              }}
-            >
-              {/* Inline slash-command autocomplete, floating just above the
+                <Card
+                  asChild
+                  surface="transparent"
+                  border="standard"
+                  radius="full"
+                  visualStyle={{
+                    backgroundColor: "var(--chat-composer-background)",
+                    borderColor: "var(--chat-composer-border)",
+                    boxShadow: "var(--chat-composer-shadow, none)",
+                  }}
+                >
+                  <motion.div
+                    data-testid="chat-composer-row"
+                    onPointerDownCapture={noteInputActivity}
+                    className={cn(
+                      // items-center vertically centers a single-line composer with
+                      // the round +/mic buttons (the common case); a multi-line draft
+                      // grows the textarea and the buttons stay centered. shrink-0
+                      // keeps the input fully visible when the panel hits its
+                      // maxHeight cap (only the thread above gives way).
+                      // Equal inset on all sides (px == py): a round button nested in
+                      // the pill's round end-cap reads as concentric, with the same
+                      // gap on the sides as top/bottom.
+                      // No divider above the composer — spacing separates it from the
+                      // thread; the sheet is one continuous glass surface (#10710).
+                      "relative z-10 flex min-w-0 shrink-0 items-center gap-[clamp(0.125rem,1.25vw,0.5rem)] px-[clamp(0.25rem,1.5vw,0.5rem)] py-[clamp(0.125rem,0.75dvh,0.375rem)] [&_textarea]:max-h-[8.5rem] [&_textarea]:min-h-8 [&_textarea]:border-none [&_textarea]:bg-transparent [&_textarea]:px-1.5 [&_textarea]:py-1 [&_textarea]:text-left [&_textarea]:text-sm [&_textarea]:text-txt [&_textarea]:outline-none [&_textarea]:placeholder:text-muted-strong pointer-coarse:[&_textarea]:text-base",
+                      // While INSET the composer dissolves into the sheet (one
+                      // continuous glass surface, #10710) — border/fill are morph-
+                      // driven inline (transparent at rest). At FULL-BLEED they fade
+                      // in to the resting input bar's own capsule chrome, so the
+                      // maximized chat's input reads exactly like the default
+                      // floating input. `border` reserves the hairline's layout.
+                      // Always the transcript's centered column (a no-op at rest) so
+                      // the composer sits under the messages through the morph and at
+                      // full-bleed, never stretched edge-to-edge on a wide window.
+                      "mx-auto max-w-3xl",
+                    )}
+                    // Full-bleed has no overlay bottom padding (the panel is
+                    // edge-to-edge), so the composer carries the home-gesture
+                    // clearance itself — as a MARGIN below the capsule, eased in
+                    // with the shape morph (0 at rest). Skipped while the keyboard
+                    // is up, which already covers that zone. The bevel shadow is
+                    // discrete-on-commit (too subtle to morph); border/fill alphas
+                    // ride the morph.
+                    style={{
+                      ...({
+                        "--chat-composer-border": composerCapsuleBorder,
+                        "--chat-composer-background": composerCapsuleBg,
+                        "--chat-composer-shadow": composerCapsuleShadow,
+                      } satisfies ChatSheetMotionStyle),
+                      width: composerCapsuleWidth,
+                      ...(keyboardLiftActive
+                        ? {}
+                        : { marginBottom: composerCapsuleMarginBottom }),
+                    }}
+                  >
+                    {/* Inline slash-command autocomplete, floating just above the
                     input row. */}
-              {!transcriptionComposerActive && slashProp && !slashDismissed ? (
-                <SlashCommandMenu
-                  state={slashMenu}
-                  loading={isSlashDraft && slash.loading}
-                  error={isSlashDraft && slash.error}
-                  onPick={pickSlashItem}
-                />
-              ) : null}
-              {/* The "+" opens shell navigation plus surface-local Search and
+                    {!transcriptionComposerActive &&
+                    slashProp &&
+                    !slashDismissed ? (
+                      <SlashCommandMenu
+                        state={slashMenu}
+                        loading={isSlashDraft && slash.loading}
+                        error={isSlashDraft && slash.error}
+                        onPick={pickSlashItem}
+                      />
+                    ) : null}
+                    {/* The "+" opens shell navigation plus surface-local Search and
                   Upload actions for this in-app conversation, never connector actions on a
                   Discord/Telegram room. Search is agent-driveable; Upload is a
                   pure client affordance. */}
-              {!transcriptionComposerActive ? (
-                <DropdownMenu
-                  open={chatActionsOpen}
-                  onOpenChange={setChatActionsOpen}
-                >
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghostMuted"
-                      size="icon"
-                      aria-label="chat actions"
-                      disabled={firstRunOpen}
-                      data-testid="chat-composer-plus"
-                      onPointerDown={(event) => {
-                        // The action menu owns this press even when the
-                        // composer is mounted over another shell drag surface.
-                        event.stopPropagation();
-                      }}
-                      // Same responsive real target and 20px mark as the
-                      // SoftButton controls, so the row reads as one family.
-                      className="relative shrink-0 data-[state=open]:text-txt [&_svg]:size-5"
-                    >
-                      <Glyph d={PLUS_GLYPH} className="size-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    data-chat-overlay-control
-                    side="top"
-                    align="start"
-                    sideOffset={10}
-                    // Above the shell overlay (z 9000); mirrors the config-select
-                    // floating layer so the menu never hides behind the glass.
-                    style={{ zIndex: CONFIG_SELECT_FLOATING_LAYER_Z_INDEX }}
-                    // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
-                    // variant) instead of the flat opaque card.
-                    glass
-                    className="min-w-[13rem]"
-                  >
-                    {currentTab !== "chat" ? (
-                      <DropdownMenuItem
-                        className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                        onSelect={() => {
-                          navigateHome?.();
-                        }}
+                    {!transcriptionComposerActive ? (
+                      <DropdownMenu
+                        open={chatActionsOpen}
+                        onOpenChange={setChatActionsOpen}
                       >
-                        <House
-                          className="size-4 shrink-0 text-muted"
-                          aria-hidden
-                        />
-                        Back to Home
-                      </DropdownMenuItem>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="overlayEdge"
+                            size="icon"
+                            aria-label="chat actions"
+                            disabled={firstRunOpen}
+                            data-testid="chat-composer-plus"
+                            onPointerDown={(event) => {
+                              // The action menu owns this press even when the
+                              // composer is mounted over another shell drag surface.
+                              event.stopPropagation();
+                            }}
+                            // Same responsive real target and 20px mark as the
+                            // SoftButton controls, so the row reads as one family.
+                            className="relative shrink-0 data-[state=open]:text-txt [&_svg]:size-5"
+                          >
+                            <Glyph d={PLUS_GLYPH} className="size-5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          data-chat-overlay-control
+                          side="top"
+                          align="start"
+                          sideOffset={10}
+                          // Above the shell overlay (z 9000); mirrors the config-select
+                          // floating layer so the menu never hides behind the glass.
+                          style={{
+                            zIndex: CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
+                          }}
+                          // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
+                          // variant) instead of the flat opaque card.
+                          glass
+                          className="min-w-[13rem]"
+                        >
+                          {currentTab !== "chat" ? (
+                            <DropdownMenuItem
+                              className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                              onSelect={() => {
+                                navigateHome?.();
+                              }}
+                            >
+                              <House
+                                className="size-4 shrink-0 text-muted"
+                                aria-hidden
+                              />
+                              Back to Home
+                            </DropdownMenuItem>
+                          ) : null}
+                          <DropdownMenuItem
+                            className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                            onSelect={() => openSearch()}
+                          >
+                            <Search
+                              className="size-4 shrink-0 text-muted"
+                              aria-hidden
+                            />
+                            Search chat…
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                            disabled={pendingImages.length >= MAX_CHAT_IMAGES}
+                            onSelect={() => fileInputRef.current?.click()}
+                          >
+                            <Paperclip
+                              className="size-4 shrink-0 text-muted"
+                              aria-hidden
+                            />
+                            Upload file
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     ) : null}
-                    <DropdownMenuItem
-                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                      onSelect={() => openSearch()}
-                    >
-                      <Search
-                        className="size-4 shrink-0 text-muted"
-                        aria-hidden
+                    {transcriptionComposerActive ? (
+                      <ComposerMicActivity
+                        analyser={analyser}
+                        finishing={transcriptionFinishing}
+                        reduceMotion={reduce}
+                        transcript={transcript}
                       />
-                      Search chat…
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                      disabled={pendingImages.length >= MAX_CHAT_IMAGES}
-                      onSelect={() => fileInputRef.current?.click()}
-                    >
-                      <Paperclip
-                        className="size-4 shrink-0 text-muted"
-                        aria-hidden
+                    ) : realtimeVoiceComposerVisible && realtimeVoice ? (
+                      <ComposerRealtimeVoiceActivity
+                        connecting={realtimeVoice.connecting}
+                        error={realtimeVoice.error}
+                        needsAudioUnlock={needsAudioUnlock}
+                        onUnlockAudio={unlockAudio}
+                        paused={realtimeVoice.paused}
+                        reduceMotion={reduce}
+                        status={realtimeVoice.status}
+                        transcript={transcript}
                       />
-                      Upload file
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : null}
-              {transcriptionComposerActive ? (
-                <ComposerMicActivity
-                  analyser={analyser}
-                  finishing={transcriptionFinishing}
-                  reduceMotion={reduce}
-                  transcript={transcript}
-                />
-              ) : realtimeVoiceComposerVisible && realtimeVoice ? (
-                <ComposerRealtimeVoiceActivity
-                  connecting={realtimeVoice.connecting}
-                  error={realtimeVoice.error}
-                  needsAudioUnlock={needsAudioUnlock}
-                  onUnlockAudio={unlockAudio}
-                  paused={realtimeVoice.paused}
-                  reduceMotion={reduce}
-                  status={realtimeVoice.status}
-                  transcript={transcript}
-                />
-              ) : (
-                <Textarea
-                  ref={inputRef}
-                  rows={1}
-                  value={draft}
-                  // Hosted Cloud onboarding has one action: the transcript's
-                  // sign-in CTA. Muting the composer avoids presenting a second,
-                  // inert route while local/remote setup can still accept text.
-                  disabled={cloudSignInRequired}
-                  readOnly={cloudLoginWaiting}
-                  onChange={(e) => {
-                    const nextDraft = e.target.value;
-                    resetMessageHistory();
-                    if (
-                      draft.trim().length > 0 &&
-                      nextDraft.trim().length === 0
-                    ) {
-                      reportComposerActivity({
-                        activity: "draft_abandoned",
-                        surface: COMPOSER_ACTIVITY_SURFACE,
-                        conversationId: activeConversationIdRef.current,
-                        draftLength: 0,
-                        reason: "cleared",
-                      });
-                    }
-                    setDraft(nextDraft);
-                    // Mirror the live draft to the active view (Help search etc.).
-                    viewChatBinding?.onQuery?.(nextDraft);
-                    if (nextDraft.trim().length > 0) expandFromTyping();
-                  }}
-                  onFocus={() => {
-                    setChatComposerAccessoryBarHidden(true);
-                    // Widen out of the short-landscape compact affordance (#14173)
-                    // on focus, before the first keystroke.
-                    setComposerFocused(true);
-                    // A pill-open focus only raises the keyboard; it must not
-                    // expand a history thread (see suppressExpandOnFocusRef).
-                    if (suppressExpandOnFocusRef.current) {
-                      suppressExpandOnFocusRef.current = false;
-                    } else {
-                      expand();
-                    }
-                  }}
-                  onClick={() => {
-                    // External sign-in deliberately makes the composer
-                    // read-only, but the familiar bar remains the recovery
-                    // affordance. A field that already owns focus will not emit
-                    // another focus event, so the real click must reopen the
-                    // transcript and its retry action explicitly.
-                    if (cloudLoginWaiting) expand();
-                  }}
-                  onBlur={() => {
-                    setChatComposerAccessoryBarHidden(false);
-                    setComposerFocused(false);
-                    // A suppress-expand flag armed for a focus that never landed
-                    // (openFromPill arms it BEFORE focusing) must not survive to
-                    // swallow the next genuine focus→expand.
-                    suppressExpandOnFocusRef.current = false;
-                  }}
-                  onPaste={handleComposerPaste}
-                  onKeyDown={(event) => {
-                    noteInputActivity();
-                    handleComposerKeyDown(event);
-                  }}
-                  // Attachments and voice stay gated during onboarding, while
-                  // text can answer the conductor naturally.
-                  // (This surface's strings are plain literals by design — see
-                  // the imageError note above.)
-                  placeholder={
-                    compactLanding
-                      ? "Message"
-                      : cloudSignInRequired
-                        ? "Sign in to get started"
-                        : firstRunOpen
-                          ? firstRunComposerPlaceholder
-                          : noProviderConfigured
-                            ? "Connect a model provider in Settings to chat"
-                            : modelBlocksSend
-                              ? modelStatus?.kind === "downloading"
-                                ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                                : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                              : booting
-                                ? `Message ${agentName} — waking up…`
-                                : (viewChatBinding?.placeholder ??
-                                  `Message ${agentName}`)
-                  }
-                  aria-label="message"
-                  data-testid="chat-composer-textarea"
-                  aria-describedby={
-                    firstRunOpen
-                      ? "cc-first-run-hint"
-                      : booting && !noProviderConfigured
-                        ? "cc-booting-hint"
-                        : undefined
-                  }
-                  // Combobox semantics (role + aria-*) are applied as one spread,
-                  // and only when a slash catalog is wired in — a plain message
-                  // box otherwise.
-                  {...comboboxAria}
-                  // The floating composer is the primary chat affordance on the
-                  // ambient home surface, so its placeholder must stay readable
-                  // even when the glass pill sits over dark wallpaper. A locked
-                  // Cloud composer is intentionally muted beneath the live CTA.
-                  className="scrollbar-hide min-w-0 flex-1 resize-none self-center leading-relaxed disabled:pointer-events-none disabled:opacity-60"
-                />
-              )}
-              {!transcriptionComposerActive &&
-              booting &&
-              !noProviderConfigured &&
-              !firstRunOpen ? (
-                <span id="cc-booting-hint" className="sr-only">
-                  {agentName} is waking up. You can type now; your message sends
-                  and the reply arrives in a moment.
-                </span>
-              ) : null}
-              {firstRunOpen ? (
-                <span id="cc-first-run-hint" className="sr-only">
-                  Your answer stays in setup until your agent is ready.
-                </span>
-              ) : null}
-              {/* Trailing controls. */}
-              <div
-                data-testid="chat-composer-trailing-controls"
-                className={cn(
-                  "grid shrink-0 items-center",
-                  realtimeVoiceControlsVisible ? "grid-cols-2" : "grid-cols-1",
-                )}
-              >
-                {realtimeVoiceControlsVisible && realtimeVoice ? (
-                  <ComposerControlSlot
-                    slot="left"
-                    reduceMotion={reduce}
-                    controlKey={
-                      realtimeVoice.microphoneMuted
-                        ? "voice-microphone-muted"
-                        : "voice-microphone-live"
-                    }
-                  >
-                    <SoftButton
-                      icon={realtimeVoice.microphoneMuted ? MicOff : Mic}
-                      label={
-                        realtimeVoice.microphoneMuted
-                          ? "unmute microphone"
-                          : "mute microphone"
-                      }
-                      active={realtimeVoice.microphoneMuted}
-                      pressed={realtimeVoice.microphoneMuted}
-                      onClick={realtimeVoice.toggleMicrophoneMute}
-                      testId="chat-composer-voice-mute"
-                    />
-                  </ComposerControlSlot>
-                ) : null}
-                {/* One stable rightmost slot owns every primary action. Talk no
+                    ) : (
+                      <Textarea
+                        ref={inputRef}
+                        rows={1}
+                        value={draft}
+                        // Hosted Cloud onboarding has one action: the transcript's
+                        // sign-in CTA. Muting the composer avoids presenting a second,
+                        // inert route while local/remote setup can still accept text.
+                        disabled={cloudSignInRequired}
+                        readOnly={cloudLoginWaiting}
+                        onChange={(e) => {
+                          const nextDraft = e.target.value;
+                          resetMessageHistory();
+                          if (
+                            draft.trim().length > 0 &&
+                            nextDraft.trim().length === 0
+                          ) {
+                            reportComposerActivity({
+                              activity: "draft_abandoned",
+                              surface: COMPOSER_ACTIVITY_SURFACE,
+                              conversationId: activeConversationIdRef.current,
+                              draftLength: 0,
+                              reason: "cleared",
+                            });
+                          }
+                          setDraft(nextDraft);
+                          // Mirror the live draft to the active view (Help search etc.).
+                          viewChatBinding?.onQuery?.(nextDraft);
+                          if (nextDraft.trim().length > 0) expandFromTyping();
+                        }}
+                        onFocus={() => {
+                          setChatComposerAccessoryBarHidden(true);
+                          // Widen out of the short-landscape compact affordance (#14173)
+                          // on focus, before the first keystroke.
+                          setComposerFocused(true);
+                          // A pill-open focus only raises the keyboard; it must not
+                          // expand a history thread (see suppressExpandOnFocusRef).
+                          if (suppressExpandOnFocusRef.current) {
+                            suppressExpandOnFocusRef.current = false;
+                          } else {
+                            expand();
+                          }
+                        }}
+                        onClick={() => {
+                          // External sign-in deliberately makes the composer
+                          // read-only, but the familiar bar remains the recovery
+                          // affordance. A field that already owns focus will not emit
+                          // another focus event, so the real click must reopen the
+                          // transcript and its retry action explicitly.
+                          if (cloudLoginWaiting) expand();
+                        }}
+                        onBlur={() => {
+                          setChatComposerAccessoryBarHidden(false);
+                          setComposerFocused(false);
+                          // A suppress-expand flag armed for a focus that never landed
+                          // (openFromPill arms it BEFORE focusing) must not survive to
+                          // swallow the next genuine focus→expand.
+                          suppressExpandOnFocusRef.current = false;
+                        }}
+                        onPaste={handleComposerPaste}
+                        onKeyDown={(event) => {
+                          noteInputActivity();
+                          handleComposerKeyDown(event);
+                        }}
+                        // Attachments and voice stay gated during onboarding, while
+                        // text can answer the conductor naturally.
+                        // (This surface's strings are plain literals by design — see
+                        // the imageError note above.)
+                        placeholder={
+                          compactLanding
+                            ? "Message"
+                            : cloudSignInRequired
+                              ? "Sign in to get started"
+                              : firstRunOpen
+                                ? firstRunComposerPlaceholder
+                                : noProviderConfigured
+                                  ? "Connect a model provider in Settings to chat"
+                                  : modelBlocksSend
+                                    ? modelStatus?.kind === "downloading"
+                                      ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                                      : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                                    : booting
+                                      ? `Message ${agentName} — waking up…`
+                                      : (viewChatBinding?.placeholder ??
+                                        `Message ${agentName}`)
+                        }
+                        aria-label="message"
+                        data-testid="chat-composer-textarea"
+                        aria-describedby={
+                          firstRunOpen
+                            ? "cc-first-run-hint"
+                            : booting && !noProviderConfigured
+                              ? "cc-booting-hint"
+                              : undefined
+                        }
+                        // Combobox semantics (role + aria-*) are applied as one spread,
+                        // and only when a slash catalog is wired in — a plain message
+                        // box otherwise.
+                        {...comboboxAria}
+                        // The floating composer is the primary chat affordance on the
+                        // ambient home surface, so its placeholder must stay readable
+                        // even when the glass pill sits over dark wallpaper. A locked
+                        // Cloud composer is intentionally muted beneath the live CTA.
+                        className="scrollbar-hide min-w-0 flex-1 resize-none self-center leading-relaxed disabled:pointer-events-none disabled:opacity-60"
+                      />
+                    )}
+                    {!transcriptionComposerActive &&
+                    booting &&
+                    !noProviderConfigured &&
+                    !firstRunOpen ? (
+                      <span id="cc-booting-hint" className="sr-only">
+                        {agentName} is waking up. You can type now; your message
+                        sends and the reply arrives in a moment.
+                      </span>
+                    ) : null}
+                    {firstRunOpen ? (
+                      <span id="cc-first-run-hint" className="sr-only">
+                        Your answer stays in setup until your agent is ready.
+                      </span>
+                    ) : null}
+                    {/* Trailing controls. */}
+                    <div
+                      data-testid="chat-composer-trailing-controls"
+                      className={cn(
+                        "grid shrink-0 items-center",
+                        realtimeVoiceControlsVisible
+                          ? "grid-cols-2"
+                          : "grid-cols-1",
+                      )}
+                    >
+                      {realtimeVoiceControlsVisible && realtimeVoice ? (
+                        <ComposerControlSlot
+                          slot="left"
+                          reduceMotion={reduce}
+                          controlKey={
+                            realtimeVoice.microphoneMuted
+                              ? "voice-microphone-muted"
+                              : "voice-microphone-live"
+                          }
+                        >
+                          <SoftButton
+                            icon={realtimeVoice.microphoneMuted ? MicOff : Mic}
+                            label={
+                              realtimeVoice.microphoneMuted
+                                ? "unmute microphone"
+                                : "mute microphone"
+                            }
+                            active={realtimeVoice.microphoneMuted}
+                            pressed={realtimeVoice.microphoneMuted}
+                            onClick={realtimeVoice.toggleMicrophoneMute}
+                            testId="chat-composer-voice-mute"
+                          />
+                        </ComposerControlSlot>
+                      ) : null}
+                      {/* One stable rightmost slot owns every primary action. Talk no
                     longer shares the row with an ambiguous second mic, and a
                     held pointer has exactly the same Cartesia action as a tap. */}
-                <ComposerControlSlot
-                  slot="right"
-                  reduceMotion={reduce}
-                  controlKey={
-                    transcriptionComposerActive
-                      ? "transcription-stop"
-                      : draftOwnsTrailingControl
-                        ? "send"
-                        : generationOwnsTrailingControl
-                          ? "generation-stop"
-                          : "voice"
-                  }
-                >
-                  {transcriptionComposerActive ? (
-                    /* The rightmost transcription mic becomes Stop. Activity owns
+                      <ComposerControlSlot
+                        slot="right"
+                        reduceMotion={reduce}
+                        controlKey={
+                          transcriptionComposerActive
+                            ? "transcription-stop"
+                            : draftOwnsTrailingControl
+                              ? "send"
+                              : generationOwnsTrailingControl
+                                ? "generation-stop"
+                                : "voice"
+                        }
+                      >
+                        {transcriptionComposerActive ? (
+                          /* The rightmost transcription mic becomes Stop. Activity owns
                        every other composer pixel until capture finishes. */
-                    <SoftButton
-                      glyph={STOP_GLYPH}
-                      label={
-                        transcriptionFinishing
-                          ? "finishing transcription"
-                          : "stop transcription"
-                      }
-                      disabled={firstRunOpen || transcriptionFinishing}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={() => void finishTranscription()}
-                      testId="chat-composer-transcription-stop"
-                    />
-                  ) : draftOwnsTrailingControl ? (
-                    <SoftButton
-                      icon={SendHorizontal}
-                      label={
-                        firstRunOpen
-                          ? "send to setup assistant"
-                          : !canSend
-                            ? "send (agent stopped)"
-                            : responding
-                              ? "send another"
-                              : "send"
-                      }
-                      disabled={
-                        firstRunOpen
-                          ? cloudLoginWaiting || !sendFirstRunText
-                          : !canSend
-                      }
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={submit}
-                      testId="chat-composer-action"
-                    />
-                  ) : generationOwnsTrailingControl ? (
-                    <SoftButton
-                      glyph={STOP_GLYPH}
-                      label={
-                        turnStatus?.kind === "speaking"
-                          ? "stop speaking"
-                          : "stop generating"
-                      }
-                      onClick={() => stop()}
-                      testId="chat-composer-stop"
-                    />
-                  ) : (
-                    <SoftButton
-                      glyph={handsFree ? STOP_GLYPH : undefined}
-                      icon={handsFree ? undefined : AudioLines}
-                      label={
-                        realtimeVoice?.error
-                          ? `retry talk — ${realtimeVoice.error}`
-                          : realtimeVoice?.connecting
-                            ? "cancel voice connection"
-                            : handsFree
-                              ? "end conversation"
-                              : recording
-                                ? "stop listening"
-                                : "talk"
-                      }
-                      disabled={firstRunOpen}
-                      active={handsFree}
-                      pressed={recording || handsFree}
-                      pulse={recording && !handsFree}
-                      onClick={handleMicClick}
-                      testId="chat-composer-mic"
-                    />
-                  )}
-                </ComposerControlSlot>
-              </div>
-            </motion.div>
-          </motion.div>
-          <motion.div
-            data-testid="chat-sheet-rim"
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 z-40 border border-border-strong"
-            style={{
-              opacity: rimOpacity,
-              borderRadius: morphRadius,
-            }}
-          />
-          {/* PILL CAPSULE — the collapsed handle, crossfaded out as the input
+                          <SoftButton
+                            glyph={STOP_GLYPH}
+                            label={
+                              transcriptionFinishing
+                                ? "finishing transcription"
+                                : "stop transcription"
+                            }
+                            disabled={firstRunOpen || transcriptionFinishing}
+                            onPointerDown={(event) => event.preventDefault()}
+                            onClick={() => void finishTranscription()}
+                            testId="chat-composer-transcription-stop"
+                          />
+                        ) : draftOwnsTrailingControl ? (
+                          <SoftButton
+                            icon={SendHorizontal}
+                            label={
+                              firstRunOpen
+                                ? "send to setup assistant"
+                                : !canSend
+                                  ? "send (agent stopped)"
+                                  : responding
+                                    ? "send another"
+                                    : "send"
+                            }
+                            disabled={
+                              firstRunOpen
+                                ? cloudLoginWaiting || !sendFirstRunText
+                                : !canSend
+                            }
+                            onPointerDown={(event) => event.preventDefault()}
+                            onClick={submit}
+                            testId="chat-composer-action"
+                          />
+                        ) : generationOwnsTrailingControl ? (
+                          <SoftButton
+                            glyph={STOP_GLYPH}
+                            label={
+                              turnStatus?.kind === "speaking"
+                                ? "stop speaking"
+                                : "stop generating"
+                            }
+                            onClick={() => stop()}
+                            testId="chat-composer-stop"
+                          />
+                        ) : (
+                          <SoftButton
+                            glyph={handsFree ? STOP_GLYPH : undefined}
+                            icon={handsFree ? undefined : AudioLines}
+                            label={
+                              realtimeVoice?.error
+                                ? `retry talk — ${realtimeVoice.error}`
+                                : realtimeVoice?.connecting
+                                  ? "cancel voice connection"
+                                  : handsFree
+                                    ? "end conversation"
+                                    : recording
+                                      ? "stop listening"
+                                      : "talk"
+                            }
+                            disabled={firstRunOpen}
+                            active={handsFree}
+                            pressed={recording || handsFree}
+                            pulse={recording && !handsFree}
+                            onClick={handleMicClick}
+                            testId="chat-composer-mic"
+                          />
+                        )}
+                      </ComposerControlSlot>
+                    </div>
+                  </motion.div>
+                </Card>
+              </motion.div>
+            </Card>
+            <Card
+              asChild
+              surface="transparent"
+              border="strong"
+              radius="none"
+              visualStyle={{ borderRadius: "var(--chat-sheet-radius)" }}
+            >
+              <motion.div
+                data-testid="chat-sheet-rim"
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 z-40"
+                style={{
+                  opacity: rimOpacity,
+                  ...({
+                    "--chat-sheet-radius": morphRadius,
+                  } satisfies ChatSheetMotionStyle),
+                }}
+              />
+            </Card>
+            {/* PILL CAPSULE — the collapsed handle, crossfaded out as the input
               forms. Interactive only while pilled; sits over the (faded) input. */}
-          <motion.div
-            className="absolute inset-x-0 bottom-0 z-30 flex justify-center"
-            style={{
-              opacity: pillOpacity,
-              pointerEvents: pilled ? "auto" : "none",
-            }}
-          >
-            <PillHandle
-              binding={pullBinding}
-              counterScale={pillCounterScale}
-              onOpen={openFromPill}
-              // The pill IS the whole chat while collapsed, so it alone pulses
-              // for a live mic capture (`recording`) — the open-sheet grabber
-              // deliberately does not (the composer glyphs carry that cue).
-              breathing={listening || responding || recording}
-              pilled={pilled}
-            />
-          </motion.div>
-        </motion.fieldset>
+            <motion.div
+              className="absolute inset-x-0 bottom-0 z-30 flex justify-center"
+              style={{
+                opacity: pillOpacity,
+                pointerEvents: pilled ? "auto" : "none",
+              }}
+            >
+              {pilled && responding && turnStatus && !fillHostAtHalf ? (
+                <div
+                  className={cn(
+                    "pointer-events-none absolute bottom-7 max-w-[calc(100vw-2rem)] overflow-hidden whitespace-nowrap",
+                    "[&_[data-slot=marker-content]]:truncate",
+                    WALLPAPER_FLOAT_SHADOW,
+                  )}
+                  data-testid="chat-pill-turn-status"
+                >
+                  <TurnStatus status={turnStatus} showLabel={false} />
+                </div>
+              ) : null}
+              <PillHandle
+                binding={pullBinding}
+                counterScale={pillCounterScale}
+                onOpen={openFromPill}
+                // The pill IS the whole chat while collapsed, so it alone pulses
+                // for a live mic capture (`recording`) — the open-sheet grabber
+                // deliberately does not (the composer glyphs carry that cue).
+                breathing={listening || responding || recording}
+                pilled={pilled}
+                desktopOverlayHost={fillHostAtHalf}
+              />
+            </motion.div>
+          </motion.fieldset>
+        </Card>
       </motion.div>
     </motion.div>
   );

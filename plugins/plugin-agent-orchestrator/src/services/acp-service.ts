@@ -117,6 +117,7 @@ import {
 import { buildSkillsManifest } from "./skill-manifest.js";
 import { SMITHERS_DURABLE_RUN_METADATA_KEY } from "./smithers-task-integration.js";
 import {
+  applyDevCloudAuthorityToSubAgentEnv,
   forwardableSubAgentEnv as applySubAgentEnvPolicy,
   canonicalForwardedEnvKey,
   isCloudKeyForwardingOptIn,
@@ -5348,7 +5349,7 @@ export class AcpService extends Service {
         );
       }
     }
-    return env;
+    return applyDevCloudAuthorityToSubAgentEnv(env);
   }
 
   /**

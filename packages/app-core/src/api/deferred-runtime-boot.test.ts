@@ -9,6 +9,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { saveElizaConfig } from "@elizaos/agent/config/config";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isRuntimeBootDeferred,
@@ -26,6 +27,9 @@ const ENV_KEYS = [
   "ELIZA_STATE_DIR",
   "ELIZA_PERSIST_CONFIG_PATH",
   "ELIZA_CLOUD_PROVISIONED",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZA_DEV_CLOUD_TARGET",
+  "ELIZA_DEV_SOURCE",
   "ELIZA_CHAT_VIA_CLI",
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZAOS_CLOUD_ENABLED",
@@ -46,6 +50,7 @@ const ENV_KEYS = [
 ] as const;
 
 beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
   for (const key of ENV_KEYS) {
     savedEnv[key] = process.env[key];
     delete process.env[key];
@@ -65,6 +70,7 @@ afterEach(() => {
   }
   fs.rmSync(stateDir, { recursive: true, force: true });
   resetDeferredRuntimeBootForTests();
+  resetDevCloudEnvAuthorityForTests();
 });
 
 function pinDeferredBootConfigEnv(): void {
@@ -105,6 +111,34 @@ describe("shouldDeferRuntimeBootUntilOnboarding (fresh-install gate)", () => {
     pinDeferredBootConfigEnv();
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     process.env.STEWARD_AGENT_TOKEN = "steward-token";
+    expect(shouldDeferRuntimeBootUntilOnboarding()).toBe(false);
+  });
+
+  it("keeps staging-default onboarding deferred after late managed-env pollution", () => {
+    pinDeferredBootConfigEnv();
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-default";
+
+    expect(shouldDeferRuntimeBootUntilOnboarding()).toBe(true);
+
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.STEWARD_AGENT_TOKEN = "late-production-token";
+
+    expect(shouldDeferRuntimeBootUntilOnboarding()).toBe(true);
+  });
+
+  it("keeps explicit production boot active after late provisioning env clearing", () => {
+    pinDeferredBootConfigEnv();
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "production";
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZA_API_TOKEN = "launch-api-token";
+
+    expect(shouldDeferRuntimeBootUntilOnboarding()).toBe(false);
+
+    delete process.env.ELIZA_CLOUD_PROVISIONED;
+    delete process.env.ELIZA_API_TOKEN;
+
     expect(shouldDeferRuntimeBootUntilOnboarding()).toBe(false);
   });
 

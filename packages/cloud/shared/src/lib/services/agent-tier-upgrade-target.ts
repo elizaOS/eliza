@@ -149,7 +149,7 @@ function agentConfigKeyAbsent(key: string) {
   return sql`NOT (COALESCE(${agentSandboxes.agent_config}, '{}'::jsonb) ? ${key})`;
 }
 
-export function adoptableUnmarkedTargetWhere(organizationId: string, userId: string) {
+function adoptableUnmarkedTargetBaseWhere(organizationId: string, userId: string) {
   return and(
     eq(agentSandboxes.organization_id, organizationId),
     eq(agentSandboxes.user_id, userId),
@@ -163,6 +163,12 @@ export function adoptableUnmarkedTargetWhere(organizationId: string, userId: str
     // authority itself lives in the receipt table.
     agentConfigKeyAbsent(AGENT_UPGRADED_FROM_KEY),
     agentConfigKeyAbsent(AGENT_PERSONAL_CUTOVER_KEY),
+  );
+}
+
+export function adoptableUnmarkedTargetWhere(organizationId: string, userId: string) {
+  return and(
+    adoptableUnmarkedTargetBaseWhere(organizationId, userId),
     notExists(
       dbWrite
         .select({ id: personalDedicatedUpgradeAuthorities.id })
@@ -249,6 +255,7 @@ async function selectionReceiptMatchesInventory(params: {
     params.receipt.activation_backup_chain,
   );
   if (
+    params.receipt.candidate_count !== params.candidates.length ||
     params.receipt.state_disposition !==
       personalDedicatedStateDisposition(
         params.organizationId,
@@ -321,7 +328,51 @@ export class PersonalDedicatedSelectionRequiredError extends ElizaError {
   override readonly name = "PersonalDedicatedSelectionRequiredError";
 }
 
-async function assertNoPendingAdoptionSelectionInTx(
+/**
+ * A source-owned authority receipt deliberately survives target deletion as an
+ * audit tombstone. Starting a second target behind that receipt would either
+ * rewrite history or collide with the source-unique authority constraint, so
+ * the ordinary mint path must stop before preparing credentials. An explicit
+ * operator reconciliation may retire the tombstone after proving the target
+ * is absent; request-serving code never does that implicitly. Lineage is
+ * organization/source scoped because another same-organization operator may
+ * invoke the row-backed route; the receipt user identifies its target owner,
+ * not a separate lineage that the operator may recreate.
+ */
+export class PersonalDedicatedAuthorityRetainedError extends ElizaError {
+  override readonly name = "PersonalDedicatedAuthorityRetainedError";
+}
+
+async function assertNoRetainedUpgradeAuthorityInTx(
+  tx: DbTransaction,
+  params: Pick<CreateTierUpgradeTargetParams, "organizationId" | "sourceAgentId">,
+): Promise<void> {
+  const [authority] = await tx
+    .select({ id: personalDedicatedUpgradeAuthorities.id })
+    .from(personalDedicatedUpgradeAuthorities)
+    .where(
+      and(
+        eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+      ),
+    )
+    .limit(1);
+  if (authority) {
+    throw new PersonalDedicatedAuthorityRetainedError(
+      "Dedicated activation authority is retained after its target became unavailable",
+      {
+        code: "PERSONAL_DEDICATED_AUTHORITY_RETAINED",
+        context: {
+          organizationId: params.organizationId,
+          sourceAgentId: params.sourceAgentId,
+        },
+      },
+    );
+  }
+}
+
+async function assertNoExistingAdoptionCandidateInTx(
   tx: DbTransaction,
   params: Pick<CreateTierUpgradeTargetParams, "organizationId" | "userId" | "sourceAgentId">,
 ): Promise<void> {
@@ -337,9 +388,23 @@ async function assertNoPendingAdoptionSelectionInTx(
       ),
     )
     .limit(1);
-  if (selection) {
+  const [candidate] = await tx
+    .select({ id: agentSandboxes.id })
+    .from(agentSandboxes)
+    .leftJoin(
+      personalDedicatedUpgradeAuthorities,
+      eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id),
+    )
+    .where(
+      and(
+        adoptableUnmarkedTargetBaseWhere(params.organizationId, params.userId),
+        isNull(personalDedicatedUpgradeAuthorities.id),
+      ),
+    )
+    .limit(1);
+  if (selection || candidate) {
     throw new PersonalDedicatedSelectionRequiredError(
-      "An existing Dedicated target is selected; use the same-row adoption contract",
+      "An existing Dedicated target must use the same-row adoption contract",
       {
         code: "PERSONAL_DEDICATED_SELECTION_REQUIRES_ADOPTION",
         context: {
@@ -1746,7 +1811,8 @@ export async function createTierUpgradeTargetWithProvision(
     );
     const existing = await findLiveTargetInTx(tx, params.organizationId, params.sourceAgentId);
     if (existing) return existing;
-    await assertNoPendingAdoptionSelectionInTx(tx, params);
+    await assertNoRetainedUpgradeAuthorityInTx(tx, params);
+    await assertNoExistingAdoptionCandidateInTx(tx, params);
     // Refuse over-quota upgrades before any credential is minted. The locked
     // insert transaction below re-asserts this authoritatively.
     await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
@@ -1797,7 +1863,8 @@ export async function createTierUpgradeTargetWithProvision(
 
       const existing = await findLiveTargetInTx(tx, params.organizationId, params.sourceAgentId);
       if (existing) return { created: false as const, agent: existing };
-      await assertNoPendingAdoptionSelectionInTx(tx, params);
+      await assertNoRetainedUpgradeAuthorityInTx(tx, params);
+      await assertNoExistingAdoptionCandidateInTx(tx, params);
 
       await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
 

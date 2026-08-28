@@ -56,6 +56,7 @@ import {
   mergeAutonomyEvents,
 } from "./autonomy";
 import { normalizeConversationList } from "./chat-conversation-guards";
+import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
 import {
   applyStreamingTextModification,
   filterRenderableConversationMessages,
@@ -1379,6 +1380,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       // on; reject it before invalidating the current fence, claiming ownership,
       // or painting A's cache under active conversation B.
       if (activeConversationIdRef.current !== convId) return { ok: true };
+      markConversationHistoryApplied(false);
       invalidateConversationMessageFence();
       const pendingPrefetch = prefetchAbortRef.current.get(convId);
       if (pendingPrefetch) {
@@ -1497,6 +1499,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         conversationMessagesRef.current = nextMessages;
         loadedConversationIdRef.current = convId;
         setConversationMessages(nextMessages);
+        markConversationHistoryApplied(true);
         return { ok: true };
       } catch (err) {
         // A newer load aborted this one (fast swipe); the newer load owns the

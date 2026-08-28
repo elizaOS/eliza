@@ -23,11 +23,13 @@ import {
 } from "lucide-react";
 import { memo } from "react";
 import type { NativeToolCallEvent } from "../../../api/client-types-cloud";
+import { cn } from "../../../lib/utils";
 import type {
   SubagentActivity,
   TaskActivityStep,
 } from "../../../state/task-activity-store";
 import { ToolCallEventLog } from "../../tool-events/ToolCallEventLog";
+import { Card } from "../../ui/card";
 import { ChatWidgetShell } from "./chat-widget-shell";
 import { planChecklistPropsEqual } from "./widget-equality";
 
@@ -213,13 +215,16 @@ export const ChecklistWidget = memo(function ChecklistWidget({
 export function SubagentBlock({ agent }: { agent: SubagentActivity }) {
   const currentLine = agent.currentText ?? agent.currentReasoning;
   return (
-    <div
+    <Card
+      surface="transparent"
+      border={agent.parentSessionId ? "standard" : "none"}
+      radius="none"
+      flow="column"
+      gap="tight"
       data-testid="subagent-block"
       data-session-id={agent.sessionId}
       data-status={agent.status}
-      className={`flex flex-col gap-1.5 ${
-        agent.parentSessionId ? "ml-4 border-l border-border pl-3" : ""
-      }`}
+      className={cn(agent.parentSessionId && "ml-4 pl-3")}
     >
       <div className="flex items-center gap-2">
         <StatusDot status={agent.status} />
@@ -247,7 +252,7 @@ export function SubagentBlock({ agent }: { agent: SubagentActivity }) {
           ))}
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 }
 

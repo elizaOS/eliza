@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
+import { resetDevCloudEnvAuthorityForTests } from "./dev-cloud-env-authority.js";
 
 const CLOUD_PROVISIONING_KEYS = [
   "ACME_API_TOKEN",
@@ -13,6 +14,9 @@ const CLOUD_PROVISIONING_KEYS = [
   "ACME_CLOUD_ENABLED",
   "ACME_CLOUD_PROVISIONED",
   "ELIZA_API_TOKEN",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZA_DEV_CLOUD_TARGET",
+  "ELIZA_DEV_SOURCE",
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZA_CLOUD_PROVISIONED",
@@ -26,6 +30,7 @@ describe("isCloudProvisionedContainer", () => {
   );
 
   beforeEach(() => {
+    resetDevCloudEnvAuthorityForTests();
     setBootConfig(savedConfig);
     for (const key of CLOUD_PROVISIONING_KEYS) {
       delete process.env[key];
@@ -38,6 +43,7 @@ describe("isCloudProvisionedContainer", () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    resetDevCloudEnvAuthorityForTests();
   });
 
   it("requires the cloud flag plus at least one provisioning credential", () => {
@@ -82,4 +88,56 @@ describe("isCloudProvisionedContainer", () => {
     expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
     expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
   });
+
+  it.each(["staging-default", "offline"] as const)(
+    "forces %s to stay unprovisioned despite launch-time and late credential pollution",
+    (authority) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZA_CLOUD_PROVISIONED = "1";
+      process.env.STEWARD_AGENT_TOKEN = "inherited-production-token";
+
+      expect(isCloudProvisionedContainer()).toBe(false);
+
+      process.env.ELIZA_API_TOKEN = "late-production-token";
+      process.env.ELIZAOS_CLOUD_ENABLED = "true";
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+
+      expect(isCloudProvisionedContainer()).toBe(false);
+    },
+  );
+
+  it.each(["staging-explicit", "production", "self-hosted"] as const)(
+    "%s cannot become provisioned through late env pollution",
+    (authority) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+
+      expect(isCloudProvisionedContainer()).toBe(false);
+
+      process.env.ELIZA_CLOUD_PROVISIONED = "1";
+      process.env.ELIZAOS_CLOUD_ENABLED = "true";
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-cloud-key";
+      process.env.STEWARD_AGENT_TOKEN = "late-steward-token";
+
+      expect(isCloudProvisionedContainer()).toBe(false);
+    },
+  );
+
+  it.each(["staging-explicit", "production", "self-hosted"] as const)(
+    "%s keeps its launch-time provisioned classification after late clearing",
+    (authority) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZA_CLOUD_PROVISIONED = "1";
+      process.env.ELIZA_API_TOKEN = "launch-api-token";
+
+      expect(isCloudProvisionedContainer()).toBe(true);
+
+      delete process.env.ELIZA_CLOUD_PROVISIONED;
+      delete process.env.ELIZA_API_TOKEN;
+
+      expect(isCloudProvisionedContainer()).toBe(true);
+    },
+  );
 });

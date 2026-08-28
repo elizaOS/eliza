@@ -1,20 +1,24 @@
 /**
- * Composes the plugin-owned Relationships view with the shared shell navigation
- * primitive. The plugin owns its route chrome; the app shell only mounts the
- * registered plugin surface.
+ * Exposes the plugin-owned Relationships body to its registered app-shell
+ * surface. The host owns Character-family page chrome so local and remote
+ * renderers share one header and tab contract.
  */
 
-import { ViewHeader } from "@elizaos/ui/components";
-import type { JSX } from "react";
+import { FramedPage, FramedPageBody } from "@elizaos/ui/layouts";
+import type { JSX, ReactNode } from "react";
 import { RelationshipsView } from "./RelationshipsView.tsx";
 
-export function RelationshipsPage(): JSX.Element {
+export function RelationshipsPage({
+  pageChrome,
+}: {
+  pageChrome?: ReactNode;
+}): JSX.Element {
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-      <ViewHeader title="Relationships" />
-      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+    <FramedPage reserveComposer={false}>
+      {pageChrome}
+      <FramedPageBody>
         <RelationshipsView />
-      </div>
-    </div>
+      </FramedPageBody>
+    </FramedPage>
   );
 }

@@ -11,24 +11,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ManagedCloudPage } from "./ManagedCloudPage";
 
 const mocks = vi.hoisted(() => ({
-  target: "cloud-managed",
   ready: true,
   authenticated: true,
-  appModeHost: false,
   user: { id: "u1", email: "nubs@example.com" } as {
     id: string;
     email: string;
   } | null,
-}));
-
-vi.mock("../app-mode/app-mode", () => ({
-  isAppModeHost: () => mocks.appModeHost,
-}));
-
-vi.mock("../../state", () => ({
-  useAppSelector: (
-    selector: (state: { startupCoordinator: { target: string } }) => unknown,
-  ) => selector({ startupCoordinator: { target: mocks.target } }),
 }));
 
 vi.mock("../lib/use-session-auth", () => ({
@@ -69,6 +57,14 @@ vi.mock("./cloud-route-registry", async () => {
       {
         path: "cloud/billing",
         group: "cloud",
+        surface: {
+          layout: {
+            kind: "workspace",
+            width: "wide",
+            scroll: "view",
+            gutter: "none",
+          },
+        },
         element: () => {
           useSetPageHeader({
             title: "Cloud Billing",
@@ -113,10 +109,8 @@ function renderPage(path: string): void {
 
 afterEach(() => {
   cleanup();
-  mocks.target = "cloud-managed";
   mocks.ready = true;
   mocks.authenticated = true;
-  mocks.appModeHost = false;
   mocks.user = { id: "u1", email: "nubs@example.com" };
 });
 
@@ -132,7 +126,7 @@ describe("ManagedCloudPage", () => {
     expect(screen.getByTestId("cloud-overview")).toBeTruthy();
   });
 
-  it("renders a registered /cloud route inside the app for cloud-managed agents", () => {
+  it("renders a registered /cloud route for an authenticated Cloud account", () => {
     renderPage("/cloud/billing");
     expect(screen.getByTestId("billing-page")).toBeTruthy();
     expect(
@@ -145,24 +139,37 @@ describe("ManagedCloudPage", () => {
       }),
     ).toBeTruthy();
     expect(screen.getAllByTestId("view-header")).toHaveLength(1);
-  });
-
-  it("hides Cloud management for local and VPS agents", () => {
-    mocks.target = "local";
-    renderPage("/cloud/billing");
+    const frame = screen
+      .getByTestId("billing-page")
+      .closest("[data-page-kind]");
+    expect(frame?.getAttribute("data-page-kind")).toBe("workspace");
+    expect(frame?.getAttribute("data-page-width")).toBe("wide");
+    expect(frame?.getAttribute("data-page-gutter")).toBeNull();
     expect(
-      screen.getByText(
-        "Cloud management is available for agents deployed to Eliza Cloud.",
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByTestId("billing-page")).toBeNull();
+      frame
+        ?.querySelector("[data-page-content]")
+        ?.getAttribute("data-page-gutter"),
+    ).toBe("none");
   });
 
-  it("shows Cloud management on the canonical hosted Cloud app before an agent binding is restored", () => {
-    mocks.target = "local";
-    mocks.appModeHost = true;
+  it("does not require a managed agent runtime for an authenticated Cloud account", () => {
     renderPage("/cloud/billing");
     expect(screen.getByTestId("billing-page")).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "Cloud management is available for agents deployed to Eliza Cloud.",
+      ),
+    ).toBeNull();
+  });
+
+  it("shows an accessible dashboard loading state while session auth resolves", () => {
+    mocks.ready = false;
+    renderPage("/cloud");
+
+    expect(
+      screen.getByRole("status", { name: "Loading Cloud dashboard" }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("cloud-overview")).toBeNull();
   });
 
   it("sends signed-out managed agents through eliza.app login with returnTo", () => {

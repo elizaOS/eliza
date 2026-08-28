@@ -26,11 +26,25 @@ describe("cloudSafeMainActivityJava", () => {
     expect(splashInstall).toBeLessThan(bridgeCreation);
   });
 
-  it("does not reference removed push or background-agent services", () => {
+  it("guards push registration without restoring background-agent services", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
+    const bridgeCreation = source.indexOf(
+      "super.onCreate(savedInstanceState);",
+    );
+    const guardedPushRegistration = source.indexOf(
+      "getBridge().registerPlugin(SafePushNotificationsPlugin.class);",
+    );
+
+    expect(guardedPushRegistration).toBeGreaterThan(bridgeCreation);
+    expect(source).not.toContain("GatewayConnectionService");
+  });
+
+  it("omits the push guard when the target strips the push plugin", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      safePushNotifications: false,
+    });
 
     expect(source).not.toContain("SafePushNotificationsPlugin");
-    expect(source).not.toContain("GatewayConnectionService");
   });
 
   it("uses public edge-to-edge APIs without hiding the system bars", () => {
@@ -43,6 +57,20 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("setAppearanceLightNavigationBars(false)");
     expect(source).not.toContain("controller.hide(");
     expect(source).not.toContain("SYSTEM_UI_FLAG_");
+  });
+
+  it("restores the foreground keep-awake contract after lifecycle transitions", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app");
+
+    expect(source).toContain("import android.view.WindowManager;");
+    expect(source).toContain("public void onResume()");
+    expect(source).toContain("onWindowFocusChanged(boolean hasFocus)");
+    expect(source).toContain(
+      "getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);",
+    );
+    expect(
+      source.match(/keepScreenAwake\(\);/g)?.length,
+    ).toBeGreaterThanOrEqual(3);
   });
 
   it("keeps kiosk navigation suppression out of ordinary Cloud builds", () => {
@@ -233,11 +261,19 @@ describe("cloudSafeMainActivityJava", () => {
     );
   });
 
-  it("generates standard speech recognition and system TTS without local transports", () => {
+  it("generates callback-owned system TTS with an idempotent stop path", () => {
     const source = cloudSafePlayVoicePluginJava("ai.elizaos.app");
     const pluginThreadEntry = source.slice(
       source.indexOf("public void startDictation"),
       source.indexOf("private void startDictationOnMainThread"),
+    );
+    const speakEntry = source.slice(
+      source.indexOf("public void speak(PluginCall call)"),
+      source.indexOf("private void speakOnMainThread"),
+    );
+    const playbackLifecycle = source.slice(
+      source.indexOf("private void initializeSpeechOnMainThread"),
+      source.indexOf("private void resolvePermission"),
     );
 
     expect(source).toContain('@CapacitorPlugin(\n    name = "ElizaPlayVoice"');
@@ -247,9 +283,7 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain(
       "runOnMainThread(() -> startDictationOnMainThread(call, language));",
     );
-    expect(source).toContain(
-      "runOnMainThread(this::stopRecognizerOnMainThread);",
-    );
+    expect(source).toContain("stopRecognizerOnMainThread();");
     expect(source).toContain(
       "runOnMainThread(() -> speakOnMainThread(call, text, language));",
     );
@@ -258,7 +292,46 @@ describe("cloudSafeMainActivityJava", () => {
     );
     expect(pluginThreadEntry).not.toContain("recognizer.startListening");
     expect(source).toContain("SpeechRecognizer.createSpeechRecognizer");
-    expect(source).toContain("new TextToSpeech(getContext()");
+    expect(source).toContain("new TextToSpeech(");
+    expect(source).toContain("private SpeechSession activeSpeech;");
+    expect(source).toContain(
+      "mainHandler.post(() -> resolveActiveSpeechOnMainThread(session));",
+    );
+    expect(playbackLifecycle).toContain('"TTS_PLAYBACK_FAILED"');
+    expect(playbackLifecycle).toContain(
+      "@Override public void onStop(String id, boolean interrupted)",
+    );
+    expect(playbackLifecycle).toContain(
+      "if (listenerStatus != TextToSpeech.SUCCESS)",
+    );
+    expect(playbackLifecycle).toContain(
+      "armSpeechWatchdogOnMainThread(session, TTS_START_WATCHDOG_MS);",
+    );
+    expect(playbackLifecycle).toContain("mainHandler.postDelayed(");
+    expect(playbackLifecycle).toContain(
+      "@Override public void onRangeStart(String id, int start, int end, int frame)",
+    );
+    expect(playbackLifecycle).toContain("session.tts.isSpeaking()");
+    expect(playbackLifecycle).toContain("TTS_TERMINAL_GRACE_MS");
+    expect(playbackLifecycle).toContain('"TTS_TIMEOUT"');
+    expect(source).toContain("TTS_START_WATCHDOG_MS = 60_000L");
+    expect(source).toContain("TTS_STALL_POLL_MS = 30_000L");
+    expect(source).toContain("TTS_TERMINAL_GRACE_MS = 10_000L");
+    expect(playbackLifecycle).not.toContain("text.length()");
+    expect(playbackLifecycle).toContain(
+      "mainHandler.removeCallbacks(session.watchdog);",
+    );
+    expect(source).toContain("public void stop(PluginCall call)");
+    expect(source).toContain(
+      'stopActiveSpeechOnMainThread(\n                    "Speech playback was stopped.",\n                    "TTS_STOPPED");',
+    );
+    expect(source).toContain("session.tts.stop();");
+    expect(source).toContain("session.tts.shutdown();");
+    expect(speakEntry).not.toContain("call.resolve()");
+    expect(
+      playbackLifecycle.match(/session\.call\.resolve\(\);/g),
+    ).toHaveLength(1);
+    expect(playbackLifecycle).toContain("session.call.reject(message, code);");
     expect(source).toContain("Manifest.permission.RECORD_AUDIO");
     expect(source).not.toMatch(/LocalSocket|HttpURLConnection|apiKey|bionic/i);
     expect(source).not.toContain("http://");

@@ -4,7 +4,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isCloudProvisionedContainer,
   isLoopbackBindHost,
@@ -20,6 +20,7 @@ import {
   setApiToken,
   stripOptionalHostPort,
 } from "@elizaos/shared";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import { isRegisteredTokenRoleAuthorized } from "./boundary-role-resolver.ts";
 import { sweepExpiredEntries } from "./memory-bounds.ts";
 
@@ -53,6 +54,8 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Browser-Bridge-Companion-Id",
   "X-Eliza-Browser-Companion-Id",
   "X-Eliza-CSRF",
+  "X-ElizaOS-Turn-Correlation",
+  "X-ElizaOS-Turn-Attempt",
   "X-Server-Token",
 ].join(", ");
 
@@ -699,7 +702,7 @@ function extractWsQueryToken(url: URL): string | null {
   return token?.trim() || null;
 }
 
-function extractWebSocketHandshakeToken(
+export function extractWebSocketHandshakeToken(
   request: http.IncomingMessage,
   url: URL,
 ): string | null {
@@ -769,6 +772,56 @@ export function resolveWebSocketUpgradeRejection(
   }
 
   return null;
+}
+
+/**
+ * Resolve a WebSocket-presented bearer that is NOT the static connection key
+ * against the host's session store. Device pairing deliberately mints a
+ * revocable machine-session id as the client bearer (#13985); REST accepts it
+ * through the host bridge's request authorization, and both WebSocket auth
+ * paths (handshake token and in-band `{type:"auth"}`) accept it through this
+ * same seam. Fail-closed: a missing bridge method (hostless agent), an
+ * unavailable session store, a store failure, or an unknown/expired/revoked
+ * session all deny.
+ */
+export async function isWebSocketSessionTokenAuthorized(
+  token: string,
+  runtime: AgentRuntime | null,
+): Promise<boolean> {
+  const resolveSessionToken =
+    getAgentHostBridge().resolveSessionTokenAuthorization;
+  if (typeof resolveSessionToken !== "function") return false;
+  try {
+    const resolved = await resolveSessionToken(token, runtime);
+    return resolved.ok === true;
+  } catch (err) {
+    // error-policy:J4 session-store failure → fail-closed deny; the outage is
+    // surfaced here rather than collapsing silently into a stream of 1008s.
+    logger.warn(
+      `[eliza-api] WebSocket session-token resolution failed; denying: ${err instanceof Error ? err.message : err}`,
+    );
+    return false;
+  }
+}
+
+/**
+ * Upgrade requests whose handshake bearer resolved to an active host session.
+ * The session lookup is async and runs in the upgrade handler, but the
+ * connection handler computes its initial auth state synchronously — the
+ * verdict travels on the request object's identity between the two.
+ */
+const sessionAuthorizedUpgrades = new WeakSet<http.IncomingMessage>();
+
+export function markWebSocketUpgradeSessionAuthorized(
+  request: http.IncomingMessage,
+): void {
+  sessionAuthorizedUpgrades.add(request);
+}
+
+export function isWebSocketUpgradeSessionAuthorized(
+  request: http.IncomingMessage,
+): boolean {
+  return sessionAuthorizedUpgrades.has(request);
 }
 
 // ---------------------------------------------------------------------------

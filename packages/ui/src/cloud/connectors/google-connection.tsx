@@ -26,10 +26,13 @@ export function GoogleConnection() {
   const {
     activeConnections,
     isLoading,
+    isError,
+    errorMessage,
     isConnecting,
     disconnectingId,
     connect: handleConnect,
     disconnect: handleDisconnect,
+    refetch,
   } = useOAuthConnections({ platform: "google", label: "Google" });
 
   const getScopeIcon = (scope: string) => {
@@ -95,7 +98,14 @@ export function GoogleConnection() {
         defaultValue:
           "Connect Gmail, Calendar, and Contacts for AI-powered automation",
       })}
-      status={hasConnections ? "connected" : "disconnected"}
+      status={isError ? "error" : hasConnections ? "connected" : "disconnected"}
+      errorMessage={
+        errorMessage ??
+        t("cloud.google.statusFetchFailed", {
+          defaultValue: "Couldn’t load Google connections.",
+        })
+      }
+      onRetry={() => void refetch()}
       statusBadge={
         <ConnectionConnectedBadge
           label={t("cloud.google.connectedCount", {
@@ -174,7 +184,7 @@ export function GoogleConnection() {
       }
       setupContent={
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <ConnectionCapabilityTile
               icon={<Mail className="size-6 text-accent" aria-hidden />}
               title={t("cloud.google.gmail", { defaultValue: "Gmail" })}

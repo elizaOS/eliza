@@ -108,7 +108,7 @@ describe("development Vite process commands", () => {
           "tsx",
           viteCli,
           "--configLoader",
-          "runner",
+          "bundle",
         ],
       },
     );
@@ -130,7 +130,7 @@ describe("development Vite process commands", () => {
           "tsx",
           viteCli,
           "--configLoader",
-          "runner",
+          "bundle",
           "--force",
           "--port",
           "2138",
@@ -151,7 +151,7 @@ describe("development Vite process commands", () => {
           "tsx",
           viteCli,
           "--configLoader",
-          "runner",
+          "bundle",
           "--port",
           "2138",
         ],
@@ -180,7 +180,7 @@ describe("development Vite process commands", () => {
       "utf8",
     );
     assert.match(directDevSource, /resolveViteCommand\(\{/);
-    assert.match(directDevSource, /viteArgs: process\.argv\.slice\(2\)/);
+    assert.match(directDevSource, /viteArgs: devCloud\.passthroughArgs/);
     assert.match(directDevSource, /spawnMirroredChild\(/);
   });
 

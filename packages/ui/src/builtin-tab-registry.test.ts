@@ -16,9 +16,11 @@ import { describe, expect, it } from "vitest";
 import {
   BUILTIN_TAB_METADATA,
   resolveBuiltinBackgroundPolicy,
+  resolveBuiltinPageLayout,
   resolveBuiltinRoutedViewManifest,
   resolveBuiltinSurfaceManifest,
   resolveBuiltinTabId,
+  resolveBuiltinTabIdForPathAlias,
 } from "./builtin-tab-registry";
 
 describe("builtin-tab-registry: resolveBuiltinSurfaceManifest", () => {
@@ -44,6 +46,7 @@ describe("builtin-tab-registry: resolveBuiltinSurfaceManifest", () => {
 describe("builtin-tab-registry: table integrity", () => {
   it("has unique canonical ids and no id/alias collisions", () => {
     const seen = new Set<string>();
+    const seenPaths = new Set<string>();
     for (const entry of BUILTIN_TAB_METADATA) {
       expect(seen.has(entry.id), `duplicate id ${entry.id}`).toBe(false);
       seen.add(entry.id);
@@ -54,6 +57,13 @@ describe("builtin-tab-registry: table integrity", () => {
         ).toBe(false);
         seen.add(alias);
       }
+      for (const pathAlias of entry.pathAliases ?? []) {
+        expect(
+          seenPaths.has(pathAlias),
+          `path alias ${pathAlias} has more than one owner`,
+        ).toBe(false);
+        seenPaths.add(pathAlias);
+      }
     }
   });
 
@@ -63,6 +73,39 @@ describe("builtin-tab-registry: table integrity", () => {
         expect(resolveBuiltinTabId(alias)).toBe(entry.id);
       }
     }
+  });
+
+  it("classifies every canonical entry and inherits aliases from its owner", () => {
+    for (const entry of BUILTIN_TAB_METADATA) {
+      expect(resolveBuiltinPageLayout(entry.id)).toBe(entry.layout);
+      for (const alias of entry.aliases ?? []) {
+        expect(resolveBuiltinPageLayout(alias)).toBe(entry.layout);
+      }
+    }
+    expect(resolveBuiltinPageLayout("some-plugin-tab")).toBeNull();
+  });
+
+  it("assigns Files canonical shell-owned scrolling for long grids", () => {
+    expect(resolveBuiltinPageLayout("files")).toEqual({
+      kind: "content",
+      width: "standard",
+      scroll: "shell",
+      gutter: "standard",
+    });
+  });
+});
+
+describe("resolveBuiltinTabIdForPathAlias: retired route resolution", () => {
+  it.each(["/documents", "/knowledge"])(
+    "maps %s to the canonical Knowledge tab owner",
+    (pathAlias) => {
+      expect(resolveBuiltinTabIdForPathAlias(pathAlias)).toBe("documents");
+    },
+  );
+
+  it("does not claim canonical or unknown paths", () => {
+    expect(resolveBuiltinTabIdForPathAlias("/character/documents")).toBeNull();
+    expect(resolveBuiltinTabIdForPathAlias("/calendar")).toBeNull();
   });
 });
 
@@ -162,6 +205,7 @@ describe("resolveBuiltinRoutedViewManifest: routed-content manifests only", () =
     expect(manifest?.header).toBe("fullscreen");
     expect(manifest?.isolation).toBe("native-webview");
     expect(manifest?.background).toBe("opaque");
+    expect(manifest?.layout).toBe(resolveBuiltinPageLayout("browser"));
   });
 
   it("excludes the immersive wallpaper surfaces (structural shell branches)", () => {
@@ -203,7 +247,7 @@ describe("App.tsx drift guard: legacy central enumerations removed", () => {
     const fnStart = appSource.indexOf("function renderStaticViewRouterTab(");
     expect(fnStart).toBeGreaterThan(-1);
     const fnBody = appSource.slice(fnStart, fnStart + 900);
-    expect(fnBody).toContain("resolveBuiltinTabId");
+    expect(fnBody).toContain("resolveBuiltinRouteDescriptor");
     expect(fnBody).toContain("buildStaticTabRenderers()");
     // The alias / special-surface if-chain that lived at the tail of the old
     // renderStaticViewRouterTab is gone from its body.

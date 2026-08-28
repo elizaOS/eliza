@@ -8,6 +8,7 @@ import * as React from "react";
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
+import { Spinner } from "../../ui/spinner";
 
 export interface SidebarSearchBarProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
@@ -56,7 +57,7 @@ export const SidebarSearchBar = React.forwardRef<
           {...props}
         />
         {loading ? (
-          <div className="absolute right-3.5  size-3.5 animate-spin rounded-full border-2 border-muted/35 border-t-accent" />
+          <Spinner variant="search" className="absolute right-3.5" />
         ) : hasValue && onClear ? (
           <Button
             variant="ghostMuted"

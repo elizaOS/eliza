@@ -33,6 +33,7 @@ export const financesPlugin: Plugin = {
         "Owner finance dashboard — balance, transactions, recurring charges",
       icon: "CircleDollarSign",
       path: "/finances",
+      responseContext: { primaryContext: "finance" },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
