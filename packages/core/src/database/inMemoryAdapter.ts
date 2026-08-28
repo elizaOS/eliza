@@ -1183,6 +1183,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async getMemories(params: {
 		entityId?: UUID;
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		limit?: number;
 		count?: number;
@@ -1193,6 +1194,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		start?: number;
 		end?: number;
 		roomId?: UUID;
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		textContains?: string;
@@ -1219,6 +1221,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 		if (params.agentId) {
 			all = all.filter((memory) => memory.agentId === params.agentId);
+		}
+		if (params.authorEntityIds) {
+			const authorEntityIds = new Set(params.authorEntityIds);
+			all = all.filter((memory) => authorEntityIds.has(memory.entityId));
+		}
+		if (params.excludeRoomIds) {
+			const excludedRoomIds = new Set(params.excludeRoomIds);
+			all = all.filter((memory) => !excludedRoomIds.has(memory.roomId));
 		}
 		// `entityId` selects the SQL/RLS isolation context; it is not a memory-row
 		// predicate. Process-local storage has no RLS session to establish, so the

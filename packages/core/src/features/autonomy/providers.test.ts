@@ -66,11 +66,12 @@ function historyMemory(
 	entityId: UUID,
 	text: string | undefined,
 	createdAt?: number,
+	roomId = ADMIN_ROOM_ID,
 ): Memory {
 	return {
 		agentId: AGENT_ID,
 		entityId,
-		roomId: ADMIN_ROOM_ID,
+		roomId,
 		createdAt,
 		content: text === undefined ? {} : { text },
 	};
@@ -132,13 +133,8 @@ describe("adminChatProvider", () => {
 		"reports configured admin history with no messages for %s",
 		async (memories) => {
 			const getMemories = vi.fn(async () => memories as Memory[] | null);
-			const getRoomsForParticipant = vi.fn(async () => [
-				ROOM_ID,
-				ADMIN_ROOM_ID,
-			]);
 			const runtime = runtimeWithService(autonomyService(), {
 				getSetting: () => ADMIN_USER_ID,
-				getRoomsForParticipant,
 				getMemories,
 			});
 
@@ -153,14 +149,14 @@ describe("adminChatProvider", () => {
 			expect(getMemories).toHaveBeenCalledWith({
 				agentId: AGENT_ID,
 				entityId: ADMIN_ID,
-				roomId: ADMIN_ROOM_ID,
+				authorEntityIds: [ADMIN_ID, AGENT_ID],
+				excludeRoomIds: [ROOM_ID],
 				limit: 15,
 				orderBy: "createdAt",
 				orderDirection: "desc",
 				unique: false,
 				tableName: "memories",
 			});
-			expect(getRoomsForParticipant).toHaveBeenCalledWith(ADMIN_ID);
 			expect(getMemories).toHaveBeenCalledTimes(1);
 		},
 	);
@@ -179,7 +175,6 @@ describe("adminChatProvider", () => {
 		];
 		const runtime = runtimeWithService(autonomyService(), {
 			getSetting: () => ADMIN_USER_ID,
-			getRoomsForParticipant: async () => [ADMIN_ROOM_ID],
 			getMemories: async () => memories,
 		});
 
@@ -187,7 +182,7 @@ describe("adminChatProvider", () => {
 
 		expect(result.text).toContain("Admin: first admin");
 		expect(result.text).toContain("Agent: agent reply");
-		expect(result.text).toContain("Other: [No text content]");
+		expect(result.text).not.toContain("Other:");
 		expect(result.text).toContain("Admin: third � admin");
 		expect(result.text).toContain('Last admin message: "fourth admin"');
 		expect(result.text?.indexOf("first admin")).toBeLessThan(
@@ -195,29 +190,33 @@ describe("adminChatProvider", () => {
 		);
 		expect(result.data).toMatchObject({
 			adminConfigured: true,
-			messageCount: 6,
+			messageCount: 5,
 			recentMessageCount: 3,
 			lastAdminMessage: "fourth admin",
 			conversationActive: true,
-			historyWindowCount: 6,
+			historyWindowCount: 5,
 		});
 		expect(result.values).toEqual({
 			adminConfigured: true,
-			adminHistoryCount: 6,
-			adminHistoryWindowCount: 6,
+			adminHistoryCount: 5,
+			adminHistoryWindowCount: 5,
 		});
 		vi.useRealTimers();
 	});
 
-	test("scopes and bounds history to the newest fifteen messages", async () => {
+	test("globally orders and bounds history across two admin rooms", async () => {
 		const getMemories = vi.fn(async () =>
 			Array.from({ length: 20 }, (_, index) =>
-				historyMemory(ADMIN_ID, `admin message ${index + 1}`, index + 1),
+				historyMemory(
+					ADMIN_ID,
+					`admin message ${index + 1}`,
+					index + 1,
+					index % 2 === 0 ? ADMIN_ROOM_ID : OTHER_ROOM_ID,
+				),
 			),
 		);
 		const runtime = runtimeWithService(autonomyService(), {
 			getSetting: () => ADMIN_USER_ID,
-			getRoomsForParticipant: async () => [ADMIN_ROOM_ID],
 			getMemories,
 		});
 
@@ -226,7 +225,8 @@ describe("adminChatProvider", () => {
 		expect(getMemories).toHaveBeenCalledWith({
 			agentId: AGENT_ID,
 			entityId: ADMIN_ID,
-			roomId: ADMIN_ROOM_ID,
+			authorEntityIds: [ADMIN_ID, AGENT_ID],
+			excludeRoomIds: [ROOM_ID],
 			limit: 15,
 			orderBy: "createdAt",
 			orderDirection: "desc",
@@ -252,10 +252,44 @@ describe("adminChatProvider", () => {
 		});
 	});
 
+	test("uses one bounded global query even when the admin has 512 rooms", async () => {
+		const getRoomsForParticipant = vi.fn(async () =>
+			Array.from({ length: 512 }, (_, index) =>
+				stringToUuid(`admin-room-${index}`),
+			),
+		);
+		let inFlight = 0;
+		let maxInFlight = 0;
+		const getMemories = vi.fn(async () => {
+			inFlight += 1;
+			maxInFlight = Math.max(maxInFlight, inFlight);
+			await Promise.resolve();
+			inFlight -= 1;
+			return [];
+		});
+		const runtime = runtimeWithService(autonomyService(), {
+			getSetting: () => ADMIN_USER_ID,
+			getRoomsForParticipant,
+			getMemories,
+		});
+
+		await adminChatProvider.get(runtime, message());
+
+		expect(getRoomsForParticipant).not.toHaveBeenCalled();
+		expect(getMemories).toHaveBeenCalledTimes(1);
+		expect(maxInFlight).toBe(1);
+		expect(getMemories).toHaveBeenCalledWith(
+			expect.objectContaining({
+				limit: 15,
+				authorEntityIds: [ADMIN_ID, AGENT_ID],
+				excludeRoomIds: [ROOM_ID],
+			}),
+		);
+	});
+
 	test("marks old history inactive and renders an empty last admin message as N/A", async () => {
 		const runtime = runtimeWithService(autonomyService(), {
 			getSetting: () => ADMIN_USER_ID,
-			getRoomsForParticipant: async () => [ADMIN_ROOM_ID],
 			getMemories: async () => [historyMemory(ADMIN_ID, "", 1)],
 		});
 
@@ -273,7 +307,6 @@ describe("adminChatProvider", () => {
 		const reportError = vi.fn();
 		const runtime = runtimeWithService(autonomyService(), {
 			getSetting: () => ADMIN_USER_ID,
-			getRoomsForParticipant: async () => [ADMIN_ROOM_ID],
 			getMemories: vi.fn().mockRejectedValue(failure),
 			reportError,
 		});

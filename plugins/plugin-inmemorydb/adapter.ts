@@ -1074,6 +1074,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async getMemories(params: {
     entityId?: UUID;
+    authorEntityIds?: UUID[];
     agentId?: UUID;
     limit?: number;
     count?: number;
@@ -1084,6 +1085,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     start?: number;
     end?: number;
     roomId?: UUID;
+    excludeRoomIds?: UUID[];
     worldId?: UUID;
     metadata?: Record<string, unknown>;
     textContains?: string;
@@ -1106,6 +1108,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           ).map((participant) => participant.roomId)
         )
       : null;
+    const authorEntityIds = params.authorEntityIds ? new Set(params.authorEntityIds) : null;
+    const excludedRoomIds = params.excludeRoomIds ? new Set(params.excludeRoomIds) : null;
     const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       // Match plugin-sql entity RLS: entityId is the isolation principal, not
       // an author-row predicate. A principal sees every author's memories in
@@ -1118,7 +1122,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         if (!participantRoomIds.has(m.roomId) && !agentDocument) return false;
       }
       if (params.agentId && m.agentId !== params.agentId) return false;
+      if (authorEntityIds && !authorEntityIds.has(m.entityId as UUID)) return false;
       if (params.roomId && m.roomId !== params.roomId) return false;
+      if (excludedRoomIds?.has(m.roomId as UUID)) return false;
       if (params.worldId && m.worldId !== params.worldId) return false;
       if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
       if (params.start && m.createdAt && m.createdAt < params.start) return false;

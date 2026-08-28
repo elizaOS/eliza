@@ -69,31 +69,28 @@ export const adminChatProvider: Provider = {
 			}
 
 			const adminUUID = stringToUuid(adminUserId);
-			// The autonomous room is an internal invocation context. It does not
-			// include the configured Admin participant, so treating it as the chat
-			// source would either return no history under RLS or tempt adapters to
-			// weaken isolation. Discover only rooms the Admin actually participates
-			// in, then query each room with the Admin principal intact.
-			const adminRoomIds = [
-				...new Set(await runtime.getRoomsForParticipant(adminUUID)),
-			].filter((roomId) => roomId !== autonomousRoomId);
-			const roomMessages = await Promise.all(
-				adminRoomIds.map((roomId) =>
-					runtime.getMemories({
-						agentId: runtime.agentId,
-						entityId: adminUUID,
-						roomId,
-						limit: ADMIN_HISTORY_LIMIT,
-						orderBy: "createdAt",
-						orderDirection: "desc",
-						unique: false,
-						tableName: "memories",
-					}),
-				),
+			// `entityId` establishes the Admin's RLS context across every room they
+			// participate in. Author and internal-room predicates are separate store
+			// filters, applied before ordering/LIMIT, so the privileged prompt gets one
+			// globally newest bounded window without lifetime room enumeration or
+			// leaking third-party group-room turns.
+			const adminMessages = await runtime.getMemories({
+				agentId: runtime.agentId,
+				entityId: adminUUID,
+				authorEntityIds: [adminUUID, runtime.agentId],
+				excludeRoomIds: [autonomousRoomId],
+				limit: ADMIN_HISTORY_LIMIT,
+				orderBy: "createdAt",
+				orderDirection: "desc",
+				unique: false,
+				tableName: "memories",
+			});
+			const trustedAdminMessages = (adminMessages ?? []).filter(
+				(memory) =>
+					memory.entityId === adminUUID || memory.entityId === runtime.agentId,
 			);
-			const adminMessages = roomMessages.flatMap((messages) => messages ?? []);
 
-			if (!adminMessages || adminMessages.length === 0) {
+			if (trustedAdminMessages.length === 0) {
 				return {
 					text: "[ADMIN_CHAT_HISTORY]\nNo recent messages found with admin user.\n[/ADMIN_CHAT_HISTORY]",
 					data: {
@@ -108,7 +105,7 @@ export const adminChatProvider: Provider = {
 			// Adapters should honor the descending query limit. Bound again before
 			// rendering so a non-compliant adapter cannot inflate the model prompt,
 			// then restore chronological order for a readable conversation.
-			const historyMessages = [...adminMessages]
+			const historyMessages = [...trustedAdminMessages]
 				.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
 				.slice(0, ADMIN_HISTORY_LIMIT)
 				.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));

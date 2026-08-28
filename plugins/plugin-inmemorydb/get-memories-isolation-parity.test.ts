@@ -171,6 +171,7 @@ describe("admin history provider adapter parity", () => {
     const adminId = stringToUuid(adminUserId);
     const autonomousRoomId = randomUUID() as UUID;
     const adminRoomId = randomUUID() as UUID;
+    const secondAdminRoomId = randomUUID() as UUID;
     const unrelatedRoomId = randomUUID() as UUID;
     const storage = new MemoryStorage();
     await storage.init();
@@ -179,6 +180,7 @@ describe("admin history provider adapter parity", () => {
 
     await adapter.createRoomParticipants([agentId, autonomyEntityId], autonomousRoomId);
     await adapter.createRoomParticipants([adminId, agentId], adminRoomId);
+    await adapter.createRoomParticipants([adminId, agentId], secondAdminRoomId);
     await adapter.createRoomParticipants([otherEntityId, agentId], unrelatedRoomId);
 
     const adminRoomHistory = Array.from(
@@ -187,13 +189,24 @@ describe("admin history provider adapter parity", () => {
         id: randomUUID() as UUID,
         agentId,
         entityId: index % 2 === 0 ? adminId : agentId,
-        roomId: adminRoomId,
+        roomId: index % 2 === 0 ? adminRoomId : secondAdminRoomId,
         createdAt: index + 1,
         content: { text: `admin room turn ${index + 1}` },
       })
     );
     await adapter.createMemories([
       ...adminRoomHistory.map((memory) => ({ memory, tableName: "memories" })),
+      {
+        memory: {
+          id: randomUUID() as UUID,
+          agentId,
+          entityId: otherEntityId,
+          roomId: adminRoomId,
+          createdAt: 3_000,
+          content: { text: "third-party admin-room turn must stay private" },
+        },
+        tableName: "memories",
+      },
       {
         memory: {
           id: randomUUID() as UUID,
@@ -252,6 +265,7 @@ describe("admin history provider adapter parity", () => {
     expect(result.text).toContain("Agent: admin room turn 20");
     expect(result.text).not.toContain("internal autonomous turn must stay private");
     expect(result.text).not.toContain("unrelated room turn must stay private");
+    expect(result.text).not.toContain("third-party admin-room turn must stay private");
     expect(result.text?.indexOf("admin room turn 6")).toBeLessThan(
       result.text?.indexOf("admin room turn 20") ?? -1
     );
