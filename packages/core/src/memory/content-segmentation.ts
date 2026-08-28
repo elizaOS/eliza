@@ -227,6 +227,26 @@ export function isSegmentedContentMarker(text: string): boolean {
 	return text.startsWith("[elizaos:segmented-content ");
 }
 
+/**
+ * True when a runtime surface exposes the #25140 native content-paging
+ * capability: BOTH the `memoryContentPageCapability` advertisement and the
+ * `getMemoryContentPage` method. Method presence alone is not a capability
+ * claim — a runtime that forwards adapter members but sits on an adapter
+ * without the segment store would otherwise receive page calls it cannot
+ * honor, and a capability advertisement without the method is a broken
+ * adapter. Actions gate paged reads on this predicate, falling back to the
+ * ordinary inline path otherwise.
+ */
+export function hasMemoryContentPageCapability(surface: {
+	getMemoryContentPage?: unknown;
+	memoryContentPageCapability?: unknown;
+}): boolean {
+	return (
+		surface.memoryContentPageCapability === 1 &&
+		typeof surface.getMemoryContentPage === "function"
+	);
+}
+
 /** Clamps a requested page window to the hard page ceiling and UTF-8 boundaries. */
 export function clampPageWindow(
 	totalBytes: number,
