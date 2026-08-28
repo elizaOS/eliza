@@ -10,11 +10,30 @@ import {
   derivePendingActionActivation,
   derivePendingActionOptionReply,
   pendingActionIdFromNotification,
+  persistResolvedPendingActionIds,
+  readPersistedResolvedPendingActionIds,
   reconcilePendingActionNotifications,
   reconcileResolvedPendingActionIds,
+  resolvedPendingActionIdsStorageKey,
 } from "./pending-action-notifications";
 
 const NOW = 2_000_000;
+
+class MemoryStorage {
+  private readonly values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+}
 
 function pending(
   overrides: Partial<PendingUserAction> = {},
@@ -125,6 +144,66 @@ describe("pending-action notification projection", () => {
         resolvedActionIds,
       ),
     ).toEqual([]);
+  });
+
+  it("keeps canonical resolution terminal across a component remount", () => {
+    const storage = new MemoryStorage();
+    const key = resolvedPendingActionIdsStorageKey(
+      "owner-1",
+      "https://bot.example.test",
+    );
+    const unresolved = pending();
+    const persisted = persistedApproval();
+    persisted.readAt = null;
+    const mountedResolvedIds = reconcileResolvedPendingActionIds(
+      [unresolved],
+      [],
+      new Set(),
+    );
+    persistResolvedPendingActionIds(storage, key, mountedResolvedIds);
+
+    const remounted = readPersistedResolvedPendingActionIds(storage, key);
+    expect(remounted.status).toBe("valid");
+    if (remounted.status !== "valid") {
+      throw new Error("Expected a durable resolution fence");
+    }
+    expect(
+      reconcilePendingActionNotifications([persisted], [], NOW, remounted.ids),
+    ).toEqual([]);
+  });
+
+  it("clears a durable tombstone when the canonical action reappears", () => {
+    const next = reconcileResolvedPendingActionIds(
+      [],
+      [pending()],
+      new Set(["request-1"]),
+    );
+    expect([...next]).toEqual([]);
+  });
+
+  it("isolates durable resolution fences by owner and authority", () => {
+    expect(
+      resolvedPendingActionIdsStorageKey("owner-1", "https://bot.example.test"),
+    ).not.toBe(
+      resolvedPendingActionIdsStorageKey("owner-2", "https://bot.example.test"),
+    );
+    expect(
+      resolvedPendingActionIdsStorageKey("owner-1", "https://bot.example.test"),
+    ).not.toBe(
+      resolvedPendingActionIdsStorageKey(
+        "owner-1",
+        "https://other.example.test",
+      ),
+    );
+  });
+
+  it("reports malformed lifecycle storage explicitly before repair", () => {
+    const storage = new MemoryStorage();
+    const key = resolvedPendingActionIdsStorageKey("owner-1", "");
+    storage.setItem(key, '{"not":"an id list"}');
+    expect(readPersistedResolvedPendingActionIds(storage, key)).toEqual({
+      status: "invalid",
+    });
   });
 
   it("preserves both runtime and legacy unread approval rows", () => {

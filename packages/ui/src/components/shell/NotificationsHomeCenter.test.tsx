@@ -97,6 +97,7 @@ import {
   notificationPullOvershootOffset,
   PULL_TRAVEL_PX,
 } from "./notification-shade-presentation";
+import { resolvedPendingActionIdsStorageKey } from "./pending-action-notifications";
 
 let seq = 0;
 let restoreMatchMediaForTest: (() => void) | null = null;
@@ -271,6 +272,7 @@ function setOverflowingListGeometry(list: HTMLElement): void {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  window.localStorage.clear();
   seq = 0;
   vi.mocked(client.getBaseUrl).mockReset().mockReturnValue("");
   vi.mocked(client.listPendingActions)
@@ -289,6 +291,7 @@ afterEach(() => {
   navigateDeepLink.mockClear();
   dispatchChatOpen.mockClear();
   dispatchChatPrefill.mockClear();
+  window.localStorage.clear();
 });
 
 describe("orderDashboardNotifications", () => {
@@ -1123,6 +1126,58 @@ describe("NotificationsHomeCenter", () => {
     });
     expect(client.removeNotification).not.toHaveBeenCalled();
     expect(screen.getByText("Send the weekly report?")).toBeTruthy();
+  });
+
+  it("keeps canonical resolution terminal after the notification center remounts", async () => {
+    const pendingAction: PendingUserAction = {
+      id: "request-remount",
+      kind: "approval",
+      source: "lifeops",
+      title: "Approve the durable transition?",
+      createdAt: 1_700_000_000_000,
+    };
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    __ingestNotificationForTests(
+      makeNotification({
+        title: "Approval needed",
+        category: "approval",
+        source: "lifeops",
+        groupKey: "approval:request-remount",
+        data: { requestId: "request-remount" },
+        readAt: null,
+      }),
+    );
+    vi.mocked(client.listPendingActions)
+      .mockResolvedValueOnce({ pending: [pendingAction] })
+      .mockResolvedValue({ pending: [] });
+
+    const firstMount = renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Approve the durable transition?")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(20_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+    expect(
+      window.localStorage.getItem(
+        resolvedPendingActionIdsStorageKey(AUTHENTICATED_OWNER.identity.id, ""),
+      ),
+    ).toContain("request-remount");
+
+    firstMount.unmount();
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
   });
 
   it("acting on a row removes it; surviving rows keep their stable order", () => {
