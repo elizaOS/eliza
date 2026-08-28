@@ -192,11 +192,13 @@ export const agentBackupAdmissionClaimShards = pgTable(
     cycle_observed_at: timestamp("cycle_observed_at", { withTimezone: true }),
     cycle_max_cohort: bigint("cycle_max_cohort", { mode: "bigint" }),
     cycle_max_ordinal: integer("cycle_max_ordinal"),
+    /** Opaque work-row UUID tie-breaker; the source identity, not this ID, owns the shard. */
     cycle_max_id: uuid("cycle_max_id"),
     cycle_aging_interval_ms: integer("cycle_aging_interval_ms"),
     priority_pass: smallint("priority_pass"),
     scan_cursor_cohort: bigint("scan_cursor_cohort", { mode: "bigint" }),
     scan_cursor_ordinal: integer("scan_cursor_ordinal"),
+    /** Opaque work-row UUID tie-breaker within this `(work_kind, shard_id)` authority. */
     scan_cursor_id: uuid("scan_cursor_id"),
     last_admitted_work_id: uuid("last_admitted_work_id"),
     last_admission_proof_turn: bigint("last_admission_proof_turn", { mode: "bigint" }),
@@ -237,7 +239,6 @@ export const agentBackupAdmissionClaimShards = pgTable(
         AND ${table.cycle_max_cohort} >= 0
         AND ${table.cycle_max_ordinal} >= 0
         AND ${table.cycle_max_id} IS NOT NULL
-        AND agent_backup_admission_expected_shard(${table.cycle_max_id}) = ${table.shard_id}
         AND ${table.cycle_aging_interval_ms} BETWEEN 60000 AND 86400000
         AND (
           (${table.work_kind} = 'schedule_capture' AND ${table.priority_pass} BETWEEN 0 AND 3)
@@ -251,7 +252,6 @@ export const agentBackupAdmissionClaimShards = pgTable(
           OR (${table.scan_cursor_cohort} BETWEEN 0 AND ${table.cycle_max_cohort}
             AND ${table.scan_cursor_ordinal} >= 0
             AND ${table.scan_cursor_id} IS NOT NULL
-            AND agent_backup_admission_expected_shard(${table.scan_cursor_id}) = ${table.shard_id}
             AND (${table.scan_cursor_cohort}, ${table.scan_cursor_ordinal}, ${table.scan_cursor_id})
               <= (${table.cycle_max_cohort}, ${table.cycle_max_ordinal}, ${table.cycle_max_id}))
         )
