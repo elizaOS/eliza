@@ -442,6 +442,94 @@ describe("TrajectoriesService detail reader consumes the persisted manifest ledg
 		await harness.adapter.close();
 	}, 30_000);
 
+	it("carriers whose absence reconstruction itself fails surface unavailable, and the read never throws", async () => {
+		const harness = await makeHarness();
+		// Writer whose cache writes throw (no head is ever published) AND
+		// whose persisted carriers make the reader-side derivation throw:
+		// two ReadViews of the same ref with CONFLICTING revisions hit
+		// CONTENT_MANIFEST_REVISION_CONFLICT inside
+		// deriveCompactionContentManifest — the same failure the publisher
+		// swallowed. The reader's absence reconstruction must degrade to
+		// {unavailable:true}, never propagate the throw out of
+		// getTrajectoryDetail and never report a fabricated empty manifest.
+		const runtimeAdapter = Object.create(
+			harness.runtimeAdapter,
+		) as typeof harness.runtimeAdapter & {
+			setCaches: (
+				entries: Array<{ key: string; value: unknown }>,
+			) => Promise<boolean>;
+			compareAndSwapCache: (
+				key: string,
+				expectedRevision: number | null,
+				nextRevision: number,
+				value: unknown,
+			) => Promise<boolean>;
+		};
+		const failWrite = async (): Promise<boolean> => {
+			throw new Error("simulated ledger write failure");
+		};
+		runtimeAdapter.setCaches = failWrite;
+		runtimeAdapter.compareAndSwapCache = failWrite;
+		const writer = await harness.makeService(runtimeAdapter);
+
+		const trajectoryId = await writer.startTrajectory(AGENT_ID, {
+			source: "test",
+		});
+		const stepId = writer.startStep(trajectoryId, {
+			timestamp: Date.now(),
+			agentBalance: 0,
+			agentPoints: 0,
+			agentPnL: 0,
+			openPositions: 0,
+		});
+		for (const revision of ["r1", "r2"]) {
+			writer.logSemanticStage({
+				stepId,
+				stage: {
+					stageId: `stage-conflict-${revision}`,
+					kind: "tool",
+					startedAt: Date.now(),
+					endedAt: Date.now() + 1,
+					latencyMs: 1,
+					tool: {
+						name: "FILE",
+						args: { path: "conflicting.txt" },
+						result: {
+							data: {
+								reference: {
+									kind: "file",
+									ref: "conflicting.txt",
+									revision,
+								},
+								slice: {
+									range: { unit: "byte", start: 0, end: 10, total: 10 },
+									hasPrevious: false,
+									hasMore: false,
+									completeness: "complete",
+									revision,
+									sliceSha256: sha256Hex(`conflicting:${revision}`),
+								},
+							},
+							success: true,
+							durationMs: 1,
+						},
+					},
+				},
+			});
+		}
+		await writer.endTrajectory(stepId, "completed");
+		await writer.stop();
+
+		const reader = await harness.makeService();
+		const detail = await reader.getTrajectoryDetail(trajectoryId);
+		expect(detail).not.toBeNull();
+		expect(
+			(detail?.metadata as Record<string, unknown>)?.contentManifest,
+		).toEqual({ unavailable: true });
+		await reader.stop();
+		await harness.adapter.close();
+	}, 30_000);
+
 	it("a damaged ledger surfaces the explicit unavailable marker, not partial data", async () => {
 		const harness = await makeHarness();
 		const writer = await harness.makeService();
