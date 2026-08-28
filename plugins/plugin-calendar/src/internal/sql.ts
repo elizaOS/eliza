@@ -114,7 +114,7 @@ async function getSqlRaw(): Promise<(query: string) => RawSqlQuery> {
 }
 
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
-  const db = runtime.adapter.db as RuntimeDb | undefined;
+  const db = runtime.adapter?.db as RuntimeDb | undefined;
   if (!db || typeof db.execute !== "function") {
     throw new Error("runtime database adapter unavailable");
   }
