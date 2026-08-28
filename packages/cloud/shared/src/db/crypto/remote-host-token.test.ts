@@ -39,13 +39,23 @@ describe("generateRemoteHostToken", () => {
     expect(seen.size).toBe(100);
   });
 
-  test("entropy covers the full 32-byte range rather than a fixed prefix", () => {
-    const bodies = new Set<string>();
-    for (let i = 0; i < 50; i += 1) {
-      bodies.add(generateRemoteHostToken().slice("rhost_v1_".length));
+  test("every decoded byte position varies across mints", () => {
+    // Decode base64url body back to 32 raw bytes and verify that every
+    // position carries at least two distinct values across a large sample.
+    // A truncation or prefix-only mutation (e.g. 32→4 random bytes) would
+    // leave positions 4–31 invariant and fail this assertion.
+    const seen = Array.from({ length: 32 }, () => new Set<number>());
+    for (let i = 0; i < 256; i += 1) {
+      const b64 = generateRemoteHostToken()
+        .slice("rhost_v1_".length)
+        .replaceAll("-", "+")
+        .replaceAll("_", "/")
+        .padEnd(44, "=");
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      expect(bytes.length).toBe(32);
+      bytes.forEach((b, idx) => seen[idx].add(b));
     }
-    // 43 base64url chars encode 256 bits; near-identical mints would collapse.
-    expect(bodies.size).toBeGreaterThan(1);
+    seen.forEach((s) => expect(s.size).toBeGreaterThan(1));
   });
 });
 
