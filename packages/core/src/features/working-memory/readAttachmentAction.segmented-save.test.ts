@@ -275,9 +275,14 @@ describe("native-paging dispatch gate (#25140 R4)", () => {
 			async () => [] as Memory[],
 			undefined,
 		);
-		expect(result).toBeTruthy();
 		// The method existed on the runtime but was NOT called: the capability
-		// gate, not method presence, decides dispatch.
+		// gate, not method presence, decides dispatch. The marker must surface
+		// as an explicit failure, never as served content.
+		expect(result).toBeTruthy();
+		expect(result?.success).toBe(false);
+		expect((result?.data as { error: string } | undefined)?.error).toBe(
+			"segmented_read_unavailable",
+		);
 		expect(
 			(runtime.getMemoryContentPage as unknown as ReturnType<typeof vi.fn>).mock
 				.calls,
@@ -288,6 +293,7 @@ describe("native-paging dispatch gate (#25140 R4)", () => {
 		const { messageAction } = await import(
 			"../advanced-capabilities/actions/message.ts"
 		);
+		const endpoint = fakePageEndpoint();
 		const runtime = createMockRuntime({
 			agentId: AGENT_ID,
 			getMemoryById: async () =>
@@ -302,7 +308,7 @@ describe("native-paging dispatch gate (#25140 R4)", () => {
 				}) as Memory,
 			getParticipantsForRoom: async () => [REQUESTER_ID],
 			// Method WITHOUT the capability advertisement.
-			getMemoryContentPage: fakePageEndpoint().getMemoryContentPage,
+			getMemoryContentPage: endpoint.getMemoryContentPage,
 		} as never);
 		const result = await messageAction.handler(
 			runtime,
@@ -318,10 +324,125 @@ describe("native-paging dispatch gate (#25140 R4)", () => {
 			async () => [] as Memory[],
 			undefined,
 		);
+		// No capability advertisement: never dispatched, and the internal
+		// marker descriptor surfaces as an explicit failure, never as text.
 		expect(result).toBeTruthy();
-		expect(
-			(runtime.getMemoryContentPage as unknown as ReturnType<typeof vi.fn>).mock
-				.calls,
-		).toHaveLength(0);
+		expect(result?.success).toBe(false);
+		expect((result?.data as { error?: string } | undefined)?.error).toBe(
+			"MESSAGE_MEMORY_SEGMENTED_READ_UNAVAILABLE",
+		);
+		expect(endpoint.getMemoryContentPage.mock.calls).toHaveLength(0);
+	});
+});
+
+/**
+ * #25140 R4 integrity fence: segmented save reassembly must validate every
+ * page against the record's published descriptor (revision, totals, window
+ * coherence, source digest) and the final whole against the descriptor
+ * digest. A page store that serves a different generation, an inconsistent
+ * window, or tampered text must fail the save explicitly with zero document
+ * writes — never persist a mismatched or partial source as a document.
+ */
+describe("segmented save reassembly integrity fence (#25140 R4)", () => {
+	function capableRuntimeWithPages(
+		pages: Array<Record<string, unknown> | undefined>,
+	) {
+		const base = runtimeWithRecords(baseRuntime(true), MEMORY_ID);
+		let call = 0;
+		const runtime = {
+			...base,
+			getMemoryContentPage: async () => {
+				const page = pages[call];
+				call += 1;
+				return page ? { ...page } : undefined;
+			},
+		} as unknown as IAgentRuntime;
+		return documentSavingRuntime(runtime);
+	}
+
+	it("rejects a page served from a different generation than the marker descriptor", async () => {
+		const sourceBytes = Buffer.from(SOURCE, "utf8");
+		const { runtime, saved } = capableRuntimeWithPages([
+			{
+				text: SOURCE,
+				start: 0,
+				end: sourceBytes.length,
+				total: PLAN.descriptor.totalBytes,
+				sourceSha256: PLAN.descriptor.totalSha256,
+				revision: `${PLAN.descriptor.revision}-newer`,
+				completeness: "complete",
+			},
+		]);
+		const result = await save(runtime);
+		expect(result.success).toBe(false);
+		expect((result.data as { error: string }).error).toBe(
+			"ATTACHMENT_SAVE_REASSEMBLY_INCONSISTENT",
+		);
+		expect(saved).toHaveLength(0);
+	});
+
+	it("rejects a page window that disagrees with the requested offset and totals", async () => {
+		const { runtime, saved } = capableRuntimeWithPages([
+			{
+				text: SOURCE.slice(0, 10),
+				start: 4,
+				end: 14,
+				total: PLAN.descriptor.totalBytes,
+				sourceSha256: PLAN.descriptor.totalSha256,
+				revision: PLAN.descriptor.revision,
+				completeness: "partial-recoverable",
+			},
+		]);
+		const result = await save(runtime);
+		expect(result.success).toBe(false);
+		expect((result.data as { error: string }).error).toBe(
+			"ATTACHMENT_SAVE_REASSEMBLY_INCONSISTENT",
+		);
+		expect(saved).toHaveLength(0);
+	});
+
+	it("rejects reassembled text whose digest does not match the descriptor", async () => {
+		// Serve coherent windows of TAMPERED text: correct shape, wrong bytes.
+		const tampered = `${SOURCE.slice(0, -1)}X`;
+		const sourceBytes = Buffer.from(tampered, "utf8");
+		const { runtime, saved } = capableRuntimeWithPages([
+			{
+				text: tampered,
+				start: 0,
+				end: sourceBytes.length,
+				total: PLAN.descriptor.totalBytes,
+				sourceSha256: PLAN.descriptor.totalSha256,
+				revision: PLAN.descriptor.revision,
+				completeness: "complete",
+			},
+		]);
+		const result = await save(runtime);
+		expect(result.success).toBe(false);
+		expect((result.data as { error: string }).error).toBe(
+			"ATTACHMENT_SAVE_REASSEMBLY_DIGEST_MISMATCH",
+		);
+		expect(saved).toHaveLength(0);
+	});
+
+	it("fences the first page to the marker's revision (stale-generation store throws)", async () => {
+		const base = runtimeWithRecords(baseRuntime(true), MEMORY_ID);
+		const seenRevisions: Array<string | undefined> = [];
+		const runtime = {
+			...base,
+			getMemoryContentPage: async (params: { expectedRevision?: string }) => {
+				seenRevisions.push(params.expectedRevision);
+				const { ElizaError } = await import("../../errors.ts");
+				throw new ElizaError(
+					"The stored content changed before this page could be read.",
+					{ code: "MEMORY_CONTENT_STALE_REVISION" },
+				);
+			},
+		} as unknown as IAgentRuntime;
+		const { runtime: withDocs, saved } = documentSavingRuntime(runtime);
+		const result = await save(withDocs);
+		expect(result.success).toBe(false);
+		// The FIRST page request already carried the descriptor revision.
+		expect(seenRevisions).toEqual([PLAN.descriptor.revision]);
+		expect(saved).toHaveLength(0);
 	});
 });
