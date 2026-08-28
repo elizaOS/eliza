@@ -294,6 +294,16 @@ test.describe("views deep UX audit capture", () => {
       });
       const sidebar = await openWalletSidebar(page);
       await screenshot(page, `${viewport.name}-wallet-overview`);
+      const detailsButton = sidebar.getByRole("button", {
+        name: "Show wallet details",
+      });
+      if (await detailsButton.isVisible().catch(() => false)) {
+        await detailsButton.click();
+        await screenshot(page, `${viewport.name}-wallet-details`);
+        await sidebar
+          .getByRole("button", { name: "Hide wallet details" })
+          .click();
+      }
       for (const tab of ["tokens", "defi", "nfts"] as const) {
         const tabButton = sidebar.getByTestId(`wallet-tab-${tab}`);
         if (await tabButton.isVisible().catch(() => false)) {
@@ -302,7 +312,26 @@ test.describe("views deep UX audit capture", () => {
           await screenshot(page, `${viewport.name}-wallet-${tab}`);
         }
       }
+      const tokensTab = sidebar.getByTestId("wallet-tab-tokens");
+      if (await tokensTab.isVisible().catch(() => false)) {
+        await tokensTab.click();
+        await page.waitForTimeout(300);
+        const tokenMenu = sidebar
+          .getByRole("button", { name: /^Manage / })
+          .first();
+        if (await tokenMenu.isVisible().catch(() => false)) {
+          await tokenMenu.click();
+          await screenshot(page, `${viewport.name}-wallet-token-actions`);
+          await page.keyboard.press("Escape");
+        }
+      }
       for (const insight of ["Activity", "Markets"] as const) {
+        const disclosure = page.getByRole("button", {
+          name: "Show activity and markets",
+        });
+        if (await disclosure.isVisible().catch(() => false)) {
+          await disclosure.click();
+        }
         const tabButton = page.getByRole("tab", { name: insight });
         if (await tabButton.isVisible().catch(() => false)) {
           await tabButton.click();

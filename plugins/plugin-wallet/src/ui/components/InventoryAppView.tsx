@@ -22,7 +22,16 @@ import { Avatar, AvatarFallback, AvatarImage, Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client, isApiError } from "@elizaos/ui/api";
 import { shellLocalStorage } from "@elizaos/ui/bridge";
-import { ListSkeleton } from "@elizaos/ui/components";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  ListSkeleton,
+} from "@elizaos/ui/components";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import {
   type ActivityEvent,
@@ -41,11 +50,13 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   CheckCircle2,
+  ChevronDown,
   Copy,
   EyeOff,
   Image as ImageIcon,
   Layers3,
   type LucideIcon,
+  MoreHorizontal,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -1104,28 +1115,6 @@ function WalletRailAddress({
   );
 }
 
-function WalletConnectionChip({
-  label,
-  ready,
-}: {
-  label: string;
-  ready: boolean;
-}) {
-  const StatusIcon = ready ? CheckCircle2 : AlertTriangle;
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 text-[0.68rem] font-medium text-muted"
-      title={`${label} ${ready ? "RPC ready" : "needs RPC"}`}
-    >
-      <StatusIcon
-        className={cn("size-3.5", ready ? "text-muted-strong" : "text-warn")}
-        aria-hidden
-      />
-      {label}
-    </span>
-  );
-}
-
 function WalletAddressCluster({
   addresses,
 }: {
@@ -1193,6 +1182,8 @@ function WalletRailRpcButton({
     walletConfig?.selectedRpcProviders?.solana,
     "solana",
   );
+  const evmStatus = walletConfig?.evmBalanceReady ? "ready" : "needs RPC";
+  const solanaStatus = walletConfig?.solanaBalanceReady ? "ready" : "needs RPC";
 
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "account-rpc-settings",
@@ -1208,8 +1199,9 @@ function WalletRailRpcButton({
       size="sm"
       ref={ref}
       type="button"
+      className="self-start sm:self-auto"
       onClick={onOpenSettings}
-      title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
+      title={`Network settings: EVM ${evmStatus} via ${evmProvider}; Solana ${solanaStatus} via ${solanaProvider}`}
       aria-label="Open network settings"
       {...agentProps}
     >
@@ -1230,11 +1222,10 @@ function WalletRailAccount({
   walletConfig: WalletConfigStatus | null;
   onOpenSettings: () => void;
 }) {
-  const evmReady = Boolean(walletConfig?.evmBalanceReady);
-  const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
+    <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
+      <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-xs-tight font-medium text-muted">
             Portfolio balance
@@ -1244,18 +1235,35 @@ function WalletRailAccount({
               {portfolioValueUsd === null ? "—" : formatUsd(portfolioValueUsd)}
             </div>
           </div>
-          <div className="mt-2 flex flex-wrap gap-3">
-            <WalletConnectionChip label="EVM" ready={evmReady} />
-            <WalletConnectionChip label="Solana" ready={solanaReady} />
-          </div>
         </div>
-        <WalletRailRpcButton
-          walletConfig={walletConfig}
-          onOpenSettings={onOpenSettings}
-        />
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghostMuted"
+            size="compact"
+            type="button"
+            aria-label={`${detailsOpen ? "Hide" : "Show"} wallet details`}
+          >
+            Details
+            <ChevronDown
+              className={cn(
+                "size-3.5 transition-transform",
+                detailsOpen && "rotate-180",
+              )}
+              aria-hidden
+            />
+          </Button>
+        </CollapsibleTrigger>
       </div>
-      <WalletAddressCluster addresses={addresses} />
-    </div>
+      <CollapsibleContent>
+        <div className="mt-4 flex flex-col gap-2 border-t border-border/70 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <WalletAddressCluster addresses={addresses} />
+          <WalletRailRpcButton
+            walletConfig={walletConfig}
+            onOpenSettings={onOpenSettings}
+          />
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -1312,13 +1320,13 @@ function TokenRailRowImpl({
   onHideToken: (row: TokenRow) => void;
 }) {
   const slug = tokenAgentSlug(row);
-  const { ref: hideRef, agentProps: hideAgentProps } =
+  const { ref: manageRef, agentProps: manageAgentProps } =
     useAgentElement<HTMLButtonElement>({
-      id: `token-${slug}-hide`,
+      id: `token-${slug}-manage`,
       role: "button",
-      label: `Hide ${row.symbol}`,
+      label: `Manage ${row.symbol}`,
       group: "token-list",
-      description: `Hide the ${row.symbol} token from the list`,
+      description: `Open management actions for the ${row.symbol} token`,
     });
   return (
     <div
@@ -1341,20 +1349,31 @@ function TokenRailRowImpl({
           </div>
           <TokenPerformance row={row} profile={profile} />
         </div>
-        <Button
-          variant="ghostMuted"
-          size="icon"
-          ref={hideRef}
-          type="button"
-          className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-          onClick={() => onHideToken(row)}
-          aria-label={`Hide ${row.symbol}`}
-          title={`Hide ${row.symbol}`}
-          data-testid={`wallet-token-hide-${slug}`}
-          {...hideAgentProps}
-        >
-          <EyeOff className="size-3.5" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghostMuted"
+              size="icon"
+              ref={manageRef}
+              type="button"
+              aria-label={`Manage ${row.symbol}`}
+              title={`Manage ${row.symbol}`}
+              data-testid={`wallet-token-manage-${slug}`}
+              {...manageAgentProps}
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem
+              onSelect={() => onHideToken(row)}
+              data-testid={`wallet-token-hide-${slug}`}
+            >
+              <EyeOff className="mr-2 size-3.5" />
+              Hide token
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
@@ -1819,6 +1838,7 @@ function WalletInsightsPanel({
   marketOverview: WalletMarketOverviewResponse | null;
   marketOverviewLoading: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const tabs: Array<{
     id: WalletInsightTab;
     label: string;
@@ -1828,50 +1848,71 @@ function WalletInsightsPanel({
   ];
 
   return (
-    <section
-      aria-labelledby="wallet-insights-title"
-      className="overflow-hidden border-t border-border/70"
-    >
-      <h2 id="wallet-insights-title" className="sr-only">
-        Wallet insights
-      </h2>
-      <div className="py-2">
-        <div
-          className="flex items-center gap-1"
-          role="tablist"
-          aria-label="Wallet insights"
-        >
-          {tabs.map((tab) => (
-            <WalletInsightTabButton
-              key={tab.id}
-              tab={tab}
-              active={activeTab === tab.id}
-              onSelect={onSelectTab}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div
-        id={`wallet-insight-panel-${activeTab}`}
-        role="tabpanel"
-        aria-labelledby={`wallet-insight-tab-${activeTab}`}
-        className="border-t border-border/70"
+    <Collapsible open={open} onOpenChange={setOpen} asChild>
+      <section
+        aria-labelledby="wallet-insights-title"
+        className="overflow-hidden border-t border-border/70"
       >
-        {activeTab === "activity" ? (
-          <ActivityLog profile={profile} events={events} />
-        ) : (
-          <div className="py-4 sm:py-5">
-            <PortfolioMoversPanel
-              rows={rows}
-              profile={profile}
-              marketOverview={marketOverview}
-              loading={marketOverviewLoading}
+        <h2 id="wallet-insights-title" className="sr-only">
+          Wallet insights
+        </h2>
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghostMuted"
+            size="default"
+            align="between"
+            className="w-full px-0 py-3"
+            aria-label={`${open ? "Hide" : "Show"} activity and markets`}
+          >
+            <span className="font-medium text-txt">Activity & markets</span>
+            <ChevronDown
+              className={cn(
+                "size-4 transition-transform",
+                open && "rotate-180",
+              )}
+              aria-hidden
             />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border-t border-border/70 py-2">
+            <div
+              className="flex items-center gap-1"
+              role="tablist"
+              aria-label="Wallet insights"
+            >
+              {tabs.map((tab) => (
+                <WalletInsightTabButton
+                  key={tab.id}
+                  tab={tab}
+                  active={activeTab === tab.id}
+                  onSelect={onSelectTab}
+                />
+              ))}
+            </div>
           </div>
-        )}
-      </div>
-    </section>
+          <div
+            id={`wallet-insight-panel-${activeTab}`}
+            role="tabpanel"
+            aria-labelledby={`wallet-insight-tab-${activeTab}`}
+            className="border-t border-border/70"
+          >
+            {activeTab === "activity" ? (
+              <ActivityLog profile={profile} events={events} />
+            ) : (
+              <div className="py-4 sm:py-5">
+                <PortfolioMoversPanel
+                  rows={rows}
+                  profile={profile}
+                  marketOverview={marketOverview}
+                  loading={marketOverviewLoading}
+                />
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </section>
+    </Collapsible>
   );
 }
 

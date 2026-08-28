@@ -57,158 +57,253 @@ const bridgeMocks = vi.hoisted(() => ({
 // The plugin vitest config collapses `@elizaos/ui/<subpath>` (incl. `/bridge`)
 // onto this single mock, so `shellLocalStorage` lives here alongside the rest of
 // the `@elizaos/ui` surface the view imports.
-vi.mock("@elizaos/ui", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
-  shellLocalStorage: {
-    setItem: bridgeMocks.shellSetItem,
-    removeItem: (key: string) => globalThis.window.localStorage.removeItem(key),
-    clear: () => globalThis.window.localStorage.clear(),
-  },
-  client: walletClient,
-  // Mirrors the real guard's contract (an ApiError carries a numeric
-  // `status`); tests reject fetches with Object.assign(new Error(body),
-  // { status }) to model the client's error shape at the network boundary.
-  isApiError: (value: unknown): boolean =>
-    value instanceof Error &&
-    typeof (value as { status?: unknown }).status === "number",
-  Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", { type: "button", ...props }),
-  Avatar: (props: React.HTMLAttributes<HTMLSpanElement>) =>
-    React.createElement("span", props),
-  AvatarImage: (props: React.ImgHTMLAttributes<HTMLImageElement>) =>
-    React.createElement("img", props),
-  AvatarFallback: (props: React.HTMLAttributes<HTMLSpanElement>) =>
-    React.createElement("span", props),
-  Badge: ({
-    asChild: _asChild,
-    variant: _variant,
-    tone: _tone,
-    ...props
-  }: React.HTMLAttributes<HTMLDivElement> & {
-    asChild?: boolean;
-    variant?: string;
-    tone?: string;
-  }) => React.createElement("div", props),
-  PagePanel: Object.assign(
-    ({
-      as: _as,
-      variant: _variant,
-      ...props
-    }: React.ComponentPropsWithoutRef<"section"> & {
-      as?: string;
-      variant?: string;
-    }) => React.createElement("section", props),
-    {
-      Frame: ({
-        as = "div",
-        className,
-        ...props
-      }: React.ComponentPropsWithoutRef<"div"> & { as?: "div" | "main" }) =>
-        React.createElement(as, {
-          ...props,
-          className: ["flex h-full w-full min-h-0", className]
-            .filter(Boolean)
-            .join(" "),
-        }),
-      ContentArea: ({
-        className,
-        tabIndex = 0,
-        ...props
-      }: React.ComponentPropsWithoutRef<"div">) =>
-        React.createElement("div", {
-          ...props,
-          tabIndex,
-          className: ["min-h-0 min-w-0 flex-1 overflow-y-auto", className]
-            .filter(Boolean)
-            .join(" "),
-        }),
-      ContentRail: ({
-        className,
-        width = "standard",
-        ...props
-      }: React.ComponentPropsWithoutRef<"div"> & {
-        width?: "compact" | "standard" | "wide";
-      }) =>
-        React.createElement("div", {
-          ...props,
-          "data-slot": "page-panel-content-rail",
-          "data-width": width,
-          className: ["mx-auto w-full min-w-0 px-4 sm:px-6", className]
-            .filter(Boolean)
-            .join(" "),
-        }),
-      Header: ({
-        heading,
-        description,
-        actions,
-        ...props
-      }: React.ComponentPropsWithoutRef<"div"> & {
-        heading: React.ReactNode;
-        description?: React.ReactNode;
-        actions?: React.ReactNode;
-      }) =>
-        React.createElement(
-          "div",
-          props,
-          heading,
-          description
-            ? React.createElement("span", { className: "sr-only" }, description)
-            : null,
-          actions,
-        ),
-      Notice: ({
-        tone: _tone,
-        actions,
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"div"> & {
-        tone?: string;
-        actions?: React.ReactNode;
-      }) => React.createElement("div", props, children, actions),
-      ContentState: ({
-        state: _state,
-        placement: _placement,
-        title,
-        description,
-        action,
-        ...props
-      }: React.ComponentPropsWithoutRef<"div"> & {
-        state: string;
-        placement?: string;
-        title: string;
-        description?: string;
-        action?: React.ReactNode;
-      }) =>
-        React.createElement(
-          "div",
-          props,
-          React.createElement("h2", null, title),
-          description ? React.createElement("p", null, description) : null,
-          action,
-        ),
+vi.mock("@elizaos/ui", () => {
+  const CollapsibleContext = React.createContext<{
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+  } | null>(null);
+  const DropdownContext = React.createContext<{
+    open: boolean;
+    setOpen: (open: boolean) => void;
+  } | null>(null);
+
+  return {
+    useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+    shellLocalStorage: {
+      setItem: bridgeMocks.shellSetItem,
+      removeItem: (key: string) =>
+        globalThis.window.localStorage.removeItem(key),
+      clear: () => globalThis.window.localStorage.clear(),
     },
-  ),
-  ListSkeleton: ({ rows = 4 }: { rows?: number }) =>
-    React.createElement(
-      "div",
-      { "data-testid": "list-skeleton" },
-      ...Array.from({ length: rows }, (_, index) =>
-        React.createElement("span", { key: index }),
-      ),
+    client: walletClient,
+    // Mirrors the real guard's contract (an ApiError carries a numeric
+    // `status`); tests reject fetches with Object.assign(new Error(body),
+    // { status }) to model the client's error shape at the network boundary.
+    isApiError: (value: unknown): boolean =>
+      value instanceof Error &&
+      typeof (value as { status?: unknown }).status === "number",
+    Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+      React.createElement("button", { type: "button", ...props }),
+    Avatar: (props: React.HTMLAttributes<HTMLSpanElement>) =>
+      React.createElement("span", props),
+    AvatarImage: (props: React.ImgHTMLAttributes<HTMLImageElement>) =>
+      React.createElement("img", props),
+    AvatarFallback: (props: React.HTMLAttributes<HTMLSpanElement>) =>
+      React.createElement("span", props),
+    Badge: ({
+      asChild: _asChild,
+      variant: _variant,
+      tone: _tone,
+      ...props
+    }: React.HTMLAttributes<HTMLDivElement> & {
+      asChild?: boolean;
+      variant?: string;
+      tone?: string;
+    }) => React.createElement("div", props),
+    PagePanel: Object.assign(
+      ({
+        as: _as,
+        variant: _variant,
+        ...props
+      }: React.ComponentPropsWithoutRef<"section"> & {
+        as?: string;
+        variant?: string;
+      }) => React.createElement("section", props),
+      {
+        Frame: ({
+          as = "div",
+          className,
+          ...props
+        }: React.ComponentPropsWithoutRef<"div"> & { as?: "div" | "main" }) =>
+          React.createElement(as, {
+            ...props,
+            className: ["flex h-full w-full min-h-0", className]
+              .filter(Boolean)
+              .join(" "),
+          }),
+        ContentArea: ({
+          className,
+          tabIndex = 0,
+          ...props
+        }: React.ComponentPropsWithoutRef<"div">) =>
+          React.createElement("div", {
+            ...props,
+            tabIndex,
+            className: ["min-h-0 min-w-0 flex-1 overflow-y-auto", className]
+              .filter(Boolean)
+              .join(" "),
+          }),
+        ContentRail: ({
+          className,
+          width = "standard",
+          ...props
+        }: React.ComponentPropsWithoutRef<"div"> & {
+          width?: "compact" | "standard" | "wide";
+        }) =>
+          React.createElement("div", {
+            ...props,
+            "data-slot": "page-panel-content-rail",
+            "data-width": width,
+            className: ["mx-auto w-full min-w-0 px-4 sm:px-6", className]
+              .filter(Boolean)
+              .join(" "),
+          }),
+        Header: ({
+          heading,
+          description,
+          actions,
+          ...props
+        }: React.ComponentPropsWithoutRef<"div"> & {
+          heading: React.ReactNode;
+          description?: React.ReactNode;
+          actions?: React.ReactNode;
+        }) =>
+          React.createElement(
+            "div",
+            props,
+            heading,
+            description
+              ? React.createElement(
+                  "span",
+                  { className: "sr-only" },
+                  description,
+                )
+              : null,
+            actions,
+          ),
+        Notice: ({
+          tone: _tone,
+          actions,
+          children,
+          ...props
+        }: React.ComponentPropsWithoutRef<"div"> & {
+          tone?: string;
+          actions?: React.ReactNode;
+        }) => React.createElement("div", props, children, actions),
+        ContentState: ({
+          state: _state,
+          placement: _placement,
+          title,
+          description,
+          action,
+          ...props
+        }: React.ComponentPropsWithoutRef<"div"> & {
+          state: string;
+          placement?: string;
+          title: string;
+          description?: string;
+          action?: React.ReactNode;
+        }) =>
+          React.createElement(
+            "div",
+            props,
+            React.createElement("h2", null, title),
+            description ? React.createElement("p", null, description) : null,
+            action,
+          ),
+      },
     ),
-  cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
-  // Pass through to navigator.clipboard so the copy-button tests keep
-  // asserting the address that reaches the platform clipboard boundary.
-  copyTextToClipboard: (text: string) => navigator.clipboard.writeText(text),
-  getActiveAgentAuthority: () => appHooks.authority,
-  useActiveAgentAuthority: () => appHooks.authority,
-  useActivityEvents: () => appHooks.activityEvents,
-  useApp: appHooks.useApp,
-  useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector(appHooks.useApp()),
-  useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector(appHooks.useApp()),
-}));
+    ListSkeleton: ({ rows = 4 }: { rows?: number }) =>
+      React.createElement(
+        "div",
+        { "data-testid": "list-skeleton" },
+        ...Array.from({ length: rows }, (_, index) =>
+          React.createElement("span", { key: index }),
+        ),
+      ),
+    Collapsible: ({
+      open = false,
+      onOpenChange = () => undefined,
+      asChild: _asChild,
+      children,
+    }: {
+      open?: boolean;
+      onOpenChange?: (open: boolean) => void;
+      asChild?: boolean;
+      children: React.ReactNode;
+    }) =>
+      React.createElement(
+        CollapsibleContext.Provider,
+        { value: { open, onOpenChange } },
+        children,
+      ),
+    CollapsibleTrigger: ({
+      asChild: _asChild,
+      children,
+    }: {
+      asChild?: boolean;
+      children: React.ReactElement<
+        React.ButtonHTMLAttributes<HTMLButtonElement>
+      >;
+    }) => {
+      const context = React.useContext(CollapsibleContext);
+      return React.cloneElement(children, {
+        onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+          children.props.onClick?.(event);
+          context?.onOpenChange(!context.open);
+        },
+      });
+    },
+    CollapsibleContent: ({ children }: { children: React.ReactNode }) => {
+      const context = React.useContext(CollapsibleContext);
+      return context?.open ? children : null;
+    },
+    DropdownMenu: ({ children }: { children: React.ReactNode }) => {
+      const [open, setOpen] = React.useState(false);
+      return React.createElement(
+        DropdownContext.Provider,
+        { value: { open, setOpen } },
+        children,
+      );
+    },
+    DropdownMenuTrigger: ({
+      asChild: _asChild,
+      children,
+    }: {
+      asChild?: boolean;
+      children: React.ReactElement<
+        React.ButtonHTMLAttributes<HTMLButtonElement>
+      >;
+    }) => {
+      const context = React.useContext(DropdownContext);
+      return React.cloneElement(children, {
+        onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+          children.props.onClick?.(event);
+          context?.setOpen(!context.open);
+        },
+      });
+    },
+    DropdownMenuContent: ({ children }: { children: React.ReactNode }) => {
+      const context = React.useContext(DropdownContext);
+      return context?.open ? React.createElement("div", null, children) : null;
+    },
+    DropdownMenuItem: ({
+      onSelect,
+      children,
+      ...props
+    }: React.HTMLAttributes<HTMLButtonElement> & {
+      onSelect?: () => void;
+    }) =>
+      React.createElement(
+        "button",
+        { ...props, type: "button", onClick: onSelect },
+        children,
+      ),
+    cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
+    // Pass through to navigator.clipboard so the copy-button tests keep
+    // asserting the address that reaches the platform clipboard boundary.
+    copyTextToClipboard: (text: string) => navigator.clipboard.writeText(text),
+    getActiveAgentAuthority: () => appHooks.authority,
+    useActiveAgentAuthority: () => appHooks.authority,
+    useActivityEvents: () => appHooks.activityEvents,
+    useApp: appHooks.useApp,
+    useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>
+      selector(appHooks.useApp()),
+    useAppSelectorShallow: (
+      selector: (s: Record<string, unknown>) => unknown,
+    ) => selector(appHooks.useApp()),
+  };
+});
 
 import { InventoryAppView } from "./InventoryAppView";
 
@@ -229,6 +324,16 @@ function hasFlatText(expected: string) {
       normalize(child.textContent ?? "").includes(expected),
     );
   };
+}
+
+function showWalletDetails(): void {
+  fireEvent.click(screen.getByRole("button", { name: "Show wallet details" }));
+}
+
+function showWalletInsights(): void {
+  fireEvent.click(
+    screen.getByRole("button", { name: "Show activity and markets" }),
+  );
 }
 
 const EVM_ADDRESS = "0x1111111111111111111111111111111111111111";
@@ -539,6 +644,10 @@ describe("InventoryView GUI — populated holdings", () => {
     expect(
       screen.getByRole("heading", { name: "Wallet insights" }),
     ).toBeTruthy();
+    expect(
+      screen.queryByRole("tablist", { name: "Wallet insights" }),
+    ).toBeNull();
+    showWalletInsights();
     const insights = screen.getByRole("tablist", { name: "Wallet insights" });
     expect(
       within(insights).getByRole("tab", { name: "Activity" }),
@@ -565,12 +674,11 @@ describe("InventoryView GUI — populated holdings", () => {
     );
     expect(walletRail.parentElement?.parentElement).toBe(walletShell);
     expect(walletRail.parentElement?.tabIndex).toBe(0);
-    // One EVM identity covers every supported EVM network; Solana stays
-    // separate because it has its own address format and signing path.
-    expect(within(sidebar).getByTitle("EVM RPC ready")).toBeTruthy();
-    expect(within(sidebar).getByTitle("Solana RPC ready")).toBeTruthy();
-    expect(within(sidebar).queryByTitle("ETH RPC ready")).toBeNull();
-    expect(within(sidebar).queryByTitle("BASE RPC ready")).toBeNull();
+    // Low-frequency account identity and network controls stay disclosed until
+    // requested, leaving the primary balance and holdings easy to scan.
+    expect(within(sidebar).queryByText("0x111...1111")).toBeNull();
+    showWalletDetails();
+    expect(within(sidebar).getByTitle(/EVM ready.*Solana ready/)).toBeTruthy();
     // Exactly two address identities render, with no duplicate Base address.
     expect(within(sidebar).getByText("0x111...1111")).toBeTruthy();
     expect(within(sidebar).getByText("So1an...1111")).toBeTruthy();
@@ -618,8 +726,8 @@ describe("InventoryView GUI — populated holdings", () => {
 
     // Both identities connected/ready: this is a funded portfolio, not the empty
     // hero, so the "Your wallet is empty." line must not appear.
-    expect(within(sidebar).getByTitle("EVM RPC ready")).toBeTruthy();
-    expect(within(sidebar).getByTitle("Solana RPC ready")).toBeTruthy();
+    showWalletDetails();
+    expect(within(sidebar).getByTitle(/EVM ready.*Solana ready/)).toBeTruthy();
     expect(screen.queryByText("Your wallet is empty.")).toBeNull();
   });
 
@@ -635,8 +743,10 @@ describe("InventoryView GUI — populated holdings", () => {
     );
     render(React.createElement(InventoryAppView));
     const sidebar = await screen.findByTestId("wallets-sidebar");
-    expect(within(sidebar).getByTitle("EVM RPC ready")).toBeTruthy();
-    expect(within(sidebar).getByTitle("Solana needs RPC")).toBeTruthy();
+    showWalletDetails();
+    expect(
+      within(sidebar).getByTitle(/EVM ready.*Solana needs RPC/),
+    ).toBeTruthy();
   });
 
   it("uses distinct token monograms when remote logo assets fail", async () => {
@@ -712,7 +822,10 @@ describe("InventoryView GUI — hide token", () => {
       within(sidebar).getByText(hasFlatText("100.0000 USDC")),
     ).toBeTruthy();
 
-    fireEvent.click(within(sidebar).getByRole("button", { name: "Hide USDC" }));
+    fireEvent.click(
+      within(sidebar).getByRole("button", { name: "Manage USDC" }),
+    );
+    fireEvent.click(within(sidebar).getByText("Hide token"));
 
     // Row removed.
     await waitFor(() =>
@@ -782,6 +895,7 @@ describe("InventoryView GUI — loading hierarchy", () => {
     render(React.createElement(InventoryAppView));
     const holdings = await screen.findByTestId("wallets-sidebar");
 
+    showWalletDetails();
     expect(within(holdings).getByText("0x111...1111")).toBeTruthy();
     expect(within(holdings).getByText("So1an...1111")).toBeTruthy();
     expect(within(holdings).queryByText("No wallet connected")).toBeNull();
@@ -887,8 +1001,9 @@ describe("InventoryView GUI — loading hierarchy", () => {
     expect(
       screen.queryByText("Failed to fetch balances: API unavailable"),
     ).toBeNull();
-    expect(screen.getByTitle("EVM RPC ready")).toBeTruthy();
-    expect(screen.getByTitle("Solana RPC ready")).toBeTruthy();
+    showWalletDetails();
+    expect(screen.getByTitle(/EVM ready.*Solana ready/)).toBeTruthy();
+    showWalletInsights();
     expect(
       screen.getByRole("tablist", { name: "Wallet insights" }),
     ).toBeTruthy();
@@ -1077,6 +1192,7 @@ describe("InventoryView GUI — loading hierarchy", () => {
     expect(
       screen.queryByText("Failed to refresh balances: API unavailable"),
     ).toBeNull();
+    showWalletInsights();
     expect(screen.getByRole("tab", { name: "Markets" })).toBeTruthy();
 
     state.loadBalances.mockClear();
@@ -1123,6 +1239,7 @@ describe("InventoryView GUI — address copy buttons", () => {
     render(React.createElement(InventoryAppView));
     const sidebar = await screen.findByTestId("wallets-sidebar");
 
+    showWalletDetails();
     const evmCopy = within(sidebar).getByRole("button", {
       name: "Copy EVM address",
     });
@@ -1213,10 +1330,11 @@ describe("InventoryView GUI — background poll + RPC settings", () => {
     render(React.createElement(InventoryAppView));
     const sidebar = await screen.findByTestId("wallets-sidebar");
 
+    showWalletDetails();
     const rpcButton = within(sidebar).getByLabelText("Open network settings");
     // providerLabel: evm "alchemy" -> Alchemy, solana "helius-birdeye" -> Helius + Birdeye.
     expect(rpcButton.getAttribute("title")).toBe(
-      "RPC providers: EVM Alchemy, Solana Helius + Birdeye",
+      "Network settings: EVM ready via Alchemy; Solana ready via Helius + Birdeye",
     );
 
     fireEvent.click(rpcButton);
@@ -1315,6 +1433,7 @@ describe("InventoryView GUI — progressive insights", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
+    showWalletInsights();
     fireEvent.click(screen.getByRole("tab", { name: "Activity" }));
     // The agent activity remains; legacy BSC swap history stays under the hood.
     expect(screen.getByText("Rebalanced portfolio")).toBeTruthy();
@@ -1428,6 +1547,7 @@ describe("InventoryView GUI — calm empty-wallet hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
+    showWalletInsights();
     fireEvent.click(screen.getByRole("tab", { name: "Markets" }));
     expect(await screen.findByText("Market data unavailable")).toBeTruthy();
     expect(screen.getByTitle("Top movers unavailable")).toBeTruthy();
@@ -1453,6 +1573,7 @@ describe("InventoryView GUI — calm empty-wallet hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
+    showWalletInsights();
     fireEvent.click(screen.getByRole("tab", { name: "Markets" }));
     expect(await screen.findByText("Market data unavailable")).toBeTruthy();
     expect(screen.queryByText("network down")).toBeNull();
