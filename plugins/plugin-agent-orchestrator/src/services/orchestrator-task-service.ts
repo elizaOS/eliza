@@ -6822,7 +6822,12 @@ export class OrchestratorTaskService extends Service {
         includeArchived: false,
         status: "active",
       });
-      for (const doc of docs) {
+      for (const candidate of docs) {
+        // The bulk snapshot is candidate discovery only. A session may attach
+        // while the scan is in flight, so the destructive decision must use a
+        // fresh document read immediately before evaluating liveness/idleness.
+        const doc = await this.store.getTask(candidate.task.id);
+        if (!doc) continue;
         if (doc.task.status !== "active" || doc.task.paused) continue;
 
         const liveRows = doc.sessions.filter(
