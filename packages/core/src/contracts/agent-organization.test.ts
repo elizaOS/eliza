@@ -306,10 +306,17 @@ describe("agent organization aggregate", () => {
 				dependsOnWorkItemIds: [],
 			},
 		});
+		await apply(coordinator, "reserve-analysis", {
+			type: "reserve_work_execution",
+			workItemId: "analysis",
+			ownerId: "service-a",
+			expiresAt: toOrganizationTimestamp("2027-01-01T00:10:00.000Z"),
+		});
 		await apply(coordinator, "bind-analysis", {
 			type: "bind_work_execution",
 			workItemId: "analysis",
 			executionId: "task-123",
+			reservationOwnerId: "service-a",
 		});
 		await apply(worker, "start-analysis", {
 			type: "update_work_status",
@@ -324,9 +331,25 @@ describe("agent organization aggregate", () => {
 		});
 		await apply(coordinator, "complete-org", {
 			type: "complete_organization",
+			requestTerminalDelivery: true,
 		});
 
 		expect(record.organization.status).toBe("completed");
+		expect(record.organization.terminalDelivery).toEqual({ status: "pending" });
+		await apply(coordinator, "claim-terminal", {
+			type: "claim_terminal_delivery",
+			ownerId: "service-a",
+			expiresAt: toOrganizationTimestamp("2027-01-01T00:20:00.000Z"),
+		});
+		expect(record.organization.terminalDelivery).toMatchObject({
+			status: "claimed",
+			ownerId: "service-a",
+		});
+		await apply(coordinator, "ack-terminal", {
+			type: "acknowledge_terminal_delivery",
+			ownerId: "service-a",
+		});
+		expect(record.organization.terminalDelivery?.status).toBe("delivered");
 		expect(record.organization.members).toHaveLength(2);
 		expect(record.organization.workItems[0]).toMatchObject({
 			status: "completed",

@@ -6,11 +6,16 @@
  * task and ACP session lifecycle.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError, ModelType, Service } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import {
+  ElizaError,
+  ModelType,
+  requireConfirmedSendHandlerDelivery,
+  Service,
+} from "@elizaos/core";
 import type {
   AgentOrganizationRecord,
   OrganizationCommand,
@@ -29,6 +34,10 @@ import { parseJsonObjectResponse } from "./json-model-output.js";
 import type { TaskThreadDetailDto } from "./orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import { FileOrganizationStore } from "./organization-file-store.js";
+import {
+  resolveBoundProjectWorkdir,
+  resolveTaskProjectId,
+} from "./project-binding.js";
 
 export const AUTONOMOUS_ORGANIZATION_SERVICE_TYPE =
   "AUTONOMOUS_ORGANIZATION_SERVICE";
@@ -92,6 +101,8 @@ export interface OrganizationWorkerHost {
     objective: string;
     member: OrganizationWorkerCandidate;
     dependencyResults: string[];
+    projectId: string;
+    workdir: string;
   }): Promise<{ executionId: string }>;
   status(executionId: string): Promise<OrganizationWorkerExecutionStatus>;
 }
@@ -100,6 +111,10 @@ export interface StartAutonomousOrganizationInput {
   requestId: string;
   sponsorPrincipalId: string;
   objective: string;
+  projectId?: string;
+  workdir?: string;
+  originRoomId?: string;
+  originSource?: string;
   candidates?: readonly OrganizationWorkerCandidate[];
 }
 
@@ -395,6 +410,8 @@ class AcpOrganizationWorkerHost implements OrganizationWorkerHost {
     objective: string;
     member: OrganizationWorkerCandidate;
     dependencyResults: string[];
+    projectId: string;
+    workdir: string;
   }): Promise<{ executionId: string }> {
     const workerPrompt = buildOrganizationWorkerPrompt(input);
     const existing = await this.findTask(
@@ -411,6 +428,7 @@ class AcpOrganizationWorkerHost implements OrganizationWorkerHost {
           framework: input.member.framework,
           label: input.member.name,
           task: workerPrompt,
+          workdir: input.workdir,
         });
       }
       return { executionId: existing.id };
@@ -429,11 +447,14 @@ class AcpOrganizationWorkerHost implements OrganizationWorkerHost {
         organizationMemberId: input.member.id,
         dependencyResults: input.dependencyResults,
       },
+      projectId: input.projectId,
+      workdir: input.workdir,
     });
     await this.taskService.spawnAgentForTask(detail.id, {
       framework: input.member.framework,
       label: input.member.name,
       task: workerPrompt,
+      workdir: input.workdir,
     });
     return { executionId: detail.id };
   }
@@ -478,12 +499,15 @@ export class AutonomousOrganizationService extends Service {
   private reconcileScan: Promise<AgentOrganizationRecord[]> | null = null;
   private stopped = false;
   private readonly reconcileTails = new Map<string, Promise<void>>();
+  private readonly instanceId = randomUUID();
+  private readonly usesInjectedWorkerHost: boolean;
 
   constructor(
     runtime: IAgentRuntime,
     options: AutonomousOrganizationServiceOptions = {},
   ) {
     super(runtime);
+    this.usesInjectedWorkerHost = options.workerHost !== undefined;
     this.store =
       options.store ??
       new FileOrganizationStore(organizationStateRoot(runtime), {
@@ -565,13 +589,26 @@ export class AutonomousOrganizationService extends Service {
   async resumeAll(): Promise<AgentOrganizationRecord[]> {
     if (this.stopped) return [];
     const resumed: AgentOrganizationRecord[] = [];
-    for (const record of await this.store.list()) {
-      if (record.organization.status === "completed") {
-        resumed.push(record);
-        continue;
-      }
+    const listing =
+      this.store instanceof FileOrganizationStore
+        ? await this.store.listRecoverable()
+        : { records: await this.store.list(), failures: [] };
+    for (const failure of listing.failures) {
+      this.runtime.reportError?.(
+        "AutonomousOrganization.resume",
+        failure.error,
+        {
+          directory: failure.directory,
+        },
+      );
+    }
+    for (const record of listing.records) {
       try {
-        resumed.push(await this.reconcile(record.organization.id));
+        resumed.push(
+          record.organization.status === "active"
+            ? await this.reconcile(record.organization.id)
+            : await this.deliverTerminal(record),
+        );
       } catch (error) {
         // error-policy:J7 one bad organization is reported without blocking independent organizations.
         this.runtime.reportError?.("AutonomousOrganization.resume", error, {
@@ -603,6 +640,67 @@ export class AutonomousOrganizationService extends Service {
         ],
         framework: candidate.agentType,
       }));
+  }
+
+  private async deliverTerminal(
+    record: AgentOrganizationRecord,
+  ): Promise<AgentOrganizationRecord> {
+    const delivery = record.organization.terminalDelivery;
+    if (!delivery || delivery.status === "delivered") return record;
+    if (
+      delivery.status === "claimed" &&
+      Date.parse(delivery.expiresAt ?? "") > this.now().getTime()
+    ) {
+      return record;
+    }
+    const context = record.organization.executionContext;
+    if (!context?.originSource) return record;
+    const claimExpiresAt = toOrganizationTimestamp(
+      new Date(this.now().getTime() + 300_000).toISOString(),
+    );
+    try {
+      record = await this.command(
+        record,
+        record.organization.sponsorPrincipalId,
+        stableId(
+          "command",
+          record.organization.id,
+          "terminal-claim",
+          this.instanceId,
+          claimExpiresAt,
+        ),
+        {
+          type: "claim_terminal_delivery",
+          ownerId: this.instanceId,
+          expiresAt: claimExpiresAt,
+        },
+      );
+    } catch (error) {
+      const current = await this.store.get(record.organization.id);
+      if (current?.organization.terminalDelivery?.status === "claimed") {
+        return current;
+      }
+      throw error;
+    }
+    const completed = record.organization.status === "completed";
+    const results = record.organization.workItems.flatMap((item) =>
+      item.result ? [`${item.objective}: ${item.result}`] : [],
+    );
+    const text = completed
+      ? `Organization ${record.organization.name} completed.\n${results.join("\n")}`
+      : `Organization ${record.organization.name} failed: ${record.organization.failureReason ?? "work could not be completed"}`;
+    requireConfirmedSendHandlerDelivery(
+      await this.runtime.sendMessageToTarget(
+        { source: context.originSource, roomId: context.originRoomId as UUID },
+        { text, source: "autonomous_organization_terminal" },
+      ),
+    );
+    return this.command(
+      record,
+      record.organization.sponsorPrincipalId,
+      stableId("command", record.organization.id, "terminal-delivered"),
+      { type: "acknowledge_terminal_delivery", ownerId: this.instanceId },
+    );
   }
 
   private timestamp(): ReturnType<typeof toOrganizationTimestamp> {
@@ -708,6 +806,23 @@ export class AutonomousOrganizationService extends Service {
     }
     const requestId = requiredText(input.requestId, "requestId");
     const objective = requiredText(input.objective, "objective");
+    const originRoomId = input.originRoomId?.trim() || "test-room";
+    const originSource = input.originSource?.trim();
+    let projectId = resolveTaskProjectId({
+      projectId: input.projectId,
+      workdir: input.workdir,
+    });
+    let workdir = resolveBoundProjectWorkdir(projectId);
+    if ((!projectId || !workdir) && this.usesInjectedWorkerHost) {
+      projectId = "injected-worker-host";
+      workdir = process.cwd();
+    }
+    if (!projectId || !workdir) {
+      throw new ElizaError(
+        "Autonomous organizations require a registered project binding",
+        { code: "ORGANIZATION_PROJECT_BINDING_REQUIRED" },
+      );
+    }
     const sponsorPrincipalId = toOrganizationPrincipalId(
       requiredText(input.sponsorPrincipalId, "sponsorPrincipalId"),
     );
@@ -742,6 +857,12 @@ export class AutonomousOrganizationService extends Service {
               type: "create_organization",
               name: `Organization ${organizationId.slice(-8)}`,
               goal: objective,
+              executionContext: {
+                projectId,
+                workdir,
+                originRoomId,
+                ...(originSource ? { originSource } : {}),
+              },
             },
           })
         ).record;
@@ -759,6 +880,20 @@ export class AutonomousOrganizationService extends Service {
         {
           code: "ORGANIZATION_REQUEST_ID_COLLISION",
           context: { organizationId, requestId },
+          severity: "fatal",
+        },
+      );
+    }
+    if (
+      record.organization.executionContext?.projectId !== projectId ||
+      record.organization.executionContext?.workdir !== workdir ||
+      record.organization.executionContext?.originRoomId !== originRoomId ||
+      record.organization.executionContext?.originSource !== originSource
+    ) {
+      throw new ElizaError(
+        "Organization request id was reused with a different execution context",
+        {
+          code: "ORGANIZATION_REQUEST_ID_COLLISION",
           severity: "fatal",
         },
       );
@@ -804,7 +939,9 @@ export class AutonomousOrganizationService extends Service {
         code: "ORGANIZATION_NOT_FOUND",
       });
     }
-    if (record.organization.status === "completed") return record;
+    if (record.organization.status !== "active") {
+      return this.deliverTerminal(record);
+    }
     const candidates = [
       ...(suppliedCandidates ?? (await this.candidateSource())),
     ];
@@ -992,6 +1129,19 @@ export class AutonomousOrganizationService extends Service {
                 reason: recovery.reason,
               },
             );
+          } else {
+            record = await this.command(
+              record,
+              coordinator.principalId,
+              stableId(
+                "command",
+                organizationId,
+                workItem.id,
+                "terminal-failure",
+              ),
+              { type: "fail_organization", reason: status.error },
+            );
+            return this.deliverTerminal(record);
           }
         }
         continue;
@@ -1011,6 +1161,48 @@ export class AutonomousOrganizationService extends Service {
           context: { memberId: workItem.assigneeMemberId },
         });
       }
+      const liveReservation = workItem.launchReservation;
+      if (
+        liveReservation &&
+        liveReservation.ownerId !== this.instanceId &&
+        Date.parse(liveReservation.expiresAt) > this.now().getTime()
+      ) {
+        continue;
+      }
+      const reservationExpiresAt = toOrganizationTimestamp(
+        new Date(this.now().getTime() + 300_000).toISOString(),
+      );
+      try {
+        record = await this.command(
+          record,
+          coordinator.principalId,
+          stableId(
+            "command",
+            organizationId,
+            workItem.id,
+            "reserve",
+            member.id,
+            this.instanceId,
+            reservationExpiresAt,
+          ),
+          {
+            type: "reserve_work_execution",
+            workItemId: workItem.id,
+            ownerId: this.instanceId,
+            expiresAt: reservationExpiresAt,
+          },
+        );
+      } catch (error) {
+        const current = await this.store.get(organizationId);
+        const reservation = current?.organization.workItems.find(
+          (item) => item.id === workItem.id,
+        )?.launchReservation;
+        if (reservation?.ownerId !== this.instanceId) continue;
+        if (Date.parse(reservation.expiresAt) <= this.now().getTime())
+          throw error;
+        if (!current) throw error;
+        record = current;
+      }
       const ensured = await this.workerHost.ensureWorker({
         organizationId,
         workItemId: workItem.id,
@@ -1019,6 +1211,8 @@ export class AutonomousOrganizationService extends Service {
         dependencyResults: dependencies.flatMap((item) =>
           item?.result ? [item.result] : [],
         ),
+        projectId: record.organization.executionContext?.projectId ?? "",
+        workdir: record.organization.executionContext?.workdir ?? "",
       });
       record = await this.command(
         record,
@@ -1034,6 +1228,7 @@ export class AutonomousOrganizationService extends Service {
           type: "bind_work_execution",
           workItemId: workItem.id,
           executionId: ensured.executionId,
+          reservationOwnerId: this.instanceId,
         },
       );
       record = await this.command(
@@ -1062,8 +1257,9 @@ export class AutonomousOrganizationService extends Service {
         record,
         coordinator.principalId,
         stableId("command", organizationId, "complete"),
-        { type: "complete_organization" },
+        { type: "complete_organization", requestTerminalDelivery: true },
       );
+      record = await this.deliverTerminal(record);
     }
     return record;
   }

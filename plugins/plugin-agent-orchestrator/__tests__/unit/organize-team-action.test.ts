@@ -14,7 +14,7 @@ function message(overrides: Partial<Memory> = {}): Memory {
     entityId: sponsorId,
     agentId: "99999999-8888-4777-8666-555555555555" as UUID,
     roomId: "12345678-1234-4234-8234-123456789abc" as UUID,
-    content: { text: "Fallback objective" },
+    content: { text: "Fallback objective", source: "client_chat" },
     ...overrides,
   };
 }
@@ -47,6 +47,7 @@ describe("ORGANIZE_TEAM", () => {
       },
     }));
     const runtime = createMockRuntime({
+      agentId: sponsorId,
       getSetting: (key) =>
         key === "ELIZA_ENABLE_AUTONOMOUS_ORGANIZATIONS" ? "true" : undefined,
       getService: () => ({ startOrganization }),
@@ -63,6 +64,10 @@ describe("ORGANIZE_TEAM", () => {
       requestId,
       sponsorPrincipalId: sponsorId,
       objective: "Explicit complete objective",
+      projectId: undefined,
+      workdir: undefined,
+      originRoomId: "12345678-1234-4234-8234-123456789abc",
+      originSource: "client_chat",
     });
     expect(result).toMatchObject({
       success: true,

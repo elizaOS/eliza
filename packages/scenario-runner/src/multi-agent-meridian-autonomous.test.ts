@@ -109,4 +109,35 @@ describe("autonomous Meridian assertions", () => {
         ?.passed,
     ).toBe(false);
   });
+
+  it.each([
+    "[TEAM_DECISION] Reject Site B; pilot Site A instead",
+    "[TEAM_DECISION] Do not choose Site B; pilot Site A",
+  ])("rejects a negated Site B selection: %s", (decision) => {
+    const deliveries = passingConversation();
+    const final = deliveries.at(-1);
+    if (!final) throw new Error("missing final fixture delivery");
+    final.responseText = decision;
+    expect(
+      evaluateAutonomousMeridianAssertions(
+        AUTONOMOUS_MERIDIAN_SEATS,
+        deliveries,
+      ).find((assertion) => assertion.name === "correct-bounded-decision")
+        ?.passed,
+    ).toBe(false);
+  });
+
+  it("accepts rejecting Site A before selecting the Site B pilot", () => {
+    const deliveries = passingConversation();
+    const final = deliveries.at(-1);
+    if (!final) throw new Error("missing final fixture delivery");
+    final.responseText = "[TEAM_DECISION] Reject Site A; run Site B pilot.";
+    expect(
+      evaluateAutonomousMeridianAssertions(
+        AUTONOMOUS_MERIDIAN_SEATS,
+        deliveries,
+      ).find((assertion) => assertion.name === "correct-bounded-decision")
+        ?.passed,
+    ).toBe(true);
+  });
 });

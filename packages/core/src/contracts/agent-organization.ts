@@ -29,11 +29,26 @@ export interface AgentOrganization {
 	name: string;
 	goal: string;
 	sponsorPrincipalId: OrganizationPrincipalId;
-	status: "active" | "completed";
+	status: "active" | "completed" | "failed";
+	failureReason?: string;
+	executionContext?: OrganizationExecutionContext;
+	terminalDelivery?: {
+		status: "pending" | "claimed" | "delivered";
+		ownerId?: string;
+		expiresAt?: OrganizationTimestamp;
+		deliveredAt?: OrganizationTimestamp;
+	};
 	members: OrganizationMember[];
 	workItems: OrganizationWorkItem[];
 	createdAt: OrganizationTimestamp;
 	updatedAt: OrganizationTimestamp;
+}
+
+export interface OrganizationExecutionContext {
+	projectId: string;
+	workdir: string;
+	originRoomId: string;
+	originSource?: string;
 }
 
 export type OrganizationMemberAuthority = "coordinate" | "contribute";
@@ -60,11 +75,20 @@ export interface OrganizationWorkItem {
 	dependsOnWorkItemIds: string[];
 	status: OrganizationWorkStatus;
 	executionId?: string;
+	launchReservation?: {
+		ownerId: string;
+		expiresAt: OrganizationTimestamp;
+	};
 	result?: string;
 }
 
 export type OrganizationCommand =
-	| { type: "create_organization"; name: string; goal: string }
+	| {
+			type: "create_organization";
+			name: string;
+			goal: string;
+			executionContext?: OrganizationExecutionContext;
+	  }
 	| { type: "rename_organization"; name: string }
 	| { type: "change_organization_goal"; goal: string }
 	| { type: "add_member"; member: OrganizationMember }
@@ -85,7 +109,18 @@ export type OrganizationCommand =
 				"id" | "objective" | "assigneeMemberId" | "dependsOnWorkItemIds"
 			>;
 	  }
-	| { type: "bind_work_execution"; workItemId: string; executionId: string }
+	| {
+			type: "reserve_work_execution";
+			workItemId: string;
+			ownerId: string;
+			expiresAt: OrganizationTimestamp;
+	  }
+	| {
+			type: "bind_work_execution";
+			workItemId: string;
+			executionId: string;
+			reservationOwnerId?: string;
+	  }
 	| {
 			type: "update_work_status";
 			workItemId: string;
@@ -98,7 +133,14 @@ export type OrganizationCommand =
 			assigneeMemberId: string;
 			reason: string;
 	  }
-	| { type: "complete_organization" };
+	| { type: "complete_organization"; requestTerminalDelivery?: true }
+	| { type: "fail_organization"; reason: string }
+	| {
+			type: "claim_terminal_delivery";
+			ownerId: string;
+			expiresAt: OrganizationTimestamp;
+	  }
+	| { type: "acknowledge_terminal_delivery"; ownerId?: string };
 
 export interface OrganizationCommandEnvelope {
 	organizationId: OrganizationId;
@@ -181,6 +223,27 @@ function normalizeMember(member: OrganizationMember): OrganizationMember {
 		role: requiredText(member.role, "member.role"),
 		capabilities: requiredTextList(member.capabilities, "member.capabilities"),
 		authority: member.authority,
+	};
+}
+
+function normalizeExecutionContext(
+	context: OrganizationExecutionContext,
+): OrganizationExecutionContext {
+	return {
+		projectId: requiredText(context.projectId, "executionContext.projectId"),
+		workdir: requiredText(context.workdir, "executionContext.workdir"),
+		originRoomId: requiredText(
+			context.originRoomId,
+			"executionContext.originRoomId",
+		),
+		...(context.originSource === undefined
+			? {}
+			: {
+					originSource: requiredText(
+						context.originSource,
+						"executionContext.originSource",
+					),
+				}),
 	};
 }
 
@@ -277,6 +340,9 @@ function assertEnvelope(envelope: OrganizationCommandEnvelope): void {
 	if (envelope.command.type === "create_organization") {
 		requiredText(envelope.command.name, "name");
 		requiredText(envelope.command.goal, "goal");
+		if (envelope.command.executionContext) {
+			normalizeExecutionContext(envelope.command.executionContext);
+		}
 	} else if (envelope.command.type === "rename_organization") {
 		requiredText(envelope.command.name, "name");
 	} else if (envelope.command.type === "change_organization_goal") {
@@ -288,9 +354,16 @@ function assertEnvelope(envelope: OrganizationCommandEnvelope): void {
 		envelope.command.workItems.map(normalizeWorkItem);
 	} else if (envelope.command.type === "assign_work") {
 		normalizeWorkItem(envelope.command.workItem);
+	} else if (envelope.command.type === "reserve_work_execution") {
+		requiredText(envelope.command.workItemId, "workItemId");
+		requiredText(envelope.command.ownerId, "ownerId");
+		toOrganizationTimestamp(envelope.command.expiresAt);
 	} else if (envelope.command.type === "bind_work_execution") {
 		requiredText(envelope.command.workItemId, "workItemId");
 		requiredText(envelope.command.executionId, "executionId");
+		if (envelope.command.reservationOwnerId !== undefined) {
+			requiredText(envelope.command.reservationOwnerId, "reservationOwnerId");
+		}
 	} else if (envelope.command.type === "update_work_status") {
 		requiredText(envelope.command.workItemId, "workItemId");
 		if (
@@ -307,7 +380,25 @@ function assertEnvelope(envelope: OrganizationCommandEnvelope): void {
 		requiredText(envelope.command.workItemId, "workItemId");
 		requiredText(envelope.command.assigneeMemberId, "assigneeMemberId");
 		requiredText(envelope.command.reason, "reason");
+	} else if (envelope.command.type === "fail_organization") {
+		requiredText(envelope.command.reason, "reason");
+	} else if (envelope.command.type === "claim_terminal_delivery") {
+		requiredText(envelope.command.ownerId, "ownerId");
+		toOrganizationTimestamp(envelope.command.expiresAt);
+	} else if (envelope.command.type === "acknowledge_terminal_delivery") {
+		if (envelope.command.ownerId !== undefined) {
+			requiredText(envelope.command.ownerId, "ownerId");
+		}
+		return;
 	} else if (envelope.command.type === "complete_organization") {
+		if (
+			envelope.command.requestTerminalDelivery !== undefined &&
+			envelope.command.requestTerminalDelivery !== true
+		) {
+			throw new ElizaError("Terminal delivery request is invalid", {
+				code: "ORGANIZATION_INVALID_COMMAND",
+			});
+		}
 		return;
 	} else {
 		throw new ElizaError("Organization command type is unsupported", {
@@ -340,6 +431,13 @@ function normalizedEnvelope(
 				type: envelope.command.type,
 				name: requiredText(envelope.command.name, "name"),
 				goal: requiredText(envelope.command.goal, "goal"),
+				...(envelope.command.executionContext
+					? {
+							executionContext: normalizeExecutionContext(
+								envelope.command.executionContext,
+							),
+						}
+					: {}),
 			};
 			break;
 		case "rename_organization":
@@ -378,6 +476,22 @@ function normalizedEnvelope(
 				type: envelope.command.type,
 				workItemId: requiredText(envelope.command.workItemId, "workItemId"),
 				executionId: requiredText(envelope.command.executionId, "executionId"),
+				...(envelope.command.reservationOwnerId === undefined
+					? {}
+					: {
+							reservationOwnerId: requiredText(
+								envelope.command.reservationOwnerId,
+								"reservationOwnerId",
+							),
+						}),
+			};
+			break;
+		case "reserve_work_execution":
+			command = {
+				type: envelope.command.type,
+				workItemId: requiredText(envelope.command.workItemId, "workItemId"),
+				ownerId: requiredText(envelope.command.ownerId, "ownerId"),
+				expiresAt: toOrganizationTimestamp(envelope.command.expiresAt),
 			};
 			break;
 		case "update_work_status":
@@ -402,7 +516,33 @@ function normalizedEnvelope(
 			};
 			break;
 		case "complete_organization":
-			command = { type: envelope.command.type };
+			command = {
+				type: envelope.command.type,
+				...(envelope.command.requestTerminalDelivery
+					? { requestTerminalDelivery: true }
+					: {}),
+			};
+			break;
+		case "fail_organization":
+			command = {
+				type: envelope.command.type,
+				reason: requiredText(envelope.command.reason, "reason"),
+			};
+			break;
+		case "claim_terminal_delivery":
+			command = {
+				type: envelope.command.type,
+				ownerId: requiredText(envelope.command.ownerId, "ownerId"),
+				expiresAt: toOrganizationTimestamp(envelope.command.expiresAt),
+			};
+			break;
+		case "acknowledge_terminal_delivery":
+			command = {
+				type: envelope.command.type,
+				...(envelope.command.ownerId === undefined
+					? {}
+					: { ownerId: requiredText(envelope.command.ownerId, "ownerId") }),
+			};
 			break;
 		default:
 			assertNever(envelope.command);
@@ -510,6 +650,13 @@ export function createOrganizationRecord(
 			workItems: [],
 			createdAt: envelope.issuedAt,
 			updatedAt: envelope.issuedAt,
+			...(envelope.command.executionContext
+				? {
+						executionContext: normalizeExecutionContext(
+							envelope.command.executionContext,
+						),
+					}
+				: {}),
 		},
 		receipts: [],
 		audit: [],
@@ -559,8 +706,12 @@ export async function applyOrganizationCommand(
 		});
 	}
 	const organization = structuredClone(record.organization);
-	if (organization.status === "completed") {
-		throw new ElizaError("Completed organizations cannot be mutated", {
+	if (
+		organization.status !== "active" &&
+		envelope.command.type !== "claim_terminal_delivery" &&
+		envelope.command.type !== "acknowledge_terminal_delivery"
+	) {
+		throw new ElizaError("Terminal organizations cannot be mutated", {
 			code: "ORGANIZATION_ALREADY_COMPLETED",
 			context: { organizationId: organization.id },
 		});
@@ -676,8 +827,51 @@ export async function applyOrganizationCommand(
 			organization.workItems.push({ ...workItem, status: "assigned" });
 			break;
 		}
+		case "reserve_work_execution": {
+			const command = envelope.command;
+			const workItem = organization.workItems.find(
+				(candidate) => candidate.id === command.workItemId,
+			);
+			if (workItem?.status !== "assigned" || workItem.executionId) {
+				throw new ElizaError("Organization work cannot be reserved", {
+					code: "ORGANIZATION_WORK_TRANSITION_INVALID",
+				});
+			}
+			if (
+				!workItem.dependsOnWorkItemIds.every(
+					(id) =>
+						organization.workItems.find((item) => item.id === id)?.status ===
+						"completed",
+				)
+			) {
+				throw new ElizaError("Organization work dependencies are incomplete", {
+					code: "ORGANIZATION_WORK_DEPENDENCY_INCOMPLETE",
+				});
+			}
+			if (
+				workItem.launchReservation &&
+				Date.parse(workItem.launchReservation.expiresAt) >
+					Date.parse(envelope.issuedAt)
+			) {
+				throw new ElizaError(
+					"Organization work already has a live reservation",
+					{
+						code: "ORGANIZATION_EXECUTION_RESERVED",
+					},
+				);
+			}
+			workItem.launchReservation = {
+				ownerId: requiredText(command.ownerId, "ownerId"),
+				expiresAt: toOrganizationTimestamp(command.expiresAt),
+			};
+			break;
+		}
 		case "bind_work_execution": {
 			const command = envelope.command;
+			const reservationOwnerId = requiredText(
+				command.reservationOwnerId,
+				"reservationOwnerId",
+			);
 			const workItem = organization.workItems.find(
 				(candidate) => candidate.id === command.workItemId,
 			);
@@ -687,6 +881,18 @@ export async function applyOrganizationCommand(
 				});
 			}
 			const executionId = requiredText(command.executionId, "executionId");
+			if (
+				workItem.launchReservation?.ownerId !== reservationOwnerId ||
+				Date.parse(workItem.launchReservation.expiresAt) <=
+					Date.parse(envelope.issuedAt)
+			) {
+				throw new ElizaError(
+					"Organization execution reservation is not owned",
+					{
+						code: "ORGANIZATION_EXECUTION_RESERVED",
+					},
+				);
+			}
 			if (workItem.status !== "assigned") {
 				throw new ElizaError(
 					"Organization work execution can only bind while assigned",
@@ -695,6 +901,17 @@ export async function applyOrganizationCommand(
 						context: { workItemId: workItem.id, status: workItem.status },
 					},
 				);
+			}
+			const dependenciesReady = workItem.dependsOnWorkItemIds.every(
+				(id) =>
+					organization.workItems.find((item) => item.id === id)?.status ===
+					"completed",
+			);
+			if (!dependenciesReady) {
+				throw new ElizaError("Organization work dependencies are incomplete", {
+					code: "ORGANIZATION_WORK_DEPENDENCY_INCOMPLETE",
+					context: { workItemId: workItem.id },
+				});
 			}
 			if (workItem.executionId && workItem.executionId !== executionId) {
 				throw new ElizaError(
@@ -706,6 +923,7 @@ export async function applyOrganizationCommand(
 				);
 			}
 			workItem.executionId = executionId;
+			delete workItem.launchReservation;
 			break;
 		}
 		case "update_work_status": {
@@ -740,6 +958,19 @@ export async function applyOrganizationCommand(
 						context: { workItemId: workItem.id },
 					},
 				);
+			}
+			if (
+				command.status === "in_progress" &&
+				!workItem.dependsOnWorkItemIds.every(
+					(id) =>
+						organization.workItems.find((item) => item.id === id)?.status ===
+						"completed",
+				)
+			) {
+				throw new ElizaError("Organization work dependencies are incomplete", {
+					code: "ORGANIZATION_WORK_DEPENDENCY_INCOMPLETE",
+					context: { workItemId: workItem.id },
+				});
 			}
 			workItem.status = command.status;
 			if (command.result !== undefined) {
@@ -779,6 +1010,7 @@ export async function applyOrganizationCommand(
 			workItem.status = "assigned";
 			delete workItem.executionId;
 			delete workItem.result;
+			delete workItem.launchReservation;
 			break;
 		}
 		case "complete_organization":
@@ -791,6 +1023,54 @@ export async function applyOrganizationCommand(
 				});
 			}
 			organization.status = "completed";
+			if (envelope.command.requestTerminalDelivery) {
+				organization.terminalDelivery = { status: "pending" };
+			}
+			break;
+		case "fail_organization":
+			organization.status = "failed";
+			organization.failureReason = requiredText(
+				envelope.command.reason,
+				"reason",
+			);
+			organization.terminalDelivery = { status: "pending" };
+			break;
+		case "claim_terminal_delivery": {
+			const delivery = organization.terminalDelivery;
+			if (
+				!delivery ||
+				delivery.status === "delivered" ||
+				(delivery.status === "claimed" &&
+					delivery.ownerId !== envelope.command.ownerId &&
+					Date.parse(delivery.expiresAt ?? "") > Date.parse(envelope.issuedAt))
+			) {
+				throw new ElizaError("Organization terminal delivery is unavailable", {
+					code: "ORGANIZATION_TERMINAL_DELIVERY_INVALID",
+				});
+			}
+			organization.terminalDelivery = {
+				status: "claimed",
+				ownerId: requiredText(envelope.command.ownerId, "ownerId"),
+				expiresAt: toOrganizationTimestamp(envelope.command.expiresAt),
+			};
+			break;
+		}
+		case "acknowledge_terminal_delivery":
+			requiredText(envelope.command.ownerId, "ownerId");
+			if (
+				organization.status === "active" ||
+				!organization.terminalDelivery ||
+				organization.terminalDelivery.status !== "claimed" ||
+				organization.terminalDelivery.ownerId !== envelope.command.ownerId
+			) {
+				throw new ElizaError("Organization has no pending terminal delivery", {
+					code: "ORGANIZATION_TERMINAL_DELIVERY_INVALID",
+				});
+			}
+			organization.terminalDelivery = {
+				status: "delivered",
+				deliveredAt: envelope.issuedAt,
+			};
 			break;
 		default:
 			assertNever(envelope.command);
@@ -828,10 +1108,14 @@ export const delegatedOrganizationAuthorizer: OrganizationCommandAuthorizer = (
 			"add_member",
 			"adopt_plan",
 			"assign_work",
+			"reserve_work_execution",
 			"bind_work_execution",
 			"update_work_status",
 			"reassign_work",
 			"complete_organization",
+			"fail_organization",
+			"claim_terminal_delivery",
+			"acknowledge_terminal_delivery",
 		].includes(envelope.command.type);
 	}
 	if (envelope.command.type !== "update_work_status") return false;
@@ -880,10 +1164,14 @@ function isOrganizationCommandType(
 		value === "add_member" ||
 		value === "adopt_plan" ||
 		value === "assign_work" ||
+		value === "reserve_work_execution" ||
 		value === "bind_work_execution" ||
 		value === "update_work_status" ||
 		value === "reassign_work" ||
-		value === "complete_organization"
+		value === "complete_organization" ||
+		value === "fail_organization" ||
+		value === "claim_terminal_delivery" ||
+		value === "acknowledge_terminal_delivery"
 	);
 }
 
@@ -923,6 +1211,74 @@ function persistedMember(value: unknown): OrganizationMember {
 	};
 }
 
+function persistedExecutionContext(
+	value: unknown,
+): OrganizationExecutionContext {
+	if (!isRecord(value)) {
+		throw new ElizaError(
+			"Persisted organization execution context is invalid",
+			{
+				code: "ORGANIZATION_STORE_CORRUPT",
+				severity: "fatal",
+			},
+		);
+	}
+	return {
+		projectId: persistedText(value.projectId, "executionContext.projectId"),
+		workdir: persistedText(value.workdir, "executionContext.workdir"),
+		originRoomId: persistedText(
+			value.originRoomId,
+			"executionContext.originRoomId",
+		),
+		...(value.originSource === undefined
+			? {}
+			: {
+					originSource: persistedText(
+						value.originSource,
+						"executionContext.originSource",
+					),
+				}),
+	};
+}
+
+function persistedTerminalDelivery(
+	value: unknown,
+): NonNullable<AgentOrganization["terminalDelivery"]> {
+	if (
+		!isRecord(value) ||
+		(value.status !== "pending" &&
+			value.status !== "claimed" &&
+			value.status !== "delivered")
+	) {
+		throw new ElizaError("Persisted terminal delivery is invalid", {
+			code: "ORGANIZATION_STORE_CORRUPT",
+			severity: "fatal",
+		});
+	}
+	return {
+		status: value.status,
+		...(value.ownerId === undefined
+			? {}
+			: { ownerId: persistedText(value.ownerId, "terminalDelivery.ownerId") }),
+		...(value.expiresAt === undefined
+			? {}
+			: {
+					expiresAt: persistedTimestamp(
+						value.expiresAt,
+						"terminalDelivery.expiresAt",
+					),
+				}),
+		...(value.deliveredAt === undefined
+			? {}
+			: {
+					deliveredAt: persistedTimestamp(
+						value.deliveredAt,
+						"terminalDelivery.deliveredAt",
+					),
+				}),
+	};
+}
+
 function persistedWorkItem(value: unknown): OrganizationWorkItem {
 	if (!isRecord(value)) {
 		throw new ElizaError("Persisted organization work item is invalid", {
@@ -957,6 +1313,24 @@ function persistedWorkItem(value: unknown): OrganizationWorkItem {
 			? {}
 			: {
 					executionId: persistedText(value.executionId, "workItem.executionId"),
+				}),
+		...(value.launchReservation === undefined
+			? {}
+			: {
+					launchReservation: {
+						ownerId: persistedText(
+							isRecord(value.launchReservation)
+								? value.launchReservation.ownerId
+								: undefined,
+							"workItem.launchReservation.ownerId",
+						),
+						expiresAt: persistedTimestamp(
+							isRecord(value.launchReservation)
+								? value.launchReservation.expiresAt
+								: undefined,
+							"workItem.launchReservation.expiresAt",
+						),
+					},
 				}),
 		...(value.result === undefined
 			? {}
@@ -1023,6 +1397,13 @@ function persistedCommandEnvelope(value: unknown): OrganizationCommandEnvelope {
 				type,
 				name: persistedText(value.command.name, "command.name"),
 				goal: persistedText(value.command.goal, "command.goal"),
+				...(value.command.executionContext === undefined
+					? {}
+					: {
+							executionContext: persistedExecutionContext(
+								value.command.executionContext,
+							),
+						}),
 			};
 			break;
 		case "rename_organization":
@@ -1095,6 +1476,20 @@ function persistedCommandEnvelope(value: unknown): OrganizationCommandEnvelope {
 			};
 			break;
 		}
+		case "reserve_work_execution":
+			command = {
+				type,
+				workItemId: persistedText(
+					value.command.workItemId,
+					"command.workItemId",
+				),
+				ownerId: persistedText(value.command.ownerId, "command.ownerId"),
+				expiresAt: persistedTimestamp(
+					value.command.expiresAt,
+					"command.expiresAt",
+				),
+			};
+			break;
 		case "bind_work_execution":
 			command = {
 				type,
@@ -1106,6 +1501,14 @@ function persistedCommandEnvelope(value: unknown): OrganizationCommandEnvelope {
 					value.command.executionId,
 					"command.executionId",
 				),
+				...(value.command.reservationOwnerId === undefined
+					? {}
+					: {
+							reservationOwnerId: persistedText(
+								value.command.reservationOwnerId,
+								"command.reservationOwnerId",
+							),
+						}),
 			};
 			break;
 		case "update_work_status": {
@@ -1147,7 +1550,38 @@ function persistedCommandEnvelope(value: unknown): OrganizationCommandEnvelope {
 			};
 			break;
 		case "complete_organization":
-			command = { type };
+			command = {
+				type,
+				...(value.command.requestTerminalDelivery === true
+					? { requestTerminalDelivery: true }
+					: {}),
+			};
+			break;
+		case "fail_organization":
+			command = {
+				type,
+				reason: persistedText(value.command.reason, "command.reason"),
+			};
+			break;
+		case "claim_terminal_delivery":
+			command = {
+				type,
+				ownerId: persistedText(value.command.ownerId, "command.ownerId"),
+				expiresAt: persistedTimestamp(
+					value.command.expiresAt,
+					"command.expiresAt",
+				),
+			};
+			break;
+		case "acknowledge_terminal_delivery":
+			command = {
+				type,
+				...(value.command.ownerId === undefined
+					? {}
+					: {
+							ownerId: persistedText(value.command.ownerId, "command.ownerId"),
+						}),
+			};
 			break;
 		default:
 			throw new ElizaError("Persisted organization command type is invalid", {
@@ -1197,6 +1631,9 @@ function reconstructOrganization(
 		workItems: [],
 		createdAt: first.issuedAt,
 		updatedAt: first.issuedAt,
+		...(first.command.executionContext
+			? { executionContext: structuredClone(first.command.executionContext) }
+			: {}),
 	};
 	for (const receipt of receipts.slice(1)) {
 		const envelope = receipt.commandEnvelope;
@@ -1234,6 +1671,27 @@ function reconstructOrganization(
 						{ code: "ORGANIZATION_STORE_CORRUPT", severity: "fatal" },
 					);
 				workItem.executionId = command.executionId;
+				delete workItem.launchReservation;
+				break;
+			}
+			case "reserve_work_execution": {
+				const command = envelope.command;
+				const workItem = organization.workItems.find(
+					(candidate) => candidate.id === command.workItemId,
+				);
+				if (!workItem) {
+					throw new ElizaError(
+						"Persisted organization reservation targets missing work",
+						{
+							code: "ORGANIZATION_STORE_CORRUPT",
+							severity: "fatal",
+						},
+					);
+				}
+				workItem.launchReservation = {
+					ownerId: command.ownerId,
+					expiresAt: command.expiresAt,
+				};
 				break;
 			}
 			case "update_work_status": {
@@ -1268,6 +1726,27 @@ function reconstructOrganization(
 			}
 			case "complete_organization":
 				organization.status = "completed";
+				if (envelope.command.requestTerminalDelivery) {
+					organization.terminalDelivery = { status: "pending" };
+				}
+				break;
+			case "fail_organization":
+				organization.status = "failed";
+				organization.failureReason = envelope.command.reason;
+				organization.terminalDelivery = { status: "pending" };
+				break;
+			case "claim_terminal_delivery":
+				organization.terminalDelivery = {
+					status: "claimed",
+					ownerId: envelope.command.ownerId,
+					expiresAt: envelope.command.expiresAt,
+				};
+				break;
+			case "acknowledge_terminal_delivery":
+				organization.terminalDelivery = {
+					status: "delivered",
+					deliveredAt: envelope.issuedAt,
+				};
 				break;
 			case "create_organization":
 				throw new ElizaError(
@@ -1319,7 +1798,7 @@ export function parseAgentOrganizationRecord(
 		);
 	}
 	const status = organization.status;
-	if (status !== "active" && status !== "completed") {
+	if (status !== "active" && status !== "completed" && status !== "failed") {
 		throw new ElizaError("Persisted organization status is invalid", {
 			code: "ORGANIZATION_STORE_CORRUPT",
 			severity: "fatal",
@@ -1443,6 +1922,28 @@ export function parseAgentOrganizationRecord(
 			"sponsorPrincipalId",
 		) as OrganizationPrincipalId,
 		status,
+		...(organization.failureReason === undefined
+			? {}
+			: {
+					failureReason: persistedText(
+						organization.failureReason,
+						"failureReason",
+					),
+				}),
+		...(organization.executionContext === undefined
+			? {}
+			: {
+					executionContext: persistedExecutionContext(
+						organization.executionContext,
+					),
+				}),
+		...(organization.terminalDelivery === undefined
+			? {}
+			: {
+					terminalDelivery: persistedTerminalDelivery(
+						organization.terminalDelivery,
+					),
+				}),
 		members: Array.isArray(organization.members)
 			? organization.members.map(persistedMember)
 			: [],

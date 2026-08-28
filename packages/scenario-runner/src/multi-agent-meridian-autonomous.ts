@@ -7,6 +7,7 @@ import type {
   ArenaSeatDefinition,
   ArenaTurnDefinition,
 } from "./multi-agent-arena.ts";
+import { teamDecisionAffirmativelySelects } from "./multi-agent-arena.ts";
 
 export const AUTONOMOUS_MERIDIAN_SEATS: readonly ArenaSeatDefinition[] = [
   {
@@ -230,7 +231,7 @@ export function evaluateAutonomousMeridianAssertions(
       name: "correct-bounded-decision",
       passed:
         finalResponses.length === 1 &&
-        /^\[TEAM_DECISION\][^\n]*site b[^\n]*pilot/iu.test(finalText),
+        teamDecisionAffirmativelySelects(finalText, /site\s+b[^\n;]*pilot/iu),
       detail: finalText || "Ari did not record one terminal team decision",
     },
     {

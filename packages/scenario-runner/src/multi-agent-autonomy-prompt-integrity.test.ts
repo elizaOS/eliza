@@ -47,7 +47,7 @@ describe("autonomous arena prompt integrity", () => {
     expect(lighthouse.system).not.toMatch(/Meridian|Site A|Site B/iu);
   });
 
-  it("does not expose one participant's authorized facts to another", () => {
+  it("publishes capabilities but keeps role briefings private", () => {
     const coordinator = buildArenaCharacter(
       AUTONOMOUS_MERIDIAN_SEATS[0],
       AUTONOMOUS_MERIDIAN_SEATS,
@@ -58,6 +58,7 @@ describe("autonomous arena prompt integrity", () => {
     );
 
     expect(coordinator.system).not.toContain("Site A produces 80 capacity");
+    expect(coordinator.system).toContain("capacity planning");
     expect(analyst.system).toContain("Site A produces 80 capacity");
     expect(analyst.system).not.toContain("70 percent failure probability");
   });

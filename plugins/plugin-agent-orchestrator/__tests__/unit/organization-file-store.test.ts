@@ -3,7 +3,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -29,9 +29,9 @@ async function storePath(): Promise<string> {
   return join(dir, "organizations");
 }
 
-function createCommand(commandId = "create") {
+function createCommand(commandId = "create", organizationId = "org-acme") {
   return {
-    organizationId: toOrganizationId("org-acme"),
+    organizationId: toOrganizationId(organizationId),
     commandId: toOrganizationCommandId(commandId),
     expectedRevision: 0,
     actorPrincipalId: toOrganizationPrincipalId("principal-sponsor"),
@@ -44,8 +44,11 @@ function createCommand(commandId = "create") {
   };
 }
 
-function organizationDirectory(root: string): string {
-  const digest = createHash("sha256").update("org-acme").digest("hex");
+function organizationDirectory(
+  root: string,
+  organizationId = "org-acme",
+): string {
+  const digest = createHash("sha256").update(organizationId).digest("hex");
   return join(root, digest);
 }
 
@@ -202,5 +205,60 @@ describe("FileOrganizationStore", () => {
     await expect(store.get(toOrganizationId("org-acme"))).rejects.toMatchObject(
       { code: "ORGANIZATION_STORE_CORRUPT" },
     );
+  });
+
+  it("keeps only the newest lossless revision after publication", async () => {
+    const path = await storePath();
+    const store = new FileOrganizationStore(path);
+    await store.apply(createCommand());
+    await store.apply({
+      ...createCommand("rename"),
+      expectedRevision: 1,
+      command: { type: "rename_organization" as const, name: "Renamed" },
+    });
+
+    expect(await readdir(organizationDirectory(path))).toEqual([
+      "revision-0000000000000002.json",
+    ]);
+    expect(
+      (await store.get(toOrganizationId("org-acme")))?.receipts,
+    ).toHaveLength(2);
+  });
+
+  it("isolates a corrupt organization while returning healthy restart records", async () => {
+    const path = await storePath();
+    const store = new FileOrganizationStore(path);
+    await store.apply(createCommand("create-bad", "org-bad"));
+    await store.apply(createCommand("create-good", "org-good"));
+    await writeFile(
+      join(
+        organizationDirectory(path, "org-bad"),
+        "revision-0000000000000001.json",
+      ),
+      '{"revision":',
+      "utf8",
+    );
+
+    const listing = await store.listRecoverable();
+    expect(listing.records.map((record) => record.organization.id)).toEqual([
+      toOrganizationId("org-good"),
+    ]);
+    expect(listing.failures).toHaveLength(1);
+  });
+
+  it("rejects a recoverable revision whose filename disagrees with its record", async () => {
+    const path = await storePath();
+    const store = new FileOrganizationStore(path);
+    await store.apply(createCommand());
+    const revision = await readFile(revisionPath(path, 1), "utf8");
+    await writeFile(revisionPath(path, 2), revision, "utf8");
+
+    const listing = await store.listRecoverable();
+
+    expect(listing.records).toEqual([]);
+    expect(listing.failures).toHaveLength(1);
+    expect(listing.failures[0]?.error).toMatchObject({
+      code: "ORGANIZATION_STORE_CORRUPT",
+    });
   });
 });

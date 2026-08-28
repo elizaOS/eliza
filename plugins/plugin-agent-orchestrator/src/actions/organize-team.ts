@@ -14,6 +14,7 @@ import {
   type AutonomousOrganizationService,
   autonomousOrganizationsEnabled,
 } from "../services/autonomous-organization-service.js";
+import { requireTaskAgentAccess } from "../services/task-policy.js";
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -31,6 +32,10 @@ function objectiveFrom(
   return typeof candidate === "string" && candidate.trim()
     ? candidate.trim()
     : undefined;
+}
+
+function optionalText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 export const organizeTeamAction: Action = {
@@ -52,12 +57,27 @@ export const organizeTeamAction: Action = {
     "capability:execute",
     "effect:idempotent",
   ],
+  roleGate: { minRole: "USER" },
   parameters: [
     {
       name: "objective",
       description:
         "The complete outcome the autonomous team should pursue. Preserve all requirements and constraints.",
       required: true,
+      schema: { type: "string", minLength: 1 },
+    },
+    {
+      name: "projectId",
+      description:
+        "Registered project id whose repository the team may modify.",
+      required: false,
+      schema: { type: "string", minLength: 1 },
+    },
+    {
+      name: "workdir",
+      description:
+        "Registered project workdir when a project id is not supplied.",
+      required: false,
       schema: { type: "string", minLength: 1 },
     },
   ],
@@ -93,6 +113,12 @@ export const organizeTeamAction: Action = {
         error: "ORGANIZATION_REQUEST_IDENTITY_REQUIRED",
       };
     }
+    const access = await requireTaskAgentAccess(runtime, message, "create");
+    if (!access.allowed) {
+      const reason = access.reason;
+      if (callback) await callback({ text: reason });
+      return { success: false, error: "FORBIDDEN", text: reason };
+    }
     const service = runtime.getService<AutonomousOrganizationService>(
       AUTONOMOUS_ORGANIZATION_SERVICE_TYPE,
     );
@@ -103,10 +129,31 @@ export const organizeTeamAction: Action = {
         error: "ORGANIZATION_SERVICE_UNAVAILABLE",
       };
     }
+    if (!message.roomId) {
+      return {
+        success: false,
+        text: "The organization request room is unavailable.",
+        error: "ORGANIZATION_ORIGIN_REQUIRED",
+      };
+    }
+    const params = record(options?.parameters);
+    const content = record(message.content);
+    const originSource = optionalText(content.source);
+    if (!originSource) {
+      return {
+        success: false,
+        text: "The organization request source is unavailable.",
+        error: "ORGANIZATION_ORIGIN_REQUIRED",
+      };
+    }
     const organization = await service.startOrganization({
       requestId: message.id,
       sponsorPrincipalId: message.entityId,
       objective,
+      projectId: optionalText(params.projectId ?? content.projectId),
+      workdir: optionalText(params.workdir ?? content.workdir),
+      originRoomId: message.roomId,
+      originSource,
     });
     const active = organization.organization.workItems.filter(
       (item) => item.status === "in_progress",

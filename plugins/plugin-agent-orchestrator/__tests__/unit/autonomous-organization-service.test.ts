@@ -414,6 +414,33 @@ describe("AutonomousOrganizationService", () => {
     });
   });
 
+  it("reserves a launch before two service instances can spawn the same work", async () => {
+    const store = new InMemoryOrganizationStore(
+      delegatedOrganizationAuthorizer,
+    );
+    const host = new IdempotentWorkerHost();
+    const first = service(store, host);
+    const second = service(store, host);
+
+    const outcomes = await Promise.allSettled([
+      first.startOrganization({
+        requestId: "cross-instance-launch",
+        sponsorPrincipalId: "human-1",
+        objective: "Analyze then review",
+      }),
+      second.startOrganization({
+        requestId: "cross-instance-launch",
+        sponsorPrincipalId: "human-1",
+        objective: "Analyze then review",
+      }),
+    ]);
+
+    expect(outcomes.some((outcome) => outcome.status === "fulfilled")).toBe(
+      true,
+    );
+    expect(host.ensureCalls).toEqual(["analyze:analyst"]);
+  });
+
   it("autonomously reassigns failed work and clears its stale execution", async () => {
     const store = new InMemoryOrganizationStore(
       delegatedOrganizationAuthorizer,

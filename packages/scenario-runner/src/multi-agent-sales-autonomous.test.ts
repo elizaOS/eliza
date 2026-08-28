@@ -139,4 +139,40 @@ describe("autonomous Lighthouse assertions", () => {
       )?.passed,
     ).toBe(false);
   });
+
+  it.each([
+    "[TEAM_DECISION] Do not advance an evaluation; run no pilot.",
+    "[TEAM_DECISION] Reject the evaluation; proceed with no pilot.",
+  ])("rejects a negated bounded evaluation: %s", (decision) => {
+    const deliveries = passingConversation();
+    const final = deliveries.at(-1);
+    if (!final) throw new Error("missing final fixture delivery");
+    final.responseText = decision;
+    expect(
+      evaluateAutonomousLighthouseAssertions(
+        AUTONOMOUS_LIGHTHOUSE_SEATS,
+        deliveries,
+      ).find(
+        (assertion) =>
+          assertion.name === "decision-advanced-bounded-evaluation",
+      )?.passed,
+    ).toBe(false);
+  });
+
+  it("rejects recommendation against the bounded evaluation", () => {
+    const deliveries = passingConversation();
+    const final = deliveries.at(-1);
+    if (!final) throw new Error("missing final fixture delivery");
+    final.responseText =
+      "[TEAM_DECISION] Recommend against bounded evaluation; run no pilot.";
+    expect(
+      evaluateAutonomousLighthouseAssertions(
+        AUTONOMOUS_LIGHTHOUSE_SEATS,
+        deliveries,
+      ).find(
+        (assertion) =>
+          assertion.name === "decision-advanced-bounded-evaluation",
+      )?.passed,
+    ).toBe(false);
+  });
 });

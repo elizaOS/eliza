@@ -30,6 +30,16 @@ export interface FileOrganizationStoreOptions {
   authorize?: OrganizationCommandAuthorizer;
 }
 
+export interface OrganizationStoreListingFailure {
+  directory: string;
+  error: unknown;
+}
+
+export interface RecoverableOrganizationListing {
+  records: AgentOrganizationRecord[];
+  failures: OrganizationStoreListingFailure[];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -95,6 +105,9 @@ export class FileOrganizationStore implements OrganizationStore {
         await readFile(join(directory, latest), "utf8"),
       ) as unknown;
     } catch (error) {
+      if (errorCode(error) === "ENOENT") {
+        return this.readCurrent(organizationId);
+      }
       // error-policy:J2 a published revision must always be complete JSON.
       throw new ElizaError(
         "Published organization revision is not valid JSON",
@@ -131,7 +144,7 @@ export class FileOrganizationStore implements OrganizationStore {
     return record;
   }
 
-  async list(): Promise<AgentOrganizationRecord[]> {
+  async listRecoverable(): Promise<RecoverableOrganizationListing> {
     let directories: string[];
     try {
       directories = (await readdir(this.rootPath, { withFileTypes: true }))
@@ -140,7 +153,7 @@ export class FileOrganizationStore implements OrganizationStore {
         .sort();
     } catch (error) {
       // error-policy:J2 add the organization root to directory discovery failures.
-      if (errorCode(error) === "ENOENT") return [];
+      if (errorCode(error) === "ENOENT") return { records: [], failures: [] };
       throw new ElizaError("Organization root directory could not be read", {
         code: "ORGANIZATION_STORE_READ_FAILED",
         cause: error,
@@ -148,54 +161,102 @@ export class FileOrganizationStore implements OrganizationStore {
       });
     }
     const records: AgentOrganizationRecord[] = [];
+    const failures: OrganizationStoreListingFailure[] = [];
     for (const directoryName of directories) {
       const directory = join(this.rootPath, directoryName);
-      let revisions: string[];
       try {
-        revisions = (await readdir(directory))
-          .filter((name) => /^revision-\d{16}\.json$/.test(name))
-          .sort();
+        let revisions: string[];
+        try {
+          revisions = (await readdir(directory))
+            .filter((name) => /^revision-\d{16}\.json$/.test(name))
+            .sort();
+        } catch (error) {
+          // error-policy:J2 preserve the failing organization directory at the filesystem boundary.
+          throw new ElizaError(
+            "Organization revision directory could not be read",
+            {
+              code: "ORGANIZATION_STORE_READ_FAILED",
+              cause: error,
+              context: { directory },
+            },
+          );
+        }
+        let latest = revisions.at(-1);
+        if (!latest) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(
+            await readFile(join(directory, latest), "utf8"),
+          ) as unknown;
+        } catch (error) {
+          if (errorCode(error) === "ENOENT") {
+            latest = (await readdir(directory))
+              .filter((name) => /^revision-\d{16}\.json$/.test(name))
+              .sort()
+              .at(-1);
+            if (!latest) continue;
+            try {
+              parsed = JSON.parse(
+                await readFile(join(directory, latest), "utf8"),
+              ) as unknown;
+            } catch (retryError) {
+              if (errorCode(retryError) === "ENOENT") {
+                directories.push(directoryName);
+                continue;
+              }
+              throw retryError;
+            }
+          } else {
+            // error-policy:J2 published revision parsing keeps its file context.
+            throw new ElizaError(
+              "Published organization revision is not valid JSON",
+              {
+                code: "ORGANIZATION_STORE_CORRUPT",
+                cause: error,
+                context: { directory, revisionFile: latest },
+                severity: "fatal",
+              },
+            );
+          }
+        }
+        const record = parseAgentOrganizationRecord(parsed);
+        if (this.organizationPath(record.organization.id) !== directory) {
+          throw new ElizaError(
+            "Organization directory digest is inconsistent",
+            {
+              code: "ORGANIZATION_STORE_CORRUPT",
+              context: { organizationId: record.organization.id, directory },
+              severity: "fatal",
+            },
+          );
+        }
+        if (latest !== revisionFileName(record.revision)) {
+          throw new ElizaError(
+            "Published organization revision filename is inconsistent",
+            {
+              code: "ORGANIZATION_STORE_CORRUPT",
+              context: {
+                organizationId: record.organization.id,
+                revision: record.revision,
+                revisionFile: latest,
+              },
+              severity: "fatal",
+            },
+          );
+        }
+        records.push(record);
       } catch (error) {
-        // error-policy:J2 preserve the failing organization directory at the filesystem boundary.
-        throw new ElizaError(
-          "Organization revision directory could not be read",
-          {
-            code: "ORGANIZATION_STORE_READ_FAILED",
-            cause: error,
-            context: { directory },
-          },
-        );
+        // error-policy:J4 restart enumeration reports one corrupt aggregate while preserving healthy peers.
+        failures.push({ directory, error });
       }
-      const latest = revisions.at(-1);
-      if (!latest) continue;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(
-          await readFile(join(directory, latest), "utf8"),
-        ) as unknown;
-      } catch (error) {
-        // error-policy:J2 published revision parsing keeps its file context.
-        throw new ElizaError(
-          "Published organization revision is not valid JSON",
-          {
-            code: "ORGANIZATION_STORE_CORRUPT",
-            cause: error,
-            context: { directory, revisionFile: latest },
-            severity: "fatal",
-          },
-        );
-      }
-      const record = parseAgentOrganizationRecord(parsed);
-      if (this.organizationPath(record.organization.id) !== directory) {
-        throw new ElizaError("Organization directory digest is inconsistent", {
-          code: "ORGANIZATION_STORE_CORRUPT",
-          context: { organizationId: record.organization.id, directory },
-          severity: "fatal",
-        });
-      }
-      records.push(record);
     }
-    return records;
+    return { records, failures };
+  }
+
+  async list(): Promise<AgentOrganizationRecord[]> {
+    const listing = await this.listRecoverable();
+    if (listing.failures.length > 0) throw listing.failures[0].error;
+    return listing.records;
   }
 
   async get(
@@ -272,6 +333,24 @@ export class FileOrganizationStore implements OrganizationStore {
           winner,
           envelope,
           this.authorize,
+        );
+      }
+      const previous = join(
+        directory,
+        revisionFileName(proposed.record.revision - 1),
+      );
+      // The newest record contains the complete lossless audit and receipt history.
+      // Removing its predecessor prevents retained storage from growing quadratically.
+      try {
+        await rm(previous, { force: true });
+      } catch (error) {
+        // error-policy:J6 obsolete-revision cleanup is best effort after the new revision is durable.
+        logger.warn(
+          {
+            previous,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "[FileOrganizationStore] Failed to remove obsolete revision",
         );
       }
       return { record: structuredClone(proposed.record), replayed: false };

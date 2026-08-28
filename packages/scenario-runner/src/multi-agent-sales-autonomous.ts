@@ -7,6 +7,7 @@ import type {
   ArenaSeatDefinition,
   ArenaTurnDefinition,
 } from "./multi-agent-arena.ts";
+import { teamDecisionAffirmativelySelects } from "./multi-agent-arena.ts";
 
 export const AUTONOMOUS_LIGHTHOUSE_SEATS: readonly ArenaSeatDefinition[] = [
   {
@@ -229,10 +230,10 @@ export function evaluateAutonomousLighthouseAssertions(
       name: "decision-advanced-bounded-evaluation",
       passed:
         terminalResponses.length === 1 &&
-        /advance|proceed|run/iu.test(
+        teamDecisionAffirmativelySelects(
           terminalResponses[0]?.responseText ?? "",
-        ) &&
-        /evaluation|pilot/iu.test(terminalResponses[0]?.responseText ?? ""),
+          /(?:bounded\s+)?(?:evaluation|pilot)/iu,
+        ),
       detail: outputs(terminalResponses) || "no bounded evaluation decision",
     },
     {
