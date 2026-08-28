@@ -14,6 +14,8 @@
  * Public-timeline authors are never roster authority: only DM timeline
  * events feed this publisher.
  */
+
+import { createHash } from "node:crypto";
 import {
   type ConnectorAccount,
   type ConnectorAccountManager,
@@ -29,7 +31,6 @@ import {
   MembershipService,
   type UUID,
 } from "@elizaos/core";
-import { createHash } from "node:crypto";
 
 /** Connector id this publisher registers under (matches XService). */
 export const X_MEMBERSHIP_CONNECTOR_ID = "x";

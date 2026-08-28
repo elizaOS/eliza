@@ -20,7 +20,7 @@ export default defineConfig({
     // `*.real.test.ts` boots a real PGLite runtime and needs the workspace
     // source aliases from vitest.real-runtime.config.ts — run via
     // `test:real-runtime`.
-    exclude: ["**/node_modules/**", "dist/**", "**/*.real.test.ts"],
+    exclude: ["**/node_modules/**", "dist/**", "__tests__/**/*.real.test.ts"],
     coverage: {
       reporter: ["text", "json", "html"],
     },
