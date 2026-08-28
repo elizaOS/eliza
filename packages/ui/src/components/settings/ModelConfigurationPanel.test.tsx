@@ -12,6 +12,7 @@
  */
 
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ModelCatalog,
@@ -23,6 +24,22 @@ interface CapturedAgentElement {
   options?: string[];
   onFill?: (value: string) => void;
   onActivate?: () => void;
+}
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve: (value: T) => void = () => {};
+  let reject: (reason?: unknown) => void = () => {};
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 const { clientMock, agentElements } = vi.hoisted(() => ({
@@ -215,6 +232,121 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("catalog load states", () => {
+  it("reaches ready after the StrictMode effect lifecycle replay", async () => {
+    render(
+      <StrictMode>
+        <ModelConfigurationPanel />
+      </StrictMode>,
+    );
+
+    await waitFor(() =>
+      expect(agentElements.has("models-small-provider")).toBe(true),
+    );
+    expect(screen.queryByText("Loading model catalog…")).toBeNull();
+  });
+
+  it("keeps the current StrictMode load when the stale load succeeds later", async () => {
+    const staleCatalog = deferred<unknown>();
+    const staleConfig = deferred<ModelsConfigResponse>();
+    const currentCatalog = deferred<unknown>();
+    const currentConfig = deferred<ModelsConfigResponse>();
+    clientMock.getModelsCatalog
+      .mockReset()
+      .mockReturnValueOnce(staleCatalog.promise)
+      .mockReturnValueOnce(currentCatalog.promise);
+    clientMock.getModelsConfig
+      .mockReset()
+      .mockReturnValueOnce(staleConfig.promise)
+      .mockReturnValueOnce(currentConfig.promise);
+
+    render(
+      <StrictMode>
+        <ModelConfigurationPanel />
+      </StrictMode>,
+    );
+    await waitFor(() => {
+      expect(clientMock.getModelsCatalog).toHaveBeenCalledTimes(2);
+      expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      currentCatalog.resolve({ providers: {}, catalog: fixtureCatalog() });
+      currentConfig.resolve(fixtureConfig());
+    });
+    await waitFor(() =>
+      expect(agentElements.has("models-small-provider")).toBe(true),
+    );
+
+    await act(async () => {
+      staleCatalog.resolve({ providers: {}, catalog: { providers: {} } });
+      staleConfig.resolve(fixtureConfig());
+    });
+    expect(
+      screen.queryByText(
+        "No configurable models were reported by the runtime.",
+      ),
+    ).toBeNull();
+    expect(screen.queryByText("Loading model catalog…")).toBeNull();
+  });
+
+  it("keeps the current StrictMode load when the stale load fails later", async () => {
+    const staleCatalog = deferred<unknown>();
+    const staleConfig = deferred<ModelsConfigResponse>();
+    const currentCatalog = deferred<unknown>();
+    const currentConfig = deferred<ModelsConfigResponse>();
+    clientMock.getModelsCatalog
+      .mockReset()
+      .mockReturnValueOnce(staleCatalog.promise)
+      .mockReturnValueOnce(currentCatalog.promise);
+    clientMock.getModelsConfig
+      .mockReset()
+      .mockReturnValueOnce(staleConfig.promise)
+      .mockReturnValueOnce(currentConfig.promise);
+
+    render(
+      <StrictMode>
+        <ModelConfigurationPanel />
+      </StrictMode>,
+    );
+    await waitFor(() => {
+      expect(clientMock.getModelsCatalog).toHaveBeenCalledTimes(2);
+      expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      currentCatalog.resolve({ providers: {}, catalog: fixtureCatalog() });
+      currentConfig.resolve(fixtureConfig());
+    });
+    await waitFor(() =>
+      expect(agentElements.has("models-small-provider")).toBe(true),
+    );
+
+    await act(async () => {
+      staleCatalog.reject(new Error("stale catalog failure"));
+      staleConfig.resolve(fixtureConfig());
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Loading model catalog…")).toBeNull();
+  });
+
+  it("ignores a pending load after unmount", async () => {
+    const catalog = deferred<unknown>();
+    const config = deferred<ModelsConfigResponse>();
+    clientMock.getModelsCatalog.mockReset().mockReturnValue(catalog.promise);
+    clientMock.getModelsConfig.mockReset().mockReturnValue(config.promise);
+    const view = render(<ModelConfigurationPanel />);
+    expect(screen.getByText("Loading model catalog…")).toBeTruthy();
+
+    view.unmount();
+    await act(async () => {
+      catalog.resolve({ providers: {}, catalog: fixtureCatalog() });
+      config.resolve(fixtureConfig());
+    });
+
+    expect(document.body.textContent).not.toContain("GPT-5.6-Terra");
+    expect(agentElements.has("models-small-provider")).toBe(false);
+  });
+
   it("renders a loading state while the catalog fetch is pending", async () => {
     let resolveCatalog: (value: unknown) => void = () => {};
     clientMock.getModelsCatalog.mockReturnValue(
@@ -237,7 +369,7 @@ describe("catalog load states", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("catalog unreachable");
 
-    agentButton("models-retry").click();
+    act(() => agentButton("models-retry").click());
     await waitFor(() =>
       expect(agentElements.has("models-small-provider")).toBe(true),
     );
