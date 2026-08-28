@@ -6,6 +6,11 @@ import type { ChatEvent } from "./adapters/types";
 import { resolveConnectorAccountId } from "./connector-account";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
+import {
+  isCanonicalTelegramProject,
+  requireCanonicalTelegramIdentity,
+  telegramIdentityNotReadyResponse,
+} from "./telegram-identity";
 import { resolveSharedWebhookConfig } from "./webhook-config";
 
 interface InternalDeliveryDependencies {
@@ -182,6 +187,16 @@ export async function deliverInternalMessage(
     delivery.platform,
     delivery.project,
   );
+  if (
+    delivery.platform === "telegram" &&
+    isCanonicalTelegramProject(delivery.project)
+  ) {
+    try {
+      await requireCanonicalTelegramIdentity(config);
+    } catch (error) {
+      return telegramIdentityNotReadyResponse(error);
+    }
+  }
   const configuredConnectorAccountId = resolveConnectorAccountId(
     delivery.platform,
     config,

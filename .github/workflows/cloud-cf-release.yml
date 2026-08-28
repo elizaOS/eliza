@@ -269,6 +269,15 @@ jobs:
           printf 'Validated Telegram public identity policy for %s.\n' \
             "$TARGET_ENVIRONMENT" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Attest protected Telegram runtime identity
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          TELEGRAM_EXPECTED_BOT_ID: ${{ steps.telegram.outputs.bot_id }}
+          TELEGRAM_EXPECTED_BOT_USERNAME: ${{ steps.telegram.outputs.bot_username }}
+          TELEGRAM_ATTESTATION_CONTEXT: ${{ inputs.target_environment }}
+        run: node packages/cloud/scripts/verify-telegram-bot-identity.mjs
+
       - name: Resolve public WhatsApp configuration
         id: whatsapp
         env:
@@ -1410,9 +1419,9 @@ jobs:
           OIDC_CLIENTS: ${{ secrets.OIDC_CLIENTS }}
           ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
           ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
-          # The edge Telegram route needs both values in the Worker. Queue them
-          # additively now, while the served feature gate remains fail-closed;
-          # activation is a separate protected, live-proven rollout.
+          # The edge Telegram route needs both values in the Worker. They are
+          # required and replaced atomically with the exact attested source;
+          # activation is still a separate protected, live-proven rollout.
           ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
           ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
           # Personal Shared Blooio is the public-number messaging surface in
@@ -1810,6 +1819,17 @@ jobs:
           fi
 
           for name in \
+            ELIZA_APP_TELEGRAM_BOT_TOKEN \
+            ELIZA_APP_TELEGRAM_WEBHOOK_SECRET
+          do
+            if ! has_nonblank_value "${!name:-}"; then
+              echo "::error::Required protected $DEPLOY_ENVIRONMENT Telegram secret is absent or blank: $name"
+              exit 1
+            fi
+            queue_secret "$name" || exit 1
+          done
+
+          for name in \
             ELIZA_APP_BLOOIO_API_KEY \
             ELIZA_APP_BLOOIO_PHONE_NUMBER \
             ELIZA_APP_BLOOIO_WEBHOOK_SECRET
@@ -1849,8 +1869,6 @@ jobs:
             OIDC_CLIENTS \
             GATEWAY_INTERNAL_SECRET \
             ELIZA_APP_WEBHOOK_GATEWAY_SECRET \
-            ELIZA_APP_TELEGRAM_BOT_TOKEN \
-            ELIZA_APP_TELEGRAM_WEBHOOK_SECRET \
             ELIZA_APNS_KEY \
             ELIZA_APNS_KEY_ID \
             ELIZA_APNS_TEAM_ID \
@@ -1941,6 +1959,8 @@ jobs:
           FISH_AUDIO_SAMPLE_RATE: "16000"
           FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: ${{ vars.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS || '1500' }}
           ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
+          ELIZA_APP_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          ELIZA_APP_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
           WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.secrets_file }}
           CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
@@ -2001,7 +2021,7 @@ jobs:
             exit 1
           fi
 
-          args=(${{ steps.env.outputs.wrangler_args }} --secrets-file "$WORKER_SECRETS_FILE" --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var ELIZA_MOBILE_APP_AUTH_ENABLED:"$ELIZA_MOBILE_APP_AUTH_ENABLED" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
+          args=(${{ steps.env.outputs.wrangler_args }} --secrets-file "$WORKER_SECRETS_FILE" --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var ELIZA_MOBILE_APP_AUTH_ENABLED:"$ELIZA_MOBILE_APP_AUTH_ENABLED" --var ELIZA_APP_TELEGRAM_BOT_ID:"$ELIZA_APP_TELEGRAM_BOT_ID" --var ELIZA_APP_TELEGRAM_BOT_USERNAME:"$ELIZA_APP_TELEGRAM_BOT_USERNAME" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else
@@ -2062,6 +2082,8 @@ jobs:
               "STEWARD_PLATFORM_KEYS",
               "STEWARD_TENANT_API_KEY",
               "GATEWAY_INTERNAL_SECRET",
+              "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+              "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
             ];
             if (process.env.ELIZA_MOBILE_APP_AUTH_ENABLED === "true") {
               required.push("ELIZA_MOBILE_APP_AUTH_APP_ID");
@@ -2137,6 +2159,31 @@ jobs:
             [ "$attempt" -lt 6 ] && sleep 10
           done
           echo "::error::API health did not serve the deployed commit ${expected_commit} for ${expected_environment}."
+          exit 1
+
+      - name: Verify deployed Telegram identity readiness
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        env:
+          API_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+        run: |
+          set -euo pipefail
+          readiness="$(mktemp)"
+          trap 'rm -f "$readiness"' EXIT
+          for attempt in 1 2 3 4 5 6; do
+            code="$(curl -sS -o "$readiness" -w '%{http_code}' -m 20 \
+              "${API_URL%/}/api/eliza-app/webhook/telegram/readiness" || echo '000')"
+            if [ "$code" = "200" ] && jq -e \
+              'type == "object" and
+               keys == ["project", "status"] and
+               .project == "eliza-app" and
+               .status == "attested"' \
+              "$readiness" >/dev/null; then
+              echo "Deployed Worker Telegram identity is attested."
+              exit 0
+            fi
+            [ "$attempt" -lt 6 ] && sleep 10
+          done
+          echo "::error::Deployed Worker Telegram identity did not attest"
           exit 1
 
       - name: Verify deployed API provider discovery

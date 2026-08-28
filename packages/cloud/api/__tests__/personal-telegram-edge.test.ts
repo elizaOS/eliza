@@ -1,7 +1,16 @@
 /** Drives the edge Telegram connector through Hono with real shared state-machine code. */
 
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { PERSONAL_SHARED_FAILURE_REPLY } from "@elizaos/cloud-services-common/personal-shared-failure";
+import { __resetTelegramIdentityAttestationCacheForTests } from "@elizaos/cloud-services-common/telegram-connector";
 import { Hono } from "hono";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -14,6 +23,44 @@ import telegramRoute from "../eliza-app/webhook/telegram/route";
 
 const TRACE_ID = "11111111-1111-4111-8111-111111111111";
 const originalFetch = globalThis.fetch;
+
+function testBotUsername(botId: string): string {
+  return botId === "456" ? "OtherTestBot" : "ElizaTestBot";
+}
+
+function telegramBindings(
+  botToken = "123:test-token",
+): Pick<
+  AppEnv["Bindings"],
+  | "ELIZA_APP_TELEGRAM_BOT_TOKEN"
+  | "ELIZA_APP_TELEGRAM_BOT_ID"
+  | "ELIZA_APP_TELEGRAM_BOT_USERNAME"
+  | "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"
+> {
+  const botId = botToken.match(/^([1-9]\d*):/)?.[1] ?? "";
+  return {
+    ELIZA_APP_TELEGRAM_BOT_TOKEN: botToken,
+    ELIZA_APP_TELEGRAM_BOT_ID: botId,
+    ELIZA_APP_TELEGRAM_BOT_USERNAME: testBotUsername(botId),
+    ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
+  };
+}
+
+function telegramGetMeResponse(
+  input: RequestInfo | URL,
+  overrides: Record<string, unknown> = {},
+): Response {
+  const botId = String(input).match(/\/bot([1-9]\d*):/)?.[1] ?? "123";
+  return Response.json({
+    ok: true,
+    result: {
+      id: Number(botId),
+      is_bot: true,
+      username: testBotUsername(botId),
+      ...overrides,
+    },
+  });
+}
 
 interface LedgerValue {
   delivery?: "uncertain" | "delivered";
@@ -226,6 +273,7 @@ async function run(
   request = telegramRequest(),
   confirmIdentityLink?: TelegramEdgeDeps["confirmIdentityLink"],
   botToken = "123:test-token",
+  getMeOverrides: Record<string, unknown> = {},
 ): Promise<Response> {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
@@ -239,20 +287,38 @@ async function run(
     }),
   );
   app.onError(() => Response.json({ error: "failed" }, { status: 500 }));
-  return app.fetch(
-    request,
-    {
-      ELIZA_APP_TELEGRAM_BOT_TOKEN: botToken,
-      ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-      ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
-      PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
-    } as AppEnv["Bindings"],
-    executionContext(),
-  );
+  const providerFetch = globalThis.fetch;
+  globalThis.fetch = ((input, init) =>
+    String(input).endsWith("/getMe")
+      ? Promise.resolve(telegramGetMeResponse(input, getMeOverrides))
+      : providerFetch(input, init)) as typeof fetch;
+  try {
+    return await app.fetch(
+      request,
+      {
+        ...telegramBindings(botToken),
+        ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
+        PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+      } as AppEnv["Bindings"],
+      executionContext(),
+    );
+  } finally {
+    globalThis.fetch = providerFetch;
+  }
 }
+
+beforeEach(() => {
+  globalThis.fetch = mock(async (input) => {
+    if (String(input).endsWith("/getMe")) {
+      return telegramGetMeResponse(input);
+    }
+    throw new Error("unexpected provider call");
+  }) as unknown as typeof fetch;
+});
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  __resetTelegramIdentityAttestationCacheForTests();
   mock.restore();
 });
 
@@ -262,6 +328,9 @@ describe("Personal Shared Telegram edge", () => {
     let sends = 0;
     const bodies: Array<Record<string, unknown>> = [];
     globalThis.fetch = mock(async (input, init) => {
+      if (String(input).endsWith("/getMe")) {
+        return telegramGetMeResponse(input);
+      }
       if (String(input).endsWith("/sendMessage")) {
         sends += 1;
         bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
@@ -269,7 +338,8 @@ describe("Personal Shared Telegram edge", () => {
       return Response.json({ ok: true, result: { message_id: 9010 } });
     }) as unknown as typeof fetch;
     const env = {
-      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      ...telegramBindings(),
+      ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
       PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
     } as AppEnv["Bindings"];
     const input = {
@@ -299,13 +369,17 @@ describe("Personal Shared Telegram edge", () => {
     const ledger = namespace();
     const bodies: Array<Record<string, unknown>> = [];
     globalThis.fetch = mock(async (input, init) => {
+      if (String(input).endsWith("/getMe")) {
+        return telegramGetMeResponse(input);
+      }
       if (String(input).endsWith("/sendMessage")) {
         bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
       }
       return Response.json({ ok: true, result: { message_id: 9011 } });
     }) as unknown as typeof fetch;
     const env = {
-      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      ...telegramBindings(),
+      ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
       PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
     } as AppEnv["Bindings"];
     const input = {
@@ -338,7 +412,7 @@ describe("Personal Shared Telegram edge", () => {
       throw new Error("egress must not run");
     }) as unknown as typeof fetch;
     const env = {
-      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      ...telegramBindings(),
       PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
     } as AppEnv["Bindings"];
 
@@ -362,10 +436,47 @@ describe("Personal Shared Telegram edge", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  test("rejects a mismatched reminder bot before ledger or message egress", async () => {
+    const ledger = namespace();
+    const provider = mock(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/getMe")) {
+        return telegramGetMeResponse(input, { username: "WrongTestBot" });
+      }
+      throw new Error("message egress must not run");
+    });
+    globalThis.fetch = provider as unknown as typeof fetch;
+
+    const result = await dispatchPersonalTelegramReminder(
+      {
+        ...telegramBindings(),
+        ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
+        PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+      } as AppEnv["Bindings"],
+      {
+        project: "eliza-app",
+        connectorAccountId: "bot:123",
+        chatId: "123456",
+        text: "must not send",
+        idempotencyKey: "reminder-identity-mismatch",
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      acceptance: "not_accepted",
+    });
+    expect(ledger.names).toHaveLength(0);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(String(provider.mock.calls[0]?.[0])).toEndWith("/getMe");
+  });
+
   test("pins reminder delivery to its originating stable bot account", async () => {
     const ledger = namespace();
     let sends = 0;
     globalThis.fetch = mock(async (input) => {
+      if (String(input).endsWith("/getMe")) {
+        return telegramGetMeResponse(input);
+      }
       if (String(input).endsWith("/sendMessage")) sends += 1;
       return Response.json({
         ok: true,
@@ -374,7 +485,8 @@ describe("Personal Shared Telegram edge", () => {
     }) as unknown as typeof fetch;
     const env = (botToken: string) =>
       ({
-        ELIZA_APP_TELEGRAM_BOT_TOKEN: botToken,
+        ...telegramBindings(botToken),
+        ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
         PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
       }) as AppEnv["Bindings"];
     const input = {
@@ -635,36 +747,25 @@ describe("Personal Shared Telegram edge", () => {
     );
   });
 
-  test("fingerprints an opaque Telegram credential without forwarding the token", async () => {
+  test("rejects an opaque Telegram credential before state or turn work", async () => {
     const botToken = "opaque-test-credential";
-    let deliveryBody: Record<string, unknown> | undefined;
-    const turn = mock(async (body: Record<string, unknown>) => {
-      deliveryBody = body;
-      return Response.json({ data: { reply: "Opaque account reply" } });
-    });
-    globalThis.fetch = mock(async (_input, init) => {
-      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
-      return Response.json({
-        ok: true,
-        result: body.text ? { message_id: 9012 } : true,
-      });
-    }) as unknown as typeof fetch;
-
-    expect(
-      (
-        await run(
-          namespace(),
-          turn,
-          telegramRequest(81611),
-          undefined,
-          botToken,
-        )
-      ).status,
-    ).toBe(200);
-    expect(deliveryBody?.connectorAccountId).toBe(
-      "bot:d437b678c02873c49f7a3ffaaf947cc5ec289fb2676cd1a2063e84087750f9b4",
+    const ledger = namespace();
+    const turn = mock(async () =>
+      Response.json({ data: { reply: "must not run" } }),
     );
-    expect(JSON.stringify(deliveryBody)).not.toContain(botToken);
+
+    const response = await run(
+      ledger,
+      turn,
+      telegramRequest(81611),
+      undefined,
+      botToken,
+    );
+
+    expect(response.status).toBe(503);
+    expect(JSON.stringify(await response.json())).not.toContain(botToken);
+    expect(turn).not.toHaveBeenCalled();
+    expect(ledger.names).toHaveLength(0);
   });
 
   test("delivers one fallback after retryable turn attempts are exhausted", async () => {
@@ -966,6 +1067,60 @@ describe("Personal Shared Telegram edge", () => {
     expect(ledger.values.size).toBe(0);
   });
 
+  test("rejects wrong bot ids and usernames before ledger, typing, or turn work", async () => {
+    for (const mismatch of [{ id: 456 }, { username: "WrongTestBot" }]) {
+      const ledger = namespace();
+      const turn = mock(async () =>
+        Response.json({ data: { reply: "must not run" } }),
+      );
+      const egress = globalThis.fetch;
+
+      const response = await run(
+        ledger,
+        turn,
+        telegramRequest(81640),
+        undefined,
+        "123:test-token",
+        mismatch,
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        code: "telegram_identity_not_ready",
+        reason: "identity_mismatch",
+      });
+      expect(turn).not.toHaveBeenCalled();
+      expect(ledger.names).toHaveLength(0);
+      expect(egress).not.toHaveBeenCalled();
+    }
+  });
+
+  test("publishes value-free Worker identity readiness", async () => {
+    const app = new Hono<AppEnv>();
+    app.route("/api/eliza-app/webhook/telegram", telegramRoute);
+    const env = telegramBindings() as AppEnv["Bindings"];
+    const url =
+      "https://api-staging.eliza.app/api/eliza-app/webhook/telegram/readiness";
+
+    const ready = await app.fetch(new Request(url), env, executionContext());
+    expect(ready.status).toBe(200);
+    expect((await ready.json()) as Record<string, unknown>).toEqual({
+      project: "eliza-app",
+      status: "attested",
+    });
+
+    __resetTelegramIdentityAttestationCacheForTests();
+    globalThis.fetch = mock(async (input) =>
+      telegramGetMeResponse(input, { username: "WrongTestBot" }),
+    ) as unknown as typeof fetch;
+    const notReady = await app.fetch(new Request(url), env, executionContext());
+    expect(notReady.status).toBe(503);
+    const body = JSON.stringify(await notReady.json());
+    expect(body).toContain("identity_mismatch");
+    expect(body).not.toContain("test-token");
+    expect(body).not.toContain("ElizaTestBot");
+  });
+
   test("confirms LINK codes through the canonical account route instead of model chat", async () => {
     const ledger = namespace();
     const turn = mock(async () => Response.json({ data: { reply: "wrong" } }));
@@ -1065,7 +1220,7 @@ describe("Personal Shared Telegram edge", () => {
     const env = {
       ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
       ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
-      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      ...telegramBindings(),
       PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "true",
       PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
     } as AppEnv["Bindings"];
@@ -1115,7 +1270,7 @@ describe("Personal Shared Telegram edge", () => {
         {
           ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
           ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
-          ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+          ...telegramBindings(),
           ...(legacyGate === undefined
             ? {}
             : {
@@ -1164,7 +1319,7 @@ describe("Personal Shared Telegram edge", () => {
     const env = {
       ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
       ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
-      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      ...telegramBindings(),
       PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
     } as AppEnv["Bindings"];
 
@@ -1307,8 +1462,7 @@ describe("Personal Shared Telegram edge", () => {
       {
         PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "false",
         ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
-        ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-        ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+        ...telegramBindings(),
       } as AppEnv["Bindings"],
       executionContext(),
     );
@@ -1331,8 +1485,7 @@ describe("Personal Shared Telegram edge", () => {
       {
         PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "true",
         ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
-        ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-        ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+        ...telegramBindings(),
       } as AppEnv["Bindings"],
       executionContext(),
     );
@@ -1365,8 +1518,7 @@ describe("Personal Shared Telegram edge", () => {
         {
           PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: legacyCompat,
           ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
-          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-          ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:rotated-secret",
+          ...telegramBindings("123:rotated-secret"),
           PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
         } as AppEnv["Bindings"],
         executionContext(),

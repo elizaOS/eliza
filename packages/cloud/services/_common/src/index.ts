@@ -44,6 +44,8 @@ export {
   type ResponseRetryReason,
 } from "./response-attempts";
 export {
+  __resetTelegramIdentityAttestationCacheForTests,
+  attestTelegramBotIdentity,
   parseTelegramWebhook,
   resolveTelegramVoiceNote,
   sendTelegramReply,
@@ -54,10 +56,13 @@ export {
   TELEGRAM_VOICE_MAX_DURATION_SECONDS,
   TelegramApiResponseError,
   TelegramApiTransportError,
+  type TelegramAttestedBotIdentity,
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
   type TelegramConnectorLogger,
   type TelegramDeliveryReceipt,
+  TelegramIdentityAttestationError,
+  type TelegramIdentityAttestationFailureReason,
   type TelegramReplyDeliveryHooks,
   type TelegramResolvedVoiceNote,
   verifyTelegramWebhook,

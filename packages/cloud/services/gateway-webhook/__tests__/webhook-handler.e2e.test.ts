@@ -10,6 +10,12 @@ import { PlatformDeliveryError } from "../src/adapters/types";
 import { logger } from "../src/logger";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
+import {
+  configureTelegramIdentity,
+  resetTelegramIdentityAttestation,
+  TELEGRAM_CONNECTOR_ACCOUNT_ID,
+  withTelegramIdentity,
+} from "./telegram-identity-fixture";
 
 type RedisSetOptions = { ex?: number; nx?: boolean };
 
@@ -108,6 +114,9 @@ const envKeys = [
   "ELIZA_APP_TWILIO_AUTH_TOKEN",
   "ELIZA_APP_TWILIO_PHONE_NUMBER",
   "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+  "ELIZA_APP_TELEGRAM_BOT_ID",
+  "ELIZA_APP_TELEGRAM_BOT_USERNAME",
+  "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
   "ELIZA_APP_BLOOIO_PHONE_NUMBER",
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -151,6 +160,7 @@ describe("gateway webhook handler e2e routing", () => {
         process.env[key] = value;
       }
     }
+    resetTelegramIdentityAttestation();
     mock.restore();
   });
 
@@ -976,7 +986,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("forwards Telegram membership removal without model or provider egress", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     const event: ChatEvent = {
       platform: "telegram",
@@ -999,16 +1009,20 @@ describe("gateway webhook handler e2e routing", () => {
       sendReplyWithReceipt: mock(async () => ({ providerMessageIds: [] })),
     };
     let membershipBody: Record<string, unknown> | null = null;
-    globalThis.fetch = mock(async (input, init) => {
-      const request = new Request(input, init);
-      if (
-        request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
-      ) {
-        membershipBody = (await request.json()) as Record<string, unknown>;
-        return Response.json({ success: true, data: { reply: "" } });
-      }
-      throw new Error(`Unexpected fetch: ${request.url}`);
-    }) as typeof fetch;
+    globalThis.fetch = mock(
+      withTelegramIdentity(async (input, init) => {
+        const request = new Request(input, init);
+        if (
+          request.url.endsWith(
+            "/api/internal/eliza-app/personal-shared/messages",
+          )
+        ) {
+          membershipBody = (await request.json()) as Record<string, unknown>;
+          return Response.json({ success: true, data: { reply: "" } });
+        }
+        throw new Error(`Unexpected fetch: ${request.url}`);
+      }),
+    ) as typeof fetch;
 
     const response = await handleWebhook(
       new Request("https://gateway.example/webhook/eliza-app/telegram", {
@@ -1030,8 +1044,7 @@ describe("gateway webhook handler e2e routing", () => {
       eventType: "membership",
       platform: "telegram",
       project: "eliza-app",
-      connectorAccountId:
-        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
+      connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
       chatId: "-100123456789",
       messageId: "telegram:eliza-app:membership-update-1",
       membershipChange: "removed",
@@ -1041,7 +1054,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("refuses Telegram egress when another worker atomically claimed delivery", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-1",
@@ -1083,11 +1096,13 @@ describe("gateway webhook handler e2e routing", () => {
     }
     const redis = new EgressContendedRedis();
     globalThis.fetch = mock(
-      async () =>
-        new Response(JSON.stringify({ data: { reply: "agent reply" } }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+      withTelegramIdentity(
+        async () =>
+          new Response(JSON.stringify({ data: { reply: "agent reply" } }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
     ) as typeof fetch;
 
     const response = await handleWebhook(
@@ -1112,7 +1127,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("delivers one Telegram fallback after retryable Shared attempts are exhausted", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-retry-before-egress",
@@ -1142,19 +1157,22 @@ describe("gateway webhook handler e2e routing", () => {
       JSON.stringify({ notFound: true }),
     );
     let sharedAttempts = 0;
-    globalThis.fetch = mock(async () => {
-      sharedAttempts += 1;
-      return new Response("private provider detail", {
-        status: 503,
-        headers: {
-          "Retry-After": "0",
-          "X-Eliza-Failure-Stage": "shared_runtime",
-          "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
-          "X-Eliza-Failure-Cause-Name": "SharedRuntimeProviderUnavailableError",
-          "X-Eliza-Retryable": "true",
-        },
-      });
-    }) as typeof fetch;
+    globalThis.fetch = mock(
+      withTelegramIdentity(async () => {
+        sharedAttempts += 1;
+        return new Response("private provider detail", {
+          status: 503,
+          headers: {
+            "Retry-After": "0",
+            "X-Eliza-Failure-Stage": "shared_runtime",
+            "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
+            "X-Eliza-Failure-Cause-Name":
+              "SharedRuntimeProviderUnavailableError",
+            "X-Eliza-Retryable": "true",
+          },
+        });
+      }),
+    ) as typeof fetch;
     const request = () =>
       new Request("https://gateway.example/webhook/eliza-app/telegram", {
         method: "POST",
@@ -1185,7 +1203,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("delivers one Telegram fallback without replaying a terminal Shared turn", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-terminal-before-egress",
@@ -1216,28 +1234,30 @@ describe("gateway webhook handler e2e routing", () => {
       JSON.stringify({ notFound: true }),
     );
     let sharedAttempts = 0;
-    globalThis.fetch = mock(async () => {
-      sharedAttempts += 1;
-      const body = new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            new TextEncoder().encode("private action payload"),
-          );
-        },
-        cancel() {
-          throw new Error("private body cleanup detail");
-        },
-      });
-      return new Response(body, {
-        status: 500,
-        headers: {
-          "X-Eliza-Failure-Stage": "shared_runtime",
-          "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
-          "X-Eliza-Failure-Cause-Name": "SharedRuntimeActionContractError",
-          "X-Eliza-Retryable": "false",
-        },
-      });
-    }) as typeof fetch;
+    globalThis.fetch = mock(
+      withTelegramIdentity(async () => {
+        sharedAttempts += 1;
+        const body = new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode("private action payload"),
+            );
+          },
+          cancel() {
+            throw new Error("private body cleanup detail");
+          },
+        });
+        return new Response(body, {
+          status: 500,
+          headers: {
+            "X-Eliza-Failure-Stage": "shared_runtime",
+            "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
+            "X-Eliza-Failure-Cause-Name": "SharedRuntimeActionContractError",
+            "X-Eliza-Retryable": "false",
+          },
+        });
+      }),
+    ) as typeof fetch;
     const request = () =>
       new Request("https://gateway.example/webhook/eliza-app/telegram", {
         method: "POST",
@@ -1261,7 +1281,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("delivers one Telegram fallback when private voice resolution fails", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-voice-resolution-failure",
@@ -1297,7 +1317,7 @@ describe("gateway webhook handler e2e routing", () => {
     const cloudFetch = mock(async () =>
       Response.json({ data: { reply: "must not run" } }),
     );
-    globalThis.fetch = cloudFetch as typeof fetch;
+    globalThis.fetch = mock(withTelegramIdentity(cloudFetch)) as typeof fetch;
 
     expect(
       (
@@ -1341,7 +1361,7 @@ describe("gateway webhook handler e2e routing", () => {
   ])(
     "never injects a fallback into a Telegram %s",
     async (_name, overrides) => {
-      process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+      configureTelegramIdentity();
       const event: ChatEvent = {
         platform: "telegram",
         messageId: `no-fallback-${_name.replaceAll(" ", "-")}`,
@@ -1365,16 +1385,19 @@ describe("gateway webhook handler e2e routing", () => {
       };
       const redis = new MemoryRedis();
       globalThis.fetch = mock(
-        async () =>
-          new Response("private upstream body", {
-            status: 500,
-            headers: {
-              "X-Eliza-Failure-Stage": "shared_runtime",
-              "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
-              "X-Eliza-Failure-Cause-Name": "SharedRuntimeActionContractError",
-              "X-Eliza-Retryable": "false",
-            },
-          }),
+        withTelegramIdentity(
+          async () =>
+            new Response("private upstream body", {
+              status: 500,
+              headers: {
+                "X-Eliza-Failure-Stage": "shared_runtime",
+                "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
+                "X-Eliza-Failure-Cause-Name":
+                  "SharedRuntimeActionContractError",
+                "X-Eliza-Retryable": "false",
+              },
+            }),
+        ),
       ) as typeof fetch;
 
       await expect(
@@ -1398,7 +1421,7 @@ describe("gateway webhook handler e2e routing", () => {
   );
 
   test("never logs raw Shared bodies or malformed classification headers", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-sanitized-diagnostics",
@@ -1421,15 +1444,17 @@ describe("gateway webhook handler e2e routing", () => {
     };
     const warnLog = spyOn(logger, "warn").mockImplementation(() => undefined);
     globalThis.fetch = mock(
-      async () =>
-        new Response("TOP SECRET PROVIDER BODY", {
-          status: 500,
-          headers: {
-            "X-Eliza-Failure-Stage": "TOP_SECRET_STAGE",
-            "X-Eliza-Failure-Name": "PrivateProviderToken",
-            "X-Eliza-Retryable": "false",
-          },
-        }),
+      withTelegramIdentity(
+        async () =>
+          new Response("TOP SECRET PROVIDER BODY", {
+            status: 500,
+            headers: {
+              "X-Eliza-Failure-Stage": "TOP_SECRET_STAGE",
+              "X-Eliza-Failure-Name": "PrivateProviderToken",
+              "X-Eliza-Retryable": "false",
+            },
+          }),
+      ),
     ) as typeof fetch;
 
     expect(
@@ -1456,7 +1481,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("routes an unlinked Telegram DM to rowless personal Shared", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-personal-1",
@@ -1487,32 +1512,34 @@ describe("gateway webhook handler e2e routing", () => {
     );
     let sharedBody: Record<string, unknown> | null = null;
     let sharedTraceId: string | null = null;
-    globalThis.fetch = mock(async (input, init) => {
-      const request = new Request(input, init);
-      const url = request.url;
-      if (url.endsWith("/api/internal/identity/resolve")) {
-        return new Response(JSON.stringify({ error: "not found" }), {
-          status: 404,
-        });
-      }
-      if (url.endsWith("/api/internal/eliza-app/personal-shared/messages")) {
-        sharedTraceId = request.headers.get("x-eliza-trace-id");
-        sharedBody = (await request.json()) as Record<string, unknown>;
-        return new Response(
-          JSON.stringify({
-            data: { reply: "start with the launch checklist" },
-          }),
-          {
-            status: 200,
-            headers: {
-              "content-type": "application/json",
-              "server-timing": "account;dur=5.2, shared;dur=17.8",
+    globalThis.fetch = mock(
+      withTelegramIdentity(async (input, init) => {
+        const request = new Request(input, init);
+        const url = request.url;
+        if (url.endsWith("/api/internal/identity/resolve")) {
+          return new Response(JSON.stringify({ error: "not found" }), {
+            status: 404,
+          });
+        }
+        if (url.endsWith("/api/internal/eliza-app/personal-shared/messages")) {
+          sharedTraceId = request.headers.get("x-eliza-trace-id");
+          sharedBody = (await request.json()) as Record<string, unknown>;
+          return new Response(
+            JSON.stringify({
+              data: { reply: "start with the launch checklist" },
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "server-timing": "account;dur=5.2, shared;dur=17.8",
+              },
             },
-          },
-        );
-      }
-      throw new Error(`unexpected request: ${url}`);
-    }) as typeof fetch;
+          );
+        }
+        throw new Error(`unexpected request: ${url}`);
+      }),
+    ) as typeof fetch;
 
     const response = await handleWebhook(
       new Request("https://gateway.example/webhook/eliza-app/telegram", {
@@ -1536,8 +1563,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       platform: "telegram",
       project: "eliza-app",
-      connectorAccountId:
-        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
+      connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
       chatId: "chat-1",
       telegramUserId: "123456789",
       displayName: "Ada",
@@ -1580,7 +1606,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("correlates every retry and preserves prior Cloud timing", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const traceId = "22222222-2222-4222-8222-222222222222";
     const event: ChatEvent = {
       platform: "telegram",
@@ -1611,33 +1637,35 @@ describe("gateway webhook handler e2e routing", () => {
     const warnLog = spyOn(logger, "warn").mockImplementation(() => undefined);
     const forwardedTraceIds: Array<string | null> = [];
     let attempt = 0;
-    globalThis.fetch = mock(async (input, init) => {
-      const request = new Request(input, init);
-      if (
-        !request.url.endsWith(
-          "/api/internal/eliza-app/personal-shared/messages",
-        )
-      ) {
-        throw new Error(`unexpected request: ${request.url}`);
-      }
-      forwardedTraceIds.push(request.headers.get("x-eliza-trace-id"));
-      attempt += 1;
-      if (attempt === 1) {
-        return new Response("cold failure", {
-          status: 503,
-          headers: {
-            "Retry-After": "0",
-            "Server-Timing": "failed_worker;dur=1234",
-            "X-Eliza-Failure-Stage": "shared_runtime",
-            "X-Eliza-Failure-Name": "TypeError",
-          },
-        });
-      }
-      return Response.json(
-        { data: { reply: "retried successfully" } },
-        { headers: { "Server-Timing": "account;dur=4, shared;dur=20" } },
-      );
-    }) as typeof fetch;
+    globalThis.fetch = mock(
+      withTelegramIdentity(async (input, init) => {
+        const request = new Request(input, init);
+        if (
+          !request.url.endsWith(
+            "/api/internal/eliza-app/personal-shared/messages",
+          )
+        ) {
+          throw new Error(`unexpected request: ${request.url}`);
+        }
+        forwardedTraceIds.push(request.headers.get("x-eliza-trace-id"));
+        attempt += 1;
+        if (attempt === 1) {
+          return new Response("cold failure", {
+            status: 503,
+            headers: {
+              "Retry-After": "0",
+              "Server-Timing": "failed_worker;dur=1234",
+              "X-Eliza-Failure-Stage": "shared_runtime",
+              "X-Eliza-Failure-Name": "TypeError",
+            },
+          });
+        }
+        return Response.json(
+          { data: { reply: "retried successfully" } },
+          { headers: { "Server-Timing": "account;dur=4, shared;dur=20" } },
+        );
+      }),
+    ) as typeof fetch;
 
     const response = await handleWebhook(
       new Request("https://gateway.example/webhook/eliza-app/telegram", {
@@ -1693,7 +1721,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("resolves captionless Telegram voice bytes before the trusted Shared boundary", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const event: ChatEvent = {
       platform: "telegram",
       messageId: "update-voice-1",
@@ -1733,14 +1761,19 @@ describe("gateway webhook handler e2e routing", () => {
     };
     const redis = new MemoryRedis();
     let sharedBody: Record<string, unknown> | null = null;
-    globalThis.fetch = mock(async (input, init) => {
-      const url = String(input);
-      if (url.endsWith("/api/internal/eliza-app/personal-shared/messages")) {
-        sharedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        return Response.json({ data: { reply: "I heard you" } });
-      }
-      throw new Error(`unexpected request: ${url}`);
-    }) as typeof fetch;
+    globalThis.fetch = mock(
+      withTelegramIdentity(async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/internal/eliza-app/personal-shared/messages")) {
+          sharedBody = JSON.parse(String(init?.body)) as Record<
+            string,
+            unknown
+          >;
+          return Response.json({ data: { reply: "I heard you" } });
+        }
+        throw new Error(`unexpected request: ${url}`);
+      }),
+    ) as typeof fetch;
 
     const response = await handleWebhook(
       new Request("https://gateway.example/webhook/eliza-app/telegram", {
@@ -1761,8 +1794,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       platform: "telegram",
       project: "eliza-app",
-      connectorAccountId:
-        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
+      connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
       chatId: "chat-1",
       telegramUserId: "123456789",
       displayName: "Ada",
