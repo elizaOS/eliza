@@ -130,9 +130,7 @@ describe("provisioning-worker approval/concurrency topology (#18092)", () => {
     expect(lock?.group).toContain("format('run-{0}', github.run_id)");
     expect(lock?.["cancel-in-progress"]).toBe(false);
     expect(lock?.queue).toBe("max");
-    expect(deploy?.environment).toContain(
-      "needs.determine-env.outputs.environment",
-    );
+    expect(deploy?.environment).toContain("needs.determine-env.outputs.environment");
 
     // The real cross-run mutation serializer: the deploy SSH step must
     // acquire the host lock on the shared checkout before mutating it.
