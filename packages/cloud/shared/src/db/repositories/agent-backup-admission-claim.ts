@@ -18,6 +18,7 @@ import {
   agentBackupAdmissionWork,
   agentBackupNodeAdmissionCursors,
   agentBackupOrganizationAdmissionCursors,
+  MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS,
 } from "../schemas/agent-backup-admission";
 import { agentNodeIncarnationHistories } from "../schemas/agent-node-incarnation-histories";
 import { agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
@@ -33,7 +34,7 @@ export const MAX_AGENT_BACKUP_ADMISSION_CLAIM_BATCH = 100;
 export const MIN_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS = 1_000;
 export const MAX_AGENT_BACKUP_ADMISSION_CLAIM_LEASE_MS = 5 * 60_000;
 export const MAX_AGENT_BACKUP_ADMISSION_DEFER_MS = 5 * 60_000;
-export const MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS = 12;
+export { MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS };
 export const AGENT_BACKUP_ADMISSION_CLAIM_RAW_PAGE = 256;
 export const MAX_AGENT_BACKUP_ADMISSION_CLAIM_SCAN_BUDGET =
   4 * AGENT_BACKUP_ADMISSION_CLAIM_RAW_PAGE;
@@ -242,7 +243,7 @@ export type AgentBackupAdmissionFence = Pick<
   | "claimProofPriorityPass"
 >;
 
-export type AgentBackupAdmissionDeferResult = "deferred" | "settled" | null;
+export type AgentBackupAdmissionDeferResult = "deferred" | "retry_exhausted" | null;
 
 type AgentBackupAdmissionClaimFailureCode =
   | "BACKUP_ADMISSION_CLAIM_AUTHORITY_CORRUPT"
@@ -2690,7 +2691,7 @@ export async function deferAgentBackupAdmissionClaim(params: {
     max: MAX_AGENT_BACKUP_ADMISSION_DEFER_MS,
   });
   const reason = requireReason(params.reason, "reason");
-  const [updated] = await sqlRows<{ state: "deferred" | "settled" }>(
+  const [updated] = await sqlRows<{ outcome: Exclude<AgentBackupAdmissionDeferResult, null> }>(
     dbWrite,
     sql`WITH locked AS MATERIALIZED (
         SELECT work.id
@@ -2735,9 +2736,13 @@ export async function deferAgentBackupAdmissionClaim(params: {
       WHERE work.id = locked.id
         AND ${exactLeasedScheduleFenceAuthoritySql(fence)}
         AND work.lease_expires_at > observed.at
-      RETURNING work.state`,
+      RETURNING CASE
+        WHEN work.attempts >= ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS}
+          THEN 'retry_exhausted'
+        ELSE 'deferred'
+      END AS outcome`,
   );
-  return updated?.state ?? null;
+  return updated?.outcome ?? null;
 }
 
 /** Terminally settle one exact unexpired claim. */
