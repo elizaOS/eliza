@@ -21,6 +21,7 @@ import { useAppSelector } from "../../../../state";
 import { openExternalUrl } from "../../../../utils/openExternalUrl";
 import { Button } from "../../../ui/button";
 import { FormSelect, FormSelectItem } from "../../../ui/form-select";
+import { Input } from "../../../ui/input";
 import {
   buildMcpCreatePayload,
   CLOUD_CONNECTORS,
@@ -33,7 +34,6 @@ import {
   CloudFormField,
   CloudModal,
   CloudRow,
-  CloudTextInput,
   DestructiveSecondaryButton,
   SettingsGroup,
   SettingsStack,
@@ -335,16 +335,20 @@ function ConnectModal({
               description={field.description}
               htmlFor={`field-${field.key}`}
             >
-              <CloudTextInput
+              <Input
                 id={`field-${field.key}`}
                 type={field.type ?? "text"}
                 value={fieldValues[field.key] ?? ""}
-                onChange={(v) =>
-                  setFieldValues((prev) => ({ ...prev, [field.key]: v }))
+                onChange={(event) =>
+                  setFieldValues((prev) => ({
+                    ...prev,
+                    [field.key]: event.target.value,
+                  }))
                 }
                 placeholder={field.placeholder}
                 disabled={busy}
                 autoComplete="off"
+                variant="form"
               />
             </CloudFormField>
           ))}
@@ -662,12 +666,13 @@ function McpAddModal({
     >
       <div className="space-y-4">
         <CloudFormField label="Name" htmlFor="mcp-name">
-          <CloudTextInput
+          <Input
             id="mcp-name"
             value={name}
-            onChange={setName}
+            onChange={(event) => setName(event.target.value)}
             placeholder="My MCP Server"
             disabled={busy}
+            variant="form"
           />
         </CloudFormField>
         <CloudFormField
@@ -675,12 +680,13 @@ function McpAddModal({
           description="URL-safe identifier. Auto-generated from name if left blank."
           htmlFor="mcp-slug"
         >
-          <CloudTextInput
+          <Input
             id="mcp-slug"
             value={slug}
-            onChange={setSlug}
+            onChange={(event) => setSlug(event.target.value)}
             placeholder="my-mcp-server"
             disabled={busy}
+            variant="form"
           />
         </CloudFormField>
         <CloudFormField
@@ -688,12 +694,13 @@ function McpAddModal({
           description="The MCP server's HTTP/SSE endpoint."
           htmlFor="mcp-url"
         >
-          <CloudTextInput
+          <Input
             id="mcp-url"
             value={endpointUrl}
-            onChange={setEndpointUrl}
+            onChange={(event) => setEndpointUrl(event.target.value)}
             placeholder="https://my-mcp-server.example.com/sse"
             disabled={busy}
+            variant="form"
           />
         </CloudFormField>
         <CloudFormField
@@ -701,12 +708,13 @@ function McpAddModal({
           description="Required. Shown wherever this MCP server is listed."
           htmlFor="mcp-desc"
         >
-          <CloudTextInput
+          <Input
             id="mcp-desc"
             value={description}
-            onChange={setDescription}
+            onChange={(event) => setDescription(event.target.value)}
             placeholder="What does this MCP server provide?"
             disabled={busy}
+            variant="form"
           />
         </CloudFormField>
       </div>

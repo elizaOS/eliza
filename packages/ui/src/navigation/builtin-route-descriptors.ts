@@ -95,7 +95,7 @@ const WORKSPACE_LAYOUT: PageLayoutManifest = Object.freeze({
 /** Routes whose rendered view owns its canonical FramedPage width and gutter. */
 const FRAMED_PAGE_LAYOUT: PageLayoutManifest = Object.freeze({
   kind: "content",
-  width: "wide",
+  width: "standard",
   scroll: "view",
   gutter: "none",
 });
@@ -133,7 +133,7 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   messages: { path: "/messages", layout: FULL_WORKSPACE_LAYOUT },
   contacts: { path: "/contacts", layout: WORKSPACE_LAYOUT },
   camera: { path: "/camera", layout: FULL_WORKSPACE_LAYOUT },
-  tasks: { path: "/apps/tasks", layout: WORKSPACE_LAYOUT },
+  tasks: { path: "/apps/tasks", layout: FRAMED_PAGE_LAYOUT },
   browser: {
     path: "/browser",
     layout: FULL_WORKSPACE_LAYOUT,
@@ -163,7 +163,7 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     path: "/character/select",
     layout: FRAMED_PAGE_LAYOUT,
   },
-  automations: { path: "/automations", layout: WORKSPACE_LAYOUT },
+  automations: { path: "/automations", layout: FRAMED_PAGE_LAYOUT },
   triggers: { aliasOf: "automations" },
   inventory: { path: "/wallet", layout: SHELL_WIDE_CONTENT_LAYOUT },
   documents: {
@@ -182,10 +182,10 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     path: "/character/skills",
     layout: FRAMED_PAGE_LAYOUT,
   },
-  memories: { path: "/apps/memories", layout: WORKSPACE_LAYOUT },
+  memories: { path: "/apps/memories", layout: FRAMED_PAGE_LAYOUT },
   rolodex: { path: "/rolodex", layout: CONTENT_LAYOUT },
   runtime: { path: "/apps/runtime", layout: WORKSPACE_LAYOUT },
-  database: { path: "/apps/database", layout: WORKSPACE_LAYOUT },
+  database: { path: "/apps/database", layout: FRAMED_PAGE_LAYOUT },
   desktop: { path: "/desktop", layout: FULL_WORKSPACE_LAYOUT },
   settings: { path: "/settings", layout: FULL_WORKSPACE_LAYOUT },
   vault: { path: "/vault", layout: FRAMED_PAGE_LAYOUT },

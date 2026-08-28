@@ -39,7 +39,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { BrandCard } from "../../../cloud-ui/components/brand/brand-card";
 import {
   Badge,
   Button,
@@ -567,7 +566,7 @@ export function EarningsPageClient() {
       {/* Balance Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Available Balance */}
-        <BrandCard className="relative" corners={false}>
+        <Card variant="brand" className="relative">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted mb-1">
@@ -603,10 +602,10 @@ export function EarningsPageClient() {
               {balance.eligibility?.reason}
             </p>
           )}
-        </BrandCard>
+        </Card>
 
         {/* Total Earned */}
-        <BrandCard className="relative" corners={false}>
+        <Card variant="brand" className="relative">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted mb-1">
@@ -643,10 +642,10 @@ export function EarningsPageClient() {
               );
             })}
           </div>
-        </BrandCard>
+        </Card>
 
         {/* Already Redeemed */}
-        <BrandCard className="relative" corners={false}>
+        <Card variant="brand" className="relative">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted mb-1">
@@ -704,11 +703,11 @@ export function EarningsPageClient() {
               </div>
             </div>
           </Card>
-        </BrandCard>
+        </Card>
       </div>
 
       {/* How it Works */}
-      <BrandCard className="relative" corners={false}>
+      <Card variant="brand" className="relative">
         <div className="flex items-start gap-3">
           <Info className="size-4 text-accent mt-0.5 shrink-0" />
           <div>
@@ -725,11 +724,11 @@ export function EarningsPageClient() {
             </p>
           </div>
         </div>
-      </BrandCard>
+      </Card>
 
       {/* Recent Earnings */}
       {balance?.recentEarnings && balance.recentEarnings.length > 0 && (
-        <BrandCard corners={false}>
+        <Card variant="brand">
           <h3 className="text-lg font-semibold text-txt-strong mb-4">
             {t("cloud.earnings.recentEarnings", {
               defaultValue: "Recent Earnings",
@@ -770,11 +769,11 @@ export function EarningsPageClient() {
               );
             })}
           </div>
-        </BrandCard>
+        </Card>
       )}
 
       {/* Redemption History */}
-      <BrandCard corners={false}>
+      <Card variant="brand">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-txt-strong">
             {t("cloud.earnings.redemptionHistory", {
@@ -888,7 +887,7 @@ export function EarningsPageClient() {
             </TableBody>
           </Table>
         )}
-      </BrandCard>
+      </Card>
 
       {/* Redeem Dialog */}
       <Dialog

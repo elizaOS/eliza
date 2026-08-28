@@ -652,7 +652,7 @@ describe("ChatOverlay", () => {
         x: 0,
         y: 0,
         top: 0,
-        right: 208,
+        right: 360,
         bottom: 72,
         left: 0,
         toJSON: () => ({}),
@@ -680,12 +680,15 @@ describe("ChatOverlay", () => {
         document.documentElement.style.getPropertyValue(
           "--eliza-chat-side-clearance",
         ),
-      ).toBe("384px");
+      ).toBe("0px");
+      expect(
+        screen.getByTestId("chat-sheet").parentElement?.style.maxWidth,
+      ).toBe("360px");
       expect(
         document.documentElement.style.getPropertyValue(
           "--eliza-chat-clearance",
         ),
-      ).toBe("0px");
+      ).toBe("80px");
 
       fireEvent.focus(screen.getByLabelText("message"));
 

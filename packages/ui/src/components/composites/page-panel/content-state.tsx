@@ -51,13 +51,19 @@ function PlainEmptyContent({
   action,
   children,
   description,
+  icon,
   title,
 }: Pick<
   EmptyContentStateProps,
-  "action" | "children" | "description" | "title"
+  "action" | "children" | "description" | "icon" | "title"
 >) {
   return (
     <>
+      {icon ? (
+        <Card variant="accentTile" className="mb-3 size-12">
+          {icon}
+        </Card>
+      ) : null}
       <div className="max-w-md space-y-2">
         <div className="text-base font-medium text-txt-strong">{title}</div>
         {description ? (
@@ -150,6 +156,7 @@ export function ContentState(props: ContentStateProps) {
           <PlainEmptyContent
             action={action}
             description={description}
+            icon={icon}
             title={title}
           >
             {children}
@@ -170,6 +177,7 @@ export function ContentState(props: ContentStateProps) {
           <PlainEmptyContent
             action={action}
             description={description}
+            icon={icon}
             title={title}
           >
             {children}

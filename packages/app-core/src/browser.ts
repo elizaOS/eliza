@@ -24,7 +24,6 @@ export {
 export * from "@elizaos/ui/browser";
 export { ErrorBoundary } from "@elizaos/ui/browser";
 export {
-  SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
@@ -42,6 +41,7 @@ export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 export { Button } from "@elizaos/ui/components/ui/button";
 export { Input } from "@elizaos/ui/components/ui/input";
 export { Spinner } from "@elizaos/ui/components/ui/spinner";
+export { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
 export {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,

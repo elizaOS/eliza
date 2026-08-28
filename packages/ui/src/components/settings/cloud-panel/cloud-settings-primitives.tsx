@@ -722,35 +722,3 @@ export function CloudFormField({
     </div>
   );
 }
-
-/** A text input styled to match the settings panel. */
-export function CloudTextInput({
-  id,
-  type = "text",
-  value,
-  onChange,
-  placeholder,
-  disabled,
-  autoComplete,
-}: {
-  id?: string;
-  type?: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  autoComplete?: string;
-}) {
-  return (
-    <Input
-      id={id}
-      type={type}
-      value={value}
-      disabled={disabled}
-      placeholder={placeholder}
-      autoComplete={autoComplete}
-      onChange={(e) => onChange(e.target.value)}
-      variant="form"
-    />
-  );
-}

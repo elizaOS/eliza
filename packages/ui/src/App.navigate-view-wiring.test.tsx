@@ -753,6 +753,51 @@ describe("App navigate-view event wiring", () => {
     expect(frame?.className.includes("overflow-y-auto")).toBe(true);
   });
 
+  it("renders Automations with one framed gutter, clearance, and view scroller", async () => {
+    appState.tab = "automations";
+    window.history.replaceState(null, "", "/automations");
+
+    const { container } = render(<App />);
+    const automations = await screen.findByTestId("automations-layout");
+    const frame = automations.closest<HTMLElement>("[data-page-kind]");
+    const pageContent = frame?.querySelector<HTMLElement>(
+      ":scope > [data-page-content]",
+    );
+    const body = screen.getByTestId("automations-scroll-region");
+
+    expect(frame?.getAttribute("data-page-kind")).toBe("content");
+    expect(frame?.getAttribute("data-page-width")).toBe("standard");
+    expect(frame?.getAttribute("data-scroll-owner")).toBe("view");
+    expect(pageContent?.getAttribute("data-page-gutter")).toBe("none");
+    expect(pageContent?.className).not.toContain("px-4");
+    expect(body.className).toContain("max-w-5xl");
+    expect(body.className).toContain("px-4");
+
+    const clearanceOwners = Array.from(
+      frame?.querySelectorAll<HTMLElement>("*") ?? [],
+    ).filter((element) =>
+      element
+        .getAttribute("class")
+        ?.includes("pb-[var(--eliza-chat-clearance,5.25rem)]"),
+    );
+    expect(clearanceOwners).toEqual([automations]);
+    expect(automations.getAttribute("data-chat-clearance-aware")).toBe("true");
+    expect(automations.className).not.toContain(
+      "pe-[var(--eliza-chat-side-clearance,0px)]",
+    );
+    expect(automations.className).not.toContain(
+      "[@media(orientation:landscape)_and_(max-height:520px)]:pb-0",
+    );
+
+    expect(body.getAttribute("data-framed-page-scroll")).toBe("page");
+    expect(body.getAttribute("data-shell-scroll-region")).toBeNull();
+    expect(body.className).toContain("overflow-y-auto");
+    expect(
+      frame?.querySelectorAll('[data-shell-scroll-region="true"]'),
+    ).toHaveLength(0);
+    expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
+  });
+
   it("keeps the ambient chat route outside canonical page framing", () => {
     appState.tab = "chat";
     window.history.replaceState(null, "", "/chat");
@@ -865,7 +910,7 @@ describe("App navigate-view event wiring", () => {
     expect(settingsPageContent?.className).toContain(
       "pb-[var(--eliza-chat-clearance,5.25rem)]",
     );
-    expect(settingsPageContent?.className).toContain(
+    expect(settingsPageContent?.className).not.toContain(
       "pe-[var(--eliza-chat-side-clearance,0px)]",
     );
     expect(settingsPageContent?.className).toContain("settings-surface");
@@ -949,7 +994,7 @@ describe("App navigate-view event wiring", () => {
       container
         .querySelector('[data-shell-content-region="true"] [data-page-content]')
         ?.className.includes("pe-[var(--eliza-chat-side-clearance"),
-    ).toBe(true);
+    ).toBe(false);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
   });

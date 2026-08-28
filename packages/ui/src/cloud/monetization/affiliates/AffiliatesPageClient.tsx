@@ -5,7 +5,7 @@
  * `/api/v1/affiliates` (markup), GET `/api/v1/referrals` (via
  * {@link useDashboardReferralMe}). Copyable links preserve the dashboard-card
  * layout while exposing wrapping URLs, precise copy controls, and live status.
- * Markup is a SettingsInputRow; the surrounding BrandCard chrome and save
+ * Markup is a SettingsInputRow; the surrounding canonical Card chrome and save
  * button stay.
  */
 
@@ -25,7 +25,6 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 // Deep primitive/brand imports per the packages/ui extension rules — the
 // root cloud-ui barrel would drag the entire kit into this chunk graph.
-import { BrandCard } from "../../../cloud-ui/components/brand/brand-card";
 import { Button, Skeleton } from "../../../cloud-ui/components/primitives";
 import { SettingsInputRow } from "../../../components/settings/settings-agent-rows";
 import { SettingsRow } from "../../../components/settings/settings-layout";
@@ -260,7 +259,7 @@ export function AffiliatesPageClient() {
         {copyStatus}
       </p>
       {/* Introduction Banner */}
-      <BrandCard className="relative" corners={false}>
+      <Card variant="brand" className="relative">
         <div className="flex items-start gap-3">
           <UserCog className="size-5 text-accent mt-0.5 shrink-0" />
           <div>
@@ -295,12 +294,12 @@ export function AffiliatesPageClient() {
             </p>
           </div>
         </div>
-      </BrandCard>
+      </Card>
 
       {/* Referral invite: uses GET /api/v1/referrals (parallel to affiliate
           fetch, own loading state). Different URL (?ref= vs ?affiliate=),
           economics, and copy from the affiliate card below. */}
-      <BrandCard corners={false}>
+      <Card variant="brand">
         <div className="flex items-start gap-3 mb-4">
           <Users className="size-5 text-accent mt-0.5 shrink-0" />
           <div className="min-w-0 flex-1">
@@ -417,10 +416,10 @@ export function AffiliatesPageClient() {
             />
           </>
         )}
-      </BrandCard>
+      </Card>
 
       {/* Affiliate Link */}
-      <BrandCard corners={false}>
+      <Card variant="brand">
         <h3 className="text-lg font-semibold text-txt-strong mb-1">
           {t("cloud.affiliates.yourAffiliateLink", {
             defaultValue: "Your Affiliate Link",
@@ -466,10 +465,10 @@ export function AffiliatesPageClient() {
             </Button>
           }
         />
-      </BrandCard>
+      </Card>
 
       {/* Markup Configuration */}
-      <BrandCard corners={false}>
+      <Card variant="brand">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-txt-strong mb-1">
@@ -558,10 +557,10 @@ export function AffiliatesPageClient() {
             })}
           </div>
         </Alert>
-      </BrandCard>
+      </Card>
 
       {/* API Integration Snippet */}
-      <BrandCard corners={false}>
+      <Card variant="brand">
         <h3 className="text-lg font-semibold text-txt-strong mb-1">
           {t("cloud.affiliates.devApiTitle", {
             defaultValue: "Developer API Integration (SKUs)",
@@ -647,7 +646,7 @@ export function AffiliatesPageClient() {
             </span>
           </pre>
         </Card>
-      </BrandCard>
+      </Card>
     </div>
   );
 }

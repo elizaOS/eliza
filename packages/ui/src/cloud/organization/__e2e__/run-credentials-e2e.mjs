@@ -518,7 +518,7 @@ assert(
 await contributeBtn.hover();
 await page.waitForTimeout(400);
 const hoverRgb = await contributeBtn.evaluate(rgbOf);
-// BrandButton primary's DESIGNED hover is bg-accent → bg-background (a
+// Canonical Button hover is bg-accent → bg-background (a
 // system-wide cloud-ui inversion, not introduced here — flagged on #11342 for
 // the design pass vs the "darker-orange hover" rule). Gate on the explicit
 // prohibitions: hover must change, must not be blue, must not be near-black.

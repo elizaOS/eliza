@@ -22,7 +22,6 @@ import { AlertCircle, Copy, Link2, Loader2, Mail, UserCog } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  BrandButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -164,14 +163,14 @@ export function InviteMemberDialog({
             </p>
 
             <DialogFooter>
-              <BrandButton
+              <Button
                 type="button"
-                variant="primary"
+                variant="default"
                 onClick={handleClose}
                 className="font-mono text-sm"
               >
                 Done
-              </BrandButton>
+              </Button>
             </DialogFooter>
           </>
         ) : (
@@ -276,9 +275,9 @@ export function InviteMemberDialog({
                 >
                   Cancel
                 </Button>
-                <BrandButton
+                <Button
                   type="submit"
-                  variant="primary"
+                  variant="default"
                   disabled={isSubmitting}
                   className="font-mono text-sm order-1 sm:order-2"
                 >
@@ -293,7 +292,7 @@ export function InviteMemberDialog({
                       Send Invitation
                     </>
                   )}
-                </BrandButton>
+                </Button>
               </DialogFooter>
             </SemanticForm>
           </>

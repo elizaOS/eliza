@@ -7,13 +7,13 @@
  * card charges only happen if earnings can't cover.
  *
  * Enable is a SettingsSwitchRow. Amount and threshold are SettingsInputRow
- * number fields. Save and BrandCard chrome stay as the multi-field editor.
+ * number fields. Save and canonical Card chrome stay as the multi-field editor.
  * Reads/writes /api/v1/billing/settings.
  */
 
 "use client";
 
-import { BrandCard, Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
+import { Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   CreditCard,
@@ -334,7 +334,7 @@ export function AutoTopUpCard() {
     });
 
     return (
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
         <Card
           variant="dangerNotice"
@@ -382,13 +382,13 @@ export function AutoTopUpCard() {
             {retryLabel}
           </Button>
         </Card>
-      </BrandCard>
+      </Card>
     );
   }
 
   if (loading || !settings || !limits) {
     return (
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
         <div
           className="flex items-center justify-center py-12"
@@ -402,14 +402,14 @@ export function AutoTopUpCard() {
           />
           <span className="sr-only">{loadingLabel}</span>
         </div>
-      </BrandCard>
+      </Card>
     );
   }
 
   const noPaymentMethod = !settings.hasPaymentMethod;
 
   return (
-    <BrandCard className="relative">
+    <Card variant="brand" className="relative">
       <CornerBrackets size="sm" className="opacity-50" />
 
       <div className="relative z-10 space-y-6">
@@ -535,6 +535,6 @@ export function AutoTopUpCard() {
           </div>
         </Card>
       </div>
-    </BrandCard>
+    </Card>
   );
 }
