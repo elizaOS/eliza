@@ -165,7 +165,11 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   },
   automations: { path: "/automations", layout: FRAMED_PAGE_LAYOUT },
   triggers: { aliasOf: "automations" },
-  inventory: { path: "/wallet", layout: SHELL_WIDE_CONTENT_LAYOUT },
+  inventory: {
+    path: "/wallet",
+    layout: SHELL_WIDE_CONTENT_LAYOUT,
+    surface: { background: "shared", capabilities: ["wallpaper"] },
+  },
   documents: {
     path: "/character/documents",
     layout: WORKSPACE_LAYOUT,
