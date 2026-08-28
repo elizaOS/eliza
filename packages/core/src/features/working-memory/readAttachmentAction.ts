@@ -1206,7 +1206,6 @@ export const readAttachmentAction: Action = {
 				});
 			}
 
-			const pagedRecords = pageAttachmentRecords(records, params);
 			const expectedRevision = readStringParam(params, "expectedRevision");
 
 			// #25140: when an adapter with native content paging is present and a
@@ -1218,10 +1217,12 @@ export const readAttachmentAction: Action = {
 			const pageCapable = hasMemoryContentPageCapability(runtime)
 				? runtime.getMemoryContentPage
 				: null;
-			// #25140 review R4 r2: detect the marker on the ORIGINAL record
-			// content — pageAttachmentRecords may slice the prefix away (small
-			// limit, nonzero continuation offset), which would make the truncated
-			// descriptor leak into the inline answer path undetected.
+			// #25140 review R4 r2/r3: detect the marker on the ORIGINAL record
+			// content and dispatch BEFORE inline pagination — pageAttachmentRecords
+			// validates offset against the MARKER's byte length, so a legitimate
+			// continuation offset past the marker would throw INVALID_OFFSET before
+			// native paging is reached, and a small limit could truncate the prefix
+			// into the inline answer path.
 			const segmentedRecord =
 				records.length === 1 && isSegmentedContentMarker(records[0].content)
 					? records[0]
@@ -1423,6 +1424,9 @@ export const readAttachmentAction: Action = {
 				// page === null: descriptor absent with small inline — fall
 				// through to the inline paging path below.
 			}
+			// Inline pagination runs only after the segmented native-paging
+			// branch had its chance to return (#25140 R4 r3).
+			const pagedRecords = pageAttachmentRecords(records, params);
 			if (
 				pagedRecords.some((record) => record.readView.slice.range.start > 0) &&
 				!expectedRevision
