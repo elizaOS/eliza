@@ -198,3 +198,88 @@ describe("processBody thinking-parameter strip raw-body shapes", () => {
     });
   }
 });
+
+// The strip targets Anthropic's own top-level `thinking` request parameter, not
+// every `"thinking"` key in the serialized body. A depth-blind marker scan
+// deletes nested object-valued `thinking` fields carried by replayed tool
+// arguments or tool-input schemas, silently corrupting the forwarded body while
+// it stays valid JSON. The removal must be restricted to the root object's own
+// property (depth 1) and leave every nested occurrence byte-for-byte intact.
+// See PR #29167 review by ss251.
+describe("processBody thinking-parameter strip is depth-restricted to the root object", () => {
+  // Only the thinking strip is under test; leave the tool-injection and
+  // prefill-strip layers off so the assertions read the parameter strip's own
+  // output rather than synthetic tools or a removed trailing assistant turn.
+  const stripOnly: Partial<ProcessBodyConfig> = { stripThinkingBlocks: true };
+
+  it("strips the top-level thinking parameter but keeps a nested thinking field in tool input", () => {
+    const toolInput = { thinking: { keep: true }, value: 1 };
+    const { parsed, stats } = parseProcessed(
+      {
+        model: "claude-opus-4-1",
+        thinking: { type: "enabled", budget_tokens: 2000 },
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "tool_use", id: "t1", name: "do_thing", input: toolInput }],
+          },
+          { role: "user", content: "hi" },
+        ],
+      },
+      stripOnly
+    );
+
+    // Exactly one removal: the root parameter, not the nested field.
+    expect(stats.thinkingParamsStripped).toBe(1);
+    expect("thinking" in parsed).toBe(false);
+    const messages = parsed.messages as Array<Record<string, unknown>>;
+    const content = messages[0]?.content as Array<Record<string, unknown>>;
+    expect(content[0]?.input).toEqual(toolInput);
+  });
+
+  it("keeps a nested thinking property inside a tool-input JSON schema", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        thinking: { type: "object", properties: { keep: { type: "boolean" } } },
+        value: { type: "number" },
+      },
+    };
+    const { parsed, stats } = parseProcessed(
+      {
+        model: "claude-opus-4-1",
+        thinking: { type: "enabled", budget_tokens: 2000 },
+        tools: [{ name: "do_thing", input_schema: schema }],
+        messages: [{ role: "user", content: "hi" }],
+      },
+      stripOnly
+    );
+
+    expect(stats.thinkingParamsStripped).toBe(1);
+    expect("thinking" in parsed).toBe(false);
+    const tools = parsed.tools as Array<Record<string, unknown>>;
+    expect(tools[0]?.input_schema).toEqual(schema);
+  });
+
+  it("leaves nested thinking untouched when the request has no top-level thinking parameter", () => {
+    const toolInput = { thinking: { keep: true }, value: 1 };
+    const { parsed, stats } = parseProcessed(
+      {
+        model: "claude-opus-4-1",
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "tool_use", id: "t1", name: "do_thing", input: toolInput }],
+          },
+          { role: "user", content: "hi" },
+        ],
+      },
+      stripOnly
+    );
+
+    expect(stats.thinkingParamsStripped).toBe(0);
+    const messages = parsed.messages as Array<Record<string, unknown>>;
+    const content = messages[0]?.content as Array<Record<string, unknown>>;
+    expect(content[0]?.input).toEqual(toolInput);
+  });
+});
