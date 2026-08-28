@@ -39,18 +39,11 @@ export const memoryTextSegmentTable = pgTable(
     primaryKey({
       columns: [table.parentId, table.generation, table.segmentIndex],
     }),
-    index("idx_memory_text_segments_range").on(
-      table.parentId,
-      table.generation,
-      table.byteStart,
-    ),
+    index("idx_memory_text_segments_range").on(table.parentId, table.generation, table.byteStart),
     check(
       "memory_text_segment_range_check",
-      sql`${table.byteStart} >= 0 AND ${table.byteEnd} > ${table.byteStart}`,
+      sql`${table.byteStart} >= 0 AND ${table.byteEnd} > ${table.byteStart}`
     ),
-    check(
-      "memory_text_segment_digest_check",
-      sql`char_length(${table.segmentSha256}) = 64`,
-    ),
-  ],
+    check("memory_text_segment_digest_check", sql`char_length(${table.segmentSha256}) = 64`),
+  ]
 );
