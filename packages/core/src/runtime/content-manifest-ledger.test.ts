@@ -340,6 +340,88 @@ describe("publishManifestLedger / loadManifestLedger", () => {
     ).toThrow(/exceeds the configured byte bound even alone/);
   });
 
+  // ── R2 follow-ups: containment semantics + createdAt binding ──
+
+  it("containment: growing one entry's ranges passes", async () => {
+    const store = new MemoryStore();
+    await publishManifestLedger(store, LEDGER, makeManifest(4), {
+      maxEntriesPerShard: 3,
+    });
+    const base = makeEntry(2, 2);
+    const grownEntry = {
+      ...base,
+      rangesUsed: [
+        ...base.rangesUsed,
+        { unit: "byte" as const, start: 900, end: 950 },
+      ],
+    };
+    const grown = validateCompactionContentManifest({
+      schemaVersion: 1,
+      contentRefs: [0, 1, 2, 3].map((i) =>
+        i === 2 ? grownEntry : makeEntry(i, 2),
+      ),
+      modifiedFiles: [],
+      pendingProcesses: [],
+    });
+    const head = await publishManifestLedger(store, LEDGER, grown, {
+      maxEntriesPerShard: 3,
+    });
+    expect(head.revision).toBe(1);
+  });
+
+  it("containment: shrinking one entry's ranges is rejected", async () => {
+    const store = new MemoryStore();
+    await publishManifestLedger(store, LEDGER, makeManifest(4), {
+      maxEntriesPerShard: 3,
+    });
+    const shrunkEntry = {
+      ...makeEntry(2, 2),
+      rangesUsed: [makeEntry(2, 2).rangesUsed[0]],
+    };
+    const shrunk = validateCompactionContentManifest({
+      schemaVersion: 1,
+      contentRefs: [0, 1, 2, 3].map((i) =>
+        i === 2 ? shrunkEntry : makeEntry(i, 2),
+      ),
+      modifiedFiles: [],
+      pendingProcesses: [],
+    });
+    await expect(
+      publishManifestLedger(store, LEDGER, shrunk, { maxEntriesPerShard: 3 }),
+    ).rejects.toThrow(/omits prior authorized entries/);
+  });
+
+  it("containment: dropping all ranges of a prior entry is rejected", async () => {
+    const store = new MemoryStore();
+    await publishManifestLedger(store, LEDGER, makeManifest(4), {
+      maxEntriesPerShard: 3,
+    });
+    const emptiedEntry = { ...makeEntry(2, 2), rangesUsed: [] };
+    const emptied = validateCompactionContentManifest({
+      schemaVersion: 1,
+      contentRefs: [0, 1, 2, 3].map((i) =>
+        i === 2 ? emptiedEntry : makeEntry(i, 2),
+      ),
+      modifiedFiles: [],
+      pendingProcesses: [],
+    });
+    await expect(
+      publishManifestLedger(store, LEDGER, emptied, { maxEntriesPerShard: 3 }),
+    ).rejects.toThrow(/omits prior authorized entries/);
+  });
+
+  it("mutant RETIME: changing a shard's createdAt without recomputing the chain is detected", async () => {
+    const { store, shards, rawKey } = await publishForMutants();
+    const retimed: ManifestShard = {
+      ...shards[0],
+      createdAt: "2027-01-01T00:00:00.000Z",
+    };
+    store.put(rawKey(0), retimed);
+    await expect(loadManifestLedger(store, LEDGER)).rejects.toThrow(
+      /chain hash mismatch/,
+    );
+  });
+
   // ── Omission containment + CAS-loser idempotency (#25141 R1 F5) ──
 
   it("omission containment: a replacement manifest missing a prior entry is rejected", async () => {

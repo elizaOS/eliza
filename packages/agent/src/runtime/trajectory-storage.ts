@@ -2800,6 +2800,43 @@ export async function completeTrajectoryStepInDatabase({
   return true;
 }
 
+/**
+ * Delete the content-manifest ledger cache rows for the given trajectory
+ * ids via the shared core key derivation (#25141) so ledger rows never
+ * outlive their trajectory rows. Failures are logged and swallowed: the
+ * trajectory rows are already gone and the leftover cache rows are inert.
+ * error-policy:J6 inert-row housekeeping after committed deletes.
+ */
+async function cleanupContentManifestLedgerRows(
+  runtime: IAgentRuntime,
+  ids: string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    const adapter = runtime.adapter as unknown as
+      | {
+          getCache: <T>(key: string) => Promise<T | undefined>;
+          deleteCaches: (keys: string[]) => Promise<boolean>;
+        }
+      | undefined;
+    if (!adapter) return;
+    const keys: string[] = [];
+    for (const trajectoryId of ids) {
+      const ledgerKeys = await contentManifestLedgerKeys(
+        adapter,
+        `${runtime.agentId}:trajectory:${trajectoryId}`,
+      );
+      if (ledgerKeys) keys.push(...ledgerKeys);
+    }
+    if (keys.length > 0) await adapter.deleteCaches(keys);
+  } catch (error) {
+    coreLogger.debug(
+      { src: "agent:trajectory-storage", err: error, count: ids.length },
+      "content-manifest ledger cleanup after trajectory delete failed (inert rows remain)",
+    );
+  }
+}
+
 export async function deletePersistedTrajectoryRows(
   runtime: IAgentRuntime,
   trajectoryIds: string[],
@@ -2840,6 +2877,9 @@ export async function deletePersistedTrajectoryRows(
       return readDeletedTrajectoryRows(result);
     });
     releaseDeletedTrajectoryStarts(runtime, removed);
+    // Ledger rows must not outlive their trajectory rows (#25141).
+    // error-policy:J6 inert-row housekeeping after a committed delete.
+    await cleanupContentManifestLedgerRows(runtime, normalized);
     return removed.length;
   } catch (error) {
     // error-policy:J2 both parent and step deletion are one required operation.
@@ -2879,6 +2919,12 @@ export async function clearPersistedTrajectoryRows(
       return readDeletedTrajectoryRows(result);
     });
     releaseDeletedTrajectoryStarts(runtime, removed);
+    // Ledger rows must not outlive their trajectory rows (#25141).
+    // error-policy:J6 inert-row housekeeping after a committed clear.
+    const removedIds = removed
+      .map((row) => (row as { id?: unknown }).id)
+      .filter((id): id is string => typeof id === "string");
+    await cleanupContentManifestLedgerRows(runtime, removedIds);
     return removed.length;
   } catch (error) {
     // error-policy:J2 clear failures cannot be represented as an absent result.
@@ -3730,32 +3776,6 @@ export async function pruneOldTrajectories(
       }
     }
 
-    // Kept next to its only caller: deletes the ledger cache rows for the
-    // archived trajectory ids via the shared core key derivation.
-    // error-policy:J6 caller treats cleanup failure as inert-row housekeeping.
-    const deleteContentManifestLedgerRows = async (
-      ownerRuntime: typeof runtime,
-      ids: string[],
-    ): Promise<void> => {
-      if (ids.length === 0) return;
-      const adapter = ownerRuntime.adapter as unknown as
-        | {
-            getCache: <T>(key: string) => Promise<T | undefined>;
-            deleteCaches: (keys: string[]) => Promise<boolean>;
-          }
-        | undefined;
-      if (!adapter) return;
-      const keys: string[] = [];
-      for (const trajectoryId of ids) {
-        const ledgerKeys = await contentManifestLedgerKeys(
-          adapter,
-          `${ownerRuntime.agentId}:trajectory:${trajectoryId}`,
-        );
-        if (ledgerKeys) keys.push(...ledgerKeys);
-      }
-      if (keys.length > 0) await adapter.deleteCaches(keys);
-    };
-
     // Step 3: Delete the archived rows from the main table.
     const removedIds = await executeRawSqlTransaction(
       runtime,
@@ -3792,18 +3812,7 @@ export async function pruneOldTrajectories(
     // must not outlive them (#25141). Best-effort: a prune failure never
     // fails the archive operation itself.
     // error-policy:J6 ledger cleanup is inert-row housekeeping.
-    try {
-      await deleteContentManifestLedgerRows(runtime, removedIds);
-    } catch (cleanupError) {
-      coreLogger.debug(
-        {
-          src: "agent:trajectory-storage",
-          err: cleanupError,
-          count: removedIds.length,
-        },
-        "content-manifest ledger cleanup after archive prune failed (inert rows remain)",
-      );
-    }
+    await cleanupContentManifestLedgerRows(runtime, removedIds);
     return removedIds.length;
   } catch (error) {
     // error-policy:J2 pruning is a write path; failed archive/delete work must
