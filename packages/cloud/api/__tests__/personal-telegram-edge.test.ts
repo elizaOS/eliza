@@ -1,6 +1,7 @@
 /** Drives the edge Telegram connector through Hono with real shared state-machine code. */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { PERSONAL_SHARED_FAILURE_REPLY } from "@elizaos/cloud-services-common/personal-shared-failure";
 import { Hono } from "hono";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import {
@@ -142,6 +143,70 @@ function telegramRequest(updateId = 81601, text = "hey how are you?"): Request {
         from: { id: 123456, first_name: "Nubs" },
         chat: { id: 123456, type: "private" },
         text,
+      },
+    }),
+  });
+}
+
+function telegramGroupRequest(updateId = 81621, text = "hey group"): Request {
+  return new Request("https://api-staging.eliza.app/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Telegram-Bot-Api-Secret-Token": "webhook-secret",
+    },
+    body: JSON.stringify({
+      update_id: updateId,
+      message: {
+        message_id: updateId - 80000,
+        date: Math.floor(Date.now() / 1000),
+        from: { id: 123456, first_name: "Nubs" },
+        chat: { id: -100123456789, type: "supergroup" },
+        text,
+      },
+    }),
+  });
+}
+
+function telegramMembershipRequest(updateId = 81622): Request {
+  return new Request("https://api-staging.eliza.app/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Telegram-Bot-Api-Secret-Token": "webhook-secret",
+    },
+    body: JSON.stringify({
+      update_id: updateId,
+      my_chat_member: {
+        date: Math.floor(Date.now() / 1000),
+        from: { id: 123456, first_name: "Nubs" },
+        chat: { id: -100123456789, type: "supergroup" },
+        new_chat_member: { status: "member" },
+      },
+    }),
+  });
+}
+
+function telegramVoiceRequest(updateId = 81620): Request {
+  return new Request("https://api-staging.eliza.app/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Telegram-Bot-Api-Secret-Token": "webhook-secret",
+    },
+    body: JSON.stringify({
+      update_id: updateId,
+      message: {
+        message_id: updateId - 80000,
+        date: Math.floor(Date.now() / 1000),
+        from: { id: 123456, first_name: "Nubs" },
+        chat: { id: 123456, type: "private" },
+        voice: {
+          file_id: "voice-file-1",
+          duration: 2,
+          file_size: 128,
+          mime_type: "audio/ogg",
+        },
       },
     }),
   });
@@ -601,29 +666,248 @@ describe("Personal Shared Telegram edge", () => {
     expect(JSON.stringify(deliveryBody)).not.toContain(botToken);
   });
 
-  test("releases the processing claim after all pre-egress attempts fail", async () => {
+  test("delivers one fallback after retryable turn attempts are exhausted", async () => {
     const ledger = namespace();
-    let available = false;
     const turn = mock(async () =>
-      available
-        ? Response.json({ data: { reply: "Recovered" } })
-        : Response.json(
-            { error: "warming" },
-            { status: 503, headers: { "Retry-After": "0" } },
-          ),
+      Response.json(
+        { error: "private upstream detail" },
+        {
+          status: 503,
+          headers: {
+            "Retry-After": "0",
+            "X-Eliza-Failure-Stage": "shared_runtime",
+            "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
+            "X-Eliza-Failure-Cause-Name":
+              "SharedRuntimeProviderUnavailableError",
+            "X-Eliza-Retryable": "true",
+          },
+        },
+      ),
     );
+    const sentTexts: string[] = [];
     globalThis.fetch = mock(async (_input, init) => {
       const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      if (body.text) sentTexts.push(body.text);
       return Response.json({
         ok: true,
         result: body.text ? { message_id: 9002 } : true,
       });
     }) as unknown as typeof fetch;
 
-    expect((await run(ledger, turn, telegramRequest(81602))).status).toBe(500);
-    available = true;
-    expect((await run(ledger, turn, telegramRequest(81602))).status).toBe(200);
-    expect(turn).toHaveBeenCalledTimes(4);
+    const first = await run(ledger, turn, telegramRequest(81602));
+    const duplicate = await run(ledger, turn, telegramRequest(81602));
+
+    expect(first.status).toBe(200);
+    expect(duplicate.status).toBe(200);
+    expect(turn).toHaveBeenCalledTimes(3);
+    expect(sentTexts).toEqual([PERSONAL_SHARED_FAILURE_REPLY]);
+    expect(JSON.stringify(sentTexts)).not.toContain("private upstream detail");
+  });
+
+  test("does not replay a terminal turn before delivering one fallback", async () => {
+    const ledger = namespace();
+    const turn = mock(async () =>
+      Response.json(
+        { error: "private action detail" },
+        {
+          status: 500,
+          headers: {
+            "X-Eliza-Failure-Stage": "shared_runtime",
+            "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
+            "X-Eliza-Failure-Cause-Name": "SharedRuntimeActionContractError",
+            "X-Eliza-Retryable": "false",
+          },
+        },
+      ),
+    );
+    const sentTexts: string[] = [];
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      if (body.text) sentTexts.push(body.text);
+      return Response.json({
+        ok: true,
+        result: body.text ? { message_id: 9003 } : true,
+      });
+    }) as unknown as typeof fetch;
+
+    expect((await run(ledger, turn, telegramRequest(81614))).status).toBe(200);
+    expect((await run(ledger, turn, telegramRequest(81614))).status).toBe(200);
+    expect(turn).toHaveBeenCalledTimes(1);
+    expect(sentTexts).toEqual([PERSONAL_SHARED_FAILURE_REPLY]);
+    expect(JSON.stringify(sentTexts)).not.toContain("private action detail");
+  });
+
+  test.each([
+    ["group message", telegramGroupRequest(), 200, 0],
+    ["membership update", telegramMembershipRequest(), 500, 1],
+  ])(
+    "does not inject a private fallback for a %s",
+    async (_name, request, expectedStatus, expectedTurnCalls) => {
+      const turn = mock(async () =>
+        Response.json(
+          { error: "private action detail" },
+          {
+            status: 500,
+            headers: {
+              "X-Eliza-Failure-Stage": "shared_runtime",
+              "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
+              "X-Eliza-Failure-Cause-Name": "SharedRuntimeActionContractError",
+              "X-Eliza-Retryable": "false",
+            },
+          },
+        ),
+      );
+      const sentTexts: string[] = [];
+      const providerMethods: string[] = [];
+      globalThis.fetch = mock(async (input, init) => {
+        providerMethods.push(String(input).split("/").at(-1) ?? "");
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          text?: string;
+        };
+        if (body.text) sentTexts.push(body.text);
+        return Response.json({ ok: true, result: { message_id: 9008 } });
+      }) as unknown as typeof fetch;
+
+      expect((await run(namespace(), turn, request)).status).toBe(
+        expectedStatus,
+      );
+      expect(turn).toHaveBeenCalledTimes(expectedTurnCalls);
+      expect(sentTexts).toEqual([]);
+      expect(providerMethods).toEqual([]);
+    },
+  );
+
+  test("reopens a rejected fallback send without claiming ambiguous delivery", async () => {
+    const ledger = namespace();
+    const turn = mock(
+      async () =>
+        new Response("terminal", {
+          status: 500,
+          headers: { "X-Eliza-Retryable": "false" },
+        }),
+    );
+    let rejectFallback = true;
+    let acceptedFallbacks = 0;
+    globalThis.fetch = mock(async (input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      if (String(input).endsWith("/sendMessage") && body.text) {
+        if (rejectFallback) {
+          rejectFallback = false;
+          return Response.json({
+            ok: false,
+            error_code: 400,
+            description: "provider rejected message",
+          });
+        }
+        acceptedFallbacks += 1;
+        return Response.json({ ok: true, result: { message_id: 9007 } });
+      }
+      return Response.json({ ok: true, result: true });
+    }) as unknown as typeof fetch;
+
+    expect((await run(ledger, turn, telegramRequest(81617))).status).toBe(500);
+    expect((await run(ledger, turn, telegramRequest(81617))).status).toBe(200);
+    expect(turn).toHaveBeenCalledTimes(2);
+    expect(acceptedFallbacks).toBe(1);
+  });
+
+  test("refuses replay when fallback acceptance becomes ambiguous", async () => {
+    const ledger = namespace();
+    const turn = mock(
+      async () =>
+        new Response("terminal", {
+          status: 500,
+          headers: { "X-Eliza-Retryable": "false" },
+        }),
+    );
+    globalThis.fetch = mock(async (input) => {
+      if (String(input).endsWith("/sendMessage")) {
+        throw new Error("provider accepted but response was lost");
+      }
+      return Response.json({ ok: true, result: true });
+    }) as unknown as typeof fetch;
+
+    expect((await run(ledger, turn, telegramRequest(81618))).status).toBe(500);
+    expect((await run(ledger, turn, telegramRequest(81618))).status).toBe(503);
+    expect(turn).toHaveBeenCalledTimes(1);
+  });
+
+  test("delivers one exact-once fallback after transport attempts are exhausted", async () => {
+    const ledger = namespace();
+    const turn = mock(async () => {
+      throw new Error("private transport detail");
+    });
+    const sentTexts: string[] = [];
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      if (body.text) sentTexts.push(body.text);
+      return Response.json({
+        ok: true,
+        result: body.text ? { message_id: 9004 } : true,
+      });
+    }) as unknown as typeof fetch;
+
+    expect((await run(ledger, turn, telegramRequest(81615))).status).toBe(200);
+    expect((await run(ledger, turn, telegramRequest(81615))).status).toBe(200);
+    expect(turn).toHaveBeenCalledTimes(3);
+    expect(sentTexts).toEqual([PERSONAL_SHARED_FAILURE_REPLY]);
+    expect(JSON.stringify(sentTexts)).not.toContain("private transport detail");
+  });
+
+  test.each([
+    ["malformed JSON", () => new Response("not json")],
+    ["missing reply", () => Response.json({ data: {} })],
+  ])(
+    "delivers one fallback for a successful turn with %s",
+    async (_name, response) => {
+      const ledger = namespace();
+      const turn = mock(async () => response());
+      const sentTexts: string[] = [];
+      globalThis.fetch = mock(async (_input, init) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          text?: string;
+        };
+        if (body.text) sentTexts.push(body.text);
+        return Response.json({
+          ok: true,
+          result: body.text ? { message_id: 9005 } : true,
+        });
+      }) as unknown as typeof fetch;
+
+      expect((await run(ledger, turn, telegramRequest(81616))).status).toBe(
+        200,
+      );
+      expect((await run(ledger, turn, telegramRequest(81616))).status).toBe(
+        200,
+      );
+      expect(turn).toHaveBeenCalledTimes(1);
+      expect(sentTexts).toEqual([PERSONAL_SHARED_FAILURE_REPLY]);
+    },
+  );
+
+  test("delivers one fallback when a voice note cannot be resolved before the turn", async () => {
+    const ledger = namespace();
+    const turn = mock(async () =>
+      Response.json({ data: { reply: "must not run" } }),
+    );
+    const sentTexts: string[] = [];
+    globalThis.fetch = mock(async (input, init) => {
+      const url = String(input);
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      if (url.endsWith("/getFile")) {
+        return Response.json({ ok: false, error_code: 404 });
+      }
+      if (body.text) sentTexts.push(body.text);
+      return Response.json({
+        ok: true,
+        result: body.text ? { message_id: 9006 } : true,
+      });
+    }) as unknown as typeof fetch;
+
+    expect((await run(ledger, turn, telegramVoiceRequest())).status).toBe(200);
+    expect((await run(ledger, turn, telegramVoiceRequest())).status).toBe(200);
+    expect(turn).not.toHaveBeenCalled();
+    expect(sentTexts).toEqual([PERSONAL_SHARED_FAILURE_REPLY]);
   });
 
   test("refuses replay after an ambiguous Telegram provider failure", async () => {

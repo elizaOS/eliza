@@ -69,6 +69,7 @@ import {
   parseSharedReminderActionProvenance,
   sharedPublicWebGrounding,
 } from "./shared-runtime-history-policy";
+import { SharedRuntimeTurnError } from "./shared-runtime-errors";
 import type {
   SharedProviderTimingReceipt,
   SharedRuntimeTimingReceipt,
@@ -1244,9 +1245,9 @@ export async function runSharedAgentTurn(
   } catch (error) {
     // error-policy:J2 the runtime is the sole inference engine; preserve its
     // cause while adding the agent/model identity used by billing boundaries.
-    throw new Error(
+    throw new SharedRuntimeTurnError(
       `[shared-runtime] AgentRuntime turn failed (agent=${input.character.name}, model=${modelId})`,
-      { cause: error },
+      error,
     );
   }
   if (realtimeRequirement) {

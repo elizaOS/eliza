@@ -9,6 +9,10 @@ import {
   extractIdentityLinkCode,
   identityLinkReply,
 } from "@elizaos/cloud-services-common/identity-link-code";
+import {
+  PERSONAL_SHARED_FAILURE_REPLY,
+  readPersonalSharedFailureMetadata,
+} from "@elizaos/cloud-services-common/personal-shared-failure";
 import { executeResponseAttempts } from "@elizaos/cloud-services-common/response-attempts";
 import {
   parseTelegramWebhook,
@@ -52,6 +56,19 @@ const DELIVERY_SENDER_RE = /^\d{1,32}$/;
 const DELIVERY_THREAD_RE = /^[1-9]\d{0,15}$/;
 const DELIVERY_MESSAGE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/;
 const TELEGRAM_CONNECTOR_ACCOUNT_RE = /^bot:(?:\d{1,20}|[0-9a-f]{64})$/;
+const SAFE_OBSERVED_ERROR_NAMES = new Set([
+  "AbortError",
+  "Error",
+  "RangeError",
+  "SyntaxError",
+  "TimeoutError",
+  "TypeError",
+]);
+
+function safeObservedErrorName(error: unknown): string {
+  const name = error instanceof Error ? error.name : "";
+  return SAFE_OBSERVED_ERROR_NAMES.has(name) ? name : "OtherError";
+}
 
 export interface TelegramEdgeDeps {
   runTurn(
@@ -711,12 +728,16 @@ async function runTurnWithRetry(
   const maxAttempts = event.voiceNote ? VOICE_MAX_ATTEMPTS : MAX_ATTEMPTS;
   const result = await executeResponseAttempts({
     maxAttempts,
+    honorExplicitRetryable: true,
     request: () => deps.runTurn(body, traceId, c.env, c.executionCtx),
     retryStatuses: !event.voiceNote,
     retryTransport: !event.voiceNote,
     retryDelayCapMs: RETRY_DELAY_CAP_MS,
     observe: (observation) => {
       const response = observation.response;
+      const failure = response
+        ? readPersonalSharedFailureMetadata(response)
+        : null;
       const context = {
         traceId,
         platform: "telegram",
@@ -730,14 +751,12 @@ async function runTurnWithRetry(
         retryAfterSeconds: observation.retryAfterSeconds,
         retryDelayMs: observation.retryDelayMs,
         workerServerTiming: response?.headers.get("Server-Timing") ?? null,
-        failureStage: response?.headers.get("X-Eliza-Failure-Stage") ?? null,
-        failureName: response?.headers.get("X-Eliza-Failure-Name") ?? null,
+        failureStage: failure?.stage ?? null,
+        failureName: failure?.name ?? null,
+        failureCauseName: failure?.causeName ?? null,
         ...(observation.error
           ? {
-              error:
-                observation.error instanceof Error
-                  ? observation.error.message
-                  : String(observation.error),
+              errorName: safeObservedErrorName(observation.error),
             }
           : {}),
       };
@@ -807,10 +826,13 @@ export async function handlePersonalTelegramEdge(
     let turnMs = 0;
     let egressMs = 0;
     let attempts = 0;
+    let fallbackDelivered = false;
     const outcome = await executeTelegramDelivery(
       ledger,
       async (deliveryHooks) => {
-        const stopTyping = startTyping(config, event);
+        const stopTyping = event.membershipChange
+          ? () => undefined
+          : startTyping(config, event);
         try {
           const linkCode = extractIdentityLinkCode(event.text);
           if (linkCode) {
@@ -860,36 +882,83 @@ export async function handlePersonalTelegramEdge(
             egressMs = Math.round(performance.now() - egressStartedAt);
             return;
           }
-          const voiceNote = event.voiceNote
-            ? await resolveTelegramVoiceNote(config, event)
-            : undefined;
-          const turn = await runTurnWithRetry(
-            c,
-            deps,
-            deliveryBody(
-              project,
-              connectorAccountId,
-              canonicalMessageId,
-              event,
-              voiceNote,
-            ),
-            event,
-            traceId,
-          );
-          turnMs = turn.turnMs;
-          attempts = turn.attempts;
-          if (!turn.response.ok) {
-            const status = turn.response.status;
-            await turn.response.body?.cancel();
-            throw new Error(`Personal Shared edge turn failed (${status})`);
-          }
-          const payload: unknown = await turn.response.json();
-          const reply =
-            payload && typeof payload === "object" && "data" in payload
-              ? (payload.data as { reply?: unknown } | null)?.reply
+          let reply: string | null = null;
+          let fallbackFailure: ReturnType<
+            typeof readPersonalSharedFailureMetadata
+          > | null = null;
+          let preEgressErrorName: string | null = null;
+          try {
+            const voiceNote = event.voiceNote
+              ? await resolveTelegramVoiceNote(config, event)
               : undefined;
-          if (typeof reply !== "string") {
-            throw new Error("Personal Shared edge turn returned no reply");
+            const turn = await runTurnWithRetry(
+              c,
+              deps,
+              deliveryBody(
+                project,
+                connectorAccountId,
+                canonicalMessageId,
+                event,
+                voiceNote,
+              ),
+              event,
+              traceId,
+            );
+            turnMs = turn.turnMs;
+            attempts = turn.attempts;
+            if (!turn.response.ok) {
+              fallbackFailure = readPersonalSharedFailureMetadata(
+                turn.response,
+              );
+              await turn.response.body?.cancel();
+            } else {
+              const payload: unknown = await turn.response.json();
+              const candidate =
+                payload && typeof payload === "object" && "data" in payload
+                  ? (payload.data as { reply?: unknown } | null)?.reply
+                  : undefined;
+              if (typeof candidate !== "string") {
+                throw new TypeError(
+                  "Personal Shared edge turn returned no reply",
+                );
+              }
+              reply = candidate;
+            }
+          } catch (error) {
+            preEgressErrorName = safeObservedErrorName(error);
+          }
+          if (fallbackFailure || preEgressErrorName) {
+            if (event.chatType !== "private" || event.membershipChange) {
+              throw new Error(
+                "Personal Shared non-private turn failed before egress",
+              );
+            }
+            logger.warn(
+              "[PersonalTelegramEdge] pre-egress turn failed; sending safe fallback",
+              {
+                traceId,
+                platform: "telegram",
+                messageId: event.messageId,
+                attempts,
+                status: fallbackFailure?.status ?? null,
+                failureStage: fallbackFailure?.stage ?? null,
+                failureName: fallbackFailure?.name ?? null,
+                failureCauseName: fallbackFailure?.causeName ?? null,
+                retryable: fallbackFailure?.retryable ?? false,
+                preEgressErrorName,
+              },
+            );
+            const egressStartedAt = performance.now();
+            await sendTelegramReply(
+              config,
+              event,
+              PERSONAL_SHARED_FAILURE_REPLY,
+              logger,
+              deliveryHooks,
+            );
+            egressMs = Math.round(performance.now() - egressStartedAt);
+            fallbackDelivered = true;
+            return;
           }
           if (!reply) return;
           const egressStartedAt = performance.now();
@@ -920,6 +989,7 @@ export async function handlePersonalTelegramEdge(
       turnMs,
       attempts,
       egressMs,
+      fallbackDelivered,
       totalMs,
     });
     const response = c.json({ ok: true });

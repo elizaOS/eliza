@@ -19,7 +19,11 @@ import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fe
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
-import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
+import {
+  SharedRuntimeCacheWarmingError,
+  SharedRuntimeTurnError,
+  SharedTurnConflictError,
+} from "./shared-runtime-errors";
 import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 
 export interface SharedConversationCoordinatorOptions {
@@ -256,35 +260,51 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
   if (response.ok) return response;
   // error-policy:J3 a malformed internal error body remains an explicit typed
   // failure rather than fabricating a successful response.
-  const readErrorMessage = async (): Promise<string | null> => {
-    const body = (await response
-      .clone()
-      .json()
-      .catch(() => null)) as { error?: unknown } | null;
-    return typeof body?.error === "string" ? body.error : null;
-  };
+  const body = (await response
+    .clone()
+    .json()
+    .catch(() => null)) as {
+    code?: unknown;
+    error?: unknown;
+    failureName?: unknown;
+    retryable?: unknown;
+  } | null;
+  const readErrorMessage = (): string | null =>
+    typeof body?.error === "string" ? body.error : null;
+  if (
+    body?.code === "shared_runtime_turn_failed" &&
+    (response.status === 500 || response.status === 503)
+  ) {
+    const turnError = SharedRuntimeTurnError.fromClassification(body.failureName, body.retryable);
+    const statusMatchesDisposition =
+      (response.status === 503 && turnError.retryable) ||
+      (response.status === 500 && !turnError.retryable);
+    throw statusMatchesDisposition
+      ? turnError
+      : SharedRuntimeTurnError.fromClassification(undefined, undefined);
+  }
   if (response.status === 503) {
     throw new SharedRuntimeCacheWarmingError(
-      (await readErrorMessage()) ?? "Shared runtime cache is warming. Retry shortly.",
+      readErrorMessage() ?? "Shared runtime cache is warming. Retry shortly.",
     );
   }
   // The Durable Object encodes insufficiency as a structured 402 (class
   // identity cannot survive its fetch boundary); rehydrate the typed error so
   // route/stream callers translate it to their canonical 402 instead of a 500.
   if (response.status === 402) {
-    throw new InsufficientCreditsError((await readErrorMessage()) ?? "Insufficient credits");
+    throw new InsufficientCreditsError(readErrorMessage() ?? "Insufficient credits");
   }
   // A reused clientMessageId with a different payload is a structured 409 from
   // the Durable Object claim boundary; rehydrate the typed error so routes can
   // render the canonical non-retryable conflict instead of a 500.
   if (response.status === 409) {
-    const message = await readErrorMessage();
+    const message = readErrorMessage();
     throw message ? new SharedTurnConflictError(message) : new SharedTurnConflictError();
   }
   if (response.status === 429) {
     const retryAfter = Number.parseInt(response.headers.get("Retry-After") ?? "", 10);
     throw new RateLimitError(
-      (await readErrorMessage()) ?? "Organization rate limit exceeded.",
+      readErrorMessage() ?? "Organization rate limit exceeded.",
       Number.isFinite(retryAfter) ? retryAfter : undefined,
     );
   }

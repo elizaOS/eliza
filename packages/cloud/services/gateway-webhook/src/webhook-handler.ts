@@ -5,6 +5,11 @@ import {
   truncateWellFormed,
 } from "@elizaos/cloud-services-common";
 import {
+  PERSONAL_SHARED_FAILURE_REPLY,
+  type PersonalSharedFailureMetadata,
+  readPersonalSharedFailureMetadata,
+} from "@elizaos/cloud-services-common/personal-shared-failure";
+import {
   executeResponseAttempts,
   type ResponseAttemptsResult,
 } from "@elizaos/cloud-services-common/response-attempts";
@@ -72,9 +77,34 @@ const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 const OPAQUE_TRACE_ID =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const ZERO_TRACE_ID = "0".repeat(32);
+const SAFE_OBSERVED_ERROR_NAMES = new Set([
+  "AbortError",
+  "Error",
+  "RangeError",
+  "SyntaxError",
+  "TimeoutError",
+  "TypeError",
+]);
+
+function safeObservedErrorName(error: unknown): string {
+  const name = error instanceof Error ? error.name : "";
+  return SAFE_OBSERVED_ERROR_NAMES.has(name) ? name : "OtherError";
+}
 
 class PersonalSharedPreEgressError extends Error {
   override readonly name = "PersonalSharedPreEgressError";
+  readonly failure: PersonalSharedFailureMetadata | null;
+
+  constructor(
+    message: string,
+    options?: { cause?: unknown; failure?: PersonalSharedFailureMetadata },
+  ) {
+    super(
+      message,
+      options?.cause === undefined ? undefined : { cause: options.cause },
+    );
+    this.failure = options?.failure ?? null;
+  }
 }
 
 class PersonalSharedRecoverablePostEgressError extends Error {
@@ -831,6 +861,37 @@ async function processMessage(
         egressMs: timing.egressMs,
         totalMs: Date.now() - startedAt,
       });
+    } catch (error) {
+      if (
+        adapter.platform === "telegram" &&
+        event.chatType === "private" &&
+        !event.membershipChange &&
+        error instanceof PersonalSharedPreEgressError
+      ) {
+        logger.warn(
+          "Personal Shared Telegram turn failed; delivering safe fallback",
+          {
+            project,
+            platform: adapter.platform,
+            messageId: event.messageId,
+            traceId: trace.traceId,
+            status: error.failure?.status ?? null,
+            failureStage: error.failure?.stage ?? null,
+            failureName: error.failure?.name ?? null,
+            failureCauseName: error.failure?.causeName ?? null,
+            retryable: error.failure?.retryable ?? false,
+          },
+        );
+        await sendReplyWithRequiredReceipt(
+          adapter,
+          config,
+          event,
+          PERSONAL_SHARED_FAILURE_REPLY,
+          deliveryHooks,
+        );
+        return;
+      }
+      throw error;
     } finally {
       stopTyping();
     }
@@ -1145,9 +1206,19 @@ async function sendPersonalSharedReply(
       "group connector cannot return a provider delivery receipt",
     );
   }
-  const voiceNote = event.voiceNote
-    ? await adapter.resolveVoiceNote?.(config, event)
-    : undefined;
+  let voiceNote:
+    | Awaited<ReturnType<NonNullable<PlatformAdapter["resolveVoiceNote"]>>>
+    | undefined;
+  try {
+    voiceNote = event.voiceNote
+      ? await adapter.resolveVoiceNote?.(config, event)
+      : undefined;
+  } catch (error) {
+    throw new PersonalSharedPreEgressError(
+      "connector failed to resolve the supplied voice note",
+      { cause: error },
+    );
+  }
   if (event.voiceNote && !voiceNote) {
     throw new PersonalSharedPreEgressError(
       "connector cannot resolve the supplied voice note",
@@ -1259,6 +1330,7 @@ async function sendPersonalSharedReply(
   try {
     attemptResult = await executeResponseAttempts({
       maxAttempts,
+      honorExplicitRetryable: adapter.platform === "telegram",
       authRefreshAttemptsOutsideBudget: 1,
       request: () => postMessage(authHeader),
       refreshAuth: async () => {
@@ -1269,6 +1341,9 @@ async function sendPersonalSharedReply(
       retryDelayCapMs: PERSONAL_SHARED_RETRY_DELAY_CAP_MS,
       observe: (observation) => {
         const response = observation.response;
+        const failure = response
+          ? readPersonalSharedFailureMetadata(response)
+          : null;
         const attemptContext = {
           traceId,
           project,
@@ -1283,16 +1358,12 @@ async function sendPersonalSharedReply(
           retryAfterSeconds: observation.retryAfterSeconds,
           retryDelayMs: observation.retryDelayMs,
           cloudServerTiming: response?.headers.get("Server-Timing") ?? null,
-          cloudFailureStage:
-            response?.headers.get("X-Eliza-Failure-Stage") ?? null,
-          cloudFailureName:
-            response?.headers.get("X-Eliza-Failure-Name") ?? null,
+          cloudFailureStage: failure?.stage ?? null,
+          cloudFailureName: failure?.name ?? null,
+          cloudFailureCauseName: failure?.causeName ?? null,
           ...(observation.error
             ? {
-                error:
-                  observation.error instanceof Error
-                    ? observation.error.message
-                    : String(observation.error),
+                errorName: safeObservedErrorName(observation.error),
               }
             : {}),
         };
@@ -1318,24 +1389,30 @@ async function sendPersonalSharedReply(
     });
   } catch (error) {
     throw new PersonalSharedPreEgressError(
-      `personal Shared chat transport failed: ${error instanceof Error ? error.message : String(error)}`,
+      "personal Shared chat transport failed",
       { cause: error },
     );
   }
   const { response } = attemptResult;
   if (!response.ok) {
-    let diagnostics: string;
+    const failure = readPersonalSharedFailureMetadata(response);
     try {
-      diagnostics = truncateWellFormed(
-        toWellFormedUnicode(await response.text()),
-        200,
-      );
+      await response.body?.cancel();
     } catch (error) {
-      // error-policy:J1 preserve a failed optional diagnostic body read.
-      diagnostics = `unable to read response body: ${error instanceof Error ? error.message : String(error)}`;
+      // error-policy:J4 response-body cleanup is best-effort and must never
+      // bypass the classified pre-egress failure or the private DM fallback.
+      logger.warn("Personal Shared failure body cleanup failed", {
+        traceId,
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        status: response.status,
+        errorName: safeObservedErrorName(error),
+      });
     }
     throw new PersonalSharedPreEgressError(
-      `personal Shared chat failed (${response.status}) ${diagnostics}`,
+      `personal Shared chat failed (${response.status})`,
+      { failure },
     );
   }
   const cloudServerTiming = response.headers.get("Server-Timing");
