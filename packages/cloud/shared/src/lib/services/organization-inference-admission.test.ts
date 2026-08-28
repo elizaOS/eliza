@@ -701,6 +701,7 @@ test("warm Worker affiliate admission has zero pre-dispatch repository calls", a
     provider: "cerebras",
     billingSource: "bitrouter",
     actualCost: 0.02,
+    preserveInferenceBalanceHint: true,
     reservationMetadata: {
       affiliatePayout: {
         sourceId: `ai_billing:affiliate:${leaseParams.requestId}`,

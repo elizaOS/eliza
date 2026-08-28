@@ -460,9 +460,11 @@ describe("createOptimisticDebitSettler", () => {
 
     expect(deductCalls[0]?.preserveInferenceBalanceHint).toBe(true);
 
-    // The rapid next call must consume the last revisioned projection instead
-    // of observing a deletion and surfacing billing_cache_warming.
-    await expect(getGateBalanceUsd(input.organizationId, { cacheOnly: true })).resolves.toBe(9);
+    // The rapid next call must consume the committed LOWER balance, not the
+    // pre-debit projection. The actual debit may exceed the active lease's
+    // estimate, so retaining 9 here would let a concurrent request over-admit
+    // before the revisioned snapshot returns.
+    await expect(getGateBalanceUsd(input.organizationId, { cacheOnly: true })).resolves.toBe(4.25);
 
     releaseFreshBalance();
     await settlement;

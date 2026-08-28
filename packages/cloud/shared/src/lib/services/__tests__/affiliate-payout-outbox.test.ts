@@ -341,6 +341,83 @@ describe("affiliate payout outbox", () => {
     expect(await balance(attribution.affiliateUserId)).toBeCloseTo(0.05, 6);
   });
 
+  test("fenced affiliate settlement stays warm and lowers before its authoritative republish", async () => {
+    if (!pgliteReady) return;
+    const attribution = await seedAttribution();
+    const [payerOrg] = await dbWrite
+      .insert(organizations)
+      .values({
+        name: "Affiliate fenced handoff payer",
+        slug: uniq("affiliate-fenced-handoff"),
+        credit_balance: "1.000000",
+      })
+      .returning();
+    const [payer] = await dbWrite
+      .insert(users)
+      .values({
+        steward_user_id: uniq("affiliate-fenced-user"),
+        organization_id: payerOrg.id,
+      })
+      .returning();
+    const { readOrgBalanceHint, writeOrgBalanceHint } = await import("../inference-auth-cache");
+    const initial = await creditsService.getOrganizationBalanceSnapshot(payerOrg.id);
+    await writeOrgBalanceHint(payerOrg.id, initial.balanceUsd, Date.now(), initial.revision);
+
+    const snapshotStarted = Promise.withResolvers<void>();
+    const releaseSnapshot = Promise.withResolvers<void>();
+    const originalSnapshot = creditsService.getOrganizationBalanceSnapshot.bind(creditsService);
+    const snapshotSpy = spyOn(creditsService, "getOrganizationBalanceSnapshot").mockImplementation(
+      async (organizationId) => {
+        snapshotStarted.resolve();
+        await releaseSnapshot.promise;
+        return await originalSnapshot(organizationId);
+      },
+    );
+    const params = {
+      organizationId: payerOrg.id,
+      userId: payer.id,
+      requestId: uniq("affiliate-fenced-request"),
+      model: "openai/test-model",
+      provider: "openai",
+      billingSource: "cloud",
+      actualCost: 0.9,
+      reservationMetadata: reservationMetadata(uniq("affiliate-fenced-source"), attribution),
+      preserveInferenceBalanceHint: true,
+    };
+
+    try {
+      const settlement = creditsService.collectAffiliateInferenceFallback(params);
+      await snapshotStarted.promise;
+
+      // The debit committed, but its revisioned snapshot is deliberately
+      // paused. A concurrent admission sees the committed lower balance, not
+      // the old $1 projection and not an absent warming key.
+      expect(await readOrgBalanceHint(payerOrg.id)).toMatchObject({
+        balanceUsd: 0.1,
+        balanceRevision: initial.revision,
+      });
+
+      releaseSnapshot.resolve();
+      await expect(settlement).resolves.toMatchObject({
+        actualCost: 0.9,
+        collectedAmount: 0.9,
+        adjustmentType: "none",
+      });
+      const published = await readOrgBalanceHint(payerOrg.id);
+      const authoritative = await originalSnapshot(payerOrg.id);
+      expect(published?.balanceUsd).toBeCloseTo(0.1, 6);
+      expect(published?.balanceRevision).toBe(authoritative.revision);
+    } finally {
+      releaseSnapshot.resolve();
+      snapshotSpy.mockRestore();
+    }
+
+    // Alarm/live replay of the same identity retains a present authoritative
+    // hint instead of repeating the post-stream billing_cache_warming flap.
+    await creditsService.collectAffiliateInferenceFallback(params);
+    expect((await readOrgBalanceHint(payerOrg.id))?.balanceUsd).toBeCloseTo(0.1, 6);
+  });
+
   test("alarm and late-settlement races retain the first committed affiliate amount", async () => {
     if (!pgliteReady) return;
     const attribution = await seedAttribution();

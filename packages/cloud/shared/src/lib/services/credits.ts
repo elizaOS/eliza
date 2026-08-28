@@ -30,6 +30,12 @@ import type { PricingBillingSource } from "./ai-pricing-definitions";
 import { assertCreditRefundReservationPresent } from "./credit-reconciliation-invariants";
 import { resolveCostBuffer } from "./credits-config";
 import { emailService } from "./email";
+import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-admission-refusal";
+import {
+  invalidateOrgBalanceHint,
+  lowerOrgBalanceHint,
+  republishOrgBalanceHint,
+} from "./inference-auth-cache";
 import { organizationsService } from "./organizations";
 import { userSessionsService } from "./user-sessions";
 import {
@@ -336,6 +342,13 @@ export interface AffiliateInferenceFallbackParams {
   billingSource: string;
   actualCost: number;
   reservationMetadata: Record<string, unknown>;
+  /**
+   * Internal inference-settlement handoff. Keep and immediately lower the
+   * admission projection while a serialized admission lease remains active,
+   * then replace it with an authoritative balance revision. Alarm recovery
+   * owns the same still-active lease and must set this too.
+   */
+  preserveInferenceBalanceHint?: boolean;
 }
 
 /**
@@ -2048,8 +2061,46 @@ export class CreditsService {
       };
     });
 
+    if (params.preserveInferenceBalanceHint) {
+      try {
+        // The actual affiliate debit may exceed the estimate held by the
+        // Durable Object. Publish the committed lower ceiling before the
+        // authoritative read so a concurrent lease cannot spend that delta.
+        await lowerOrgBalanceHint(params.organizationId, outcome.newBalance, Date.now());
+        const balanceAt = Date.now();
+        const snapshot = await this.getOrganizationBalanceSnapshot(params.organizationId);
+        await republishOrgBalanceHint(
+          params.organizationId,
+          snapshot.balanceUsd,
+          balanceAt,
+          snapshot.revision,
+        );
+        clearOrgAdmissionRefused(params.organizationId);
+      } catch (cause) {
+        markOrgAdmissionRefused(params.organizationId);
+        try {
+          await invalidateOrgBalanceHint(params.organizationId);
+        } catch (invalidationError) {
+          logger.error(
+            "[CreditsService] Failed to invalidate affiliate balance handoff after publication failure",
+            {
+              organizationId: params.organizationId,
+              requestId: params.requestId,
+              error:
+                invalidationError instanceof Error
+                  ? invalidationError.message
+                  : String(invalidationError),
+            },
+          );
+        }
+        throw cause;
+      }
+    }
+
     if (outcome.inserted) {
-      await CacheInvalidation.onCreditMutation(params.organizationId);
+      await CacheInvalidation.onCreditMutation(params.organizationId, {
+        preserveInferenceBalanceHint: params.preserveInferenceBalanceHint,
+      });
       invalidateOrganizationCache(params.organizationId).catch((error) => {
         // error-policy:J7 the authoritative debit and shared invalidation have
         // committed; this legacy cache eviction is separately observable.

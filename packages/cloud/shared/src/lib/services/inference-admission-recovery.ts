@@ -160,6 +160,9 @@ async function recoverAffiliateDebit(
     provider: context.provider,
     billingSource: context.billingSource,
     actualCost: estimatedCostUsd,
+    // Alarm recovery owns the expired-but-still-active lease until it returns
+    // this authoritative accounting result to the Durable Object.
+    preserveInferenceBalanceHint: true,
     reservationMetadata: {
       ...(context.metadata ?? {}),
       affiliatePayout: {

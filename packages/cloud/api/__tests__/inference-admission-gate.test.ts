@@ -932,6 +932,42 @@ describe("InferenceAdmissionGate", () => {
     ).toBe(402);
   });
 
+  test("a committed overage lower-hint blocks a concurrent second admission before republish", async () => {
+    const gate = createGate();
+    await hydrateGate(gate, 1, "1");
+
+    // Request A reserved only $0.10, but its authoritative debit committed a
+    // $0.90 charge. While A still owns its lease, the settlement handoff lowers
+    // the cache projection to the committed $0.10 balance under the same
+    // revision before its newer snapshot is available.
+    expect(
+      (
+        await post(gate, "/lease", {
+          requestId: "overage-a",
+          balanceUsd: 1,
+          balanceAt: Date.now(),
+          balanceRevision: "1",
+          estimatedCostUsd: 0.1,
+        })
+      ).status,
+    ).toBe(200);
+
+    // Request B is concurrent with the paused authoritative republish. Applying
+    // the lower balance at the SAME revision must tighten the gate ceiling and
+    // reject B; the pre-fix preserved $1 projection admitted this request.
+    expect(
+      (
+        await post(gate, "/lease", {
+          requestId: "overage-b",
+          balanceUsd: 0.1,
+          balanceAt: Date.now(),
+          balanceRevision: "1",
+          estimatedCostUsd: 0.01,
+        })
+      ).status,
+    ).toBe(402);
+  });
+
   test("repeat hydration cannot double-count an active authoritative hold", async () => {
     const gate = createGate();
     await hydrateGate(gate, 100, "1");

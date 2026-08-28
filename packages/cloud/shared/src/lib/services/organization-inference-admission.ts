@@ -444,6 +444,10 @@ export async function admitOrganizationInference(
           billingSource: charge.billingSource,
           actualCost: actualCostUsd,
           reservationMetadata,
+          // The attached lease remains active until the affiliate debit,
+          // lower-only handoff, authoritative republish, and gate settlement
+          // all finish.
+          preserveInferenceBalanceHint: true,
         });
       const result: OrganizationInferenceAdmission = {
         mode: "durable_object_affiliate_debit",
