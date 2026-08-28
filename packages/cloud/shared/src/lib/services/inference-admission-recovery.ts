@@ -14,7 +14,12 @@ import {
 } from "./affiliate-billing-attribution";
 import { AFFILIATE_PAYOUT_CONTRACT_VERSION } from "./affiliate-payout-outbox";
 import { type AppCreditReservationAccountingApp, appCreditsService } from "./app-credits";
-import { type CreditReconciliationResult, creditsService, MIN_RESERVATION } from "./credits";
+import {
+  type CreditReconciliationResult,
+  creditsService,
+  type InferenceBalanceFence,
+  MIN_RESERVATION,
+} from "./credits";
 import { debitInferenceCost } from "./inference-billing-fast-path";
 
 interface RecoveryBase {
@@ -141,6 +146,7 @@ async function recoverAffiliateDebit(
     OrganizationInferenceAdmissionRecovery["accounting"],
     { kind: "affiliate_debit" }
   >,
+  inferenceBalanceFence: InferenceBalanceFence,
 ): Promise<RecoveredCharge> {
   const attribution = accounting.attribution;
   const sourceId = accounting.payoutSourceId;
@@ -163,6 +169,7 @@ async function recoverAffiliateDebit(
     // Alarm recovery owns the expired-but-still-active lease until it returns
     // this authoritative accounting result to the Durable Object.
     preserveInferenceBalanceHint: true,
+    inferenceBalanceFence,
     reservationMetadata: {
       ...(context.metadata ?? {}),
       affiliatePayout: {
@@ -231,9 +238,15 @@ async function recoverAppReservation(
 async function recoverOrganizationCharge(
   context: OrganizationInferenceAdmissionRecovery,
   estimatedCostUsd: number,
+  inferenceBalanceFence: InferenceBalanceFence,
 ): Promise<RecoveredCharge> {
   if (context.accounting.kind === "affiliate_debit") {
-    return await recoverAffiliateDebit(context, estimatedCostUsd, context.accounting);
+    return await recoverAffiliateDebit(
+      context,
+      estimatedCostUsd,
+      context.accounting,
+      inferenceBalanceFence,
+    );
   }
   const outcome = await debitInferenceCost(
     {
@@ -250,6 +263,7 @@ async function recoverOrganizationCharge(
       // Recovery owns the still-active Durable Object lease and settles it only
       // after this debit, preserving the same projection handoff as live turns.
       preserveBalanceHintDuringFencedHandoff: true,
+      inferenceBalanceFence,
     },
   );
   const collectedUsd = outcome.collectedAmountUsd;
@@ -280,15 +294,19 @@ async function recoverOrganizationCharge(
 export async function recoverExpiredInferenceAdmissionLease(
   context: InferenceAdmissionRecoveryContext,
   estimatedCostUsd: number,
+  options: { inferenceBalanceFence?: InferenceBalanceFence } = {},
 ): Promise<InferenceAdmissionRecoveryResult> {
   if (!Number.isFinite(estimatedCostUsd) || estimatedCostUsd <= 0) {
     throw new Error("Inference admission recovery cost must be positive");
+  }
+  if (context.kind === "organization" && !options.inferenceBalanceFence) {
+    throw new Error("Organization inference recovery requires an admission balance fence");
   }
 
   const recovered =
     context.kind === "app"
       ? await recoverAppReservation(context, estimatedCostUsd)
-      : await recoverOrganizationCharge(context, estimatedCostUsd);
+      : await recoverOrganizationCharge(context, estimatedCostUsd, options.inferenceBalanceFence!);
 
   const snapshot = await creditsService.getOrganizationBalanceSnapshot(context.organizationId);
   return {

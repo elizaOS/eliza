@@ -18,6 +18,12 @@ interface DeductCall {
   source: unknown;
   idempotencyKey: string | undefined;
   preserveInferenceBalanceHint: boolean | undefined;
+  inferenceBalanceFence:
+    | {
+        lowerCommittedBalance(balanceUsd: number, balanceRevision: string): Promise<void>;
+        publishAuthoritativeBalance(balanceUsd: number, balanceRevision: string): Promise<void>;
+      }
+    | undefined;
 }
 let deductCalls: DeductCall[] = [];
 let deductResult:
@@ -38,6 +44,9 @@ let deductResult:
       reason: "insufficient_balance";
     };
 let deductError: Error | null = null;
+let deductBalanceRevision = "2";
+let deductPostCommitGate: Promise<void> | null = null;
+let deductFenceLowered: (() => void) | null = null;
 let freshBalanceUsd: number;
 let freshBalanceCalls = 0;
 let freshBalanceGate: Promise<void> | null = null;
@@ -53,6 +62,7 @@ mock.module("./credits", () => ({
       metadata?: { source?: unknown; requestId?: string };
       stripePaymentIntentId?: string;
       preserveInferenceBalanceHint?: boolean;
+      inferenceBalanceFence?: DeductCall["inferenceBalanceFence"];
     }) => {
       deductCalls.push({
         organizationId: args.organizationId,
@@ -60,8 +70,22 @@ mock.module("./credits", () => ({
         source: args.metadata?.source,
         idempotencyKey: args.stripePaymentIntentId,
         preserveInferenceBalanceHint: args.preserveInferenceBalanceHint,
+        inferenceBalanceFence: args.inferenceBalanceFence,
       });
       if (deductError) throw deductError;
+      if (deductResult.success && args.preserveInferenceBalanceHint) {
+        if (!args.inferenceBalanceFence) {
+          throw new Error("preserved inference debit requires a fence");
+        }
+        // Mirror the production debit boundary: the SQL commit is complete,
+        // then the DO is lowered before unrelated post-commit work finishes.
+        await args.inferenceBalanceFence.lowerCommittedBalance(
+          deductResult.newBalance,
+          deductBalanceRevision,
+        );
+        deductFenceLowered?.();
+        if (deductPostCommitGate) await deductPostCommitGate;
+      }
       // Mirror production credit invalidation. Inference settlement now opts
       // into a fenced handoff: the prior hint stays present until the
       // authoritative post-debit read below replaces it.
@@ -160,6 +184,9 @@ beforeEach(async () => {
   deductCalls = [];
   deductResult = { success: true, newBalance: 100, transaction: { id: "debit-1" } };
   deductError = null;
+  deductBalanceRevision = "2";
+  deductPostCommitGate = null;
+  deductFenceLowered = null;
   freshBalanceUsd = 50;
   freshBalanceCalls = 0;
   freshBalanceGate = null;
@@ -450,15 +477,38 @@ describe("createOptimisticDebitSettler", () => {
       markFreshBalanceReadStarted = resolve;
     });
     freshBalanceReadStarted = markFreshBalanceReadStarted;
+    let releaseDeductPostCommit!: () => void;
+    deductPostCommitGate = new Promise<void>((resolve) => {
+      releaseDeductPostCommit = resolve;
+    });
+    let markDeductFenceLowered!: () => void;
+    const deductFenceWasLowered = new Promise<void>((resolve) => {
+      markDeductFenceLowered = resolve;
+    });
+    deductFenceLowered = markDeductFenceLowered;
+    const inferenceBalanceFence = {
+      lowerCommittedBalance: mock(async () => undefined),
+      publishAuthoritativeBalance: mock(async () => undefined),
+    };
 
     // Model stream completion starts off-response settlement. Pause at the
     // authoritative snapshot to model the exact 0-300ms interval after [DONE].
     const settlement = debitInferenceCost(input, 0.02, "deferred", {
       preserveBalanceHintDuringFencedHandoff: true,
+      inferenceBalanceFence,
     });
+
+    // The committed debit lowers the DO before `deductCredits` completes its
+    // unrelated post-commit work, closing the actual-cost-over-estimate window.
+    await deductFenceWasLowered;
+    expect(freshBalanceCalls).toBe(0);
+    expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledTimes(1);
+    releaseDeductPostCommit();
     await freshBalanceStarted;
 
     expect(deductCalls[0]?.preserveInferenceBalanceHint).toBe(true);
+    expect(deductCalls[0]?.inferenceBalanceFence).toBe(inferenceBalanceFence);
+    expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledWith(4.25, "2");
 
     // The rapid next call must consume the committed LOWER balance, not the
     // pre-debit projection. The actual debit may exceed the active lease's
@@ -468,6 +518,7 @@ describe("createOptimisticDebitSettler", () => {
 
     releaseFreshBalance();
     await settlement;
+    expect(inferenceBalanceFence.publishAuthoritativeBalance).toHaveBeenCalledWith(4.25, "2");
     expect(await readOrgBalanceHint(input.organizationId)).toMatchObject({
       balanceUsd: 4.25,
       balanceRevision: "2",

@@ -156,6 +156,11 @@ const acquireInferenceAdmissionLease = mock(
     providerDispatched: false,
   }),
 );
+const inferenceBalanceFence = {
+  lowerCommittedBalance: mock(async () => undefined),
+  publishAuthoritativeBalance: mock(async () => undefined),
+};
+const createInferenceAdmissionBalanceFence = mock(() => inferenceBalanceFence);
 const settleInferenceAdmissionLease = mock(async () => undefined);
 
 mock.module("./ai-billing", () => ({
@@ -210,6 +215,7 @@ mock.module("./inference-billing-fast-path", () => ({
 }));
 mock.module("./inference-admission-gate", () => ({
   acquireInferenceAdmissionLease,
+  createInferenceAdmissionBalanceFence,
   inferenceSettlementAmounts: (_lease: unknown, actualCostUsd: number) => ({
     balanceBackedUsd: actualCostUsd,
     gateConsumedUsd: actualCostUsd,
@@ -308,6 +314,9 @@ beforeEach(() => {
   admitInferenceChargeViaLedger.mockClear();
   optimisticSettle.mockClear();
   acquireInferenceAdmissionLease.mockClear();
+  createInferenceAdmissionBalanceFence.mockClear();
+  inferenceBalanceFence.lowerCommittedBalance.mockClear();
+  inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
   settleInferenceAdmissionLease.mockClear();
   isOptimisticEligible.mockClear();
   listActiveEntriesForProviderModelPairs.mockClear();
@@ -418,7 +427,10 @@ test("warm Worker admission writes only the Durable Object lease before provider
     },
     0.01,
     "deferred",
-    { preserveBalanceHintDuringFencedHandoff: true },
+    {
+      preserveBalanceHintDuringFencedHandoff: true,
+      inferenceBalanceFence,
+    },
   );
   expect(settleInferenceAdmissionLease).toHaveBeenCalledTimes(1);
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBe(0.01);
@@ -475,6 +487,7 @@ test("unknown provider cost retains the admitted estimate and wins a later zero 
   expect(debitInferenceCost.mock.calls[0]?.[2]).toBe("deferred");
   expect(debitInferenceCost.mock.calls[0]?.[3]).toEqual({
     preserveBalanceHintDuringFencedHandoff: true,
+    inferenceBalanceFence,
   });
   expect(settleInferenceAdmissionLease).toHaveBeenCalledTimes(1);
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBeCloseTo(
@@ -702,6 +715,7 @@ test("warm Worker affiliate admission has zero pre-dispatch repository calls", a
     billingSource: "bitrouter",
     actualCost: 0.02,
     preserveInferenceBalanceHint: true,
+    inferenceBalanceFence,
     reservationMetadata: {
       affiliatePayout: {
         sourceId: `ai_billing:affiliate:${leaseParams.requestId}`,

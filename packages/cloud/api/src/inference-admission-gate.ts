@@ -10,6 +10,7 @@
 import { runWithDbCacheAsync } from "@/db/client";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { isAffiliateBillingAttribution } from "@/lib/services/affiliate-billing-attribution";
+import type { InferenceBalanceFence } from "@/lib/services/credits";
 import {
   type InferenceAdmissionRecoveryContext,
   type InferenceAdmissionRecoveryResult,
@@ -1498,11 +1499,67 @@ export class InferenceAdmissionGate {
     });
   }
 
+  /**
+   * Move the serialized balance authority before an alarm recovery publishes
+   * the same snapshot to eventually-consistent KV. The recovering lease stays
+   * active throughout this handoff.
+   */
+  private async fenceRecoveringLeaseBalance(
+    requestId: string,
+    expected: ActiveLease,
+    balanceUsd: number,
+    balanceRevision: string,
+  ): Promise<void> {
+    if (!nonNegativeFinite(balanceUsd)) {
+      throw new Error("Inference admission recovery balance fence is invalid");
+    }
+    const existing = await this.load();
+    if (!existing) {
+      throw new Error(
+        "Inference admission ledger disappeared during balance fencing",
+      );
+    }
+    const currentLease = await this.loadLease(requestId);
+    if (!currentLease && existing.settledRequestIds.includes(requestId)) {
+      return;
+    }
+    if (
+      !currentLease ||
+      currentLease.createdAt !== expected.createdAt ||
+      currentLease.estimatedCostUsd !== expected.estimatedCostUsd ||
+      currentLease.phase !== "recovering" ||
+      currentLease.recoveryStartedAt !== expected.recoveryStartedAt
+    ) {
+      throw new Error(
+        `Inference admission recovery fence lost lease ${requestId}`,
+      );
+    }
+    const ledger = cloneLedger(existing);
+    applyBalanceSnapshot(ledger, balanceUsd, balanceRevision);
+    await this.save(ledger);
+  }
+
   async alarm(): Promise<void> {
     const expired = await this.serialize(() => this.claimExpiredLeases());
     if (expired.length === 0) return;
     const results = await Promise.allSettled(
       expired.map(async ({ requestId, lease }) => {
+        const inferenceBalanceFence: InferenceBalanceFence = {
+          // Alarm recovery charges the exact active estimate, so the existing
+          // lease already fences this amount. The authoritative revision below
+          // is the first DO update needed; KV still receives its lower-only
+          // handoff before republication.
+          lowerCommittedBalance: async () => undefined,
+          publishAuthoritativeBalance: async (balanceUsd, balanceRevision) =>
+            this.serialize(() =>
+              this.fenceRecoveringLeaseBalance(
+                requestId,
+                lease,
+                balanceUsd,
+                balanceRevision,
+              ),
+            ),
+        };
         const recovered = await runWithCloudBindingsAsync(
           this.env as Record<string, unknown>,
           () =>
@@ -1510,6 +1567,7 @@ export class InferenceAdmissionGate {
               recoverExpiredInferenceAdmissionLease(
                 lease.recovery,
                 lease.estimatedCostUsd,
+                { inferenceBalanceFence },
               ),
             ),
         );

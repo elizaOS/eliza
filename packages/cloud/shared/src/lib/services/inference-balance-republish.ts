@@ -47,12 +47,21 @@ import { republishOrgBalanceHint } from "./inference-auth-cache";
  * is never allowed to dispatch from this projection. Older snapshots therefore
  * cannot reopen an active gate even if concurrent writers reach Redis out of order.
  */
-export async function republishOrgBalanceHintAfterDebit(organizationId: string): Promise<void> {
+export async function republishOrgBalanceHintAfterDebit(
+  organizationId: string,
+  options: {
+    publishAuthoritativeBalance?: (balanceUsd: number, balanceRevision: string) => Promise<void>;
+  } = {},
+): Promise<void> {
   // Captured BEFORE the authoritative read, matching `refreshOrgBalanceHint`:
   // the timestamp marks when the read started, so a delayed old query can never
   // masquerade as fresher than a debit that committed while it was in flight.
   const balanceAt = Date.now();
   const snapshot = await creditsService.getOrganizationBalanceSnapshot(organizationId);
+  // Advance the strongly consistent per-org authority before the same snapshot
+  // reaches eventually-consistent KV. A delayed older KV publication can then
+  // warm a Worker, but it cannot raise the Durable Object's revision/ceiling.
+  await options.publishAuthoritativeBalance?.(snapshot.balanceUsd, snapshot.revision);
   await republishOrgBalanceHint(organizationId, snapshot.balanceUsd, balanceAt, snapshot.revision);
   clearOrgAdmissionRefused(organizationId);
 }

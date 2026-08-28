@@ -13,7 +13,11 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
-import { type CreditReconciliationResult, creditsService } from "./credits";
+import {
+  type CreditReconciliationResult,
+  creditsService,
+  type InferenceBalanceFence,
+} from "./credits";
 import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-admission-refusal";
 import {
   INFERENCE_AUTH_CONTEXT_VERSION,
@@ -351,8 +355,18 @@ export async function debitInferenceCost(
   ctx: DebitContext,
   amountUsd: number,
   source: "inline" | "backstop" | "deferred",
-  options: { preserveBalanceHintDuringFencedHandoff?: boolean } = {},
+  options: {
+    preserveBalanceHintDuringFencedHandoff?: boolean;
+    inferenceBalanceFence?: InferenceBalanceFence;
+  } = {},
 ): Promise<InferenceDebitCollectionOutcome> {
+  if (options.preserveBalanceHintDuringFencedHandoff && !options.inferenceBalanceFence) {
+    throw new InferenceDebitInfrastructureError(
+      ctx.requestId,
+      ctx.organizationId,
+      new Error("Fenced inference debit requires an admission fence"),
+    );
+  }
   let result: Awaited<ReturnType<typeof creditsService.deductCredits>>;
   try {
     result = await creditsService.deductCredits({
@@ -370,6 +384,7 @@ export async function debitInferenceCost(
             // is valid only while the admission Durable Object still accounts
             // the active lease; legacy non-Worker debits keep normal eviction.
             preserveInferenceBalanceHint: true,
+            inferenceBalanceFence: options.inferenceBalanceFence,
           }
         : {}),
       metadata: {
@@ -449,10 +464,9 @@ export async function debitInferenceCost(
       });
     }
     try {
-      // A fenced debit can exceed its estimate. Lower the still-present hint
-      // to the committed balance BEFORE waiting on the authoritative snapshot,
-      // so a concurrent admission cannot dispatch from the pre-debit ceiling
-      // while the Durable Object still accounts only the original estimate.
+      // `deductCredits` lowers the Durable Object at its first post-commit
+      // boundary, including the keyed-replay path. Lower the eventually-
+      // consistent KV projection here before reading the authoritative state.
       if (options.preserveBalanceHintDuringFencedHandoff) {
         await lowerOrgBalanceHint(ctx.organizationId, result.newBalance, Date.now());
       }
@@ -461,7 +475,9 @@ export async function debitInferenceCost(
       // balance + revision so the NEXT turn stays warm. The revision-aware
       // Durable Object remains the Worker dispatch authority if concurrent
       // cache writers arrive out of order.
-      await republishOrgBalanceHintAfterDebit(ctx.organizationId);
+      await republishOrgBalanceHintAfterDebit(ctx.organizationId, {
+        publishAuthoritativeBalance: options.inferenceBalanceFence?.publishAuthoritativeBalance,
+      });
     } catch (cause) {
       markOrgAdmissionRefused(ctx.organizationId);
       try {

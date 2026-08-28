@@ -349,6 +349,19 @@ export interface AffiliateInferenceFallbackParams {
    * owns the same still-active lease and must set this too.
    */
   preserveInferenceBalanceHint?: boolean;
+  /**
+   * Synchronously lowers the serialized per-organization admission authority
+   * before the eventually-consistent cache projection is updated. Required
+   * whenever the preserved inference hint is used.
+   */
+  inferenceBalanceFence?: InferenceBalanceFence;
+}
+
+export interface InferenceBalanceFence {
+  /** Tighten the active gate immediately after the debit commits. */
+  lowerCommittedBalance(balanceUsd: number, balanceRevision: string): Promise<void>;
+  /** Advance the gate revision before publishing the same snapshot to KV. */
+  publishAuthoritativeBalance(balanceUsd: number, balanceRevision: string): Promise<void>;
 }
 
 /**
@@ -405,6 +418,12 @@ export interface DeductCreditsParams {
    * fences provider dispatch; every other credit mutation must evict the hint.
    */
   preserveInferenceBalanceHint?: boolean;
+  /**
+   * Synchronously lowers the serialized per-organization admission authority
+   * at the first post-commit boundary. Required whenever the preserved
+   * inference hint is used.
+   */
+  inferenceBalanceFence?: InferenceBalanceFence;
 }
 
 export interface ReserveAndDeductParams extends DeductCreditsParams {
@@ -419,7 +438,9 @@ export interface ReserveAndDeductParams extends DeductCreditsParams {
 interface CreditMutationRow {
   org_exists: boolean | string | number | null;
   current_balance: string | number | null;
+  current_balance_revision: string | number | null;
   new_balance: string | number | null;
+  new_balance_revision: string | number | null;
   id: string | null;
   organization_id: string | null;
   user_id: string | null;
@@ -448,6 +469,17 @@ function parseNumeric(value: string | number | null | undefined, fieldName: stri
     throw new Error(`[CreditsService] Invalid numeric ${fieldName}`);
   }
   return parsed;
+}
+
+function parseBalanceRevision(
+  value: string | number | null | undefined,
+  fieldName: string,
+): string {
+  const revision = String(value ?? "");
+  if (!/^(0|[1-9]\d*)$/.test(revision)) {
+    throw new Error(`[CreditsService] Invalid ${fieldName}`);
+  }
+  return revision;
 }
 
 function parseMetadata(value: CreditMutationRow["metadata"]): Record<string, unknown> {
@@ -818,9 +850,17 @@ export class CreditsService {
       minimumBalanceRequired = 0,
       stripePaymentIntentId,
       preserveInferenceBalanceHint = false,
+      inferenceBalanceFence,
       db,
       deferPostCommitEffects = false,
     } = params;
+
+    if (preserveInferenceBalanceHint && !inferenceBalanceFence) {
+      throw new Error("[CreditsService] Preserved inference debit requires an admission fence");
+    }
+    if (preserveInferenceBalanceHint && (db || deferPostCommitEffects)) {
+      throw new Error("[CreditsService] Preserved inference debit must own its post-commit fence");
+    }
 
     // Authoritative money-write guard: `<= 0` alone lets NaN through (the
     // comparison is false), after which `String(amount)::numeric` would reach
@@ -834,6 +874,7 @@ export class CreditsService {
     const committedKeyedDeduction = async (): Promise<{
       success: true;
       newBalance: number;
+      balanceRevision: string;
       transaction: CreditTransaction;
     } | null> => {
       if (!stripePaymentIntentId) return null;
@@ -845,11 +886,27 @@ export class CreditsService {
           "[CreditsService] Deduction idempotency key belongs to another organization",
         );
       }
+      const snapshot = await this.getOrganizationBalanceSnapshot(organizationId);
       return {
         success: true,
-        newBalance: await this.getOrganizationBalanceUsd(organizationId),
+        newBalance: snapshot.balanceUsd,
+        balanceRevision: snapshot.revision,
         transaction: existing,
       };
+    };
+
+    const lowerInferenceFenceAfterCommit = async (result: {
+      newBalance: number;
+      balanceRevision: string;
+    }): Promise<void> => {
+      if (!preserveInferenceBalanceHint) return;
+      // `writeTransaction` has committed at this point. Tighten the durable
+      // admission authority before any cache eviction, notification, or other
+      // awaited post-commit effect can let another Worker spend the difference
+      // between the lease estimate and the actual debit. The committed
+      // revision lets the DO ignore this lower only when it already holds a
+      // genuinely newer balance that necessarily incorporates this debit.
+      await inferenceBalanceFence?.lowerCommittedBalance(result.newBalance, result.balanceRevision);
     };
 
     // The unique insert is the first keyed decision. Avoiding an optimistic
@@ -863,7 +920,10 @@ export class CreditsService {
         tx,
         sql`
         WITH org AS (
-          SELECT id, credit_balance::numeric AS current_balance
+          SELECT
+            id,
+            credit_balance::numeric AS current_balance,
+            balance_revision AS current_balance_revision
           FROM organizations
           WHERE id = ${organizationId}
           FOR UPDATE
@@ -916,12 +976,16 @@ export class CreditsService {
           FROM eligible
           WHERE o.id = eligible.id
             AND EXISTS (SELECT 1 FROM inserted)
-          RETURNING eligible.new_balance
+          RETURNING
+            eligible.new_balance,
+            o.balance_revision AS new_balance_revision
         )
         SELECT
           EXISTS(SELECT 1 FROM org) AS org_exists,
           (SELECT current_balance FROM org) AS current_balance,
+          (SELECT current_balance_revision FROM org) AS current_balance_revision,
           (SELECT new_balance FROM updated) AS new_balance,
+          (SELECT new_balance_revision FROM updated) AS new_balance_revision,
           inserted.id,
           inserted.organization_id,
           inserted.user_id,
@@ -936,7 +1000,10 @@ export class CreditsService {
       `,
       );
       const mutation = mutationRows[0];
-      if (mutation?.id && mutation.new_balance === null) {
+      if (
+        mutation?.id &&
+        (mutation.new_balance === null || mutation.new_balance_revision === null)
+      ) {
         throw new Error("[CreditsService] Deduction claim committed without a balance mutation");
       }
       return mutationRows;
@@ -949,17 +1016,23 @@ export class CreditsService {
       // snapshot even though ON CONFLICT observed it. The next statement sees
       // the committed row and returns the same logical result.
       const replay = await committedKeyedDeduction();
-      if (replay) return replay;
+      if (replay) {
+        await lowerInferenceFenceAfterCommit(replay);
+        const { balanceRevision: _balanceRevision, ...publicReplay } = replay;
+        return publicReplay;
+      }
     }
     let result:
       | {
           success: true;
           newBalance: number;
+          balanceRevision: string;
           transaction: CreditTransaction;
         }
       | {
           success: false;
           newBalance: number;
+          balanceRevision: string;
           transaction: null;
           reason: "insufficient_balance" | "below_minimum" | "org_not_found";
         };
@@ -968,6 +1041,7 @@ export class CreditsService {
       result = {
         success: false,
         newBalance: 0,
+        balanceRevision: "0",
         transaction: null,
         reason: "org_not_found",
       };
@@ -976,6 +1050,10 @@ export class CreditsService {
       result = {
         success: false,
         newBalance: currentBalance,
+        balanceRevision: parseBalanceRevision(
+          row.current_balance_revision,
+          "current_balance_revision",
+        ),
         transaction: null,
         reason:
           minimumBalanceRequired > 0 && currentBalance < minimumBalanceRequired
@@ -986,11 +1064,15 @@ export class CreditsService {
       result = {
         success: true,
         newBalance: parseNumeric(row.new_balance, "new_balance"),
+        balanceRevision: parseBalanceRevision(row.new_balance_revision, "new_balance_revision"),
         transaction: toCreditTransaction(row),
       };
     }
 
     return await Promise.resolve(result).then(async (result) => {
+      if (result.success && preserveInferenceBalanceHint) {
+        await lowerInferenceFenceAfterCommit(result);
+      }
       // Invalidate organization cache if balance changed
       if (result.success && !deferPostCommitEffects) {
         invalidateOrganizationCache(organizationId).catch((error) => {
@@ -1017,7 +1099,8 @@ export class CreditsService {
 
         await this.notifyBalanceDecrease(organizationId, result.newBalance, metadata);
       }
-      return result;
+      const { balanceRevision: _balanceRevision, ...publicResult } = result;
+      return publicResult;
     });
   }
 
@@ -1883,6 +1966,9 @@ export class CreditsService {
   async collectAffiliateInferenceFallback(
     params: AffiliateInferenceFallbackParams,
   ): Promise<CreditReconciliationResult> {
+    if (params.preserveInferenceBalanceHint && !params.inferenceBalanceFence) {
+      throw new Error("[CreditsService] Fenced affiliate settlement requires an admission fence");
+    }
     const actual = new Decimal(params.actualCost);
     if (!actual.isFinite() || actual.isNegative()) {
       throw new Error("[CreditsService] Affiliate fallback actual cost is invalid");
@@ -1902,10 +1988,15 @@ export class CreditsService {
       params.reservationMetadata.affiliatePayout as { sourceId?: unknown } | undefined
     )?.sourceId;
     const outcome = await writeTransaction(async (tx) => {
-      const [org] = await sqlRows<{ current_balance: string | number }>(
+      const [org] = await sqlRows<{
+        current_balance: string | number;
+        balance_revision: string | number;
+      }>(
         tx,
         sql`
-          SELECT credit_balance::numeric AS current_balance
+          SELECT
+            credit_balance::numeric AS current_balance,
+            balance_revision
           FROM organizations
           WHERE id = ${params.organizationId}
           FOR UPDATE
@@ -1916,6 +2007,7 @@ export class CreditsService {
           collectedAmount: 0,
           actualCost,
           newBalance: 0,
+          balanceRevision: "0",
           transactionId: null,
           inserted: false,
         };
@@ -1979,6 +2071,7 @@ export class CreditsService {
           collectedAmount,
           actualCost: persistedActualCost,
           newBalance: parseNumeric(org.current_balance, "current_balance"),
+          balanceRevision: parseBalanceRevision(org.balance_revision, "balance_revision"),
           transactionId: existing.id,
           inserted: false,
         };
@@ -1994,6 +2087,7 @@ export class CreditsService {
           collectedAmount: 0,
           actualCost,
           newBalance: currentBalance.toNumber(),
+          balanceRevision: parseBalanceRevision(org.balance_revision, "balance_revision"),
           transactionId: null,
           inserted: false,
         };
@@ -2013,7 +2107,10 @@ export class CreditsService {
         collectedAmountUsd: collected.toFixed(6),
         affiliatePayoutSourceId: payoutSourceId,
       });
-      const [transaction] = await sqlRows<{ id: string }>(
+      const [transaction] = await sqlRows<{
+        id: string;
+        balance_revision: string | number;
+      }>(
         tx,
         sql`
           WITH updated AS (
@@ -2021,27 +2118,32 @@ export class CreditsService {
             SET credit_balance = ${newBalance.toFixed(6)}::numeric,
                 updated_at = NOW()
             WHERE id = ${params.organizationId}
+            RETURNING id, balance_revision
+          ),
+          inserted AS (
+            INSERT INTO credit_transactions (
+              organization_id,
+              amount,
+              type,
+              description,
+              metadata,
+              stripe_payment_intent_id,
+              created_at
+            )
+            SELECT
+              id,
+              ${collected.negated().toFixed(6)}::numeric,
+              'debit',
+              ${`Inference (deferred affiliate fallback): ${params.model}`},
+              ${transactionMetadata}::jsonb,
+              ${debitKey},
+              NOW()
+            FROM updated
             RETURNING id
           )
-          INSERT INTO credit_transactions (
-            organization_id,
-            amount,
-            type,
-            description,
-            metadata,
-            stripe_payment_intent_id,
-            created_at
-          )
-          SELECT
-            id,
-            ${collected.negated().toFixed(6)}::numeric,
-            'debit',
-            ${`Inference (deferred affiliate fallback): ${params.model}`},
-            ${transactionMetadata}::jsonb,
-            ${debitKey},
-            NOW()
-          FROM updated
-          RETURNING id
+          SELECT inserted.id, updated.balance_revision
+          FROM inserted
+          CROSS JOIN updated
         `,
       );
       if (!transaction) {
@@ -2056,6 +2158,7 @@ export class CreditsService {
         collectedAmount: collected.toNumber(),
         actualCost,
         newBalance: newBalance.toNumber(),
+        balanceRevision: parseBalanceRevision(transaction.balance_revision, "balance_revision"),
         transactionId: transaction.id,
         inserted: true,
       };
@@ -2066,9 +2169,17 @@ export class CreditsService {
         // The actual affiliate debit may exceed the estimate held by the
         // Durable Object. Publish the committed lower ceiling before the
         // authoritative read so a concurrent lease cannot spend that delta.
+        await params.inferenceBalanceFence?.lowerCommittedBalance(
+          outcome.newBalance,
+          outcome.balanceRevision,
+        );
         await lowerOrgBalanceHint(params.organizationId, outcome.newBalance, Date.now());
         const balanceAt = Date.now();
         const snapshot = await this.getOrganizationBalanceSnapshot(params.organizationId);
+        await params.inferenceBalanceFence?.publishAuthoritativeBalance(
+          snapshot.balanceUsd,
+          snapshot.revision,
+        );
         await republishOrgBalanceHint(
           params.organizationId,
           snapshot.balanceUsd,

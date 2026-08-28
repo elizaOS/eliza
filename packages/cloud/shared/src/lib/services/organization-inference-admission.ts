@@ -28,6 +28,7 @@ import {
 } from "./credits";
 import {
   acquireInferenceAdmissionLease,
+  createInferenceAdmissionBalanceFence,
   InferenceAdmissionGateUnavailableError,
   type InferenceAdmissionLease,
   InferenceAdmissionLeaseRejectedError,
@@ -423,6 +424,7 @@ export async function admitOrganizationInference(
     if (!inferenceLease) {
       throw new InferenceAdmissionUnavailableError();
     }
+    const inferenceBalanceFence = createInferenceAdmissionBalanceFence(inferenceLease);
     if (affiliateAttribution) {
       const affiliatePayoutSourceId = getAffiliatePayoutSourceId(params.context);
       const reservationMetadata = {
@@ -448,6 +450,7 @@ export async function admitOrganizationInference(
           // lower-only handoff, authoritative republish, and gate settlement
           // all finish.
           preserveInferenceBalanceHint: true,
+          inferenceBalanceFence,
         });
       const result: OrganizationInferenceAdmission = {
         mode: "durable_object_affiliate_debit",
@@ -479,6 +482,7 @@ export async function admitOrganizationInference(
         // debit and gate settlement finish, so the last valid projection can
         // stay present during the post-stream republish handoff.
         preserveBalanceHintDuringFencedHandoff: true,
+        inferenceBalanceFence,
       });
       return {
         reservedAmount: outcome.collectedAmountUsd,

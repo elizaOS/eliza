@@ -17,7 +17,11 @@ import type {
 } from "../../types/cloud-worker-env";
 import { getCloudBinding } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import { type CreditReconciliationResult, creditsService } from "./credits";
+import {
+  type CreditReconciliationResult,
+  creditsService,
+  type InferenceBalanceFence,
+} from "./credits";
 import type { InferenceAdmissionRecoveryContext } from "./inference-admission-recovery";
 import type { EndpointType } from "./org-rate-limits";
 
@@ -584,6 +588,49 @@ export async function acquireInferenceAdmissionLease(params: {
     gate: stub,
     providerDispatched: false,
     preProviderCancellationToken: crypto.randomUUID(),
+  };
+}
+
+/**
+ * Keep the serialized admission authority ahead of the eventually-consistent
+ * KV projection during post-provider billing. Same-revision updates can only
+ * lower the ceiling; authoritative newer revisions advance it normally.
+ */
+async function publishInferenceAdmissionBalance(
+  lease: InferenceAdmissionLease,
+  balanceUsd: number,
+  balanceRevision: string,
+): Promise<void> {
+  const safeBalance = finiteNonNegative(balanceUsd, "balanceUsd");
+  if (!/^(0|[1-9]\d*)$/.test(balanceRevision)) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission balance fence revision is invalid",
+    );
+  }
+  const response = await gateFetch(
+    lease.organizationId,
+    "/hydrate",
+    { balanceUsd: safeBalance, balanceRevision },
+    lease.gate,
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+  );
+  if (!response.ok) {
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission balance fence failed with status ${response.status}`,
+    );
+  }
+  await parseHydrateResponse(response);
+}
+
+/** Build the two-stage live-settlement fence bound to one active lease. */
+export function createInferenceAdmissionBalanceFence(
+  lease: InferenceAdmissionLease,
+): InferenceBalanceFence {
+  return {
+    lowerCommittedBalance: async (balanceUsd, balanceRevision) =>
+      publishInferenceAdmissionBalance(lease, balanceUsd, balanceRevision),
+    publishAuthoritativeBalance: async (balanceUsd, balanceRevision) =>
+      publishInferenceAdmissionBalance(lease, balanceUsd, balanceRevision),
   };
 }
 
