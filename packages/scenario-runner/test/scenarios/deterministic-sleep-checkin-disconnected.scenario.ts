@@ -176,7 +176,9 @@ async function assertNoPersistedReport(
 }
 
 export default scenario({
-  id: SCENARIO_ID,
+  // The scenario catalog reads metadata statically (loader.ts getStaticStringProperty),
+  // so `id` must be a string literal, not the SCENARIO_ID constant.
+  id: "deterministic-sleep-checkin-disconnected",
   lane: "pr-deterministic",
   modelFixtures: {
     mode: "fixtures",
