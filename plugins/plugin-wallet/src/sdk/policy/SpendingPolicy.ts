@@ -171,6 +171,17 @@ export class SpendingPolicy {
       if (this.config.rollingCap) {
         this.spendWindow.push({ amount: draft.payment.amount, ts: Date.now() });
       }
+      // check() only logged the "draft" entry; the approval transition must
+      // be visible to audit consumers too, since the amount is now actively
+      // consuming the rolling window.
+      this.auditLog.push({
+        id: nextId("audit"),
+        timestamp: new Date().toISOString(),
+        merchant: draft.payment.merchant,
+        amount: draft.payment.amount,
+        status: "approved",
+        draftId: draft.draftId,
+      });
     }
     return true;
   }
@@ -180,6 +191,16 @@ export class SpendingPolicy {
     const draft = this.drafts.get(draftId);
     if (!draft) return false;
     draft.rejected = true;
+    // Mirror the approval path: the rejection transition must be visible
+    // to audit consumers (check() only logged the "draft" entry).
+    this.auditLog.push({
+      id: nextId("audit"),
+      timestamp: new Date().toISOString(),
+      merchant: draft.payment.merchant,
+      amount: draft.payment.amount,
+      status: "rejected",
+      draftId: draft.draftId,
+    });
     return true;
   }
 

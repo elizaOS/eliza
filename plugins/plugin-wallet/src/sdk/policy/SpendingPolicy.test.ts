@@ -35,6 +35,16 @@ describe("SpendingPolicy rolling spend cap", () => {
     // The approved 80 must consume the window: 80 + 30 = 110 > 100.
     const later = await policy.check({ merchant, amount: 30 });
     expect(later.status).toBe("rejected");
+
+    // The approval transition must be visible to audit consumers: an entry
+    // reflecting the committed spend (not the original "draft" status) exists
+    // for this draft.
+    const approval = policy
+      .getAuditLog()
+      .find((e) => e.draftId === draft.draftId && e.status === "approved");
+    expect(approval).toBeDefined();
+    expect(approval?.amount).toBe(80);
+    expect(approval?.merchant).toBe(merchant);
   });
 
   it("counts every approved draft, so two large drafts exhaust the cap", async () => {
@@ -81,6 +91,12 @@ describe("SpendingPolicy rolling spend cap", () => {
 
     const later = await policy.check({ merchant, amount: 30 });
     expect(later.status).toBe("approved");
+
+    // The rejection transition must be visible to audit consumers too.
+    const rejection = policy
+      .getAuditLog()
+      .find((e) => e.draftId === draft.draftId && e.status === "rejected");
+    expect(rejection).toBeDefined();
   });
 
   it("ages approved-draft spend out of the rolling window like immediate spend", async () => {
