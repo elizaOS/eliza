@@ -27,6 +27,7 @@ vi.mock("../../api/client", () => ({
       notifications: [],
       unreadCount: 0,
     })),
+    listPendingActions: vi.fn(async () => ({ pending: [] })),
     onWsEvent: vi.fn(),
     // notificationProbesEnabled reads the configured base URL before every
     // hydration request; empty string = same-origin (probes enabled).
@@ -39,6 +40,8 @@ vi.mock("../../api/client", () => ({
 }));
 
 const navigateDeepLink = vi.hoisted(() => vi.fn());
+const dispatchChatOpen = vi.hoisted(() => vi.fn());
+const dispatchChatPrefill = vi.hoisted(() => vi.fn());
 
 /** Typed authenticated owner fixture for the auth-gated hydration probes. */
 const AUTHENTICATED_OWNER: AuthStatusState = {
@@ -56,8 +59,13 @@ vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
   ...(await orig()),
   navigateDeepLink,
 }));
+vi.mock("../../events", () => ({
+  NETWORK_STATUS_CHANGE_EVENT: "eliza:network-status-change",
+  dispatchChatOpen,
+  dispatchChatPrefill,
+}));
 
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification, PendingUserAction } from "@elizaos/core";
 import { client } from "../../api/client";
 import {
   __resetAuthStatusForTests,
@@ -265,6 +273,10 @@ beforeEach(() => {
   vi.useFakeTimers();
   seq = 0;
   vi.mocked(client.getBaseUrl).mockReset().mockReturnValue("");
+  vi.mocked(client.listPendingActions)
+    .mockReset()
+    .mockResolvedValue({ pending: [] });
+  vi.mocked(client.removeNotification).mockClear();
 });
 
 afterEach(() => {
@@ -275,6 +287,8 @@ afterEach(() => {
   __resetNotificationStoreForTests();
   __resetAuthStatusForTests();
   navigateDeepLink.mockClear();
+  dispatchChatOpen.mockClear();
+  dispatchChatPrefill.mockClear();
 });
 
 describe("orderDashboardNotifications", () => {
@@ -1049,6 +1063,66 @@ describe("NotificationsHomeCenter", () => {
     );
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.queryByText("Dismiss me")).toBeNull();
+  });
+
+  it("keeps unresolved choices in the normal shade and routes a typed reply", async () => {
+    const pendingAction: PendingUserAction = {
+      id: "request-1",
+      kind: "choice",
+      source: "lifeops",
+      title: "Send the weekly report?",
+      createdAt: 1_700_000_000_000,
+      options: [
+        { id: "approve", label: "Yes" },
+        { id: "later", label: "Ask me later", isCancel: true },
+      ],
+    };
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    vi.mocked(client.listPendingActions).mockResolvedValueOnce({
+      pending: [pendingAction],
+    });
+
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const row = screen.getByTestId("notification-row");
+    const swipe = screen.getByTestId("notification-row-swipe");
+    expect(swipe.getAttribute("data-notification-dismissible")).toBe("false");
+    fireEvent.pointerDown(swipe, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 120,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(swipe, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 10,
+      clientY: 20,
+    });
+    fireEvent.pointerUp(swipe, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 10,
+      clientY: 20,
+    });
+    expect(swipe.style.transform).not.toContain("120%");
+
+    fireEvent.click(row);
+    const options = screen.getByTestId("pending-action-options");
+    expect(options.getAttribute("aria-label")).toBe(
+      "Respond to: Send the weekly report?",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    expect(dispatchChatPrefill).toHaveBeenCalledWith({
+      text: "Approve: Send the weekly report?",
+      select: true,
+    });
+    expect(client.removeNotification).not.toHaveBeenCalled();
+    expect(screen.getByText("Send the weekly report?")).toBeTruthy();
   });
 
   it("acting on a row removes it; surviving rows keep their stable order", () => {

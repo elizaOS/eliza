@@ -226,6 +226,15 @@ export type WidgetPluginState = Pick<PluginInfo, "id" | "enabled" | "isActive">;
  */
 const EXTERNAL_FALLBACK_PLUGIN_IDS = new Set<string>();
 
+/** Retired resident keys stay retired even if a stale server advertises them. */
+const RETIRED_WIDGET_KEYS = new Set([
+  "needs-attention/needs-attention.pending",
+]);
+
+function isRetiredWidget(declaration: PluginWidgetDeclaration): boolean {
+  return RETIRED_WIDGET_KEYS.has(`${declaration.pluginId}/${declaration.id}`);
+}
+
 /**
  * Visibility class for a built-in declaration, derived from its own
  * `visibility` field with a back-compat fallback to the third-party allow set.
@@ -324,7 +333,7 @@ export function resolveWidgetsForSlot(
   >();
 
   for (const decl of BUILTIN_WIDGET_DECLARATIONS) {
-    if (decl.slot === slot) {
+    if (decl.slot === slot && !isRetiredWidget(decl)) {
       declarationMap.set(`${decl.pluginId}/${decl.id}`, {
         declaration: decl,
         source: "builtin",
@@ -334,7 +343,7 @@ export function resolveWidgetsForSlot(
 
   if (serverDeclarations) {
     for (const decl of serverDeclarations) {
-      if (decl.slot === slot) {
+      if (decl.slot === slot && !isRetiredWidget(decl)) {
         declarationMap.set(`${decl.pluginId}/${decl.id}`, {
           declaration: decl,
           source: "server",
