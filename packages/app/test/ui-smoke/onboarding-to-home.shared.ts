@@ -443,7 +443,17 @@ export async function installHomeRoutes(
         updatedAt: new Date(0).toISOString(),
       },
       downloads: [],
-      hardware: { status: "unsupported" },
+      hardware: {
+        totalRamGb: 8,
+        freeRamGb: 4,
+        gpu: null,
+        cpuCores: 4,
+        platform: "linux",
+        arch: "x64",
+        appleSilicon: false,
+        recommendedBucket: "small",
+        source: "os-fallback",
+      },
       assignments: {},
       textReadiness: {
         updatedAt: new Date(0).toISOString(),
