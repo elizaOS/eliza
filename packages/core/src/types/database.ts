@@ -1683,7 +1683,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	// control under concurrent writers. expectedRevision null means "row must
 	// not exist yet"; the new value is written together with nextRevision and
 	// the swap succeeds only when the stored revision matches expected.
-	compareAndSwapCache<T>(
+  // Optional so structural third-party adapters that do not extend
+  // DatabaseAdapter remain compatible; consumers must capability-gate.
+  compareAndSwapCache?<T>(
 		key: string,
 		expectedRevision: number | null,
 		nextRevision: number,

@@ -10,6 +10,7 @@ import path from "node:path";
 import {
   canonicalPromptForModelCall,
   composeToolDiagnosticRedactor,
+  contentManifestLedgerKeys,
   logger as coreLogger,
   ElizaError,
   type IAgentRuntime,
@@ -3327,28 +3328,81 @@ export async function pruneOldTrajectories(
       }
     }
 
+    // Kept next to its only caller: deletes the ledger cache rows for the
+    // archived trajectory ids via the shared core key derivation.
+    // error-policy:J6 caller treats cleanup failure as inert-row housekeeping.
+    const deleteContentManifestLedgerRows = async (
+      ownerRuntime: typeof runtime,
+      ids: string[],
+    ): Promise<void> => {
+      if (ids.length === 0) return;
+      const adapter = ownerRuntime.adapter as unknown as
+        | {
+            getCache: <T>(key: string) => Promise<T | undefined>;
+            deleteCaches: (keys: string[]) => Promise<boolean>;
+          }
+        | undefined;
+      if (!adapter) return;
+      const keys: string[] = [];
+      for (const trajectoryId of ids) {
+        const ledgerKeys = await contentManifestLedgerKeys(
+          adapter,
+          `${ownerRuntime.agentId}:trajectory:${trajectoryId}`,
+        );
+        if (ledgerKeys) keys.push(...ledgerKeys);
+      }
+      if (keys.length > 0) await adapter.deleteCaches(keys);
+    };
+
     // Step 3: Delete the archived rows from the main table.
-    return await executeRawSqlTransaction(runtime, async (execute) => {
-      const owner = sqlQuote(runtime.agentId);
-      const countResult = await execute(
-        `SELECT count(*) AS total FROM trajectories
+    const removedIds = await executeRawSqlTransaction(
+      runtime,
+      async (execute) => {
+        const owner = sqlQuote(runtime.agentId);
+        const countResult = await execute(
+          `SELECT count(*) AS total FROM trajectories
          WHERE created_at < ${sqlQuote(cutoff)} AND agent_id = ${owner}`,
-      );
-      const count = readRequiredCount(countResult, "total", {
-        operation: "prune",
-      });
-      if (count > 0) {
-        await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
+        );
+        const count = readRequiredCount(countResult, "total", {
+          operation: "prune",
+        });
+        if (count > 0) {
+          await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
           SELECT id FROM trajectories
           WHERE created_at < ${sqlQuote(cutoff)} AND agent_id = ${owner}
         )`);
-        await execute(
-          `DELETE FROM trajectories
-           WHERE created_at < ${sqlQuote(cutoff)} AND agent_id = ${owner}`,
-        );
-      }
-      return count;
-    });
+          const result = (await execute(
+            `DELETE FROM trajectories
+           WHERE created_at < ${sqlQuote(cutoff)} AND agent_id = ${owner}
+           RETURNING id`,
+          )) as { rows?: Array<{ id?: unknown }> };
+          const ids: string[] = [];
+          for (const row of result.rows ?? []) {
+            const id = row.id;
+            if (typeof id === "string") ids.push(id);
+          }
+          return ids;
+        }
+        return [] as string[];
+      },
+    );
+    // The archived rows are gone; their content-manifest ledger cache rows
+    // must not outlive them (#25141). Best-effort: a prune failure never
+    // fails the archive operation itself.
+    // error-policy:J6 ledger cleanup is inert-row housekeeping.
+    try {
+      await deleteContentManifestLedgerRows(runtime, removedIds);
+    } catch (cleanupError) {
+      coreLogger.debug(
+        {
+          src: "agent:trajectory-storage",
+          err: cleanupError,
+          count: removedIds.length,
+        },
+        "content-manifest ledger cleanup after archive prune failed (inert rows remain)",
+      );
+    }
+    return removedIds.length;
   } catch (error) {
     // error-policy:J2 pruning is a write path; failed archive/delete work must
     // surface rather than look like a disabled pruning result.
