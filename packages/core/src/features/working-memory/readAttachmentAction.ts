@@ -734,11 +734,14 @@ async function reassembleSegmentedAttachmentContent(
 		return { records };
 	}
 
-	const saveFailure = (
+	const saveFailure = async (
 		text: string,
 		error: string,
-	): { failure: ActionResult } => {
-		void callback?.({
+	): Promise<{ failure: ActionResult }> => {
+		// The failure text is this turn's sole delivery (the action suppresses
+		// post-action continuation), so it must complete before the handler
+		// resolves — await, never fire-and-forget.
+		await callback?.({
 			text,
 			actions: ["ATTACHMENT_SAVE_AS_DOCUMENT_FAILED"],
 			source: message.content.source,
@@ -763,12 +766,15 @@ async function reassembleSegmentedAttachmentContent(
 		? runtime.getMemoryContentPage
 		: null;
 	if (!pageCapable) {
-		return saveFailure(
+		return await saveFailure(
 			"This attachment is stored in segmented form and the current database cannot reassemble it, so it cannot be saved as a document.",
 			"ATTACHMENT_SAVE_REASSEMBLY_UNAVAILABLE",
 		);
 	}
 
+	// error-policy:J4 access-context resolution failure degrades reassembly to
+	// requester-only authority — still authorized, never unrestricted; the
+	// page read itself surfaces any residual failure through its typed errors.
 	const accessContext = await buildAccessContext(runtime, message).catch(
 		() => ({
 			requesterEntityId: message.entityId as UUID,
@@ -784,7 +790,7 @@ async function reassembleSegmentedAttachmentContent(
 		const ownerMessageId = record.attachment._messageId;
 		const attachmentId = record.attachment.id;
 		if (!ownerMessageId) {
-			return saveFailure(
+			return await saveFailure(
 				"The segmented attachment has no owning stored message to reassemble from, so it cannot be saved as a document.",
 				"ATTACHMENT_PAGE_OWNER_UNRESOLVED",
 			);
@@ -797,7 +803,7 @@ async function reassembleSegmentedAttachmentContent(
 		// above any real attachment while guaranteeing termination.
 		for (let guard = 0; offset < total; guard += 1) {
 			if (guard >= 4096) {
-				return saveFailure(
+				return await saveFailure(
 					"Reassembling this attachment exceeded the bounded page budget, so it cannot be saved as a document.",
 					"ATTACHMENT_SAVE_REASSEMBLY_FAILED",
 				);
@@ -816,7 +822,7 @@ async function reassembleSegmentedAttachmentContent(
 				// failures (stale revision, reindex required, drift) into a
 				// structured save failure.
 				if (error instanceof ElizaError) {
-					return saveFailure(
+					return await saveFailure(
 						error.message,
 						error.code ?? "ATTACHMENT_SAVE_REASSEMBLY_FAILED",
 					);
@@ -824,7 +830,7 @@ async function reassembleSegmentedAttachmentContent(
 				throw error;
 			}
 			if (!page || page.text === undefined) {
-				return saveFailure(
+				return await saveFailure(
 					"The segmented attachment could not be reassembled from storage, so it cannot be saved as a document.",
 					"ATTACHMENT_SAVE_REASSEMBLY_FAILED",
 				);
