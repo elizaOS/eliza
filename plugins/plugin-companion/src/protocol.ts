@@ -63,7 +63,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function nonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
 }
 
 function badFrame(reason: string, raw: string): ElizaError {
