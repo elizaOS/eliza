@@ -128,10 +128,10 @@ jobs:
     environment: ${{ needs.determine-env.outputs.environment }}
     # Every pre-SSH step has its own fence (40m worst case total). The three
     # bounded remote phases (5m prerequisites, 40m deploy including a possible
-    # wait for an orphaned prior SSH process, 5m health) can then each use their
-    # ceiling without the enclosing job becoming the first timeout; the
-    # remaining seven minutes cover action startup and teardown.
-    timeout-minutes: 95
+    # wait for an orphaned prior SSH process, 25m identity-locked health) can
+    # then each use their ceiling without the enclosing job becoming the first
+    # timeout; the remaining fifteen minutes cover action startup and teardown.
+    timeout-minutes: 125
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
       BACKUP_SYSTEMD_UNIT: eliza-backup-catalog-worker.service

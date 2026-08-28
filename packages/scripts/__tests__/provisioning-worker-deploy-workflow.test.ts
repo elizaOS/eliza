@@ -53,6 +53,7 @@ interface WorkflowStep {
 interface WorkflowJob {
   env?: Record<string, string>;
   steps?: WorkflowStep[];
+  "timeout-minutes"?: number;
 }
 
 const parsedWorkflow = Bun.YAML.parse(workflow) as {
@@ -181,7 +182,7 @@ describe("provisioning worker deployment contract", () => {
     expect(migrationGate).toContain(
       "bun install --frozen-lockfile --no-save --ignore-scripts",
     );
-    expect(workflow).toContain("timeout-minutes: 95");
+    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(125);
   });
 
   it("scopes protected values away from checkout, setup, and install actions", () => {
@@ -304,8 +305,26 @@ describe("provisioning worker deployment contract", () => {
     }
 
     expect(totalPreSshMinutes).toBe(40);
-    expect(workflow).toContain("timeout-minutes: 95");
-    expect(totalPreSshMinutes + 5 + 40 + 5).toBeLessThan(95);
+    const remoteSteps = parsedWorkflow.jobs?.deploy?.steps?.filter((step) =>
+      step.uses?.startsWith("appleboy/ssh-action@"),
+    );
+    const remoteBounds = (remoteSteps ?? []).map((step) => {
+      const timeout = step.with?.command_timeout;
+      expect(timeout).toMatch(/^\d+m$/);
+      return Number.parseInt(timeout ?? "", 10);
+    });
+    expect(remoteBounds).toEqual([5, 40, 25]);
+
+    const jobBound = parsedWorkflow.jobs?.deploy?.["timeout-minutes"];
+    expect(jobBound).toBe(125);
+    expect(
+      totalPreSshMinutes + remoteBounds.reduce((sum, n) => sum + n, 0),
+    ).toBeLessThan(jobBound ?? 0);
+    expect(
+      (jobBound ?? 0) -
+        totalPreSshMinutes -
+        remoteBounds.reduce((sum, n) => sum + n, 0),
+    ).toBeGreaterThanOrEqual(15);
   });
 
   it("reports the resolved branch and immutable deployment SHA in both Discord receipts", () => {
@@ -341,7 +360,7 @@ describe("provisioning worker deployment contract", () => {
       workflow.indexOf("cd /opt/eliza"),
     );
     expect(workflow).toContain("command_timeout: 40m");
-    expect(workflow).toContain("timeout-minutes: 95");
+    expect(parsedWorkflow.jobs?.deploy?.["timeout-minutes"]).toBe(125);
   });
 
   it("regenerates before deploy and self-heals every service", () => {
