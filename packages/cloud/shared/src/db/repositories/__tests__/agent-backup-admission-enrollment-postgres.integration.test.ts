@@ -158,7 +158,9 @@ async function cleanupHarnessOnce(): Promise<void> {
           [databaseName],
         );
       });
-      await capture(async () => admin?.query(`DROP DATABASE IF EXISTS "${databaseName}"`));
+      await capture(async () => {
+        await admin?.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
+      });
       await capture(async () => admin?.end());
     }
   }
