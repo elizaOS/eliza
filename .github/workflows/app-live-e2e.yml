@@ -128,7 +128,16 @@ jobs:
         run: bun run --cwd packages/app build:web
 
       - name: Run live agent chat (real model turn)
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/live-agent-chat.spec.ts --project=chromium -g "live agent"
+        shell: bash
+        run: |
+          set -euo pipefail
+          if bun run --cwd packages/app test:e2e test/ui-smoke/live-agent-chat.spec.ts --project=chromium -g "live agent" >/dev/null 2>&1; then
+            echo "Live agent chat passed (category=live-chat-passed; raw-output=suppressed)."
+          else
+            status=$?
+            echo "::error::Live agent chat failed (category=live-chat-failed; exit=${status}; raw-output=suppressed)."
+            exit "$status"
+          fi
 
       # Deep settings/vault round-trips that the keyless stub structurally
       # cannot serve (write→reload→read-back against the real on-disk vault +
@@ -136,23 +145,39 @@ jobs:
       # guards in these specs open. The two *-interactions specs also run keyless
       # in scenario-pr.yml (skipping their deep blocks); here they run them.
       - name: Run settings + vault live-stack deep e2e
+        shell: bash
         run: |
-          bun run --cwd packages/app test:e2e test/ui-smoke/vault-routing.spec.ts test/ui-smoke/wallet-keys.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts --project=chromium
+          set -euo pipefail
+          run_closed_e2e() {
+            local category="$1"
+            shift
+            if "$@" >/dev/null 2>&1; then
+              echo "Credentialed E2E passed (category=${category}-passed; raw-output=suppressed)."
+            else
+              local status=$?
+              echo "::error::Credentialed E2E failed (category=${category}-failed; exit=${status}; raw-output=suppressed)."
+              return "$status"
+            fi
+          }
+          run_closed_e2e settings-vault \
+            bun run --cwd packages/app test:e2e test/ui-smoke/vault-routing.spec.ts test/ui-smoke/wallet-keys.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts --project=chromium
           # Provider switching deliberately restarts the runtime. Run it in a
           # fresh final harness so its lifecycle cannot strand unrelated tests
           # behind the startup shell while the selected test provider restarts.
-          bun run --cwd packages/app test:e2e test/ui-smoke/provider-config.spec.ts --project=chromium
+          run_closed_e2e provider-config \
+            bun run --cwd packages/app test:e2e test/ui-smoke/provider-config.spec.ts --project=chromium
 
       - name: Upload live-chat artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: app-live-e2e-chat
-          path: |
-            packages/app/playwright-report/
-            packages/app/test-results/
-            e2e-recordings/app-live/backend.log
-          if-no-files-found: ignore
+          # The harness projects backend stdout/stderr into a fixed category +
+          # channel schema. Raw Playwright reports/results are intentionally
+          # excluded because these specs exercise chat, vault, wallet, and
+          # provider state with live credentials.
+          path: e2e-recordings/app-live/backend.log
+          if-no-files-found: error
           retention-days: 7
 
   # Full continuous walkthrough against the REAL backend agent + model: cold
@@ -309,7 +334,16 @@ jobs:
         run: bun run --cwd packages/app build:web
 
       - name: Run real cloud login + personal identity + chat
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          if bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium >/dev/null 2>&1; then
+            echo "Cloud login/chat passed (category=cloud-live-passed; raw-output=suppressed)."
+          else
+            status=$?
+            echo "::error::Cloud login/chat failed (category=cloud-live-failed; exit=${status}; raw-output=suppressed)."
+            exit "$status"
+          fi
 
   # STAGING counterpart of cloud-live (#18076): the same real login +
   # Personal Eliza identity + chat path, pinned to the staging control plane. Kept a
@@ -419,15 +453,20 @@ jobs:
         id: staging-cloud-smoke
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
           rm -f -- "$ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH"
           rm -f -- "$ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH"
           started_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
           echo "started_ms=$started_ms" >> "$GITHUB_OUTPUT"
           set +e
-          bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium
+          bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium >/dev/null 2>&1
           test_status=$?
           set -e
+          if [ "$test_status" -eq 0 ]; then
+            echo "Staging Cloud login/chat passed (category=cloud-live-staging-passed; raw-output=suppressed)."
+          else
+            echo "::error::Staging Cloud login/chat failed (category=cloud-live-staging-failed; exit=${test_status}; raw-output=suppressed)."
+          fi
           completed_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
           echo "completed_ms=$completed_ms" >> "$GITHUB_OUTPUT"
           exit "$test_status"

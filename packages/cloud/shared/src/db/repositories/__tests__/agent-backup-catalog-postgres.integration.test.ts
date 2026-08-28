@@ -14,6 +14,7 @@ import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
+import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { sqlRows } from "../../execute-helpers";
 import {
   agentBackupNodeAdmissionCursors,
@@ -560,7 +561,10 @@ const realPostgres = postgres ? describe : describe.skip;
 
 realPostgres("canonical backup catalogue contention", () => {
   beforeAll(async () => {
-    if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
+    const initializedDbWrite = dbWrite;
+    if (!initializedDbWrite) {
+      throw new Error("Real PostgreSQL harness was not initialized");
+    }
     const { apply } = await pushSchema(
       {
         organizations,
@@ -572,11 +576,14 @@ realPostgres("canonical backup catalogue contention", () => {
         agentSandboxBackups,
         agentBackupCatalogAuthorities,
       } as never,
-      dbWrite as never,
+      initializedDbWrite as never,
     );
     await apply();
     await seedSourceAuthority(TENANT_A);
     await seedSourceAuthority(TENANT_B);
+    await installAgentNodeOccurrenceTriggerForTests((statement) =>
+      initializedDbWrite.execute(sql.raw(statement)),
+    );
     await applyBackupAdmissionMigrations();
     await installBackupMutationGuardForTests();
   }, 60_000);
@@ -601,6 +608,8 @@ realPostgres("canonical backup catalogue contention", () => {
 
   test("retires only the protocol guard after the admission migration", async () => {
     if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
+    const tenantAHistoryId = await requireCurrentNodeHistoryId(TENANT_A);
+    const tenantBHistoryId = await requireCurrentNodeHistoryId(TENANT_B);
     const [migrationState] = await sqlRows<{
       bind_trigger_exists: boolean;
       capture_check_exists: boolean;
@@ -675,7 +684,7 @@ realPostgres("canonical backup catalogue contention", () => {
       .from(agentSandboxBackups)
       .where(eq(agentSandboxBackups.id, backupId));
     expect(bound).toEqual({
-      sourceNodeHistoryId: TENANT_A.nodeHistoryId,
+      sourceNodeHistoryId: tenantAHistoryId,
       sourceNodeId: TENANT_A.nodeId,
     });
 
@@ -703,7 +712,7 @@ realPostgres("canonical backup catalogue contention", () => {
           state_data_storage: "inline",
           size_bytes: 0,
           backup_kind: "full",
-          source_node_history_id: TENANT_B.nodeHistoryId,
+          source_node_history_id: tenantBHistoryId,
           source_node_record_id: TENANT_A.nodeRecordId,
           source_node_incarnation: TENANT_A.nodeIncarnation,
         })

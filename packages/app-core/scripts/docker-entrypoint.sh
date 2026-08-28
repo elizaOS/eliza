@@ -19,18 +19,34 @@ set -eu
 # re-key/recreate it instead of leaving it in an unbounded crash loop.
 TS_AUTHKEY_EXPIRED_EXIT_CODE=78
 
+# `tailscale up` defaults to waiting forever for Running. A rejected pre-auth
+# key can instead move the daemon to NeedsLogin with an interactive AuthURL,
+# which must never hold the mesh-first container boot indefinitely. Keep every
+# join attempt bounded; tests may lower this positive integer to exercise the
+# deadline without delaying the suite.
+TS_UP_TIMEOUT_SECONDS="${TS_UP_TIMEOUT_SECONDS:-120}"
+
 # Substrings that mean "this auth key will never work on retry" — a fresh key is
 # required, looping on the same one is pointless. Matched case-insensitively
 # against the `tailscale up` stderr. Kept broad on purpose: headscale/tailscale
 # phrase this as "authkey expired", "key expired", "authkey already used"
 # (single-use key consumed by a prior boot), or "invalid key".
+ts_interactive_auth_required() {
+  case "$1" in
+    *'"authurl": "http'*|*'"authurl":"http'*|*"authurl=true"*|*"authurl is http"*) return 0 ;;
+    *"needslogin"*|*"needsmachineauth"*) return 0 ;;
+    *"machineauthorized=false"*|*'"machineauthorized":false'*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 ts_authkey_permanent_failure() {
   # $1 = combined tailscale up output (lower-cased by caller)
   case "$1" in
     *"authkey expired"*|*"auth key expired"*|*"key expired"*) return 0 ;;
     *"authkey already used"*|*"auth key already used"*) return 0 ;;
     *"invalid key"*|*"invalid authkey"*|*"invalid auth key"*) return 0 ;;
-    *) return 1 ;;
+    *) ts_interactive_auth_required "$1" ;;
   esac
 }
 
@@ -73,14 +89,66 @@ ts_try_fetch_fresh_authkey() {
 }
 
 # Run `tailscale up`, capturing combined output so we can classify auth failures.
+# JSON mode exposes the daemon's otherwise-interactive AuthURL / NeedsLogin
+# state. Watch that output while the command is running so an unusable key fails
+# immediately; the CLI's own timeout remains the hard bound for silent stalls.
 # Args after the function name are passed through verbatim to `tailscale up`.
 ts_up() {
   # Globals: ts_socket, ts_up_output (set here), ts_up_rc (set here).
-  ts_up_output="$(
-    # shellcheck disable=SC2086
-    tailscale --socket="$ts_socket" up "$@" 2>&1
-  )" && ts_up_rc=0 || ts_up_rc=$?
-  [ -n "$ts_up_output" ] && printf '%s\n' "$ts_up_output" >&2
+  ts_up_output_file="/tmp/tailscale-up.$$.log"
+  : > "$ts_up_output_file"
+  chmod 600 "$ts_up_output_file"
+  ts_daemon_log_start_line=$(( $(wc -l < /tmp/tailscaled.log 2>/dev/null || printf '0') + 1 ))
+
+  # `up --json` intentionally suppresses its interactive URL when --auth-key
+  # is present, so also inspect tailscaled's private log for the RegisterReq
+  # machineAuthorized=false / authURL=true response. That evidence is never
+  # copied to container logs because the URL itself is an authorization secret.
+  # shellcheck disable=SC2086
+  tailscale --socket="$ts_socket" up \
+    --json \
+    --timeout="${TS_UP_TIMEOUT_SECONDS}s" \
+    "$@" \
+    >"$ts_up_output_file" 2>&1 &
+  ts_up_pid=$!
+  ts_up_auth_required=0
+  ts_up_interactive_auth=0
+
+  while kill -0 "$ts_up_pid" 2>/dev/null; do
+    ts_up_snapshot="$(cat "$ts_up_output_file" 2>/dev/null || true)"
+    ts_daemon_snapshot="$(tail -n +"$ts_daemon_log_start_line" /tmp/tailscaled.log 2>/dev/null || true)"
+    ts_up_snapshot_lower="$(printf '%s\n%s' "$ts_up_snapshot" "$ts_daemon_snapshot" | tr '[:upper:]' '[:lower:]')"
+    if [ -n "$ts_up_snapshot_lower" ] && ts_authkey_permanent_failure "$ts_up_snapshot_lower"; then
+      ts_up_auth_required=1
+      if ts_interactive_auth_required "$ts_up_snapshot_lower"; then
+        ts_up_interactive_auth=1
+      fi
+      kill "$ts_up_pid" 2>/dev/null || true
+      break
+    fi
+    sleep 0.1
+  done
+
+  if wait "$ts_up_pid"; then
+    ts_up_rc=0
+  else
+    ts_up_rc=$?
+  fi
+  ts_up_output="$(cat "$ts_up_output_file" 2>/dev/null || true)"
+  rm -f "$ts_up_output_file"
+  ts_daemon_snapshot="$(tail -n +"$ts_daemon_log_start_line" /tmp/tailscaled.log 2>/dev/null || true)"
+  ts_up_output_lower="$(printf '%s\n%s' "$ts_up_output" "$ts_daemon_snapshot" | tr '[:upper:]' '[:lower:]')"
+  if [ -n "$ts_up_output_lower" ] && ts_authkey_permanent_failure "$ts_up_output_lower"; then
+    ts_up_auth_required=1
+    if ts_interactive_auth_required "$ts_up_output_lower"; then
+      ts_up_interactive_auth=1
+    fi
+  fi
+  if [ "$ts_up_auth_required" -eq 1 ]; then
+    ts_up_rc=1
+  else
+    [ -n "$ts_up_output" ] && printf '%s\n' "$ts_up_output" >&2
+  fi
   return 0
 }
 
@@ -98,6 +166,13 @@ start_tailscale_if_configured() {
     echo "[docker-entrypoint] TS_AUTHKEY is set but tailscale/tailscaled is not installed" >&2
     exit 1
   fi
+
+  case "$TS_UP_TIMEOUT_SECONDS" in
+    ''|*[!0-9]*|0)
+      echo "[docker-entrypoint] TS_UP_TIMEOUT_SECONDS must be a positive integer" >&2
+      exit 1
+      ;;
+  esac
 
   ts_state_dir="${TS_STATE_DIR:-/var/lib/tailscale}"
   ts_socket="${TS_SOCKET:-/tmp/tailscaled.sock}"
@@ -167,7 +242,7 @@ start_tailscale_if_configured() {
   fi
 
   ts_up_lower="$(printf '%s' "$ts_up_output" | tr '[:upper:]' '[:lower:]')"
-  if ts_authkey_permanent_failure "$ts_up_lower"; then
+  if [ "$ts_up_auth_required" -eq 1 ] || ts_authkey_permanent_failure "$ts_up_lower"; then
     # 3) SELF-HEAL via re-key hook (opt-in). Ask the control plane for a fresh
     #    key and retry ONCE before giving up.
     fresh_key="$(ts_try_fetch_fresh_authkey "$ts_hostname")"
@@ -184,6 +259,9 @@ start_tailscale_if_configured() {
     # 4) DISTINCT AUTH-EXPIRED SIGNAL. Nothing worked and retrying is futile.
     #    Surface a machine-readable status the control plane can act on
     #    (re-key + recreate) instead of an unbounded restart loop on a dead key.
+    if [ "$ts_up_interactive_auth" -eq 1 ]; then
+      echo "[docker-entrypoint] tailscale requires interactive authorization (AuthURL/NeedsLogin); unattended mesh join rejected" >&2
+    fi
     echo "[docker-entrypoint] FATAL: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying" >&2
     printf 'auth_expired hostname=%s\n' "$ts_hostname" > "$ts_authkey_expired_marker" 2>/dev/null || true
     exit "$TS_AUTHKEY_EXPIRED_EXIT_CODE"

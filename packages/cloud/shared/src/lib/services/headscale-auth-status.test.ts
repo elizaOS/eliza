@@ -36,6 +36,9 @@ describe("classifyMeshAuthStatus", () => {
     "The last login error was: authkey expired",
     "authkey already used",
     "invalid key",
+    '{"AuthURL":"https://headscale.example/register/node","BackendState":"NeedsLogin"}',
+    '{"BackendState":"NeedsMachineAuth"}',
+    "RegisterReq: machineAuthorized=false; authURL=true",
     "FATAL: ... node needs re-keying",
   ])("flags auth-failure log phrasing: %s", (line) => {
     expect(classifyMeshAuthStatus({ logs: `boot\n${line}\nmore` })).toBe("auth_expired");
@@ -55,6 +58,12 @@ describe("classifyMeshAuthStatus", () => {
   it("does not treat a benign 'key' mention without a failure phrase as expired", () => {
     // Guards against over-broad matching: 'JWT_SECRET key loaded' must not trip.
     expect(classifyMeshAuthStatus({ logs: "loaded signing key ok" })).toBe("unknown");
+  });
+
+  it("does not treat an empty AuthURL in an ordinary status payload as interactive auth", () => {
+    expect(classifyMeshAuthStatus({ logs: '{"AuthURL":"","BackendState":"Starting"}' })).toBe(
+      "unknown",
+    );
   });
 
   it("prefers positive evidence: marker present wins even with exitCode 0", () => {

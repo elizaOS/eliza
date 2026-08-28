@@ -50,6 +50,19 @@ const AUTH_EXPIRED_LOG_PATTERNS: readonly string[] = [
   "invalid key",
   "invalid authkey",
   "invalid auth key",
+  // Tailscale 1.90 CLI JSON and daemon RegisterReq logs expose these when
+  // Headscale declines unattended pre-auth and requires interactive login.
+  '"authurl": "http',
+  '"authurl":"http',
+  "authurl=true",
+  "authurl is http",
+  '"backendstate": "needslogin"',
+  '"backendstate":"needslogin"',
+  '"backendstate": "needsmachineauth"',
+  '"backendstate":"needsmachineauth"',
+  "machineauthorized=false",
+  '"machineauthorized":false',
+  "interactive authorization",
   // The distinct FATAL line the entrypoint prints before exiting 78.
   "node needs re-keying",
 ];
