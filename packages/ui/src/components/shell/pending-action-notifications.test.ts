@@ -11,6 +11,7 @@ import {
   derivePendingActionOptionReply,
   pendingActionIdFromNotification,
   reconcilePendingActionNotifications,
+  reconcileResolvedPendingActionIds,
 } from "./pending-action-notifications";
 
 const NOW = 2_000_000;
@@ -101,6 +102,29 @@ describe("pending-action notification projection", () => {
     expect(reconcilePendingActionNotifications([resolved], [], NOW)).toEqual(
       [],
     );
+  });
+
+  it("does not resurrect an unchanged unread row after canonical resolution", () => {
+    const unresolved = pending();
+    const persisted = persistedApproval();
+    persisted.readAt = null;
+    expect(
+      reconcilePendingActionNotifications([persisted], [unresolved], NOW),
+    ).toHaveLength(1);
+
+    const resolvedActionIds = reconcileResolvedPendingActionIds(
+      [unresolved],
+      [],
+      new Set(),
+    );
+    expect(
+      reconcilePendingActionNotifications(
+        [persisted],
+        [],
+        NOW,
+        resolvedActionIds,
+      ),
+    ).toEqual([]);
   });
 
   it("preserves both runtime and legacy unread approval rows", () => {

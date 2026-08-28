@@ -717,6 +717,7 @@ export function NotificationsHomeCenter({
   } = useNotifications();
   const {
     pending: pendingActions,
+    resolvedActionIds,
     loaded: pendingActionsLoaded,
     observedAt: pendingActionsObservedAt,
   } = usePendingActions();
@@ -726,8 +727,14 @@ export function NotificationsHomeCenter({
         persistedNotifications,
         pendingActions,
         pendingActionsObservedAt,
+        resolvedActionIds,
       ),
-    [pendingActions, pendingActionsObservedAt, persistedNotifications],
+    [
+      pendingActions,
+      pendingActionsObservedAt,
+      persistedNotifications,
+      resolvedActionIds,
+    ],
   );
   const pendingActionsById = useMemo(
     () => new Map(pendingActions.map((item) => [item.id, item])),

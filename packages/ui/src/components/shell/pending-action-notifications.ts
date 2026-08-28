@@ -19,6 +19,7 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 
 export const PENDING_ACTION_STALE_MS = 30 * 60_000;
 const PENDING_ACTION_NOTIFICATION_NAMESPACE = "pending-action-notification";
+const EMPTY_RESOLVED_PENDING_ACTION_IDS: ReadonlySet<string> = new Set();
 
 export type PendingActionActivation =
   | { mode: "choices"; options: readonly PendingUserActionOption[] }
@@ -77,12 +78,14 @@ export function reconcilePendingActionNotifications(
   notifications: readonly AgentNotification[],
   pending: readonly PendingUserAction[],
   now: number,
+  resolvedActionIds: ReadonlySet<string> = EMPTY_RESOLVED_PENDING_ACTION_IDS,
 ): AgentNotification[] {
   const pendingIds = new Set(pending.map((item) => item.id));
   const ordinaryNotifications = notifications.filter((notification) => {
     const actionId = persistedNotificationActionId(notification);
     if (actionId === null) return true;
     if (pendingIds.has(actionId)) return false;
+    if (resolvedActionIds.has(actionId)) return false;
     return notification.readAt === null || notification.readAt === undefined;
   });
   const projected = pending.map((item): AgentNotification => {
@@ -116,6 +119,35 @@ export function reconcilePendingActionNotifications(
   return [...ordinaryNotifications, ...projected];
 }
 
+/**
+ * Retains canonical pending-to-absent transitions for the authenticated shell
+ * so a delayed unread event cannot resurrect work that already resolved.
+ * Reappearing IDs clear their tombstone because the canonical read model wins.
+ */
+export function reconcileResolvedPendingActionIds(
+  previousPending: readonly PendingUserAction[],
+  nextPending: readonly PendingUserAction[],
+  previousResolved: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const nextIds = new Set(nextPending.map((item) => item.id));
+  let resolved: Set<string> | null = null;
+  const writable = () => {
+    resolved ??= new Set(previousResolved);
+    return resolved;
+  };
+
+  for (const item of previousPending) {
+    if (!nextIds.has(item.id) && !previousResolved.has(item.id)) {
+      writable().add(item.id);
+    }
+  }
+  for (const item of nextPending) {
+    if (previousResolved.has(item.id)) writable().delete(item.id);
+  }
+
+  return resolved ?? previousResolved;
+}
+
 function pendingActionsEqual(
   previous: readonly PendingUserAction[],
   next: readonly PendingUserAction[],
@@ -141,10 +173,14 @@ function pendingActionsEqual(
 /** Polls the canonical pending-action surface only on supported agent shells. */
 export function usePendingActions(): {
   pending: readonly PendingUserAction[];
+  resolvedActionIds: ReadonlySet<string>;
   loaded: boolean;
   observedAt: number;
 } {
-  const [pending, setPending] = useState<PendingUserAction[]>([]);
+  const [snapshot, setSnapshot] = useState<{
+    pending: PendingUserAction[];
+    resolvedActionIds: ReadonlySet<string>;
+  }>({ pending: [], resolvedActionIds: EMPTY_RESOLVED_PENDING_ACTION_IDS });
   const [loaded, setLoaded] = useState(false);
   const [observedAt, setObservedAt] = useState(0);
   const mountedRef = useRef(true);
@@ -160,7 +196,10 @@ export function usePendingActions(): {
   const load = useCallback(async () => {
     if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       if (mountedRef.current) {
-        setPending([]);
+        setSnapshot({
+          pending: [],
+          resolvedActionIds: EMPTY_RESOLVED_PENDING_ACTION_IDS,
+        });
         setLoaded(true);
       }
       return;
@@ -168,9 +207,21 @@ export function usePendingActions(): {
     try {
       const { pending: next } = await client.listPendingActions();
       if (!mountedRef.current) return;
-      setPending((previous) =>
-        pendingActionsEqual(previous, next) ? previous : next,
-      );
+      setSnapshot((previous) => {
+        const pendingEqual = pendingActionsEqual(previous.pending, next);
+        const resolvedActionIds = reconcileResolvedPendingActionIds(
+          previous.pending,
+          next,
+          previous.resolvedActionIds,
+        );
+        if (pendingEqual && resolvedActionIds === previous.resolvedActionIds) {
+          return previous;
+        }
+        return {
+          pending: pendingEqual ? previous.pending : next,
+          resolvedActionIds,
+        };
+      });
       setObservedAt(Date.now());
     } catch {
       // error-policy:J4 the last confirmed projection stays visible while the
@@ -185,5 +236,10 @@ export function usePendingActions(): {
   }, [load]);
   useIntervalWhenDocumentVisible(() => void load(), 20_000);
 
-  return { pending, loaded, observedAt };
+  return {
+    pending: snapshot.pending,
+    resolvedActionIds: snapshot.resolvedActionIds,
+    loaded,
+    observedAt,
+  };
 }
