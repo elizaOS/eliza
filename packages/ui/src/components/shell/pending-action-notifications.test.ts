@@ -45,13 +45,18 @@ function persistedApproval(): AgentNotification {
 
 describe("pending-action notification projection", () => {
   it("replaces a dismissible approval event with one live state-backed row", () => {
+    const unrelated = persistedApproval();
+    unrelated.id = "22222222-2222-4222-8222-222222222222";
+    unrelated.groupKey = "approval:request-2";
+    unrelated.data = { requestId: "request-2" };
     const projected = reconcilePendingActionNotifications(
-      [persistedApproval()],
+      [persistedApproval(), unrelated],
       [pending()],
       NOW,
     );
-    expect(projected).toHaveLength(1);
-    const [notification] = projected;
+    expect(projected).toHaveLength(2);
+    expect(projected[0]).toEqual(unrelated);
+    const notification = projected[1];
     expect(notification).toBeDefined();
     if (!notification) throw new Error("Expected one projected notification");
     expect(notification.id).not.toBe(persistedApproval().id);
@@ -61,6 +66,15 @@ describe("pending-action notification projection", () => {
       category: "approval",
       priority: "high",
     });
+  });
+
+  it("promotes a maximum-weight blocker immediately before it becomes stale", () => {
+    const [notification] = reconcilePendingActionNotifications(
+      [],
+      [pending({ kind: "blocked_task", weight: 10, createdAt: NOW - 1 })],
+      NOW,
+    );
+    expect(notification?.priority).toBe("urgent");
   });
 
   it("reappears from unresolved state after the persisted row is removed", () => {
