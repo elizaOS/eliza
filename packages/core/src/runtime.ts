@@ -12358,24 +12358,24 @@ ${section_end}`;
 		nextRevision: number,
 		value: T,
 	): Promise<boolean> {
-    const adapter = this.adapter as {
-      compareAndSwapCache?: <T>(
-        key: string,
-        expectedRevision: number | null,
-        nextRevision: number,
-        value: T,
-      ) => Promise<boolean>;
-    };
-    if (typeof adapter.compareAndSwapCache !== "function") {
-      throw new ElizaError(
-        "Adapter does not support compare-and-swap cache operations",
-        {
-          code: "CONTENT_MANIFEST_CAS_UNSUPPORTED",
-          context: { operation: "compareAndSwapCache" },
-        },
-      );
-    }
-    return adapter.compareAndSwapCache<T>(
+		const adapter = this.adapter as {
+			compareAndSwapCache?: <T>(
+				key: string,
+				expectedRevision: number | null,
+				nextRevision: number,
+				value: T,
+			) => Promise<boolean>;
+		};
+		if (typeof adapter.compareAndSwapCache !== "function") {
+			throw new ElizaError(
+				"Adapter does not support compare-and-swap cache operations",
+				{
+					code: "CONTENT_MANIFEST_CAS_UNSUPPORTED",
+					context: { operation: "compareAndSwapCache" },
+				},
+			);
+		}
+		return adapter.compareAndSwapCache<T>(
 			key,
 			expectedRevision,
 			nextRevision,
