@@ -201,6 +201,13 @@ const pluginRegistrationContext =
 const pluginServiceStartContext =
 	createAsyncContextStorage<RuntimePluginServiceStartCapture>();
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
+/**
+ * Routes already claimed by a plugin ownership record. Guards the
+ * post-registration route-diff fallback (used on runtimes whose synchronous
+ * stack context cannot survive an `await`) against sweeping routes that a
+ * concurrently registered plugin already claimed.
+ */
+const routeOwners = new WeakSet<RuntimeRoute>();
 
 function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
 	return (
@@ -271,6 +278,18 @@ function pushUniqueRef<T extends object>(items: T[], item: T): void {
 	if (!items.includes(item)) {
 		items.push(item);
 	}
+}
+
+/** Records a normalized route against the plugin registration active in this async context. */
+export function trackPluginRouteRegistration(route: RuntimeRoute): void {
+	const capture = pluginRegistrationContext.getStore();
+	// Only a successful capture claims the route. When the context is absent
+	// (stack-based runtimes lose it across `await`), the route stays unclaimed
+	// so the post-registration diff fallback in `trackRegisteredPluginRef` can
+	// still attribute it.
+	if (!capture) return;
+	routeOwners.add(route);
+	pushUniqueRef(capture.ownership.routes, route);
 }
 
 /**
@@ -706,6 +725,11 @@ function removeOwnedRoutes(
 ): void {
 	if (ownership.routes.length === 0 || runtime.routes.length === 0) return;
 	removeArrayItemsByReference(runtime.routes, ownership.routes);
+	// Release the claim so a later re-registration of the same route objects
+	// (e.g. plugin reload) can be attributed again.
+	for (const route of ownership.routes) {
+		routeOwners.delete(route);
+	}
 }
 
 function removeOwnedPlugins(
@@ -852,7 +876,7 @@ async function teardownPluginOwnership(
 	}
 }
 
-function trackRoutesAndPluginRef(
+function trackRegisteredPluginRef(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
 	pluginsBefore: Set<Plugin>,
@@ -865,8 +889,18 @@ function trackRoutesAndPluginRef(
 		}
 	}
 
+	// Fallback route attribution for asynchronous plugin initialization.
+	// Browser/constrained runtimes use the synchronous stack context storage,
+	// which cannot survive an `await` inside `registerPlugin`, so routes
+	// registered after `plugin.init()` resolves are invisible to the
+	// context-based capture in `trackPluginRouteRegistration`. Diffing the
+	// runtime route table against the pre-registration snapshot catches those
+	// routes so unload / reload / failed-registration rollback always sees
+	// complete ownership. Routes another plugin already claimed (tracked in
+	// `routeOwners`, including via the Node context path) are never swept.
 	for (const route of runtime.routes) {
-		if (!routesBefore.has(route)) {
+		if (!routesBefore.has(route) && !routeOwners.has(route)) {
+			routeOwners.add(route);
 			pushUniqueRef(ownership.routes, route);
 		}
 	}
@@ -1122,7 +1156,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			await pluginRegistrationContext.run(capture, async () => {
 				await originalRegisterPlugin(plugin);
 			});
-			trackRoutesAndPluginRef(
+			trackRegisteredPluginRef(
 				runtimeWithLifecycle,
 				capture.ownership,
 				pluginsBefore,
@@ -1150,7 +1184,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		} catch (error) {
 			// error-policy:J2 Roll back partial plugin ownership before preserving
 			// the original registration failure.
-			trackRoutesAndPluginRef(
+			trackRegisteredPluginRef(
 				runtimeWithLifecycle,
 				capture.ownership,
 				pluginsBefore,
