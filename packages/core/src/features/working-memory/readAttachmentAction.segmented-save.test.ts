@@ -473,6 +473,40 @@ describe("segmented save reassembly integrity fence (#25140 R4)", () => {
 		expect(result?.text).not.toContain("[elizaos:segmented-content");
 	});
 
+	it("continuation offsets past the marker length page natively instead of failing inline offset validation", async () => {
+		const endpoint = fakePageEndpoint();
+		const base = {
+			...runtimeWithRecords(baseRuntime(true), MEMORY_ID),
+			useModel: async () => "summarized page answer",
+			getMemoryContentPage: endpoint.getMemoryContentPage,
+		} as unknown as IAgentRuntime;
+		// 2048 bytes is far past the marker's own length; inline validation
+		// against the marker would throw ATTACHMENT_READ_INVALID_OFFSET before
+		// the native branch ran (RP round-3 finding).
+		const continuation = 2048;
+		const result = await readAttachmentAction.handler(
+			base,
+			makeMessage(),
+			undefined,
+			{
+				parameters: {
+					action: "read",
+					attachmentId: ATTACHMENT_ID,
+					offset: continuation,
+					expectedRevision: PLAN.descriptor.revision,
+				},
+			},
+			async () => [] as Memory[],
+			undefined,
+		);
+		expect(result?.success).toBe(true);
+		expect(endpoint.getMemoryContentPage.mock.calls.length).toBeGreaterThan(0);
+		expect(endpoint.getMemoryContentPage.mock.calls[0]?.[0]?.byteStart).toBe(
+			continuation,
+		);
+		expect(result?.text).not.toContain("[elizaos:segmented-content");
+	});
+
 	it("fails explicitly when a capable adapter returns null for a segmented record (authorization gone)", async () => {
 		const base = runtimeWithRecords(baseRuntime(true), MEMORY_ID);
 		const runtime = {
