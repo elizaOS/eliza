@@ -920,8 +920,17 @@ test.describe("assistant home app flow", () => {
         .getByRole("tablist", { name: "Wallet asset type" })
         .getByRole("tab", { name: "Tokens", selected: true }),
     ).toBeVisible();
+    const walletHoldings = page.getByRole("region", {
+      name: "Wallet holdings",
+    });
+    await walletHoldings
+      .getByRole("button", { name: "Show wallet details", exact: true })
+      .click();
     await expect(
-      page.getByRole("button", { name: "Network settings", exact: true }),
+      walletHoldings.getByRole("button", {
+        name: "Open network settings",
+        exact: true,
+      }),
     ).toBeVisible();
     await screenshot(page, "07-wallet-view-with-pill");
     const personalRequests = [

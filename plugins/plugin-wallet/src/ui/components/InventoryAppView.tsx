@@ -1201,8 +1201,8 @@ function WalletRailRpcButton({
       className="self-start sm:self-auto"
       onClick={onOpenSettings}
       title={`Network settings: EVM ${evmStatus} via ${evmProvider}; Solana ${solanaStatus} via ${solanaProvider}`}
-      aria-label="Open network settings"
       {...agentProps}
+      aria-label="Open network settings"
     >
       <WalletProviderStatus walletConfig={walletConfig} />
       Networks

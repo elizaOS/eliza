@@ -68,7 +68,15 @@ vi.mock("@elizaos/ui", () => {
   } | null>(null);
 
   return {
-    useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+    useAgentElement: (descriptor: { id?: string }) => ({
+      ref: { current: null },
+      // Mirror the real hook's accessible-name stamp for this control. The
+      // product label must remain authoritative when agent metadata differs.
+      agentProps:
+        descriptor.id === "account-rpc-settings"
+          ? { "aria-label": "Network settings" }
+          : {},
+    }),
     shellLocalStorage: {
       setItem: bridgeMocks.shellSetItem,
       removeItem: (key: string) =>
