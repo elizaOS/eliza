@@ -1097,7 +1097,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     const textContains = params.textContains?.trim().toLowerCase();
     const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
-      if (params.entityId && m.entityId !== params.entityId) return false;
+      // Match plugin-sql and core's process-local adapter: entityId establishes
+      // the SQL/RLS isolation principal; it is not a memory-row predicate.
+      // The in-memory adapter has no RLS session, so agent/room/accessContext
+      // below provide the corresponding storage and authorization boundaries.
       if (params.agentId && m.agentId !== params.agentId) return false;
       if (params.roomId && m.roomId !== params.roomId) return false;
       if (params.worldId && m.worldId !== params.worldId) return false;
