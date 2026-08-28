@@ -213,6 +213,18 @@ Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` 
 
 Set `EVOLINK_API_KEY` to use EvoLink through its OpenAI-compatible endpoint. The plugin defaults to `https://direct.evolink.ai/v1` and `gpt-5.2`; set `EVOLINK_BASE_URL` or `EVOLINK_MODEL` to override either value.
 
+## PZERO compatibility
+
+PZERO is a prepaid, privacy-first inference endpoint that speaks the OpenAI protocol, so it works through this plugin with no first-party adapter. Point `OPENAI_BASE_URL` at the PZERO host, use a PZERO API key as `OPENAI_API_KEY`, and pick a **PZERO catalog model id** (e.g. `meta-llama/llama-3.3-70b-instruct:free`) rather than an OpenAI name like `gpt-4o`:
+
+```bash
+OPENAI_API_KEY=pzero_...        # PZERO account API key
+OPENAI_BASE_URL=https://pzero.example.com/v1   # PZERO OpenAI-compatible host
+OPENAI_MODEL=meta-llama/llama-3.3-70b-instruct:free
+```
+
+Embeddings follow `OPENAI_EMBEDDING_URL`; leave it unset to use the plugin's local deterministic fallback when the endpoint does not serve embeddings.
+
 ## Prompt caching
 
 Pass `providerOptions.openai.promptCacheKey` and `promptCacheRetention` on any `GenerateTextParams` call to enable OpenAI prompt caching:
