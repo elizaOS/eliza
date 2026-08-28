@@ -29,6 +29,9 @@ export type SharedRuntimeReminderActionProvenance = {
   success: boolean;
   requiresConfirmation?: boolean;
   taskIds: string[];
+  /** Exact ordered choices from a failed ambiguity result; never inferred from prose. */
+  candidateTaskIds?: string[];
+  requiresSelection?: boolean;
   deliveryScope: string;
 };
 

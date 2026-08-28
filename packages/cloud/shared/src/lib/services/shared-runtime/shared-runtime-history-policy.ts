@@ -171,10 +171,18 @@ export function parseSharedReminderActionProvenance(
     ) ||
     typeof candidate.success !== "boolean" ||
     (candidate.requiresConfirmation !== undefined && candidate.requiresConfirmation !== true) ||
+    (candidate.requiresSelection !== undefined && candidate.requiresSelection !== true) ||
     typeof candidate.deliveryScope !== "string" ||
     !candidate.deliveryScope.trim() ||
     !Array.isArray(candidate.taskIds) ||
-    candidate.taskIds.some((taskId) => typeof taskId !== "string" || !taskId.trim())
+    candidate.taskIds.some((taskId) => typeof taskId !== "string" || !taskId.trim()) ||
+    (candidate.requiresSelection === true
+      ? candidate.success !== false ||
+        !Array.isArray(candidate.candidateTaskIds) ||
+        candidate.candidateTaskIds.length === 0 ||
+        candidate.candidateTaskIds.length > 100 ||
+        candidate.candidateTaskIds.some((taskId) => typeof taskId !== "string" || !taskId.trim())
+      : candidate.candidateTaskIds !== undefined)
   ) {
     return undefined;
   }
@@ -183,7 +191,13 @@ export function parseSharedReminderActionProvenance(
     operation: candidate.operation as SharedRuntimeReminderActionProvenance["operation"],
     success: candidate.success,
     ...(candidate.requiresConfirmation === true ? { requiresConfirmation: true } : {}),
+    ...(candidate.requiresSelection === true ? { requiresSelection: true } : {}),
     taskIds: [...new Set(candidate.taskIds.map((taskId) => taskId.trim()))],
+    ...(candidate.requiresSelection === true && Array.isArray(candidate.candidateTaskIds)
+      ? {
+          candidateTaskIds: [...new Set(candidate.candidateTaskIds.map((taskId) => taskId.trim()))],
+        }
+      : {}),
     deliveryScope: candidate.deliveryScope.trim(),
   };
 }

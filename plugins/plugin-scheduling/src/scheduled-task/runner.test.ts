@@ -451,6 +451,77 @@ describe("In-memory scheduled task store receipt commits", () => {
   });
 });
 
+describe("ScheduledTaskRunner — pre-effect intent reservations", () => {
+  it("keeps one immutable manifest without changing lifecycle state or logs", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(baseInput());
+    const beforeLogs = await h.logStore.list({
+      agentId: "test-agent",
+      taskId: task.taskId,
+    });
+    const options = {
+      idempotencyKey: "message-clear:manifest",
+      context: { taskIds: ["task-a"] },
+    };
+
+    const reserved = await h.runner.reserveApplyIntent(task.taskId, options);
+    const replayed = await h.runner.reserveApplyIntent(task.taskId, options);
+
+    expect(reserved.replayed).toBe(false);
+    expect(replayed.replayed).toBe(true);
+    expect(replayed.task.state).toEqual(task.state);
+    expect(
+      Object.values(replayed.task.metadata?.schedulingApplyIntents ?? {}),
+    ).toEqual([options.context]);
+    await expect(
+      h.runner.reserveApplyIntent(task.taskId, {
+        ...options,
+        context: { taskIds: ["task-a", "task-b"] },
+      }),
+    ).rejects.toThrow("conflicting context");
+    expect(
+      await h.logStore.list({ agentId: "test-agent", taskId: task.taskId }),
+    ).toEqual(beforeLogs);
+  });
+
+  it("converges concurrent conflicting reservations on one exact manifest", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(baseInput());
+    const idempotencyKey = "message-delete:manifest";
+    const contexts = [
+      { taskIds: ["task-a"] },
+      { taskIds: ["task-a", "task-b"] },
+    ];
+
+    const results = await Promise.allSettled(
+      contexts.map((context) =>
+        h.runner.reserveApplyIntent(task.taskId, {
+          idempotencyKey,
+          context,
+        }),
+      ),
+    );
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    const winnerIndex = results.findIndex(
+      (result) => result.status === "fulfilled",
+    );
+    expect(winnerIndex).toBeGreaterThanOrEqual(0);
+    const stored = await h.runner.reserveApplyIntent(task.taskId, {
+      idempotencyKey,
+      context: contexts[winnerIndex] as Record<string, unknown>,
+    });
+    expect(
+      Object.values(stored.task.metadata?.schedulingApplyIntents ?? {}),
+    ).toEqual([contexts[winnerIndex]]);
+  });
+});
+
 describe("ScheduledTaskRunner — every verb", () => {
   it("snooze sets future fire time and resets the escalation cursor", async () => {
     const h = makeHarness("2026-05-09T12:00:00.000Z");

@@ -223,6 +223,65 @@ describe("scheduling SQL persistence", () => {
   );
 
   it(
+    "persists one immutable pre-effect intent without a lifecycle log",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const { runner } = await startSqlRunner(harness);
+      const created = await runner.scheduleWithResult(
+        receiptReminderInput("intent-reservation-task"),
+      );
+      const options = {
+        idempotencyKey: "clear-message:manifest",
+        context: { taskIds: [created.task.taskId] },
+      };
+
+      const reserved = await runner.reserveApplyIntent(
+        created.task.taskId,
+        options,
+      );
+      const replayed = await runner.reserveApplyIntent(
+        created.task.taskId,
+        options,
+      );
+
+      expect(reserved.replayed).toBe(false);
+      expect(replayed.replayed).toBe(true);
+      await expect(
+        runner.reserveApplyIntent(created.task.taskId, {
+          ...options,
+          context: { taskIds: [created.task.taskId, "later-task"] },
+        }),
+      ).rejects.toThrow("conflicting context");
+      const persisted = await harness.pg.query<{
+        status: string;
+        logs: number;
+        metadata_json: string;
+      }>(`
+        SELECT
+          state_json::jsonb ->> 'status' AS status,
+          (SELECT COUNT(*)::int
+             FROM app_scheduling.life_scheduled_task_log
+            WHERE agent_id = 'agent-sql-persist'
+              AND task_id = '${created.task.taskId}') AS logs,
+          metadata_json
+        FROM app_scheduling.life_scheduled_tasks
+        WHERE agent_id = 'agent-sql-persist'
+          AND id = '${created.task.taskId}'
+      `);
+      expect(persisted.rows[0]?.status).toBe("scheduled");
+      expect(persisted.rows[0]?.logs).toBe(1);
+      const metadata = JSON.parse(persisted.rows[0]?.metadata_json ?? "{}") as {
+        schedulingApplyIntents?: Record<string, unknown>;
+      };
+      expect(Object.values(metadata.schedulingApplyIntents ?? {})).toEqual([
+        options.context,
+      ]);
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "replays one lifecycle receipt after the atomic commit outlives an observation failure",
     async () => {
       const harness = await createRuntimeHarness();

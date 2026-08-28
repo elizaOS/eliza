@@ -51,6 +51,7 @@ import {
   sharedCapabilityTransportForSource,
 } from "./shared-capability-catalog";
 import {
+  hasTrailingSharedActionCancellation,
   resolveSharedCapabilityIntent,
   type SharedCapabilityResolution,
   type SharedCapabilityWall,
@@ -506,6 +507,18 @@ function reminderActionProvenance(
   if (Array.isArray(listedTasks)) {
     for (const task of listedTasks) addTaskId(task);
   }
+  const candidateTaskIds =
+    result.success === false &&
+    result.data?.requiresSelection === true &&
+    Array.isArray(result.data?.candidateTaskIds)
+      ? [
+          ...new Set(
+            result.data.candidateTaskIds.flatMap((taskId) =>
+              typeof taskId === "string" && taskId.trim() ? [taskId.trim()] : [],
+            ),
+          ),
+        ].slice(0, 100)
+      : [];
   // An update's dismissal receipt names the superseded row; only the
   // replacement in structured data may authorize a later correction.
   if (operation !== "update") {
@@ -521,7 +534,9 @@ function reminderActionProvenance(
     operation: operation as SharedReminderOperation,
     success: result.success === true,
     ...(result.data?.requiresConfirmation === true ? { requiresConfirmation: true } : {}),
+    ...(candidateTaskIds.length ? { requiresSelection: true } : {}),
     taskIds: [...taskIds],
+    ...(candidateTaskIds.length ? { candidateTaskIds } : {}),
     deliveryScope: reminderDeliveryScope(delivery),
   };
 }
@@ -724,10 +739,20 @@ function normalizedReminderOperationCommand(text: string): string | undefined {
   return normalized || undefined;
 }
 
-const POSITIVE_REMINDER_COMMAND_PREFIX = "(?:(?:can|could|would) you (?:please )?|please )?";
+const POSITIVE_REMINDER_COMMAND_PREFIX = "(?:(?:can|could|would|will) you (?:please )?|please )?";
+
+function primaryReminderCommandClause(text: string): string {
+  return (
+    text.split(
+      /\s*(?:[,;]\s*|\b(?:and\s+)?then\s+)(?=(?:email|call|text|message|dm|send|add|create|update|delete|remove|complete|show|list)\b)/iu,
+      1,
+    )[0] ?? text
+  );
+}
 
 function isExplicitReminderClearAllIntent(text: string): boolean {
-  const normalized = normalizedReminderOperationCommand(text);
+  if (hasTrailingSharedActionCancellation(text)) return false;
+  const normalized = normalizedReminderOperationCommand(primaryReminderCommandClause(text));
   if (!normalized) return false;
   const confirmation =
     "(?:yes|yep|oui|confirm|confirmed|confirmé|confirmée|i confirm|je confirme|do it|go ahead|vas y|allez y)";
@@ -750,7 +775,8 @@ function isShortReminderClearConfirmation(text: string): boolean {
 }
 
 function isExplicitReminderCreationIntent(text: string): boolean {
-  const normalized = normalizedReminderOperationCommand(text);
+  if (hasTrailingSharedActionCancellation(text)) return false;
+  const normalized = normalizedReminderOperationCommand(primaryReminderCommandClause(text));
   if (!normalized) return false;
   if (
     new RegExp(
@@ -761,13 +787,14 @@ function isExplicitReminderCreationIntent(text: string): boolean {
     return true;
   }
   const scheduleCue =
-    /\b(?:today|tomorrow|tonight|noon|midnight|next (?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in (?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) (?:minute|minutes|hour|hours|day|days|week|weeks)|at \d{1,2}(?: \d{2})?(?: am| pm)?|\d{1,2}(?: \d{2})? (?:am|pm)|every (?:day|weekday|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d+ (?:minute|minutes|hour|hours|day|days|week|weeks))|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}(?: \d{1,2})?))\b/iu;
+    /\b(?:today|tomorrow|tonight|noon|midnight|next (?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in (?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) (?:minute|minutes|hour|hours|day|days|week|weeks)|at \d{1,2}(?: \d{2})?(?: am| pm)?|\d{1,2}(?: \d{2})? (?:am|pm)|every (?:day|weekday|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d+ (?:minute|minutes|hour|hours|day|days|week|weeks))|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|(?:january|february|march|april|may|june|july|august|september|october|november|december) \d{1,2}(?: \d{4})?|\d{1,2}(?: \d{1,2})?))\b/iu;
   if (!scheduleCue.test(normalized)) return false;
   return new RegExp(`^${POSITIVE_REMINDER_COMMAND_PREFIX}remind me\\b.+$`, "iu").test(normalized);
 }
 
 function isExplicitReminderUpdateIntent(text: string): boolean {
-  const normalized = normalizedReminderOperationCommand(text);
+  if (hasTrailingSharedActionCancellation(text)) return false;
+  const normalized = normalizedReminderOperationCommand(primaryReminderCommandClause(text));
   return Boolean(
     normalized &&
       new RegExp(
@@ -795,6 +822,29 @@ function reminderTargetAfterCommandNoun(
   return match?.[1]?.trim() || undefined;
 }
 
+function reminderTargetBeforeCommandNoun(
+  normalized: string,
+  operations: string,
+): string | undefined {
+  const match = normalized.match(
+    new RegExp(
+      `^${POSITIVE_REMINDER_COMMAND_PREFIX}(?:${operations}) (?:the |my )?(.+?) reminder(?: (?:to|at|for|until) .+)?(?: please)?$`,
+      "iu",
+    ),
+  );
+  return match?.[1]?.trim() || undefined;
+}
+
+function reminderTargetAroundCommandNoun(
+  normalized: string,
+  operations: string,
+): string | undefined {
+  return (
+    reminderTargetAfterCommandNoun(normalized, operations) ??
+    reminderTargetBeforeCommandNoun(normalized, operations)
+  );
+}
+
 function updateTargetBeforeSchedule(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const match = value.match(
@@ -812,7 +862,8 @@ function snoozeTargetBeforeDuration(value: string | undefined): string | undefin
 }
 
 function trustedReminderOperationIntent(text: string): TrustedReminderIntent | undefined {
-  const normalized = normalizedReminderOperationCommand(text);
+  if (hasTrailingSharedActionCancellation(text)) return undefined;
+  const normalized = normalizedReminderOperationCommand(primaryReminderCommandClause(text));
   if (!normalized || isExplicitReminderClearAllIntent(text)) return undefined;
   if (isExplicitReminderCreationIntent(text)) return { operation: "create" };
   if (
@@ -822,11 +873,11 @@ function trustedReminderOperationIntent(text: string): TrustedReminderIntent | u
   ) {
     return { operation: "list" };
   }
-  const deleteTarget = reminderTargetAfterCommandNoun(normalized, "remove|delete");
+  const deleteTarget = reminderTargetAroundCommandNoun(normalized, "remove|delete");
   if (deleteTarget) {
     return { operation: "delete", target: deleteTarget };
   }
-  const dismissTarget = reminderTargetAfterCommandNoun(normalized, "dismiss|cancel");
+  const dismissTarget = reminderTargetAroundCommandNoun(normalized, "dismiss|cancel");
   if (dismissTarget) {
     return { operation: "dismiss", target: dismissTarget };
   }
@@ -834,7 +885,7 @@ function trustedReminderOperationIntent(text: string): TrustedReminderIntent | u
     return {
       operation: "update",
       target: updateTargetBeforeSchedule(
-        reminderTargetAfterCommandNoun(normalized, "change|update|edit|reschedule"),
+        reminderTargetAroundCommandNoun(normalized, "change|update|edit|reschedule"),
       ),
     };
   }
@@ -847,7 +898,7 @@ function trustedReminderOperationIntent(text: string): TrustedReminderIntent | u
     | "dismiss"
     | undefined;
   if (operation) {
-    const target = reminderTargetAfterCommandNoun(normalized, operation);
+    const target = reminderTargetAroundCommandNoun(normalized, operation);
     return {
       operation,
       target: operation === "snooze" ? snoozeTargetBeforeDuration(target) : target,
@@ -868,13 +919,63 @@ function contextualReminderOperationIntent(
   if (
     /\b(?:update|change|edit|reschedule)\b/iu.test(normalized) ||
     isReminderClockCorrectionText(text) ||
-    /^(?:(?:the )?(?:\d{1,2}:\d{2}(?:\s*(?:am|pm))?|first|second|third|1st|2nd|3rd)(?: one)?)$/iu.test(
-      normalized,
-    )
+    /^(?:(?:the )?\d{1,2}:\d{2}(?:\s*(?:am|pm))?(?: one)?)$/iu.test(normalized)
   ) {
     return "update";
   }
   return undefined;
+}
+
+type ContextualReminderIntent = {
+  operation: Exclude<SharedReminderOperation, "create" | "list" | "clear">;
+  target?: string;
+};
+
+function reminderOrdinalSelectionIndex(text: string): number | undefined {
+  const normalized = normalizedShortReminderCommand(text);
+  if (!normalized) return undefined;
+  const match = normalized.match(/^(?:the )?(first|second|third|1st|2nd|3rd)(?: one)?$/iu);
+  switch (match?.[1]?.toLocaleLowerCase("en-US")) {
+    case "first":
+    case "1st":
+      return 0;
+    case "second":
+    case "2nd":
+      return 1;
+    case "third":
+    case "3rd":
+      return 2;
+    default:
+      return undefined;
+  }
+}
+
+function contextualReminderIntent(
+  text: string,
+  predecessor: SharedReminderActionProvenance | undefined,
+): ContextualReminderIntent | undefined {
+  if (!predecessor) return undefined;
+  const explicitOperation = contextualReminderOperationIntent(text);
+  if (explicitOperation) {
+    return {
+      operation: explicitOperation,
+      ...(predecessor.taskIds.length === 1 ? { target: predecessor.taskIds[0] } : {}),
+    };
+  }
+  const ordinalIndex = reminderOrdinalSelectionIndex(text);
+  const target =
+    ordinalIndex === undefined ? undefined : predecessor.candidateTaskIds?.[ordinalIndex];
+  if (
+    predecessor.success !== false ||
+    predecessor.requiresSelection !== true ||
+    !target ||
+    predecessor.operation === "create" ||
+    predecessor.operation === "list" ||
+    predecessor.operation === "clear"
+  ) {
+    return undefined;
+  }
+  return { operation: predecessor.operation, target };
 }
 
 function isContextualReminderFollowup(input: RunSharedAgentTurnInput): boolean {
@@ -886,7 +987,7 @@ function isContextualReminderFollowup(input: RunSharedAgentTurnInput): boolean {
     return false;
   }
   const text = (input.capabilityText ?? input.message).trim();
-  if (!text) return false;
+  if (!text || hasTrailingSharedActionCancellation(text)) return false;
   const normalizedConfirmation = text
     .normalize("NFKC")
     .toLocaleLowerCase("en-US")
@@ -1014,16 +1115,13 @@ export async function runSharedAgentTurn(
     input.history,
     input.execution?.reminders?.delivery,
   );
-  const contextualOperationIntent = isContextualReminderFollowup(input)
-    ? contextualReminderOperationIntent(reminderIntentText)
+  const contextualIntent = isContextualReminderFollowup(input)
+    ? contextualReminderIntent(reminderIntentText, trustedPredecessor)
     : undefined;
-  const reminderOperationIntent = trustedReminderIntent?.operation ?? contextualOperationIntent;
+  const reminderOperationIntent = trustedReminderIntent?.operation ?? contextualIntent?.operation;
   const reminderTargetIntent = reminderClockCorrection
     ? reminderScheduleProvenance?.taskIds[0]
-    : (trustedReminderIntent?.target ??
-      (contextualOperationIntent && trustedPredecessor?.taskIds.length === 1
-        ? trustedPredecessor.taskIds[0]
-        : undefined));
+    : (trustedReminderIntent?.target ?? contextualIntent?.target);
   const expectedReminderOperation = reminderClearAllIntent
     ? "clear"
     : reminderClockCorrection
@@ -1257,16 +1355,13 @@ export async function runSharedAgentTurnStream(
     input.history,
     input.execution?.reminders?.delivery,
   );
-  const contextualOperationIntent = isContextualReminderFollowup(input)
-    ? contextualReminderOperationIntent(reminderIntentText)
+  const contextualIntent = isContextualReminderFollowup(input)
+    ? contextualReminderIntent(reminderIntentText, trustedPredecessor)
     : undefined;
-  const reminderOperationIntent = trustedReminderIntent?.operation ?? contextualOperationIntent;
+  const reminderOperationIntent = trustedReminderIntent?.operation ?? contextualIntent?.operation;
   const reminderTargetIntent = reminderClockCorrection
     ? reminderScheduleProvenance?.taskIds[0]
-    : (trustedReminderIntent?.target ??
-      (contextualOperationIntent && trustedPredecessor?.taskIds.length === 1
-        ? trustedPredecessor.taskIds[0]
-        : undefined));
+    : (trustedReminderIntent?.target ?? contextualIntent?.target);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];

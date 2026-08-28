@@ -26,6 +26,8 @@ function groundedReminderAssistant(
     operation: SharedReminderOperation;
     success: boolean;
     taskIds?: string[];
+    candidateTaskIds?: string[];
+    requiresSelection?: boolean;
     requiresConfirmation?: boolean;
   },
 ) {
@@ -37,6 +39,8 @@ function groundedReminderAssistant(
       operation: receipt.operation,
       success: receipt.success,
       taskIds: receipt.taskIds ?? [],
+      ...(receipt.candidateTaskIds ? { candidateTaskIds: receipt.candidateTaskIds } : {}),
+      ...(receipt.requiresSelection ? { requiresSelection: true as const } : {}),
       deliveryScope: stableStringify(TEST_REMINDER_DELIVERY),
       ...(receipt.requiresConfirmation ? { requiresConfirmation: true as const } : {}),
     },
@@ -593,6 +597,8 @@ describe("Shared turn AgentRuntime boundary", () => {
     ["List my reminders", "list", undefined],
     ["Show me the reminders", "list", undefined],
     ["Remind me tomorrow to call mom", "create", undefined],
+    ["Will you remind me tomorrow to call mom", "create", undefined],
+    ["Remind me on August 30 to call mom", "create", undefined],
     ["Create a reminder to call mom", "create", undefined],
     ["Remove the reminder add something in my todo", "delete", "add something in my todo"],
     ["Could you please delete the reminder Stretch please", "delete", "stretch"],
@@ -602,6 +608,11 @@ describe("Shared turn AgentRuntime boundary", () => {
     ["Complete the reminder Stretch", "complete", "stretch"],
     ["Dismiss the reminder Stretch", "dismiss", "stretch"],
     ["Cancel the reminder Stretch", "dismiss", "stretch"],
+    ["Delete my Stretch reminder", "delete", "stretch"],
+    ["Update my Stretch reminder to 4pm", "update", "stretch"],
+    ["Complete my Stretch reminder", "complete", "stretch"],
+    ["Snooze my Stretch reminder for 5 minutes", "snooze", "stretch"],
+    ["Delete the reminder Stretch, then email Bob", "delete", "stretch"],
   ])(
     "derives trusted reminder operation intent for '%s'",
     async (message, expectedOperation, expectedTarget) => {
@@ -670,6 +681,7 @@ describe("Shared turn AgentRuntime boundary", () => {
     "Could you not update my reminder?",
     "I don't want you to update my reminder to 3pm",
     "Don’t update my reminder",
+    "Update the reminder Stretch to 4pm, actually don't",
   ])("does not require or trust a negated or discussed reminder mutation: %s", async (message) => {
     await runSharedAgentTurn({
       character: { name: "Eliza", system: "You are Eliza." },
@@ -740,6 +752,41 @@ describe("Shared turn AgentRuntime boundary", () => {
       );
     },
   );
+
+  test("preserves an ambiguous delete operation and exact candidates for an ordinal followup", async () => {
+    runtimeActionResults = [
+      {
+        success: false,
+        data: {
+          actionName: "REMINDERS",
+          operation: "delete",
+          requiresSelection: true,
+          candidateTaskIds: ["delete-candidate-a", "delete-candidate-b"],
+        },
+      },
+    ];
+    const ambiguous = await runSharedAgentTurn(reminderTurnInput("Delete the reminder Stretch"));
+    expect(ambiguous.history.at(-1)?.reminderAction).toMatchObject({
+      operation: "delete",
+      success: false,
+      taskIds: [],
+      requiresSelection: true,
+      candidateTaskIds: ["delete-candidate-a", "delete-candidate-b"],
+    });
+
+    runtimeActionResults = [
+      {
+        success: false,
+        data: { actionName: "REMINDERS", operation: "delete" },
+      },
+    ];
+    await runSharedAgentTurn(reminderTurnInput("the second one", ambiguous.history));
+
+    expect(runtimeInputs.at(-1)).toMatchObject({
+      reminderOperationIntent: "delete",
+      reminderTargetIntent: "delete-candidate-b",
+    });
+  });
 
   test("keeps a long explicit create request inside the trusted operation fence", async () => {
     runtimeActionResults = [

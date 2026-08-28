@@ -69,6 +69,16 @@ function reminderInput(
   };
 }
 
+async function applyIntentMetadataKey(idempotencyKey: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`intent\0${idempotencyKey}`),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 function harness(): {
   options: SharedRemindersEdgePluginOptions;
   scheduleWithResult: ReturnType<typeof vi.fn>;
@@ -142,12 +152,33 @@ function harness(): {
       replayed: false,
     }),
   );
+  const reserveApplyIntent = vi.fn(
+    async (
+      taskId: string,
+      input: { idempotencyKey: string; context: Record<string, unknown> },
+    ) => {
+      const intentKey = await applyIntentMetadataKey(input.idempotencyKey);
+      return {
+        task: {
+          ...defaultTask,
+          taskId,
+          metadata: {
+            ...(defaultTask.metadata ?? {}),
+            schedulingApplyIntents: { [intentKey]: input.context },
+          },
+        },
+        idempotencyKey: input.idempotencyKey,
+        replayed: false,
+      };
+    },
+  );
   const runner: ScheduledTaskRunner = {
     scheduleWithResult,
     schedule: vi.fn(async (input: ScheduledTaskInput) => scheduledTask(input)),
     list,
     apply,
     applyWithResult,
+    reserveApplyIntent,
     pipeline: vi.fn(async () => []),
   };
   return {
@@ -984,6 +1015,115 @@ describe("Shared reminders edge plugin", () => {
       success: true,
       data: { dismissedCount: 1, failedCount: 0 },
       effectReceipts: [{ outcome: "noop" }],
+    });
+    expect(
+      tasks.find((task) => task.taskId === later.taskId)?.state.status,
+    ).toBe("scheduled");
+  });
+
+  it("retries a delete against only its reserved original target set", async () => {
+    const runner = durableRunner();
+    await runner.schedule({
+      ...reminderInput("Stretch", {
+        kind: "once",
+        atIso: "2026-08-14T20:02:00.000Z",
+      }),
+      idempotencyKey: "delete-original-a",
+    });
+    const [action] =
+      createSharedRemindersEdgePlugin({
+        runner,
+        agentId: "personal:user-1",
+        delivery: PRIVATE_DELIVERY,
+        now: () => new Date(NOW),
+      }).actions ?? [];
+    const invoke = () =>
+      action?.handler(
+        {} as IAgentRuntime,
+        { id: "terminal-delete-stable-set" } as Memory,
+        undefined,
+        { parameters: { operation: "delete", target: "Stretch" } },
+      );
+
+    const first = await invoke();
+    const later = await runner.schedule({
+      ...reminderInput("Stretch", {
+        kind: "once",
+        atIso: "2026-08-14T20:02:00.000Z",
+      }),
+      idempotencyKey: "delete-later-b",
+    });
+    const replay = await invoke();
+    const tasks = await runner.list({ kind: "reminder" });
+
+    expect(first).toMatchObject({
+      success: true,
+      data: { affectedCount: 1, failedCount: 0 },
+    });
+    expect(replay).toMatchObject({
+      success: true,
+      data: { affectedCount: 1, failedCount: 0 },
+      effectReceipts: [{ outcome: "noop" }],
+    });
+    expect(
+      tasks.find((task) => task.taskId === later.taskId)?.state.status,
+    ).toBe("scheduled");
+  });
+
+  it("reserves a clear target set before effects so an all-failed retry spares later tasks", async () => {
+    const durable = durableRunner();
+    await durable.schedule(
+      reminderInput("Original reminder", {
+        kind: "once",
+        atIso: "2026-08-14T20:02:00.000Z",
+      }),
+    );
+    let failDismissals = true;
+    const runner: ScheduledTaskRunner = {
+      ...durable,
+      applyWithResult: async (...args) => {
+        if (failDismissals) throw new Error("injected dismiss outage");
+        return durable.applyWithResult(...args);
+      },
+    };
+    const [action] =
+      createSharedRemindersEdgePlugin({
+        runner,
+        agentId: "personal:user-1",
+        delivery: PRIVATE_DELIVERY,
+        clearAllIntent: true,
+        clearConfirmationChallenge: true,
+        now: () => new Date(NOW),
+      }).actions ?? [];
+    const invoke = () =>
+      action?.handler(
+        {} as IAgentRuntime,
+        {
+          id: "terminal-clear-all-effects-failed",
+          content: { text: "yes, clear all reminders" },
+        } as Memory,
+        undefined,
+        { parameters: { operation: "clear", confirmed: true } },
+      );
+
+    const failed = await invoke();
+    const later = await durable.schedule(
+      reminderInput("Later reminder", {
+        kind: "once",
+        atIso: "2026-08-14T20:03:00.000Z",
+      }),
+    );
+    failDismissals = false;
+    const replay = await invoke();
+    const tasks = await durable.list({ kind: "reminder" });
+
+    expect(failed).toMatchObject({
+      success: false,
+      data: { dismissedCount: 0, failedCount: 1 },
+    });
+    expect(replay).toMatchObject({
+      success: true,
+      data: { dismissedCount: 1, failedCount: 0 },
     });
     expect(
       tasks.find((task) => task.taskId === later.taskId)?.state.status,
@@ -1927,6 +2067,11 @@ describe("Shared reminders edge plugin", () => {
       success: false,
       verifiedUserFacing: true,
       turnComplete: true,
+      data: {
+        operation: "delete",
+        requiresSelection: true,
+        candidateTaskIds: ["reminder-1", "reminder-2"],
+      },
     });
     expect(result?.text).toContain("More than one reminder matches");
     expect(result?.text).toContain("1:06 AM UTC");

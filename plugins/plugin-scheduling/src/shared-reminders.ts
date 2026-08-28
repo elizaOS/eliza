@@ -22,6 +22,7 @@ import { stableStringify } from "@elizaos/core/edge";
 import {
   hasScheduledTaskApplyReceipt,
   isScheduledTaskRecurring,
+  scheduledTaskApplyIntentContext,
   scheduledTaskApplyReceiptContext,
 } from "./scheduled-task/runner.js";
 import type {
@@ -40,6 +41,7 @@ export const SHARED_CUTOVER_GATEWAY_CHANNEL = "shared_gateway_dm";
 export const SHARED_REMINDER_MAX_TEXT_LENGTH = 2000;
 const MAX_DATE_TIMESTAMP_MS = 8_640_000_000_000_000;
 const CLEAR_RECEIPT_CONTEXT_KIND = "shared_reminder_clear_manifest";
+const MUTATION_INTENT_CONTEXT_KIND = "shared_reminder_mutation_manifest";
 
 type ClearReceiptManifest = {
   kind: typeof CLEAR_RECEIPT_CONTEXT_KIND;
@@ -47,8 +49,46 @@ type ClearReceiptManifest = {
   taskIds: string[];
 };
 
+type ReminderMutationManifest = {
+  kind: typeof MUTATION_INTENT_CONTEXT_KIND;
+  requestId: string;
+  operation: "clear" | "delete";
+  taskIds: string[];
+};
+
 function clearApplyIdempotencyKey(requestId: string, taskId: string): string {
   return `shared-reminder:${requestId}:clear:${taskId}`;
+}
+
+function mutationIntentIdempotencyKey(
+  requestId: string,
+  operation: ReminderMutationManifest["operation"],
+): string {
+  return `shared-reminder:${requestId}:${operation}:manifest`;
+}
+
+function parseReminderMutationManifest(
+  context: Record<string, unknown> | undefined,
+  requestId: string,
+  operation: ReminderMutationManifest["operation"],
+): ReminderMutationManifest | undefined {
+  if (
+    context?.kind !== MUTATION_INTENT_CONTEXT_KIND ||
+    context.requestId !== requestId ||
+    context.operation !== operation ||
+    !Array.isArray(context.taskIds) ||
+    context.taskIds.length === 0 ||
+    context.taskIds.length > 10_000 ||
+    !context.taskIds.every(
+      (taskId) => typeof taskId === "string" && taskId.length > 0,
+    )
+  ) {
+    return undefined;
+  }
+  const taskIds = [...new Set(context.taskIds as string[])].sort();
+  return taskIds.length === context.taskIds.length
+    ? { kind: MUTATION_INTENT_CONTEXT_KIND, requestId, operation, taskIds }
+    : undefined;
 }
 
 function parseClearReceiptManifest(
@@ -71,6 +111,122 @@ function parseClearReceiptManifest(
   return taskIds.length === context.taskIds.length
     ? { kind: CLEAR_RECEIPT_CONTEXT_KIND, requestId, taskIds }
     : undefined;
+}
+
+async function recoverReminderMutationManifest(args: {
+  tasks: ScheduledTask[];
+  requestId: string;
+  operation: ReminderMutationManifest["operation"];
+}): Promise<ReminderMutationManifest | undefined> {
+  const intentIdempotencyKey = mutationIntentIdempotencyKey(
+    args.requestId,
+    args.operation,
+  );
+  let recovered: ReminderMutationManifest | undefined;
+  const legacyReceiptTaskIds: string[] = [];
+  const accept = (manifest: ReminderMutationManifest | undefined) => {
+    if (!manifest) return;
+    if (
+      recovered &&
+      stableStringify(recovered.taskIds) !== stableStringify(manifest.taskIds)
+    ) {
+      throw new Error("Conflicting reminder mutation manifests");
+    }
+    recovered = manifest;
+  };
+  for (const task of args.tasks) {
+    accept(
+      parseReminderMutationManifest(
+        await scheduledTaskApplyIntentContext(task, intentIdempotencyKey),
+        args.requestId,
+        args.operation,
+      ),
+    );
+    const effectIdempotencyKey =
+      args.operation === "clear"
+        ? clearApplyIdempotencyKey(args.requestId, task.taskId)
+        : `shared-reminder:${args.requestId}:delete:${task.taskId}`;
+    if (
+      !(await hasScheduledTaskApplyReceipt(
+        task,
+        "dismiss",
+        effectIdempotencyKey,
+      ))
+    ) {
+      continue;
+    }
+    const receiptContext = await scheduledTaskApplyReceiptContext(
+      task,
+      "dismiss",
+      effectIdempotencyKey,
+    );
+    const mutationManifest = parseReminderMutationManifest(
+      receiptContext,
+      args.requestId,
+      args.operation,
+    );
+    if (mutationManifest) {
+      accept(mutationManifest);
+      continue;
+    }
+    if (args.operation === "clear") {
+      const clearManifest = parseClearReceiptManifest(
+        receiptContext,
+        args.requestId,
+      );
+      if (clearManifest) {
+        accept({
+          kind: MUTATION_INTENT_CONTEXT_KIND,
+          requestId: args.requestId,
+          operation: "clear",
+          taskIds: clearManifest.taskIds,
+        });
+        continue;
+      }
+    }
+    legacyReceiptTaskIds.push(task.taskId);
+  }
+  if (recovered) return recovered;
+  const taskIds = [...new Set(legacyReceiptTaskIds)].sort();
+  return taskIds.length > 0
+    ? {
+        kind: MUTATION_INTENT_CONTEXT_KIND,
+        requestId: args.requestId,
+        operation: args.operation,
+        taskIds,
+      }
+    : undefined;
+}
+
+async function reserveReminderMutationManifest(args: {
+  runner: ScheduledTaskRunner;
+  tasks: ScheduledTask[];
+  manifest: ReminderMutationManifest;
+}): Promise<ReminderMutationManifest> {
+  const manifestTaskIds = new Set(args.manifest.taskIds);
+  // list() is creation-ordered in both canonical stores. An additive later
+  // target therefore cannot change the shared oldest anchor chosen by two
+  // same-request reservations racing with different snapshots.
+  const anchor = args.tasks.find((task) => manifestTaskIds.has(task.taskId));
+  if (!anchor || !args.runner.reserveApplyIntent) {
+    throw new Error("Reminder mutation manifest storage is unavailable");
+  }
+  const idempotencyKey = mutationIntentIdempotencyKey(
+    args.manifest.requestId,
+    args.manifest.operation,
+  );
+  const reserved = await args.runner.reserveApplyIntent(anchor.taskId, {
+    idempotencyKey,
+    context: args.manifest,
+  });
+  const stored = parseReminderMutationManifest(
+    await scheduledTaskApplyIntentContext(reserved.task, idempotencyKey),
+    args.manifest.requestId,
+    args.manifest.operation,
+  );
+  if (!stored)
+    throw new Error("Reminder mutation manifest could not be verified");
+  return stored;
 }
 
 export const SHARED_REMINDERS_EDGE_COMPATIBILITY = {
@@ -1015,7 +1171,7 @@ function normalizedOperation(value: string | undefined): string | undefined {
 type ReminderTargetResolution =
   | { kind: "match"; task: ScheduledTask; semanticDuplicates: ScheduledTask[] }
   | { kind: "missing"; text: string }
-  | { kind: "ambiguous"; text: string };
+  | { kind: "ambiguous"; text: string; candidates: ScheduledTask[] };
 
 function ambiguityText(tasks: ScheduledTask[]): string {
   return (
@@ -1081,7 +1237,7 @@ async function resolveReminderTarget(args: {
     return args.coalesceExactSemanticDuplicates &&
       semanticDuplicates.length === tasks.length
       ? { kind: "match", task: first, semanticDuplicates }
-      : { kind: "ambiguous", text: ambiguityText(tasks) };
+      : { kind: "ambiguous", text: ambiguityText(tasks), candidates: tasks };
   }
 
   const idMatch = tasks.find((task) => task.taskId === reference);
@@ -1118,7 +1274,7 @@ async function resolveReminderTarget(args: {
     ) {
       return { kind: "match", task: first, semanticDuplicates };
     }
-    return { kind: "ambiguous", text: ambiguityText(exact) };
+    return { kind: "ambiguous", text: ambiguityText(exact), candidates: exact };
   }
 
   if (args.exactReference) {
@@ -1144,7 +1300,11 @@ async function resolveReminderTarget(args: {
     };
   }
   if (partial.length > 1) {
-    return { kind: "ambiguous", text: ambiguityText(partial) };
+    return {
+      kind: "ambiguous",
+      text: ambiguityText(partial),
+      candidates: partial,
+    };
   }
   return {
     kind: "missing",
@@ -1611,7 +1771,17 @@ export function createSharedRemindersEdgeAction(
             coalesceExactSemanticDuplicates: true,
           });
           if (target.kind !== "match") {
-            return await actionFailure(target.text, callback, { operation });
+            return await actionFailure(target.text, callback, {
+              operation,
+              ...(target.kind === "ambiguous"
+                ? {
+                    requiresSelection: true,
+                    candidateTaskIds: target.candidates
+                      .map((task) => task.taskId)
+                      .slice(0, 100),
+                  }
+                : {}),
+            });
           }
           const body =
             textParameter(
@@ -1830,61 +2000,46 @@ export function createSharedRemindersEdgeAction(
           const scopedById = new Map(
             scopedTasks.map((task) => [task.taskId, task]),
           );
-          const legacyReplayTasks: ScheduledTask[] = [];
-          let recoveredManifest: ClearReceiptManifest | undefined;
-          for (const task of scopedTasks) {
-            const idempotencyKey = clearApplyIdempotencyKey(
+          const recoveredManifest = await recoverReminderMutationManifest({
+            tasks: scopedTasks,
+            requestId,
+            operation: "clear",
+          });
+          const proposedManifest: ReminderMutationManifest =
+            recoveredManifest ?? {
+              kind: MUTATION_INTENT_CONTEXT_KIND,
               requestId,
-              task.taskId,
-            );
-            if (
-              !(await hasScheduledTaskApplyReceipt(
-                task,
-                "dismiss",
-                idempotencyKey,
-              ))
-            ) {
-              continue;
-            }
-            const manifest = parseClearReceiptManifest(
-              await scheduledTaskApplyReceiptContext(
-                task,
-                "dismiss",
-                idempotencyKey,
-              ),
-              requestId,
-            );
-            if (!manifest) {
-              legacyReplayTasks.push(task);
-              continue;
-            }
-            if (
-              recoveredManifest &&
-              stableStringify(recoveredManifest.taskIds) !==
-                stableStringify(manifest.taskIds)
-            ) {
-              return await actionFailure(
-                "I couldn't safely recover the original clear request, so I didn't clear any additional reminders. Please send a new clear request.",
-                callback,
-                {
-                  operation,
-                  failureCode: "REMINDER_CLEAR_MANIFEST_CONFLICT",
-                },
-              );
-            }
-            recoveredManifest = manifest;
+              operation: "clear",
+              taskIds: scopedTasks
+                .filter((task) => isActiveReminder(task))
+                .map((task) => task.taskId)
+                .sort(),
+            };
+          if (proposedManifest.taskIds.length === 0) {
+            const text = "You have no active reminders to clear.";
+            await callback?.({ text });
+            return {
+              success: true,
+              text,
+              data: {
+                actionName: "REMINDERS",
+                operation,
+                dismissedCount: 0,
+                failedCount: 0,
+              },
+              verifiedUserFacing: true,
+              userFacingText: text,
+              turnComplete: true,
+            };
           }
-          // Once any effect commits, its receipt atomically carries the full
-          // original target set. A retry must replay that set rather than
-          // re-listing reminders that may have been created afterward.
-          const manifestTaskIds = recoveredManifest
-            ? recoveredManifest.taskIds
-            : legacyReplayTasks.length > 0
-              ? legacyReplayTasks.map((task) => task.taskId).sort()
-              : scopedTasks
-                  .filter((task) => isActiveReminder(task))
-                  .map((task) => task.taskId)
-                  .sort();
+          // The exact target set is durable before the first dismiss attempt,
+          // including when every downstream effect fails.
+          const manifest = await reserveReminderMutationManifest({
+            runner: options.runner,
+            tasks: scopedTasks,
+            manifest: proposedManifest,
+          });
+          const manifestTaskIds = manifest.taskIds;
           const tasks = manifestTaskIds.flatMap((taskId) => {
             const task = scopedById.get(taskId);
             return task ? [task] : [];
@@ -1974,32 +2129,79 @@ export function createSharedRemindersEdgeAction(
           operation === "dismiss" ||
           operation === "delete"
         ) {
-          const target = await resolveReminderTarget({
-            runner: options.runner,
-            delivery,
-            exactReference: options.targetIntent !== undefined,
-            reference:
-              options.targetIntent ??
-              textParameter(
-                input,
-                "taskId",
-                "target",
-                "targetTitle",
-                "title",
-                "reminderText",
-              ),
-            coalesceExactSemanticDuplicates: operation === "delete",
-            replay: {
-              verb:
-                operation === "delete" || operation === "dismiss"
-                  ? "dismiss"
-                  : operation,
-              idempotencyKey: (task) =>
-                `shared-reminder:${String(message.id)}:${operation}:${task.taskId}`,
-            },
-          });
+          const requestId = String(message.id);
+          const deleteScopedTasks =
+            operation === "delete"
+              ? (
+                  await options.runner.list({
+                    kind: "reminder",
+                    ownerVisibleOnly: true,
+                    status: ALL_REMINDER_STATUSES,
+                  })
+                ).filter((task) => isReminderInDeliveryScope(task, delivery))
+              : undefined;
+          const recoveredDeleteManifest = deleteScopedTasks
+            ? await recoverReminderMutationManifest({
+                tasks: deleteScopedTasks,
+                requestId,
+                operation: "delete",
+              })
+            : undefined;
+          const recoveredDeleteTasks = recoveredDeleteManifest
+            ? recoveredDeleteManifest.taskIds.flatMap((taskId) => {
+                const task = deleteScopedTasks?.find(
+                  (candidate) => candidate.taskId === taskId,
+                );
+                return task ? [task] : [];
+              })
+            : [];
+          const target: ReminderTargetResolution = recoveredDeleteManifest
+            ? recoveredDeleteTasks.length > 0
+              ? {
+                  kind: "match",
+                  task: recoveredDeleteTasks[0],
+                  semanticDuplicates: recoveredDeleteTasks,
+                }
+              : {
+                  kind: "missing",
+                  text: "I couldn't safely recover the original delete request, so I didn't delete any additional reminders. Please send a new delete request.",
+                }
+            : await resolveReminderTarget({
+                runner: options.runner,
+                delivery,
+                exactReference: options.targetIntent !== undefined,
+                reference:
+                  options.targetIntent ??
+                  textParameter(
+                    input,
+                    "taskId",
+                    "target",
+                    "targetTitle",
+                    "title",
+                    "reminderText",
+                  ),
+                coalesceExactSemanticDuplicates: operation === "delete",
+                replay: {
+                  verb:
+                    operation === "delete" || operation === "dismiss"
+                      ? "dismiss"
+                      : operation,
+                  idempotencyKey: (task) =>
+                    `shared-reminder:${requestId}:${operation}:${task.taskId}`,
+                },
+              });
           if (target.kind !== "match") {
-            return await actionFailure(target.text, callback, { operation });
+            return await actionFailure(target.text, callback, {
+              operation,
+              ...(target.kind === "ambiguous"
+                ? {
+                    requiresSelection: true,
+                    candidateTaskIds: target.candidates
+                      .map((task) => task.taskId)
+                      .slice(0, 100),
+                  }
+                : {}),
+            });
           }
           const verb = operation === "delete" ? "dismiss" : operation;
           const minutes = positiveNumber(input, "snoozeMinutes", "minutes");
@@ -2021,8 +2223,39 @@ export function createSharedRemindersEdgeAction(
               { operation },
             );
           }
-          const mutationTargets =
+          let mutationTargets =
             operation === "delete" ? target.semanticDuplicates : [target.task];
+          let deleteManifest: ReminderMutationManifest | undefined;
+          if (operation === "delete") {
+            const proposedManifest: ReminderMutationManifest =
+              recoveredDeleteManifest ?? {
+                kind: MUTATION_INTENT_CONTEXT_KIND,
+                requestId,
+                operation: "delete",
+                taskIds: mutationTargets.map((task) => task.taskId).sort(),
+              };
+            deleteManifest = await reserveReminderMutationManifest({
+              runner: options.runner,
+              tasks: deleteScopedTasks ?? mutationTargets,
+              manifest: proposedManifest,
+            });
+            mutationTargets = deleteManifest.taskIds.flatMap((taskId) => {
+              const task = (deleteScopedTasks ?? mutationTargets).find(
+                (candidate) => candidate.taskId === taskId,
+              );
+              return task ? [task] : [];
+            });
+            if (mutationTargets.length === 0) {
+              return await actionFailure(
+                "I couldn't safely recover the original delete request, so I didn't delete any additional reminders. Please send a new delete request.",
+                callback,
+                {
+                  operation,
+                  failureCode: "REMINDER_DELETE_MANIFEST_UNRECOVERABLE",
+                },
+              );
+            }
+          }
           const appliedResults: ScheduledTaskApplyResult[] = [];
           let failedCount = 0;
           for (const task of mutationTargets) {
@@ -2034,6 +2267,9 @@ export function createSharedRemindersEdgeAction(
                   verb === "snooze" ? { minutes } : undefined,
                   {
                     idempotencyKey: `shared-reminder:${String(message.id)}:${operation}:${task.taskId}`,
+                    ...(deleteManifest
+                      ? { receiptContext: deleteManifest }
+                      : {}),
                   },
                 ),
               );

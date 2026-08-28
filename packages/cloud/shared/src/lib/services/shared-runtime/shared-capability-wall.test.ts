@@ -71,6 +71,7 @@ describe("Shared capability wall", () => {
     "Could you not update my reminder?",
     "I don't want you to update my reminder to 3pm",
     "Don’t update my reminder",
+    "Update the reminder Stretch to 4pm, actually don't",
   ])("keeps discussion and research in Shared: %s", (message) => {
     expect(resolveSharedCapabilityWall(message)).toBeNull();
   });

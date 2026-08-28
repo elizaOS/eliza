@@ -51,6 +51,7 @@ import {
   type OwnerFactsView,
   SCHEDULED_TASK_EDIT_READONLY_KEYS,
   type ScheduledTask,
+  type ScheduledTaskApplyIntentResult,
   type ScheduledTaskApplyResult,
   type ScheduledTaskFilter,
   type ScheduledTaskLogEntry,
@@ -146,6 +147,10 @@ export type ScheduledTaskApplyCommitResult =
       commit: ScheduledTaskLogEntry;
     };
 
+export type ScheduledTaskApplyIntentCommitResult =
+  | { kind: "reserved"; task: ScheduledTask }
+  | { kind: "replayed"; task: ScheduledTask };
+
 export interface ScheduledTaskStore {
   upsert(
     task: ScheduledTask,
@@ -199,6 +204,11 @@ export interface ScheduledTaskStore {
     commit: ScheduledTaskLogEntry;
     nextFireAtIso: string | null;
   }): Promise<ScheduledTaskApplyCommitResult>;
+  /** Atomically reserve one non-mutating, idempotency-keyed apply intent. */
+  reserveApplyIntent(args: {
+    task: ScheduledTask;
+    intentKey: string;
+  }): Promise<ScheduledTaskApplyIntentCommitResult>;
   get(taskId: string): Promise<ScheduledTask | null>;
   findByIdempotencyKey(key: string): Promise<ScheduledTask | null>;
   list(filter?: ScheduledTaskFilter): Promise<ScheduledTask[]>;
@@ -295,6 +305,39 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
         task: structuredClone(committedTask),
         commit: structuredClone(commit),
       };
+    },
+    async reserveApplyIntent({ task, intentKey }) {
+      const existing = map.get(task.taskId);
+      if (!existing) {
+        throw new Error(`reserveApplyIntent: task ${task.taskId} not found`);
+      }
+      const storedIntents = existing.metadata?.schedulingApplyIntents;
+      const intentMarkers =
+        storedIntents !== null &&
+        typeof storedIntents === "object" &&
+        !Array.isArray(storedIntents)
+          ? (storedIntents as Record<string, unknown>)
+          : {};
+      if (Object.hasOwn(intentMarkers, intentKey)) {
+        return { kind: "replayed", task: structuredClone(existing) };
+      }
+      const proposedIntents = task.metadata?.schedulingApplyIntents;
+      const proposedValue =
+        proposedIntents !== null &&
+        typeof proposedIntents === "object" &&
+        !Array.isArray(proposedIntents)
+          ? ((proposedIntents as Record<string, unknown>)[intentKey] ?? true)
+          : true;
+      const committedTask = structuredClone(existing);
+      committedTask.metadata = {
+        ...(committedTask.metadata ?? {}),
+        schedulingApplyIntents: {
+          ...intentMarkers,
+          [intentKey]: structuredClone(proposedValue),
+        },
+      };
+      map.set(task.taskId, committedTask);
+      return { kind: "reserved", task: structuredClone(committedTask) };
     },
     async get(taskId) {
       const found = map.get(taskId);
@@ -450,6 +493,7 @@ function defaultTaskIdGenerator(): string {
 
 const CREATION_RECEIPT_METADATA_KEY = "schedulingCreationReceipt";
 const APPLY_RECEIPTS_METADATA_KEY = "schedulingApplyReceipts";
+const APPLY_INTENTS_METADATA_KEY = "schedulingApplyIntents";
 const APPLY_IDEMPOTENCY_KEY_MAX_LENGTH = 512;
 
 interface SchedulingCreationReceiptAnchor {
@@ -505,6 +549,54 @@ async function applyReceiptKey(
   idempotencyKey: string,
 ): Promise<string> {
   return sha256Hex(`${verb}\0${idempotencyKey}`);
+}
+
+async function applyIntentKey(idempotencyKey: string): Promise<string> {
+  return sha256Hex(`intent\0${idempotencyKey}`);
+}
+
+/** Read exact request context persisted before a multi-task lifecycle effect. */
+export async function scheduledTaskApplyIntentContext(
+  task: ScheduledTask,
+  idempotencyKey: string,
+): Promise<Record<string, unknown> | undefined> {
+  const normalizedKey = normalizeApplyIdempotencyKey(idempotencyKey);
+  const intentKey = await applyIntentKey(normalizedKey);
+  const intents = task.metadata?.[APPLY_INTENTS_METADATA_KEY];
+  if (
+    intents === null ||
+    typeof intents !== "object" ||
+    Array.isArray(intents)
+  ) {
+    return undefined;
+  }
+  const context = (intents as Record<string, unknown>)[intentKey];
+  return context !== null &&
+    typeof context === "object" &&
+    !Array.isArray(context)
+    ? (context as Record<string, unknown>)
+    : undefined;
+}
+
+function writeApplyIntentMarker(
+  task: ScheduledTask,
+  intentKey: string,
+  context: Record<string, unknown>,
+): void {
+  const existing = task.metadata?.[APPLY_INTENTS_METADATA_KEY];
+  const intents =
+    existing !== null &&
+    typeof existing === "object" &&
+    !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {};
+  task.metadata = {
+    ...(task.metadata ?? {}),
+    [APPLY_INTENTS_METADATA_KEY]: {
+      ...intents,
+      [intentKey]: structuredClone(context),
+    },
+  };
 }
 
 /**
@@ -898,7 +990,9 @@ export interface ScheduledTaskRunnerExtras {
 
 export interface ScheduledTaskRunnerHandle
   extends ScheduledTaskRunner,
-    ScheduledTaskRunnerExtras {}
+    ScheduledTaskRunnerExtras {
+  reserveApplyIntent: NonNullable<ScheduledTaskRunner["reserveApplyIntent"]>;
+}
 
 export function createScheduledTaskRunner(
   deps: ScheduledTaskRunnerDeps,
@@ -1713,6 +1807,44 @@ export function createScheduledTaskRunner(
     return {
       task: committed.task,
       commit,
+      idempotencyKey,
+      replayed: committed.kind === "replayed",
+    };
+  }
+
+  async function reserveApplyIntent(
+    taskId: string,
+    options: {
+      idempotencyKey: string;
+      context: Record<string, unknown>;
+    },
+  ): Promise<ScheduledTaskApplyIntentResult> {
+    const idempotencyKey = normalizeApplyIdempotencyKey(options.idempotencyKey);
+    const intentKey = await applyIntentKey(idempotencyKey);
+    const existingTask = await deps.store.get(taskId);
+    if (!existingTask) {
+      throw new Error(`reserveApplyIntent: task ${taskId} not found`);
+    }
+    const proposal = structuredClone(existingTask);
+    writeApplyIntentMarker(proposal, intentKey, options.context);
+    const committed = await deps.store.reserveApplyIntent({
+      task: proposal,
+      intentKey,
+    });
+    const committedContext = await scheduledTaskApplyIntentContext(
+      committed.task,
+      idempotencyKey,
+    );
+    if (
+      !committedContext ||
+      stableStringify(committedContext) !== stableStringify(options.context)
+    ) {
+      throw new Error(
+        `reserveApplyIntent: conflicting context for task ${taskId} and idempotency key`,
+      );
+    }
+    return {
+      task: committed.task,
       idempotencyKey,
       replayed: committed.kind === "replayed",
     };
@@ -2691,6 +2823,7 @@ export function createScheduledTaskRunner(
     remove,
     apply,
     applyWithResult,
+    reserveApplyIntent,
     pipeline,
     fire,
     fireWithResult,
