@@ -13,13 +13,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  buildSegmentedContentMarker,
   ChannelType,
   type Entity,
   encodeUtf8Strict,
   MEMORY_PAGE_MAX_BYTES,
   type Memory,
   type Room,
-  buildSegmentedContentMarker,
   shouldSegmentContent,
   type UUID,
 } from "@elizaos/core";
