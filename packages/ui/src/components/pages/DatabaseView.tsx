@@ -346,9 +346,7 @@ export function DatabaseView({
 
   const viewToggle = (
     <div className="space-y-1.5">
-      <div className="px-1 text-xs font-medium text-muted">
-        Editor
-      </div>
+      <div className="px-1 text-xs font-medium text-muted">Editor</div>
       <SegmentedControl
         value={view}
         onValueChange={(v) => setView(v)}
