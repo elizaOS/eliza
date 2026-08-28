@@ -159,6 +159,11 @@ describe("curateEmailCandidates — destructive-action guardrails", () => {
     expect(decision.blockedActions).not.toContain("delete");
     expect(decision.action).toBe("delete");
     expect(decision.bulkReview.destructive).toBe(true);
+    // The spam_folder evidence's +0.04 delete-path confidence bonus sits
+    // exactly on the 0.82 high-band boundary for this input (0.84 with it,
+    // 0.80 without), so pinning it guards whether the high-band citation
+    // contract (validateCurationDecisionCitations) applies at all.
+    expect(decision.confidence).toBe(0.84);
   });
 
   it("caps metadata-degraded decisions at 0.64 confidence and marks the mode", () => {
