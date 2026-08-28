@@ -63,6 +63,7 @@ function makeService(guilds: GuildLike[], shardCount: number) {
 			agentId: "agent",
 			emitEvent: vi.fn(),
 			getSetting: vi.fn(() => undefined),
+			reportError: vi.fn(),
 			logger: {
 				info: vi.fn(),
 				warn: vi.fn(),
