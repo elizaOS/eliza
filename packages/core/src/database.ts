@@ -699,13 +699,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		_value: T,
 	): Promise<boolean> {
 		return Promise.reject(
-			new ElizaError(
-				"compareAndSwapCache is not supported by this adapter",
-				{
-					code: "CONTENT_MANIFEST_CAS_UNSUPPORTED",
-					context: { operation: "compareAndSwapCache" },
-				},
-			),
+			new ElizaError("compareAndSwapCache is not supported by this adapter", {
+				code: "CONTENT_MANIFEST_CAS_UNSUPPORTED",
+				context: { operation: "compareAndSwapCache" },
+			}),
 		);
 	}
 

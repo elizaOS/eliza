@@ -420,9 +420,7 @@ function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): num
 }
 
 /** Hidden per-storage CAS mutex slot shared by all adapters over one storage. */
-const CACHE_CAS_MUTEX = Symbol.for(
-  "elizaos.plugin-inmemorydb.cache-cas-mutex",
-);
+const CACHE_CAS_MUTEX = Symbol.for("elizaos.plugin-inmemorydb.cache-cas-mutex");
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -883,15 +881,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
    * in a symbol-keyed hidden property on the storage instance.
    */
   private withStorageCasLock<T>(operation: () => Promise<T>): Promise<T> {
-    const holders = this.storage as unknown as Record<
-      symbol,
-      Promise<void> | undefined
-    >;
+    const holders = this.storage as unknown as Record<symbol, Promise<void> | undefined>;
     const tail = holders[CACHE_CAS_MUTEX] ?? Promise.resolve();
     const run = tail.then(operation, operation);
     holders[CACHE_CAS_MUTEX] = run.then(
       () => undefined,
-      () => undefined,
+      () => undefined
     );
     return run;
   }
@@ -2290,7 +2285,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     key: string,
     expectedRevision: number | null,
     nextRevision: number,
-    value: T,
+    value: T
   ): Promise<boolean> {
     // Revision lives inside value, mirroring the SQL adapters'
     // value->>'revision' semantics so rows written by setCaches (plain
@@ -2300,10 +2295,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     // on the same revision — even through different adapter instances —
     // can never both succeed.
     return this.withStorageCasLock(async () => {
-      const entry = await this.storage.get<StoredCacheEntry<T>>(
-        COLLECTIONS.CACHE,
-        key,
-      );
+      const entry = await this.storage.get<StoredCacheEntry<T>>(COLLECTIONS.CACHE, key);
       if (entry === null || entry === undefined) {
         if (expectedRevision !== null) return false;
         await this.storage.set(COLLECTIONS.CACHE, key, {
@@ -2323,9 +2315,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       }
       const storedValue = entry.value as { revision?: number } | null;
       const stored =
-        storedValue !== null && typeof storedValue === "object"
-          ? (storedValue.revision ?? 0)
-          : 0;
+        storedValue !== null && typeof storedValue === "object" ? (storedValue.revision ?? 0) : 0;
       if (stored !== expectedRevision) return false;
       await this.storage.set(COLLECTIONS.CACHE, key, {
         ...entry,

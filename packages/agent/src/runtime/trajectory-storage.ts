@@ -2542,9 +2542,10 @@ export async function clearPersistedTrajectoryRows(
   }
 
   try {
-    const { total, removedIds } = await executeRawSqlTransaction<
-      { total: number; removedIds: string[] }
-    >(runtime, async (execute) => {
+    const { total, removedIds } = await executeRawSqlTransaction<{
+      total: number;
+      removedIds: string[];
+    }>(runtime, async (execute) => {
       const owner = sqlQuote(runtime.agentId);
       const countResult = await execute(
         `SELECT count(*) AS total FROM trajectories WHERE agent_id = ${owner}`,
@@ -2561,7 +2562,8 @@ export async function clearPersistedTrajectoryRows(
         `DELETE FROM trajectories WHERE agent_id = ${owner} RETURNING id`,
       );
       const removedIds: string[] = [];
-      for (const row of ((removed as { rows?: Array<{ id?: unknown }> })?.rows ?? [])) {
+      for (const row of (removed as { rows?: Array<{ id?: unknown }> })?.rows ??
+        []) {
         const id = row.id;
         if (typeof id === "string") removedIds.push(id);
       }
