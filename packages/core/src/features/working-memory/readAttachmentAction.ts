@@ -22,7 +22,10 @@ import {
 	MediaFetchError,
 	readResponseWithLimit,
 } from "../../media/fetch.ts";
-import { isSegmentedContentMarker } from "../../memory/content-segmentation.ts";
+import {
+	hasMemoryContentPageCapability,
+	isSegmentedContentMarker,
+} from "../../memory/content-segmentation.ts";
 import {
 	linkShareOwnText,
 	looksLikeBareLinkShare,
@@ -709,6 +712,133 @@ function readStringParam(
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+/**
+ * #25140 review R4: the inline text of a segmented attachment is only the
+ * bounded published marker — an internal storage descriptor, never attachment
+ * text. Before save_as_document persists anything, reassemble the authorized
+ * source bytes via paged reads. A marker that cannot be reassembled (no
+ * paging capability, no owning stored message, or a typed page-read failure)
+ * produces an explicit save failure instead of saving the descriptor as the
+ * document's content. Non-segmented records pass through untouched.
+ */
+async function reassembleSegmentedAttachmentContent(
+	runtime: IAgentRuntime,
+	message: Memory,
+	records: AttachmentRecord[],
+	callback?: HandlerCallback,
+): Promise<
+	| { records: AttachmentRecord[]; failure?: undefined }
+	| { records?: undefined; failure: ActionResult }
+> {
+	if (!records.some((record) => isSegmentedContentMarker(record.content))) {
+		return { records };
+	}
+
+	const saveFailure = (
+		text: string,
+		error: string,
+	): { failure: ActionResult } => {
+		void callback?.({
+			text,
+			actions: ["ATTACHMENT_SAVE_AS_DOCUMENT_FAILED"],
+			source: message.content.source,
+		});
+		return {
+			failure: {
+				success: false,
+				text,
+				userFacingText: text,
+				verifiedUserFacing: true,
+				error,
+				data: {
+					actionName: "ATTACHMENT",
+					action: "save_as_document",
+					error,
+				},
+			},
+		};
+	};
+
+	const pageCapable = hasMemoryContentPageCapability(runtime)
+		? runtime.getMemoryContentPage
+		: null;
+	if (!pageCapable) {
+		return saveFailure(
+			"This attachment is stored in segmented form and the current database cannot reassemble it, so it cannot be saved as a document.",
+			"ATTACHMENT_SAVE_REASSEMBLY_UNAVAILABLE",
+		);
+	}
+
+	const accessContext = await buildAccessContext(runtime, message).catch(
+		() => ({
+			requesterEntityId: message.entityId as UUID,
+		}),
+	);
+
+	const reassembled: AttachmentRecord[] = [];
+	for (const record of records) {
+		if (!isSegmentedContentMarker(record.content)) {
+			reassembled.push(record);
+			continue;
+		}
+		const ownerMessageId = record.attachment._messageId;
+		const attachmentId = record.attachment.id;
+		if (!ownerMessageId) {
+			return saveFailure(
+				"The segmented attachment has no owning stored message to reassemble from, so it cannot be saved as a document.",
+				"ATTACHMENT_PAGE_OWNER_UNRESOLVED",
+			);
+		}
+		const parts: string[] = [];
+		let offset = 0;
+		let total = Number.POSITIVE_INFINITY;
+		let revision: string | undefined;
+		// 4096 pages at the 256 KiB ceiling bounds reassembly at 1 GiB — far
+		// above any real attachment while guaranteeing termination.
+		for (let guard = 0; offset < total; guard += 1) {
+			if (guard >= 4096) {
+				return saveFailure(
+					"Reassembling this attachment exceeded the bounded page budget, so it cannot be saved as a document.",
+					"ATTACHMENT_SAVE_REASSEMBLY_FAILED",
+				);
+			}
+			let page: Awaited<ReturnType<NonNullable<typeof pageCapable>>>;
+			try {
+				page = await pageCapable.call(runtime, {
+					memoryId: ownerMessageId,
+					field: { kind: "attachment.text", attachmentId },
+					byteStart: offset,
+					...(revision === undefined ? {} : { expectedRevision: revision }),
+					accessContext,
+				});
+			} catch (error) {
+				// error-policy:J1 the action boundary translates typed paging
+				// failures (stale revision, reindex required, drift) into a
+				// structured save failure.
+				if (error instanceof ElizaError) {
+					return saveFailure(
+						error.message,
+						error.code ?? "ATTACHMENT_SAVE_REASSEMBLY_FAILED",
+					);
+				}
+				throw error;
+			}
+			if (!page || page.text === undefined) {
+				return saveFailure(
+					"The segmented attachment could not be reassembled from storage, so it cannot be saved as a document.",
+					"ATTACHMENT_SAVE_REASSEMBLY_FAILED",
+				);
+			}
+			parts.push(page.text);
+			offset = page.end;
+			total = page.total;
+			revision = page.revision;
+		}
+		reassembled.push({ ...record, content: parts.join("") });
+	}
+	return { records: reassembled };
+}
+
 async function saveAttachmentAsDocument(params: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -998,15 +1128,25 @@ export const readAttachmentAction: Action = {
 			if (!hasContent && (await transcribeMediaOnDemand(runtime, records))) {
 				hasContent = hasReadableContent(records);
 			}
-			const completeStoredContent = hasContent
-				? contentForRecords(records)
-				: "";
 			if (action === "save_as_document") {
+				// #25140 review R4: a segmented attachment's inline text is a
+				// storage descriptor, never saveable document content —
+				// reassemble the authorized source first, or fail explicitly.
+				const reassembled = await reassembleSegmentedAttachmentContent(
+					runtime,
+					messageWithParams,
+					records,
+					callback,
+				);
+				if (reassembled.failure) {
+					return reassembled.failure;
+				}
+				const savedRecords = reassembled.records ?? records;
 				return await saveAttachmentAsDocument({
 					runtime,
 					message: messageWithParams,
-					records,
-					content: completeStoredContent,
+					records: savedRecords,
+					content: hasContent ? contentForRecords(savedRecords) : "",
 					actionParams: params,
 					callback,
 				});
@@ -1021,7 +1161,9 @@ export const readAttachmentAction: Action = {
 			// (`attachment.text:<id>` on the owning memory) instead of paging the
 			// marker string. The owning message id is the direct parent — no room
 			// scan and no source-sized materialization.
-			const pageCapable = runtime.getMemoryContentPage;
+			const pageCapable = hasMemoryContentPageCapability(runtime)
+				? runtime.getMemoryContentPage
+				: null;
 			const segmentedRecord =
 				pageCapable &&
 				pagedRecords.length === 1 &&

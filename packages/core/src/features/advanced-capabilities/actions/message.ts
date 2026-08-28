@@ -20,6 +20,7 @@ import { ElizaError } from "../../../errors.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
+import { hasMemoryContentPageCapability } from "../../../memory/content-segmentation.ts";
 import { authorizeManageServerDestination } from "../../../messaging/manage-server-authorization.ts";
 import {
 	deterministicOwnerEntityId,
@@ -3506,7 +3507,9 @@ async function handleReadStoredMemory(
 	// from the segmented store — a bounded page, never the source-sized
 	// parent. Falls through to the inline path only when the adapter reports
 	// the field has no descriptor AND the inline value fits a bounded page.
-	const pageCapable = runtime.getMemoryContentPage;
+	const pageCapable = hasMemoryContentPageCapability(runtime)
+		? runtime.getMemoryContentPage
+		: null;
 	if (pageCapable) {
 		const offset = safeMemoryReadInteger(
 			numberParam(params.offset),
