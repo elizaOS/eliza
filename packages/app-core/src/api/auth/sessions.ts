@@ -173,8 +173,8 @@ export function denyOnAuthStoreError(scope: string): (error: unknown) => null {
     logger.error(
       {
         scope,
-        error: error instanceof Error ? error.message : String(error),
-        // drizzle's "Failed query" message hides the driver error; the cause
+        // cause FIRST: the pretty transport truncates long fields, and the
+        // multi-line SQL in `error` swallowed everything after it — the cause
         // chain is the only place the real PG failure lives (live 2026-08-28:
         // hours of continuous auth denies undiagnosable from this log line).
         cause:
@@ -183,9 +183,12 @@ export function denyOnAuthStoreError(scope: string): (error: unknown) => null {
                 error.cause instanceof Error
                   ? error.cause.message
                   : error.cause,
-              ).slice(0, 300)
-            : undefined,
-        stack: error instanceof Error ? error.stack : undefined,
+              ).slice(0, 240)
+            : "(no cause)",
+        error: (error instanceof Error ? error.message : String(error)).slice(
+          0,
+          120,
+        ),
       },
       `[Auth] ${scope} failed; failing closed (deny)`,
     );
