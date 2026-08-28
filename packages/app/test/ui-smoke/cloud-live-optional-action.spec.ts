@@ -212,10 +212,12 @@ test.describe("Cloud live optional action boundary", () => {
     expect(recoveryObserved).toBe(false);
   });
 
-  test("confirms one visible Dedicated adoption before the binding resolves", async ({
+  test("reuses a Dedicated quote completed before the binding wait", async ({
     page,
   }) => {
+    let quoteGetCount = 0;
     await page.route("**/upgrade-tier/adopt-existing", async (route) => {
+      quoteGetCount += 1;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -260,11 +262,15 @@ test.describe("Cloud live optional action boundary", () => {
       </script>
     `);
     const dedicatedAdoptionProof = installDedicatedAdoptionConsentProof(page);
-    await page.evaluate(async () => {
+    const quoteStatus = await page.evaluate(async () => {
       const response = await fetch("/upgrade-tier/adopt-existing");
       await response.json();
+      return response.status;
     });
+    expect(quoteStatus).toBe(200);
+    expect(quoteGetCount).toBe(1);
     let consentHandlerCalls = 0;
+    let bindingReadCount = 0;
     const dedicatedAdoptionConsent = page.getByTestId(
       "dedicated-adoption-confirm",
     );
@@ -272,12 +278,14 @@ test.describe("Cloud live optional action boundary", () => {
     try {
       await expect(
         waitForCloudLivePersonalIdentity({
-          readBinding: () =>
-            page.evaluate(
+          readBinding: () => {
+            bindingReadCount += 1;
+            return page.evaluate(
               () =>
                 (window as typeof window & { __testActiveBinding?: string })
                   .__testActiveBinding ?? null,
-            ),
+            );
+          },
           runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
           retryRecovery: page.getByTestId("identity-retry"),
           dedicatedAdoptionConsent,
@@ -292,6 +300,8 @@ test.describe("Cloud live optional action boundary", () => {
           },
         }),
       ).resolves.toBe("dedicated");
+      expect(bindingReadCount).toBeGreaterThan(0);
+      expect(quoteGetCount).toBe(1);
       expect(consentHandlerCalls).toBe(1);
       await expect(page.getByTestId("confirmation-count")).toHaveText("1");
     } finally {

@@ -25,7 +25,7 @@ interface VisibleDedicatedAdoptionQuote {
   stateDisposition: DedicatedAdoptionStateDisposition;
 }
 
-interface DedicatedAdoptionConsentProof {
+export interface DedicatedAdoptionConsentProof {
   confirmVisibleConsent(confirm: Locator): Promise<void>;
   dispose(): void;
 }
