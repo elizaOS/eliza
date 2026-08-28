@@ -89,9 +89,7 @@ export function shardBodyBytes(
   shard: Omit<ManifestShard, "chainSha256" | "nextSequence">,
 ): string {
   return JSON.stringify(shard, (key, value) =>
-    key === "chainSha256" ||
-    key === "nextSequence" ||
-    key === "byteLength"
+    key === "chainSha256" || key === "nextSequence" || key === "byteLength"
       ? undefined
       : value,
   );
@@ -117,7 +115,7 @@ export function entryIdentity(entry: CompactionContentEntry): string {
   return JSON.stringify({
     kind: entry.reference.kind,
     ref: entry.reference.ref,
-    revision: entry.reference.revision,
+    revision: entry.revision ?? entry.reference.revision,
   });
 }
 
@@ -125,9 +123,7 @@ export function entryIdentity(entry: CompactionContentEntry): string {
  * Range string used for subset comparison: a coarse interval key. Ranges
  * with identical unit/start/end are identical authorizations.
  */
-function rangeKey(
-  range: CompactionContentEntry["rangesUsed"][number],
-): string {
+function rangeKey(range: CompactionContentEntry["rangesUsed"][number]): string {
   return `${range.unit}:${range.start}:${range.end}`;
 }
 
@@ -149,6 +145,28 @@ export function entriesOf(
   manifest: CompactionContentManifest,
 ): CompactionContentEntry[] {
   return manifest.contentRefs;
+}
+
+/**
+ * Content digest of a manifest's entries in publication order: the
+ * authorization-bearing fields only (reference, revision, ranges). Used for
+ * idempotency so identical content published at different times is
+ * recognized regardless of chain-hash createdAt drift.
+ */
+export function contentDigestOf(entries: CompactionContentEntry[]): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify(
+        entries.map((entry) => ({
+          kind: entry.reference.kind,
+          ref: entry.reference.ref,
+          referenceRevision: entry.reference.revision,
+          revision: entry.revision,
+          rangesUsed: entry.rangesUsed,
+        })),
+      ),
+    )
+    .digest("hex");
 }
 
 function entryCountOf(entries: CompactionContentEntry[]): number {
@@ -323,6 +341,7 @@ export function buildManifestShards(
     totalEntries: entryCountOf(entries),
     totalRanges: rangeCountOf(entries),
     ledgerSha256: tail.chainSha256,
+    contentSha256: contentDigestOf(entries),
     revision: 0,
     updatedAt: createdAt,
   };
@@ -355,10 +374,12 @@ export async function publishManifestLedger(
   let superseded: { generation: string; shardCount: number } | null = null;
   if (existingHead !== undefined) {
     const prior = validateManifestHead(existingHead);
-    // Idempotency: same chain hash + same totals => the ledger is already
-    // published; re-publishing identical bytes must be a no-op.
+    // Idempotency: same content digest + same totals => the ledger is
+    // already published; re-publishing identical content must be a no-op
+    // even when the clock advanced between publications (createdAt is in
+    // the chain hash but not the content digest).
     if (
-      prior.ledgerSha256 === head.ledgerSha256 &&
+      prior.contentSha256 === head.contentSha256 &&
       prior.totalEntries === head.totalEntries &&
       prior.totalRanges === head.totalRanges
     ) {
@@ -435,14 +456,15 @@ export async function publishManifestLedger(
     if (reread !== undefined) {
       const winner = validateManifestHead(reread);
       if (
-        winner.ledgerSha256 === head.ledgerSha256 &&
+        winner.contentSha256 === head.contentSha256 &&
         winner.totalEntries === head.totalEntries &&
         winner.totalRanges === head.totalRanges
       ) {
-        // Idempotent against the identical winner. The losing writer's own
-        // generation-addressed shard rows are inert — sweep them (best
-        // effort) BEFORE returning so repeated identical races do not
-        // accumulate unreachable rows.
+        // Idempotent against the identical-content winner (content digest
+        // ignores createdAt, so a clock advance cannot mask it). The losing
+        // writer's own generation-addressed shard rows are inert — sweep
+        // them (best effort) BEFORE returning so repeated identical races
+        // do not accumulate unreachable rows.
         try {
           await store.deleteCaches?.(
             shards.map((shard) =>
@@ -450,7 +472,8 @@ export async function publishManifestLedger(
             ),
           );
         } catch {
-          // inert rows; a later superseding publish sweeps by prior count
+          // error-policy:J6 inert loser rows; a later superseding publish
+          // sweeps by prior count.
         }
         return winner;
       }
