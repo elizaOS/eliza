@@ -1421,7 +1421,7 @@ function MemoryViewerViewForAuthority({
 
   return (
     <ShellViewAgentSurface viewId="memories">
-      <FramedPage>
+      <FramedPage gutterOwner="framed-page">
         <FramedPageHeader
           title={t("memoryviewer.title", { defaultValue: "Memories" })}
           actions={

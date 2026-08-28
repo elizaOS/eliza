@@ -3,7 +3,7 @@
 
 /**
  * Renders `LogsView` in jsdom with mocked state/agent-surface to verify the
- * loading skeleton reserves tall row-shaped space and that the first hydration
+ * loading skeleton reserves row-shaped space and that the first hydration
  * swap is flagged transient (no layout-shift flash on initial paint).
  */
 
@@ -86,7 +86,7 @@ afterEach(() => {
 });
 
 describe("LogsView", () => {
-  it("reserves tall row-shaped skeleton space and marks the initial hydration swap transient", async () => {
+  it("reserves row-shaped skeleton space and marks the initial hydration swap transient", async () => {
     let resolveLoad: (() => void) | undefined;
     const loadLogs = vi.fn(
       () =>
