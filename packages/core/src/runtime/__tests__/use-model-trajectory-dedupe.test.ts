@@ -6,8 +6,10 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
 import { SECRET_SWAP_ENABLED_SETTING } from "../../security/secret-swap";
+import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED } from "../../services/message/fallback-reply";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
@@ -277,6 +279,45 @@ describe("AgentRuntime.useModel trajectory accounting", () => {
 				response: "fallback-result",
 			}),
 		);
+	});
+
+	it("records no phantom trajectory for same-provider registrations skipped after warming", async () => {
+		const { runtime, trajectory } = await makeRuntime();
+		const exhaustedCloudHandler = vi.fn(async () => {
+			throw new ElizaError("cloud gateway warming budget exhausted", {
+				code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+				severity: "ephemeral",
+			});
+		});
+		const skippedCloudHandler = vi.fn(async () => "must not run");
+		const distinctFallback = vi.fn(async () => "distinct fallback");
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			exhaustedCloudHandler,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_NANO,
+			skippedCloudHandler,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(ModelType.TEXT_SMALL, distinctFallback, "openai", 10);
+
+		await expect(
+			withStep("step-warming-exhausted", () =>
+				runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "warming" }),
+			),
+		).resolves.toBe("distinct fallback");
+		await vi.waitFor(() => expect(trajectory.calls).toHaveLength(2));
+		expect(exhaustedCloudHandler).toHaveBeenCalledTimes(1);
+		expect(skippedCloudHandler).not.toHaveBeenCalled();
+		expect(distinctFallback).toHaveBeenCalledTimes(1);
+		expect(trajectory.calls.map((call) => call.provider).sort()).toEqual([
+			"elizaOSCloud",
+			"openai",
+		]);
 	});
 
 	it("isolates mixed concurrent calls under one parent trajectory", async () => {
