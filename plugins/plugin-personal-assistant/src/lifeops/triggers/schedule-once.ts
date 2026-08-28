@@ -56,7 +56,7 @@ export async function scheduleOnceTriggerTask(
       enabled: true,
       createdBy: creator,
       scheduledAtIso: args.scheduledAtIso,
-      kind: "workflow",
+      kind: "prompt",
       maxRuns: 1,
     },
     fallback: {
@@ -95,7 +95,15 @@ export async function scheduleOnceTriggerTask(
 
   const duplicate = activeTasks.find((task) => {
     const existing = readTriggerConfig(task);
-    return existing?.enabled && existing.dedupeKey === triggerConfig.dedupeKey;
+    return (
+      existing?.enabled &&
+      // The dedupeKey derivation does not include the creator, so an
+      // identical request from a DIFFERENT owner must never be reported as
+      // this owner's duplicate — that would silently swallow the new
+      // reminder (same load-bearing guard as the main TRIGGER create path).
+      existing.createdBy === creator &&
+      existing.dedupeKey === triggerConfig.dedupeKey
+    );
   });
   if (duplicate?.id) {
     return {
