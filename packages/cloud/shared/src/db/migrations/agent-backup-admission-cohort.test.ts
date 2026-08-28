@@ -30,6 +30,7 @@ const migrationNames = [
   "0362_agent_backup_admission_claim_indexes.sql",
   "0363_agent_backup_admission_claim_guard.sql",
   "0364_agent_backup_admission_claim_eligibility.sql",
+  "0365_agent_backup_admission_unsettled_schedule_index.sql",
 ] as const;
 const migrations = await Promise.all(
   migrationNames.map((name) => Bun.file(new URL(`./${name}`, import.meta.url)).text()),
@@ -1042,7 +1043,9 @@ describe("backup admission cohort migrations", () => {
     ).rejects.toThrow();
     await insertSchedule(db, WORK_B, ORG_A, SANDBOX_B, HISTORY_B);
     await insertSchedule(db, WORK_C, ORG_B, SANDBOX_C, HISTORY_A);
-    await insertSchedule(db, "80000000-0000-4000-8000-000000000005", ORG_A, SANDBOX_A, HISTORY_B);
+    await expect(
+      insertSchedule(db, "80000000-0000-4000-8000-000000000005", ORG_A, SANDBOX_A, HISTORY_B),
+    ).rejects.toThrow(/unsettled_schedule_uidx/i);
 
     await expect(
       db.exec(`UPDATE agent_backup_admission_work
@@ -1122,6 +1125,7 @@ describe("backup admission cohort migrations", () => {
       db.exec(`UPDATE agent_backup_admission_work SET updated_at = clock_timestamp()
         WHERE id = '${WORK_A}'`),
     ).rejects.toThrow(/settled.*immutable/i);
+    await insertSchedule(db, "80000000-0000-4000-8000-000000000005", ORG_A, SANDBOX_A, HISTORY_B);
   });
 
   test("rejects forged inserts, cross-tenant work, replay, and authority removal", async () => {
