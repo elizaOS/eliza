@@ -228,6 +228,30 @@ export function isSegmentedContentMarker(text: string): boolean {
 }
 
 /**
+ * Parses a published segmented-content marker into its descriptor fields.
+ * Returns null for any text that is not an exactly-formed marker (the marker
+ * is machine-written by `buildSegmentedContentMarker`, so anything the regex
+ * does not match is user data that merely resembles the prefix, never a
+ * descriptor). #25140 review R4: consumers must not treat a marker prefix as
+ * proof of a well-formed descriptor.
+ */
+export function parseSegmentedContentMarker(
+	text: string,
+): { revision: string; totalBytes: number; totalSha256: string } | null {
+	const match = text.match(
+		/^\[elizaos:segmented-content revision=([^ ]+) total-bytes=(\d+) source-sha256=([0-9a-f]{64})\]$/,
+	);
+	if (!match) return null;
+	const totalBytes = Number(match[2]);
+	if (!Number.isSafeInteger(totalBytes) || totalBytes <= 0) return null;
+	return {
+		revision: match[1],
+		totalBytes,
+		totalSha256: match[3],
+	};
+}
+
+/**
  * True when a runtime surface exposes the #25140 native content-paging
  * capability: BOTH the `memoryContentPageCapability` advertisement and the
  * `getMemoryContentPage` method. Method presence alone is not a capability
