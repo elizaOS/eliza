@@ -74,6 +74,14 @@ export interface ManifestHead {
    * record in the ledger, not just the tail entries.
    */
   ledgerSha256: string;
+  /**
+   * Content digest for idempotency: sha256 over the manifest's entries
+   * (reference, revision, ranges) in publication order — deliberately
+   * createdAt-free so identical content published at different times is
+   * recognized as already-published regardless of chain-hash timestamp
+   * drift.
+   */
+  contentSha256: string;
   /** Monotonic compare-and-swap token for head publication. */
   revision: number;
   updatedAt: string;
@@ -101,6 +109,7 @@ const HEAD_KEYS = new Set([
   "totalEntries",
   "totalRanges",
   "ledgerSha256",
+  "contentSha256",
   "revision",
   "updatedAt",
 ]);
@@ -366,6 +375,11 @@ export function validateManifestHead(value: unknown): ManifestHead {
     "manifest head",
     "ledgerSha256",
   );
+  const contentSha256 = sha256Hex(
+    input.contentSha256,
+    "manifest head",
+    "contentSha256",
+  );
   const revision = nonnegativeSafeInteger(
     input.revision,
     "manifest head",
@@ -394,6 +408,7 @@ export function validateManifestHead(value: unknown): ManifestHead {
     totalEntries,
     totalRanges,
     ledgerSha256,
+    contentSha256,
     revision,
     updatedAt,
   };

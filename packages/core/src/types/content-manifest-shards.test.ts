@@ -52,6 +52,7 @@ function head(
     totalEntries: 4,
     totalRanges: 4,
     ledgerSha256: "b".repeat(64),
+    contentSha256: "d".repeat(64),
     revision: 3,
     updatedAt: CREATED,
     ...overrides,
