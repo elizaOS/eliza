@@ -16,6 +16,8 @@ system) from trusted in-cluster callers and forwards those to agents.
     `X-Internal-Secret` like `/internal/deliver`; the probe routes stay open.
   - `GET /ready/forwarder-auth/:project` — read-only forwarder-gate readiness;
     a headerless 401 is reserved for an enforced gate on that project.
+  - `GET /ready/telegram-identity/:project` — value-free proof that the exact
+    canonical Telegram credential matches the selected public bot identity.
   - `POST /internal/event` — internal event delivery (auth via
     `X-Internal-Secret`).
   - `GET /webhook/:project/whatsapp[/:agentId]` — WhatsApp `hub.challenge`
@@ -42,6 +44,8 @@ system) from trusted in-cluster callers and forwards those to agents.
   `/internal/event` and shared BFF-forwarder gate state/enforcement.
 - `src/forwarder-auth-readiness.ts` — non-mutating forwarder-gate readiness
   route; it never accepts a secret or enters provider/message handling.
+- `src/telegram-identity.ts` — canonical Telegram startup, ingress, reminder,
+  and readiness attestation shared by the gateway paths.
 - `src/internal-event-handler.ts` — zod-validated internal event ingestion
   (64KB cap), then background forward.
 - `src/webhook-config.ts` / `src/project-config.ts` — per-agent webhook config
@@ -104,6 +108,12 @@ deployment. The route returns distinct non-401 states when the secret is
 disabled or the configured forwarded project does not match, never enters
 provider/message handling, and rejects any supplied forwarder-secret header
 without comparing it.
+Before upload, the workflow proves the Railway token and webhook secret match
+the protected Worker pair and attests that token with Telegram `getMe`. The
+expected production ID/username always comes from
+`packages/homepage/src/lib/contact.ts`; staging uses its selected protected
+Environment pair. The deployed service must then return an exact value-free
+Telegram readiness receipt before the deployment receipt is published.
 The pinned Railway CLI is invoked with no path argument from the repository
 root; do not change this to relative `.` because v5.38.0 cannot strip its
 absolute archive prefix from that relative project path when `--project` is
@@ -185,8 +195,12 @@ Other:
   billing tuning.
 - Per-project secrets are read via `getProjectEnv(project, KEY)`: labeled k8s
   Secrets first, else `<PROJECT_UPPER>_<KEY>` env vars (e.g. `eliza-app` →
-  `ELIZA_APP_TELEGRAM_BOT_TOKEN`). Keys include
-  `TELEGRAM_BOT_TOKEN`/`_WEBHOOK_SECRET`, `BLOOIO_*`, `TWILIO_*`, `WHATSAPP_*`.
+  `ELIZA_APP_TELEGRAM_BOT_TOKEN`). The canonical Telegram project requires the
+  complete `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_ID`,
+  `TELEGRAM_BOT_USERNAME`, and `TELEGRAM_WEBHOOK_SECRET` set; startup,
+  readiness, inbound turns, and proactive delivery fail closed unless the
+  exact token attests to that ID/username. Other keys include `BLOOIO_*`,
+  `TWILIO_*`, and `WHATSAPP_*`.
 
 ## Conventions / gotchas
 

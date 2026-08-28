@@ -5,6 +5,11 @@ import { TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER } from "@elizaos/cloud-services-co
 import type { ChatEvent, PlatformAdapter } from "../src/adapters/types";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
+import {
+  configureTelegramIdentity,
+  resetTelegramIdentityAttestation,
+  withTelegramIdentity,
+} from "./telegram-identity-fixture";
 
 class MemoryRedis implements GatewayRedis {
   readonly values = new Map<string, string>();
@@ -42,6 +47,9 @@ class MemoryRedis implements GatewayRedis {
 
 const originalFetch = globalThis.fetch;
 const originalBotToken = process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
+const originalBotId = process.env.ELIZA_APP_TELEGRAM_BOT_ID;
+const originalBotUsername = process.env.ELIZA_APP_TELEGRAM_BOT_USERNAME;
+const originalWebhookSecret = process.env.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET;
 const rawPayload = ` { "update_id": 1, "message": { "text": "hey how are you? 👋" } }\n`;
 const event: ChatEvent = {
   platform: "telegram",
@@ -88,21 +96,39 @@ afterEach(() => {
   } else {
     process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = originalBotToken;
   }
+  if (originalBotId === undefined) {
+    delete process.env.ELIZA_APP_TELEGRAM_BOT_ID;
+  } else {
+    process.env.ELIZA_APP_TELEGRAM_BOT_ID = originalBotId;
+  }
+  if (originalBotUsername === undefined) {
+    delete process.env.ELIZA_APP_TELEGRAM_BOT_USERNAME;
+  } else {
+    process.env.ELIZA_APP_TELEGRAM_BOT_USERNAME = originalBotUsername;
+  }
+  if (originalWebhookSecret === undefined) {
+    delete process.env.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET;
+  } else {
+    process.env.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET = originalWebhookSecret;
+  }
+  resetTelegramIdentityAttestation();
   mock.restore();
 });
 
 describe("Personal Telegram gateway-to-edge handoff", () => {
   test("preserves the signed payload and lets the Worker own egress", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123:test-token";
+    configureTelegramIdentity({ token: "123:test-token" });
     const redis = new MemoryRedis();
     let forwarded: Request | null = null;
-    globalThis.fetch = mock(async (input, init) => {
-      forwarded = new Request(input, init);
-      expect(
-        redis.values.get("webhook:telegram:scope:message:edge-forward-1"),
-      ).toBe("egress_started");
-      return Response.json({ ok: true });
-    }) as unknown as typeof fetch;
+    globalThis.fetch = mock(
+      withTelegramIdentity(async (input, init) => {
+        forwarded = new Request(input, init);
+        expect(
+          redis.values.get("webhook:telegram:scope:message:edge-forward-1"),
+        ).toBe("egress_started");
+        return Response.json({ ok: true });
+      }),
+    ) as unknown as typeof fetch;
 
     const response = await handleWebhook(
       request(),
@@ -144,27 +170,29 @@ describe("Personal Telegram gateway-to-edge handoff", () => {
   });
 
   test("reopens a connector-account rejection for a corrected retry", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123:test-token";
+    configureTelegramIdentity({ token: "123:test-token" });
     const redis = new MemoryRedis();
     let edgeAttempts = 0;
-    globalThis.fetch = mock(async (input, init) => {
-      edgeAttempts += 1;
-      const forwarded = new Request(input, init);
-      expect(forwarded.headers.get(TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER)).toBe(
-        "bot:123",
-      );
-      expect(await forwarded.text()).toBe(rawPayload);
-      if (edgeAttempts === 1) {
-        return Response.json(
-          { error: "connector account mismatch" },
-          {
-            status: 409,
-            headers: { "X-Eliza-Failure-Stage": "connector_account" },
-          },
-        );
-      }
-      return Response.json({ ok: true });
-    }) as unknown as typeof fetch;
+    globalThis.fetch = mock(
+      withTelegramIdentity(async (input, init) => {
+        edgeAttempts += 1;
+        const forwarded = new Request(input, init);
+        expect(
+          forwarded.headers.get(TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER),
+        ).toBe("bot:123");
+        expect(await forwarded.text()).toBe(rawPayload);
+        if (edgeAttempts === 1) {
+          return Response.json(
+            { error: "connector account mismatch" },
+            {
+              status: 409,
+              headers: { "X-Eliza-Failure-Stage": "connector_account" },
+            },
+          );
+        }
+        return Response.json({ ok: true });
+      }),
+    ) as unknown as typeof fetch;
 
     const deps = {
       redis,
@@ -200,10 +228,12 @@ describe("Personal Telegram gateway-to-edge handoff", () => {
   });
 
   test("keeps an ambiguous unclassified rejection fenced", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123:test-token";
+    configureTelegramIdentity({ token: "123:test-token" });
     const redis = new MemoryRedis();
-    globalThis.fetch = mock(async () =>
-      Response.json({ error: "conflict" }, { status: 409 }),
+    globalThis.fetch = mock(
+      withTelegramIdentity(async () =>
+        Response.json({ error: "conflict" }, { status: 409 }),
+      ),
     ) as unknown as typeof fetch;
 
     const response = await handleWebhook(
@@ -225,23 +255,25 @@ describe("Personal Telegram gateway-to-edge handoff", () => {
   });
 
   test("reconciles an old ambiguous Railway send without invoking edge egress", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123:test-token";
+    configureTelegramIdentity({ token: "123:test-token" });
     const redis = new MemoryRedis();
     redis.values.set(
       "webhook:telegram:scope:message:edge-forward-1",
       "egress_started",
     );
     let reconciliationBody: Record<string, unknown> = {};
-    globalThis.fetch = mock(async (input, init) => {
-      expect(String(input)).toEndWith(
-        "/api/eliza-app/webhook/telegram/delivery",
-      );
-      reconciliationBody = JSON.parse(String(init?.body)) as Record<
-        string,
-        unknown
-      >;
-      return Response.json({ state: "uncertain" });
-    }) as unknown as typeof fetch;
+    globalThis.fetch = mock(
+      withTelegramIdentity(async (input, init) => {
+        expect(String(input)).toEndWith(
+          "/api/eliza-app/webhook/telegram/delivery",
+        );
+        reconciliationBody = JSON.parse(String(init?.body)) as Record<
+          string,
+          unknown
+        >;
+        return Response.json({ state: "uncertain" });
+      }),
+    ) as unknown as typeof fetch;
 
     const response = await handleWebhook(
       request(),
@@ -264,20 +296,22 @@ describe("Personal Telegram gateway-to-edge handoff", () => {
   });
 
   test("heals a lost gateway receipt without downgrading Worker delivery", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123:test-token";
+    configureTelegramIdentity({ token: "123:test-token" });
     const redis = new MemoryRedis();
     redis.values.set(
       "webhook:telegram:scope:message:edge-forward-1",
       "egress_started",
     );
     let reconciliationBody: Record<string, unknown> = {};
-    globalThis.fetch = mock(async (_input, init) => {
-      reconciliationBody = JSON.parse(String(init?.body)) as Record<
-        string,
-        unknown
-      >;
-      return Response.json({ state: "delivered" });
-    }) as unknown as typeof fetch;
+    globalThis.fetch = mock(
+      withTelegramIdentity(async (_input, init) => {
+        reconciliationBody = JSON.parse(String(init?.body)) as Record<
+          string,
+          unknown
+        >;
+        return Response.json({ state: "delivered" });
+      }),
+    ) as unknown as typeof fetch;
 
     const response = await handleWebhook(
       request(),
@@ -303,7 +337,12 @@ describe("Personal Telegram gateway-to-edge handoff", () => {
   });
 
   test("keeps a Redis-only old gateway fenced after Worker authority begins", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "123:test-token";
+    configureTelegramIdentity({ token: "123:test-token" });
+    globalThis.fetch = mock(
+      withTelegramIdentity(async () => {
+        throw new Error("edge egress must not run");
+      }),
+    ) as unknown as typeof fetch;
     const redis = new MemoryRedis();
     redis.values.set(
       "webhook:telegram:scope:message:edge-forward-1",

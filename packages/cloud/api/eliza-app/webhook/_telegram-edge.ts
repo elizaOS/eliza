@@ -15,6 +15,7 @@ import {
 } from "@elizaos/cloud-services-common/personal-shared-failure";
 import { executeResponseAttempts } from "@elizaos/cloud-services-common/response-attempts";
 import {
+  attestTelegramBotIdentity,
   parseTelegramWebhook,
   resolveTelegramVoiceNote,
   sendTelegramReply,
@@ -23,6 +24,7 @@ import {
   TelegramApiResponseError,
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
+  TelegramIdentityAttestationError,
   verifyTelegramWebhook,
 } from "@elizaos/cloud-services-common/telegram-connector";
 import {
@@ -153,6 +155,114 @@ export type PersonalTelegramReminderDispatchResult =
 function readEnvString(env: AppEnv["Bindings"], key: string): string | null {
   const value = env[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function personalTelegramConfig(
+  env: AppEnv["Bindings"],
+): TelegramConnectorConfig {
+  return {
+    botToken: readEnvString(env, "ELIZA_APP_TELEGRAM_BOT_TOKEN") ?? undefined,
+    botId: readEnvString(env, "ELIZA_APP_TELEGRAM_BOT_ID") ?? undefined,
+    botUsername:
+      readEnvString(env, "ELIZA_APP_TELEGRAM_BOT_USERNAME") ?? undefined,
+    webhookSecret:
+      readEnvString(env, "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET") ?? undefined,
+  };
+}
+
+function telegramIdentityFailureReason(
+  error: unknown,
+): TelegramIdentityAttestationError["reason"] {
+  return error instanceof TelegramIdentityAttestationError
+    ? error.reason
+    : "provider_unavailable";
+}
+
+async function requirePersonalTelegramIdentity(
+  env: AppEnv["Bindings"],
+): Promise<{
+  config: TelegramConnectorConfig & {
+    botToken: string;
+    botId: string;
+    botUsername: string;
+    webhookSecret: string;
+  };
+  connectorAccountId: string;
+  project: string;
+}> {
+  const config = personalTelegramConfig(env);
+  if (
+    !config.botToken ||
+    !config.botId ||
+    !config.botUsername ||
+    !config.webhookSecret
+  ) {
+    throw new TelegramIdentityAttestationError("not_configured", false);
+  }
+  await attestTelegramBotIdentity(config);
+  const project =
+    readEnvString(env, "ELIZA_APP_WEBHOOK_PROJECT") ?? "eliza-app";
+  if (!DELIVERY_PROJECT_RE.test(project)) {
+    throw new TelegramIdentityAttestationError("configuration_invalid", false);
+  }
+  return {
+    config: config as TelegramConnectorConfig & {
+      botToken: string;
+      botId: string;
+      botUsername: string;
+      webhookSecret: string;
+    },
+    connectorAccountId: await resolveTelegramConnectorAccountId(
+      config.botToken,
+    ),
+    project,
+  };
+}
+
+/** Fails closed without allocating Telegram delivery state or exposing identity values. */
+function personalTelegramIdentityFailureResponse(
+  c: AppContext,
+  error: unknown,
+): Response {
+  const reason = telegramIdentityFailureReason(error);
+  logger.error("[PersonalTelegramEdge] canonical identity is not ready", {
+    reason,
+  });
+  c.header("X-Eliza-Failure-Stage", "connector_identity");
+  c.header("X-Eliza-Failure-Name", "TelegramIdentityAttestationError");
+  return c.json(
+    {
+      success: false,
+      error: "Telegram connector identity is not ready",
+      code: "telegram_identity_not_ready",
+      reason,
+    },
+    503,
+    { "Retry-After": "5" },
+  );
+}
+
+export async function personalTelegramIdentityFailure(
+  c: AppContext,
+): Promise<Response | null> {
+  try {
+    await requirePersonalTelegramIdentity(c.env);
+    return null;
+  } catch (error) {
+    return personalTelegramIdentityFailureResponse(c, error);
+  }
+}
+
+/** Public value-free readiness used by protected release and cutover proofs. */
+export async function handlePersonalTelegramIdentityReadiness(
+  c: AppContext,
+): Promise<Response> {
+  try {
+    const identity = await requirePersonalTelegramIdentity(c.env);
+    return c.json({ status: "attested", project: identity.project });
+  } catch (error) {
+    return personalTelegramIdentityFailureResponse(c, error);
+  }
 }
 
 async function resolveTelegramConnectorAccountId(
@@ -607,12 +717,14 @@ export async function dispatchPersonalTelegramReminder(
       message: "Telegram reminder topic is invalid",
     };
   }
-  const botToken = readEnvString(env, "ELIZA_APP_TELEGRAM_BOT_TOKEN");
-  if (!botToken) {
+  let identity: Awaited<ReturnType<typeof requirePersonalTelegramIdentity>>;
+  try {
+    identity = await requirePersonalTelegramIdentity(env);
+  } catch (error) {
     return {
       ok: false,
       acceptance: "not_accepted",
-      message: "Telegram connector is not configured",
+      message: `Telegram connector identity is not ready (${telegramIdentityFailureReason(error)})`,
     };
   }
   const configuredScope = await configuredPersonalTelegramScope(env);
@@ -658,7 +770,13 @@ export async function dispatchPersonalTelegramReminder(
       event,
     );
     const outcome = await executeTelegramDelivery(ledger, async (hooks) => {
-      await sendTelegramReply({ botToken }, event, input.text, logger, hooks);
+      await sendTelegramReply(
+        identity.config,
+        event,
+        input.text,
+        logger,
+        hooks,
+      );
     });
     if (outcome === "uncertain" || outcome === "in_progress") {
       return {
@@ -836,20 +954,22 @@ export async function handlePersonalTelegramEdge(
 ): Promise<Response> {
   const startedAt = performance.now();
   const traceId = c.get("traceId");
-  const webhookSecret = readEnvString(
-    c.env,
-    "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
-  );
-  const botToken = readEnvString(c.env, "ELIZA_APP_TELEGRAM_BOT_TOKEN");
-  if (!webhookSecret || !botToken) {
+  const configured = personalTelegramConfig(c.env);
+  if (!configured.webhookSecret) {
     logger.error("[PersonalTelegramEdge] connector secret is not configured");
     return c.json(
       { success: false, error: "Telegram connector is not configured" },
       503,
     );
   }
-  if (!verifyTelegramWebhook(c.req.raw, webhookSecret)) {
+  if (!verifyTelegramWebhook(c.req.raw, configured.webhookSecret)) {
     return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+  let identity: Awaited<ReturnType<typeof requirePersonalTelegramIdentity>>;
+  try {
+    identity = await requirePersonalTelegramIdentity(c.env);
+  } catch (error) {
+    return personalTelegramIdentityFailureResponse(c, error);
   }
   const rawBody = await c.req.text();
   const event = parseTelegramWebhook(rawBody, logger);
@@ -858,10 +978,8 @@ export async function handlePersonalTelegramEdge(
     event.providerSentAtMs === undefined
       ? null
       : Date.now() - event.providerSentAtMs;
-  const project =
-    readEnvString(c.env, "ELIZA_APP_WEBHOOK_PROJECT") ?? "eliza-app";
-  const config = { botToken, webhookSecret };
-  const connectorAccountId = await resolveTelegramConnectorAccountId(botToken);
+  const { project, connectorAccountId } = identity;
+  const config = identity.config;
   const canonicalMessageId = await telegramCanonicalMessageId(
     project,
     connectorAccountId,

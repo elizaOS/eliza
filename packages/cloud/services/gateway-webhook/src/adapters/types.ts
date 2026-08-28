@@ -120,6 +120,7 @@ export interface ResolvedVoiceNote {
 export interface WebhookConfig {
   // Telegram
   botToken?: string;
+  botId?: string;
   botUsername?: string;
   webhookSecret?: string;
   // Blooio
