@@ -121,16 +121,17 @@ const stubResolver = {
   },
 };
 
-// The production launcher resolves packaged PNGs relative to the generated
-// module with `new URL(..., import.meta.url)`. This fixture is intentionally an
-// inline IIFE, where esbuild otherwise replaces import.meta with an empty
-// object and every icon URL throws before React can mount. Preserve the real
-// icon module and assets by binding only that module's import.meta.url to its
-// source file URL during the fixture build.
+// The production launcher resolves packaged PNG and SVG assets relative to its
+// icon modules with `new URL(..., import.meta.url)`. This fixture is
+// intentionally an inline IIFE, where esbuild otherwise replaces import.meta
+// with an empty object and every icon URL throws before React can mount.
+// Preserve the real icon modules and assets by binding their import.meta.url to
+// their source file URLs during the fixture build.
+const fixtureIconModule = /(?:view-icons\.generated|launcher-ionicons)\.ts$/;
 const fixtureViewIconUrls = {
   name: "home-fixture-view-icon-urls",
   setup(b) {
-    b.onLoad({ filter: /view-icons\.generated\.ts$/ }, async (args) => {
+    b.onLoad({ filter: fixtureIconModule }, async (args) => {
       const source = await readFile(args.path, "utf8");
       return {
         contents: source.replaceAll(
@@ -229,14 +230,12 @@ const stubElizaCore = {
 // The real app's viewport meta + the shell's runtime CSS vars: without the meta,
 // a mobile page falls back to the 980px layout viewport, so CSS `vw` units (the
 // sheet's `w-[min(440px,100vw-1rem)]`) mis-measure and the overlay mis-centers.
-// The brand palette vars (`styles/base.css` :root) are seeded here too: the
-// calendar up-next card colors its text through `var(--brand-white)` /
-// `color-mix(..., var(--brand-white))`, and an undefined var resolves to black —
-// unreadable on the dark ember field, tripping the foreground-contrast gate. The
-// fixture loads no app CSS, so the handful of brand vars the home widgets read
-// must be declared inline.
+// The brand palette and Home surface vars (`styles/base.css` :root) are seeded
+// here too. The fixture loads no app CSS, so leaving the canonical Home Button
+// recipe unresolved would make its foreground fall back to black on the dark
+// ember field and turn this into a fixture failure instead of a product check.
 const headHtml = `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<style>:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px;--brand-white:#fdfaf7;--brand-black:#000000;--brand-orange:#ff6a1f}</style>`;
+<style>:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px;--brand-white:#fdfaf7;--brand-black:#000000;--brand-orange:#ff6a1f;--bg-wallpaper-overlay:rgb(0 0 0 / 85%);--border-launcher-icon:rgb(255 255 255 / 24%);--txt-launcher-icon:rgb(255 255 255);--bg-launcher-icon-hover:rgb(28 29 32 / 74%)}.bg-bg-wallpaper-overlay{background-color:var(--bg-wallpaper-overlay)}.border-border-launcher-icon{border-color:var(--border-launcher-icon)}.text-txt-launcher-icon{color:var(--txt-launcher-icon)}.hover\\:bg-bg-launcher-icon-hover:hover{background-color:var(--bg-launcher-icon-hover)}</style>`;
 const url = await writeFixturePage({
   entry: join(here, "home-screen-fixture.tsx"),
   outDir,
@@ -1218,7 +1217,7 @@ try {
   );
 
   // ── Glyph-only app icons (#13453 "deslop the launcher grid"): a launcher tile
-  // is a deterministic branded gradient plate + centered Lucide glyph, never a
+  // is the canonical uniform Card plate + centered official Ionicon, never a
   // generated hero <img> — the hero PNG painted a cartoon over the real glyph
   // (a virus for Settings, a ladybug for Memories: the "icons are slop" report).
   // Each curated tile exposes its `data-view-visual` plate and NO hero image.
@@ -1251,10 +1250,9 @@ try {
   );
 
   // ── Every launcher tile is a glyph-only visual (#13453): a `data-view-visual`
-  // gradient plate carrying its Lucide glyph, and never a hero <img>. The plate
-  // gradients are deterministic per id (id-hashed palette), so distinct tiles
-  // get distinct gradients — a launcher of one flat placeholder would be the
-  // regression this guards against.
+  // canonical Card plate carrying a named official Ionicon, and never a hero
+  // <img>. Plates are intentionally uniform now; distinct `data-ionicon` names
+  // prove the launcher did not regress to one repeated placeholder glyph.
   const visualCount = await mobile.locator("[data-view-visual]").count();
   assert(
     visualCount >= 5,
@@ -1264,18 +1262,27 @@ try {
     (await mobile.locator('[data-testid^="launcher-image-"]').count()) === 0,
     "no launcher tile renders a hero <img> (glyph-only launcher)",
   );
-  const tileGradients = await mobile.$$eval("[data-view-visual]", (els) =>
-    Array.from(
-      new Set(
-        els
-          .map((el) => getComputedStyle(el).backgroundImage)
-          .filter((v) => Boolean(v) && v !== "none"),
-      ),
-    ),
+  const launcherGlyphs = await mobile.$$eval("[data-view-visual]", (els) =>
+    els.map((el) => {
+      const glyph = el.querySelector("[data-launcher-glyph]");
+      return {
+        kind: glyph?.getAttribute("data-launcher-glyph-kind"),
+        ionicon: glyph?.getAttribute("data-ionicon"),
+      };
+    }),
   );
   assert(
-    tileGradients.length >= 3,
-    `launcher glyph plates use varied gradients, not one placeholder (${tileGradients.length} distinct)`,
+    launcherGlyphs.every(
+      ({ kind, ionicon }) => kind === "ionicon" && Boolean(ionicon),
+    ),
+    "every launcher plate carries a named official Ionicon",
+  );
+  const distinctIonicons = new Set(
+    launcherGlyphs.map(({ ionicon }) => ionicon),
+  );
+  assert(
+    distinctIonicons.size >= 3,
+    `launcher uses distinct Ionicons, not one placeholder (${distinctIonicons.size} distinct)`,
   );
 
   // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
