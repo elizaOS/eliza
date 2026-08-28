@@ -1295,12 +1295,12 @@ export class OrchestratorTaskService extends Service {
 
   /** Retry persisted coordinator-review deliveries after a runtime restart. */
   async recoverCompletionBarriers(): Promise<number> {
-    const tasks = await this.store.listTasks();
+    const taskDocs = await this.store.listTaskDocuments();
     let recovered = 0;
-    for (const task of tasks) {
+    for (const doc of taskDocs) {
+      const task = doc.task;
       if (!task.completionCoordinatorSessionId) continue;
-      const doc = await this.store.getTask(task.id);
-      const coordinator = doc?.sessions.find(
+      const coordinator = doc.sessions.find(
         (session) => session.sessionId === task.completionCoordinatorSessionId,
       );
       if (!coordinator?.aggregateCompletionRequestedAt) continue;
@@ -1338,13 +1338,10 @@ export class OrchestratorTaskService extends Service {
     const acp = acpOverride ?? this.acp();
     if (!acp) throw new Error("ACP service unavailable for Smithers recovery");
 
-    const [acpSessions, taskRecords] = await Promise.all([
+    const [acpSessions, taskDocs] = await Promise.all([
       acp.listSessions(),
-      this.store.listTasks({}),
+      this.store.listTaskDocuments({}),
     ]);
-    const taskDocs = (
-      await Promise.all(taskRecords.map((task) => this.store.getTask(task.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
     const acpById = new Map(
       acpSessions.map((session) => [session.id, session]),
     );
@@ -3609,13 +3606,28 @@ export class OrchestratorTaskService extends Service {
   }
 
   async listTasks(filter: TaskListFilter = {}): Promise<TaskThreadDto[]> {
-    const records = await this.store.listTasks(filter);
-    const docs = await Promise.all(
-      records.map((record) => this.store.getTask(record.id)),
+    return (await this.store.listTaskDocuments(filter)).map(toTaskThread);
+  }
+
+  async listTaskDetails(
+    filter: TaskListFilter = {},
+  ): Promise<TaskThreadDetailDto[]> {
+    const docs = await this.store.listTaskDocuments(filter);
+    for (const doc of docs) assertProjectIdRegistered(doc.task.projectId);
+    const details = docs.map(toTaskThreadDetail);
+    if (!details.some((detail) => detail.admission)) return details;
+    const { queuedTaskIds } = await this.getAdmissionSnapshot();
+    const positions = new Map(
+      queuedTaskIds.map((taskId, index) => [taskId, index + 1]),
     );
-    return docs
-      .filter((doc): doc is OrchestratorTaskDocument => doc !== null)
-      .map(toTaskThread);
+    return details.map((detail) => {
+      if (!detail.admission) return detail;
+      detail.admission = {
+        ...detail.admission,
+        position: positions.get(detail.id) ?? 0,
+      };
+      return detail;
+    });
   }
 
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
@@ -6507,10 +6519,7 @@ export class OrchestratorTaskService extends Service {
   // ---- aggregate ---------------------------------------------------------
 
   async getStatus(): Promise<OrchestratorStatus> {
-    const records = await this.store.listTasks({ includeArchived: false });
-    const docs = (
-      await Promise.all(records.map((record) => this.store.getTask(record.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const docs = await this.store.listTaskDocuments({ includeArchived: false });
 
     const byStatus = {
       open: 0,
@@ -6551,10 +6560,7 @@ export class OrchestratorTaskService extends Service {
   }
 
   async getAccountOverview(): Promise<OrchestratorAccountOverview> {
-    const records = await this.store.listTasks({ includeArchived: false });
-    const docs = (
-      await Promise.all(records.map((record) => this.store.getTask(record.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const docs = await this.store.listTaskDocuments({ includeArchived: false });
 
     const assignments: OrchestratorAccountAssignment[] = [];
     for (const doc of docs) {
@@ -6621,10 +6627,7 @@ export class OrchestratorTaskService extends Service {
    * one sub-agent session are included (an empty room has no roster to show).
    */
   async getRoomRoster(): Promise<OrchestratorRoomRosterOverview> {
-    const records = await this.store.listTasks({ includeArchived: false });
-    const docs = (
-      await Promise.all(records.map((record) => this.store.getTask(record.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const docs = await this.store.listTaskDocuments({ includeArchived: false });
 
     const orchestratorLabel = this.runtime.character?.name ?? "Orchestrator";
     const rooms: OrchestratorRoomRoster[] = [];
@@ -6815,11 +6818,12 @@ export class OrchestratorTaskService extends Service {
     try {
       const thresholdMs = this.stuckTaskReapThresholdMs();
       const acp = this.acp();
-      const records = await this.store.listTasks({ includeArchived: false });
-      for (const record of records) {
-        if (record.status !== "active" || record.paused) continue;
-        const doc = await this.store.getTask(record.id);
-        if (doc?.task.status !== "active" || doc.task.paused) continue;
+      const docs = await this.store.listTaskDocuments({
+        includeArchived: false,
+        status: "active",
+      });
+      for (const doc of docs) {
+        if (doc.task.status !== "active" || doc.task.paused) continue;
 
         const liveRows = doc.sessions.filter(
           (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
@@ -6863,7 +6867,7 @@ export class OrchestratorTaskService extends Service {
         }
         await this.store.addEvent({
           id: randomUUID(),
-          taskId: record.id,
+          taskId: doc.task.id,
           eventType: "task_stalled_reaped",
           summary: `No live sub-agent session and no activity for ${Math.round(
             idleMs / 60_000,
@@ -6876,13 +6880,13 @@ export class OrchestratorTaskService extends Service {
           timestamp: nowMs,
           createdAt: nowIso(),
         });
-        await this.advanceTaskStatus(record.id, "interrupted");
-        this.emitChange(record.id);
+        await this.advanceTaskStatus(doc.task.id, "interrupted");
+        this.emitChange(doc.task.id);
         this.log("info", "stuck task reaped to interrupted", {
-          taskId: record.id,
+          taskId: doc.task.id,
           idleMs,
         });
-        reaped.push(record.id);
+        reaped.push(doc.task.id);
       }
     } catch (err) {
       // error-policy:J7 background reconcile tick — a store/ACP hiccup is

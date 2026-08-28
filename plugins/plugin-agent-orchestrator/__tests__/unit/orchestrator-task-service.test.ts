@@ -2152,6 +2152,20 @@ describe("OrchestratorTaskService — usage telemetry", () => {
 });
 
 describe("OrchestratorTaskService — aggregation and bulk controls", () => {
+  it("hydrates collection views without issuing per-task point reads", async () => {
+    const { service, store } = makeServiceWithStore();
+    await service.createTask(createInput({ title: "first" }));
+    await service.createTask(createInput({ title: "second" }));
+    const pointRead = vi.spyOn(store, "getTask");
+
+    expect(await service.listTasks()).toHaveLength(2);
+    expect(await service.listTaskDetails()).toHaveLength(2);
+    expect((await service.getStatus()).taskCount).toBe(2);
+    expect((await service.getAccountOverview()).assignments).toEqual([]);
+    expect((await service.getRoomRoster()).rooms).toEqual([]);
+    expect(pointRead).not.toHaveBeenCalled();
+  });
+
   it("reports an empty status with no tasks", async () => {
     const status = await makeService().getStatus();
     expect(status.taskCount).toBe(0);

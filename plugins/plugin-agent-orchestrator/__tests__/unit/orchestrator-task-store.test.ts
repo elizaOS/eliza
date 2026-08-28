@@ -663,6 +663,39 @@ class PgliteBareScanRejectingAdapter extends FakeSqlAdapter {
 }
 
 describe("RuntimeDbTaskStore", () => {
+  it("hydrates a filtered task collection with one SQL query instead of one point read per task", async () => {
+    const seenSql: string[] = [];
+    const adapter = new FakeSqlAdapter();
+    const capturing = {
+      execute: (sql: string, params?: unknown[]) =>
+        adapter.execute(sql, params),
+      all: (sql: string, params?: unknown[]) => {
+        seenSql.push(sql);
+        return adapter.all(sql, params);
+      },
+    };
+    const store = new RuntimeDbTaskStore(capturing);
+    const first = await store.createTask(
+      createInput({ title: "first", projectId: "project-a" }),
+    );
+    const second = await store.createTask(
+      createInput({ title: "second", projectId: "project-a" }),
+    );
+    await store.createTask(
+      createInput({ title: "other", projectId: "project-b" }),
+    );
+
+    seenSql.length = 0;
+    const docs = await store.listTaskDocuments({ projectId: "project-a" });
+
+    expect(new Set(docs.map((doc) => doc.task.id))).toEqual(
+      new Set([first.task.id, second.task.id]),
+    );
+    expect(seenSql).toHaveLength(1);
+    expect(seenSql[0]).toContain("project_id = ?");
+    expect(seenSql[0]).not.toContain("WHERE id = ?");
+  });
+
   it("resolves a session without a `document LIKE` query so pglite/postgres do not fail (#11641)", async () => {
     // On pglite the old `SELECT document FROM orchestrator_tasks WHERE document
     // LIKE ?` threw, spamming a failed-query warn on every session event and

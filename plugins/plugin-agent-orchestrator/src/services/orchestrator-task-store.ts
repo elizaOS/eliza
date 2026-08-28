@@ -424,15 +424,20 @@ export class InMemoryTaskStore {
   async listTasks(
     filter: TaskListFilter = {},
   ): Promise<OrchestratorTaskRecord[]> {
+    return (await this.listTaskDocuments(filter)).map((doc) => doc.task);
+  }
+
+  async listTaskDocuments(
+    filter: TaskListFilter = {},
+  ): Promise<OrchestratorTaskDocument[]> {
     const matches = [...this.docs.values()]
       .filter((doc) => matchesFilter(doc.task, filter, buildSearchText(doc)))
-      .map((doc) => doc.task)
-      .sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+      .sort((a, b) => b.task.lastActivityAt - a.task.lastActivityAt);
     const limited =
       filter.limit && filter.limit > 0
         ? matches.slice(0, filter.limit)
         : matches;
-    return limited.map((t) => structuredClone(t));
+    return limited.map(cloneDocument);
   }
 
   async updateTask(
@@ -698,6 +703,10 @@ export class FileTaskStore extends InMemoryTaskStore {
   override async listTasks(filter?: TaskListFilter) {
     await this.ensureLoaded();
     return super.listTasks(filter);
+  }
+  override async listTaskDocuments(filter?: TaskListFilter) {
+    await this.ensureLoaded();
+    return super.listTaskDocuments(filter);
   }
   override async updateTask(
     id: string,
@@ -1068,6 +1077,12 @@ export class RuntimeDbTaskStore {
   async listTasks(
     filter: TaskListFilter = {},
   ): Promise<OrchestratorTaskRecord[]> {
+    return (await this.listTaskDocuments(filter)).map((doc) => doc.task);
+  }
+
+  async listTaskDocuments(
+    filter: TaskListFilter = {},
+  ): Promise<OrchestratorTaskDocument[]> {
     await this.ensureInitialized();
     const clauses: string[] = [];
     const params: unknown[] = [];
@@ -1106,8 +1121,8 @@ export class RuntimeDbTaskStore {
       params,
     );
     return rows
-      .map((row) => this.parseDoc(row)?.task)
-      .filter((t): t is OrchestratorTaskRecord => Boolean(t));
+      .map((row) => this.parseDoc(row))
+      .filter((doc): doc is OrchestratorTaskDocument => doc !== null);
   }
 
   /** Run a mutation against the freshest stored document, then persist it. */
@@ -1331,6 +1346,9 @@ export class OrchestratorTaskStore {
   }
   listTasks(filter?: TaskListFilter) {
     return this.delegate.listTasks(filter);
+  }
+  listTaskDocuments(filter?: TaskListFilter) {
+    return this.delegate.listTaskDocuments(filter);
   }
   updateTask(id: string, patch: Partial<OrchestratorTaskRecord>) {
     return this.delegate.updateTask(id, patch);
