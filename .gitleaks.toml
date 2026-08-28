@@ -57,11 +57,12 @@ commits = [
 
 # The first #23107 tranche introduced a synthetic DISCORD_APPLICATION_ID
 # snowflake ("123456789012345678") in the plugin-discord installation
-# contribution-init test fixture; the live lines are now annotated with
-# `gitleaks:allow synthetic snowflake`, but that first commit's diff still
-# carries the plain shape — allowlist that exact historical commit only.
+# contribution-init test fixture. The secret-scan workflow scans commit
+# diffs, so that first commit's diff needed an entry here; the live working
+# tree lines are not flagged (the same synthetic snowflake appears
+# unannotated elsewhere on develop, e.g. owner-pairing-service tests).
 [[allowlists]]
-description = "historical synthetic DISCORD_APPLICATION_ID snowflake in installation-contribution-init fixture (#23107) — live lines since annotated"
+description = "historical synthetic DISCORD_APPLICATION_ID snowflake in installation-contribution-init fixture (#23107) — diff-scanned historical commit only; live lines unannotated by design"
 commits = [
   "788fda97c549934aabb6086f852063c2c1c4f475",
 ]
