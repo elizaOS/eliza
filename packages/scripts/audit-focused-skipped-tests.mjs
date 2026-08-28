@@ -656,9 +656,10 @@ function knownNodeOptionSkipValue(node) {
   ) {
     return true;
   }
-  const chain = callChain(value);
+  const runtimeChain = trustedRuntimeCallChain(value);
+  const chain = runtimeChain ?? callChain(value);
   if (
-    chain?.join(".") === "os.platform" ||
+    runtimeChain?.join(".") === "os.platform" ||
     (chain?.length === 1 &&
       [
         "Array",
@@ -677,7 +678,7 @@ function knownNodeOptionSkipValue(node) {
 }
 
 function knownOptionalRuntimeString(node) {
-  const chain = callChain(node);
+  const chain = trustedRuntimeCallChain(node);
   return (
     chain?.[0] === "process" &&
     chain.length === 3 &&
@@ -708,6 +709,52 @@ function immutablePriorVariableDeclaration(identifier) {
   return declaration;
 }
 
+function trustedNodeOsIdentifier(identifier) {
+  const binding = nearestBinding(identifier);
+  if (!binding) return false;
+
+  let current = binding.parent;
+  while (current && !ts.isSourceFile(current)) {
+    if (ts.isImportDeclaration(current)) {
+      return (
+        ts.isStringLiteralLike(current.moduleSpecifier) &&
+        current.moduleSpecifier.text === "node:os" &&
+        (current.importClause?.name === binding ||
+          (ts.isNamespaceImport(binding.parent) &&
+            binding.parent.name === binding))
+      );
+    }
+    current = current.parent;
+  }
+
+  const declaration = immutablePriorVariableDeclaration(identifier);
+  if (!declaration) return false;
+  const initializer = unwrapExpression(declaration.initializer);
+  return (
+    ts.isCallExpression(initializer) &&
+    ts.isIdentifier(initializer.expression) &&
+    initializer.expression.text === "require" &&
+    nearestBinding(initializer.expression) === undefined &&
+    initializer.arguments.length === 1 &&
+    ts.isStringLiteralLike(initializer.arguments[0]) &&
+    initializer.arguments[0].text === "node:os"
+  );
+}
+
+function trustedRuntimeCallChain(node) {
+  const chain = callChain(node);
+  if (!chain) return null;
+  const root = baseIdentifier(node);
+  if (!root) return null;
+  if (chain[0] === "process") {
+    return nearestBinding(root) === undefined ? chain : null;
+  }
+  if (chain[0] === "os") {
+    return trustedNodeOsIdentifier(root) ? chain : null;
+  }
+  return null;
+}
+
 function recognizedRuntimeSignal(node, seenDeclarations = new Set()) {
   const value = unwrapExpression(node);
   if (ts.isIdentifier(value)) {
@@ -721,7 +768,7 @@ function recognizedRuntimeSignal(node, seenDeclarations = new Set()) {
     ts.isPropertyAccessExpression(value) ||
     ts.isElementAccessExpression(value)
   ) {
-    const chain = callChain(value);
+    const chain = trustedRuntimeCallChain(value);
     return (
       chain?.[0] === "process" &&
       (chain[1] === "platform" ||
@@ -741,7 +788,7 @@ function recognizedRuntimeSignal(node, seenDeclarations = new Set()) {
     return recognizedRuntimeSignal(value.condition, seenDeclarations);
   }
   if (ts.isCallExpression(value)) {
-    const chain = callChain(value.expression);
+    const chain = trustedRuntimeCallChain(value.expression);
     return chain?.join(".") === "os.platform";
   }
   return false;
@@ -931,7 +978,7 @@ function staticComparison(node) {
 }
 
 function knownTruthyRuntimeValue(node) {
-  const chain = callChain(node);
+  const chain = trustedRuntimeCallChain(node);
   return (
     chain?.join(".") === "os.platform" ||
     (chain?.[0] === "process" &&

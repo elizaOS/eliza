@@ -314,6 +314,36 @@ describe("anti-larp test discovery", () => {
       findConditionalSkipSites("fixture.test.mjs", shadowedAndMutable),
     ).toEqual([]);
 
+    const shadowedRuntimeRoots = `
+      import test from "node:test";
+      const process = { platform: "win32", env: { SKIP: "yes" } };
+      const os = { platform: () => "win32" };
+      const gateA = process.platform === "win32";
+      const gateB = process.env.SKIP;
+      const gateC = os.platform() === "win32";
+      test("case one", { skip: gateA }, () => {});
+      test("case two", { skip: gateB }, () => {});
+      test("case three", { skip: gateC }, () => {});
+      function register(process) {
+        const gateD = process.platform === "win32";
+        test("case four", { skip: gateD }, () => {});
+      }
+      register({ platform: "win32" });
+    `;
+    expect(
+      findViolations("fixture.test.mjs", shadowedRuntimeRoots).map(
+        ({ kind }) => kind,
+      ),
+    ).toEqual([
+      "orphaned-skip",
+      "orphaned-skip",
+      "orphaned-skip",
+      "orphaned-skip",
+    ]);
+    expect(
+      findConditionalSkipSites("fixture.test.mjs", shadowedRuntimeRoots),
+    ).toEqual([]);
+
     const adversarial = `
       import test from "node:test";
       test("unowned condition", { skip: shouldSkip }, () => {});
