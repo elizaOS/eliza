@@ -1603,8 +1603,9 @@ export class MatrixService extends Service implements IMatrixService {
     // failure, and rethrow it after the loop so the reconnect handler's
     // catch logs it and the next sync retries — a swallow would disguise a
     // scope that never degraded. A boolean flag marks failure: the rejection
-    // value itself may be null (error-policy:J7 — a failed degrade write
-    // must not kill the degrade loop; the aggregate surfaces after it).
+    // value itself may be null.
+    // error-policy:J7 a failed degrade write must not kill the degrade loop;
+    // the aggregate rejection surfaces after every room is attempted.
     let firstFailure: unknown = null;
     let sawFailure = false;
     for (const room of state.client.getRooms().filter((r) => r.getMyMembership() === "join")) {
