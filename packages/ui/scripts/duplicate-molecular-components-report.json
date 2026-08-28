@@ -108,7 +108,7 @@
       "maintainedReferences": 2
     }
   ],
-  "eligibleComponents": 104,
+  "eligibleComponents": 103,
   "clusters": [
     {
       "archetype": "row",
@@ -987,80 +987,6 @@
       "archetype": "panel",
       "atomicDependencies": [
         "button",
-        "dropdownMenu"
-      ],
-      "entries": [
-        {
-          "atomicDependencies": [
-            "button",
-            "dropdownMenu"
-          ],
-          "file": "packages/ui/src/components/chat/AppsSection.tsx",
-          "line": 42,
-          "name": "AppsSection",
-          "renderedTags": [
-            "AppIdentityTile",
-            "Button",
-            "DropdownMenu",
-            "DropdownMenuContent",
-            "DropdownMenuItem",
-            "DropdownMenuTrigger",
-            "LayoutGrid",
-            "MoreHorizontal",
-            "WidgetSection",
-            "div"
-          ],
-          "archetype": "panel"
-        },
-        {
-          "atomicDependencies": [
-            "button",
-            "dropdownMenu"
-          ],
-          "file": "packages/ui/src/components/settings/AppsManagementSection.tsx",
-          "line": 164,
-          "name": "AppsManagementSection",
-          "renderedTags": [
-            "AdvancedToggle",
-            "AppRowActions",
-            "Boxes",
-            "Button",
-            "DropdownMenu",
-            "DropdownMenuContent",
-            "DropdownMenuItem",
-            "DropdownMenuTrigger",
-            "Loader2",
-            "MoreHorizontal",
-            "Plus",
-            "SettingsGroup",
-            "SettingsInputRow",
-            "SettingsRow",
-            "SettingsSelectRow",
-            "SettingsStack",
-            "SettingsSwitchRow",
-            "SettingsTextareaRow",
-            "div",
-            "form",
-            "p",
-            "section",
-            "span"
-          ],
-          "archetype": "panel"
-        }
-      ],
-      "signature": "panel:button+dropdownMenu",
-      "disposition": "distinct-domain-compositions",
-      "rationale": "Chat app discovery and installed-app management share canonical action and menu atoms, but own different selection, launch, creation, import, and mutation lifecycles.",
-      "memberComponentIds": [
-        "packages/ui/src/components/chat/AppsSection.tsx:AppsSection",
-        "packages/ui/src/components/settings/AppsManagementSection.tsx:AppsManagementSection"
-      ],
-      "semanticFingerprint": "sha256:c97cf96c69c8b1ce30fa6b977c54467f2583678f829badf746c2ca1c8588f60d"
-    },
-    {
-      "archetype": "panel",
-      "atomicDependencies": [
-        "button",
         "input"
       ],
       "entries": [
@@ -1173,8 +1099,8 @@
     }
   ],
   "summary": {
-    "clusterCount": 13,
-    "clusteredComponents": 32,
+    "clusterCount": 12,
+    "clusteredComponents": 30,
     "largestCluster": 4
   }
 }

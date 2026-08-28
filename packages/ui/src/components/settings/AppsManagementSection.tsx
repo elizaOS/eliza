@@ -4,7 +4,15 @@
  */
 
 import { Boxes, Loader2, MoreHorizontal, Play, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
@@ -161,7 +169,113 @@ type AsyncStatus =
   | { state: "loading"; message?: string }
   | { state: "error"; message: string };
 
-export function AppsManagementSection() {
+interface AppsManagementActionsProps {
+  showCreate: boolean;
+  showLoad: boolean;
+  setShowCreate: Dispatch<SetStateAction<boolean>>;
+  setShowLoad: Dispatch<SetStateAction<boolean>>;
+}
+
+export function AppsManagementActions({
+  showCreate,
+  showLoad,
+  setShowCreate,
+  setShowLoad,
+}: AppsManagementActionsProps) {
+  const t = useAppSelector((s) => s.t);
+  const { ref: createToggleRef, agentProps: createToggleAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "apps-create-toggle",
+      role: "button",
+      label: t("settings.sections.apps.createNew", {
+        defaultValue: "Create new app",
+      }),
+      group: "apps-management",
+      status: showCreate ? "active" : "inactive",
+      onActivate: () => {
+        setShowCreate((value) => !value);
+        setShowLoad(false);
+      },
+    });
+  const { ref: loadToggleRef, agentProps: loadToggleAgentProps } =
+    useAgentElement<HTMLDivElement>({
+      id: "apps-load-toggle",
+      role: "button",
+      label: "Import from directory",
+      group: "apps-management",
+      status: showLoad ? "active" : "inactive",
+      onActivate: () => {
+        setShowLoad((value) => !value);
+        setShowCreate(false);
+      },
+    });
+
+  return (
+    <section
+      className="flex items-center justify-end gap-1"
+      aria-label="App actions"
+    >
+      <Button
+        ref={createToggleRef}
+        type="button"
+        variant="default"
+        size="icon"
+        className="size-10"
+        aria-label="Create new app"
+        title="Create new app"
+        onClick={() => {
+          setShowCreate((value) => !value);
+          setShowLoad(false);
+        }}
+        {...createToggleAgentProps}
+      >
+        <Plus className="size-4" aria-hidden />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghostMuted"
+            size="icon"
+            className="size-10"
+            aria-label="More app actions"
+            title="More app actions"
+          >
+            <MoreHorizontal className="size-4" aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44">
+          <DropdownMenuItem
+            ref={loadToggleRef}
+            onSelect={() => {
+              setShowLoad((value) => !value);
+              setShowCreate(false);
+            }}
+            {...loadToggleAgentProps}
+          >
+            Import from directory
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </section>
+  );
+}
+
+interface AppsManagementSectionProps {
+  showCreate?: boolean;
+  showLoad?: boolean;
+  setShowCreate?: Dispatch<SetStateAction<boolean>>;
+  setShowLoad?: Dispatch<SetStateAction<boolean>>;
+  hideActions?: boolean;
+}
+
+export function AppsManagementSection({
+  showCreate: controlledShowCreate,
+  showLoad: controlledShowLoad,
+  setShowCreate: controlledSetShowCreate,
+  setShowLoad: controlledSetShowLoad,
+  hideActions = false,
+}: AppsManagementSectionProps = {}) {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const t = useAppSelector((s) => s.t);
   const advancedEnabled = useAdvancedSettingsEnabled();
@@ -173,14 +287,18 @@ export function AppsManagementSection() {
   });
   const [busyApp, setBusyApp] = useState<string | null>(null);
 
-  const [showCreate, setShowCreate] = useState(false);
+  const [internalShowCreate, setInternalShowCreate] = useState(false);
   const [createIntent, setCreateIntent] = useState("");
   const [createEditTarget, setCreateEditTarget] = useState("");
   const [createStatus, setCreateStatus] = useState<AsyncStatus>({
     state: "idle",
   });
 
-  const [showLoad, setShowLoad] = useState(false);
+  const [internalShowLoad, setInternalShowLoad] = useState(false);
+  const showCreate = controlledShowCreate ?? internalShowCreate;
+  const showLoad = controlledShowLoad ?? internalShowLoad;
+  const setShowCreate = controlledSetShowCreate ?? setInternalShowCreate;
+  const setShowLoad = controlledSetShowLoad ?? setInternalShowLoad;
   const [loadDirectory, setLoadDirectory] = useState("");
   const [loadStatus, setLoadStatus] = useState<AsyncStatus>({ state: "idle" });
 
@@ -388,7 +506,7 @@ export function AppsManagementSection() {
         });
       }
     },
-    [createEditTarget, createIntent, refresh, setActionNotice],
+    [createEditTarget, createIntent, refresh, setActionNotice, setShowCreate],
   );
 
   const handleLoadSubmit = useCallback(
@@ -432,38 +550,12 @@ export function AppsManagementSection() {
         });
       }
     },
-    [loadDirectory, refresh, setActionNotice],
+    [loadDirectory, refresh, setActionNotice, setShowLoad],
   );
 
   const isCreating = createStatus.state === "loading";
   const isLoading = loadStatus.state === "loading";
 
-  const { ref: createToggleRef, agentProps: createToggleAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "apps-create-toggle",
-      role: "button",
-      label: t("settings.sections.apps.createNew", {
-        defaultValue: "Create new app",
-      }),
-      group: "apps-management",
-      status: showCreate ? "active" : "inactive",
-      onActivate: () => {
-        setShowCreate((v) => !v);
-        setShowLoad(false);
-      },
-    });
-  const { ref: loadToggleRef, agentProps: loadToggleAgentProps } =
-    useAgentElement<HTMLDivElement>({
-      id: "apps-load-toggle",
-      role: "button",
-      label: "Import from directory",
-      group: "apps-management",
-      status: showLoad ? "active" : "inactive",
-      onActivate: () => {
-        setShowLoad((v) => !v);
-        setShowCreate(false);
-      },
-    });
   const { ref: createSubmitRef, agentProps: createSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "apps-create-submit",
@@ -518,52 +610,14 @@ export function AppsManagementSection() {
 
   return (
     <SettingsStack>
-      <section className="flex flex-col gap-3" aria-label="App actions">
-        <div className="flex items-center justify-end gap-1">
-          <Button
-            ref={createToggleRef}
-            type="button"
-            variant="default"
-            size="icon"
-            className="size-10"
-            aria-label="Create new app"
-            title="Create new app"
-            onClick={() => {
-              setShowCreate((v) => !v);
-              setShowLoad(false);
-            }}
-            {...createToggleAgentProps}
-          >
-            <Plus className="size-4" aria-hidden />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghostMuted"
-                size="icon"
-                className="size-10"
-                aria-label="More app actions"
-                title="More app actions"
-              >
-                <MoreHorizontal className="size-4" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-44">
-              <DropdownMenuItem
-                ref={loadToggleRef}
-                onSelect={() => {
-                  setShowLoad((v) => !v);
-                  setShowCreate(false);
-                }}
-                {...loadToggleAgentProps}
-              >
-                Import from directory
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </section>
+      {!hideActions ? (
+        <AppsManagementActions
+          showCreate={showCreate}
+          showLoad={showLoad}
+          setShowCreate={setShowCreate}
+          setShowLoad={setShowLoad}
+        />
+      ) : null}
 
       {showCreate ? (
         <form onSubmit={handleCreateSubmit}>

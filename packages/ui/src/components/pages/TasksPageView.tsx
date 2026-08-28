@@ -30,7 +30,10 @@ import {
 import { getWindowNavigationPath } from "../../navigation";
 import { CodingAgentTasksPanel } from "../../slots/task-coordinator-slots.js";
 import { useAppSelector } from "../../state";
-import { AppsManagementSection } from "../settings/AppsManagementSection";
+import {
+  AppsManagementActions,
+  AppsManagementSection,
+} from "../settings/AppsManagementSection";
 import { SettingsGroup, SettingsRow } from "../settings/settings-layout";
 import { useShellControllerContext } from "../shell/ShellControllerContext.hooks";
 import { SegmentedControl } from "../ui/segmented-control";
@@ -112,6 +115,8 @@ export function TasksPageView() {
       typeof window === "undefined" ? "" : getWindowNavigationPath(),
     ),
   );
+  const [showCreate, setShowCreate] = useState(false);
+  const [showLoad, setShowLoad] = useState(false);
   const cloudStudioPath = useCloudAppsStudioPath();
   const cloudConnected = useAppSelector((state) => state.elizaCloudConnected);
   const segments: Array<{ id: ProjectsSegment; label: string }> = [
@@ -169,7 +174,17 @@ export function TasksPageView() {
     <ShellViewAgentSurface viewId="tasks">
       <FramedPage gutterOwner="framed-page" data-testid="tasks-view">
         <FramedPageHeader title="Projects" />
-        <FramedPageNavigation>{segmentControl}</FramedPageNavigation>
+        <FramedPageNavigation className="flex items-center justify-between gap-2">
+          {segmentControl}
+          {segment === "apps" ? (
+            <AppsManagementActions
+              showCreate={showCreate}
+              showLoad={showLoad}
+              setShowCreate={setShowCreate}
+              setShowLoad={setShowLoad}
+            />
+          ) : null}
+        </FramedPageNavigation>
         <FramedPageBody scroll="view" padded={false} className="device-layout">
           {segment === "apps" ? (
             <div
@@ -177,7 +192,13 @@ export function TasksPageView() {
               data-testid="projects-apps-segment"
             >
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6">
-                <AppsManagementSection />
+                <AppsManagementSection
+                  showCreate={showCreate}
+                  showLoad={showLoad}
+                  setShowCreate={setShowCreate}
+                  setShowLoad={setShowLoad}
+                  hideActions
+                />
                 {cloudStudioPath && cloudConnected ? (
                   // Same signed-in gate the launcher applies to cloud surfaces
                   // (LAUNCHER_CLOUD_IDS): the studio is useless without a cloud
