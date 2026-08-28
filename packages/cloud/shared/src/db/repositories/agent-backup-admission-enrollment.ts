@@ -370,6 +370,7 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                   AND replay.source_activation_generation = eligible.activation_generation
                   AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
                   AND replay.source_due_at = eligible.activation_completed_at
+                  AND replay.settled_reason IS DISTINCT FROM 'RETRY_EXHAUSTED'
               )
             ORDER BY eligible.activation_completed_at, eligible.id
             LIMIT ${limit + 1}
@@ -403,6 +404,7 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                   AND replay.source_activation_generation = eligible.activation_generation
                   AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
                   AND replay.source_due_at = eligible.next_backup_at
+                  AND replay.settled_reason IS DISTINCT FROM 'RETRY_EXHAUSTED'
               )
             ORDER BY eligible.next_backup_at, eligible.id
             LIMIT ${limit + 1}
@@ -444,6 +446,7 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                   AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
                   AND replay.source_due_at = eligible.rpo_anchor_at
                     + (${cohortRpoMs} * INTERVAL '1 millisecond')
+                  AND replay.settled_reason IS DISTINCT FROM 'RETRY_EXHAUSTED'
               )
             ORDER BY eligible.rpo_anchor_at, eligible.id
             LIMIT ${limit + 1}
@@ -704,6 +707,7 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
               source_lifecycle_revision, source_due_at
             )
               WHERE work_kind = 'schedule_capture'
+                AND settled_reason IS DISTINCT FROM 'RETRY_EXHAUSTED'
               DO NOTHING
             RETURNING id
           `,

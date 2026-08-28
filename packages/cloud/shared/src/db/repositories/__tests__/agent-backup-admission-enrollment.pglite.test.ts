@@ -544,6 +544,99 @@ describe("agent backup admission enrollment", () => {
     ]);
   });
 
+  test("re-enrolls an exhausted exact due while preserving successful replay fences", async () => {
+    await prioritizeShardZero();
+    const sandboxId = uuidForShard(0, 0xe425);
+    await insertAgent({
+      id: sandboxId,
+      generation: uuidForShard(32, 0xf425),
+      index: 1,
+    });
+    expect(await enroll("retry-epoch-initial", 100)).toMatchObject({
+      shardId: 0,
+      enrolled: 1,
+      queued: 1,
+      cohortComplete: true,
+    });
+    const [initial] = await sqlRows<{ id: string; source_due_at: string }>(
+      dbWrite,
+      sql`SELECT id, source_due_at::text AS source_due_at
+        FROM ${agentBackupAdmissionWork}
+        WHERE sandbox_id = ${sandboxId}`,
+    );
+    if (!initial) throw new Error("Initial retry epoch was not enrolled");
+    await dbWrite.execute(sql`
+      UPDATE ${agentBackupAdmissionWork}
+      SET state = 'settled', settled_at = clock_timestamp(),
+        settled_reason = 'RETRY_EXHAUSTED', updated_at = clock_timestamp()
+      WHERE id = ${initial.id}::uuid
+    `);
+    const [exhausted] = await sqlRows<{ document: string }>(
+      dbWrite,
+      sql`SELECT row_to_json(work)::text AS document
+        FROM ${agentBackupAdmissionWork} AS work
+        WHERE id = ${initial.id}::uuid`,
+    );
+
+    const concurrent = await Promise.all(
+      Array.from({ length: 4 }, (_, index) => enroll(`retry-epoch-fresh-${index}`, 100)),
+    );
+    expect(concurrent.reduce((total, result) => total + (result?.queued ?? 0), 0)).toBe(1);
+    const epochs = await sqlRows<{
+      attempts: number;
+      id: string;
+      settled_reason: string | null;
+      source_due_at: string;
+      state: string;
+    }>(
+      dbWrite,
+      sql`SELECT id, state, attempts, settled_reason,
+          source_due_at::text AS source_due_at
+        FROM ${agentBackupAdmissionWork}
+        WHERE sandbox_id = ${sandboxId}
+        ORDER BY id`,
+    );
+    expect(epochs).toHaveLength(2);
+    expect(epochs.find(({ id }) => id === initial.id)).toEqual({
+      attempts: 0,
+      id: initial.id,
+      settled_reason: "RETRY_EXHAUSTED",
+      source_due_at: initial.source_due_at,
+      state: "settled",
+    });
+    const fresh = epochs.find(({ id }) => id !== initial.id);
+    expect(fresh).toMatchObject({
+      attempts: 0,
+      settled_reason: null,
+      source_due_at: initial.source_due_at,
+      state: "queued",
+    });
+    const [unchangedExhausted] = await sqlRows<{ document: string }>(
+      dbWrite,
+      sql`SELECT row_to_json(work)::text AS document
+        FROM ${agentBackupAdmissionWork} AS work
+        WHERE id = ${initial.id}::uuid`,
+    );
+    expect(unchangedExhausted?.document).toBe(exhausted?.document);
+    expect(await enroll("retry-epoch-idempotent", 100)).toMatchObject({ queued: 0 });
+
+    if (!fresh) throw new Error("Fresh retry epoch was not enrolled");
+    await dbWrite.execute(sql`
+      UPDATE ${agentBackupAdmissionWork}
+      SET state = 'settled', settled_at = clock_timestamp(),
+        settled_reason = 'CAPTURE_RESERVED', updated_at = clock_timestamp()
+      WHERE id = ${fresh.id}::uuid
+    `);
+    expect(await enroll("retry-epoch-reserved-fence", 100)).toMatchObject({ queued: 0 });
+    const [finalCount] = await sqlRows<{ count: number }>(
+      dbWrite,
+      sql`SELECT count(*)::integer AS count
+        FROM ${agentBackupAdmissionWork}
+        WHERE sandbox_id = ${sandboxId}`,
+    );
+    expect(finalCount?.count).toBe(2);
+  });
+
   test("reuses one unsettled schedule authority when the RPO tightens", async () => {
     await prioritizeShardZero();
     const sandboxId = uuidForShard(0, 0xe451);
