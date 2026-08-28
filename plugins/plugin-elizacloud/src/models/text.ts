@@ -15,6 +15,7 @@ import {
 	assertModelOutputComplete,
   buildCanonicalSystemPrompt,
   DEFAULT_CEREBRAS_TEXT_MODEL,
+  ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
   ElizaError,
   logger,
   ModelType,
@@ -480,8 +481,10 @@ function firstNumber(...values: unknown[]): number | undefined {
  * useModel failover ladder classifies any thrown 503 as fallback-class and
  * advances instantly, so one cold gateway spent the whole
  * RESPONSE_HANDLER→TEXT_NANO→TEXT_SMALL→TEXT_LARGE ladder in ~500ms and the
- * turn died. Retrying the SAME request here (inside the handler) keeps the
- * ladder intact for real provider failures. The gate is structural — HTTP
+ * turn died. Retrying the SAME request here (inside the handler) preserves
+ * one recovery budget. If that budget is exhausted, a typed error lets the
+ * runtime skip sibling registrations backed by this same provider while
+ * retaining failover to a distinct provider. The gate is structural — HTTP
  * status + typed body code/flag — never message prose, so a genuinely dead
  * provider (any other 503 body, or any non-503) still throws immediately.
  * The schedule is bounded and sums past the measured ~3s recovery; a
@@ -490,6 +493,20 @@ function firstNumber(...values: unknown[]): number | undefined {
  */
 const WARMING_RETRY_DELAYS_MS: readonly number[] = [250, 500, 1000, 1500];
 const WARMING_RETRY_MAX_WAIT_MS = 2_000;
+
+/** Persistent cache warming after the provider's complete bounded retry budget. */
+export class ElizaCloudGatewayWarmingExhaustedError extends ElizaError {
+  override readonly name = "ElizaCloudGatewayWarmingExhaustedError";
+  readonly status = 503;
+
+  constructor(label: string, attempts: number) {
+    super("elizaOS Cloud gateway remained unavailable after cache warming retries", {
+      code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+      context: { attempts, provider: "elizaOSCloud", route: label, status: 503 },
+      severity: "ephemeral",
+    });
+  }
+}
 
 function parseJsonRecord(text: string): Record<string, unknown> | undefined {
   try {
@@ -552,8 +569,22 @@ export function nextWarmingRetryDelayMs(
   );
 }
 
-function sleepMs(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+  if (signal.aborted) {
+    return Promise.reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /**
@@ -561,8 +592,9 @@ function sleepMs(ms: number): Promise<void> {
  * retrying in place while the gateway reports the structural warming 503.
  * The permit is held only across each network attempt — body reads and
  * backoff sleeps run unguarded. Returns the final response with its body
- * already read so callers never double-consume it; non-warming failures and
- * an exhausted budget return immediately for the caller's normal error path.
+ * already read so callers never double-consume it. Non-warming failures return
+ * immediately for the caller's normal error path; persistent structural
+ * warming throws the typed exhaustion signal after this one complete budget.
  */
 export async function requestNativeWithWarmingRetry(
   doRequest: () => Promise<Response>,
@@ -578,7 +610,12 @@ export async function requestNativeWithWarmingRetry(
     recordGatewayResponseTelemetry(response, label);
     if (response.status !== 503) return { response, bodyText };
     const delayMs = nextWarmingRetryDelayMs(state, response, bodyText);
-    if (delayMs === undefined) return { response, bodyText };
+    if (delayMs === undefined) {
+      if (isWarmingUnavailableResponse(response.status, bodyText)) {
+        throw new ElizaCloudGatewayWarmingExhaustedError(label, state.attempt + 1);
+      }
+      return { response, bodyText };
+    }
     logger.warn(
       `[ELIZAOS_CLOUD] cloud gateway is warming (503) on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
     );
@@ -1890,10 +1927,27 @@ export async function streamNativeChatCompletion(
       throw err;
     }
     if (response.status !== 503) break;
-    const warmingBodyText = await response.text();
-    releasePermit();
+    let warmingBodyText: string;
+    try {
+      warmingBodyText = await response.text();
+    } finally {
+      // The caller signal can abort while a 503 body is still streaming. The
+      // permit covers that read, so release it on both success and rejection;
+      // otherwise one cancelled response permanently consumes limiter
+      // capacity and eventually starves every later Cloud call.
+      releasePermit();
+    }
     const delayMs = nextWarmingRetryDelayMs(warmingRetryState, response, warmingBodyText);
-    if (delayMs === undefined || signal?.aborted) {
+    if (signal?.aborted) {
+      throw signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
+    if (delayMs === undefined) {
+      if (isWarmingUnavailableResponse(response.status, warmingBodyText)) {
+        throw new ElizaCloudGatewayWarmingExhaustedError(
+          "chat/completions:stream",
+          warmingRetryState.attempt + 1
+        );
+      }
       const errorBody = asRecord(parseJsonRecord(warmingBodyText)?.error);
       const message =
         firstString(errorBody.message) ?? `elizaOS Cloud error ${response.status}`;
@@ -1908,7 +1962,7 @@ export async function streamNativeChatCompletion(
     logger.warn(
       `[ELIZAOS_CLOUD] cloud gateway is warming (503) on chat/completions:stream; retrying in ${delayMs}ms (attempt ${warmingRetryState.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
     );
-    await sleepMs(delayMs);
+    await sleepMs(delayMs, signal);
   }
   // Recorded before the ok-check so a failed forward still keeps its gateway
   // decomposition on the turn — errors are where attribution matters most.

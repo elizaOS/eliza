@@ -158,6 +158,7 @@ import {
 import { DefaultMessageService } from "./services/message";
 import {
 	describeModelCallError,
+	isElizaCloudGatewayWarmingExhaustedError,
 	isModelProviderFallbackError,
 } from "./services/message/fallback-reply";
 import { sanitizeOutboundText } from "./services/message/outbound-sanitize";
@@ -7031,6 +7032,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		let lastModelError: unknown;
 		let providerAttemptStartedOutput = false;
+		const providersWithExhaustedWarmingBudget = new Set<string>();
 		for (
 			let resolvedIndex = 0;
 			resolvedIndex < resolvedModels.length;
@@ -7038,6 +7040,9 @@ export class AgentRuntime implements IAgentRuntime {
 		) {
 			const resolvedModel = resolvedModels[resolvedIndex];
 			if (!resolvedModel) {
+				continue;
+			}
+			if (providersWithExhaustedWarmingBudget.has(resolvedModel.provider)) {
 				continue;
 			}
 			const resolvedModelKey = resolvedModel.modelKey;
@@ -8206,7 +8211,16 @@ export class AgentRuntime implements IAgentRuntime {
 					});
 				}
 				lastModelError = error;
-				const nextModel = resolvedModels[resolvedIndex + 1];
+				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
+					providersWithExhaustedWarmingBudget.add(resolvedModel.provider);
+				}
+				const nextModelIndex = resolvedModels.findIndex(
+					(candidate, candidateIndex) =>
+						candidateIndex > resolvedIndex &&
+						!providersWithExhaustedWarmingBudget.has(candidate.provider),
+				);
+				const nextModel =
+					nextModelIndex >= 0 ? resolvedModels[nextModelIndex] : undefined;
 				if (
 					requestedProvider !== undefined ||
 					!nextModel ||
@@ -8224,6 +8238,10 @@ export class AgentRuntime implements IAgentRuntime {
 					nextModel,
 					error,
 				});
+				// The loop increments after this catch. Jump over every registration
+				// backed by a provider whose one warming budget was already spent,
+				// while preserving an actually distinct provider as the next attempt.
+				resolvedIndex = nextModelIndex - 1;
 			}
 		}
 		this.rethrowModelFailoverError(

@@ -36,6 +36,10 @@ import {
   writeCloudLiveContinuityEvidence,
 } from "../cloud-live-continuity-contract";
 import {
+  type DedicatedAdoptionConsentProof,
+  installDedicatedAdoptionConsentProof,
+} from "../cloud-live-dedicated-adoption-consent";
+import {
   CloudLiveOptionalActionDeadlineError,
   type CloudLivePersonalIdentityRecovery,
   clickCloudLiveOptionalAction,
@@ -546,28 +550,44 @@ async function resolvePersonalIdentity(
   page: Page,
   chooseRuntime = true,
   onRecovery?: (recovery: CloudLivePersonalIdentityRecovery) => Promise<void>,
+  existingDedicatedAdoptionProof?: DedicatedAdoptionConsentProof,
 ): Promise<CloudLiveRuntimeBinding> {
-  await prepareCloudLivePersonalIdentity({
-    chooseRuntime,
-    chatOverlay: page.getByTestId("chat-overlay"),
-    chatOverlayTimeoutMs: 60_000,
-    chooseRuntimeAction: () => chooseCloudRuntime(page),
-  });
-  const binding = await waitForCloudLivePersonalIdentity({
-    readBinding: () => readActiveBinding(page),
-    runtimeCloudRecovery: page.getByTestId(
-      "choice-__first_run__:runtime:cloud",
-    ),
-    retryRecovery: page.getByTestId("choice-__first_run__:error:retry"),
-    timeoutMs: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS,
-    runtimeCloudGraceMs: 15_000,
-    onRecovery,
-  });
-  await clickIfVisible(
-    page.getByTestId("choice-__first_run__:tutorial:skip"),
-    15_000,
-  );
-  return binding;
+  const dedicatedAdoptionProof =
+    existingDedicatedAdoptionProof ??
+    installDedicatedAdoptionConsentProof(page);
+  try {
+    await prepareCloudLivePersonalIdentity({
+      chooseRuntime,
+      chatOverlay: page.getByTestId("chat-overlay"),
+      chatOverlayTimeoutMs: 60_000,
+      chooseRuntimeAction: () => chooseCloudRuntime(page),
+    });
+    const dedicatedAdoptionConsent = page.getByTestId(
+      "choice-__first_run__:dedicated-adoption:confirm",
+    );
+    const binding = await waitForCloudLivePersonalIdentity({
+      readBinding: () => readActiveBinding(page),
+      runtimeCloudRecovery: page.getByTestId(
+        "choice-__first_run__:runtime:cloud",
+      ),
+      retryRecovery: page.getByTestId("choice-__first_run__:error:retry"),
+      dedicatedAdoptionConsent,
+      timeoutMs: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS,
+      runtimeCloudGraceMs: 15_000,
+      onDedicatedAdoptionConsent: () =>
+        dedicatedAdoptionProof.confirmVisibleConsent(dedicatedAdoptionConsent),
+      onRecovery,
+    });
+    await clickIfVisible(
+      page.getByTestId("choice-__first_run__:tutorial:skip"),
+      15_000,
+    );
+    return binding;
+  } finally {
+    if (!existingDedicatedAdoptionProof) {
+      dedicatedAdoptionProof.dispose();
+    }
+  }
 }
 
 test.describe("real cloud login + personal identity + chat", () => {
@@ -800,47 +820,57 @@ test.describe("real cloud login + personal identity + chat", () => {
       );
     };
     await writePreIdentityDiagnostic();
-    await chooseCloudRuntime(page, async (state) => {
-      if (state === "attempt") {
-        runtimeChoiceCounters.runtimeCloudActionAttemptCount += 1;
-      } else if (state === "success") {
-        runtimeChoiceCounters.runtimeCloudActionSuccessCount += 1;
-      } else {
-        runtimeChoiceCounters.runtimeCloudActionTimeoutCount += 1;
-      }
-      await writePreIdentityDiagnostic();
-    });
+    const primaryDedicatedAdoptionProof =
+      installDedicatedAdoptionConsentProof(page);
+    const referenceBinding = await (async () => {
+      try {
+        await chooseCloudRuntime(page, async (state) => {
+          if (state === "attempt") {
+            runtimeChoiceCounters.runtimeCloudActionAttemptCount += 1;
+          } else if (state === "success") {
+            runtimeChoiceCounters.runtimeCloudActionSuccessCount += 1;
+          } else {
+            runtimeChoiceCounters.runtimeCloudActionTimeoutCount += 1;
+          }
+          await writePreIdentityDiagnostic();
+        });
 
-    // The join resolves the account-derived Personal Eliza through the canonical
-    // identity endpoint. A correctly prepared proof principal is already bound
-    // to Dedicated; if it is not, the closed quote/activation/cutover counters
-    // expose that control-plane path and the final no-mutation gate fails.
-    await enterTrajectoryPhase(
-      "personal-identity",
-      await readPreIdentityDiagnostic(),
-    );
-    const referenceBinding = await resolvePersonalIdentity(
-      page,
-      false,
-      async (recovery) => {
-        if (recovery === "runtime-cloud") {
-          runtimeChoiceCounters.runtimeCloudRecoveryVisibleCount += 1;
-        } else {
-          runtimeChoiceCounters.personalIdentityRetryVisibleCount += 1;
-        }
+        // The join resolves the account-derived Personal Eliza through the
+        // canonical identity endpoint. A correctly prepared proof principal is
+        // already bound to Dedicated; if it is not, the closed quote/activation/
+        // cutover counters expose that control-plane path and the final
+        // no-mutation gate fails.
         await enterTrajectoryPhase(
           "personal-identity",
           await readPreIdentityDiagnostic(),
         );
-      },
-    ).catch((cause: unknown) =>
-      rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
-        await enterTrajectoryPhase(
-          "personal-identity",
-          await readPreIdentityDiagnostic(),
+        return await resolvePersonalIdentity(
+          page,
+          false,
+          async (recovery) => {
+            if (recovery === "runtime-cloud") {
+              runtimeChoiceCounters.runtimeCloudRecoveryVisibleCount += 1;
+            } else {
+              runtimeChoiceCounters.personalIdentityRetryVisibleCount += 1;
+            }
+            await enterTrajectoryPhase(
+              "personal-identity",
+              await readPreIdentityDiagnostic(),
+            );
+          },
+          primaryDedicatedAdoptionProof,
+        ).catch((cause: unknown) =>
+          rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
+            await enterTrajectoryPhase(
+              "personal-identity",
+              await readPreIdentityDiagnostic(),
+            );
+          }),
         );
-      }),
-    );
+      } finally {
+        primaryDedicatedAdoptionProof.dispose();
+      }
+    })();
     const identityAudit = await primaryAudit.snapshot();
     expect(
       identityAudit.successfulPersonalIdentityGetCount,

@@ -64,9 +64,11 @@ interface WaitForCloudLivePersonalIdentityOptions<T> {
   readBinding: () => Promise<T | null>;
   runtimeCloudRecovery: Locator;
   retryRecovery: Locator;
+  dedicatedAdoptionConsent?: Locator;
   timeoutMs: number;
   runtimeCloudGraceMs: number;
   pollIntervalMs?: number;
+  onDedicatedAdoptionConsent?: () => void | Promise<void>;
   onRecovery?: (
     recovery: CloudLivePersonalIdentityRecovery,
   ) => void | Promise<void>;
@@ -109,20 +111,44 @@ export async function waitForCloudLivePersonalIdentity<T>({
   readBinding,
   runtimeCloudRecovery,
   retryRecovery,
+  dedicatedAdoptionConsent,
   timeoutMs,
   runtimeCloudGraceMs,
   pollIntervalMs = 250,
+  onDedicatedAdoptionConsent,
   onRecovery,
 }: WaitForCloudLivePersonalIdentityOptions<T>): Promise<T> {
   const startedAt = Date.now();
   const deadline = startedAt + timeoutMs;
   let runtimeCloudWasAbsent = false;
+  let dedicatedAdoptionConsentHandled = false;
   for (;;) {
     const binding = await withinCloudLivePersonalIdentityDeadline(
       readBinding,
       deadline,
     );
     if (binding) return binding;
+
+    if (
+      !dedicatedAdoptionConsentHandled &&
+      dedicatedAdoptionConsent &&
+      (await withinCloudLivePersonalIdentityDeadline(
+        () => dedicatedAdoptionConsent.isVisible(),
+        deadline,
+      ))
+    ) {
+      if (!onDedicatedAdoptionConsent) {
+        throw new Error(
+          "[cloud-live] Dedicated adoption consent handler is missing",
+        );
+      }
+      await withinCloudLivePersonalIdentityDeadline(
+        () => Promise.resolve(onDedicatedAdoptionConsent()),
+        deadline,
+      );
+      dedicatedAdoptionConsentHandled = true;
+      continue;
+    }
 
     const retryVisible = await withinCloudLivePersonalIdentityDeadline(
       () => retryRecovery.isVisible(),

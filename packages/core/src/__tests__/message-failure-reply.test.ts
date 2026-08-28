@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { DefaultMessageService } from "../services/message";
+import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED } from "../services/message/fallback-reply";
 import type { Memory } from "../types/memory";
 import type { Content, UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -35,6 +36,16 @@ function creditError(): Error & { statusCode: number } {
 
 function authError(): Error & { statusCode: number } {
 	return Object.assign(new Error("account access denied"), { statusCode: 403 });
+}
+
+function cloudWarmingExhaustedError(): Error & {
+	code: string;
+	status: number;
+} {
+	return Object.assign(new Error("Cloud gateway warming budget exhausted"), {
+		code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+		status: 503,
+	});
 }
 
 function makeRuntimeReturning(responses: unknown[]): IAgentRuntime {
@@ -70,6 +81,30 @@ type FailureReplyService = {
 };
 
 describe("DefaultMessageService structured failure replies", () => {
+	it("does not restart the Cloud warming budget across failure-reply model slots", async () => {
+		const service =
+			new DefaultMessageService() as unknown as FailureReplyService;
+		const runtime = makeRuntimeReturning([cloudWarmingExhaustedError()]);
+		const responseId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const message = {
+			content: { text: "hello" },
+			roomId: "00000000-0000-0000-0000-000000000003" as UUID,
+		} as Memory;
+
+		const result = await service.buildStructuredFailureReply(
+			runtime,
+			message,
+			{ values: { recentMessages: "User: hello" } } as State,
+			responseId,
+			"test",
+		);
+
+		expect(result.responseContent?.text).toBe(
+			"Something went wrong on my end. Please try again.",
+		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
 	it("preserves credit exhaustion when later fallback model slots fail generically", async () => {
 		const service = new DefaultMessageService() as unknown as {
 			generateFailureReplyText(
