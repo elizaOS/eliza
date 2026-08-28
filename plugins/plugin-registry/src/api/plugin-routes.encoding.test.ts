@@ -37,11 +37,23 @@ vi.mock("@elizaos/shared", () => {
   };
 
   return {
+    DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS: [
+      "STEWARD_API_URL",
+      "STEWARD_TENANT_ID",
+      "STEWARD_AGENT_ID",
+      "ELIZA_STEWARD_AGENT_ID",
+      "STEWARD_API_KEY",
+      "STEWARD_AGENT_TOKEN",
+      "STEWARD_TRADE_SESSION_ID",
+      "STEWARD_HYPERLIQUID_TRADE_SESSION_ID",
+      "STEWARD_POLYMARKET_TRADE_SESSION_ID",
+    ],
     asRecord: (value: unknown) =>
       value && typeof value === "object" && !Array.isArray(value)
         ? (value as Record<string, unknown>)
         : null,
     isElizaSettingsDebugEnabled: vi.fn(() => false),
+    resolveDevCloudEnvAuthority: vi.fn(() => false),
     PostPluginCoreToggleRequestSchema: schema,
     PostPluginInstallRequestSchema: schema,
     PostPluginUninstallRequestSchema: schema,
