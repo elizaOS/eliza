@@ -264,6 +264,7 @@ describe("backup admission cohort migrations", () => {
 
     const expectedWorkIndexes = [
       "agent_backup_admission_work_schedule_uidx",
+      "agent_backup_admission_work_unsettled_schedule_uidx",
       "agent_backup_admission_work_operation_stage_uidx",
       "agent_backup_admission_work_gc_uidx",
       "agent_backup_admission_work_organization_idx",
@@ -325,13 +326,15 @@ describe("backup admission cohort migrations", () => {
       name: string;
       columns: string;
       predicate: string | null;
+      unique: boolean;
     }>(`
       SELECT index_relation.relname AS name,
         (SELECT string_agg(attribute.attname, ',' ORDER BY key.ordinality)
           FROM unnest(index_record.indkey) WITH ORDINALITY AS key(attnum, ordinality)
           JOIN pg_attribute attribute ON attribute.attrelid = index_record.indrelid
             AND attribute.attnum = key.attnum) AS columns,
-        pg_get_expr(index_record.indpred, index_record.indrelid) AS predicate
+        pg_get_expr(index_record.indpred, index_record.indrelid) AS predicate,
+        index_record.indisunique AS unique
       FROM pg_index index_record
       JOIN pg_class index_relation ON index_relation.oid = index_record.indexrelid
       WHERE index_relation.relname IN (
@@ -340,6 +343,7 @@ describe("backup admission cohort migrations", () => {
         'agent_backup_admission_work_deferred_ready_shard_idx',
         'agent_backup_admission_work_expired_lease_shard_idx',
         'agent_backup_admission_work_organization_idx',
+        'agent_backup_admission_work_unsettled_schedule_uidx',
         'agent_sandbox_backups_admission_active_org_idx',
         'agent_sandbox_backups_admission_capture_history_idx',
         'agent_sandbox_backups_admission_capture_fallback_idx'
@@ -368,6 +372,10 @@ describe("backup admission cohort migrations", () => {
         columns: "organization_id,id",
       },
       {
+        name: "agent_backup_admission_work_unsettled_schedule_uidx",
+        columns: "sandbox_id,source_activation_generation,source_lifecycle_revision",
+      },
+      {
         name: "agent_sandbox_backups_admission_active_org_idx",
         columns: "catalog_organization_id",
       },
@@ -394,6 +402,14 @@ describe("backup admission cohort migrations", () => {
       /state.*leased/i,
     );
     expect(predicateByIndex.get("agent_backup_admission_work_organization_idx")).toBeNull();
+    expect(predicateByIndex.get("agent_backup_admission_work_unsettled_schedule_uidx")).toMatch(
+      /work_kind.*schedule_capture.*state.*settled/is,
+    );
+    expect(
+      indexShapes.rows.find(
+        ({ name }) => name === "agent_backup_admission_work_unsettled_schedule_uidx",
+      )?.unique,
+    ).toBe(true);
     expect(predicateByIndex.get("agent_sandbox_backups_admission_active_org_idx")).toMatch(
       /catalog_state.*scheduled.*capturing.*captured.*uploading.*primary_uploaded.*primary_verified.*secondary_pending.*failed_retryable/is,
     );
@@ -422,6 +438,19 @@ describe("backup admission cohort migrations", () => {
       await explainIndex(`SELECT 1 FROM agent_backup_admission_work
         WHERE organization_id = '${ORG_A}' ORDER BY id`),
     ).toContain("agent_backup_admission_work_organization_idx");
+    expect(
+      await explainIndex(`SELECT 1 FROM agent_backup_admission_work
+        WHERE work_kind = 'schedule_capture' AND sandbox_id = '${SANDBOX_A}'
+          AND source_activation_generation = '${ACTIVATION}'
+          AND source_lifecycle_revision = 7 AND state <> 'settled'`),
+    ).toContain("agent_backup_admission_work_unsettled_schedule_uidx");
+    expect(
+      await explainIndex(`SELECT 1 FROM agent_backup_admission_work
+        WHERE work_kind = 'schedule_capture' AND sandbox_id = '${SANDBOX_A}'
+          AND node_history_id = '${HISTORY_A}'
+          AND source_activation_generation = '${ACTIVATION}'
+          AND source_lifecycle_revision = 7 AND source_due_at = '${DUE}'`),
+    ).toContain("agent_backup_admission_work_schedule_uidx");
     expect(
       await explainIndex(`SELECT 1 FROM agent_sandbox_backups
         WHERE catalog_organization_id = '${ORG_A}'
