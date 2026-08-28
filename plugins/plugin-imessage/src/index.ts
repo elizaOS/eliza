@@ -184,12 +184,14 @@ export type {
 export {
   IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
   IMessageMembershipPublisher,
-  IMessageMembershipRosterSource as IMessageMembershipRosterSourceType,
-  IMessageRosterMember,
-  IMessageRosterRead,
   IMessageRosterUnavailableError,
   imessageMembershipPrincipalId,
   imessageMembershipScope,
   resolveMembershipService as resolveIMessageMembershipService,
+} from "./membership.js";
+export type {
+  IMessageMembershipRosterSource as IMessageMembershipRosterSourceType,
+  IMessageRosterMember,
+  IMessageRosterRead,
 } from "./membership.js";
 export { createChatDbRosterSource } from "./membership-roster.js";
