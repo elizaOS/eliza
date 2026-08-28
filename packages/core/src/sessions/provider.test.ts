@@ -127,11 +127,11 @@ describe("extractSessionContext", () => {
 		expect(extractSessionContext(memory())).toBeNull();
 	});
 
-	it("treats empty-string direct fields as shadowing, not absent (?? is not falsy-coalescing)", () => {
-		// Pins the current contract: "" is a present value for ??, so it wins
-		// over metadata and then fails the both-absent gate, yielding null.
-		// A connector must leave sessionId/sessionKey undefined (not "") for
-		// metadata fallback to engage.
+	it("falls back to metadata when direct fields are empty strings, preserving the deny entry", () => {
+		// Regression: connectors may default an unset sessionId/sessionKey to
+		// "" (not undefined). The empty string previously won the ?? chain,
+		// erased the metadata session carrying an explicit sendPolicy deny,
+		// and flipped createSendPolicyProvider to its default-allow result.
 		const shadowed = extractSessionContext(
 			memory({
 				sessionId: "",
@@ -139,10 +139,44 @@ describe("extractSessionContext", () => {
 				metadata: {
 					sessionId: "meta-id",
 					sessionKey: "agent:bot:main",
+					session: sessionEntry({ sendPolicy: "deny" }),
 				} as Memory["metadata"],
 			}),
 		);
-		expect(shadowed).toBeNull();
+		expect(shadowed).toEqual({
+			sessionId: "meta-id",
+			sessionKey: "agent:bot:main",
+			entry: sessionEntry({ sendPolicy: "deny" }),
+		});
+
+		// Direct fields that are present and non-empty still win.
+		const present = extractSessionContext(
+			memory({
+				sessionId: "direct-id",
+				metadata: { sessionId: "meta-id" } as Memory["metadata"],
+			}),
+		);
+		expect(present?.sessionId).toBe("direct-id");
+	});
+
+	it("keeps the deny policy enforced when direct fields are empty strings", async () => {
+		// Regression for the provider-level consequence of the same bug:
+		// the sendPolicy provider must surface the metadata session's deny,
+		// not silently default to allow when direct fields are "".
+		const provider = createSendPolicyProvider();
+		const result = await provider.get(
+			runtime,
+			memory({
+				sessionId: "",
+				sessionKey: "",
+				metadata: {
+					session: sessionEntry({ sendPolicy: "deny" }),
+				} as Memory["metadata"],
+			}),
+			state,
+		);
+		expect(result.text).toContain("SEND POLICY: DENY");
+		expect(result.values).toEqual({ sendPolicy: "deny", canSend: false });
 	});
 });
 
