@@ -136,6 +136,7 @@ jobs:
           packages/scripts/__tests__/homepage-deploy-workflow.test.ts
           packages/scripts/__tests__/cloud-cf-canonical-source-guard-workflow.test.ts
           packages/scripts/__tests__/cloud-cf-voice-deploy-workflow.test.ts
+          packages/scripts/__tests__/provisioning-worker-deploy-workflow.test.ts
           packages/scripts/__tests__/ci-bun-version-contract.test.ts
           packages/scripts/__tests__/github-action-pinning.test.ts
 

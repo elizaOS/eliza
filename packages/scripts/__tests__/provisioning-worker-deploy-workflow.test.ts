@@ -191,10 +191,7 @@ describe("provisioning worker deployment contract", () => {
       verify,
     );
     const clean = workflow.indexOf("git clean -ffdx -q", verify);
-    const deinit = workflow.indexOf(
-      "git submodule deinit -f --all",
-      verify,
-    );
+    const deinit = workflow.indexOf("git submodule deinit -f --all", verify);
     const cleanVerdict = workflow.indexOf(
       '[ -z "$status_output" ] || {',
       verify,
@@ -256,15 +253,11 @@ describe("provisioning worker deployment contract", () => {
       );
       writeFileSync(join(checkoutRoot, "runner-artifact"), "stale\n");
 
-      const result = spawnSync(
-        "bash",
-        ["-c", exactCheckoutCleanupScript()],
-        {
-          cwd: checkoutRoot,
-          encoding: "utf8",
-          env: { ...process.env, EXPECTED_DEPLOY_SHA: expectedSha },
-        },
-      );
+      const result = spawnSync("bash", ["-c", exactCheckoutCleanupScript()], {
+        cwd: checkoutRoot,
+        encoding: "utf8",
+        env: { ...process.env, EXPECTED_DEPLOY_SHA: expectedSha },
+      });
 
       expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
       expect(

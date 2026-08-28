@@ -206,6 +206,23 @@ function collectYamlFiles(directory: string): string[] {
 }
 
 describe("GitHub action supply-chain references", () => {
+  test("keeps provisioning checkout cleanup covered by required PR CI", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "pr-static-smoke.yml"),
+      "utf8",
+    );
+    const workflow = Bun.YAML.parse(source) as {
+      jobs?: { "source-smoke"?: { steps?: WorkflowStep[] } };
+    };
+    const workflowContracts = workflow.jobs?.["source-smoke"]?.steps?.find(
+      (step) => step.name === "Test Cloud Pages workflow contracts",
+    );
+
+    expect(workflowContracts?.run).toContain(
+      "packages/scripts/__tests__/provisioning-worker-deploy-workflow.test.ts",
+    );
+  });
+
   test("pins every external action and reusable workflow to a commit SHA", () => {
     const mutableReferences: string[] = [];
 
