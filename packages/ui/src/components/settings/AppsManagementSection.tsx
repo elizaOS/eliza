@@ -3,7 +3,7 @@
  * "Create new app" and "Load from directory" entry points.
  */
 
-import { Boxes, Loader2, MoreHorizontal, Play } from "lucide-react";
+import { Boxes, Loader2, MoreHorizontal, Play, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
@@ -453,12 +453,10 @@ export function AppsManagementSection() {
       },
     });
   const { ref: loadToggleRef, agentProps: loadToggleAgentProps } =
-    useAgentElement<HTMLButtonElement>({
+    useAgentElement<HTMLDivElement>({
       id: "apps-load-toggle",
       role: "button",
-      label: t("settings.sections.apps.loadFromDirectory", {
-        defaultValue: "Load from directory",
-      }),
+      label: "Import from directory",
       group: "apps-management",
       status: showLoad ? "active" : "inactive",
       onActivate: () => {
@@ -521,33 +519,49 @@ export function AppsManagementSection() {
   return (
     <SettingsStack>
       <section className="flex flex-col gap-3" aria-label="App actions">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center justify-end gap-1">
           <Button
             ref={createToggleRef}
             type="button"
             variant="default"
-            size="touch"
+            size="icon"
+            className="size-10"
+            aria-label="Create new app"
+            title="Create new app"
             onClick={() => {
               setShowCreate((v) => !v);
               setShowLoad(false);
             }}
             {...createToggleAgentProps}
           >
-            New app
+            <Plus className="size-4" aria-hidden />
           </Button>
-          <Button
-            ref={loadToggleRef}
-            type="button"
-            variant="ghostMuted"
-            size="touch"
-            onClick={() => {
-              setShowLoad((v) => !v);
-              setShowCreate(false);
-            }}
-            {...loadToggleAgentProps}
-          >
-            Import
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghostMuted"
+                size="icon"
+                className="size-10"
+                aria-label="More app actions"
+                title="More app actions"
+              >
+                <MoreHorizontal className="size-4" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-44">
+              <DropdownMenuItem
+                ref={loadToggleRef}
+                onSelect={() => {
+                  setShowLoad((v) => !v);
+                  setShowCreate(false);
+                }}
+                {...loadToggleAgentProps}
+              >
+                Import from directory
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </section>
 

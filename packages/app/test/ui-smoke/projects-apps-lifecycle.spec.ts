@@ -7,8 +7,8 @@
  *
  * This lane boots the packaged renderer in Chromium and drives the real
  * `AppsManagementSection` mounted inside `TasksPageView`: it asserts the
- * installed inventory renders with its run badges, that "Create new app" and
- * "Load from directory" submit the exact agent-API payloads, and that the
+ * installed inventory renders with its run badges, that create and import
+ * controls submit the exact agent-API payloads, and that the
  * segment survives a round trip through the Tasks segment. The agent app
  * endpoints (`/api/apps/installed`, `/api/apps/runs`, `/api/apps/create`,
  * `/api/apps/load-from-directory`) are route-mocked because this spec proves
@@ -184,10 +184,14 @@ test("Projects → Apps keeps the retired My Apps lifecycle controls working", a
     intent: "Track aurora sightings and notify me at dusk.",
   });
 
-  // Import flow — "Load from directory" is the create/import half #17031 calls
-  // out; it must still reach /api/apps/load-from-directory.
-  const loadToggle = page.getByRole("button", { name: "Load from directory" });
-  await loadToggle.click();
+  // Import is progressively disclosed in the app-actions menu, but must still
+  // reach /api/apps/load-from-directory.
+  await page.getByRole("button", { name: "More app actions" }).click();
+  await page.screenshot({
+    path: `${EVIDENCE_DIR}/desktop-05-app-actions-menu.png`,
+    fullPage: true,
+  });
+  await page.getByRole("menuitem", { name: "Import from directory" }).click();
   const directory = page.getByLabel("Directory path");
   await expect(directory).toBeVisible({ timeout: 15_000 });
   await directory.fill("/Users/proof/code/imported-app");
@@ -197,7 +201,7 @@ test("Projects → Apps keeps the retired My Apps lifecycle controls working", a
     directory: "/Users/proof/code/imported-app",
   });
   await page.screenshot({
-    path: `${EVIDENCE_DIR}/desktop-05-load-submitted.png`,
+    path: `${EVIDENCE_DIR}/desktop-06-load-submitted.png`,
     fullPage: true,
   });
 
@@ -209,7 +213,7 @@ test("Projects → Apps keeps the retired My Apps lifecycle controls working", a
     page.getByTestId(`apps-mgmt-row-${INSTALLED_APP.name}`),
   ).toBeVisible({ timeout: 30_000 });
   await page.screenshot({
-    path: `${EVIDENCE_DIR}/desktop-06-segment-roundtrip.png`,
+    path: `${EVIDENCE_DIR}/desktop-07-segment-roundtrip.png`,
     fullPage: true,
   });
 });

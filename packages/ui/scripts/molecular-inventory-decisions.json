@@ -106,6 +106,15 @@
       ],
       "semanticFingerprint": "sha256:7c11e8d4a6401f86006252780a6d7d428dc8d5ade6007d697bf320b213c709af"
     },
+    "panel:button+dropdownMenu": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Chat app discovery and installed-app management share canonical action and menu atoms, but own different selection, launch, creation, import, and mutation lifecycles.",
+      "memberComponentIds": [
+        "packages/ui/src/components/chat/AppsSection.tsx:AppsSection",
+        "packages/ui/src/components/settings/AppsManagementSection.tsx:AppsManagementSection"
+      ],
+      "semanticFingerprint": "sha256:c97cf96c69c8b1ce30fa6b977c54467f2583678f829badf746c2ca1c8588f60d"
+    },
     "row:button+card+statusDot": {
       "disposition": "distinct-domain-compositions",
       "rationale": "Rail rows compose the same atomic status indicator while preserving domain-specific navigation and selection behavior.",

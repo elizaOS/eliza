@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 897 maintained React files. 103 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 897 maintained React files. 104 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -30,6 +30,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 | dialog | alert, button, card | 2 | distinct-domain-compositions |
 | form | button, input | 2 | distinct-domain-compositions |
 | panel | badge, button, input | 2 | shared-lifecycle-owner |
+| panel | button, dropdownMenu | 2 | distinct-domain-compositions |
 | panel | button, input | 2 | distinct-domain-compositions |
 | row | button, card, statusDot | 2 | distinct-domain-compositions |
 
@@ -110,6 +111,13 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `CloudAgentsSection` in `packages/ui/src/components/settings/CloudAgentsSection.tsx:77`
 - Fingerprint: `sha256:f0e0a109e0fab258115f7e1cc83319bae2890d554c23083a69f95a6700db6757`
 - Decision: **shared-lifecycle-owner**. The cloud-panel-owned useCloudAgentManagement pattern owns list refresh, create, rename, suspend/resume, delete polling, wake-and-switch, persistence, and notices; AgentSection and CloudAgentsSection are distinct presentation adapters with explicit management-token providers.
+
+### panel: button + dropdownMenu
+
+- `AppsSection` in `packages/ui/src/components/chat/AppsSection.tsx:42`
+- `AppsManagementSection` in `packages/ui/src/components/settings/AppsManagementSection.tsx:164`
+- Fingerprint: `sha256:c97cf96c69c8b1ce30fa6b977c54467f2583678f829badf746c2ca1c8588f60d`
+- Decision: **distinct-domain-compositions**. Chat app discovery and installed-app management share canonical action and menu atoms, but own different selection, launch, creation, import, and mutation lifecycles.
 
 ### panel: button + input
 
