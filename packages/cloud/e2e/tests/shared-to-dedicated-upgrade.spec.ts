@@ -52,9 +52,16 @@ import { pollSandboxStatus } from "../src/helpers/provisioning";
 import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
 import { expect, test } from "../src/helpers/test-fixtures";
 
-// API-only (no browser). The transcript uses deterministic capability-wall
-// turns so this integration proof never needs a provider or a paid action.
-test.use({ stackOptions: { frontend: false } });
+// API-only (no browser). The deterministic context-echo model fixture makes
+// both Shared turns persist user/assistant history without a live provider or
+// paid action, giving the handoff a real transcript to import.
+test.use({
+  stackOptions: {
+    frontend: false,
+    mockLlmEchoContext: true,
+    mockLlmOpenRouter: true,
+  },
+});
 
 interface DedicatedQuote {
   action: "activate_dedicated";
@@ -560,6 +567,7 @@ test.describe("shared→dedicated tier upgrade", () => {
           body: JSON.stringify({
             platform: "blooio",
             project: "eliza-app",
+            connectorAccountId: "blooio:e2e-upgrade-number",
             phoneNumber: connectorPhone,
             messageId: "blooio:eliza-app:after-cutover",
             message: "Continue this exact conversation from my phone.",
@@ -614,6 +622,7 @@ test.describe("shared→dedicated tier upgrade", () => {
           body: JSON.stringify({
             platform: "blooio",
             project: "eliza-app",
+            connectorAccountId: "blooio:e2e-upgrade-number",
             phoneNumber: connectorPhone,
             messageId: "blooio:eliza-app:after-cutover",
             message: "Continue this exact conversation from my phone.",

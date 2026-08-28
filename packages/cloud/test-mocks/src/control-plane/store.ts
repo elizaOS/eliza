@@ -258,6 +258,8 @@ function stageTodoCutoverImport(
 export class ControlPlaneStore {
   private readonly jobs = new Map<string, Job>();
   private readonly sandboxes = new Map<string, Sandbox>();
+  /** Runtime bearer authority stays internal and is never serialized with Sandbox. */
+  private readonly sandboxRuntimeTokens = new Map<string, string>();
   private readonly containers = new Map<string, Container>();
   private readonly warmPool = new Map<string, WarmSandbox>();
   private readonly cronCounters = new Map<string, number>();
@@ -450,6 +452,24 @@ export class ControlPlaneStore {
 
   getSandbox(id: string): Sandbox | undefined {
     return this.sandboxes.get(id);
+  }
+
+  bindSandboxRuntimeToken(id: string, token: string): void {
+    if (!this.sandboxes.has(id)) throw new Error(`sandbox '${id}' not found`);
+    const trimmed = token.trim();
+    if (!trimmed) throw new Error("runtime token must be non-empty");
+    this.sandboxRuntimeTokens.set(id, trimmed);
+  }
+
+  getSandboxByRuntimeToken(token: string): Sandbox | undefined {
+    const trimmed = token.trim();
+    if (!trimmed) return undefined;
+    for (const [sandboxId, runtimeToken] of this.sandboxRuntimeTokens) {
+      const sandbox = this.sandboxes.get(sandboxId);
+      if (runtimeToken === trimmed && sandbox?.status === "running")
+        return sandbox;
+    }
+    return undefined;
   }
 
   updateSandbox(id: string, patch: Partial<Sandbox>): Sandbox {

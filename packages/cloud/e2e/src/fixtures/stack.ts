@@ -302,6 +302,12 @@ export interface StartCloudStackOptions {
    */
   mockLlmEchoContext?: boolean;
   /**
+   * Expose the mock LLM as the Worker's OpenRouter-compatible gateway as well
+   * as its OpenAI-compatible provider. Defaults to false so OpenAI fault
+   * fixtures cannot silently fall back to the same loopback provider.
+   */
+  mockLlmOpenRouter?: boolean;
+  /**
    * Boot a stateful Stripe-compatible loopback provider. The Worker receives
    * the synthetic key and endpoint only under its explicit Cloud E2E gates.
    */
@@ -349,13 +355,19 @@ export async function startCloudStack(
   });
   const steward = await startStewardMock();
   const mockLlm =
-    opts.mockLlm || opts.mockLlmEchoContext
+    opts.mockLlm || opts.mockLlmEchoContext || opts.mockLlmOpenRouter
       ? await startMockLlm({ echoContext: opts.mockLlmEchoContext ?? false })
       : undefined;
   const mockLlmEnv: Record<string, string> = mockLlm
     ? {
         OPENAI_API_KEY: "mock-llm-key",
         OPENAI_BASE_URL: mockLlm.url,
+        ...(opts.mockLlmOpenRouter
+          ? {
+              OPENROUTER_API_KEY: "mock-llm-key",
+              OPENROUTER_BASE_URL: mockLlm.url,
+            }
+          : {}),
       }
     : {};
   const sharedEnv = buildSharedEnv(
@@ -513,14 +525,7 @@ export async function startCloudStack(
         spawnLogged(
           "frontend",
           BUN,
-          [
-            "run",
-            "dev",
-            "--",
-            "--host",
-            "127.0.0.1",
-            "--cloud-target=offline",
-          ],
+          ["run", "dev", "--", "--host", "127.0.0.1", "--cloud-target=offline"],
           {
             env: frontendEnv,
             cwd: frontendDir,
