@@ -111,6 +111,13 @@ export function generateInviteUrl(
 	tier: DiscordPermissionTier = "MODERATOR_VOICE",
 ): string {
 	const permissions = DiscordPermissionTiers[tier];
+	if (permissions === undefined) {
+		throw new RangeError(
+			`Unknown Discord permission tier: ${tier}. Expected one of: ${Object.keys(
+				DiscordPermissionTiers,
+			).join(", ")}`,
+		);
+	}
 	return `https://discord.com/api/oauth2/authorize?client_id=${applicationId}&permissions=${permissions}&scope=bot%20applications.commands`;
 }
 
