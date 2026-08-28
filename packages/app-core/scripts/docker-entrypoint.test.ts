@@ -113,6 +113,35 @@ sleep 5
 `;
 }
 
+// Tailscale 1.90 suppresses its BrowseToURL output when `up` has --auth-key,
+// even after Headscale returns an interactive URL. This fixture therefore stays
+// silent and blocked exactly like the CLI did in staging.
+const TAILSCALE_AUTH_URL_HANG_FIXTURE = `#!/bin/sh
+printf '%s\\n' "$@" > "$TAILSCALE_ARGS_LOG"
+exec sleep 30
+`;
+
+// The daemon still records the rejected RegisterReq in its private log. Include
+// the raw URL too so the test proves classification does not copy it into the
+// container's stderr logs.
+function tailscaledAuthUrlFixture(socketPath: string): string {
+  return `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    --socket=*) socket="\${arg#--socket=}" ;;
+  esac
+done
+: "\${socket:=${socketPath}}"
+mkdir -p "$(dirname "$socket")"
+: > "$socket"
+sleep 0.5
+printf '%s\\n' \\
+  'RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=true' \\
+  'AuthURL is https://headscale.example.test/register/private-node-token'
+sleep 5
+`;
+}
+
 describeIfPosix("docker entrypoint", () => {
   test("preserves port normalization and starts without tailscale when no auth key is configured", () => {
     const result = runDockerEntrypoint(
@@ -217,7 +246,9 @@ printf '%s\\n' "$@" > "$TAILSCALE_ARGS_LOG"
   testIfLinux(
     "uses the auth key when tailscaled creates fresh state before its socket",
     async () => {
-      const root = await mkdtemp(path.join(tmpdir(), "docker-entrypoint-fresh-state-"));
+      const root = await mkdtemp(
+        path.join(tmpdir(), "docker-entrypoint-fresh-state-"),
+      );
       const binDir = path.join(root, "bin");
       const stateDir = path.join(root, "state");
       const socketPath = path.join(root, "tailscaled.sock");
@@ -406,7 +437,60 @@ exit 1
   );
 
   testIfLinux(
-    "re-key hook: fetches a fresh key and retries once when the baked key is rejected",
+    "fails an interactive Headscale AuthURL promptly without starting the agent",
+    async () => {
+      const root = await mkdtemp(
+        path.join(tmpdir(), "docker-entrypoint-authurl-"),
+      );
+      const binDir = path.join(root, "bin");
+      const stateDir = path.join(root, "state");
+      const socketPath = path.join(root, "tailscaled.sock");
+      const argsLog = path.join(root, "tailscale-args.log");
+      await mkdir(binDir, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
+      await writeExecutable(path.join(binDir, "id"), ID_ROOT_FIXTURE);
+      await writeExecutable(
+        path.join(binDir, "tailscaled"),
+        tailscaledAuthUrlFixture(socketPath),
+      );
+      await writeExecutable(
+        path.join(binDir, "tailscale"),
+        TAILSCALE_AUTH_URL_HANG_FIXTURE,
+      );
+
+      const startedAt = Date.now();
+      const result = runDockerEntrypoint(
+        {
+          PATH: `${binDir}:/usr/bin:/bin`,
+          TS_AUTHKEY: KEY_LONG_EXPIRED,
+          TS_UP_TIMEOUT_SECONDS: "5",
+          SANDBOX_AGENT_ID: "agent-authurl",
+          TS_STATE_DIR: stateDir,
+          TS_SOCKET: socketPath,
+          HEADSCALE_URL: "https://headscale.example.test",
+          TAILSCALE_ARGS_LOG: argsLog,
+        },
+        ["/bin/sh", "-c", "printf should-not-start"],
+      );
+
+      expect(Date.now() - startedAt).toBeLessThan(3_000);
+      expect(result).toMatchObject({ code: 78, stdout: "" });
+      expect(result.stderr).toContain(
+        "interactive authorization (AuthURL/NeedsLogin)",
+      );
+      expect(result.stderr).not.toContain("private-node-token");
+      expect(result.stderr).toContain("node needs re-keying");
+      await expect(
+        readFile(path.join(stateDir, "authkey-expired"), "utf8"),
+      ).resolves.toContain("hostname=agent-authurl");
+      const args = await readFile(argsLog, "utf8");
+      expect(args).toContain("--json");
+      expect(args).toContain("--timeout=5s");
+    },
+  );
+
+  testIfLinux(
+    "re-key hook: retries a rejected AuthURL join without reusing stale daemon evidence",
     async () => {
       const root = await mkdtemp(
         path.join(tmpdir(), "docker-entrypoint-rekey-"),
@@ -421,10 +505,10 @@ exit 1
       await writeExecutable(path.join(binDir, "id"), ID_ROOT_FIXTURE);
       await writeExecutable(
         path.join(binDir, "tailscaled"),
-        tailscaledFixture(socketPath),
+        tailscaledAuthUrlFixture(socketPath),
       );
-      // First `up` (baked key) -> auth expired; second `up` (fresh key) -> ok.
-      // A counter file distinguishes the two invocations.
+      // First `up` (baked key) blocks while the daemon reports AuthURL; the
+      // second `up` (fresh key) succeeds. A counter distinguishes the calls.
       await writeExecutable(
         path.join(binDir, "tailscale"),
         `#!/bin/sh
@@ -435,8 +519,7 @@ n=0
 n=$((n + 1))
 printf '%s' "$n" > "$count_file"
 if [ "$n" -eq 1 ]; then
-  echo "Received error: authkey expired" >&2
-  exit 1
+  exec sleep 30
 fi
 exit 0
 `,
@@ -467,6 +550,7 @@ exit 0
 
       expect(result.code).toBe(0);
       expect(result.stdout).toBe("app-started");
+      expect(result.stderr).not.toContain("private-node-token");
       const args = await readFile(argsLog, "utf8");
       expect(args).toContain(`--auth-key=${KEY_LONG_EXPIRED}`);
       expect(args).toContain(`--auth-key=${KEY_FRESH_FROM_HOOK}`);
@@ -581,7 +665,9 @@ exec "$@"
   testIfLinux(
     "uses the auth key when tailscaled creates fresh state before its socket",
     async () => {
-      const root = await mkdtemp(path.join(tmpdir(), "cloud-entrypoint-fresh-state-"));
+      const root = await mkdtemp(
+        path.join(tmpdir(), "cloud-entrypoint-fresh-state-"),
+      );
       const binDir = path.join(root, "bin");
       const stateDir = path.join(root, "state");
       const socketPath = path.join(root, "tailscaled.sock");
@@ -624,6 +710,59 @@ exec "$@"
       const args = await readFile(argsLog, "utf8");
       expect(args.match(/^up$/gm)).toHaveLength(1);
       expect(args).toContain(`--auth-key=${KEY_CLOUD_TEST}`);
+    },
+  );
+
+  testIfLinux(
+    "fails an interactive Headscale AuthURL before privilege drop or app startup",
+    async () => {
+      const root = await mkdtemp(
+        path.join(tmpdir(), "cloud-entrypoint-authurl-"),
+      );
+      const binDir = path.join(root, "bin");
+      const stateDir = path.join(root, "state");
+      const socketPath = path.join(root, "tailscaled.sock");
+      const argsLog = path.join(root, "tailscale-args.log");
+      await mkdir(binDir, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
+      await writeExecutable(path.join(binDir, "id"), ID_ROOT_FIXTURE);
+      await writeExecutable(
+        path.join(binDir, "tailscaled"),
+        tailscaledAuthUrlFixture(socketPath),
+      );
+      await writeExecutable(
+        path.join(binDir, "tailscale"),
+        TAILSCALE_AUTH_URL_HANG_FIXTURE,
+      );
+
+      const startedAt = Date.now();
+      const result = runEntrypoint(
+        {
+          PATH: `${binDir}:/usr/bin:/bin`,
+          TS_AUTHKEY: KEY_LONG_EXPIRED,
+          TS_UP_TIMEOUT_SECONDS: "5",
+          SANDBOX_AGENT_ID: "agent-cloud-authurl",
+          TS_STATE_DIR: stateDir,
+          TS_SOCKET: socketPath,
+          HEADSCALE_URL: "https://headscale.example.test",
+          TAILSCALE_ARGS_LOG: argsLog,
+        },
+        ["/bin/sh", "-c", "printf should-not-start"],
+      );
+
+      expect(Date.now() - startedAt).toBeLessThan(3_000);
+      expect(result).toMatchObject({ code: 78, stdout: "" });
+      expect(result.stderr).toContain(
+        "interactive authorization (AuthURL/NeedsLogin)",
+      );
+      expect(result.stderr).not.toContain("private-node-token");
+      expect(result.stderr).toContain("node needs re-keying");
+      await expect(
+        readFile(path.join(stateDir, "authkey-expired"), "utf8"),
+      ).resolves.toContain("hostname=agent-cloud-authurl");
+      const args = await readFile(argsLog, "utf8");
+      expect(args).toContain("--json");
+      expect(args).toContain("--timeout=5s");
     },
   );
 });
