@@ -441,63 +441,65 @@ export function MediaGalleryView({
   const mediaSidebar = (
     <AppPageSidebar testId="media-sidebar" collapsible contentIdentity="media">
       <SidebarPanel>
-        <div className="space-y-3 pt-4">
-          {leftNav}
-          <PagePanel.SummaryCard>
-            <div className="text-sm font-semibold text-txt">
-              {filtered.length === 1
-                ? t("mediagalleryview.ItemCountOne", {
-                    count: filtered.length,
-                    defaultValue: "{{count}} item",
-                  })
-                : t("mediagalleryview.ItemCountMany", {
-                    count: filtered.length,
-                    defaultValue: "{{count}} items",
-                  })}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/75">
-              <MetaPill>
-                {filter === "all"
-                  ? t("mediagalleryview.AllMedia", {
-                      defaultValue: "All media",
+        <div className="[@media(orientation:landscape)_and_(max-height:520px)]:grid [@media(orientation:landscape)_and_(max-height:520px)]:grid-cols-2 [@media(orientation:landscape)_and_(max-height:520px)]:gap-4">
+          <div className="space-y-3 pt-4">
+            {leftNav}
+            <PagePanel.SummaryCard>
+              <div className="text-sm font-semibold text-txt">
+                {filtered.length === 1
+                  ? t("mediagalleryview.ItemCountOne", {
+                      count: filtered.length,
+                      defaultValue: "{{count}} item",
                     })
-                  : mediaTypeLabel(t, filter)}
-              </MetaPill>
-            </div>
-            <ChatSearchHint noun="media" query={search} className="mt-3" />
-          </PagePanel.SummaryCard>
-        </div>
+                  : t("mediagalleryview.ItemCountMany", {
+                      count: filtered.length,
+                      defaultValue: "{{count}} items",
+                    })}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/75">
+                <MetaPill>
+                  {filter === "all"
+                    ? t("mediagalleryview.AllMedia", {
+                        defaultValue: "All media",
+                      })
+                    : mediaTypeLabel(t, filter)}
+                </MetaPill>
+              </div>
+              <ChatSearchHint noun="media" query={search} className="mt-3" />
+            </PagePanel.SummaryCard>
+          </div>
 
-        <div className="space-y-3 pt-4">
-          <div className="space-y-1.5">
-            <div
-              id="media-type-filter-label"
-              className="px-1 text-xs font-medium text-muted"
-            >
-              Media type
-            </div>
-            <Select
-              value={filter}
-              onValueChange={(value) => {
-                if (isMediaType(value)) setFilter(value);
-              }}
-            >
-              <SelectTrigger
-                ref={filterRef}
-                className="w-full"
-                aria-labelledby="media-type-filter-label"
-                {...filterAgentProps}
+          <div className="space-y-3 pt-4">
+            <div className="space-y-1.5">
+              <div
+                id="media-type-filter-label"
+                className="px-1 text-xs font-medium text-muted"
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MEDIA_TYPES.map((chip) => (
-                  <SelectItem key={chip} value={chip}>
-                    {mediaTypeLabel(t, chip)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                Media type
+              </div>
+              <Select
+                value={filter}
+                onValueChange={(value) => {
+                  if (isMediaType(value)) setFilter(value);
+                }}
+              >
+                <SelectTrigger
+                  ref={filterRef}
+                  className="w-full"
+                  aria-labelledby="media-type-filter-label"
+                  {...filterAgentProps}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MEDIA_TYPES.map((chip) => (
+                    <SelectItem key={chip} value={chip}>
+                      {mediaTypeLabel(t, chip)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 

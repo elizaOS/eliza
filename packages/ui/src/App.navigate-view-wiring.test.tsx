@@ -782,10 +782,10 @@ describe("App navigate-view event wiring", () => {
     );
     expect(clearanceOwners).toEqual([automations]);
     expect(automations.getAttribute("data-chat-clearance-aware")).toBe("true");
-    expect(automations.className).toContain(
+    expect(automations.className).not.toContain(
       "pe-[var(--eliza-chat-side-clearance,0px)]",
     );
-    expect(automations.className).toContain(
+    expect(automations.className).not.toContain(
       "[@media(orientation:landscape)_and_(max-height:520px)]:pb-0",
     );
 
@@ -910,7 +910,7 @@ describe("App navigate-view event wiring", () => {
     expect(settingsPageContent?.className).toContain(
       "pb-[var(--eliza-chat-clearance,5.25rem)]",
     );
-    expect(settingsPageContent?.className).toContain(
+    expect(settingsPageContent?.className).not.toContain(
       "pe-[var(--eliza-chat-side-clearance,0px)]",
     );
     expect(settingsPageContent?.className).toContain("settings-surface");
@@ -994,7 +994,7 @@ describe("App navigate-view event wiring", () => {
       container
         .querySelector('[data-shell-content-region="true"] [data-page-content]')
         ?.className.includes("pe-[var(--eliza-chat-side-clearance"),
-    ).toBe(true);
+    ).toBe(false);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
   });

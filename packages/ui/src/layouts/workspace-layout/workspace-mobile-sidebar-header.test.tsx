@@ -15,6 +15,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -124,7 +125,7 @@ describe("mobile sidebar header trigger", () => {
     expect(trigger.closest("main")).toBeNull();
   });
 
-  it("header trigger opens the drawer, hides while open, and returns on close", () => {
+  it("header trigger opens the drawer, hides while open, and returns on close", async () => {
     mockViewport({ desktop: false });
     render(<ScopedFixture />);
 
@@ -132,10 +133,15 @@ describe("mobile sidebar header trigger", () => {
       screen.queryByTestId("page-layout-mobile-sidebar-drawer"),
     ).toBeNull();
 
-    fireEvent.click(screen.getByTestId("page-layout-mobile-sidebar-trigger"));
+    const opener = screen.getByTestId("page-layout-mobile-sidebar-trigger");
+    opener.focus();
+    fireEvent.click(opener);
 
     const drawer = screen.getByTestId("page-layout-mobile-sidebar-drawer");
     expect(within(drawer).getByText("sidebar body")).not.toBeNull();
+    expect(document.activeElement).toBe(
+      within(drawer).getByTestId("conversations-mobile-close"),
+    );
     // Drawer owns the close affordance; the header trigger steps aside.
     expect(
       screen.queryByTestId("page-layout-mobile-sidebar-trigger"),
@@ -149,6 +155,11 @@ describe("mobile sidebar header trigger", () => {
     expect(
       screen.getByTestId("page-layout-mobile-sidebar-trigger").textContent,
     ).toContain("People");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByTestId("page-layout-mobile-sidebar-trigger"),
+      );
+    });
   });
 
   it("desktop renders the sidebar inline with no trigger anywhere", () => {
