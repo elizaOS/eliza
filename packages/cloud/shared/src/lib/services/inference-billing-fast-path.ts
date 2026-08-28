@@ -16,6 +16,7 @@ import { apiKeysService } from "./api-keys";
 import { type CreditReconciliationResult, creditsService } from "./credits";
 import {
   invalidateOrgBalanceHint,
+  lowerOrgBalanceHint,
   readOrgBalanceHint,
   writeOrgBalanceHint,
 } from "./inference-auth-cache";
@@ -446,11 +447,6 @@ export async function debitInferenceCost(
         persistedAmountUsd,
       });
     }
-    // Replace the preserved handoff hint (DO-fenced Worker lane), or seed the
-    // entry normal invalidation evicted (legacy lane), with authoritative
-    // balance + revision so the NEXT turn stays warm. The revision-aware
-    // Durable Object remains the Worker dispatch authority if concurrent cache
-    // writers arrive out of order.
     try {
       await republishOrgBalanceHintAfterDebit(
         ctx.organizationId,

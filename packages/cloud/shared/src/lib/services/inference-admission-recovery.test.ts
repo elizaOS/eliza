@@ -195,6 +195,7 @@ test("affiliate recovery replays the atomic debit and payout identity", async ()
     provider: "openai",
     billingSource: "gateway",
     actualCost: 0.3,
+    preserveInferenceBalanceHint: true,
     reservationMetadata: {
       tenantTrace: "trace-1",
       affiliatePayout: {
