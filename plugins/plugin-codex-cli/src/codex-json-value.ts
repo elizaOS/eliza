@@ -70,6 +70,11 @@ export function isJsonRecord(value: unknown): value is Record<string, JsonValue>
   if (value === null || typeof value !== "object") {
     return false;
   }
+  // Arrays are JSON values but not records; the caller distinguishes the two
+  // shapes before treating the value as a keyed parameter object.
+  if (isArrayRecord(value)) {
+    return false;
+  }
   return walkJsonValue(value, 0, {
     visits: 0,
     visiting: new WeakSet<object>(),
