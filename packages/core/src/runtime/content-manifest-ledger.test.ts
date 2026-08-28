@@ -341,6 +341,18 @@ describe("publishManifestLedger / loadManifestLedger", () => {
 		).toThrow(/exceeds the configured byte bound even alone/);
 	});
 
+	it("mutant HEADSWAP: a head whose ledgerSha256 does not match the shard tail is detected", async () => {
+		const { store } = await publishForMutants();
+		const headKey = manifestHeadKey(LEDGER);
+		const head = (await store.getCache(headKey)) as ManifestHead;
+		// Shards untouched and internally consistent, so the per-shard chain
+		// check still passes. Only the HEAD row diverges.
+		store.put(headKey, { ...head, ledgerSha256: "f".repeat(64) });
+		await expect(loadManifestLedger(store, LEDGER)).rejects.toThrow(
+			ContentManifestIntegrityError,
+		);
+	});
+
 	// ── R3 follow-ups: deterministic idempotency + revision normalization ──
 
 	it("idempotency survives a clock advance between identical publications", async () => {
