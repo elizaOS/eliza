@@ -773,12 +773,18 @@ async function reassembleSegmentedAttachmentContent(
 	}
 
 	// error-policy:J4 access-context resolution failure degrades reassembly to
-	// requester-only authority — still authorized, never unrestricted; the
+	// requester-only authority — never unrestricted — and is reported so the
+	// degrade is observable (RECENT_ERRORS + ERROR_REPORTED), not silent; the
 	// page read itself surfaces any residual failure through its typed errors.
 	const accessContext = await buildAccessContext(runtime, message).catch(
-		() => ({
-			requesterEntityId: message.entityId as UUID,
-		}),
+		(error) => {
+			runtime.reportError("ATTACHMENT.saveSegmented.accessContext", error, {
+				attachmentIds: records.map((record) => record.attachment.id),
+			});
+			return {
+				requesterEntityId: message.entityId as UUID,
+			};
+		},
 	);
 
 	const reassembled: AttachmentRecord[] = [];
