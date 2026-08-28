@@ -1218,10 +1218,13 @@ export const readAttachmentAction: Action = {
 			const pageCapable = hasMemoryContentPageCapability(runtime)
 				? runtime.getMemoryContentPage
 				: null;
+			// #25140 review R4 r2: detect the marker on the ORIGINAL record
+			// content — pageAttachmentRecords may slice the prefix away (small
+			// limit, nonzero continuation offset), which would make the truncated
+			// descriptor leak into the inline answer path undetected.
 			const segmentedRecord =
-				pagedRecords.length === 1 &&
-				isSegmentedContentMarker(pagedRecords[0].content)
-					? pagedRecords[0]
+				records.length === 1 && isSegmentedContentMarker(records[0].content)
+					? records[0]
 					: null;
 			// #25140 review R4: the inline text of a segmented record is an
 			// internal storage descriptor, never attachment content. When it
@@ -1390,6 +1393,30 @@ export const readAttachmentAction: Action = {
 							action: "read",
 							attachmentId,
 							readView,
+						},
+					};
+				}
+				// page === null with a segmented record: the adapter found no
+				// authorized parent row (revoked access, room move, concurrent
+				// cleanup). The marker is an internal descriptor, so fail
+				// explicitly — never fall through to serving it inline.
+				// (#25140 review R4 r2)
+				if (segmentedRecord) {
+					return {
+						success: false,
+						text: "The segmented attachment is no longer available from storage, so it can't be read directly.",
+						error: "ATTACHMENT_SEGMENTED_PAGE_UNAVAILABLE",
+						data: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "segmented_page_unavailable",
+							attachmentId: segmentedRecord.attachment.id,
+						},
+						promptData: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "segmented_page_unavailable",
+							attachmentId: segmentedRecord.attachment.id,
 						},
 					};
 				}

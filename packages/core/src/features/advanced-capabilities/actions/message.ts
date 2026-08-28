@@ -3617,6 +3617,16 @@ async function handleReadStoredMemory(
 				promptData: metadata,
 			};
 		}
+		// page === null with a segmented marker source: the adapter found no
+		// authorized parent row (revoked access, concurrent cleanup). The
+		// marker is an internal descriptor — fail explicitly rather than
+		// continue below and return it as action text. (#25140 review R4 r2)
+		if (page === null && isSegmentedContentMarker(sourceText)) {
+			return memoryReadFailure(
+				"MESSAGE_MEMORY_SEGMENTED_PAGE_UNAVAILABLE",
+				"This stored message's segmented content is no longer available from storage, so it can't be read directly.",
+			);
+		}
 		// page === null: no descriptor and inline fits — continue below on the
 		// marker-free inline value.
 	}
