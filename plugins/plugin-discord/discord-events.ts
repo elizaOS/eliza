@@ -1719,11 +1719,16 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			if (oldMember.partial) {
 				try {
 					fullOldMember = await oldMember.fetch();
-				} catch {
-					// error-policy:J3 untrusted-input sanitizing: a partial
-					// member whose pre-change state cannot be fetched cannot
-					// be diffed; skip this transition rather than publish a
-					// delta fabricated from the post-change state alone.
+				} catch (error) {
+					// error-policy:J7 the pre-change state is unavailable, so
+					// this transition cannot be diffed and is skipped — but a
+					// fetch failure that silently drops permission evidence
+					// must be observable, not mute.
+					service.runtime.reportError(
+						"discord:membership-guild-member-update-prefetch",
+						error instanceof Error ? error : new Error(String(error)),
+						{ accountId, memberId: oldMember?.id },
+					);
 					return;
 				}
 			}
