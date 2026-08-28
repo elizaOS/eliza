@@ -317,9 +317,7 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
 
       const callsBefore = prepCalls;
       await expect(
-        svc.createTierUpgradeTargetWithProvision(
-          upgradeParams(SRC_RETAINED_AUTHORITY),
-        ),
+        svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_RETAINED_AUTHORITY)),
       ).rejects.toMatchObject({
         name: "PersonalDedicatedAuthorityRetainedError",
         code: "PERSONAL_DEDICATED_AUTHORITY_RETAINED",
@@ -331,12 +329,7 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
         await dbWrite
           .select()
           .from(personalDedicatedUpgradeAuthorities)
-          .where(
-            eq(
-              personalDedicatedUpgradeAuthorities.source_agent_id,
-              SRC_RETAINED_AUTHORITY,
-            ),
-          ),
+          .where(eq(personalDedicatedUpgradeAuthorities.source_agent_id, SRC_RETAINED_AUTHORITY)),
       ).toHaveLength(1);
       await expectNoOrphanAgentKeys();
     },

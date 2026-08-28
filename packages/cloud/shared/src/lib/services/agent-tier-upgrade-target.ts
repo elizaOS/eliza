@@ -342,10 +342,7 @@ export class PersonalDedicatedAuthorityRetainedError extends ElizaError {
 
 async function assertNoRetainedUpgradeAuthorityInTx(
   tx: DbTransaction,
-  params: Pick<
-    CreateTierUpgradeTargetParams,
-    "organizationId" | "userId" | "sourceAgentId"
-  >,
+  params: Pick<CreateTierUpgradeTargetParams, "organizationId" | "userId" | "sourceAgentId">,
 ): Promise<void> {
   const [authority] = await tx
     .select({ id: personalDedicatedUpgradeAuthorities.id })
