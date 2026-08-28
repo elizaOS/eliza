@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfigPath } from "./paths.ts";
@@ -21,12 +22,15 @@ describe("resolveConfigPath", () => {
 	});
 
 	it("resolves an absolute override verbatim", () => {
+		const absoluteOverride = path.join(
+			path.parse(process.cwd()).root,
+			"etc",
+			"eliza",
+			"custom.json",
+		);
 		expect(
-			resolveConfigPath(
-				{ ELIZA_CONFIG_PATH: "/etc/eliza/custom.json" },
-				stateDir,
-			),
-		).toBe("/etc/eliza/custom.json");
+			resolveConfigPath({ ELIZA_CONFIG_PATH: absoluteOverride }, stateDir),
+		).toBe(absoluteOverride);
 	});
 
 	it("expands a tilde override to the home directory", () => {
@@ -35,7 +39,7 @@ describe("resolveConfigPath", () => {
 			stateDir,
 		);
 		expect(path.isAbsolute(out)).toBe(true);
-		expect(out).toBe(path.join(process.env.HOME ?? "/root", "eliza.json"));
+		expect(out).toBe(path.join(homedir(), "eliza.json"));
 	});
 
 	it("resolves a relative override against cwd", () => {
