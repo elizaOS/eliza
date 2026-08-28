@@ -139,6 +139,454 @@ describe("Shared turn AgentRuntime boundary", () => {
     expect(result.reply).toBe("runtime reply");
   });
 
+  test.each([
+    {
+      message: "Can you clear the list?",
+      previous:
+        "Your reminders:\n• add something to your todo — on Aug 28, 2026 at 3:06 AM Europe/Paris",
+    },
+    {
+      message: "3 06 no 1:06",
+      previous:
+        "Got it — I'll remind you on Aug 28, 2026 at 3:06 AM Europe/Paris: add something to your todo",
+    },
+    {
+      message: "Change the reminder to 3:06, not 1:06",
+      previous:
+        "Got it — I'll remind you on Aug 28, 2026 at 1:06 AM Europe/Paris: add something to your todo",
+    },
+    {
+      message: "Could you please change the reminder to 3:06, not 1:06",
+      previous:
+        "Got it — I'll remind you on Aug 28, 2026 at 1:06 AM Europe/Paris: add something to your todo",
+    },
+    {
+      message: "yes",
+      previous:
+        "Clearing removes every active reminder. Please confirm by replying “yes, clear all reminders”.",
+    },
+    {
+      message: "Oui, je confirme, vas-y",
+      previous:
+        "Clearing removes every active reminder. Please confirm by replying “yes, clear all reminders”.",
+    },
+    {
+      message: "Oui, je confirme, vas-y, efface tous mes rappels",
+      previous:
+        "Clearing removes every active reminder. Please confirm by replying “yes, clear all reminders”.",
+    },
+    {
+      message: "Do it, clear all reminders",
+      previous:
+        "Clearing removes every active reminder. Please confirm by replying “yes, clear all reminders”.",
+    },
+    {
+      message: "Remove the reminder Stretch",
+      previous:
+        "Clearing removes every active reminder. Please confirm by replying “yes, clear all reminders”.",
+    },
+    {
+      message: "the 3:06 one",
+      previous:
+        "More than one reminder matches that. Which one do you mean?\n• Stretch — on Aug 28, 2026 at 3:06 AM Europe/Paris",
+    },
+  ])(
+    "keeps the contextual reminder follow-up '$message' on REMINDERS",
+    async ({ message, previous }) => {
+      runtimeActionResults = [
+        {
+          success: false,
+          data: { actionName: "REMINDERS", operation: "update" },
+        },
+      ];
+      await runSharedAgentTurn({
+        character: { name: "Eliza", system: "You are Eliza." },
+        history: [{ role: "assistant", content: previous }],
+        message,
+        execution: {
+          agentKey: "personal:user-1",
+          roomKey: "personal:user-1",
+          authenticatedPersonalSharedUser: true,
+          channel: { type: ChannelType.DM, source: "telegram" },
+          reminders: {
+            delivery: {
+              platform: "telegram",
+              project: "eliza-app",
+              connectorAccountId: "bot:123456789",
+              chatId: "123456789",
+            },
+            runner: {} as never,
+          },
+        },
+      });
+
+      const prompt = JSON.stringify(runtimeInputs[0]);
+      expect(prompt).toContain("Call REMINDERS before any terminal answer");
+      expect(prompt).not.toContain("Call TODO before any terminal answer");
+      if (
+        message === "3 06 no 1:06" ||
+        message === "Change the reminder to 3:06, not 1:06" ||
+        message === "Could you please change the reminder to 3:06, not 1:06"
+      ) {
+        expect(prompt).toContain("call REMINDERS with operation=update, never operation=create");
+        expect(runtimeInputs[0]?.reminderClockCorrection).toBe(true);
+      }
+      if (
+        message === "Oui, je confirme, vas-y, efface tous mes rappels" ||
+        message === "Do it, clear all reminders"
+      ) {
+        expect(runtimeInputs[0]?.reminderClearConfirmationChallenge).toBe(true);
+      }
+      if (
+        message === "yes" ||
+        message.includes("efface tous mes rappels") ||
+        message === "Do it, clear all reminders"
+      ) {
+        expect(runtimeInputs[0]?.reminderClearAllIntent).toBe(true);
+      }
+      if (message === "Remove the reminder Stretch") {
+        expect(runtimeInputs[0]?.reminderClearAllIntent).toBe(false);
+        expect(runtimeInputs[0]?.reminderOperationIntent).toBe("delete");
+      }
+    },
+  );
+
+  test("classifies an initial clear-list request for the plugin confirmation fence", async () => {
+    runtimeActionResults = [
+      {
+        success: false,
+        data: { actionName: "REMINDERS", operation: "clear" },
+      },
+    ];
+    await runSharedAgentTurn({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "Can you clear the list?",
+      execution: {
+        agentKey: "personal:user-1",
+        roomKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.DM, source: "telegram" },
+        reminders: {
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            connectorAccountId: "bot:123456789",
+            chatId: "123456789",
+          },
+          runner: {} as never,
+        },
+      },
+    });
+
+    expect(runtimeInputs[0]?.reminderClearAllIntent).toBe(true);
+    expect(runtimeInputs[0]?.reminderClearConfirmationChallenge).toBe(false);
+
+    const longMessage = `Clear all my reminders because ${"I no longer need this scheduled item ".repeat(75)}`;
+    expect(longMessage.length).toBeGreaterThan(2_100);
+    expect(longMessage.length).toBeLessThanOrEqual(4_096);
+    await runSharedAgentTurn({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: longMessage,
+      execution: {
+        agentKey: "personal:user-1",
+        roomKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.DM, source: "telegram" },
+        reminders: {
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            connectorAccountId: "bot:123456789",
+            chatId: "123456789",
+          },
+          runner: {} as never,
+        },
+      },
+    });
+    expect(runtimeInputs.at(-1)?.reminderClearAllIntent).toBe(true);
+
+    const overTransportMessage = `Clear all my reminders because ${"this extra app context must not disable the mutation fence ".repeat(90)}`;
+    expect(overTransportMessage.length).toBeGreaterThan(4_096);
+    await runSharedAgentTurn({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: overTransportMessage,
+      execution: {
+        agentKey: "personal:user-1",
+        roomKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.DM, source: "client_chat" },
+        reminders: {
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            connectorAccountId: "bot:123456789",
+            chatId: "123456789",
+          },
+          runner: {} as never,
+        },
+      },
+    });
+    expect(runtimeInputs.at(-1)?.reminderClearAllIntent).toBe(true);
+  });
+
+  test.each(["Don't clear the list", "Explain how to clear all reminders"])(
+    "does not treat negated or discussed clear text as a clear-all command: %s",
+    async (message) => {
+      runtimeActionResults = [
+        {
+          success: false,
+          data: { actionName: "REMINDERS", operation: "list" },
+        },
+      ];
+      await runSharedAgentTurn({
+        character: { name: "Eliza", system: "You are Eliza." },
+        history: [],
+        message,
+        execution: {
+          agentKey: "personal:user-1",
+          roomKey: "personal:user-1",
+          authenticatedPersonalSharedUser: true,
+          channel: { type: ChannelType.DM, source: "telegram" },
+          reminders: {
+            delivery: {
+              platform: "telegram",
+              project: "eliza-app",
+              connectorAccountId: "bot:123456789",
+              chatId: "123456789",
+            },
+            runner: {} as never,
+          },
+        },
+      });
+
+      expect(runtimeInputs.at(-1)?.reminderClearAllIntent).toBe(false);
+    },
+  );
+
+  test.each([
+    ["List my reminders", "list"],
+    ["Show me the reminders", "list"],
+    ["Remind me tomorrow to call mom", "create"],
+    ["Create a reminder to call mom", "create"],
+    ["Remove the reminder add something in my todo", "delete"],
+  ])("derives trusted reminder operation intent for '%s'", async (message, expectedOperation) => {
+    runtimeActionResults = [
+      {
+        success: false,
+        data: { actionName: "REMINDERS", operation: expectedOperation },
+      },
+    ];
+    await runSharedAgentTurn({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message,
+      execution: {
+        agentKey: "personal:user-1",
+        roomKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.DM, source: "telegram" },
+        reminders: {
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            connectorAccountId: "bot:123456789",
+            chatId: "123456789",
+          },
+          runner: {} as never,
+        },
+      },
+    });
+
+    expect(runtimeInputs.at(-1)?.reminderOperationIntent).toBe(expectedOperation);
+  });
+
+  test.each(["Don't remind me at 3pm", "Can you explain how to remind me at 3pm?"])(
+    "does not trust negated or discussed create intent: %s",
+    async (message) => {
+      runtimeActionResults = [
+        {
+          success: false,
+          data: { actionName: "REMINDERS", operation: "create" },
+        },
+      ];
+      await runSharedAgentTurn({
+        character: { name: "Eliza", system: "You are Eliza." },
+        history: [],
+        message,
+        execution: {
+          agentKey: "personal:user-1",
+          roomKey: "personal:user-1",
+          authenticatedPersonalSharedUser: true,
+          channel: { type: ChannelType.DM, source: "telegram" },
+          reminders: {
+            delivery: {
+              platform: "telegram",
+              project: "eliza-app",
+              connectorAccountId: "bot:123456789",
+              chatId: "123456789",
+            },
+            runner: {} as never,
+          },
+        },
+      });
+
+      expect(runtimeInputs.at(-1)?.reminderOperationIntent).toBeUndefined();
+    },
+  );
+
+  test("keeps a long explicit create request inside the trusted operation fence", async () => {
+    runtimeActionResults = [
+      {
+        success: false,
+        data: { actionName: "REMINDERS", operation: "create" },
+      },
+    ];
+    const message = `Remind me tomorrow to ${"review the detailed checklist ".repeat(50)}`;
+    expect(message.length).toBeGreaterThan(120);
+    expect(message.length).toBeLessThan(2_000);
+
+    await runSharedAgentTurn({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message,
+      execution: {
+        agentKey: "personal:user-1",
+        roomKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.DM, source: "telegram" },
+        reminders: {
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            connectorAccountId: "bot:123456789",
+            chatId: "123456789",
+          },
+          runner: {} as never,
+        },
+      },
+    });
+
+    expect(runtimeInputs.at(-1)?.reminderOperationIntent).toBe("create");
+  });
+
+  test.each([
+    {
+      message: "Remind me at 3:06, not 1:06, to call mom",
+      provenance: "reminderClockCorrection",
+      history: [],
+    },
+    {
+      message: "Remind me at 3:06, not 1:06, to call mom",
+      provenance: "reminderClockCorrection",
+      history: [
+        {
+          role: "assistant" as const,
+          content: "Got it — I'll remind you tomorrow: stretch",
+        },
+      ],
+    },
+    {
+      message: "yes, clear all reminders",
+      provenance: "reminderClearConfirmationChallenge",
+      history: [],
+    },
+    {
+      message: "yes, clear all reminders",
+      provenance: "reminderClearConfirmationChallenge",
+      history: [
+        {
+          role: "assistant" as const,
+          content: "Got it — I'll remind you tomorrow: stretch",
+        },
+      ],
+    },
+    {
+      message: "yes, clear all reminders",
+      provenance: "reminderClearConfirmationChallenge",
+      history: [
+        {
+          role: "assistant" as const,
+          content: "Clearing removes every active reminder. Done.",
+        },
+      ],
+    },
+  ])(
+    "does not trust first-turn text as server mutation provenance: $message",
+    async ({ message, provenance, history }) => {
+      runtimeActionResults = [
+        {
+          success: false,
+          data: { actionName: "REMINDERS", operation: "update" },
+        },
+      ];
+      await runSharedAgentTurn({
+        character: { name: "Eliza", system: "You are Eliza." },
+        history,
+        message,
+        execution: {
+          agentKey: "personal:user-1",
+          roomKey: "personal:user-1",
+          authenticatedPersonalSharedUser: true,
+          channel: { type: ChannelType.DM, source: "telegram" },
+          reminders: {
+            delivery: {
+              platform: "telegram",
+              project: "eliza-app",
+              connectorAccountId: "bot:123456789",
+              chatId: "123456789",
+            },
+            runner: {} as never,
+          },
+        },
+      });
+
+      expect(runtimeInputs.at(-1)?.[provenance]).toBe(false);
+      expect(JSON.stringify(runtimeInputs.at(-1))).not.toContain(
+        "operation=update, never operation=create",
+      );
+    },
+  );
+
+  test.each(["Clean the reminder list please", "Remove the reminder add something in my todo"])(
+    "routes the exact reminder phrase to REMINDERS when Todo is enabled too: %s",
+    async (message) => {
+      runtimeActionResults = [
+        {
+          success: false,
+          data: { actionName: "REMINDERS", operation: "delete" },
+        },
+      ];
+      await runSharedAgentTurn({
+        character: { name: "Eliza", system: "You are Eliza." },
+        history: [],
+        message,
+        execution: {
+          agentKey: "personal:user-1",
+          roomKey: "personal:user-1",
+          authenticatedPersonalSharedUser: true,
+          channel: { type: ChannelType.DM, source: "telegram" },
+          todos: {} as never,
+          reminders: {
+            delivery: {
+              platform: "telegram",
+              project: "eliza-app",
+              connectorAccountId: "bot:123456789",
+              chatId: "123456789",
+            },
+            runner: {} as never,
+          },
+        },
+      });
+
+      const prompt = JSON.stringify(runtimeInputs[0]);
+      expect(prompt).toContain("Call REMINDERS before any terminal answer");
+      expect(prompt).not.toContain("Call TODO before any terminal answer");
+    },
+  );
+
   test("requires a grounded media action result instead of accepting a model-invented tool failure", async () => {
     const mediaInput = {
       character: { name: "Eliza", system: "You are Eliza." },
@@ -210,6 +658,60 @@ describe("Shared turn AgentRuntime boundary", () => {
     const parts = [];
     if (!result.parts) throw new Error("Expected buffered media parts");
     for await (const part of result.parts) parts.push(part);
+    expect(parts.at(-1)).toMatchObject({
+      type: "finish",
+      actionResults: runtimeActionResults,
+    });
+  });
+
+  test("buffers reminder streams and emits no delta without the required grounded action result", async () => {
+    const input = {
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [
+        {
+          role: "assistant" as const,
+          content:
+            "Clearing removes every active reminder. Please confirm by replying “yes, clear all reminders”.",
+        },
+      ],
+      message: "yes, clear all reminders",
+      execution: {
+        agentKey: "personal:user-1",
+        roomKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true as const,
+        channel: { type: ChannelType.DM, source: "telegram" },
+        reminders: {
+          delivery: {
+            platform: "telegram" as const,
+            project: "eliza-app",
+            connectorAccountId: "bot:123456789",
+            chatId: "123456789",
+          },
+          runner: {} as never,
+        },
+      },
+    };
+    const observedParts: unknown[] = [];
+    const streamError = (await runSharedAgentTurnStream(input).catch(
+      (error) => error as Error,
+    )) as Error;
+    expect(streamError.message).toContain("AgentRuntime turn failed");
+    expect((streamError.cause as Error).message).toContain(
+      "executable REMINDERS request without an action result",
+    );
+    expect(observedParts).toHaveLength(0);
+    expect(streamInputs).toHaveLength(0);
+
+    runtimeActionResults = [
+      {
+        success: false,
+        data: { actionName: "REMINDERS", operation: "clear" },
+      },
+    ];
+    const grounded = await runSharedAgentTurnStream(input);
+    const parts = [];
+    if (!grounded.parts) throw new Error("Expected grounded reminder stream parts");
+    for await (const part of grounded.parts) parts.push(part);
     expect(parts.at(-1)).toMatchObject({
       type: "finish",
       actionResults: runtimeActionResults,

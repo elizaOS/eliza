@@ -327,6 +327,7 @@ function buildSharedRuntimeSystem(
   recallContext?: string,
   blockedCapabilities: SharedCapabilityWall[] = [],
   requiredAction?: RequiredSharedAction,
+  reminderClockCorrection = false,
   realtimeGrounding?: SharedRuntimePublicGrounding,
 ): string {
   const parts: string[] = [];
@@ -364,6 +365,9 @@ function buildSharedRuntimeSystem(
       "Current-turn execution requirement:\n" +
         `- The user's current message is an executable ${requestLabel} request, and ${requiredAction} is available for this verified account.\n` +
         `- Call ${requiredAction} before any terminal answer. ${ungroundedClaim}\n` +
+        (requiredAction === "REMINDERS" && reminderClockCorrection
+          ? "- This turn corrects an existing reminder clock time: call REMINDERS with operation=update, never operation=create.\n"
+          : "") +
         `- If the request is incomplete or cannot be applied, call ${requiredAction} anyway and use its grounded clarification or failure result; never invent success.`,
     );
   }
@@ -419,7 +423,14 @@ function hasRequiredActionResult(
   turn: RunSharedAgentTurnResult,
   actionName: RequiredSharedAction,
 ): boolean {
-  return Boolean(turn.actionResults?.some((result) => result.data?.actionName === actionName));
+  return hasNamedActionResult(turn.actionResults, actionName);
+}
+
+function hasNamedActionResult(
+  results: ActionResult[] | undefined,
+  actionName: RequiredSharedAction,
+): boolean {
+  return Boolean(results?.some((result) => result.data?.actionName === actionName));
 }
 
 function isWebSearchActionResult(result: ActionResult): boolean {
@@ -526,11 +537,182 @@ async function commitSharedTurnMemory(
   });
 }
 
+function hasGroundedReminderPredecessor(history: SharedTurnMessage[]): boolean {
+  const previous = history.at(-1);
+  if (previous?.role !== "assistant") return false;
+  return /^(?:Your reminders:|You have no (?:active )?reminders?\.|Got it — I'll remind|That reminder is already set|Reminder (?:snoozed|completed|dismissed|deleted)|Updated reminder:|Cleared \d+ reminders?\.|Clearing removes every active reminder\.|More than one reminder matches)/iu.test(
+    previous.content.trim(),
+  );
+}
+
+function hasGroundedReminderScheduleConfirmation(history: SharedTurnMessage[]): boolean {
+  const previous = history.at(-1);
+  return (
+    previous?.role === "assistant" &&
+    /^(?:Got it — I'll remind|That reminder is already set|Updated reminder:)/iu.test(
+      previous.content.trim(),
+    )
+  );
+}
+
+const REMINDER_CLEAR_CONFIRMATION_CHALLENGE =
+  "Clearing removes every active reminder. Please confirm by replying “yes, clear all reminders”.";
+
+function hasGroundedReminderClearChallenge(history: SharedTurnMessage[]): boolean {
+  const previous = history.at(-1);
+  return (
+    previous?.role === "assistant" &&
+    previous.content.trim() === REMINDER_CLEAR_CONFIRMATION_CHALLENGE
+  );
+}
+
+function isReminderClockCorrectionText(text: string): boolean {
+  return (
+    /\b\d{1,2}(?::\d{2}|\s+\d{2}|\s*(?:am|pm))\b/iu.test(text) &&
+    /\b(?:no|not|actually|instead|meant|change|make\s+that)\b/iu.test(text)
+  );
+}
+
+function normalizedShortReminderCommand(text: string): string | undefined {
+  const normalized = text
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return normalized && normalized.length <= 120 ? normalized : undefined;
+}
+
+function normalizedReminderOperationCommand(text: string): string | undefined {
+  const normalized = text
+    .slice(0, 4_096)
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return normalized || undefined;
+}
+
+const POSITIVE_REMINDER_COMMAND_PREFIX = "(?:(?:can|could|would) you (?:please )?|please )?";
+
+function isExplicitReminderClearAllIntent(text: string): boolean {
+  const normalized = normalizedReminderOperationCommand(text);
+  if (!normalized) return false;
+  const confirmation =
+    "(?:yes|yep|oui|confirm|confirmed|confirmé|confirmée|i confirm|je confirme|do it|go ahead|vas y|allez y)";
+  const clearCommand =
+    "(?:(?:clear|clean|delete|remove) (?:(?:all (?:(?:my|the) )?|my )reminders|the reminder list|the list)|(?:efface|supprime|vide) (?:tous mes rappels|la liste des rappels))";
+  return new RegExp(
+    `^(?:${confirmation} )*${POSITIVE_REMINDER_COMMAND_PREFIX}${clearCommand}\\b(?: .*)?$`,
+    "iu",
+  ).test(normalized);
+}
+
+function isShortReminderClearConfirmation(text: string): boolean {
+  const normalized = normalizedShortReminderCommand(text);
+  return Boolean(
+    normalized &&
+      /^(?:(?:yes|yep|oui|confirm(?:ed)?|confirmé|confirmée|i confirm|je confirme|do it|go ahead|vas y|allez y)(?: |$))+$/iu.test(
+        normalized,
+      ),
+  );
+}
+
+function isExplicitReminderCreationIntent(text: string): boolean {
+  const normalized = normalizedReminderOperationCommand(text);
+  if (!normalized) return false;
+  if (
+    new RegExp(
+      `^${POSITIVE_REMINDER_COMMAND_PREFIX}(?:set|create|add|schedule) (?:me )?(?:(?:a|an|new|another) )?reminder(?: .*)?$`,
+      "iu",
+    ).test(normalized)
+  ) {
+    return true;
+  }
+  const scheduleCue =
+    /\b(?:today|tomorrow|tonight|noon|midnight|next (?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in \d+ (?:minute|minutes|hour|hours|day|days|week|weeks)|at \d{1,2}(?: \d{2})?(?: am| pm)?|\d{1,2}(?: \d{2})? (?:am|pm)|every (?:day|weekday|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d+ (?:minute|minutes|hour|hours|day|days|week|weeks))|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}(?: \d{1,2})?))\b/iu;
+  if (!scheduleCue.test(normalized)) return false;
+  return new RegExp(`^${POSITIVE_REMINDER_COMMAND_PREFIX}remind me\\b.+$`, "iu").test(normalized);
+}
+
+function isExplicitReminderUpdateIntent(text: string): boolean {
+  const normalized = normalizedReminderOperationCommand(text);
+  return Boolean(
+    normalized &&
+      new RegExp(
+        `^${POSITIVE_REMINDER_COMMAND_PREFIX}(?:change|update|edit|reschedule) (?:the |my )?reminder\\b`,
+        "iu",
+      ).test(normalized),
+  );
+}
+
+function trustedReminderOperationIntent(text: string): "create" | "list" | "delete" | undefined {
+  const normalized = normalizedReminderOperationCommand(text);
+  if (!normalized || isExplicitReminderClearAllIntent(text)) return undefined;
+  if (isExplicitReminderCreationIntent(text)) return "create";
+  if (
+    /^(?:(?:can|could|would) you (?:please )?|please )?(?:(?:list|show)(?: me)?(?: all)?(?: (?:the|my))? reminders|what reminders do i have|do i have any reminders)(?: please)?$/iu.test(
+      normalized,
+    )
+  ) {
+    return "list";
+  }
+  if (
+    /^(?:(?:can|could|would) you (?:please )?|please )?(?:remove|delete|dismiss|cancel) (?:the )?reminder(?: (?:named|called))? .+(?: please)?$/iu.test(
+      normalized,
+    )
+  ) {
+    return "delete";
+  }
+  return undefined;
+}
+
+function isContextualReminderFollowup(input: RunSharedAgentTurnInput): boolean {
+  if (!hasGroundedReminderPredecessor(input.history)) return false;
+  const text = (input.capabilityText ?? input.message).trim();
+  if (!text) return false;
+  const normalizedConfirmation = text
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (
+    normalizedConfirmation.length <= 120 &&
+    /^(?:(?:yes|yep|oui|confirm(?:ed)?|confirmé|confirmée|i confirm|je confirme|do it|go ahead|vas y|allez y)(?: |$))+$/iu.test(
+      normalizedConfirmation,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /^(?:(?:can|could|would)\s+you\s+|please\s+)?(?:clear|clean|remove|delete|dismiss|cancel|update|change|edit|reschedule|snooze|complete)\b[\s\S]{0,80}$/iu.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (/\b(?:efface|supprime|vide)\s+(?:tous mes rappels|la liste des rappels)\b/iu.test(text)) {
+    return true;
+  }
+  if (
+    /^(?:(?:the\s+)?(?:\d{1,2}:\d{2}(?:\s*(?:am|pm))?|first|second|third|1st|2nd|3rd)(?:\s+one)?)$/iu.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  return isReminderClockCorrectionText(text);
+}
+
 function capabilityResolution(
   input: RunSharedAgentTurnInput,
   capabilities: { reminders: boolean; todos: boolean },
+  explicit: SharedCapabilityResolution | null,
 ): SharedCapabilityResolution | null {
-  return resolveSharedCapabilityIntent(input.capabilityText ?? input.message, capabilities);
+  if (explicit || !isContextualReminderFollowup(input)) return explicit;
+  return resolveSharedCapabilityIntent("update reminder", capabilities);
 }
 
 function withCapabilityResolution(
@@ -576,8 +758,21 @@ export async function runSharedAgentTurn(
     reminders: remindersEnabled,
     todos: todosEnabled,
   };
-  const resolution = capabilityResolution(input, capabilities);
+  const reminderIntentText = input.capabilityText ?? input.message;
+  const explicitResolution = resolveSharedCapabilityIntent(reminderIntentText, capabilities);
+  const resolution = capabilityResolution(input, capabilities, explicitResolution);
   const requiredAction = requiredActionForTurn(input, resolution, actionsEnabled);
+  const reminderClockCorrection =
+    requiredAction === "REMINDERS" &&
+    hasGroundedReminderScheduleConfirmation(input.history) &&
+    isReminderClockCorrectionText(reminderIntentText) &&
+    (!explicitResolution || isExplicitReminderUpdateIntent(reminderIntentText)) &&
+    !isExplicitReminderCreationIntent(reminderIntentText);
+  const reminderClearConfirmationChallenge = hasGroundedReminderClearChallenge(input.history);
+  const reminderClearAllIntent =
+    isExplicitReminderClearAllIntent(reminderIntentText) ||
+    (reminderClearConfirmationChallenge && isShortReminderClearConfirmation(reminderIntentText));
+  const reminderOperationIntent = trustedReminderOperationIntent(reminderIntentText);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
@@ -656,12 +851,17 @@ export async function runSharedAgentTurn(
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,
             requiredAction,
+            reminderClockCorrection,
             realtimeGrounding,
           ),
         },
         execution,
         agentKey: execution.agentKey,
         model: modelId,
+        reminderClockCorrection,
+        reminderClearConfirmationChallenge,
+        reminderClearAllIntent,
+        reminderOperationIntent,
         ...(realtimeGrounding ? { realtimeGrounding } : {}),
         ...(realtimeActionResults ? { preflightActionResults: realtimeActionResults } : {}),
       }),
@@ -766,8 +966,21 @@ export async function runSharedAgentTurnStream(
     reminders: remindersEnabled,
     todos: todosEnabled,
   };
-  const resolution = capabilityResolution(input, capabilities);
+  const reminderIntentText = input.capabilityText ?? input.message;
+  const explicitResolution = resolveSharedCapabilityIntent(reminderIntentText, capabilities);
+  const resolution = capabilityResolution(input, capabilities, explicitResolution);
   const requiredAction = requiredActionForTurn(input, resolution, actionsEnabled);
+  const reminderClockCorrection =
+    requiredAction === "REMINDERS" &&
+    hasGroundedReminderScheduleConfirmation(input.history) &&
+    isReminderClockCorrectionText(reminderIntentText) &&
+    (!explicitResolution || isExplicitReminderUpdateIntent(reminderIntentText)) &&
+    !isExplicitReminderCreationIntent(reminderIntentText);
+  const reminderClearConfirmationChallenge = hasGroundedReminderClearChallenge(input.history);
+  const reminderClearAllIntent =
+    isExplicitReminderClearAllIntent(reminderIntentText) ||
+    (reminderClearConfirmationChallenge && isShortReminderClearConfirmation(reminderIntentText));
+  const reminderOperationIntent = trustedReminderOperationIntent(reminderIntentText);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
@@ -786,7 +999,7 @@ export async function runSharedAgentTurnStream(
   // Current-data answers are buffered until their complete grounded reply has
   // passed validation; streaming an unverified numeric claim cannot be undone.
   if (
-    requiredAction === "GENERATE_MEDIA" ||
+    requiredAction ||
     (actionsEnabled &&
       ((publicSearchText && hasSharedRealtimeIntent(publicSearchText, input.history)) ||
         (!publicSearchText && hasSharedRealtimeIntent(message, input.history))))
@@ -817,37 +1030,39 @@ export async function runSharedAgentTurnStream(
   try {
     const execution = resolveRuntimeExecution(input);
     const { runSharedElizaRuntimeTurnStream } = await import("./shared-eliza-runtime");
-    return withStreamCapabilityResolution(
-      await runSharedElizaRuntimeTurnStream({
-        ...input,
-        character: {
-          ...input.character,
-          system: buildSharedRuntimeSystem(
-            input.character,
-            {
-              // A current-data request already took the buffered path above.
-              // Ordinary streamed turns must never expose a public-network tool.
-              webSearch: false,
-              reminders: remindersEnabled,
-              todos: todosEnabled,
-              media: actionsEnabled && Boolean(execution.media),
-              transport: sharedCapabilityTransportForSource(
-                execution.channel.source,
-                execution.channel.type,
-              ),
-            },
-            input.recallContext,
-            capabilityWall ? [capabilityWall] : blockedSecondary,
-            requiredAction,
-          ),
-        },
-        execution,
-        agentKey: execution.agentKey,
-        model: modelId,
-      }),
-      capabilityWall,
-      blockedSecondary,
-    );
+    const stream = await runSharedElizaRuntimeTurnStream({
+      ...input,
+      character: {
+        ...input.character,
+        system: buildSharedRuntimeSystem(
+          input.character,
+          {
+            // A current-data request already took the buffered path above.
+            // Ordinary streamed turns must never expose a public-network tool.
+            webSearch: false,
+            reminders: remindersEnabled,
+            todos: todosEnabled,
+            media: actionsEnabled && Boolean(execution.media),
+            transport: sharedCapabilityTransportForSource(
+              execution.channel.source,
+              execution.channel.type,
+            ),
+          },
+          input.recallContext,
+          capabilityWall ? [capabilityWall] : blockedSecondary,
+          requiredAction,
+          reminderClockCorrection,
+        ),
+      },
+      execution,
+      agentKey: execution.agentKey,
+      model: modelId,
+      reminderClockCorrection,
+      reminderClearConfirmationChallenge,
+      reminderClearAllIntent,
+      reminderOperationIntent,
+    });
+    return withStreamCapabilityResolution(stream, capabilityWall, blockedSecondary);
   } catch (error) {
     // error-policy:J2 no SSE bytes exist during setup, so retain the exact
     // runtime cause and add stable billing/diagnostic context for the caller.

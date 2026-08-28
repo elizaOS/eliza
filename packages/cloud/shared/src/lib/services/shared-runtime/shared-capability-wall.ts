@@ -44,7 +44,7 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     capability: "reminders",
     label: "Reminders",
     pattern:
-      /\b(?:remind\s+me|(?:set|create|add|schedule|cancel|delete|change|list|show)\b[\s\S]{0,36}\breminders?)\b/i,
+      /\b(?:remind\s+me|(?:set|create|add|schedule|cancel|delete|remove|dismiss|change|update|edit|reschedule|list|show|clear|clean)\b[\s\S]{0,48}\breminders?)\b/i,
     constraint:
       "This transport has no trusted reminder delivery, so it cannot create, change, list, or deliver reminders.",
   },

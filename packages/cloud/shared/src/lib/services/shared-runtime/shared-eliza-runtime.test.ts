@@ -2370,6 +2370,7 @@ describe("Shared Eliza Workerd runtime", () => {
           delivery: {
             platform: "telegram",
             project: "eliza-app",
+            connectorAccountId: "bot:123456789",
             chatId: "123456789",
           },
         },
@@ -2389,6 +2390,7 @@ describe("Shared Eliza Workerd runtime", () => {
         delivery: {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "bot:123456789",
           chatId: "123456789",
         },
       },
@@ -2418,11 +2420,13 @@ describe("Shared Eliza Workerd runtime", () => {
 
   test.each([
     {
+      scenario: "list success",
       operation: "list",
       parameters: { operation: "list" },
       expected: "Your reminders:\n• Stretch — on Aug 14, 2026 at 8:02 PM UTC",
     },
     {
+      scenario: "snooze success",
       operation: "snooze",
       parameters: {
         operation: "snooze",
@@ -2432,6 +2436,7 @@ describe("Shared Eliza Workerd runtime", () => {
       expected: "Reminder snoozed for 5 minutes: Stretch",
     },
     {
+      scenario: "complete success",
       operation: "complete",
       parameters: {
         operation: "complete",
@@ -2440,6 +2445,7 @@ describe("Shared Eliza Workerd runtime", () => {
       expected: "Reminder completed: Stretch",
     },
     {
+      scenario: "dismiss success",
       operation: "dismiss",
       parameters: {
         operation: "dismiss",
@@ -2447,9 +2453,20 @@ describe("Shared Eliza Workerd runtime", () => {
       },
       expected: "Reminder dismissed: Stretch",
     },
+    {
+      scenario: "dismiss durable failure",
+      operation: "dismiss",
+      parameters: {
+        operation: "dismiss",
+        taskId: "shared-reminder-sensitive-1",
+      },
+      expected:
+        "I couldn't verify that reminder change, so I won't claim it succeeded. Please list your reminders before retrying.",
+      failApply: true,
+    },
   ])(
-    "keeps the verified $operation result authoritative over a hostile evaluator",
-    async ({ operation, parameters, expected }) => {
+    "keeps the verified $scenario result authoritative over a hostile evaluator",
+    async ({ operation, parameters, expected, failApply = false }) => {
       const modelRequests: Array<Record<string, unknown>> = [];
       const task: ScheduledTask = {
         taskId: "shared-reminder-sensitive-1",
@@ -2471,7 +2488,14 @@ describe("Shared Eliza Workerd runtime", () => {
         source: "user_chat",
         createdBy: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
         ownerVisible: true,
-        metadata: {},
+        metadata: {
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            connectorAccountId: "bot:123456789",
+            chatId: "123456789",
+          },
+        },
         executionProfile: "notify-only",
         state: { status: "scheduled", followupCount: 0 },
       };
@@ -2498,6 +2522,9 @@ describe("Shared Eliza Workerd runtime", () => {
         async applyWithResult(taskId, verb, _payload, options) {
           expect(taskId).toBe("shared-reminder-sensitive-1");
           expect(verb).toBe(operation);
+          if (failApply) {
+            throw new Error("injected durable reminder mutation failure");
+          }
           const transition =
             verb === "snooze"
               ? ("snoozed" as const)
@@ -2654,6 +2681,7 @@ describe("Shared Eliza Workerd runtime", () => {
             delivery: {
               platform: "telegram",
               project: "eliza-app",
+              connectorAccountId: "bot:123456789",
               chatId: "123456789",
             },
           },
@@ -2664,11 +2692,21 @@ describe("Shared Eliza Workerd runtime", () => {
       expect(result.reply).not.toMatch(/shared-reminder-sensitive-1|scheduled|2026-08-14T/);
       expect(modelRequests).toHaveLength(2);
       expect(result.actionResults?.[0]).toMatchObject({
+        success: !failApply,
         verifiedUserFacing: true,
         userFacingText: expected,
         turnComplete: true,
       });
-      if (operation !== "list") {
+      if (failApply) {
+        expect(result.actionResults?.[0]).toMatchObject({
+          data: {
+            actionName: "REMINDERS",
+            operation: "dismiss",
+            failureCode: "REMINDER_MUTATION_UNVERIFIED",
+          },
+        });
+        expect(result.actionResults?.[0]?.effectReceipts).toBeUndefined();
+      } else if (operation !== "list") {
         expect(result.actionResults?.[0]).toMatchObject({
           effectReceipts: [
             {
