@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import { acquireEphemeralPostgres } from "../../shared/src/lib/services/tenant-db/__tests__/ephemeral-postgres";
 import type { Migration } from "./canonical-migration-ledger";
-import { applyMigration } from "./migrate-with-diagnostics";
+import { applyMigration, runMigrations } from "./migrate-with-diagnostics";
 
 const enabled =
   // biome-ignore lint/suspicious/noUndeclaredEnvVars: This opt-in is consumed by the standalone GitHub Actions/direct RealPG invocation, outside Turbo's cached task environment.
@@ -19,7 +19,11 @@ const TEST_SCHEMA = "backup_admission_index_lock_budget_test";
 const migrationTag = "0362_agent_backup_admission_claim_indexes";
 const migrationWhen = 1_794_254_400_053;
 const REPRESENTATIVE_INDEX = "agent_sandbox_backups_admission_active_org_idx";
-const hotTableIndexes = [
+const migrationIndexes = [
+  "agent_backup_admission_claim_shards_turn_idx",
+  "agent_backup_admission_work_claim_scan_idx",
+  "agent_backup_admission_work_deferred_ready_shard_idx",
+  "agent_backup_admission_work_expired_lease_shard_idx",
   "agent_sandbox_backups_admission_active_org_idx",
   "agent_sandbox_backups_admission_capture_fallback_idx",
   "agent_sandbox_backups_admission_capture_history_idx",
@@ -29,6 +33,11 @@ const MIGRATION_OPTIONS = {
   maxAttempts: 1,
   baseDelayMs: 1,
   maxDelayMs: 1,
+};
+const SHORT_DEFAULT_LOCK_TIMEOUT_MS = 50;
+const SHORT_DEFAULT_LOCK_TIMEOUT_OPTIONS = {
+  ...MIGRATION_OPTIONS,
+  timeoutMs: SHORT_DEFAULT_LOCK_TIMEOUT_MS,
 };
 
 function quotedIdentifier(value: string): string {
@@ -137,10 +146,9 @@ async function backupAdmissionIndexes(
     JOIN pg_class index_relation ON index_relation.oid = index_metadata.indexrelid
     JOIN pg_namespace relation_namespace ON relation_namespace.oid = table_relation.relnamespace
     WHERE relation_namespace.nspname = current_schema()
-      AND table_relation.relname = 'agent_sandbox_backups'
       AND index_relation.relname = ANY($1::text[])
     ORDER BY index_relation.relname`,
-    [hotTableIndexes],
+    [migrationIndexes],
   );
   return result.rows;
 }
@@ -181,7 +189,7 @@ async function waitForRepresentativeBuild(
 }
 
 realPostgresTest(
-  "keeps a writer unblocked while the hot backup index build is in progress",
+  "outlives the session lock timeout while keeping a writer unblocked during the hot index build",
   async () => {
     const postgres = await acquireEphemeralPostgres();
     if (!postgres) {
@@ -191,6 +199,7 @@ realPostgresTest(
     const databaseUrl = new URL(postgres.dsn);
     databaseUrl.pathname = `/${databaseName}`;
     const admin = new Client({ connectionString: postgres.dsn });
+    const lockRunner = new Client({ connectionString: databaseUrl.toString() });
     const migrator = new Client({ connectionString: databaseUrl.toString() });
     const writer = new Client({ connectionString: databaseUrl.toString() });
     const blocker = new Client({ connectionString: databaseUrl.toString() });
@@ -204,6 +213,7 @@ realPostgresTest(
       await admin.query(`CREATE DATABASE ${quotedIdentifier(databaseName)}`);
       databaseCreated = true;
       await Promise.all([
+        lockRunner.connect(),
         migrator.connect(),
         writer.connect(),
         blocker.connect(),
@@ -226,6 +236,40 @@ realPostgresTest(
           "backup admission index lock-budget backend PID is unavailable",
         );
       }
+
+      await lockRunner.query(`SET lock_timeout = '37ms'`);
+      let convergenceLockTimeout: string | undefined;
+      await runMigrations(
+        migrationClient(lockRunner),
+        [
+          {
+            entry: {
+              breakpoints: true,
+              idx: 194,
+              tag: "0194_job_execution_interruptions_catalog_guard",
+              version: "7",
+              when: migrationWhen - 20,
+            },
+            hash: "realpg-lock-timeout-checkpoint-hash",
+            statements: ["SELECT 1"],
+          },
+        ],
+        SHORT_DEFAULT_LOCK_TIMEOUT_OPTIONS,
+        undefined,
+        undefined,
+        async (lockedClient) => {
+          const setting = await lockedClient.query<{ lock_timeout: string }>(
+            "SHOW lock_timeout",
+          );
+          convergenceLockTimeout = setting.rows[0]?.lock_timeout;
+        },
+      );
+      expect(convergenceLockTimeout).toBe("37ms");
+      const runnerSetting = await lockRunner.query<{ lock_timeout: string }>(
+        "SHOW lock_timeout",
+      );
+      expect(runnerSetting.rows).toEqual([{ lock_timeout: "37ms" }]);
+      await migrator.query("DROP SCHEMA drizzle CASCADE");
 
       await migrator.query(`
         DROP SCHEMA IF EXISTS ${TEST_SCHEMA} CASCADE;
@@ -296,11 +340,14 @@ realPostgresTest(
         ),
         "utf8",
       );
-      expect(
-        hotTableIndexes.every((name) =>
-          source.includes(`CREATE INDEX CONCURRENTLY IF NOT EXISTS "${name}"`),
+      const declaredIndexes = [
+        ...source.matchAll(
+          /^CREATE INDEX CONCURRENTLY IF NOT EXISTS "([a-z_][a-z0-9_]*)"/gm,
         ),
-      ).toBe(true);
+      ]
+        .map((match) => match[1])
+        .sort();
+      expect(declaredIndexes).toEqual([...migrationIndexes]);
 
       await migrator.query(
         `CREATE TABLE ddl_race_table (id integer, other integer)`,
@@ -734,6 +781,9 @@ realPostgresTest(
         SET catalog_state = catalog_state
         WHERE id = (SELECT id FROM agent_sandbox_backups ORDER BY id LIMIT 1)
       `);
+      await migrator.query(
+        `SET lock_timeout = '${SHORT_DEFAULT_LOCK_TIMEOUT_MS}ms'`,
+      );
 
       let migrationSettled = false;
       migrationRun = applyMigration(
@@ -759,12 +809,20 @@ realPostgresTest(
             .map((statement) => statement.trim())
             .filter(Boolean),
         },
-        MIGRATION_OPTIONS,
+        SHORT_DEFAULT_LOCK_TIMEOUT_OPTIONS,
       ).finally(() => {
         migrationSettled = true;
       });
+      // Keep the deliberately delayed rejection observed while the test proves
+      // that the build remains pending past the configured timeout.
+      void migrationRun.catch(() => {});
 
       await waitForRepresentativeBuild(observer, migratorPid, blockerPid);
+      expect(migrationSettled).toBe(false);
+      // The old session-scoped implementation aborted after 50 ms and left an
+      // invalid remnant. Staying blocked for four full timeout windows proves
+      // the concurrent DDL itself is running with lock_timeout disabled.
+      await Bun.sleep(SHORT_DEFAULT_LOCK_TIMEOUT_MS * 4);
       expect(migrationSettled).toBe(false);
       await writer.query("SET statement_timeout = '2s'");
       const writerStartedAt = performance.now();
@@ -789,8 +847,14 @@ realPostgresTest(
         fileNode,
       );
       expect(await backupAdmissionIndexes(migrator)).toEqual(
-        hotTableIndexes.map((name) => ({ name, ready: true, valid: true })),
+        migrationIndexes.map((name) => ({ name, ready: true, valid: true })),
       );
+      const restoredLockTimeout = await migrator.query<{
+        lock_timeout: string;
+      }>("SHOW lock_timeout");
+      expect(restoredLockTimeout.rows).toEqual([
+        { lock_timeout: `${SHORT_DEFAULT_LOCK_TIMEOUT_MS}ms` },
+      ]);
       const result = await migrator.query<{
         backups: number;
         concurrent_write: number;
@@ -835,6 +899,7 @@ realPostgresTest(
       cleanupErrors.push(cause);
     }
     for (const result of await Promise.allSettled([
+      lockRunner.end(),
       migrator.end(),
       writer.end(),
       blocker.end(),

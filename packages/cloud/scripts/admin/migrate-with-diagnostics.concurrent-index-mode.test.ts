@@ -6,6 +6,7 @@ import type { Migration } from "./canonical-migration-ledger";
 import {
   applyMigration,
   type MigrationClient,
+  runMigrations,
 } from "./migrate-with-diagnostics";
 
 const DIRECTIVE =
@@ -75,12 +76,16 @@ function migrationClient(options?: {
   collideBeforeCreateOnce?: string;
   failCommentOnce?: string;
   failCreateOnce?: string;
+  failCreateWithLockTimeoutOnce?: string;
   failLedgerOnce?: boolean;
+  failPublicationFenceLockTimeoutOnce?: boolean;
   indexes?: Map<string, IndexState>;
+  lockTimeout?: string;
 }): {
   client: MigrationClient;
   indexes: Map<string, IndexState>;
   ledgerRows(): number;
+  lockTimeout(): string;
   queries: Array<{
     inTransaction: boolean;
     params?: unknown[];
@@ -98,8 +103,12 @@ function migrationClient(options?: {
   let collideBeforeCreateOnce = options?.collideBeforeCreateOnce;
   let failCommentOnce = options?.failCommentOnce;
   let failCreateOnce = options?.failCreateOnce;
+  let failCreateWithLockTimeoutOnce = options?.failCreateWithLockTimeoutOnce;
   let failLedgerOnce = options?.failLedgerOnce ?? false;
+  let failPublicationFenceLockTimeoutOnce =
+    options?.failPublicationFenceLockTimeoutOnce ?? false;
   let ledgerRows = 0;
+  let lockTimeout = options?.lockTimeout ?? "0";
   let transactionSnapshot:
     | { indexes: Map<string, IndexState>; ledgerRows: number }
     | undefined;
@@ -132,6 +141,29 @@ function migrationClient(options?: {
         }
         transactionSnapshot = undefined;
         return { rows: [] as T[] };
+      }
+      if (
+        text ===
+        "SELECT pg_catalog.current_setting('lock_timeout') AS lock_timeout"
+      ) {
+        return { rows: [{ lock_timeout: lockTimeout }] as T[] };
+      }
+      if (
+        text === "SELECT set_config('lock_timeout', $1, false)" &&
+        typeof params?.[0] === "string"
+      ) {
+        lockTimeout = params[0];
+        return { rows: [{ set_config: lockTimeout }] as T[] };
+      }
+      if (
+        failPublicationFenceLockTimeoutOnce &&
+        text.startsWith("LOCK TABLE") &&
+        indexes.size > 0
+      ) {
+        failPublicationFenceLockTimeoutOnce = false;
+        throw Object.assign(new Error("publication fence lock timeout"), {
+          code: "55P03",
+        });
       }
       if (text.includes("FROM (SELECT to_regclass($1) AS target_oid)")) {
         const tableName = String(params?.[0]);
@@ -242,6 +274,22 @@ function migrationClient(options?: {
           failCreateOnce = undefined;
           throw new Error("simulated process loss during concurrent build");
         }
+        if (failCreateWithLockTimeoutOnce === createMatch[1]) {
+          failCreateWithLockTimeoutOnce = undefined;
+          indexes.set(createMatch[1], {
+            definition: mockCanonicalDefinition(text),
+            live: true,
+            marker: null,
+            oid: createMatch[1],
+            ready: false,
+            tableName: /\s+ON\s+"([a-z_][a-z0-9_]*)"/i.exec(text)?.[1] ?? "",
+            valid: false,
+          });
+          throw Object.assign(
+            new Error("canceling statement due to lock timeout"),
+            { code: "55P03" },
+          );
+        }
         indexes.set(createMatch[1], {
           definition: mockCanonicalDefinition(text),
           live: true,
@@ -306,10 +354,162 @@ function migrationClient(options?: {
     },
     end: async () => {},
   };
-  return { client, indexes, ledgerRows: () => ledgerRows, queries };
+  return {
+    client,
+    indexes,
+    ledgerRows: () => ledgerRows,
+    lockTimeout: () => lockTimeout,
+    queries,
+  };
+}
+
+function migrationRunnerClient(options?: {
+  advisoryFailure?: Error;
+  initialLockTimeout?: string;
+  rollbackFailure?: Error;
+}) {
+  const queries: Array<{ params?: unknown[]; text: string }> = [];
+  const advisoryLockTimeouts: string[] = [];
+  let ended = false;
+  let lockHeld = false;
+  let lockTimeout = options?.initialLockTimeout ?? "37ms";
+  let transactionLockTimeout: string | undefined;
+
+  const client: MigrationClient = {
+    backend: "postgres",
+    query: async <T = unknown>(
+      text: string,
+      params?: unknown[],
+    ): Promise<{ rows: T[] }> => {
+      queries.push({ text, params });
+      if (text === "BEGIN") {
+        transactionLockTimeout = lockTimeout;
+        return { rows: [] };
+      }
+      if (text === "COMMIT") {
+        lockTimeout = transactionLockTimeout ?? lockTimeout;
+        transactionLockTimeout = undefined;
+        return { rows: [] };
+      }
+      if (text === "ROLLBACK") {
+        if (options?.rollbackFailure) throw options.rollbackFailure;
+        lockTimeout = transactionLockTimeout ?? lockTimeout;
+        transactionLockTimeout = undefined;
+        return { rows: [] };
+      }
+      if (
+        text === "SELECT set_config('lock_timeout', $1, true)" &&
+        typeof params?.[0] === "string"
+      ) {
+        lockTimeout = params[0];
+        return { rows: [{ set_config: lockTimeout }] as T[] };
+      }
+      // Model the former implementation so this regression test fails if the
+      // production path again installs a session-scoped budget or resets to 0.
+      if (
+        text === "SELECT set_config('lock_timeout', $1, false)" &&
+        typeof params?.[0] === "string"
+      ) {
+        lockTimeout = params[0];
+        return { rows: [{ set_config: lockTimeout }] as T[] };
+      }
+      if (text === "SELECT set_config('lock_timeout', '0', false)") {
+        lockTimeout = "0";
+        return { rows: [{ set_config: lockTimeout }] as T[] };
+      }
+      if (text.includes("pg_advisory_lock")) {
+        advisoryLockTimeouts.push(lockTimeout);
+        if (options?.advisoryFailure) throw options.advisoryFailure;
+        lockHeld = true;
+        return { rows: [] };
+      }
+      if (text.includes("pg_advisory_unlock")) {
+        const unlocked = lockHeld;
+        lockHeld = false;
+        return { rows: [{ unlocked }] as T[] };
+      }
+      if (text.includes(`FROM "drizzle"."__drizzle_migrations"`)) {
+        return { rows: [] };
+      }
+      if (text.includes("AS has_user_relations")) {
+        return { rows: [{ has_user_relations: false }] as T[] };
+      }
+      return { rows: [] };
+    },
+    end: async () => {
+      ended = true;
+    },
+  };
+
+  return {
+    advisoryLockTimeouts,
+    client,
+    ended: () => ended,
+    lockHeld: () => lockHeld,
+    lockTimeout: () => lockTimeout,
+    queries,
+  };
 }
 
 describe("nontransactional concurrent-index migrations", () => {
+  test("runMigrations restores the exact lock timeout after advisory-lock acquisition", async () => {
+    const harness = migrationRunnerClient({ initialLockTimeout: "37ms" });
+    let convergenceLockTimeout: string | undefined;
+    const checkpointMigration: Migration = {
+      entry: {
+        breakpoints: true,
+        idx: 194,
+        tag: "0194_job_execution_interruptions_catalog_guard",
+        version: "7",
+        when: 1_900_000_000_194,
+      },
+      hash: "checkpoint-hash",
+      statements: ["SELECT 1"],
+    };
+
+    await runMigrations(
+      harness.client,
+      [checkpointMigration],
+      OPTIONS,
+      undefined,
+      undefined,
+      async () => {
+        convergenceLockTimeout = harness.lockTimeout();
+      },
+    );
+
+    expect(harness.advisoryLockTimeouts).toEqual([`${OPTIONS.timeoutMs}ms`]);
+    expect(convergenceLockTimeout).toBe("37ms");
+    expect(harness.lockTimeout()).toBe("37ms");
+    expect(harness.lockHeld()).toBe(false);
+    expect(harness.ended()).toBe(true);
+    const firstLocalBudget = harness.queries.findIndex(
+      ({ text }) => text === "SELECT set_config('lock_timeout', $1, true)",
+    );
+    const advisoryAcquisition = harness.queries.findIndex(({ text }) =>
+      text.includes("pg_advisory_lock"),
+    );
+    expect(firstLocalBudget).toBeGreaterThan(-1);
+    expect(firstLocalBudget).toBeLessThan(advisoryAcquisition);
+  });
+
+  test("advisory-lock rollback cleanup cannot replace the acquisition error", async () => {
+    const primary = Object.assign(new Error("advisory lock timeout"), {
+      code: "55P03",
+    });
+    const harness = migrationRunnerClient({
+      advisoryFailure: primary,
+      initialLockTimeout: "37ms",
+      rollbackFailure: new Error("rollback connection loss"),
+    });
+
+    await expect(runMigrations(harness.client, [], OPTIONS)).rejects.toBe(
+      primary,
+    );
+    expect(harness.advisoryLockTimeouts).toEqual([`${OPTIONS.timeoutMs}ms`]);
+    expect(harness.ended()).toBe(true);
+  });
+
   test("runs outside PGlite's transaction wrapper and records the verified index", async () => {
     const database = new PGlite();
     try {
@@ -457,6 +657,69 @@ describe("nontransactional concurrent-index migrations", () => {
     expect(harness.indexes.get("crash_first_idx")?.marker).toContain(
       "eliza:migration-index:v1:",
     );
+  });
+
+  test("does not retry a lock timeout after concurrent DDL submission", async () => {
+    const harness = migrationClient({
+      failCreateWithLockTimeoutOnce: "timed_out_idx",
+      lockTimeout: "25ms",
+    });
+    const migration = concurrentMigration([createIndex("timed_out_idx")]);
+
+    await expect(
+      applyMigration(harness.client, migration, OPTIONS),
+    ).rejects.toMatchObject({ code: "55P03" });
+    expect(
+      harness.queries.filter(({ text }) =>
+        text.includes('CREATE INDEX CONCURRENTLY "timed_out_idx"'),
+      ),
+    ).toHaveLength(1);
+    expect(harness.indexes.get("timed_out_idx")).toMatchObject({
+      live: true,
+      marker: null,
+      ready: false,
+      valid: false,
+    });
+    expect(harness.ledgerRows()).toBe(0);
+    expect(harness.lockTimeout()).toBe("25ms");
+
+    await expect(
+      applyMigration(harness.client, migration, OPTIONS),
+    ).rejects.toThrow(
+      "is incomplete; refusing automatic repair on a live table",
+    );
+    expect(
+      harness.queries.filter(({ text }) =>
+        text.includes('CREATE INDEX CONCURRENTLY "timed_out_idx"'),
+      ),
+    ).toHaveLength(1);
+    expect(harness.ledgerRows()).toBe(0);
+  });
+
+  test("retries a later publication-fence timeout by reusing the complete index", async () => {
+    const harness = migrationClient({
+      failPublicationFenceLockTimeoutOnce: true,
+    });
+
+    await applyMigration(
+      harness.client,
+      concurrentMigration([createIndex("publication_retry_idx")]),
+      OPTIONS,
+    );
+
+    expect(
+      harness.queries.filter(({ text }) =>
+        text.includes('CREATE INDEX CONCURRENTLY "publication_retry_idx"'),
+      ),
+    ).toHaveLength(1);
+    expect(harness.indexes.get("publication_retry_idx")).toMatchObject({
+      live: true,
+      marker:
+        "eliza:migration-index:v1:1900000000362:concurrent-index-hash:publication_retry_idx",
+      ready: true,
+      valid: true,
+    });
+    expect(harness.ledgerRows()).toBe(1);
   });
 
   test("fails closed repeatedly on an exact incomplete remnant without DDL", async () => {

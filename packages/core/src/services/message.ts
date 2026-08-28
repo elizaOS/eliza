@@ -387,6 +387,7 @@ import {
 	classifyStructuredFailureCause,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
+	isElizaCloudGatewayWarmingExhaustedError,
 	isInsufficientCreditsError,
 	isRateLimitError,
 	type StructuredFailureCause,
@@ -1815,8 +1816,10 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 export {
 	buildFailureReplyPrompt,
 	classifyStructuredFailureCause,
+	ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
+	isElizaCloudGatewayWarmingExhaustedError,
 	isInsufficientCreditsError,
 	isInsufficientCreditsMessage,
 	isModelProviderFallbackError,
@@ -16347,6 +16350,27 @@ export class DefaultMessageService implements IMessageService {
 					error.name === "NoModelProviderConfiguredError"
 				) {
 					return { kind: "noProvider" };
+				}
+				// Eliza Cloud already spent its complete in-handler warming
+				// budget. Starting the next failure-reply model slot would create a
+				// fresh useModel dispatch and repay that same provider budget (up to
+				// four times) before falling back to the canned reply. Treat the
+				// typed exhaustion as terminal for this fallback loop while
+				// preserving any more actionable sticky failure seen earlier.
+				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
+					runtime.logger.warn(
+						{
+							src: "service:message",
+							stage,
+							modelType,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Structured failure reply stopped after Cloud warming exhaustion",
+					);
+					if (sawCreditsExhausted) return { kind: "creditsExhausted" };
+					if (sawAuthError) return { kind: "authFailed" };
+					if (sawRateLimit) return { kind: "rateLimited" };
+					return { kind: "text", value: "" };
 				}
 				// Credit exhaustion and account authorization are sticky across
 				// slots because no later model tier can heal the shared account.

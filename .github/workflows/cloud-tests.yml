@@ -155,6 +155,8 @@ jobs:
           REQUIRE_REAL_POSTGRES_BACKUP_ADMISSION_TESTS: "1"
         run: |
           bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/agent-backup-admission-claim-authority.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/agent-backup-admission-source-stamps.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/agent-backup-admission-gc-authority.postgres.integration.test.ts

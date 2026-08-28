@@ -170,6 +170,7 @@ import {
   renderOverlayMessageBody,
   SpeakingStatusAccessory,
   selectFirstRunDisplayMessages,
+  selectSemanticNewestFirstRunMessage,
   shellToChatMessageData,
 } from "./chat-overlay-transcript";
 import {
@@ -1612,16 +1613,17 @@ export function ChatOverlay({
     React.useState(false);
   const transcriptionComposerActive =
     transcriptionMode || transcriptionFinishing;
-  const cloudLoginWaiting = React.useMemo(
-    () =>
-      firstRunOpen &&
-      messages.some(
-        (message) =>
-          message.id === "first-run:cloud-login-waiting" &&
-          message.content.startsWith("Waiting for sign-in in the browser"),
-      ),
-    [firstRunOpen, messages],
-  );
+  const cloudLoginWaiting = React.useMemo(() => {
+    if (!firstRunOpen) return false;
+    // The conductor keeps earlier setup turns in transcript history and can
+    // refresh one in place. Only the newest semantic first-run state may
+    // minimize the sheet; a later tutorial/error/status must take ownership.
+    const activeMessage = selectSemanticNewestFirstRunMessage(messages);
+    return (
+      activeMessage?.id === "first-run:cloud-login-waiting" &&
+      activeMessage.content.startsWith("Waiting for sign-in in the browser")
+    );
+  }, [firstRunOpen, messages]);
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);

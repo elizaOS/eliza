@@ -277,7 +277,9 @@ describe("CerebrasJudge", () => {
   it("rejects a provider-length result instead of grading partial output", async () => {
     mockFetchOnceJson('{"score":1,"reason":"partial"}', 200, "length");
     const judge = new CerebrasJudge();
-    await expect(judge.judge("test prompt")).rejects.toThrow(/partial output/);
+    await expect(judge.judge("test prompt")).rejects.toThrow(
+      /incomplete output at its token boundary/,
+    );
   });
 
   it("includes systemPrompt when provided", async () => {

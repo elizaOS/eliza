@@ -47,6 +47,7 @@ import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
   createTierUpgradeTargetWithProvision,
   findLiveTierUpgradeTarget,
+  PersonalDedicatedAuthorityRetainedError,
   PersonalDedicatedSelectionRequiredError,
 } from "@/lib/services/agent-tier-upgrade-target";
 import { buildDefaultAgentCharacterConfig } from "@/lib/services/default-agent-character";
@@ -546,6 +547,18 @@ async function __hono_POST(
             code: "dedicated_adoption_selection_required",
             error:
               "An existing Dedicated agent is selected for this account. Continue with same-row adoption instead of creating another agent.",
+          },
+          409,
+        );
+      }
+      if (error instanceof PersonalDedicatedAuthorityRetainedError) {
+        return json(
+          {
+            success: false,
+            code: "dedicated_activation_reset_required",
+            error:
+              "This Personal Eliza has retained Dedicated activation history. Reconcile or reset the retired target before starting another Dedicated activation.",
+            retryable: false,
           },
           409,
         );

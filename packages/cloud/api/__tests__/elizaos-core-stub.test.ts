@@ -9,6 +9,7 @@ import {
   DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
   fetchWithSsrfGuard,
   getInferenceTimer,
   groupResponsePrecedencePolicy,
@@ -34,6 +35,9 @@ describe("elizaos-core Worker stub", () => {
     expect(DEFAULT_ELIZA_CLOUD_TEXT_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
     expect(DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL).toBe(
       DEFAULT_CEREBRAS_TEXT_MODEL,
+    );
+    expect(ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED).toBe(
+      "ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED",
     );
   });
 

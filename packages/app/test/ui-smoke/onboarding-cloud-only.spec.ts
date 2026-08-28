@@ -16,6 +16,7 @@
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { installDedicatedAdoptionConsentProof } from "../cloud-live-dedicated-adoption-consent";
 import {
   expectNoPageDiagnostics,
   installPageDiagnosticsGuard,
@@ -250,24 +251,23 @@ test.describe("cloud-only onboarding (production default)", () => {
       "eliza:enable-runtime-chooser": "0",
     });
 
+    const dedicatedAdoptionProof = installDedicatedAdoptionConsentProof(page);
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const confirm = page.getByTestId(
       "choice-__first_run__:dedicated-adoption:confirm",
     );
-    await expect(confirm).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("Current status: stopped.")).toBeVisible();
-    await expect(
-      page.getByText(
-        /Balance: \$115\.54; minimum required: \$0\.72 \(3 days of runway\)/,
-      ),
-    ).toBeVisible();
-    expect(adoptionPosts).toBe(0);
+    try {
+      await expect(confirm).toBeVisible({ timeout: 20_000 });
+      expect(adoptionPosts).toBe(0);
 
-    await confirm.click();
-    await expect.poll(() => adoptionPosts).toBe(1);
-    await expect(page.getByTestId("home-screen")).toBeVisible({
-      timeout: 20_000,
-    });
-    await settleHomeEntrance(page);
+      await dedicatedAdoptionProof.confirmVisibleConsent(confirm);
+      await expect.poll(() => adoptionPosts).toBe(1);
+      await expect(page.getByTestId("home-screen")).toBeVisible({
+        timeout: 20_000,
+      });
+      await settleHomeEntrance(page);
+    } finally {
+      dedicatedAdoptionProof.dispose();
+    }
   });
 });

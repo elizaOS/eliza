@@ -132,6 +132,7 @@ function makeRuntime() {
 		getModel: vi.fn((modelType: string) =>
 			modelType === ModelType.RESPONSE_HANDLER ? useModel : undefined,
 		),
+		getModelRegistrations: vi.fn(() => []),
 		useModel,
 		composeState: vi.fn(async () => makeState()),
 		applyPipelineHooks: vi.fn(async () => undefined),

@@ -10,6 +10,12 @@
 const NOT_AVAILABLE =
   "@elizaos/core runtime APIs are not available in the Cloudflare Workers API bundle. Route agent runtime work through the agent-server sidecar.";
 
+// Worker-safe mirror of the pure error-code literal consumed by
+// plugin-elizacloud while the Worker bundle aliases @elizaos/core to this
+// compatibility surface.
+export const ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED =
+  "ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED";
+
 // Worker-safe mirrors of the pure prompt fragments re-exported by core. The
 // cloud native-planner template interpolates them during bundle construction.
 export const groupResponsePrecedencePolicy = `response_precedence:
@@ -2005,6 +2011,7 @@ export type MediaGenerationResponse = Record<string, unknown>;
 export default {
   logger,
   elizaLogger,
+  ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
   DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,

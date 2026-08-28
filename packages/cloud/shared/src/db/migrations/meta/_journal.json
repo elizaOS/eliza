@@ -2430,6 +2430,13 @@
       "when": 1794254400054,
       "tag": "0363_agent_backup_admission_claim_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 347,
+      "version": "7",
+      "when": 1794254400055,
+      "tag": "0364_agent_backup_admission_claim_eligibility",
+      "breakpoints": true
     }
   ]
 }

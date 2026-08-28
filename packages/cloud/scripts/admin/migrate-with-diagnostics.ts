@@ -116,6 +116,10 @@ interface ConcurrentIndexDefinition {
   canonical_definition: string;
 }
 
+interface LockTimeoutSetting {
+  lock_timeout: string;
+}
+
 type IdentityResultReporter = (
   config: DatabaseIdentityConfig,
   result: IdentityPreflightResult,
@@ -565,17 +569,56 @@ async function acquireMigrationLock(
   options: LockRetryOptions,
 ): Promise<void> {
   for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
-    await client.query("SELECT set_config('lock_timeout', $1, false)", [
-      `${options.timeoutMs}ms`,
-    ]);
+    let transactionMayBeActive = false;
+    let advisoryLockMayBeHeld = false;
     try {
+      // Keep the advisory-lock budget transaction-local. PostgreSQL restores the
+      // exact effective session/role/database value on COMMIT or ROLLBACK, so
+      // the dedicated migration session never has to approximate it with `0`.
+      transactionMayBeActive = true;
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('lock_timeout', $1, true)", [
+        `${options.timeoutMs}ms`,
+      ]);
+      // Mark submission before awaiting the response. A client can lose the
+      // response after PostgreSQL acquired this session-level lock; the failure
+      // path must then attempt an unlock before considering a retry.
+      advisoryLockMayBeHeld = true;
       await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [
         MIGRATION_ADVISORY_LOCK_KEY,
       ]);
-      await client.query("SELECT set_config('lock_timeout', '0', false)");
+      await client.query("COMMIT");
+      transactionMayBeActive = false;
       console.log(`[db:migrate] acquired migration lock on attempt ${attempt}`);
       return;
     } catch (error) {
+      await runCleanupSteps(
+        [
+          {
+            label: "migration advisory-lock transaction rollback",
+            run: async () => {
+              if (transactionMayBeActive) await client.query("ROLLBACK");
+            },
+          },
+          {
+            label: "ambiguous migration advisory-lock release",
+            run: async () => {
+              if (!advisoryLockMayBeHeld) return;
+              const result = await client.query<{ unlocked: boolean }>(
+                "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked",
+                [MIGRATION_ADVISORY_LOCK_KEY],
+              );
+              if (typeof result.rows[0]?.unlocked !== "boolean") {
+                throw new Error(
+                  "Migration advisory-lock cleanup returned an invalid result",
+                );
+              }
+            },
+          },
+        ],
+        reportMigrationCleanupFailure,
+        { error },
+      );
       if (!isLockTimeout(error)) throw error;
       if (attempt === options.maxAttempts) {
         console.error(
@@ -906,6 +949,7 @@ async function reconcileConcurrentIndex(
   migration: Migration,
   source: ConcurrentIndexStatement,
   options: LockRetryOptions,
+  onDdlStateChange: (active: boolean) => void,
 ): Promise<void> {
   const expectedMarker = concurrentIndexMigrationMarker(migration, source);
   const reconciliation = await runConcurrentIndexFence(
@@ -953,7 +997,46 @@ async function reconcileConcurrentIndex(
     );
     return;
   }
-  await client.query(source.statement);
+  const setting = await client.query<LockTimeoutSetting>(
+    "SELECT pg_catalog.current_setting('lock_timeout') AS lock_timeout",
+  );
+  const previousLockTimeout = setting.rows[0]?.lock_timeout;
+  if (
+    typeof previousLockTimeout !== "string" ||
+    previousLockTimeout.length === 0 ||
+    setting.rows.length !== 1
+  ) {
+    throw new Error(
+      `Concurrent index ${source.indexName} could not read the session lock_timeout`,
+    );
+  }
+
+  // CREATE INDEX CONCURRENTLY can legitimately wait longer than the bounded
+  // metadata fences above. Disable any database/role/session default only for
+  // the DDL statement, then restore the caller's exact setting even when
+  // PostgreSQL leaves an incomplete index after interruption.
+  await client.query("SELECT set_config('lock_timeout', $1, false)", ["0"]);
+  await runWithCleanup(
+    async () => {
+      // Treat submission as the point of no automatic retry. If PostgreSQL
+      // returns 55P03 after this call begins, a concurrent build may already
+      // have left catalog state that must be re-inspected on an explicit rerun.
+      onDdlStateChange(true);
+      await client.query(source.statement);
+      onDdlStateChange(false);
+    },
+    [
+      {
+        label: `session lock-timeout restore for ${migration.entry.tag}:${source.indexName}`,
+        run: async () => {
+          await client.query("SELECT set_config('lock_timeout', $1, false)", [
+            previousLockTimeout,
+          ]);
+        },
+      },
+    ],
+    reportMigrationCleanupFailure,
+  );
 }
 
 async function publishConcurrentIndexMigration(
@@ -1054,17 +1137,23 @@ async function applyConcurrentIndexMigration(
 ): Promise<void> {
   const { entry } = migration;
   for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
+    let ddlInFlight = false;
     try {
-      await client.query("SELECT set_config('lock_timeout', $1, false)", [
-        `${options.timeoutMs}ms`,
-      ]);
       console.log(
         `[db:migrate] applying ${entry.tag} (${statements.length} concurrent indexes, attempt ${attempt}/${options.maxAttempts})`,
       );
 
       for (const [index, source] of statements.entries()) {
         try {
-          await reconcileConcurrentIndex(client, migration, source, options);
+          await reconcileConcurrentIndex(
+            client,
+            migration,
+            source,
+            options,
+            (active) => {
+              ddlInFlight = active;
+            },
+          );
         } catch (error) {
           console.error(
             `[db:migrate] failed ${entry.tag} concurrent index ${index + 1}/${statements.length}`,
@@ -1082,24 +1171,9 @@ async function applyConcurrentIndexMigration(
         statements,
         options,
       );
-      await client.query("SELECT set_config('lock_timeout', '0', false)");
       return;
     } catch (error) {
-      await runCleanupSteps(
-        [
-          {
-            label: `session lock-timeout reset for ${entry.tag}`,
-            run: async () => {
-              await client.query(
-                "SELECT set_config('lock_timeout', '0', false)",
-              );
-            },
-          },
-        ],
-        reportMigrationCleanupFailure,
-        { error },
-      );
-      if (!isLockTimeout(error)) throw error;
+      if (!isLockTimeout(error) || ddlInFlight) throw error;
       if (attempt === options.maxAttempts) {
         console.error(
           `[db:migrate] ${entry.tag} exhausted ${options.maxAttempts} lock-timeout attempts`,

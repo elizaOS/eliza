@@ -155,7 +155,7 @@ describe("runSearch", () => {
 			"2. @elizaos/plugin-solana",
 			"3. @elizaos/plugin-voice (match: 50%)",
 			"   Speech utilities",
-			"   tags: a, b, c, d, e",
+			"   tags: a, b, c, d, e, f",
 			"   version: 0.9.0",
 		].join("\n");
 
