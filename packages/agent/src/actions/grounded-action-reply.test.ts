@@ -6,7 +6,7 @@
  * the module under test is not mocked.
  */
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { ModelType, NoModelProviderConfiguredError } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   extractActionResultsFromState,
@@ -429,6 +429,16 @@ describe("renderGroundedActionReply", () => {
   it("returns the fallback when useModel is missing", async () => {
     const { reply } = await renderWith({
       useModel: null,
+      fallback: "Canonical fallback.",
+    });
+    expect(reply).toBe("Canonical fallback.");
+  });
+
+  it("returns the grounded fallback when the runtime has no model provider", async () => {
+    const { reply } = await renderWith({
+      useModel: vi.fn(async () => {
+        throw new NoModelProviderConfiguredError();
+      }) as IAgentRuntime["useModel"],
       fallback: "Canonical fallback.",
     });
     expect(reply).toBe("Canonical fallback.");
