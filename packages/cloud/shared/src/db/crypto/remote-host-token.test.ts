@@ -57,6 +57,37 @@ describe("generateRemoteHostToken", () => {
     }
     seen.forEach((s) => expect(s.size).toBeGreaterThan(1));
   });
+
+  test("draws all 32 entropy bytes from the source and encodes each one", () => {
+    // Pin the entropy-source contract: the mint must request exactly 32 fresh
+    // bytes from crypto.getRandomValues and every requested byte must reach
+    // the token body. A mutation that randomizes only a few bytes and tiles
+    // them across the array (a 32-bit-entropy credential) requests only those
+    // few bytes, so this assertion goes red where the per-position variation
+    // check above stays green.
+    const original = crypto.getRandomValues.bind(crypto);
+    let requested: Uint8Array<ArrayBuffer> | null = null;
+    const spy = ((array: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> => {
+      requested = new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+      return original(array);
+    }) as typeof crypto.getRandomValues;
+    crypto.getRandomValues = spy;
+    try {
+      const b64 = generateRemoteHostToken()
+        .slice("rhost_v1_".length)
+        .replaceAll("-", "+")
+        .replaceAll("_", "/")
+        .padEnd(44, "=");
+      const decoded = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      expect(requested).not.toBeNull();
+      expect(requested!.byteLength).toBe(32);
+      // The token body must be exactly the bytes the entropy source supplied,
+      // not a prefix, a re-tiled derivative, or a fixed constant.
+      expect(decoded).toEqual(requested!);
+    } finally {
+      crypto.getRandomValues = original;
+    }
+  });
 });
 
 describe("hashRemoteHostToken", () => {
@@ -90,6 +121,16 @@ describe("hashRemoteHostToken", () => {
     const digest = await hashRemoteHostToken(token);
     expect(digest).toBe("sha256:72542723dd2d38b0dd3552523d0faf14ae59064641747859a8f62229522554b4");
   });
+
+  test("matches a hand-computed SHA-256 of a full-charset token", async () => {
+    // The body covers upper/lowercase, digits, and the '-'/'_' base64url
+    // alphabet, so the digest also pins hash-input encoding for every valid
+    // character class (e.g. a mutation that folds '-' into '_' before hashing
+    // changes this vector but leaves the all-'A' one above unchanged).
+    const token = "rhost_v1_ABCDEFGHIJKLMNOabcdefghijklmno0123456789-_P";
+    const digest = await hashRemoteHostToken(token);
+    expect(digest).toBe("sha256:2e9e3daf21e8f76ed4a47f1bfcf9cf803e7e1bb292eee369e686f28bf90787be");
+  });
 });
 
 describe("hashRemoteHostToken fail-closed rejection", () => {
@@ -116,5 +157,19 @@ describe("hashRemoteHostToken fail-closed rejection", () => {
     expect(hashRemoteHostToken("rhost_v1_" + "=".repeat(43))).rejects.toThrow(TypeError);
     expect(hashRemoteHostToken("rhost_v1_" + " ".repeat(43))).rejects.toThrow(TypeError);
     expect(hashRemoteHostToken("rhost_v1_" + "A".repeat(42) + "!")).rejects.toThrow(TypeError);
+  });
+
+  test("rejects tokens with surrounding whitespace or control characters", async () => {
+    // A pasted token may carry a trailing newline or leading whitespace;
+    // those must fail closed rather than hash to a digest that matches no
+    // stored row. The strict end anchor must reject each of these.
+    const token = "rhost_v1_" + "A".repeat(43);
+    expect(hashRemoteHostToken(token + "\n")).rejects.toThrow(TypeError);
+    expect(hashRemoteHostToken("\n" + token)).rejects.toThrow(TypeError);
+    expect(hashRemoteHostToken(token + "\r")).rejects.toThrow(TypeError);
+    expect(hashRemoteHostToken(token + "\t")).rejects.toThrow(TypeError);
+    expect(hashRemoteHostToken(token + " ")).rejects.toThrow(TypeError);
+    expect(hashRemoteHostToken(" " + token)).rejects.toThrow(TypeError);
+    expect(hashRemoteHostToken(token + "\u0000")).rejects.toThrow(TypeError);
   });
 });
