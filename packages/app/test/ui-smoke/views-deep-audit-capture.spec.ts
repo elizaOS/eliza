@@ -13,6 +13,7 @@ import {
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
+import { seedBackgroundStorage } from "./helpers/view-background";
 
 const OUT_DIR = path.join(
   process.cwd(),
@@ -277,11 +278,19 @@ test.describe("views deep UX audit capture", () => {
         "elizaos:ui:sidebar:eliza:page-sidebar:wallets:defi:collapsed": "false",
         "elizaos:ui:sidebar:eliza:page-sidebar:wallets:nfts:collapsed": "false",
       });
+      await seedBackgroundStorage(page, {
+        mode: "image",
+        color: "#000000",
+        imageUrl: "/bg-sunset.webp",
+      });
       await installDefaultAppRoutes(page);
 
       await openAppPath(page, "/wallet");
       await expect(page.getByTestId("wallet-shell")).toBeVisible({
         timeout: 60_000,
+      });
+      await expect(page.getByTestId("app-background-image")).toBeAttached({
+        timeout: 15_000,
       });
       const sidebar = await openWalletSidebar(page);
       await screenshot(page, `${viewport.name}-wallet-overview`);
