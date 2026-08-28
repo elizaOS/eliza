@@ -61,6 +61,23 @@ describe("validation primitives", () => {
 			expect(cardBrand("30569309025904")).toBe("diners");
 			expect(cardBrand("9999999999999999")).toBeNull();
 		});
+
+		it("recognizes the Visa length set Visa actually issues (13/16/19) so Luhn-valid PANs stay redactable", () => {
+			// Visa's numerics guidance (8-Digit BIN Expansion FAQ) pins PAN length to
+			// 16 or 19 digits; 13-digit legacy PANs exist in the field. 18-digit
+			// identifiers starting with 4 are NOT a Visa length — classifying them
+			// as Visa would make the redactor replace non-card account/order
+			// identifiers, violating the module's low-false-positive invariant.
+			// A 19-digit PAN is real (Visa issues them); dropping it from cardBrand
+			// makes creditCardValid() return false and the PII redactor silently
+			// skip the number — a false negative that leaks a card number.
+			expect(cardBrand("4222222222222")).toBe("visa"); // 13
+			expect(cardBrand("4222222222222220")).toBe("visa"); // 16
+			expect(cardBrand("422222222222222224")).toBeNull(); // 18 — not a Visa length
+			expect(cardBrand("4222222222222222224")).toBe("visa"); // 19
+			expect(cardBrand("42222222222222222")).toBeNull(); // 17
+			expect(cardBrand("42222222222222")).toBeNull(); // 14
+		});
 	});
 
 	describe("ssnValid", () => {
@@ -114,6 +131,12 @@ describe("detectPii — credit cards", () => {
 		expect(kinds("ref 9999000011112222")).not.toContain("credit-card");
 		// A 16-digit Luhn-valid number with no known brand prefix is not a card.
 		expect(kinds("token 8888888888888888")).not.toContain("credit-card");
+	});
+	it("still redacts Luhn-valid 19-digit Visa PANs (regression: length tightening)", () => {
+		// Visa issues up to 19-digit PANs (ISO/IEC 7812). A Luhn-valid 19-digit
+		// Visa number must stay detectable, otherwise the redactor skips it and
+		// leaks a real card number.
+		expect(kinds("visa 4222222222222222224 now")).toContain("credit-card");
 	});
 });
 

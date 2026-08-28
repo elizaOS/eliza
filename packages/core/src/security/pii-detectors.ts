@@ -93,7 +93,7 @@ export function luhnValid(digits: string): boolean {
 
 /** Major card brand for a pure-digit PAN, or `null` if it matches none. */
 export function cardBrand(digits: string): string | null {
-	if (/^4\d{12}(?:\d{3})?(?:\d{3})?$/.test(digits)) return "visa";
+	if (/^4(?:\d{12}|\d{15}|\d{18})$/.test(digits)) return "visa";
 	if (
 		/^(?:5[1-5]\d{14}|2(?:22[1-9]|2[3-9]\d|[3-6]\d\d|7[01]\d|720)\d{12})$/.test(
 			digits,
