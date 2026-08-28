@@ -35,6 +35,7 @@ import {
   installCloudLiveAnchoredRetryChipObserver,
   writeCloudLiveContinuityEvidence,
 } from "../cloud-live-continuity-contract";
+import { installDedicatedAdoptionConsentProof } from "../cloud-live-dedicated-adoption-consent";
 import {
   CloudLiveOptionalActionDeadlineError,
   type CloudLivePersonalIdentityRecovery,
@@ -547,27 +548,38 @@ async function resolvePersonalIdentity(
   chooseRuntime = true,
   onRecovery?: (recovery: CloudLivePersonalIdentityRecovery) => Promise<void>,
 ): Promise<CloudLiveRuntimeBinding> {
-  await prepareCloudLivePersonalIdentity({
-    chooseRuntime,
-    chatOverlay: page.getByTestId("chat-overlay"),
-    chatOverlayTimeoutMs: 60_000,
-    chooseRuntimeAction: () => chooseCloudRuntime(page),
-  });
-  const binding = await waitForCloudLivePersonalIdentity({
-    readBinding: () => readActiveBinding(page),
-    runtimeCloudRecovery: page.getByTestId(
-      "choice-__first_run__:runtime:cloud",
-    ),
-    retryRecovery: page.getByTestId("choice-__first_run__:error:retry"),
-    timeoutMs: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS,
-    runtimeCloudGraceMs: 15_000,
-    onRecovery,
-  });
-  await clickIfVisible(
-    page.getByTestId("choice-__first_run__:tutorial:skip"),
-    15_000,
-  );
-  return binding;
+  const dedicatedAdoptionProof = installDedicatedAdoptionConsentProof(page);
+  try {
+    await prepareCloudLivePersonalIdentity({
+      chooseRuntime,
+      chatOverlay: page.getByTestId("chat-overlay"),
+      chatOverlayTimeoutMs: 60_000,
+      chooseRuntimeAction: () => chooseCloudRuntime(page),
+    });
+    const dedicatedAdoptionConsent = page.getByTestId(
+      "choice-__first_run__:dedicated-adoption:confirm",
+    );
+    const binding = await waitForCloudLivePersonalIdentity({
+      readBinding: () => readActiveBinding(page),
+      runtimeCloudRecovery: page.getByTestId(
+        "choice-__first_run__:runtime:cloud",
+      ),
+      retryRecovery: page.getByTestId("choice-__first_run__:error:retry"),
+      dedicatedAdoptionConsent,
+      timeoutMs: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS,
+      runtimeCloudGraceMs: 15_000,
+      onDedicatedAdoptionConsent: () =>
+        dedicatedAdoptionProof.confirmVisibleConsent(dedicatedAdoptionConsent),
+      onRecovery,
+    });
+    await clickIfVisible(
+      page.getByTestId("choice-__first_run__:tutorial:skip"),
+      15_000,
+    );
+    return binding;
+  } finally {
+    dedicatedAdoptionProof.dispose();
+  }
 }
 
 test.describe("real cloud login + personal identity + chat", () => {
