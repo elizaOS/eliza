@@ -16,6 +16,15 @@ export class TestInferenceAdmissionGate extends InferenceAdmissionGate {
 
   override async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
+    if (path === "/test-seed-legacy-rate-limits") {
+      const body = (await request.json()) as Record<string, unknown>;
+      await this.testState.storage.put("rate-limits", body);
+      return new Response(null, { status: 204 });
+    }
+    if (path === "/test-read-legacy-rate-limits") {
+      const value = await this.testState.storage.get("rate-limits");
+      return Response.json(value ?? null);
+    }
     if (path === "/test-block-billing-queue") {
       let entered: () => void = () => undefined;
       const started = new Promise<void>((resolve) => {

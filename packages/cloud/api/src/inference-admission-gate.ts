@@ -627,15 +627,24 @@ export class InferenceAdmissionGate {
     this.ledger = snapshot;
   }
 
-  private async loadRateLimitWindows(): Promise<RateLimitWindows> {
+  private loadRateLimitWindows(): RateLimitWindows {
+    // This namespace is SQLite-backed in every deployed environment. Its
+    // synchronous KV facade reads the same hidden __cf_kv table as the legacy
+    // async API, but does not yield the object input gate for a local counter
+    // read. The async read/write pair previously made this tiny rate-only
+    // object vulnerable to storage-tail latency and caller aborts even though
+    // it performs no network or database I/O.
     this.rateLimitWindows ??=
-      (await this.state.storage.get<RateLimitWindows>(RATE_LIMITS_KEY)) ?? {};
+      this.state.storage.kv.get<RateLimitWindows>(RATE_LIMITS_KEY) ?? {};
     return this.rateLimitWindows;
   }
 
-  private async saveRateLimitWindows(windows: RateLimitWindows): Promise<void> {
+  private saveRateLimitWindows(windows: RateLimitWindows): void {
     const snapshot = cloneRateLimitWindows(windows);
-    await this.state.storage.put(RATE_LIMITS_KEY, snapshot);
+    // Synchronous SQLite storage remains strongly consistent and durable. It
+    // also preserves the exact legacy key, so an immediate Worker rollback
+    // observes the current counter instead of opening a duplicate quota lane.
+    this.state.storage.kv.put(RATE_LIMITS_KEY, snapshot);
     this.rateLimitWindows = snapshot;
   }
 
@@ -1024,7 +1033,7 @@ export class InferenceAdmissionGate {
     }
 
     const windowStartedAt = request.windowStartedAt ?? currentWindowStartedAt;
-    const windows = cloneRateLimitWindows(await this.loadRateLimitWindows());
+    const windows = cloneRateLimitWindows(this.loadRateLimitWindows());
     const existing = windows[request.endpointType];
     if (existing && existing.windowStartedAt > windowStartedAt) {
       const resetAt = existing.windowStartedAt + existing.windowMs;
@@ -1051,7 +1060,7 @@ export class InferenceAdmissionGate {
           };
     current.count = Math.min(current.count + 1, Number.MAX_SAFE_INTEGER);
     windows[request.endpointType] = current;
-    await this.saveRateLimitWindows(windows);
+    this.saveRateLimitWindows(windows);
 
     const allowed = current.count <= request.maxRequests;
     const resetAt = windowStartedAt + request.windowMs;
@@ -1226,7 +1235,7 @@ export class InferenceAdmissionGate {
   }
 
   private async warmRateLimit(): Promise<Response> {
-    await this.loadRateLimitWindows();
+    this.loadRateLimitWindows();
     return Response.json({ warmed: true });
   }
 
