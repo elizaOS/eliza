@@ -8,6 +8,7 @@
  * authority are all real; only the X DM timeline events are synthetic.
  */
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -19,7 +20,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
-import { v4 as uuidv4 } from "uuid";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { XMembershipPublisher, xMembershipPrincipal } from "../src/membership";
 
@@ -56,7 +56,7 @@ beforeAll(async () => {
   // The membership authority validates UUID version nibbles, so the test
   // agent id must be a real v4. Build the runtime directly over a real
   // PGlite adapter, the same shape plugin-sql's own authority tests use.
-  const agentId = uuidv4() as UUID;
+  const agentId = randomUUID() as UUID;
   const adapter = createDatabaseAdapter({ dataDir: restartDir }, agentId);
   await (adapter as unknown as { init: () => Promise<void> }).init();
   runtime = new AgentRuntime({
