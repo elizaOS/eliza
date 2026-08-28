@@ -267,15 +267,32 @@ describe("anti-larp test discovery", () => {
 
     const namedRuntimeGate = `
       import test from "node:test";
-      const hostIsNode24 = runtimeProbe();
+      const hostIsNode24 =
+        !process.versions.bun && Number(process.versions.node) >= 24;
       test("host runtime", { skip: !hostIsNode24 }, () => {});
     `;
     expect(findViolations("fixture.test.mjs", namedRuntimeGate)).toEqual([]);
     expect(
       findConditionalSkipSites("fixture.test.mjs", namedRuntimeGate),
     ).toEqual([
-      expect.objectContaining({ form: "conditional-option-skip", line: 4 }),
+      expect.objectContaining({ form: "conditional-option-skip", line: 5 }),
     ]);
+
+    const deceptiveNames = `
+      import test from "node:test";
+      const isWindows = true;
+      function WindowsEnabled() { return true; }
+      test("constant binding", { skip: isWindows }, () => {});
+      test("constant call", { skip: WindowsEnabled() }, () => {});
+    `;
+    expect(
+      findViolations("fixture.test.mjs", deceptiveNames).map(
+        ({ kind }) => kind,
+      ),
+    ).toEqual(["orphaned-skip", "orphaned-skip"]);
+    expect(
+      findConditionalSkipSites("fixture.test.mjs", deceptiveNames),
+    ).toEqual([]);
 
     const adversarial = `
       import test from "node:test";

@@ -685,12 +685,34 @@ function knownOptionalRuntimeString(node) {
   );
 }
 
-function recognizedRuntimeSignal(node) {
+function uniquePriorVariableDeclaration(identifier) {
+  const sourceFile = identifier.getSourceFile();
+  const identifierStart = identifier.getStart(sourceFile);
+  const matches = [];
+  const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === identifier.text &&
+      node.initializer &&
+      node.getEnd() <= identifierStart
+    ) {
+      matches.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function recognizedRuntimeSignal(node, seenDeclarations = new Set()) {
   const value = unwrapExpression(node);
   if (ts.isIdentifier(value)) {
-    return /(?:Platform|Runtime|Node\d*|Windows|Linux|Darwin|Available|Supported|Enabled|Configured|Installed)/.test(
-      value.text,
-    );
+    const declaration = uniquePriorVariableDeclaration(value);
+    if (!declaration || seenDeclarations.has(declaration)) return false;
+    const nextSeen = new Set(seenDeclarations);
+    nextSeen.add(declaration);
+    return recognizedRuntimeSignal(declaration.initializer, nextSeen);
   }
   if (
     ts.isPropertyAccessExpression(value) ||
@@ -704,26 +726,20 @@ function recognizedRuntimeSignal(node) {
     );
   }
   if (ts.isPrefixUnaryExpression(value)) {
-    return recognizedRuntimeSignal(value.operand);
+    return recognizedRuntimeSignal(value.operand, seenDeclarations);
   }
   if (ts.isBinaryExpression(value)) {
     return (
-      recognizedRuntimeSignal(value.left) ||
-      recognizedRuntimeSignal(value.right)
+      recognizedRuntimeSignal(value.left, seenDeclarations) ||
+      recognizedRuntimeSignal(value.right, seenDeclarations)
     );
   }
   if (ts.isConditionalExpression(value)) {
-    return recognizedRuntimeSignal(value.condition);
+    return recognizedRuntimeSignal(value.condition, seenDeclarations);
   }
   if (ts.isCallExpression(value)) {
     const chain = callChain(value.expression);
-    return (
-      chain?.join(".") === "os.platform" ||
-      (chain?.length === 1 &&
-        /(?:Platform|Runtime|Node\d*|Windows|Linux|Darwin|Available|Supported|Enabled|Configured|Installed)/.test(
-          chain[0],
-        ))
-    );
+    return chain?.join(".") === "os.platform";
   }
   return false;
 }
@@ -1084,20 +1100,22 @@ function classifiedOptionCalls(node, sourceFile) {
           property.getFullStart(),
           property.getEnd(),
         );
+        const conditional =
+          property.name.text === "skip"
+            ? skipDisposition === NODE_OPTION_CONDITIONAL
+            : truthy === undefined;
         options.push({
           modifier: property.name.text,
-          conditional:
-            property.name.text === "skip"
-              ? skipDisposition === NODE_OPTION_CONDITIONAL
-              : truthy === undefined,
+          conditional,
           documented:
             (ts.isStringLiteralLike(reason) &&
               reason.text.trim().length >= 8) ||
             TRACKING_REF.test(propertyEvidence) ||
             REASON_MARKER.test(propertyEvidence) ||
-            RUNTIME_OPTION_REASON.test(
-              property.initializer.getText(sourceFile),
-            ),
+            (conditional &&
+              RUNTIME_OPTION_REASON.test(
+                property.initializer.getText(sourceFile),
+              )),
         });
       }
     }
