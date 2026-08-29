@@ -10,11 +10,13 @@
  *   api/foo/[[...slug]]/route.ts -> /api/foo and /api/foo/:*{.+}
  *   api/(group)/foo/route.ts    -> /api/foo   (group segments dropped)
  *
- * Only leaves whose source is Hono-shaped are mounted — the rest are still
- * Next-shaped and would crash at import time. Hono-shaped means the file
- * imports from "hono" directly or exports a known shared Hono app factory.
- * Unmounted routes fall through to the global 404 handler. A summary is
- * printed at the end.
+ * Only leaves whose source is Hono-shaped are mounted, unless an exact
+ * byte-zero `// route-codegen: skip` directive explicitly keeps an approved
+ * route dormant. The rest are still Next-shaped and would crash at import
+ * time. Hono-shaped means the file imports from "hono" directly or exports a
+ * known shared Hono app factory. Any other route fails codegen before generated
+ * files are written; approved dormant routes fall through to the global 404.
+ * A summary is printed at the end.
  *
  * Re-run after adding/removing/converting any route file. Idempotent.
  */
@@ -143,6 +145,20 @@ export function assertApprovedCodegenSkips(
   }
 }
 
+export function assertNoUnmountedRouteFiles(
+  unmountedFiles,
+  apiRoot = API_ROOT,
+) {
+  const relativeFiles = unmountedFiles
+    .map((file) => relative(apiRoot, file).replace(/\\/g, "/"))
+    .sort();
+  if (relativeFiles.length > 0) {
+    throw new Error(
+      `[codegen] unmounted route.ts files must be converted or explicitly approved: ${JSON.stringify(relativeFiles)}`,
+    );
+  }
+}
+
 export async function isHonoConverted(filePath) {
   const code = await fs.readFile(filePath, "utf8");
   return isHonoRouteSource(code);
@@ -265,6 +281,7 @@ export async function generateRouter() {
   const { entries, unconverted, unmountedFiles, intentionallySkippedFiles } =
     await collectRouteEntries();
   assertApprovedCodegenSkips(intentionallySkippedFiles);
+  assertNoUnmountedRouteFiles(unmountedFiles);
   const shardKeys = [
     ...new Set(
       entries
@@ -356,13 +373,6 @@ export async function generateRouter() {
   console.log(
     `[codegen] wrote ${OUT_FILE} and ${SHARD_KEYS_OUT_FILE} (${entries.length} mounted, ${shardKeys.length} shards, ${intentionallySkippedFiles.length} intentionally skipped, ${unconverted} unconverted)`,
   );
-  if (unconverted > 0) {
-    console.error(
-      '[codegen] Unmounted route.ts files (add `from "hono"` import or delete):\n',
-      unmountedFiles.join("\n"),
-    );
-    process.exit(1);
-  }
 }
 
 /**

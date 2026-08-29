@@ -7,6 +7,7 @@ import * as routeCodegen from "./_generate-router.mjs";
 
 const {
   assertApprovedCodegenSkips,
+  assertNoUnmountedRouteFiles,
   collectRouteEntries,
   isRouteCodegenSkippedSource,
 } = routeCodegen;
@@ -74,6 +75,10 @@ describe("route codegen skip directive", () => {
     expect(result.intentionallySkippedFiles).toEqual([skipped]);
     expect(result.unmountedFiles).toEqual([unconverted]);
     expect(result.unconverted).toBe(1);
+    expect(() =>
+      assertNoUnmountedRouteFiles(result.unmountedFiles, apiRoot),
+    ).toThrow("v1/next/route.ts");
+    expect(() => assertNoUnmountedRouteFiles([], apiRoot)).not.toThrow();
   });
 
   test("enforces the exact reviewed skip allowlist in the real route tree", async () => {

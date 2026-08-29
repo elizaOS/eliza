@@ -11,6 +11,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import {
+  assertNoUnmountedRouteFiles,
   collectRouteEntries,
   compareMountPaths,
 } from "../src/_generate-router.mjs";
@@ -47,7 +48,7 @@ function assertBefore(routes, first, second) {
   );
 }
 
-const { entries, intentionallySkippedFiles } =
+const { entries, intentionallySkippedFiles, unmountedFiles } =
   await collectRouteEntries(API_ROOT);
 const expectedRoutes = entries.map((entry) => entry.path);
 const actualRoutes = generatedRoutes();
@@ -62,6 +63,7 @@ const intentionallySkippedRoutes = [
   "/api/v1/remote/sessions/activate",
 ];
 
+assertNoUnmountedRouteFiles(unmountedFiles, API_ROOT);
 assert.deepEqual(
   intentionallySkippedFiles
     .map((file) => relative(API_ROOT, file).replace(/\\/g, "/"))
