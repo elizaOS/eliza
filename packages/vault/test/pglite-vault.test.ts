@@ -20,6 +20,14 @@ import {
 import { VaultDecryptionError, VaultMissError } from "../src/vault.js";
 import { runtimeVaultCaller } from "./vitest-assertion-shim.js";
 
+function hasEntryIdentity(
+  error: VaultDecryptionError,
+): error is VaultDecryptionError & { readonly entryIdentity: string } {
+  return (
+    typeof error.entryIdentity === "string" && error.entryIdentity.length > 0
+  );
+}
+
 async function captureDecryptionFailure(
   vault: PgliteVaultImpl,
   key: string,
@@ -27,11 +35,7 @@ async function captureDecryptionFailure(
   try {
     await vault.get(key);
   } catch (error) {
-    if (
-      error instanceof VaultDecryptionError &&
-      typeof error.entryIdentity === "string" &&
-      error.entryIdentity.length > 0
-    ) {
+    if (error instanceof VaultDecryptionError && hasEntryIdentity(error)) {
       return error;
     }
     throw error;
