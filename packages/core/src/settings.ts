@@ -16,7 +16,9 @@
  * flag) and encryptedCharacter/decryptedCharacter walk their string values,
  * round-tripping non-strings untouched. Authenticated decryption fails closed:
  * callers receive a typed error rather than accidentally consuming ciphertext
- * as a usable secret.
+ * as a usable secret. Write-time ciphertext detection verifies the candidate
+ * under the active salt so plaintext that merely resembles a stored format is
+ * encrypted instead of leaking at rest.
  */
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors";
@@ -193,6 +195,21 @@ export function clearSaltCache(): void {
 	saltErrorLogged = false;
 }
 
+function isCiphertextForSalt(value: string, salt: string): boolean {
+	if (!isEncryptedV1(value) && !isEncryptedV2(value)) {
+		return false;
+	}
+
+	try {
+		decryptStringValue(value, salt);
+		return true;
+	} catch {
+		// error-policy:J3 Ciphertext-shaped user input that is invalid under the
+		// active salt is plaintext and must continue through encryption.
+		return false;
+	}
+}
+
 /**
  * Common encryption function for string values
  * @param {string} value - The string value to encrypt
@@ -212,8 +229,9 @@ export function encryptStringValue(value: string, salt: string): string {
 		return value;
 	}
 
-	// If already encrypted, return as-is.
-	if (isEncryptedV1(value) || isEncryptedV2(value)) {
+	// A format match alone cannot distinguish ciphertext from user plaintext.
+	// Only preserve values that authenticate/decrypt under the active salt.
+	if (isCiphertextForSalt(value, salt)) {
 		return value;
 	}
 
