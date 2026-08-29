@@ -60,6 +60,17 @@ function assertFiniteNonNegativeNumber(
   }
 }
 
+function assertSupportedString(
+  value: unknown,
+  supported: ReadonlySet<string>,
+  path: string,
+  expected: string,
+): asserts value is string {
+  if (typeof value !== "string" || !supported.has(value)) {
+    invalidHardware(path, expected);
+  }
+}
+
 function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
   if (!isRecord(value)) invalidHardware("response.hardware", "an object");
 
@@ -69,8 +80,8 @@ function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
   );
   assertFiniteNonNegativeNumber(value.freeRamGb, "response.hardware.freeRamGb");
   assertFiniteNonNegativeNumber(value.cpuCores, "response.hardware.cpuCores");
-  if (value.cpuCores < 1 || !Number.isInteger(value.cpuCores)) {
-    invalidHardware("response.hardware.cpuCores", "a positive integer");
+  if (!Number.isInteger(value.cpuCores)) {
+    invalidHardware("response.hardware.cpuCores", "a non-negative integer");
   }
   if (typeof value.platform !== "string" || value.platform.length === 0) {
     invalidHardware("response.hardware.platform", "a non-empty string");
@@ -81,29 +92,29 @@ function assertHardwareProbe(value: unknown): asserts value is HardwareProbe {
   if (typeof value.appleSilicon !== "boolean") {
     invalidHardware("response.hardware.appleSilicon", "a boolean");
   }
-  if (!MODEL_BUCKETS.has(String(value.recommendedBucket))) {
-    invalidHardware(
-      "response.hardware.recommendedBucket",
-      "a supported model bucket",
-    );
-  }
-  if (!HARDWARE_PROBE_SOURCES.has(String(value.source))) {
-    invalidHardware(
-      "response.hardware.source",
-      "a supported hardware probe source",
-    );
-  }
+  assertSupportedString(
+    value.recommendedBucket,
+    MODEL_BUCKETS,
+    "response.hardware.recommendedBucket",
+    "a supported model bucket",
+  );
+  assertSupportedString(
+    value.source,
+    HARDWARE_PROBE_SOURCES,
+    "response.hardware.source",
+    "a supported hardware probe source",
+  );
 
   if (value.gpu !== null) {
     if (!isRecord(value.gpu)) {
       invalidHardware("response.hardware.gpu", "an object or null");
     }
-    if (!GPU_BACKENDS.has(String(value.gpu.backend))) {
-      invalidHardware(
-        "response.hardware.gpu.backend",
-        "a supported GPU backend",
-      );
-    }
+    assertSupportedString(
+      value.gpu.backend,
+      GPU_BACKENDS,
+      "response.hardware.gpu.backend",
+      "a supported GPU backend",
+    );
     assertFiniteNonNegativeNumber(
       value.gpu.totalVramGb,
       "response.hardware.gpu.totalVramGb",
