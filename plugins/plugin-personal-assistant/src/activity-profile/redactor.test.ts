@@ -1,12 +1,12 @@
 /**
  * Contract tests for the window-title PII redactor (redactWindowTitle).
  * Pins the privacy boundary documented in redactor.ts: credit-card-like runs
- * redact before phone patterns (a 16-digit PAN must not partially match the
- * phone regex), the separator class covers the separators a real browser
- * title carries, long digit runs redact in full (an exempted long match
- * could embed a valid PAN), newline never combines digit groups, email
- * addresses strip, and benign digit runs stay visible. Deterministic —
- * pure function, real regexes, no mocks.
+ * (12+ digits — the ISO/IEC 7812 PAN floor) redact before phone patterns (a
+ * 16-digit PAN must not partially match the phone regex), the separator class
+ * covers the separators a real browser title carries, long digit runs redact
+ * in full (an exempted long match could embed a valid PAN), newline never
+ * combines digit groups, email addresses strip, and benign digit runs stay
+ * visible. Deterministic — pure function, real regexes, no mocks.
  */
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -37,9 +37,19 @@ describe("redactWindowTitle: credit-card runs", () => {
     );
   });
 
-  it("redacts the minimum 13-digit run", () => {
-    expect(redactWindowTitle("ref 1234567890123 ok", {})).toBe(
-      "ref [redacted-cc] ok",
+  it("redacts the minimum 12-digit run (ISO/IEC 7812 PAN floor)", () => {
+    // 12 is the floor of the ISO/IEC 7812 PAN length range (Maestro has
+    // issued 12-digit PANs). A 12-digit run must fail closed: a report
+    // consumer cannot distinguish a benign 12-digit reference from a PAN
+    // after this boundary has declared the title safe.
+    expect(redactWindowTitle("Card 501234567890 - Bank", {})).toBe(
+      "Card [redacted-cc] - Bank",
+    );
+  });
+
+  it("redacts a 12-digit run in a reference-shaped title", () => {
+    expect(redactWindowTitle("Invoice 123456789012 paid", {})).toBe(
+      "Invoice [redacted-cc] paid",
     );
   });
 
@@ -58,17 +68,10 @@ describe("redactWindowTitle: credit-card runs", () => {
     );
   });
 
-  it("does not redact a 12-digit run", () => {
-    // Known trade-off: 12-digit PANs exist (Maestro is issued at 12–13
-    // digits), but this band is dominated by invoice/reference numbers in
-    // real window titles, and over-redacting them destroys report
-    // readability. Documented in the redactor.ts header.
-    expect(redactWindowTitle("Invoice 123456789012 paid", {})).toBe(
-      "Invoice 123456789012 paid",
-    );
-  });
-
   it("does not redact an 11-digit run", () => {
+    // Below the ISO/IEC 7812 PAN floor: 11-digit runs are not card-shaped,
+    // and redacting them would strip ordinary short references. The 12-digit
+    // ISO floor, not readability, is the cutoff.
     expect(redactWindowTitle("Call 44151496014 back", {})).toBe(
       "Call 44151496014 back",
     );
@@ -149,11 +152,11 @@ describe("redactWindowTitle: runs longer than 19 digits", () => {
     );
   });
 
-  it("completes a 12-digit near-match with repeated separators without hanging", async () => {
+  it("completes an 11-digit near-match with repeated separators without hanging", async () => {
     // ReDoS regression: an earlier separator alternation with overlapping
     // branches (ZWJ \p{Cf} + \p{Default_Ignorable_Code_Point}; variation
     // selectors \p{M} + DICP) backtracked exponentially on a NEAR-match —
-    // a run of exactly 12 digits (one short of the 13-digit floor) with
+    // a run of exactly 11 digits (one short of the 12-digit floor) with
     // repeated U+200B after the first digit: 20 repetitions took ~480ms, 40
     // took ~1.7s, and more would hang. A synchronous regex blocks the event
     // loop, so an in-process timer cannot interrupt it; the probe therefore
@@ -161,7 +164,7 @@ describe("redactWindowTitle: runs longer than 19 digits", () => {
     // with a hard wall-clock deadline. The vulnerable shape gets killed at
     // the deadline and fails this test; the single union character class
     // matches in ~0ms.
-    const nearMatch = `Card 4${"\u200B".repeat(60)}11111111111 - Bank`;
+    const nearMatch = `Card 4${"\u200B".repeat(60)}1111111111 - Bank`;
     // The child owns BOTH assertions (deadline-protected): a regressed shape
     // is killed at the deadline and this test fails cleanly instead of
     // hanging the worker — so there is deliberately no in-process call on
@@ -248,9 +251,22 @@ describe("redactWindowTitle: emails", () => {
 });
 
 describe("redactWindowTitle: phones", () => {
-  it("redacts an E.164 number", () => {
-    expect(redactWindowTitle("Call +441514960148 back", {})).toBe(
+  it("redacts an E.164 number under the CC floor", () => {
+    // +44151496014 is 11 digits — phone territory. At the 12-digit CC floor
+    // a 12-digit E.164 number is card-shaped and the CC pass wins (pinned
+    // in the credit-card describe block); the phone pattern owns only
+    // shorter E.164 numbers now.
+    expect(redactWindowTitle("Call +44151496014 back", {})).toBe(
       "Call [redacted-phone] back",
+    );
+  });
+
+  it("redacts a 12-digit E.164-shaped number as card-shaped (CC precedence)", () => {
+    // CC runs before phone: a 12-digit run matches CC_LIKE first even when
+    // the digits are phone-shaped. Privacy-safe over-classification, not a
+    // leak — pinned so any change to the interaction is conscious.
+    expect(redactWindowTitle("Call +441514960148 back", {})).toBe(
+      "Call +[redacted-cc] back",
     );
   });
 
