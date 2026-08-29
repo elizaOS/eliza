@@ -12,7 +12,7 @@ code audit and the safeguards added in this change.
 | --- | --- | --- | --- |
 | Shared agent | Cloudflare Worker shared-runtime modules, Durable Objects, Railway Postgres/Redis/KV | `agent_sandboxes.execution_tier=shared` plus shared history projections | Telegram, Discord, iMessage, web public/connector ingress |
 | Dedicated agent | `agent-server` Docker container on a Hetzner data-plane node | `agent_sandboxes` row, `jobs` row, node allocation, container health/heartbeat | Signed-in Eliza app and Cloud console |
-| Handoff | Worker shared conversation export/import + dedicated readiness polling | shared history, dedicated conversation receipts, cutover state | Shared-to-personal upgrade and first-run bootstrap |
+| Handoff | Worker shared conversation export/import + dedicated readiness polling | shared history, dedicated conversation receipts, cutover state | Explicit Shared-to-personal upgrade |
 
 The product boundary is encoded by `execution_tier`, not by a URL guess. A
 shared row has no container and is served by the Worker. A dedicated row owns
@@ -29,10 +29,10 @@ Account-native signed-in entry points now converge on
 - a stale Shared client receiving the `personal_eliza_dedicated` routing
   rejection: the retry/repoint boundary in `client-base.ts`.
 
-First-run Cloud onboarding uses the older generic
-`selectOrProvisionCloudAgent` boundary, but its Shared preference was removed:
-it reuses only Dedicated rows or creates a Dedicated row and waits for the
-provision job and running container before persistence. A repository-wide
+First-run Cloud onboarding also converges on the Dedicated boundary. It first
+offers to adopt an existing Dedicated agent owned by the account; otherwise it
+creates one and waits under an absolute startup deadline for the provision job
+and running container before persistence. A repository-wide
 caller audit found no production caller of `getPersonalSharedEliza` outside
 `ensurePersonalDedicatedEliza`, and no production boot configuration that
 forces `preferSharedTier`, `preferSharedCloudTier`, or the legacy automatic
@@ -57,8 +57,11 @@ The full sequence is:
    LOCKED`, provisions/attaches the tenant database, prepares encrypted env,
    selects an attested Docker node, creates `agent-<id>`, probes health, and
    persists node/container/bridge metadata before completion.
-6. While the target is pending, the app retries the cutover boundary. Shared
-   remains authoritative, but it is not persisted as the signed-in runtime.
+6. While the target is pending, the app retries the cutover boundary under a
+   bounded deadline. The target cannot answer through Shared: chat remains
+   unavailable until the real Dedicated container is ready. For a legacy
+   Shared-to-Dedicated migration, the source remains the rollback authority but
+   the signed-in app does not execute new turns against it during activation.
 7. The cutover route seals Shared writes, snapshots messages, scheduled tasks,
    todos, and todo mutations, imports them to the healthy Dedicated runtime,
    validates receipt counts and digests, and atomically marks Dedicated active.
@@ -101,13 +104,15 @@ shared prewarm path. Connector delivery can later select a personal dedicated
 target only when the explicit personal-dedicated projection resolves one; a
 missing target remains Shared and never invents a dedicated URL.
 
-## First-run bootstrap and handoff
+## Dedicated readiness barrier and handoff
 
-During a genuine first dedicated boot (`bridge_url IS NULL`, status
-`pending|provisioning`, non-shared tier), `isDedicatedBootstrapWindow` allows
-the Worker shared runtime to answer immediately. This is a bounded bootstrap
-fallback, not a product-tier downgrade: established dedicated rows, stopped
-rows, and error rows are not routed to Shared.
+There is no Shared execution bootstrap for a Dedicated row. The shared-agent
+resolver admits only `execution_tier=shared`; its cache cannot hold a positive
+Dedicated scope. `ElizaSandboxService.bridge` and the Shared REST character
+adapter require a running Shared row and return unavailable for a pending or
+provisioning Dedicated row. This is the server-side enforcement behind the
+product rule: a Dedicated agent is either served by its own container or is not
+yet available.
 
 Legacy row-backed Shared agents use `startCloudAgentHandoff`:
 
@@ -116,8 +121,9 @@ Legacy row-backed Shared agents use `startCloudAgentHandoff`:
 3. imports the transcript into the dedicated conversation and verifies the
    receipt/readback;
 4. switches the client base to the dedicated subdomain; and
-5. leaves the shared base active if any step fails, so the user has a working
-   fallback and an observable retry path.
+5. leaves the source and seal authority intact if any step fails, so the user
+   can explicitly retry without partial import or lost history. It does not
+   silently repoint a signed-in session to Shared execution.
 
 The account-native rowless personal identity uses the stronger server-owned
 cutover route instead. It imports the Shared transcript, reminders, and todos
@@ -160,21 +166,21 @@ capacity. Health probes retry before reap. Stuck provisioning rows are fenced
 and reconciled rather than silently deleted. New capacity is created only after
 node health and digest resolution; autoscaling is capped and cooldown-limited.
 
-## Startup failure found and fixed
+## Startup failures found and fixed
 
 The daemon's previous startup preflight checked KMS and (for remote providers)
-SSH, but did not require `DATABASE_URL` to be present or remote. The DB liveness
-check was warn-only. A staging/control-plane process launched without the API's
-database URL could therefore open an implicit local/PGlite database, publish a
-healthy Redis heartbeat, claim no jobs, and leave every dedicated agent in
-`pending` while the API wrote jobs elsewhere. This matches the documented split
-database incident pattern.
+SSH, but did not prove the effective database authority. A control-plane
+process could therefore open implicit PGlite, or a nonempty
+`TEST_DATABASE_URL` could override a valid `DATABASE_URL`, publish a healthy
+Redis heartbeat, claim no API jobs, and leave every Dedicated agent pending
+while the API wrote elsewhere.
 
-The daemon now fails before KMS/heartbeat when `NODE_ENV` is not `test` or
-`development` and `DATABASE_URL` is missing, malformed, non-Postgres, or
-`pglite://`. Tests cover local exceptions, invalid deployed values, and valid
-PostgreSQL URLs. The existing periodic jobs/DB-heartbeat liveness check remains
-as a secondary split-vs-idle diagnostic.
+The daemon now resolves the same effective URL as the database client before
+KMS or heartbeat. Outside test/development it rejects a nonempty
+`TEST_DATABASE_URL`, whitespace-only/malformed URLs, PGlite, non-PostgreSQL
+schemes, missing hosts, loopback/unspecified hosts, and socket-host overrides.
+Only an explicit remote PostgreSQL authority may start the deployed worker.
+The periodic jobs/database heartbeat remains a secondary split-vs-idle signal.
 
 The compatibility sidecar cron endpoint now also resolves
 `PROVISIONING_JOB_LANES` and passes the selected lane to `processPendingJobs`,
@@ -187,6 +193,15 @@ and persisted its Shared response. That made a healthy Shared chat look like a
 Dedicated startup failure because no Dedicated job was requested at all. Those
 paths now call the Dedicated ensure/cutover operation and fail closed if Cloud
 cannot activate Dedicated.
+
+A later audit found a second routing violation: pending/provisioning Dedicated
+rows were deliberately admitted to the Worker Shared runtime as a first-boot
+fallback. The Shared REST adapter then reported `cloudProvisioned=true`, so a
+signed-in user could send Shared turns while believing the Dedicated agent was
+ready. This change deletes that bootstrap helper and its positive cache/bridge
+paths. Regression tests prove every Dedicated lifecycle state is refused by the
+Shared resolver and that pending agents expose neither Shared chat nor character
+data.
 
 The worker deploy workflow had another configuration deadlock. It required
 `HEADSCALE_PUBLIC_URL` and `HEADSCALE_API_KEY` to exist in GitHub before SSH,
@@ -203,16 +218,18 @@ validation or exposing the key.
 | Layer | Weakness | Disposition |
 | --- | --- | --- |
 | Product routing | Signed-in callsites persisted rowless Shared | Fixed: Dedicated ensure + atomic cutover is mandatory |
+| Bootstrap isolation | pending/provisioning Dedicated rows executed through Worker Shared and appeared provisioned | Fixed: Shared resolver/cache/bridge now admit only Shared rows; Dedicated waits for its container |
 | Legacy boot config | Shared-first default contradicted product boundary | Fixed: default false in both stores; signed-in path ignores the knob |
-| Worker DB | daemon could publish liveness against implicit PGlite/wrong DB | Fixed: deployed startup requires a valid PostgreSQL `DATABASE_URL` |
+| Worker DB | daemon could publish liveness against implicit PGlite or a `TEST_DATABASE_URL` override | Fixed: deployed startup validates the effective remote PostgreSQL authority before heartbeat |
 | Queue lanes | compatibility sidecar could claim every job type | Fixed: same lane resolver as daemon |
 | Worker deploy | CI required missing Headscale metadata before it could validate preserved host authority | Fixed in workflow as described above |
 | Worker deploy tests | deletion-only backup authority was enabled in the Hetzner workflow while four tests still asserted the retired dormant/disabled contract | Fixed: contracts now require the dedicated R2/Hetzner allowlist and live deletion-cycle health while excluding KMS, Headscale, SSH, capture, and scheduler authority |
 | Live acceptance | the Dedicated canary's workflow contract omitted the newer `group-chat` suite, so its preflight failed before executing the canary | Fixed: the contract now matches the dispatch inventory; failed run `33018915061` created no agent |
-| Staging admission | the credentialed Dedicated canary is below the server-owned hosting-runway threshold | Operational blocker: exact-head run `33020269187` received 402 with zero agents/jobs; restore staging test credit through the billing authority |
-| Warm pool | enablement and live ready-count are host/DB state, not observable from public health | Operational proof still required |
+| Canary diagnostics | cleanup failure overwrote the original provisioning failure and terminal job details collapsed to `job_failed` | Fixed in this change: preserve the primary phase and emit only an allowlisted subsystem category |
+| Staging admission | the canary identity was below the hosting-runway threshold | Cleared: run `33280890733` created one Dedicated row/job; the failure moved into provisioning |
+| Current staging provision | real `dedicated-always` job reached terminal failure before container/database/mesh readiness | Open: rerun the diagnostic canary, repair the classified subsystem, and clean the exact stale canary |
+| Warm pool | both Worker and daemon are protected-off; no ready-count or live-claim proof exists | Intentionally disabled pending `#16961`; cold provisioning must work independently |
 | Deployment capacity | earlier production deploys queued/cancelled on unavailable runner labels | Partially cleared: run `33017962389` deployed the worker/router successfully; it predates this fix and is not a Dedicated canary |
-| Staging secrets | staging environment metadata lacks provisioning host/key inventory | Credential/config blocker; cannot repair from repository code |
 | Full validation | the original shared checkout contains an unrelated conflict in `eliza-sse-bridge.ts` | Isolated: this change is validated from a clean worktree rebased on `origin/develop` |
 
 ## Remaining operational weaknesses
@@ -233,70 +250,35 @@ validation or exposing the key.
   operators must still prove the intended Railway service/volume, Hyperdrive
   origin, backups, and restore drill before enabling enforcement.
 
-## Read-only deployment snapshot (2026-08-26)
+## Read-only deployment snapshot (2026-08-29)
 
-The first public health snapshot reported production at
-`68a3de6c873bbb753eebc15601b2984819bf4a2f` and staging at
-`b100682147cb13235db728ada7b1696d74e0d2a3`. During the later inspection:
+Staging provisioning-worker deployment run `33247669428` completed migrations,
+immutable checkout, host reconciliation, daemon/router restart, and sustained
+health for source SHA `4635c6496e7d898452b0f942538cfb41900f2a7b`.
+That revision contains three clean-host repairs discovered after the original
+architecture change: the PTY plugin declares its shared workspace dependency,
+the worker receives Steward authentication authority, and deploy dirt checks
+ignore an unused submodule without ignoring tracked source drift. The SHA is an
+ancestor of current `develop`.
 
-- production run `33017515871` targeted main SHA
-  `797a5246055ab2d00805fd6f7657af7747f2bd2f`; environment resolution passed,
-  but the unassigned deploy job was ultimately cancelled without running a
-  step;
-- the preceding main deploys were cancelled after several minutes rather than
-  completing, but a later retry, run `33017962389`, completed for exact main
-  SHA `10fcb3f4d2130678651a6dc43f412e865655c4dc` and reported the worker and
-  router stable after 22 seconds;
-- every registered `hetzner-robot` runner with the production-specific name was
-  offline, although generic self-hosted robots were online;
-- environment metadata showed `DATABASE_URL` and production SSH target
-  credentials, but no environment-level `HEADSCALE_API_KEY`,
-  `HEADSCALE_PUBLIC_URL`, `WARM_POOL_ENABLED`, or `ELIZA_AGENT_IMAGE`. The
-  successful deploy used the canonical production Headscale URL and preserved
-  any host-only settings; its `WARM_POOL_ENABLED` workflow input was blank, so
-  it did not prove the effective host value or pool inventory; and
-- staging metadata did not expose the provisioning host/key pair needed by the
-  deploy job.
+The public staging health endpoint observed by canary run `33280890733` reported
+API commit `2a4af7351c96881b83333fabb37927222dbb09fd`. The run passed credential,
+target, checkout, and contract preflights, then created exactly one
+`dedicated-always` row and provisioning job. The job terminated after roughly
+200 seconds before `running`, tenant database readiness, a fresh heartbeat,
+Headscale address, bridge transport, SSE, or chat. Cleanup also failed while
+waiting on the already-failed provision job, so the privacy-safe artifact marks
+a possible orphan. No user prompt, response, credential, agent id, hostname, or
+private network address is present in the artifact.
 
-The successful worker deploy proves systemd/router liveness and an immutable
-image digest (`sha256:e6a18933fdf1cc0e65bb388d05f52e7b3c3a6260cd5058c6de02b76ae5f07823`).
-It does not prove database identity, warm-pool rows, node capacity, cutover, or
-one Dedicated chat. It also predates both the deployed-DB fail-fast guard and
-the signed-in Dedicated ensure path in this change. A production dispatch from
-a non-main test ref correctly failed the protected-source guard.
-
-A staging Dedicated-canary dispatch, run `33018915061`, passed its real-Cloud
-credential and target preflights but stopped in deterministic contract tests:
-the workflow had gained the `group-chat` selector while the canary test still
-asserted the older option list. The live step was skipped, no evidence artifact
-was produced, and no agent was created. This change updates that contract; a
-new exact-head dispatch is still required for platform acceptance.
-
-The repaired exact-head workflow then ran as `33020269187`. It passed the
-workflow contracts and artifact privacy gate, but the real create boundary
-returned HTTP 402. Its sanitized artifact records staging commit
-`02f45de149dad7c82dc7a67aa68f66d1e33a3521`, zero created agents, zero chat
-requests, cleanup `not-required`, and no possible orphan. This proves the
-current failure occurs before queue insertion, warm-pool claim, node selection,
-or Docker startup: the staging canary identity lacks the server-required
-hosting credit/runway. The authoritative pricing contract requires a balance
-strictly above `$0.72`, equal to three days at `$0.24/day`; the canary artifact
-does not expose the private current balance or organization identity. The
-canary now classifies this as
-`insufficient_hosting_credit` instead of the generic `unexpected_http_402`.
-Restoring that staging test balance is a billing-authority operation, not a
-Hetzner repair, and must be followed by a fresh canary after this SHA is
-deployed to staging.
-
-Exact PR head `5dc4317782539d27c2fc9500264a09d6b54af542` repeated the
-probe in run `33021838017`. The source-side workflow contracts and strict
-artifact privacy validator passed; the real create again stopped at 402. This
-time the artifact carried the intended `insufficient_hosting_credit` code,
-with zero created agents, zero chats, cleanup `not-required`, and
-`possibleOrphan=false`. The API still reported deployed staging commit
-`02f45de149dad7c82dc7a67aa68f66d1e33a3521`, so this run verifies the current
-canary diagnosis while also proving that the PR implementation itself is not
-yet deployed.
+That run proves the current blocker is no longer billing admission and is not a
+Shared/Dedicated tier-selection error. It lies inside the real provisioning
+job—database creation, secrets, image, Hetzner capacity/container, SSH,
+Headscale ingress, or runtime startup. The old canary retained only
+`cleanup_job/job_failed`, erasing the primary diagnostic. This change preserves
+the original provisioning phase and maps the owner-safe job error into a fixed
+privacy-safe subsystem category. The next branch canary is therefore the
+decision point for the remaining repair.
 
 Required acceptance evidence is: one non-cancelled exact-SHA worker deploy;
 systemd active identity and effective env-name audit; matching API/daemon DB
@@ -305,14 +287,11 @@ terminal provision job; routed container health; atomic cutover receipt; and a
 real chat write/readback from the Dedicated base. No local test or public health
 beacon substitutes for that chain.
 
-The warm-pool claim and replenish halves are intentionally disabled in current
-source while issue `#16961` remains open. Every committed Cloudflare Worker
-environment has `WARM_POOL_ENABLED = "false"`; enabling only the Hetzner daemon
-would therefore spend compute on containers the API cannot claim. Conversely,
-enabling only the Worker would find no replenished capacity. The deploy repair
-in this change makes the protected environment variable authoritative with a
-safe `false` default, validates it as an exact boolean, reconciles that value
-over unknown host state, and verifies the same value again after restart. It
-does not activate the pool. Staging activation still requires the recorded
-identity, billing, capacity, starvation, digest, health, and rollback evidence
-before both halves may be flipped together.
+The warm-pool claim and replenish halves are intentionally disabled while issue
+`#16961` remains open. Every committed Worker environment uses
+`WARM_POOL_ENABLED="false"`, and the Hetzner deploy reconciles and re-attests the
+same protected false value after restart. Enabling only the daemon would spend
+compute the API cannot claim; enabling only the API would find no replenished
+capacity. Do not use the pool to mask the cold-path failure. Activation requires
+recorded billing, capacity, starvation, digest, health, claim, and rollback
+evidence for both halves in one controlled change.

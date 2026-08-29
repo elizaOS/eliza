@@ -101,6 +101,16 @@ const PRIVACY_SAFE_FAILURE_CODES = new Set([
   "invalid_agent_list",
   "insufficient_hosting_credit",
   "job_failed",
+  "provisioning_capacity_failed",
+  "provisioning_container_failed",
+  "provisioning_database_failed",
+  "provisioning_image_failed",
+  "provisioning_ingress_failed",
+  "provisioning_private_diagnostic",
+  "provisioning_runtime_failed",
+  "provisioning_secrets_failed",
+  "provisioning_transport_failed",
+  "provisioning_unclassified",
   "job_timeout",
   "agent_not_initialized",
   "missing_agent_data",
@@ -216,6 +226,45 @@ function dataRecord(body: JsonObject): JsonObject | null {
 function stringField(record: JsonObject | null, key: string): string | null {
   const value = record?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Reduce the owner-safe jobs API summary to a fixed operational category. The
+ * raw text can contain mutable provider details and therefore never enters the
+ * artifact; the category is enough to select the responsible subsystem.
+ */
+function classifyProvisioningJobFailure(data: JsonObject | null): string {
+  const summary = stringField(data, "error");
+  if (!summary) return "provisioning_unclassified";
+  const normalized = summary.toLowerCase();
+  if (normalized.startsWith("the operation failed. retry from eliza cloud")) {
+    return "provisioning_private_diagnostic";
+  }
+  if (/\b(database|postgres|pglite|tenant db)\b/.test(normalized)) {
+    return "provisioning_database_failed";
+  }
+  if (/\b(secret|decrypt|encryption|kms|credential)\b/.test(normalized)) {
+    return "provisioning_secrets_failed";
+  }
+  if (/\b(image|manifest|registry|pull)\b/.test(normalized)) {
+    return "provisioning_image_failed";
+  }
+  if (/\b(headscale|tailscale|ingress|route|dns)\b/.test(normalized)) {
+    return "provisioning_ingress_failed";
+  }
+  if (/\b(ssh|transport|connection|unreachable|network)\b/.test(normalized)) {
+    return "provisioning_transport_failed";
+  }
+  if (/\b(capacity|server|node|quota|resource)\b/.test(normalized)) {
+    return "provisioning_capacity_failed";
+  }
+  if (/\b(container|docker|port|sandbox provider)\b/.test(normalized)) {
+    return "provisioning_container_failed";
+  }
+  if (/\b(runtime|health|heartbeat|agent start|not ready)\b/.test(normalized)) {
+    return "provisioning_runtime_failed";
+  }
+  return "provisioning_unclassified";
 }
 
 function isAgentExecutionTier(
@@ -1183,7 +1232,12 @@ export async function runManagedDedicatedCanary(
       const status = stringField(data, "status") ?? "unknown";
       if (status === "completed") return;
       if (TERMINAL_JOB_STATUSES.has(status)) {
-        throw new CanaryFailure(phase, "job_failed");
+        throw new CanaryFailure(
+          phase,
+          phase === "provision"
+            ? classifyProvisioningJobFailure(data)
+            : "job_failed",
+        );
       }
       await sleep(pollIntervalMs);
     }
@@ -1632,7 +1686,10 @@ export async function runManagedDedicatedCanary(
       const failure = asFailure(error);
       evidence.cleanup.status = "failed";
       evidence.cleanup.possibleOrphan = possibleOrphan || agentId !== null;
-      evidence.failure = { phase: failure.phase, code: failure.code };
+      // Cleanup has its own explicit status/orphan fields. Preserve the first
+      // lifecycle failure when one exists so a failed cleanup cannot erase the
+      // provisioning subsystem that actually caused the incident.
+      evidence.failure ??= { phase: failure.phase, code: failure.code };
     }
     totalDone();
   }

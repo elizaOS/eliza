@@ -138,7 +138,6 @@ import {
   SandboxReplacementCleanupUnresolvedError,
 } from "./sandbox-provider-types";
 import { purgeSharedConversationRooms } from "./shared-runtime/conversation-coordinator";
-import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
 import {
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
@@ -5523,7 +5522,9 @@ export class ElizaSandboxService {
    * Resolve the effective character (name/system/bio/model) for a shared-runtime
    * agent — the SAME `SharedAgentCharacter` the bridge `message.send` turn uses,
    * so the REST `GET .../api/character` adapter returns exactly what the agent
-   * answers as. Returns `null` when no running shared sandbox matches the org.
+   * answers as. Returns `null` when no running shared sandbox matches the org;
+   * a pending Dedicated agent must wait for its container and cannot borrow the
+   * Shared runtime.
    */
   async getSharedRuntimeCharacter(
     agentId: string,
@@ -5532,13 +5533,6 @@ export class ElizaSandboxService {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (rec && rec.execution_tier === "shared") {
       return this.buildSharedRuntimeCharacter(rec);
-    }
-    // Bootstrap window: a freshly-created dedicated agent (not yet "running", so
-    // findRunningSandbox misses it) is served by the in-Worker shared runtime
-    // until its container boots — return the same character the shared turn uses.
-    const bootstrap = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (bootstrap && isDedicatedBootstrapWindow(bootstrap)) {
-      return this.buildSharedRuntimeCharacter(bootstrap);
     }
     return null;
   }
@@ -6387,15 +6381,6 @@ export class ElizaSandboxService {
   ): Promise<BridgeResponse> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec) {
-      // Bootstrap window: a freshly-created dedicated agent whose container is
-      // still provisioning is served by the in-Worker shared runtime so the user
-      // can chat immediately; the client hands off to the dedicated subdomain
-      // once it reports running. (findRunningSandbox misses it since it is not
-      // yet "running", so re-resolve by id+org.)
-      const bootstrap = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-      if (bootstrap && isDedicatedBootstrapWindow(bootstrap)) {
-        return this.bridgeSharedBootstrap(bootstrap, rpc, executionCtx);
-      }
       logger.warn("[agent-sandbox] Bridge call to non-running sandbox", {
         agentId,
         method: rpc.method,
@@ -6449,44 +6434,6 @@ export class ElizaSandboxService {
     } catch {
       logger.warn("[agent-sandbox] Bridge request failed", {
         agentId,
-        method: rpc.method,
-        failureClass: "sandbox_bridge_failed",
-      });
-      return {
-        jsonrpc: "2.0",
-        id: rpc.id,
-        error: { code: -32000, message: "Sandbox bridge is unreachable" },
-      };
-    }
-  }
-
-  /**
-   * Bridge dispatch for a DEDICATED agent still in its first-provision bootstrap
-   * window (no container yet). Mirrors the shared-tier branch: the in-Worker
-   * shared runtime answers status/heartbeat and message.send (billing + KV turn
-   * history keyed by the agent id) so the user chats immediately; the client
-   * hands off to the dedicated subdomain once the container reports running.
-   */
-  private async bridgeSharedBootstrap(
-    rec: AgentSandbox,
-    rpc: BridgeRequest,
-    executionCtx?: BridgeExecutionContext,
-  ): Promise<BridgeResponse> {
-    try {
-      if (rpc.method === "status.get" || rpc.method === "heartbeat") {
-        return await this.bridgeSharedStatus(rec, rpc);
-      }
-      if (rpc.method === "message.send") {
-        return await this.bridgeSharedMessageSend(rec, rpc, executionCtx);
-      }
-      return {
-        jsonrpc: "2.0",
-        id: rpc.id,
-        error: { code: -32601, message: `Method not found: ${rpc.method}` },
-      };
-    } catch {
-      logger.warn("[agent-sandbox] Bootstrap bridge request failed", {
-        agentId: rec.id,
         method: rpc.method,
         failureClass: "sandbox_bridge_failed",
       });

@@ -42,6 +42,7 @@ interface FixtureOptions {
   cleanupFails?: boolean;
   postCommitsThenThrows?: boolean;
   provisionNeverCompletes?: boolean;
+  provisionFailsWithError?: string;
   provisionCompletesAfterPolls?: number;
   recoveryListFailures?: number;
   recoveryNeverFinds?: boolean;
@@ -155,6 +156,12 @@ function createFixture(options: FixtureOptions = {}) {
 
     if (url.pathname === `/api/v1/jobs/${PROVISION_JOB_ID}`) {
       provisionPolls += 1;
+      if (options.provisionFailsWithError) {
+        return response({
+          success: true,
+          data: { status: "failed", error: options.provisionFailsWithError },
+        });
+      }
       if (
         options.provisionNeverCompletes ||
         (options.provisionCompletesAfterPolls !== undefined &&
@@ -936,8 +943,8 @@ describe("managed dedicated canary", () => {
       createdTier: unsafeTier,
     });
     expect(evidence.failure).toEqual({
-      phase: "cleanup",
-      code: "identity_mismatch",
+      phase: "create",
+      code: "wrong_execution_tier",
     });
     expect(evidence.path.observedTier).toBe("other");
     expect(evidence.cleanup).toEqual({
@@ -1018,7 +1025,7 @@ describe("managed dedicated canary", () => {
     });
 
     expect(evidence.failure).toEqual({
-      phase: "cleanup_job",
+      phase: "provision",
       code: "job_timeout",
     });
     expect(evidence.cleanup).toEqual({
@@ -1033,6 +1040,24 @@ describe("managed dedicated canary", () => {
       ),
     ).toHaveLength(0);
     expect(fixture.freshDeleteBody).toBeNull();
+  });
+
+  test("preserves a privacy-safe provisioning category when cleanup sees the same failed job", async () => {
+    const { evidence } = await runFixture({
+      provisionFailsWithError:
+        "Docker image pull failed before container create",
+    });
+
+    expect(evidence.failure).toEqual({
+      phase: "provision",
+      code: "provisioning_image_failed",
+    });
+    expect(evidence.cleanup).toEqual({
+      status: "failed",
+      possibleOrphan: true,
+    });
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+    expect(JSON.stringify(evidence)).not.toContain("Docker image pull failed");
   });
 
   test("cleanup waits for the known provision job to quiesce before deleting", async () => {
@@ -1092,8 +1117,8 @@ describe("managed dedicated canary", () => {
     });
     expect(evidence.verdict).toBe("fail");
     expect(evidence.failure).toEqual({
-      phase: "cleanup",
-      code: "possible_orphan_after_ambiguous_create",
+      phase: "create",
+      code: "request_failed",
     });
     expect(evidence.cleanup).toEqual({
       status: "failed",

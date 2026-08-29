@@ -23,7 +23,6 @@ import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
 import { logger } from "../../utils/logger";
 import { type CachedAgentSandbox, rehydrateCachedAgentDates } from "./cached-agent-dates";
-import { isDedicatedBootstrapWindow } from "./dedicated-bootstrap";
 import { isPersonalSharedAgentId, personalSharedAgent } from "./personal-shared-agent";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
@@ -132,9 +131,8 @@ export function resolveSharedRuntimeWorkerRequestContext(
  * the org-scoped agent row. Everything else in the success return is derived
  * cheaply in-memory from these, so a cache hit reproduces the exact same result
  * WITHOUT the two cold Hyperdrive waves (key validation + user/org hydration +
- * agent lookup). Shared agents use bounded sliding refresh; a dedicated agent
- * in its first-bootstrap window uses only the short base TTL so the handoff to
- * its container self-heals quickly.
+ * agent lookup). Shared agents use bounded sliding refresh. Container-backed
+ * agents are never admitted to this cache or runtime.
  */
 interface CachedSharedAgentScope {
   orgId: string;
@@ -273,12 +271,10 @@ async function revalidateSessionUserState(
  * shared-tier check lives in exactly ONE place instead of a per-route copy.
  *
  * Validates the caller's API key/session, scopes the agent to their org, and
- * serves two cases: a shared-tier agent (its whole life), and a DEDICATED agent
- * still in its first-provision bootstrap window (so a new user can chat
- * immediately while the container boots — see dedicated-bootstrap.ts). A
- * dedicated agent that is already running, asleep, or errored 404s here and uses
- * its own subdomain REST surface instead. Returns the superset of fields the
- * leaves read; each caller takes what it needs.
+ * serves shared-tier agents only. Every Dedicated lifecycle state is refused so
+ * a container-backed agent cannot execute on the Worker while it provisions or
+ * recovers. Returns the superset of fields the leaves read; each caller takes
+ * what it needs.
  */
 export async function resolveSharedAgent(
   c: Context<AppEnv>,
@@ -357,11 +353,7 @@ export async function resolveSharedAgent(
   const revalidateResolvedScope = async (
     cached: CachedSharedAgentScope,
   ): Promise<ResolvedSharedAgent | null> => {
-    if (
-      !cached?.agent ||
-      !cached.orgId ||
-      (cached.agent.execution_tier !== "shared" && !isDedicatedBootstrapWindow(cached.agent))
-    ) {
+    if (!cached?.agent || !cached.orgId || cached.agent.execution_tier !== "shared") {
       return null;
     }
     // SECURITY: a hit skips the expensive user/org+agent DB hydration, but it
@@ -506,7 +498,7 @@ export async function resolveSharedAgent(
     if (!agent) {
       throw new ApiError(404, "resource_not_found", "Agent not found");
     }
-    if (agent.execution_tier !== "shared" && !isDedicatedBootstrapWindow(agent)) {
+    if (agent.execution_tier !== "shared") {
       // Tagged, not merely worded: the bridge route dispatches on this rather
       // than on the message text (see SharedAgentRefusal).
       throw new ApiError(404, "resource_not_found", "Not a shared-runtime agent", {
