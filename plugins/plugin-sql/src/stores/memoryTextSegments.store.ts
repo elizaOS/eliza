@@ -22,7 +22,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { and, asc, eq, gt, lt, type SQL, sql } from "drizzle-orm";
-import { memoryTextSegmentTable } from "../schema/index";
+import { memoryTable, memoryTextSegmentTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 
 /** Serialized descriptor row shape as stored on parent metadata. */
@@ -142,6 +142,146 @@ export async function retireStaleGenerationsInTransaction(params: {
         sql`${memoryTextSegmentTable.generation} NOT IN ${live}`
       )
     );
+}
+
+const MEMORY_REINDEX_MAX_SOURCE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Converts exactly one authorized legacy inline field. The parent is locked
+ * while its byte length is checked, and source bytes are fetched only after
+ * both the caller's bound and the adapter's hard ceiling accept the work.
+ */
+export async function reindexMemoryContent(params: {
+  db: DrizzleDatabase;
+  memoryId: UUID;
+  field: MemorySegmentField;
+  maxSourceBytes: number;
+  parentAuthorization: SQL;
+}): Promise<{
+  memoryId: UUID;
+  field: MemorySegmentField;
+  totalBytes: number;
+  segmentCount: number;
+  sourceSha256: string;
+  revision: string;
+}> {
+  if (
+    !Number.isSafeInteger(params.maxSourceBytes) ||
+    params.maxSourceBytes <= MEMORY_SEGMENTATION_THRESHOLD_BYTES ||
+    params.maxSourceBytes > MEMORY_REINDEX_MAX_SOURCE_BYTES
+  ) {
+    throw new ElizaError("Legacy content reindex bound is invalid", {
+      code: "MEMORY_CONTENT_REINDEX_INVALID_BOUND",
+      context: {
+        maxSourceBytes: params.maxSourceBytes,
+        hardMaxBytes: MEMORY_REINDEX_MAX_SOURCE_BYTES,
+      },
+    });
+  }
+  const authz = sql` AND (${params.parentAuthorization})`;
+  return params.db.transaction(async (tx) => {
+    const sizeExpression =
+      params.field.kind === "content.text"
+        ? sql`octet_length(COALESCE(content->>'text',''))`
+        : sql`(SELECT CASE WHEN count(*) = 1 THEN max(octet_length(a.value->>'text')) END
+              FROM jsonb_array_elements(COALESCE(content->'attachments','[]'::jsonb))
+                   WITH ORDINALITY a(value, ordinal)
+              WHERE a.value->>'id' = ${params.field.attachmentId})`;
+    const locked = await tx.execute(sql`
+      SELECT metadata, ${sizeExpression} AS field_bytes
+      FROM memories WHERE id = ${params.memoryId}${authz} FOR UPDATE
+    `);
+    const parent = (
+      locked.rows as Array<{ metadata: unknown; field_bytes: number | string | null }>
+    )[0];
+    if (!parent) {
+      throw new ElizaError("Memory content reindex is not authorized", {
+        code: "MEMORY_CONTENT_REINDEX_NOT_AUTHORIZED",
+        context: { memoryId: params.memoryId },
+      });
+    }
+    if (readDescriptors(parent.metadata).has(memorySegmentFieldKey(params.field))) {
+      throw new ElizaError("Memory content field is already segmented", {
+        code: "MEMORY_CONTENT_ALREADY_SEGMENTED",
+        context: { memoryId: params.memoryId },
+      });
+    }
+    const totalBytes = Number(parent.field_bytes);
+    if (!Number.isSafeInteger(totalBytes)) {
+      throw new ElizaError("Attachment locator is missing or ambiguous", {
+        code: "MEMORY_CONTENT_REINDEX_FIELD_NOT_FOUND",
+        context: { memoryId: params.memoryId },
+      });
+    }
+    if (totalBytes <= MEMORY_SEGMENTATION_THRESHOLD_BYTES) {
+      throw new ElizaError("Inline content does not require reindex", {
+        code: "MEMORY_CONTENT_REINDEX_NOT_REQUIRED",
+        context: { memoryId: params.memoryId, totalBytes },
+      });
+    }
+    if (totalBytes > params.maxSourceBytes) {
+      throw new ElizaError("Legacy content exceeds the declared reindex bound", {
+        code: "MEMORY_CONTENT_REINDEX_BOUND_EXCEEDED",
+        context: { memoryId: params.memoryId, totalBytes, maxSourceBytes: params.maxSourceBytes },
+      });
+    }
+
+    const sourceQuery =
+      params.field.kind === "content.text"
+        ? sql`SELECT content->>'text' AS source FROM memories WHERE id = ${params.memoryId}${authz}`
+        : sql`SELECT a.value->>'text' AS source
+              FROM memories, jsonb_array_elements(COALESCE(content->'attachments','[]'::jsonb)) a(value)
+              WHERE id = ${params.memoryId}${authz}
+                AND a.value->>'id' = ${params.field.attachmentId}`;
+    const sourceRows = await tx.execute(sourceQuery);
+    const source = (sourceRows.rows as Array<{ source: string }>)[0]?.source;
+    if (typeof source !== "string" || encodeUtf8Strict(source).length !== totalBytes) {
+      throw new ElizaError("Legacy source changed during reindex", {
+        code: "MEMORY_CONTENT_REINDEX_SOURCE_DRIFT",
+        context: { memoryId: params.memoryId },
+      });
+    }
+    const planned = planSegmentedField({ field: params.field, text: source });
+    const metadata = mergeSegmentationMetadata(parent.metadata, planned.descriptor);
+    const marker = buildSegmentedContentMarker(planned.descriptor);
+
+    if (params.field.kind === "content.text") {
+      await tx
+        .update(memoryTable)
+        .set({
+          content: sql`jsonb_set(content, '{text}', to_jsonb(${marker}::text), false)`,
+          metadata,
+        })
+        .where(and(eq(memoryTable.id, params.memoryId), params.parentAuthorization));
+    } else {
+      await tx.execute(sql`
+        UPDATE memories SET
+          content = jsonb_set(content, ARRAY['attachments', located.ordinal::text, 'text'], to_jsonb(${marker}::text), false),
+          metadata = ${JSON.stringify(metadata)}::jsonb
+        FROM (
+          SELECT a.ordinal - 1 AS ordinal
+          FROM memories m, jsonb_array_elements(COALESCE(m.content->'attachments','[]'::jsonb))
+               WITH ORDINALITY a(value, ordinal)
+          WHERE m.id = ${params.memoryId} AND a.value->>'id' = ${params.field.attachmentId}
+        ) located
+        WHERE memories.id = ${params.memoryId}${authz}
+      `);
+    }
+    await insertSegmentsInTransaction({
+      tx,
+      parentId: params.memoryId,
+      segments: planned.segments,
+      generation: planned.descriptor.generation,
+    });
+    return {
+      memoryId: params.memoryId,
+      field: params.field,
+      totalBytes,
+      segmentCount: planned.descriptor.segmentCount,
+      sourceSha256: planned.descriptor.totalSha256,
+      revision: planned.descriptor.revision,
+    };
+  });
 }
 
 /**

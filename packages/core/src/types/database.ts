@@ -817,6 +817,25 @@ export interface MemoryContentPageResult {
 	completeness: "partial-recoverable" | "complete";
 }
 
+/** Explicit, authorized conversion of one legacy inline field to native segments. */
+export interface MemoryContentReindexParams {
+	memoryId: UUID;
+	field: MemoryContentField;
+	accessContext: AccessContext;
+	/** Caller-declared work bound; the adapter rejects before fetching source bytes. */
+	maxSourceBytes: number;
+}
+
+/** Auditable receipt for one bounded legacy-field conversion. */
+export interface MemoryContentReindexResult {
+	memoryId: UUID;
+	field: MemoryContentField;
+	totalBytes: number;
+	segmentCount: number;
+	sourceSha256: string;
+	revision: string;
+}
+
 export interface IDatabaseAdapter<DB extends object = object> {
 	/**
 	 * Bounded native paging over segmented large MESSAGE/ATTACHMENT content
@@ -830,6 +849,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	getMemoryContentPage?(
 		params: MemoryContentPageParams,
 	): Promise<MemoryContentPageResult | null>;
+	reindexMemoryContent?(
+		params: MemoryContentReindexParams,
+	): Promise<MemoryContentReindexResult>;
 	/** Database instance */
 	db: DB;
 

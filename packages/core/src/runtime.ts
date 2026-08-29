@@ -5037,6 +5037,14 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		).memoryContentPageCapability;
 	}
+	get reindexMemoryContent(): IDatabaseAdapter["reindexMemoryContent"] {
+		const adapter = this.adapter as IDatabaseAdapter & {
+			reindexMemoryContent?: IDatabaseAdapter["reindexMemoryContent"];
+		};
+		return typeof adapter.reindexMemoryContent === "function"
+			? adapter.reindexMemoryContent.bind(adapter)
+			: undefined;
+	}
 	async getMemoriesByRoomIds(params: {
 		tableName: string;
 		roomIds: UUID[];
