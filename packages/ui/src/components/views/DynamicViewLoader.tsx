@@ -672,10 +672,30 @@ type ViewBundleModuleImporter = (
 const BUNDLE_CREDENTIAL_QUERY_PARAM =
   /^(?:access[_-]?token|api[_-]?key|authorization|bearer|credential|password|secret|token)$/iu;
 
-function sameOriginBundleRequestPath(bundleUrl: string): string {
+/**
+ * View bundles are resolved against the shell URL but fetched through the
+ * active authenticated API transport. A paired browser therefore has two
+ * trusted origins: the page origin that supplied relative descriptors and the
+ * API origin that actually serves those descriptors. No other origin may
+ * supply executable code.
+ */
+function isTrustedViewBundleOrigin(origin: string): boolean {
+  if (typeof window === "undefined") return true;
+  if (origin === window.location.origin) return true;
+
+  const apiBase = client.baseUrl.trim();
+  if (!apiBase) return false;
+  try {
+    return origin === new URL(apiBase, window.location.href).origin;
+  } catch {
+    return false;
+  }
+}
+
+function trustedBundleRequestPath(bundleUrl: string): string {
   if (typeof window === "undefined") return bundleUrl;
   const parsed = new URL(bundleUrl, window.location.href);
-  if (parsed.origin !== window.location.origin) {
+  if (!isTrustedViewBundleOrigin(parsed.origin)) {
     throw new Error(
       "DynamicViewLoader: refusing to import a cross-origin view bundle",
     );
@@ -689,6 +709,10 @@ function sameOriginBundleRequestPath(bundleUrl: string): string {
   }
   return `${parsed.pathname}${parsed.search}`;
 }
+
+// Protected view bundles are build artifacts and can legitimately take longer
+// than the generic 10-second read budget over an authenticated remote tunnel.
+const VIEW_BUNDLE_DOWNLOAD_TIMEOUT_MS = 120_000;
 
 function isJavaScriptBundleResponse(response: Response): boolean {
   const contentType = response.headers.get("content-type")?.toLowerCase();
@@ -712,11 +736,14 @@ export async function importAuthenticatedViewBundle(
   bundleUrl: string,
   moduleImporter: ViewBundleModuleImporter = importBundleModuleUrl,
 ): Promise<Record<string, unknown>> {
-  const requestPath = sameOriginBundleRequestPath(bundleUrl);
+  const requestPath = trustedBundleRequestPath(bundleUrl);
   const response = await client.rawRequest(
     requestPath,
     { headers: { Accept: "application/javascript" } },
-    { allowNonOk: true },
+    {
+      allowNonOk: true,
+      timeoutMs: VIEW_BUNDLE_DOWNLOAD_TIMEOUT_MS,
+    },
   );
   if (!response.ok) {
     throw new Error(
@@ -778,17 +805,18 @@ const DEV_POLL_INTERVAL_MS = 2000;
  * A view bundle is executed as an ES module in the host realm (it receives the
  * host React singleton, the API client, and the native bridges via the
  * host-external map), so it runs with full app privilege. Only ever import a
- * bundle served by THIS origin: a cross-origin `bundleUrl` (which an untrusted
- * view descriptor can announce) would be arbitrary attacker code
- * executing against the user's authenticated session. Every shipped view is
- * same-origin (`/api/views/<id>/bundle.js`); a future remote/CDN bundle must add
- * Subresource-Integrity before this gate can be relaxed.
+ * bundle served by the page origin or the active authenticated API origin: an
+ * unrelated `bundleUrl` (which an untrusted view descriptor can announce)
+ * would be arbitrary attacker code executing against the user's authenticated
+ * session. Paired browser previews intentionally resolve relative descriptors
+ * at the page origin and fetch them through `client.baseUrl`; a future CDN
+ * bundle must add Subresource-Integrity before this gate can be relaxed.
  */
 export function isSameOriginBundleUrl(bundleUrl: string): boolean {
   if (typeof window === "undefined") return true;
   try {
-    return (
-      new URL(bundleUrl, window.location.href).origin === window.location.origin
+    return isTrustedViewBundleOrigin(
+      new URL(bundleUrl, window.location.href).origin,
     );
   } catch {
     return false;
@@ -844,7 +872,7 @@ async function importViewBundle(
 function buildHostExternalBundleUrl(bundleUrl: string): string | null {
   if (typeof window === "undefined") return null;
   const rewrittenUrl = new URL(bundleUrl, window.location.href);
-  if (rewrittenUrl.origin !== window.location.origin) return null;
+  if (!isTrustedViewBundleOrigin(rewrittenUrl.origin)) return null;
   if (!rewrittenUrl.pathname.startsWith("/api/views/")) return null;
   rewrittenUrl.searchParams.set(HOST_EXTERNAL_RUNTIME_PARAM, "1");
   rewrittenUrl.searchParams.set(
@@ -1526,7 +1554,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     const cacheKey = `${bundleUrl}::${componentExport}`;
     let requestPath: string;
     try {
-      requestPath = sameOriginBundleRequestPath(bundleUrl);
+      requestPath = trustedBundleRequestPath(bundleUrl);
     } catch {
       // The import path reports the authoritative user-facing failure; polling
       // must not raise a second unhandled error for the same invalid bundle.

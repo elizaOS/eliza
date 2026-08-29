@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 
 const headersPath = join(import.meta.dirname, "..", "public", "_headers");
 const headers = readFileSync(headersPath, "utf8");
+const indexPath = join(import.meta.dirname, "..", "index.html");
+const indexHtml = readFileSync(indexPath, "utf8");
 
 function getHeaderLine(name: string): string {
   const line = headers
@@ -14,6 +16,14 @@ function getHeaderLine(name: string): string {
     .find((candidate) => candidate.trimStart().startsWith(`${name}:`));
   if (!line) throw new Error(`missing ${name} header`);
   return line.trimStart();
+}
+
+function getMetaCsp(): string {
+  const match = indexHtml.match(
+    /<meta\s+http-equiv="Content-Security-Policy"\s+content="([\s\S]*?)"\s*\/>/iu,
+  );
+  if (!match?.[1]) throw new Error("missing index.html CSP meta policy");
+  return match[1].replaceAll(/\s+/gu, " ");
 }
 
 describe("Pages CSP", () => {
@@ -42,9 +52,12 @@ describe("Pages CSP", () => {
   });
 
   it("allows authenticated remote views to execute from temporary module URLs", () => {
-    const csp = getHeaderLine("Content-Security-Policy");
-    const scriptSrc = csp.match(/script-src ([^;]+);/)?.[1];
+    const edgeCsp = getHeaderLine("Content-Security-Policy");
+    const metaCsp = getMetaCsp();
+    const edgeScriptSrc = edgeCsp.match(/script-src ([^;]+);/)?.[1];
+    const metaScriptSrc = metaCsp.match(/script-src ([^;]+);/)?.[1];
 
-    expect(scriptSrc?.split(/\s+/)).toContain("blob:");
+    expect(edgeScriptSrc?.split(/\s+/)).toContain("blob:");
+    expect(metaScriptSrc?.split(/\s+/)).toContain("blob:");
   });
 });
