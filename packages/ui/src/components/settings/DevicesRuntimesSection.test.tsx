@@ -250,7 +250,9 @@ describe("DevicesRuntimesSection", () => {
     });
 
     view.rerender(
-      <DevicesRuntimesSection {...props({ sshInspection: changed })} />,
+      <DevicesRuntimesSection
+        {...props({ sshInspection: changed, onInspectSsh })}
+      />,
     );
     expect(
       screen.getByText("Host key changed: connection blocked"),
@@ -262,5 +264,18 @@ describe("DevicesRuntimesSection", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+
+    const targetInput = screen.getByLabelText("SSH target");
+    await user.clear(targetInput);
+    await user.type(targetInput, "eliza@replacement.example");
+    const inspectReplacement = screen.getByRole("button", {
+      name: "Inspect fingerprint",
+    }) as HTMLButtonElement;
+    expect(inspectReplacement.disabled).toBe(false);
+    await user.click(inspectReplacement);
+    expect(onInspectSsh).toHaveBeenLastCalledWith({
+      target: "eliza@replacement.example",
+      sshPort: 22,
+    });
   });
 });

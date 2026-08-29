@@ -845,7 +845,9 @@ function AdvancedSsh({
           <Button
             type="submit"
             size="touch"
-            disabled={busy || !valid || Boolean(inspection?.changed)}
+            disabled={
+              busy || !valid || Boolean(inspectedTarget && inspection?.changed)
+            }
           >
             {busy ? (
               <LoaderCircle
