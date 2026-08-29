@@ -20,6 +20,7 @@ import {
   __resetDynamicViewLoaderCacheForTests,
   DynamicViewLoader,
   hostImport,
+  importAuthenticatedViewBundle,
   isSameOriginBundleUrl,
 } from "./DynamicViewLoader";
 
@@ -144,13 +145,152 @@ describe("host-external importer resolution (factory hostImport)", () => {
   });
 });
 
-const { sendWsMessage } = vi.hoisted(() => ({
+const { activeCredential, rawRequest, sendWsMessage } = vi.hoisted(() => ({
+  activeCredential: "credential-must-never-enter-a-url",
+  rawRequest: vi.fn(),
   sendWsMessage: vi.fn(),
 }));
 
 vi.mock("../../api", () => ({
-  client: { sendWsMessage },
+  client: { apiToken: activeCredential, rawRequest, sendWsMessage },
 }));
+
+describe("authenticated protected view bundle loading", () => {
+  const secret = activeCredential;
+
+  beforeEach(() => {
+    rawRequest.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fails closed on 401 without importing the response body", async () => {
+    rawRequest.mockResolvedValue(
+      new Response('{"error":"unauthorized"}', {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const moduleImporter = vi.fn();
+
+    await expect(
+      importAuthenticatedViewBundle(
+        "/api/views/calendar/bundle.js?hostExternalRuntime=1",
+        moduleImporter,
+      ),
+    ).rejects.toThrow("HTTP 401");
+
+    expect(moduleImporter).not.toHaveBeenCalled();
+  });
+
+  it("imports a valid JavaScript response from a temporary URL and always revokes it", async () => {
+    rawRequest.mockResolvedValue(
+      new Response("export default () => null", {
+        status: 200,
+        headers: { "content-type": "application/javascript; charset=utf-8" },
+      }),
+    );
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:http://localhost/view-bundle");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
+    const loaded = { default: () => null };
+    const moduleImporter = vi.fn(async () => loaded);
+
+    await expect(
+      importAuthenticatedViewBundle(
+        "/api/views/calendar/bundle.js?hostExternalRuntime=1",
+        moduleImporter,
+      ),
+    ).resolves.toBe(loaded);
+
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(moduleImporter).toHaveBeenCalledWith(
+      "blob:http://localhost/view-bundle",
+    );
+    expect(revokeObjectURL).toHaveBeenCalledWith(
+      "blob:http://localhost/view-bundle",
+    );
+  });
+
+  it("revokes the temporary URL when module evaluation fails", async () => {
+    rawRequest.mockResolvedValue(
+      new Response("throw new Error('invalid bundle')", {
+        status: 200,
+        headers: { "content-type": "application/javascript" },
+      }),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue(
+      "blob:http://localhost/invalid-view-bundle",
+    );
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
+    const moduleImporter = vi.fn(async () => {
+      throw new Error("module evaluation failed");
+    });
+
+    await expect(
+      importAuthenticatedViewBundle(
+        "/api/views/calendar/bundle.js?hostExternalRuntime=1",
+        moduleImporter,
+      ),
+    ).rejects.toThrow("module evaluation failed");
+
+    expect(revokeObjectURL).toHaveBeenCalledWith(
+      "blob:http://localhost/invalid-view-bundle",
+    );
+  });
+
+  it("re-fetches on reload without putting the active credential in any URL", async () => {
+    rawRequest.mockImplementation(
+      async () =>
+        new Response("export default () => null", {
+          status: 200,
+          headers: { "content-type": "text/javascript" },
+        }),
+    );
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:http://localhost/view-bundle-1")
+      .mockReturnValueOnce("blob:http://localhost/view-bundle-2");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
+    const moduleImporter = vi.fn(async () => ({ default: () => null }));
+    const bundleUrl = "/api/views/notes/bundle.js?v=known-content";
+
+    await importAuthenticatedViewBundle(bundleUrl, moduleImporter);
+    await importAuthenticatedViewBundle(bundleUrl, moduleImporter);
+
+    expect(rawRequest).toHaveBeenCalledTimes(2);
+    expect(rawRequest).toHaveBeenNthCalledWith(
+      1,
+      bundleUrl,
+      { headers: { Accept: "application/javascript" } },
+      { allowNonOk: true },
+    );
+    const serializedCalls = JSON.stringify([
+      rawRequest.mock.calls,
+      createObjectURL.mock.calls,
+      moduleImporter.mock.calls,
+    ]);
+    expect(serializedCalls).not.toContain(secret);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects credential-bearing query parameters before the API client sees them", async () => {
+    const moduleImporter = vi.fn();
+
+    await expect(
+      importAuthenticatedViewBundle(
+        `/api/views/notes/bundle.js?access_token=${secret}`,
+        moduleImporter,
+      ),
+    ).rejects.toThrow("embedded credentials");
+
+    expect(rawRequest).not.toHaveBeenCalled();
+    expect(moduleImporter).not.toHaveBeenCalled();
+  });
+});
 
 const AGENT_SURFACE_MANIFEST = { capabilities: ["agent-surface"] } as const;
 
@@ -173,6 +313,7 @@ describe("DynamicViewLoader", () => {
   afterEach(() => {
     delete window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__;
     sendWsMessage.mockClear();
+    rawRequest.mockReset();
     cleanup();
     __resetDynamicViewLoaderCacheForTests();
     vi.restoreAllMocks();
@@ -779,7 +920,7 @@ describe("DynamicViewLoader", () => {
       });
     }
 
-    const bundleUrl = "https://capability.example.test/assets/hmr.js";
+    const bundleUrl = `${window.location.origin}/assets/hmr.js`;
     const cleanupVersion1 = vi.fn();
     const interactVersion1 = vi.fn(async () => ({ version: 1 }));
     const interactVersion2 = vi.fn(async () => ({ version: 2 }));
@@ -795,15 +936,15 @@ describe("DynamicViewLoader", () => {
         cleanup: version === 1 ? cleanupVersion1 : undefined,
       };
     });
-    const fetchHead = vi
-      .fn()
+    rawRequest
       .mockResolvedValueOnce({
+        ok: true,
         headers: { get: (name: string) => (name === "etag" ? "v1" : null) },
       })
       .mockResolvedValueOnce({
+        ok: true,
         headers: { get: (name: string) => (name === "etag" ? "v2" : null) },
       });
-    vi.stubGlobal("fetch", fetchHead);
 
     const rendered = render(
       <DynamicViewLoader
@@ -820,7 +961,11 @@ describe("DynamicViewLoader", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(fetchHead).toHaveBeenCalledWith(bundleUrl, { method: "HEAD" });
+    expect(rawRequest).toHaveBeenCalledWith(
+      "/assets/hmr.js",
+      { method: "HEAD" },
+      { allowNonOk: true },
+    );
     expect(screen.getByText("HMR version 1")).toBeTruthy();
 
     await act(async () => {
@@ -857,13 +1002,13 @@ describe("DynamicViewLoader", () => {
       result: { version: 2 },
     });
 
-    fetchHead.mockClear();
+    rawRequest.mockClear();
     rendered.unmount();
     await act(async () => {
       vi.advanceTimersByTime(6000);
       await Promise.resolve();
     });
-    expect(fetchHead).not.toHaveBeenCalled();
+    expect(rawRequest).not.toHaveBeenCalled();
   });
 
   it("unregisters the previous interact handler when the loaded view is replaced", async () => {

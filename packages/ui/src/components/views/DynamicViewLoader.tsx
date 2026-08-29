@@ -665,6 +665,81 @@ declare global {
   }
 }
 
+type ViewBundleModuleImporter = (
+  moduleUrl: string,
+) => Promise<Record<string, unknown>>;
+
+const BUNDLE_CREDENTIAL_QUERY_PARAM =
+  /^(?:access[_-]?token|api[_-]?key|authorization|bearer|credential|password|secret|token)$/iu;
+
+function sameOriginBundleRequestPath(bundleUrl: string): string {
+  if (typeof window === "undefined") return bundleUrl;
+  const parsed = new URL(bundleUrl, window.location.href);
+  if (parsed.origin !== window.location.origin) {
+    throw new Error(
+      "DynamicViewLoader: refusing to import a cross-origin view bundle",
+    );
+  }
+  for (const name of parsed.searchParams.keys()) {
+    if (BUNDLE_CREDENTIAL_QUERY_PARAM.test(name)) {
+      throw new Error(
+        "DynamicViewLoader: refusing a view bundle URL with embedded credentials",
+      );
+    }
+  }
+  return `${parsed.pathname}${parsed.search}`;
+}
+
+function isJavaScriptBundleResponse(response: Response): boolean {
+  const contentType = response.headers.get("content-type")?.toLowerCase();
+  return (
+    contentType?.startsWith("application/javascript") === true ||
+    contentType?.startsWith("text/javascript") === true ||
+    contentType?.startsWith("application/ecmascript") === true ||
+    contentType?.startsWith("text/ecmascript") === true
+  );
+}
+
+const importBundleModuleUrl: ViewBundleModuleImporter = (moduleUrl) =>
+  import(/* @vite-ignore */ moduleUrl);
+
+/**
+ * Fetch a protected host-external bundle through the active API client before
+ * executing it from a temporary module URL. Authentication stays inside the
+ * client's transport layer; the module URL contains only the fetched source.
+ */
+export async function importAuthenticatedViewBundle(
+  bundleUrl: string,
+  moduleImporter: ViewBundleModuleImporter = importBundleModuleUrl,
+): Promise<Record<string, unknown>> {
+  const requestPath = sameOriginBundleRequestPath(bundleUrl);
+  const response = await client.rawRequest(
+    requestPath,
+    { headers: { Accept: "application/javascript" } },
+    { allowNonOk: true },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `DynamicViewLoader: protected view bundle request failed (HTTP ${response.status})`,
+    );
+  }
+  if (!isJavaScriptBundleResponse(response)) {
+    throw new Error(
+      "DynamicViewLoader: protected view bundle response was not JavaScript",
+    );
+  }
+
+  const source = await response.text();
+  const moduleUrl = URL.createObjectURL(
+    new Blob([source], { type: "application/javascript" }),
+  );
+  try {
+    return await moduleImporter(moduleUrl);
+  } finally {
+    URL.revokeObjectURL(moduleUrl);
+  }
+}
+
 /**
  * Resolve one host-external specifier to the host shell's live singleton (the
  * framework trunk map first, then registered plugin/build-variant specifiers).
@@ -742,7 +817,7 @@ async function importViewBundle(
   const hostExternalUrl = buildHostExternalBundleUrl(bundleUrl);
   if (hostExternalUrl) {
     return resolveBundleNamespace(
-      await import(/* @vite-ignore */ hostExternalUrl),
+      await importAuthenticatedViewBundle(hostExternalUrl),
     );
   }
 
@@ -761,7 +836,9 @@ async function importViewBundle(
       `DynamicViewLoader: bundle at ${bundleUrl} could not use host externals`,
     );
   }
-  return resolveBundleNamespace(await import(/* @vite-ignore */ rewrittenUrl));
+  return resolveBundleNamespace(
+    await importAuthenticatedViewBundle(rewrittenUrl),
+  );
 }
 
 function buildHostExternalBundleUrl(bundleUrl: string): string | null {
@@ -1447,10 +1524,20 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     if (!import.meta.env.DEV || !bundleUrl || !dynamicLoadingAllowed) return;
 
     const cacheKey = `${bundleUrl}::${componentExport}`;
+    let requestPath: string;
+    try {
+      requestPath = sameOriginBundleRequestPath(bundleUrl);
+    } catch {
+      // The import path reports the authoritative user-facing failure; polling
+      // must not raise a second unhandled error for the same invalid bundle.
+      return;
+    }
 
     const id = setInterval(() => {
-      void fetch(bundleUrl, { method: "HEAD" })
+      void client
+        .rawRequest(requestPath, { method: "HEAD" }, { allowNonOk: true })
         .then((res) => {
+          if (!res.ok) return;
           const etag = res.headers.get("etag");
           if (lastEtagRef.current !== null && etag !== lastEtagRef.current) {
             // Bundle changed on disk — evict cache and trigger re-import.
