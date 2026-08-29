@@ -1211,7 +1211,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     vi.restoreAllMocks();
   });
 
-  it("does not poll Cloud billing for an actively paired self-hosted runtime", async () => {
+  it("does not poll a selected remote runtime's unrelated Cloud billing state", async () => {
     expect(
       savePersistedActiveServer({
         id: "remote-vps",
@@ -1221,6 +1221,13 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
         accessToken: "paired-test-token",
       }),
     ).toBe(true);
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      hasApiKey: true,
+      cloudVoiceProxyAvailable: false,
+    });
+    getCloudCreditsSpy.mockResolvedValue({ authRejected: true });
 
     const { result, unmount } = renderHook(() => useCloudState(makeParams()));
     let connected = true;
@@ -1231,6 +1238,8 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     expect(connected).toBe(false);
     expect(getCloudStatusSpy).not.toHaveBeenCalled();
     expect(getCloudCreditsSpy).not.toHaveBeenCalled();
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
+    expect(result.current.elizaCloudPollInterval.current).toBeNull();
     unmount();
   });
 

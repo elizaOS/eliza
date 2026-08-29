@@ -428,10 +428,10 @@ function hasCloudLoginBackend(): boolean {
 }
 
 function canPollCloudStatus(): boolean {
-  // A paired self-hosted runtime gets models and voice from that runtime. Its
-  // optional Cloud integration describes the server owner, not the app user,
-  // so ambient billing polls would misclassify that unrelated credential as
-  // the current user's Cloud authentication state.
+  // A remote client gets models and voice from its paired runtime, whether the
+  // target is immutable at build time or selected during first run. Polling
+  // that runtime's optional Cloud billing integration misclassifies an
+  // unrelated server credential as the client's own authentication state.
   if (
     getBuildConfiguredRemoteApiBaseUrl() ||
     loadPersistedActiveServer()?.kind === "remote"
