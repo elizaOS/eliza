@@ -399,6 +399,26 @@ export async function runHydrating(
  * Returns a cleanup function that unbinds everything.
  * Should be called once when the coordinator first reaches "ready".
  */
+/**
+ * Total newest-first ordering over `updatedAt`. `new Date(x).getTime()` is NaN
+ * for an unparseable stamp and a NaN-returning comparator leaves Array.sort's
+ * ordering undefined — a single malformed wire value then pins itself wherever
+ * it sits (observed: the top of the conversation sidebar) and displaces valid
+ * neighbours. Unparseable stamps sort last, tied ones fall back to id so the
+ * order stays deterministic. `Number.isFinite` rather than isNaN: an Infinity
+ * stamp degenerates the ordering the same way.
+ */
+function byUpdatedAtDesc(left: Conversation, right: Conversation): number {
+  const leftUpdatedAt = Date.parse(left.updatedAt);
+  const rightUpdatedAt = Date.parse(right.updatedAt);
+  if (!Number.isFinite(leftUpdatedAt)) {
+    if (Number.isFinite(rightUpdatedAt)) return 1;
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  }
+  if (!Number.isFinite(rightUpdatedAt)) return -1;
+  return rightUpdatedAt - leftUpdatedAt;
+}
+
 export function bindReadyPhase(
   depsRef: React.MutableRefObject<ReadyPhaseDeps | undefined>,
 ): () => void {
@@ -917,10 +937,7 @@ export function bindReadyPhase(
         const u = prev.map((c) =>
           c.id === cid ? { ...c, updatedAt: new Date().toISOString() } : c,
         );
-        return u.sort(
-          (a, b) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-        );
+        return u.sort(byUpdatedAtDesc);
       });
     },
   );
@@ -950,10 +967,7 @@ export function bindReadyPhase(
             }
             return conv;
           });
-          return u.sort(
-            (a, b) =>
-              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-          );
+          return u.sort(byUpdatedAtDesc);
         });
     },
   );
