@@ -2521,6 +2521,20 @@
       "when": 1796083200003,
       "tag": "0376_outreachr_delegations",
       "breakpoints": true
+    },
+    {
+      "idx": 353,
+      "version": "7",
+      "when": 1794254400061,
+      "tag": "0370_agent_backup_restore_v3_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 354,
+      "version": "7",
+      "when": 1794254400062,
+      "tag": "0371_agent_backup_restore_v3_candidate_guards",
+      "breakpoints": true
     }
   ]
 }
