@@ -1447,7 +1447,7 @@ describe("google plugin", () => {
     });
   });
 
-  it("normalizes hostile Gmail limits before listing messages", async () => {
+  it("rejects an unusable Gmail limit and still normalizes the unresponded-thread window", async () => {
     const fakeGmail = {
       users: {
         messages: {
@@ -1461,25 +1461,38 @@ describe("google plugin", () => {
     const factory = { gmail: vi.fn(async () => fakeGmail) } as GoogleApiClientFactory;
     const client = new GoogleGmailClient(factory);
 
+    // #28112 replaced the silent maxResults clamp with an explicit typed
+    // rejection, so an unusable limit is refused rather than quietly rewritten.
     await expect(
       client.searchGmailMessages({
         accountId: "acct_google_1",
         query: "in:inbox",
         maxResults: Number.POSITIVE_INFINITY,
       })
-    ).resolves.toEqual([]);
-    fakeGmail.users.messages.list.mockClear();
+    ).rejects.toThrow(/maxResults must be a positive integer/);
     await expect(
       client.listGmailUnrespondedThreads({
         accountId: "acct_google_1",
         olderThanDays: -4,
         maxResults: Number.NaN,
       })
-    ).resolves.toEqual([]);
+    ).rejects.toThrow(/maxResults must be a positive integer/);
+
+    // Rejection happens before any request is issued.
+    expect(fakeGmail.users.messages.list).not.toHaveBeenCalled();
+
+    // olderThanDays keeps its documented clamp: -4 normalizes to the 3-day floor.
+    // The window is forwarded without a caller limit, so Gmail is asked for a
+    // full page rather than a silently narrowed one.
+    await client.listGmailUnrespondedThreads({
+      accountId: "acct_google_1",
+      olderThanDays: -4,
+      maxResults: 100,
+    });
 
     expect(fakeGmail.users.messages.list).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ q: "in:sent older_than:3d", maxResults: 100 })
+      expect.objectContaining({ q: "in:sent older_than:3d", maxResults: 500 })
     );
   });
 
