@@ -398,10 +398,14 @@ describe("standalone database identity reporter", () => {
     );
   });
 
-  for (const expectedStatus of ["reported", "mismatch"] as const) {
+  for (const expectedStatus of ["reported", "mismatch", "match"] as const) {
     test(`a published ${expectedStatus} receipt exits successfully`, async () => {
       let publishedStatus = "";
       let ended = false;
+      const expectedReceipt =
+        expectedStatus === "match"
+          ? await readDatabaseIdentityReceipt(client, "staging")
+          : undefined;
       const exitCode = await runDatabaseIdentityReporter(
         {
           ...reportEnvironment,
@@ -410,7 +414,14 @@ describe("standalone database identity reporter", () => {
                 DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: "0".repeat(64),
                 DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: "1".repeat(64),
               }
-            : {}),
+            : expectedReceipt
+              ? {
+                  DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256:
+                    expectedReceipt.clusterSha256,
+                  DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256:
+                    expectedReceipt.authoritySha256,
+                }
+              : {}),
         },
         {
           createClient: async () =>
