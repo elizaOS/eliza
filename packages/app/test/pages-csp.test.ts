@@ -40,4 +40,11 @@ describe("Pages CSP", () => {
     expect(scriptSrc).not.toContain("https://*.telegram.org");
     expect(frameSrc).toContain("https://oauth.telegram.org");
   });
+
+  it("allows authenticated remote views to execute from temporary module URLs", () => {
+    const csp = getHeaderLine("Content-Security-Policy");
+    const scriptSrc = csp.match(/script-src ([^;]+);/)?.[1];
+
+    expect(scriptSrc?.split(/\s+/)).toContain("blob:");
+  });
 });
