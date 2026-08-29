@@ -11,10 +11,12 @@ const getCurrentUserMock = mock(
 );
 const readStewardSessionTokenMock = mock((): string | null => null);
 const endAllUserSessionsMock = mock(async () => undefined);
-const verifyStewardTokenMock = mock(async () => ({
-  userId: "steward-1",
-  issuedAt: 100,
-}));
+const verifyStewardTokenMock = mock(
+  async (): Promise<{ userId: string; issuedAt: number } | null> => ({
+    userId: "steward-1",
+    issuedAt: 100,
+  }),
+);
 const revokeInferenceSessionsThroughMock = mock(async () => undefined);
 const markSsoBridgeLogoutMock = mock(async () => undefined);
 
@@ -23,7 +25,7 @@ mock.module("@/lib/auth", () => ({
 }));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
-  getCurrentUser: getCurrentUserMock,
+  getCurrentUserForStewardToken: getCurrentUserMock,
   readStewardSessionToken: readStewardSessionTokenMock,
 }));
 mock.module("@/lib/auth/steward-client", () => ({
@@ -76,12 +78,14 @@ function deletedCookieNames(res: Response): string[] {
 beforeEach(() => {
   getCurrentUserMock.mockResolvedValue(null);
   readStewardSessionTokenMock.mockReturnValue(null);
+  verifyStewardTokenMock.mockClear();
   verifyStewardTokenMock.mockResolvedValue({
     userId: "steward-1",
     issuedAt: 100,
   });
   revokeInferenceSessionsThroughMock.mockResolvedValue(undefined);
   markSsoBridgeLogoutMock.mockClear();
+  markSsoBridgeLogoutMock.mockResolvedValue(undefined);
 });
 
 describe("POST /api/auth/logout cookie clearing", () => {
@@ -107,6 +111,109 @@ describe("POST /api/auth/logout cookie clearing", () => {
       "header.payload.signature",
     );
     expect(markSsoBridgeLogoutMock).toHaveBeenCalledWith("steward-1");
+  });
+
+  test("refuses logout success when the cross-host marker cannot be persisted", async () => {
+    readStewardSessionTokenMock.mockReturnValue("header.payload.signature");
+    markSsoBridgeLogoutMock.mockRejectedValue(
+      new Error("logout marker store unavailable"),
+    );
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://cloud-staging.eliza.app",
+          authorization: "Bearer header.payload.signature",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "production" },
+    );
+
+    expect(res.status).toBe(503);
+    expect(markSsoBridgeLogoutMock).toHaveBeenCalledTimes(2);
+    expect((await res.json()) as unknown).toEqual({
+      error: "Logout revocation is temporarily unavailable",
+      code: "logout_revocation_unavailable",
+    });
+  });
+
+  test("refuses logout success when the presented token cannot be verified", async () => {
+    readStewardSessionTokenMock.mockReturnValue("header.payload.signature");
+    verifyStewardTokenMock.mockResolvedValue(null);
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://cloud-staging.eliza.app",
+          authorization: "Bearer header.payload.signature",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "production" },
+    );
+
+    expect(res.status).toBe(503);
+    expect(markSsoBridgeLogoutMock).not.toHaveBeenCalled();
+    expect((await res.json()) as unknown).toEqual({
+      error: "Logout revocation is temporarily unavailable",
+      code: "logout_revocation_unavailable",
+    });
+  });
+
+  test("falls back to the scoped cookie when a local bearer is stale", async () => {
+    readStewardSessionTokenMock.mockReturnValue("stale.bearer.signature");
+    getCurrentUserMock.mockResolvedValue({
+      id: "cookie-user",
+      organization_id: "cookie-org",
+    });
+    verifyStewardTokenMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ userId: "cookie-user", issuedAt: 200 });
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://cloud-staging.eliza.app",
+          authorization: "Bearer stale.bearer.signature",
+          cookie: "steward-token-staging=valid.cookie.signature",
+        },
+      },
+      {
+        ENVIRONMENT: "staging",
+        NODE_ENV: "production",
+        INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(verifyStewardTokenMock).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      "stale.bearer.signature",
+    );
+    expect(verifyStewardTokenMock).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      "valid.cookie.signature",
+    );
+    expect(markSsoBridgeLogoutMock).toHaveBeenCalledWith("cookie-user");
+    expect(getCurrentUserMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "valid.cookie.signature",
+    );
+    expect(revokeInferenceSessionsThroughMock).toHaveBeenCalledWith(
+      "cookie-org",
+      "cookie-user",
+      200,
+    );
   });
 
   test("strong rollout commits the session cutoff before reporting logout success", async () => {

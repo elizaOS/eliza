@@ -651,12 +651,11 @@ export function burnSsoBridgeCode(
  * marker, and the paired origin's surviving session would silently undo it
  * (re-planting the domain cookies via its background session sync). Order
  * matters: the local logged-out marker lands synchronously first (auto-bridge
- * is suppressed even if the network never answers), the server logout request
- * is ISSUED while the session cookies are still in the jar (it ends the
- * server-side sessions AND stamps the server logout marker that blocks
- * minting, exchanging, and cookie re-planting for pre-logout tokens), and the
- * local scrub stays synchronous so the login page never renders over a
- * half-signed-out session. On hostnames outside the deployed map (local dev)
+ * is suppressed even if the network never answers), and the server logout
+ * request completes while the local token is still available for a retry. A
+ * successful response confirms the server logout marker before the local
+ * credential scrub can move the app to its login route. On hostnames outside
+ * the deployed map (local dev)
  * the server call is skipped and this degrades to the local scrub, exactly
  * the previous local behavior. A hosted non-success response or transport
  * failure rejects so explicit sign-out cannot claim success over a server
@@ -685,13 +684,13 @@ export async function signOutFromSsoBridgedHost(
     : // error-policy:J6 best-effort server teardown — the local marker is
       // already set and the local scrub below always runs.
       Promise.resolve(undefined);
-  await clearStaleStewardSession();
   const response = await serverLogout;
   if (response && !response.ok) {
     throw new Error(
       `Eliza Cloud could not end the browser session (${response.status}).`,
     );
   }
+  await clearStaleStewardSession();
 }
 
 /**

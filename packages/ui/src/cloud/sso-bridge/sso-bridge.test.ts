@@ -531,6 +531,32 @@ describe("burnSsoBridgeCode", () => {
 });
 
 describe("signOutFromSsoBridgedHost", () => {
+  it("retains local authority until hosted logout is confirmed", async () => {
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    let resolveLogout: ((response: Response) => void) | undefined;
+    const pendingLogout = new Promise<Response>((resolve) => {
+      resolveLogout = resolve;
+    });
+    const fn = (() => pendingLogout) as typeof fetch;
+
+    const signOut = signOutFromSsoBridgedHost("cloud.eliza.app", fn);
+    await Promise.resolve();
+
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
+    let settled = false;
+    void signOut.finally(() => {
+      settled = true;
+    });
+    expect(settled).toBe(false);
+
+    resolveLogout?.(json(200, { success: true }));
+    await signOut;
+
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(settled).toBe(true);
+  });
+
   it("marks logged-out synchronously, ends the server session, scrubs locally", async () => {
     const token = liveToken();
     localStorage.setItem(STEWARD_TOKEN_KEY, token);
@@ -576,6 +602,8 @@ describe("signOutFromSsoBridgedHost", () => {
   });
 
   it("rejects when the hosted session cannot be ended", async () => {
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
     const realFetch = globalThis.fetch;
     globalThis.fetch = (() =>
       Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
@@ -586,12 +614,15 @@ describe("signOutFromSsoBridgedHost", () => {
       await expect(
         signOutFromSsoBridgedHost("cloud.eliza.app", fn),
       ).rejects.toThrow("could not end the browser session (403)");
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
     } finally {
       globalThis.fetch = realFetch;
     }
   });
 
   it("rejects when the hosted logout request cannot reach the server", async () => {
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
     const realFetch = globalThis.fetch;
     globalThis.fetch = (() =>
       Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
@@ -601,7 +632,7 @@ describe("signOutFromSsoBridgedHost", () => {
       await expect(
         signOutFromSsoBridgedHost("cloud.eliza.app", fn),
       ).rejects.toBe(networkFailure);
-      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
     } finally {
       globalThis.fetch = realFetch;
     }
