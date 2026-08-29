@@ -170,6 +170,27 @@ describe("resolveApp — id-path fall-through on a stale/foreign UUID (#29907)",
     expect(result.available.sort()).toEqual(["Acme Bot", "Zenith"]);
   });
 
+  it("REGRESSION: a transient getApp 500 on an OWNED id still resolves via the id-matched list fall-through", async () => {
+    // The unconditional catch (mirroring resolveDomainTargetApp) is deliberate:
+    // a non-404/403 getApp failure on a still-owned id must NOT abort the
+    // action when listApps can still find it. matchAppByReference matches on
+    // id, so the fall-through recovers the app and the caller succeeds
+    // normally. Narrowing the catch to only 404/403 would re-raise this 500
+    // and regress that recovery — a case no 404/403 fall-through test catches.
+    const owned = makeApp({
+      id: OWNED_UUID,
+      name: "Acme Bot",
+      slug: "acme-bot",
+    });
+    const client = makeClient({
+      getApp: () => Promise.reject(cloudApiError(500)),
+      apps: [owned, app("Zenith")],
+    });
+    const result = await resolveApp(client, OWNED_UUID);
+    expect(result.app?.name).toBe("Acme Bot");
+    expect(result.available.sort()).toEqual(["Acme Bot", "Zenith"]);
+  });
+
   it("unchanged: getApp succeeds → direct id path returns the app without listing", async () => {
     const owned = app("Prod API", OWNED_UUID);
     let getAppId: string | null = null;
