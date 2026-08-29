@@ -400,8 +400,9 @@ export async function installHomeRoutes(
   });
 
   // Local-inference shell-level GETs — a fresh agent has no local model, so an
-  // idle/unsupported snapshot matches real zero-state (and the local first-run
-  // path's background auto-download probe lands on this empty hub).
+  // idle snapshot with valid OS-fallback hardware matches the real zero-state
+  // (and the local first-run path's background auto-download probe lands on
+  // this empty hub).
   await page.route("**/api/local-inference/hub", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

@@ -149,6 +149,81 @@ describe("getLocalInferenceHub", () => {
     );
   });
 
+  it.each([
+    {
+      label: "array model bucket",
+      override: { recommendedBucket: ["small"] },
+      path: "response.hardware.recommendedBucket",
+    },
+    {
+      label: "object probe source",
+      override: { source: { value: "os-fallback" } },
+      path: "response.hardware.source",
+    },
+    {
+      label: "array GPU backend",
+      override: {
+        gpu: {
+          backend: ["vulkan"],
+          totalVramGb: 8,
+          freeVramGb: 6,
+        },
+      },
+      path: "response.hardware.gpu.backend",
+    },
+  ])("rejects a $label instead of coercing it", async ({ override, path }) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          catalog: [],
+          installed: [],
+          active: { modelId: null, loadedAt: null, status: "idle" },
+          downloads: [],
+          hardware: { ...probe({}), ...override },
+          assignments: {},
+          textReadiness: { updatedAt: new Date(0).toISOString(), slots: {} },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHub()).rejects.toMatchObject({
+      code: LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
+      context: { path },
+    });
+  });
+
+  it("accepts the canonical iOS zero-core fallback", async () => {
+    const snapshot = {
+      catalog: [],
+      installed: [],
+      active: { modelId: null, loadedAt: null, status: "idle" },
+      downloads: [],
+      hardware: probe({
+        cpuCores: 0,
+        platform: "darwin",
+        arch: "arm64",
+        appleSilicon: true,
+        mobile: { platform: "ios" },
+      }),
+      assignments: {},
+      textReadiness: { updatedAt: new Date(0).toISOString(), slots: {} },
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(snapshot), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHub()).resolves.toEqual(snapshot);
+  });
+
   it("accepts the canonical hardware probe contract", async () => {
     const snapshot = {
       catalog: [],
