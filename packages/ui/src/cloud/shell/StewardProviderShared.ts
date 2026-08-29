@@ -130,9 +130,11 @@ export function clearServerStewardSessionCookies(): void {
   for (const url of stewardSessionClearUrls()) {
     // error-policy:J6 best-effort sign-out cookie clear across session hosts;
     // the local token is already cleared and an expired cookie self-heals.
-    fetch(url, { method: "DELETE", credentials: "include" }).catch(
-      () => undefined,
-    );
+    fetch(url, {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    }).catch(() => undefined);
   }
 }
 
