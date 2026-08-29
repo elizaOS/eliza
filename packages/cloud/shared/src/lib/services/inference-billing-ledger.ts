@@ -183,6 +183,7 @@ interface SettleOutcome {
   debited: boolean;
   uncollected: boolean;
   newBalance?: number;
+  balanceRevision?: string;
   /** `credit_transactions.id` of the committed debit row, when one was inserted. */
   transactionId?: string;
 }
@@ -193,6 +194,7 @@ interface ClaimRow {
 interface DebitRow {
   debited: boolean | "t" | "f" | null;
   new_balance: string | number | null;
+  balance_revision: string | number | bigint | null;
   transaction_id: string | null;
 }
 
@@ -265,7 +267,7 @@ async function settleLedgerCharge(
             SET credit_balance = o.credit_balance - ${String(amountUsd)}::numeric, updated_at = NOW()
             FROM locked
             WHERE o.id = locked.id AND locked.bal >= ${String(amountUsd)}::numeric
-            RETURNING o.credit_balance AS new_balance
+            RETURNING o.credit_balance AS new_balance, o.balance_revision
           ),
           ins AS (
             INSERT INTO credit_transactions (organization_id, amount, type, description, metadata, created_at)
@@ -277,6 +279,7 @@ async function settleLedgerCharge(
           SELECT
             EXISTS(SELECT 1 FROM upd) AS debited,
             (SELECT new_balance FROM upd) AS new_balance,
+            (SELECT balance_revision FROM upd) AS balance_revision,
             (SELECT id FROM ins) AS transaction_id
         `,
       );
@@ -288,11 +291,16 @@ async function settleLedgerCharge(
         return { claimed: true, debited: false, uncollected: true };
       }
       const nb = debit[0]?.new_balance;
+      const balanceRevision = String(debit[0]?.balance_revision ?? "");
+      if (!/^(0|[1-9]\d*)$/.test(balanceRevision)) {
+        throw new Error("[InferenceLedger] committed debit returned an invalid balance revision");
+      }
       return {
         claimed: true,
         debited: true,
         uncollected: false,
         newBalance: nb === null || nb === undefined ? undefined : Number(nb),
+        balanceRevision,
         ...(debit[0]?.transaction_id && { transactionId: debit[0].transaction_id }),
       };
     });
@@ -330,7 +338,14 @@ async function settleLedgerCharge(
     // guarantee; on failure force the org off the fast path rather than leave a
     // silent absent hint.
     try {
-      await republishOrgBalanceHintAfterDebit(ctx.organizationId);
+      if (outcome.newBalance === undefined || outcome.balanceRevision === undefined) {
+        throw new Error("Committed inference debit did not return its balance snapshot");
+      }
+      await republishOrgBalanceHintAfterDebit(
+        ctx.organizationId,
+        outcome.newBalance,
+        outcome.balanceRevision,
+      );
     } catch (cause) {
       // error-policy:J4 the debit is already committed; convert the post-commit
       // cache failure into an explicit admission refusal instead of presenting

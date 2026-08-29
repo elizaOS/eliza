@@ -20,21 +20,24 @@ import {
   test,
 } from "bun:test";
 import { Hono } from "hono";
-// Spread the real module: bun's `mock.module` replaces the registry entry
-// process-wide, so dropping the other real exports of workers-hono-auth would
-// break every later test file that imports from it.
-import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 import * as loggerActual from "@/lib/utils/logger";
 
-const requireUserOrApiKeyWithOrg =
-  mock<(c: unknown) => Promise<{ id: string; organization_id: string }>>();
+const requireGenerativeRouteCaller =
+  mock<
+    (c: unknown) => Promise<{
+      user: { id: string; organization_id: string };
+      apiKeyId: string | null;
+      appScopeId: string | null;
+    }>
+  >();
 const loggerInfo = mock<(...args: unknown[]) => void>();
 const loggerWarn = mock<(...args: unknown[]) => void>();
 const loggerError = mock<(...args: unknown[]) => void>();
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
-  ...workersHonoAuthActual,
-  requireUserOrApiKeyWithOrg,
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  requireGenerativeRouteCaller,
+  asGenerativeCacheApiError: () => null,
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -68,15 +71,16 @@ beforeEach(() => {
   loggerInfo.mockClear();
   loggerWarn.mockClear();
   loggerError.mockClear();
-  requireUserOrApiKeyWithOrg.mockResolvedValue({
-    id: "user-1",
-    organization_id: "org-1",
+  requireGenerativeRouteCaller.mockResolvedValue({
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: "key-1",
+    appScopeId: null,
   });
 });
 
 afterEach(() => {
   setSystemTime();
-  requireUserOrApiKeyWithOrg.mockReset();
+  requireGenerativeRouteCaller.mockReset();
   loggerInfo.mockReset();
   loggerWarn.mockReset();
   loggerError.mockReset();
@@ -119,7 +123,7 @@ function makeRequest(
 describe("GET /api/v1/hf-proxy/[...path]", () => {
   test("requires authentication", async () => {
     // An unauthenticated request throws from the auth gate before any proxying.
-    requireUserOrApiKeyWithOrg.mockRejectedValueOnce(
+    requireGenerativeRouteCaller.mockRejectedValueOnce(
       Object.assign(new Error("Authentication required"), {
         name: "AuthenticationError",
       }),
@@ -130,7 +134,30 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     });
 
     expect(res.status).toBe(401);
-    expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns the cached standing reason without contacting HuggingFace", async () => {
+    requireGenerativeRouteCaller.mockRejectedValueOnce(
+      new ApiError(403, "access_denied", "Organization is inactive", {
+        reason: "organization_inactive",
+      }),
+    );
+    const upstreamFetch = mock(async () => new Response("not reached"));
+    globalThis.fetch = upstreamFetch as unknown as typeof fetch;
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+    });
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "Organization is inactive",
+      code: "access_denied",
+      details: { reason: "organization_inactive" },
+    });
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
   test("rejects a non-/resolve/ path with 400", async () => {

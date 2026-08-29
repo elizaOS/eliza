@@ -6,9 +6,9 @@
  * stays free of the SDK's Node-only deps.
  *
  * Credit handling:
- *   1. Reserve credits up-front (prevents overcommitment).
+ *   1. Admit the priced operation up-front (prevents overcommitment).
  *   2. Run upload + ElevenLabs call + DB writes.
- *   3. Reconcile reservation on success; refund (`reconcile(0)`) on failure.
+ *   3. Settle on success; release the admission on pre-commit failure.
  *
  * Request (multipart/form-data):
  *   - name           string (required)
@@ -20,6 +20,12 @@
 
 import { Hono } from "hono";
 import {
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import {
   type NewUserVoice,
   type NewVoiceCloningJob,
   type NewVoiceSample,
@@ -30,21 +36,13 @@ import {
   jsonError,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  type BillingContext,
-  billFlatUsage,
-  reserveFlatUsageCredits,
-} from "@/lib/services/ai-billing";
+import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateVoiceCloneCostFromCatalog } from "@/lib/services/ai-pricing";
-import {
-  type CreditReservation,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
+import { InsufficientCreditsError } from "@/lib/services/credits";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -88,12 +86,15 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
-  let reservation: CreditReservation | undefined;
+  let admission: Awaited<
+    ReturnType<typeof admitFlatGenerativeOperation>
+  > | null = null;
   let jobId: string | undefined;
   let cloneType: CloneType | undefined;
   let cloneCost:
     | Awaited<ReturnType<typeof calculateVoiceCloneCostFromCatalog>>
     | undefined;
+  let billingContext: BillingContext | undefined;
   let user: { id: string; organization_id: string } | undefined;
   let apiKeyId: string | null = null;
   let totalSize = 0;
@@ -107,11 +108,16 @@ app.post("/", async (c) => {
   const uploadedR2Keys: string[] = [];
   let userVoicePersisted = false;
 
+  let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
-    const auth = await requireUserOrApiKeyWithOrg(c);
-    user = { id: auth.id, organization_id: auth.organization_id };
-    apiKeyId = await getRequestApiKeyId(c);
+    caller = await requireGenerativeRouteCaller(c);
+  } catch (error) {
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
+  }
+  user = caller.user;
+  apiKeyId = caller.apiKeyId;
 
+  try {
     const apiKey = c.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
       logger.error("[Voice Clone API] ELEVENLABS_API_KEY not configured");
@@ -212,7 +218,7 @@ app.post("/", async (c) => {
     );
 
     cloneCost = await calculateVoiceCloneCostFromCatalog({ cloneType });
-    const billingContext: BillingContext = {
+    billingContext = {
       organizationId: user.organization_id,
       userId: user.id,
       apiKeyId,
@@ -225,7 +231,13 @@ app.post("/", async (c) => {
     };
 
     try {
-      reservation = await reserveFlatUsageCredits(billingContext, cloneCost);
+      admission = await admitFlatGenerativeOperation({
+        c,
+        context: billingContext,
+        apiKeyId,
+        cost: cloneCost,
+        admissionSnapshot: caller.admissionSnapshot,
+      });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return c.json(
@@ -310,6 +322,7 @@ app.post("/", async (c) => {
       description,
       language,
       files,
+      markProviderDispatched: admission.markProviderDispatched,
     });
 
     // 3) Persist user_voices row.
@@ -342,11 +355,21 @@ app.post("/", async (c) => {
       elevenlabsVoiceId,
     });
 
-    const billing = await billFlatUsage(billingContext, cloneCost, reservation);
-
-    c.executionCtx.waitUntil(
-      usageService
-        .create({
+    const completedAdmission = admission;
+    const completedCost = cloneCost;
+    const completedBillingContext = billingContext;
+    await retainVoiceCloneTask(
+      c,
+      (async () => {
+        const billing = await billFlatUsage(
+          completedBillingContext,
+          completedCost,
+          completedAdmission.reservation,
+        );
+        if (!completedAdmission.reservation) {
+          await completedAdmission.settle(billing.totalCost);
+        }
+        await usageService.create({
           organization_id: user.organization_id,
           user_id: user.id,
           api_key_id: apiKeyId,
@@ -367,12 +390,23 @@ app.post("/", async (c) => {
             baseTotalCost: billing.baseTotalCost,
             billingSource: "elevenlabs",
           },
-        })
-        .catch((error) => {
-          logger.error("[Voice Clone API] Failed to create usage record", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }),
+        });
+      })().catch(async (error) => {
+        await completedAdmission.settleUnknown().catch((settlementError) => {
+          logger.error(
+            "[Voice Clone API] Failed to conservatively settle inference admission",
+            {
+              error:
+                settlementError instanceof Error
+                  ? settlementError.message
+                  : String(settlementError),
+            },
+          );
+        });
+        logger.error("[Voice Clone API] Failed to create usage record", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }),
     );
 
     logger.info("[Voice Clone API] Voice clone created", {
@@ -463,14 +497,41 @@ app.post("/", async (c) => {
       }
     }
 
-    // Only refund if the voice clone was NOT committed. Once userVoicePersisted
-    // is true the ElevenLabs voice exists and the user_voices row is usable for
-    // TTS, so a later (post-commit) failure — attachSamplesToVoice,
-    // completeCloningJob, or the affiliate lookup inside billFlatUsage — must NOT
-    // refund a delivered clone (the file's own note above). This also prevents a
-    // post-settle double-reconcile (settle happens after the commit).
-    if (reservation && !userVoicePersisted) {
-      await reservation.reconcile(0);
+    // A delivered ElevenLabs voice remains billable even if a later local DB
+    // update fails. Before that commit point, release the full admission.
+    if (admission && userVoicePersisted && cloneCost && billingContext) {
+      const failedAdmission = admission;
+      const failedCost = cloneCost;
+      const failedBillingContext = billingContext;
+      await retainVoiceCloneTask(
+        c,
+        billFlatUsage(
+          failedBillingContext,
+          failedCost,
+          failedAdmission.reservation,
+        )
+          .then(async (billing) => {
+            if (!failedAdmission.reservation) {
+              await failedAdmission.settle(billing.totalCost);
+            }
+          })
+          .catch(async (settlementError) => {
+            await failedAdmission.settleUnknown();
+            logger.error(
+              "[Voice Clone API] Failed to settle committed voice clone",
+              {
+                error:
+                  settlementError instanceof Error
+                    ? settlementError.message
+                    : String(settlementError),
+              },
+            );
+          }),
+      );
+    } else if (admission) {
+      await retainVoiceCloneSettlement(c, admission.settle(0), "release");
+    }
+    if (admission && !userVoicePersisted) {
       logger.info("[Voice Clone API] Credits refunded", {
         organizationId: user?.organization_id,
         amount: cloneCost?.totalCost,
@@ -480,7 +541,8 @@ app.post("/", async (c) => {
     if (user && cloneType) {
       const failedUser = user;
       const failedCloneType = cloneType;
-      c.executionCtx.waitUntil(
+      await retainVoiceCloneTask(
+        c,
         usageService
           .create({
             organization_id: failedUser.organization_id,
@@ -562,20 +624,33 @@ export default app;
 
 // ---------------------------------------------------------------------------
 
-/**
- * Same lookup as `messages/route.ts` — the auth shim doesn't surface the API
- * key row, so we re-derive it from headers. Returns null for session auth.
- */
-async function getRequestApiKeyId(c: AppContext): Promise<string | null> {
-  const apiKeyHeader = c.req.header("X-API-Key") || c.req.header("x-api-key");
-  const auth = c.req.header("authorization");
-  const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
-  const elizaBearer = bearer?.startsWith("eliza_") ? bearer : null;
-  const apiKey = apiKeyHeader || elizaBearer;
-  if (!apiKey) return null;
-  const { apiKeysService } = await import("@/lib/services/api-keys");
-  const validated = await apiKeysService.validateApiKey(apiKey);
-  return validated ? validated.id : null;
+async function retainVoiceCloneSettlement(
+  c: AppContext,
+  settlement: Promise<unknown>,
+  operation: "settle" | "release",
+): Promise<void> {
+  await retainVoiceCloneTask(
+    c,
+    settlement.catch((error) => {
+      // error-policy:J7 settlement diagnostics must not replace the provider
+      // response; the durable reservation sweep remains the recovery boundary.
+      logger.error(
+        `[Voice Clone API] Failed to ${operation} inference admission`,
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }),
+  );
+}
+
+async function retainVoiceCloneTask(
+  c: AppContext,
+  task: Promise<unknown>,
+): Promise<void> {
+  const executionCtx = getGenerativeExecutionContext(c);
+  if (executionCtx) executionCtx.waitUntil(task);
+  else await task;
 }
 
 /**
@@ -595,8 +670,17 @@ async function createElevenLabsVoice(params: {
   description: string | undefined;
   language: string;
   files: File[];
+  markProviderDispatched: (() => Promise<void>) | undefined;
 }): Promise<string> {
-  const { apiKey, cloneType, name, description, language, files } = params;
+  const {
+    apiKey,
+    cloneType,
+    name,
+    description,
+    language,
+    files,
+    markProviderDispatched,
+  } = params;
 
   if (cloneType === "instant") {
     const fd = new FormData();
@@ -605,6 +689,7 @@ async function createElevenLabsVoice(params: {
     for (const file of files) {
       fd.append("files", file, file.name);
     }
+    await markProviderDispatched?.();
     const res = await fetch(`${ELEVENLABS_API}/v1/voices/add`, {
       method: "POST",
       headers: { "xi-api-key": apiKey },
@@ -615,6 +700,7 @@ async function createElevenLabsVoice(params: {
   }
 
   // Professional voice cloning is a 3-step operation in ElevenLabs.
+  await markProviderDispatched?.();
   const createRes = await fetch(`${ELEVENLABS_API}/v1/voices/pvc`, {
     method: "POST",
     headers: {
