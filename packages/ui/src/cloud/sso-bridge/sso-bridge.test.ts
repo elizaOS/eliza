@@ -566,6 +566,9 @@ describe("signOutFromSsoBridgedHost", () => {
       expect(new Headers(calls[0].init?.headers).get("content-type")).toBe(
         "application/json",
       );
+      expect(new Headers(calls[0].init?.headers).get("authorization")).toBe(
+        `Bearer ${token}`,
+      );
       expect(proofAtServerLogoutIssue).toBe(false);
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
     } finally {
@@ -625,7 +628,9 @@ describe("prepareSsoAccountSwitch", () => {
     }
   });
 
-  it("marks the account-switch logout request as non-simple", async () => {
+  it("authorizes the non-simple account-switch logout request", async () => {
+    const token = liveToken();
+    localStorage.setItem(STEWARD_TOKEN_KEY, token);
     const realFetch = globalThis.fetch;
     globalThis.fetch = (() =>
       Promise.resolve(new Response(null, { status: 204 }))) as typeof fetch;
@@ -638,6 +643,9 @@ describe("prepareSsoAccountSwitch", () => {
       });
       expect(new Headers(calls[0].init?.headers).get("content-type")).toBe(
         "application/json",
+      );
+      expect(new Headers(calls[0].init?.headers).get("authorization")).toBe(
+        `Bearer ${token}`,
       );
     } finally {
       globalThis.fetch = realFetch;
