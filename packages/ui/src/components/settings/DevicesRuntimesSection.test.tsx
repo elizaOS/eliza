@@ -282,5 +282,18 @@ describe("DevicesRuntimesSection", () => {
       target: "eliza@replacement.example",
       sshPort: 22,
     });
+
+    await user.clear(screen.getByLabelText("SSH target"));
+    await user.type(screen.getByLabelText("SSH target"), "eliza@vps.example");
+    const portInput = screen.getByLabelText("SSH port");
+    await user.clear(portInput);
+    await user.type(portInput, "2222");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Inspect fingerprint",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 });
