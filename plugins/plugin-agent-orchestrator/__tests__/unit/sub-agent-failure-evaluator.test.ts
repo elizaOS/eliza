@@ -200,6 +200,17 @@ describe("subAgentFailureResponseEvaluator", () => {
     expect(result.reply).not.toContain("..");
   });
 
+  it("does not double when the reason ends in a horizontal ellipsis (#29852)", () => {
+    const context = makeContext({
+      text: "[sub-agent: text-my-ex (claude) — error]\nWorkspace provisioning timed out…",
+    });
+    const result = subAgentFailureResponseEvaluator.evaluate(context);
+    expect(result.reply).toBe(
+      `Couldn't finish the "text-my-ex" task — Workspace provisioning timed out… Want me to retry?`,
+    );
+    expect(result.reply).not.toContain("….");
+  });
+
   it("preserves a reason's own '!' terminator without appending a period", () => {
     const context = makeContext({
       text: "[sub-agent: text-my-ex (claude) — error]\nSub-agent process crashed unexpectedly!",
