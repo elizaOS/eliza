@@ -32,7 +32,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { ElizaError, getDefaultRedactPatterns } from "@elizaos/core";
+import {
+  ElizaError,
+  getDefaultRedactPatterns,
+  isSensitiveKeyName,
+} from "@elizaos/core";
 
 /** Severity of a single gate finding. */
 export type DiffGateSeverity = "block" | "warn";
@@ -212,11 +216,10 @@ function compileSecretPatterns(): RegExp[] {
   for (const raw of getDefaultRedactPatterns()) {
     // Match core's redaction parser: a `/pattern/flags` literal keeps its flags
     // (forcing `g`), otherwise the raw source compiles with `gi`. We add `m` so
-    // matching works line-by-line. Compiling with only `gm` (dropping the `i`)
-    // would miss lowercase credential shapes core's source-of-truth catches
-    // (e.g. `database_password=…`, `authorization: Bearer …`), so we preserve
-    // case-insensitivity exactly as core does. A pattern that fails to compile
-    // is skipped rather than aborting the whole gate.
+    // matching works line-by-line. Literal patterns deliberately preserve their
+    // declared case semantics; name-based case-insensitive classification is
+    // handled separately through core's `isSensitiveKeyName` authority below.
+    // A pattern that fails to compile is skipped rather than aborting the gate.
     const compiledPattern = compileRedactPattern(raw);
     if (compiledPattern) compiled.push(compiledPattern);
   }
@@ -460,11 +463,47 @@ function compileExtraForbidden(patterns?: string[]): RegExp[] {
 }
 
 function matchesSecret(line: string): boolean {
+  if (hasSensitiveLiteralAssignment(line)) return true;
   for (const pattern of SECRET_PATTERNS) {
     pattern.lastIndex = 0;
     if (pattern.test(line)) return true;
   }
   return false;
+}
+
+/**
+ * Detect literal values assigned to credential-named keys using core's
+ * case-insensitive key-name authority. Value-shape patterns remain separate:
+ * this closes lowercase/mixed-case config assignments without treating benign
+ * metadata such as `MAX_TOKENS` or `TOKEN_COUNT` as credentials.
+ *
+ * Only literal-bearing forms are classified here. A normal source expression
+ * such as `const credential = await resolveCredential()` is not itself secret
+ * material and must remain reviewable; quoted literals and dotenv-style scalar
+ * assignments are the pre-write boundary's unambiguous secret-bearing forms.
+ */
+function hasSensitiveLiteralAssignment(line: string): boolean {
+  const quotedKey = /(["'])([^"'\\\r\n]+)\1\s*[:=]\s*(?=["'`])/g;
+  for (const match of line.matchAll(quotedKey)) {
+    if (isSensitiveKeyName(match[2])) return true;
+  }
+
+  const objectKey =
+    /(?:^|[,{]\s*)([A-Za-z_$][A-Za-z0-9_$.-]*)\s*[:=]\s*(?=["'`])/g;
+  for (const match of line.matchAll(objectKey)) {
+    if (isSensitiveKeyName(match[1])) return true;
+  }
+
+  const declaredKey =
+    /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?=["'`])/g;
+  for (const match of line.matchAll(declaredKey)) {
+    if (isSensitiveKeyName(match[1])) return true;
+  }
+
+  const dotenvKey =
+    /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*=(?![=>])\s*\S+/;
+  const dotenvMatch = dotenvKey.exec(line);
+  return dotenvMatch ? isSensitiveKeyName(dotenvMatch[1]) : false;
 }
 
 /**

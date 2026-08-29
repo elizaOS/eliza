@@ -231,14 +231,66 @@ describe("reviewDiff — empty diff rejects", () => {
   });
 });
 
-describe("reviewDiff — secret matching parity with core", () => {
-  it("blocks a supported lowercase compound credential name", () => {
-    const diff = addedFileDiff("config.sh", [
-      "client_secret=hunter2hunter2hunter2",
-    ]);
-    const result = reviewDiff({ diff, changedFiles: ["config.sh"] });
+describe("reviewDiff — case-insensitive secret matching (parity with core)", () => {
+  it.each([
+    ["lowercase dotenv", "database_password=fixture-value-123456789"],
+    ["compound credential", "client_secret=fixture-value-123456789"],
+    ["mixed-case dotenv", "serviceCredential=fixture-value-123456789"],
+    [
+      "nested quoted key",
+      'const config = { auth: { "clientSecret": "fixture-value-123456789" } };',
+    ],
+    [
+      "encoded-looking literal",
+      `const config = { accessToken: "${Buffer.from("fixture-value-123456789").toString("base64")}" };`,
+    ],
+  ])("blocks a %s credential assignment", (_case, addedLine) => {
+    const diff = addedFileDiff("config.ts", [addedLine]);
+    const result = reviewDiff({ diff, changedFiles: ["config.ts"] });
     expect(result.passed).toBe(false);
     expect(result.blocking.some((f) => f.check === "secret")).toBe(true);
+  });
+
+  it.each([
+    "this.apiKey = config.apiKey;",
+    "this.maxTokens = config.maxTokens ?? 1024;",
+    "this.tokenCount = tokens.length;",
+    "password == null",
+    "secret => handler(secret)",
+    "password === expected",
+  ])("allows non-literal source expression %s", (line) => {
+    const result = reviewDiff({
+      diff: addedFileDiff("src/credentials.ts", [line]),
+      changedFiles: ["src/credentials.ts"],
+    });
+    expect(result.passed).toBe(true);
+    expect(result.blocking).toEqual([]);
+  });
+
+  it("allows authoritative non-secret env names and key lookalikes", () => {
+    const diff = addedFileDiff("config.sh", [
+      "MAX_TOKENS=8192",
+      "TOKEN_COUNT=42",
+      "TOKEN_ID=build-123",
+      "KEYBOARD_SHORTCUT=cmd-k",
+      "TURNKEY_MODE=enabled",
+    ]);
+    const result = reviewDiff({ diff, changedFiles: ["config.sh"] });
+    expect(result.passed).toBe(true);
+    expect(result.blocking).toHaveLength(0);
+  });
+
+  it("allows credential-handling expressions that do not introduce literal material", () => {
+    const diff = addedFileDiff("credential-service.ts", [
+      "const credential = await resolveCredential();",
+      "return credential;",
+    ]);
+    const result = reviewDiff({
+      diff,
+      changedFiles: ["credential-service.ts"],
+    });
+    expect(result.passed).toBe(true);
+    expect(result.blocking).toHaveLength(0);
   });
 
   it("blocks a lowercase `authorization: bearer …` header", () => {

@@ -263,6 +263,39 @@ describe("CodingWorkspaceService.createPR diff-review boundary", () => {
     );
   });
 
+  it("blocks mixed-case nested credential material without dispatching or disclosing it", async () => {
+    const secretValue = "fixture-value-that-must-not-escape-123456789";
+    capturePrGateChangeSet.mockResolvedValue({
+      changedFiles: ["src/config.ts"],
+      diff:
+        "+++ b/src/config.ts\n" +
+        `+export const config = { nested: { serviceCredential: "${secretValue}" } };\n`,
+      truncated: false,
+      filesTruncated: false,
+    });
+    const { service, finalize, events, reportError } = harness();
+
+    let caught: unknown;
+    try {
+      await service.createPR("workspace-1", options);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(DiffGateBlockedError);
+    expect(finalize).not.toHaveBeenCalled();
+    expect(reportError).not.toHaveBeenCalled();
+    expect(String(caught)).not.toContain(secretValue);
+    expect(JSON.stringify(events)).not.toContain(secretValue);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          diffGate: expect.objectContaining({ outcome: "blocked" }),
+        }),
+      }),
+    );
+  });
+
   it("reports unavailable capture and never finalizes", async () => {
     capturePrGateChangeSet.mockResolvedValue(undefined);
     const { service, finalize, reportError, events } = harness();
