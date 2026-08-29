@@ -88,7 +88,9 @@ export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<num
   // pre-migration path still recovers, and a DDL failure surfaces on a request
   // that was already failing rather than taking down placement wholesale.
   try {
-    return await countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
+    // Capacity is admission authority. Replica lag must never erase a slot that
+    // an exact-restore transaction has already reserved on the primary.
+    return await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId);
   } catch (error) {
     // error-policy:J2 context-adding rethrow — only the known pre-migration
     // shape is repairable; every other database failure keeps its cause and the
@@ -106,7 +108,7 @@ export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<num
     );
     try {
       await ensureAgentSandboxSchema();
-      return await countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
+      return await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId);
     } catch (retryError) {
       // error-policy:J2 context-adding rethrow — a failed repair must distinguish
       // the recovery path from an ordinary placement query failure.

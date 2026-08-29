@@ -23,12 +23,18 @@ const where = mock((clause: SQL) => {
 });
 const from = mock(() => ({ where }));
 const select = mock(() => ({ from }));
+const readSelect = mock(() => {
+  throw new Error("capacity authority must not read from the replica");
+});
 
 // Replace the whole helpers module: dbRead captures the query, the rest are
 // stubs so every static import in the transitive chain still resolves.
 mock.module("../../db/helpers", () => ({
-  dbRead: { select },
-  dbWrite: { update: mock(() => ({ set: mock(() => ({ where: mock(() => []) })) })) },
+  dbRead: { select: readSelect },
+  dbWrite: {
+    select,
+    update: mock(() => ({ set: mock(() => ({ where: mock(() => []) })) })),
+  },
   useReadDb: mock(),
   useWriteDb: mock(),
   readQuery: mock(),
@@ -51,13 +57,16 @@ describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () =
   beforeEach(() => {
     capturedWheres.length = 0;
     where.mockClear();
+    readSelect.mockClear();
   });
 
   test("the agent_sandboxes filter recognizes every terminal status before ownership override", async () => {
     await countAllocatedWorkloadsOnNode("node-under-test");
 
-    // Two queries run (containers + agent_sandboxes); the agent one is the
-    // clause whose params carry the sandbox terminal-status vocab.
+    // Five queries run (containers + canonical sandbox + sandbox replacement
+    // cleanup + replacement relation probe + exact-restore replacement); the
+    // canonical sandbox one is the clause whose params carry the sandbox
+    // terminal-status vocab.
     const agentParams = capturedWheres
       .map(renderParams)
       .find((params) => params.includes("sleeping"));
@@ -77,16 +86,31 @@ describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () =
 
   test("sums container + agent counts (one row each here) into total live slots", async () => {
     const total = await countAllocatedWorkloadsOnNode("node-under-test");
-    expect(where).toHaveBeenCalledTimes(3);
-    expect(total).toBe(3);
+    expect(where).toHaveBeenCalledTimes(5);
+    expect(readSelect).not.toHaveBeenCalled();
+    expect(total).toBe(4);
   });
 
   test("counts a durable replacement reservation as its own live slot", async () => {
     await countAllocatedWorkloadsOnNode("replacement-node");
 
     const rendered = capturedWheres.map(renderParams);
-    expect(rendered.filter((params) => params.includes("replacement-node"))).toHaveLength(3);
+    expect(rendered.filter((params) => params.includes("replacement-node"))).toHaveLength(4);
     expect(rendered.some((params) => params.includes("true"))).toBe(true);
+  });
+
+  test("counts only active exact-restore replacement reservation states", async () => {
+    await countAllocatedWorkloadsOnNode("replacement-node");
+
+    const replacementParams = capturedWheres
+      .map(renderParams)
+      .find((params) => params.includes("in_flight_unresolved"));
+    expect(replacementParams).toBeDefined();
+    for (const state of ["in_flight_unresolved", "cleanup_in_progress", "provider_succeeded"]) {
+      expect(replacementParams).toContain(state);
+    }
+    expect(replacementParams).not.toContain("lifecycle_committed");
+    expect(replacementParams).not.toContain("cleanup_proven");
   });
 });
 
