@@ -57,7 +57,7 @@ describe("task-agent adapter defaults", () => {
     expect(normalizeTaskAgentAdapter("eliza")).toBe("elizaos");
     expect(normalizeTaskAgentAdapter("eliza-os")).toBe("elizaos");
     expect(normalizeTaskAgentAdapter("pi agent")).toBe("pi-agent");
-    expect(normalizeTaskAgentAdapter("open code")).toBe("opencode");
+    expect(normalizeTaskAgentAdapter("kimi code")).toBe("kimi");
   });
 
   it("pins the settings default so planner guesses cannot override it", () => {
@@ -70,16 +70,16 @@ describe("task-agent adapter defaults", () => {
   });
 
   it("lets BENCHMARK_TASK_AGENT override the normal default for matrix runs", () => {
-    process.env.BENCHMARK_TASK_AGENT = "opencode";
+    process.env.BENCHMARK_TASK_AGENT = "grok";
     process.env.ELIZA_ACP_DEFAULT_AGENT = "elizaos";
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "pi-agent";
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "fixed";
 
-    expect(resolvePinnedAdapter(undefined)).toBe("opencode");
+    expect(resolvePinnedAdapter(undefined)).toBe("grok");
   });
 
   it("does not pin an adapter when selection strategy is dynamic", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "codex";
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "dynamic";
 
     expect(resolvePinnedAdapter(undefined)).toBeUndefined();
@@ -367,8 +367,8 @@ describe("resolvePinnedAdapter", () => {
   });
 
   it("returns the configured adapter when default + fixed strategy", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
-    expect(resolvePinnedAdapter(undefined)).toBe("opencode");
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "kimi";
+    expect(resolvePinnedAdapter(undefined)).toBe("kimi");
   });
 
   it("defaults to fixed strategy when the env var is unset", () => {
@@ -377,18 +377,18 @@ describe("resolvePinnedAdapter", () => {
   });
 
   it("returns undefined when strategy is non-fixed", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "codex";
     process.env.ELIZA_AGENT_SELECTION_STRATEGY = "ranked";
     expect(resolvePinnedAdapter(undefined)).toBeUndefined();
   });
 
-  it("returns undefined for unrecognised adapter names", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "not-an-adapter";
+  it("returns undefined for the removed OpenCode adapter", () => {
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
     expect(resolvePinnedAdapter(undefined)).toBeUndefined();
   });
 
   it("normalises case", () => {
-    process.env.ELIZA_DEFAULT_AGENT_TYPE = "OPENCODE";
-    expect(resolvePinnedAdapter(undefined)).toBe("opencode");
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "GROK";
+    expect(resolvePinnedAdapter(undefined)).toBe("grok");
   });
 });

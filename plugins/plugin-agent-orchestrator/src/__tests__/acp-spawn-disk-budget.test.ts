@@ -124,7 +124,7 @@ describe("AcpService spawn disk-budget + registry (#13773)", () => {
     });
 
     await expect(
-      svc.spawnSession({ agentType: "opencode", slotClass: "worker" }),
+      svc.spawnSession({ agentType: "codex", slotClass: "worker" }),
     ).rejects.toThrow();
 
     const [session] = await store.list();
