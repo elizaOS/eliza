@@ -4,7 +4,7 @@
  * Always stripped before reporting:
  *  - Email addresses          → [redacted-email]
  *  - Phone numbers (e.164 / 10-digit US)  → [redacted-phone]
- *  - Digit runs of 13 or more digits (card-shaped or longer) → [redacted-cc]
+ *  - Digit runs of 12 or more digits (card-shaped or longer) → [redacted-cc]
  *
  * A run is decimal digits (\p{Nd} — ASCII, Arabic-Indic, fullwidth, and
  * every other Unicode decimal script, so a localized PAN spelling cannot
@@ -23,9 +23,12 @@
  * expiry), and passing such a match through would leak the embedded PAN.
  * Over-redacting long order/tracking IDs is the accepted trade-off.
  *
- * Runs of 11–12 digits are left visible — ISO/IEC 7812 PANs exist at 12
- * digits (Maestro), but that band is dominated by invoice/reference
- * numbers, and report readability wins.
+ * Runs of 11 digits are left visible — 12 is the floor of the ISO/IEC 7812
+ * PAN length range (Maestro has historically issued 12-digit PANs), so a
+ * 12-digit run redacts. This over-redacts some 12-digit invoice/reference
+ * numbers; failing closed is the accepted trade-off, because a report
+ * consumer cannot distinguish a benign 12-digit reference from a PAN after
+ * this boundary has declared the title safe.
  *
  * Redaction is applied in the reporting layer before results leave the
  * process.
@@ -50,10 +53,10 @@ const EMAIL = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+/g;
 // alternation branches whose overlapping memberships (ZWJ is Cf AND
 // default-ignorable; variation selectors are M AND default-ignorable) caused
 // exponential backtracking on near-matches (ReDoS — 25 repeated U+200B after
-// the first digit of a 12-digit run took 16.5s). A regression test pins
+// the first digit of an 11-digit run took 16.5s). A regression test pins
 // linear-time completion of that exact shape.
 const CC_LIKE =
-  /\p{Nd}(?:[\t \u00A0\u1680\u2000-\u200A\u202F\u205F\u3000.,/\uFF0E\uFF0C\uFF0F\u2044\u2215\p{Pd}\u2212\p{Cf}\p{Default_Ignorable_Code_Point}\p{M}]*\p{Nd}){12,}/gu;
+  /\p{Nd}(?:[\t \u00A0\u1680\u2000-\u200A\u202F\u205F\u3000.,/\uFF0E\uFF0C\uFF0F\u2044\u2215\p{Pd}\u2212\p{Cf}\p{Default_Ignorable_Code_Point}\p{M}]*\p{Nd}){11,}/gu;
 
 // Phone: e.164 (+ followed by 7-15 digits), or 10-digit US formats with an
 // optional +1 country code and separators.
@@ -74,7 +77,7 @@ export function redactWindowTitle(
 ): string | null {
   if (title === null || title === undefined) return null;
   let out = title;
-  // Any 13+ digit run is redacted whole. There is deliberately no upper
+  // Any 12+ digit run is redacted whole. There is deliberately no upper
   // bound: a maximal match may embed a valid PAN next to another numeric
   // field (PAN + expiry, PAN + CVV), and exempting long matches would leak
   // the embedded PAN. See the header for the full rationale.
