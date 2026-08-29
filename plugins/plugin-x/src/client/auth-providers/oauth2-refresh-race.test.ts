@@ -225,10 +225,14 @@ describe("OAuth2PKCEAuthProvider concurrent refresh", () => {
     // Each issued token lands inside the 30s expiry skew (expires_in: 1), so the
     // second sequential call must run a fresh refresh rather than hand back the
     // still-in-flight promise. This exercises obtainTokens on a *second* expiry
-    // cycle: it only passes when `.finally()` clears `authInFlight` after the
-    // first flight settles and the join branch re-checks the shared token's
-    // expiry. Without the cleanup, `authInFlight` keeps a settled, expired
-    // promise and every later call returns the stale token, never refreshing.
+    // cycle. Because the two calls are sequential, the first flight has already
+    // settled and `authInFlight` is null by the time the second call runs, so
+    // this case pins the `.finally()` cleanup alone — not the concurrent join
+    // branch, which it never enters. It only passes when `.finally()` clears
+    // `authInFlight` after the first flight settles; without that cleanup
+    // `authInFlight` keeps a settled, expired promise and every later call
+    // returns the stale token, never refreshing. (A concurrent second-cycle
+    // race that also exercises the join branch's expiry re-check is separate.)
     const { fetchImpl, refreshCalls } = singleUseRefreshFetch({ expiresIn: 1 });
     const provider = new OAuth2PKCEAuthProvider(
       createRuntime(),
