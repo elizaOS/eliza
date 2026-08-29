@@ -151,6 +151,36 @@ describe("getLocalInferenceHub", () => {
 
   it.each([
     {
+      label: "negative RAM",
+      override: { totalRamGb: -1 },
+      path: "response.hardware.totalRamGb",
+    },
+    {
+      label: "fractional CPU core count",
+      override: { cpuCores: 2.5 },
+      path: "response.hardware.cpuCores",
+    },
+    {
+      label: "empty platform",
+      override: { platform: "" },
+      path: "response.hardware.platform",
+    },
+    {
+      label: "non-boolean Apple Silicon flag",
+      override: { appleSilicon: "true" },
+      path: "response.hardware.appleSilicon",
+    },
+    {
+      label: "missing GPU field",
+      override: { gpu: undefined },
+      path: "response.hardware.gpu",
+    },
+    {
+      label: "unsupported model bucket string",
+      override: { recommendedBucket: "tiny" },
+      path: "response.hardware.recommendedBucket",
+    },
+    {
       label: "array model bucket",
       override: { recommendedBucket: ["small"] },
       path: "response.hardware.recommendedBucket",
@@ -245,6 +275,45 @@ describe("getLocalInferenceHub", () => {
     const client = new ElizaClient("http://127.0.0.1:31337", "token");
 
     await expect(client.getLocalInferenceHub()).resolves.toEqual(snapshot);
+  });
+});
+
+describe("getLocalInferenceHardware", () => {
+  it("rejects malformed direct hardware before device-tier classification", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ status: "unsupported" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHardware()).rejects.toMatchObject({
+      code: LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
+      context: {
+        path: "response.hardware.totalRamGb",
+        expected: "a finite non-negative number",
+      },
+    });
+  });
+
+  it("accepts the canonical direct iOS zero-core fallback", async () => {
+    const hardware = probe({
+      cpuCores: 0,
+      platform: "darwin",
+      arch: "arm64",
+      appleSilicon: true,
+      mobile: { platform: "ios" },
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(hardware), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHardware()).resolves.toEqual(hardware);
   });
 });
 
