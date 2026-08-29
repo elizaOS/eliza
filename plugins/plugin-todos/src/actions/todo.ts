@@ -571,13 +571,16 @@ async function resolveTodoIdByVisibleContent(
   | { ok: true; id: string | null }
   | { ok: false; failure: ActionResult }
 > {
-  const content = readString(params.content);
+  // targetContent (when present) is the exact locator; content alone also
+  // locates when id is absent, but for update the caller may pass
+  // targetContent to locate while content carries the replacement text.
+  const content = readString(params.targetContent) ?? readString(params.content);
   if (!content) {
     return {
       ok: false,
       failure: failure(
         "missing_param",
-        "id or content is required for this mutation",
+        "id, targetContent, or content is required for this mutation",
       ),
     };
   }
@@ -613,6 +616,9 @@ async function actionUpdateById({
     return failure("missing_param", "id is required for action=update");
   }
   const patch: UpdateTodoInput = {};
+  // When the caller located this todo by targetContent, `content` is purely
+  // the replacement text (rename). When located by id or by content alone,
+  // `content` still updates in place.
   const content = readString(params.content);
   if (content !== undefined) patch.content = content;
   const activeForm = readString(params.activeForm);
@@ -941,9 +947,23 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       },
       {
         name: "content",
-        description: "Imperative form, e.g. 'Add tests' (create/update).",
+        description: "Imperative form, e.g. 'Add tests' (create/update; also locates a todo by visible content when id is absent for update/complete/cancel/delete).",
         required: false,
         schema: { type: "string" as const },
+      },
+      {
+        name: "targetContent",
+        description:
+          "Exact visible content locating the todo when id is absent (update/complete/cancel/delete). Distinct from content so an update can rename the located todo.",
+        required: false,
+        schema: { type: "string" as const },
+      },
+      {
+        name: "confirm",
+        description:
+          "Must be true for action=clear; otherwise clear returns a preview and requires explicit confirmation before mutating.",
+        required: false,
+        schema: { type: "boolean" as const },
       },
       {
         name: "activeForm",
