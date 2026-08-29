@@ -95,6 +95,7 @@ vi.mock("@capacitor/core", () => ({
   Capacitor: {
     isNativePlatform: () => false,
     getPlatform: () => "web",
+    registerPlugin: () => ({}),
   },
   CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));

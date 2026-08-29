@@ -35,6 +35,7 @@ const oauthState = vi.hoisted(() => ({
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     isNativePlatform: () => oauthState.nativePlatform,
+    registerPlugin: () => ({}),
   },
   registerPlugin: () => ({}),
 }));
