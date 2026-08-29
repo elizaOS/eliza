@@ -110,7 +110,14 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
 
   private async loadTokens(): Promise<StoredOAuth2Tokens | null> {
     if (this.tokens) return this.tokens;
-    this.tokens = await this.tokenStore.load();
+    const loaded = await this.tokenStore.load();
+    // A concurrent single-flight may have refreshed and saved a newer token
+    // while this store read was outstanding (real file/DB stores can have a
+    // read in flight across another loop's write). Never let a pre-write
+    // snapshot clobber the freshly rotated token, or that stale refresh token
+    // gets spent a second time and fails with invalid_grant.
+    if (this.tokens) return this.tokens;
+    this.tokens = loaded;
     return this.tokens;
   }
 

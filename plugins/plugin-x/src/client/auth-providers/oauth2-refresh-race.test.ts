@@ -164,6 +164,60 @@ describe("OAuth2PKCEAuthProvider concurrent refresh", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("does not let a store read that spans the winner's save re-spend the old refresh token", async () => {
+    // Models a token store backed by real I/O: a read captures its snapshot at
+    // read-start time and can resolve *after* a concurrent save. Caller B's read
+    // starts first and blocks; caller A loads immediately, refreshes R0 -> R1 and
+    // saves; only then does B's read resolve with the pre-write R0 snapshot.
+    let current: StoredOAuth2Tokens | null = expiredTokens();
+    let loadCount = 0;
+    let releaseSecondLoad: () => void = () => {};
+    const secondLoadGate = new Promise<void>((resolve) => {
+      releaseSecondLoad = resolve;
+    });
+    const store: TokenStore = {
+      load: vi.fn(async () => {
+        loadCount += 1;
+        const snapshot = current; // captured at read start, like a DB read tx
+        if (loadCount === 2) await secondLoadGate;
+        return snapshot;
+      }),
+      save: vi.fn(async (t: StoredOAuth2Tokens) => {
+        current = t;
+      }),
+      clear: vi.fn(async () => {
+        current = null;
+      }),
+    };
+    const { fetchImpl, refreshCalls } = singleUseRefreshFetch();
+    const provider = new OAuth2PKCEAuthProvider(
+      createRuntime(),
+      undefined,
+      store,
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    const settled = Promise.allSettled([
+      provider.getAccessToken(),
+      provider.getAccessToken(),
+    ]);
+    // Let caller A's refresh + save complete (all microtasks) before caller B's
+    // outstanding store read resolves with the now-stale snapshot.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    releaseSecondLoad();
+    const results = await settled;
+
+    // Neither caller re-spends R0; only the original refresh happened.
+    expect(results.every((r) => r.status === "fulfilled")).toBe(true);
+    expect(refreshCalls).toEqual(["R0"]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const values = results.map((r) =>
+      r.status === "fulfilled" ? r.value : null,
+    );
+    expect(new Set(values)).toEqual(new Set(["A1"]));
+    expect(store.save).toHaveBeenCalledTimes(1);
+  });
+
   it("serializes concurrent interactive logins when no tokens exist", async () => {
     let logins = 0;
     const interactiveLoginFn = vi.fn(async () => {
