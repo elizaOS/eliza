@@ -150,16 +150,24 @@ describe("resolveApp — id-path fall-through on a stale/foreign UUID (#29907)",
 
   it("fall-through still name-resolves: a stale id whose typed name matches an owned app returns that app", async () => {
     // The reference is UUID-shaped so it takes the id path first; when getApp
-    // 404s, list-based resolution runs against the SAME reference. A UUID never
-    // matches a name, so this proves the fall-through does not throw and lands
-    // on the ambiguity-safe not-found path (app:null, available populated).
+    // 404s, list-based resolution runs against the SAME reference.
+    // matchAppByReference matches on slug as well as name, so an owned app whose
+    // slug IS that stale UUID is recovered by the fall-through. This proves the
+    // fall-through actually reaches matchAppByReference and can RETURN a match —
+    // not merely that it avoids throwing and lands on app:null. A resolver that
+    // listed but never matched (returning app:null here) would fail this.
+    const owned = makeApp({
+      id: "id-acme",
+      name: "Acme Bot",
+      slug: STALE_UUID,
+    });
     const client = makeClient({
       getApp: () => Promise.reject(cloudApiError(404)),
-      apps: [app("Acme Bot")],
+      apps: [owned, app("Zenith")],
     });
     const result = await resolveApp(client, STALE_UUID);
-    expect(result.app).toBeNull();
-    expect(result.available).toEqual(["Acme Bot"]);
+    expect(result.app?.name).toBe("Acme Bot");
+    expect(result.available.sort()).toEqual(["Acme Bot", "Zenith"]);
   });
 
   it("unchanged: getApp succeeds → direct id path returns the app without listing", async () => {
