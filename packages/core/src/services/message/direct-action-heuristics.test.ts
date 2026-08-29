@@ -998,11 +998,14 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		"if the window is open, leave it alone",
 		'preserve the text "the window is open"',
 		"the window is open; switch to settings",
-	])("does not mistake declarative view state for inspection: %s", (message) => {
-		expect(
-			inferDirectCurrentRequestCandidateInference([viewsAction], message),
-		).toEqual({ names: ["VIEWS"], kind: "view-surface" });
-	});
+	])(
+		"does not mistake declarative view state for inspection: %s",
+		(message) => {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).toEqual({ names: ["VIEWS"], kind: "view-surface" });
+		},
+	);
 
 	it.each([
 		[
