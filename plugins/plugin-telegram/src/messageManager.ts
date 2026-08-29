@@ -1565,12 +1565,16 @@ export class MessageManager {
 
       // Membership admission gate: group/supergroup chats require canonical
       // membership authority. DMs stay under the DM policy; channels have no
-      // inbound admission surface in this connector. The gate runs BEFORE
-      // processMessage and ensureConnection so a denied sender can neither
-      // trigger media fetch/vision work nor mutate room-participant state;
-      // the authority bootstraps the principal entity itself when evidence
-      // needs the row.
-      if (channelType === ChannelType.GROUP) {
+      // inbound admission surface in this connector — a channel post must not
+      // register or consult a membership scope the connector does not own, so
+      // the gate matches on the raw Telegram chat type (the same predicate as
+      // TelegramService.chatAndEntityMiddleware and the standalone handler)
+      // rather than the collapsed ChannelType mapping, which folds `channel`
+      // into GROUP. The gate runs BEFORE processMessage and ensureConnection
+      // so a denied sender can neither trigger media fetch/vision work nor
+      // mutate room-participant state; the authority bootstraps the principal
+      // entity itself when evidence needs the row.
+      if (chat.type === "group" || chat.type === "supergroup") {
         const admitted = await this.telegramMembershipGate.authorizeMessage({
           chatId: telegramChatId,
           chatRoomKey: this.scopedTelegramKey(telegramChatId),
