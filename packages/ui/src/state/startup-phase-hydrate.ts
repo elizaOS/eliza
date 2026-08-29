@@ -395,18 +395,15 @@ export async function runHydrating(
 }
 
 /**
- * Sets up persistent WebSocket bindings and the navigation listener.
- * Returns a cleanup function that unbinds everything.
- * Should be called once when the coordinator first reaches "ready".
- */
-/**
- * Total newest-first ordering over `updatedAt`. `new Date(x).getTime()` is NaN
- * for an unparseable stamp and a NaN-returning comparator leaves Array.sort's
+ * Total newest-first ordering over `updatedAt`. `Date.parse` returns NaN for an
+ * unparseable stamp, and a NaN-returning comparator leaves Array.sort's
  * ordering undefined — a single malformed wire value then pins itself wherever
  * it sits (observed: the top of the conversation sidebar) and displaces valid
- * neighbours. Unparseable stamps sort last, tied ones fall back to id so the
- * order stays deterministic. `Number.isFinite` rather than isNaN: an Infinity
- * stamp degenerates the ordering the same way.
+ * neighbours. Unparseable stamps sort after every parseable one; when both
+ * sides are unparseable the tie breaks on `id`, so their relative order is
+ * deterministic instead of input-dependent. Two equal parseable stamps compare
+ * 0 and keep Array.sort's stability. `Number.isFinite` rather than the global
+ * `isNaN` because it does not coerce its argument.
  */
 function byUpdatedAtDesc(left: Conversation, right: Conversation): number {
   const leftUpdatedAt = Date.parse(left.updatedAt);
@@ -419,6 +416,11 @@ function byUpdatedAtDesc(left: Conversation, right: Conversation): number {
   return rightUpdatedAt - leftUpdatedAt;
 }
 
+/**
+ * Sets up persistent WebSocket bindings and the navigation listener.
+ * Returns a cleanup function that unbinds everything.
+ * Should be called once when the coordinator first reaches "ready".
+ */
 export function bindReadyPhase(
   depsRef: React.MutableRefObject<ReadyPhaseDeps | undefined>,
 ): () => void {

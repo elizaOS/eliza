@@ -9,7 +9,7 @@
  * the real exported bindReadyPhase through its registered handlers; the
  * comparator itself is never re-implemented here.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../api";
 import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
 
@@ -110,6 +110,11 @@ describe("bindReadyPhase conversation re-sort ordering", () => {
 
   beforeEach(() => {
     clientMock.handlers.clear();
+  });
+
+  // bindReadyPhase installs an interval and window listeners; unbind after
+  // every case, including the last one.
+  afterEach(() => {
     cleanup?.();
     cleanup = undefined;
   });
@@ -170,5 +175,26 @@ describe("bindReadyPhase conversation re-sort ordering", () => {
     ]);
 
     expect(order).toEqual(["valid", "a-bad", "z-bad"]);
+  });
+
+  it("two equal parseable stamps compare 0 and keep their incoming order", () => {
+    const captured = makeDeps();
+    cleanup = bindReadyPhase({ current: captured.deps });
+
+    fire("conversation-updated", {
+      conversation: makeConversation("newest", "2026-01-03T00:00:00.000Z"),
+    });
+
+    // The id tie-break is reserved for two unparseable stamps. Equal valid
+    // stamps must not be reordered into id order — `conversation-updated`
+    // stamps `new Date().toISOString()`, so same-millisecond ties are real and
+    // the sort's stability is what keeps the sidebar from shuffling.
+    const order = captured.latestOrder([
+      makeConversation("z-equal", "2026-01-01T00:00:00.000Z"),
+      makeConversation("a-equal", "2026-01-01T00:00:00.000Z"),
+      makeConversation("newest", "2026-01-02T00:00:00.000Z"),
+    ]);
+
+    expect(order).toEqual(["newest", "z-equal", "a-equal"]);
   });
 });
