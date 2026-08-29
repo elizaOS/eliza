@@ -18,6 +18,7 @@ const capacitorState = { isNative: false };
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     isNativePlatform: () => capacitorState.isNative,
+    registerPlugin: () => ({}),
   },
 }));
 
