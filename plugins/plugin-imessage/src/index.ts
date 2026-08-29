@@ -180,6 +180,11 @@ export type {
   IMessageConfig,
   IMessageReactionNotificationMode,
 } from "./config.js";
+export type {
+  IMessageMembershipRosterSource as IMessageMembershipRosterSourceType,
+  IMessageRosterMember,
+  IMessageRosterRead,
+} from "./membership.js";
 // Native membership evidence publisher (issue #24370).
 export {
   IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
@@ -188,10 +193,5 @@ export {
   imessageMembershipPrincipalId,
   imessageMembershipScope,
   resolveMembershipService as resolveIMessageMembershipService,
-} from "./membership.js";
-export type {
-  IMessageMembershipRosterSource as IMessageMembershipRosterSourceType,
-  IMessageRosterMember,
-  IMessageRosterRead,
 } from "./membership.js";
 export { createChatDbRosterSource } from "./membership-roster.js";
