@@ -41,6 +41,8 @@ function equal<T>(actual: T, expected: T, what: string) {
 
 // Fixed literal command, no user input interpolated — execSync is safe here.
 const HEAD = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+const OUTPUT_PATH =
+  process.env.WECHAT_E2E_OUTPUT ?? "./wechat-e2e-evidence.txt";
 const GIT_STATUS = execSync("git status --short", { encoding: "utf8" }).trim();
 
 const AES_BLOCK = 32;
@@ -314,6 +316,31 @@ async function startHarness(
     }) as typeof ms.handleMessage;
   }
 
+  // The runtime's own namespaced logger carries error-report output
+  // (reportError → [AGENT] ... wechat:callback-delivery ...); wrap it too so
+  // delivery-error boundary evidence lands in the shared sink.
+  const runtimeLogOriginals = new Map<string, unknown>();
+  const runtimeLogger = runtime.runtime.logger as unknown as Record<
+    string,
+    unknown
+  >;
+  if (runtimeLogger && typeof runtimeLogger === "object") {
+    for (const level of ["log", "info", "warn", "error", "debug"] as const) {
+      const original = runtimeLogger[level];
+      if (typeof original === "function") {
+        runtimeLogOriginals.set(level, original);
+        runtimeLogger[level] = (...args: unknown[]) => {
+          logs.push({ level, args });
+          (original as (...a: unknown[]) => void)(...args);
+        };
+      }
+    }
+  }
+  const restoreRuntimeLogs = () => {
+    for (const [level, original] of runtimeLogOriginals)
+      runtimeLogger[level] = original;
+  };
+
   const callbackPort = await freePort();
   // Production hosts surface connector config through character settings; the
   // account provider reads runtime.character.settings.connectors.wechat.
@@ -400,6 +427,7 @@ async function startHarness(
       await wechatPluginDefault.dispose();
       await runtime.cleanup();
       await wire.close();
+      restoreRuntimeLogs();
       restoreLogs();
       (globalThis as any).fetch = REAL_FETCH;
     },
@@ -495,6 +523,10 @@ async function main() {
   emit("=== #29751 wire-fidelity evidence capture (self-validating) ===");
   emit(`date: ${new Date().toISOString()}`);
   emit(`executing head: ${HEAD} (git rev-parse HEAD, never hardcoded)`);
+  const PR_HEAD =
+    process.env.WECHAT_E2E_PR_HEAD ??
+    "d94707eb59f27cbbf1de986271b74872151db1d7";
+  emit(`PR head under review (unchanged by this evidence): ${PR_HEAD}`);
   emit(`git status: ${GIT_STATUS || "clean"}`);
   emit(
     "mode: REAL wechatPlugin.init on a real PGLite AgentRuntime; transport redirected from",
@@ -565,6 +597,11 @@ async function main() {
     ),
   );
   equal(
+    { method: sendReq?.method, contentType: sendReq?.contentType },
+    { method: "POST", contentType: "application/json" },
+    "OA send method/content-type",
+  );
+  equal(
     sendReq?.originalUrl,
     "https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token=OA_E2E_TOKEN_1",
     "exact send URL",
@@ -629,8 +666,23 @@ async function main() {
     },
     "exact WeCom send receipt",
   );
+  const wecomSendReq = h1.requests.find((r) =>
+    r.originalUrl.startsWith(
+      "https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=",
+    ),
+  );
+  equal(
+    { method: wecomSendReq?.method, contentType: wecomSendReq?.contentType },
+    { method: "POST", contentType: "application/json" },
+    "WeCom send method/content-type",
+  );
   const wecomTokenReq = h1.requests.find((r) =>
     r.originalUrl.startsWith("https://qyapi.weixin.qq.com/cgi-bin/gettoken?"),
+  );
+  equal(
+    { method: wecomTokenReq?.method },
+    { method: "GET" },
+    "WeCom token method",
   );
   equal(
     wecomTokenReq?.originalUrl,
@@ -678,6 +730,11 @@ async function main() {
     { framingReceiver: "ww-OTHER-corp", outerAgentId: 1000002 },
   );
   equal(r4a.status, 403, "wrong framing receiver → 403");
+  equal(
+    await roomMemories(h4, "wecom-main", "WecomSpy"),
+    0,
+    "no memory mutation (framing)",
+  );
 
   // ---- Scenario 4b
   emit("--- [4b] WeCom inner-receiver mismatch rejected ---");
@@ -695,6 +752,11 @@ async function main() {
     outerAgentId: 1000002,
   });
   equal(r4b.status, 403, "wrong inner receiver → 403");
+  equal(
+    await roomMemories(h4, "wecom-main", "WecomSpy2"),
+    0,
+    "no memory mutation (inner)",
+  );
 
   // ---- Scenario 4c
   emit("--- [4c] WeCom AgentID mismatch rejected ---");
@@ -704,6 +766,11 @@ async function main() {
     { framingReceiver: "ww-e2e-corp", outerAgentId: 1000002 },
   );
   equal(r4c.status, 403, "wrong AgentID → 403");
+  equal(
+    await roomMemories(h4, "wecom-main", "WecomSpy3"),
+    0,
+    "no memory mutation (agent)",
+  );
   await sleep(1000);
   equal(
     h4.pipelineCalls.handleMessage,
@@ -724,9 +791,21 @@ async function main() {
   equal(r5.status, 403, "stale timestamp → 403");
   await sleep(1000);
   equal(h5.pipelineCalls.handleMessage, 0, "no runtime turn");
+  equal(h5.sends.length, 0, "no outbound send (stale)");
+  equal(
+    await roomMemories(h5, "default", "oStaleUser"),
+    0,
+    "no memory mutation (stale)",
+  );
   assert(
     h5.logsText().some((l) => l.includes("Rejecting stale callback signature")),
     "structured stale-rejection warn captured",
+  );
+  emit(
+    `raw structured warn line: ${h5
+      .logsText()
+      .find((l) => l.includes("Rejecting stale callback signature"))
+      ?.slice(0, 220)}`,
   );
   await h5.stop();
 
@@ -762,8 +841,26 @@ async function main() {
   );
   const wechatLogs6 = h6.logsText().filter((l) => l.includes("wechat"));
   assert(
-    wechatLogs6.length > 0,
-    `structured [wechat] logs captured (${wechatLogs6.slice(0, 2).join(" | ")})`,
+    wechatLogs6.some(
+      (l) =>
+        l.includes("wechat:callback-delivery") ||
+        l.includes("delivery to the first-party endpoint failed"),
+    ),
+    `structured delivery-error log captured (${wechatLogs6
+      .filter((l) => l.includes("delivery"))
+      .slice(0, 2)
+      .join(" | ")})`,
+  );
+  emit(
+    `raw structured delivery-error line: ${
+      wechatLogs6
+        .find(
+          (l) =>
+            l.includes("wechat:callback-delivery") ||
+            l.includes("delivery to the first-party endpoint failed"),
+        )
+        ?.slice(0, 220) ?? "(none)"
+    }`,
   );
   await h6.stop();
 
@@ -840,6 +937,12 @@ async function main() {
     h8.logsText().some((l) => l.includes("Rejecting replayed callback body")),
     "structured replay warn captured",
   );
+  emit(
+    `raw structured warn line: ${h8
+      .logsText()
+      .find((l) => l.includes("Rejecting replayed callback body"))
+      ?.slice(0, 220)}`,
+  );
   await h8.stop();
 
   // ---- Scenario 9
@@ -881,16 +984,16 @@ async function main() {
 
   emit("\n=== ALL SCENARIOS PASSED (self-validating capture) ===");
   const { writeFileSync } = await import("node:fs");
-  writeFileSync("/Users/t3rpz/.cache/wechat-e2e-evidence.txt", log.join("\n"));
+  writeFileSync(OUTPUT_PATH, log.join("\n"));
   process.exit(0);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error(
     "EVIDENCE CAPTURE FAILED:",
     err instanceof Error ? err.message : err,
   );
-  const { writeFileSync } = require("node:fs") as typeof import("node:fs");
-  writeFileSync("/Users/t3rpz/.cache/wechat-e2e-evidence.txt", log.join("\n"));
+  const { writeFileSync } = await import("node:fs");
+  writeFileSync(OUTPUT_PATH, log.join("\n"));
   process.exit(1);
 });
