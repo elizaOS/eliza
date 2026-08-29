@@ -874,17 +874,19 @@ function isNativeFromToken(wp: WalletProvider, chain: string, fromToken: string)
 }
 
 /**
- * Read the wallet's on-chain ERC-20 balance for `fromToken` as a
- * human-readable string (`balanceOf` scaled by the token's `decimals`). A
- * symbol is resolved to its address through Li.Fi; a 0x address is used
- * directly. Any resolution or RPC failure becomes an INVALID_PARAMS error so
- * the relative-amount math never silently falls back to the native balance.
+ * Read the wallet's on-chain ERC-20 balance for `fromToken` as the raw
+ * `balanceOf` integer alongside the token's `decimals`. A symbol is resolved
+ * to its address through Li.Fi; a 0x address is used directly. The raw
+ * `bigint` is returned (not a formatted string) so the relative-amount math
+ * can stay in exact integer arithmetic and never round-trips through float64.
+ * Any resolution or RPC failure becomes an INVALID_PARAMS error so the
+ * relative-amount math never silently falls back to the native balance.
  */
 async function fetchFromTokenBalance(
   wp: WalletProvider,
   chain: string,
   fromToken: string
-): Promise<string> {
+): Promise<{ raw: bigint; decimals: number }> {
   const chainConfig = wp.getChainConfigs(chain as SupportedChain);
   try {
     const tokenAddress: Address =
@@ -911,7 +913,7 @@ async function fetchFromTokenBalance(
       }),
     ]);
 
-    return formatUnits(BigInt(rawBalance as bigint), Number(decimals));
+    return { raw: BigInt(rawBalance as bigint), decimals: Number(decimals) };
   } catch (error) {
     // error-policy:J2 wrap the resolution/RPC failure with a typed, actionable
     // error; never resolve a relative amount against the wrong (native) basis.
@@ -943,16 +945,56 @@ async function resolveRelativeSwapAmount(
   if (isNativeFromToken(wp, chain, fromToken)) {
     return resolveRelativeAmount(mode, opts.rawPercent, opts.nativeBalance, true);
   }
-  const tokenBalance = await fetchFromTokenBalance(wp, chain, fromToken);
-  return resolveRelativeAmount(mode, opts.rawPercent, tokenBalance, false);
+  const { raw, decimals } = await fetchFromTokenBalance(wp, chain, fromToken);
+  return resolveRelativeTokenAmount(mode, opts.rawPercent, raw, decimals);
 }
 
 /**
- * Resolve a relative swap size ("half"/"max"/"percent") into an absolute,
- * human-readable amount string from a supplied token balance. `max` keeps a
- * 10% gas reserve (0.9 * balance) only when `reserveGasForMax` is set (native
- * inputs); ERC-20 `max` spends the whole balance. Throws INVALID_PARAMS when
- * the balance is unknown or a percentage is out of the 1-100 range.
+ * Resolve a relative ERC-20 swap size ("half"/"max"/"percent") into an
+ * absolute, human-readable amount using exact integer arithmetic on the raw
+ * `balanceOf` value, formatting to decimal exactly once at the end. Working in
+ * `bigint` keeps every wei of a token balance whose magnitude the caller does
+ * not control: 18-decimal balances span both dust and >1e24-token ranges where
+ * `Number(...).toString()` loses precision past ~15 significant digits and
+ * emits exponential notation (e.g. `"5e-13"`, `"1e+24"`) that `parseUnits`
+ * rejects. `max` spends the whole balance (gas is a separate asset). Throws
+ * INVALID_PARAMS when the percentage is out of the 1-100 range.
+ */
+function resolveRelativeTokenAmount(
+  mode: Exclude<AmountMode, "absolute">,
+  rawPercent: unknown,
+  raw: bigint,
+  decimals: number
+): string {
+  if (mode === "half") {
+    return formatUnits(raw / 2n, decimals);
+  }
+  if (mode === "max") {
+    return formatUnits(raw, decimals);
+  }
+
+  const percent = Number(rawPercent);
+  if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
+    throw new EVMError(
+      EVMErrorCode.INVALID_PARAMS,
+      `Swap percentage must be between 1 and 100, received: ${String(rawPercent)}`
+    );
+  }
+  // Scale the percent to an integer basis-of-a-million so a fractional percent
+  // stays representable while the (possibly huge) balance keeps every wei; the
+  // division by 100_000_000 then yields `raw * percent / 100` in pure bigint.
+  const scaledPercent = BigInt(Math.round(percent * 1_000_000));
+  return formatUnits((raw * scaledPercent) / 100_000_000n, decimals);
+}
+
+/**
+ * Resolve a relative native-asset swap size ("half"/"max"/"percent") into an
+ * absolute, human-readable amount string from the supplied native balance.
+ * `max` keeps a 10% gas reserve (0.9 * balance) when `reserveGasForMax` is set.
+ * Native balances are gas-token scale, so the float basis here is unchanged
+ * from before; ERC-20 inputs take the exact-integer path in
+ * `resolveRelativeTokenAmount` instead. Throws INVALID_PARAMS when the balance
+ * is unknown or a percentage is out of the 1-100 range.
  */
 function resolveRelativeAmount(
   mode: Exclude<AmountMode, "absolute">,

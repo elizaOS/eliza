@@ -264,6 +264,96 @@ describe("buildSwapDetails amountMode resolution", () => {
     expect(details.amount).toBe("250"); // full 250 USDC, not 225
   });
 
+  // Magnitude + precision: ERC-20 balances the caller does not control span
+  // dust and >1e24-token ranges. The pre-fix float path (`Number(balance) / 2`
+  // then `.toString()`) emitted exponential notation there (`"5e-13"`,
+  // `"1e+24"`) that `parseUnits` rejects, and lost precision past ~15 digits.
+  // These pin the exact-integer path: always plain decimal, always exact.
+  it("resolves a dust 18-decimal token half to plain decimal, not exponential", async () => {
+    llmJson({
+      inputToken: USDC,
+      outputToken: WETH,
+      amountMode: "half",
+      chain: "base",
+    });
+
+    const details = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      // 1e6 wei of an 18-decimal token = 0.000000000001 token; the old float
+      // path halved this to "5e-13", which parseUnits cannot parse.
+      createWalletProvider({ base: "2" }, { balanceRaw: 1_000_000n, decimals: 18 })
+    );
+
+    expect(details.amount).toBe("0.0000000000005");
+    expect(details.amount).not.toMatch(/e/i);
+  });
+
+  it("resolves a very large 18-decimal token half to plain decimal, not exponential", async () => {
+    llmJson({
+      inputToken: USDC,
+      outputToken: WETH,
+      amountMode: "half",
+      chain: "base",
+    });
+
+    const details = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      // 2e24 whole tokens (18 decimals); the old float path produced "1e+24".
+      createWalletProvider({ base: "2" }, { balanceRaw: 2n * 10n ** 42n, decimals: 18 })
+    );
+
+    expect(details.amount).toBe("1000000000000000000000000");
+    expect(details.amount).not.toMatch(/e/i);
+  });
+
+  it("keeps full precision halving an 18-decimal balance past float64's ~15 digits", async () => {
+    llmJson({
+      inputToken: USDC,
+      outputToken: WETH,
+      amountMode: "half",
+      chain: "base",
+    });
+
+    const details = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      // 123456789.123456789012345678 tokens; float halving gives
+      // "61728394.561728396" (wrong past 15 digits), exact halving does not.
+      createWalletProvider(
+        { base: "2" },
+        { balanceRaw: 123456789123456789012345678n, decimals: 18 }
+      )
+    );
+
+    expect(details.amount).toBe("61728394.561728394506172839");
+  });
+
+  it("resolves a fractional token percent with exact-integer arithmetic", async () => {
+    llmJson({
+      inputToken: USDC,
+      outputToken: WETH,
+      amountMode: "percent",
+      amountPercent: 33.33,
+      chain: "base",
+    });
+
+    const details = await buildSwapDetails(
+      {} as State,
+      message,
+      createRuntime(),
+      // 1000 USDC (6 decimals); 33.33% = 333.3 USDC.
+      createWalletProvider({ base: "2" }, { balanceRaw: 1000_000000n, decimals: 6 })
+    );
+
+    expect(details.amount).toBe("333.3");
+    expect(details.amount).not.toMatch(/e/i);
+  });
+
   it("throws INVALID_PARAMS when the ERC-20 fromToken balance cannot be read", async () => {
     llmJson({
       inputToken: USDC,
