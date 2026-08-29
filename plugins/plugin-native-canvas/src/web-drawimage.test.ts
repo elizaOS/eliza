@@ -193,6 +193,50 @@ describe("CanvasWeb.drawImage save/restore balance", () => {
     expect(ctx.globalAlpha).toBe(1);
   });
 
+  it("balances save/restore when a bad shadow color throws after a successful load", async () => {
+    installFakeImage("load");
+    const canvas = new CanvasWeb();
+    const { canvasId } = await canvas.create({
+      size: { width: 10, height: 10 },
+    });
+    ctx.saveCount = 0;
+    ctx.restoreCount = 0;
+
+    // The image loads, then applyDrawOptions() throws a TypeError from
+    // colorToString on a null shadow.color AFTER ctx.save() has pushed the
+    // frame. This window is only reachable once the load resolves, so the
+    // load-rejection guard does not cover it; the try/finally must.
+    await expect(
+      canvas.drawImage({
+        canvasId,
+        image: "https://example.test/ok.png",
+        destRect: { x: 0, y: 0, width: 10, height: 10 },
+        drawOptions: {
+          opacity: 0.5,
+          shadow: {
+            color: null as unknown as { r: number; g: number; b: number },
+            blur: 4,
+            offsetX: 1,
+            offsetY: 1,
+          },
+        },
+      }),
+    ).rejects.toThrow();
+
+    expect(ctx.saveCount).toBe(ctx.restoreCount);
+    expect(ctx.saveCount).toBe(1);
+    expect(ctx.globalAlpha).toBe(1);
+
+    // A later plain rectangle must fill at alpha 1, not the leaked 0.5.
+    await canvas.drawRect({
+      canvasId,
+      rect: { x: 0, y: 0, width: 5, height: 5 },
+      fill: { color: { r: 255, g: 0, b: 0 } },
+    });
+
+    expect(ctx.fillAlphas).toEqual([1]);
+  });
+
   it("does not leak opacity through a failed drawBatch image command", async () => {
     installFakeImage("error");
     const canvas = new CanvasWeb();

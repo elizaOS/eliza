@@ -3,14 +3,17 @@
 /**
  * Regression tests for the save/restore balance of `CanvasWeb`'s synchronous
  * draw methods (`drawRect`, `drawEllipse`, `drawPath`, `drawLine`, `drawText`)
- * when a gradient fill throws mid-draw. Exercises the real `CanvasWeb` against
- * a stubbed 2D context whose `createRadialGradient`/`createLinearGradient` and
- * `addColorStop` reproduce the browser's `IndexSizeError`/`SyntaxError`
- * behavior for malformed gradients. Guards the contract that a throwing fill
- * must not leak the `ctx.save()` frame or the mutated draw-option state
- * (globalAlpha, blendMode, shadow, transform) onto later unrelated draws — the
- * same balance invariant already proven for the async `drawImage` path — while
- * the success path still restores exactly once at the requested opacity.
+ * when a step between `ctx.save()` and `ctx.restore()` throws mid-draw.
+ * Exercises the real `CanvasWeb` against a stubbed 2D context whose
+ * `createRadialGradient`/`createLinearGradient` and `addColorStop` reproduce
+ * the browser's `IndexSizeError`/`SyntaxError` behavior for malformed
+ * gradients, and covers a throw raised inside `applyDrawOptions` itself (a
+ * malformed shadow color) after `save()` has already pushed the frame. Guards
+ * the contract that such a throw must not leak the `ctx.save()` frame or the
+ * mutated draw-option state (globalAlpha, blendMode, shadow, transform) onto
+ * later unrelated draws — the same balance invariant the async `drawImage`
+ * path holds — while the success path still restores exactly once at the
+ * requested opacity.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -267,6 +270,45 @@ describe("CanvasWeb synchronous draw save/restore balance on gradient failure", 
 
     expect(ctx.saveCount).toBe(ctx.restoreCount);
     expect(ctx.globalAlpha).toBe(1);
+  });
+
+  it("drawRect balances save/restore when a bad shadow color throws inside applyDrawOptions", async () => {
+    const { canvas, canvasId } = await makeCanvas();
+
+    // A null shadow.color crosses the plugin boundary as malformed JSON; it
+    // throws a TypeError from colorToString AFTER ctx.save() and globalAlpha
+    // have already been applied, inside applyDrawOptions. The frame must not
+    // survive that throw.
+    await expect(
+      canvas.drawRect({
+        canvasId,
+        rect: { x: 0, y: 0, width: 10, height: 10 },
+        fill: { color: { r: 255, g: 0, b: 0 } },
+        drawOptions: {
+          opacity: 0.5,
+          shadow: {
+            color: null as unknown as { r: number; g: number; b: number },
+            blur: 4,
+            offsetX: 1,
+            offsetY: 1,
+          },
+        },
+      }),
+    ).rejects.toThrow();
+
+    expect(ctx.saveCount).toBe(ctx.restoreCount);
+    expect(ctx.saveCount).toBe(1);
+    expect(ctx.globalAlpha).toBe(1);
+
+    // A later plain rectangle fills at alpha 1, proving the leaked frame and
+    // opacity did not survive the throw inside applyDrawOptions.
+    await canvas.drawRect({
+      canvasId,
+      rect: { x: 0, y: 0, width: 5, height: 5 },
+      fill: { color: { r: 0, g: 0, b: 255 } },
+    });
+
+    expect(ctx.fillAlphas).toEqual([1]);
   });
 
   it("success path restores exactly once and fills at the requested opacity", async () => {

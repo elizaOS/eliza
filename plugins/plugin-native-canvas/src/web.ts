@@ -457,15 +457,17 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    // applyDrawOptions() runs ctx.save() and mutates ctx (globalAlpha,
-    // blendMode, shadow, transform). Any step below can throw — a malformed
-    // gradient fill (negative radius, out-of-range color-stop offset,
-    // unparseable color) throws from createFillStyle. Without try/finally the
-    // ctx.restore() would be skipped, leaking the save() frame and the mutated
-    // draw-option state onto every later draw on this canvas. This mirrors the
-    // balance the async drawImage() path already guarantees.
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    // applyDrawOptions() runs ctx.save() as its first statement, then mutates
+    // ctx (transform, globalAlpha, blendMode, shadow). Keeping that call and
+    // the draw body inside one try/finally means any throw after save() — a
+    // malformed gradient fill (negative radius, out-of-range color-stop
+    // offset, unparseable color) from createFillStyle, or a bad shadow color
+    // inside applyDrawOptions — is unwound by ctx.restore() instead of leaking
+    // the save() frame and the mutated draw-option state onto every later draw
+    // on this canvas. save() is the first statement of applyDrawOptions, so
+    // the finally never fires ctx.restore() on an unpushed frame.
     try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
       ctx.beginPath();
 
       if (options.cornerRadius && options.cornerRadius > 0) {
@@ -515,10 +517,10 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    // See drawRect: try/finally keeps ctx.save()/restore() balanced even when
-    // a malformed gradient fill throws from createFillStyle.
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    // See drawRect: applyDrawOptions() (which owns ctx.save()) and the draw
+    // body share one try/finally, so a throw after save() stays balanced.
     try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
       ctx.beginPath();
       ctx.ellipse(
         options.center.x,
@@ -553,10 +555,10 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    // See drawRect: try/finally keeps ctx.save()/restore() balanced even when
-    // a step between save() and restore() throws.
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    // See drawRect: applyDrawOptions() (which owns ctx.save()) and the draw
+    // body share one try/finally, so a throw after save() stays balanced.
     try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
       this.applyStrokeStyle(ctx, options.stroke);
 
       ctx.beginPath();
@@ -577,10 +579,10 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    // See drawRect: try/finally keeps ctx.save()/restore() balanced even when
-    // a malformed gradient fill throws from createFillStyle.
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    // See drawRect: applyDrawOptions() (which owns ctx.save()) and the draw
+    // body share one try/finally, so a throw after save() stays balanced.
     try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
       ctx.beginPath();
 
       for (const cmd of options.path.commands) {
@@ -672,10 +674,10 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    // See drawRect: try/finally keeps ctx.save()/restore() balanced even when
-    // a step between save() and restore() throws.
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    // See drawRect: applyDrawOptions() (which owns ctx.save()) and the draw
+    // body share one try/finally, so a throw after save() stays balanced.
     try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
       ctx.font = `${options.style.size}px ${options.style.font}`;
       ctx.fillStyle = this.colorToString(options.style.color);
       ctx.textAlign = options.style.align || "left";
@@ -714,43 +716,46 @@ export class CanvasWeb extends WebPlugin {
       img.src = `data:image/${options.image.format};base64,${options.image.base64}`;
     }
 
-    // Resolve the image load BEFORE pushing any save()/draw-option state.
-    // applyDrawOptions() runs ctx.save() and mutates ctx (globalAlpha,
-    // blendMode, shadow, transform); holding that frame across the await
-    // would leak the mutated state onto every subsequent draw whenever the
-    // load rejects (bad URL/base64, network, CORS — all normal runtime
-    // conditions). Applying draw options only after a successful load keeps
-    // save()/restore() balanced on both the success and failure paths.
+    // Resolve the image load BEFORE pushing any save()/draw-option state so a
+    // load rejection (bad URL/base64, network, CORS — all normal runtime
+    // conditions) never leaks a save() frame. Once loaded, applyDrawOptions()
+    // (which owns ctx.save()) and the drawImage() call run inside one
+    // try/finally, so a throw after save() — a bad shadow color inside
+    // applyDrawOptions, or drawImage() itself — is still unwound by
+    // ctx.restore() instead of corrupting later draws. This is the same
+    // save()/restore() balance the synchronous draw methods hold.
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
       img.onerror = () => reject(new Error("Failed to load image"));
     });
 
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    try {
+      this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
 
-    if (options.srcRect) {
-      ctx.drawImage(
-        img,
-        options.srcRect.x,
-        options.srcRect.y,
-        options.srcRect.width,
-        options.srcRect.height,
-        options.destRect.x,
-        options.destRect.y,
-        options.destRect.width,
-        options.destRect.height,
-      );
-    } else {
-      ctx.drawImage(
-        img,
-        options.destRect.x,
-        options.destRect.y,
-        options.destRect.width,
-        options.destRect.height,
-      );
+      if (options.srcRect) {
+        ctx.drawImage(
+          img,
+          options.srcRect.x,
+          options.srcRect.y,
+          options.srcRect.width,
+          options.srcRect.height,
+          options.destRect.x,
+          options.destRect.y,
+          options.destRect.width,
+          options.destRect.height,
+        );
+      } else {
+        ctx.drawImage(
+          img,
+          options.destRect.x,
+          options.destRect.y,
+          options.destRect.width,
+          options.destRect.height,
+        );
+      }
+    } finally {
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 
   async drawBatch(options: {
