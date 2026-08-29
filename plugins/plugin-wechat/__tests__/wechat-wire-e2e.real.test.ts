@@ -838,7 +838,7 @@ describe("wechat wire-fidelity e2e (local Tencent wire server, real plugin init)
       xml: oaXml("oE2EUser5", "trigger reply", "9005"),
     });
     // A failed reply send is a failed delivery: the boundary answers 500 so
-    // the platform retries (never a fabricated success).
+    // the platform retries (a failure is never dressed up as success).
     expect(res.status).toBe(500);
     await waitFor(
       () =>
