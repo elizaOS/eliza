@@ -26,6 +26,7 @@ import {
   type CloudLiveBindingReuse,
   type CloudLiveContinuityEvidenceInput,
   type CloudLiveHistoryObservation,
+  type CloudLiveNetworkAudit,
   type CloudLiveNetworkAuditSnapshot,
   type CloudLiveRuntimeBinding,
   compareCloudLiveRuntimeBindings,
@@ -552,6 +553,7 @@ async function proveAnchoredTurnHistory(
 async function resolvePersonalIdentity(
   page: Page,
   dedicatedConsentGate: CloudLiveDedicatedConsentGate,
+  dedicatedNetworkAudit: CloudLiveNetworkAudit,
   chooseRuntime = true,
   onRecovery?: (recovery: CloudLivePersonalIdentityRecovery) => Promise<void>,
   existingDedicatedAdoptionProof?: DedicatedAdoptionConsentProof,
@@ -591,7 +593,12 @@ async function resolvePersonalIdentity(
               "choice-__first_run__:dedicated-adoption:confirm",
             )
           ) {
-            await dedicatedAdoptionProof.confirmVisibleConsent(confirmation);
+            const approvalBinding =
+              await dedicatedAdoptionProof.confirmVisibleConsent(confirmation);
+            dedicatedNetworkAudit.setDedicatedApprovalBinding({
+              confirmationKind: "adoption",
+              ...approvalBinding,
+            });
             return "adoption";
           }
           if (
@@ -603,6 +610,14 @@ async function resolvePersonalIdentity(
               "[cloud-live] Dedicated confirmation control was not recognized",
             );
           }
+          const approvalBinding =
+            await dedicatedNetworkAudit.latestDedicatedActivationApprovalBinding();
+          if (!approvalBinding) {
+            throw new Error(
+              "[cloud-live] Dedicated activation quote binding was not observed",
+            );
+          }
+          dedicatedNetworkAudit.setDedicatedApprovalBinding(approvalBinding);
           await confirmation.click({ timeout: 15_000 });
           return "activation";
         },
@@ -888,6 +903,7 @@ test.describe("real cloud login + personal identity + chat", () => {
         return await resolvePersonalIdentity(
           page,
           dedicatedConsentGate,
+          primaryAudit,
           false,
           async (recovery) => {
             if (recovery === "runtime-cloud") {
@@ -1252,6 +1268,7 @@ test.describe("real cloud login + personal identity + chat", () => {
         const freshBinding = await resolvePersonalIdentity(
           freshPage,
           dedicatedConsentGate,
+          freshAudit,
         ).catch((cause: unknown) =>
           rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
             await enterTrajectoryPhase(
@@ -1317,6 +1334,12 @@ test.describe("real cloud login + personal identity + chat", () => {
         primarySnapshot.dedicatedCutoverPostRequestCount +
         freshResult.audit.dedicatedCutoverPostRequestCount,
       forbiddenAgentMutationCount,
+      approvalBindingPresent:
+        primarySnapshot.dedicatedApprovalBindingPresent ||
+        freshResult.audit.dedicatedApprovalBindingPresent,
+      lifecycleBindingMismatchCount:
+        primarySnapshot.dedicatedLifecycleBindingMismatchCount +
+        freshResult.audit.dedicatedLifecycleBindingMismatchCount,
     } as const;
     const bindingReuse: CloudLiveBindingReuse = {
       personalIdentityReused:

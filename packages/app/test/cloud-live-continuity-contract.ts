@@ -109,6 +109,8 @@ export interface CloudLiveNetworkAuditSnapshot {
   uninspectableDedicatedCutoverResponseBodyCount: number;
   dedicatedAdoptionQuoteGetRequestCount: number;
   dedicatedAdoptionConfirmationPostRequestCount: number;
+  dedicatedApprovalBindingPresent: boolean;
+  dedicatedLifecycleBindingMismatchCount: number;
   historyGetRequestCount: number;
   successfulHistoryGetCount: number;
   clientErrorHistoryGetResponseCount: number;
@@ -180,6 +182,8 @@ export interface CloudLiveDedicatedMutationProofInput {
   activationPostCount: number;
   cutoverPostCount: number;
   forbiddenAgentMutationCount: number;
+  approvalBindingPresent: boolean;
+  lifecycleBindingMismatchCount: number;
 }
 
 type CloudLiveDedicatedApprovalDisposition =
@@ -197,6 +201,15 @@ interface CloudLiveDedicatedMutationEvidence {
   dedicatedCutoverPostCount: number;
   forbiddenAgentMutationCount: number;
   otherForbiddenAgentMutationCount: 0;
+  dedicatedApprovalBindingPresent: boolean;
+  dedicatedLifecycleBindingMismatchCount: 0;
+}
+
+export interface CloudLiveDedicatedApprovalBinding {
+  confirmationKind: Exclude<CloudLiveDedicatedConfirmationKind, "none">;
+  sourceAgentId: string;
+  quoteId: string;
+  dedicatedAgentId: string | null;
 }
 
 const VERIFIED_EVIDENCE_BASE = {
@@ -443,6 +456,92 @@ function dedicatedAdoptionRequest(
   return verb === "POST" ? "confirmation" : null;
 }
 
+type DedicatedLifecycleRequest = "adoption" | "activation" | "cutover";
+
+interface DedicatedLifecycleRequestBinding {
+  phase: DedicatedLifecycleRequest;
+  sourceAgentId: string;
+  quoteId: string | null;
+  dedicatedAgentId: string | null;
+  responseStatus: number | null;
+  responseCode: string | null;
+}
+
+function dedicatedRequestSourceAgentId(rawUrl: string): string {
+  const match = requestPath(rawUrl).match(
+    /^\/api\/(?:cloud\/)?v1\/eliza\/agents\/([^/]+)\/upgrade-tier(?:\/cutover|\/adopt-existing)?$/,
+  );
+  if (!match?.[1]) return "";
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    // error-policy:J3 an invalid encoded path segment has no usable identity
+    // and therefore cannot satisfy the lifecycle correlation gate.
+    return "";
+  }
+}
+
+function requestBodyRecord(
+  postData: string | null | undefined,
+): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(postData ?? "") as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    // error-policy:J3 malformed lifecycle JSON is an explicit missing binding
+    // and contributes a mismatch in the closed terminal proof.
+    return null;
+  }
+}
+
+function dedicatedLifecycleRequestBinding(
+  method: string,
+  rawUrl: string,
+  postData: string | null | undefined,
+): DedicatedLifecycleRequestBinding | null {
+  if (method.trim().toUpperCase() !== "POST") return null;
+  const sourceAgentId = dedicatedRequestSourceAgentId(rawUrl);
+  if (!sourceAgentId) return null;
+  const body = requestBodyRecord(postData);
+  if (dedicatedAdoptionRequest(method, rawUrl) === "confirmation") {
+    return {
+      phase: "adoption",
+      sourceAgentId,
+      quoteId: typeof body?.quoteId === "string" ? body.quoteId.trim() : null,
+      dedicatedAgentId: null,
+      responseStatus: null,
+      responseCode: null,
+    };
+  }
+  const controlPlane = dedicatedControlPlaneRequest(method, rawUrl);
+  if (controlPlane === "activation") {
+    return {
+      phase: "activation",
+      sourceAgentId,
+      quoteId: typeof body?.quoteId === "string" ? body.quoteId.trim() : null,
+      dedicatedAgentId: null,
+      responseStatus: null,
+      responseCode: null,
+    };
+  }
+  if (controlPlane === "cutover") {
+    return {
+      phase: "cutover",
+      sourceAgentId,
+      quoteId: null,
+      dedicatedAgentId:
+        typeof body?.dedicatedAgentId === "string"
+          ? body.dedicatedAgentId.trim()
+          : null,
+      responseStatus: null,
+      responseCode: null,
+    };
+  }
+  return null;
+}
+
 function chatClientMessageId(postData: string | null | undefined): string {
   try {
     const parsed = JSON.parse(postData ?? "") as unknown;
@@ -590,6 +689,9 @@ interface DedicatedControlPlaneResponseInspection {
   decoded: boolean;
   pending: boolean;
   final: boolean;
+  quoteId: string | null;
+  dedicatedAgentId: string | null;
+  code: string | null;
 }
 
 async function inspectDedicatedControlPlaneResponse(
@@ -603,6 +705,9 @@ async function inspectDedicatedControlPlaneResponse(
     decoded: false,
     pending: false,
     final: false,
+    quoteId: null,
+    dedicatedAgentId: null,
+    code: null,
   } as const;
   if (!isJsonContentType(responseBody.contentType)) return unavailable;
   const bytes = await readCloudLiveBoundedResponseBody(
@@ -621,9 +726,14 @@ async function inspectDedicatedControlPlaneResponse(
         decoded: false,
         pending: false,
         final: false,
+        quoteId: null,
+        dedicatedAgentId: null,
+        code: null,
       };
     }
     const root = parsed as Record<string, unknown>;
+    const code =
+      typeof root.code === "string" ? root.code.trim() || null : null;
     const data = root.data;
     const dataRecord =
       data && typeof data === "object" && !Array.isArray(data)
@@ -649,6 +759,15 @@ async function inspectDedicatedControlPlaneResponse(
           (state === "available" || state === "in_progress"),
         pending: false,
         final: false,
+        quoteId:
+          typeof dataRecord?.quoteId === "string"
+            ? dataRecord.quoteId.trim() || null
+            : null,
+        dedicatedAgentId:
+          typeof activationRecord?.dedicatedAgentId === "string"
+            ? activationRecord.dedicatedAgentId.trim() || null
+            : null,
+        code,
       };
     }
     if (phase === "activation") {
@@ -662,6 +781,12 @@ async function inspectDedicatedControlPlaneResponse(
           typeof dataRecord?.dedicatedAgentId === "string",
         pending: false,
         final: false,
+        quoteId: null,
+        dedicatedAgentId:
+          typeof dataRecord?.dedicatedAgentId === "string"
+            ? dataRecord.dedicatedAgentId.trim() || null
+            : null,
+        code,
       };
     }
     const pending =
@@ -678,6 +803,9 @@ async function inspectDedicatedControlPlaneResponse(
       decoded: pending || final,
       pending,
       final,
+      quoteId: null,
+      dedicatedAgentId: null,
+      code,
     };
   } catch {
     // error-policy:J3 malformed, non-UTF-8, oversized, or unreadable control-
@@ -689,6 +817,9 @@ async function inspectDedicatedControlPlaneResponse(
       decoded: false,
       pending: false,
       final: false,
+      quoteId: null,
+      dedicatedAgentId: null,
+      code: null,
     };
   }
 }
@@ -944,8 +1075,11 @@ export function installCloudLiveAnchoredRetryChipObserver(
   };
 }
 
-/** Counts only; request URLs and their embedded IDs are never retained. */
-export function createCloudLiveNetworkAudit(): {
+/**
+ * Emits only counts while keeping lifecycle IDs in memory long enough to prove
+ * every permitted request is bound to the one rendered approval.
+ */
+export interface CloudLiveNetworkAudit {
   observeRequest(
     method: string,
     rawUrl: string,
@@ -962,9 +1096,13 @@ export function createCloudLiveNetworkAudit(): {
     rawUrl: string,
     errorText?: string,
   ): void;
+  setDedicatedApprovalBinding(binding: CloudLiveDedicatedApprovalBinding): void;
+  latestDedicatedActivationApprovalBinding(): Promise<CloudLiveDedicatedApprovalBinding | null>;
   setHistoryAnchorToken(anchorToken: string): void;
   snapshot(): Promise<CloudLiveNetworkAuditSnapshot>;
-} {
+}
+
+export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
   let forbiddenAgentMutationCount = 0;
   let chatSendAttemptCount = 0;
   let unidentifiedChatSendAttemptCount = 0;
@@ -987,6 +1125,14 @@ export function createCloudLiveNetworkAudit(): {
   let uninspectablePersonalIdentityResponseBodyCount = 0;
   let dedicatedAdoptionQuoteGetRequestCount = 0;
   let dedicatedAdoptionConfirmationPostRequestCount = 0;
+  let dedicatedApprovalBinding: CloudLiveDedicatedApprovalBinding | null = null;
+  let latestActivationQuoteBinding: CloudLiveDedicatedApprovalBinding | null =
+    null;
+  const dedicatedLifecycleRequests: DedicatedLifecycleRequestBinding[] = [];
+  const activationReceiptTargets: Array<{
+    sourceAgentId: string;
+    dedicatedAgentId: string;
+  }> = [];
   const dedicatedControlPlane = {
     quote: {
       request: 0,
@@ -1112,6 +1258,12 @@ export function createCloudLiveNetworkAudit(): {
       } else if (adoptionRequest === "confirmation") {
         dedicatedAdoptionConfirmationPostRequestCount += 1;
       }
+      const lifecycleBinding = dedicatedLifecycleRequestBinding(
+        method,
+        rawUrl,
+        postData,
+      );
+      if (lifecycleBinding) dedicatedLifecycleRequests.push(lifecycleBinding);
     },
     observeResponse(method, rawUrl, status, responseBody) {
       const chatScope = chatSendScope(method, rawUrl);
@@ -1197,6 +1349,17 @@ export function createCloudLiveNetworkAudit(): {
       const dedicatedRequest = dedicatedControlPlaneRequest(method, rawUrl);
       if (dedicatedRequest) {
         const counters = dedicatedControlPlane[dedicatedRequest];
+        const sourceAgentId = dedicatedRequestSourceAgentId(rawUrl);
+        const lifecycleRequest =
+          dedicatedRequest === "activation" && sourceAgentId
+            ? dedicatedLifecycleRequests.find(
+                (request) =>
+                  request.phase === "activation" &&
+                  request.sourceAgentId === sourceAgentId &&
+                  request.responseStatus === null,
+              )
+            : undefined;
+        if (lifecycleRequest) lifecycleRequest.responseStatus = status;
         if (status >= 200 && status < 300) counters.success += 1;
         else if (status >= 400 && status < 500) counters.clientError += 1;
         else if (status >= 500 && status < 600) counters.serverError += 1;
@@ -1218,6 +1381,30 @@ export function createCloudLiveNetworkAudit(): {
             if (inspection.decoded) counters.decoded += 1;
             if (inspection.pending) counters.pendingDecoded += 1;
             if (inspection.final) counters.finalDecoded += 1;
+            if (lifecycleRequest) {
+              lifecycleRequest.responseCode = inspection.code;
+            }
+            if (
+              dedicatedRequest === "quote" &&
+              sourceAgentId &&
+              inspection.quoteId
+            ) {
+              latestActivationQuoteBinding = {
+                confirmationKind: "activation",
+                sourceAgentId,
+                quoteId: inspection.quoteId,
+                dedicatedAgentId: inspection.dedicatedAgentId,
+              };
+            } else if (
+              dedicatedRequest === "activation" &&
+              sourceAgentId &&
+              inspection.dedicatedAgentId
+            ) {
+              activationReceiptTargets.push({
+                sourceAgentId,
+                dedicatedAgentId: inspection.dedicatedAgentId,
+              });
+            }
           });
         } else counters.uninspectableBody += 1;
       }
@@ -1234,11 +1421,75 @@ export function createCloudLiveNetworkAudit(): {
         timedOutHistoryGetRequestCount += 1;
       }
     },
+    setDedicatedApprovalBinding(binding) {
+      if (dedicatedApprovalBinding) {
+        throw new Error(
+          "[cloud-live] Dedicated approval binding was already recorded",
+        );
+      }
+      if (
+        !binding.sourceAgentId.trim() ||
+        !binding.quoteId.trim() ||
+        (binding.confirmationKind === "adoption" &&
+          !binding.dedicatedAgentId?.trim())
+      ) {
+        throw new Error(
+          "[cloud-live] Dedicated approval binding is incomplete",
+        );
+      }
+      dedicatedApprovalBinding = {
+        confirmationKind: binding.confirmationKind,
+        sourceAgentId: binding.sourceAgentId.trim(),
+        quoteId: binding.quoteId.trim(),
+        dedicatedAgentId: binding.dedicatedAgentId?.trim() || null,
+      };
+    },
+    async latestDedicatedActivationApprovalBinding() {
+      await drainResponseHandlers();
+      return latestActivationQuoteBinding
+        ? { ...latestActivationQuoteBinding }
+        : null;
+    },
     setHistoryAnchorToken(anchorToken) {
       historyAnchorToken = anchorToken.trim().toLowerCase();
     },
     snapshot: async () => {
       await drainResponseHandlers();
+      const approvedTargetId =
+        dedicatedApprovalBinding?.dedicatedAgentId ??
+        (dedicatedApprovalBinding?.confirmationKind === "activation"
+          ? (activationReceiptTargets.find(
+              (receipt) =>
+                receipt.sourceAgentId ===
+                dedicatedApprovalBinding?.sourceAgentId,
+            )?.dedicatedAgentId ?? null)
+          : null);
+      const dedicatedLifecycleBindingMismatchCount =
+        dedicatedLifecycleRequests.reduce((count, request) => {
+          if (!dedicatedApprovalBinding) return count + 1;
+          let mismatched =
+            request.sourceAgentId !== dedicatedApprovalBinding.sourceAgentId;
+          if (request.phase === "adoption") {
+            mismatched ||= request.quoteId !== dedicatedApprovalBinding.quoteId;
+          } else if (
+            request.phase === "activation" &&
+            dedicatedApprovalBinding.confirmationKind === "activation"
+          ) {
+            mismatched ||= request.quoteId !== dedicatedApprovalBinding.quoteId;
+          } else if (request.phase === "activation") {
+            // Adoption may begin with one generic activation attempt solely to
+            // obtain the server's typed same-row selection boundary. Any other
+            // result could have started unrelated compute and is not approved.
+            mismatched ||=
+              request.responseStatus !== 409 ||
+              request.responseCode !== "dedicated_adoption_selection_required";
+          } else if (request.phase === "cutover") {
+            mismatched ||=
+              approvedTargetId === null ||
+              request.dedicatedAgentId !== approvedTargetId;
+          }
+          return count + (mismatched ? 1 : 0);
+        }, 0);
       const terminalHistoryGetCount =
         successfulHistoryGetCount +
         clientErrorHistoryGetResponseCount +
@@ -1355,6 +1606,8 @@ export function createCloudLiveNetworkAudit(): {
           dedicatedControlPlane.cutover.uninspectableBody,
         dedicatedAdoptionQuoteGetRequestCount,
         dedicatedAdoptionConfirmationPostRequestCount,
+        dedicatedApprovalBindingPresent: dedicatedApprovalBinding !== null,
+        dedicatedLifecycleBindingMismatchCount,
         historyGetRequestCount,
         successfulHistoryGetCount,
         clientErrorHistoryGetResponseCount,
@@ -1485,6 +1738,19 @@ function createDedicatedMutationEvidence(input: {
     input.forbiddenAgentMutationCount,
     "dedicatedMutationProof.forbiddenAgentMutationCount",
   );
+  const approvalBindingPresent = input.approvalBindingPresent;
+  if (typeof approvalBindingPresent !== "boolean") {
+    fail("dedicatedMutationProof.approvalBindingPresent must be boolean");
+  }
+  const lifecycleBindingMismatchCount = requireCounter(
+    input.lifecycleBindingMismatchCount,
+    "dedicatedMutationProof.lifecycleBindingMismatchCount",
+  );
+  if (lifecycleBindingMismatchCount !== 0) {
+    fail(
+      "dedicatedMutationProof contains a lifecycle request outside the approved target or quote",
+    );
+  }
   const confirmationKind = input.confirmationKind;
   if (
     confirmationKind !== "none" &&
@@ -1507,10 +1773,11 @@ function createDedicatedMutationEvidence(input: {
       adoptionConfirmationPostCount !== 0 ||
       activationPostCount !== 0 ||
       cutoverPostCount !== 0 ||
-      forbiddenAgentMutationCount !== 0
+      forbiddenAgentMutationCount !== 0 ||
+      approvalBindingPresent
     ) {
       fail(
-        "dedicatedMutationProof without a confirmation click must remain mutation-free",
+        "dedicatedMutationProof without a confirmation click must remain mutation-free and unbound",
       );
     }
     return {
@@ -1524,11 +1791,18 @@ function createDedicatedMutationEvidence(input: {
       dedicatedCutoverPostCount: cutoverPostCount,
       forbiddenAgentMutationCount,
       otherForbiddenAgentMutationCount: 0,
+      dedicatedApprovalBindingPresent: false,
+      dedicatedLifecycleBindingMismatchCount: 0,
     };
   }
   if (approvalGrantedCount !== 1 || confirmationClickCount !== 1) {
     fail(
       "dedicatedMutationProof confirmation requires one explicit approval and one click",
+    );
+  }
+  if (!approvalBindingPresent) {
+    fail(
+      "dedicatedMutationProof confirmation requires an exact in-memory target and quote binding",
     );
   }
   if (cutoverPostCount < 1) {
@@ -1555,6 +1829,8 @@ function createDedicatedMutationEvidence(input: {
       dedicatedCutoverPostCount: cutoverPostCount,
       forbiddenAgentMutationCount,
       otherForbiddenAgentMutationCount: 0,
+      dedicatedApprovalBindingPresent: true,
+      dedicatedLifecycleBindingMismatchCount: 0,
     };
   }
   if (confirmationKind === "activation") {
@@ -1573,6 +1849,8 @@ function createDedicatedMutationEvidence(input: {
       dedicatedCutoverPostCount: cutoverPostCount,
       forbiddenAgentMutationCount,
       otherForbiddenAgentMutationCount: 0,
+      dedicatedApprovalBindingPresent: true,
+      dedicatedLifecycleBindingMismatchCount: 0,
     };
   }
   fail("dedicatedMutationProof clicked confirmation kind must be explicit");
@@ -1588,6 +1866,8 @@ const DEDICATED_MUTATION_EVIDENCE_KEYS = [
   "dedicatedCutoverPostCount",
   "forbiddenAgentMutationCount",
   "otherForbiddenAgentMutationCount",
+  "dedicatedApprovalBindingPresent",
+  "dedicatedLifecycleBindingMismatchCount",
 ] as const satisfies readonly (keyof CloudLiveDedicatedMutationEvidence)[];
 
 const EVIDENCE_KEYS = [
@@ -1652,6 +1932,9 @@ export function parseCloudLiveContinuityEvidence(
       activationPostCount: evidence.dedicatedActivationPostCount,
       cutoverPostCount: evidence.dedicatedCutoverPostCount,
       forbiddenAgentMutationCount: evidence.forbiddenAgentMutationCount,
+      approvalBindingPresent: evidence.dedicatedApprovalBindingPresent,
+      lifecycleBindingMismatchCount:
+        evidence.dedicatedLifecycleBindingMismatchCount,
     }),
   } satisfies CloudLiveContinuityEvidence;
   for (const key of EVIDENCE_KEYS) {

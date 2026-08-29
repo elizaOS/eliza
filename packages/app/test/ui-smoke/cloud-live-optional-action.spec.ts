@@ -573,29 +573,34 @@ test.describe("Cloud live optional action boundary", () => {
     page,
   }) => {
     let quoteGetCount = 0;
-    await page.route("**/upgrade-tier/adopt-existing", async (route) => {
-      quoteGetCount += 1;
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          success: true,
-          data: {
-            status: "stopped",
-            startsCompute: true,
-            hourlyRateUsd: 0.01,
-            dailyRateUsd: 0.24,
-            minimumBalanceUsd: 0.72,
-            minimumRunwayDays: 3,
-            balanceUsd: 115.54059,
-            deficitUsd: 0,
-            stateDisposition: "verified_backup_present",
-            requiresConfirmation: true,
-            action: "adopt_existing_dedicated",
-          },
-        }),
-      });
-    });
+    await page.route(
+      "**/api/v1/eliza/agents/*/upgrade-tier/adopt-existing",
+      async (route) => {
+        quoteGetCount += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            success: true,
+            data: {
+              quoteId: "private-quote",
+              dedicatedAgentId: "private-dedicated",
+              status: "stopped",
+              startsCompute: true,
+              hourlyRateUsd: 0.01,
+              dailyRateUsd: 0.24,
+              minimumBalanceUsd: 0.72,
+              minimumRunwayDays: 3,
+              balanceUsd: 115.54059,
+              deficitUsd: 0,
+              stateDisposition: "verified_backup_present",
+              requiresConfirmation: true,
+              action: "adopt_existing_dedicated",
+            },
+          }),
+        });
+      },
+    );
     await page.goto("/");
     await page.setContent(`
       <article data-testid="thread-line">
@@ -620,13 +625,22 @@ test.describe("Cloud live optional action boundary", () => {
     `);
     const dedicatedAdoptionProof = installDedicatedAdoptionConsentProof(page);
     const quoteStatus = await page.evaluate(async () => {
-      const response = await fetch("/upgrade-tier/adopt-existing");
+      const response = await fetch(
+        "/api/v1/eliza/agents/private-personal/upgrade-tier/adopt-existing",
+      );
       await response.json();
       return response.status;
     });
     expect(quoteStatus).toBe(200);
     expect(quoteGetCount).toBe(1);
     let consentHandlerCalls = 0;
+    let approvedBinding:
+      | {
+          sourceAgentId: string;
+          quoteId: string;
+          dedicatedAgentId: string;
+        }
+      | undefined;
     let bindingReadCount = 0;
     const dedicatedAdoptionConsent = page.getByTestId(
       "dedicated-adoption-confirm",
@@ -656,7 +670,10 @@ test.describe("Cloud live optional action boundary", () => {
             cancellationChoices: page.getByTestId("dedicated-adoption-cancel"),
             performConfirmation: async (confirmation) => {
               consentHandlerCalls += 1;
-              await dedicatedAdoptionProof.confirmVisibleConsent(confirmation);
+              approvedBinding =
+                await dedicatedAdoptionProof.confirmVisibleConsent(
+                  confirmation,
+                );
               return "adoption";
             },
           },
@@ -668,6 +685,11 @@ test.describe("Cloud live optional action boundary", () => {
       expect(bindingReadCount).toBeGreaterThan(0);
       expect(quoteGetCount).toBe(1);
       expect(consentHandlerCalls).toBe(1);
+      expect(approvedBinding).toEqual({
+        sourceAgentId: "private-personal",
+        quoteId: "private-quote",
+        dedicatedAgentId: "private-dedicated",
+      });
       await expect(page.getByTestId("confirmation-count")).toHaveText("1");
       expect(gate.snapshot()).toEqual({
         approvalGrantedCount: 1,
