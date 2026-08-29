@@ -11,6 +11,8 @@ import * as dockerPortAllocation from "../docker-port-allocation";
 import { DockerSandboxProvider } from "../docker-sandbox-provider";
 import {
   getReplacementCandidateObservedReceipt,
+  getReplacementControlSecretEnvPath,
+  getReplacementControlVaultPassphrasePath,
   getReplacementDockerCreateQuiescentReceipt,
   getReplacementSecretArtifactsCleanupReceipt,
 } from "../docker-sandbox-utils";
@@ -1845,7 +1847,11 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       expect(events).toEqual(["started", "intent", "created", "settled"]);
       expect(prepareVpn).not.toHaveBeenCalled();
       expect(waitForVpn).not.toHaveBeenCalled();
-      expect(commands.some((command) => command.includes("docker create"))).toBe(true);
+      const dockerCreateCommand = commands.find((command) => command.includes("docker create"));
+      expect(dockerCreateCommand).toBeDefined();
+      expect(dockerCreateCommand).toContain(getReplacementControlSecretEnvPath(ATTEMPT_ID));
+      expect(dockerCreateCommand).toContain(getReplacementControlVaultPassphrasePath(ATTEMPT_ID));
+      expect(dockerCreateCommand).not.toContain(`${VOLUME_PATH}/.container-env-${ATTEMPT_ID}`);
       expect(
         commands.some((command) =>
           command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4"),
