@@ -44,7 +44,10 @@ function createStore(initial: StoredOAuth2Tokens | null): TokenStore {
  * rotates it and returns a fresh access/refresh pair; any later use of an
  * already-spent refresh token returns HTTP 400 `invalid_grant`.
  */
-function singleUseRefreshFetch(opts?: { alwaysInvalid?: boolean }) {
+function singleUseRefreshFetch(opts?: {
+  alwaysInvalid?: boolean;
+  expiresIn?: number;
+}) {
   const spent = new Set<string>();
   const refreshCalls: string[] = [];
   let counter = 0;
@@ -63,7 +66,7 @@ function singleUseRefreshFetch(opts?: { alwaysInvalid?: boolean }) {
       JSON.stringify({
         access_token: `A${counter}`,
         refresh_token: `R${counter}`,
-        expires_in: 7200,
+        expires_in: opts?.expiresIn ?? 7200,
         token_type: "bearer",
       }),
       { status: 200 },
@@ -216,6 +219,30 @@ describe("OAuth2PKCEAuthProvider concurrent refresh", () => {
     );
     expect(new Set(values)).toEqual(new Set(["A1"]));
     expect(store.save).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes again after the rotated token itself expires", async () => {
+    // Each issued token lands inside the 30s expiry skew (expires_in: 1), so the
+    // second sequential call must run a fresh refresh rather than hand back the
+    // still-in-flight promise. This exercises obtainTokens on a *second* expiry
+    // cycle: it only passes when `.finally()` clears `authInFlight` after the
+    // first flight settles and the join branch re-checks the shared token's
+    // expiry. Without the cleanup, `authInFlight` keeps a settled, expired
+    // promise and every later call returns the stale token, never refreshing.
+    const { fetchImpl, refreshCalls } = singleUseRefreshFetch({ expiresIn: 1 });
+    const provider = new OAuth2PKCEAuthProvider(
+      createRuntime(),
+      undefined,
+      createStore(expiredTokens()),
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    // First cycle spends R0 -> A1/R1; A1 is already inside the skew window.
+    expect(await provider.getAccessToken()).toBe("A1");
+    // Second cycle must observe A1 as expired and spend R1 -> A2/R2.
+    expect(await provider.getAccessToken()).toBe("A2");
+    expect(refreshCalls).toEqual(["R0", "R1"]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("serializes concurrent interactive logins when no tokens exist", async () => {
