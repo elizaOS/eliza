@@ -206,10 +206,16 @@ export async function reindexMemoryContent(params: {
         context: { memoryId: params.memoryId },
       });
     }
-    const totalBytes = Number(parent.field_bytes);
-    if (!Number.isSafeInteger(totalBytes)) {
+    if (parent.field_bytes === null) {
       throw new ElizaError("Attachment locator is missing or ambiguous", {
         code: "MEMORY_CONTENT_REINDEX_FIELD_NOT_FOUND",
+        context: { memoryId: params.memoryId },
+      });
+    }
+    const totalBytes = Number(parent.field_bytes);
+    if (!Number.isSafeInteger(totalBytes)) {
+      throw new ElizaError("Legacy content byte length is invalid", {
+        code: "MEMORY_CONTENT_REINDEX_SOURCE_DRIFT",
         context: { memoryId: params.memoryId },
       });
     }

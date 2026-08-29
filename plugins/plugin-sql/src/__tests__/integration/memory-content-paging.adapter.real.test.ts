@@ -531,4 +531,73 @@ describe("adapter-integrated memory content paging (real PGlite)", () => {
     await opened.adapter.close();
     await opened.manager.close();
   }, 120_000);
+
+  it("reindexes one owner-bound legacy attachment and rejects an ambiguous locator", async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-seg-reindex-attachment-"));
+    tempDirectories.push(dataDir);
+    const agentId = v4() as UUID;
+    const { adapter, manager } = await openDatabase(dataDir, agentId);
+    await migrate(adapter);
+    const { roomId, entityId } = await seedRoom(adapter, agentId);
+    const memoryId = await adapter.createMemory(
+      {
+        entityId,
+        roomId,
+        agentId,
+        content: { text: "legacy seed", source: "test" },
+      } as Memory,
+      "messages"
+    );
+    const source = largeSource(1024 * 1024);
+    const db = adapter.getDatabase() as DrizzleDatabase;
+    await db
+      .update(memoryTable)
+      .set({
+        content: {
+          text: "legacy attachment",
+          source: "legacy-import",
+          attachments: [
+            { id: "transcript", text: source },
+            { id: "duplicate", text: source },
+            { id: "duplicate", text: source },
+          ],
+        },
+        metadata: {},
+      })
+      .where(eq(memoryTable.id, memoryId));
+    const accessContext = {
+      requesterEntityId: entityId,
+      authorizedRoomIds: [roomId],
+      role: "USER" as const,
+    };
+
+    await expect(
+      adapter.reindexMemoryContent({
+        memoryId,
+        field: { kind: "attachment.text", attachmentId: "duplicate" },
+        accessContext,
+        maxSourceBytes: 2 * 1024 * 1024,
+      })
+    ).rejects.toMatchObject({ code: "MEMORY_CONTENT_REINDEX_FIELD_NOT_FOUND" });
+
+    const receipt = await adapter.reindexMemoryContent({
+      memoryId,
+      field: { kind: "attachment.text", attachmentId: "transcript" },
+      accessContext,
+      maxSourceBytes: 2 * 1024 * 1024,
+    });
+    const page = await adapter.getMemoryContentPage({
+      memoryId,
+      field: { kind: "attachment.text", attachmentId: "transcript" },
+      byteStart: 0,
+      accessContext,
+    });
+    expect(page?.sourceSha256).toBe(receipt.sourceSha256);
+    expect(
+      Buffer.from(page!.text, "utf8").equals(Buffer.from(source, "utf8").subarray(0, page!.end))
+    ).toBe(true);
+
+    await adapter.close();
+    await manager.close();
+  });
 });
