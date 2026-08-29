@@ -26,7 +26,6 @@ import { appModeNavigation } from "../app-mode/app-mode";
 import { publishPersonalEntryHandoff } from "../app-mode/use-personal-entry";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
-  clearSsoLoggedOut,
   redirectToSsoBridge,
   shouldAutoBridgeToSso,
 } from "../sso-bridge/sso-bridge";
@@ -139,7 +138,6 @@ export default function JoinPage(): React.JSX.Element {
       });
       return;
     }
-    clearSsoLoggedOut();
     if (appHandoff) {
       // The apex is the billing console and cannot boot chat. Hand off before
       // any Shared identity request. Preserve /join so the app host restores

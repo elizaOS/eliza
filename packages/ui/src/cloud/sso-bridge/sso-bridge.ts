@@ -618,6 +618,7 @@ export async function signOutFromSsoBridgedHost(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
+  const stewardToken = readStoredStewardToken();
   // Invalidate before even issuing the server logout request: fetch adapters
   // may have synchronous hooks, and no re-entrant token publication may reuse
   // proof from the authority epoch being ended.
@@ -628,7 +629,10 @@ export async function signOutFromSsoBridgedHost(
     ? fetchFn(`${base}/api/auth/logout`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
+        },
       })
     : // error-policy:J6 best-effort server teardown — the local marker is
       // already set and the local scrub below always runs.
@@ -652,6 +656,7 @@ export async function prepareSsoAccountSwitch(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
+  const stewardToken = readStoredStewardToken();
   invalidateStewardServerCookieSyncMarker();
   markSsoLoggedOut();
   const base = apiBaseForHostname(hostname);
@@ -663,7 +668,10 @@ export async function prepareSsoAccountSwitch(
   const serverLogout = fetchFn(`${base}/api/auth/logout`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
+    },
   });
   await clearStaleStewardSession();
   const response = await serverLogout;
