@@ -643,4 +643,117 @@ describe("my_chat_member delivery contract", () => {
       expect(gate.authority.markScopeUnavailable).toHaveBeenCalledTimes(1),
     );
   });
+
+  it("a failed bootstrap retry does not leave a stale settled null shadowing the fresh gate", async () => {
+    // RP R3 HIGH: when a queued transition's bootstrap promise REJECTS, the
+    // replay catch stores settled null; finishBotStartup's failure path
+    // then cleared only the identity/gate promise maps. A later successful
+    // retry created and bound a fresh gate, but getMembershipGate() kept
+    // returning the cached settled null — post-recovery transitions would
+    // silently skip authority writes while admission was live again. The
+    // failure catch must clear the settled registry too, and a successful
+    // retry must overwrite any stale settled entry with the fresh gate.
+    const { service, runtime } = makeService(null);
+    const internals = service as unknown as {
+      finishBotStartup: (
+        bot: { telegram: { getMe: () => Promise<unknown> } },
+        accountId: string,
+      ) => Promise<void>;
+    };
+    let getMeAttempts = 0;
+    const bot: { telegram: { getMe: () => Promise<unknown> } } = {
+      telegram: {
+        getMe: () => {
+          getMeAttempts += 1;
+          if (getMeAttempts === 1) {
+            // The runtime's absent authority service makes the gate factory
+            // resolve null (legacy mode); a REJECTED identity lookup is the
+            // failure path under test — reject the first attempt.
+            return Promise.reject(new Error("network down"));
+          }
+          return Promise.resolve({ id: 777, username: "test_bot" });
+        },
+      },
+    };
+
+    // First boot: identity lookup rejects inside the failure-observing try —
+    // the catch must clear ALL cached state including the settled registry.
+    await internals.finishBotStartup(bot, "acct");
+    const cleared = service as unknown as {
+      membershipBotIdentity: Map<string, unknown>;
+      membershipGates: Map<string, unknown>;
+      settledMembershipGates: Map<string, unknown>;
+      membershipGateFailures: Set<string>;
+    };
+    expect(cleared.membershipBotIdentity.has("acct")).toBe(false);
+    expect(cleared.membershipGates.has("acct")).toBe(false);
+    expect(cleared.settledMembershipGates.has("acct")).toBe(false);
+    expect(cleared.membershipGateFailures.has("acct")).toBe(true);
+    expect(
+      (
+        service as unknown as {
+          getAccountState: () => {
+            messageManager: {
+              markMembershipGateBroken: ReturnType<typeof vi.fn>;
+            };
+          };
+        }
+      ).getAccountState().messageManager.markMembershipGateBroken,
+    ).toHaveBeenCalledTimes(1);
+
+    // A stale settled null as a rejected replay could have stored BEFORE the
+    // catch ran (the ordering RP flagged): simulate it landing late.
+    cleared.settledMembershipGates.set("acct", null);
+
+    // Retry boot: the fresh identity resolves; with no authority service the
+    // factory resolves null and the manager settles to absent — but a REAL
+    // gate bootstrap would have set the fresh gate. Drive the real-gate path
+    // via the factory override to assert the overwrite contract.
+    const authority = {
+      markScopeUnavailable: vi.fn().mockResolvedValue(undefined),
+      clearScopeRemoval: vi.fn().mockResolvedValue(undefined),
+    };
+    // The real-gate path binds the manager; makeService's manager stub only
+    // covers the failure side. Replace it for the retry leg.
+    const retryManager = {
+      markMembershipGateBroken: vi.fn(),
+      bindMembershipGate: vi.fn(),
+      telegramMembershipGate: { markAbsent: vi.fn() },
+    };
+    (
+      service as unknown as {
+        getAccountState: () => {
+          messageManager: typeof retryManager;
+        };
+      }
+    ).getAccountState = () => ({ messageManager: retryManager });
+    gateFactory.create = async () => ({
+      authority,
+      connectorAccountId: "ca-1",
+      botTelegramUserId: "777",
+    });
+    try {
+      await internals.finishBotStartup(bot, "acct");
+      // The successful retry overwrites the stale settled null with the
+      // fresh gate — the REAL getMembershipGate (not makeService's stub,
+      // which is pinned to null) no longer short-circuits to null.
+      const resolved = await (
+        TelegramService.prototype as unknown as {
+          getMembershipGate: (
+            this: unknown,
+            accountId?: string,
+          ) => Promise<unknown>;
+        }
+      ).getMembershipGate.call(service, "acct");
+      expect(resolved).toEqual(
+        expect.objectContaining({ botTelegramUserId: "777" }),
+      );
+      expect(cleared.settledMembershipGates.get("acct")).toEqual(
+        expect.objectContaining({ botTelegramUserId: "777" }),
+      );
+      expect(runtime.reportError).toHaveBeenCalledTimes(1);
+    } finally {
+      gateFactory.create = null;
+    }
+  });
 });
