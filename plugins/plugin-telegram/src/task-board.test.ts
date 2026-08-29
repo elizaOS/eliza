@@ -270,6 +270,49 @@ describe("TelegramTaskBoard concurrent render serialization (#29899, #8902 AC3)"
     expect(post).toHaveBeenCalledTimes(1);
   });
 
+  it("a failed op on the chain does not abort a later render for the same board", async () => {
+    // Pins the documented `enqueue` guarantee: `await prior.catch(() =>
+    // undefined)` waits for the prior op to SETTLE, not succeed, so a rejected
+    // predecessor must not propagate into a later op's promise. This is
+    // reachable in production because `enqueue` is generic — `forget` rides it
+    // too — and any op that actually rejects would otherwise make every queued
+    // render for that board fail with an unrelated earlier error. Fails against
+    // the `await prior;` mutant (no `.catch`) and no other.
+    let next = 0;
+    const post = vi.fn(async () => ({ messageId: ++next }));
+    const edit = vi.fn(async () => undefined);
+    const pin = vi.fn(async () => undefined);
+    const store = asyncBoardStore();
+    let failNextSave = true;
+    const failingStore: BoardMessageStore & { map: Map<string, number> } = {
+      ...store,
+      save: async (key, id) => {
+        if (failNextSave) {
+          failNextSave = false;
+          throw new Error("db write failed");
+        }
+        return store.save(key, id);
+      },
+    };
+    const board = new TelegramTaskBoard({
+      post,
+      edit,
+      pin,
+      store: failingStore,
+    });
+
+    // First render's save rejects, so its chain promise rejects.
+    const first = board.render(100, entries).catch((e) => e);
+    // Second render queues behind it and must still resolve on its own merit.
+    const second = board.render(100, entries);
+
+    await first;
+    await expect(second).resolves.toBeTypeOf("number");
+    // The later render posted and persisted its own board despite the earlier
+    // failure — no id was stranded by the predecessor's rejection.
+    expect(store.map.get("100:")).toBe(2);
+  });
+
   it("keeps distinct (chat, thread) keys unserialized from each other", async () => {
     let next = 0;
     const post = vi.fn(async () => ({ messageId: ++next }));
