@@ -675,7 +675,6 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead === "unavailable" ||
       trace.cacheRead === "error";
     const { user, apiKey } = await requireInferenceApiKeyWithOrg(credential.rawKey, {
-      bypassCache: bypassAuthoritativeCaches,
       timing: {
         keyLookup: (durationMs) => {
           trace.timings.keyLookupMs = Math.round(durationMs * 100) / 100;

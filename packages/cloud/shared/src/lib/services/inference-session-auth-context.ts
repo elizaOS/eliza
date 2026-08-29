@@ -14,6 +14,7 @@
  * must leave no positive identities behind in KV.
  */
 
+import { usersRepository } from "../../db/repositories/users";
 import { AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
 import { loadVerifiedStagingSessionUser } from "../auth/staging-session-binding";
 import { verifyStewardTokenCached } from "../auth/steward-client";
@@ -35,7 +36,6 @@ import {
   assertInferenceCredentialActive,
   InferenceCredentialRevokedError,
 } from "./inference-credential-revocation";
-import { usersService } from "./users";
 
 const sessionHydrations = new Map<string, Promise<InferenceSessionAuthDecision>>();
 const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
@@ -99,7 +99,7 @@ async function hydrateAuthoritativeDecision(params: {
   walletAddress?: string;
   walletChain?: "ethereum" | "solana";
 }): Promise<InferenceSessionAuthDecision> {
-  let user = await usersService.getByStewardId(params.stewardUserId);
+  let user = await usersRepository.findByStewardIdWithOrganizationForWrite(params.stewardUserId);
   if (!user) {
     const { syncUserFromSteward } = await import("../steward-sync");
     user = await syncUserFromSteward({
