@@ -48,9 +48,9 @@ export interface ChatPanelLayoutInput {
    */
   keyboardInset: number;
   /**
-   * The lift actually applied to the overlay's `bottom` — `max(keyboardInset,
-   * nativeKeyboardLift)`. When the native Keyboard plugin reports a lift the
-   * visual viewport did NOT, this exceeds {@link ChatPanelLayoutInput.keyboardInset}.
+   * The lift actually applied to the overlay's `bottom`. Web/iOS use the larger
+   * visual/native signal; Android keeps this at 0 because `adjustResize` has
+   * already moved the layout viewport above the IME.
    */
   effectiveKeyboardInset: number;
   /** The measured `env(safe-area-inset-top)` in px (0 off-notch / on web). */
@@ -79,6 +79,77 @@ export interface ChatNativeKeyboardLiftInput {
   keyboardDownInnerHeight: number;
   /** Current layout viewport height. */
   currentInnerHeight: number;
+}
+
+export interface ChatKeyboardGeometryInput {
+  /**
+   * True when the native window itself shrinks around the keyboard. A fixed
+   * overlay is already inside the remaining layout viewport on that platform.
+   */
+  platformResizesLayoutForKeyboard: boolean;
+  /** Keyboard intrusion inferred from the browser visual viewport. */
+  visualViewportKeyboardInset: number;
+  /** Additional fixed-overlay lift resolved from the native bridge. */
+  nativeKeyboardLift: number;
+  /** Raw keyboard height reported by the native bridge. */
+  nativeKeyboardHeight: number;
+  /** Amount by which the layout viewport has shrunk from its keyboard-down size. */
+  layoutViewportShrink: number;
+}
+
+export interface ChatKeyboardGeometry {
+  /** CSS `bottom` applied to the fixed chat overlay. */
+  overlayLift: number;
+  /** Keyboard-presence signal used for spacing and interaction gates. */
+  keyboardIntrusion: number;
+}
+
+function finiteNonNegative(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+/**
+ * Separate keyboard visibility from fixed-overlay movement.
+ *
+ * Capacitor Android uses `adjustResize`: the WebView's layout viewport already
+ * ends above the IME. During its insets animation, `innerHeight`,
+ * `visualViewport.height`, and the native Keyboard event can update in either
+ * order. Any visual-viewport delta is therefore still evidence that the IME is
+ * present, but applying it to `bottom` would lift the overlay a second time.
+ * Web and iOS retain the existing visual/native lift because their layout
+ * viewport does not own that movement.
+ */
+export function resolveChatKeyboardGeometry(
+  input: ChatKeyboardGeometryInput,
+): ChatKeyboardGeometry {
+  const visualViewportKeyboardInset = finiteNonNegative(
+    input.visualViewportKeyboardInset,
+  );
+  const nativeKeyboardLift = finiteNonNegative(input.nativeKeyboardLift);
+  const nativeKeyboardHeight = finiteNonNegative(input.nativeKeyboardHeight);
+  const layoutViewportShrink = finiteNonNegative(input.layoutViewportShrink);
+
+  return {
+    overlayLift: input.platformResizesLayoutForKeyboard
+      ? 0
+      : Math.max(visualViewportKeyboardInset, nativeKeyboardLift),
+    keyboardIntrusion: Math.max(
+      visualViewportKeyboardInset,
+      nativeKeyboardLift,
+      nativeKeyboardHeight,
+      input.platformResizesLayoutForKeyboard ? layoutViewportShrink : 0,
+    ),
+  };
+}
+
+/**
+ * Android `window.resize` is also an IME-animation signal, so it must measure
+ * only. Rotation remains independently wired to the drag-settle path.
+ */
+export function shouldSettleChatWindowResize(
+  platformResizesLayoutForKeyboard: boolean,
+): boolean {
+  return !platformResizesLayoutForKeyboard;
 }
 
 /**

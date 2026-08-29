@@ -6,12 +6,14 @@ import { describe, expect, it } from "vitest";
 import {
   type ChatPanelLayoutInput,
   isShortLandscapeViewport,
+  resolveChatKeyboardGeometry,
   resolveChatNativeKeyboardLift,
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
   SHEET_GRABBER_TOP_CLEARANCE,
   SHEET_TOP_MARGIN,
   SHORT_LANDSCAPE_MAX_HEIGHT,
+  shouldSettleChatWindowResize,
 } from "./chat-panel-layout";
 
 // The overlay is a bottom-anchored fixed element lifted by
@@ -65,6 +67,61 @@ describe("resolveChatNativeKeyboardLift", () => {
         currentInnerHeight: 700,
       }),
     ).toBe(184);
+  });
+});
+
+describe("resolveChatKeyboardGeometry", () => {
+  it("never double-lifts Android during either IME event ordering", () => {
+    // Resize first: innerHeight and visualViewport can disagree for one frame.
+    expect(
+      resolveChatKeyboardGeometry({
+        platformResizesLayoutForKeyboard: true,
+        visualViewportKeyboardInset: 398,
+        nativeKeyboardLift: 0,
+        nativeKeyboardHeight: 0,
+        layoutViewportShrink: 399,
+      }),
+    ).toEqual({ overlayLift: 0, keyboardIntrusion: 399 });
+
+    // Native bridge first: the height is a visibility signal, never a second
+    // fixed-overlay movement inside Android's already-resized WebView.
+    expect(
+      resolveChatKeyboardGeometry({
+        platformResizesLayoutForKeyboard: true,
+        visualViewportKeyboardInset: 0,
+        nativeKeyboardLift: 0,
+        nativeKeyboardHeight: 398,
+        layoutViewportShrink: 0,
+      }),
+    ).toEqual({ overlayLift: 0, keyboardIntrusion: 398 });
+  });
+
+  it("preserves the existing iOS and web fixed-overlay lifts", () => {
+    expect(
+      resolveChatKeyboardGeometry({
+        platformResizesLayoutForKeyboard: false,
+        visualViewportKeyboardInset: 0,
+        nativeKeyboardLift: KEYBOARD,
+        nativeKeyboardHeight: KEYBOARD,
+        layoutViewportShrink: 0,
+      }),
+    ).toEqual({ overlayLift: KEYBOARD, keyboardIntrusion: KEYBOARD });
+    expect(
+      resolveChatKeyboardGeometry({
+        platformResizesLayoutForKeyboard: false,
+        visualViewportKeyboardInset: 280,
+        nativeKeyboardLift: 0,
+        nativeKeyboardHeight: 0,
+        layoutViewportShrink: 0,
+      }),
+    ).toEqual({ overlayLift: 280, keyboardIntrusion: 280 });
+  });
+});
+
+describe("shouldSettleChatWindowResize", () => {
+  it("measures Android IME resizes without settling the active sheet drag", () => {
+    expect(shouldSettleChatWindowResize(true)).toBe(false);
+    expect(shouldSettleChatWindowResize(false)).toBe(true);
   });
 });
 
