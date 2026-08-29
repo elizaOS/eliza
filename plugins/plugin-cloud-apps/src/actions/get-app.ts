@@ -100,7 +100,7 @@ export const getAppAction: Action = {
         // resolveDomainTargetApp. The try guards ONLY the fetch: formatting,
         // delivery and the return stay outside, so a failed callback on the
         // happy path still reaches the outer catch and reports failure (#29917).
-        let app: Awaited<ReturnType<typeof client.getApp>>["app"];
+        let app: Awaited<ReturnType<typeof client.getApp>>["app"] | undefined;
         try {
           ({ app } = await client.getApp(reference));
         } catch {
