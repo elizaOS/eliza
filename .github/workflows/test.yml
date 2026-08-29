@@ -846,6 +846,7 @@ jobs:
         run: |
           bun run --cwd plugins/plugin-anthropic test:real-runtime
           bun run --cwd plugins/plugin-discord test:real-runtime
+          bun run --cwd plugins/plugin-telegram test:real-runtime
 
   zero-key-e2e:
     name: Zero-Key Deterministic E2E
