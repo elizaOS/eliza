@@ -72,10 +72,11 @@ describe("scheduleUpdateNotification", () => {
       .spyOn(process.stderr, "write")
       .mockImplementation(() => true);
     mod.scheduleUpdateNotification();
-    await new Promise((r) => setTimeout(r, 10));
-    expect(write).toHaveBeenCalledWith(
-      expect.stringContaining("Update available"),
-    );
+    await vi.waitFor(() => {
+      expect(write).toHaveBeenCalledWith(
+        expect.stringContaining("Update available"),
+      );
+    });
     write.mockRestore();
   });
 });
