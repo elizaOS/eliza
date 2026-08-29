@@ -9,6 +9,7 @@ import {
   readDatabaseIdentityConfig,
   readDatabaseIdentityReceipt,
   runDatabaseIdentityPreflight,
+  runDatabaseIdentityReporter,
 } from "./preflight-database-identity";
 
 const row = {
@@ -260,4 +261,173 @@ describe("database identity preflight", () => {
       }),
     ).toThrow("must be a lowercase SHA-256 digest");
   });
+});
+
+describe("standalone database identity reporter", () => {
+  const reportEnvironment = {
+    DATABASE_IDENTITY_ENVIRONMENT: "staging",
+    DATABASE_IDENTITY_GATE_MODE: "report",
+    DATABASE_URL:
+      "postgresql://raw-role:raw-password@raw-host.invalid/raw-database",
+  } as const;
+
+  function runtimeClient(
+    overrides: {
+      connect?: () => Promise<void>;
+      end?: () => Promise<void>;
+      query?: (text: string) => Promise<{ rows: (typeof row)[] }>;
+    } = {},
+  ) {
+    return {
+      connect: overrides.connect ?? (async () => {}),
+      end: overrides.end ?? (async () => {}),
+      query: overrides.query ?? client.query,
+    };
+  }
+
+  test("the manual CLI exits nonzero when DATABASE_URL is absent", () => {
+    const childEnvironment = { ...process.env };
+    delete childEnvironment.DATABASE_URL;
+    childEnvironment.DATABASE_IDENTITY_ENVIRONMENT = "staging";
+    childEnvironment.DATABASE_IDENTITY_GATE_MODE = "report";
+    const result = Bun.spawnSync(
+      [
+        process.execPath,
+        "run",
+        `${import.meta.dir}/preflight-database-identity.ts`,
+      ],
+      {
+        cwd: `${import.meta.dir}/../../../..`,
+        env: childEnvironment,
+        stderr: "pipe",
+        stdout: "pipe",
+      },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toContain(
+      "database identity report unavailable: DATABASE_URL is missing",
+    );
+    expect(result.stderr.toString()).toBe("");
+  });
+
+  test("connection failures are redacted, nonzero, and close the client", async () => {
+    const diagnostics: string[] = [];
+    let ended = false;
+    const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      createClient: async () =>
+        runtimeClient({
+          connect: async () => {
+            throw new Error(
+              "connection to raw-host as raw-role for raw-database failed",
+            );
+          },
+          end: async () => {
+            ended = true;
+          },
+        }),
+      publishResult: async () => {
+        throw new Error("publication must remain unreachable");
+      },
+      writeStdout: (message) => diagnostics.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(ended).toBe(true);
+    expect(diagnostics.join("")).toContain(
+      "database identity report unavailable; inspect protected operator logs",
+    );
+    expect(diagnostics.join("")).not.toMatch(
+      /raw-(?:host|role|database)|raw-password/,
+    );
+  });
+
+  test("an unavailable query status is nonzero without leaking its cause", async () => {
+    let publishedStatus = "";
+    let ended = false;
+    const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      createClient: async () =>
+        runtimeClient({
+          end: async () => {
+            ended = true;
+          },
+          query: async () => {
+            throw new Error(
+              "query failed on raw-host for raw-role and raw-database",
+            );
+          },
+        }),
+      publishResult: async (_config, result) => {
+        publishedStatus = JSON.stringify(result);
+      },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(ended).toBe(true);
+    expect(publishedStatus).toBe(
+      JSON.stringify({ status: "unavailable", mismatches: [] }),
+    );
+    expect(publishedStatus).not.toContain("raw-");
+  });
+
+  test("publication failures are redacted, nonzero, and close the client", async () => {
+    const diagnostics: string[] = [];
+    let ended = false;
+    const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      createClient: async () =>
+        runtimeClient({
+          end: async () => {
+            ended = true;
+          },
+        }),
+      publishResult: async () => {
+        throw new Error(
+          "cannot publish raw-role@raw-host.invalid/raw-database",
+        );
+      },
+      writeStdout: (message) => diagnostics.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(ended).toBe(true);
+    expect(diagnostics.join("")).toContain(
+      "database identity report unavailable; inspect protected operator logs",
+    );
+    expect(diagnostics.join("")).not.toMatch(
+      /raw-(?:host|role|database)|raw-password/,
+    );
+  });
+
+  for (const expectedStatus of ["reported", "mismatch"] as const) {
+    test(`a published ${expectedStatus} receipt exits successfully`, async () => {
+      let publishedStatus = "";
+      let ended = false;
+      const exitCode = await runDatabaseIdentityReporter(
+        {
+          ...reportEnvironment,
+          ...(expectedStatus === "mismatch"
+            ? {
+                DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: "0".repeat(64),
+                DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: "1".repeat(64),
+              }
+            : {}),
+        },
+        {
+          createClient: async () =>
+            runtimeClient({
+              end: async () => {
+                ended = true;
+              },
+            }),
+          publishResult: async (_config, result) => {
+            publishedStatus = result.status;
+          },
+        },
+      );
+
+      expect(exitCode).toBe(0);
+      expect(ended).toBe(true);
+      expect(publishedStatus).toBe(expectedStatus);
+    });
+  }
 });

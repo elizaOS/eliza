@@ -26,11 +26,17 @@ interface ClientConfig {
   statement_timeout?: number;
 }
 
-interface RuntimePgClient extends IdentityQueryClient {
+export interface RuntimePgClient extends IdentityQueryClient {
   connect(): Promise<void>;
   end(): Promise<void>;
 }
 
+export interface DatabaseIdentityReporterDependencies {
+  createClient?: (databaseUrl: string) => Promise<RuntimePgClient>;
+  probeDependencies?: typeof probeDatabaseIdentityDependencies;
+  publishResult?: typeof publishDatabaseIdentityResult;
+  writeStdout?: (message: string) => void;
+}
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 export type DatabaseIdentityGateMode = "off" | "report" | "enforce";
@@ -350,29 +356,33 @@ export async function publishDatabaseIdentityResult(
   }
 }
 
-async function main(): Promise<void> {
-  if (process.argv.includes("--probe-dependencies")) {
-    await probeDatabaseIdentityDependencies();
-    process.stdout.write(
-      "[database-identity] dependency probes passed: pg,core_edge,db_client\n",
-    );
-    return;
-  }
-  const environment: Readonly<Record<string, string | undefined>> = process.env;
+/** Runs the standalone reporter and returns its process exit status. */
+export async function runDatabaseIdentityReporter(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+  dependencies: DatabaseIdentityReporterDependencies = {},
+): Promise<number> {
+  const createClient = dependencies.createClient ?? createRuntimePgClient;
+  const probeDependencies =
+    dependencies.probeDependencies ?? probeDatabaseIdentityDependencies;
+  const publishResult =
+    dependencies.publishResult ?? publishDatabaseIdentityResult;
+  const writeStdout =
+    dependencies.writeStdout ??
+    ((message: string) => process.stdout.write(message));
   const config = readDatabaseIdentityConfig(environment);
   if (config.mode === "off") {
-    process.stdout.write(
+    writeStdout(
       "[database-identity] gate disabled; no database query performed\n",
     );
-    return;
+    return 0;
   }
   const databaseUrl = environment.DATABASE_URL;
   if (!databaseUrl) {
     if (config.mode === "report") {
-      process.stdout.write(
+      writeStdout(
         "::warning::database identity report unavailable: DATABASE_URL is missing\n",
       );
-      return;
+      return 1;
     }
     throw new Error(
       "DATABASE_URL is required when database identity enforcement is active",
@@ -380,19 +390,20 @@ async function main(): Promise<void> {
   }
   let client: RuntimePgClient | undefined;
   try {
-    await probeDatabaseIdentityDependencies();
-    client = await createRuntimePgClient(databaseUrl);
+    await probeDependencies();
+    client = await createClient(databaseUrl);
     await client.connect();
     const result = await runDatabaseIdentityPreflight(config, client);
-    await publishDatabaseIdentityResult(config, result, environment);
+    await publishResult(config, result, environment);
+    return result.status === "unavailable" ? 1 : 0;
   } catch (error) {
     // error-policy:J1 the CLI boundary emits only a generic class so provider
     // errors cannot leak connection strings, hosts, roles, or database names.
     if (config.mode === "report") {
-      process.stdout.write(
+      writeStdout(
         `::warning::database identity report unavailable; ${databaseIdentityFailureDiagnostic(error)}\n`,
       );
-      return;
+      return 1;
     }
     throw error;
   } finally {
@@ -405,11 +416,27 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) {
-  main().catch((error) => {
-    process.stderr.write(
-      `[database-identity] fatal: ${databaseIdentityFailureDiagnostic(error)}\n`,
+async function main(): Promise<number> {
+  if (process.argv.includes("--probe-dependencies")) {
+    await probeDatabaseIdentityDependencies();
+    process.stdout.write(
+      "[database-identity] dependency probes passed: pg,core_edge,db_client\n",
     );
-    process.exit(1);
-  });
+    return 0;
+  }
+  return runDatabaseIdentityReporter();
+}
+
+if (import.meta.main) {
+  main().then(
+    (exitCode) => {
+      process.exitCode = exitCode;
+    },
+    (error) => {
+      process.stderr.write(
+        `[database-identity] fatal: ${databaseIdentityFailureDiagnostic(error)}\n`,
+      );
+      process.exitCode = 1;
+    },
+  );
 }
