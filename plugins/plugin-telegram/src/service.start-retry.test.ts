@@ -327,6 +327,11 @@ describe("TelegramService startup wiring", () => {
     expect(handleMessage).toHaveBeenCalledTimes(1);
   });
 
+  // sanity guard for the counts below: finishBotStartup reuses the identity
+  // cached by beginMembershipGateBootstrap, so each successful boot issues
+  // exactly ONE getMe — a regression back to duplicate lookups shows up as
+  // an off-by-one in these expectations.
+
   it("registers commands, handlers, and shutdown hooks once across an injected retry", async () => {
     const api = await startStubBotApi(3);
     const runtime = makeRuntime(api.apiRoot);
@@ -361,7 +366,10 @@ describe("TelegramService startup wiring", () => {
     });
     await deadline(handled.promise, "Expected the message handler to run");
 
-    expect(api.getMeCalls()).toBe(5);
+    // Deduplicated identity lookup: the failed call-3 attempt clears the
+    // cached rejection, and the successful retry boot reuses the fresh
+    // cached identity — 4 calls total, not 5.
+    expect(api.getMeCalls()).toBe(4);
     expect(startRegistration).toHaveBeenCalledTimes(1);
     expect(commandRegistration).toHaveBeenCalledTimes(
       buildTelegramCommandDescriptors(runtime.agentId).length + 3,
@@ -419,7 +427,9 @@ describe("TelegramService poller lifecycle", () => {
     services.push(service);
     await api.waitForActiveGetUpdates(1);
 
-    expect(api.getMeCalls()).toBe(5);
+    // Same dedup accounting as above: one getMe per successful boot with the
+    // injected call-3 failure cleared and retried fresh.
+    expect(api.getMeCalls()).toBe(4);
     expect(api.activeGetUpdates()).toBe(1);
 
     await service.stop();
