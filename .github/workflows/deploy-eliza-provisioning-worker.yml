@@ -337,12 +337,14 @@ jobs:
             exit 1
           }
           # Self-hosted runners can retain files created after checkout's own
-          # cleanup hook. Re-establish the exact immutable tree immediately
-          # before migrations; suppress removed paths so runner-local names do
-          # not enter deployment logs.
+          # cleanup hook. Re-establish the exact immutable superproject tree
+          # immediately before migrations; suppress removed paths so runner-
+          # local names do not enter deployment logs. This daemon path never
+          # initializes or consumes the native submodules, so retained dirt
+          # inside those worktrees is outside this deployment boundary.
           git reset --hard --quiet "$EXPECTED_DEPLOY_SHA"
           git clean -ffdx -q
-          [ -z "$(git status --porcelain)" ] || {
+          [ -z "$(git status --porcelain --ignore-submodules=all)" ] || {
             echo "::error::Migration checkout is not clean"
             exit 1
           }

@@ -393,6 +393,9 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
     );
     expect(workflow).not.toContain("lookup_environment_setting");
     expect(workflow).not.toContain('sudo cat "$ENV_FILE"');
+    expect(workflow).toContain(
+      "git status --porcelain --ignore-submodules=all",
+    );
     expect(workflow).toContain("AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=0");
     expect(workflow).toContain('DATABASE_URL="$DATABASE_URL"');
     expect(workflow).toContain(
