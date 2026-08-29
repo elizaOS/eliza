@@ -6,7 +6,7 @@
  * the provider query cannot produce fresh evidence.
  */
 import type { UUID } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, isTruthyEnvValue, logger } from "@elizaos/core";
 import type { TelegramMembershipAuthority } from "./membership";
 import {
   resolveMembershipService,
@@ -219,7 +219,8 @@ export class TelegramMembershipMessageGate {
     if (
       this.broken ||
       this.pending ||
-      (!this.authority && process.env.TELEGRAM_MEMBERSHIP_ENFORCE === "1")
+      (!this.authority &&
+        isTruthyEnvValue(process.env.TELEGRAM_MEMBERSHIP_ENFORCE))
     ) {
       // Broken bootstrap (authority configured but failed), pending
       // bootstrap (poller live before the gate settles — fail closed for

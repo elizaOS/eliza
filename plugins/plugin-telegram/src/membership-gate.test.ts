@@ -67,6 +67,42 @@ describe("TelegramMembershipMessageGate without an authority service", () => {
     await expect(gate.authorizeMessage(decisionInput())).resolves.toBe(false);
   });
 
+  it.each(["true", "yes", "y", "on", "enabled"])(
+    "fails closed for the canonical truthy spelling %s (isTruthyEnvValue parity)",
+    async (spelling) => {
+      process.env.TELEGRAM_MEMBERSHIP_ENFORCE = spelling;
+      const gate = new TelegramMembershipMessageGate({
+        runtime: gateRuntime(),
+        authority: null,
+        botTelegramUserId: null,
+      });
+      await expect(gate.authorizeMessage(decisionInput())).resolves.toBe(false);
+    },
+  );
+
+  it("fails closed for TELEGRAM_MEMBERSHIP_ENFORCE with surrounding whitespace or mixed case", async () => {
+    process.env.TELEGRAM_MEMBERSHIP_ENFORCE = "  TRUE \n";
+    const gate = new TelegramMembershipMessageGate({
+      runtime: gateRuntime(),
+      authority: null,
+      botTelegramUserId: null,
+    });
+    await expect(gate.authorizeMessage(decisionInput())).resolves.toBe(false);
+  });
+
+  it.each(["0", "false", "no", "off", "", "enable", "totally"])(
+    "degrades to allow for the non-truthy value %s (no strict opt-in)",
+    async (value) => {
+      process.env.TELEGRAM_MEMBERSHIP_ENFORCE = value;
+      const gate = new TelegramMembershipMessageGate({
+        runtime: gateRuntime(),
+        authority: null,
+        botTelegramUserId: null,
+      });
+      await expect(gate.authorizeMessage(decisionInput())).resolves.toBe(true);
+    },
+  );
+
   it("warns once per chat, not per message", async () => {
     delete process.env.TELEGRAM_MEMBERSHIP_ENFORCE;
     const runtime = gateRuntime();
