@@ -5,7 +5,7 @@
  * through plain Node when `dist` is present.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,10 +102,7 @@ describe("native Node ESM", () => {
     });
   });
 
-  it.skipIf(!existsSync(fileURLToPath(distUrl)))(
-    "initializes the built package through plain Node ESM",
-    () => {
-      verifyNativeEsmTarget({ name: "dist", url: distUrl });
-    },
-  );
+  it("initializes the built package through plain Node ESM", () => {
+    verifyNativeEsmTarget({ name: "dist", url: distUrl });
+  });
 });
