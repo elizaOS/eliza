@@ -150,6 +150,28 @@ async function waitForViteClient(page: Page): Promise<void> {
   await page.waitForTimeout(2000);
 }
 
+function rejectUnexpectedPageOrigin(
+  page: Page,
+  expectedOrigin: string,
+): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    page.on("framenavigated", (frame) => {
+      if (frame !== page.mainFrame() || frame.url() === "about:blank") return;
+
+      try {
+        if (new URL(frame.url()).origin === expectedOrigin) return;
+      } catch {
+        // Report malformed destinations through the same explicit boundary.
+      }
+      reject(
+        new Error(
+          `HMR fixture left its local origin ${expectedOrigin}: ${frame.url()}`,
+        ),
+      );
+    });
+  });
+}
+
 // Most plugin GUI views are NOT reachable in the dev client's module graph from
 // the "/" route: they are served as standalone agent-built bundles loaded by
 // DynamicViewLoader (a separate module graph the app's Vite dev server never
@@ -179,11 +201,31 @@ function isNotInRootGraph(name: string): boolean {
 test.describe("HMR propagation across package dependency levels", () => {
   test.describe.configure({ mode: "serial" });
 
+  test("reports an unexpected main-frame origin immediately", async ({
+    page,
+    baseURL,
+  }) => {
+    if (!baseURL) throw new Error("HMR fixture requires a local baseURL");
+    const expectedOrigin = new URL(baseURL).origin;
+    const stayLocal = rejectUnexpectedPageOrigin(page, expectedOrigin);
+
+    await expect(
+      Promise.race([page.goto("data:text/html,hmr-origin-guard"), stayLocal]),
+    ).rejects.toThrow(
+      `HMR fixture left its local origin ${expectedOrigin}: data:text/html,hmr-origin-guard`,
+    );
+  });
+
   for (const level of LEVELS) {
     const defineTest = isNotInRootGraph(level.name) ? test.skip : test;
     defineTest(
       `edit at ${level.name} reaches the running dev client`,
-      async ({ page }) => {
+      async ({ page, baseURL }) => {
+        if (!baseURL) throw new Error("HMR fixture requires a local baseURL");
+        const stayLocal = rejectUnexpectedPageOrigin(
+          page,
+          new URL(baseURL).origin,
+        );
         const abs = path.join(repoRoot, level.file);
         expect(
           fs.existsSync(abs),
@@ -193,8 +235,8 @@ test.describe("HMR propagation across package dependency levels", () => {
         const marker = `HMR_PROBE_${level.name.replace(/[^a-z0-9]/gi, "_")}_${Date.now()}`;
 
         const events = collectViteEvents(page);
-        await page.goto("/");
-        await waitForViteClient(page);
+        await Promise.race([page.goto("/"), stayLocal]);
+        await Promise.race([waitForViteClient(page), stayLocal]);
 
         // Sentinel survives an HMR module swap but is wiped by a full reload —
         // recorded for diagnostics, not asserted (barrels legitimately reload).
@@ -207,12 +249,15 @@ test.describe("HMR propagation across package dependency levels", () => {
           // Appending a comment is always syntactically valid and still forces
           // Vite to re-process the module and push an update to the client.
           fs.writeFileSync(abs, `${original}\n// ${marker}\n`);
-          await expect
-            .poll(() => events.length, {
-              timeout: 30_000,
-              message: `Expected a Vite HMR/reload event in the browser after editing ${level.file}. Captured: ${JSON.stringify(events)}`,
-            })
-            .toBeGreaterThan(0);
+          await Promise.race([
+            expect
+              .poll(() => events.length, {
+                timeout: 30_000,
+                message: `Expected a Vite HMR/reload event in the browser after editing ${level.file}. Captured: ${JSON.stringify(events)}`,
+              })
+              .toBeGreaterThan(0),
+            stayLocal,
+          ]);
         } finally {
           fs.writeFileSync(abs, original);
         }
