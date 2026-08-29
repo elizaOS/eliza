@@ -18,6 +18,13 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveOptimizedPromptIntegrityKey } from "./vault-bridge.ts";
 
 const INTEGRITY_KEY = "system.optimized-prompt.hmac-key";
+const UNREADABLE_ENTRY_IDENTITY = "test-unreadable-row-identity";
+
+function integrityKeyDecryptionFailure(): VaultDecryptionError {
+  return new VaultDecryptionError(INTEGRITY_KEY, {
+    entryIdentity: UNREADABLE_ENTRY_IDENTITY,
+  });
+}
 
 describe("resolveOptimizedPromptIntegrityKey", () => {
   it("persists one sensitive 256-bit key", async () => {
@@ -65,6 +72,25 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
     expect(vault.get).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ["empty", ""],
+    ["short", Buffer.alloc(31, 1).toString("base64")],
+    ["long", Buffer.alloc(33, 1).toString("base64")],
+    ["non-base64", "not-base64"],
+  ])("rejects a %s losing-writer key", async (_label, winner) => {
+    const vault = {
+      has: vi.fn(async () => false),
+      get: vi.fn(async () => winner),
+      quarantineUnreadable: vi.fn(async () => false),
+      setIfAbsent: vi.fn(async () => false),
+    };
+
+    await expect(resolveOptimizedPromptIntegrityKey(vault)).rejects.toThrow(
+      /optimized-prompt integrity key/,
+    );
+    expect(vault.get).toHaveBeenCalledOnce();
+  });
+
   it("recovers only this typed internal-key decryption failure with protected exact read-back", async () => {
     let stored: string | null = "unreadable-ciphertext";
     let firstRead = true;
@@ -73,7 +99,9 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
       get: vi.fn(async (key: string) => {
         if (firstRead) {
           firstRead = false;
-          throw new VaultDecryptionError(key);
+          throw new VaultDecryptionError(key, {
+            entryIdentity: UNREADABLE_ENTRY_IDENTITY,
+          });
         }
         if (stored === null) throw new Error("replacement missing");
         return stored;
@@ -95,6 +123,7 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
     expect(recovered).toBe(stored);
     expect(vault.quarantineUnreadable).toHaveBeenCalledWith(
       INTEGRITY_KEY,
+      UNREADABLE_ENTRY_IDENTITY,
       "optimized-prompt integrity key failed authenticated decryption during runtime boot",
       "runtime-boot:optimized-prompt-hmac-decryption-recovery",
     );
@@ -124,7 +153,27 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
   });
 
   it("does not generalize recovery to a typed failure for another key", async () => {
-    const failure = new VaultDecryptionError("provider.openai.api-key");
+    const failure = new VaultDecryptionError("provider.openai.api-key", {
+      entryIdentity: UNREADABLE_ENTRY_IDENTITY,
+    });
+    const vault = {
+      has: vi.fn(async () => true),
+      get: vi.fn(async () => {
+        throw failure;
+      }),
+      quarantineUnreadable: vi.fn(async () => false),
+      setIfAbsent: vi.fn(async () => false),
+    };
+
+    await expect(resolveOptimizedPromptIntegrityKey(vault)).rejects.toBe(
+      failure,
+    );
+    expect(vault.quarantineUnreadable).not.toHaveBeenCalled();
+    expect(vault.setIfAbsent).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a decryption failure has no exact row identity", async () => {
+    const failure = new VaultDecryptionError(INTEGRITY_KEY);
     const vault = {
       has: vi.fn(async () => true),
       get: vi.fn(async () => {
@@ -146,7 +195,7 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
     const vault = {
       has: vi.fn(async () => true),
       get: vi.fn(async () => {
-        throw new VaultDecryptionError(INTEGRITY_KEY);
+        throw integrityKeyDecryptionFailure();
       }),
       quarantineUnreadable: vi.fn(async () => {
         throw quarantineFailure;
@@ -166,7 +215,7 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
     const vault = {
       has: vi.fn(async () => true),
       get: vi.fn(async () => {
-        throw new VaultDecryptionError(INTEGRITY_KEY);
+        throw integrityKeyDecryptionFailure();
       }),
       quarantineUnreadable: vi.fn(async () => true),
       setIfAbsent: vi.fn(async () => {
@@ -188,7 +237,7 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
       get: vi.fn(async () => {
         readCount += 1;
         if (readCount === 1) {
-          throw new VaultDecryptionError(INTEGRITY_KEY);
+          throw integrityKeyDecryptionFailure();
         }
         return Buffer.alloc(32, 0x44).toString("base64");
       }),
@@ -200,6 +249,31 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
       /failed exact read-back verification/,
     );
     expect(vault.quarantineUnreadable).toHaveBeenCalledOnce();
+    expect(vault.setIfAbsent).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an invalid read-back when another recovery writer wins", async () => {
+    let readCount = 0;
+    const vault = {
+      has: vi.fn(async () => true),
+      get: vi.fn(async () => {
+        readCount += 1;
+        if (readCount === 1) throw integrityKeyDecryptionFailure();
+        return Buffer.alloc(31, 0x55).toString("base64");
+      }),
+      quarantineUnreadable: vi.fn(async () => false),
+      setIfAbsent: vi.fn(async () => false),
+    };
+
+    await expect(resolveOptimizedPromptIntegrityKey(vault)).rejects.toThrow(
+      /exactly 32 bytes/,
+    );
+    expect(vault.quarantineUnreadable).toHaveBeenCalledWith(
+      INTEGRITY_KEY,
+      UNREADABLE_ENTRY_IDENTITY,
+      "optimized-prompt integrity key failed authenticated decryption during runtime boot",
+      "runtime-boot:optimized-prompt-hmac-decryption-recovery",
+    );
     expect(vault.setIfAbsent).toHaveBeenCalledOnce();
   });
 
@@ -216,7 +290,7 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
         readCount += 1;
         if (readCount === 1) {
           await firstReadGate;
-          throw new VaultDecryptionError(INTEGRITY_KEY);
+          throw integrityKeyDecryptionFailure();
         }
         if (stored === null) throw new Error("replacement missing");
         return stored;
@@ -242,6 +316,7 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
 
   it("uses one first-writer winner when distinct resolvers race recovery", async () => {
     let stored: string | null = "unreadable";
+    let storedIdentity: string | null = UNREADABLE_ENTRY_IDENTITY;
     let initialFailuresRemaining = 2;
     let quarantineAttempts = 0;
     let quarantines = 0;
@@ -251,21 +326,27 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
       get: vi.fn(async () => {
         if (initialFailuresRemaining > 0) {
           initialFailuresRemaining -= 1;
-          throw new VaultDecryptionError(INTEGRITY_KEY);
+          throw integrityKeyDecryptionFailure();
         }
         if (stored === null) throw new Error("replacement missing");
         return stored;
       }),
-      quarantineUnreadable: vi.fn(async () => {
-        quarantineAttempts += 1;
-        if (stored !== "unreadable") return false;
-        stored = null;
-        quarantines += 1;
-        return true;
-      }),
+      quarantineUnreadable: vi.fn(
+        async (_key: string, expectedIdentity: string) => {
+          quarantineAttempts += 1;
+          if (stored !== "unreadable" || storedIdentity !== expectedIdentity) {
+            return false;
+          }
+          stored = null;
+          storedIdentity = null;
+          quarantines += 1;
+          return true;
+        },
+      ),
       setIfAbsent: vi.fn(async (_key: string, value: string) => {
         if (stored !== null) return false;
         stored = value;
+        storedIdentity = "healthy-winner-identity";
         insertions += 1;
         return true;
       }),

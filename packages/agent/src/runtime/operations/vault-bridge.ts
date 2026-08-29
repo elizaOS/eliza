@@ -90,18 +90,41 @@ const optimizedPromptIntegrityKeyResolutions = new WeakMap<
 
 function isOptimizedPromptIntegrityKeyDecryptionFailure(
   error: unknown,
-): error is VaultDecryptionError {
+): error is VaultDecryptionError & { readonly entryIdentity: string } {
   return (
     error instanceof VaultDecryptionError &&
-    error.key === OPTIMIZED_PROMPT_HMAC_VAULT_KEY
+    error.key === OPTIMIZED_PROMPT_HMAC_VAULT_KEY &&
+    typeof error.entryIdentity === "string" &&
+    error.entryIdentity.length > 0
   );
+}
+
+function assertOptimizedPromptIntegrityKey(value: string): string {
+  if (value.length === 0 || value.length % 4 !== 0) {
+    throw new Error(
+      "[runtime-ops:vault] optimized-prompt integrity key has an invalid encoded shape",
+    );
+  }
+  const decoded = Buffer.from(value, "base64");
+  try {
+    if (decoded.length !== 32 || decoded.toString("base64") !== value) {
+      throw new Error(
+        "[runtime-ops:vault] optimized-prompt integrity key must be canonical base64 for exactly 32 bytes",
+      );
+    }
+  } finally {
+    decoded.fill(0);
+  }
+  return value;
 }
 
 async function quarantineAndReplaceUnreadableOptimizedPromptIntegrityKey(
   vault: OptimizedPromptIntegrityVault,
+  failure: VaultDecryptionError & { readonly entryIdentity: string },
 ): Promise<string> {
   await vault.quarantineUnreadable(
     OPTIMIZED_PROMPT_HMAC_VAULT_KEY,
+    failure.entryIdentity,
     OPTIMIZED_PROMPT_HMAC_QUARANTINE_REASON,
     OPTIMIZED_PROMPT_HMAC_RECOVERY_CALLER,
   );
@@ -116,6 +139,7 @@ async function quarantineAndReplaceUnreadableOptimizedPromptIntegrityKey(
     },
   );
   const winner = await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+  assertOptimizedPromptIntegrityKey(winner);
   if (inserted && winner !== replacement) {
     throw new Error(
       "[runtime-ops:vault] optimized-prompt integrity-key recovery failed exact read-back verification",
@@ -128,7 +152,9 @@ async function readOptimizedPromptIntegrityKeyOrRecover(
   vault: OptimizedPromptIntegrityVault,
 ): Promise<string> {
   try {
-    return await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+    return assertOptimizedPromptIntegrityKey(
+      await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY),
+    );
   } catch (error) {
     // error-policy:J4 exact typed recovery — quarantine is an auditable,
     // visibly distinct recovery state for this regenerable internal key only.
@@ -137,7 +163,10 @@ async function readOptimizedPromptIntegrityKeyOrRecover(
     // replacement makes old optimized-prompt artifacts fail their HMAC check;
     // the core loader rejects them and falls back to baseline prompts.
     if (!isOptimizedPromptIntegrityKeyDecryptionFailure(error)) throw error;
-    return quarantineAndReplaceUnreadableOptimizedPromptIntegrityKey(vault);
+    return quarantineAndReplaceUnreadableOptimizedPromptIntegrityKey(
+      vault,
+      error,
+    );
   }
 }
 
@@ -156,7 +185,9 @@ async function resolveOptimizedPromptIntegrityKeyOnce(
       caller: "runtime-boot",
     },
   );
-  return inserted ? key : readOptimizedPromptIntegrityKeyOrRecover(vault);
+  return inserted
+    ? assertOptimizedPromptIntegrityKey(key)
+    : readOptimizedPromptIntegrityKeyOrRecover(vault);
 }
 
 /**

@@ -20,6 +20,25 @@ import {
 import { VaultDecryptionError, VaultMissError } from "../src/vault.js";
 import { runtimeVaultCaller } from "./vitest-assertion-shim.js";
 
+async function captureDecryptionFailure(
+  vault: PgliteVaultImpl,
+  key: string,
+): Promise<VaultDecryptionError & { readonly entryIdentity: string }> {
+  try {
+    await vault.get(key);
+  } catch (error) {
+    if (
+      error instanceof VaultDecryptionError &&
+      typeof error.entryIdentity === "string" &&
+      error.entryIdentity.length > 0
+    ) {
+      return error;
+    }
+    throw error;
+  }
+  throw new Error("expected vault decryption failure");
+}
+
 describe("PgliteVaultImpl", () => {
   let workDir: string;
   let vault: PgliteVaultImpl;
@@ -180,9 +199,14 @@ describe("PgliteVaultImpl", () => {
       masterKey: inMemoryMasterKey(wrongKey),
       auditPath: join(dir, "audit", "vault.jsonl"),
     });
-    await expect(v2.get("k")).rejects.toBeInstanceOf(VaultDecryptionError);
+    const failure = await captureDecryptionFailure(v2, "k");
     expect(
-      await v2.quarantineUnreadable("k", "test wrong-key recovery", "test"),
+      await v2.quarantineUnreadable(
+        "k",
+        failure.entryIdentity,
+        "test wrong-key recovery",
+        "test",
+      ),
     ).toBe(true);
     expect(await v2.has("k")).toBe(false);
     await v2.set("k", "replacement", { sensitive: true });
@@ -200,6 +224,56 @@ describe("PgliteVaultImpl", () => {
     );
     expect(preserved.rows).toHaveLength(1);
     expect(preserved.rows[0]?.ciphertext).not.toContain("secret-value");
+    await db.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("does not quarantine a healthy replacement for a stale cross-process failure", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vault-pglite-quarantine-cas-"));
+    const dataDir = join(dir, ".vault-pglite");
+    const auditPath = join(dir, "audit", "vault.jsonl");
+    const original = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+      auditPath,
+    });
+    await original.set("k", "unreadable-original", { sensitive: true });
+    await original.close();
+
+    const recovery = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+      auditPath,
+    });
+    const staleFailure = await captureDecryptionFailure(recovery, "k");
+    expect(
+      await recovery.quarantineUnreadable(
+        "k",
+        staleFailure.entryIdentity,
+        "first resolver",
+        "test:process-a",
+      ),
+    ).toBe(true);
+    await recovery.set("k", "healthy-replacement", { sensitive: true });
+
+    expect(
+      await recovery.quarantineUnreadable(
+        "k",
+        staleFailure.entryIdentity,
+        "stale second resolver",
+        "test:process-b",
+      ),
+    ).toBe(false);
+    expect(await recovery.get("k")).toBe("healthy-replacement");
+    await recovery.close();
+
+    const db = await PGlite.create(dataDir);
+    const quarantined = await db.query<{ n: string | number }>(
+      `SELECT COUNT(*) AS n FROM vault_quarantined_entries
+        WHERE original_key = $1`,
+      ["k"],
+    );
+    expect(Number(quarantined.rows[0]?.n)).toBe(1);
     await db.close();
     await rm(dir, { recursive: true, force: true });
   });

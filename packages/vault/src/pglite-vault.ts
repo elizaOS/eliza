@@ -6,7 +6,7 @@
  * locks before opening the database.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -89,6 +89,26 @@ interface EntryRow {
   ref_source: string | null;
   ref_path: string | null;
   last_modified: string | number;
+}
+
+/**
+ * Return a non-reversible identity for one exact persisted row. Recovery
+ * callers may retain this digest, but never the row's opaque ciphertext.
+ */
+function storedEntryIdentity(row: EntryRow): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        row.key,
+        row.kind,
+        row.value,
+        row.ciphertext,
+        row.ref_source,
+        row.ref_path,
+        String(row.last_modified),
+      ]),
+    )
+    .digest("base64url");
 }
 
 export interface PgliteVaultOptions {
@@ -318,10 +338,19 @@ export class PgliteVaultImpl implements Vault {
 
   async quarantineUnreadable(
     key: string,
+    expectedEntryIdentity: string,
     reason: string,
     caller?: string,
   ): Promise<boolean> {
     assertKey(key);
+    if (
+      typeof expectedEntryIdentity !== "string" ||
+      expectedEntryIdentity.trim().length === 0
+    ) {
+      throw new TypeError(
+        "vault.quarantineUnreadable: expected entry identity required",
+      );
+    }
     const normalizedReason = reason.trim();
     if (!normalizedReason) {
       throw new TypeError("vault.quarantineUnreadable: reason required");
@@ -340,11 +369,31 @@ export class PgliteVaultImpl implements Vault {
         await db.exec("COMMIT");
         return false;
       }
-      await db.query(
-        `INSERT INTO vault_quarantined_entries (
+      if (storedEntryIdentity(row) !== expectedEntryIdentity) {
+        await db.exec("COMMIT");
+        return false;
+      }
+      const moved = await db.query<{ original_key: string }>(
+        `WITH exact_unreadable_row AS (
+           DELETE FROM vault_entries
+            WHERE key = $2
+              AND kind = $3
+              AND value IS NOT DISTINCT FROM $4
+              AND ciphertext IS NOT DISTINCT FROM $5
+              AND ref_source IS NOT DISTINCT FROM $6
+              AND ref_path IS NOT DISTINCT FROM $7
+              AND last_modified = $8
+          RETURNING key, kind, value, ciphertext, ref_source, ref_path,
+                    last_modified
+         )
+         INSERT INTO vault_quarantined_entries (
            quarantine_id, original_key, kind, value, ciphertext, ref_source,
            ref_path, last_modified, quarantined_at, reason
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+         )
+         SELECT $1, key, kind, value, ciphertext, ref_source, ref_path,
+                last_modified, $9, $10
+           FROM exact_unreadable_row
+         RETURNING original_key`,
         [
           randomUUID(),
           row.key,
@@ -358,7 +407,10 @@ export class PgliteVaultImpl implements Vault {
           truncateWellFormed(toWellFormedUnicode(normalizedReason), 500),
         ],
       );
-      await db.query(`DELETE FROM vault_entries WHERE key = $1`, [key]);
+      if (moved.rows.length === 0) {
+        await db.exec("COMMIT");
+        return false;
+      }
       await db.exec("COMMIT");
     } catch (error) {
       // error-policy:J2 The original row must remain active unless its opaque
@@ -482,7 +534,7 @@ export class PgliteVaultImpl implements Vault {
   private async readValue(key: string): Promise<string> {
     const db = await this.db();
     const res = await db.query<EntryRow>(
-      `SELECT key, kind, value, ciphertext, ref_source, ref_path
+      `SELECT key, kind, value, ciphertext, ref_source, ref_path, last_modified
          FROM vault_entries WHERE key = $1 LIMIT 1`,
       [key],
     );
@@ -509,7 +561,10 @@ export class PgliteVaultImpl implements Vault {
         // error-policy:J2 context-adding rethrow — a decrypt failure means the
         // stored secret is unreadable; surface it, never return a fabricated
         // or empty value that a caller would treat as the real secret.
-        throw new VaultDecryptionError(key, { cause: err });
+        throw new VaultDecryptionError(key, {
+          cause: err,
+          entryIdentity: storedEntryIdentity(row),
+        });
       }
     }
     if (
