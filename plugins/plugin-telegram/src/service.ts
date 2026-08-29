@@ -1095,42 +1095,43 @@ export class TelegramService extends Service {
     // crash boot.
     await applyTelegramSetMyCommands(bot, this.runtime, accountId);
 
-    // Reuse the cached bot-identity lookup when beginMembershipGateBootstrap
-    // already issued one — a second network getMe could diverge from the
-    // identity backing the gate (and retries a failed lookup needlessly).
-    const botInfoPromise =
-      this.membershipBotIdentity.get(accountId) ?? bot.telegram.getMe();
-    this.membershipBotIdentity.set(accountId, botInfoPromise);
-    const botInfo = await botInfoPromise;
-    logger.debug(
-      {
-        src: "plugin:telegram",
-        agentId: this.runtime.agentId,
-        accountId,
-        botId: botInfo.id,
-        botUsername: botInfo.username,
-      },
-      "Bot info retrieved",
-    );
-
     // Seed this account's membership-authority gate once its bot identity is
     // known. Every account (default and secondary) gets its own gate. When
     // beginMembershipGateBootstrap already installed the promise ahead of the
     // poller, reuse it — only the manager binding and failure marking below
-    // still belong here.
-    if (!this.membershipGates.has(accountId)) {
-      this.membershipGates.set(
-        accountId,
-        createTelegramMembershipGate({
-          runtime: this.runtime,
-          botTelegramUserId: String(botInfo.id),
-        }),
-      );
-    }
-    const gatePromise = this.membershipGates.get(
-      accountId,
-    ) as Promise<TelegramMembershipGate | null>;
+    // still belong here. The identity lookup and gate await BOTH sit inside
+    // the failure-observing try: a rejected getMe must mark the gate failed
+    // (fail-closed admission) and clear the cached rejection so a startup
+    // retry issues a FRESH lookup instead of replaying the cached rejection.
     try {
+      let botInfoPromise = this.membershipBotIdentity.get(accountId);
+      if (!botInfoPromise) {
+        botInfoPromise = bot.telegram.getMe();
+        this.membershipBotIdentity.set(accountId, botInfoPromise);
+      }
+      const botInfo = await botInfoPromise;
+      logger.debug(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          accountId,
+          botId: botInfo.id,
+          botUsername: botInfo.username,
+        },
+        "Bot info retrieved",
+      );
+      if (!this.membershipGates.has(accountId)) {
+        this.membershipGates.set(
+          accountId,
+          createTelegramMembershipGate({
+            runtime: this.runtime,
+            botTelegramUserId: String(botInfo.id),
+          }),
+        );
+      }
+      const gatePromise = this.membershipGates.get(
+        accountId,
+      ) as Promise<TelegramMembershipGate | null>;
       const gate = await gatePromise;
       const manager = this.getAccountState(accountId)?.messageManager;
       if (gate) {
@@ -1153,6 +1154,10 @@ export class TelegramService extends Service {
       this.runtime.reportError("telegram:membership-bootstrap", error, {
         accountId,
       });
+      // Clear BOTH cached rejections so a startup retry issues FRESH
+      // lookups instead of replaying the cached failure forever.
+      this.membershipBotIdentity.delete(accountId);
+      this.membershipGates.delete(accountId);
     }
   }
 
@@ -1277,6 +1282,16 @@ export class TelegramService extends Service {
     if (!promise) {
       return;
     }
+    // Register the replay drain EXACTLY ONCE per settled promise: every
+    // queued arrival re-enters this method, and attaching another .then
+    // would start a SECOND concurrent drain — the second drain would see
+    // an empty queue, clear the replay fence below while the first drain
+    // is still replaying older entries, and let newer live transitions
+    // overtake them.
+    if (this.replayingMembershipTransitions.has(accountId)) {
+      return;
+    }
+    this.replayingMembershipTransitions.add(accountId);
     void promise
       .then(async (gate) => {
         // Prime the settled registry so the replayed dispatch takes the
@@ -1286,8 +1301,6 @@ export class TelegramService extends Service {
           this.pendingMembershipTransitions.delete(accountId);
           return;
         }
-        const pending = this.pendingMembershipTransitions.get(accountId);
-        this.pendingMembershipTransitions.delete(accountId);
         // Fence the replay: while queued transitions replay IN ARRIVAL
         // ORDER, a newer LIVE transition must not enter the dispatch path
         // and serialize ahead of older queued entries (Telegraf's polling
@@ -1295,22 +1308,29 @@ export class TelegramService extends Service {
         // per-scope chain only orders work that reaches it — a live re-add
         // overtaking a queued kick would install the clear last and leave
         // a chat the bot was kicked from admitted). Live arrivals during
-        // the drain append to the queue, which this loop re-reads each
-        // iteration, preserving global arrival order.
-        this.replayingMembershipTransitions.add(accountId);
-        for (const pendingUpdate of pending ?? []) {
-          // Dispatch directly (fenced entries cannot re-queue — the live
-          // fence would bounce them back into the queue and loop forever).
-          await this.dispatchMembershipTransition(pendingUpdate, accountId);
-        }
-        while (this.pendingMembershipTransitions.has(accountId)) {
-          const liveQueued = this.pendingMembershipTransitions.get(accountId);
-          this.pendingMembershipTransitions.delete(accountId);
-          for (const liveUpdate of liveQueued ?? []) {
-            await this.dispatchMembershipTransition(liveUpdate, accountId);
+        // the drain re-queue via the fence in handleMyChatMemberUpdate;
+        // this loop drains until quiet. Each drained entry dispatches
+        // through the LIVE handler (bypassing only the fence) so a failing
+        // authority write degrades admission fail-closed exactly like a
+        // live transition failure.
+        try {
+          for (;;) {
+            const pending = this.pendingMembershipTransitions.get(accountId);
+            this.pendingMembershipTransitions.delete(accountId);
+            if (!pending || pending.length === 0) {
+              break;
+            }
+            for (const pendingUpdate of pending) {
+              await this.handleMyChatMemberUpdate(
+                pendingUpdate,
+                accountId,
+                true,
+              );
+            }
           }
+        } finally {
+          this.replayingMembershipTransitions.delete(accountId);
         }
-        this.replayingMembershipTransitions.delete(accountId);
       })
       .catch(() => {
         // error-policy:J4 A failed bootstrap already marked the admission
@@ -2445,14 +2465,27 @@ export class TelegramService extends Service {
         const roomsToClear = new Set<UUID>([roomId, mainRoomId]);
         // Enumerate the principal's participation and keep only rooms
         // belonging to this chat's world — a principal may legitimately
-        // remain a participant in unrelated chats' worlds.
+        // remain a participant in unrelated chats' worlds. Per-room
+        // failures are isolated: one unreadable room must not abort the
+        // enumeration of the rest (the departed principal's authorization
+        // in the readable rooms is revoked regardless).
         try {
           const participantRooms =
             await this.runtime.getRoomsForParticipant(entityId);
           for (const candidateRoomId of participantRooms) {
-            const candidateRoom = await this.runtime.getRoom(candidateRoomId);
-            if (candidateRoom?.worldId === worldId) {
-              roomsToClear.add(candidateRoomId);
+            try {
+              const candidateRoom = await this.runtime.getRoom(candidateRoomId);
+              if (candidateRoom?.worldId === worldId) {
+                roomsToClear.add(candidateRoomId);
+              }
+            } catch (error) {
+              // error-policy:J7 One unreadable candidate room must not
+              // abort clearing the others.
+              this.runtime.reportError(
+                "telegram:membership-participation-enumeration",
+                error,
+                { chatId: chat, accountId, entityId, roomId: candidateRoomId },
+              );
             }
           }
         } catch (error) {
@@ -2466,12 +2499,25 @@ export class TelegramService extends Service {
           );
         }
         for (const roomToClear of roomsToClear) {
-          await this.runtime.removeParticipant(entityId, roomToClear);
+          try {
+            // removeParticipant resolves false when the row was absent;
+            // a throw is the only failure mode. Per-room isolation keeps
+            // one failed delete from aborting the remaining rooms.
+            await this.runtime.removeParticipant(entityId, roomToClear);
+          } catch (error) {
+            // error-policy:J7 A failed row delete must not abort the
+            // remaining rooms or the entity-status update below; the
+            // durable revocation above remains the authoritative deny.
+            this.runtime.reportError(
+              "telegram:membership-participation",
+              error,
+              { chatId: chat, accountId, entityId, roomId: roomToClear },
+            );
+          }
         }
       } catch (error) {
-        // error-policy:J7 Participation removal is a best-effort supplement:
-        // the durable revocation above is the authoritative deny, and a
-        // failed row delete must not kill the entity-status update below.
+        // error-policy:J7 Unreachable in practice (both inner loops catch
+        // their own); retained as a boundary guard for the Set setup.
         this.runtime.reportError("telegram:membership-participation", error, {
           chatId: chat,
           accountId,
@@ -2509,6 +2555,7 @@ export class TelegramService extends Service {
   private async handleMyChatMemberUpdate(
     update: ChatMemberUpdated | undefined,
     accountId = this.defaultAccountId,
+    replayDrain = false,
   ): Promise<void> {
     // Every failure in this method must land in the fail-closed degradation
     // below — never in a caller that only logs — so the entire body sits
@@ -2527,13 +2574,14 @@ export class TelegramService extends Service {
       // stays untombstoned) or a re-add (a persisted tombstone keeps denying
       // the chat indefinitely).
       if (
+        !replayDrain &&
         !this.settledMembershipGates.has(accountId) &&
         this.membershipGates.has(accountId)
       ) {
         this.queuePendingMembershipTransition(update, accountId);
         return;
       }
-      if (this.replayingMembershipTransitions.has(accountId)) {
+      if (!replayDrain && this.replayingMembershipTransitions.has(accountId)) {
         // A replay is draining the startup queue; a transition arriving NOW
         // is newer than everything queued, so append it to the queue the
         // replay loop reads (it re-checks the queue each iteration) rather
