@@ -552,7 +552,11 @@ async function actionUpdate({
   // no-op-or-explicit-update per the requested mutation; ambiguous matches
   // return a bounded clarification.
   if (!id) {
-    const resolved = await resolveTodoIdByVisibleContent(service, scope, params);
+    const resolved = await resolveTodoIdByVisibleContent(
+      service,
+      scope,
+      params,
+    );
     if (!resolved.ok) return resolved.failure;
     const resolvedId = resolved.id;
     if (!resolvedId) {
@@ -590,14 +594,12 @@ async function resolveTodoIdByVisibleContent(
   service: TodoStore,
   scope: { entityId: string; agentId: string },
   params: Record<string, unknown>,
-): Promise<
-  | { ok: true; id: string | null }
-  | { ok: false; failure: ActionResult }
-> {
+): Promise<{ ok: true; id: string | null } | { ok: false; failure: ActionResult }> {
   // targetContent (when present) is the exact locator; content alone also
   // locates when id is absent, but for update the caller may pass
   // targetContent to locate while content carries the replacement text.
-  const content = readString(params.targetContent) ?? readString(params.content);
+  const content =
+    readString(params.targetContent) ?? readString(params.content);
   if (!content) {
     return {
       ok: false,
@@ -733,7 +735,11 @@ async function actionSetStatus(
     // Visible-content resolver (#29690): Shared surfaces render todos
     // without storage ids, so complete/cancel may address a todo by its
     // exact visible content.
-    const resolved = await resolveTodoIdByVisibleContent(service, scope, params);
+    const resolved = await resolveTodoIdByVisibleContent(
+      service,
+      scope,
+      params,
+    );
     if (!resolved.ok) return resolved.failure;
     if (!resolved.id) {
       return failure(
@@ -781,7 +787,11 @@ async function actionDelete({
   if (!id) {
     // Visible-content resolver (#29690): delete may address a todo by its
     // exact visible content on Shared surfaces.
-    const resolved = await resolveTodoIdByVisibleContent(service, scope, params);
+    const resolved = await resolveTodoIdByVisibleContent(
+      service,
+      scope,
+      params,
+    );
     if (!resolved.ok) return resolved.failure;
     if (!resolved.id) {
       return failure(
@@ -872,9 +882,12 @@ async function actionClear({
       includeCompleted: true,
     });
     const preview = todos.map((t) => `- ${t.content}`).join("\n");
-    const text = todos.length === 0
-      ? "Your list is already empty."
-      : `This will clear ${todos.length} todo${todos.length === 1 ? "" : "s"} from your list:\n${preview}\n\nReply with confirmation to clear them.`;
+    const text =
+      todos.length === 0
+        ? "Your list is already empty."
+        : `This will clear ${todos.length} todo${
+            todos.length === 1 ? "" : "s"
+          } from your list:\n${preview}\n\nReply with confirmation to clear them.`;
     return {
       success: true,
       text,
@@ -994,7 +1007,8 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       },
       {
         name: "content",
-        description: "Imperative form, e.g. 'Add tests' (create/update; also locates a todo by visible content when id is absent for update/complete/cancel/delete).",
+        description:
+          "Imperative form, e.g. 'Add tests' (create/update; also locates a todo by visible content when id is absent for update/complete/cancel/delete).",
         required: false,
         schema: { type: "string" as const },
       },

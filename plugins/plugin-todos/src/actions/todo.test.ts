@@ -519,8 +519,13 @@ describe("TODO action", () => {
       });
       expect(preview.effectReceipts).toBeUndefined();
       // The todo is still present: preview is not a mutation.
-      const list = await invoke(runtime, { action: "list", includeCompleted: true });
-      expect(list.data.todos.some((t) => t.content === "preview me")).toBe(true);
+      const list = await invoke(runtime, {
+        action: "list",
+        includeCompleted: true,
+      });
+      expect(list.data.todos.some((t) => t.content === "preview me")).toBe(
+        true,
+      );
     });
 
     it("replays one committed mutation with a stable noop receipt", async () => {
