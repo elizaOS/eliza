@@ -38,6 +38,7 @@ import {
 	plannedReplyHasClaimGroundingReceipt,
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
+	replyClaimsInProgressWork,
 	resolveEligibleDirectActionRoutes,
 } from "./message";
 
@@ -1691,5 +1692,81 @@ describe("locale clause scoping through the real consumer paths", () => {
 			actions: [scheduledItemSurface],
 		});
 		expect(decision.verdict).not.toBe("reject");
+	});
+});
+describe("replyClaimsInProgressWork", () => {
+	it.each([
+		"On it.",
+		"on it!",
+		"Checking your list now.",
+		"Checking now",
+		"Looking into it.",
+		"I'll check your calendar",
+		"Let me pull that up",
+		"One sec.",
+		"Working on it 👍",
+	])("matches a bare progress promise: %s", (reply) => {
+		expect(replyClaimsInProgressWork(reply)).toBe(true);
+	});
+
+	it.each([
+		// Questions and consent-seeking pass through.
+		"Want me to check your list?",
+		"Should I look into it?",
+		// Substantive replies that merely contain a forward-looking clause.
+		"I'll be honest — the plan has a hole in it.",
+		"I'll check tomorrow, but today you have three events: standup, lunch, and the demo.",
+		// Real answers and confirmations.
+		"You have 3 todos: rent, demo prep, and groceries.",
+		"done — you're on Notes.",
+		"31,283",
+		"",
+	])("passes substantive or interrogative replies: %s", (reply) => {
+		expect(replyClaimsInProgressWork(reply)).toBe(false);
+	});
+});
+
+describe("core.simple_progress_promise", () => {
+	function getProgressEvaluator() {
+		const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(candidate) => candidate.name === "core.simple_progress_promise",
+		);
+		if (!evaluator) {
+			throw new Error("core.simple_progress_promise is not registered");
+		}
+		return evaluator;
+	}
+
+	it("fires only on simple-path bare promises (live: 'On it.' with zero tools)", async () => {
+		const evaluator = getProgressEvaluator();
+		expect(
+			await evaluator.shouldRun(makeContext(simpleReplyHandler("On it."))),
+		).toBe(true);
+		expect(
+			await evaluator.shouldRun(
+				makeContext(simpleReplyHandler("Checking your list now.")),
+			),
+		).toBe(true);
+		expect(
+			await evaluator.shouldRun(
+				makeContext(simpleReplyHandler("You have 3 todos: rent, demo, food.")),
+			),
+		).toBe(false);
+		// A turn that will actually run a tool keeps its ack (fork/delegate acks).
+		const planning = simpleReplyHandler("On it.");
+		planning.plan.requiresTool = true;
+		expect(await evaluator.shouldRun(makeContext(planning))).toBe(false);
+		const nonSimple = simpleReplyHandler("On it.");
+		nonSimple.plan.contexts = ["simple", "general"];
+		expect(await evaluator.shouldRun(makeContext(nonSimple))).toBe(false);
+	});
+
+	it("reroutes to the planner and clears the fabricated promise", async () => {
+		const evaluator = getProgressEvaluator();
+		const patch = (await evaluator.evaluate(
+			makeContext(simpleReplyHandler("Checking your list now.")),
+		)) as ResponseHandlerPatch;
+		expect(patch.requiresTool).toBe(true);
+		expect(patch.clearReply).toBe(true);
 	});
 });
