@@ -80,20 +80,51 @@ describe("x_dm unread derivation", () => {
     expect(inbox.messages[0]?.unread).toBe(true);
   });
 
-  it("maintains strict total ordering in thread groups when timestamp is NaN", () => {
-    const inbox = build([
-      xDm({
-        id: "dm-invalid",
-        threadId: "conv-mixed",
-        timestamp: Number.NaN,
-      }),
-      xDm({
-        id: "dm-valid",
-        threadId: "conv-mixed",
-        timestamp: NOW,
-      }),
-    ]);
-    expect(inbox.threadGroups).toHaveLength(1);
-    expect(inbox.threadGroups?.[0]?.latestMessage.id).toBe("x_dm:dm-valid");
+  describe("timestamp normalization", () => {
+    it.each([
+      ["NaN", Number.NaN],
+      ["positive infinity", Number.POSITIVE_INFINITY],
+      ["negative infinity", Number.NEGATIVE_INFINITY],
+      ["finite but outside the Date range", Number.MAX_VALUE],
+      ["missing", undefined],
+      ["invalid string", "not-a-timestamp"],
+      ["invalid object", {}],
+    ])("maps %s to the safe epoch fallback", (_label, timestamp) => {
+      const inbox = build([
+        xDm({
+          id: "dm-invalid",
+          timestamp: timestamp as number,
+        }),
+      ]);
+
+      expect(inbox.messages[0]?.receivedAt).toBe("1970-01-01T00:00:00.000Z");
+    });
+
+    it.each([
+      [0, "1970-01-01T00:00:00.000Z"],
+      [NOW, "2026-08-18T12:00:00.000Z"],
+      [Date.parse("2026-08-18T07:00:00.000-05:00"), "2026-08-18T12:00:00.000Z"],
+    ])("preserves valid epoch %s as %s", (timestamp, receivedAt) => {
+      const inbox = build([xDm({ timestamp })]);
+
+      expect(inbox.messages[0]?.receivedAt).toBe(receivedAt);
+    });
+
+    it("keeps an invalid timestamp behind a valid message in its thread", () => {
+      const inbox = build([
+        xDm({
+          id: "dm-invalid",
+          threadId: "conv-mixed",
+          timestamp: Number.NaN,
+        }),
+        xDm({
+          id: "dm-valid",
+          threadId: "conv-mixed",
+          timestamp: NOW,
+        }),
+      ]);
+      expect(inbox.threadGroups).toHaveLength(1);
+      expect(inbox.threadGroups?.[0]?.latestMessage.id).toBe("x_dm:dm-valid");
+    });
   });
 });

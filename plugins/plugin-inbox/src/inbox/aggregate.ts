@@ -59,8 +59,24 @@ const PHONE_BACKED_INBOX_CHANNELS = new Set<LifeOpsInboxChannel>([
 ]);
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
+const INVALID_INBOX_TIMESTAMP_ISO = new Date(0).toISOString();
 
 export type InboxChatType = "dm" | "group" | "channel";
+
+/**
+ * Project the inbound epoch-millisecond contract onto the wire ISO timestamp.
+ * Invalid producer data sorts at the documented epoch fallback instead of
+ * throwing while the inbox DTO is being built.
+ */
+function normalizeInboxReceivedAt(timestamp: unknown): string {
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+    return INVALID_INBOX_TIMESTAMP_ISO;
+  }
+  const date = new Date(timestamp);
+  return Number.isFinite(date.getTime())
+    ? date.toISOString()
+    : INVALID_INBOX_TIMESTAMP_ISO;
+}
 
 function stripSubjectReplyPrefixes(value: string): string {
   let cursor = 0;
@@ -162,7 +178,7 @@ export function toInboxMessage(
     channel === "gmail"
       ? (message.gmailMessageId ?? message.id)
       : (message.entityId ?? message.roomId ?? message.id);
-  const receivedAt = new Date(message.timestamp).toISOString();
+  const receivedAt = normalizeInboxReceivedAt(message.timestamp);
   const subject =
     channel === "gmail"
       ? message.channelName.startsWith("Email from ")
