@@ -308,7 +308,9 @@ ElizaClient.prototype.getLocalInferenceHub = async function (
 ElizaClient.prototype.getLocalInferenceHardware = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/local-inference/hardware");
+  const hardware = await this.fetch<unknown>("/api/local-inference/hardware");
+  assertHardwareProbe(hardware);
+  return hardware;
 };
 
 ElizaClient.prototype.getLocalInferenceDeviceTier = async function (

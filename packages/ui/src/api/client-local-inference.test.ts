@@ -248,6 +248,45 @@ describe("getLocalInferenceHub", () => {
   });
 });
 
+describe("getLocalInferenceHardware", () => {
+  it("rejects malformed direct hardware before device-tier classification", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ status: "unsupported" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHardware()).rejects.toMatchObject({
+      code: LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
+      context: {
+        path: "response.hardware.totalRamGb",
+        expected: "a finite non-negative number",
+      },
+    });
+  });
+
+  it("accepts the canonical direct iOS zero-core fallback", async () => {
+    const hardware = probe({
+      cpuCores: 0,
+      platform: "darwin",
+      arch: "arm64",
+      appleSilicon: true,
+      mobile: { platform: "ios" },
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(hardware), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHardware()).resolves.toEqual(hardware);
+  });
+});
+
 describe("setLocalInferenceTextRouting", () => {
   it("publishes both text slots through one atomic request", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
