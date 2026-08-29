@@ -16,6 +16,128 @@ export type CloudLiveOptionalActionName =
 
 export type CloudLivePersonalIdentityRecovery = "runtime-cloud" | "retry";
 
+export type CloudLiveDedicatedConfirmationRequiredReason =
+  | "approval-required"
+  | "quote-changed"
+  | "cancelled"
+  | "interaction-failed";
+
+export type CloudLiveDedicatedConfirmationKind =
+  | "none"
+  | "adoption"
+  | "activation";
+
+export interface CloudLiveDedicatedConsentEnvironment {
+  ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION?: string;
+  ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV?: string;
+  GITHUB_EVENT_NAME?: string;
+}
+
+export interface CloudLiveDedicatedConsentSnapshot {
+  approvalGrantedCount: 0 | 1;
+  confirmationOfferCount: number;
+  confirmationClickCount: number;
+  cancellationCount: number;
+}
+
+export interface CloudLiveDedicatedConsentGate {
+  claimVisibleConfirmation():
+    | "approved"
+    | "approval-required"
+    | "quote-changed";
+  recordConfirmationClick(
+    kind: Exclude<CloudLiveDedicatedConfirmationKind, "none">,
+  ): void;
+  recordCancellation(): void;
+  confirmedKind(): CloudLiveDedicatedConfirmationKind;
+  snapshot(): CloudLiveDedicatedConsentSnapshot;
+}
+
+export class CloudLiveDedicatedConfirmationRequiredError extends Error {
+  readonly code = "CLOUD_LIVE_DEDICATED_CONFIRMATION_REQUIRED";
+
+  constructor(readonly reason: CloudLiveDedicatedConfirmationRequiredReason) {
+    super(`[cloud-live] Dedicated confirmation required (${reason})`);
+    this.name = "CloudLiveDedicatedConfirmationRequiredError";
+  }
+}
+
+class CloudLiveDedicatedConsentGateImpl
+  implements CloudLiveDedicatedConsentGate
+{
+  private confirmationOfferCount = 0;
+  private confirmationClickCount = 0;
+  private cancellationCount = 0;
+  private approvalConsumed = false;
+  private confirmationKind: CloudLiveDedicatedConfirmationKind = "none";
+
+  constructor(private readonly approvalGranted: boolean) {}
+
+  claimVisibleConfirmation():
+    | "approved"
+    | "approval-required"
+    | "quote-changed" {
+    this.confirmationOfferCount += 1;
+    if (!this.approvalGranted) return "approval-required";
+    if (this.approvalConsumed) return "quote-changed";
+    // Reserve the one dispatch approval before the browser action. A detached
+    // or timed-out node must never cause an automatic second attempt.
+    this.approvalConsumed = true;
+    return "approved";
+  }
+
+  recordConfirmationClick(
+    kind: Exclude<CloudLiveDedicatedConfirmationKind, "none">,
+  ): void {
+    if (this.confirmationClickCount !== 0 || this.confirmationKind !== "none") {
+      throw new Error(
+        "[cloud-live] Dedicated confirmation click was already recorded",
+      );
+    }
+    this.confirmationClickCount += 1;
+    this.confirmationKind = kind;
+  }
+
+  recordCancellation(): void {
+    this.cancellationCount += 1;
+  }
+
+  confirmedKind(): CloudLiveDedicatedConfirmationKind {
+    return this.confirmationKind;
+  }
+
+  snapshot(): CloudLiveDedicatedConsentSnapshot {
+    return {
+      approvalGrantedCount: this.approvalGranted ? 1 : 0,
+      confirmationOfferCount: this.confirmationOfferCount,
+      confirmationClickCount: this.confirmationClickCount,
+      cancellationCount: this.cancellationCount,
+    };
+  }
+}
+
+/**
+ * A paid confirmation can only be enabled by a GitHub workflow_dispatch that
+ * is already hard-pinned to staging. Scheduled, release, local, and production
+ * lanes remain fail-closed even if somebody copies the opt-in variable.
+ */
+export function createCloudLiveDedicatedConsentGate(
+  env: CloudLiveDedicatedConsentEnvironment,
+): CloudLiveDedicatedConsentGate {
+  const approvalRequested =
+    env.ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION === "1";
+  if (
+    approvalRequested &&
+    (env.ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV !== "staging" ||
+      env.GITHUB_EVENT_NAME !== "workflow_dispatch")
+  ) {
+    throw new Error(
+      "[cloud-live] Dedicated confirmation approval requires an explicit staging workflow dispatch",
+    );
+  }
+  return new CloudLiveDedicatedConsentGateImpl(approvalRequested);
+}
+
 export class CloudLivePersonalIdentityRecoveryError extends Error {
   readonly code = "CLOUD_LIVE_PERSONAL_IDENTITY_RECOVERY";
 
@@ -64,11 +186,20 @@ interface WaitForCloudLivePersonalIdentityOptions<T> {
   readBinding: () => Promise<T | null>;
   runtimeCloudRecovery: Locator;
   retryRecovery: Locator;
-  dedicatedAdoptionConsent?: Locator;
+  dedicatedConsent?: {
+    gate: CloudLiveDedicatedConsentGate;
+    /** All activation/adoption confirm choices in DOM order. */
+    confirmationChoices: Locator;
+    /** All activation/adoption cancel choices in DOM order. */
+    cancellationChoices: Locator;
+    /** Performs the one approved rendered-UI interaction. */
+    performConfirmation: (
+      confirmation: Locator,
+    ) => Promise<Exclude<CloudLiveDedicatedConfirmationKind, "none">>;
+  };
   timeoutMs: number;
   runtimeCloudGraceMs: number;
   pollIntervalMs?: number;
-  onDedicatedAdoptionConsent?: () => void | Promise<void>;
   onRecovery?: (
     recovery: CloudLivePersonalIdentityRecovery,
   ) => void | Promise<void>;
@@ -101,6 +232,57 @@ async function withinCloudLivePersonalIdentityDeadline<T>(
   }
 }
 
+async function lastVisibleEnabledChoice(
+  choices: Locator,
+  deadline: number,
+): Promise<Locator | null> {
+  const count = await withinCloudLivePersonalIdentityDeadline(
+    () => choices.count(),
+    deadline,
+  );
+  for (let index = count - 1; index >= 0; index -= 1) {
+    const choice = choices.nth(index);
+    const visible = await withinCloudLivePersonalIdentityDeadline(
+      () => choice.isVisible(),
+      deadline,
+    );
+    if (!visible) continue;
+    const enabled = await withinCloudLivePersonalIdentityDeadline(
+      () => choice.isEnabled(),
+      deadline,
+    );
+    if (enabled) return choice;
+  }
+  return null;
+}
+
+async function hasSelectedCancellation(
+  choices: Locator,
+  deadline: number,
+): Promise<boolean> {
+  const count = await withinCloudLivePersonalIdentityDeadline(
+    () => choices.count(),
+    deadline,
+  );
+  for (let index = count - 1; index >= 0; index -= 1) {
+    const choice = choices.nth(index);
+    const visible = await withinCloudLivePersonalIdentityDeadline(
+      () => choice.isVisible(),
+      deadline,
+    );
+    if (!visible) continue;
+    const pressed = await withinCloudLivePersonalIdentityDeadline(
+      () => choice.getAttribute("aria-pressed"),
+      deadline,
+    );
+    // Confirmation and cancellation buttons are emitted as one current pair.
+    // Once the newest visible cancellation is found, older transcript turns
+    // must not influence the current quote.
+    return pressed === "true";
+  }
+  return false;
+}
+
 /**
  * Wait once for a real persisted binding. A recovery choice is an adjudicated
  * failure, never permission to replay an activation POST. Runtime Cloud is
@@ -111,17 +293,15 @@ export async function waitForCloudLivePersonalIdentity<T>({
   readBinding,
   runtimeCloudRecovery,
   retryRecovery,
-  dedicatedAdoptionConsent,
+  dedicatedConsent,
   timeoutMs,
   runtimeCloudGraceMs,
   pollIntervalMs = 250,
-  onDedicatedAdoptionConsent,
   onRecovery,
 }: WaitForCloudLivePersonalIdentityOptions<T>): Promise<T> {
   const startedAt = Date.now();
   const deadline = startedAt + timeoutMs;
   let runtimeCloudWasAbsent = false;
-  let dedicatedAdoptionConsentHandled = false;
   for (;;) {
     const binding = await withinCloudLivePersonalIdentityDeadline(
       readBinding,
@@ -129,25 +309,55 @@ export async function waitForCloudLivePersonalIdentity<T>({
     );
     if (binding) return binding;
 
-    if (
-      !dedicatedAdoptionConsentHandled &&
-      dedicatedAdoptionConsent &&
-      (await withinCloudLivePersonalIdentityDeadline(
-        () => dedicatedAdoptionConsent.isVisible(),
-        deadline,
-      ))
-    ) {
-      if (!onDedicatedAdoptionConsent) {
-        throw new Error(
-          "[cloud-live] Dedicated adoption consent handler is missing",
-        );
-      }
-      await withinCloudLivePersonalIdentityDeadline(
-        () => Promise.resolve(onDedicatedAdoptionConsent()),
+    if (dedicatedConsent) {
+      const confirmation = await lastVisibleEnabledChoice(
+        dedicatedConsent.confirmationChoices,
         deadline,
       );
-      dedicatedAdoptionConsentHandled = true;
-      continue;
+      if (confirmation) {
+        const decision = dedicatedConsent.gate.claimVisibleConfirmation();
+        if (decision !== "approved") {
+          throw new CloudLiveDedicatedConfirmationRequiredError(decision);
+        }
+        try {
+          const confirmationKind =
+            await withinCloudLivePersonalIdentityDeadline(
+              () => dedicatedConsent.performConfirmation(confirmation),
+              deadline,
+            );
+          if (
+            confirmationKind !== "adoption" &&
+            confirmationKind !== "activation"
+          ) {
+            throw new Error(
+              "[cloud-live] Dedicated confirmation kind was not recognized",
+            );
+          }
+          dedicatedConsent.gate.recordConfirmationClick(confirmationKind);
+        } catch (error) {
+          if (error instanceof CloudLivePersonalIdentityDeadlineError) {
+            throw error;
+          }
+          // Playwright failures can contain rendered quote text and selector
+          // detail. Replace them with one closed classification.
+          throw new CloudLiveDedicatedConfirmationRequiredError(
+            "interaction-failed",
+          );
+        }
+        continue;
+      }
+
+      // A newly rendered enabled quote supersedes an older cancelled transcript
+      // turn, so cancellation is checked only after no current confirmation is
+      // actionable. On the current turn both buttons lock after cancellation.
+      const cancelled = await hasSelectedCancellation(
+        dedicatedConsent.cancellationChoices,
+        deadline,
+      );
+      if (cancelled) {
+        dedicatedConsent.gate.recordCancellation();
+        throw new CloudLiveDedicatedConfirmationRequiredError("cancelled");
+      }
     }
 
     const retryVisible = await withinCloudLivePersonalIdentityDeadline(
