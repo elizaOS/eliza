@@ -153,8 +153,11 @@ describe("provisioning worker deployment contract", () => {
       verify,
     );
     const clean = workflow.indexOf("git clean -ffdx -q", verify);
+    // Ordering anchor only: match the guard's stable prefix so adding or
+    // removing a `git status` flag cannot silently turn this index into -1 and
+    // fail the ordering assertion instead of the ordering itself.
     const cleanVerdict = workflow.indexOf(
-      '[ -z "$(git status --porcelain)" ] || {',
+      '[ -z "$(git status --porcelain',
       verify,
     );
     expect(reset).toBeGreaterThan(exactSourceCheck);
