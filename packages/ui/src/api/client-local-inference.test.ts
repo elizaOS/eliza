@@ -156,8 +156,8 @@ describe("getLocalInferenceHub", () => {
       path: "response.hardware.recommendedBucket",
     },
     {
-      label: "object probe source",
-      override: { source: { value: "os-fallback" } },
+      label: "array probe source",
+      override: { source: ["os-fallback"] },
       path: "response.hardware.source",
     },
     {
