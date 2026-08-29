@@ -8,7 +8,9 @@
  * `createRadialGradient`/`createLinearGradient` and `addColorStop` reproduce
  * the browser's `IndexSizeError`/`SyntaxError` behavior for malformed
  * gradients, and covers a throw raised inside `applyDrawOptions` itself (a
- * malformed shadow color) after `save()` has already pushed the frame. Guards
+ * malformed shadow color) after `save()` has already pushed the frame, plus a
+ * malformed stroke/text color that throws from `colorToString` in `drawLine`
+ * and `drawText` after `save()`. Guards
  * the contract that such a throw must not leak the `ctx.save()` frame or the
  * mutated draw-option state (globalAlpha, blendMode, shadow, transform) onto
  * later unrelated draws — the same balance invariant the async `drawImage`
@@ -302,6 +304,69 @@ describe("CanvasWeb synchronous draw save/restore balance on gradient failure", 
 
     // A later plain rectangle fills at alpha 1, proving the leaked frame and
     // opacity did not survive the throw inside applyDrawOptions.
+    await canvas.drawRect({
+      canvasId,
+      rect: { x: 0, y: 0, width: 5, height: 5 },
+      fill: { color: { r: 0, g: 0, b: 255 } },
+    });
+
+    expect(ctx.fillAlphas).toEqual([1]);
+  });
+
+  it("drawLine balances save/restore when the stroke color is malformed", async () => {
+    const { canvas, canvasId } = await makeCanvas();
+
+    // A null stroke.color reaches colorToString via applyStrokeStyle and throws
+    // a TypeError AFTER applyDrawOptions pushed the frame and set globalAlpha.
+    await expect(
+      canvas.drawLine({
+        canvasId,
+        from: { x: 0, y: 0 },
+        to: { x: 5, y: 5 },
+        stroke: {
+          color: null as unknown as { r: number; g: number; b: number },
+          width: 1,
+        },
+        drawOptions: { opacity: 0.5 },
+      }),
+    ).rejects.toThrow();
+
+    expect(ctx.saveCount).toBe(ctx.restoreCount);
+
+    // A later plain rectangle fills at alpha 1, proving the frame and opacity
+    // did not leak from the failed drawLine.
+    await canvas.drawRect({
+      canvasId,
+      rect: { x: 0, y: 0, width: 5, height: 5 },
+      fill: { color: { r: 0, g: 0, b: 255 } },
+    });
+
+    expect(ctx.fillAlphas).toEqual([1]);
+  });
+
+  it("drawText balances save/restore when the text color is malformed", async () => {
+    const { canvas, canvasId } = await makeCanvas();
+
+    // A null style.color reaches colorToString and throws a TypeError AFTER
+    // applyDrawOptions pushed the frame and set globalAlpha.
+    await expect(
+      canvas.drawText({
+        canvasId,
+        text: "hi",
+        position: { x: 0, y: 0 },
+        style: {
+          font: "sans-serif",
+          size: 12,
+          color: null as unknown as { r: number; g: number; b: number },
+        },
+        drawOptions: { opacity: 0.5 },
+      }),
+    ).rejects.toThrow();
+
+    expect(ctx.saveCount).toBe(ctx.restoreCount);
+
+    // A later plain rectangle fills at alpha 1, proving the frame and opacity
+    // did not leak from the failed drawText.
     await canvas.drawRect({
       canvasId,
       rect: { x: 0, y: 0, width: 5, height: 5 },
