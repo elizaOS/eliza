@@ -1,8 +1,8 @@
 /**
  * Exercises the logger through real native-ESM Node subprocesses so Vitest's
  * module transform cannot supply CommonJS globals. The source run asserts its
- * TypeScript loader preserves that boundary; a built package is also checked
- * through plain Node when `dist` is present.
+ * TypeScript loader preserves that boundary; the package test script builds
+ * `dist` first so plain Node always checks the published-package path too.
  */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
