@@ -457,43 +457,51 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
+    // applyDrawOptions() runs ctx.save() and mutates ctx (globalAlpha,
+    // blendMode, shadow, transform). Any step below can throw — a malformed
+    // gradient fill (negative radius, out-of-range color-stop offset,
+    // unparseable color) throws from createFillStyle. Without try/finally the
+    // ctx.restore() would be skipped, leaking the save() frame and the mutated
+    // draw-option state onto every later draw on this canvas. This mirrors the
+    // balance the async drawImage() path already guarantees.
     this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    try {
+      ctx.beginPath();
 
-    ctx.beginPath();
+      if (options.cornerRadius && options.cornerRadius > 0) {
+        const r = options.cornerRadius;
+        const { x, y, width, height } = options.rect;
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + width - r, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+        ctx.lineTo(x + width, y + height - r);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+        ctx.lineTo(x + r, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      } else {
+        ctx.rect(
+          options.rect.x,
+          options.rect.y,
+          options.rect.width,
+          options.rect.height,
+        );
+      }
 
-    if (options.cornerRadius && options.cornerRadius > 0) {
-      const r = options.cornerRadius;
-      const { x, y, width, height } = options.rect;
-      ctx.moveTo(x + r, y);
-      ctx.lineTo(x + width - r, y);
-      ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-      ctx.lineTo(x + width, y + height - r);
-      ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-      ctx.lineTo(x + r, y + height);
-      ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-      ctx.lineTo(x, y + r);
-      ctx.quadraticCurveTo(x, y, x + r, y);
-      ctx.closePath();
-    } else {
-      ctx.rect(
-        options.rect.x,
-        options.rect.y,
-        options.rect.width,
-        options.rect.height,
-      );
+      if (options.fill) {
+        ctx.fillStyle = this.createFillStyle(ctx, options.fill);
+        ctx.fill();
+      }
+
+      if (options.stroke) {
+        this.applyStrokeStyle(ctx, options.stroke);
+        ctx.stroke();
+      }
+    } finally {
+      ctx.restore();
     }
-
-    if (options.fill) {
-      ctx.fillStyle = this.createFillStyle(ctx, options.fill);
-      ctx.fill();
-    }
-
-    if (options.stroke) {
-      this.applyStrokeStyle(ctx, options.stroke);
-      ctx.stroke();
-    }
-
-    ctx.restore();
   }
 
   async drawEllipse(options: {
@@ -507,30 +515,33 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
+    // See drawRect: try/finally keeps ctx.save()/restore() balanced even when
+    // a malformed gradient fill throws from createFillStyle.
     this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    try {
+      ctx.beginPath();
+      ctx.ellipse(
+        options.center.x,
+        options.center.y,
+        options.radiusX,
+        options.radiusY,
+        0,
+        0,
+        Math.PI * 2,
+      );
 
-    ctx.beginPath();
-    ctx.ellipse(
-      options.center.x,
-      options.center.y,
-      options.radiusX,
-      options.radiusY,
-      0,
-      0,
-      Math.PI * 2,
-    );
+      if (options.fill) {
+        ctx.fillStyle = this.createFillStyle(ctx, options.fill);
+        ctx.fill();
+      }
 
-    if (options.fill) {
-      ctx.fillStyle = this.createFillStyle(ctx, options.fill);
-      ctx.fill();
+      if (options.stroke) {
+        this.applyStrokeStyle(ctx, options.stroke);
+        ctx.stroke();
+      }
+    } finally {
+      ctx.restore();
     }
-
-    if (options.stroke) {
-      this.applyStrokeStyle(ctx, options.stroke);
-      ctx.stroke();
-    }
-
-    ctx.restore();
   }
 
   async drawLine(options: {
@@ -542,15 +553,19 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
+    // See drawRect: try/finally keeps ctx.save()/restore() balanced even when
+    // a step between save() and restore() throws.
     this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
-    this.applyStrokeStyle(ctx, options.stroke);
+    try {
+      this.applyStrokeStyle(ctx, options.stroke);
 
-    ctx.beginPath();
-    ctx.moveTo(options.from.x, options.from.y);
-    ctx.lineTo(options.to.x, options.to.y);
-    ctx.stroke();
-
-    ctx.restore();
+      ctx.beginPath();
+      ctx.moveTo(options.from.x, options.from.y);
+      ctx.lineTo(options.to.x, options.to.y);
+      ctx.stroke();
+    } finally {
+      ctx.restore();
+    }
   }
 
   async drawPath(options: {
@@ -562,87 +577,90 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
+    // See drawRect: try/finally keeps ctx.save()/restore() balanced even when
+    // a malformed gradient fill throws from createFillStyle.
     this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    try {
+      ctx.beginPath();
 
-    ctx.beginPath();
-
-    for (const cmd of options.path.commands) {
-      switch (cmd.type) {
-        case "moveTo":
-          ctx.moveTo(cmd.args[0], cmd.args[1]);
-          break;
-        case "lineTo":
-          ctx.lineTo(cmd.args[0], cmd.args[1]);
-          break;
-        case "quadraticCurveTo":
-          ctx.quadraticCurveTo(
-            cmd.args[0],
-            cmd.args[1],
-            cmd.args[2],
-            cmd.args[3],
-          );
-          break;
-        case "bezierCurveTo":
-          ctx.bezierCurveTo(
-            cmd.args[0],
-            cmd.args[1],
-            cmd.args[2],
-            cmd.args[3],
-            cmd.args[4],
-            cmd.args[5],
-          );
-          break;
-        case "arcTo":
-          ctx.arcTo(
-            cmd.args[0],
-            cmd.args[1],
-            cmd.args[2],
-            cmd.args[3],
-            cmd.args[4],
-          );
-          break;
-        case "arc":
-          ctx.arc(
-            cmd.args[0],
-            cmd.args[1],
-            cmd.args[2],
-            cmd.args[3],
-            cmd.args[4],
-            cmd.args[5] === 1,
-          );
-          break;
-        case "ellipse":
-          ctx.ellipse(
-            cmd.args[0],
-            cmd.args[1],
-            cmd.args[2],
-            cmd.args[3],
-            cmd.args[4],
-            cmd.args[5],
-            cmd.args[6],
-            cmd.args[7] === 1,
-          );
-          break;
-        case "rect":
-          ctx.rect(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
-          break;
-        case "closePath":
-          ctx.closePath();
-          break;
+      for (const cmd of options.path.commands) {
+        switch (cmd.type) {
+          case "moveTo":
+            ctx.moveTo(cmd.args[0], cmd.args[1]);
+            break;
+          case "lineTo":
+            ctx.lineTo(cmd.args[0], cmd.args[1]);
+            break;
+          case "quadraticCurveTo":
+            ctx.quadraticCurveTo(
+              cmd.args[0],
+              cmd.args[1],
+              cmd.args[2],
+              cmd.args[3],
+            );
+            break;
+          case "bezierCurveTo":
+            ctx.bezierCurveTo(
+              cmd.args[0],
+              cmd.args[1],
+              cmd.args[2],
+              cmd.args[3],
+              cmd.args[4],
+              cmd.args[5],
+            );
+            break;
+          case "arcTo":
+            ctx.arcTo(
+              cmd.args[0],
+              cmd.args[1],
+              cmd.args[2],
+              cmd.args[3],
+              cmd.args[4],
+            );
+            break;
+          case "arc":
+            ctx.arc(
+              cmd.args[0],
+              cmd.args[1],
+              cmd.args[2],
+              cmd.args[3],
+              cmd.args[4],
+              cmd.args[5] === 1,
+            );
+            break;
+          case "ellipse":
+            ctx.ellipse(
+              cmd.args[0],
+              cmd.args[1],
+              cmd.args[2],
+              cmd.args[3],
+              cmd.args[4],
+              cmd.args[5],
+              cmd.args[6],
+              cmd.args[7] === 1,
+            );
+            break;
+          case "rect":
+            ctx.rect(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
+            break;
+          case "closePath":
+            ctx.closePath();
+            break;
+        }
       }
-    }
 
-    if (options.fill) {
-      ctx.fillStyle = this.createFillStyle(ctx, options.fill);
-      ctx.fill();
-    }
+      if (options.fill) {
+        ctx.fillStyle = this.createFillStyle(ctx, options.fill);
+        ctx.fill();
+      }
 
-    if (options.stroke) {
-      this.applyStrokeStyle(ctx, options.stroke);
-      ctx.stroke();
+      if (options.stroke) {
+        this.applyStrokeStyle(ctx, options.stroke);
+        ctx.stroke();
+      }
+    } finally {
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 
   async drawText(options: {
@@ -654,26 +672,29 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
+    // See drawRect: try/finally keeps ctx.save()/restore() balanced even when
+    // a step between save() and restore() throws.
     this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
+    try {
+      ctx.font = `${options.style.size}px ${options.style.font}`;
+      ctx.fillStyle = this.colorToString(options.style.color);
+      ctx.textAlign = options.style.align || "left";
+      ctx.textBaseline = (options.style.baseline ||
+        "alphabetic") as CanvasTextBaseline;
 
-    ctx.font = `${options.style.size}px ${options.style.font}`;
-    ctx.fillStyle = this.colorToString(options.style.color);
-    ctx.textAlign = options.style.align || "left";
-    ctx.textBaseline = (options.style.baseline ||
-      "alphabetic") as CanvasTextBaseline;
-
-    if (options.style.maxWidth) {
-      ctx.fillText(
-        options.text,
-        options.position.x,
-        options.position.y,
-        options.style.maxWidth,
-      );
-    } else {
-      ctx.fillText(options.text, options.position.x, options.position.y);
+      if (options.style.maxWidth) {
+        ctx.fillText(
+          options.text,
+          options.position.x,
+          options.position.y,
+          options.style.maxWidth,
+        );
+      } else {
+        ctx.fillText(options.text, options.position.x, options.position.y);
+      }
+    } finally {
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 
   async drawImage(options: {
