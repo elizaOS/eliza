@@ -13,7 +13,7 @@
 import type { AppDto } from "@elizaos/cloud-sdk";
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
+import { toWellFormedUnicode, unwrapUserMessageText } from "@elizaos/core";
 import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/shared";
 
 /** Default Eliza Cloud API base URL (matches the cloud runtime default). */
@@ -437,15 +437,13 @@ export function describeAppReference(
 }
 
 /**
- * Render a reference for logs and machine-facing action text/data, where the
- * actual query matters. A blob-shaped fallback reference (see
- * {@link describeAppReference}) must still never travel whole: a weak planner
- * echoes tool text verbatim, and a multi-KB blob bloats context — so collapse
- * whitespace to one line and clamp to 120 chars with a trailing ellipsis.
+ * Render the complete reference for logs and machine-facing action text/data,
+ * where the actual query matters. Callers that only need a human-readable noun
+ * use {@link describeAppReference}; this surface preserves the query so action
+ * results do not silently replace it with an unaddressable prefix.
  */
 export function appReferenceLogView(reference: string): string {
-  const collapsed = reference.replace(/\s+/g, " ").trim();
-  return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
+  return toWellFormedUnicode(reference.trim());
 }
 
 export interface ResolvedApp {

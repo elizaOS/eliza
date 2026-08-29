@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   isScenarioExecutionProfile,
   type ScenarioExecutionProfile,
@@ -1083,16 +1083,12 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export function truncateText(value: unknown, maxLength = 420): string {
-  const text =
-    typeof value === "string"
-      ? value
-      : value == null
-        ? ""
-        : JSON.stringify(value);
-  const wellFormed = toWellFormedUnicode(text);
-  if (wellFormed.length <= maxLength) return wellFormed;
-  return `${truncateWellFormed(wellFormed, maxLength - 1)}…`;
+export function renderCompleteText(value: unknown): string {
+  return typeof value === "string"
+    ? value
+    : value == null
+      ? ""
+      : JSON.stringify(value);
 }
 
 function summarizeTrajectoryFile(
@@ -1139,11 +1135,11 @@ function summarizeTrajectoryFile(
       toolName: tool.name,
       toolSuccess: tool.success,
       toolError: tool.errorText,
-      toolInputPreview: truncateText(tool.input),
-      toolOutputPreview: truncateText(tool.output),
-      toolSearchQuery: truncateText(asRecord(toolSearch.query).text),
-      toolSearchTopResults: Array.isArray(toolSearch.results)
-        ? toolSearch.results.slice(0, 5).map((result) => {
+      toolInput: renderCompleteText(tool.input),
+      toolOutput: renderCompleteText(tool.output),
+      toolSearchQuery: renderCompleteText(asRecord(toolSearch.query).text),
+      toolSearchResults: Array.isArray(toolSearch.results)
+        ? toolSearch.results.map((result) => {
             const row = asRecord(result);
             return {
               name: row.name,
@@ -1154,7 +1150,7 @@ function summarizeTrajectoryFile(
           })
         : [],
       evaluationVerdict: evaluation.verdict,
-      responsePreview: truncateText(model.response),
+      response: renderCompleteText(model.response),
     };
   });
   return {
@@ -1346,9 +1342,9 @@ function scenarioViewerHtml(): string {
     function stageRows(summary) {
       const stages = summary.stages || [];
       if (!stages.length) return '<div class="turn muted">No stage summary.</div>';
-      return '<table><thead><tr><th>#</th><th>stage</th><th>latency</th><th>tokens</th><th>cache</th><th>tool/result</th><th>preview</th></tr></thead><tbody>' + stages.map(stage => {
+      return '<table><thead><tr><th>#</th><th>stage</th><th>latency</th><th>tokens</th><th>cache</th><th>tool/result</th><th>evidence</th></tr></thead><tbody>' + stages.map(stage => {
         const toolBits = [stage.toolName, stage.toolSuccess === true ? "ok" : stage.toolSuccess === false ? "failed" : "", stage.toolError].filter(Boolean).join(" · ");
-        const preview = stage.responsePreview || stage.toolInputPreview || stage.toolSearchQuery || "";
+        const evidence = stage.response || stage.toolInput || stage.toolSearchQuery || "";
         return \`<tr>
           <td>\${esc(stage.index)}</td>
           <td>\${esc(stageLabel(stage))}<br><span class="muted">\${esc(stage.stageId || "")}</span></td>
@@ -1356,7 +1352,7 @@ function scenarioViewerHtml(): string {
           <td>prompt \${esc(fmtNum(stage.promptTokens))}<br>completion \${esc(fmtNum(stage.completionTokens))}<br>total \${esc(fmtNum(stage.totalTokens))}</td>
           <td>read \${esc(fmtNum(stage.cacheReadTokens))}<br>\${esc(fmtPct(stage.cachePercent))}<br><span class="muted">\${esc(stage.cacheSegmentCount ?? "")} segments</span></td>
           <td>\${esc(toolBits || stage.evaluationVerdict || "")}</td>
-          <td>\${esc(preview)}</td>
+          <td>\${esc(evidence)}</td>
         </tr>\`;
       }).join("") + '</tbody></table>';
     }
@@ -1434,8 +1430,7 @@ export function printStdoutSummary(report: AggregateReport): void {
     const detail = first
       .replace(/\\/g, "\\\\")
       .replace(/\|/g, "\\|")
-      .replace(/\n/g, " ")
-      .slice(0, 140);
+      .replace(/\n/g, " ");
     lines.push(`| ${s.id} | ${s.status} | ${s.durationMs}ms | ${detail} |`);
   }
   lines.push("");

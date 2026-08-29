@@ -115,6 +115,41 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 };
 
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"plugins/plugin-agent-skills/src/security/skill-scanner.ts": [
+		/matchEvidence\s*=\s*source\.slice\(/,
+	],
+	"plugins/plugin-cloud-apps/src/client.ts": [
+		/appReferenceLogView[\s\S]{0,500}\.slice\(/,
+		/appReferenceLogView[\s\S]{0,500}truncateWellFormed/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/service-helpers-reminder.ts": [
+		/normalizeSemanticReason[\s\S]{0,500}\.slice\(/,
+		/normalizeSemanticReason[\s\S]{0,500}truncateWellFormed/,
+	],
+	"packages/scenario-runner/src/final-checks/index.ts": [
+		/actionCallSummary[\s\S]{0,900}\.slice\(/,
+		/blob\.slice\(/,
+	],
+	"packages/scenario-runner/src/judge.ts": [/raw\.slice\(/, /const preview/],
+	"packages/scenario-runner/src/reporter.ts": [
+		/truncateText/,
+		/toolInputPreview/,
+		/toolOutputPreview/,
+		/responsePreview/,
+		/toolSearchTopResults/,
+		/toolSearch\.results\.slice\(/,
+		/\.slice\(0,\s*140\)/,
+	],
+	"packages/scenario-runner/src/runtime-factory.ts": [
+		/ownerMessage\.slice\(/,
+		/const clamped/,
+	],
+	"packages/scenario-runner/src/scenario-assertions/calendar-assertions.ts": [
+		/blob\.slice\(/,
+	],
+	"packages/scenario-runner/src/scenario-assertions/effect-assertions.ts": [
+		/JSON\.stringify\(a\.result\?\.data[^\n]*\.slice\(/,
+	],
 	"packages/agent/src/services/agent-export.ts": [
 		/limit:\s*Number\.MAX_SAFE_INTEGER/,
 		/getMemoriesByWorldId\(/,
@@ -1023,6 +1058,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/scenario-runner/src/executor.ts": [
 		/serialized\.slice\(/,
 		/stringifyForJudge\([^,\n]+,\s*\d/,
+		/plannerBlob\.slice\(/,
+		/plannerPreview/,
 	],
 	"packages/app-core/src/services/account-pool-broker.ts": [
 		/trimmed\.slice\(0,\s*128\)/,
