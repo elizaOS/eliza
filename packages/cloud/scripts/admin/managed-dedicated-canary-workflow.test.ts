@@ -33,6 +33,7 @@ interface WorkflowJob {
 interface LiveSmokeWorkflow {
   jobs: {
     dedicated: WorkflowJob;
+    "dedicated-diagnostic": WorkflowJob;
     "shared-staging-onboarding": WorkflowJob;
     smoke: WorkflowJob;
   };
@@ -40,6 +41,11 @@ interface LiveSmokeWorkflow {
     workflow_dispatch: {
       inputs: {
         stale_canary_suffix: {
+          default: string;
+          required: boolean;
+          type: string;
+        };
+        diagnose_canary_suffix: {
           default: string;
           required: boolean;
           type: string;
@@ -98,20 +104,28 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(
       workflow.on.workflow_dispatch.inputs.stale_canary_suffix,
     ).toMatchObject({ default: "", required: false, type: "string" });
+    expect(
+      workflow.on.workflow_dispatch.inputs.diagnose_canary_suffix,
+    ).toMatchObject({ default: "", required: false, type: "string" });
     expect(workflow.on.workflow_dispatch.inputs.cleanup_only).toMatchObject({
       default: false,
       required: false,
       type: "boolean",
     });
     expect(workflow.jobs.smoke.if).toBe(
-      githubExpression("!inputs.cleanup_only && inputs.suite != 'dedicated'"),
+      githubExpression(
+        "inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated'",
+      ),
     );
     expect(dedicated.if).toBe(
-      "inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated'",
+      "inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')",
+    );
+    expect(workflow.jobs["dedicated-diagnostic"].if).toBe(
+      "inputs.diagnose_canary_suffix != ''",
     );
     expect(workflow.jobs["shared-staging-onboarding"].if).toBe(
       githubExpression(
-        "always() && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud')",
+        "always() && inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud')",
       ),
     );
     expect(existsSync(retiredWorkflowPath)).toBe(false);
@@ -125,6 +139,46 @@ describe("managed dedicated live-smoke workflow contract", () => {
       group: "managed-dedicated-staging-canary",
       "cancel-in-progress": false,
     });
+    expect(workflow.jobs["dedicated-diagnostic"].concurrency).toEqual({
+      group: "managed-dedicated-staging-canary",
+      "cancel-in-progress": false,
+    });
+  });
+
+  test("restores an exact, read-only, privacy-safe provisioning diagnostic", () => {
+    const diagnostic = workflow.jobs["dedicated-diagnostic"];
+    expect(diagnostic.environment).toBe("staging");
+    expect(diagnostic["timeout-minutes"]).toBe(10);
+    expect(diagnostic.env?.CANARY_DIAGNOSTIC_SUFFIX).toBe(
+      githubExpression("inputs.diagnose_canary_suffix"),
+    );
+
+    const query = diagnostic.steps.find(
+      (step) => step.name === "Query exact failed canary read-only",
+    );
+    expect(query?.env?.PGOPTIONS).toContain("default_transaction_read_only=on");
+    expect(query?.run).toContain("BEGIN READ ONLY");
+    expect(query?.run).toContain("jobs.type = 'agent_provision'");
+    expect(query?.run).toContain(
+      "agent_name = 'managed-dedicated-canary-' || :'suffix'",
+    );
+    expect(query?.run).toContain("mutually exclusive");
+
+    const classify = diagnostic.steps.find(
+      (step) => step.name === "Classify privacy-safe provision diagnostic",
+    );
+    expect(classify?.run).toContain(
+      "managed-dedicated-provision-diagnostic.ts",
+    );
+    expect(classify?.run).toContain("rm -f --");
+
+    const upload = diagnostic.steps.find(
+      (step) => step.name === "Upload privacy-safe provision diagnostic",
+    );
+    expect(upload?.with?.path).toBe(
+      "reports/managed-dedicated-provision-diagnostic.json",
+    );
+    expect(upload?.with?.["retention-days"]).toBe(14);
   });
 
   test("fails closed on credentials, target drift, and invalid recovery intent", () => {

@@ -25,6 +25,11 @@ on:
         required: false
         type: string
         default: ""
+      diagnose_canary_suffix:
+        description: "Read-only staging diagnosis for one exact failed dedicated-canary suffix; performs no lifecycle mutation"
+        required: false
+        type: string
+        default: ""
       cleanup_only:
         description: "Delete only the exact prior dedicated canary; never create a replacement"
         required: false
@@ -46,7 +51,7 @@ jobs:
     name: ${{ inputs.suite }}
     # cleanup_only is an exclusive destructive-recovery mode. Never run an
     # unrelated live suite under the same dispatch, regardless of suite input.
-    if: ${{ !inputs.cleanup_only && inputs.suite != 'dedicated' }}
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -193,7 +198,7 @@ jobs:
 
   dedicated:
     name: Managed dedicated staging canary
-    if: inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated'
+    if: inputs.diagnose_canary_suffix == '' && (inputs.cleanup_only || inputs.suite == 'all' || inputs.suite == 'dedicated')
     runs-on: ubuntu-24.04
     environment: staging
     # Serialize this live lifecycle even when an `all` run overlaps a
@@ -503,10 +508,206 @@ jobs:
             echo "Managed dedicated canary passed with exact cleanup."
           fi
 
+  dedicated-diagnostic:
+    name: Read-only managed dedicated provision diagnosis
+    if: inputs.diagnose_canary_suffix != ''
+    runs-on: ubuntu-24.04
+    environment: staging
+    concurrency:
+      group: managed-dedicated-staging-canary
+      cancel-in-progress: false
+    timeout-minutes: 10
+    env:
+      CANARY_DIAGNOSTIC_SUFFIX: ${{ inputs.diagnose_canary_suffix }}
+      CANARY_RECOVERY_SUFFIX: ${{ inputs.stale_canary_suffix }}
+      CANARY_DIAGNOSTIC_CLEANUP_ONLY: ${{ inputs.cleanup_only && 'true' || 'false' }}
+      CANARY_DIAGNOSTIC_RAW_PATH: reports/managed-dedicated-provision-diagnostic.raw.json
+      CANARY_DIAGNOSTIC_EVIDENCE_PATH: reports/managed-dedicated-provision-diagnostic.json
+    steps:
+      - name: Checkout exact diagnostic source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
+      - name: Validate provision diagnostic contract
+        run: bun test packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.test.ts
+
+      - name: Query exact failed canary read-only
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=20000
+        run: |
+          set -euo pipefail
+          raw_ready=false
+          cleanup_incomplete_raw() {
+            if [[ "$raw_ready" != true ]]; then
+              rm -f -- "$CANARY_DIAGNOSTIC_RAW_PATH"
+            fi
+          }
+          trap cleanup_incomplete_raw EXIT
+          if [[ ! "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$ ]]; then
+            echo "::error::Diagnostic suffix is invalid."
+            exit 1
+          fi
+          if [[ -n "$CANARY_RECOVERY_SUFFIX" || "$CANARY_DIAGNOSTIC_CLEANUP_ONLY" == true ]]; then
+            echo "::error::Read-only diagnosis and lifecycle mutation inputs are mutually exclusive."
+            exit 1
+          fi
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "::error::Staging DATABASE_URL is unavailable."
+            exit 1
+          fi
+
+          mkdir -p reports
+          umask 077
+          PSQL_DATABASE_URL="$(
+            bun packages/cloud/scripts/admin/libpq-connection-url.ts
+          )"
+          echo "::add-mask::$PSQL_DATABASE_URL"
+          psql "$PSQL_DATABASE_URL" \
+            --no-psqlrc \
+            --no-align \
+            --tuples-only \
+            --quiet \
+            --set ON_ERROR_STOP=1 \
+            --set suffix="$CANARY_DIAGNOSTIC_SUFFIX" \
+            > "$CANARY_DIAGNOSTIC_RAW_PATH" <<'SQL'
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout = '20s';
+          WITH target AS (
+            SELECT
+              id,
+              status,
+              execution_tier,
+              database_status,
+              error_message,
+              error_count,
+              updated_at,
+              sandbox_id IS NOT NULL AS sandbox_id_present,
+              node_id IS NOT NULL AS node_id_present,
+              container_name IS NOT NULL AS container_name_present,
+              headscale_ip IS NOT NULL AS headscale_ip_present
+            FROM agent_sandboxes
+            WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
+          ),
+          newest_provision_job AS (
+            SELECT
+              jobs.status,
+              jobs.error,
+              jobs.result ->> 'error' AS result_error,
+              jobs.attempts,
+              jobs.max_attempts,
+              jobs.retryable_requeues,
+              jobs.execution_interruptions,
+              jobs.result_storage,
+              jobs.error_storage,
+              jobs.scheduled_for,
+              jobs.started_at,
+              jobs.completed_at,
+              jobs.created_at,
+              jobs.updated_at
+            FROM jobs
+            INNER JOIN target ON target.id::text = jobs.agent_id
+            WHERE jobs.type = 'agent_provision'
+            ORDER BY jobs.created_at DESC, jobs.id DESC
+            LIMIT 1
+          )
+          SELECT json_build_object(
+            'targetCount', (SELECT count(*) FROM target),
+            'agent', (
+              SELECT json_build_object(
+                'status', status,
+                'executionTier', execution_tier,
+                'databaseStatus', database_status,
+                'errorMessage', error_message,
+                'errorCount', error_count,
+                'updatedAt', updated_at,
+                'locator', json_build_object(
+                  'sandboxIdPresent', sandbox_id_present,
+                  'nodeIdPresent', node_id_present,
+                  'containerNamePresent', container_name_present,
+                  'headscaleIpPresent', headscale_ip_present
+                )
+              )
+              FROM target
+              LIMIT 1
+            ),
+            'provisionJob', (
+              SELECT json_build_object(
+                'status', status,
+                'error', error,
+                'resultError', result_error,
+                'attempts', attempts,
+                'maxAttempts', max_attempts,
+                'retryableRequeues', retryable_requeues,
+                'executionInterruptions', execution_interruptions,
+                'resultStorage', result_storage,
+                'errorStorage', error_storage,
+                'scheduledFor', scheduled_for,
+                'startedAt', started_at,
+                'completedAt', completed_at,
+                'createdAt', created_at,
+                'updatedAt', updated_at
+              )
+              FROM newest_provision_job
+            )
+          );
+          COMMIT;
+          SQL
+          raw_ready=true
+
+      - name: Classify privacy-safe provision diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'rm -f -- "$CANARY_DIAGNOSTIC_RAW_PATH"' EXIT
+          bun run packages/cloud/scripts/admin/managed-dedicated-provision-diagnostic.ts \
+            "$CANARY_DIAGNOSTIC_SUFFIX" \
+            "$CANARY_DIAGNOSTIC_RAW_PATH" \
+            "$CANARY_DIAGNOSTIC_EVIDENCE_PATH"
+
+      - name: Upload privacy-safe provision diagnostic
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: managed-dedicated-provision-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/managed-dedicated-provision-diagnostic.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summarize classified provision result
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun -e '
+            import { readFileSync } from "node:fs";
+            const evidence = JSON.parse(
+              readFileSync(process.env.CANARY_DIAGNOSTIC_EVIDENCE_PATH, "utf8"),
+            );
+            const job = evidence.provisionJob;
+            console.log("### Managed dedicated provision diagnostic");
+            console.log("");
+            console.log("- exact target count: `" + evidence.targetCount + "`");
+            console.log("- sandbox status: `" + evidence.sandbox.status + "`");
+            console.log("- database status: `" + evidence.sandbox.databaseStatus + "`");
+            console.log("- sandbox error class: `" + evidence.sandbox.errorCode + "`");
+            console.log("- provision job status: `" + job.status + "`");
+            console.log("- provision job error class: `" + job.errorCode + "`");
+            console.log("- persisted result class: `" + job.resultErrorCode + "`");
+            console.log("- attempts: `" + job.attempts + "/" + job.maxAttempts + "`");
+            console.log("- retryable requeues: `" + job.retryableRequeues + "`");
+            console.log("- execution interruptions: `" + job.executionInterruptions + "`");
+          ' >> "$GITHUB_STEP_SUMMARY"
+
   shared-staging-onboarding:
     name: Shared staging onboarding
     needs: smoke
-    if: ${{ always() && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud') }}
+    if: ${{ always() && inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && (inputs.suite == 'all' || inputs.suite == 'cloud') }}
     environment: staging
     runs-on: ubuntu-24.04
     timeout-minutes: 20
