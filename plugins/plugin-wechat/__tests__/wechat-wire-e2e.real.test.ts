@@ -20,6 +20,13 @@
  * body) for exact fidelity assertions. No plugin module is mocked; the
  * runtime's messageService.handleMessage is wrapped only to COUNT pipeline
  * invocations, never to alter behavior.
+ *
+ * Scope note: this harness drives the plugin entrypoint directly with an
+ * explicit config object plus the matching character-settings wiring the
+ * plugin's account provider reads; it does NOT exercise host boot or the
+ * host's connector-config propagation (the elizaOS host connector projection
+ * currently covers Slack only), so it is plugin-level wire evidence, not
+ * host-boot evidence.
  */
 
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
@@ -235,15 +242,15 @@ function startWireServer(): Promise<WireServer> {
 
 type LogSink = { level: string; args: unknown[] }[];
 
-function capturePluginLogs(sink: LogSink): () => void {
+function captureLogsOn(target: unknown, sink: LogSink): () => void {
   const levels = ["log", "info", "warn", "error", "debug"] as const;
   const originals = new Map<string, unknown>();
+  const record = target as Record<string, unknown>;
   for (const level of levels) {
-    const target = logger as unknown as Record<string, unknown>;
-    const original = target[level];
+    const original = record[level];
     if (typeof original === "function") {
       originals.set(level, original);
-      target[level] = (...args: unknown[]) => {
+      record[level] = (...args: unknown[]) => {
         sink.push({ level, args });
         (original as (...a: unknown[]) => void)(...args);
       };
@@ -251,9 +258,13 @@ function capturePluginLogs(sink: LogSink): () => void {
   }
   return () => {
     for (const [level, original] of originals) {
-      (logger as unknown as Record<string, unknown>)[level] = original;
+      record[level] = original;
     }
   };
+}
+
+function capturePluginLogs(sink: LogSink): () => void {
+  return captureLogsOn(logger, sink);
 }
 
 function sinkText(sink: LogSink): string[] {
@@ -331,7 +342,7 @@ async function startHarness(
   }) as typeof fetch;
   (globalThis as { fetch: typeof fetch }).fetch = redirectedFetch;
 
-  const restoreLogs = capturePluginLogs(logs);
+  const restorePluginLogs = capturePluginLogs(logs);
 
   const runtime = await createTestRuntimeWithModelProvider({
     fixtures: [
@@ -359,6 +370,10 @@ async function startHarness(
       return (original as (...a: unknown[]) => Promise<unknown>)(...args);
     }) as typeof ms.handleMessage;
   }
+
+  // The runtime's own namespaced logger carries error-report output
+  // (reportError → [AGENT] ... wechat:callback-delivery ...); wrap it too.
+  const restoreRuntimeLogs = captureLogsOn(runtime.runtime.logger, logs);
 
   const callbackPort = await freePort();
 
@@ -391,7 +406,9 @@ async function startHarness(
 
   // Production hosts surface connector config through character settings;
   // the account provider reads runtime.character.settings.connectors.wechat.
-  // Mirror that wiring so provider status is observable exactly as deployed.
+  // The plugin's provider reads connector config from character settings;
+  // this harness drives the plugin entrypoint DIRECTLY (host boot and host
+  // config propagation are out of scope — this is not a host-boot test).
   (
     runtime.runtime.character as unknown as {
       settings: Record<string, unknown>;
@@ -419,7 +436,8 @@ async function startHarness(
       await wechatPluginDefault.dispose();
       await runtime.cleanup();
       await wire.close();
-      restoreLogs();
+      restoreRuntimeLogs();
+      restorePluginLogs();
       (globalThis as { fetch: typeof fetch }).fetch = REAL_FETCH;
     },
   };
@@ -703,6 +721,8 @@ describe("wechat wire-fidelity e2e (local Tencent wire server, real plugin init)
       ),
     );
     expect(sendReq).toBeDefined();
+    expect(sendReq?.method).toBe("POST");
+    expect(sendReq?.contentType).toBe("application/json");
     expect(sendReq?.originalUrl).toBe(
       "https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=WECOM_E2E_TOKEN_1",
     );
@@ -771,6 +791,7 @@ describe("wechat wire-fidelity e2e (local Tencent wire server, real plugin init)
     await sleep(1000);
     expect(h.pipelineCalls.handleMessage).toBe(0);
     expect(h.wire.sends.length).toBe(0);
+    expect(await roomMemories(h, "wecom-main", "WecomSpy2")).toBe(0);
   }, 120_000);
 
   it("4c. WeCom AgentID mismatch rejected (cross-agent replay under same corp creds)", async () => {
@@ -784,6 +805,7 @@ describe("wechat wire-fidelity e2e (local Tencent wire server, real plugin init)
     await sleep(1000);
     expect(h.pipelineCalls.handleMessage).toBe(0);
     expect(h.wire.sends.length).toBe(0);
+    expect(await roomMemories(h, "wecom-main", "WecomSpy3")).toBe(0);
   }, 120_000);
 
   it("5. stale signature (outside the freshness window) rejected", async () => {
@@ -797,6 +819,7 @@ describe("wechat wire-fidelity e2e (local Tencent wire server, real plugin init)
     await sleep(1000);
     expect(h.pipelineCalls.handleMessage).toBe(0);
     expect(h.wire.sends.length).toBe(0);
+    expect(await roomMemories(h, "default", "oStaleUser")).toBe(0);
 
     // The rejection surfaced through the structured logger at the boundary.
     expect(
@@ -835,10 +858,15 @@ describe("wechat wire-fidelity e2e (local Tencent wire server, real plugin init)
     // status (observationalStatus: degraded → "error").
     expect(await accountStatus(h, "default")).toBe("error");
 
-    // Structured log captured at the boundary (delivery error reported).
+    // Structured log captured at the boundary: the failed delivery surfaces
+    // through the runtime's error-report scope, not just any wechat line.
     expect(
-      sinkText(h.logs).some((l) => l.includes("[wechat]")),
-      "structured wechat log lines captured",
+      sinkText(h.logs).some(
+        (l) =>
+          l.includes("wechat:callback-delivery") ||
+          l.includes("delivery to the first-party endpoint failed"),
+      ),
+      "structured delivery-error log captured",
     ).toBe(true);
   }, 120_000);
 
