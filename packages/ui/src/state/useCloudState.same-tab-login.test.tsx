@@ -24,6 +24,7 @@ import {
   prepareDesktopCloudLoginSession,
 } from "./cloud-login-launch";
 import { registerStewardLoginLauncher } from "./cloud-steward-login";
+import { savePersistedActiveServer } from "./persistence";
 import { useCloudState } from "./useCloudState";
 
 const DEVICE_CODE_SENTINEL = "device-code-flow-reached";
@@ -1208,6 +1209,37 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     delete globalWithPlatform.Capacitor;
     restorePinnedRemote();
     vi.restoreAllMocks();
+  });
+
+  it("does not poll a selected remote runtime's unrelated Cloud billing state", async () => {
+    expect(
+      savePersistedActiveServer({
+        id: "remote:browser-preview",
+        kind: "remote",
+        label: "Eliza VPS",
+        apiBase: "http://127.0.0.1:12487",
+      }),
+    ).toBe(true);
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      hasApiKey: true,
+      cloudVoiceProxyAvailable: false,
+    });
+    getCloudCreditsSpy.mockResolvedValue({ authRejected: true });
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    let connected = true;
+    await act(async () => {
+      connected = await result.current.pollCloudCredits();
+    });
+
+    expect(connected).toBe(false);
+    expect(getCloudStatusSpy).not.toHaveBeenCalled();
+    expect(getCloudCreditsSpy).not.toHaveBeenCalled();
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
+    expect(result.current.elizaCloudPollInterval.current).toBeNull();
+    unmount();
   });
 
   it("applies a connected snapshot: enabled, credits balance, low/critical flags, and status reason", async () => {
