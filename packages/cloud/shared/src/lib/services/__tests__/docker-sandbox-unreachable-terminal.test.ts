@@ -30,6 +30,11 @@ import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 let nextExecError: Error = new Error("unset");
 mock.module("../docker-ssh", () => ({
   DockerSSHClient: {
+    createDedicated: () => ({
+      exec: async () => {
+        throw nextExecError;
+      },
+    }),
     getClient: () => ({
       exec: async () => {
         throw nextExecError;

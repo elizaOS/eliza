@@ -7,8 +7,13 @@
 import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
-import { dbRead, dbWrite } from "../../db/helpers";
+import { type Database, dbRead, dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import {
+  AGENT_SANDBOX_REPLACEMENT_GLOBAL_FENCE_STATES,
+  type AgentSandboxReplacementAttemptState,
+  agentSandboxReplacementAttempts,
+} from "../../db/schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 import { logger } from "../utils/logger";
@@ -153,6 +158,60 @@ export function agentIdFromContainerName(name: string): string | null {
   return agentId.length > 0 ? agentId : null;
 }
 
+const EXACT_RESTORE_CONTAINER_NAME =
+  /^agent-restore-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
+const CANONICAL_SANDBOX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const EXACT_RESTORE_ACTIVE_ATTEMPT_STATES = new Set<AgentSandboxReplacementAttemptState>(
+  AGENT_SANDBOX_REPLACEMENT_GLOBAL_FENCE_STATES,
+);
+
+function isExactRestoreAliasKey(key: string): boolean {
+  return EXACT_RESTORE_CONTAINER_NAME.test(`${AGENT_CONTAINER_NAME_PREFIX}${key}`);
+}
+
+/** Keep physical-name aliases out of PostgreSQL's typed UUID predicate. */
+export function canonicalSandboxIdsForOrphanLookup(keys: readonly string[]): string[] {
+  return keys.filter((key) => CANONICAL_SANDBOX_UUID.test(key));
+}
+
+type ExactRestoreAttemptOwnershipRow = {
+  locatorContainerName: string | null;
+  locatorNodeId: string | null;
+  state: AgentSandboxReplacementAttemptState;
+};
+
+/**
+ * Convert active exact-provider attempt locators into the physical-name aliases
+ * consumed by the orphan classifier. `cleanup_proven` and adopted
+ * `lifecycle_committed` attempts are deliberately excluded by the query:
+ * cleanup proof makes the old object reapable, while lifecycle adoption is
+ * represented by the canonical sandbox row instead of immortal attempt history.
+ */
+export function exactRestoreAttemptOwnershipAliases(
+  rows: readonly ExactRestoreAttemptOwnershipRow[],
+  queriedIds: ReadonlySet<string>,
+): LiveContainerRef[] {
+  return rows.flatMap((row) => {
+    const name = row.locatorContainerName;
+    if (
+      !name ||
+      !EXACT_RESTORE_CONTAINER_NAME.test(name) ||
+      !EXACT_RESTORE_ACTIVE_ATTEMPT_STATES.has(row.state)
+    ) {
+      return [];
+    }
+    const key = agentIdFromContainerName(name);
+    if (!key || !queriedIds.has(key)) return [];
+    return [
+      {
+        key,
+        status: "replacement_attempt_owned",
+        nodeId: row.locatorNodeId ?? undefined,
+      },
+    ];
+  });
+}
+
 /**
  * Load every owned placement for the agent_sandboxes rows matching the given
  * ids. A replacement fence owns a second real container until its exact remote
@@ -170,11 +229,54 @@ export function agentIdFromContainerName(name: string): string | null {
 export async function loadSandboxStatusesByIds(
   agentIds: readonly string[],
 ): Promise<LiveContainerRef[]> {
+  return loadSandboxStatusesByIdsWithDatabase(dbWrite, agentIds);
+}
+
+/** @internal Exported so real-PostgreSQL concurrency tests can use isolated databases. */
+export async function loadSandboxStatusesByIdsWithDatabase(
+  database: Database,
+  agentIds: readonly string[],
+): Promise<LiveContainerRef[]> {
   if (agentIds.length === 0) return [];
   const queriedIds = new Set(agentIds);
   const queriedKeys = [...queriedIds];
+  const queriedSandboxIds = canonicalSandboxIdsForOrphanLookup(queriedKeys);
   const queriedContainerNames = queriedKeys.map((id) => `${AGENT_CONTAINER_NAME_PREFIX}${id}`);
-  const rows = await dbWrite
+  const queriedExactRestoreContainerNames = queriedContainerNames.filter((name) =>
+    EXACT_RESTORE_CONTAINER_NAME.test(name),
+  );
+  // Read attempt ownership before canonical lifecycle ownership. Adoption moves
+  // both authorities atomically: it terminalizes the attempt and publishes the
+  // agent_sandboxes row in one transaction. Under READ COMMITTED, this ordering
+  // guarantees that every interleaving observes at least one side of that move:
+  // a pre-adoption attempt snapshot remains protective, while a post-adoption
+  // attempt snapshot is followed by a canonical-row snapshot. Running the two
+  // reads concurrently can instead observe the sandbox before the commit and
+  // the attempt after it, making a live exact target look rowless to the reaper.
+  const exactRestoreAttemptRows =
+    queriedExactRestoreContainerNames.length === 0
+      ? []
+      : await database
+          .select({
+            locatorContainerName: agentSandboxReplacementAttempts.locator_container_name,
+            locatorNodeId: agentSandboxReplacementAttempts.locator_node_id,
+            state: agentSandboxReplacementAttempts.state,
+          })
+          .from(agentSandboxReplacementAttempts)
+          .where(
+            and(
+              inArray(
+                agentSandboxReplacementAttempts.locator_container_name,
+                queriedExactRestoreContainerNames,
+              ),
+              inArray(
+                agentSandboxReplacementAttempts.state,
+                AGENT_SANDBOX_REPLACEMENT_GLOBAL_FENCE_STATES,
+              ),
+              sql`${agentSandboxReplacementAttempts.restore_attempt_id} IS NOT NULL`,
+            ),
+          );
+  const rows = await database
     .select({
       key: agentSandboxes.id,
       containerName: agentSandboxes.container_name,
@@ -186,12 +288,12 @@ export async function loadSandboxStatusesByIds(
     .from(agentSandboxes)
     .where(
       or(
-        inArray(agentSandboxes.id, queriedKeys),
+        queriedSandboxIds.length > 0 ? inArray(agentSandboxes.id, queriedSandboxIds) : sql`false`,
         inArray(agentSandboxes.container_name, queriedContainerNames),
         inArray(agentSandboxes.replacement_cleanup_container_name, queriedContainerNames),
       ),
     );
-  return rows.flatMap((row) => {
+  const sandboxAliases = rows.flatMap((row) => {
     const placements: LiveContainerRef[] = [];
     const appendPlacement = (
       placement: LiveContainerRef,
@@ -226,6 +328,10 @@ export async function loadSandboxStatusesByIds(
     }
     return placements;
   });
+  return [
+    ...sandboxAliases,
+    ...exactRestoreAttemptOwnershipAliases(exactRestoreAttemptRows, queriedIds),
+  ];
 }
 
 /**
@@ -248,6 +354,11 @@ export const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   // where a deletion generation that could not prove the workload stopped
   // finally hands its node slot back (#17185).
   onReaped: async (agentId, nodeId) => {
+    // Exact restore capacity is owned by its replacement attempt and may only
+    // be released by the serialized cleanup protocol. A now-terminal physical
+    // alias can be reaped, but must never be mistaken for an agent_sandboxes
+    // deletion generation or decrement capacity a second time.
+    if (isExactRestoreAliasKey(agentId)) return;
     await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId);
   },
 };
