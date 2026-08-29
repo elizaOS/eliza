@@ -1133,6 +1133,10 @@ export class TelegramService extends Service {
         accountId,
       ) as Promise<TelegramMembershipGate | null>;
       const gate = await gatePromise;
+      // Overwrite any stale settled entry (e.g. a null a rejected replay
+      // stored after an earlier failure's cleanup): a successful fresh
+      // bootstrap makes THIS gate the authoritative settled value.
+      this.settledMembershipGates.set(accountId, gate);
       const manager = this.getAccountState(accountId)?.messageManager;
       if (gate) {
         // Bind ONLY this account's own manager: a fallback to the default
@@ -1154,10 +1158,14 @@ export class TelegramService extends Service {
       this.runtime.reportError("telegram:membership-bootstrap", error, {
         accountId,
       });
-      // Clear BOTH cached rejections so a startup retry issues FRESH
-      // lookups instead of replaying the cached failure forever.
+      // Clear ALL cached state for this account so a startup retry issues
+      // FRESH lookups instead of replaying the cached failure forever —
+      // including the settled-null entry a rejected replay may have stored,
+      // which would otherwise short-circuit getMembershipGate() and make a
+      // successfully-retried gate look absent.
       this.membershipBotIdentity.delete(accountId);
       this.membershipGates.delete(accountId);
+      this.settledMembershipGates.delete(accountId);
     }
   }
 
@@ -1239,7 +1247,10 @@ export class TelegramService extends Service {
     }
   }
 
-  /** Resolves the account's membership gate, or null when absent/failed. */
+  /** Resolves the account's membership gate, or null when absent/failed.
+   * The settled-null short-circuit is safe because every failure path that
+   * clears the gate promise also clears the settled registry (see
+   * finishBotStartup's catch). */
   private async getMembershipGate(
     accountId = this.defaultAccountId,
   ): Promise<TelegramMembershipGate | null> {
@@ -1297,23 +1308,28 @@ export class TelegramService extends Service {
         // Prime the settled registry so the replayed dispatch takes the
         // normal (non-queueing) path.
         this.settledMembershipGates.set(accountId, gate);
-        if (!gate) {
-          this.pendingMembershipTransitions.delete(accountId);
-          return;
-        }
-        // Fence the replay: while queued transitions replay IN ARRIVAL
-        // ORDER, a newer LIVE transition must not enter the dispatch path
-        // and serialize ahead of older queued entries (Telegraf's polling
-        // batch dispatch runs updates concurrently, and the authority's
-        // per-scope chain only orders work that reaches it — a live re-add
-        // overtaking a queued kick would install the clear last and leave
-        // a chat the bot was kicked from admitted). Live arrivals during
-        // the drain re-queue via the fence in handleMyChatMemberUpdate;
-        // this loop drains until quiet. Each drained entry dispatches
-        // through the LIVE handler (bypassing only the fence) so a failing
-        // authority write degrades admission fail-closed exactly like a
-        // live transition failure.
+        // The ENTIRE callback body — including the absent-gate return —
+        // sits inside the try/finally so the replay fence is always
+        // cleared; an early return on !gate would otherwise leave the
+        // fence set forever and every later live transition would append
+        // to a queue nobody drains.
         try {
+          if (!gate) {
+            this.pendingMembershipTransitions.delete(accountId);
+            return;
+          }
+          // Fence the replay: while queued transitions replay IN ARRIVAL
+          // ORDER, a newer LIVE transition must not enter the dispatch path
+          // and serialize ahead of older queued entries (Telegraf's polling
+          // batch dispatch runs updates concurrently, and the authority's
+          // per-scope chain only orders work that reaches it — a live re-add
+          // overtaking a queued kick would install the clear last and leave
+          // a chat the bot was kicked from admitted). Live arrivals during
+          // the drain re-queue via the fence in handleMyChatMemberUpdate;
+          // this loop drains until quiet. Each drained entry dispatches
+          // through the LIVE handler (bypassing only the fence) so a failing
+          // authority write degrades admission fail-closed exactly like a
+          // live transition failure.
           for (;;) {
             const pending = this.pendingMembershipTransitions.get(accountId);
             this.pendingMembershipTransitions.delete(accountId);

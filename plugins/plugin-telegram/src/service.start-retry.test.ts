@@ -366,9 +366,9 @@ describe("TelegramService startup wiring", () => {
     });
     await deadline(handled.promise, "Expected the message handler to run");
 
-    // Deduplicated identity lookup: the failed call-3 attempt clears the
-    // cached rejection, and the successful retry boot reuses the fresh
-    // cached identity — 4 calls total, not 5.
+    // Deduplicated identity lookup: each successful boot issues exactly one
+    // getMe (the bootstrap lookup is cached and reused). Four calls total
+    // across the failing first boot and the successful retry.
     expect(api.getMeCalls()).toBe(4);
     expect(startRegistration).toHaveBeenCalledTimes(1);
     expect(commandRegistration).toHaveBeenCalledTimes(
@@ -427,8 +427,7 @@ describe("TelegramService poller lifecycle", () => {
     services.push(service);
     await api.waitForActiveGetUpdates(1);
 
-    // Same dedup accounting as above: one getMe per successful boot with the
-    // injected call-3 failure cleared and retried fresh.
+    // Same dedup accounting as above: one getMe per successful boot.
     expect(api.getMeCalls()).toBe(4);
     expect(api.activeGetUpdates()).toBe(1);
 
