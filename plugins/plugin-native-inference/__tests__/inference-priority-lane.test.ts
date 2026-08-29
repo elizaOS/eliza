@@ -6,7 +6,7 @@
  * This is the host-level lock-instrumented regression the issue asks for:
  * with a long background job mid-flight (and more background work queued), an
  * interactive turn dispatches ahead of queued background work; background jobs
- * must declare an output request supported by the device class; a background
+ * preserve their declared output request; a background
  * job that cannot get the lane within its bounded wait fails typed and
  * classifies as cloud-fallbackable.
  */
@@ -149,24 +149,23 @@ describe("generateOnPriorityLane — lock priority (#11914)", () => {
     }
   });
 
-  it("rejects an unsupported background output request before the loader", async () => {
+  it("preserves a large background output request through the loader", async () => {
     setInferencePriorityGate(new InferencePriorityGate());
     const lane = makeFakeLane();
     lane.setDecodeMs(1);
+    const prompt = "x".repeat(11_169);
 
     await withEnv({ ELIZA_INFERENCE_RAM_CLASS: "constrained" }, async () => {
-      await expect(
-        generateOnPriorityLane(lane.loader, lane.lifecycle, {
-          prompt: "x".repeat(11_169),
-          maxTokens: 8_192,
-          priority: "background",
-        }),
-      ).rejects.toMatchObject({
-        code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_EXCEEDED",
+      await generateOnPriorityLane(lane.loader, lane.lifecycle, {
+        prompt,
+        maxTokens: 8_192,
+        priority: "background",
       });
     });
 
-    expect(lane.calls).toHaveLength(0);
+    expect(lane.calls).toHaveLength(1);
+    expect(lane.calls[0]?.prompt).toBe(prompt);
+    expect(lane.calls[0]?.maxTokens).toBe(8_192);
   });
 
   it("never rewrites an interactive turn", async () => {
