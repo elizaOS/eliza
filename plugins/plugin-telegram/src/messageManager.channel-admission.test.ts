@@ -2,10 +2,12 @@
  * Admission-surface boundary tests for MessageManager.handleMessage: the
  * membership gate must run ONLY for raw Telegram `group`/`supergroup` chats —
  * the same predicate as TelegramService.chatAndEntityMiddleware and the
- * standalone handler. `channel` chats collapse to ChannelType.GROUP through
- * getChannelType and must NOT consult or register a membership scope: the
- * connector contract (membership.ts) gives channels no inbound admission
- * surface. Deterministic unit harness: the REAL handleMessage admission path
+ * standalone handler's admission gate. `channel` chats collapse to
+ * ChannelType.GROUP through this file's getChannelType (the standalone
+ * mapping sends `channel` to FEED instead) and must NOT consult or register
+ * a membership scope: the connector contract (membership.ts) gives channels
+ * no inbound admission surface. Deterministic unit harness: the REAL
+ * handleMessage admission path
  * and the REAL TelegramMembershipMessageGate run over a fake runtime with a
  * fail-closed stubbed authority; no network, no database.
  */

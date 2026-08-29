@@ -1568,9 +1568,11 @@ export class MessageManager {
       // inbound admission surface in this connector — a channel post must not
       // register or consult a membership scope the connector does not own, so
       // the gate matches on the raw Telegram chat type (the same predicate as
-      // TelegramService.chatAndEntityMiddleware and the standalone handler)
-      // rather than the collapsed ChannelType mapping, which folds `channel`
-      // into GROUP. The gate runs BEFORE processMessage and ensureConnection
+      // TelegramService.chatAndEntityMiddleware and the standalone handler's
+      // admission gate) rather than this file's collapsed ChannelType mapping,
+      // which folds `channel` into GROUP — unlike the standalone
+      // getTelegramChannelType, which maps `channel` to FEED. The gate runs
+      // BEFORE processMessage and ensureConnection
       // so a denied sender can neither trigger media fetch/vision work nor
       // mutate room-participant state; the authority bootstraps the principal
       // entity itself when evidence needs the row.
