@@ -37,6 +37,7 @@ import {
   agentBackupRestoreOperations,
 } from "../../schemas/agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "../../schemas/agent-backup-restore-history";
+import { agentSandboxReplacementAttempts } from "../../schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
 import {
   AGENT_VAULT_KEY_AUTHORITY_FORMAT,
@@ -54,7 +55,9 @@ import {
   claimAgentBackupRestoreOperation,
   failAgentBackupRestoreOperation,
   heartbeatAgentBackupRestoreOperation,
+  markAgentSandboxExactRestoreProviderStarted,
   openAgentBackupRestoreOperation,
+  recordAgentBackupRestoreExactImagePlatformAuthority,
   reserveAgentBackupRestoreTarget as reserveAgentBackupRestoreTargetRepository,
 } from "../agent-backup-restore-operations";
 import { dockerNodesRepository } from "../docker-nodes";
@@ -71,6 +74,8 @@ const FENCE = "00000000-0000-4000-8000-00000000f008";
 const SHA = "a".repeat(64);
 const CONTAINER = "b".repeat(64);
 const RECEIPT_SHA = "d".repeat(64);
+const IMAGE_REFERENCE = `ghcr.io/elizaos/eliza@sha256:${SHA}`;
+const IMAGE_PLATFORM_DIGEST = `sha256:${"e".repeat(64)}`;
 const KEY_BUNDLE = Buffer.alloc(AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappedBytes, 0x44).toString(
   "base64",
 );
@@ -79,6 +84,7 @@ const TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f010";
 const TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f011";
 const OTHER_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f012";
 const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f013";
+const REPLAY_ONLY_CLAIM_GENERATION = "00000000-0000-4000-8000-00000000f014";
 let schemaFailure = "";
 let manifestFixture: Readonly<{ canonicalDraft: string; digest: string }>;
 
@@ -255,7 +261,9 @@ async function seedTargetNode(
       provider_server_id: null,
       node_incarnation:
         input.incarnation === undefined ? TARGET_NODE_INCARNATION : input.incarnation,
-      metadata: input.capacityProvisional ? { capacityProvisional: true } : {},
+      metadata: input.capacityProvisional
+        ? { architecture: "amd64", capacityProvisional: true }
+        : { architecture: "amd64" },
     })
     .returning();
   if (!node) throw new Error("restore target fixture was not inserted");
@@ -390,6 +398,18 @@ async function walkTo(operationId: string, target: AgentBackupRestorePhase): Pro
         claimMs: 60_000,
       });
     }
+    if (order[index + 1] === "vault_seeded") {
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          phase: "vault_seeded",
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operationId));
+      continue;
+    }
     if (order[index + 1] === "container_created") {
       await recordQuarantinedContainerFixture(operationId, claim.claimGeneration);
       continue;
@@ -417,6 +437,7 @@ beforeAll(async () => {
         agentBackupCatalogAuthorities,
         agentBackupRestoreLeases,
         agentBackupRestoreOperations,
+        agentSandboxReplacementAttempts,
         agentVaultKeyGenerations,
         dockerNodes,
         agentNodeIncarnationHistories,
@@ -434,6 +455,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(schemaFailure).toBe("");
+  await dbWrite.delete(agentSandboxReplacementAttempts);
   await dbWrite.delete(agentBackupRestoreOperations);
   await dbWrite.delete(agentBackupRestoreLeases);
   await dbWrite.delete(dockerNodes);
@@ -570,6 +592,193 @@ describe("restore operation spine", () => {
   );
 
   test(
+    "rejects unknown node architecture before mutating capacity or target authority",
+    async () => {
+      await seedTargetNode();
+      await dbWrite
+        .update(dockerNodes)
+        .set({ metadata: {} })
+        .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+      const authority = await openAndClaim();
+
+      await expect(
+        reserveAgentBackupRestoreTarget({
+          ...authority,
+          ownerId: "restore-worker",
+          targetNodeRecordId: TARGET_NODE_RECORD_ID,
+          targetNodeIncarnation: TARGET_NODE_INCARNATION,
+        }),
+      ).rejects.toThrow("explicit amd64 or arm64");
+
+      const [node] = await dbWrite.select().from(dockerNodes);
+      const [operation] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(node?.allocated_count).toBe(0);
+      expect(operation).toMatchObject({
+        expected_node_record_id: null,
+        expected_node_incarnation: null,
+        expected_node_history_id: null,
+        expected_image_digest: null,
+        expected_image_platform: null,
+        expected_image_reference: null,
+        expected_image_platform_digest: null,
+      });
+
+      await dbWrite
+        .update(dockerNodes)
+        .set({ metadata: { architecture: "arm64" } })
+        .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+      const arm64 = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      expect(arm64.target.platform).toBe("linux/arm64");
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "binds exact image platform authority once and replays it after container settlement",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      expect(reserved.target).toMatchObject({
+        platform: "linux/amd64",
+        imageReference: null,
+        imagePlatformDigest: null,
+      });
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({ phase: "vault_seeded" })
+        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+
+      const input = {
+        operationId: authority.operationId,
+        ownerId: "restore-worker",
+        claimGeneration: authority.claimGeneration,
+        imageReference: IMAGE_REFERENCE,
+        imagePlatformDigest: IMAGE_PLATFORM_DIGEST,
+      } as const;
+      const first = await recordAgentBackupRestoreExactImagePlatformAuthority(input);
+      expect(first.replayed).toBe(false);
+      expect(first.target).toMatchObject({
+        nodeRecordId: TARGET_NODE_RECORD_ID,
+        imageDigest: "sha256:" + SHA,
+        platform: "linux/amd64",
+        imageReference: IMAGE_REFERENCE,
+        imagePlatformDigest: IMAGE_PLATFORM_DIGEST,
+      });
+
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+        })
+        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+      await expect(recordAgentBackupRestoreExactImagePlatformAuthority(input)).rejects.toThrow(
+        "claim is not live",
+      );
+
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({ phase: "container_created", expected_container_id: CONTAINER })
+        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+      const replay = await recordAgentBackupRestoreExactImagePlatformAuthority(input);
+      expect(replay.replayed).toBe(true);
+      expect(replay.operation.expected_image_reference).toBe(IMAGE_REFERENCE);
+      // Settlement consumed the claim generation, so an exact read replay can
+      // only authenticate against the durable lease owner at this point.
+      expect(
+        (
+          await recordAgentBackupRestoreExactImagePlatformAuthority({
+            ...input,
+            claimGeneration: REPLAY_ONLY_CLAIM_GENERATION,
+          })
+        ).replayed,
+      ).toBe(true);
+      await expect(
+        recordAgentBackupRestoreExactImagePlatformAuthority({
+          ...input,
+          ownerId: "other-restore-worker",
+        }),
+      ).rejects.toThrow("claim is not live");
+
+      await expect(
+        recordAgentBackupRestoreExactImagePlatformAuthority({
+          ...input,
+          imagePlatformDigest: "sha256:" + "f".repeat(64),
+        }),
+      ).rejects.toThrow("replay mismatch");
+      await expect(
+        recordAgentBackupRestoreExactImagePlatformAuthority({
+          ...input,
+          imageReference: "ghcr.io/elizaos/other@sha256:" + SHA,
+        }),
+      ).rejects.toThrow("replay mismatch");
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses provider start until the verified image platform bundle is bound",
+    async () => {
+      const node = await seedTargetNode();
+      const authority = await openAndClaim();
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({ phase: "vault_seeded" })
+        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+      const replacementAttemptId = "00000000-0000-4000-8000-00000000f099";
+      const containerName = "agent-restore-" + AGENT_ID + "-" + ATTEMPT_ID;
+
+      await expect(
+        markAgentSandboxExactRestoreProviderStarted({
+          operationId: authority.operationId,
+          ownerId: "restore-worker",
+          claimGeneration: authority.claimGeneration,
+          replacementAttemptId,
+          locator: {
+            replacementAttemptId,
+            sandboxId: containerName,
+            nodeId: reserved.target.nodeId,
+            containerName,
+            nodeRecordId: TARGET_NODE_RECORD_ID,
+            nodeIncarnation: TARGET_NODE_INCARNATION,
+            nodeHistoryId: reserved.target.nodeHistoryId,
+            nodeHostname: node.hostname,
+            nodeSshPort: node.ssh_port,
+            nodeSshUser: node.ssh_user,
+            nodeHostKeyFingerprint: node.host_key_fingerprint!,
+            replacementSecretCleanupVersion: 1,
+            allocationCounted: true,
+            vpnNodeName: null,
+            vpnRegistrationStartedAt: null,
+            previousVpnNodeId: null,
+            containerId: null,
+            vpnNodeId: null,
+          },
+        }),
+      ).rejects.toThrow("requires verified image platform authority");
+    },
+    TIMEOUT,
+  );
+
+  test(
     "rejects expired lease, stale claim, and wrong incarnation before reserving capacity",
     async () => {
       await seedTargetNode();
@@ -633,7 +842,10 @@ describe("restore operation spine", () => {
         { enabled: false },
         { enabled: true, status: "degraded" as const },
         { status: "healthy" as const, placement_state: "cordoned" as const },
-        { placement_state: "open" as const, metadata: { capacityProvisional: true } },
+        {
+          placement_state: "open" as const,
+          metadata: { architecture: "amd64", capacityProvisional: true },
+        },
       ]) {
         await dbWrite
           .update(dockerNodes)
@@ -642,7 +854,7 @@ describe("restore operation spine", () => {
             enabled: true,
             status: "healthy",
             placement_state: "open",
-            metadata: {},
+            metadata: { architecture: "amd64" },
             ...ineligible,
           })
           .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
@@ -1059,7 +1271,7 @@ describe("restore operation spine", () => {
           fromPhase: "reserved",
           toPhase: "vault_seeded",
         }),
-      ).rejects.toThrow("cannot leave target reservation");
+      ).rejects.toThrow("must be recorded through vault-seed receipt authority");
       const [stillReserved] = await dbWrite
         .select()
         .from(agentBackupRestoreOperations)
@@ -1110,13 +1322,17 @@ describe("restore operation spine", () => {
         .where(eq(agentBackupRestoreOperations.id, operation.id));
       expect(afterIdentityBypass).toEqual(beforeIdentityBypass);
 
-      const advanced = await advanceAgentBackupRestoreOperation({
-        operationId: operation.id,
-        ownerId: "restore-worker",
-        claimGeneration: claim.claimGeneration,
-        fromPhase: "reserved",
-        toPhase: "vault_seeded",
-      });
+      const [advanced] = await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          phase: "vault_seeded",
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operation.id))
+        .returning();
+      if (!advanced) throw new Error("vault-seeded fixture lost its operation");
       expect(advanced.phase).toBe("vault_seeded");
       expect(advanced.expected_container_id).toBeNull();
       expect(advanced.claim_owner).toBeNull();

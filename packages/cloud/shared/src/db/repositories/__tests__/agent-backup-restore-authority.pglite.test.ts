@@ -729,7 +729,7 @@ async function acquireVaultPassphraseFixture(
     infrastructure_provider: "hetzner",
     provider_server_id: null,
     node_incarnation: TARGET_NODE_INCARNATION,
-    metadata: {},
+    metadata: { architecture: "amd64" },
     created_at: TARGET_NODE_CREATED_AT,
   });
   const targetNodeHistoryId = targetNode.current_node_history_id;
@@ -1358,6 +1358,7 @@ describe("strict restore catalogue authority", () => {
       infrastructure_provider: "hetzner",
       provider_server_id: null,
       node_incarnation: TARGET_NODE_INCARNATION,
+      metadata: { architecture: "amd64" },
     });
     const targetNodeHistoryId = targetNode.current_node_history_id;
     if (!targetNodeHistoryId) throw new Error("restore target occurrence token is missing");
@@ -1561,6 +1562,7 @@ describe("strict restore catalogue authority", () => {
       infrastructure_provider: "hetzner",
       provider_server_id: null,
       node_incarnation: TARGET_NODE_INCARNATION,
+      metadata: { architecture: "amd64" },
     });
     const restoreTargetHistoryId = restoreTargetNode.current_node_history_id;
     if (!restoreTargetHistoryId) throw new Error("restore target occurrence token is missing");
@@ -2122,6 +2124,7 @@ describe("strict restore catalogue authority", () => {
       infrastructure_provider: "hetzner",
       provider_server_id: null,
       node_incarnation: TARGET_NODE_INCARNATION,
+      metadata: { architecture: "amd64" },
     });
     if (!targetA1.current_node_history_id) throw new Error("target A1 token is missing");
     const acquired = await acquireAgentBackupRestoreLease({
