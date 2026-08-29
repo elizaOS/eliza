@@ -258,9 +258,14 @@ describe("DevicesRuntimesSection", () => {
       screen.getByText("Host key changed: connection blocked"),
     ).toBeTruthy();
     expect(
+      screen.getByText(
+        /Remove the saved runtime from Devices & Runtimes, then re-enroll it/,
+      ),
+    ).toBeTruthy();
+    expect(
       (
         screen.getByRole("button", {
-          name: "Fingerprint verified, connect",
+          name: "Host key changed",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);

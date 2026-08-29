@@ -835,8 +835,9 @@ function AdvancedSsh({
             </code>
             {inspection.changed ? (
               <p className="mt-2 text-xs text-destructive">
-                The saved key does not match this server. Confirm the change
-                outside Eliza before replacing trust.
+                The saved key does not match this server. Remove the saved
+                runtime from Devices &amp; Runtimes, then re-enroll it only
+                after confirming the new fingerprint outside Eliza.
               </p>
             ) : null}
           </div>
@@ -858,7 +859,9 @@ function AdvancedSsh({
               <ShieldCheck className="mr-1.5 size-4" aria-hidden />
             )}
             {inspection && inspectedTarget
-              ? "Fingerprint verified, connect"
+              ? inspection.changed
+                ? "Host key changed"
+                : "Fingerprint verified, connect"
               : "Inspect fingerprint"}
           </Button>
           <span className="text-xs text-muted">
