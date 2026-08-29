@@ -1,9 +1,10 @@
 /**
  * Post-login landing that opens the account-native personal Eliza in chat.
  *
- * After Steward login the page resolves the account-native rowless Shared
+ * After Steward login the page activates or reconnects the account's Dedicated
  * Eliza, persists its Cloud binding, then transitions to chat in the current
- * document. The configured client and persisted binding are already ready.
+ * document. Credit-gated accounts get a direct path to billing instead of a
+ * retry loop that cannot succeed without funds.
  *
  * Signed-out app-host visitors first restore a live apex session through the
  * PKCE SSO bridge, or fall back to `/login?returnTo=/join` when no apex session
@@ -32,6 +33,7 @@ import {
 } from "../../state/persistence";
 import { appModeNavigation } from "../app-mode/app-mode";
 import { publishPersonalEntryHandoff } from "../app-mode/use-personal-entry";
+import { openCloudBillingConsole } from "../billing-console";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   redirectToSsoBridge,
@@ -64,15 +66,22 @@ interface PendingDedicatedAdoptionDecision {
   onAbort?: () => void;
 }
 
-function describeJoinError(err: unknown): string {
-  if (
-    err instanceof Error &&
-    err.message === "Dedicated adoption was not confirmed."
-  ) {
-    return "Dedicated setup was not started. Your Shared Eliza is unchanged.";
+type JoinFailure =
+  | { kind: "insufficient-credit"; message: string }
+  | { kind: "generic"; message: string };
+
+function describeJoinError(err: unknown): JoinFailure {
+  if (err instanceof Error && err.message === "Dedicated adoption was not confirmed.") {
+    return { kind: "generic", message: "Dedicated setup was not started. Your Shared Eliza is unchanged." };
   }
-  if (err instanceof Error && err.message.trim()) return err.message;
-  return "Could not connect to your agent. Try again.";
+  const message = err instanceof Error && err.message.trim()
+    ? err.message
+    : "Could not connect to your agent. Try again.";
+  if (err instanceof Error && "status" in err && err.status === 402) {
+    return { kind: "insufficient-credit", message };
+  }
+  return { kind: "generic", message };
+
 }
 
 function readableDedicatedStatus(status: string): string {
@@ -84,7 +93,7 @@ export default function JoinPage(): React.JSX.Element {
   const session = useJoinSessionAuth();
   const [phase, setPhase] = useState<JoinPhase>("connecting");
   const [detail, setDetail] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<JoinFailure | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [adoptionReview, setAdoptionReview] =
     useState<DedicatedAdoptionReview | null>(null);
@@ -260,11 +269,12 @@ export default function JoinPage(): React.JSX.Element {
     } catch {
       // error-policy:J4 the server still owns an authenticated session, so
       // keep the user here and expose a retry instead of claiming sign-out.
-      setError(
-        t("cloud.userMenu.signOutFailed", {
+      setError({
+        kind: "generic",
+        message: t("cloud.userMenu.signOutFailed", {
           defaultValue: "Could not sign out safely. Please try again.",
         }),
-      );
+      });
       setPhase("sign-out-error");
       setSigningOut(false);
     }
@@ -314,7 +324,7 @@ export default function JoinPage(): React.JSX.Element {
               })}
             </h1>
             <p className="text-sm text-white/70" role="alert">
-              {error}
+              {error?.message}
             </p>
             {signOutButton}
           </div>
@@ -455,19 +465,42 @@ export default function JoinPage(): React.JSX.Element {
               })}
             </h1>
             <p className="text-sm text-white/70">
-              {error ??
+              {error?.message ??
                 t("cloud.join.errorBody", {
                   defaultValue: "Something went wrong. Try again.",
                 })}
             </p>
-            <Button
-              variant="surface"
-              size="wide"
-              type="button"
-              onClick={handleRetry}
-            >
-              {t("cloud.join.retry", { defaultValue: "Try again" })}
-            </Button>
+            {error?.kind === "insufficient-credit" ? (
+              <>
+                <Button
+                  variant="surface"
+                  size="wide"
+                  type="button"
+                  onClick={() =>
+                    void openCloudBillingConsole(resolveJoinCloudApiBase())
+                  }
+                >
+                  {t("cloud.join.addCredits", { defaultValue: "Add credits" })}
+                </Button>
+                <Button
+                  variant="ghostMuted"
+                  size="wide"
+                  type="button"
+                  onClick={handleRetry}
+                >
+                  {t("cloud.join.retry", { defaultValue: "Try again" })}
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="surface"
+                size="wide"
+                type="button"
+                onClick={handleRetry}
+              >
+                {t("cloud.join.retry", { defaultValue: "Try again" })}
+              </Button>
+            )}
             {signOutButton}
           </div>
         ) : (
