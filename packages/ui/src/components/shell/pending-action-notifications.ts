@@ -641,7 +641,13 @@ export function usePendingActions(): {
           resolvedActionIds,
         };
       });
-      setObservedAt(Date.now());
+      // A successful empty poll does not change the rendered projection, so
+      // keep its freshness clock at the stable empty sentinel. Updating this
+      // timestamp every 20 seconds rebuilt the entire notification shade even
+      // when it contained only ordinary persisted notifications. Non-empty
+      // pending actions still refresh their observation time on every
+      // successful canonical read so their stale boundary remains accurate.
+      setObservedAt(next.length > 0 ? Date.now() : 0);
     } catch {
       // error-policy:J4 the last confirmed projection stays visible while the
       // next bounded poll retries; a transport failure never fabricates empty.
@@ -659,7 +665,11 @@ export function usePendingActions(): {
   useEffect(() => {
     void load();
   }, [load]);
-  useIntervalWhenDocumentVisible(() => void load(), 20_000);
+  useIntervalWhenDocumentVisible(
+    () => void load(),
+    20_000,
+    authenticated && resolutionFenceLoaded,
+  );
 
   const snapshotMatchesOwner = snapshot.ownerKey === ownerKey;
   return {
