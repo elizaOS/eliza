@@ -392,9 +392,12 @@ describe("VideoService deterministic behavior", () => {
       },
     ]);
     const transcribeAudio = vi
-      .spyOn(service as unknown as {
-        transcribeAudio(url: string, runtime: IAgentRuntime): Promise<string>;
-      }, "transcribeAudio")
+      .spyOn(
+        service as unknown as {
+          transcribeAudio(url: string, runtime: IAgentRuntime): Promise<string>;
+        },
+        "transcribeAudio",
+      )
       .mockResolvedValue("Audio transcript");
 
     const result = await service.processVideo(
