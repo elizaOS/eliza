@@ -187,4 +187,49 @@ describe("GET_APP", () => {
         .reason,
     ).toBe("error");
   });
+
+  it("REGRESSION (#29916): a stale/foreign UUID option → not_found which-app reply, not the generic error", async () => {
+    // The UUID must arrive as the planner-supplied option: inlined in the
+    // message text it never reaches the id path (extractAppReference returns
+    // the whole sentence and looksLikeAppId is false). A stale id makes
+    // getApp reject (CloudApiError 404); before the guard that rejection
+    // landed in the outer catch as a retry-never-helps "Cloud API returned
+    // an error" reply. It must now fall through to list-based resolution.
+    const STALE_UUID = "99999999-9999-4999-8999-999999999999";
+    setGetApp((id) => {
+      expect(id).toBe(STALE_UUID);
+      return Promise.reject(
+        Object.assign(new Error("HTTP 404"), {
+          name: "CloudApiError",
+          statusCode: 404,
+          errorBody: { success: false, error: "HTTP 404" },
+        }),
+      );
+    });
+    setListApps(() =>
+      Promise.resolve({
+        success: true,
+        apps: [makeApp({ name: "Acme Bot", slug: "acme-bot" })],
+      }),
+    );
+
+    const cb = captureCallback();
+    const result = await getAppAction.handler(
+      keyedRuntime(),
+      makeMessage("tell me about my app"),
+      undefined,
+      { app: STALE_UUID },
+      cb.fn,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("not_found");
+    // The which-app reply lists the org's current app, never a retry hint.
+    const reply = cb.calls[0]?.text ?? "";
+    expect(reply).toContain("Acme Bot");
+    expect(reply).not.toContain("Cloud API returned an error");
+  });
 });

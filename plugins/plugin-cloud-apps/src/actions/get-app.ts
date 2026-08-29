@@ -93,17 +93,30 @@ export const getAppAction: Action = {
     try {
       // Id-shaped reference → direct single-app fetch.
       if (looksLikeAppId(reference)) {
-        const { app } = await client.getApp(reference);
-        if (app) {
-          const detail = formatAppDetail(app);
-          await callback?.({ text: detail, actions: ["GET_APP"] });
-          return {
-            success: true,
-            text: `Fetched app ${app.name}.`,
-            userFacingText: detail,
-            verifiedUserFacing: true,
-            data: { app: { id: app.id, name: app.name, slug: app.slug } },
-          };
+        // A stale/foreign UUID makes getApp throw (typically 404/403); that
+        // must fall through to list-based resolution and its helpful
+        // which-app reply, not land in the outer catch as a generic error
+        // the user can never retry past. Mirrors resolveApp and
+        // resolveDomainTargetApp (#29907/#29916).
+        try {
+          const { app } = await client.getApp(reference);
+          if (app) {
+            const detail = formatAppDetail(app);
+            await callback?.({ text: detail, actions: ["GET_APP"] });
+            return {
+              success: true,
+              text: `Fetched app ${app.name}.`,
+              userFacingText: detail,
+              verifiedUserFacing: true,
+              data: { app: { id: app.id, name: app.name, slug: app.slug } },
+            };
+          }
+        } catch {
+          // error-policy:J4 degrade to the list-based not-found/which-app
+          // reply. The catch is intentionally unconditional to mirror
+          // resolveApp; a getApp failure that is not a benign 404/403 is
+          // normally re-raised by the listApps() call next, so the action
+          // still fails loudly in that case.
         }
       }
 
