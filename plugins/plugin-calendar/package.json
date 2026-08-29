@@ -95,11 +95,11 @@
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "@electric-sql/pglite": "^0.4.0",
-    "bun-types": "1.3.14",
+    "bun-types": "1.4.0",
     "tsup": "^8.5.1",
     "react-dom": "*",
-    "vitest": "^4.1.10",
-    "vite": "^8.0.0"
+    "vitest": "^4.1.11",
+    "vite": "^8.2.2"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
