@@ -141,7 +141,13 @@ export function matrixMemberRoles(powerLevel: number): readonly string[] {
 
 /** Deterministic observation time for a Matrix event. */
 export function matrixObservedAt(eventTs: number): string {
-  return new Date(eventTs).toISOString();
+  // Lazy-loaded membership state events can surface without a server
+  // timestamp, and a finite-but-out-of-range value (|ts| >= 8.64e15) still
+  // yields an Invalid Date — either would throw in toISOString() and
+  // poison the evidence command. Fall back to wall-clock observation.
+  const parsed = Number.isFinite(eventTs) ? new Date(eventTs) : new Date();
+  const observed = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  return observed.toISOString();
 }
 
 function scopeKey(scope: MembershipScope): string {

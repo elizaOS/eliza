@@ -23,6 +23,7 @@ import {
   type MatrixMembershipTransition,
   matrixMemberRoles,
   matrixMembershipScope,
+  matrixObservedAt,
   matrixTransitionToMembership,
 } from "../membership.js";
 import { MatrixMembershipMessageGate } from "../membership-gate.js";
@@ -284,6 +285,29 @@ describe("matrix membership scope and mapping", () => {
     expect(matrixMemberRoles(100)).toContain("owner");
     expect(matrixMemberRoles(50)).toContain("administrator");
     expect(matrixMemberRoles(0)).toEqual(["member"]);
+  });
+
+  it("matrixObservedAt never throws on missing or out-of-range timestamps", () => {
+    // Lazy-loaded state events can surface without a server timestamp
+    // (undefined/NaN), and a finite-but-out-of-range value (1e16 ms is
+    // past the ±8.64e15 Date limit) still constructs an Invalid Date —
+    // either would throw in toISOString() inside the evidence command
+    // and drop the transition. The guard must fall back to wall-clock.
+    expect(() => matrixObservedAt(Number.NaN)).not.toThrow();
+    expect(() => matrixObservedAt(1e16)).not.toThrow();
+    const wallClock = new Date("2026-08-29T00:00:00.000Z").getTime();
+    vi.useFakeTimers();
+    vi.setSystemTime(wallClock);
+    try {
+      expect(matrixObservedAt(Number.NaN)).toBe("2026-08-29T00:00:00.000Z");
+      expect(matrixObservedAt(1e16)).toBe("2026-08-29T00:00:00.000Z");
+      // In-range timestamps stay deterministic — the evidence ordering
+      // contract (observedAt monotonicity within a room) relies on it.
+      expect(matrixObservedAt(0)).toBe("1970-01-01T00:00:00.000Z");
+      expect(matrixObservedAt(8.64e15 - 1)).toBe("+275760-09-12T23:59:59.999Z");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

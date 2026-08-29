@@ -79,6 +79,20 @@ function normalizeSearchQuery(query: string): string {
   return query.trim().toLowerCase();
 }
 
+/**
+ * Deterministic, authority-compatible UUID for Matrix-derived rows. Core's
+ * createUniqueUuid stamps a custom version nibble of 0, which the canonical
+ * membership authority's UUID validation (version nibble [1-8]) rejects — so
+ * every id that flows into a MembershipService command (principal entities,
+ * scope worlds/rooms, gate lookups) must carry RFC 4122 version/variant bits
+ * instead. Re-stamping only those two nibbles keeps the id deterministic per
+ * (agent, seed) and collision-free with the base scheme.
+ */
+function matrixScopedUuid(runtime: IAgentRuntime, seed: string): UUID {
+  const base = createUniqueUuid(runtime, seed);
+  return `${base.slice(0, 14)}5${base.slice(15, 19)}8${base.slice(20)}` as UUID;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -499,16 +513,20 @@ function matrixMessageToMemory(
 ): Memory {
   const roomId = message.roomId;
   const scoped = (seed: string) => (accountScope ? `${accountScope}:${seed}` : seed);
+  // Write path must key memories by the SAME authority-compatible
+  // derivation the read fallback (readMessagesForTarget) uses — a v0
+  // createUniqueUuid here would make every stored message invisible to
+  // the matrixScopedUuid-keyed reader.
   return {
-    id: createUniqueUuid(runtime, scoped(message.eventId || `${roomId}:${message.timestamp}`)),
-    entityId: createUniqueUuid(runtime, scoped(message.sender || roomId)),
+    id: matrixScopedUuid(runtime, scoped(message.eventId || `${roomId}:${message.timestamp}`)),
+    entityId: matrixScopedUuid(runtime, scoped(message.sender || roomId)),
     agentId: runtime.agentId,
-    roomId: createUniqueUuid(runtime, scoped(message.roomId)),
+    roomId: matrixScopedUuid(runtime, scoped(message.roomId)),
     content: {
       text: message.content,
       source: MATRIX_SERVICE_NAME,
       channelType,
-      ...(message.replyTo ? { inReplyTo: createUniqueUuid(runtime, scoped(message.replyTo)) } : {}),
+      ...(message.replyTo ? { inReplyTo: matrixScopedUuid(runtime, scoped(message.replyTo)) } : {}),
     },
     createdAt: message.timestamp,
   };
@@ -594,7 +612,7 @@ async function readMessagesForTarget(
   // memories since the account-scoping change.
   return readStoredMessageMemories(
     runtime,
-    createUniqueUuid(runtime, `${accountId}:${matrixRoomId}`),
+    matrixScopedUuid(runtime, `${accountId}:${matrixRoomId}`),
     limit
   );
 }
@@ -1237,9 +1255,21 @@ export class MatrixService extends Service implements IMatrixService {
       // the local incompleteness flag set, so publication stays blocked.
       void state.membershipAuthority
         .markScopeStale({ roomId: room.roomId, reason: "limited_sync_timeline_reset" })
+        .then(() =>
+          // A timeline reset marks the room incomplete but nothing else
+          // schedules the recovery publication: PREPARED does not recur, and
+          // without this pass the room stays incomplete indefinitely with
+          // stale roster facts. The recovery publication fetches a FRESH
+          // server roster (never the just-distrusted SDK model) and either
+          // re-establishes the complete baseline or leaves the room
+          // fail-closed incomplete on fetch failure — where the bounded
+          // backoff below retries the same fresh-fetch path (never a cached
+          // roster) until it succeeds or the room leaves the joined set.
+          this.recoverMembershipAfterTimelineReset(state, room.roomId, 1)
+        )
         .catch((err) =>
           logger.error(
-            `Matrix membership stale-degrade after timeline reset failed: ${err instanceof Error ? err.message : String(err)}`
+            `Matrix membership recovery after timeline reset failed: ${err instanceof Error ? err.message : String(err)}`
           )
         );
     });
@@ -1286,14 +1316,79 @@ export class MatrixService extends Service implements IMatrixService {
     state.client.on(sdk.RoomMemberEvent.Membership, (event, member, oldMembership) => {
       // error-policy:J7 transition handling is diagnostic (the authority's
       // evidence path already reports its own failures); never kill sync.
-      void this.handleMembershipTransition(state, event, member, oldMembership).catch((err) =>
+      // Bootstrap (ensure*) rejections propagate here and are reported so
+      // RECENT_ERRORS surfaces dropped membership evidence, not just the log.
+      void this.handleMembershipTransition(state, event, member, oldMembership).catch((err) => {
         logger.error(
           `Matrix membership transition handling failed: ${err instanceof Error ? err.message : String(err)}`
-        )
-      );
+        );
+        this.runtime.reportError("matrix:membership-transition", err as Error, {
+          roomId: event.getRoomId?.() ?? undefined,
+          matrixUserId: member?.userId,
+        });
+      });
     });
 
     this.setupVerificationAutoAccept(state);
+  }
+
+  /**
+   * Bounded-backoff recovery for a room flagged incomplete by a timeline
+   * reset. Each attempt runs the full publication pass, which fetches a
+   * FRESH server roster (never the cached SDK model); on failure the room
+   * stays fail-closed incomplete and the next attempt retries. Retries stop
+   * early once the room is no longer flagged incomplete (a concurrent pass
+   * or a later PREPARED recovered it) or the bot left the room. Attempt
+   * count, not wall-clock, bounds the schedule so timers stay deterministic
+   * under test.
+   */
+  private async recoverMembershipAfterTimelineReset(
+    state: MatrixAccountState,
+    roomId: string,
+    attempt: number
+  ): Promise<void> {
+    const authority = state.membershipAuthority;
+    if (!authority) {
+      return;
+    }
+    try {
+      await this.publishMembershipSnapshots(state, false);
+      // Success: any room still incomplete after a successful pass failed
+      // its own fresh fetch; those rooms schedule their own retry below via
+      // the per-room loop only if this pass threw — a clean return means
+      // every room either published or reported incomplete, and the rooms
+      // that reported incomplete are re-covered by the retry below.
+      const stillIncomplete = authority.isRoomIncomplete(roomId);
+      if (!stillIncomplete) {
+        return;
+      }
+      throw new Error(`room ${roomId} still incomplete after recovery publication`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // error-policy:J7 diagnostics must not kill the sync loop; the room
+      // remains fail-closed incomplete (admission denied) until a retry
+      // publishes a complete fresh roster.
+      logger.warn(`Matrix membership recovery attempt ${attempt} for ${roomId} failed: ${message}`);
+      this.runtime.reportError(
+        "matrix:membership-recovery",
+        err instanceof Error ? err : new Error(message),
+        { roomId, attempt }
+      );
+    }
+    if (attempt >= 5) {
+      logger.error(
+        `Matrix membership recovery for ${roomId} exhausted after ${attempt} attempts; room stays fail-closed until the next sync/join trigger`
+      );
+      return;
+    }
+    const delayMs = Math.min(30_000, 2_000 * 2 ** (attempt - 1));
+    const timer = setTimeout(() => {
+      void this.recoverMembershipAfterTimelineReset(state, roomId, attempt + 1);
+    }, delayMs);
+    // Never keep the process alive for a retry timer.
+    if (typeof timer.unref === "function") {
+      timer.unref();
+    }
   }
 
   /**
@@ -1396,8 +1491,30 @@ export class MatrixService extends Service implements IMatrixService {
           // transient flag so the room stops entering recovery every pass.
           // (A room WITH a persisted non-current scope still publishes — the
           // shrunken roster is complete evidence and restores health.)
-          authority.clearTransientRoomIncompleteness(room.roomId);
-          continue;
+          // A room with a CURRENT persisted scope is also governed evidence:
+          // the shrunken roster is the complete truth (a governed group that
+          // lost members), and skipping here would strand revoked members as
+          // active forever. Skip only on a DEFINITIVE no-scope probe; a
+          // failed probe stays fail-closed and publishes.
+          let noScope = false;
+          {
+            const health = await authority
+              .scopeHealth({ roomId: room.roomId })
+              .then((h) => h === null)
+              .catch(() => false);
+            // The transient incompleteness flag is deliberately NOT consulted
+            // here: reaching this point means the fresh server roster fetch
+            // SUCCEEDED in full, which disproves every transient incompleteness
+            // reason. Requiring !isRoomIncomplete as well would make this skip
+            // unreachable exactly when a transient flag is set (the recovery
+            // case), publishing a DM-sized room as a governed scope. Only the
+            // persisted probe decides: definitive no-scope => true direct room.
+            noScope = health;
+          }
+          if (noScope) {
+            authority.clearTransientRoomIncompleteness(room.roomId);
+            continue;
+          }
         }
         authority.clearTransientRoomIncompleteness(room.roomId);
         // Fall through: publish the complete baseline from the fresh roster.
@@ -1526,15 +1643,19 @@ export class MatrixService extends Service implements IMatrixService {
     }
     // Snapshot members must reference existing entity/room/world rows; the
     // gate path creates them lazily, and synced rooms may carry members the
-    // runtime has never seen — bootstrap rows before publishing.
-    const worldId = createUniqueUuid(this.runtime, `${state.accountId}:${room.roomId}`);
-    await this.runtime.createWorld({
+    // runtime has never seen — bootstrap rows before publishing. ensure* (not
+    // create*): the PREPARED publication pass and the membership-transition
+    // handler run concurrently on the same room in a real sync (both observe
+    // the join), and a plain createWorld would throw WORLD_ALREADY_EXISTS
+    // from the loser and kill evidence publication.
+    const worldId = matrixScopedUuid(this.runtime, `${state.accountId}:${room.roomId}`);
+    await this.runtime.ensureWorldExists({
       id: worldId,
       name: room.name || room.roomId,
       agentId: this.runtime.agentId,
       metadata: { source: MATRIX_SERVICE_NAME, accountId: state.accountId, roomId: room.roomId },
     });
-    await this.runtime.createRoom({
+    await this.runtime.ensureRoomExists({
       id: worldId,
       name: room.name || room.roomId,
       source: MATRIX_SERVICE_NAME,
@@ -1544,7 +1665,7 @@ export class MatrixService extends Service implements IMatrixService {
     });
     const memberRecords = [];
     for (const roomMember of memberEntries) {
-      const entityId = createUniqueUuid(this.runtime, `${state.accountId}:${roomMember.userId}`);
+      const entityId = matrixScopedUuid(this.runtime, `${state.accountId}:${roomMember.userId}`);
       await this.runtime.createEntity({
         id: entityId,
         agentId: this.runtime.agentId,
@@ -1657,20 +1778,49 @@ export class MatrixService extends Service implements IMatrixService {
       return;
     }
     const room = state.client.getRoom(roomId);
-    if (
-      room &&
-      room.getJoinedMemberCount() <= 2 &&
-      member.membership !== "join" &&
-      member.userId !== state.settings.userId
-    ) {
-      // Direct rooms are not membership-governed; a PEER's leave/ban in a
-      // <=2-member room must create NO authority evidence. Returning here is
-      // load-bearing: falling through would register a publisher scope for a
-      // DM and record an ordered delta with no snapshot baseline, poisoning
-      // the grown-room bootstrap below if the DM later becomes a group. The
-      // bot's OWN leave/ban is excluded: the self-transition block below must
-      // still tombstone a governed scope (e.g. a group that shrank to two).
-      return;
+    if (room && member.membership !== "join" && member.userId !== state.settings.userId) {
+      // Direct rooms are not membership-governed; a PEER's leave/ban must
+      // create NO authority evidence. Room SIZE is not the governor signal
+      // though — a governed room that shrank can be any size. The definitive
+      // signal is the authority's own scope row: a scope that exists (in any
+      // health) means this room IS governed and the leaving peer's revocation
+      // must record. Only a definitive no-scope probe lets the DM skip run;
+      // a failed probe reports and drops (recording against the same failing
+      // store would mint a scope row for a possible DM as a side effect of a
+      // doomed write). Returning via the size heuristic alone would strand
+      // revoked members of shrinking groups as active forever.
+      let governed = true;
+      const health = await authority.scopeHealth({ roomId }).catch((err: unknown) => {
+        logger.error(
+          `Matrix membership scope health probe failed for ${roomId}: ${err instanceof Error ? err.message : String(err)}`
+        );
+        return "probe-failed" as const;
+      });
+      if (health === "probe-failed") {
+        // The authority store itself just failed — recordTransition would
+        // hit the same store and its ensureRegistered would MINT a scope
+        // row for a possible DM as a side effect of a doomed write. Report
+        // and drop instead: the next roster publication pass for this room
+        // re-derives the full baseline from fresh server state.
+        this.runtime.reportError(
+          "matrix:membership-transition",
+          new Error("scope health probe failed"),
+          {
+            roomId,
+            matrixUserId: member.userId,
+            transition: "leave",
+          }
+        );
+        return;
+      }
+      if (health === null && room.getJoinedMemberCount() + 1 <= 2) {
+        // Definitive no-scope AND direct-sized (even counting the subject):
+        // a true DM peer leave.
+        governed = false;
+      }
+      if (!governed) {
+        return;
+      }
     }
     // Bot self-transitions own the scope lifecycle.
     if (member.userId === state.settings.userId) {
@@ -1753,8 +1903,8 @@ export class MatrixService extends Service implements IMatrixService {
       );
       return;
     }
-    const entityId = createUniqueUuid(this.runtime, `${state.accountId}:${matrixUserId}`);
-    const worldId = createUniqueUuid(this.runtime, `${state.accountId}:${roomId}`);
+    const entityId = matrixScopedUuid(this.runtime, `${state.accountId}:${matrixUserId}`);
+    const worldId = matrixScopedUuid(this.runtime, `${state.accountId}:${roomId}`);
     // Evidence requires entity/room/world rows: bootstrap them for members the
     // runtime has never seen (idempotent creates).
     await this.runtime.createEntity({
@@ -1763,13 +1913,19 @@ export class MatrixService extends Service implements IMatrixService {
       names: [`matrix-${getMatrixLocalpart(matrixUserId)}`],
       metadata: { source: MATRIX_SERVICE_NAME, matrixUserId },
     });
-    await this.runtime.createWorld({
+    // ensure* (not create*): the PREPARED publication pass and the
+    // membership-transition handler run concurrently on the same room in a
+    // real sync (both observe the join); ensure* is idempotent by contract
+    // (read-compare-upsert with CAS retry), so whichever wins, this call
+    // completes without WORLD_ALREADY_EXISTS dropping the transition.
+    // Bootstrap failures propagate to the caller's J7 report handler.
+    await this.runtime.ensureWorldExists({
       id: worldId,
       name: roomId,
       agentId: this.runtime.agentId,
       metadata: { source: MATRIX_SERVICE_NAME, accountId: state.accountId, roomId },
     });
-    await this.runtime.createRoom({
+    await this.runtime.ensureRoomExists({
       id: worldId,
       name: roomId,
       source: MATRIX_SERVICE_NAME,
@@ -1955,7 +2111,7 @@ export class MatrixService extends Service implements IMatrixService {
       const allowed = await state.membershipGate.authorizeMessage({
         roomId,
         isDirectRoom,
-        principalEntityId: createUniqueUuid(this.runtime, `${state.accountId}:${message.sender}`),
+        principalEntityId: matrixScopedUuid(this.runtime, `${state.accountId}:${message.sender}`),
         matrixUserId: message.sender,
         getJoinedMemberIds: () => room.getJoinedMembers().map((m) => m.userId),
       });
@@ -1999,7 +2155,9 @@ export class MatrixService extends Service implements IMatrixService {
     // the same room must never share room/world/entity UUIDs (the authority
     // scopes membership per connector account, and cross-account memory
     // blending is a privacy violation).
-    const scoped = (seed: string) => createUniqueUuid(this.runtime, `${state.accountId}:${seed}`);
+    // Authority-compatible derivation: the membership scope's entity/room/world
+    // rows must match the ids publication bootstrapped (matrixScopedUuid).
+    const scoped = (seed: string) => matrixScopedUuid(this.runtime, `${state.accountId}:${seed}`);
     const entityId = scoped(message.sender || roomId);
     const coreRoomId = scoped(roomId);
     const worldId = scoped(roomId);

@@ -5,7 +5,13 @@
  * gate is exercised deterministically — no live homeserver.
  */
 import { EventEmitter } from "node:events";
-import { type Content, EventType, type HandlerCallback, type IAgentRuntime } from "@elizaos/core";
+import {
+  type Content,
+  createUniqueUuid,
+  EventType,
+  type HandlerCallback,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 // The vitest @elizaos/core shim (packages/scripts/vitest/shims) is a curated subset
@@ -313,6 +319,39 @@ describe("Matrix service hardening", () => {
           content: expect.objectContaining({ text: "hello bot", source: "matrix" }),
         }),
       })
+    );
+  });
+
+  it("persists the inbound message with the same authority-compatible room key the connector read fallback uses", async () => {
+    // Write/read contract: dispatchToAgent persists via
+    // matrixMessageToMemory (account-scoped matrixScopedUuid) and the
+    // connector's stored-memory fallback (readMessagesForTarget) reads by
+    // the SAME derivation. A v0 createUniqueUuid write key would make
+    // every stored message invisible to the reader — this round-trip pins
+    // both derivations to identical bytes.
+    const { runtime, service, state } = createService();
+    await callDispatch(service, state, createMatrixMessage(), createMatrixRoom());
+
+    const written = vi.mocked(runtime.createMemory).mock.calls[0]?.[0];
+    expect(written).toBeDefined();
+    const writtenRoomId = written?.roomId;
+
+    // Derive the reader's expected key independently: the production
+    // matrixScopedUuid (createUniqueUuid base + v5/8 nibble re-stamp)
+    // over `work:!ops:example`.
+    const base = createUniqueUuid(runtime, "work:!ops:example");
+    const expectedReaderKey = `${base.slice(0, 14)}5${base.slice(15, 19)}8${base.slice(20)}`;
+    expect(writtenRoomId).toBe(expectedReaderKey);
+
+    // And the version nibble is RFC 4122-valid (the canonical membership
+    // authority rejects version-0 ids) while remaining deterministic.
+    expect(writtenRoomId?.[14]).toBe("5");
+    expect(writtenRoomId?.[19]).toBe("8");
+    expect(writtenRoomId).toBe(
+      (() => {
+        const again = createUniqueUuid(runtime, "work:!ops:example");
+        return `${again.slice(0, 14)}5${again.slice(15, 19)}8${again.slice(20)}`;
+      })()
     );
   });
 

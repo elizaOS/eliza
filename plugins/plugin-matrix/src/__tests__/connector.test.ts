@@ -250,10 +250,11 @@ describe("Matrix connector read path (channelId-only targets)", () => {
 
   it("falls back to stored memories keyed by the account-scoped UUID derived from the matrix id", async () => {
     const service = createService();
-    // Live timeline empty -> the stored-memory fallback must key by
-    // createUniqueUuid(runtime, `${accountId}:${matrixRoomId}`), matching how
-    // inbound Matrix memories are stored (matrixMessageToMemory scopes by
-    // account so multi-account runtimes never blend rooms).
+    // Live timeline empty -> the stored-memory fallback must key by the
+    // authority-compatible matrixScopedUuid derivation over
+    // `${accountId}:${matrixRoomId}`, matching how inbound Matrix memories are
+    // stored (matrixMessageToMemory scopes by account so multi-account runtimes
+    // never blend rooms, and membership authority rows accept the derived id).
     vi.spyOn(service, "getRoomMessages").mockResolvedValue([]);
     const { runtime, registration } = registerAndGetConnector(service);
     const stored = [memory("$s", "stored", 50)];
@@ -267,7 +268,7 @@ describe("Matrix connector read path (channelId-only targets)", () => {
     expect(runtime.getMemories).toHaveBeenCalledWith(
       expect.objectContaining({
         tableName: "messages",
-        roomId: createUniqueUuid(runtime, "work:!abc:server"),
+        roomId: `${createUniqueUuid(runtime, "work:!abc:server").slice(0, 14)}5${createUniqueUuid(runtime, "work:!abc:server").slice(15, 19)}8${createUniqueUuid(runtime, "work:!abc:server").slice(20)}`,
         limit: 50,
       })
     );
