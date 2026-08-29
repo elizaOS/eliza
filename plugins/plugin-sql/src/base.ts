@@ -67,6 +67,8 @@ import {
   type MemoryContentField,
   type MemoryContentPageParams,
   type MemoryContentPageResult,
+  type MemoryContentReindexParams,
+  type MemoryContentReindexResult,
   type MemoryMetadata,
   type MessageSearchHit,
   type Metadata,
@@ -683,6 +685,7 @@ import {
   mergeSegmentationMetadata,
   planSegmentedField,
   readMemoryContentPage,
+  reindexMemoryContent,
   retireStaleGenerationsInTransaction,
 } from "./stores/memoryTextSegments.store";
 import type { StoreContext } from "./stores/types";
@@ -4082,7 +4085,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getMemoryContentPage(
     params: MemoryContentPageParams
   ): Promise<MemoryContentPageResult | null> {
-    return this.withDatabase(async () => {
+    return this.withEntityContext(params.accessContext?.requesterEntityId ?? null, async (tx) => {
       // #25140 review R2: when an access context is supplied, authorize the
       // parent row with the SAME pushed-down conditions getMemories uses —
       // ANDed into every parent read INSIDE the page-read snapshot, so the
@@ -4097,7 +4100,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           )
         : undefined;
       return readMemoryContentPage({
-        db: this.db,
+        db: tx,
         memoryId: params.memoryId,
         field: params.field as import("@elizaos/core").MemorySegmentField,
         byteStart: params.byteStart,
@@ -4106,6 +4109,26 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           ? {}
           : { expectedRevision: params.expectedRevision }),
         ...(authorization === undefined ? {} : { parentAuthorization: authorization }),
+      });
+    });
+  }
+
+  /** Explicit authorized migration for one legacy large inline field (#25140). */
+  async reindexMemoryContent(
+    params: MemoryContentReindexParams
+  ): Promise<MemoryContentReindexResult> {
+    return this.withEntityContext(params.accessContext.requesterEntityId, async (tx) => {
+      const authorization =
+        and(
+          eq(memoryTable.id, params.memoryId),
+          ...memoryAccessContextConditions(params.accessContext, this.agentId, "messages")
+        ) ?? sql`false`;
+      return reindexMemoryContent({
+        db: tx,
+        memoryId: params.memoryId,
+        field: params.field as import("@elizaos/core").MemorySegmentField,
+        maxSourceBytes: params.maxSourceBytes,
+        parentAuthorization: authorization,
       });
     });
   }

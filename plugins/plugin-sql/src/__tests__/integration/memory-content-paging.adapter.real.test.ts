@@ -458,4 +458,77 @@ describe("adapter-integrated memory content paging (real PGlite)", () => {
     await adapter.close();
     await manager.close();
   });
+
+  it("explicitly reindexes a bounded 10 MiB legacy row and survives restart", async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-seg-reindex-"));
+    tempDirectories.push(dataDir);
+    const agentId = v4() as UUID;
+    let opened = await openDatabase(dataDir, agentId);
+    await migrate(opened.adapter);
+    const { roomId, entityId } = await seedRoom(opened.adapter, agentId);
+    const memoryId = await opened.adapter.createMemory(
+      { entityId, roomId, agentId, content: { text: "legacy seed", source: "test" } } as Memory,
+      "messages"
+    );
+    const source = largeSource(10 * 1024 * 1024);
+    const db = opened.adapter.getDatabase() as DrizzleDatabase;
+    await db
+      .update(memoryTable)
+      .set({ content: { text: source, source: "legacy-import" }, metadata: {} })
+      .where(eq(memoryTable.id, memoryId));
+    const accessContext = {
+      requesterEntityId: entityId,
+      authorizedRoomIds: [roomId],
+      role: "USER" as const,
+    };
+
+    await expect(
+      opened.adapter.reindexMemoryContent({
+        memoryId,
+        field: { kind: "content.text" },
+        accessContext: { ...accessContext, authorizedRoomIds: [v4() as UUID] },
+        maxSourceBytes: 11 * 1024 * 1024,
+      })
+    ).rejects.toMatchObject({ code: "MEMORY_CONTENT_REINDEX_NOT_AUTHORIZED" });
+
+    await expect(
+      opened.adapter.reindexMemoryContent({
+        memoryId,
+        field: { kind: "content.text" },
+        accessContext,
+        maxSourceBytes: 1024 * 1024,
+      })
+    ).rejects.toMatchObject({ code: "MEMORY_CONTENT_REINDEX_BOUND_EXCEEDED" });
+
+    const receipt = await opened.adapter.reindexMemoryContent({
+      memoryId,
+      field: { kind: "content.text" },
+      accessContext,
+      maxSourceBytes: 11 * 1024 * 1024,
+    });
+    expect(receipt.totalBytes).toBe(Buffer.byteLength(source, "utf8"));
+    expect(receipt.segmentCount).toBeGreaterThan(1);
+    await opened.adapter.close();
+    await opened.manager.close();
+
+    opened = await openDatabase(dataDir, agentId);
+    const chunks: Buffer[] = [];
+    let cursor = 0;
+    for (;;) {
+      const page = await opened.adapter.getMemoryContentPage({
+        memoryId,
+        field: { kind: "content.text" },
+        byteStart: cursor,
+        ...(cursor === 0 ? {} : { expectedRevision: receipt.revision }),
+        accessContext,
+      });
+      expect(page).not.toBeNull();
+      chunks.push(Buffer.from(page!.text, "utf8"));
+      cursor = page!.end;
+      if (page!.completeness === "complete") break;
+    }
+    expect(Buffer.concat(chunks).equals(Buffer.from(source, "utf8"))).toBe(true);
+    await opened.adapter.close();
+    await opened.manager.close();
+  }, 120_000);
 });
