@@ -14,11 +14,12 @@ const appDir = path.resolve(
 test("resolveViteCommand keeps the Vite 8 config and React plugin on one loader", () => {
   const resolved = resolveViteCommand({
     appDir,
-    nodePath: "/test/node",
+    runtime: "node",
+    runtimePath: "/test/runtime",
     port: 2138,
   });
 
-  expect(resolved.command).toBe("/test/node");
+  expect(resolved.command).toBe("/test/runtime");
   expect(resolved.args).toEqual([
     "--conditions=eliza-source",
     "--import",
@@ -31,14 +32,14 @@ test("resolveViteCommand keeps the Vite 8 config and React plugin on one loader"
   ]);
 });
 
-test("resolveViteCommand stays Node-backed when its caller runs under Bun", () => {
+test("resolveViteCommand stays Bun-backed when its caller runs under Bun", () => {
   const helperUrl = pathToFileURL(
     path.join(path.dirname(fileURLToPath(import.meta.url)), "dev-ui-vite.mjs"),
   ).href;
   const script = `
     import { resolveViteCommand } from ${JSON.stringify(helperUrl)};
     const resolved = resolveViteCommand({ appDir: ${JSON.stringify(appDir)} });
-    process.stdout.write(resolved.command);
+    process.stdout.write(JSON.stringify(resolved));
   `;
   const resolution = spawnSync("bun", ["--eval", script], {
     encoding: "utf8",
@@ -46,9 +47,11 @@ test("resolveViteCommand stays Node-backed when its caller runs under Bun", () =
   });
 
   expect(resolution.status, resolution.stderr).toBe(0);
-  const nodePath = resolution.stdout.trim();
+  const resolved = JSON.parse(resolution.stdout);
+  expect(resolved.args).not.toContain("tsx");
+  const runtimePath = resolved.command;
   const runtime = spawnSync(
-    nodePath,
+    runtimePath,
     [
       "--eval",
       "process.stdout.write(process.versions.bun ? 'bun' : 'node:' + process.versions.node)",
@@ -56,5 +59,5 @@ test("resolveViteCommand stays Node-backed when its caller runs under Bun", () =
     { encoding: "utf8" },
   );
   expect(runtime.status, runtime.stderr).toBe(0);
-  expect(runtime.stdout).toMatch(/^node:24\./);
+  expect(runtime.stdout).toBe("bun");
 });
