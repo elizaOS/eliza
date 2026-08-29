@@ -7,6 +7,7 @@
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  type BoardMessageStore,
   composeTaskBoard,
   createInMemoryBoardStore,
   createRuntimeMemoryBoardStore,
@@ -16,6 +17,33 @@ import {
   TelegramTaskBoard,
   taskBoardEmoji,
 } from "./task-board";
+
+/**
+ * A store whose load/save/forget each await a microtask, mirroring the
+ * runtime-memory store's real DB round-trips (getMemoryById → update/create).
+ * This yields to the event loop mid-operation, which is exactly the window that
+ * let two concurrent first renders both observe `undefined` before the fix.
+ */
+function asyncBoardStore(
+  seed?: Map<string, number>,
+): BoardMessageStore & { map: Map<string, number> } {
+  const map = seed ?? new Map<string, number>();
+  return {
+    map,
+    load: async (key) => {
+      await Promise.resolve();
+      return map.get(key);
+    },
+    save: async (key, id) => {
+      await Promise.resolve();
+      map.set(key, id);
+    },
+    forget: async (key) => {
+      await Promise.resolve();
+      map.delete(key);
+    },
+  };
+}
 
 const entries: TaskBoardEntry[] = [
   { id: "1", title: "ship feature", status: "active" },
@@ -114,6 +142,105 @@ describe("TelegramTaskBoard pinning (#8902 AC1)", () => {
     );
     expect(id).toBe(7);
     expect(pin).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("TelegramTaskBoard concurrent render serialization (#29899, #8902 AC3)", () => {
+  it("posts exactly once when two first renders race for the same board", async () => {
+    let next = 0;
+    const post = vi.fn(async () => ({ messageId: ++next }));
+    const edit = vi.fn(async () => undefined);
+    const pin = vi.fn(async () => undefined);
+    const store = asyncBoardStore();
+    const board = new TelegramTaskBoard({ post, edit, pin, store });
+
+    // Fire both concurrently (e.g. the supervisor sink + a `/tasks` command)
+    // for the SAME (chat, thread). Without serialization both would observe
+    // `existing === undefined`, both post, and both pin — a duplicate board.
+    const [id1, id2] = await Promise.all([
+      board.render(100, entries),
+      board.render(100, entries),
+    ]);
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(pin).toHaveBeenCalledTimes(1);
+    expect(edit).toHaveBeenCalledTimes(1);
+    // Both callers resolve to the single posted board id.
+    expect(id1).toBe(1);
+    expect(id2).toBe(1);
+    // Exactly one id is persisted — no orphaned message.
+    expect(store.map.get("100:")).toBe(1);
+    // The in-flight chain is cleared once both settle.
+    expect(
+      (board as unknown as { inFlight: Map<string, unknown> }).inFlight.size,
+    ).toBe(0);
+  });
+
+  it("only edits (never posts) when a stored id already exists under concurrency", async () => {
+    const post = vi.fn(async () => ({ messageId: 999 }));
+    const edit = vi.fn(async () => undefined);
+    const pin = vi.fn(async () => undefined);
+    // Seed the store as if a board was posted in a prior process (restart).
+    const store = asyncBoardStore(new Map([["100:", 55]]));
+    const board = new TelegramTaskBoard({ post, edit, pin, store });
+
+    const ids = await Promise.all([
+      board.render(100, entries),
+      board.render(100, entries),
+      board.render(100, entries),
+    ]);
+
+    expect(post).not.toHaveBeenCalled();
+    expect(pin).not.toHaveBeenCalled();
+    expect(edit).toHaveBeenCalledTimes(3);
+    expect(ids).toEqual([55, 55, 55]);
+    for (const call of edit.mock.calls) {
+      expect(call).toEqual([100, 55, expect.any(String), undefined]);
+    }
+  });
+
+  it("reposts exactly once when the first edit fails mid-race (message deleted)", async () => {
+    let next = 10;
+    const post = vi.fn(async () => ({ messageId: ++next }));
+    // First edit rejects (board message was deleted); later edits succeed.
+    const edit = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("message to edit not found"))
+      .mockResolvedValue(undefined);
+    const pin = vi.fn(async () => undefined);
+    const store = asyncBoardStore(new Map([["100:", 55]]));
+    const board = new TelegramTaskBoard({ post, edit, pin, store });
+
+    const ids = await Promise.all([
+      board.render(100, entries),
+      board.render(100, entries),
+    ]);
+
+    // The failed edit forgets the stale id and reposts a single fresh board;
+    // the second render then edits that reposted board in place.
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(ids[0]).toBe(11);
+    expect(ids[1]).toBe(11);
+    expect(store.map.get("100:")).toBe(11);
+    expect(pin).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps distinct (chat, thread) keys unserialized from each other", async () => {
+    let next = 0;
+    const post = vi.fn(async () => ({ messageId: ++next }));
+    const edit = vi.fn(async () => undefined);
+    const store = asyncBoardStore();
+    const board = new TelegramTaskBoard({ post, edit, store });
+
+    // Different threads / chats are independent boards — each posts once.
+    await Promise.all([
+      board.render(100, entries),
+      board.render(100, entries, 7),
+      board.render(200, entries),
+    ]);
+
+    expect(post).toHaveBeenCalledTimes(3);
+    expect(edit).not.toHaveBeenCalled();
   });
 });
 

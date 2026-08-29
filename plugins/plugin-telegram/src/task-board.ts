@@ -202,9 +202,20 @@ export interface TaskBoardDeps {
  * Owns one board message per (chat, thread) and keeps it current: first render
  * posts, later renders edit in place. An edit failure (e.g. the message was
  * deleted) falls back to posting a fresh board so the user always gets one.
+ *
+ * `render` is serialized per (chat, thread) key. The durable store resolves
+ * load/save through real DB round-trips, so two concurrent triggers for the
+ * same board — e.g. the supervisor digest sink firing on a status change while
+ * a user runs `/tasks` — would each observe `existing === undefined`, both post,
+ * and both pin, leaving a duplicate pinned board and an orphaned message id
+ * (last-write-wins on save). Chaining each render onto the in-flight one for its
+ * key makes the load→post→save sequence atomic, so the second render observes
+ * the saved id and edits in place (#8902 AC3).
  */
 export class TelegramTaskBoard {
   private readonly store: BoardMessageStore;
+  /** In-flight render chain per (chat, thread) key — see class doc. */
+  private readonly inFlight = new Map<string, Promise<number>>();
 
   constructor(private readonly deps: TaskBoardDeps) {
     this.store = deps.store ?? createInMemoryBoardStore();
@@ -216,6 +227,32 @@ export class TelegramTaskBoard {
 
   /** Returns the board message id (existing or newly posted). */
   async render(
+    chatId: number | string,
+    entries: TaskBoardEntry[],
+    threadId?: number,
+  ): Promise<number> {
+    const key = this.key(chatId, threadId);
+    const prior = this.inFlight.get(key);
+    const run = (async () => {
+      if (prior) {
+        // Wait for the prior render to settle so its post→save is visible to
+        // our load(); a prior failure must not abort our own render.
+        await prior.catch(() => undefined);
+      }
+      return this.renderOnce(chatId, entries, threadId);
+    })();
+    this.inFlight.set(key, run);
+    try {
+      return await run;
+    } finally {
+      // Only the tail of the chain clears the entry, so a later render already
+      // queued behind us keeps serializing.
+      if (this.inFlight.get(key) === run) this.inFlight.delete(key);
+    }
+  }
+
+  /** One post-or-edit pass; callers go through {@link render} for serialization. */
+  private async renderOnce(
     chatId: number | string,
     entries: TaskBoardEntry[],
     threadId?: number,
