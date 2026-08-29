@@ -36,6 +36,8 @@ const FIELD_ENCRYPTION_KEY = "SECRETS_MASTER_KEY";
 const BRIDGE_FALLBACK_KEY = "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK";
 const AGENT_BASE_DOMAIN_KEY = "ELIZA_CLOUD_AGENT_BASE_DOMAIN";
 const CONTAINERS_SSH_KEY = "CONTAINERS_SSH_KEY";
+const STEWARD_API_URL = "STEWARD_API_URL";
+const STEWARD_PLATFORM_KEYS = "STEWARD_PLATFORM_KEYS";
 const DELETION_AUTHORITY_SECRET_NAMES = [
   "AGENT_BACKUP_R2_ACCESS_KEY_ID",
   "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
@@ -368,7 +370,13 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
       `${CONTAINERS_SSH_KEY}: \${{ secrets.${CONTAINERS_SSH_KEY} }}`,
     );
     const forwarded = workflowEnvs();
-    for (const name of [ENV_KEY, FIELD_ENCRYPTION_KEY, CONTAINERS_SSH_KEY]) {
+    for (const name of [
+      ENV_KEY,
+      FIELD_ENCRYPTION_KEY,
+      CONTAINERS_SSH_KEY,
+      STEWARD_API_URL,
+      STEWARD_PLATFORM_KEYS,
+    ]) {
       expect(forwarded).toContain(name);
       expect(workflow).toContain(`"${name}=$${name}"`);
     }
