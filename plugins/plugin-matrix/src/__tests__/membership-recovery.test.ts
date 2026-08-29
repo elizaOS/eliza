@@ -16,6 +16,17 @@ import { MatrixService } from "../service.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 
+/**
+ * Mirrors the production matrixScopedUuid derivation in service.ts: core's
+ * createUniqueUuid stamps a version nibble of 0, which the canonical
+ * membership authority rejects, so Matrix-derived rows re-stamp the RFC 4122
+ * version (5) and variant (8) nibbles on top of the same deterministic base.
+ */
+function matrixScopedUuidForTest(runtime: IAgentRuntime, seed: string): string {
+  const base = createUniqueUuid(runtime, seed);
+  return `${base.slice(0, 14)}5${base.slice(15, 19)}8${base.slice(20)}`;
+}
+
 function createRuntime(): IAgentRuntime {
   return {
     agentId: AGENT_ID,
@@ -24,6 +35,8 @@ function createRuntime(): IAgentRuntime {
     createWorld: vi.fn().mockResolvedValue(undefined),
     createRoom: vi.fn().mockResolvedValue(undefined),
     createEntity: vi.fn().mockResolvedValue(undefined),
+    ensureWorldExists: vi.fn().mockResolvedValue(undefined),
+    ensureRoomExists: vi.fn().mockResolvedValue(undefined),
   } as unknown as IAgentRuntime;
 }
 
@@ -358,6 +371,127 @@ describe("unknown membership values are reported, never recorded as leave", () =
     expect(h.runtime.createEntity).toHaveBeenCalled();
   });
 
+  it("a peer leave in a governed room that shrank to 2 members still records the revocation", async () => {
+    // The DM skip must key on the authority's persisted scope row, not room
+    // size: a governed group that lost members down to two joined (bot +
+    // subject) looks DM-sized, and a size-keyed skip would strand the
+    // departing member as active in canonical authority state forever.
+    const h = createHarness();
+    const event = {
+      getSender: vi.fn(() => "@peer:example"),
+      getRoomId: vi.fn(() => "!shrunk:example"),
+      getId: vi.fn(() => "$shrunk-leave"),
+      getTs: vi.fn(() => 1),
+    };
+    const member = { userId: "@peer:example", membership: "leave", previousMembership: "join" };
+    const svc = h.service as unknown as Record<string, unknown>;
+    const handler = svc.handleMembershipTransition as
+      | ((
+          s: unknown,
+          e: unknown,
+          m: unknown,
+          old: string | undefined,
+          room?: unknown
+        ) => Promise<void>)
+      | undefined;
+    if (typeof handler !== "function") {
+      throw new Error("handleMembershipTransition not found on MatrixService prototype");
+    }
+    // Persisted scope row EXISTS (governed evidence) while the SDK model
+    // reports a DM-shaped room: 1 remaining joined member (the bot) + the
+    // leaving subject = 2 total.
+    h.authority.scopeHealth.mockResolvedValue({ health: "current" });
+    const shrunkRoom = createRoomDouble({
+      roomId: "!shrunk:example",
+      getJoinedMemberCount: vi.fn(() => 1),
+    });
+    h.client.getRoom.mockReturnValue(shrunkRoom);
+    await handler.call(h.service, h.state, event, member, "join", shrunkRoom);
+    expect(h.authority.scopeHealth).toHaveBeenCalledWith({ roomId: "!shrunk:example" });
+    expect(h.authority.recordTransition).toHaveBeenCalledTimes(1);
+  });
+
+  it("a peer leave with a failed scope-health probe reports and drops without creating authority evidence", async () => {
+    // The authority store itself is down — recordTransition would hit the
+    // same store and its ensureRegistered would MINT a scope row for a
+    // possible DM as a side effect of a doomed write (and that
+    // publisher-only scope row would later block the grown-room baseline
+    // bootstrap, which only runs when scopeHealth is null). The safe
+    // behavior is report-and-drop: the next roster publication pass
+    // re-derives the full baseline from fresh server state.
+    const h = createHarness();
+    const event = {
+      getSender: vi.fn(() => "@peer:example"),
+      getRoomId: vi.fn(() => "!maybe:example"),
+      getId: vi.fn(() => "$probe-fail-leave"),
+      getTs: vi.fn(() => 1),
+    };
+    const member = { userId: "@peer:example", membership: "leave", previousMembership: "join" };
+    const svc = h.service as unknown as Record<string, unknown>;
+    const handler = svc.handleMembershipTransition as
+      | ((
+          s: unknown,
+          e: unknown,
+          m: unknown,
+          old: string | undefined,
+          room?: unknown
+        ) => Promise<void>)
+      | undefined;
+    if (typeof handler !== "function") {
+      throw new Error("handleMembershipTransition not found on MatrixService prototype");
+    }
+    h.authority.scopeHealth.mockRejectedValue(new Error("store down"));
+    const dmRoom = createRoomDouble({
+      roomId: "!maybe:example",
+      getJoinedMemberCount: vi.fn(() => 1),
+    });
+    h.client.getRoom.mockReturnValue(dmRoom);
+    await handler.call(h.service, h.state, event, member, "join", dmRoom);
+    expect(h.runtime.reportError).toHaveBeenCalledWith(
+      "matrix:membership-transition",
+      expect.any(Error),
+      expect.objectContaining({ roomId: "!maybe:example" })
+    );
+    expect(h.authority.recordTransition).not.toHaveBeenCalled();
+  });
+
+  it("a bootstrap (ensureWorldExists) rejection propagates out of the transition and is reported, not silently logged", async () => {
+    // The transition handler's runtime bootstrap (ensureWorldExists) can
+    // fail (store down); the Membership event callback must surface the
+    // dropped evidence via runtime.reportError so RECENT_ERRORS shows it —
+    // a logger.error alone hides permanently lost membership evidence.
+    const h = createHarness();
+    vi.mocked(h.runtime.ensureWorldExists).mockRejectedValueOnce(new Error("world store down"));
+    const event = {
+      getSender: vi.fn(() => "@peer:example"),
+      getRoomId: vi.fn(() => "!ops:example"),
+      getId: vi.fn(() => "$boot-fail"),
+      getTs: vi.fn(() => 1),
+    };
+    const member = { userId: "@peer:example", membership: "leave", previousMembership: "join" };
+    const svc = h.service as unknown as Record<string, unknown>;
+    const handler = svc.handleMembershipTransition as
+      | ((
+          s: unknown,
+          e: unknown,
+          m: unknown,
+          old: string | undefined,
+          room?: unknown
+        ) => Promise<void>)
+      | undefined;
+    if (typeof handler !== "function") {
+      throw new Error("handleMembershipTransition not found on MatrixService prototype");
+    }
+    const groupRoom = createRoomDouble();
+    h.client.getRoom.mockReturnValue(groupRoom);
+    // The handler itself must REJECT (bootstrap failure propagates); the
+    // event callback's catch is what reports it in production.
+    await expect(
+      handler.call(h.service, h.state, event, member, "join", groupRoom)
+    ).rejects.toThrow("world store down");
+    expect(h.authority.recordTransition).not.toHaveBeenCalled();
+  });
+
   it("the bot's own ban in a <=2-member room still tombstones the scope", async () => {
     const h = createHarness();
     const event = {
@@ -424,7 +558,7 @@ describe("fresh roster parsing matches the homeserver /members envelope", () => 
     // UUIDs (same derivation production uses) so a parser emitting wrong
     // identifiers (e.g. the literal "chunk" key) fails here.
     const expected = ["@fresh1:example", "@fresh2:example", "@fresh3:example", "@bot:example"].map(
-      (matrixId) => createUniqueUuid(h.runtime, `work:${matrixId}`)
+      (matrixId) => matrixScopedUuidForTest(h.runtime, `work:${matrixId}`)
     );
     expect(h.authority.snapshots[0]?.members.sort()).toEqual(expected.sort());
   });
