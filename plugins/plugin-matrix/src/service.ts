@@ -86,7 +86,9 @@ function normalizeSearchQuery(query: string): string {
  * every id that flows into a MembershipService command (principal entities,
  * scope worlds/rooms, gate lookups) must carry RFC 4122 version/variant bits
  * instead. Re-stamping only those two nibbles keeps the id deterministic per
- * (agent, seed) and collision-free with the base scheme.
+ * (agent, seed); the scoped space is disjoint from the base scheme (base
+ * always carries version nibble 0, scoped always 5) and 2 bits narrower than
+ * the base scheme within it (variant nibble collapse), still 120 bits.
  */
 function matrixScopedUuid(runtime: IAgentRuntime, seed: string): UUID {
   const base = createUniqueUuid(runtime, seed);
@@ -2235,7 +2237,9 @@ export class MatrixService extends Service implements IMatrixService {
         return [];
       }
       const outbound: Memory = {
-        id: createUniqueUuid(this.runtime, result.eventId ?? `${roomId}:reply:${Date.now()}`),
+        // A primary key that never reaches the authority, but scoped v5 keeps
+        // every "messages" row id homogeneous with its inbound siblings.
+        id: matrixScopedUuid(this.runtime, result.eventId ?? `${roomId}:reply:${Date.now()}`),
         entityId: this.runtime.agentId,
         agentId: this.runtime.agentId,
         roomId: coreRoomId,
