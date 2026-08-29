@@ -102,6 +102,15 @@ function chargePaymentUrl(appId: string, chargeRequestId: string): string {
   return defaultRedirectUrl(appChargePaymentPath(appId, chargeRequestId));
 }
 
+/**
+ * Inclusive USD bounds enforced at write time by {@link normalizeAmount} and
+ * re-checked on read. Named because the same range is applied in three places —
+ * the writer, the reader, and the SQL page filter — and a silent divergence
+ * between them would hide otherwise-valid rows from the listing.
+ */
+const MIN_CHARGE_USD = 1;
+const MAX_CHARGE_USD = 10_000;
+
 function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
   const metadata = chargeMetadata(payment);
   if (metadata.kind !== "app_charge_request" || typeof metadata.app_id !== "string") {
@@ -120,7 +129,7 @@ function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
   // Number(), not parseFloat(): parseFloat("12garbage") is 12, silently
   // accepting a mangled value; Number() rejects any non-purely-numeric string.
   const amountUsd = Number(payment.expected_amount);
-  if (!Number.isFinite(amountUsd) || amountUsd < 1 || amountUsd > 10000) {
+  if (!Number.isFinite(amountUsd) || amountUsd < MIN_CHARGE_USD || amountUsd > MAX_CHARGE_USD) {
     logger.error("[AppCharges] Refusing to read charge request with corrupt expected_amount", {
       chargeRequestId: payment.id,
       appId: metadata.app_id,
@@ -171,7 +180,7 @@ function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
 
 function normalizeAmount(amountUsd: number): Decimal {
   const amount = new Decimal(amountUsd);
-  if (!amount.isFinite() || amount.lt(1) || amount.gt(10000)) {
+  if (!amount.isFinite() || amount.lt(MIN_CHARGE_USD) || amount.gt(MAX_CHARGE_USD)) {
     throw new Error("Charge amount must be between $1 and $10,000");
   }
   return amount.toDecimalPlaces(2);
@@ -324,6 +333,24 @@ export class AppChargeRequestsService {
           eq(cryptoPayments.organization_id, organizationId),
           sql`${cryptoPayments.metadata}->>'kind' = 'app_charge_request'`,
           sql`${cryptoPayments.metadata}->>'app_id' = ${appId}`,
+          // Exclude corrupt rows in SQL, before LIMIT. Filtering them out in JS
+          // afterwards let a newer unreadable charge consume a page slot and
+          // hide an older valid row the caller could then never reach.
+          // create() always writes `amount.toFixed(2)`, so this pattern matches
+          // every legitimately stored value.
+          //
+          // The digit counts are a CASTABILITY bound, not the value range:
+          // expected_amount is unbounded `text`, so an all-digit value long
+          // enough to overflow `numeric` would satisfy an unbounded pattern and
+          // make `::numeric` raise 22003 before BETWEEN could reject it — the
+          // same whole-query failure this filter exists to prevent. Twelve
+          // integer digits is far above MAX_CHARGE_USD and far below numeric's
+          // limit, so every value the writer can produce still matches.
+          sql`CASE
+            WHEN ${cryptoPayments.expected_amount} ~ '^[0-9]{1,12}(\\.[0-9]{1,6})?$'
+            THEN ${cryptoPayments.expected_amount}::numeric BETWEEN ${MIN_CHARGE_USD} AND ${MAX_CHARGE_USD}
+            ELSE false
+          END`,
         ),
       )
       .orderBy(desc(cryptoPayments.created_at))
