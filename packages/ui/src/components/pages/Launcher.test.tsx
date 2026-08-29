@@ -214,7 +214,7 @@ describe("Launcher", () => {
     expect(screen.getByTestId("launcher-empty")).toBeTruthy();
   });
 
-  it("keeps partial catalog failures visible beside available tiles", () => {
+  it("keeps available tiles and offers quiet recovery when a source stays degraded", () => {
     const retry = vi.fn();
     render(
       <Launcher
@@ -225,7 +225,8 @@ describe("Launcher", () => {
       />,
     );
 
-    expect(screen.getByTestId("launcher-partial-error")).toBeTruthy();
+    expect(screen.getByTestId("launcher-source-status")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByTestId("launcher-tile-chat")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledTimes(1);
