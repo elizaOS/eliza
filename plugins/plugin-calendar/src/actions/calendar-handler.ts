@@ -5569,6 +5569,20 @@ const calendarAction: CalendarHandlerAction = {
       required: false,
       schema: CALENDAR_DETAILS_PARAMETER_SCHEMA,
     },
+    {
+      // Planners habitually add a calendar-id field on feed/read calls (live:
+      // top-level calendar_id AND calendarId on one CALENDAR_FEED call, which
+      // validateToolArgs rejected and the whole read failed). Declare the
+      // field so natural variants normalize here instead of erroring; reads
+      // span the account's calendars and creation targets the built-in
+      // calendar, so the value is advisory and the handler ignores it.
+      name: "calendarId",
+      aliases: ["calendar_id", "calendarid"],
+      description:
+        "Optional; leave unset. Reads cover all connected calendars automatically and event creation targets the built-in calendar.",
+      required: false,
+      schema: { type: "string" as const },
+    },
   ],
   examples: [
     [
