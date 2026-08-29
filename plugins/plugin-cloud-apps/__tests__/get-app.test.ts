@@ -232,4 +232,48 @@ describe("GET_APP", () => {
     expect(reply).toContain("Acme Bot");
     expect(reply).not.toContain("Cloud API returned an error");
   });
+
+  it("REGRESSION (#29917 review): delivery failure on the happy id path reports error, not success", async () => {
+    // The stale-UUID guard must cover ONLY the getApp fetch. If the try also
+    // wrapped formatting/delivery/return, a rejecting callback after a
+    // successful fetch would be swallowed and degrade to list resolution —
+    // reporting success: true for a reply the user never received. The
+    // delivery failure must reach the outer catch, as it does at develop.
+    const uuid = "11111111-2222-3333-4444-555555555555";
+    let listCalled = false;
+    setListApps(() => {
+      listCalled = true;
+      return Promise.resolve({ success: true, apps: [] });
+    });
+    setGetApp((id) =>
+      Promise.resolve({
+        success: true,
+        app: makeApp({ id, name: "By Id App", slug: "by-id" }),
+      }),
+    );
+
+    let deliveries = 0;
+    const result = await getAppAction.handler(
+      keyedRuntime(),
+      makeMessage(uuid),
+      undefined,
+      undefined,
+      async () => {
+        deliveries += 1;
+        // Only the first delivery fails; the outer catch's ERROR_MESSAGE
+        // retry must go through so the action can report its error result.
+        if (deliveries === 1) throw new Error("delivery failed");
+      },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("error");
+    // The happy id path must not degrade into list resolution; the failure
+    // surfaces through the outer catch's error reply instead.
+    expect(listCalled).toBe(false);
+    expect(deliveries).toBe(2);
+  });
 });

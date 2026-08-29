@@ -96,27 +96,31 @@ export const getAppAction: Action = {
         // A stale/foreign UUID makes getApp throw (typically 404/403); that
         // must fall through to list-based resolution and its helpful
         // which-app reply, not land in the outer catch as a generic error
-        // the user can never retry past. Mirrors resolveApp and
-        // resolveDomainTargetApp (#29907/#29916).
+        // the user can never retry past. Mirrors resolveApp (#29908) and
+        // resolveDomainTargetApp. The try guards ONLY the fetch: formatting,
+        // delivery and the return stay outside, so a failed callback on the
+        // happy path still reaches the outer catch and reports failure (#29917).
+        let app: Awaited<ReturnType<typeof client.getApp>>["app"];
         try {
-          const { app } = await client.getApp(reference);
-          if (app) {
-            const detail = formatAppDetail(app);
-            await callback?.({ text: detail, actions: ["GET_APP"] });
-            return {
-              success: true,
-              text: `Fetched app ${app.name}.`,
-              userFacingText: detail,
-              verifiedUserFacing: true,
-              data: { app: { id: app.id, name: app.name, slug: app.slug } },
-            };
-          }
+          ({ app } = await client.getApp(reference));
         } catch {
           // error-policy:J4 degrade to the list-based not-found/which-app
           // reply. The catch is intentionally unconditional to mirror
           // resolveApp; a getApp failure that is not a benign 404/403 is
           // normally re-raised by the listApps() call next, so the action
           // still fails loudly in that case.
+          app = undefined;
+        }
+        if (app) {
+          const detail = formatAppDetail(app);
+          await callback?.({ text: detail, actions: ["GET_APP"] });
+          return {
+            success: true,
+            text: `Fetched app ${app.name}.`,
+            userFacingText: detail,
+            verifiedUserFacing: true,
+            data: { app: { id: app.id, name: app.name, slug: app.slug } },
+          };
         }
       }
 
