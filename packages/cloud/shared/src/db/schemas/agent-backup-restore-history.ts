@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { agentBackupRestoreLeases } from "./agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
+import { agentSandboxReplacementAttempts } from "./agent-sandbox-replacement-attempts";
 import {
   type AgentActivationPurpose,
   type AgentActivationReceipt,
@@ -122,6 +123,8 @@ export const agentVaultKeySeedReceipts = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     agent_id: uuid("agent_id").notNull(),
     restore_attempt_id: uuid("restore_attempt_id").notNull(),
+    /** Null only for immutable receipts retained from before exact replacement attempts. */
+    replacement_attempt_id: uuid("replacement_attempt_id"),
     lease_id: uuid("lease_id").notNull(),
     lease_owner_id: text("lease_owner_id").notNull(),
     lease_fencing_token: uuid("lease_fencing_token").notNull(),
@@ -148,6 +151,11 @@ export const agentVaultKeySeedReceipts = pgTable(
     attempt_unique: unique("agent_vault_key_seed_receipts_attempt_unique").on(
       table.organization_id,
       table.restore_attempt_id,
+      table.replacement_attempt_id,
+    ),
+    id_replacement_unique: unique("agent_vault_key_seed_receipts_id_replacement_unique").on(
+      table.id,
+      table.replacement_attempt_id,
     ),
     receipt_authority_unique: unique("agent_vault_key_seed_receipts_receipt_authority_unique").on(
       table.id,
@@ -181,6 +189,21 @@ export const agentVaultKeySeedReceipts = pgTable(
         agentBackupRestoreLeases.restore_attempt_id,
         agentBackupRestoreLeases.owner_id,
         agentBackupRestoreLeases.generation,
+      ],
+    }).onDelete("restrict"),
+    replacement_attempt_authority_fk: foreignKey({
+      name: "agent_vault_key_seed_receipts_replacement_authority_fkey",
+      columns: [
+        table.replacement_attempt_id,
+        table.organization_id,
+        table.agent_id,
+        table.restore_attempt_id,
+      ],
+      foreignColumns: [
+        agentSandboxReplacementAttempts.id,
+        agentSandboxReplacementAttempts.organization_id,
+        agentSandboxReplacementAttempts.agent_id,
+        agentSandboxReplacementAttempts.restore_attempt_id,
       ],
     }).onDelete("restrict"),
     vault_binding_fk: foreignKey({
@@ -249,6 +272,8 @@ export const agentBackupRestoreReceipts = pgTable(
     manifest_sha256: text("manifest_sha256").notNull(),
     seed_receipt_id: uuid("seed_receipt_id").notNull(),
     seed_receipt_digest: text("seed_receipt_digest").notNull(),
+    /** Null only for immutable receipts retained from before exact replacement attempts. */
+    replacement_attempt_id: uuid("replacement_attempt_id"),
     target_activation_generation: uuid("target_activation_generation").notNull(),
     activation_purpose: text("activation_purpose").$type<AgentActivationPurpose>().notNull(),
     activation_publication_id: uuid("activation_publication_id").notNull(),
@@ -289,6 +314,29 @@ export const agentBackupRestoreReceipts = pgTable(
         agentVaultKeySeedReceipts.manifest_sha256,
         agentVaultKeySeedReceipts.target_activation_generation,
         agentVaultKeySeedReceipts.receipt_digest,
+      ],
+    }).onDelete("restrict"),
+    seed_replacement_fk: foreignKey({
+      name: "agent_backup_restore_receipts_seed_replacement_fkey",
+      columns: [table.seed_receipt_id, table.replacement_attempt_id],
+      foreignColumns: [
+        agentVaultKeySeedReceipts.id,
+        agentVaultKeySeedReceipts.replacement_attempt_id,
+      ],
+    }).onDelete("restrict"),
+    replacement_attempt_authority_fk: foreignKey({
+      name: "agent_backup_restore_receipts_replacement_authority_fkey",
+      columns: [
+        table.replacement_attempt_id,
+        table.organization_id,
+        table.agent_id,
+        table.restore_attempt_id,
+      ],
+      foreignColumns: [
+        agentSandboxReplacementAttempts.id,
+        agentSandboxReplacementAttempts.organization_id,
+        agentSandboxReplacementAttempts.agent_id,
+        agentSandboxReplacementAttempts.restore_attempt_id,
       ],
     }).onDelete("restrict"),
     activation_publication_fk: foreignKey({

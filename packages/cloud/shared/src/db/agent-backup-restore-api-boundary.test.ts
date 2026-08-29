@@ -58,34 +58,120 @@ describe("dormant restore API boundary", () => {
       "withAgentBackupRestoreVaultPassphrase",
       "openAgentBackupRestoreOperation",
       "claimAgentBackupRestoreOperation",
+      "claimAgentSandboxExactRestoreCleanup",
+      "releaseAgentSandboxExactRestoreCleanupClaim",
+      "reserveAgentBackupRestoreTargetAndStartReplacementIntent",
       "reserveAgentBackupRestoreTarget",
       "advanceAgentBackupRestoreOperation",
       "openAgentBackupRestoreQuarantine",
       "recordAgentBackupRestoreQuarantinedContainer",
+      "recordAgentBackupRestoreQuarantinedContainerAndReplacementCreated",
+      "markAgentSandboxExactRestoreProviderStarted",
+      "recordAgentSandboxExactRestoreProviderCreated",
+      "recordAgentSandboxExactRestoreProviderSucceeded",
+      "beginAgentSandboxExactRestoreCleanup",
+      "finishAgentSandboxExactRestoreCleanup",
       "recordAgentActivationPublication",
       "authorizeAgentActivationDispatch",
       "recordAgentVaultKeySeedReceipt",
       "commitAgentBackupRestore",
     ]) {
+      const symbolBoundary = new RegExp(`\\b${symbol}\\b`);
       const occurrences = sources.flatMap(({ path, source }) =>
-        source.includes(symbol) ? [path] : [],
+        symbolBoundary.test(source) ? [path] : [],
       );
-      const expectedOccurrences = symbol === "loadAgentBackupRestoreSourceV3" ? 2 : 1;
+      const expectedOccurrences =
+        symbol === "loadCurrentAgentVaultKeyAuthority" ||
+        symbol === "loadAgentBackupRestoreSourceV3"
+          ? 2
+          : 1;
       expect(occurrences, `${symbol} must remain definition-only`).toHaveLength(
         expectedOccurrences,
       );
       expect(
-        occurrences.every((path) => path.includes("/db/repositories/")),
+        occurrences.every(
+          (path) =>
+            path.includes("/db/repositories/") ||
+            (symbol === "loadCurrentAgentVaultKeyAuthority" &&
+              path.endsWith("/lib/services/agent-backup-capture-v3-vault-authority.ts")),
+        ),
         `${symbol} must remain inside the dormant repository layer`,
       ).toBe(true);
       const invocationLikeOccurrences = production.match(
         new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g"),
       );
-      const expectedInvocationLikeOccurrences = symbol === "loadAgentBackupRestoreSourceV3" ? 2 : 1;
+      const expectedInvocationLikeOccurrences =
+        symbol === "loadCurrentAgentVaultKeyAuthority"
+          ? 3
+          : symbol === "loadAgentBackupRestoreSourceV3"
+            ? 2
+            : 1;
       expect(
         invocationLikeOccurrences ?? [],
         `${symbol} gained a production call site`,
       ).toHaveLength(expectedInvocationLikeOccurrences);
+    }
+
+    const lockedExactHelperCallSites = {
+      startOrReplayExactRestoreReplacementIntentInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      recordAgentSandboxReplacementCreatedInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-quarantine.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      markAgentSandboxExactRestoreProviderStartedForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      recordAgentSandboxExactRestoreProviderSucceededForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      rearmAgentBackupRestoreQuarantineAfterExactProviderCleanupForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-quarantine.ts",
+      ],
+      beginAgentSandboxExactRestoreCleanupForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      finishAgentSandboxExactRestoreCleanupForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-sandbox-replacement-attempts.ts",
+      ],
+      openAgentBackupRestoreQuarantineForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-quarantine.ts",
+      ],
+      recordAgentBackupRestoreQuarantinedContainerForLockedAuthoritiesInTransaction: [
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts",
+        "packages/cloud/shared/src/db/repositories/agent-backup-restore-quarantine.ts",
+      ],
+    } as const;
+    for (const [symbol, expectedPaths] of Object.entries(lockedExactHelperCallSites)) {
+      const symbolBoundary = new RegExp(`\\b${symbol}\\b`);
+      const actualPaths = sources
+        .flatMap(({ path, source }) =>
+          symbolBoundary.test(source) ? [path.slice(REPOSITORY_ROOT.length + 1)] : [],
+        )
+        .sort();
+      expect(actualPaths, `${symbol} gained a production import or call site`).toEqual(
+        [...expectedPaths].sort(),
+      );
+      const invocationLikeOccurrences = production.match(
+        new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g"),
+      );
+      expect(
+        invocationLikeOccurrences ?? [],
+        `${symbol} gained a production invocation`,
+      ).toHaveLength(
+        symbol === "openAgentBackupRestoreQuarantineForLockedAuthoritiesInTransaction"
+          ? 3
+          : expectedPaths.length,
+      );
     }
     expect(readFileSync(join(import.meta.dir, "index.ts"), "utf8")).not.toMatch(
       /agent-backup-restore|agent-vault-key-authority/,
@@ -142,10 +228,12 @@ describe("dormant restore API boundary", () => {
       );
     }
 
+    const reserveDeclaration = "export async function reserveAgentBackupRestoreTarget(params:";
     const reserveSource = operationSource.slice(
-      operationSource.indexOf("export async function reserveAgentBackupRestoreTarget"),
+      operationSource.indexOf(reserveDeclaration),
       operationSource.indexOf("export async function advanceAgentBackupRestoreOperation"),
     );
+    expect(operationSource.indexOf(reserveDeclaration)).toBeGreaterThanOrEqual(0);
     const transactionalReserve = reserveSource.slice(
       reserveSource.indexOf("return await dbWrite.transaction"),
     );
@@ -219,7 +307,7 @@ describe("dormant restore API boundary", () => {
     expect(targetProof.indexOf("return await dbWrite.transaction")).toBeGreaterThanOrEqual(0);
     expect(vaultSource).toContain("MAX_RESTORE_VAULT_HANDOFF_TIMEOUT_MS = 60_000");
     expect(vaultSource).toContain("RESTORE_VAULT_HANDOFF_AUTHORITY_MARGIN_MS = 1_000");
-    expect(vaultSource).toContain("return await Promise.race([");
+    expect(vaultSource).toContain("await Promise.race([");
     expect(vaultSource).toContain("controller.abort(timeoutError)");
 
     const historySource = readFileSync(
@@ -307,16 +395,19 @@ describe("dormant restore API boundary", () => {
     );
     expect(quarantineSource).toContain("activation_generation: operation.restore_attempt_id");
 
-    const functions = [
+    const lockOwningFunctions = [
       quarantineSource.slice(
         quarantineSource.indexOf("export async function openAgentBackupRestoreQuarantine"),
         quarantineSource.indexOf(
-          "export async function recordAgentBackupRestoreQuarantinedContainer",
+          "async function recordAgentBackupRestoreQuarantinedContainerBoundary",
         ),
       ),
       quarantineSource.slice(
         quarantineSource.indexOf(
-          "export async function recordAgentBackupRestoreQuarantinedContainer",
+          "async function recordAgentBackupRestoreQuarantinedContainerBoundary",
+        ),
+        quarantineSource.indexOf(
+          "\nexport async function recordAgentBackupRestoreQuarantinedContainer(\n",
         ),
       ),
     ];
@@ -330,13 +421,24 @@ describe("dormant restore API boundary", () => {
       "lockAgentBackupCatalogAuthority(",
       "readPostLockDatabaseNow(tx)",
     ];
-    for (const source of functions) {
+    for (const source of lockOwningFunctions) {
       const transactional = source.slice(source.indexOf("return dbWrite.transaction"));
       for (let index = 1; index < lockAnchors.length; index += 1) {
         expect(transactional.indexOf(lockAnchors[index - 1] as string)).toBeLessThan(
           transactional.indexOf(lockAnchors[index] as string),
         );
       }
+    }
+    const sandboxMutations = [
+      quarantineSource.slice(
+        quarantineSource.indexOf(
+          "export async function openAgentBackupRestoreQuarantineForLockedAuthoritiesInTransaction",
+        ),
+        quarantineSource.indexOf("export async function openAgentBackupRestoreQuarantine"),
+      ),
+      lockOwningFunctions[1] as string,
+    ];
+    for (const source of sandboxMutations) {
       const sandboxMutationStart = source.indexOf(".update(agentSandboxes)");
       const sandboxMutation = source.slice(
         source.indexOf(".set({", sandboxMutationStart),
