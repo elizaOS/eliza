@@ -77,6 +77,7 @@ describe("resolveOptimizedPromptIntegrityKey", () => {
     ["short", Buffer.alloc(31, 1).toString("base64")],
     ["long", Buffer.alloc(33, 1).toString("base64")],
     ["non-base64", "not-base64"],
+    ["non-canonical", "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwB="],
   ])("rejects a %s losing-writer key", async (_label, winner) => {
     const vault = {
       has: vi.fn(async () => false),
