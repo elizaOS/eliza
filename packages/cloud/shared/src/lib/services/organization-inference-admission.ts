@@ -28,6 +28,8 @@ import {
 } from "./credits";
 import {
   acquireInferenceAdmissionLease,
+  createInferenceAdmissionBalanceFence,
+  fenceInferenceAdmissionLeaseForSettlement,
   InferenceAdmissionGateUnavailableError,
   type InferenceAdmissionLease,
   InferenceAdmissionLeaseRejectedError,
@@ -187,6 +189,10 @@ function attachInferenceAdmissionLease(
     const current = (async () => {
       if (selected.kind === "unknown" || selected.actualCostUsd > 0) {
         await markProviderDispatched();
+        await fenceInferenceAdmissionLeaseForSettlement(
+          lease,
+          selected.kind === "actual" ? selected.actualCostUsd : lease.estimatedCostUsd,
+        );
       }
       const reconciliation =
         selected.kind === "actual"
@@ -423,6 +429,7 @@ export async function admitOrganizationInference(
     if (!inferenceLease) {
       throw new InferenceAdmissionUnavailableError();
     }
+    const inferenceBalanceFence = createInferenceAdmissionBalanceFence(inferenceLease);
     if (affiliateAttribution) {
       const affiliatePayoutSourceId = getAffiliatePayoutSourceId(params.context);
       const reservationMetadata = {
@@ -444,6 +451,11 @@ export async function admitOrganizationInference(
           billingSource: charge.billingSource,
           actualCost: actualCostUsd,
           reservationMetadata,
+          // The attached lease remains active until the affiliate debit,
+          // lower-only handoff, authoritative republish, and gate settlement
+          // all finish.
+          preserveInferenceBalanceHint: true,
+          inferenceBalanceFence,
         });
       const result: OrganizationInferenceAdmission = {
         mode: "durable_object_affiliate_debit",
@@ -470,7 +482,13 @@ export async function admitOrganizationInference(
           adjustmentType: "none",
         };
       }
-      const outcome = await debitInferenceCost(debit, actualCostUsd, "deferred");
+      const outcome = await debitInferenceCost(debit, actualCostUsd, "deferred", {
+        // The attached admission lease remains active until this authoritative
+        // debit and gate settlement finish, so the last valid projection can
+        // stay present during the post-stream republish handoff.
+        preserveBalanceHintDuringFencedHandoff: true,
+        inferenceBalanceFence,
+      });
       return {
         reservedAmount: outcome.collectedAmountUsd,
         actualCost: actualCostUsd,

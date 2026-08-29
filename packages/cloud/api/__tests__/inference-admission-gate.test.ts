@@ -10,6 +10,8 @@ import { creditsService } from "@/lib/services/credits";
 import {
   acquireInferenceAdmissionLease,
   consumeInferenceRateLimit,
+  createInferenceAdmissionBalanceFence,
+  fenceInferenceAdmissionLeaseForSettlement,
   InferenceAdmissionGateUnavailableError,
   InferenceAdmissionLeaseRejectedError,
   markInferenceAdmissionLeaseDispatched,
@@ -247,6 +249,7 @@ function post(
     | "/hydrate"
     | "/lease"
     | "/dispatch"
+    | "/settlement-fence"
     | "/release"
     | "/settle"
     | "/rate-limit"
@@ -932,6 +935,218 @@ describe("InferenceAdmissionGate", () => {
     ).toBe(402);
   });
 
+  test("a committed overage lower-hint blocks a concurrent second admission before republish", async () => {
+    const gate = createGate();
+    await hydrateGate(gate, 1, "1");
+
+    // Request A reserved only $0.10, but its authoritative debit committed a
+    // $0.90 charge. While A still owns its lease, the settlement handoff lowers
+    // the cache projection to the committed $0.10 balance under the same
+    // revision before its newer snapshot is available.
+    expect(
+      (
+        await post(gate, "/lease", {
+          requestId: "overage-a",
+          balanceUsd: 1,
+          balanceAt: Date.now(),
+          balanceRevision: "1",
+          estimatedCostUsd: 0.1,
+        })
+      ).status,
+    ).toBe(200);
+
+    // Request B is concurrent with the paused authoritative republish. Applying
+    // the lower balance at the SAME revision must tighten the gate ceiling and
+    // reject B; the pre-fix preserved $1 projection admitted this request.
+    expect(
+      (
+        await post(gate, "/lease", {
+          requestId: "overage-b",
+          balanceUsd: 0.1,
+          balanceAt: Date.now(),
+          balanceRevision: "1",
+          estimatedCostUsd: 0.01,
+        })
+      ).status,
+    ).toBe(402);
+  });
+
+  test("a live DO fence rejects stale Workers and ignores a delayed older publication", async () => {
+    const gate = createGate();
+    await hydrateGate(gate, 1, "1");
+
+    await runWithCloudBindingsAsync(gateBindings(gate), async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "fenced-a",
+        balanceUsd: 1,
+        balanceRevision: "1",
+        estimatedCostUsd: 0.1,
+        recovery: organizationRecovery("fenced-a"),
+      });
+      await markInferenceAdmissionLeaseDispatched(lease);
+      const fence = createInferenceAdmissionBalanceFence(lease);
+
+      // The debit committed at $0.90, while another Worker still sees the old
+      // eventually-consistent $1/rev1 KV value. The direct DO update, not KV
+      // propagation, must close the remaining $0.90 before that Worker leases.
+      await fence.lowerCommittedBalance(0.1, "2");
+      // A delayed same-revision high projection cannot raise the committed
+      // lower ceiling before the first settler finishes.
+      expect(
+        (
+          await post(gate, "/hydrate", {
+            balanceUsd: 0.9,
+            balanceRevision: "2",
+          })
+        ).status,
+      ).toBe(200);
+      await expect(
+        acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "stale-worker-b",
+          balanceUsd: 1,
+          balanceRevision: "1",
+          estimatedCostUsd: 0.01,
+          recovery: organizationRecovery("stale-worker-b"),
+        }),
+      ).rejects.toBeInstanceOf(InferenceAdmissionLeaseRejectedError);
+
+      expect(
+        (
+          await post(gate, "/settle", {
+            requestId: "fenced-a",
+            balanceBackedUsd: 0.9,
+            gateConsumedUsd: 0.9,
+            balanceUsd: 0.1,
+            balanceRevision: "2",
+          })
+        ).status,
+      ).toBe(200);
+
+      // A second committed debit advanced the authority to rev3/$0.05. A
+      // delayed rev2/$0.10 cache publication can arrive afterward, but the
+      // revisioned DO fence must ignore it and reject a Worker carrying it.
+      expect(
+        (
+          await post(gate, "/hydrate", {
+            balanceUsd: 0.05,
+            balanceRevision: "3",
+          })
+        ).status,
+      ).toBe(200);
+      await fence.publishAuthoritativeBalance(0.1, "2");
+      await expect(
+        acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "delayed-publication-c",
+          balanceUsd: 0.1,
+          balanceRevision: "2",
+          estimatedCostUsd: 0.06,
+          recovery: organizationRecovery("delayed-publication-c"),
+        }),
+      ).rejects.toBeInstanceOf(InferenceAdmissionLeaseRejectedError);
+    });
+  });
+
+  test("a settlement fence widens monotonically and rejects a stale second Worker before DB settlement", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 1, "1");
+
+    await runWithCloudBindingsAsync(gateBindings(gate), async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "resize-a",
+        balanceUsd: 1,
+        balanceRevision: "1",
+        estimatedCostUsd: 0.1,
+        recovery: organizationRecovery("resize-a"),
+      });
+      await markInferenceAdmissionLeaseDispatched(lease);
+
+      // Provider A reports a $0.90 actual cost. Its Postgres debit is paused;
+      // the durable transition must consume the delta before stale Worker B
+      // can lease against its old $1/rev1 projection.
+      await fenceInferenceAdmissionLeaseForSettlement(lease, 0.9);
+      expect(lease.estimatedCostUsd).toBe(0.9);
+      const fencedLedger = storage.read<{
+        availableUsd: number;
+        activeEstimateUsd: number;
+      }>("ledger");
+      expect(fencedLedger?.availableUsd).toBeCloseTo(0.1);
+      expect(fencedLedger?.activeEstimateUsd).toBeCloseTo(0.9);
+      await expect(
+        acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "stale-resize-b",
+          balanceUsd: 1,
+          balanceRevision: "1",
+          estimatedCostUsd: 0.2,
+          recovery: organizationRecovery("stale-resize-b"),
+        }),
+      ).rejects.toBeInstanceOf(InferenceAdmissionLeaseRejectedError);
+
+      // A lower replay is an acknowledged no-op and cannot shrink either the
+      // persisted or local lease.
+      await fenceInferenceAdmissionLeaseForSettlement(lease, 0.2);
+      expect(lease.estimatedCostUsd).toBe(0.9);
+      expect(
+        storage.read<{ estimatedCostUsd: number }>(storedLeaseKey("resize-a")),
+      ).toMatchObject({ estimatedCostUsd: 0.9 });
+    });
+  });
+
+  test("a lost settlement-fence acknowledgement replays before billing can continue", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10, "1");
+    let fenceAttempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            const response = await gate.fetch(incoming);
+            if (new URL(incoming.url).pathname === "/settlement-fence") {
+              fenceAttempts++;
+              if (fenceAttempts === 1) {
+                throw new Error("injected lost settlement-fence response");
+              }
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "resize-lost-ack",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 2,
+        recovery: organizationRecovery("resize-lost-ack"),
+      });
+      await markInferenceAdmissionLeaseDispatched(lease);
+      await fenceInferenceAdmissionLeaseForSettlement(lease, 8);
+      expect(lease.estimatedCostUsd).toBe(8);
+    });
+
+    expect(fenceAttempts).toBe(2);
+    expect(
+      storage.read<{ estimatedCostUsd: number }>(
+        storedLeaseKey("resize-lost-ack"),
+      ),
+    ).toMatchObject({ estimatedCostUsd: 8 });
+    expect(storage.read<{ activeEstimateUsd: number }>("ledger")).toMatchObject(
+      {
+        activeEstimateUsd: 8,
+      },
+    );
+  });
+
   test("repeat hydration cannot double-count an active authoritative hold", async () => {
     const gate = createGate();
     await hydrateGate(gate, 100, "1");
@@ -1499,6 +1714,63 @@ describe("InferenceAdmissionGate", () => {
     }
   });
 
+  test("alarm recovery inherits a widened settlement fence after the live Worker crashes", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10, "1");
+      expect(
+        (
+          await post(gate, "/lease", {
+            requestId: "resize-crash-a",
+            balanceUsd: 10,
+            balanceRevision: "1",
+            estimatedCostUsd: 2,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(gate, "/dispatch", {
+            requestId: "resize-crash-a",
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(gate, "/settlement-fence", {
+            requestId: "resize-crash-a",
+            estimatedCostUsd: 8,
+          })
+        ).status,
+      ).toBe(200);
+
+      // The live Worker disappears before Postgres. The alarm must recover
+      // the widened $8 exposure, not the original $2 estimate.
+      clock.mockReturnValue(1_300_000);
+      await expect(gate.alarm()).rejects.toThrow(
+        "Inference admission lease recovery failed",
+      );
+      expect(recoverExpiredLease).toHaveBeenCalledTimes(1);
+      expect(recoverExpiredLease.mock.calls[0]?.[1]).toBe(8);
+      expect(
+        storage.read<{
+          estimatedCostUsd: number;
+          phase: string;
+        }>(storedLeaseKey("resize-crash-a")),
+      ).toMatchObject({ estimatedCostUsd: 8, phase: "recovering" });
+      expect(
+        storage.read<{
+          activeEstimateUsd: number;
+          availableUsd: number;
+        }>("ledger"),
+      ).toMatchObject({ activeEstimateUsd: 8, availableUsd: 2 });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("an unrelated newer balance revision cannot release an expired lease", async () => {
     const clock = spyOn(Date, "now").mockReturnValue(1_000);
     try {
@@ -1583,12 +1855,20 @@ describe("InferenceAdmissionGate", () => {
           })
         ).status,
       ).toBe(200);
-      recoverExpiredLease.mockResolvedValue({
-        balanceUsd: 2,
-        balanceRevision: "2",
-        collectedUsd: 8,
-        gateConsumedUsd: 8,
-      });
+      recoverExpiredLease.mockImplementation(
+        async (_context, _estimatedCostUsd, options) => {
+          const fence = options?.inferenceBalanceFence;
+          if (!fence) throw new Error("expected recovery balance fence");
+          await fence.lowerCommittedBalance(2, "2");
+          await fence.publishAuthoritativeBalance(2, "2");
+          return {
+            balanceUsd: 2,
+            balanceRevision: "2",
+            collectedUsd: 8,
+            gateConsumedUsd: 8,
+          };
+        },
+      );
 
       clock.mockReturnValue(1_300_000);
       await gate.alarm();

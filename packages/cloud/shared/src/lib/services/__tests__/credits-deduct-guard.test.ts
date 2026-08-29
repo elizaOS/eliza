@@ -19,7 +19,7 @@
  * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -137,6 +137,23 @@ beforeAll(async () => {
       // allowed by a standard UNIQUE index, so debit rows are unaffected.
       `CREATE UNIQUE INDEX IF NOT EXISTS credit_transactions_stripe_payment_intent_idx
         ON credit_transactions (stripe_payment_intent_id)`,
+      `CREATE SEQUENCE IF NOT EXISTS organization_balance_revision_seq AS bigint`,
+      `CREATE OR REPLACE FUNCTION advance_organization_balance_revision()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          IF NEW.credit_balance IS DISTINCT FROM OLD.credit_balance THEN
+            NEW.balance_revision := nextval('organization_balance_revision_seq');
+          END IF;
+          RETURN NEW;
+        END;
+        $$`,
+      `DROP TRIGGER IF EXISTS organizations_balance_revision_trigger ON organizations`,
+      `CREATE TRIGGER organizations_balance_revision_trigger
+        BEFORE UPDATE OF credit_balance ON organizations
+        FOR EACH ROW
+        EXECUTE FUNCTION advance_organization_balance_revision()`,
     ];
     for (const stmt of ddl) {
       await dbWrite.execute(stmt);
@@ -211,6 +228,137 @@ describe("reserveAndDeductCredits — atomic debit", () => {
       // The guard fails CLOSED — no money moved, no debit row written.
       expect(await readBalance()).toBeCloseTo(10, 6);
       expect(await listDebits()).toHaveLength(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a preserved inference debit lowers its durable fence immediately after commit and before cache work",
+    async () => {
+      if (!pgliteReady) return;
+      const { CacheInvalidation } = await import("../../cache/invalidation");
+      const events: string[] = [];
+      const invalidation = spyOn(CacheInvalidation, "onCreditMutation").mockImplementation(
+        async () => {
+          events.push("cache_invalidation");
+        },
+      );
+      let committedRevision = "";
+      const inferenceBalanceFence = {
+        lowerCommittedBalance: mock(async (balanceUsd: number, balanceRevision: string) => {
+          events.push("durable_fence");
+          expect(balanceUsd).toBeCloseTo(6.75, 6);
+          // A separate read observes the new value, proving this hook is after
+          // the owned transaction commits rather than inside it.
+          const committed = await dbWrite.execute(
+            `SELECT credit_balance, balance_revision FROM organizations WHERE id = '${ORG_ID}';`,
+          );
+          const row = committed.rows[0] as {
+            credit_balance: string;
+            balance_revision: string;
+          };
+          expect(Number(row.credit_balance)).toBeCloseTo(6.75, 6);
+          expect(Number(row.balance_revision)).toBeGreaterThan(0);
+          expect(balanceRevision).toBe(String(row.balance_revision));
+          committedRevision = balanceRevision;
+        }),
+        publishAuthoritativeBalance: mock(async () => undefined),
+      };
+
+      try {
+        const result = await creditsService.deductCredits({
+          organizationId: ORG_ID,
+          amount: 3.25,
+          description: "fenced inference charge",
+          metadata: { user_id: USER_ID },
+          preserveInferenceBalanceHint: true,
+          inferenceBalanceFence,
+        });
+        expect(result.success).toBe(true);
+      } finally {
+        invalidation.mockRestore();
+      }
+
+      expect(events).toEqual(["durable_fence", "cache_invalidation"]);
+      expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledTimes(1);
+      expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledWith(
+        6.75,
+        committedRevision,
+      );
+      expect(inferenceBalanceFence.publishAuthoritativeBalance).not.toHaveBeenCalled();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a preserved inference hint without its durable fence fails before mutating money",
+    async () => {
+      if (!pgliteReady) return;
+
+      await expect(
+        creditsService.deductCredits({
+          organizationId: ORG_ID,
+          amount: 3.25,
+          description: "unfenced inference charge",
+          metadata: { user_id: USER_ID },
+          preserveInferenceBalanceHint: true,
+        }),
+      ).rejects.toThrow("Preserved inference debit requires an admission fence");
+
+      expect(await readBalance()).toBeCloseTo(10, 6);
+      expect(await listDebits()).toHaveLength(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a keyed replay repairs the durable fence with the latest committed balance revision",
+    async () => {
+      if (!pgliteReady) return;
+      const inferenceBalanceFence = {
+        lowerCommittedBalance: mock(async () => undefined),
+        publishAuthoritativeBalance: mock(async () => undefined),
+      };
+      const stripePaymentIntentId = `inference-debit:${ORG_ID}:fence-replay`;
+      const params = {
+        organizationId: ORG_ID,
+        amount: 3.25,
+        description: "replayed fenced inference charge",
+        metadata: { user_id: USER_ID },
+        stripePaymentIntentId,
+        preserveInferenceBalanceHint: true,
+        inferenceBalanceFence,
+      };
+
+      const first = await creditsService.deductCredits(params);
+      expect(first.success).toBe(true);
+      expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledTimes(1);
+
+      // A later mutation advances the authoritative revision before a retry
+      // repairs a commit-then-ack-loss. Replay must fence that latest snapshot,
+      // not the revision captured by the original request.
+      await dbWrite.execute(
+        `UPDATE organizations SET credit_balance = credit_balance + 2 WHERE id = '${ORG_ID}';`,
+      );
+      const latest = await dbWrite.execute(
+        `SELECT credit_balance, balance_revision FROM organizations WHERE id = '${ORG_ID}';`,
+      );
+      const latestRow = latest.rows[0] as {
+        credit_balance: string;
+        balance_revision: string;
+      };
+      inferenceBalanceFence.lowerCommittedBalance.mockClear();
+
+      const replay = await creditsService.deductCredits(params);
+
+      expect(replay.success).toBe(true);
+      expect(replay.transaction?.id).toBe(first.transaction?.id);
+      expect(replay.newBalance).toBeCloseTo(Number(latestRow.credit_balance), 6);
+      expect(inferenceBalanceFence.lowerCommittedBalance).toHaveBeenCalledWith(
+        Number(latestRow.credit_balance),
+        String(latestRow.balance_revision),
+      );
+      expect(await listDebits()).toEqual([{ amount: -3.25, type: "debit" }]);
     },
     PGLITE_TIMEOUT,
   );

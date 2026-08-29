@@ -22,18 +22,17 @@ import { republishOrgBalanceHint } from "./inference-auth-cache";
  * Republish the gate hint with authoritative state after a committed inference
  * debit.
  *
- * A debit necessarily runs `CacheInvalidation.onCreditMutation`, which DELETES
- * `CacheKeys.inference.orgBalance`. That delete is correct for mutations whose
- * caller cannot know the resulting balance (top-ups, refunds, admin
- * adjustments), but the inference settler is the one mutation that both lowers
- * the balance and immediately knows the new value. Leaving the key absent made
- * the *next* turn a full miss, and on the Worker hot path a full miss is read
- * `cacheOnly` — a hard, user-visible 503 "Billing authorization is warming",
- * not a slow read. Every settled turn therefore armed a guaranteed failure for
- * the following turn (observed on staging as a strict 200/503 alternation).
+ * Credit mutations normally run `CacheInvalidation.onCreditMutation`, which
+ * deletes `CacheKeys.inference.orgBalance`. That delete is correct for callers
+ * that cannot know the resulting balance (top-ups, refunds, admin adjustments).
+ * A DO-fenced inference debit instead keeps the last valid projection present
+ * only through this authoritative overwrite; legacy inference settlers still
+ * delete then seed it here. Leaving the key absent until a later request made
+ * the *next* Worker turn a full `cacheOnly` miss — a hard, user-visible 503
+ * "Billing authorization is warming", not a slow read.
  *
- * `lowerOrgBalanceHint` cannot repair this: it is lower-only and bails when no
- * entry exists, so after the delete it is always a no-op.
+ * `lowerOrgBalanceHint` cannot repair the delete path: it is lower-only and
+ * bails when no entry exists, so after eviction it is always a no-op.
  *
  * Republishing authoritatively (balance AND revision) costs nothing net: the
  * identical `getOrganizationBalanceSnapshot` read already happened moments
@@ -48,12 +47,21 @@ import { republishOrgBalanceHint } from "./inference-auth-cache";
  * is never allowed to dispatch from this projection. Older snapshots therefore
  * cannot reopen an active gate even if concurrent writers reach Redis out of order.
  */
-export async function republishOrgBalanceHintAfterDebit(organizationId: string): Promise<void> {
+export async function republishOrgBalanceHintAfterDebit(
+  organizationId: string,
+  options: {
+    publishAuthoritativeBalance?: (balanceUsd: number, balanceRevision: string) => Promise<void>;
+  } = {},
+): Promise<void> {
   // Captured BEFORE the authoritative read, matching `refreshOrgBalanceHint`:
   // the timestamp marks when the read started, so a delayed old query can never
   // masquerade as fresher than a debit that committed while it was in flight.
   const balanceAt = Date.now();
   const snapshot = await creditsService.getOrganizationBalanceSnapshot(organizationId);
+  // Advance the strongly consistent per-org authority before the same snapshot
+  // reaches eventually-consistent KV. A delayed older KV publication can then
+  // warm a Worker, but it cannot raise the Durable Object's revision/ceiling.
+  await options.publishAuthoritativeBalance?.(snapshot.balanceUsd, snapshot.revision);
   await republishOrgBalanceHint(organizationId, snapshot.balanceUsd, balanceAt, snapshot.revision);
   clearOrgAdmissionRefused(organizationId);
 }
