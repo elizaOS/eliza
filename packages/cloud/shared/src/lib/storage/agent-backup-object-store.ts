@@ -24,6 +24,17 @@ import {
   type PutImmutableObjectInput,
   putImmutableObjectAtBackend,
 } from "./object-store";
+import {
+  createMultipartObjectUpload,
+  type MultipartObjectPartReceipt,
+  type MultipartObjectRequestControl,
+  type MultipartObjectUploadHandle,
+  type MultipartObjectUploadPlan,
+  type MultipartObjectUploadSession,
+  type RehydrateMultipartObjectUploadHandleInput,
+  rehydrateMultipartObjectUploadHandle,
+  resumeMultipartObjectUpload,
+} from "./object-store-multipart";
 import type { RuntimeR2Bucket } from "./r2-runtime-binding";
 import { createS3CompatibleClient } from "./s3-compatible-client";
 
@@ -74,6 +85,23 @@ export interface AgentBackupObjectStore {
   /** Stream one exact catalogued generation; await `completion` before commit. */
   getExactObject(input: GetExactObjectInput): Promise<ExactObjectRead>;
   putImmutable(params: PutImmutableObjectInput): Promise<ImmutableObjectUploadReceipt>;
+  /**
+   * Start one exact multipart object. The caller owns global key uniqueness and
+   * must retain its durable single-writer fence until exact completion.
+   */
+  createMultipart(
+    input: MultipartObjectUploadPlan & { readonly control: MultipartObjectRequestControl },
+  ): Promise<MultipartObjectUploadSession>;
+  /** Rehydrate private durable columns against this exact configured backend. */
+  rehydrateMultipartHandle(
+    input: Omit<RehydrateMultipartObjectUploadHandleInput, "backend">,
+  ): Promise<MultipartObjectUploadHandle>;
+  /** Resume only an exact persisted provider handle and acknowledged receipts. */
+  resumeMultipart(input: {
+    readonly handle: MultipartObjectUploadHandle;
+    readonly acknowledgedParts?: readonly MultipartObjectPartReceipt[];
+    readonly control: MultipartObjectRequestControl;
+  }): Promise<MultipartObjectUploadSession>;
   delete(target: ObjectDeleteTarget, control?: ObjectRequestControl): Promise<ObjectDeleteReceipt>;
   /** Enumerate exact keys under a caller-owned canonical prefix. */
   listKeys(input: {
@@ -312,6 +340,13 @@ export async function createAgentBackupObjectStore(
     getExactObject: (input: GetExactObjectInput) => getExactObjectAtBackend({ backend, input }),
     putImmutable: (params: Parameters<AgentBackupObjectStore["putImmutable"]>[0]) =>
       putImmutableObjectAtBackend({ backend, ...params }),
+    createMultipart: (input: Parameters<AgentBackupObjectStore["createMultipart"]>[0]) =>
+      createMultipartObjectUpload({ backend, ...input }),
+    rehydrateMultipartHandle: (
+      input: Parameters<AgentBackupObjectStore["rehydrateMultipartHandle"]>[0],
+    ) => rehydrateMultipartObjectUploadHandle({ backend, ...input }),
+    resumeMultipart: (input: Parameters<AgentBackupObjectStore["resumeMultipart"]>[0]) =>
+      resumeMultipartObjectUpload({ backend, ...input }),
     delete: (target: ObjectDeleteTarget, control?: ObjectRequestControl) =>
       deleteObjectAtBackend({ backend, target, control }),
     listKeys,
