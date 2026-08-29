@@ -66,6 +66,23 @@ const CONNECTION_TIMEOUT_MS = 10_000;
 /** Default timeout for a single command execution (ms). */
 const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;
 
+/**
+ * A cancelled stdin command gets a short grace period to observe the SSH
+ * channel's authoritative `close` event. If the peer never closes the
+ * channel, the whole dedicated SSH session is destroyed before the promise
+ * settles so the remote command cannot keep consuming buffered secret bytes.
+ */
+const ABORTABLE_STDIN_CLOSE_GRACE_MS = 1_000;
+
+/** Remote output is drained and discarded, with a hard bound against flooding. */
+const ABORTABLE_STDIN_MAX_OUTPUT_BYTES = 64 * 1024;
+
+function createDockerSshAbortError(hostname: string): Error {
+  const error = new Error(`[docker-ssh] stdin command aborted on ${hostname}`);
+  error.name = "AbortError";
+  return error;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -253,6 +270,24 @@ export class DockerSSHClient {
     return client;
   }
 
+  /**
+   * Create an unpooled client for one cancellation-sensitive operation.
+   * Destroying this session can never interrupt another caller's command.
+   */
+  static createDedicated(
+    hostname: string,
+    port?: number,
+    hostKeyFingerprint?: string,
+    username?: string,
+  ): DockerSSHClient {
+    return new DockerSSHClient({
+      hostname,
+      port: port ?? DEFAULT_SSH_PORT,
+      username: username ?? DEFAULT_SSH_USERNAME,
+      hostKeyFingerprint,
+    });
+  }
+
   /** Disconnect and remove every pooled client. */
   static async disconnectAll(): Promise<void> {
     const promises: Promise<void>[] = [];
@@ -340,27 +375,73 @@ export class DockerSSHClient {
    * Establish the SSH connection.  Resolves once the `ready` event fires.
    * If the client is already connected this is a no-op.
    */
-  async connect(): Promise<void> {
+  async connect(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      throw createDockerSshAbortError(this.hostname);
+    }
     if (this.connected && this.client) {
       return;
     }
 
     const SSHClientCtor = await loadSSHClientCtor();
 
+    if (signal?.aborted) {
+      throw createDockerSshAbortError(this.hostname);
+    }
+
     return new Promise<void>((resolve, reject) => {
       const conn = new SSHClientCtor();
 
+      let settled = false;
+
+      const cleanupPendingConnection = () => {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", onAbort);
+      };
+
+      const failPendingConnection = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanupPendingConnection();
+        try {
+          conn.destroy();
+        } catch {
+          /* best-effort; rejection still fences this client instance */
+        }
+        this.connected = false;
+        if (this.client === conn) this.client = null;
+        reject(error);
+      };
+
+      const onAbort = () => {
+        failPendingConnection(createDockerSshAbortError(this.hostname));
+      };
+
       const timeout = setTimeout(() => {
-        conn.end();
-        reject(
+        failPendingConnection(
           new Error(
             `[docker-ssh] Connection to ${this.hostname}:${this.port} timed out after ${CONNECTION_TIMEOUT_MS}ms`,
           ),
         );
       }, CONNECTION_TIMEOUT_MS);
 
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+
       conn.on("ready", () => {
-        clearTimeout(timeout);
+        if (settled) {
+          try {
+            conn.destroy();
+          } catch {
+            /* best-effort */
+          }
+          return;
+        }
+        settled = true;
+        cleanupPendingConnection();
         this.client = conn;
         this.connected = true;
         logger.info(`[docker-ssh] Connected to ${this.hostname}:${this.port}`);
@@ -383,15 +464,17 @@ export class DockerSSHClient {
       });
 
       conn.on("error", (err) => {
-        clearTimeout(timeout);
-        this.connected = false;
-        this.client = null;
-        reject(new Error(`[docker-ssh] Connection error for ${this.hostname}: ${err.message}`));
+        failPendingConnection(
+          new Error(`[docker-ssh] Connection error for ${this.hostname}: ${err.message}`),
+        );
       });
 
       conn.on("close", () => {
         this.connected = false;
         this.client = null;
+        failPendingConnection(
+          new Error(`[docker-ssh] Connection closed before ready for ${this.hostname}`),
+        );
       });
 
       conn.connect({
@@ -649,6 +732,205 @@ export class DockerSSHClient {
         });
 
         stream.end(inputBuffer);
+      });
+    });
+  }
+
+  /**
+   * Execute a secret-bearing command with byte-native stdin and mandatory
+   * cancellation.
+   *
+   * Unlike the legacy `execStdin`, cancellation and timeout do not reject
+   * while the SSH channel may still be reading. The method first closes and
+   * destroys the channel, waits for the peer-confirmed `close` event, and
+   * destroys the entire SSH session if that event does not arrive within a
+   * bounded grace period. Callers may therefore zeroize `input` as soon as the
+   * returned promise settles.
+   *
+   * Use a dedicated `DockerSSHClient` for this operation: the fail-closed
+   * fallback deliberately destroys the SSH session and would interrupt other
+   * commands sharing a pooled client.
+   */
+  async execStdinAbortable(
+    command: string,
+    input: Buffer,
+    signal: AbortSignal,
+    timeoutMs?: number,
+  ): Promise<void> {
+    if (signal.aborted) {
+      throw createDockerSshAbortError(this.hostname);
+    }
+    if (!this.connected || !this.client) {
+      await this.connect(signal);
+    }
+    if (signal.aborted) {
+      throw createDockerSshAbortError(this.hostname);
+    }
+
+    this.lastActivityMs = Date.now();
+    const effectiveTimeout = timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
+    const client = this.client!;
+
+    return new Promise<void>((resolve, reject) => {
+      let outputBytes = 0;
+      let settled = false;
+      let terminalError: Error | undefined;
+      let stream: ClientChannel | undefined;
+      let closeGraceTimer: ReturnType<typeof setTimeout> | undefined;
+
+      const cleanup = () => {
+        clearTimeout(commandTimer);
+        if (closeGraceTimer) clearTimeout(closeGraceTimer);
+        signal.removeEventListener("abort", onAbort);
+      };
+
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) reject(error);
+        else resolve();
+      };
+
+      const destroyDedicatedSession = () => {
+        try {
+          client.destroy();
+        } catch {
+          /* best-effort; the local channel was already destroyed */
+        }
+        if (this.client === client) {
+          this.client = null;
+          this.connected = false;
+        }
+      };
+
+      const stopChannel = () => {
+        try {
+          stream?.close();
+        } catch {
+          /* best-effort */
+        }
+        try {
+          stream?.destroy();
+        } catch {
+          /* best-effort */
+        }
+      };
+
+      const cancel = (error: Error) => {
+        if (settled || terminalError) return;
+        terminalError = error;
+        clearTimeout(commandTimer);
+
+        if (!stream) {
+          // No channel means stdin was never handed to ssh2. Destroy the
+          // pending session so a late exec callback cannot revive the effect.
+          destroyDedicatedSession();
+          finish(error);
+          return;
+        }
+
+        closeGraceTimer = setTimeout(() => {
+          // `Client.destroy()` synchronously destroys the underlying socket.
+          // Only then may the caller zeroize its stdin buffer.
+          destroyDedicatedSession();
+          finish(error);
+        }, ABORTABLE_STDIN_CLOSE_GRACE_MS);
+        // Install the grace timer before closing: ssh2 (and test doubles) may
+        // emit `close` synchronously from `close()`/`destroy()`. The close
+        // handler then clears this timer instead of leaving a late callback
+        // that would destroy an already-quiescent dedicated session.
+        stopChannel();
+      };
+
+      const onAbort = () => {
+        cancel(createDockerSshAbortError(this.hostname));
+      };
+
+      const commandTimer = setTimeout(() => {
+        cancel(
+          new Error(
+            `[docker-ssh] stdin command timed out after ${effectiveTimeout}ms on ${this.hostname}`,
+          ),
+        );
+      }, effectiveTimeout);
+
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+
+      client.exec(command, (err, openedStream) => {
+        if (settled) {
+          try {
+            openedStream?.destroy();
+          } catch {
+            /* best-effort */
+          }
+          return;
+        }
+        if (err) {
+          finish(new Error(`[docker-ssh] stdin exec channel failed on ${this.hostname}`));
+          return;
+        }
+
+        stream = openedStream;
+
+        const observeBoundedOutput = (data: Buffer) => {
+          try {
+            if (terminalError || settled) return;
+            outputBytes += data.byteLength;
+            if (outputBytes > ABORTABLE_STDIN_MAX_OUTPUT_BYTES) {
+              cancel(
+                new Error(
+                  `[docker-ssh] stdin command output exceeded ${ABORTABLE_STDIN_MAX_OUTPUT_BYTES} bytes on ${this.hostname}`,
+                ),
+              );
+            }
+          } finally {
+            // A hostile remote command can reflect secret stdin. Discarding
+            // the chunk is not enough: ssh2 handed us mutable bytes that would
+            // otherwise remain readable until the Buffer storage is reused.
+            data.fill(0);
+          }
+        };
+
+        stream.on("data", (data: Buffer) => {
+          observeBoundedOutput(data);
+        });
+        stream.stderr.on("data", (data: Buffer) => {
+          observeBoundedOutput(data);
+        });
+        stream.on("close", (code: number) => {
+          if (terminalError) {
+            finish(terminalError);
+            return;
+          }
+          if (code !== 0) {
+            // Output is intentionally discarded: a compromised remote command
+            // must not reflect secret stdin into immutable strings or errors.
+            finish(
+              new Error(`[docker-ssh] stdin command exited with code ${code} on ${this.hostname}`),
+            );
+          } else {
+            finish();
+          }
+        });
+        stream.on("error", () => {
+          if (terminalError) return;
+          cancel(new Error(`[docker-ssh] stdin channel failed on ${this.hostname}`));
+        });
+
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        try {
+          stream.end(input);
+        } catch {
+          cancel(new Error(`[docker-ssh] stdin write failed on ${this.hostname}`));
+        }
       });
     });
   }
