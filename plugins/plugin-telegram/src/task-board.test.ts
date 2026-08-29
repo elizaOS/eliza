@@ -225,6 +225,51 @@ describe("TelegramTaskBoard concurrent render serialization (#29899, #8902 AC3)"
     expect(pin).toHaveBeenCalledTimes(1);
   });
 
+  it("serializes forget() with an in-flight render so a reset can't strand the store mid-edit", async () => {
+    // Reproduces the latent race called out in review: forget() mutates the
+    // same (chat, thread) key as render. If it ran outside the chain it could
+    // delete a stored id WHILE a render is blocked inside edit() — the render
+    // then returns the existing id without re-saving, leaving the store empty
+    // while a live pinned board still exists, so the next render double-posts.
+    let releaseEdit: () => void = () => {};
+    const editGate = new Promise<void>((resolve) => {
+      releaseEdit = resolve;
+    });
+    const post = vi.fn(async () => ({ messageId: 999 }));
+    const edit = vi.fn(async () => {
+      await editGate;
+    });
+    // Seed a stored board id, as if posted in a prior process.
+    const store = asyncBoardStore(new Map([["100:", 55]]));
+    const board = new TelegramTaskBoard({ post, edit, store });
+
+    // A render is in flight and blocked inside edit(); a concurrent reset asks
+    // to forget the same board and must queue behind the render.
+    const rendering = board.render(100, entries);
+    const forgetting = board.forget(100);
+
+    // Let the render reach edit() and the forget settle into the queue.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(edit).toHaveBeenCalledTimes(1);
+    // forget is queued, NOT yet applied — the id survives mid-edit.
+    expect(store.map.get("100:")).toBe(55);
+
+    releaseEdit();
+    const id = await rendering;
+    await forgetting;
+
+    // The render edited the existing board (no double-post); forget applied only
+    // after the render completed.
+    expect(id).toBe(55);
+    expect(post).not.toHaveBeenCalled();
+    expect(store.map.has("100:")).toBe(false);
+
+    // A later render after the reset posts exactly one fresh board.
+    const id2 = await board.render(100, entries);
+    expect(id2).toBe(999);
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps distinct (chat, thread) keys unserialized from each other", async () => {
     let next = 0;
     const post = vi.fn(async () => ({ messageId: ++next }));
