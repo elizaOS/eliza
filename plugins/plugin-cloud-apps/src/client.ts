@@ -484,8 +484,12 @@ export async function resolveApp(
     // helpful which-app reply), not abort the whole action on the 404. Mirrors
     // resolveDomainTargetApp so every mutating caller degrades identically.
     try {
-      // error-policy:J4 stale/foreign UUID getApp(404/403) degrades to the
-      // list-based not-found/which-app reply instead of aborting the action.
+      // error-policy:J4 a stale/foreign UUID makes getApp throw (typically a
+      // 404/403); degrade to the list-based not-found/which-app reply instead
+      // of aborting the action. The catch is intentionally unconditional to
+      // mirror resolveDomainTargetApp's bare catch; a getApp failure that is
+      // not a benign 404/403 is normally re-raised by the listApps() call on
+      // the next line, so the action still fails loudly in that case.
       const { app } = await client.getApp(reference);
       if (app) return { app, available: [app.name] };
     } catch {
