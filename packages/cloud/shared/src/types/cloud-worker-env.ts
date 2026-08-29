@@ -450,6 +450,8 @@ export interface Bindings {
 
   // ---- Cron auth ----
   CRON_SECRET?: string;
+  /** Exact `"1"` enables the scheduler-branded V3 backup admission caller. */
+  AGENT_BACKUP_ADMISSION_CALLER_ENABLED?: string;
 
   // ---- App config ----
   NEXT_PUBLIC_APP_URL?: string;
