@@ -211,6 +211,29 @@ describe("subAgentFailureResponseEvaluator", () => {
     expect(result.reply).not.toContain("….");
   });
 
+  // The terminator class also carries the fullwidth/ideographic stops so a
+  // sub-agent narrating in a language that uses them is not doubled. Each stop
+  // is pinned independently: dropping any one member from SENTENCE_TERMINATOR
+  // must turn one of these red, otherwise a later "simplify this regex" cleanup
+  // could silently reintroduce the #29852 doubling for CJK narration.
+  it.each([
+    ["。", "ACP session failed: 接続がタイムアウトしました。"],
+    ["！", "Sub-agent crashed: プロセスが異常終了しました！"],
+    ["？", "Provisioning check: ワークスペースは完了しましたか？"],
+  ])(
+    "does not double when the reason already ends in the '%s' stop (#29852)",
+    (stop, reason) => {
+      const context = makeContext({
+        text: `[sub-agent: text-my-ex (claude) — error]\n${reason}`,
+      });
+      const result = subAgentFailureResponseEvaluator.evaluate(context);
+      expect(result.reply).toBe(
+        `Couldn't finish the "text-my-ex" task — ${reason} Want me to retry?`,
+      );
+      expect(result.reply).not.toContain(`${stop}.`);
+    },
+  );
+
   it("preserves a reason's own '!' terminator without appending a period", () => {
     const context = makeContext({
       text: "[sub-agent: text-my-ex (claude) — error]\nSub-agent process crashed unexpectedly!",
