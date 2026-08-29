@@ -18,7 +18,7 @@ function memoryAt(index: number): Memory {
       `00000000-0000-4000-8001-${String(index).padStart(12, "0")}` as UUID,
     agentId: "00000000-0000-0000-0000-000000000002" as UUID,
     roomId: ROOM_ID,
-    content: { text: `complete memory ${index}`, source: "discord" },
+    content: { text: `complete memory ${index}` },
     createdAt: index,
   };
 }
@@ -41,7 +41,11 @@ describe("cross-channel search context integrity", () => {
       searchMemories,
       getRoom: vi.fn(
         async () =>
-          ({ id: ROOM_ID, name: "complete room", source: "discord" }) as Room,
+          // No platform source: classifyMemoryChannel falls through to "memory",
+          // matching the channel this query enables. The prior "discord" source
+          // routed every memory into a disabled channel, so the suite asserted
+          // against an empty result set and the pagination contract never ran.
+          ({ id: ROOM_ID, name: "complete room" }) as Room,
       ),
     } as unknown as IAgentRuntime;
 
