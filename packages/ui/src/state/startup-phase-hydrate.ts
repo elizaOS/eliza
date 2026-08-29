@@ -146,6 +146,27 @@ export interface ReadyPhaseDeps {
   ) => void;
 }
 
+/**
+ * Newest-first conversation ordering that stays a total order when `updatedAt`
+ * is unparseable. `new Date(bad).getTime()` is `NaN`, and a comparator that
+ * returns `NaN` makes `Array.prototype.sort` implementation-defined, so one bad
+ * entry displaces entries that are themselves valid. Follows the convention
+ * already used by `bounded-view-lru.ts` and the agent's
+ * `api/conversation-sort.ts`: a non-finite timestamp collapses to epoch 0 and
+ * the tie breaks on id, so the result is deterministic rather than merely
+ * unpoisoned.
+ */
+function compareConversationsByRecency(
+  left: Conversation,
+  right: Conversation,
+): number {
+  const leftUpdatedAt = new Date(left.updatedAt).getTime();
+  const rightUpdatedAt = new Date(right.updatedAt).getTime();
+  const safeLeft = Number.isFinite(leftUpdatedAt) ? leftUpdatedAt : 0;
+  const safeRight = Number.isFinite(rightUpdatedAt) ? rightUpdatedAt : 0;
+  return safeRight - safeLeft || left.id.localeCompare(right.id);
+}
+
 function normalizeAppEmoteEvent(
   data: Record<string, unknown>,
 ): AppEmoteEventDetail | null {
@@ -917,10 +938,7 @@ export function bindReadyPhase(
         const u = prev.map((c) =>
           c.id === cid ? { ...c, updatedAt: new Date().toISOString() } : c,
         );
-        return u.sort(
-          (a, b) =>
-            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-        );
+        return u.sort(compareConversationsByRecency);
       });
     },
   );
@@ -950,10 +968,7 @@ export function bindReadyPhase(
             }
             return conv;
           });
-          return u.sort(
-            (a, b) =>
-              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-          );
+          return u.sort(compareConversationsByRecency);
         });
     },
   );
