@@ -370,6 +370,16 @@ function getLimit(value: unknown): number | undefined {
 	return value;
 }
 
+function getOptionalPlannerLimit(
+	value: unknown,
+	message: Memory,
+): number | undefined {
+	if (value === 0 && !/(?:^|\D)0(?:\D|$)/.test(message.content.text ?? "")) {
+		return undefined;
+	}
+	return getLimit(value);
+}
+
 function getScope(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -1220,7 +1230,7 @@ async function handleList(
 			? Math.floor(params.offset)
 			: undefined;
 
-	const requestedLimit = getLimit(params.limit);
+	const requestedLimit = getOptionalPlannerLimit(params.limit, message);
 	const listResult = await service.listDocumentsDetailed(message, {
 		...(requestedLimit === undefined ? {} : { limit: requestedLimit }),
 		offset,
