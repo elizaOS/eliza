@@ -25,20 +25,12 @@ function addCheck(channel, name, ok, detail, fix = "") {
   checks.push({ channel, name, ok: Boolean(ok), detail, fix });
 }
 
-function optionNames(option) {
-  return Array.isArray(option) ? option : [option];
-}
-
 function hasAny(names) {
-  return names.some((option) =>
-    optionNames(option).some((name) => Boolean(process.env[name]?.trim())),
-  );
+  return names.some((name) => Boolean(process.env[name]?.trim()));
 }
 
-function missing(names) {
-  return names
-    .filter((option) => optionNames(option).every((name) => !process.env[name]?.trim()))
-    .map((option) => optionNames(option).join(" or "));
+function hasConfiguredValue(valueNames, presenceName) {
+  return hasAny(valueNames) || process.env[presenceName] === "true";
 }
 
 function checkTelegram() {
@@ -59,23 +51,29 @@ function checkTelegram() {
 }
 
 function checkDiscord() {
-  const missingDiscord = missing([
-    ["DISCORD_CLIENT_ID", "ELIZA_APP_DISCORD_APPLICATION_ID"],
-    ["DISCORD_CLIENT_SECRET", "ELIZA_APP_DISCORD_CLIENT_SECRET"],
-  ]);
   addCheck(
     "discord",
-    "application credentials",
-    missingDiscord.length === 0,
-    "Discord OAuth client id/secret are configured",
-    `Missing: ${missingDiscord.join(", ")}`,
+    "system bot application id",
+    hasConfiguredValue(
+      ["ELIZA_APP_DISCORD_APPLICATION_ID"],
+      "HAS_ELIZA_APP_DISCORD_APPLICATION_ID",
+    ),
+    "Discord system bot application id is configured",
+    "Set ELIZA_APP_DISCORD_APPLICATION_ID for the maintained Eliza App bot.",
   );
   addCheck(
     "discord",
-    "bot token",
-    hasAny(["DISCORD_BOT_TOKEN", "ELIZA_APP_DISCORD_BOT_TOKEN"]),
+    "system bot enabled",
+    process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true",
+    "Discord system bot is explicitly enabled",
+    "Set ELIZA_APP_DISCORD_BOT_ENABLED to exactly true.",
+  );
+  addCheck(
+    "discord",
+    "system bot token",
+    hasConfiguredValue(["ELIZA_APP_DISCORD_BOT_TOKEN"], "HAS_ELIZA_APP_DISCORD_BOT_TOKEN"),
     "Discord system bot token is configured",
-    "Set DISCORD_BOT_TOKEN for the managed Eliza App bot gateway.",
+    "Set ELIZA_APP_DISCORD_BOT_TOKEN for the maintained Eliza App bot.",
   );
 }
 

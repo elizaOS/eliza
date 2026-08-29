@@ -29,6 +29,18 @@ const SHARED_ENV = {
   GATEWAY_INTERNAL_SECRET: "contract-value",
 };
 
+const DISCORD_ENV = {
+  ELIZA_APP_DISCORD_APPLICATION_ID: "contract-value",
+  ELIZA_APP_DISCORD_BOT_ENABLED: "true",
+  ELIZA_APP_DISCORD_BOT_TOKEN: "contract-value",
+};
+
+const DISCORD_PRESENCE_ENV = {
+  HAS_ELIZA_APP_DISCORD_APPLICATION_ID: "true",
+  ELIZA_APP_DISCORD_BOT_ENABLED: "true",
+  HAS_ELIZA_APP_DISCORD_BOT_TOKEN: "true",
+};
+
 const WHATSAPP_CONTRACT_VALUE = "whatsapp-contract-value-never-print";
 
 function runStrict(channels, env = {}) {
@@ -67,14 +79,53 @@ test("accepts every maintained webhook gateway URL alias", () => {
 });
 
 test("channel scoping does not require unrelated connector credentials", () => {
-  const result = runStrict("discord", {
-    ELIZA_APP_DISCORD_APPLICATION_ID: "contract-value",
-    ELIZA_APP_DISCORD_CLIENT_SECRET: "contract-value",
-    ELIZA_APP_DISCORD_BOT_TOKEN: "contract-value",
-  });
+  const result = runStrict("discord", DISCORD_PRESENCE_ENV);
 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.doesNotMatch(result.stdout, /telegram|whatsapp|imessage/i);
+});
+
+test("Discord preflight accepts raw operator values or exact names-only presence sentinels", () => {
+  for (const env of [DISCORD_ENV, DISCORD_PRESENCE_ENV]) {
+    const result = runStrict("discord", env);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  }
+
+  for (const invalid of ["false", "TRUE", "1", " true "]) {
+    const result = runStrict("discord", {
+      ...DISCORD_PRESENCE_ENV,
+      HAS_ELIZA_APP_DISCORD_BOT_TOKEN: invalid,
+    });
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /\[fail\] discord: system bot token/);
+  }
+});
+
+test("Discord shared ingress is distinct from human OAuth and generic bot aliases", () => {
+  const result = runStrict("discord", {
+    DISCORD_CLIENT_ID: "legacy-contract-value-never-print",
+    DISCORD_CLIENT_SECRET: "legacy-contract-value-never-print",
+    DISCORD_BOT_TOKEN: "legacy-contract-value-never-print",
+  });
+  const output = `${result.stdout}\n${result.stderr}`;
+
+  assert.equal(result.status, 1, output);
+  assert.match(result.stdout, /\[fail\] discord: system bot application id/);
+  assert.match(result.stdout, /\[fail\] discord: system bot enabled/);
+  assert.match(result.stdout, /\[fail\] discord: system bot token/);
+  assert.doesNotMatch(output, /legacy-contract-value-never-print/);
+});
+
+test("Discord shared ingress requires the runtime's exact enabled value", () => {
+  for (const invalid of ["false", "TRUE", "1", " true "]) {
+    const result = runStrict("discord", {
+      ...DISCORD_ENV,
+      ELIZA_APP_DISCORD_BOT_ENABLED: invalid,
+    });
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /\[fail\] discord: system bot enabled/);
+  }
 });
 
 test("WhatsApp readiness requires one complete authority across all 256 states", () => {
@@ -140,6 +191,25 @@ test("workflow keeps trusted checks manual and source tests reusable from develo
     /ELIZA_APP_WEBHOOK_GATEWAY_URL: \$\{\{ secrets\.ELIZA_APP_WEBHOOK_GATEWAY_URL \}\}/,
   );
   assert.match(workflow, /GATEWAY_INTERNAL_SECRET: \$\{\{ secrets\.GATEWAY_INTERNAL_SECRET \}\}/);
+  assert.match(
+    workflow,
+    /ELIZA_APP_DISCORD_BOT_ENABLED: \$\{\{ vars\.ELIZA_APP_DISCORD_BOT_ENABLED \}\}/,
+  );
+  assert.match(
+    workflow,
+    /HAS_ELIZA_APP_DISCORD_APPLICATION_ID: \$\{\{ secrets\.ELIZA_APP_DISCORD_APPLICATION_ID != '' \}\}/,
+  );
+  assert.match(
+    workflow,
+    /HAS_ELIZA_APP_DISCORD_BOT_TOKEN: \$\{\{ secrets\.ELIZA_APP_DISCORD_BOT_TOKEN != '' \}\}/,
+  );
+  assert.match(
+    workflow,
+    /Trusted configuration checks must run from refs\/heads\/develop or refs\/heads\/main/,
+  );
+  assert.doesNotMatch(workflow, /^\s+ELIZA_APP_DISCORD_APPLICATION_ID:/m);
+  assert.doesNotMatch(workflow, /^\s+ELIZA_APP_DISCORD_BOT_TOKEN:/m);
+  assert.doesNotMatch(workflow, /ELIZA_APP_DISCORD_CLIENT_SECRET:/);
   assert.match(
     workflow,
     /name: Generate source keyword modules\s+working-directory: \.\s+run: bun run --cwd packages\/shared build:i18n/,
