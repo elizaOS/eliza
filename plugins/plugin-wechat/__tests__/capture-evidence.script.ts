@@ -822,7 +822,7 @@ async function main() {
   equal(
     r6.status,
     500,
-    "failed reply send → 500 boundary (never fabricated success)",
+    "failed reply send → 500 boundary (failure surfaced, not masked)",
   );
   await waitFor(
     () => h6.sends.some((s) => s.body?.touser === "oE2EUser5"),
