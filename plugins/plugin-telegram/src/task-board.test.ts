@@ -313,6 +313,52 @@ describe("TelegramTaskBoard concurrent render serialization (#29899, #8902 AC3)"
     expect(store.map.get("100:")).toBe(2);
   });
 
+  it("a render started after an earlier one settles still serializes behind the queued one", async () => {
+    // Pins the tail check `if (this.inFlight.get(key) === run)` on the chain
+    // cleanup. With three renders A→B→C: A settles while B is still queued, and
+    // only THEN does C arrive. The tail check keeps the map entry pointing at B
+    // (not A) so C serializes behind B. An unconditional `delete` in A's finally
+    // would empty the map, C would read `prior === undefined`, start a fresh
+    // chain, and enter edit() alongside the still-in-flight B — serialization
+    // genuinely lost. Fails against that mutant (edit called twice) and no other.
+    let next = 0;
+    const post = vi.fn(async () => ({ messageId: ++next }));
+    const pin = vi.fn(async () => undefined);
+    const store = asyncBoardStore();
+
+    let releaseEdit: () => void = () => {};
+    const editGate = new Promise<void>((resolve) => {
+      releaseEdit = resolve;
+    });
+    let editCalls = 0;
+    const edit = vi.fn(async () => {
+      editCalls += 1;
+      if (editCalls === 1) await editGate; // hold B inside its op
+      return undefined;
+    });
+
+    const board = new TelegramTaskBoard({ post, edit, pin, store });
+
+    // A posts and settles. B queues behind A and then blocks inside edit().
+    const a = board.render(100, entries);
+    const b = board.render(100, entries);
+    await a;
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+
+    // C starts while B is still in flight; it must serialize behind B.
+    const c = board.render(100, entries);
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+
+    // C has not entered edit() — only B has, and B is still blocked.
+    expect(edit).toHaveBeenCalledTimes(1);
+
+    releaseEdit();
+    await Promise.all([b, c]);
+    // A posted the single board; B and C both edited it in place.
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(edit).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps distinct (chat, thread) keys unserialized from each other", async () => {
     let next = 0;
     const post = vi.fn(async () => ({ messageId: ++next }));
