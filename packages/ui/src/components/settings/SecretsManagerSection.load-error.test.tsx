@@ -1,4 +1,7 @@
-/** Verifies that initial Vault failures remain actionable instead of spinning forever. */
+/**
+ * Deterministic mocked-client UI tests proving initial Vault failures remain
+ * actionable instead of spinning forever.
+ */
 // @vitest-environment jsdom
 
 import {

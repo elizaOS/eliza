@@ -130,6 +130,8 @@ async function readOptimizedPromptIntegrityKeyOrRecover(
   try {
     return await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
   } catch (error) {
+    // error-policy:J4 exact typed recovery — quarantine is an auditable,
+    // visibly distinct recovery state for this regenerable internal key only.
     // This is the sole recoverable decryption failure: the value is randomly
     // generated internal HMAC material, never a user/provider credential. A
     // replacement makes old optimized-prompt artifacts fail their HMAC check;

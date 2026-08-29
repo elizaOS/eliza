@@ -1,4 +1,8 @@
-/** Tests boot-time creation and reuse of the optimized-prompt integrity key. */
+/**
+ * Deterministic mocked and real-PGlite tests for boot-time creation, typed
+ * recovery, forensic quarantine, concurrency, and restart persistence of the
+ * optimized-prompt integrity key.
+ */
 
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
