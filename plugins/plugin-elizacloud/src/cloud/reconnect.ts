@@ -26,6 +26,16 @@ export class ConnectionMonitor {
   private timer: ReturnType<typeof setInterval> | null = null;
   private consecutiveFailures = 0;
   private reconnecting = false;
+  /**
+   * Monotonic lifecycle token. `attemptReconnect()` captures the current value
+   * at entry; `stop()` increments it. After every `await` point the loop
+   * compares its captured token to the live one and early-returns without
+   * firing any callback when they differ — this is the only way to cancel a
+   * detached retry loop that is mid-`provision()` or mid-backoff-sleep when
+   * `stop()` runs, so no onStatusChange/onReconnect/onReconnectExhausted fires
+   * after teardown and a dead monitor's backoff sleep cannot keep it alive.
+   */
+  private runToken = 0;
 
   constructor(
     private client: ElizaCloudClient,
@@ -51,6 +61,9 @@ export class ConnectionMonitor {
       clearInterval(this.timer);
       this.timer = null;
     }
+    // Invalidate any in-flight attemptReconnect() loop: it re-checks this token
+    // after each await and bails without firing callbacks once it changes.
+    this.runToken++;
     this.consecutiveFailures = 0;
     this.reconnecting = false;
     logger.info("[cloud-monitor] Connection monitor stopped");
@@ -89,6 +102,10 @@ export class ConnectionMonitor {
   }
 
   private async attemptReconnect(): Promise<void> {
+    // Capture the lifecycle token for this loop. stop() bumps runToken, which
+    // lets every post-await checkpoint below detect that this loop was
+    // cancelled and abandon it silently.
+    const token = this.runToken;
     this.reconnecting = true;
     this.callbacks.onStatusChange?.("reconnecting");
 
@@ -99,6 +116,11 @@ export class ConnectionMonitor {
         .provision(this.agentId)
         .then(() => true)
         .catch(() => false);
+
+      // provision() may have resolved after stop(): a stopped monitor must fire
+      // no success callback and must not flip a torn-down manager back to
+      // "connected".
+      if (this.runToken !== token) return;
 
       if (ok) {
         logger.info("[cloud-monitor] Reconnection successful");
@@ -111,6 +133,11 @@ export class ConnectionMonitor {
 
       await new Promise((r) => setTimeout(r, delay));
       delay = Math.min(delay * 2, 60_000);
+
+      // The backoff sleep is the other place stop() can land. Abandon the loop
+      // here too so a dead monitor cannot keep retrying for tens of seconds or
+      // reach the exhaustion callbacks below.
+      if (this.runToken !== token) return;
     }
 
     logger.error("[cloud-monitor] Failed to reconnect after 10 attempts");
