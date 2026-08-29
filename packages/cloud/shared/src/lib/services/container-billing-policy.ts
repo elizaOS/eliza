@@ -12,6 +12,7 @@
  * Anything that mutates state stays in `container-billing/route.ts`. This
  * file only computes "what's the plan?".
  */
+import { ElizaError } from "@elizaos/core";
 
 export interface ContainerBillingPlanInput {
   /** Today's container cost in USD (already calculated from cpu/memory tier). */
@@ -50,11 +51,74 @@ export interface ContainerBillingPlan {
  *     keeps an earning agent self-funding ("survival economics" loop).
  *  3. If `earnings + credits < dailyCost`, return `action: "insufficient"`.
  *     The caller emits the 48-hour shutdown warning.
+ *
+ * Money math fails closed on garbage: non-finite inputs (NaN/±Infinity) in any
+ * field and a negative `dailyCost` throw `ElizaError`
+ * (`CONTAINER_BILLING_PLAN_INPUT_INVALID`) instead of returning a NaN-bearing
+ * plan — under float comparison a NaN `totalAvailable < dailyCost` is false,
+ * so the pre-fix function silently returned `action: "billed"` with NaN debit
+ * legs. A negative `currentBalance` is legitimate (raw SQL storage debits can
+ * leave it below zero) and fails closed through the ordinary
+ * `totalAvailable < dailyCost` insufficiency path instead of throwing.
  */
 export function computeContainerBillingPlan(
   input: ContainerBillingPlanInput,
 ): ContainerBillingPlan {
-  const { dailyCost, currentBalance, ownerEarningsAvailable, payAsYouGoFromEarnings } = input;
+  const {
+    dailyCost,
+    currentBalance,
+    ownerEarningsAvailable,
+    payAsYouGoFromEarnings,
+  } = input;
+
+  for (const [field, value] of Object.entries({
+    dailyCost,
+    currentBalance,
+    ownerEarningsAvailable,
+  })) {
+    if (!Number.isFinite(value)) {
+      throw new ElizaError(
+        `Container billing plan input ${field} must be a finite number, received ${value}`,
+        {
+          code: "CONTAINER_BILLING_PLAN_INPUT_INVALID",
+          context: {
+            field,
+            value,
+            dailyCost,
+            currentBalance,
+            ownerEarningsAvailable,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+  }
+  if (dailyCost < 0) {
+    throw new ElizaError(
+      `Container billing plan input dailyCost must be >= 0, received ${dailyCost}`,
+      {
+        code: "CONTAINER_BILLING_PLAN_INPUT_INVALID",
+        context: { field: "dailyCost", value: dailyCost },
+        severity: "fatal",
+      },
+    );
+  }
+  if (ownerEarningsAvailable < 0) {
+    // The redeemable-earnings schema CHECK-constrains available_balance >= 0;
+    // unlike credit_balance (raw SQL debits can go negative), negative
+    // earnings are invalid data, not a live state.
+    throw new ElizaError(
+      `Container billing plan input ownerEarningsAvailable must be >= 0, received ${ownerEarningsAvailable}`,
+      {
+        code: "CONTAINER_BILLING_PLAN_INPUT_INVALID",
+        context: {
+          field: "ownerEarningsAvailable",
+          value: ownerEarningsAvailable,
+        },
+        severity: "fatal",
+      },
+    );
+  }
 
   const earningsEligible = payAsYouGoFromEarnings ? ownerEarningsAvailable : 0;
   const totalAvailable = currentBalance + earningsEligible;
@@ -99,8 +163,12 @@ export interface ContainerBillingPeriod {
  * idempotency key and the `container_billing_records(container_id,
  * billing_period_start)` unique index both collide and prevent a double-debit.
  */
-export function computeContainerBillingPeriod(now: Date): ContainerBillingPeriod {
-  const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+export function computeContainerBillingPeriod(
+  now: Date,
+): ContainerBillingPeriod {
+  const periodStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
   const periodEnd = new Date(periodStart.getTime() + 24 * 60 * 60 * 1000);
   return { periodStart, periodEnd };
 }
