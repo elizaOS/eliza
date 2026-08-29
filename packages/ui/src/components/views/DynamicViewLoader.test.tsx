@@ -25,6 +25,10 @@ import {
 } from "./DynamicViewLoader";
 
 describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
+  beforeEach(() => {
+    activeApiBase.value = "";
+  });
+
   it("accepts same-origin and root-relative /api/views bundle URLs", () => {
     expect(isSameOriginBundleUrl("/api/views/x/bundle.js")).toBe(true);
     expect(
@@ -39,6 +43,21 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
     expect(isSameOriginBundleUrl("http://evil.example/x.js")).toBe(false);
     // A protocol-relative URL resolves to a different origin → rejected.
     expect(isSameOriginBundleUrl("//evil.example/x.js")).toBe(false);
+  });
+
+  it("accepts the active authenticated API origin used by paired previews", () => {
+    activeApiBase.value = "http://127.0.0.1:12488";
+
+    expect(
+      isSameOriginBundleUrl(
+        "http://127.0.0.1:12488/api/views/calendar/bundle.js",
+      ),
+    ).toBe(true);
+    expect(
+      isSameOriginBundleUrl(
+        "http://127.0.0.1:12489/api/views/calendar/bundle.js",
+      ),
+    ).toBe(false);
   });
 
   it("erases the test import hook from production builds before the origin gate", async () => {
@@ -145,24 +164,36 @@ describe("host-external importer resolution (factory hostImport)", () => {
   });
 });
 
-const { activeCredential, rawRequest, sendWsMessage } = vi.hoisted(() => ({
-  activeCredential: "credential-must-never-enter-a-url",
-  rawRequest: vi.fn(),
-  sendWsMessage: vi.fn(),
-}));
+const { activeApiBase, activeCredential, rawRequest, sendWsMessage } =
+  vi.hoisted(() => ({
+    activeApiBase: { value: "" },
+    activeCredential: "credential-must-never-enter-a-url",
+    rawRequest: vi.fn(),
+    sendWsMessage: vi.fn(),
+  }));
 
 vi.mock("../../api", () => ({
-  client: { apiToken: activeCredential, rawRequest, sendWsMessage },
+  client: {
+    get baseUrl() {
+      return activeApiBase.value;
+    },
+    apiToken: activeCredential,
+    rawRequest,
+    sendWsMessage,
+  },
 }));
 
 describe("authenticated protected view bundle loading", () => {
   const secret = activeCredential;
 
   beforeEach(() => {
+    activeApiBase.value = "";
     rawRequest.mockReset();
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -212,6 +243,110 @@ describe("authenticated protected view bundle loading", () => {
     );
     expect(revokeObjectURL).toHaveBeenCalledWith(
       "blob:http://localhost/view-bundle",
+    );
+  });
+
+  it("allows a slow authenticated bundle download beyond the generic read timeout", async () => {
+    vi.useFakeTimers();
+    rawRequest.mockImplementation(
+      async (
+        _path: string,
+        _init: RequestInit,
+        options: { timeoutMs?: number },
+      ) =>
+        new Promise<Response>((resolve, reject) => {
+          let timeoutId: ReturnType<typeof setTimeout>;
+          const responseId = setTimeout(() => {
+            clearTimeout(timeoutId);
+            resolve(
+              new Response("export default () => null", {
+                status: 200,
+                headers: { "content-type": "application/javascript" },
+              }),
+            );
+          }, 11_000);
+          timeoutId = setTimeout(() => {
+            clearTimeout(responseId);
+            reject(new Error("bundle download timed out"));
+          }, options.timeoutMs ?? 10_000);
+        }),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue(
+      "blob:http://localhost/slow-view-bundle",
+    );
+    vi.spyOn(URL, "revokeObjectURL");
+    const loaded = { default: () => null };
+    const moduleImporter = vi.fn(async () => loaded);
+
+    const importPromise = importAuthenticatedViewBundle(
+      "/api/views/calendar/bundle.js?hostExternalRuntime=1",
+      moduleImporter,
+    );
+    await vi.advanceTimersByTimeAsync(11_000);
+
+    await expect(importPromise).resolves.toBe(loaded);
+  });
+
+  it.each([
+    ["HTML", { "content-type": "text/html; charset=utf-8" }],
+    ["a missing content type", {}],
+  ])(
+    "rejects a successful %s response before module evaluation",
+    async (_, headers) => {
+      rawRequest.mockResolvedValue(
+        new Response("export default () => null", { status: 200, headers }),
+      );
+      const moduleImporter = vi.fn();
+
+      await expect(
+        importAuthenticatedViewBundle(
+          "/api/views/calendar/bundle.js?hostExternalRuntime=1",
+          moduleImporter,
+        ),
+      ).rejects.toThrow("response was not JavaScript");
+
+      expect(moduleImporter).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refuses an unrelated absolute origin before the API client sees it", async () => {
+    activeApiBase.value = "http://127.0.0.1:12488";
+    const moduleImporter = vi.fn();
+
+    await expect(
+      importAuthenticatedViewBundle(
+        "https://untrusted.example/api/views/calendar/bundle.js",
+        moduleImporter,
+      ),
+    ).rejects.toThrow("cross-origin view bundle");
+
+    expect(rawRequest).not.toHaveBeenCalled();
+    expect(moduleImporter).not.toHaveBeenCalled();
+  });
+
+  it("routes an active API-origin URL through the authenticated path transport", async () => {
+    activeApiBase.value = "http://127.0.0.1:12488";
+    rawRequest.mockResolvedValue(
+      new Response("export default () => null", {
+        status: 200,
+        headers: { "content-type": "application/javascript" },
+      }),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue(
+      "blob:http://localhost/paired-view-bundle",
+    );
+    vi.spyOn(URL, "revokeObjectURL");
+    const moduleImporter = vi.fn(async () => ({ default: () => null }));
+
+    await importAuthenticatedViewBundle(
+      "http://127.0.0.1:12488/api/views/notes/bundle.js?v=paired",
+      moduleImporter,
+    );
+
+    expect(rawRequest).toHaveBeenCalledWith(
+      "/api/views/notes/bundle.js?v=paired",
+      { headers: { Accept: "application/javascript" } },
+      expect.objectContaining({ allowNonOk: true }),
     );
   });
 
@@ -266,7 +401,7 @@ describe("authenticated protected view bundle loading", () => {
       1,
       bundleUrl,
       { headers: { Accept: "application/javascript" } },
-      { allowNonOk: true },
+      expect.objectContaining({ allowNonOk: true }),
     );
     const serializedCalls = JSON.stringify([
       rawRequest.mock.calls,
