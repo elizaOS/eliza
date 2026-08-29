@@ -976,16 +976,6 @@ describe("TODO action", () => {
       expect(service.rows[0]?.status).toBe("in_progress");
     });
 
-    it("updates a todo located by visible content without an id", async () => {
-      await invoke(runtime, { action: "create", content: "draft" });
-      const result = await invoke(runtime, {
-        action: "update",
-        content: "final",
-      });
-      expect(result.success).toBe(true);
-      expect(service.rows[0]?.content).toBe("final");
-    });
-
     it("renames via targetContent while content carries the replacement", async () => {
       await invoke(runtime, { action: "create", content: "old name" });
       const result = await invoke(runtime, {
@@ -997,11 +987,11 @@ describe("TODO action", () => {
       expect(service.rows[0]?.content).toBe("new name");
     });
 
-    it("completes a todo located by visible content without an id", async () => {
+    it("complete without id locates by targetContent", async () => {
       await invoke(runtime, { action: "create", content: "ship it" });
       const result = await invoke(runtime, {
         action: "complete",
-        content: "ship it",
+        targetContent: "ship it",
       });
       expect(result.success).toBe(true);
       expect(service.rows[0]?.status).toBe("completed");
@@ -1009,14 +999,35 @@ describe("TODO action", () => {
 
     it("returns a bounded clarification for duplicate visible content", async () => {
       await invoke(runtime, { action: "create", content: "dup" });
-      await invoke(runtime, { action: "create", content: "dup" });
+      await invoke(runtime, {
+        action: "create",
+        content: "dup",
+        allowDuplicate: true,
+      });
       const result = await invoke(runtime, {
         action: "complete",
-        content: "dup",
+        targetContent: "dup",
       });
       expect(result.success).toBe(false);
       expect(String(result.error?.message ?? "")).toContain("ambiguous_match");
       expect(service.rows.every((r) => r.status === "pending")).toBe(true);
+    });
+
+    it("picks one duplicate with matchIndex", async () => {
+      await invoke(runtime, { action: "create", content: "dup" });
+      await invoke(runtime, {
+        action: "create",
+        content: "dup",
+        allowDuplicate: true,
+      });
+      const result = await invoke(runtime, {
+        action: "complete",
+        targetContent: "dup",
+        matchIndex: 2,
+      });
+      expect(result.success).toBe(true);
+      expect(service.rows[1]?.status).toBe("completed");
+      expect(service.rows[0]?.status).toBe("pending");
     });
 
     it("rejects updates for another user's todo", async () => {

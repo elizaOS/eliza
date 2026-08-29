@@ -477,6 +477,29 @@ async function actionCreate({
   const status = readStatus(params.status) ?? "pending";
   const activeForm = readString(params.activeForm);
   const parentTodoId = readString(params.parentTodoId);
+  // Semantic dedup (#29690): creating content that already exists in the
+  // same entity scope is a no-op (returns the existing todo) instead of
+  // accumulating exact duplicates that a later visible-content mutation
+  // cannot disambiguate.
+  const existing = await service.list({
+    entityId: scope.entityId,
+    agentId: scope.agentId,
+    includeCompleted: true,
+  });
+  const prior = existing.find((t) => t.content === content);
+  if (prior && !readBoolean(params.allowDuplicate)) {
+    return {
+      success: true,
+      text: `Already on your list: "${prior.content}".`,
+      data: {
+        action: "create" as const,
+        op: "noop" as const,
+        entityId: scope.entityId,
+        todo: prior,
+        deduplicated: true,
+      },
+    };
+  }
   const input: Omit<CreateTodoInput, "entityId" | "agentId"> = {
     roomId: scope.roomId,
     worldId: scope.worldId,
@@ -592,15 +615,39 @@ async function resolveTodoIdByVisibleContent(
   const exact = todos.filter((t) => t.content === content);
   if (exact.length === 0) return { ok: true, id: null };
   if (exact.length === 1) return { ok: true, id: exact[0].id };
+  // Duplicate visible content: the clarification lists numbered matches and
+  // the planner may pick one with matchIndex (1-based, same as the list).
+  const matchIndex = readMatchIndex(params.matchIndex);
+  if (matchIndex !== undefined) {
+    const chosen = exact[matchIndex - 1];
+    if (chosen) return { ok: true, id: chosen.id };
+    return {
+      ok: false,
+      failure: failure(
+        "ambiguous_match",
+        `matchIndex ${matchIndex} is out of range: ${exact.length} todos match "${content}".`,
+      ),
+    };
+  }
   return {
     ok: false,
     failure: failure(
       "ambiguous_match",
       `Multiple todos match "${content}": ${exact
         .map((t, i) => `${i + 1}. ${t.content}`)
-        .join(", ")}. Refine the content or include a more specific phrase.`,
+        .join(", ")}. Pick one with matchIndex (1-based).`,
     ),
   };
+}
+
+function readMatchIndex(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^[1-9]\d*$/.test(value)) {
+    return Number(value);
+  }
+  return undefined;
 }
 
 async function actionUpdateById({
@@ -964,6 +1011,13 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
           "Must be true for action=clear; otherwise clear returns a preview and requires explicit confirmation before mutating.",
         required: false,
         schema: { type: "boolean" as const },
+      },
+      {
+        name: "matchIndex",
+        description:
+          "1-based index selecting one duplicate when targetContent/content matches multiple todos (update/complete/cancel/delete).",
+        required: false,
+        schema: { type: "integer" as const, minimum: 1 },
       },
       {
         name: "activeForm",
