@@ -1,6 +1,7 @@
 /** Real-browser regression coverage for bounded optional Cloud actions. */
 
 import { expect, type Locator, test } from "@playwright/test";
+import { installDedicatedAdoptionConsentProof } from "../cloud-live-dedicated-adoption-consent";
 import {
   CloudLiveOptionalActionDeadlineError,
   CloudLivePersonalIdentityDeadlineError,
@@ -209,6 +210,103 @@ test.describe("Cloud live optional action boundary", () => {
       }),
     ).resolves.toBe("dedicated");
     expect(recoveryObserved).toBe(false);
+  });
+
+  test("reuses a Dedicated quote completed before the binding wait", async ({
+    page,
+  }) => {
+    let quoteGetCount = 0;
+    await page.route("**/upgrade-tier/adopt-existing", async (route) => {
+      quoteGetCount += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            status: "stopped",
+            startsCompute: true,
+            hourlyRateUsd: 0.01,
+            dailyRateUsd: 0.24,
+            minimumBalanceUsd: 0.72,
+            minimumRunwayDays: 3,
+            balanceUsd: 115.54059,
+            deficitUsd: 0,
+            stateDisposition: "verified_backup_present",
+            requiresConfirmation: true,
+            action: "adopt_existing_dedicated",
+          },
+        }),
+      });
+    });
+    await page.goto("/");
+    await page.setContent(`
+      <article data-testid="thread-line">
+        <p>Use your existing Dedicated agent?</p>
+        <p>Current status: stopped.</p>
+        <p>Hosting: $0.01/hour ($0.24/day).</p>
+        <p>Balance: $115.54; minimum required: $0.72 (3 days of runway); deficit: $0.00.</p>
+        <p>This action starts Dedicated compute and will restore its reviewed backup.</p>
+        <button data-testid="dedicated-adoption-confirm">Confirm and continue</button>
+        <button>Not now</button>
+      </article>
+      <output data-testid="confirmation-count">0</output>
+      <script>
+        document.addEventListener("click", (event) => {
+          if (!(event.target instanceof HTMLElement)) return;
+          if (event.target.dataset.testid !== "dedicated-adoption-confirm") return;
+          const output = document.querySelector('[data-testid="confirmation-count"]');
+          output.textContent = String(Number(output.textContent) + 1);
+          window.__testActiveBinding = "dedicated";
+        });
+      </script>
+    `);
+    const dedicatedAdoptionProof = installDedicatedAdoptionConsentProof(page);
+    const quoteStatus = await page.evaluate(async () => {
+      const response = await fetch("/upgrade-tier/adopt-existing");
+      await response.json();
+      return response.status;
+    });
+    expect(quoteStatus).toBe(200);
+    expect(quoteGetCount).toBe(1);
+    let consentHandlerCalls = 0;
+    let bindingReadCount = 0;
+    const dedicatedAdoptionConsent = page.getByTestId(
+      "dedicated-adoption-confirm",
+    );
+
+    try {
+      await expect(
+        waitForCloudLivePersonalIdentity({
+          readBinding: () => {
+            bindingReadCount += 1;
+            return page.evaluate(
+              () =>
+                (window as typeof window & { __testActiveBinding?: string })
+                  .__testActiveBinding ?? null,
+            );
+          },
+          runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+          retryRecovery: page.getByTestId("identity-retry"),
+          dedicatedAdoptionConsent,
+          timeoutMs: 500,
+          runtimeCloudGraceMs: 50,
+          pollIntervalMs: 5,
+          onDedicatedAdoptionConsent: async () => {
+            consentHandlerCalls += 1;
+            await dedicatedAdoptionProof.confirmVisibleConsent(
+              dedicatedAdoptionConsent,
+            );
+          },
+        }),
+      ).resolves.toBe("dedicated");
+      expect(bindingReadCount).toBeGreaterThan(0);
+      expect(quoteGetCount).toBe(1);
+      expect(consentHandlerCalls).toBe(1);
+      await expect(page.getByTestId("confirmation-count")).toHaveText("1");
+    } finally {
+      dedicatedAdoptionProof.dispose();
+    }
   });
 
   test("fails with the closed runtime-cloud recovery after the initial choice reappears", async ({

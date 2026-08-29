@@ -125,6 +125,7 @@ const realtimeVoiceMock = vi.hoisted(() => {
     options: null as {
       agentId?: string | null;
       conversationId?: string | null;
+      flagEnabled?: boolean;
       clientOptions?: {
         onServerEvent?: (event: ServerControlFrame) => void;
       };
@@ -180,13 +181,11 @@ const realtimeVoiceMock = vi.hoisted(() => {
 
 const realtimeVoiceMintMock = vi.hoisted(() => ({
   agentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" as string | null,
+  getConsentNonce: vi.fn(async () => "consent-nonce"),
 }));
 
 vi.mock("../../../hooks/useRealtimeVoiceMint", () => ({
-  useRealtimeVoiceMint: () => ({
-    agentId: realtimeVoiceMintMock.agentId,
-    getConsentNonce: vi.fn(async () => "consent-nonce"),
-  }),
+  useRealtimeVoiceMint: () => realtimeVoiceMintMock,
 }));
 
 vi.mock("../../../hooks/useRealtimeVoiceSession", () => ({
@@ -194,6 +193,7 @@ vi.mock("../../../hooks/useRealtimeVoiceSession", () => ({
   useRealtimeVoiceSession: (options: {
     agentId?: string | null;
     conversationId?: string | null;
+    flagEnabled?: boolean;
     clientOptions?: {
       onServerEvent?: (event: ServerControlFrame) => void;
     };
@@ -288,14 +288,17 @@ const voiceOutputMock = vi.hoisted(() => ({
   // return), so this real consumer boundary is where the flag is observable.
   lastTurnVoiceSeen: undefined as boolean | undefined,
   cloudConnectedSeen: undefined as boolean | undefined,
+  realtimeVoiceEnabledSeen: undefined as boolean | undefined,
 }));
 vi.mock("../useShellVoiceOutput", () => ({
   useShellVoiceOutput: (opts?: {
     lastTurnVoice?: boolean;
     cloudConnected?: boolean;
+    realtimeVoiceEnabled?: boolean;
   }) => {
     voiceOutputMock.lastTurnVoiceSeen = opts?.lastTurnVoice;
     voiceOutputMock.cloudConnectedSeen = opts?.cloudConnected;
+    voiceOutputMock.realtimeVoiceEnabledSeen = opts?.realtimeVoiceEnabled;
     return voiceOutputMock;
   },
 }));
@@ -362,6 +365,7 @@ afterEach(() => {
   voiceOutputMock.stopSpeaking.mockClear();
   voiceOutputMock.lastTurnVoiceSeen = undefined;
   voiceOutputMock.cloudConnectedSeen = undefined;
+  voiceOutputMock.realtimeVoiceEnabledSeen = undefined;
   wakeListenMock.lastEnabled = undefined;
   wakeListenMock.onOpen = undefined;
   micPermissionMock.query.mockReset();
@@ -370,6 +374,7 @@ afterEach(() => {
   );
   realtimeVoiceMock.enabled = false;
   realtimeVoiceMintMock.agentId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  realtimeVoiceMintMock.getConsentNonce.mockClear();
   realtimeVoiceMock.options = null;
   realtimeVoiceMock.startOutcome = { kind: "live" };
   realtimeVoiceMock.startedConversationIds.length = 0;
@@ -2164,6 +2169,8 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     realtimeVoiceMock.startedConversationIds.length = 0;
     realtimeVoiceMock.start.mockClear();
     realtimeVoiceMock.stop.mockClear();
+    lastCaptureOpts = null;
+    captureHandles = [];
     createVoiceCaptureMock.mockReset();
     installFakeCapture();
     appMock.value.activeConversationId = conversationId;
@@ -2213,6 +2220,236 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     expect(result.current.handsFree).toBe(true);
     expect(result.current.realtimeVoice?.enabled).toBe(false);
     expect(result.current.realtimeVoice?.error).toBeNull();
+  });
+
+  it("routes a negative conversation probe to batch capture and output", async () => {
+    realtimeVoiceMock.state.available = false;
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+    expect(result.current.handsFree).toBe(true);
+    expect(result.current.realtimeVoice?.enabled).toBe(false);
+    expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(false);
+
+    act(() => fireFinalTranscript("continue in batch"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledWith(
+      "continue in batch",
+      expect.objectContaining({ channelType: "VOICE_DM" }),
+    );
+  });
+
+  it("stops a latched batch fallback with one Talk tap", async () => {
+    realtimeVoiceMock.state.available = false;
+    const { result, rerender } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+    expect(result.current.handsFree).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      realtimeVoiceMock.state.available = true;
+      rerender();
+      await Promise.resolve();
+    });
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+
+    expect(result.current.handsFree).toBe(false);
+    expect(captureHandles[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
+  });
+
+  it("keeps recovered realtime parked until a deferred batch STT stop drains", async () => {
+    realtimeVoiceMock.state.available = false;
+    const { result, rerender } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("ptt");
+      await Promise.resolve();
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+    expect(result.current.recording).toBe(true);
+
+    const captureOptions = lastCaptureOpts;
+    let releaseStop: (() => void) | undefined;
+    const stopDrain = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    captureHandles[0]?.stop.mockImplementation(async () => {
+      await stopDrain;
+      captureOptions?.onStateChange?.("stopped");
+    });
+
+    await act(async () => {
+      realtimeVoiceMock.state.available = true;
+      rerender();
+      await Promise.resolve();
+    });
+    expect(result.current.realtimeVoice?.enabled).toBe(false);
+
+    // Releasing PTT closes the visible mic immediately, but the batch owner is
+    // still draining STT. A recovered probe must stay latched to batch and a
+    // second Talk tap must not hand microphone/audio ownership to realtime.
+    await act(async () => {
+      result.current.stopRecording();
+      await Promise.resolve();
+    });
+    expect(result.current.recording).toBe(false);
+    expect(result.current.phase).toBe("processing");
+    expect(captureHandles[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(result.current.realtimeVoice?.enabled).toBe(false);
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+    expect(result.current.handsFree).toBe(false);
+
+    await act(async () => {
+      releaseStop?.();
+      await stopDrain;
+      await Promise.resolve();
+    });
+    expect(result.current.realtimeVoice?.enabled).toBe(true);
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(result.current.handsFree).toBe(true);
+  });
+
+  it("latches a recovered probe to batch until the current Talk session ends", async () => {
+    vi.useFakeTimers();
+    try {
+      const nextConversationId = "22222222-2222-4222-8222-222222222222";
+      const { result, rerender } = renderHook(() => useShellController());
+
+      await act(async () => {
+        result.current.toggleHandsFree();
+        await Promise.resolve();
+      });
+      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        realtimeVoiceMock.state.active = true;
+        realtimeVoiceMock.state.status = "listening";
+        rerender();
+      });
+
+      await act(async () => {
+        appMock.value.activeConversationId = nextConversationId;
+        realtimeVoiceMintMock.agentId = null;
+        realtimeVoiceMock.state.available = false;
+        realtimeVoiceMock.state.active = false;
+        realtimeVoiceMock.state.status = "idle";
+        rerender();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+
+      expect(result.current.handsFree).toBe(true);
+      expect(result.current.realtimeVoice?.enabled).toBe(false);
+      expect(realtimeVoiceMock.options?.flagEnabled).toBe(false);
+      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+      expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+      expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(false);
+
+      await act(async () => {
+        realtimeVoiceMintMock.agentId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+        realtimeVoiceMock.state.available = true;
+        rerender();
+        await Promise.resolve();
+      });
+      // Do not overlap microphones or steal output: the entire current Talk
+      // session stays batch even though the probe recovered.
+      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+      expect(result.current.realtimeVoice?.enabled).toBe(false);
+      expect(realtimeVoiceMock.options?.flagEnabled).toBe(true);
+      expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(false);
+
+      // Ending batch Talk is not enough to release the latch while that turn's
+      // text is still streaming. Drive the composer's live source (not the
+      // stale AppContext mirror), then stop Talk and its capture.
+      composerMock.value.chatSending = true;
+      await act(async () => {
+        result.current.toggleHandsFree();
+        await Promise.resolve();
+      });
+      expect(result.current.handsFree).toBe(false);
+      expect(captureHandles[0]?.stop).toHaveBeenCalledTimes(1);
+      expect(result.current.responding).toBe(true);
+      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+      expect(result.current.realtimeVoice?.enabled).toBe(false);
+      expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(false);
+
+      // The same batch turn moves from streaming to TTS. With Talk already off,
+      // speaking is now the only remaining owner and must keep realtime latched.
+      await act(async () => {
+        composerMock.value.chatSending = false;
+        voiceOutputMock.speaking = true;
+        rerender();
+        await Promise.resolve();
+      });
+      expect(result.current.handsFree).toBe(false);
+      expect(result.current.responding).toBe(true);
+      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+      expect(result.current.realtimeVoice?.enabled).toBe(false);
+      expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(false);
+
+      // Once TTS settles, every batch owner is idle and the recovered probe may
+      // make realtime selectable again. It still must not auto-start the mic.
+      await act(async () => {
+        voiceOutputMock.speaking = false;
+        rerender();
+        await Promise.resolve();
+      });
+      expect(result.current.responding).toBe(false);
+      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+      expect(result.current.realtimeVoice?.enabled).toBe(true);
+      expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(true);
+
+      // The next explicit Talk gesture starts realtime against the newly active
+      // conversation; probe recovery alone never steals the microphone.
+      await act(async () => {
+        result.current.toggleHandsFree();
+        await Promise.resolve();
+      });
+
+      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(2);
+      expect(realtimeVoiceMock.startedConversationIds).toEqual([
+        conversationId,
+        nextConversationId,
+      ]);
+      expect(result.current.handsFree).toBe(true);
+      expect(result.current.realtimeVoice?.enabled).toBe(true);
+      expect(voiceOutputMock.realtimeVoiceEnabledSeen).toBe(true);
+      expect(appMock.value.setActionNotice).not.toHaveBeenCalledWith(
+        expect.stringContaining("Cartesia voice is not ready"),
+        "error",
+        expect.any(Number),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("routes programmatic converse capture to one realtime session", async () => {

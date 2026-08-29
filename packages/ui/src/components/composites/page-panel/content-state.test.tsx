@@ -39,6 +39,7 @@ describe("ContentState", () => {
         placement="workspace"
         title="No results"
         description="Change the filters and try again."
+        icon={<AlertTriangle data-testid="empty-icon" />}
         data-testid="state"
       />,
     );
@@ -48,6 +49,7 @@ describe("ContentState", () => {
     expect(state.classList.contains("flex-1")).toBe(true);
     expect(state.hasAttribute("data-slot")).toBe(false);
     expect(screen.getByText("No results").tagName).toBe("DIV");
+    expect(screen.getByTestId("empty-icon")).toBeTruthy();
   });
 
   it("keeps loading descriptions screen-reader-only", () => {

@@ -707,18 +707,41 @@ function emptyWalletMarketSource(providerId: "coingecko" | "polymarket") {
   };
 }
 
-function emptyWalletMarketOverview() {
+function smokeWalletMarketOverview() {
+  const availableSource = (providerId: "coingecko" | "polymarket") => ({
+    ...emptyWalletMarketSource(providerId),
+    available: true,
+  });
   return {
     generatedAt: SMOKE_GENERATED_AT,
     cacheTtlSeconds: 60,
     stale: false,
     sources: {
-      prices: emptyWalletMarketSource("coingecko"),
-      movers: emptyWalletMarketSource("coingecko"),
-      predictions: emptyWalletMarketSource("polymarket"),
+      prices: availableSource("coingecko"),
+      movers: availableSource("coingecko"),
+      predictions: availableSource("polymarket"),
     },
     prices: [],
-    movers: [],
+    movers: [
+      {
+        id: "solana",
+        symbol: "SOL",
+        name: "Solana",
+        priceUsd: 150,
+        change24hPct: 7.5,
+        marketCapRank: 5,
+        imageUrl: null,
+      },
+      {
+        id: "ethereum",
+        symbol: "ETH",
+        name: "Ethereum",
+        priceUsd: 3600,
+        change24hPct: -1.8,
+        marketCapRank: 2,
+        imageUrl: null,
+      },
+    ],
     predictions: [],
   };
 }
@@ -832,6 +855,13 @@ function smokeWalletNfts() {
             tokenId: "42",
             name: "Smoke Test NFT #42",
             collectionName: "Eliza Smoke Collection",
+            imageUrl: "",
+            tokenUri: "",
+          },
+          {
+            tokenId: "43",
+            name: "ETH / USDC Position",
+            collectionName: "Uniswap V3 Liquidity Pool",
             imageUrl: "",
             tokenUri: "",
           },
@@ -1529,6 +1559,18 @@ function smokeDatabaseQuery(sql: string) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
+  // The UI-smoke server serves a production renderer from a same-origin
+  // backend proxy. Model the host's pre-React API-base injection so the bundle
+  // does not mistake that local stack for the hosted Cloud-only surface before
+  // any route fixture has a chance to answer. Keep this at document start: the
+  // app resolves branding while its entry module is evaluating.
+  await page.addInitScript(() => {
+    const host = window as typeof window & {
+      __ELIZA_APP_API_BASE__?: string;
+    };
+    host.__ELIZA_APP_API_BASE__ = window.location.origin;
+  });
+
   let notesRevision = 4;
   let smokeNotes: SmokeNote[] = [
     {
@@ -3427,7 +3469,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(emptyWalletMarketOverview()),
+      body: JSON.stringify(smokeWalletMarketOverview()),
     });
   });
 

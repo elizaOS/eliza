@@ -78,4 +78,5 @@ declarations are removed: `agent-orchestrator.activity`,
 inside Today (`todo.items`) per the spec's merge verdict. The old
 `messages.recent` card also remains removed. Follow-up-worthy messages surface
 through notifications, and conversation navigation lives in chat history instead
-of a resident home tile.
+of a resident home tile. `needs-attention.pending` is also removed because
+approval and check-in prompts already render in the pinned notification center.

@@ -176,6 +176,7 @@ import {
   renderOverlayMessageBody,
   SpeakingStatusAccessory,
   selectFirstRunDisplayMessages,
+  selectSemanticNewestFirstRunMessage,
   shellToChatMessageData,
 } from "./chat-overlay-transcript";
 import {
@@ -341,9 +342,8 @@ type MotionControls = { stop: () => void };
 // definition of an end-pinned reader.
 const MESSAGE_SCROLLER_END_THRESHOLD_PX = 8;
 // A landscape phone still needs room for the attach, mic, voice, and text
-// controls. The old 208px cap squeezed the editable field to ~46px and made a
-// rotation look like the composer had broken. Keep the corner treatment, but
-// preserve the same useful width as a portrait-phone composer.
+// controls. The compact composer must remain a useful input surface rather
+// than forcing the editable field into a narrow utility strip.
 const SHORT_LANDSCAPE_CHAT_MAX_WIDTH_PX = 360;
 // Ceiling (px) for the composer-footprint clearance the chat reserves in the
 // home/launcher layout. The panel can momentarily measure its OPEN/animating
@@ -1619,16 +1619,17 @@ export function ChatOverlay({
     React.useState(false);
   const transcriptionComposerActive =
     transcriptionMode || transcriptionFinishing;
-  const cloudLoginWaiting = React.useMemo(
-    () =>
-      firstRunOpen &&
-      messages.some(
-        (message) =>
-          message.id === "first-run:cloud-login-waiting" &&
-          message.content.startsWith("Waiting for sign-in in the browser"),
-      ),
-    [firstRunOpen, messages],
-  );
+  const cloudLoginWaiting = React.useMemo(() => {
+    if (!firstRunOpen) return false;
+    // The conductor keeps earlier setup turns in transcript history and can
+    // refresh one in place. Only the newest semantic first-run state may
+    // minimize the sheet; a later tutorial/error/status must take ownership.
+    const activeMessage = selectSemanticNewestFirstRunMessage(messages);
+    return (
+      activeMessage?.id === "first-run:cloud-login-waiting" &&
+      activeMessage.content.startsWith("Waiting for sign-in in the browser")
+    );
+  }, [firstRunOpen, messages]);
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
@@ -3071,11 +3072,10 @@ export function ChatOverlay({
     !pinnedOpen;
 
   // Publish the RESTING composer footprint to --eliza-chat-clearance so routed
-  // content reserves exactly the space the collapsed composer occupies. The
-  // compact short-landscape composer sits in the inline-end corner instead of
-  // spanning the bottom edge, so that mode reserves side clearance only. A
-  // bottom reservation there removes usable height from overflow-hidden views
-  // and clips their final rows even though the composer does not cover them.
+  // content reserves exactly the space the collapsed composer occupies. This
+  // stays a block-axis reservation in short landscape: consuming the
+  // composer's width as permanent inline padding turns every page into an
+  // artificial half-width column.
   React.useEffect(() => {
     if (
       typeof window === "undefined" ||
@@ -3088,10 +3088,6 @@ export function ChatOverlay({
     if (sheetOpen) return; // Keep the last resting value while the sheet is open.
     if (!panel) return;
     const publish = () => {
-      if (compactLanding) {
-        root.style.setProperty("--eliza-chat-clearance", "0px");
-        return;
-      }
       const h =
         panel.getBoundingClientRect().height + CHAT_CLEARANCE_REST_GAP_PX;
       // Cap it: a mid-collapse frame can report the open panel height, and
@@ -3106,44 +3102,19 @@ export function ChatOverlay({
     const ro = new ResizeObserver(publish);
     ro.observe(panel);
     return () => ro.disconnect();
-  }, [compactLanding, sheetOpen, getPanelElement]);
+  }, [sheetOpen, getPanelElement]);
 
-  // In short landscape the resting composer moves to the bottom inline-end
-  // corner. Publish that footprint separately from bottom clearance so hosted
-  // app/plugin views can keep right-edge content out from under the corner bar.
+  // Inline clearance is deliberately zero. Routed pages retain their full
+  // reading width while block-axis clearance keeps their final content above
+  // the resting composer.
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const root = document.documentElement;
-    const reset = () => {
+    root.style.setProperty("--eliza-chat-side-clearance", "0px");
+    return () => {
       root.style.setProperty("--eliza-chat-side-clearance", "0px");
     };
-    if (!compactLanding) {
-      reset();
-      return;
-    }
-    const panel = getPanelElement();
-    if (!panel) {
-      reset();
-      return;
-    }
-    const publish = () => {
-      const width = panel.getBoundingClientRect().width;
-      root.style.setProperty(
-        "--eliza-chat-side-clearance",
-        width > 0 ? `${Math.ceil(width + 24)}px` : "0px",
-      );
-    };
-    publish();
-    if (typeof ResizeObserver === "undefined") {
-      return () => reset();
-    }
-    const ro = new ResizeObserver(publish);
-    ro.observe(panel);
-    return () => {
-      ro.disconnect();
-      reset();
-    };
-  }, [compactLanding, getPanelElement]);
+  }, []);
 
   // Top clearance + max height come from the pure, unit-tested layout solver.
   // It reserves the real measured notch inset (`safeAreaTop`) above the panel,

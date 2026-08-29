@@ -25,6 +25,7 @@ import {
   applyAndroidCloudSplashTheme,
   applyAndroidGeneratedBuildTargetProperties,
   applyAndroidPlayManifestHardening,
+  assertAndroidCloudNativeLibraryAllowlist,
   createAndroidPlayManifestPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
@@ -346,10 +347,10 @@ describe("Android Play manifest policy", () => {
       expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(permission);
     }
     expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([
-      "base/lib/arm64-v8a/libdatastore_shared_counter.so",
-      "base/lib/armeabi-v7a/libdatastore_shared_counter.so",
-      "base/lib/x86/libdatastore_shared_counter.so",
-      "base/lib/x86_64/libdatastore_shared_counter.so",
+      "lib/arm64-v8a/libdatastore_shared_counter.so",
+      "lib/armeabi-v7a/libdatastore_shared_counter.so",
+      "lib/x86/libdatastore_shared_counter.so",
+      "lib/x86_64/libdatastore_shared_counter.so",
     ]);
     expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toContain(
       "android.permission.MODIFY_AUDIO_SETTINGS",
@@ -444,6 +445,67 @@ describe("Android Play manifest policy", () => {
         "eliza_ime_permission_needed",
       ]),
     });
+  });
+
+  it("accepts only the exact DataStore JNI paths in a Cloud debug APK", () => {
+    expect(
+      assertAndroidCloudNativeLibraryAllowlist({
+        artifact: "/artifacts/app-debug.apk",
+        entries: [...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES],
+        env: {},
+      }),
+    ).toEqual([...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES]);
+  });
+
+  it("rejects extra native code in a Cloud debug APK", () => {
+    expect(() =>
+      assertAndroidCloudNativeLibraryAllowlist({
+        artifact: "/artifacts/app-debug.apk",
+        entries: [
+          ...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
+          "lib/arm64-v8a/libunexpected.so",
+        ],
+        env: {},
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+        message: expect.stringContaining("lib/arm64-v8a/libunexpected.so"),
+      }),
+    );
+  });
+
+  it("accepts only the exact module-rooted DataStore JNI paths in a Cloud AAB", () => {
+    const aabNativeLibraries = ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES.map(
+      (entry) => `base/${entry}`,
+    );
+    expect(
+      assertAndroidCloudNativeLibraryAllowlist({
+        artifact: "/artifacts/app-release.aab",
+        entries: aabNativeLibraries,
+        env: {},
+      }),
+    ).toEqual(aabNativeLibraries);
+  });
+
+  it("rejects extra native code in a Cloud AAB", () => {
+    expect(() =>
+      assertAndroidCloudNativeLibraryAllowlist({
+        artifact: "/artifacts/app-release.aab",
+        entries: [
+          ...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES.map(
+            (entry) => `base/${entry}`,
+          ),
+          "base/lib/arm64-v8a/libunexpected.so",
+        ],
+        env: {},
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+        message: expect.stringContaining("base/lib/arm64-v8a/libunexpected.so"),
+      }),
+    );
   });
 
   it("targets API 36 and excludes background-worker dependencies in Cloud", () => {

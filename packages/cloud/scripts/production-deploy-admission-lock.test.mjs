@@ -41,6 +41,7 @@ function jobBlock(source, jobId) {
 }
 
 const cloudCf = readWorkflow(".github/workflows/cloud-cf-deploy.yml");
+const parsedCloudCf = Bun.YAML.parse(cloudCf);
 const cloudCfRelease = readWorkflow(".github/workflows/cloud-cf-release.yml");
 const provisioning = readWorkflow(
   ".github/workflows/deploy-eliza-provisioning-worker.yml",
@@ -242,6 +243,16 @@ describe("committed Cloud CF workflow matches the policy", () => {
     );
     expect(buildPages).toContain(
       `VITE_ENVIRONMENT: \${{ inputs.target_environment }}`,
+    );
+  });
+
+  test("PR Pages previews cannot enter the credentialed release workflow", () => {
+    expect(Object.keys(parsedCloudCf.on ?? {}).sort()).toEqual([
+      "workflow_dispatch",
+    ]);
+    expect(parsedCloudCf.jobs).not.toHaveProperty("build-pages");
+    expect(parsedCloudCf.jobs).not.toHaveProperty(
+      "resolve-pages-preview-config",
     );
   });
 });

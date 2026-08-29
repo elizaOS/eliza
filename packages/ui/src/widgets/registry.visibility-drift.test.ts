@@ -75,6 +75,39 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
     ).toBeUndefined();
   });
 
+  it("does not resurrect the retired response resident from a server declaration", () => {
+    const resolved = resolveWidgetsForSlot(
+      "home",
+      [{ id: "needs-attention", enabled: true, isActive: true }],
+      [
+        {
+          id: "needs-attention.pending",
+          pluginId: "needs-attention",
+          slot: "home",
+          label: "Needs response",
+          uiSpec: {
+            root: "root",
+            state: {},
+            elements: {
+              root: {
+                type: "Text",
+                props: { text: "Needs response" },
+                children: [],
+              },
+            },
+          },
+        },
+      ],
+    );
+    expect(
+      resolved.find(
+        ({ declaration }) =>
+          declaration.pluginId === "needs-attention" &&
+          declaration.id === "needs-attention.pending",
+      ),
+    ).toBeUndefined();
+  });
+
   it("snapshot-class builtins stay hidden until their plugin is present+active", () => {
     // A default (snapshot) builtin - one that omits the `visibility` flag - must
     // NOT appear on an empty snapshot, and must appear once its plugin is

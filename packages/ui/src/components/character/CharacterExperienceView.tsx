@@ -101,7 +101,7 @@ export function CharacterExperienceView({
 
   return (
     <ShellViewAgentSurface viewId="experience">
-      <FramedPage>
+      <FramedPage gutterOwner="framed-page">
         {pageChrome}
         <FramedPageBody className="gap-4 pt-1">
           {error ? (

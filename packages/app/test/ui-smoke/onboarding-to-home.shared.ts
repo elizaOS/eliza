@@ -840,16 +840,16 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   await expect(page.getByTestId(RUNTIME_CHOICE("remote"))).toBeVisible();
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
 
-  // Onboarding surface (#15339): first-run is sign-in-first, so the composer is
-  // LOCKED (disabled) with a "Sign in to start chatting" cue until the user
-  // signs in — typing into a not-yet-ready chat is prevented. The active
-  // onboarding sheet preserves the wallpaper without mounting a separate
-  // full-screen backdrop, and remains non-dismissable at its half detent.
+  // Onboarding surface (#12178): the composer stays enabled so a user can answer
+  // the in-chat conductor naturally. Attachments, voice, and ordinary agent
+  // sends remain gated by the first-run controller; the active sheet preserves
+  // the wallpaper and remains non-dismissable at its half detent.
   const composer = page.getByTestId("chat-composer-textarea");
-  await expect(composer).toBeDisabled();
+  await expect(composer).toBeEnabled();
+  await expect(composer).toHaveAttribute("placeholder", "Hey Eliza…");
   await expect(composer).toHaveAttribute(
-    "placeholder",
-    "Sign in to start chatting",
+    "aria-describedby",
+    "cc-first-run-hint",
   );
   await expect(page.getByTestId("chat-first-run-backdrop")).toHaveCount(0);
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
@@ -1135,7 +1135,7 @@ export async function expectCloudOnlySignInOnboarding(
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveAttribute(
     "placeholder",
-    "Sign in to start chatting",
+    "Sign in to get started",
   );
   await expect(page.getByTestId("chat-first-run-backdrop")).toHaveCount(0);
   await expect(chatOverlay).toHaveAttribute("data-open", "true");

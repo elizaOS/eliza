@@ -247,6 +247,7 @@ import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
 } from "./plugin-registrations";
+import { isRemoteControllerPairingRuntimeAllowed } from "./remote-controller-deep-link";
 import {
   PHONE_COMPANION_AGENT_VIEW_ID,
   resolveRendererShellKind,
@@ -2238,11 +2239,18 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
   );
   if (remotePairing) {
     if (
-      !isElectrobunRuntime() ||
-      !navigator.platform.toLowerCase().includes("linux")
+      !isRemoteControllerPairingRuntimeAllowed({
+        isElectrobun: isElectrobunRuntime(),
+        navigatorPlatform:
+          typeof navigator === "undefined" ? "" : navigator.platform,
+        nativePlatform: Capacitor.getPlatform(),
+        native: Capacitor.isNativePlatform(),
+        nativePluginAvailable:
+          Capacitor.isPluginAvailable?.("RemoteControllerIdentity") === true,
+      })
     ) {
       console.warn(
-        `${APP_LOG_PREFIX} Remote target pairing is available only on the enrolled Linux desktop target`,
+        `${APP_LOG_PREFIX} Remote controller pairing requires the enrolled Linux desktop shell or this iPhone's secure native controller bridge`,
       );
       return;
     }

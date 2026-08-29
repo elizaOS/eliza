@@ -14,8 +14,7 @@ import { cn } from "../../lib/utils";
 import { ScrollArea } from "../ui/scroll-area";
 import { AppWorkspaceChrome } from "./AppWorkspaceChrome";
 
-const CHAT_CLEARANCE_CLASS =
-  "pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]";
+const CHAT_CLEARANCE_CLASS = "pb-[var(--eliza-chat-clearance,5.25rem)]";
 
 export type AppWorkspaceContentLayout = "contained" | "scroll";
 

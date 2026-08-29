@@ -89,9 +89,10 @@ describe("devViewStudioPlugin", () => {
 });
 
 describe("local realtime voice defaults", () => {
-  test("enables the realtime client without force-arming unresolved agents", () => {
+  test("enables realtime and health-probed self-hosted eligibility without force-arming", () => {
     expect(resolveLocalRealtimeVoiceDefines("serve", 31_338, {})).toEqual({
       "import.meta.env.VITE_VOICE_REALTIME_WS": JSON.stringify("1"),
+      "import.meta.env.VITE_VOICE_REALTIME_SELF_HOSTED": JSON.stringify("1"),
     });
   });
 
@@ -99,14 +100,33 @@ describe("local realtime voice defaults", () => {
     expect(
       resolveLocalRealtimeVoiceDefines("serve", 31_338, {
         VITE_VOICE_REALTIME_WS: "0",
+        VITE_VOICE_REALTIME_SELF_HOSTED: "false",
         VITE_VOICE_REALTIME_FORCE: "false",
       }),
     ).toEqual({});
     expect(
       resolveLocalRealtimeVoiceDefines("serve", 31_338, {
         VITE_VOICE_REALTIME_WS: "1",
+        VITE_VOICE_REALTIME_SELF_HOSTED: "1",
       }),
     ).toEqual({});
+  });
+
+  test("defaults only a missing flag when the other has an explicit opt-out", () => {
+    expect(
+      resolveLocalRealtimeVoiceDefines("serve", 31_338, {
+        VITE_VOICE_REALTIME_WS: "0",
+      }),
+    ).toEqual({
+      "import.meta.env.VITE_VOICE_REALTIME_SELF_HOSTED": JSON.stringify("1"),
+    });
+    expect(
+      resolveLocalRealtimeVoiceDefines("serve", 31_338, {
+        VITE_VOICE_REALTIME_SELF_HOSTED: "0",
+      }),
+    ).toEqual({
+      "import.meta.env.VITE_VOICE_REALTIME_WS": JSON.stringify("1"),
+    });
   });
 
   test("does not change builds or dev servers without a gateway", () => {
@@ -117,14 +137,16 @@ describe("local realtime voice defaults", () => {
   test("preserves explicit opt-outs loaded from .env.local", () => {
     const envDir = mkdtempSync(path.join(os.tmpdir(), "eliza-voice-env-"));
     const previousWs = process.env.VITE_VOICE_REALTIME_WS;
+    const previousSelfHosted = process.env.VITE_VOICE_REALTIME_SELF_HOSTED;
     const previousForce = process.env.VITE_VOICE_REALTIME_FORCE;
     delete process.env.VITE_VOICE_REALTIME_WS;
+    delete process.env.VITE_VOICE_REALTIME_SELF_HOSTED;
     delete process.env.VITE_VOICE_REALTIME_FORCE;
 
     try {
       writeFileSync(
         path.join(envDir, ".env.local"),
-        "VITE_VOICE_REALTIME_WS=0\nVITE_VOICE_REALTIME_FORCE=false\n",
+        "VITE_VOICE_REALTIME_WS=0\nVITE_VOICE_REALTIME_SELF_HOSTED=false\nVITE_VOICE_REALTIME_FORCE=false\n",
       );
       expect(
         resolveLocalRealtimeVoiceDefinesFromEnv(
@@ -139,6 +161,11 @@ describe("local realtime voice defaults", () => {
         delete process.env.VITE_VOICE_REALTIME_WS;
       } else {
         process.env.VITE_VOICE_REALTIME_WS = previousWs;
+      }
+      if (previousSelfHosted === undefined) {
+        delete process.env.VITE_VOICE_REALTIME_SELF_HOSTED;
+      } else {
+        process.env.VITE_VOICE_REALTIME_SELF_HOSTED = previousSelfHosted;
       }
       if (previousForce === undefined) {
         delete process.env.VITE_VOICE_REALTIME_FORCE;

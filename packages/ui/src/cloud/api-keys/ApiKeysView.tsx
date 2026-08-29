@@ -21,7 +21,6 @@ import { Plus } from "lucide-react";
 import { type FormEvent, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { ApiKeyEmptyState } from "../../cloud-ui/components/api-key-empty-state";
-import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
 import {
   type ApiKeyDisplay,
   ApiKeysTable,
@@ -115,15 +114,15 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
       // state already renders a centred primary create button, and having both
       // visible at once duplicates the action.
       actions: hasKeys ? (
-        <BrandButton
-          variant="primary"
+        <Button
+          variant="default"
           size="sm"
           className="gap-2"
           onClick={() => setCreateOpen(true)}
         >
           <Plus className="size-4" />
           {t("cloud.apiKeys.createApiKey", { defaultValue: "Generate key" })}
-        </BrandButton>
+        </Button>
       ) : undefined,
     },
     [hasKeys, t],
@@ -241,17 +240,17 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
               />
             </div>
             <DialogFooter className="mt-6 gap-2">
-              <BrandButton
+              <Button
                 type="button"
                 variant="outline"
                 onClick={() => setCreateOpen(false)}
                 disabled={isCreating}
               >
                 {t("cloud.apiKeys.cancel", { defaultValue: "Cancel" })}
-              </BrandButton>
-              <BrandButton
+              </Button>
+              <Button
                 type="submit"
-                variant="primary"
+                variant="default"
                 disabled={isCreating || !name.trim()}
               >
                 {isCreating
@@ -259,7 +258,7 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
                   : t("cloud.apiKeys.createKey", {
                       defaultValue: "Generate key",
                     })}
-              </BrandButton>
+              </Button>
             </DialogFooter>
           </SemanticForm>
         </DialogContent>
@@ -296,12 +295,9 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
               </Button>
             </div>
             <DialogFooter>
-              <BrandButton
-                variant="primary"
-                onClick={() => setCreatedKey(null)}
-              >
+              <Button variant="default" onClick={() => setCreatedKey(null)}>
                 {t("cloud.apiKeys.done", { defaultValue: "Done" })}
-              </BrandButton>
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

@@ -146,7 +146,9 @@ describe("Miniflare Durable Object integration", () => {
       throw new Error("Admission test Worker bundle was not emitted");
 
     miniflare = new Miniflare({
-      compatibilityDate: "2026-06-01",
+      // Match the deployed API Worker so synchronous SQLite KV is exercised
+      // under the exact production compatibility contract.
+      compatibilityDate: "2026-04-01",
       compatibilityFlags: ["nodejs_compat"],
       modules: true,
       script: await output.text(),
@@ -467,6 +469,91 @@ describe("Miniflare Durable Object integration", () => {
     expect(body.cutoverAt % 60_000).toBe(0);
     expect(body.cutoverAt).toBeGreaterThan(Date.now());
     expect(body.cutoverAt - Date.now()).toBeLessThanOrEqual(60_000);
+  }, 120_000);
+
+  test("the active v2 rate-limit identity answers while the obsolete cutover coordinator is blocked", async () => {
+    expect(
+      (await post("/test-block-ledger", {}, "rate-limit:v2:cutover")).status,
+    ).toBe(202);
+
+    const blockedCutover = post(
+      "/rate-limit-v2-cutover",
+      { windowMs: 60_000 },
+      "rate-limit:v2:cutover",
+    );
+    const cutoverAnsweredEarly = await Promise.race([
+      blockedCutover.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 300)),
+    ]);
+    expect(cutoverAnsweredEarly).toBe(false);
+
+    const isolated = await Promise.race([
+      post(
+        "/rate-limit",
+        {
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 1,
+          windowStartedAt: Math.floor(Date.now() / 60_000) * 60_000,
+        },
+        "rate-limit:v2:org-miniflare-cutover-blocked",
+      ),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error("v2 rate limit waited behind cutover coordinator"),
+            ),
+          500,
+        );
+      }),
+    ]);
+    expect(isolated.status).toBe(200);
+    expect((await blockedCutover).status).toBe(200);
+  }, 120_000);
+
+  test("synchronous SQLite KV continues the exact async-KV quota window", async () => {
+    const gateName = "rate-limit:v2:org-miniflare-sync-kv-compat";
+    const windowMs = 60_000;
+    const windowStartedAt = Math.floor(Date.now() / windowMs) * windowMs;
+    expect(
+      (
+        await post(
+          "/test-seed-legacy-rate-limits",
+          {
+            completions: {
+              windowStartedAt,
+              windowMs,
+              maxRequests: 1,
+              count: 1,
+            },
+          },
+          gateName,
+        )
+      ).status,
+    ).toBe(204);
+
+    const denied = await post(
+      "/rate-limit",
+      {
+        endpointType: "completions",
+        windowMs,
+        maxRequests: 1,
+        windowStartedAt,
+      },
+      gateName,
+    );
+    expect(denied.status).toBe(429);
+
+    const persisted = await post("/test-read-legacy-rate-limits", {}, gateName);
+    expect(JSON.parse(await persisted.text())).toEqual({
+      completions: {
+        windowStartedAt,
+        windowMs,
+        maxRequests: 1,
+        count: 2,
+      },
+    });
   }, 120_000);
 
   test("clearing one subject denial cannot clear an independent denial", async () => {

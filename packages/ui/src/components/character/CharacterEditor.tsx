@@ -1299,7 +1299,7 @@ export function CharacterEditor({
     return sceneOverlay ? (
       loadingState
     ) : (
-      <FramedPage>
+      <FramedPage gutterOwner="framed-page">
         {pageChrome}
         <FramedPageBody scroll="page">{loadingState}</FramedPageBody>
       </FramedPage>

@@ -5,9 +5,11 @@
  * the committed report requires a final disposition for every cluster.
  */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import ts from "typescript";
 import {
   buildInventory,
@@ -37,6 +39,11 @@ const FINAL_DISPOSITIONS = new Set([
   "distinct-domain-compositions",
   "shared-lifecycle-owner",
 ]);
+const WORKFLOW_DISPOSITIONS = new Set(["unresolved", "canonicalize"]);
+const ALLOWED_DISPOSITIONS = new Set([
+  ...FINAL_DISPOSITIONS,
+  ...WORKFLOW_DISPOSITIONS,
+]);
 
 const ARCHETYPES = [
   ["empty-state", /(EmptyState|Empty|Unavailable|NoResults)$/],
@@ -56,43 +63,115 @@ function archetypeFor(name) {
   return ARCHETYPES.find(([, pattern]) => pattern.test(name))?.[0] ?? null;
 }
 
-export function validateMolecularDecisions(clusters, decisions) {
+function componentId(component) {
+  return `${component.file}:${component.name}`;
+}
+
+export function molecularClusterBinding(cluster) {
+  const memberComponentIds = cluster.entries
+    .map(componentId)
+    .sort((a, b) => a.localeCompare(b));
+  const semanticInput = {
+    archetype: cluster.archetype,
+    atomicDependencies: [...cluster.atomicDependencies].sort((a, b) =>
+      a.localeCompare(b),
+    ),
+    members: cluster.entries
+      .map((entry) => ({
+        atomicDependencies: [...entry.atomicDependencies].sort((a, b) =>
+          a.localeCompare(b),
+        ),
+        id: componentId(entry),
+        renderedTags: [...entry.renderedTags].sort((a, b) =>
+          a.localeCompare(b),
+        ),
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  };
+  const semanticFingerprint = `sha256:${createHash("sha256")
+    .update(JSON.stringify(semanticInput))
+    .digest("hex")}`;
+  return { memberComponentIds, semanticFingerprint };
+}
+
+export function validateMolecularDecisions(
+  clusters,
+  decisions,
+  canonicalContractIds = new Set(),
+) {
   const clusterSignatures = new Set(
     clusters.map((cluster) => cluster.signature),
   );
-  const missingDecisions = clusters
-    .filter((cluster) => {
-      const decision = decisions[cluster.signature];
-      return (
-        !decision ||
-        typeof decision.disposition !== "string" ||
-        typeof decision.rationale !== "string" ||
-        decision.rationale.trim().length === 0
+  const missingDecisions = [];
+  const invalidDecisions = [];
+  const nonFinalDecisions = [];
+
+  for (const cluster of clusters) {
+    const decision = decisions[cluster.signature];
+    if (
+      !decision ||
+      typeof decision.disposition !== "string" ||
+      typeof decision.rationale !== "string" ||
+      decision.rationale.trim().length === 0
+    ) {
+      missingDecisions.push(cluster.signature);
+      continue;
+    }
+
+    const expectedBinding = molecularClusterBinding(cluster);
+    if (
+      JSON.stringify(decision.memberComponentIds) !==
+      JSON.stringify(expectedBinding.memberComponentIds)
+    ) {
+      invalidDecisions.push(
+        `${cluster.signature} member IDs changed (recorded: ${Array.isArray(decision.memberComponentIds) ? decision.memberComponentIds.join(", ") : "invalid"}; current: ${expectedBinding.memberComponentIds.join(", ")})`,
       );
-    })
-    .map((cluster) => cluster.signature);
-  const nonFinalDecisions = clusters
-    .filter((cluster) => {
-      const disposition = decisions[cluster.signature]?.disposition;
-      return (
-        typeof disposition === "string" && !FINAL_DISPOSITIONS.has(disposition)
+    }
+    if (decision.semanticFingerprint !== expectedBinding.semanticFingerprint) {
+      invalidDecisions.push(
+        `${cluster.signature} semantic fingerprint changed (recorded: ${decision.semanticFingerprint ?? "missing"}; current: ${expectedBinding.semanticFingerprint})`,
       );
-    })
-    .map(
-      (cluster) =>
-        `${cluster.signature} (${decisions[cluster.signature].disposition})`,
-    );
+    }
+    if (!ALLOWED_DISPOSITIONS.has(decision.disposition)) {
+      invalidDecisions.push(
+        `${cluster.signature} has unknown disposition ${decision.disposition}`,
+      );
+    }
+    if (decision.disposition === "canonicalize") {
+      if (
+        typeof decision.canonicalContractId !== "string" ||
+        decision.canonicalContractId.trim() === ""
+      ) {
+        invalidDecisions.push(
+          `${cluster.signature} canonicalize workflow requires canonicalContractId`,
+        );
+      } else if (!canonicalContractIds.has(decision.canonicalContractId)) {
+        invalidDecisions.push(
+          `${cluster.signature} references unknown canonical contract ${decision.canonicalContractId}`,
+        );
+      }
+    } else if ("canonicalContractId" in decision) {
+      invalidDecisions.push(
+        `${cluster.signature} may name canonicalContractId only while canonicalizing`,
+      );
+    }
+    if (WORKFLOW_DISPOSITIONS.has(decision.disposition)) {
+      nonFinalDecisions.push(`${cluster.signature} (${decision.disposition})`);
+    }
+  }
+
   const staleDecisions = Object.keys(decisions).filter(
     (signature) => !clusterSignatures.has(signature),
   );
 
   if (
     missingDecisions.length > 0 ||
+    invalidDecisions.length > 0 ||
     nonFinalDecisions.length > 0 ||
     staleDecisions.length > 0
   ) {
     throw new Error(
-      `Molecular decisions must be complete and final. Missing: ${missingDecisions.join(", ") || "none"}; non-final: ${nonFinalDecisions.join(", ") || "none"}; stale: ${staleDecisions.join(", ") || "none"}. Allowed final dispositions: ${[...FINAL_DISPOSITIONS].join(", ")}`,
+      `Molecular decisions must match the current clusters and be final. Missing: ${missingDecisions.join(", ") || "none"}; invalid: ${invalidDecisions.join("; ") || "none"}; non-final: ${nonFinalDecisions.join(", ") || "none"}; stale: ${staleDecisions.join(", ") || "none"}. Allowed final dispositions: ${[...FINAL_DISPOSITIONS].join(", ")}. Workflow dispositions unresolved and canonicalize always fail this completion gate.`,
     );
   }
 }
@@ -202,6 +281,39 @@ export function validateMoleculeContracts(
         );
       }
     }
+
+    if (typeof contract.renderedStory !== "string") {
+      errors.push(`${ownerKey} is missing rendered story evidence`);
+    } else {
+      const absoluteStory = path.join(repoRoot, contract.renderedStory);
+      if (
+        !fs.existsSync(absoluteStory) ||
+        !fileRendersContract(absoluteStory, contract)
+      ) {
+        errors.push(
+          `${contract.renderedStory} no longer renders canonical ${contract.symbol}`,
+        );
+      }
+    }
+
+    if (typeof contract.behavioralTest !== "string") {
+      errors.push(`${ownerKey} is missing behavioral test evidence`);
+    } else {
+      const absoluteTest = path.join(repoRoot, contract.behavioralTest);
+      if (!fs.existsSync(absoluteTest)) {
+        errors.push(`${contract.behavioralTest} behavioral test is missing`);
+      } else {
+        const source = fs.readFileSync(absoluteTest, "utf8");
+        if (
+          !/\b(?:it|test)\s*\(/.test(source) ||
+          !fileComposesContract(absoluteTest, contract)
+        ) {
+          errors.push(
+            `${contract.behavioralTest} does not render canonical ${contract.symbol} in a behavioral test`,
+          );
+        }
+      }
+    }
   }
 
   if (errors.length > 0) {
@@ -233,11 +345,7 @@ function maintainedReferenceCounts(contracts) {
   return references;
 }
 
-export function fileComposesContract(absoluteFile, contract) {
-  const cacheKey = `${absoluteFile}:${contract.owner}:${contract.symbol}`;
-  if (compositionCache.has(cacheKey)) return compositionCache.get(cacheKey);
-  const source = fs.readFileSync(absoluteFile, "utf8");
-  const sourceFile = parsedSourceFile(absoluteFile, source);
+function contractBindings(absoluteFile, contract, sourceFile) {
   const bindings = new Set();
   for (const statement of sourceFile.statements) {
     if (
@@ -262,6 +370,15 @@ export function fileComposesContract(absoluteFile, contract) {
       }
     }
   }
+  return bindings;
+}
+
+export function fileComposesContract(absoluteFile, contract) {
+  const cacheKey = `${absoluteFile}:${contract.owner}:${contract.symbol}`;
+  if (compositionCache.has(cacheKey)) return compositionCache.get(cacheKey);
+  const source = fs.readFileSync(absoluteFile, "utf8");
+  const sourceFile = parsedSourceFile(absoluteFile, source);
+  const bindings = contractBindings(absoluteFile, contract, sourceFile);
   let composed = false;
   const visit = (node) => {
     if (
@@ -277,6 +394,30 @@ export function fileComposesContract(absoluteFile, contract) {
   visit(sourceFile);
   compositionCache.set(cacheKey, composed);
   return composed;
+}
+
+export function fileRendersContract(absoluteFile, contract) {
+  const source = fs.readFileSync(absoluteFile, "utf8");
+  const sourceFile = parsedSourceFile(absoluteFile, source);
+  const bindings = contractBindings(absoluteFile, contract, sourceFile);
+  let rendered = false;
+  const visit = (node) => {
+    if (
+      ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+        ts.isIdentifier(node.tagName) &&
+        bindings.has(node.tagName.text)) ||
+      (ts.isPropertyAssignment(node) &&
+        node.name.getText(sourceFile) === "component" &&
+        ts.isIdentifier(node.initializer) &&
+        bindings.has(node.initializer.text))
+    ) {
+      rendered = true;
+      return;
+    }
+    if (!rendered) ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return rendered;
 }
 
 function moduleExportsContract(modulePath, exportedName, contract, visited) {
@@ -356,20 +497,76 @@ function resolveSourceModule(importingFile, specifier) {
   return null;
 }
 
-export function buildMolecularInventory() {
-  const atomicReport = buildInventory();
-  const decisions = JSON.parse(fs.readFileSync(decisionsPath, "utf8"));
-  const contractRegistry = parseMoleculeContractRegistry(
-    JSON.parse(fs.readFileSync(contractsPath, "utf8")),
-  );
-  const references = maintainedReferenceCounts(contractRegistry.contracts);
-  validateMoleculeContracts(
-    atomicReport.components,
-    contractRegistry.contracts,
-    references,
-    atomicReport.atoms,
-  );
-  const components = atomicReport.components
+export function parseMolecularDecisionRegistry(value) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    value.schemaVersion !== 2 ||
+    !value.decisions ||
+    typeof value.decisions !== "object" ||
+    Array.isArray(value.decisions)
+  ) {
+    throw new Error(
+      "Molecular decision registry requires schemaVersion 2 and decisions",
+    );
+  }
+
+  for (const [signature, decision] of Object.entries(value.decisions)) {
+    const context = `Molecular decision ${signature}`;
+    if (!decision || typeof decision !== "object" || Array.isArray(decision)) {
+      throw new Error(`${context} must be an object`);
+    }
+    const allowedFields = new Set([
+      "canonicalContractId",
+      "disposition",
+      "memberComponentIds",
+      "rationale",
+      "semanticFingerprint",
+    ]);
+    const unknownField = Object.keys(decision).find(
+      (field) => !allowedFields.has(field),
+    );
+    if (unknownField) {
+      throw new Error(`${context} has unknown field ${unknownField}`);
+    }
+    if (
+      typeof decision.disposition !== "string" ||
+      !ALLOWED_DISPOSITIONS.has(decision.disposition)
+    ) {
+      throw new Error(`${context} has an unknown disposition`);
+    }
+    if (
+      typeof decision.rationale !== "string" ||
+      decision.rationale.trim() === ""
+    ) {
+      throw new Error(`${context} requires a non-empty rationale`);
+    }
+    if (
+      !Array.isArray(decision.memberComponentIds) ||
+      decision.memberComponentIds.length < 2 ||
+      decision.memberComponentIds.some(
+        (id) => typeof id !== "string" || id.trim() === "",
+      ) ||
+      new Set(decision.memberComponentIds).size !==
+        decision.memberComponentIds.length
+    ) {
+      throw new Error(
+        `${context} requires at least two unique memberComponentIds`,
+      );
+    }
+    if (
+      typeof decision.semanticFingerprint !== "string" ||
+      !/^sha256:[a-f0-9]{64}$/.test(decision.semanticFingerprint)
+    ) {
+      throw new Error(`${context} requires a sha256 semanticFingerprint`);
+    }
+  }
+  return value;
+}
+
+export function detectMolecularClusters(atomicComponents) {
+  const components = atomicComponents
     .map((component) => ({
       ...component,
       archetype: archetypeFor(component.name),
@@ -385,7 +582,7 @@ export function buildMolecularInventory() {
     bySignature.get(signature).push(component);
   }
 
-  const detectedClusters = [...bySignature]
+  const clusters = [...bySignature]
     .map(([signature, entries]) => ({
       archetype: entries[0].archetype,
       atomicDependencies: entries[0].atomicDependencies,
@@ -403,22 +600,45 @@ export function buildMolecularInventory() {
         b.entries.length - a.entries.length ||
         a.signature.localeCompare(b.signature),
     );
+  return { clusters, eligibleComponents: components.length };
+}
 
-  validateMolecularDecisions(detectedClusters, decisions);
+export function buildMolecularInventory() {
+  const atomicReport = buildInventory();
+  const decisions = parseMolecularDecisionRegistry(
+    JSON.parse(fs.readFileSync(decisionsPath, "utf8")),
+  ).decisions;
+  const contractRegistry = parseMoleculeContractRegistry(
+    JSON.parse(fs.readFileSync(contractsPath, "utf8")),
+  );
+  const references = maintainedReferenceCounts(contractRegistry.contracts);
+  validateMoleculeContracts(
+    atomicReport.components,
+    contractRegistry.contracts,
+    references,
+    atomicReport.atoms,
+  );
+  const { clusters: detectedClusters, eligibleComponents } =
+    detectMolecularClusters(atomicReport.components);
+  validateMolecularDecisions(
+    detectedClusters,
+    decisions,
+    new Set(contractRegistry.contracts.map((contract) => contract.id)),
+  );
   const clusters = detectedClusters.map((cluster) => ({
     ...cluster,
     ...decisions[cluster.signature],
   }));
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     sourceAtomicSchemaVersion: atomicReport.schemaVersion,
     scannedFiles: atomicReport.scannedFiles,
     canonicalContracts: contractRegistry.contracts.map((contract) => ({
       ...contract,
       maintainedReferences: references[`${contract.owner}:${contract.symbol}`],
     })),
-    eligibleComponents: components.length,
+    eligibleComponents,
     clusters,
     summary: {
       clusterCount: clusters.length,
@@ -431,13 +651,23 @@ export function buildMolecularInventory() {
   };
 }
 
+function isSafePackagesPath(value) {
+  return (
+    typeof value === "string" &&
+    value.trim() !== "" &&
+    !path.isAbsolute(value) &&
+    !value.split("/").includes("..") &&
+    value.startsWith("packages/")
+  );
+}
+
 export function parseMoleculeContractRegistry(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Molecule contract registry must be an object");
   }
-  if (value.schemaVersion !== 1 || !Array.isArray(value.contracts)) {
+  if (value.schemaVersion !== 2 || !Array.isArray(value.contracts)) {
     throw new Error(
-      "Molecule contract registry requires schemaVersion 1 and contracts",
+      "Molecule contract registry requires schemaVersion 2 and contracts",
     );
   }
 
@@ -447,9 +677,11 @@ export function parseMoleculeContractRegistry(value) {
       throw new Error(`${context} must be an object`);
     }
     const allowedFields = new Set([
+      "behavioralTest",
       "id",
       "minimumMaintainedReferences",
       "owner",
+      "renderedStory",
       "requiredAtomicDependencies",
       "requiredConsumerFiles",
       "requiredRenderedTags",
@@ -461,7 +693,14 @@ export function parseMoleculeContractRegistry(value) {
     );
     if (unknownField)
       throw new Error(`${context} has unknown field ${unknownField}`);
-    for (const field of ["id", "owner", "symbol", "responsibility"]) {
+    for (const field of [
+      "behavioralTest",
+      "id",
+      "owner",
+      "renderedStory",
+      "symbol",
+      "responsibility",
+    ]) {
       if (
         typeof contract[field] !== "string" ||
         contract[field].trim() === ""
@@ -469,11 +708,7 @@ export function parseMoleculeContractRegistry(value) {
         throw new Error(`${context} requires non-empty ${field}`);
       }
     }
-    if (
-      path.isAbsolute(contract.owner) ||
-      contract.owner.split("/").includes("..") ||
-      !contract.owner.startsWith("packages/")
-    ) {
+    if (!isSafePackagesPath(contract.owner)) {
       throw new Error(`${context} owner must be a safe packages-relative path`);
     }
     for (const field of [
@@ -491,22 +726,41 @@ export function parseMoleculeContractRegistry(value) {
       }
     }
     if (
+      contract.requiredConsumerFiles.length < 2 ||
+      new Set(contract.requiredConsumerFiles).size !==
+        contract.requiredConsumerFiles.length ||
       contract.requiredConsumerFiles.some(
         (consumer) =>
-          path.isAbsolute(consumer) ||
-          consumer.split("/").includes("..") ||
-          !consumer.startsWith("packages/"),
+          !isSafePackagesPath(consumer) || consumer === contract.owner,
       )
     ) {
       throw new Error(
-        `${context} consumers must be safe packages-relative paths`,
+        `${context} requires at least two distinct maintained consumer files`,
       );
     }
     if (
       !Number.isInteger(contract.minimumMaintainedReferences) ||
-      contract.minimumMaintainedReferences < 0
+      contract.minimumMaintainedReferences < 2
     ) {
-      throw new Error(`${context} requires a non-negative reference floor`);
+      throw new Error(
+        `${context} requires a maintained reference floor of at least 2`,
+      );
+    }
+    if (
+      !isSafePackagesPath(contract.renderedStory) ||
+      !/\.stories\.[jt]sx?$/.test(contract.renderedStory)
+    ) {
+      throw new Error(
+        `${context} renderedStory must name a packages-relative Storybook story`,
+      );
+    }
+    if (
+      !isSafePackagesPath(contract.behavioralTest) ||
+      !/\.(?:test|spec)\.[jt]sx?$/.test(contract.behavioralTest)
+    ) {
+      throw new Error(
+        `${context} behavioralTest must name a packages-relative test`,
+      );
     }
   }
   return value;
@@ -522,13 +776,13 @@ export function renderMolecularMarkdown(report) {
     "",
     "## Canonical molecule contracts",
     "",
-    "These owners are fail-closed contracts. The audit fails if an owner disappears, drops a required canonical atom, or loses its maintained consumers.",
+    "These owners are fail-closed contracts. The audit fails if an owner disappears, drops a required canonical atom, loses a named consumer, or loses its rendered story or behavioral test.",
     "",
-    "| Contract | Canonical owner | Maintained references | Responsibility |",
-    "| --- | --- | ---: | --- |",
+    "| Contract | Canonical owner | Maintained references | Representative proof | Responsibility |",
+    "| --- | --- | ---: | --- | --- |",
     ...report.canonicalContracts.map(
       (contract) =>
-        `| ${contract.id} | \`${contract.symbol}\` in \`${contract.owner}\` | ${contract.maintainedReferences} | ${contract.responsibility} |`,
+        `| ${contract.id} | \`${contract.symbol}\` in \`${contract.owner}\` | ${contract.maintainedReferences} | \`${contract.renderedStory}\`<br>\`${contract.behavioralTest}\` | ${contract.responsibility} |`,
     ),
     "",
     "## Duplicate review queue",
@@ -552,31 +806,57 @@ export function renderMolecularMarkdown(report) {
     for (const entry of cluster.entries) {
       lines.push(`- \`${entry.name}\` in \`${entry.file}:${entry.line}\``);
     }
-    lines.push(`- Decision: **${cluster.disposition}** — ${cluster.rationale}`);
+    lines.push(`- Fingerprint: \`${cluster.semanticFingerprint}\``);
+    lines.push(`- Decision: **${cluster.disposition}**. ${cluster.rationale}`);
     lines.push("");
   }
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
+export function serializeMolecularReport(report) {
+  return {
+    json: `${JSON.stringify(report, null, 2)}\n`,
+    markdown: renderMolecularMarkdown(report),
+  };
+}
+
+export function assertMolecularArtifactsCurrent(report, artifacts) {
+  const stale = [];
+  try {
+    if (!isDeepStrictEqual(JSON.parse(artifacts.json), report)) {
+      stale.push("json");
+    }
+  } catch {
+    stale.push("json");
+  }
+  if (artifacts.markdown !== renderMolecularMarkdown(report)) {
+    stale.push("markdown");
+  }
+  if (stale.length > 0) {
+    throw new Error(
+      `Molecular inventory artifacts are stale: ${stale.join(", ")}. Run bun run --cwd packages/ui audit:molecular-inventory.`,
+    );
+  }
+}
+
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const report = buildMolecularInventory();
-  const markdown = renderMolecularMarkdown(report);
-  const json = `${JSON.stringify(report, null, 2)}\n`;
+  const artifacts = serializeMolecularReport(report);
   if (process.argv.includes("--check")) {
-    if (
-      !fs.existsSync(reportMarkdown) ||
-      fs.readFileSync(reportMarkdown, "utf8") !== markdown
-    ) {
-      throw new Error(
-        `${path.basename(reportMarkdown)} is stale. Run bun run --cwd packages/ui audit:molecular-inventory.`,
-      );
-    }
+    assertMolecularArtifactsCurrent(report, {
+      json: fs.existsSync(reportJson)
+        ? fs.readFileSync(reportJson, "utf8")
+        : "",
+      markdown: fs.existsSync(reportMarkdown)
+        ? fs.readFileSync(reportMarkdown, "utf8")
+        : "",
+    });
     process.stdout.write(
       `Molecular inventory is current with ${report.clusters.length} final dispositions.\n`,
     );
   } else {
-    fs.writeFileSync(reportJson, json);
-    fs.writeFileSync(reportMarkdown, markdown);
-    process.stdout.write(markdown);
+    fs.writeFileSync(reportJson, artifacts.json);
+    fs.writeFileSync(reportMarkdown, artifacts.markdown);
+    process.stdout.write(artifacts.markdown);
   }
 }

@@ -100,6 +100,7 @@ describe("home priority - real declarations + ranker scenario (#9143)", () => {
     // Approval notifications stay in the pinned notification center instead
     // of producing a second ranked Home card.
     expect(top3).toContain("todo/todo.items");
+    expect(order).not.toContain("needs-attention/needs-attention.pending");
 
     // A quiet widget (calendar with no upcoming-event signal) ranks behind them.
     const calendarRank = order.indexOf("calendar/calendar.upcoming");
@@ -154,5 +155,6 @@ describe("home priority - real declarations + ranker scenario (#9143)", () => {
   it("with no live signals, omits the duplicate needs-response resident", () => {
     const order = rankedKeys([]);
     expect(order).not.toContain("needs-attention/needs-attention.pending");
+    expect(order).toContain("calendar/calendar.upcoming");
   });
 });
