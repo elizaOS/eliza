@@ -84,6 +84,8 @@ const COHORT_MIGRATIONS = [
   "0363_agent_backup_admission_claim_guard",
   "0364_agent_backup_admission_claim_eligibility",
   "0365_agent_backup_admission_unsettled_schedule_index",
+  "0366_agent_backup_admission_enrollment_source_indexes",
+  "0367_agent_backup_admission_enrollment_watermark_guard",
 ] as const;
 
 type ClientModule = typeof import("../../client");
@@ -424,6 +426,23 @@ describe("agent backup admission enrollment", () => {
       cohortId: "1",
       enrolled: 1,
       queued: 1,
+      cohortComplete: false,
+    });
+    // Earlier initial rows now have next_backup_at. The complementary raw RPO
+    // probe must durably cross those residual keys before declaring the frozen
+    // global merge complete, without assigning them duplicate work ordinals.
+    expect(await enroll("cohort-worker-after-restart", 1, 15 * 60_000)).toMatchObject({
+      shardId: 0,
+      cohortId: "1",
+      enrolled: 0,
+      queued: 0,
+      cohortComplete: false,
+    });
+    expect(await enroll("cohort-worker-after-restart", 1, 15 * 60_000)).toMatchObject({
+      shardId: 0,
+      cohortId: "1",
+      enrolled: 0,
+      queued: 0,
       cohortComplete: true,
     });
 
@@ -450,6 +469,93 @@ describe("agent backup admission enrollment", () => {
     expect(work.every(({ priority_class }) => priority_class === "active_rpo")).toBe(true);
     expect(new Set(work.map(({ sandbox_id }) => sandbox_id)).size).toBe(3);
     expect(new Set(work.map(({ node_history_id }) => node_history_id)).size).toBe(1);
+  });
+
+  test("merges equal due keys across all raw frontiers without persisting the sentinel", async () => {
+    await prioritizeShardZero();
+    const dueAt = new Date("2026-08-16T00:10:00.000Z");
+    const anchorAt = new Date(dueAt.getTime() - 60_000);
+    const initialId = uuidForShard(0, 0xe600);
+    const scheduledId = uuidForShard(0, 0xe601);
+    const rpoId = uuidForShard(0, 0xe602);
+    await insertAgent({
+      id: initialId,
+      generation: uuidForShard(32, 0xf600),
+      index: 1,
+      activationCompletedAt: dueAt,
+    });
+    await insertAgent({
+      id: scheduledId,
+      generation: uuidForShard(32, 0xf601),
+      index: 2,
+      activationCompletedAt: anchorAt,
+    });
+    await insertAgent({
+      id: rpoId,
+      generation: uuidForShard(32, 0xf602),
+      index: 3,
+      activationCompletedAt: anchorAt,
+    });
+    await dbWrite.execute(sql`
+      UPDATE ${agentSandboxes}
+      SET next_backup_at = CASE id
+        WHEN ${scheduledId}::uuid THEN ${dueAt}::timestamptz
+        WHEN ${rpoId}::uuid THEN ${new Date(dueAt.getTime() + 60_000)}::timestamptz
+        ELSE next_backup_at END
+      WHERE id IN (${scheduledId}::uuid, ${rpoId}::uuid)
+    `);
+
+    expect(await enroll("watermark-tie-a", 1)).toMatchObject({
+      enrolled: 1,
+      queued: 1,
+      cohortComplete: false,
+    });
+    const [firstProgress] = await sqlRows<{
+      scan_cursor_due_at: string;
+      scan_cursor_id: string;
+      scan_cursor_ordinal: number;
+    }>(
+      dbWrite,
+      sql`SELECT scan_cursor_due_at::text AS scan_cursor_due_at,
+          scan_cursor_id::text AS scan_cursor_id, scan_cursor_ordinal
+        FROM ${agentBackupAdmissionEnrollmentShards}
+        WHERE work_kind = 'schedule_capture' AND shard_id = 0`,
+    );
+    expect(firstProgress?.scan_cursor_id).toBe(initialId);
+    expect(firstProgress?.scan_cursor_ordinal).toBe(0);
+    expect(new Date(firstProgress?.scan_cursor_due_at ?? 0).getTime()).toBe(dueAt.getTime());
+
+    expect(await enroll("watermark-tie-b", 1)).toMatchObject({
+      enrolled: 1,
+      queued: 1,
+      cohortComplete: false,
+    });
+    expect(await enroll("watermark-tie-c", 1)).toMatchObject({
+      enrolled: 1,
+      queued: 1,
+      cohortComplete: false,
+    });
+    expect(await enroll("watermark-tie-drain", 1)).toMatchObject({
+      enrolled: 0,
+      queued: 0,
+      cohortComplete: true,
+    });
+
+    const work = await sqlRows<{
+      cohort_ordinal: number;
+      sandbox_id: string;
+      source_due_at: string;
+    }>(
+      dbWrite,
+      sql`SELECT cohort_ordinal, sandbox_id, source_due_at::text AS source_due_at
+        FROM ${agentBackupAdmissionWork}
+        ORDER BY cohort_ordinal`,
+    );
+    expect(work.map(({ sandbox_id }) => sandbox_id)).toEqual([initialId, scheduledId, rpoId]);
+    expect(work.map(({ cohort_ordinal }) => cohort_ordinal)).toEqual([0, 1, 2]);
+    expect(
+      work.every(({ source_due_at }) => new Date(source_due_at).getTime() === dueAt.getTime()),
+    ).toBe(true);
   });
 
   test("keeps concurrent calls on distinct stable shards duplicate-free", async () => {
