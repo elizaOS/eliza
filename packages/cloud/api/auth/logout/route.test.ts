@@ -308,4 +308,66 @@ describe("POST /api/auth/logout cookie clearing", () => {
     expect(getCurrentUserMock).not.toHaveBeenCalled();
     expect(endAllUserSessionsMock).not.toHaveBeenCalled();
   });
+
+  test("REGRESSION (#29935): unconfirmed SSO marker after both write attempts → 503, not a 200 success", async () => {
+    // Fail closed: if both markSsoBridgeLogout attempts fail, the cross-host
+    // logout barrier is not persisted and a paired-origin refresh could
+    // re-plant the signed-out session. The route must not report success the
+    // client would treat as permission to navigate to /login.
+    readStewardSessionTokenMock.mockReturnValue("header.payload.signature");
+    markSsoBridgeLogoutMock.mockRejectedValue(new Error("store unavailable"));
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://cloud-staging.eliza.app",
+          authorization: "Bearer header.payload.signature",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "production" },
+    );
+
+    expect(res.status).toBe(503);
+    expect((await res.json()) as unknown).toEqual({
+      error: "Cross-host logout is not yet persisted; retry sign-out",
+      code: "logout_marker_unavailable",
+    });
+    // Cookies are still cleared (this origin IS logged out) and the bounded
+    // retry actually ran: exactly two write attempts.
+    expect(deletedCookieNames(res)).toContain("steward-token-staging");
+    expect(markSsoBridgeLogoutMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("REGRESSION (#29935): a transient marker failure recovers on the bounded retry → 200", async () => {
+    readStewardSessionTokenMock.mockReturnValue("header.payload.signature");
+    // Reset the persistent rejection the previous test installed, then fail
+    // exactly the first write: the bounded retry must recover to a 200.
+    markSsoBridgeLogoutMock.mockResolvedValue(undefined);
+    markSsoBridgeLogoutMock.mockRejectedValueOnce(
+      new Error("transient store blip"),
+    );
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://cloud-staging.eliza.app",
+          authorization: "Bearer header.payload.signature",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "production" },
+    );
+
+    expect(res.status).toBe(200);
+    expect(markSsoBridgeLogoutMock).toHaveBeenCalledTimes(2);
+    expect((await res.json()) as unknown).toEqual({
+      success: true,
+      message: "Logged out successfully",
+    });
+  });
 });

@@ -76,6 +76,7 @@ app.post("/", async (c) => {
   deleteCookie(c, "eliza-anon-session", { path: "/" });
 
   let strongRevocationFailed = false;
+  let ssoMarkerUnconfirmed = false;
   if (stewardToken && isInferenceStrongRevocationEnabled(c.env)) {
     try {
       const [claims, user] = await Promise.all([
@@ -136,6 +137,11 @@ app.post("/", async (c) => {
           error: error instanceof Error ? error.message : String(error),
         },
       );
+      // Fail closed (#29935): an unconfirmed marker means a refresh of the
+      // paired origin can re-plant the signed-out session, so the response
+      // must not claim a globally complete logout. The client treats only a
+      // 2xx as permission to navigate away from the authenticated surface.
+      ssoMarkerUnconfirmed = true;
     }
   }
 
@@ -189,6 +195,16 @@ app.post("/", async (c) => {
       {
         error: "Logout revocation is temporarily unavailable",
         code: "logout_revocation_unavailable" as const,
+      },
+      503,
+    );
+  }
+
+  if (ssoMarkerUnconfirmed) {
+    return c.json(
+      {
+        error: "Cross-host logout is not yet persisted; retry sign-out",
+        code: "logout_marker_unavailable" as const,
       },
       503,
     );
