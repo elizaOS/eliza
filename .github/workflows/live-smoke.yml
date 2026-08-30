@@ -592,7 +592,13 @@ jobs:
               sandbox_id IS NOT NULL AS sandbox_id_present,
               node_id IS NOT NULL AS node_id_present,
               container_name IS NOT NULL AS container_name_present,
-              headscale_ip IS NOT NULL AS headscale_ip_present
+              headscale_ip IS NOT NULL AS headscale_ip_present,
+              replacement_cleanup_sandbox_id IS NOT NULL AS replacement_sandbox_id_present,
+              replacement_cleanup_node_id IS NOT NULL AS replacement_node_id_present,
+              replacement_cleanup_container_name IS NOT NULL AS replacement_container_name_present,
+              replacement_cleanup_attempt_id IS NOT NULL AS replacement_attempt_id_present,
+              replacement_cleanup_container_id IS NOT NULL AS replacement_container_id_present,
+              replacement_cleanup_vpn_node_id IS NOT NULL AS replacement_vpn_node_id_present
             FROM agent_sandboxes
             WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
           ),
@@ -633,6 +639,14 @@ jobs:
                   'nodeIdPresent', node_id_present,
                   'containerNamePresent', container_name_present,
                   'headscaleIpPresent', headscale_ip_present
+                ),
+                'replacementLocator', json_build_object(
+                  'sandboxIdPresent', replacement_sandbox_id_present,
+                  'nodeIdPresent', replacement_node_id_present,
+                  'containerNamePresent', replacement_container_name_present,
+                  'attemptIdPresent', replacement_attempt_id_present,
+                  'containerIdPresent', replacement_container_id_present,
+                  'vpnNodeIdPresent', replacement_vpn_node_id_present
                 )
               )
               FROM target
@@ -702,6 +716,9 @@ jobs:
             console.log("- attempts: `" + job.attempts + "/" + job.maxAttempts + "`");
             console.log("- retryable requeues: `" + job.retryableRequeues + "`");
             console.log("- execution interruptions: `" + job.executionInterruptions + "`");
+            console.log("- replacement intent present: `" + evidence.sandbox.replacementLocator.attemptIdPresent + "`");
+            console.log("- replacement Docker id present: `" + evidence.sandbox.replacementLocator.containerIdPresent + "`");
+            console.log("- replacement VPN id present: `" + evidence.sandbox.replacementLocator.vpnNodeIdPresent + "`");
           ' >> "$GITHUB_STEP_SUMMARY"
 
   shared-staging-onboarding:

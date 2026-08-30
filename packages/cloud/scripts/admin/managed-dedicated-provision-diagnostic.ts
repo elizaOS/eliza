@@ -39,6 +39,13 @@ export type ManagedDedicatedProvisionFailureCode =
   | "secrets"
   | "database"
   | "ingress"
+  | "container_ssh_auth"
+  | "container_ssh_transport"
+  | "container_daemon"
+  | "container_create"
+  | "container_configuration"
+  | "container_identity"
+  | "container_replacement"
   | "container"
   | "transport"
   | "runtime"
@@ -60,6 +67,14 @@ export interface ManagedDedicatedProvisionDiagnostic {
       nodeIdPresent: boolean;
       containerNamePresent: boolean;
       headscaleIpPresent: boolean;
+    };
+    replacementLocator: {
+      sandboxIdPresent: boolean;
+      nodeIdPresent: boolean;
+      containerNamePresent: boolean;
+      attemptIdPresent: boolean;
+      containerIdPresent: boolean;
+      vpnNodeIdPresent: boolean;
     };
     updatedAt: string;
   };
@@ -196,6 +211,39 @@ export function classifyManagedDedicatedProvisionFailure(
     return "ingress";
   }
   if (
+    /(?:permission denied|publickey|host key|fingerprint mismatch)/i.test(
+      primary,
+    )
+  ) {
+    return "container_ssh_auth";
+  }
+  if (/(?:\[docker-ssh\]|ssh|handshake)/i.test(primary)) {
+    return "container_ssh_transport";
+  }
+  if (
+    /(?:docker daemon|cannot connect to docker|daemon is unavailable)/i.test(
+      primary,
+    )
+  ) {
+    return "container_daemon";
+  }
+  if (
+    /(?:failed to create container|docker create|docker run)/i.test(primary)
+  ) {
+    return "container_create";
+  }
+  if (
+    /(?=.*(?:docker|container|sandbox))(?=.*(?:not set|not configured|invalid|required|missing))/i.test(
+      primary,
+    )
+  ) {
+    return "container_configuration";
+  }
+  if (/(?=.*(?:docker|container))(?=.*identity)/i.test(primary)) {
+    return "container_identity";
+  }
+  if (/replacement/i.test(primary)) return "container_replacement";
+  if (
     /(?:docker|container|sandbox provider|container runtime|port allocation|ssh)/i.test(
       primary,
     )
@@ -247,6 +295,7 @@ export function sanitizeManagedDedicatedProvisionDiagnostic(
       "errorCount",
       "updatedAt",
       "locator",
+      "replacementLocator",
     ],
     "agent",
   );
@@ -272,6 +321,22 @@ export function sanitizeManagedDedicatedProvisionDiagnostic(
       "headscaleIpPresent",
     ],
     "agent.locator",
+  );
+  const replacementLocator = record(
+    agent.replacementLocator,
+    "agent.replacementLocator",
+  );
+  exactKeys(
+    replacementLocator,
+    [
+      "sandboxIdPresent",
+      "nodeIdPresent",
+      "containerNamePresent",
+      "attemptIdPresent",
+      "containerIdPresent",
+      "vpnNodeIdPresent",
+    ],
+    "agent.replacementLocator",
   );
 
   const provisionJob = record(root.provisionJob, "provisionJob");
@@ -381,6 +446,32 @@ export function sanitizeManagedDedicatedProvisionDiagnostic(
         headscaleIpPresent: boolean(
           locator.headscaleIpPresent,
           "locator.headscaleIpPresent",
+        ),
+      },
+      replacementLocator: {
+        sandboxIdPresent: boolean(
+          replacementLocator.sandboxIdPresent,
+          "replacementLocator.sandboxIdPresent",
+        ),
+        nodeIdPresent: boolean(
+          replacementLocator.nodeIdPresent,
+          "replacementLocator.nodeIdPresent",
+        ),
+        containerNamePresent: boolean(
+          replacementLocator.containerNamePresent,
+          "replacementLocator.containerNamePresent",
+        ),
+        attemptIdPresent: boolean(
+          replacementLocator.attemptIdPresent,
+          "replacementLocator.attemptIdPresent",
+        ),
+        containerIdPresent: boolean(
+          replacementLocator.containerIdPresent,
+          "replacementLocator.containerIdPresent",
+        ),
+        vpnNodeIdPresent: boolean(
+          replacementLocator.vpnNodeIdPresent,
+          "replacementLocator.vpnNodeIdPresent",
         ),
       },
       updatedAt: timestamp(agent.updatedAt, "agent.updatedAt") as string,

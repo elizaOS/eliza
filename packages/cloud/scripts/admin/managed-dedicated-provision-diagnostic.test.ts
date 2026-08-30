@@ -30,6 +30,14 @@ function rawDiagnostic(
         containerNamePresent: false,
         headscaleIpPresent: false,
       },
+      replacementLocator: {
+        sandboxIdPresent: true,
+        nodeIdPresent: true,
+        containerNamePresent: true,
+        attemptIdPresent: true,
+        containerIdPresent: false,
+        vpnNodeIdPresent: false,
+      },
     },
     provisionJob: {
       status: "failed",
@@ -100,12 +108,34 @@ describe("managed Dedicated provision diagnostic", () => {
     const diagnostic = sanitizeManagedDedicatedProvisionDiagnostic(raw, SUFFIX);
     expect(diagnostic.provisionJob.errorCode).toBe("secrets");
     expect(diagnostic.sandbox.locator.nodeIdPresent).toBe(false);
+    expect(diagnostic.sandbox.replacementLocator.nodeIdPresent).toBe(true);
 
     const canonical =
       canonicalizeManagedDedicatedProvisionDiagnostic(diagnostic);
     expect(canonical).not.toContain("ghcr.example");
     expect(canonical).not.toContain("token value");
     expect(canonical).not.toContain(SUFFIX);
+  });
+
+  test("distinguishes safe container-control subcategories", () => {
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-sandbox] Failed to create container on node: [docker-ssh] Permission denied (publickey)",
+        "x",
+      ),
+    ).toBe("container_ssh_auth");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-sandbox] Failed to create container on node: Cannot connect to the Docker daemon",
+        "x",
+      ),
+    ).toBe("container_daemon");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Docker replacement identity changed across durable stages",
+        "x",
+      ),
+    ).toBe("container_identity");
   });
 
   test("fails closed on the wrong tier, ambiguous target, or extra raw fields", () => {
