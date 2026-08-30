@@ -4,7 +4,9 @@
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "agent_sandboxes_backup_admission_initial_frontier_idx"
   ON "agent_sandboxes" ((get_byte(uuid_send("id"), 0) % 64), "activation_completed_at", "id")
   WHERE "next_backup_at" IS NULL
-    AND "status" = 'running' AND "pool_status" IS NULL AND "execution_tier" <> 'shared'
+    AND "status" = 'running' AND "pool_status" IS NULL
+    AND "execution_tier" IN ('dedicated-lazy', 'dedicated-always', 'custom')
+    AND "deleted_at" IS NULL AND "deletion_attempt_id" IS NULL
     AND "activation_phase" = 'active' AND "activation_generation" IS NOT NULL
     AND "activation_lifecycle_revision" IS NOT NULL
     AND "lifecycle_revision" = "activation_lifecycle_revision"
@@ -21,7 +23,9 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "agent_sandboxes_backup_admission_initia
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "agent_sandboxes_backup_admission_scheduled_frontier_idx"
   ON "agent_sandboxes" ((get_byte(uuid_send("id"), 0) % 64), "next_backup_at", "id")
   WHERE "next_backup_at" IS NOT NULL
-    AND "status" = 'running' AND "pool_status" IS NULL AND "execution_tier" <> 'shared'
+    AND "status" = 'running' AND "pool_status" IS NULL
+    AND "execution_tier" IN ('dedicated-lazy', 'dedicated-always', 'custom')
+    AND "deleted_at" IS NULL AND "deletion_attempt_id" IS NULL
     AND "activation_phase" = 'active' AND "activation_generation" IS NOT NULL
     AND "activation_lifecycle_revision" IS NOT NULL
     AND "lifecycle_revision" = "activation_lifecycle_revision"
@@ -40,7 +44,9 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "agent_sandboxes_backup_admission_rpo_fr
     GREATEST("activation_completed_at",
       COALESCE("backup_schedule_last_protected_at", "activation_completed_at")), "id")
   WHERE "next_backup_at" IS NOT NULL
-    AND "status" = 'running' AND "pool_status" IS NULL AND "execution_tier" <> 'shared'
+    AND "status" = 'running' AND "pool_status" IS NULL
+    AND "execution_tier" IN ('dedicated-lazy', 'dedicated-always', 'custom')
+    AND "deleted_at" IS NULL AND "deletion_attempt_id" IS NULL
     AND "activation_phase" = 'active' AND "activation_generation" IS NOT NULL
     AND "activation_lifecycle_revision" IS NOT NULL
     AND "lifecycle_revision" = "activation_lifecycle_revision"

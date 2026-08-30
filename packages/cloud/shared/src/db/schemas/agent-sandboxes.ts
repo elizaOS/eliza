@@ -481,7 +481,9 @@ export const agentSandboxes = pgTable(
       .where(sql`${table.next_backup_at} IS NULL
         AND ${table.status} = 'running'
         AND ${table.pool_status} IS NULL
-        AND ${table.execution_tier} <> 'shared'
+        AND ${table.execution_tier} IN ('dedicated-lazy', 'dedicated-always', 'custom')
+        AND ${table.deleted_at} IS NULL
+        AND ${table.deletion_attempt_id} IS NULL
         AND ${table.activation_phase} = 'active'
         AND ${table.activation_generation} IS NOT NULL
         AND ${table.activation_lifecycle_revision} IS NOT NULL
@@ -507,7 +509,9 @@ export const agentSandboxes = pgTable(
       .where(sql`${table.next_backup_at} IS NOT NULL
         AND ${table.status} = 'running'
         AND ${table.pool_status} IS NULL
-        AND ${table.execution_tier} <> 'shared'
+        AND ${table.execution_tier} IN ('dedicated-lazy', 'dedicated-always', 'custom')
+        AND ${table.deleted_at} IS NULL
+        AND ${table.deletion_attempt_id} IS NULL
         AND ${table.activation_phase} = 'active'
         AND ${table.activation_generation} IS NOT NULL
         AND ${table.activation_lifecycle_revision} IS NOT NULL
@@ -538,7 +542,9 @@ export const agentSandboxes = pgTable(
       .where(sql`${table.next_backup_at} IS NOT NULL
         AND ${table.status} = 'running'
         AND ${table.pool_status} IS NULL
-        AND ${table.execution_tier} <> 'shared'
+        AND ${table.execution_tier} IN ('dedicated-lazy', 'dedicated-always', 'custom')
+        AND ${table.deleted_at} IS NULL
+        AND ${table.deletion_attempt_id} IS NULL
         AND ${table.activation_phase} = 'active'
         AND ${table.activation_generation} IS NOT NULL
         AND ${table.activation_lifecycle_revision} IS NOT NULL

@@ -33,6 +33,7 @@ const migrationNames = [
   "0365_agent_backup_admission_unsettled_schedule_index.sql",
   "0366_agent_backup_admission_enrollment_source_indexes.sql",
   "0367_agent_backup_admission_enrollment_watermark_guard.sql",
+  "0368_agent_backup_admission_enrollment_source_stamp.sql",
 ] as const;
 const migrations = await Promise.all(
   migrationNames.map((name) => Bun.file(new URL(`./${name}`, import.meta.url)).text()),
@@ -99,6 +100,7 @@ async function database(): Promise<PGlite> {
       activation_authority_published_at timestamptz, activation_dispatched_at timestamptz,
       activation_completed_at timestamptz, next_backup_at timestamptz,
       backup_schedule_last_protected_at timestamptz,
+      deleted_at timestamptz, deletion_attempt_id uuid,
       CONSTRAINT agent_sandboxes_id_organization_unique UNIQUE (id, organization_id)
     );
     CREATE TABLE docker_nodes (
@@ -339,6 +341,12 @@ describe("backup admission cohort migrations", () => {
     for (const { definition } of deployedSourceIndexes.rows) {
       expect(definition).toMatch(/get_byte\(uuid_send\(id\), 0\).*64/i);
       expect(definition).toMatch(/WHERE.*status.*running.*activation_phase.*active/is);
+      expect(definition).toContain("'dedicated-lazy'");
+      expect(definition).toContain("'dedicated-always'");
+      expect(definition).toContain("'custom'");
+      expect(definition).toMatch(/deleted_at IS NULL/i);
+      expect(definition).toMatch(/deletion_attempt_id IS NULL/i);
+      expect(definition).not.toContain("<> 'shared'");
     }
     const deployedClaimIndexes = await db.query<{ name: string }>(`
       SELECT indexname AS name FROM pg_indexes

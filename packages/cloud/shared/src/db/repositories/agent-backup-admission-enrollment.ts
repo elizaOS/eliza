@@ -310,7 +310,9 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
           WHERE (get_byte(uuid_send(sandbox.id), 0) % 64) = ${shard.shard_id}
             AND sandbox.status = 'running'
             AND sandbox.pool_status IS NULL
-            AND sandbox.execution_tier <> 'shared'
+            AND sandbox.execution_tier IN ('dedicated-lazy', 'dedicated-always', 'custom')
+            AND sandbox.deleted_at IS NULL
+            AND sandbox.deletion_attempt_id IS NULL
             AND sandbox.activation_phase = 'active'
             AND sandbox.activation_generation IS NOT NULL
             AND sandbox.activation_lifecycle_revision IS NOT NULL
@@ -714,6 +716,9 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
           FROM candidate
           WHERE sandbox.id = candidate.id
             AND sandbox.organization_id = candidate.organization_id
+            AND sandbox.execution_tier IN ('dedicated-lazy', 'dedicated-always', 'custom')
+            AND sandbox.deleted_at IS NULL
+            AND sandbox.deletion_attempt_id IS NULL
             AND agent_backup_admission_source_visible(
               sandbox.backup_admission_xid,
               ${shard.snapshot}::pg_snapshot

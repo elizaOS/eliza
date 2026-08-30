@@ -85,6 +85,7 @@ const ENROLLMENT_MIGRATIONS = [
   "0365_agent_backup_admission_unsettled_schedule_index",
   "0366_agent_backup_admission_enrollment_source_indexes",
   "0367_agent_backup_admission_enrollment_watermark_guard",
+  "0368_agent_backup_admission_enrollment_source_stamp",
 ] as const;
 const ORIGINAL_ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
@@ -1242,12 +1243,14 @@ realPostgres("backup admission enrollment row-lock evidence", () => {
           activation_receipt_hash, activation_container_id, activation_node_id,
           activation_image_digest, activation_boot_id,
           activation_authority_published_at, activation_dispatched_at,
-          activation_completed_at, next_backup_at
+          activation_completed_at, next_backup_at, deleted_at,
+          deletion_attempt_id, deletion_started_at
         )
         SELECT overlay(md5('backup-source-' || source_ordinal::text) placing '00' from 1 for 2)::uuid,
           '${ORGANIZATION_ID}'::uuid, '${USER_ID}'::uuid,
           'backup-admission-source-' || source_ordinal::text,
-          'running', 'dedicated-always',
+          'running', CASE WHEN source_ordinal % 4 = 0
+            THEN 'dedicated-future' ELSE 'dedicated-always' END,
           'backup-admission-source-' || source_ordinal::text,
           'backup-admission-postgres-node',
           'backup-admission-source-' || source_ordinal::text,
@@ -1267,14 +1270,22 @@ realPostgres("backup admission enrollment row-lock evidence", () => {
               + source_ordinal * INTERVAL '1 millisecond'
             ELSE '2026-08-01T00:10:00Z'::timestamptz
               + source_ordinal * INTERVAL '1 millisecond'
-          END
+          END,
+          CASE WHEN source_ordinal % 4 = 1
+            THEN '2026-08-01T00:00:03Z'::timestamptz END,
+          CASE WHEN source_ordinal % 4 = 2
+            THEN md5('backup-source-deletion-' || source_ordinal::text)::uuid END,
+          CASE WHEN source_ordinal % 4 = 2
+            THEN '2026-08-01T00:00:03Z'::timestamptz END
         FROM generate_series(1, 10002) AS source(source_ordinal)
       `);
       await audit.query("ANALYZE agent_sandboxes");
 
       const staticEligibility = `status = 'running'
         AND pool_status IS NULL
-        AND execution_tier <> 'shared'
+        AND execution_tier IN ('dedicated-lazy', 'dedicated-always', 'custom')
+        AND deleted_at IS NULL
+        AND deletion_attempt_id IS NULL
         AND activation_phase = 'active'
         AND activation_generation IS NOT NULL
         AND activation_lifecycle_revision IS NOT NULL
@@ -1423,13 +1434,18 @@ realPostgres("backup admission enrollment row-lock evidence", () => {
         queued: 100,
         cohortComplete: false,
       });
-      const enrolled = await audit.query<{ count: number }>(`
-        SELECT count(*)::integer AS count
+      const enrolled = await audit.query<{ count: number; invalid: number }>(`
+        SELECT count(*)::integer AS count,
+          count(*) FILTER (WHERE
+            sandbox.execution_tier NOT IN ('dedicated-lazy', 'dedicated-always', 'custom')
+            OR sandbox.deleted_at IS NOT NULL
+            OR sandbox.deletion_attempt_id IS NOT NULL
+          )::integer AS invalid
         FROM agent_backup_admission_work work
         JOIN agent_sandboxes sandbox ON sandbox.id = work.sandbox_id
         WHERE sandbox.sandbox_id LIKE 'backup-admission-source-%'
       `);
-      expect(enrolled.rows).toEqual([{ count: 100 }]);
+      expect(enrolled.rows).toEqual([{ count: 100, invalid: 0 }]);
     } finally {
       await audit.end().catch(() => {});
     }

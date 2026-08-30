@@ -86,6 +86,7 @@ const COHORT_MIGRATIONS = [
   "0365_agent_backup_admission_unsettled_schedule_index",
   "0366_agent_backup_admission_enrollment_source_indexes",
   "0367_agent_backup_admission_enrollment_watermark_guard",
+  "0368_agent_backup_admission_enrollment_source_stamp",
 ] as const;
 
 type ClientModule = typeof import("../../client");
@@ -469,6 +470,165 @@ describe("agent backup admission enrollment", () => {
     expect(work.every(({ priority_class }) => priority_class === "active_rpo")).toBe(true);
     expect(new Set(work.map(({ sandbox_id }) => sandbox_id)).size).toBe(3);
     expect(new Set(work.map(({ node_history_id }) => node_history_id)).size).toBe(1);
+  });
+
+  test("defers repaired tier and deletion guards beyond the frozen cohort", async () => {
+    await prioritizeShardZero();
+    const futureTierId = uuidForShard(0, 0xe680);
+    const softDeletedId = uuidForShard(0, 0xe681);
+    const deletionOwnedId = uuidForShard(0, 0xe682);
+    const admittedAId = uuidForShard(0, 0xe690);
+    const admittedBId = uuidForShard(0, 0xe691);
+    const invalidIds = [futureTierId, softDeletedId, deletionOwnedId];
+
+    for (const [index, id] of invalidIds.entries()) {
+      await insertAgent({
+        id,
+        generation: uuidForShard(32, 0xf680 + index),
+        index: index + 1,
+      });
+    }
+    for (const [index, id] of [admittedAId, admittedBId].entries()) {
+      await insertAgent({
+        id,
+        generation: uuidForShard(32, 0xf690 + index),
+        index: index + 4,
+        activationCompletedAt: new Date("2026-08-16T00:00:03.000Z"),
+      });
+    }
+    let firstEnrollment: Awaited<ReturnType<typeof enroll>> | undefined;
+    let initiallyRejected: Array<{
+      id: string;
+      next_backup_at: string | null;
+      work_count: number;
+      xid: string;
+    }> = [];
+    try {
+      // Model a tier added by a later schema revision while retaining this
+      // enrollment repository. The canonical allowlist must fail closed.
+      await dbWrite.execute(sql`
+        UPDATE ${agentSandboxes}
+        SET execution_tier = 'dedicated-future',
+          activation_lifecycle_revision = lifecycle_revision + 1
+        WHERE id = ${futureTierId}::uuid
+      `);
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          deleted_at: new Date("2026-08-16T00:00:04.000Z"),
+          activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+        })
+        .where(sql`${agentSandboxes.id} = ${softDeletedId}::uuid`);
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          deletion_attempt_id: "70000000-0000-4000-8000-00000000e680",
+          deletion_started_at: new Date("2026-08-16T00:00:04.000Z"),
+          activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+        })
+        .where(sql`${agentSandboxes.id} = ${deletionOwnedId}::uuid`);
+
+      firstEnrollment = await enroll("eligibility-snapshot-a", 1);
+      initiallyRejected = await sqlRows<{
+        id: string;
+        next_backup_at: string | null;
+        work_count: number;
+        xid: string;
+      }>(
+        dbWrite,
+        sql`SELECT sandbox.id::text AS id, sandbox.next_backup_at::text AS next_backup_at,
+            sandbox.backup_admission_xid::text AS xid,
+            (SELECT count(*)::integer FROM ${agentBackupAdmissionWork} AS work
+              WHERE work.sandbox_id = sandbox.id) AS work_count
+          FROM ${agentSandboxes} AS sandbox
+          WHERE sandbox.id IN (${futureTierId}::uuid, ${softDeletedId}::uuid,
+            ${deletionOwnedId}::uuid)
+          ORDER BY sandbox.id`,
+      );
+    } finally {
+      await dbWrite.execute(sql`
+        UPDATE ${agentSandboxes}
+        SET execution_tier = 'dedicated-always',
+          activation_lifecycle_revision = lifecycle_revision + 1
+        WHERE id = ${futureTierId}::uuid
+      `);
+    }
+
+    expect(firstEnrollment).toMatchObject({
+      shardId: 0,
+      cohortId: "1",
+      enrolled: 1,
+      queued: 1,
+      cohortComplete: false,
+    });
+    expect(initiallyRejected).toHaveLength(3);
+    expect(
+      initiallyRejected.every(
+        ({ next_backup_at, work_count }) => next_backup_at === null && work_count === 0,
+      ),
+    ).toBe(true);
+    const previousXids = new Map(initiallyRejected.map(({ id, xid }) => [id, xid]));
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        deleted_at: null,
+        activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+      })
+      .where(sql`${agentSandboxes.id} = ${softDeletedId}::uuid`);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        deletion_attempt_id: null,
+        deletion_started_at: null,
+        activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+      })
+      .where(sql`${agentSandboxes.id} = ${deletionOwnedId}::uuid`);
+
+    const repaired = await sqlRows<{ id: string; visible: boolean; xid: string }>(
+      dbWrite,
+      sql`SELECT sandbox.id::text AS id, sandbox.backup_admission_xid::text AS xid,
+          agent_backup_admission_source_visible(
+            sandbox.backup_admission_xid, shard.scan_snapshot
+          ) AS visible
+        FROM ${agentSandboxes} AS sandbox
+        JOIN ${agentBackupAdmissionEnrollmentShards} AS shard
+          ON shard.work_kind = 'schedule_capture' AND shard.shard_id = 0
+        WHERE sandbox.id IN (${futureTierId}::uuid, ${softDeletedId}::uuid,
+          ${deletionOwnedId}::uuid)
+        ORDER BY sandbox.id`,
+    );
+    expect(repaired).toHaveLength(3);
+    expect(repaired.every(({ id, xid }) => xid !== previousXids.get(id))).toBe(true);
+    expect(repaired.every(({ visible }) => !visible)).toBe(true);
+
+    expect(await enroll("eligibility-snapshot-b", 100)).toMatchObject({
+      shardId: 0,
+      cohortId: "1",
+      enrolled: 1,
+      queued: 1,
+      cohortComplete: true,
+    });
+    const firstCohort = await sqlRows<{ sandbox_id: string }>(
+      dbWrite,
+      sql`SELECT sandbox_id::text AS sandbox_id FROM ${agentBackupAdmissionWork}
+        WHERE ready_cohort = 1 ORDER BY sandbox_id`,
+    );
+    expect(firstCohort.map(({ sandbox_id }) => sandbox_id)).toEqual([admittedAId, admittedBId]);
+
+    expect(await enroll("eligibility-snapshot-next", 100)).toMatchObject({
+      shardId: 0,
+      cohortId: "2",
+      enrolled: 3,
+      queued: 3,
+      cohortComplete: true,
+    });
+    const secondCohort = await sqlRows<{ sandbox_id: string }>(
+      dbWrite,
+      sql`SELECT sandbox_id::text AS sandbox_id FROM ${agentBackupAdmissionWork}
+        WHERE ready_cohort = 2 ORDER BY sandbox_id`,
+    );
+    expect(secondCohort.map(({ sandbox_id }) => sandbox_id)).toEqual(invalidIds);
   });
 
   test("merges equal due keys across all raw frontiers without persisting the sentinel", async () => {
