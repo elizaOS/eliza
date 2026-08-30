@@ -11,6 +11,7 @@ import { ElizaError, isElizaError } from "../errors";
 import {
 	resolveCodingMaxRequiredToolMisses,
 	resolveCodingMaxToolCalls,
+	resolveCodingPlannerCallTimeoutMs,
 	resolvePositivePlannerInt,
 } from "./planner-loop";
 
@@ -145,6 +146,45 @@ describe("resolveCodingMaxRequiredToolMisses (ELIZA_CODING_MAX_REQUIRED_TOOL_MIS
 		let thrown: unknown;
 		try {
 			resolveCodingMaxRequiredToolMisses();
+		} catch (error) {
+			thrown = error;
+		}
+		expect(isElizaError(thrown)).toBe(true);
+		expect((thrown as ElizaError).message).toContain(KEY);
+	});
+});
+
+describe("resolveCodingPlannerCallTimeoutMs (ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS)", () => {
+	const KEY = "ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS";
+	let original: string | undefined;
+
+	beforeEach(() => {
+		original = process.env[KEY];
+	});
+
+	afterEach(() => {
+		if (original === undefined) {
+			delete process.env[KEY];
+		} else {
+			process.env[KEY] = original;
+		}
+	});
+
+	it("defaults to 90000 when unset", () => {
+		delete process.env[KEY];
+		expect(resolveCodingPlannerCallTimeoutMs()).toBe(90_000);
+	});
+
+	it("honors a canonical override exactly", () => {
+		process.env[KEY] = "120000";
+		expect(resolveCodingPlannerCallTimeoutMs()).toBe(120_000);
+	});
+
+	it.each(REJECTED_VALUES)("throws for the malformed value %j", (value) => {
+		process.env[KEY] = value;
+		let thrown: unknown;
+		try {
+			resolveCodingPlannerCallTimeoutMs();
 		} catch (error) {
 			thrown = error;
 		}

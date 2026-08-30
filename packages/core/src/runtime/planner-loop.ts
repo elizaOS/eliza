@@ -321,7 +321,40 @@ export async function runPlannerLoop(
 		}
 	};
 	const trackedParams = { ...params, onModelUsage: observeModelUsage };
-	const result = await runPlannerLoopIterations(trackedParams);
+	let result: PlannerLoopResult;
+	try {
+		result = await runPlannerLoopIterations(trackedParams);
+	} catch (error) {
+		// A coding planner model call that blew its wall-clock deadline is a
+		// terminal boundary: return an honest fail-fast reply instead of letting
+		// the timeout propagate. message.ts bare-rethrows a coding-mode planner
+		// error (no preserved Stage-1 answer to degrade to), which would leave the
+		// user with silence after a 60s+ hang — the exact failure this guards.
+		if (
+			params.codingMode === true &&
+			error instanceof ElizaError &&
+			error.code === PLANNER_MODEL_CALL_TIMEOUT
+		) {
+			params.runtime.logger?.warn?.(
+				{ src: "planner-loop", ...(error.context ?? {}) },
+				"[planner-loop] coding planner turn timed out; returning honest fail-fast reply",
+			);
+			return {
+				status: "finished",
+				trajectory: {
+					context: normalizePlannerContext(params.context),
+					codingMode: true,
+					steps: [],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+				finalMessage: PLANNER_MODEL_CALL_TIMEOUT_MESSAGE,
+				modelUsage: usage,
+			};
+		}
+		throw error;
+	}
 	const honest = await ensureFailedTurnFinalMessage(trackedParams, result);
 	const final = await ensureToolTurnFinalMessage(trackedParams, honest);
 	return { ...final, modelUsage: usage };
@@ -2365,6 +2398,91 @@ const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
 };
 
 /**
+ * Classification code for a coding planner model call that exceeded its
+ * wall-clock deadline. Mirrors {@link PROVIDER_CONTEXT_OVERFLOW} as a typed
+ * terminal boundary the loop converts into an honest fail-fast reply.
+ */
+export const PLANNER_MODEL_CALL_TIMEOUT = "PLANNER_MODEL_CALL_TIMEOUT";
+
+/**
+ * User-facing reply delivered when a coding planner model call is aborted for
+ * exceeding {@link resolveCodingPlannerCallTimeoutMs}. Honest and terminal: the
+ * turn did no verified work, so the reply says so rather than shipping silence.
+ */
+export const PLANNER_MODEL_CALL_TIMEOUT_MESSAGE =
+	"That step timed out before it finished, so nothing was changed. Please try again.";
+
+/**
+ * Coding-mode wall-clock ceiling for a single planner model call (default
+ * 90000ms). In coding mode the planner's first `useModel` is the sole large
+ * inference of the turn and receives no ambient timeout, so a stalled provider
+ * generation would hang the turn indefinitely with no stage recorded. This
+ * bounds that call: a legitimately slow large-context generation survives the
+ * generous default while the observed 63s silent hang trips it. Overridable via
+ * `ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS`; a set-but-malformed value throws.
+ */
+export function resolveCodingPlannerCallTimeoutMs(): number {
+	return resolvePositivePlannerInt(
+		"ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS",
+		process.env.ELIZA_CODING_PLANNER_CALL_TIMEOUT_MS,
+		90_000,
+	);
+}
+
+/**
+ * Race a coding-mode planner model dispatch against a wall-clock deadline. On
+ * timeout the composed {@link AbortController} aborts — so an adapter that
+ * honors `signal` cancels its socket — and a typed
+ * {@link PLANNER_MODEL_CALL_TIMEOUT} {@link ElizaError} is thrown so the loop
+ * stops awaiting even when the underlying request keeps running. The ambient
+ * streaming-context signal is composed in so an upstream cancellation still
+ * propagates to the dispatch. Non-coding turns never call this and keep their
+ * exact prior behavior (no timeout added).
+ */
+async function dispatchWithCodingCallTimeout<T>(args: {
+	dispatch: (signal: AbortSignal) => Promise<T>;
+	ambientSignal?: AbortSignal;
+	timeoutMs: number;
+	iteration?: number;
+	logger?: PlannerRuntime["logger"];
+}): Promise<T> {
+	const { dispatch, ambientSignal, timeoutMs } = args;
+	const controller = new AbortController();
+	const onAmbientAbort = (): void => controller.abort(ambientSignal?.reason);
+	if (ambientSignal) {
+		if (ambientSignal.aborted) controller.abort(ambientSignal.reason);
+		else
+			ambientSignal.addEventListener("abort", onAmbientAbort, { once: true });
+	}
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_resolve, reject) => {
+		timer = setTimeout(() => {
+			const err = new ElizaError(
+				`The coding planner model call did not respond within ${timeoutMs}ms and was aborted.`,
+				{
+					code: PLANNER_MODEL_CALL_TIMEOUT,
+					context: { iteration: args.iteration, timeoutMs },
+				},
+			);
+			controller.abort(err);
+			args.logger?.warn?.(
+				{ src: "planner-loop", iteration: args.iteration, timeoutMs },
+				"[planner-loop] coding planner model call exceeded its wall-clock deadline; aborting",
+			);
+			reject(err);
+		}, timeoutMs);
+		(timer as { unref?: () => void }).unref?.();
+	});
+	try {
+		return await Promise.race([dispatch(controller.signal), timeout]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+		if (ambientSignal)
+			ambientSignal.removeEventListener("abort", onAmbientAbort);
+	}
+}
+
+/**
  * Expose the reserved turn-scope argument on every native tool schema so the
  * model has a structured channel for the JSON lane's `completed` signal.
  * Non-mutating; only object-shaped parameter schemas are extended, and a
@@ -2703,6 +2821,7 @@ async function dispatchPlannerModelCall(params: {
 		grammar?: string;
 		spanSamplerPlan?: SpanSamplerPlan;
 		maxTokens?: number;
+		signal?: AbortSignal;
 	} = {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
@@ -2817,15 +2936,38 @@ async function dispatchPlannerModelCall(params: {
 		modelInputBudget,
 	);
 	const streamingContext = getStreamingContext();
-	const raw = await runWithStreamingContext(
-		streamingContext
-			? {
-					...streamingContext,
-					onStreamChunk: async () => undefined,
-				}
-			: undefined,
-		() => params.runtime.useModel(modelType, modelParams, params.provider),
-	);
+	const invokeUseModel = (
+		signal?: AbortSignal,
+	): Promise<string | GenerateTextResult> => {
+		// Thread the composed signal into the model params so an adapter that
+		// honors `signal` cancels its socket on timeout/upstream abort. The
+		// runtime otherwise fills this from the streaming context; setting it
+		// here is a no-op for adapters that ignore it.
+		if (signal) modelParams.signal = signal;
+		return runWithStreamingContext(
+			streamingContext
+				? {
+						...streamingContext,
+						onStreamChunk: async () => undefined,
+					}
+				: undefined,
+			() => params.runtime.useModel(modelType, modelParams, params.provider),
+		);
+	};
+	// Coding-mode planner calls are the sole large inference of the turn and
+	// receive no ambient timeout, so a stalled generation would hang silently
+	// (live: 63s, only the messageHandler stage recorded). Bound that single
+	// call; non-coding turns keep their exact prior behavior.
+	const raw =
+		params.trajectory.codingMode === true
+			? await dispatchWithCodingCallTimeout({
+					dispatch: invokeUseModel,
+					ambientSignal: streamingContext?.abortSignal,
+					timeoutMs: resolveCodingPlannerCallTimeoutMs(),
+					iteration: params.iteration,
+					logger: params.runtime.logger,
+				})
+			: await invokeUseModel();
 	const endedAt = Date.now();
 
 	const parsed = parsePlannerOutput(raw);
