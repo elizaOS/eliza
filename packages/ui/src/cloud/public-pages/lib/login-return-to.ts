@@ -70,6 +70,28 @@ export function consumePendingOAuthReturnTo(): string | null {
   return sessionReturnTo ?? localReturnTo;
 }
 
+/** Read the pending destination without consuming the post-auth hand-through. */
+export function peekPendingOAuthReturnTo(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const sessionReturnTo = parseStoredReturnTo(
+      window.sessionStorage.getItem(PENDING_OAUTH_RETURN_TO_KEY),
+    );
+    if (sessionReturnTo) return sessionReturnTo;
+  } catch {
+    // error-policy:J3 unavailable tab storage falls through to the mirrored
+    // cross-tab copy without changing the login destination.
+  }
+  try {
+    return parseStoredReturnTo(
+      window.localStorage.getItem(PENDING_OAUTH_RETURN_TO_KEY),
+    );
+  } catch {
+    // error-policy:J3 unavailable browser storage reads as no pending target.
+    return null;
+  }
+}
+
 function safeSet(storage: Storage, value: string): void {
   try {
     storage.setItem(PENDING_OAUTH_RETURN_TO_KEY, value);
@@ -104,6 +126,8 @@ function parseStoredReturnTo(value: string | null): string | null {
     }
     return null;
   } catch {
-    return sanitizeLoginReturnTo(value);
+    // error-policy:J3 unversioned or malformed state has no trustworthy
+    // expiry, so it cannot satisfy the pending-destination TTL.
+    return null;
   }
 }

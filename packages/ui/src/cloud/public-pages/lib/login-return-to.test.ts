@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   consumePendingOAuthReturnTo,
   defaultLoginReturnTo,
+  peekPendingOAuthReturnTo,
   resolveLoginReturnTo,
   storePendingOAuthReturnTo,
 } from "./login-return-to";
@@ -77,6 +78,59 @@ describe("login return-to resolution", () => {
       "/get-started",
     );
     expect(consumePendingOAuthReturnTo()).toBeNull();
+  });
+
+  it("peeks at callback context without consuming its destination", () => {
+    storePendingOAuthReturnTo(params("/get-started"));
+
+    expect(peekPendingOAuthReturnTo()).toBe("/get-started");
+    window.sessionStorage.clear();
+    expect(peekPendingOAuthReturnTo()).toBe("/get-started");
+    expect(consumePendingOAuthReturnTo()).toBe("/get-started");
+    expect(peekPendingOAuthReturnTo()).toBeNull();
+  });
+
+  it("rejects unversioned destinations that have no trustworthy expiry", () => {
+    window.sessionStorage.setItem("eliza.login.oauth.returnTo", "/get-started");
+    window.localStorage.setItem("eliza.login.oauth.returnTo", "/get-started");
+
+    expect(peekPendingOAuthReturnTo()).toBeNull();
+    expect(consumePendingOAuthReturnTo()).toBeNull();
+    expect(
+      window.sessionStorage.getItem("eliza.login.oauth.returnTo"),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem("eliza.login.oauth.returnTo"),
+    ).toBeNull();
+  });
+
+  it("rejects expired structured destinations", () => {
+    const expired = JSON.stringify({
+      returnTo: "/get-started",
+      expiresAt: Date.now() - 1,
+    });
+    window.sessionStorage.setItem("eliza.login.oauth.returnTo", expired);
+    window.localStorage.setItem("eliza.login.oauth.returnTo", expired);
+
+    expect(peekPendingOAuthReturnTo()).toBeNull();
+    expect(consumePendingOAuthReturnTo()).toBeNull();
+  });
+
+  it("does not let stale unversioned tab state shadow a current mirror", () => {
+    window.sessionStorage.setItem(
+      "eliza.login.oauth.returnTo",
+      "/stale-destination",
+    );
+    window.localStorage.setItem(
+      "eliza.login.oauth.returnTo",
+      JSON.stringify({
+        returnTo: "/get-started",
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+
+    expect(peekPendingOAuthReturnTo()).toBe("/get-started");
+    expect(consumePendingOAuthReturnTo()).toBe("/get-started");
   });
 
   it("never persists an external login destination", () => {

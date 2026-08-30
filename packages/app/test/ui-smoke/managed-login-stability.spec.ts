@@ -35,6 +35,10 @@ const SURFACES = [
   { name: "desktop", viewport: { width: 1440, height: 900 } },
   { name: "mobile", viewport: { width: 390, height: 844 } },
 ] as const;
+const MESSAGING_LOGIN_SURFACES = [
+  SURFACES[0],
+  { name: "short-mobile", viewport: { width: 390, height: 667 } },
+] as const;
 
 async function installManagedOriginProxy(
   page: Page,
@@ -61,6 +65,35 @@ async function installManagedOriginProxy(
   });
 
   return managed.origin;
+}
+
+async function expectManagedLoginProviderSurface(page: Page): Promise<void> {
+  await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
+  for (const name of ["Magic Link", "Google", "Discord", "GitHub"] as const) {
+    await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+  }
+  await expect(
+    page.getByRole("button", { name: /Continue with a wallet/i }),
+  ).toBeVisible();
+}
+
+async function activeAnimationsWithinMain(page: Page): Promise<string[]> {
+  return page.locator("main").evaluate((main) =>
+    [main, ...main.querySelectorAll("*")]
+      .filter((element) => {
+        const style = getComputedStyle(element);
+        return (
+          style.animationName !== "none" &&
+          style.animationDuration
+            .split(",")
+            .some((duration) => Number.parseFloat(duration) > 0)
+        );
+      })
+      .map((element) => {
+        const htmlElement = element as HTMLElement;
+        return htmlElement.getAttribute("data-testid") ?? htmlElement.tagName;
+      }),
+  );
 }
 
 async function installAuthenticatedPersonalRoutes(
@@ -343,6 +376,173 @@ for (const surface of SURFACES) {
       }
     });
   }
+}
+
+for (const surface of MESSAGING_LOGIN_SURFACES) {
+  test(`signed-out messaging continuation explains sign-in context (${surface.name})`, async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.skip(
+      TEST_AUTH_ENABLED,
+      "requires the real signed-out login surface, not the test-auth shell",
+    );
+    if (!baseURL) throw new Error("Playwright baseURL is required");
+    await page.setViewportSize(surface.viewport);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const managedOrigin = await installManagedOriginProxy(page, baseURL);
+    const unexpectedMutations: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (
+        !["GET", "HEAD", "OPTIONS"].includes(request.method()) &&
+        (url.pathname.startsWith("/auth/") ||
+          url.pathname.startsWith("/api/eliza-app/onboarding"))
+      ) {
+        unexpectedMutations.push(`${request.method()} ${url.pathname}`);
+      }
+    });
+
+    await page.goto(
+      `${managedOrigin}/get-started?onboardingSession=${ONBOARDING_TOKEN}`,
+    );
+
+    await expect(page).toHaveURL((url) => {
+      return (
+        url.origin === managedOrigin &&
+        url.pathname === "/login" &&
+        url.searchParams.get("returnTo") === "/get-started"
+      );
+    });
+    await expect(
+      page.getByRole("heading", {
+        level: 1,
+        name: "Sign in to connect Eliza",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Use any sign-in method. You'll confirm the connection before returning to your conversation.",
+      ),
+    ).toBeVisible();
+    await expectManagedLoginProviderSurface(page);
+    await expect(page.locator("body")).not.toContainText(ONBOARDING_TOKEN);
+    expect(page.url()).not.toContain(ONBOARDING_TOKEN);
+    expect(unexpectedMutations).toEqual([]);
+
+    const email = page.getByLabel("Email", { exact: true });
+    const magicLink = page.getByRole("button", {
+      name: "Magic Link",
+      exact: true,
+    });
+    const google = page.getByRole("button", { name: "Google", exact: true });
+    await email.focus();
+    await expect(email).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(magicLink).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(google).toBeFocused();
+
+    const ariaSnapshot = await page.locator("main").ariaSnapshot();
+    expect(ariaSnapshot).toMatch(/heading "Sign in to connect Eliza"/);
+    expect(ariaSnapshot).toMatch(/textbox "Email"/);
+    expect(ariaSnapshot).toMatch(/button "Magic Link"/);
+    expect(await activeAnimationsWithinMain(page)).toEqual([]);
+    await testInfo.attach(`${surface.name}-messaging-login-aria.txt`, {
+      body: ariaSnapshot,
+      contentType: "text/plain",
+    });
+
+    if (process.env.E2E_RECORD === "1") {
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `${surface.name}-messaging-continuation-login.png`,
+        ),
+        fullPage: true,
+      });
+      await writeFile(
+        testInfo.outputPath(
+          `${surface.name}-messaging-continuation-login.json`,
+        ),
+        `${JSON.stringify(
+          {
+            head: process.env.GITHUB_SHA ?? "local-exact-head",
+            entryPath: "/get-started",
+            finalUrl: page.url(),
+            reducedMotion: true,
+            activeAnimations: await activeAnimationsWithinMain(page),
+            unexpectedMutations,
+            tokenRendered: (await page.locator("body").textContent())?.includes(
+              ONBOARDING_TOKEN,
+            ),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    }
+  });
+
+  test(`missing messaging continuation offers recovery (${surface.name})`, async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.skip(
+      TEST_AUTH_ENABLED,
+      "requires the real signed-out login surface, not the test-auth shell",
+    );
+    if (!baseURL) throw new Error("Playwright baseURL is required");
+    await page.setViewportSize(surface.viewport);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const managedOrigin = await installManagedOriginProxy(page, baseURL);
+
+    await page.goto(`${managedOrigin}/login?returnTo=%2Fget-started`);
+
+    await expect(
+      page.getByRole("heading", {
+        level: 1,
+        name: "This connection link is no longer available",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Return to your conversation and request a new link, or sign in to continue in Eliza.",
+      ),
+    ).toBeVisible();
+    await expectManagedLoginProviderSurface(page);
+    expect(await activeAnimationsWithinMain(page)).toEqual([]);
+
+    const ariaSnapshot = await page.locator("main").ariaSnapshot();
+    expect(ariaSnapshot).toMatch(
+      /heading "This connection link is no longer available"/,
+    );
+    expect(ariaSnapshot).toMatch(/textbox "Email"/);
+    await testInfo.attach(`${surface.name}-messaging-recovery-aria.txt`, {
+      body: ariaSnapshot,
+      contentType: "text/plain",
+    });
+
+    if (process.env.E2E_RECORD === "1") {
+      await page.screenshot({
+        path: testInfo.outputPath(`${surface.name}-messaging-recovery.png`),
+        fullPage: true,
+      });
+      await writeFile(
+        testInfo.outputPath(`${surface.name}-messaging-recovery.json`),
+        `${JSON.stringify(
+          {
+            head: process.env.GITHUB_SHA ?? "local-exact-head",
+            entryPath: "/login?returnTo=%2Fget-started",
+            finalUrl: page.url(),
+            reducedMotion: true,
+            activeAnimations: await activeAnimationsWithinMain(page),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    }
+  });
 }
 
 for (const surface of SURFACES) {
