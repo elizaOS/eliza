@@ -542,6 +542,13 @@ async function actionCreate({
   });
 }
 
+/** The visible locator a caller used for a content-addressed mutation. */
+function visibleLocator(params: TodoActionParameters): string {
+  return (
+    readString(params.targetContent) ?? readString(params.content) ?? ""
+  );
+}
+
 async function actionUpdate({
   service,
   scope,
@@ -566,7 +573,7 @@ async function actionUpdate({
     if (!resolvedId) {
       return failure(
         "not_found",
-        `No todo matching "${readString(params.content) ?? ""}" is in the list.`,
+        `No todo matching "${visibleLocator(params)}" is in the list.`,
       );
     }
     return actionUpdateById({
@@ -750,7 +757,7 @@ async function actionSetStatus(
     if (!resolved.id) {
       return failure(
         "not_found",
-        `No todo matching "${readString(params.content) ?? ""}" is in the list.`,
+        `No todo matching "${visibleLocator(params)}" is in the list.`,
       );
     }
     id = resolved.id;
@@ -802,7 +809,7 @@ async function actionDelete({
     if (!resolved.id) {
       return failure(
         "not_found",
-        `No todo matching "${readString(params.content) ?? ""}" is in the list.`,
+        `No todo matching "${visibleLocator(params)}" is in the list.`,
       );
     }
     id = resolved.id;
