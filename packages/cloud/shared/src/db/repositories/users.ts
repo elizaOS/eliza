@@ -20,6 +20,12 @@ import {
 import { type UserIdentity, userIdentities } from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
 import { revokePersonalSharedGroupConsentForUser } from "./personal-shared-group-consent-lifecycle";
+import {
+  hasPhonelessLegacyPhoneVerifiedDrift,
+  type PhonelessPhoneVerifiedNormalization,
+  projectionMatchesUser,
+  stewardAuthorityMatches,
+} from "./user-identity-projection";
 
 const stewardAuthorityIdentity = alias(userIdentities, "steward_authority_identity");
 const canonicalStewardIdentity = alias(userIdentities, "canonical_steward_identity");
@@ -37,6 +43,13 @@ function userMutationRevokesPersonalSharedConsent(data: Partial<NewUser>): boole
   );
 }
 
+export {
+  hasPhonelessLegacyPhoneVerifiedDrift,
+  type PhonelessPhoneVerifiedNormalization,
+  phoneVerifiedForNewRow,
+  projectionMatchesUser,
+  stewardAuthorityMatches,
+} from "./user-identity-projection";
 export type { NewUser, User, UserIdentity };
 
 export type IdentityProvider = "steward" | "telegram" | "discord" | "whatsapp" | "phone";
@@ -355,10 +368,6 @@ function hasNoMatureIdentity(user: User): boolean {
   );
 }
 
-function sameOptionalTimestamp(left: Date | null, right: Date | null): boolean {
-  return left === null || right === null ? left === right : left.getTime() === right.getTime();
-}
-
 function isPhoneProvisionalUser(user: User, phoneNumber: string): boolean {
   return (
     hasNoMatureIdentity(user) &&
@@ -379,28 +388,6 @@ function isTelegramProvisionalUser(user: User, telegramId: string, stewardUserId
     user.telegram_id === telegramId &&
     user.phone_number === null &&
     user.phone_verified === false
-  );
-}
-
-function projectionMatchesUser(user: User, identity: UserIdentity): boolean {
-  return (
-    identity.user_id === user.id &&
-    identity.steward_user_id === user.steward_user_id &&
-    identity.is_anonymous === user.is_anonymous &&
-    identity.anonymous_session_id === user.anonymous_session_id &&
-    sameOptionalTimestamp(identity.expires_at, user.expires_at) &&
-    identity.telegram_id === user.telegram_id &&
-    identity.telegram_username === user.telegram_username &&
-    identity.telegram_first_name === user.telegram_first_name &&
-    identity.telegram_photo_url === user.telegram_photo_url &&
-    identity.phone_number === user.phone_number &&
-    identity.phone_verified === user.phone_verified &&
-    identity.discord_id === user.discord_id &&
-    identity.discord_username === user.discord_username &&
-    identity.discord_global_name === user.discord_global_name &&
-    identity.discord_avatar_url === user.discord_avatar_url &&
-    identity.whatsapp_id === user.whatsapp_id &&
-    identity.whatsapp_name === user.whatsapp_name
   );
 }
 
@@ -3016,6 +3003,55 @@ export class UsersRepository {
   }
 
   /**
+   * Append-only repair for phoneless legacy projections: phone_verified NULL →
+   * false. Matching Steward authority is required; another user's identity is
+   * never claimed. Healthy false/false rows are a no-write.
+   */
+  async normalizePhonelessLegacyPhoneVerified(input: {
+    userId: string;
+    stewardUserId: string;
+  }): Promise<PhonelessPhoneVerifiedNormalization> {
+    const [canonical] = await dbWrite
+      .select()
+      .from(users)
+      .where(eq(users.id, input.userId))
+      .limit(1);
+    const [projection] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, input.userId))
+      .limit(1);
+
+    if (!canonical || !projection) {
+      return "skipped";
+    }
+    if (
+      !stewardAuthorityMatches(canonical, projection) ||
+      canonical.steward_user_id !== input.stewardUserId
+    ) {
+      return "skipped";
+    }
+    if (!hasPhonelessLegacyPhoneVerifiedDrift(canonical, projection)) {
+      return "healthy";
+    }
+
+    const [updated] = await dbWrite
+      .update(userIdentities)
+      .set({ phone_verified: false, updated_at: new Date() })
+      .where(
+        and(
+          eq(userIdentities.user_id, input.userId),
+          eq(userIdentities.steward_user_id, input.stewardUserId),
+          isNull(userIdentities.phone_number),
+          isNull(userIdentities.phone_verified),
+        ),
+      )
+      .returning({ userId: userIdentities.user_id });
+
+    return updated ? "repaired" : "skipped";
+  }
+
+  /**
    * Upserts the Steward identity projection for a user.
    */
   async upsertStewardIdentity(userId: string, stewardUserId: string): Promise<UserIdentity> {
@@ -3052,7 +3088,7 @@ export class UsersRepository {
         u.telegram_first_name,
         u.telegram_photo_url,
         u.phone_number,
-        u.phone_verified,
+        COALESCE(u.phone_verified, FALSE),
         u.discord_id,
         u.discord_username,
         u.discord_global_name,

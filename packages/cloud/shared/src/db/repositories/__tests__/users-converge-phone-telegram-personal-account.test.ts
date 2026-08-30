@@ -260,6 +260,25 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     ).resolves.toEqual({ status: "identity_projection_conflict" });
   });
 
+  test("phoneless telegram false/NULL projection remains eligible for phone convergence", async () => {
+    const pair = await createPair();
+    const proof = proofFor(pair);
+    const [telegramUser] = await dbWrite
+      .select()
+      .from(users)
+      .where(eq(users.id, pair.telegram.user.id));
+    expect(telegramUser.phone_number).toBeNull();
+    expect(telegramUser.phone_verified).toBe(false);
+
+    await dbWrite
+      .update(userIdentities)
+      .set({ phone_verified: null })
+      .where(eq(userIdentities.user_id, pair.telegram.user.id));
+
+    const inspection = await usersRepository.inspectPhoneTelegramPersonalAccountConvergence(proof);
+    expect(inspection.status).toBe("eligible");
+  });
+
   test("converges exactly two $0 provisional accounts and retains an idempotent alias receipt", async () => {
     const pair = await createPair();
     const proof = proofFor(pair);

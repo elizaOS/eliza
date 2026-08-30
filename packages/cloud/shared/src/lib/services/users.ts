@@ -12,6 +12,10 @@ import {
   type UserWithOrganization,
   usersRepository,
 } from "../../db/repositories";
+import {
+  hasPhonelessLegacyPhoneVerifiedDrift,
+  stewardAuthorityMatches,
+} from "../../db/repositories/user-identity-projection";
 import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -452,6 +456,18 @@ export class UsersService {
 
     if (existingIdentity?.steward_user_id === stewardUserId) {
       const user = await usersRepository.findByIdForWrite(userId);
+      // Matching Steward authority is not full projection parity. Repair only
+      // the phoneless false/NULL drift; healthy returning login stays no-write.
+      if (
+        user &&
+        stewardAuthorityMatches(user, existingIdentity) &&
+        hasPhonelessLegacyPhoneVerifiedDrift(user, existingIdentity)
+      ) {
+        await usersRepository.normalizePhonelessLegacyPhoneVerified({
+          userId,
+          stewardUserId,
+        });
+      }
       if (user?.organization_id) {
         // The identity row may have committed before a prior attempt failed to
         // clear the durable binding fence. Make the idempotent retry complete

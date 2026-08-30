@@ -1,6 +1,7 @@
 // Defines the user identities Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { boolean, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
 /**
@@ -35,6 +36,8 @@ export const userIdentities = pgTable(
 
     // Phone identity (Eliza App - iMessage)
     phone_number: text("phone_number").unique(),
+    // TRUE requires a phone number. New rows default false; phoneless NULL is
+    // legacy 0051 drift repaired append-only to false.
     phone_verified: boolean("phone_verified").default(false),
 
     // Discord identity (Eliza App)
@@ -63,6 +66,10 @@ export const userIdentities = pgTable(
     phone_number_idx: index("user_identities_phone_number_idx").on(table.phone_number),
     discord_id_idx: index("user_identities_discord_id_idx").on(table.discord_id),
     whatsapp_id_idx: index("user_identities_whatsapp_id_idx").on(table.whatsapp_id),
+    phone_verified_requires_number: check(
+      "user_identities_phone_verified_requires_number",
+      sql`${table.phone_verified} IS NOT TRUE OR ${table.phone_number} IS NOT NULL`,
+    ),
   }),
 );
 
