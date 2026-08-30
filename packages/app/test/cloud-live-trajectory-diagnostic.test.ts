@@ -35,6 +35,8 @@ const ZERO_DEDICATED_CONTROL_PLANE_COUNTERS = {
   parsedDedicatedActivationResponseBodyCount: 0,
   decodedDedicatedActivationReceiptCount: 0,
   uninspectableDedicatedActivationResponseBodyCount: 0,
+  dedicatedActivationResponseStatus: null,
+  dedicatedActivationResponseCode: null,
   dedicatedCutoverPostRequestCount: 0,
   successfulDedicatedCutoverPostResponseCount: 0,
   clientErrorDedicatedCutoverPostResponseCount: 0,
@@ -177,6 +179,41 @@ describe("Cloud live trajectory diagnostic", () => {
         counters,
       ),
     ).toThrow("pre-identity counters must be non-negative integers");
+  });
+
+  it("retains only a bounded Dedicated activation status and machine code", () => {
+    const counters = {
+      runtimeCloudActionAttemptCount: 1,
+      runtimeCloudActionSuccessCount: 0,
+      runtimeCloudActionTimeoutCount: 0,
+      ...ZERO_PERSONAL_BODY_AND_RECOVERY_COUNTERS,
+      personalIdentityGetRequestCount: 1,
+      successfulPersonalIdentityGetResponseCount: 1,
+      clientErrorPersonalIdentityGetResponseCount: 0,
+      serverErrorPersonalIdentityGetResponseCount: 0,
+      otherPersonalIdentityGetResponseCount: 0,
+      failedPersonalIdentityGetRequestCount: 0,
+      pendingPersonalIdentityGetRequestCount: 0,
+      ...ZERO_DEDICATED_CONTROL_PLANE_COUNTERS,
+      dedicatedActivationResponseStatus: 409,
+      dedicatedActivationResponseCode: "dedicated_quote_changed",
+    };
+
+    const diagnostic = createCloudLiveTrajectoryDiagnostic(
+      "personal-identity",
+      456,
+      counters,
+    );
+    expect(diagnostic.preIdentity).toMatchObject({
+      dedicatedActivationResponseStatus: 409,
+      dedicatedActivationResponseCode: "dedicated_quote_changed",
+    });
+    expect(() =>
+      createCloudLiveTrajectoryDiagnostic("personal-identity", 456, {
+        ...counters,
+        dedicatedActivationResponseCode: "private message: user@example.com",
+      }),
+    ).toThrow("bounded machine code");
   });
 
   it("overwrites one private receipt with restrictive permissions", async () => {
