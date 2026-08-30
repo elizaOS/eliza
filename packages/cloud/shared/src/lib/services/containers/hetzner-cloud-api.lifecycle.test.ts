@@ -404,6 +404,21 @@ describe("Hetzner lifecycle deadlines and absence", () => {
     expect(requests).toEqual([{ method: "DELETE", path: "/v1/servers/41" }]);
   });
 
+  test("server deletion accepts 204 only after exact absence readback", async () => {
+    empty();
+    json({ server: server(41) });
+    await expect(client().deleteServer(41)).rejects.toMatchObject({
+      code: "server_error",
+    });
+
+    responses = [];
+    requests = [];
+    empty();
+    json({ error: { code: "not_found", message: "server missing" } }, 404);
+    await expect(client().deleteServer(41)).resolves.toBeUndefined();
+    expect(requests.map(({ path }) => path)).toEqual(["/v1/servers/41", "/v1/servers/41"]);
+  });
+
   test("volume delete requires exact post-delete absence", async () => {
     empty();
     json({ volume: volume(51) });
