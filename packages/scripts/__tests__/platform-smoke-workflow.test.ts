@@ -128,6 +128,7 @@ describe("Platform Smoke workflow", () => {
       "actions/setup-node",
       "Run batch watchdog process-tree self-test",
       "Install dependencies",
+      "Build prompts package",
       "Build core",
       "Run core tests",
     ]);
@@ -141,6 +142,7 @@ describe("Platform Smoke workflow", () => {
       "Verify exact source checkout",
       "Run batch watchdog process-tree self-test",
       "Install dependencies",
+      "Build prompts package",
       "Build core",
       "Run core tests",
     ]);
@@ -148,6 +150,7 @@ describe("Platform Smoke workflow", () => {
       "Run batch watchdog process-tree self-test":
         "node packages/scripts/test-cloud-run-watchdog.self-test.mjs",
       "Install dependencies": "bun install --frozen-lockfile --ignore-scripts",
+      "Build prompts package": "bun run --cwd packages/prompts build:package",
       "Build core": "bun run build:core",
       "Run core tests": "bun run test:core",
     });

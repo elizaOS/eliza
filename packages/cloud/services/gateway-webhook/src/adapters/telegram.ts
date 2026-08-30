@@ -59,6 +59,7 @@ function asTelegramEvent(event: ChatEvent): TelegramConnectorEvent {
     groupActorRole: event.groupActorRole,
     membershipChange: event.membershipChange,
     replyToMessageId: event.replyToMessageId,
+    providerThreadId: event.providerThreadId,
     providerSentAtMs: event.providerSentAtMs,
     voiceNote: event.voiceNote,
     rawPayload: event.rawPayload,

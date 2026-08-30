@@ -34,7 +34,6 @@ import {
   type TargetInfo,
   type ThreadHandle,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
   type World,
   type WorldPayload,
@@ -344,12 +343,19 @@ function telegramChatKind(chat: Chat): MessageConnectorTarget["kind"] {
   return "group";
 }
 
-/**
- * Caps a forum-topic name at Telegram's 128-code-unit limit without splitting a
- * surrogate pair, sanitizing lone surrogates so the strict-JSON Bot API accepts it.
- */
-export function truncateForumTopicName(name?: string): string {
-  return truncateWellFormed(toWellFormedUnicode(name ?? "thread"), 128);
+/** Validate forum-topic metadata before calling Telegram's bounded API. */
+export function requireForumTopicName(name?: string): string {
+  const wellFormed = toWellFormedUnicode(name ?? "thread");
+  if (wellFormed.length > 128) {
+    throw new ElizaError(
+      "Telegram forum-topic name exceeds the Bot API limit",
+      {
+        code: "TELEGRAM_FORUM_TOPIC_NAME_TOO_LONG",
+        context: { actualLength: wellFormed.length, maxLength: 128 },
+      },
+    );
+  }
+  return wellFormed;
 }
 
 /**
@@ -2569,7 +2575,7 @@ export class TelegramService extends Service {
     // create the new topic on the parent chat (the pattern preserves negative ids).
     const threadedMatch = chatId.match(TELEGRAM_THREADED_CHANNEL_PATTERN);
     const parentChatId = threadedMatch ? threadedMatch[1] : chatId;
-    const name = truncateForumTopicName(params.name ?? "thread");
+    const name = requireForumTopicName(params.name ?? "thread");
     const topic = await bot.telegram.createForumTopic(parentChatId, name);
     return {
       threadId: String(topic.message_thread_id),

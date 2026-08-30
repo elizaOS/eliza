@@ -15,6 +15,7 @@ describe("UI_CONTEXT", () => {
 						uiTab: "views",
 						uiViewPath: "/notes",
 						uiViewCapabilities: ["view-actions", "inspect-view"],
+						uiViewActionNames: ["NOTES"],
 						__responseContext: {
 							primaryContext: "apps",
 							secondaryContexts: ["general"],
@@ -30,11 +31,19 @@ describe("UI_CONTEXT", () => {
 		expect(result.text).toContain(
 			"view_capabilities: view-actions, inspect-view",
 		);
-		expect(result.text).toContain("select the VIEWS action");
+		expect(result.text).toContain("view_actions: NOTES");
+		expect(result.text).toContain(
+			"Treat view_capabilities as available context, not as a request",
+		);
+		expect(result.text).toContain(
+			"answer directly from this UI Context without calling a tool",
+		);
+		expect(result.text).toContain("prefer the focused domain action");
 		expect(result.data).toMatchObject({
 			uiView: "notes",
 			uiViewPath: "/notes",
 			uiViewCapabilities: ["view-actions", "inspect-view"],
+			uiViewActionNames: ["NOTES"],
 		});
 	});
 

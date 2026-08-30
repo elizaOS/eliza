@@ -31,6 +31,10 @@ Import via subpath: `@elizaos/cloud-shared/billing`, `/db`, `/db/repositories/ap
 Synthetic test consumers use `/db/repositories/synthetic-environment-leases`.
 Its guarded callback receives the same locked PostgreSQL/PGlite transaction as
 the generation check, so an old reset generation cannot commit afterward.
+`/db/repositories/synthetic-world-commands` persists the storage-neutral
+command journal in that transaction. Its PGlite contract test uses the real
+agents repository to prove the domain mutation, transactional readback, result
+serialization, and `COMMITTED` transition commit or roll back together.
 The lease and subprocess authorities share the exact 512-character namespace
 validator. Treat a transaction/transport exception as ambiguous and reconcile
 the canonical snapshot before retrying an acquire, rollover, or release.

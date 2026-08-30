@@ -14,6 +14,11 @@ import {
 
 const RESPONSE_MARKER = "BUN_DEV_SMOKE_OK";
 
+test.skip(
+  process.env.ELIZA_DEV_SMOKE_OFFLINE !== "1",
+  "runs only through test:dev-smoke:local",
+);
+
 test.describe("bun run dev onboarding chat smoke", () => {
   test.describe.configure({ retries: process.env.CI ? 1 : 0 });
 

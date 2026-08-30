@@ -2,6 +2,7 @@
  * Runtime registry of cloud dashboard routes: register lazy route components and
  * their public/authed access policy, consumed by the CloudRouterShell.
  */
+import type { SurfaceManifest } from "@elizaos/core";
 import type { ComponentType, LazyExoticComponent, ReactNode } from "react";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 
@@ -43,6 +44,8 @@ export interface CloudRouteDef {
   publicAccess?: typeof CLOUD_PUBLIC_ROUTE_ACCESS;
   /** Optional grouping key for nav/IA (e.g. `"dashboard"`, `"auth"`). */
   group?: string;
+  /** Cross-host surface and page-layout policy for this route. */
+  surface?: SurfaceManifest;
   /**
    * Access gate the shell enforces centrally (#12087 Item 23). Names a gate
    * component registered via {@link registerCloudRouteGate} (built-in:
@@ -126,6 +129,14 @@ export function registerCloudRoute(def: CloudRouteDef): void {
     );
   }
   if (
+    (def.group === "cloud" || def.group === "admin") &&
+    def.surface?.layout?.topology === "ambient"
+  ) {
+    throw new Error(
+      `Managed cloud route "${def.path}" must use the canonical framed topology`,
+    );
+  }
+  if (
     isDevMode() &&
     existing &&
     existing.public !== true &&
@@ -156,14 +167,25 @@ function isDevMode(): boolean {
 export function listCloudRoutes(): CloudRouteDef[] {
   return [...getStore().entries.values()]
     .sort((a, b) => (a as CloudRouteEntry).order - (b as CloudRouteEntry).order)
-    .map(({ path, element, public: isPublic, publicAccess, group, gate }) => ({
-      path,
-      element,
-      public: isPublic,
-      publicAccess,
-      group,
-      gate,
-    }));
+    .map(
+      ({
+        path,
+        element,
+        public: isPublic,
+        publicAccess,
+        group,
+        gate,
+        surface,
+      }) => ({
+        path,
+        element,
+        public: isPublic,
+        publicAccess,
+        group,
+        gate,
+        surface,
+      }),
+    );
 }
 
 /** Look up a single registered route by path. */

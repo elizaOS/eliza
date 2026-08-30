@@ -82,7 +82,7 @@ describe("z.ai text parameter resolution", () => {
       prompt: "hello",
       maxTokens: 333,
     });
-    expect(generateTextMock.mock.calls[0]?.[0]).toHaveProperty("maxTokens", 333);
+    expect(generateTextMock.mock.calls[0]?.[0]).toHaveProperty("maxOutputTokens", 333);
   });
 
   it("honors a per-call model override before z.ai slot defaults", async () => {

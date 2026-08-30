@@ -23,9 +23,9 @@ import { FormSubmitReceipt } from "../chat/MessageContent";
 import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
 import { ChatBubble } from "../composites/chat/chat-bubble";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
+import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { GlassIconButton } from "./glass-composer";
-import { GLASS_COMPOSER_CLASS } from "./glass-composer.helpers";
 import type { ShellMessage } from "./shell-state";
 
 export interface ChatSurfaceProps {
@@ -177,7 +177,14 @@ export function ChatSurface({
       </div>
       {/* Composer row: same token, icon, and touch-target idiom as the
           continuous overlay composer. */}
-      <div className={cn("m-2", GLASS_COMPOSER_CLASS)}>
+      <Card
+        surface="card"
+        border="none"
+        radius="full"
+        flow="row"
+        gap="tight"
+        className="m-2 px-2 py-2"
+      >
         <Input
           type="text"
           value={draft}
@@ -227,7 +234,7 @@ export function ChatSurface({
           disabled={!canSendNow}
           onClick={handleSend}
         />
-      </div>
+      </Card>
     </div>
   );
 }

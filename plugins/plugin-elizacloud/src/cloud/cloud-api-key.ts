@@ -2,9 +2,10 @@
  * Cloud API key + base URL resolution.
  *
  * Resolves the Eliza Cloud API key and base URL from (in priority order):
- *   1. Explicit `config.cloud.apiKey` / `config.cloud.baseUrl`
- *   2. Runtime settings + character secrets (`ELIZAOS_CLOUD_API_KEY`)
- *   3. Process env (`ELIZAOS_CLOUD_API_KEY`, `ELIZAOS_CLOUD_BASE_URL`)
+ *   1. Launcher-owned canonical env when development Cloud authority is valid
+ *   2. Explicit `config.cloud.apiKey` / `config.cloud.baseUrl`
+ *   3. Runtime settings + character secrets (`ELIZAOS_CLOUD_API_KEY`)
+ *   4. Process env (`ELIZAOS_CLOUD_API_KEY`, `ELIZAOS_CLOUD_BASE_URL`)
  *
  * Previously these helpers lived in `packages/agent/src/api/wallet-rpc.ts`
  * because the wallet uses Cloud RPC proxies. They are NOT wallet-specific —
@@ -13,7 +14,11 @@
  * `cloud/` matches their actual ownership.
  */
 
-import { defaultCloudSiteUrl } from "@elizaos/shared";
+import {
+  defaultCloudSiteUrl,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 
 import type { ElizaConfig } from "../lib/config-like";
 
@@ -86,9 +91,29 @@ export function resolveCloudApiKey(
   config?: Pick<ElizaConfig, "cloud"> | null,
   runtime?: CloudApiKeyRuntimeLike,
 ): string | null {
+  if (resolveDevCloudEnvAuthority()) {
+    return normalizeCloudSecret(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
+    );
+  }
   return normalizeCloudSecret(
     config?.cloud?.apiKey ??
       resolveRuntimeCloudApiKey(runtime) ??
       process.env.ELIZAOS_CLOUD_API_KEY,
   );
+}
+
+/**
+ * Preserve a live CloudAuth-service key outside dev authority while making the
+ * frozen launcher tuple the sole credential source when authority is active.
+ */
+export function resolveCloudApiKeyWithRuntimeOverride(
+  runtimeApiKey: string | null | undefined,
+  config?: Pick<ElizaConfig, "cloud"> | null,
+  runtime?: CloudApiKeyRuntimeLike,
+): string | null {
+  const resolved = resolveCloudApiKey(config, runtime);
+  return resolveDevCloudEnvAuthority()
+    ? resolved
+    : (normalizeCloudSecret(runtimeApiKey) ?? resolved);
 }

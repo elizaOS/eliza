@@ -8,6 +8,7 @@ export interface NativeComputerUseResult {
   success: boolean;
   message?: string;
   error?: string;
+  errorCode?: string;
   permissionDenied?: boolean;
   permissionType?: string;
   approvalRequired?: boolean;
@@ -91,6 +92,7 @@ export function toComputerUseActionResult<T extends NativeComputerUseResult>({
     data: {
       source: "computeruse",
       computerUseAction: action,
+      ...(result.errorCode ? { errorCode: result.errorCode } : {}),
       result: sanitizeNativeResult(result),
       ...(suppressClipboard ? { suppressActionResultClipboard: true } : {}),
     },

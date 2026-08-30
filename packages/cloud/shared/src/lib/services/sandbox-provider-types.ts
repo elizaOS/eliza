@@ -44,8 +44,16 @@ export function assertContainerBackedExecutionTier(
  *     so concluding "not ready" here would be a FALSE NEGATIVE — the exact
  *     split-brain that marks a healthy container failed and wedges its row.
  *     Callers should treat this as RETRYABLE, not terminal.
+ *   - `ingress_unresolved` — the node-side probe proved the container healthy,
+ *     but the managed tailnet ingress that runtime bootstrap and user traffic
+ *     require did not answer. The workload must be preserved for retry and
+ *     route reconciliation, but it is not ready for users yet.
  */
-export type SandboxHealthVerdict = "ready" | "not_ready" | "transport_unresolved";
+export type SandboxHealthVerdict =
+  | "ready"
+  | "not_ready"
+  | "transport_unresolved"
+  | "ingress_unresolved";
 
 export interface SandboxHealthOutcome {
   ready: boolean;
@@ -261,7 +269,8 @@ export interface SandboxProvider {
   checkHealth(handle: SandboxHandle): Promise<boolean>;
   /**
    * Richer readiness probe that distinguishes a genuine `not_ready` from a
-   * `transport_unresolved` exhaustion (see {@link SandboxHealthVerdict}).
+   * unresolved transport/managed-ingress exhaustion (see
+   * {@link SandboxHealthVerdict}).
    * Optional so providers that cannot fail at a transport layer (memory/local)
    * need not implement it; callers fall back to `checkHealth` when absent.
    */

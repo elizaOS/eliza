@@ -18,7 +18,12 @@ vi.mock("@elizaos/ui/api/csrf-client", () => ({
 }));
 
 vi.mock("@elizaos/ui/api", () => ({
-  client: { onWsEvent: vi.fn(() => () => undefined) },
+  client: {
+    fetch: (url: string, init?: RequestInit) =>
+      transportFetch(url, init).then((response: Response) => response.json()),
+    onWsEvent: vi.fn(() => () => undefined),
+  },
+  isApiError: () => false,
 }));
 
 vi.mock("@elizaos/ui/events", async (importOriginal) => {
@@ -35,6 +40,11 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
     },
   }),
 }));
+
+vi.mock(
+  "@elizaos/ui/components/shared/ViewHeader",
+  () => import("../../../../packages/ui/src/components/shared/ViewHeader.tsx"),
+);
 
 import { interact as interactWithService } from "../interact.js";
 import { NotesService } from "../service.js";
@@ -106,11 +116,13 @@ describe("Notes capability-to-UI journey", () => {
     const notes = render(<NotesView />);
     expect(
       await screen.findByRole("main", {
-        name: "Notes. 0 notes · revision 0",
+        name: "Notes. 0 notes.",
       }),
     ).toBeTruthy();
     expect(
-      notes.container.querySelector("button, input, textarea, form"),
+      notes.container.querySelector(
+        '[data-testid="simple-notes-scroll-region"] button, input, textarea, form',
+      ),
     ).toBeNull();
     notes.unmount();
 
@@ -132,26 +144,22 @@ describe("Notes capability-to-UI journey", () => {
     );
 
     const populatedNotes = render(<NotesView />);
-    expect(
-      await screen.findByText(
-        "Demo briefing ready\nKeep the note wall durable",
-      ),
-    ).toBeTruthy();
+    expect(await screen.findByText("Demo briefing ready")).toBeTruthy();
+    expect(screen.getByText("Keep the note wall durable")).toBeTruthy();
     expect(
       screen
         .getByLabelText("Note Demo briefing ready")
         .getAttribute("data-agent-id"),
     ).toBe("note-e2e-1");
     expect(
-      populatedNotes.container.querySelector("button, input, textarea, form"),
+      populatedNotes.container.querySelector(
+        '[data-testid="simple-notes-scroll-region"] button, input, textarea, form',
+      ),
     ).toBeNull();
     populatedNotes.unmount();
     render(<NotesView />);
-    expect(
-      await screen.findByText(
-        "Demo briefing ready\nKeep the note wall durable",
-      ),
-    ).toBeTruthy();
+    expect(await screen.findByText("Demo briefing ready")).toBeTruthy();
+    expect(screen.getByText("Keep the note wall durable")).toBeTruthy();
 
     await waitFor(() => {
       expect(activeService().snapshot()).toMatchObject({

@@ -265,6 +265,50 @@ describe("compat dispatcher default-deny (H5)", () => {
     expect(cap.status()).toBe(200);
   });
 
+  it("dispatches unauthenticated auth/me to its typed handler boundary", async () => {
+    const cap = captureRes();
+    const handled = await handleElizaCompatRoute(
+      unauthReq("GET", "/api/auth/me"),
+      cap.res,
+      STATE,
+    );
+
+    expect(handled).toBe(true);
+    // This harness deliberately has no auth database. Reaching the handler's
+    // typed DB-unavailable response proves the outer policy did not replace it
+    // with its generic Unauthorized body; auth-session route coverage pins the
+    // real-DB remote_auth_required metadata branch.
+    expect(cap.status()).toBe(503);
+    expect(cap.json()).toEqual({
+      error: "db_unavailable",
+      reason: "db_unavailable",
+    });
+  });
+
+  it("lets desktop bootstrap reach its one-shot proof handler before session auth", async () => {
+    const cap = captureRes();
+    const handled = await handleElizaCompatRoute(
+      trustedLoopbackReq("POST", "/api/auth/desktop-bootstrap"),
+      cap.res,
+      STATE,
+    );
+
+    expect(handled).toBe(true);
+    expect(cap.status()).toBe(503);
+    expect(cap.json()).toEqual({ error: "db_unavailable" });
+
+    const remote = captureRes();
+    const remoteHandled = await handleElizaCompatRoute(
+      unauthReq("POST", "/api/auth/desktop-bootstrap"),
+      remote.res,
+      STATE,
+    );
+
+    expect(remoteHandled).toBe(true);
+    expect(remote.status()).toBe(403);
+    expect(remote.json()).toEqual({ error: "desktop_bootstrap_forbidden" });
+  });
+
   it("denies remote-mode cloud mutations before the forwarder sees unauthenticated callers", async () => {
     const cap = captureRes();
     const handled = await handleElizaCompatRoute(

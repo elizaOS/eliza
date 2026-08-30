@@ -5,14 +5,17 @@
  */
 
 import { Hono } from "hono";
-import { deleteCookie, getCookie } from "hono/cookie";
+import { deleteCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { invalidateSessionCaches } from "@/lib/auth";
 import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import { verifyStewardTokenCached } from "@/lib/auth/steward-client";
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
+import {
+  getCurrentUser,
+  readStewardSessionToken,
+} from "@/lib/auth/workers-hono-auth";
 import {
   getRequestIp,
   RateLimitPresets,
@@ -47,12 +50,11 @@ app.post("/", async (c) => {
   }
 
   const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
-  // Each environment reads only its own scoped cookie. The bounded read-only
-  // migration window that let non-production fall back to the historical
-  // unsuffixed cookie closed on 2026-08-04 (#14130); in production the scoped
-  // names already ARE the unsuffixed names, so `cookieNames.token` covers both
-  // eras and no separate legacy read is needed.
-  const stewardToken = getCookie(c, cookieNames.token);
+  // Hosted SPAs authenticate with a localStorage JWT in Authorization, while
+  // auth-origin pages may use the environment-scoped cookie. Resolve both
+  // through the same JWT-only selection used by getCurrentUser; API-key
+  // bearers are deliberately excluded from browser-session teardown.
+  const stewardToken = readStewardSessionToken(c);
 
   // Clear cookies FIRST. Clearing them is what actually logs the user out, and
   // it must happen even if the server-side teardown below fails (a transient DB
@@ -138,10 +140,8 @@ app.post("/", async (c) => {
   }
 
   try {
-    // Only tear down caches/sessions when this environment owned the token that
-    // was actually presented. The non-production legacy read fallback closed on
-    // 2026-08-04 (#14130), so stewardToken here is always this environment's own
-    // scoped cookie.
+    // Only tear down caches/sessions when the request presented a Steward JWT
+    // through this environment's scoped cookie or Authorization header.
     if (stewardToken) {
       await invalidateSessionCaches(stewardToken);
       logger.debug("[Logout] Invalidated session caches for token");
@@ -161,7 +161,7 @@ app.post("/", async (c) => {
             ip: getRequestIp(c),
             user_agent: c.req.header("user-agent") ?? undefined,
             request_id: c.get("requestId"),
-            metadata: { method: "steward_cookie" },
+            metadata: { method: "steward_session" },
           })
           // error-policy:J7 audit write is diagnostic; logout already succeeded via
           // the cookie clear above, so a dropped audit event is logged, not fatal.

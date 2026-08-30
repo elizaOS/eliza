@@ -39,6 +39,10 @@ export const goalsPlugin: Plugin = {
         "Life goals, routines, today's reminders and alarms, self-care check-in.",
       icon: "Target",
       path: "/goals",
+      responseContext: {
+        primaryContext: "goals",
+        secondaryContexts: ["productivity"],
+      },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the

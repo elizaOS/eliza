@@ -26,6 +26,7 @@ function captureDescriptor(runtime: AgentRuntime, agentName: string) {
     ownerId: stringToUuid("rename-owner") as UUID,
     callerEntityId: stringToUuid("rename-caller") as UUID,
     callerRole: "USER",
+    callerGrantSource: "connector_admin",
     callerUserName: "rename-caller",
   });
 }

@@ -6,11 +6,11 @@
  * playwright-ui-smoke-api-stub.mjs.
  */
 import {
-  type ChildProcessWithoutNullStreams,
+  type ChildProcessByStdio,
   execFileSync,
   spawn,
 } from "node:child_process";
-import { appendFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import {
   access,
   cp,
@@ -27,6 +27,7 @@ import {
 } from "node:http";
 import os from "node:os";
 import path from "node:path";
+import type { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildFirstRunRuntimeConfig } from "../src/first-run/first-run-config.ts";
@@ -39,6 +40,12 @@ import {
   selectLiveProviderAsync,
 } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import {
+  attachSafeChildOutputObserver,
+  formatSafeLiveStackDiagnostic,
+  formatSafeLiveStackStartupFailure,
+  type LiveStackDiagnosticComponent,
+} from "./lib/live-stack-safe-diagnostics.ts";
 import { shouldForceStubStack } from "./lib/ui-smoke-stub-decision.mjs";
 import {
   rendererDistMatchesPlaywrightTestAuth,
@@ -147,14 +154,39 @@ const LIVE_STACK_OPTIONAL_VIEW_PLUGIN_PACKAGES: ReadonlyArray<{
 ];
 const pendingStateDirs = new Set<string>();
 const ownedStateDirs = new Set<string>();
+type CapturedChildProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 type StartedStack = {
   apiBase: string;
-  apiChild: ChildProcessWithoutNullStreams;
+  apiChild: CapturedChildProcess;
   stateDir: string;
   uiBase: string;
   uiServer: Server;
 };
+
+function reportSafeProcessFailure(
+  component: LiveStackDiagnosticComponent,
+  exitCode: number | null,
+): void {
+  process.stderr.write(
+    `${formatSafeLiveStackDiagnostic({
+      category: "process-failed",
+      component,
+      exitCode: exitCode ?? 1,
+    })}\n`,
+  );
+}
+
+function reportSafeProcessTimeout(
+  component: LiveStackDiagnosticComponent,
+): void {
+  process.stderr.write(
+    `${formatSafeLiveStackDiagnostic({
+      category: "process-timed-out",
+      component,
+    })}\n`,
+  );
+}
 
 async function createStateDir(prefix: string): Promise<string> {
   const stateDir = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -674,14 +706,16 @@ async function startUiProxyServer(args: {
         response,
         uiDistDir: args.uiDistDir,
       });
-    } catch (error) {
+    } catch {
       if (response.headersSent || response.writableEnded) {
         if (!response.writableEnded) {
           response.end();
         }
         return;
       }
-      console.error("[playwright-ui-live-stack] proxy error:", error);
+      console.error(
+        "[playwright-ui-live-stack] proxy request failed (category=proxy-failed).",
+      );
       response.writeHead(500, {
         "Content-Type": "application/json; charset=utf-8",
       });
@@ -719,7 +753,7 @@ async function startUiProxyServer(args: {
 }
 
 async function waitForChildExit(
-  child: ChildProcessWithoutNullStreams,
+  child: CapturedChildProcess,
   timeoutMs: number,
 ): Promise<boolean> {
   if (child.exitCode != null) {
@@ -760,7 +794,7 @@ async function closeUiServer(uiServer: Server | null): Promise<void> {
 }
 
 async function stopApiChild(
-  apiChild: ChildProcessWithoutNullStreams | null,
+  apiChild: CapturedChildProcess | null,
 ): Promise<void> {
   if (!apiChild || apiChild.exitCode != null) return;
   apiChild.kill("SIGTERM");
@@ -925,7 +959,6 @@ async function ensureUiDistReady(): Promise<void> {
 
   await removePathRecursive(path.join(APP_DIR, ".vite"));
 
-  const logs: string[] = [];
   const child = spawn(resolveBunCommand(), ["run", "build:web"], {
     cwd: APP_DIR,
     env: {
@@ -944,8 +977,7 @@ async function ensureUiDistReady(): Promise<void> {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  child.stdout.on("data", (chunk) => logs.push(String(chunk)));
-  child.stderr.on("data", (chunk) => logs.push(String(chunk)));
+  attachSafeChildOutputObserver({ child, component: "renderer-build" });
 
   // Cold renderer build transforms ~3000 modules and measures ~12 min on a
   // clean dist; cap at 18 min so a legitimately slow first build is not killed
@@ -954,14 +986,12 @@ async function ensureUiDistReady(): Promise<void> {
   const exited = await waitForChildExit(child, RENDERER_BUILD_TIMEOUT_MS);
   if (!exited) {
     child.kill("SIGKILL");
-    throw new Error(
-      `app renderer build timed out after ${RENDERER_BUILD_TIMEOUT_MS}ms.\n${logs.join("").slice(-8_000)}`,
-    );
+    reportSafeProcessTimeout("renderer-build");
+    throw new Error("App renderer build timed out; raw output suppressed.");
   }
   if (child.exitCode !== 0) {
-    throw new Error(
-      `app renderer build failed (exit ${child.exitCode}).\n${logs.join("").slice(-8_000)}`,
-    );
+    reportSafeProcessFailure("renderer-build", child.exitCode);
+    throw new Error("App renderer build failed; raw output suppressed.");
   }
   if (
     !rendererDistMatchesPlaywrightTestAuth(
@@ -1034,9 +1064,11 @@ async function submitFirstRun(apiBase: string): Promise<void> {
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Onboarding failed with ${response.status}: ${await response.text()}`,
+    await response.body?.cancel();
+    console.error(
+      `[ui-smoke] onboarding rejected (category=first-run-rejected; status=${response.status}; response-body=suppressed).`,
     );
+    throw new Error("Onboarding failed; response body suppressed.");
   }
 
   await waitForJsonPredicate<{ complete: boolean }>(
@@ -1086,7 +1118,6 @@ async function ensureLiveStackOptionalViewPluginsReady(): Promise<void> {
     }
     if (missingOutputPaths.length === 0) continue;
 
-    const logs: string[] = [];
     const child = spawn(resolveBunCommand(), ["run", "build"], {
       cwd: pluginDir,
       env: {
@@ -1099,20 +1130,24 @@ async function ensureLiveStackOptionalViewPluginsReady(): Promise<void> {
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    child.stdout.on("data", (chunk) => logs.push(String(chunk)));
-    child.stderr.on("data", (chunk) => logs.push(String(chunk)));
+    attachSafeChildOutputObserver({
+      child,
+      component: "optional-plugin-build",
+    });
 
     const BUILD_TIMEOUT_MS = 300_000;
     const exited = await waitForChildExit(child, BUILD_TIMEOUT_MS);
     if (!exited) {
       child.kill("SIGKILL");
+      reportSafeProcessTimeout("optional-plugin-build");
       throw new Error(
-        `Timed out building optional live-stack plugin ${plugin.id} after ${BUILD_TIMEOUT_MS}ms.\n${logs.join("").slice(-8_000)}`,
+        "Optional live-stack plugin build timed out; raw output suppressed.",
       );
     }
     if (child.exitCode !== 0) {
+      reportSafeProcessFailure("optional-plugin-build", child.exitCode);
       throw new Error(
-        `Failed to build optional live-stack plugin ${plugin.id}.\n${logs.join("").slice(-8_000)}`,
+        "Optional live-stack plugin build failed; raw output suppressed.",
       );
     }
     for (const outputPath of outputPaths) {
@@ -1123,7 +1158,7 @@ async function ensureLiveStackOptionalViewPluginsReady(): Promise<void> {
 
 async function startStubStack(): Promise<StartedStack> {
   const stateDir = await createStateDir("eliza-ui-smoke-stub-");
-  let apiChild: ChildProcessWithoutNullStreams | null = null;
+  let apiChild: CapturedChildProcess | null = null;
   let uiServer: Server | null = null;
   try {
     const uiDistDir = await snapshotUiDist(stateDir);
@@ -1139,11 +1174,9 @@ async function startStubStack(): Promise<StartedStack> {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    apiChild.stdout.on("data", (chunk) => {
-      process.stdout.write(`[ui-smoke][stub] ${chunk}`);
-    });
-    apiChild.stderr.on("data", (chunk) => {
-      process.stdout.write(`[ui-smoke][stub-err] ${chunk}`);
+    attachSafeChildOutputObserver({
+      child: apiChild,
+      component: "stub-runtime",
     });
 
     await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
@@ -1186,7 +1219,7 @@ async function startStubStack(): Promise<StartedStack> {
 
 async function startRealLocalStack(): Promise<StartedStack> {
   const stateDir = await createStateDir("eliza-ui-smoke-real-local-");
-  let apiChild: ChildProcessWithoutNullStreams | null = null;
+  let apiChild: CapturedChildProcess | null = null;
   let uiServer: Server | null = null;
   try {
     const backendLogPath = BACKEND_LOG_PATH
@@ -1217,15 +1250,10 @@ async function startRealLocalStack(): Promise<StartedStack> {
       },
     );
 
-    apiChild.stdout.on("data", (chunk) => {
-      const output = `[ui-smoke][real-local] ${chunk}`;
-      process.stdout.write(output);
-      if (backendLogPath) appendFileSync(backendLogPath, output);
-    });
-    apiChild.stderr.on("data", (chunk) => {
-      const output = `[ui-smoke][real-local-err] ${chunk}`;
-      process.stdout.write(output);
-      if (backendLogPath) appendFileSync(backendLogPath, output);
+    attachSafeChildOutputObserver({
+      artifactPath: backendLogPath,
+      child: apiChild,
+      component: "real-local-runtime",
     });
 
     await waitForJsonPredicate<{ state?: string }>(
@@ -1264,20 +1292,25 @@ async function startRealLocalStack(): Promise<StartedStack> {
 }
 
 async function startRealStack(): Promise<StartedStack> {
+  activeStartupComponent = "renderer-build";
   await ensureUiDistReady();
 
   if (REAL_LOCAL_STACK) {
+    activeStartupComponent = "real-local-runtime";
     return startRealLocalStack();
   }
 
   if (FORCE_STUB_STACK || !LIVE_PROVIDER) {
+    activeStartupComponent = "stub-runtime";
     return startStubStack();
   }
 
+  activeStartupComponent = "optional-plugin-build";
   await ensureLiveStackOptionalViewPluginsReady();
+  activeStartupComponent = "live-runtime";
 
   const stateDir = await createStateDir("eliza-ui-smoke-live-");
-  let apiChild: ChildProcessWithoutNullStreams | null = null;
+  let apiChild: CapturedChildProcess | null = null;
   let uiServer: Server | null = null;
   try {
     const backendLogPath = BACKEND_LOG_PATH
@@ -1312,15 +1345,10 @@ async function startRealStack(): Promise<StartedStack> {
       },
     );
 
-    apiChild.stdout.on("data", (chunk) => {
-      const output = `[ui-smoke][api] ${chunk}`;
-      process.stdout.write(output);
-      if (backendLogPath) appendFileSync(backendLogPath, output);
-    });
-    apiChild.stderr.on("data", (chunk) => {
-      const output = `[ui-smoke][api-err] ${chunk}`;
-      process.stdout.write(output);
-      if (backendLogPath) appendFileSync(backendLogPath, output);
+    attachSafeChildOutputObserver({
+      artifactPath: backendLogPath,
+      child: apiChild,
+      component: "live-runtime",
     });
 
     await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
@@ -1400,6 +1428,7 @@ async function stopRealStack(stack: StartedStack | null): Promise<void> {
 
 let stack: StartedStack | null = null;
 let shuttingDown = false;
+let activeStartupComponent: LiveStackDiagnosticComponent = "renderer-build";
 
 process.once("exit", cleanupKnownStateDirsSync);
 
@@ -1434,10 +1463,8 @@ try {
   console.log(`[ui-smoke] live UI ready at ${stack.uiBase}`);
   await new Promise(() => {});
 } catch (error) {
-  console.error(
-    `[ui-smoke] failed to start live stack: ${
-      error instanceof Error ? (error.stack ?? error.message) : String(error)
-    }`,
+  process.stderr.write(
+    `${formatSafeLiveStackStartupFailure(activeStartupComponent, error)}\n`,
   );
   await stopRealStack(stack);
   await cleanupPendingStateDirs();

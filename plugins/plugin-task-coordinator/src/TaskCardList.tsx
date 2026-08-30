@@ -2,7 +2,7 @@
 // single-pane landings. Both views render the same card medallion + chips so the
 // two surfaces read as one product. Pure presentation — no data fetching.
 
-import { Button, Input } from "@elizaos/ui";
+import { Button, Card, Input, Separator, StatusPulseDot } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Archive,
@@ -38,7 +38,7 @@ interface StatusVisual {
   /** Foreground icon tone. */
   fg: string;
   /** Status-dot color for the trailing chip. */
-  dot: string;
+  tone: "accent" | "success" | "warning" | "danger" | "muted";
   pulse: boolean;
 }
 
@@ -48,55 +48,55 @@ const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
   open: {
     icon: Circle,
     fg: "text-accent",
-    dot: "bg-accent",
+    tone: "accent",
     pulse: false,
   },
   active: {
     icon: CirclePlay,
     fg: "text-ok",
-    dot: "bg-ok",
+    tone: "success",
     pulse: true,
   },
   validating: {
     icon: CircleDashed,
     fg: "text-accent",
-    dot: "bg-accent",
+    tone: "accent",
     pulse: true,
   },
   waiting_on_user: {
     icon: UserRound,
     fg: "text-warn",
-    dot: "bg-warn",
+    tone: "warning",
     pulse: false,
   },
   blocked: {
     icon: OctagonX,
     fg: "text-warn",
-    dot: "bg-warn",
+    tone: "warning",
     pulse: false,
   },
   interrupted: {
     icon: CircleAlert,
     fg: "text-warn",
-    dot: "bg-warn",
+    tone: "warning",
     pulse: false,
   },
   done: {
     icon: CircleCheck,
     fg: "text-ok",
-    dot: "bg-ok",
+    tone: "success",
     pulse: false,
   },
   failed: {
     icon: CircleX,
     fg: "text-danger",
-    dot: "bg-danger",
+    tone: "danger",
     pulse: false,
   },
   archived: {
     icon: Archive,
     fg: "text-muted",
-    dot: "bg-muted",
+    tone: "muted",
     pulse: false,
   },
 };
@@ -148,9 +148,7 @@ export function TaskStatusChip({
     <span
       className={`inline-flex items-center gap-1.5 text-2xs font-medium ${visual.fg}`}
     >
-      <span
-        className={`size-1.5 rounded-full ${visual.dot}${visual.pulse ? " animate-pulse" : ""}`}
-      />
+      <StatusPulseDot tone={visual.tone} pulse={visual.pulse} size="micro" />
       {statusLabel(status, t)}
     </span>
   );
@@ -199,8 +197,9 @@ export function TaskSearchInput({
   agentProps?: Record<string, unknown>;
 }) {
   return (
-    <div
-      className={`relative flex h-9 items-center border-border/35 border-b transition-colors focus-within:border-accent/60 ${className ?? "flex-1"}`}
+    <Card
+      variant="bottomDivider"
+      className={`relative flex h-9 items-center transition-colors ${className ?? "flex-1"}`}
     >
       <Search
         className="pointer-events-none absolute left-1 size-3.5 text-muted"
@@ -218,7 +217,7 @@ export function TaskSearchInput({
         data-testid={testId}
         {...agentProps}
       />
-    </div>
+    </Card>
   );
 }
 
@@ -264,34 +263,36 @@ export function TaskCard({
     description: `Open the "${title}" task`,
   });
   return (
-    <Button
-      variant="selection"
-      size="eventRow"
-      align="start"
-      ref={ref}
-      type="button"
-      onClick={() => onOpen(id)}
-      data-testid="task-card"
-      className="group relative"
-      {...agentProps}
-    >
-      <TaskStatusMedallion status={status} />
-      <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-txt-strong">
-            {title}
+    <>
+      <Button
+        variant="selection"
+        size="eventRow"
+        align="start"
+        ref={ref}
+        type="button"
+        onClick={() => onOpen(id)}
+        data-testid="task-card"
+        className="group relative py-3"
+        {...agentProps}
+      >
+        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-txt-strong">
+              {title}
+            </span>
+            {forked ? (
+              <GitBranch className="size-3.5 shrink-0 text-muted" aria-hidden />
+            ) : null}
+            <TaskStatusChip status={status} t={t} />
           </span>
-          {forked ? (
-            <GitBranch className="size-3.5 shrink-0 text-muted" aria-hidden />
+          {subtitle ? (
+            <span className="line-clamp-1 text-xs text-muted">{subtitle}</span>
           ) : null}
-          <TaskStatusChip status={status} t={t} />
+          <span className="flex flex-wrap items-center gap-1.5">{chips}</span>
         </span>
-        {subtitle ? (
-          <span className="line-clamp-1 text-xs text-muted">{subtitle}</span>
-        ) : null}
-        <span className="flex flex-wrap items-center gap-1.5">{chips}</span>
-      </span>
-    </Button>
+      </Button>
+      <Separator tone="subtle40" />
+    </>
   );
 }
 
@@ -352,8 +353,7 @@ export function TaskCountChip({
   );
 }
 
-/** Quiet empty state: one glyph + a short title, lots of open space. The longer
- * hint stays for screen readers only — on screen, the icon carries the meaning. */
+/** Quiet list-empty state bounded by the same separators as populated rows. */
 export function TaskEmptyState({
   title,
   hint,
@@ -364,19 +364,23 @@ export function TaskEmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div
-      className="flex flex-col items-center gap-3 py-16 text-center"
-      data-testid="task-empty-state"
-    >
-      <CircleDashed
-        className="size-10 text-accent/40"
-        strokeWidth={1.5}
-        aria-hidden
-      />
-      <p className="text-sm font-medium text-muted">{title}</p>
-      <p className="max-w-xs text-xs text-muted/80">{hint}</p>
-      {action ? <div>{action}</div> : null}
-    </div>
+    <>
+      <Separator tone="subtle40" />
+      <div
+        className="flex min-h-64 flex-col items-center justify-center gap-3 py-10 text-center"
+        data-testid="task-empty-state"
+      >
+        <CircleDashed
+          className="size-10 text-accent/40"
+          strokeWidth={1.5}
+          aria-hidden
+        />
+        <p className="text-sm font-medium text-muted">{title}</p>
+        <p className="max-w-xs text-xs text-muted/80">{hint}</p>
+        {action ? <div>{action}</div> : null}
+      </div>
+      <Separator tone="subtle40" />
+    </>
   );
 }
 

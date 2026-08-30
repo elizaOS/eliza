@@ -25,14 +25,12 @@ interface Workflow {
   jobs?: Record<string, { if?: string; steps?: WorkflowStep[] }>;
 }
 
-// The Worker `deploy-api` job lives in the reusable release workflow that
-// `cloud-cf-deploy.yml` calls after admission; the pull-request entry workflow
-// still owns the credential-free preview frontend build. Both files are read so
-// no expression in either escapes the balance and realtime-flag contracts.
+// The Worker and frontend builds live in the reusable release workflow that
+// `cloud-cf-deploy.yml` calls after admission. The dispatch-only entry workflow
+// is still read so no expression in either file escapes the balance contract.
 const entrySource = read(".github/workflows/cloud-cf-deploy.yml");
 const workflowSource = read(".github/workflows/cloud-cf-release.yml");
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
-const entryWorkflow = Bun.YAML.parse(entrySource) as Workflow;
 const publishStep = workflow.jobs?.["deploy-api"]?.steps?.find(
   (step) => step.name === "Prepare Worker secrets for atomic deploy",
 );
@@ -281,8 +279,8 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "&& 'true' || 'false'",
     );
 
-    // Canonical production builds pin the voice UI on. Staging and pull-request
-    // previews continue to use the repository variable.
+    // Canonical production builds pin the voice UI on. Staging releases use the
+    // repository variable through the same reusable build path.
     const flagPattern =
       /VITE_VOICE_REALTIME_WS: \$\{\{[^}]*vars\.VOICE_REALTIME_WS_ENABLED[^}]*&& '1' \|\| '0' \}\}/g;
     const releaseRealtimeFlags = workflowSource.match(flagPattern) ?? [];
@@ -293,24 +291,10 @@ describe("Cloud CF realtime voice deploy contract", () => {
       expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
     }
 
-    const entryRealtimeFlags = entrySource.match(flagPattern) ?? [];
-    expect(entryRealtimeFlags.length).toBeGreaterThanOrEqual(1);
-    for (const flag of entryRealtimeFlags) {
-      expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
-    }
-    const previewBuild = entryWorkflow.jobs?.["build-pages"]?.steps?.find(
-      (step) => step.name === "Build consolidated frontend artifact",
-    );
-    expect(previewBuild?.env?.VITE_VOICE_REALTIME_WS).toBe(
-      entryRealtimeFlags[0]?.replace("VITE_VOICE_REALTIME_WS: ", ""),
-    );
-    expect(previewBuild?.env?.VITE_ENVIRONMENT).toBe("staging");
-    expect(previewBuild?.env?.VITE_API_URL).toBe(
-      "https://api-staging.eliza.app",
-    );
-    expect(previewBuild?.env?.VITE_APP_URL).toBe("https://staging.eliza.app");
-    expect(entryWorkflow.jobs?.["build-pages"]?.if).toContain(
-      "github.event_name == 'pull_request'",
+    expect(entrySource).not.toContain("Build consolidated frontend artifact");
+    expect(entrySource).not.toContain("VITE_VOICE_REALTIME_WS:");
+    expect(entrySource).toContain(
+      "uses: ./.github/workflows/cloud-cf-release.yml",
     );
   });
 

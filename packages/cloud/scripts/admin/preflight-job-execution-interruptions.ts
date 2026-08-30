@@ -1,8 +1,9 @@
 /**
- * Verifies the durable job-interruption schema before a provisioning worker
- * starts code that reads it. The check binds deployment to both PostgreSQL's
- * exact catalog shape and the migration file hash, so a journal-only success
- * or an incompatible same-named column fails closed.
+ * Verifies the provisioning worker's required sandbox inventory and durable
+ * job-interruption schema before code reads either relation. The check binds
+ * deployment to PostgreSQL's live catalog and the migration file hashes, so a
+ * missing sandbox relation, an incompatible guarded column, or a journal-only
+ * success fails closed.
  */
 
 import { createHash } from "node:crypto";
@@ -43,6 +44,10 @@ interface CatalogRow {
   attgenerated: string;
 }
 
+interface SandboxRelationRow {
+  agent_sandboxes_present: boolean;
+}
+
 interface JournalRow {
   created_at: string | number | bigint;
   hash: string;
@@ -80,6 +85,15 @@ function isCatalogRow(value: unknown): value is CatalogRow {
       value.default_expression === null) &&
     "attgenerated" in value &&
     typeof value.attgenerated === "string"
+  );
+}
+
+function isSandboxRelationRow(value: unknown): value is SandboxRelationRow {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "agent_sandboxes_present" in value &&
+    typeof value.agent_sandboxes_present === "boolean"
   );
 }
 
@@ -269,10 +283,30 @@ async function expectedMigrationHash(file: string): Promise<string> {
   return createHash("sha256").update(sql).digest("hex");
 }
 
-/** Verifies the column and journal row through PostgreSQL's real catalogs. */
+/** Verifies required relations, the guarded column, and journal rows. */
 export async function verifyJobExecutionInterruptionsCatalog(
   client: QueryClient,
 ): Promise<void> {
+  // Keep this runtime gate aligned with the provisioning relations declared in
+  // audit-production-railway-database-authority.ts. The audit is broader; this
+  // probe covers the exact relations read during worker startup and execution.
+  const sandboxRelation = await client.query(`
+    SELECT
+      to_regclass('public.agent_sandboxes') IS NOT NULL AS agent_sandboxes_present
+  `);
+  const sandboxPresence = sandboxRelation.rows[0];
+  if (
+    sandboxRelation.rows.length !== 1 ||
+    !isSandboxRelationRow(sandboxPresence)
+  ) {
+    throw new Error(
+      "public.agent_sandboxes catalog presence result is invalid",
+    );
+  }
+  if (!sandboxPresence.agent_sandboxes_present) {
+    throw new Error("public.agent_sandboxes relation is missing");
+  }
+
   const catalog = await client.query(`
     SELECT
       format_type(attribute.atttypid, attribute.atttypmod) AS data_type,

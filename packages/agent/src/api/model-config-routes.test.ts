@@ -9,8 +9,9 @@
  */
 import type http from "node:http";
 import { ModelType } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config";
+import { resetDevCloudEnvAuthorityForTests } from "../config/dev-cloud-env-authority";
 import { buildModelCatalog } from "./model-catalog";
 import { handleModelConfigRoutes } from "./model-config-routes";
 
@@ -19,6 +20,11 @@ const catalog = buildModelCatalog({
     throw new Error("ENOENT");
   },
   env: {} as NodeJS.ProcessEnv,
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  resetDevCloudEnvAuthorityForTests();
 });
 
 interface HarnessOptions {
@@ -189,6 +195,87 @@ describe("POST /api/models/config validation", () => {
 });
 
 describe("POST /api/models/config chat writes", () => {
+  it.each([
+    "staging-default",
+    "offline",
+    "staging-explicit",
+    "production",
+    "self-hosted",
+  ] as const)(
+    "rejects Cloud model writes under %s authority without side effects",
+    async (authority) => {
+      vi.stubEnv("ELIZA_DEV_SOURCE", "1");
+      vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", authority);
+      vi.stubEnv(
+        "ELIZAOS_CLOUD_BASE_URL",
+        authority === "production"
+          ? "https://api.eliza.app/api/v1"
+          : authority === "self-hosted"
+            ? "http://127.0.0.1:8787/api/v1"
+            : "https://api-staging.eliza.app/api/v1",
+      );
+      vi.stubEnv(
+        "ELIZAOS_CLOUD_API_KEY",
+        authority === "staging-default" || authority === "offline"
+          ? ""
+          : "launcher-key",
+      );
+      const config = {
+        env: {
+          ELIZAOS_CLOUD_LARGE_MODEL: "durable-cloud-model",
+          vars: { ELIZAOS_CLOUD_LARGE_MODEL: "durable-cloud-model" },
+        },
+      } as ElizaConfig;
+      const before = structuredClone(config);
+      const processEnv = {
+        ELIZAOS_CLOUD_LARGE_MODEL: "durable-process-model",
+      } as NodeJS.ProcessEnv;
+      const managerStart = vi.fn();
+      const { ctx, json, saveElizaConfig } = makeHarness(
+        "POST",
+        {
+          target: "large",
+          provider: "elizacloud",
+          model: "zai-glm-4.7",
+          effort: "high",
+        },
+        { config, processEnv, managerStart },
+      );
+
+      await handleModelConfigRoutes(ctx as never);
+
+      expect(responseOf(json).status).toBe(409);
+      expect(managerStart).not.toHaveBeenCalled();
+      expect(saveElizaConfig).not.toHaveBeenCalled();
+      expect(config).toEqual(before);
+      expect(processEnv).toEqual({
+        ELIZAOS_CLOUD_LARGE_MODEL: "durable-process-model",
+      });
+    },
+  );
+
+  it("still applies a direct-provider model write under Cloud authority", async () => {
+    vi.stubEnv("ELIZA_DEV_SOURCE", "1");
+    vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "staging-default");
+    vi.stubEnv(
+      "ELIZAOS_CLOUD_BASE_URL",
+      "https://api-staging.eliza.app/api/v1",
+    );
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "");
+    const { ctx, config, processEnv, saveElizaConfig, managerStart } =
+      makeHarness("POST", {
+        target: "large",
+        provider: "cerebras",
+        model: "gpt-oss-120b",
+      });
+
+    await handleModelConfigRoutes(ctx as never);
+
+    expect(managerStart).toHaveBeenCalledOnce();
+    expect(saveElizaConfig).toHaveBeenCalledWith(config);
+    expect(processEnv.OPENAI_LARGE_MODEL).toBe("gpt-oss-120b");
+  });
+
   it("writes both config seams + process.env and requests a restart", async () => {
     const { ctx, json, saveElizaConfig, managerStart, config, processEnv } =
       makeHarness("POST", {

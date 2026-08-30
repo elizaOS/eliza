@@ -10,7 +10,7 @@ import { logger } from "../../utils/logger";
 // Note: When ANTHROPIC_COT_BUDGET is set and model is Anthropic, temperature is silently dropped
 // per @ai-sdk/anthropic behavior. This service uses temperature for creative tweet generation.
 import { buildCharacterSystemPrompt, getCharacterPromptContext } from "../character-prompt-helper";
-import { creditsService } from "../credits";
+import { type GenerativeOperationContext, runFlatProviderOperation } from "../generative-operation";
 import { secretsService } from "../secrets";
 
 const TWITTER_API_KEY = process.env.TWITTER_API_KEY;
@@ -143,10 +143,10 @@ class TwitterAppAutomationService {
     organizationId: string,
     app: App,
     type: "promotional" | "engagement" | "educational" | "announcement" = "promotional",
+    operationContext?: GenerativeOperationContext,
   ): Promise<GeneratedTweet> {
-    // All throwable prep (character-context DB fetch, prompt build) runs BEFORE
-    // the deduction: nothing may throw between the charge and the refunding try,
-    // or the user is charged for a generation that never ran (#11685).
+    // Complete throwable prompt preparation before admission so validation or
+    // character lookup failures never reserve a provider operation.
     const config = app.twitter_automation as TwitterAutomationConfig | null;
     const vibeStyle = config?.vibeStyle ?? "professional yet approachable";
     const topics = config?.topics?.join(", ") ?? "";
@@ -223,63 +223,55 @@ Requirements:
 
 Return ONLY the tweet text, nothing else.`;
 
-    const deduction = await creditsService.deductCredits({
-      organizationId,
-      amount: TWITTER_POST_COST,
-      description: `Twitter AI tweet: ${app.name}`,
-      metadata: { appId: app.id, type: "twitter_tweet" },
-    });
-
-    if (!deduction.success) {
-      throw new Error(
-        `Insufficient credits for AI generation. Required: $${TWITTER_POST_COST.toFixed(4)}`,
-      );
+    if (!operationContext || operationContext.organizationId !== organizationId) {
+      throw new Error("Twitter AI generation requires trusted generative admission context");
     }
 
-    try {
-      const twModel = "anthropic/claude-sonnet-4.6";
-      // Note: Explicitly disable extended thinking (pass 0) for tweet generation.
-      // This is a background service that requires temperature control for creative output,
-      // and enabling CoT would silently drop temperature per @ai-sdk/anthropic behavior.
-      // Temperature 0.8 for varied, creative tweet content.
-      const result = await generateText({
-        model: getLanguageModel(twModel),
-        ...mergeAnthropicCotProviderOptions(twModel, process.env, 0),
-        temperature: 0.8,
-        prompt,
-      });
-      assertModelOutputComplete({
-        finishReason: result.finishReason,
+    const twModel = "anthropic/claude-sonnet-4.6";
+    return await runFlatProviderOperation(
+      operationContext,
+      {
         provider: "anthropic",
+        billingSource: "anthropic",
         model: twModel,
-      });
-      const text = result.text.trim();
-      if (text.length > 280) {
-        throw new ElizaError("[TwitterAutomation] Generated post exceeds Twitter's limit.", {
-          code: "TWITTER_POST_LENGTH_EXCEEDED",
-          context: { appId: app.id, length: text.length, maximumLength: 280 },
+        operation: "twitter_automation_tweet",
+        cost: TWITTER_POST_COST,
+        metadata: { appId: app.id, type: "twitter_tweet" },
+      },
+      async () => {
+        // Note: Explicitly disable extended thinking (pass 0) for tweet generation.
+        // This is a background service that requires temperature control for creative output,
+        // and enabling CoT would silently drop temperature per @ai-sdk/anthropic behavior.
+        // Temperature 0.8 for varied, creative tweet content.
+        const result = await generateText({
+          model: getLanguageModel(twModel),
+          ...mergeAnthropicCotProviderOptions(twModel, process.env, 0),
+          temperature: 0.8,
+          prompt,
         });
-      }
+        assertModelOutputComplete({
+          finishReason: result.finishReason,
+          provider: "anthropic",
+          model: twModel,
+        });
+        const text = result.text.trim();
+        if (text.length > 280) {
+          throw new ElizaError("[TwitterAutomation] Generated post exceeds Twitter's limit.", {
+            code: "TWITTER_POST_LENGTH_EXCEEDED",
+            context: { appId: app.id, length: text.length, maximumLength: 280 },
+          });
+        }
 
-      return {
-        text,
-        type,
-      };
-    } catch (error) {
-      await creditsService.refundCredits({
-        organizationId,
-        amount: TWITTER_POST_COST,
-        description: "Refund for failed Twitter AI generation",
-        metadata: { appId: app.id, type: "twitter_tweet_refund" },
-      });
-      throw error;
-    }
+        return { text, type };
+      },
+    );
   }
 
   async postAppTweet(
     organizationId: string,
     appId: string,
     tweetText?: string,
+    operationContext?: GenerativeOperationContext,
   ): Promise<{
     success: boolean;
     tweetId?: string;
@@ -298,7 +290,12 @@ Return ONLY the tweet text, nothing else.`;
 
     let text = tweetText;
     if (!text) {
-      const generated = await this.generateAppTweet(organizationId, app, "promotional");
+      const generated = await this.generateAppTweet(
+        organizationId,
+        app,
+        "promotional",
+        operationContext,
+      );
       text = generated.text;
     }
 

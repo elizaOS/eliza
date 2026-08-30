@@ -3,6 +3,7 @@
  * /api/media URL.
  */
 import type * as React from "react";
+import { Card } from "../components/ui/card";
 import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
 import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
 
@@ -111,13 +112,15 @@ export function ImageBackground({
           gets the same treatment. NO cosmetic bottom-floor gradient below it:
           the fixed wallpaper and mirrored root canvas make the image's own
           pixels own the home-indicator edge, lock-screen style. */}
-      <div
+      <Card
         aria-hidden="true"
         data-testid="app-background-image-scrim"
+        variant="transparentSquare"
+        surface="backgroundSubtle"
         className={
           imageUrl === "/wallpapers/canopy.webp"
-            ? "absolute inset-0 bg-bg/50 dark:bg-bg/15"
-            : "absolute inset-0 bg-bg/50"
+            ? "absolute inset-0 dark:opacity-30"
+            : "absolute inset-0"
         }
       />
     </div>

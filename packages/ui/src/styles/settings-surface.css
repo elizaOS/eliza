@@ -1,0 +1,101 @@
+/* Settings owns a quiet, neutral material stack independent of the app-wide
+   theme tokens. Keep these values scoped so the surface can evolve without
+   remapping shared --bg/--card/--border contracts. */
+.settings-surface {
+  --settings-canvas: #ebebeb;
+  --settings-panel: #fff;
+  --settings-card: #fff;
+  --settings-secondary: #f9f9f9;
+  --settings-foreground: rgba(29, 29, 31, 0.86);
+  --settings-muted: rgba(29, 29, 31, 0.65);
+  --settings-fill: rgba(29, 29, 31, 0.04);
+  --settings-fill-strong: rgba(29, 29, 31, 0.08);
+  --settings-hairline: rgba(29, 29, 31, 0.08);
+  --settings-border: rgba(29, 29, 31, 0.1);
+  --settings-ring: rgba(29, 29, 31, 0.2);
+  /* Bridge canonical primitives onto the settings material palette. Components
+     keep semantic Button/Card variants while this surface supplies its quiet,
+     neutral interpretation of those roles. */
+  --text-strong: var(--settings-foreground);
+  --muted: var(--settings-muted);
+  --bg-hover: var(--settings-fill);
+}
+
+:where([data-theme="dark"], .dark) .settings-surface,
+.settings-surface:where([data-theme="dark"], .dark) {
+  --settings-canvas: #141414;
+  --settings-panel: #1e1e1e;
+  --settings-card: #1e1e1e;
+  --settings-secondary: #262626;
+  --settings-foreground: rgba(255, 255, 255, 0.92);
+  --settings-muted: rgba(255, 255, 255, 0.48);
+  --settings-fill: rgba(255, 255, 255, 0.06);
+  --settings-fill-strong: rgba(255, 255, 255, 0.1);
+  --settings-hairline: rgba(255, 255, 255, 0.08);
+  --settings-border: rgba(255, 255, 255, 0.1);
+  --settings-ring: rgba(255, 255, 255, 0.26);
+}
+
+.settings-canvas,
+.settings-dotted-canvas {
+  color: var(--settings-foreground);
+  background-color: var(--settings-canvas);
+}
+
+.settings-panel {
+  color: var(--settings-foreground);
+  background-color: var(--settings-panel);
+}
+
+.settings-card {
+  color: var(--settings-foreground);
+  background-color: var(--settings-card);
+}
+
+.settings-secondary {
+  color: var(--settings-foreground);
+  background-color: var(--settings-secondary);
+}
+
+.settings-nav-item {
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  font-weight: 400;
+  border-radius: 0.5rem;
+}
+
+.settings-nav-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--settings-ring);
+}
+
+.settings-dotted-canvas {
+  background-image: radial-gradient(
+    circle,
+    var(--settings-hairline) 0.75px,
+    transparent 0.875px
+  );
+  background-position: 0 0;
+  background-size: 18px 18px;
+}
+
+/* Settings rows paint edge-to-edge inside one clipped group surface. Copy and
+   controls keep their 20px inset; separators use the same inset without
+   shrinking the interactive/hover target. */
+.settings-group-rows > [data-slot="settings-row"] {
+  position: relative;
+}
+
+.settings-group-rows
+  > [data-slot="settings-row"]
+  + [data-slot="settings-row"]::before {
+  position: absolute;
+  top: 0;
+  right: 1.25rem;
+  left: 1.25rem;
+  z-index: 1;
+  height: 1px;
+  pointer-events: none;
+  content: "";
+  background: var(--settings-hairline);
+}

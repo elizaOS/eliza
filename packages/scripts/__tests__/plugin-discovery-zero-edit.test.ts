@@ -141,7 +141,11 @@ describe("plugin discovery is zero-edit", () => {
       name: "@fixture/dependency",
       elizaos: {
         scripts: {
-          buildOnInstall: { sentinel: "dist/index.js", order: 10 },
+          buildOnInstall: {
+            sentinel: "dist/index.js",
+            order: 10,
+            script: "build:package",
+          },
         },
       },
     });
@@ -151,6 +155,7 @@ describe("plugin discovery is zero-edit", () => {
         dir: "packages/dependency",
         name: "@fixture/dependency",
         order: 10,
+        script: "build:package",
         sentinel: "dist/index.js",
       },
       {
