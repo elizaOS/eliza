@@ -1,5 +1,5 @@
 /**
- * Regression tests for the deduct-before-throwable-prep money leak in the
+ * Regression tests for the pre-provider throwable-preparation boundary in the
  * telegram/discord/twitter app-automation generators (#11685).
  *
  * The bug: `generateAnnouncement` / `generateReply` / `generateAppTweet`
@@ -10,9 +10,9 @@
  * schedulers/auto-reply loops, so a transient DB failure leaked a post-cost
  * per invocation.
  *
- * The fix hoists all throwable prep above the deduction, so these tests pin:
- * when the character-context fetch rejects, `deductCredits` is NEVER called
- * (no charge for a generation that never ran). Each test also asserts the
+ * The current contract keeps all throwable prep above paid admission, so these
+ * tests pin that a character-context failure never creates an admission lease.
+ * Each test also asserts the
  * rejection is the context error itself — proving the context fetch (the
  * armed hazard) is what fired, not some earlier failure.
  */
@@ -21,26 +21,12 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
-interface RecordedCall {
-  organizationId: string;
-  amount: number;
-  description: string;
-  metadata?: Record<string, unknown>;
-}
+const admissionCalls: unknown[] = [];
 
-const deductCalls: RecordedCall[] = [];
-const refundCalls: RecordedCall[] = [];
-
-mock.module("../credits", () => ({
-  creditsService: {
-    deductCredits: async (params: RecordedCall) => {
-      deductCalls.push(params);
-      return { success: true, newBalance: 100, transaction: null };
-    },
-    refundCredits: async (params: RecordedCall) => {
-      refundCalls.push(params);
-      return { transaction: {}, newBalance: 100 };
-    },
+mock.module("../organization-inference-admission", () => ({
+  admitOrganizationInference: async (params: unknown) => {
+    admissionCalls.push(params);
+    throw new Error("admission should not be reached");
   },
 }));
 
@@ -74,21 +60,19 @@ function makeApp(
 }
 
 beforeEach(() => {
-  deductCalls.length = 0;
-  refundCalls.length = 0;
+  admissionCalls.length = 0;
 });
 
-describe("app-automation generators never charge before throwable prep (#11685)", () => {
-  test("telegram generateAnnouncement: context fetch rejects -> no deduction taken", async () => {
+describe("app-automation generators prepare prompts before admission (#11685)", () => {
+  test("telegram generateAnnouncement: context fetch rejects -> no admission", async () => {
     await expect(
       telegramAppAutomationService.generateAnnouncement(ORG_ID, makeApp("telegram_automation")),
     ).rejects.toThrow(CONTEXT_DB_ERROR);
 
-    expect(deductCalls).toHaveLength(0);
-    expect(refundCalls).toHaveLength(0);
+    expect(admissionCalls).toHaveLength(0);
   });
 
-  test("telegram generateReply: context fetch rejects -> no deduction taken", async () => {
+  test("telegram generateReply: context fetch rejects -> no admission", async () => {
     await expect(
       telegramAppAutomationService.generateReply(
         ORG_ID,
@@ -98,20 +82,18 @@ describe("app-automation generators never charge before throwable prep (#11685)"
       ),
     ).rejects.toThrow(CONTEXT_DB_ERROR);
 
-    expect(deductCalls).toHaveLength(0);
-    expect(refundCalls).toHaveLength(0);
+    expect(admissionCalls).toHaveLength(0);
   });
 
-  test("discord generateAnnouncement: context fetch rejects -> no deduction taken", async () => {
+  test("discord generateAnnouncement: context fetch rejects -> no admission", async () => {
     await expect(
       discordAppAutomationService.generateAnnouncement(ORG_ID, makeApp("discord_automation")),
     ).rejects.toThrow(CONTEXT_DB_ERROR);
 
-    expect(deductCalls).toHaveLength(0);
-    expect(refundCalls).toHaveLength(0);
+    expect(admissionCalls).toHaveLength(0);
   });
 
-  test("twitter generateAppTweet: context fetch rejects -> no deduction taken", async () => {
+  test("twitter generateAppTweet: context fetch rejects -> no admission", async () => {
     await expect(
       twitterAppAutomationService.generateAppTweet(
         ORG_ID,
@@ -120,7 +102,6 @@ describe("app-automation generators never charge before throwable prep (#11685)"
       ),
     ).rejects.toThrow(CONTEXT_DB_ERROR);
 
-    expect(deductCalls).toHaveLength(0);
-    expect(refundCalls).toHaveLength(0);
+    expect(admissionCalls).toHaveLength(0);
   });
 });

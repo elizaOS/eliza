@@ -37,14 +37,14 @@ const MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS_SQL = sql.raw(
   String(MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS),
 );
 
-interface ScheduleEnrollmentCandidateRow {
+interface ScheduleEnrollmentSourceRow {
   id: string;
   organization_id: string;
-  node_history_id: string;
   activation_generation: string;
   activation_lifecycle_revision: string;
   lifecycle_revision: string;
   activation_node_id: string;
+  activation_boot_id: string;
   activation_container_id: string;
   source_provider_handle: string;
   source_image_digest: string;
@@ -55,8 +55,20 @@ interface ScheduleEnrollmentCandidateRow {
   base_priority: 1 | 3;
 }
 
-interface ScheduleEnrollmentCandidate extends ScheduleEnrollmentCandidateRow {
+interface ScheduleEnrollmentScannedSource extends ScheduleEnrollmentSourceRow {
   cohort_ordinal: number;
+}
+
+interface ScheduleEnrollmentCandidate extends ScheduleEnrollmentScannedSource {
+  node_record_id: string;
+  node_history_id: string;
+}
+
+interface ScheduleEnrollmentFrontierResult {
+  candidates: ScheduleEnrollmentSourceRow[];
+  safe_watermark_due_at: string;
+  safe_watermark_id: string;
+  sources_complete: boolean;
 }
 
 export interface AgentBackupScheduleAdmissionEnrollmentSummary {
@@ -265,20 +277,23 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
       );
     }
 
-    // Reuse any unsettled authority for the same sandbox activation when a
-    // later cohort changes the RPO. Once it settles, the exact old due remains
-    // a replay fence while a genuinely new due may be enrolled.
-    const candidateRows = await sqlRows<ScheduleEnrollmentCandidateRow>(
+    // Each source ordering gets an independent bounded raw probe. Cross-order
+    // classification happens only after LIMIT, so a population belonging to
+    // the other ordering cannot turn an index probe into an unbounded scan.
+    // The minimum Nth-row watermark is the prefix all three probes have fully
+    // visited; merging only that prefix preserves the global `(due_at, id)`
+    // order without serializing source classes or starving active RPO work.
+    const [frontier] = await sqlRows<ScheduleEnrollmentFrontierResult>(
       tx,
       sql`
         WITH eligible AS NOT MATERIALIZED (
           SELECT sandbox.id,
             sandbox.organization_id,
-            source_occurrence.id AS node_history_id,
             sandbox.activation_generation,
             sandbox.activation_lifecycle_revision,
             sandbox.lifecycle_revision,
             sandbox.activation_node_id,
+            sandbox.activation_boot_id,
             sandbox.activation_container_id,
             sandbox.sandbox_id AS source_provider_handle,
             sandbox.activation_image_digest AS source_image_digest,
@@ -292,14 +307,254 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
               )
             ) AS rpo_anchor_at
           FROM ${agentSandboxes} AS sandbox
-          JOIN ${organizations} AS account_org
-            ON account_org.id = sandbox.organization_id
-            AND account_org.account_lifecycle_state = 'active'
-            AND account_org.is_active
-            AND account_org.account_deletion_request_id IS NULL
+          WHERE (get_byte(uuid_send(sandbox.id), 0) % 64) = ${shard.shard_id}
+            AND sandbox.status = 'running'
+            AND sandbox.pool_status IS NULL
+            AND sandbox.execution_tier IN ('dedicated-lazy', 'dedicated-always', 'custom')
+            AND sandbox.deleted_at IS NULL
+            AND sandbox.deletion_attempt_id IS NULL
+            AND sandbox.activation_phase = 'active'
+            AND sandbox.activation_generation IS NOT NULL
+            AND sandbox.activation_lifecycle_revision IS NOT NULL
+            AND sandbox.lifecycle_revision = sandbox.activation_lifecycle_revision
+            AND sandbox.activation_receipt_hash ~ '^[0-9a-f]{64}$'
+            AND sandbox.activation_container_id ~ '^[0-9a-f]{64}$'
+            AND sandbox.sandbox_id IS NOT NULL
+            AND btrim(sandbox.sandbox_id) <> ''
+            AND sandbox.sandbox_id = btrim(sandbox.sandbox_id)
+            AND sandbox.sandbox_id !~ '[[:cntrl:]]'
+            AND octet_length(sandbox.sandbox_id) <= 512
+            AND sandbox.sandbox_id <> sandbox.activation_container_id
+            AND sandbox.activation_node_id IS NOT NULL
+            AND sandbox.activation_boot_id IS NOT NULL
+            AND sandbox.activation_image_digest ~ '^sha256:[0-9a-f]{64}$'
+            AND sandbox.activation_authority_published_at IS NOT NULL
+            AND sandbox.activation_dispatched_at IS NOT NULL
+            AND sandbox.activation_completed_at IS NOT NULL
+        ), initial_raw AS MATERIALIZED (
+          SELECT eligible.*,
+            eligible.activation_completed_at AS potential_due_at,
+            TRUE AS partition_eligible
+          FROM eligible
+          WHERE eligible.next_backup_at IS NULL
+            AND eligible.activation_completed_at <= ${shard.cutoff_at}::timestamptz
+            AND (
+              ${shard.cursor_due_at}::timestamptz IS NULL
+              OR (eligible.activation_completed_at, eligible.id)
+                > (${shard.cursor_due_at}::timestamptz, ${shard.cursor_id}::uuid)
+            )
+          ORDER BY eligible.activation_completed_at, eligible.id
+          LIMIT ${limit + 1}
+        ), scheduled_raw AS MATERIALIZED (
+          SELECT eligible.*,
+            eligible.next_backup_at AS potential_due_at,
+            eligible.next_backup_at <= eligible.rpo_anchor_at
+              + (${cohortRpoMs} * INTERVAL '1 millisecond') AS partition_eligible
+          FROM eligible
+          WHERE eligible.next_backup_at IS NOT NULL
+            AND eligible.next_backup_at <= ${shard.cutoff_at}::timestamptz
+            AND (
+              ${shard.cursor_due_at}::timestamptz IS NULL
+              OR (eligible.next_backup_at, eligible.id)
+                > (${shard.cursor_due_at}::timestamptz, ${shard.cursor_id}::uuid)
+            )
+          ORDER BY eligible.next_backup_at, eligible.id
+          LIMIT ${limit + 1}
+        ), rpo_raw AS MATERIALIZED (
+          SELECT eligible.*,
+            eligible.rpo_anchor_at
+              + (${cohortRpoMs} * INTERVAL '1 millisecond') AS potential_due_at,
+            eligible.next_backup_at > eligible.rpo_anchor_at
+              + (${cohortRpoMs} * INTERVAL '1 millisecond') AS partition_eligible
+          FROM eligible
+          WHERE eligible.next_backup_at IS NOT NULL
+            AND eligible.rpo_anchor_at <= ${shard.cutoff_at}::timestamptz
+              - (${cohortRpoMs} * INTERVAL '1 millisecond')
+            AND (
+              ${shard.cursor_due_at}::timestamptz IS NULL
+              OR (eligible.rpo_anchor_at, eligible.id) > (
+                ${shard.cursor_due_at}::timestamptz
+                  - (${cohortRpoMs} * INTERVAL '1 millisecond'),
+                ${shard.cursor_id}::uuid
+              )
+            )
+          ORDER BY eligible.rpo_anchor_at, eligible.id
+          LIMIT ${limit + 1}
+        ), branch_state AS (
+          SELECT count(*) <= ${limit} AS complete,
+            CASE WHEN count(*) > ${limit} THEN (
+              SELECT raw.potential_due_at FROM initial_raw AS raw
+              ORDER BY raw.potential_due_at, raw.id
+              OFFSET ${limit - 1} LIMIT 1
+            ) ELSE ${shard.cutoff_at}::timestamptz END AS watermark_due_at,
+            CASE WHEN count(*) > ${limit} THEN (
+              SELECT raw.id FROM initial_raw AS raw
+              ORDER BY raw.potential_due_at, raw.id
+              OFFSET ${limit - 1} LIMIT 1
+            ) ELSE 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid END AS watermark_id
+          FROM initial_raw
+          UNION ALL
+          SELECT count(*) <= ${limit} AS complete,
+            CASE WHEN count(*) > ${limit} THEN (
+              SELECT raw.potential_due_at FROM scheduled_raw AS raw
+              ORDER BY raw.potential_due_at, raw.id
+              OFFSET ${limit - 1} LIMIT 1
+            ) ELSE ${shard.cutoff_at}::timestamptz END AS watermark_due_at,
+            CASE WHEN count(*) > ${limit} THEN (
+              SELECT raw.id FROM scheduled_raw AS raw
+              ORDER BY raw.potential_due_at, raw.id
+              OFFSET ${limit - 1} LIMIT 1
+            ) ELSE 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid END AS watermark_id
+          FROM scheduled_raw
+          UNION ALL
+          SELECT count(*) <= ${limit} AS complete,
+            CASE WHEN count(*) > ${limit} THEN (
+              SELECT raw.potential_due_at FROM rpo_raw AS raw
+              ORDER BY raw.potential_due_at, raw.id
+              OFFSET ${limit - 1} LIMIT 1
+            ) ELSE ${shard.cutoff_at}::timestamptz END AS watermark_due_at,
+            CASE WHEN count(*) > ${limit} THEN (
+              SELECT raw.id FROM rpo_raw AS raw
+              ORDER BY raw.potential_due_at, raw.id
+              OFFSET ${limit - 1} LIMIT 1
+            ) ELSE 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid END AS watermark_id
+          FROM rpo_raw
+        ), safe_watermark AS (
+          SELECT state.watermark_due_at, state.watermark_id
+          FROM branch_state AS state
+          ORDER BY state.watermark_due_at, state.watermark_id
+          LIMIT 1
+        ), completion AS (
+          SELECT bool_and(state.complete) AS sources_complete
+          FROM branch_state AS state
+        ), valid AS (
+          SELECT * FROM initial_raw WHERE partition_eligible
+          UNION ALL
+          SELECT * FROM scheduled_raw WHERE partition_eligible
+          UNION ALL
+          SELECT * FROM rpo_raw WHERE partition_eligible
+        ), selected AS (
+          SELECT valid.*
+          FROM valid
+          CROSS JOIN safe_watermark AS watermark
+          WHERE (valid.potential_due_at, valid.id)
+            <= (watermark.watermark_due_at, watermark.watermark_id)
+          ORDER BY valid.potential_due_at, valid.id
+          LIMIT ${limit + 1}
+        )
+        SELECT COALESCE(
+            jsonb_agg(
+              jsonb_build_object(
+                'id', selected.id,
+                'organization_id', selected.organization_id,
+                'activation_generation', selected.activation_generation,
+                'activation_lifecycle_revision', selected.activation_lifecycle_revision::text,
+                'lifecycle_revision', selected.lifecycle_revision::text,
+                'activation_node_id', selected.activation_node_id,
+                'activation_boot_id', selected.activation_boot_id::text,
+                'activation_container_id', selected.activation_container_id,
+                'source_provider_handle', selected.source_provider_handle,
+                'source_image_digest', selected.source_image_digest,
+                'source_rpo_ms', ${cohortRpoMs}::integer,
+                'source_due_at', selected.potential_due_at::text,
+                'rpo_deadline_at', (
+                  selected.rpo_anchor_at
+                    + (${cohortRpoMs} * INTERVAL '1 millisecond')
+                )::text,
+                'priority_class', CASE WHEN selected.rpo_anchor_at
+                  + (${cohortRpoMs} * INTERVAL '1 millisecond')
+                    <= ${shard.cutoff_at}::timestamptz
+                  THEN 'active_rpo' ELSE 'periodic_capture' END,
+                'base_priority', CASE WHEN selected.rpo_anchor_at
+                  + (${cohortRpoMs} * INTERVAL '1 millisecond')
+                    <= ${shard.cutoff_at}::timestamptz
+                  THEN 1 ELSE 3 END
+              ) ORDER BY selected.potential_due_at, selected.id
+            ) FILTER (WHERE selected.id IS NOT NULL),
+            '[]'::jsonb
+          ) AS candidates,
+          watermark.watermark_due_at::text AS safe_watermark_due_at,
+          watermark.watermark_id::text AS safe_watermark_id,
+          completion.sources_complete
+        FROM safe_watermark AS watermark
+        CROSS JOIN completion
+        LEFT JOIN selected ON TRUE
+        GROUP BY watermark.watermark_due_at, watermark.watermark_id,
+          completion.sources_complete
+      `,
+    );
+    if (!frontier) {
+      throw new Error("Backup admission enrollment frontier returned no watermark");
+    }
+    const candidateRows = frontier.candidates;
+    const hasMoreCandidates = candidateRows.length > limit;
+    const batchRows = candidateRows.slice(0, limit);
+    const cohortComplete = frontier.sources_complete && !hasMoreCandidates;
+    const cursorBase = requireCohortOrdinalCapacity(shard.cursor_ordinal, batchRows.length);
+    const cursorBatch: ScheduleEnrollmentScannedSource[] = batchRows.map((candidate, index) => ({
+      ...candidate,
+      cohort_ordinal: cursorBase + index + 1,
+    }));
+    let hydratedCandidates: ScheduleEnrollmentCandidate[] = [];
+    if (cursorBatch.length > 0) {
+      const sourceValues = sql.join(
+        cursorBatch.map(
+          (candidate) => sql`(
+            ${candidate.id}::uuid,
+            ${candidate.organization_id}::uuid,
+            ${candidate.activation_generation}::uuid,
+            ${candidate.activation_lifecycle_revision}::bigint,
+            ${candidate.lifecycle_revision}::bigint,
+            ${candidate.activation_node_id}::text,
+            ${candidate.activation_boot_id}::uuid,
+            ${candidate.activation_container_id}::text,
+            ${candidate.source_provider_handle}::text,
+            ${candidate.source_image_digest}::text,
+            ${candidate.source_rpo_ms}::integer,
+            ${candidate.source_due_at}::timestamptz,
+            ${candidate.rpo_deadline_at}::timestamptz,
+            ${candidate.priority_class}::text,
+            ${candidate.base_priority}::smallint,
+            ${candidate.cohort_ordinal}::integer
+          )`,
+        ),
+        sql`, `,
+      );
+      // Reuse any unsettled authority for the same sandbox activation when a
+      // later cohort changes the RPO. Once it settles, the exact old due stays
+      // a replay fence while a genuinely new due may be enrolled.
+      hydratedCandidates = await sqlRows<ScheduleEnrollmentCandidate>(
+        tx,
+        sql`
+          WITH candidate (
+            id, organization_id, activation_generation,
+            activation_lifecycle_revision, lifecycle_revision,
+            activation_node_id, activation_boot_id, activation_container_id,
+            source_provider_handle, source_image_digest, source_rpo_ms,
+            source_due_at, rpo_deadline_at, priority_class, base_priority,
+            cohort_ordinal
+          ) AS (VALUES ${sourceValues})
+          SELECT candidate.id, candidate.organization_id,
+            source_node.id AS node_record_id,
+            source_occurrence.id AS node_history_id,
+            candidate.activation_generation,
+            candidate.activation_lifecycle_revision::text AS activation_lifecycle_revision,
+            candidate.lifecycle_revision::text AS lifecycle_revision,
+            candidate.activation_node_id,
+            candidate.activation_boot_id::text AS activation_boot_id,
+            candidate.activation_container_id,
+            candidate.source_provider_handle,
+            candidate.source_image_digest,
+            candidate.source_rpo_ms,
+            candidate.source_due_at::text AS source_due_at,
+            candidate.rpo_deadline_at::text AS rpo_deadline_at,
+            candidate.priority_class,
+            candidate.base_priority,
+            candidate.cohort_ordinal
+          FROM candidate
           JOIN ${dockerNodes} AS source_node
-            ON source_node.node_id = sandbox.activation_node_id
-            AND source_node.node_incarnation = sandbox.activation_boot_id
+            ON source_node.node_id = candidate.activation_node_id
+            AND source_node.node_incarnation = candidate.activation_boot_id
             AND source_node.node_incarnation IS NOT NULL
             AND source_node.current_node_history_id IS NOT NULL
             AND source_node.infrastructure_provider = 'hetzner'
@@ -318,214 +573,104 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
             AND source_occurrence.provider_server_id
               IS NOT DISTINCT FROM source_node.provider_server_id
             AND source_occurrence.host_key_fingerprint = source_node.host_key_fingerprint
-          WHERE agent_backup_admission_expected_shard(sandbox.id) = ${shard.shard_id}
-            AND agent_backup_admission_source_visible(
+          WHERE agent_backup_admission_source_visible(
               source_node.backup_admission_xid,
               ${shard.snapshot}::pg_snapshot
             )
-            AND agent_backup_admission_source_visible(
-              sandbox.backup_admission_xid,
-              ${shard.snapshot}::pg_snapshot
+            AND NOT EXISTS (
+              SELECT 1 FROM ${agentBackupAdmissionWork} AS outstanding
+              WHERE outstanding.work_kind = 'schedule_capture'
+                AND outstanding.sandbox_id = candidate.id
+                AND outstanding.source_activation_generation = candidate.activation_generation
+                AND outstanding.source_lifecycle_revision = candidate.activation_lifecycle_revision
+                AND outstanding.state <> 'settled'
             )
-            AND sandbox.status = 'running'
-            AND sandbox.pool_status IS NULL
-            AND sandbox.execution_tier <> 'shared'
-            AND sandbox.activation_phase = 'active'
-            AND sandbox.activation_generation IS NOT NULL
-            AND sandbox.activation_lifecycle_revision IS NOT NULL
-            AND sandbox.lifecycle_revision = sandbox.activation_lifecycle_revision
-            AND sandbox.activation_receipt_hash ~ '^[0-9a-f]{64}$'
-            AND sandbox.activation_container_id ~ '^[0-9a-f]{64}$'
-            AND sandbox.sandbox_id IS NOT NULL
-            AND btrim(sandbox.sandbox_id) <> ''
-            AND sandbox.sandbox_id = btrim(sandbox.sandbox_id)
-            AND sandbox.sandbox_id !~ '[[:cntrl:]]'
-            AND octet_length(sandbox.sandbox_id) <= 512
-            AND sandbox.sandbox_id <> sandbox.activation_container_id
-            AND sandbox.activation_node_id IS NOT NULL
-            AND sandbox.activation_image_digest ~ '^sha256:[0-9a-f]{64}$'
-            AND sandbox.activation_authority_published_at IS NOT NULL
-            AND sandbox.activation_dispatched_at IS NOT NULL
-            AND sandbox.activation_completed_at IS NOT NULL
-        ), frontier AS (
-          (
-            SELECT eligible.*, eligible.activation_completed_at AS source_due_at
-            FROM eligible
-            WHERE eligible.next_backup_at IS NULL
-              AND eligible.activation_completed_at <= ${shard.cutoff_at}::timestamptz
-              AND (
-                ${shard.cursor_due_at}::timestamptz IS NULL
-                OR (eligible.activation_completed_at, eligible.id)
-                  > (${shard.cursor_due_at}::timestamptz, ${shard.cursor_id}::uuid)
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM ${agentBackupAdmissionWork} AS outstanding
-                WHERE outstanding.work_kind = 'schedule_capture'
-                  AND outstanding.sandbox_id = eligible.id
-                  AND outstanding.source_activation_generation = eligible.activation_generation
-                  AND outstanding.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND outstanding.state <> 'settled'
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM ${agentBackupAdmissionWork} AS replay
-                WHERE replay.work_kind = 'schedule_capture'
-                  AND replay.sandbox_id = eligible.id
-                  AND replay.node_history_id = eligible.node_history_id
-                  AND replay.source_activation_generation = eligible.activation_generation
-                  AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND replay.source_due_at = eligible.activation_completed_at
-                  AND NOT (
-                    replay.state = 'settled'
-                    AND replay.settled_reason = 'RETRY_EXHAUSTED'
-                    AND replay.attempts = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS_SQL}
-                  )
-              )
-            ORDER BY eligible.activation_completed_at, eligible.id
-            LIMIT ${limit + 1}
-          )
-          UNION ALL
-          (
-            SELECT eligible.*, eligible.next_backup_at AS source_due_at
-            FROM eligible
-            WHERE eligible.next_backup_at IS NOT NULL
-              AND eligible.next_backup_at <= eligible.rpo_anchor_at
-                + (${cohortRpoMs} * INTERVAL '1 millisecond')
-              AND eligible.next_backup_at <= ${shard.cutoff_at}::timestamptz
-              AND (
-                ${shard.cursor_due_at}::timestamptz IS NULL
-                OR (eligible.next_backup_at, eligible.id)
-                  > (${shard.cursor_due_at}::timestamptz, ${shard.cursor_id}::uuid)
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM ${agentBackupAdmissionWork} AS outstanding
-                WHERE outstanding.work_kind = 'schedule_capture'
-                  AND outstanding.sandbox_id = eligible.id
-                  AND outstanding.source_activation_generation = eligible.activation_generation
-                  AND outstanding.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND outstanding.state <> 'settled'
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM ${agentBackupAdmissionWork} AS replay
-                WHERE replay.work_kind = 'schedule_capture'
-                  AND replay.sandbox_id = eligible.id
-                  AND replay.node_history_id = eligible.node_history_id
-                  AND replay.source_activation_generation = eligible.activation_generation
-                  AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND replay.source_due_at = eligible.next_backup_at
-                  AND NOT (
-                    replay.state = 'settled'
-                    AND replay.settled_reason = 'RETRY_EXHAUSTED'
-                    AND replay.attempts = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS_SQL}
-                  )
-              )
-            ORDER BY eligible.next_backup_at, eligible.id
-            LIMIT ${limit + 1}
-          )
-          UNION ALL
-          (
-            SELECT eligible.*,
-              eligible.rpo_anchor_at
-                + (${cohortRpoMs} * INTERVAL '1 millisecond') AS source_due_at
-            FROM eligible
-            WHERE eligible.next_backup_at IS NOT NULL
-              AND eligible.next_backup_at > eligible.rpo_anchor_at
-                + (${cohortRpoMs} * INTERVAL '1 millisecond')
-              AND eligible.rpo_anchor_at
-                + (${cohortRpoMs} * INTERVAL '1 millisecond')
-                <= ${shard.cutoff_at}::timestamptz
-              AND (
-                ${shard.cursor_due_at}::timestamptz IS NULL
-                OR (
-                  eligible.rpo_anchor_at
-                    + (${cohortRpoMs} * INTERVAL '1 millisecond'),
-                  eligible.id
-                ) > (${shard.cursor_due_at}::timestamptz, ${shard.cursor_id}::uuid)
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM ${agentBackupAdmissionWork} AS outstanding
-                WHERE outstanding.work_kind = 'schedule_capture'
-                  AND outstanding.sandbox_id = eligible.id
-                  AND outstanding.source_activation_generation = eligible.activation_generation
-                  AND outstanding.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND outstanding.state <> 'settled'
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM ${agentBackupAdmissionWork} AS replay
-                WHERE replay.work_kind = 'schedule_capture'
-                  AND replay.sandbox_id = eligible.id
-                  AND replay.node_history_id = eligible.node_history_id
-                  AND replay.source_activation_generation = eligible.activation_generation
-                  AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND replay.source_due_at = eligible.rpo_anchor_at
-                    + (${cohortRpoMs} * INTERVAL '1 millisecond')
-                  AND NOT (
-                    replay.state = 'settled'
-                    AND replay.settled_reason = 'RETRY_EXHAUSTED'
-                    AND replay.attempts = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS_SQL}
-                  )
-              )
-            ORDER BY eligible.rpo_anchor_at, eligible.id
-            LIMIT ${limit + 1}
-          )
-        )
-        SELECT frontier.id,
-          frontier.organization_id,
-          frontier.node_history_id,
-          frontier.activation_generation,
-          frontier.activation_lifecycle_revision::text AS activation_lifecycle_revision,
-          frontier.lifecycle_revision::text AS lifecycle_revision,
-          frontier.activation_node_id,
-          frontier.activation_container_id,
-          frontier.source_provider_handle,
-          frontier.source_image_digest,
-          ${cohortRpoMs}::integer AS source_rpo_ms,
-          frontier.source_due_at::text AS source_due_at,
-          (
-            frontier.rpo_anchor_at
-              + (${cohortRpoMs} * INTERVAL '1 millisecond')
-          )::text AS rpo_deadline_at,
-          CASE WHEN frontier.rpo_anchor_at
-            + (${cohortRpoMs} * INTERVAL '1 millisecond')
-              <= ${shard.cutoff_at}::timestamptz
-            THEN 'active_rpo'
-            ELSE 'periodic_capture'
-          END AS priority_class,
-          CASE WHEN frontier.rpo_anchor_at
-            + (${cohortRpoMs} * INTERVAL '1 millisecond')
-              <= ${shard.cutoff_at}::timestamptz
-            THEN 1
-            ELSE 3
-          END AS base_priority
-        FROM frontier
-        ORDER BY frontier.source_due_at, frontier.id
-        LIMIT ${limit + 1}
-      `,
-    );
-    const hasMore = candidateRows.length > limit;
-    const batchRows = candidateRows.slice(0, limit);
-    const cursorBase = requireCohortOrdinalCapacity(shard.cursor_ordinal, batchRows.length);
-    const cursorBatch: ScheduleEnrollmentCandidate[] = batchRows.map((candidate, index) => ({
-      ...candidate,
-      cohort_ordinal: cursorBase + index + 1,
-    }));
-    const admissibleOrganizations = await lockAdmissibleOrganizations(tx, cursorBatch);
-    const batch = cursorBatch.filter(({ organization_id }) =>
+            AND NOT EXISTS (
+              SELECT 1 FROM ${agentBackupAdmissionWork} AS replay
+              WHERE replay.work_kind = 'schedule_capture'
+                AND replay.sandbox_id = candidate.id
+                AND replay.node_history_id = source_occurrence.id
+                AND replay.source_activation_generation = candidate.activation_generation
+                AND replay.source_lifecycle_revision = candidate.activation_lifecycle_revision
+                AND replay.source_due_at = candidate.source_due_at
+                AND NOT (
+                  replay.state = 'settled'
+                  AND replay.settled_reason = 'RETRY_EXHAUSTED'
+                  AND replay.attempts = ${MAX_AGENT_BACKUP_ADMISSION_ATTEMPTS_SQL}
+                )
+            )
+          ORDER BY candidate.cohort_ordinal
+        `,
+      );
+    }
+    const admissibleOrganizations = await lockAdmissibleOrganizations(tx, hydratedCandidates);
+    const batch = hydratedCandidates.filter(({ organization_id }) =>
       admissibleOrganizations.has(organization_id),
     );
     let enrolled = 0;
     let queued = 0;
 
     if (batch.length > 0) {
+      const sourceNodeLockValues = sql.join(
+        [...new Map(batch.map((candidate) => [candidate.node_record_id, candidate])).values()]
+          .sort((left, right) => left.node_record_id.localeCompare(right.node_record_id))
+          .map(
+            (candidate) => sql`(
+              ${candidate.node_record_id}::uuid,
+              ${candidate.activation_node_id}::text,
+              ${candidate.activation_boot_id}::uuid,
+              ${candidate.node_history_id}::uuid
+            )`,
+          ),
+        sql`, `,
+      );
+      // Hold every exact source occurrence through sandbox mutation and work
+      // publication. A concurrent reboot must commit first, after which this
+      // statement rechecks the new row version and excludes the stale source.
+      // UUID ordering keeps multi-node batches deadlock-stable.
+      await tx.execute(sql`
+        WITH expected_source (
+          node_record_id, node_id, node_incarnation, node_history_id
+        ) AS (VALUES ${sourceNodeLockValues})
+        SELECT source_node.id
+        FROM expected_source
+        JOIN ${dockerNodes} AS source_node
+          ON source_node.id = expected_source.node_record_id
+          AND source_node.node_id = expected_source.node_id
+          AND source_node.node_incarnation = expected_source.node_incarnation
+          AND source_node.current_node_history_id = expected_source.node_history_id
+          AND source_node.infrastructure_provider = 'hetzner'
+          AND btrim(source_node.host_key_fingerprint) <> ''
+        JOIN ${agentNodeIncarnationHistories} AS source_occurrence
+          ON source_occurrence.id = expected_source.node_history_id
+          AND source_occurrence.docker_node_record_id = source_node.id
+          AND source_occurrence.node_id = source_node.node_id
+          AND source_occurrence.node_incarnation = source_node.node_incarnation
+          AND source_occurrence.fleet_kind = source_node.fleet_kind
+          AND source_occurrence.infrastructure_provider = source_node.infrastructure_provider
+          AND source_occurrence.provider_server_id
+            IS NOT DISTINCT FROM source_node.provider_server_id
+          AND source_occurrence.host_key_fingerprint = source_node.host_key_fingerprint
+        WHERE agent_backup_admission_source_visible(
+          source_node.backup_admission_xid,
+          ${shard.snapshot}::pg_snapshot
+        )
+        ORDER BY source_node.id
+        FOR NO KEY UPDATE OF source_node
+      `);
+
       const candidateValues = sql.join(
         batch.map(
           (candidate) => sql`(
             ${candidate.id}::uuid,
             ${candidate.organization_id}::uuid,
+            ${candidate.node_record_id}::uuid,
             ${candidate.node_history_id}::uuid,
             ${candidate.activation_generation}::uuid,
             ${candidate.activation_lifecycle_revision}::bigint,
             ${candidate.lifecycle_revision}::bigint,
             ${candidate.activation_node_id}::text,
+            ${candidate.activation_boot_id}::uuid,
             ${candidate.activation_container_id}::text,
             ${candidate.source_provider_handle}::text,
             ${candidate.source_image_digest}::text,
@@ -558,9 +703,9 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
         tx,
         sql`
           WITH candidate (
-            id, organization_id, node_history_id, activation_generation,
+            id, organization_id, node_record_id, node_history_id, activation_generation,
             activation_lifecycle_revision, lifecycle_revision,
-            activation_node_id, activation_container_id,
+            activation_node_id, activation_boot_id, activation_container_id,
             source_provider_handle, source_image_digest, source_rpo_ms,
             source_due_at, rpo_deadline_at,
             priority_class, base_priority, cohort_ordinal
@@ -571,6 +716,9 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
           FROM candidate
           WHERE sandbox.id = candidate.id
             AND sandbox.organization_id = candidate.organization_id
+            AND sandbox.execution_tier IN ('dedicated-lazy', 'dedicated-always', 'custom')
+            AND sandbox.deleted_at IS NULL
+            AND sandbox.deletion_attempt_id IS NULL
             AND agent_backup_admission_source_visible(
               sandbox.backup_admission_xid,
               ${shard.snapshot}::pg_snapshot
@@ -579,6 +727,7 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
             AND sandbox.activation_lifecycle_revision = candidate.activation_lifecycle_revision
             AND sandbox.lifecycle_revision = candidate.lifecycle_revision
             AND sandbox.activation_node_id = candidate.activation_node_id
+            AND sandbox.activation_boot_id = candidate.activation_boot_id
             AND sandbox.activation_container_id = candidate.activation_container_id
             AND sandbox.sandbox_id = candidate.source_provider_handle
             AND sandbox.activation_image_digest = candidate.source_image_digest
@@ -615,11 +764,12 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                   IS NOT DISTINCT FROM source_node.provider_server_id
                 AND source_occurrence.host_key_fingerprint = source_node.host_key_fingerprint
               WHERE source_node.node_id = candidate.activation_node_id
+                AND source_node.id = candidate.node_record_id
                 AND agent_backup_admission_source_visible(
                   source_node.backup_admission_xid,
                   ${shard.snapshot}::pg_snapshot
                 )
-                AND source_node.node_incarnation = sandbox.activation_boot_id
+                AND source_node.node_incarnation = candidate.activation_boot_id
                 AND source_node.infrastructure_provider = 'hetzner'
                 AND btrim(source_node.host_key_fingerprint) <> ''
             )
@@ -737,14 +887,14 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
     }
 
     const last = cursorBatch.at(-1);
-    const cursorUpdate =
-      hasMore && last
-        ? sql`
-          scan_cursor_due_at = ${last.source_due_at}::timestamptz,
-          scan_cursor_id = ${last.id}::uuid,
-          scan_cursor_ordinal = ${last.cohort_ordinal}::integer,
-        `
-        : sql`
+    const cursorDueAt =
+      hasMoreCandidates && last ? last.source_due_at : frontier.safe_watermark_due_at;
+    const cursorId = hasMoreCandidates && last ? last.id : frontier.safe_watermark_id;
+    // A raw-only page advances the exact key without inventing work ordering.
+    // The first such page initializes the non-null cursor shape at ordinal 0.
+    const cursorOrdinal = last?.cohort_ordinal ?? shard.cursor_ordinal ?? 0;
+    const cursorUpdate = cohortComplete
+      ? sql`
           scan_cutoff_at = NULL,
           scan_cursor_due_at = NULL,
           scan_cursor_id = NULL,
@@ -752,6 +902,11 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
           scan_snapshot = NULL,
           scan_schedule_rpo_ms = NULL,
           active_cohort = NULL,
+        `
+      : sql`
+          scan_cursor_due_at = ${cursorDueAt}::timestamptz,
+          scan_cursor_id = ${cursorId}::uuid,
+          scan_cursor_ordinal = ${cursorOrdinal}::integer,
         `;
     const [released] = await sqlRows<{ shard_id: number }>(
       tx,
@@ -782,7 +937,7 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
       cohortId: shard.cohort_id,
       enrolled,
       queued,
-      cohortComplete: !hasMore,
+      cohortComplete,
     };
   });
 }

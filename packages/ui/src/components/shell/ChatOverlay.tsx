@@ -55,6 +55,7 @@ import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
   parseSlashDraft,
   resolveClientShortcutExecution,
+  resolveOptimisticNavigationExecution,
   runSlashExecution,
   type SlashExecution,
 } from "../../chat/slash-menu";
@@ -95,7 +96,12 @@ import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,
 } from "../../os-intent/host";
-import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
+import {
+  isAndroid,
+  isIOS,
+  isNative,
+  isStandalonePwa,
+} from "../../platform/init";
 import {
   getPhysicalScreenVerticalExtent,
   KEYBOARD_INTRUSION_THRESHOLD_PX,
@@ -180,6 +186,7 @@ import {
 import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
+  resolveChatKeyboardHiddenViewportBaseline,
   resolveChatNativeKeyboardLift,
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
@@ -2979,16 +2986,24 @@ export function ChatOverlay({
       for (const handle of handles) handle.remove();
     };
   }, []);
-  // Track the layout-viewport height with the keyboard DOWN. On Android the
-  // WebView window shrinks (adjustResize) when the keyboard opens, so the fixed
-  // overlay's `bottom: 0` already rises with it; on iOS (`resize: "body"`) the
-  // layout height is unchanged and the fixed composer stays behind the keyboard.
-  const baseInnerHeightRef = React.useRef(viewport.innerHeight);
+  // Preserve the last trustworthy keyboard-hidden viewport. Some Android
+  // windows resize before keyboardWillShow, while the Light Phone III keyboard
+  // overlays the WebView without resizing it at all. A same-orientation height
+  // drop is therefore provisional until the native event resolves; a width
+  // change resets the baseline for rotation or a new window class.
+  const keyboardHiddenViewportRef = React.useRef({
+    innerHeight: viewport.innerHeight,
+    innerWidth: viewport.innerWidth,
+  });
   React.useEffect(() => {
-    if (nativeKeyboardHeight === 0) {
-      baseInnerHeightRef.current = viewport.innerHeight;
-    }
-  }, [nativeKeyboardHeight, viewport.innerHeight]);
+    keyboardHiddenViewportRef.current =
+      resolveChatKeyboardHiddenViewportBaseline({
+        previous: keyboardHiddenViewportRef.current,
+        currentInnerHeight: viewport.innerHeight,
+        currentInnerWidth: viewport.innerWidth,
+        nativeKeyboardVisible: nativeKeyboardHeight > 0,
+      });
+  }, [nativeKeyboardHeight, viewport.innerHeight, viewport.innerWidth]);
 
   // Lift the composer above the keyboard by ONLY the part the layout didn't
   // already absorb. On Android the window shrank by ~the keyboard height
@@ -2997,17 +3012,14 @@ export function ChatOverlay({
   // iOS the layout doesn't shrink (layoutShrink = 0), so the full native height
   // lifts the fixed composer above the keyboard. Web (no native plugin) keeps
   // the visualViewport-derived inset.
-  // The shipped Android window uses adjustResize, so the native bridge height
-  // must never be applied as an additional fixed-overlay bottom offset. In the
-  // observed race the WebView resized 919→520 before keyboardWillShow; the
-  // effect above then captured 520 as its baseline and a later 398px bridge
-  // event lifted the composer a second time, all the way to the status bar.
-  // iOS keeps the explicit bridge lift because its native window is configured
-  // not to resize around the keyboard.
+  // Pixel's adjustResize path consumes the bridge height and therefore returns
+  // zero. The Light Phone III's keyboard leaves the WebView at full height, so
+  // its unabsorbed bridge height becomes the fixed-overlay lift. iOS keeps the
+  // same explicit bridge path for its resize:"body" window.
   const nativeLift = resolveChatNativeKeyboardLift({
-    platformNeedsNativeLift: isIOS,
+    platformNeedsNativeLift: isIOS || isAndroid,
     nativeKeyboardHeight,
-    keyboardDownInnerHeight: baseInnerHeightRef.current,
+    keyboardHiddenInnerHeight: keyboardHiddenViewportRef.current.innerHeight,
     currentInnerHeight: viewport.innerHeight,
   });
   const effectiveKeyboardInset = Math.max(keyboardInset, nativeLift);
@@ -3158,7 +3170,7 @@ export function ChatOverlay({
   const openH = panelMaxH;
   // The nominal half detent can exceed the entire visible panel when a native
   // keyboard lifts the overlay without shrinking Chromium's layout viewport
-  // (the LP3 WebView reports 414px while Gboard consumes 223px). A resting
+  // (the LP3 WebView reports 414px while its keyboard consumes 223px). A resting
   // detent may never outrun its current panel ceiling: panelCapH intentionally
   // follows threadHeight during a live over-pull, so an oversized HALF target
   // otherwise re-expands the cap and clips the grabber above the screen.
@@ -4455,6 +4467,36 @@ export function ChatOverlay({
   );
 
   const submit = React.useCallback(() => {
+    const isExplicitSlashCommand = parseSlashDraft(draft).isSlash;
+    const optimisticNavigation =
+      !firstRunOpen && !isExplicitSlashCommand && pendingImages.length === 0
+        ? resolveOptimisticNavigationExecution(
+            slash.commands,
+            draft,
+            slash.resolveSection,
+            {
+              resolveChoices: slash.resolveChoices,
+              isAuthorized: slash.isAuthorized,
+              isElevated: slash.isElevated,
+            },
+          )
+        : null;
+    if (optimisticNavigation) {
+      runSlashExecution(optimisticNavigation, {
+        navigateTab: slash.navigateTab,
+        navigateSettings: slash.navigateSettings,
+        navigateView: slash.navigateView,
+        clearChat: () => {},
+        newConversation: () => {},
+        toggleFullscreen: () => {},
+        openCommandPalette: () => {},
+        showCommands: () => {},
+        toggleTranscription: () => {},
+        send: () => {},
+      });
+      submitText(draft, pendingImages);
+      return;
+    }
     const shortcut =
       !firstRunOpen && pendingImages.length === 0
         ? resolveClientShortcutExecution(

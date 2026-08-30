@@ -16,6 +16,7 @@ import {
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
 } from "../services/message";
+import { runWithStreamingContext } from "../streaming-context";
 import { PI_CODING_ACTION_PROFILE } from "../types/coding";
 import type {
 	Action,
@@ -2102,6 +2103,101 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				(stage) => stage.kind === "tool" && stage.tool?.name === "VIEWS",
 			),
 		).toMatchObject({ tool: { name: "VIEWS", success: true } });
+	});
+
+	it("announces a deterministic tool call on the streaming hook before the handler runs (SSE running_tool parity)", async () => {
+		const order: string[] = [];
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			handler: async () => {
+				order.push("handler");
+				return {
+					success: true,
+					text: "Opened Notes.",
+					userFacingText: "Opened Notes.",
+					verifiedUserFacing: true,
+				};
+			},
+		});
+		const deterministicViewEvaluator = {
+			name: "test.force_deterministic_view_streaming",
+			priority: 10,
+			deterministicActions: ["VIEWS"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "VIEWS",
+					params: { action: "show", view: "notes" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views],
+			responseHandlerEvaluators: [deterministicViewEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS"],
+						replyText: "Opening Notes now.",
+						thought: "The view switch is deterministic.",
+					}),
+				},
+			],
+		});
+		const onToolCall =
+			vi.fn<
+				(payload: import("../types/streaming").StreamingToolCallPayload) => void
+			>();
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: String(RESPONSE_ID),
+				onToolCall: (payload) => {
+					order.push("onToolCall");
+					onToolCall(payload);
+				},
+			},
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage("open notes"),
+					state: makeState(),
+					responseId: RESPONSE_ID,
+				}),
+		);
+
+		expect(result.kind).toBe("planned_reply");
+		// The running_tool announcement precedes execution so the chat SSE
+		// surface shows activity while the tool runs, not after.
+		expect(order).toEqual(["onToolCall", "handler"]);
+		expect(onToolCall).toHaveBeenCalledTimes(1);
+		const payload = onToolCall.mock.calls[0]?.[0];
+		expect(payload?.toolCall).toMatchObject({
+			name: "VIEWS",
+			status: "pending",
+			arguments: { action: "show", view: "notes" },
+		});
+		expect(payload?.metadata).toMatchObject({ deterministic: true });
 	});
 
 	// tj-a835d4c6da235f: an accepted, internal VIEWS effect must produce an

@@ -189,17 +189,6 @@ export const agentBackupAdmissionClaimShards = pgTable(
     work_kind: text("work_kind").$type<AgentBackupAdmissionWorkKind>().notNull(),
     shard_id: smallint("shard_id").notNull(),
     last_turn: bigint("last_turn", { mode: "bigint" }).notNull().default(0n),
-    /** Start turn and DB-clock high-water for one bounded deferred/lease recovery sweep. */
-    recovery_start_turn: bigint("recovery_start_turn", { mode: "bigint" }),
-    recovery_cutoff_at: timestamp("recovery_cutoff_at", { withTimezone: true }),
-    recovery_cursor_at: timestamp("recovery_cursor_at", { withTimezone: true }),
-    /** `0` is deferred readiness and `1` is expired-lease readiness at an equal timestamp. */
-    recovery_cursor_state: smallint("recovery_cursor_state"),
-    recovery_cursor_id: uuid("recovery_cursor_id"),
-    /** At most one recovery sweep may interrupt the same frozen claim cycle. */
-    last_recovery_claim_cycle_start_turn: bigint("last_recovery_claim_cycle_start_turn", {
-      mode: "bigint",
-    }),
     cycle_start_turn: bigint("cycle_start_turn", { mode: "bigint" }),
     cycle_observed_at: timestamp("cycle_observed_at", { withTimezone: true }),
     cycle_max_cohort: bigint("cycle_max_cohort", { mode: "bigint" }),
@@ -232,32 +221,6 @@ export const agentBackupAdmissionClaimShards = pgTable(
         AND ${table.shard_id} BETWEEN 0 AND ${AGENT_BACKUP_ADMISSION_SHARD_COUNT - 1}
         AND ${table.last_turn} >= 0
       ) IS TRUE`,
-    ),
-    recovery_shape_check: check(
-      "agent_backup_admission_claim_shards_recovery_shape_check",
-      sql`((
-        ${table.last_recovery_claim_cycle_start_turn} IS NULL
-        OR (${table.last_recovery_claim_cycle_start_turn} > 0
-          AND ${table.last_recovery_claim_cycle_start_turn} <= ${table.last_turn})
-      ) AND (
-        (${table.recovery_start_turn} IS NULL
-          AND ${table.recovery_cutoff_at} IS NULL
-          AND ${table.recovery_cursor_at} IS NULL
-          AND ${table.recovery_cursor_state} IS NULL
-          AND ${table.recovery_cursor_id} IS NULL)
-        OR (${table.recovery_start_turn} > 0
-          AND ${table.recovery_start_turn} <= ${table.last_turn}
-          AND ${table.recovery_cutoff_at} IS NOT NULL
-          AND (
-            (${table.recovery_cursor_at} IS NULL
-              AND ${table.recovery_cursor_state} IS NULL
-              AND ${table.recovery_cursor_id} IS NULL)
-            OR (${table.recovery_cursor_at} IS NOT NULL
-              AND ${table.recovery_cursor_at} <= ${table.recovery_cutoff_at}
-              AND ${table.recovery_cursor_state} BETWEEN 0 AND 1
-              AND ${table.recovery_cursor_id} IS NOT NULL)
-          ))
-      )) IS TRUE`,
     ),
     cycle_shape_check: check(
       "agent_backup_admission_claim_shards_cycle_shape_check",

@@ -2449,7 +2449,21 @@
       "idx": 349,
       "version": "7",
       "when": 1794254400057,
-      "tag": "0366_agent_backup_admission_recovery_cursor",
+      "tag": "0366_agent_backup_admission_enrollment_source_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 350,
+      "version": "7",
+      "when": 1794254400058,
+      "tag": "0367_agent_backup_admission_enrollment_watermark_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 351,
+      "version": "7",
+      "when": 1794254400059,
+      "tag": "0368_agent_backup_admission_enrollment_source_stamp",
       "breakpoints": true
     }
   ]

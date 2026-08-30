@@ -286,7 +286,7 @@ test("first trigger saves and refreshes an unsaved workflow", async ({
     timeout: 60_000,
   });
   await page.getByRole("button", { name: "New automation" }).click();
-  await page.getByRole("button", { name: "New workflow" }).click();
+  await page.getByRole("menuitem", { name: "New workflow" }).click();
   await page.getByRole("button", { name: "Add workflow trigger" }).click();
   await page.getByRole("button", { name: "Repeat" }).click();
   await page.getByLabel("Interval minutes").fill("15");
@@ -309,7 +309,7 @@ test("workflow studio creates, executes, inspects, and reloads a Smithers workfl
     timeout: 60_000,
   });
   await page.getByRole("button", { name: "New automation" }).click();
-  await page.getByRole("button", { name: "New workflow" }).click();
+  await page.getByRole("menuitem", { name: "New workflow" }).click();
 
   await expect(page.getByTestId("workflow-studio")).toBeVisible({
     timeout: 60_000,

@@ -25,6 +25,8 @@ import {
   type UserModelMessage,
 } from "ai";
 import { Hono } from "hono";
+import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
+import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   enforceOrgRateLimit,
@@ -587,19 +589,24 @@ app.post("/", async (c) => {
       );
     }
     if (resolution.kind === "suspended") {
-      return anthropicError(
-        "permission_error",
-        "Your account has been suspended due to policy violations.",
-        403,
-      );
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "messages",
+        traceId,
+      });
+      return anthropicError(denial.type, denial.message, denial.status);
     }
     if (resolution.kind === "rejected") {
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "messages",
+        traceId,
+      });
       return anthropicError(
-        resolution.status === 403 ? "permission_error" : "authentication_error",
-        resolution.status === 403
-          ? "Account or organization access is disabled."
-          : "Authentication required.",
-        resolution.status,
+        denial.type,
+        denial.message,
+        denial.status,
+        denial.retryAfterSeconds
+          ? { "Retry-After": String(denial.retryAfterSeconds) }
+          : undefined,
       );
     }
     if (resolution.kind === "authorized") {
@@ -627,8 +634,34 @@ app.post("/", async (c) => {
       apiKey = await getRequestApiKeyId(c);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return anthropicError("authentication_error", message, 401);
+    // error-policy:J1 resolver infrastructure and typed auth failures retain
+    // their status; an unexpected failure is an Anthropic-shaped 500, never a
+    // fabricated authentication rejection.
+    const status = getErrorStatusCode(error);
+    if (status === 401 || status === 403 || status === 503) {
+      const denial = resolveInferenceAuthStandingDenial(
+        { kind: "rejected", status },
+        { route: "messages", traceId },
+      );
+      return anthropicError(
+        denial.type,
+        denial.message,
+        denial.status,
+        denial.retryAfterSeconds
+          ? { "Retry-After": String(denial.retryAfterSeconds) }
+          : undefined,
+      );
+    }
+    logger.error("[Messages] inference auth resolver failed", {
+      traceId,
+      status,
+      errorName: error instanceof Error ? error.name : "NonErrorThrown",
+    });
+    return anthropicError(
+      "api_error",
+      "Authorization could not be completed.",
+      status >= 400 && status <= 599 ? status : 500,
+    );
   }
   const tAuth = performance.now();
 
