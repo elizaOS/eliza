@@ -116,12 +116,59 @@ export interface RereviewOperatorEvidence {
   executed: boolean;
 }
 
+export interface RereviewOperatorDecisionEvidence {
+  schemaVersion: 1;
+  mode: "preview";
+  decisionRequired: true;
+  decisionCode:
+    | "selection_bootstrap_zero_candidates"
+    | "selection_bootstrap_single_candidate"
+    | "selection_bootstrap_inventory_over_limit"
+    | "selection_bootstrap_no_restore_authority"
+    | "selection_bootstrap_multiple_restore_authorities";
+  computeMutation: false;
+  executed: false;
+}
+
 export interface RereviewOperatorDependencies {
   verifyDeployment(expectedCommit: string): Promise<void>;
   resolveSelection(apiKey: string): Promise<ResolvedSelection>;
   preview(input: ResolvedSelection): Promise<SelectionPreview>;
   execute(input: SelectionExecuteInput): Promise<void>;
   snapshot(input: ResolvedSelection): Promise<MutationSnapshot>;
+}
+
+const PREVIEW_DECISION_CODES = new Set<
+  RereviewOperatorDecisionEvidence["decisionCode"]
+>([
+  "selection_bootstrap_zero_candidates",
+  "selection_bootstrap_single_candidate",
+  "selection_bootstrap_inventory_over_limit",
+  "selection_bootstrap_no_restore_authority",
+  "selection_bootstrap_multiple_restore_authorities",
+]);
+
+/** Converts an expected read-only preview boundary into neutral evidence. */
+export function previewDecisionEvidence(
+  mode: Mode | undefined,
+  code: string,
+): RereviewOperatorDecisionEvidence | null {
+  if (
+    mode !== "preview" ||
+    !PREVIEW_DECISION_CODES.has(
+      code as RereviewOperatorDecisionEvidence["decisionCode"],
+    )
+  ) {
+    return null;
+  }
+  return {
+    schemaVersion: 1,
+    mode: "preview",
+    decisionRequired: true,
+    decisionCode: code as RereviewOperatorDecisionEvidence["decisionCode"],
+    computeMutation: false,
+    executed: false,
+  };
 }
 
 export function resolveReceiptRow<T>(receipts: readonly T[]): T | null {
@@ -644,11 +691,10 @@ const defaultDependencies: RereviewOperatorDependencies = {
 };
 
 if (import.meta.main) {
+  let config: RereviewOperatorConfig | undefined;
   try {
-    const evidence = await runRereviewOperator(
-      readRereviewOperatorConfig(),
-      defaultDependencies,
-    );
+    config = readRereviewOperatorConfig();
+    const evidence = await runRereviewOperator(config, defaultDependencies);
     const { logger } = await import("@elizaos/cloud-shared/lib/utils/logger");
     logger.info(
       "[personal-dedicated-rereview-staging] Operator result",
@@ -662,9 +708,18 @@ if (import.meta.main) {
         ? error.code
         : "personal_dedicated_rereview_failed";
     const { logger } = await import("@elizaos/cloud-shared/lib/utils/logger");
-    logger.error("[personal-dedicated-rereview-staging] Operator failed", {
-      code,
-    });
-    process.exitCode = 1;
+    const decision = previewDecisionEvidence(config?.mode, code);
+    if (decision) {
+      logger.info(
+        "[personal-dedicated-rereview-staging] Operator decision required",
+        decision,
+      );
+      process.exitCode = 0;
+    } else {
+      logger.error("[personal-dedicated-rereview-staging] Operator failed", {
+        code,
+      });
+      process.exitCode = 1;
+    }
   }
 }
