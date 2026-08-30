@@ -44,6 +44,10 @@ export type ManagedDedicatedProvisionFailureCode =
   | "container_ssh_refused"
   | "container_ssh_dns"
   | "container_ssh_reset"
+  | "container_ssh_connect_error"
+  | "container_ssh_exec_error"
+  | "container_ssh_command_exit"
+  | "container_ssh_stream_error"
   | "container_ssh_transport"
   | "container_daemon"
   | "container_create"
@@ -215,7 +219,7 @@ export function classifyManagedDedicatedProvisionFailure(
     return "ingress";
   }
   if (
-    /(?:permission denied|publickey|host key|fingerprint mismatch)/i.test(
+    /(?:permission denied|publickey|host key|fingerprint mismatch|authentication (?:methods )?failed|all configured authentication methods failed|private key)/i.test(
       primary,
     )
   ) {
@@ -235,6 +239,18 @@ export function classifyManagedDedicatedProvisionFailure(
   }
   if (/(?:econnreset|connection reset|connection closed)/i.test(primary)) {
     return "container_ssh_reset";
+  }
+  if (/\[docker-ssh\] connection error/i.test(primary)) {
+    return "container_ssh_connect_error";
+  }
+  if (/\[docker-ssh\] exec(?:stream)? error/i.test(primary)) {
+    return "container_ssh_exec_error";
+  }
+  if (/\[docker-ssh\] command exited with code/i.test(primary)) {
+    return "container_ssh_command_exit";
+  }
+  if (/\[docker-ssh\] (?:execstream channel|stream) error/i.test(primary)) {
+    return "container_ssh_stream_error";
   }
   if (/(?:\[docker-ssh\]|ssh|handshake)/i.test(primary)) {
     return "container_ssh_transport";

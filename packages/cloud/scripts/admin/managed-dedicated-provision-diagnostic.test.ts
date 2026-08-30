@@ -138,6 +138,18 @@ describe("managed Dedicated provision diagnostic", () => {
     ).toBe("container_ssh_refused");
     expect(
       classifyManagedDedicatedProvisionFailure(
+        "[docker-sandbox] Failed to create container: [docker-ssh] Connection error for node: All configured authentication methods failed",
+        "x",
+      ),
+    ).toBe("container_ssh_auth");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-sandbox] Failed to create container: [docker-ssh] Command exited with code 1 on node",
+        "x",
+      ),
+    ).toBe("container_ssh_command_exit");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
         "[docker-sandbox] Failed to create container on node: Cannot connect to the Docker daemon",
         "x",
       ),
