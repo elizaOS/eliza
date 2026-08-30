@@ -21,7 +21,12 @@ import { RoutingMatrix } from "../local-inference/RoutingMatrix";
 import { IntelligenceServingSummary } from "./IntelligenceServingSummary";
 import { ModelConfigurationPanel } from "./ModelConfigurationPanel";
 import { ProviderCard } from "./ProviderCard";
-import { ApiKeyPanel, CloudPanel, LocalProviderPanel } from "./ProviderPanels";
+import {
+  ApiKeyPanel,
+  CloudPanel,
+  describeUnsignedCloudChat,
+  LocalProviderPanel,
+} from "./ProviderPanels";
 import type { ServingAxes } from "./resolveServingAxes";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -262,10 +267,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             defaultValue:
               "Managed models through your Eliza Cloud account. No setup — sign in and it works.",
           })
-        : t("providerswitcher.cloudTileUnsignedDescription", {
-            defaultValue:
-              "Sign in to use managed models. Chat replies use Local until then.",
-          })
+        : describeUnsignedCloudChat(servingAxes, t, "tile")
       : t("providerswitcher.localTileDescription", {
           defaultValue:
             "Runs entirely on this device with the bundled local model. Private and works offline.",
@@ -342,6 +344,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             modelSaving={cloudModel.modelSaving}
             modelSaveSuccess={cloudModel.modelSaveSuccess}
             onModelFieldChange={cloudModel.handleModelFieldChange}
+            servingAxes={servingAxes}
           />
         ) : null}
       </SettingsGroup>

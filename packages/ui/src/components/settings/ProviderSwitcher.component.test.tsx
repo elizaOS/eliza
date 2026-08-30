@@ -156,19 +156,29 @@ vi.mock("./useProviderEntries", () => ({
 vi.mock("./ProviderCard", () => ({
   ProviderCard: ({
     label,
+    description,
     onSelect,
     id,
   }: {
     label: string;
+    description?: string;
     id: string;
     onSelect: (id: string) => void;
   }) => (
-    <button type="button" onClick={() => onSelect(id)}>
-      {label}
-    </button>
+    <div>
+      <button type="button" aria-label={label} onClick={() => onSelect(id)}>
+        {label}
+      </button>
+      {description ? <p>{description}</p> : null}
+    </div>
   ),
 }));
 vi.mock("./ProviderPanels", () => ({
+  describeUnsignedCloudChat: (
+    axes: { inference: string; activeChatProvider: string | null },
+    _t: unknown,
+    surface: string,
+  ) => `${surface}:${axes.inference}:${axes.activeChatProvider ?? "unknown"}`,
   LocalProviderPanel: ({
     onSelectLocalOnly,
   }: {
@@ -314,6 +324,27 @@ describe("ProviderSwitcher", () => {
     expect(displayed.find((entry) => entry.id === "cerebras")?.current).toBe(
       true,
     );
+  });
+
+  it("keeps unsigned Cloud tile copy aligned with external inference", async () => {
+    getModelsConfig.mockResolvedValueOnce({
+      targets: { small: {}, large: {}, coding: {} },
+      activeChat: {
+        provider: "cerebras",
+        family: "OPENAI",
+        endpoint: "api.cerebras.ai",
+      },
+    });
+
+    render(<ProviderSwitcher />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "cerebras",
+      );
+    });
+    expect(screen.getByText("tile:external:cerebras")).toBeTruthy();
+    expect(screen.queryByText(/replies use Local until then/)).toBeNull();
   });
 
   it("preserves a non-serving provider warning under external routing", () => {

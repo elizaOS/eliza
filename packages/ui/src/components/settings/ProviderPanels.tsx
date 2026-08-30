@@ -18,11 +18,60 @@ import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
+import type { ServingAxes } from "./resolveServingAxes";
 import { SettingsActionButton } from "./settings-agent-rows";
 import type { PluginInfo } from "./useProviderEntries";
 
 type SubscriptionProviderSelection =
   (typeof SUBSCRIPTION_PROVIDER_SELECTIONS)[number];
+
+type Translate = (key: string, vars?: Record<string, unknown>) => string;
+
+/**
+ * Unsigned Cloud is an account fact, not a serving-source fact. Keep its copy
+ * aligned with the same live serving axes used by the Intelligence summary so
+ * a working direct provider is never mislabeled as Local.
+ */
+export function describeUnsignedCloudChat(
+  axes: ServingAxes,
+  t: Translate,
+  surface: "panel" | "tile",
+): string {
+  if (axes.inference === "external") {
+    const provider = axes.activeChatProvider?.trim() || "an external provider";
+    return surface === "tile"
+      ? t("providerswitcher.cloudTileUnsignedExternalDescription", {
+          defaultValue: `Sign in to use managed models. Chat replies keep using ${provider} until then.`,
+          provider,
+        })
+      : t("providerpanels.cloudUnsignedUsingExternal", {
+          defaultValue: `Eliza Cloud isn't signed in. Chat replies are using ${provider}.`,
+          provider,
+        });
+  }
+
+  if (axes.inference === "local") {
+    return surface === "tile"
+      ? t("providerswitcher.cloudTileUnsignedDescription", {
+          defaultValue:
+            "Sign in to use managed models. Chat replies use Local until then.",
+        })
+      : t("providerpanels.cloudUnsignedUsingLocal", {
+          defaultValue:
+            "Eliza Cloud isn't signed in. Chat replies are using Local.",
+        });
+  }
+
+  return surface === "tile"
+    ? t("providerswitcher.cloudTileUnsignedCurrentDescription", {
+        defaultValue:
+          "Sign in to use managed models. Your current chat provider stays unchanged until then.",
+      })
+    : t("providerpanels.cloudUnsignedCurrentProvider", {
+        defaultValue:
+          "Eliza Cloud isn't signed in. Your current chat provider stays unchanged.",
+      });
+}
 
 function ProviderPanelHeader({
   icon: Icon,
@@ -119,6 +168,7 @@ export interface CloudPanelProps {
   modelSaving: boolean;
   modelSaveSuccess: boolean;
   onModelFieldChange: (key: string, value: unknown) => void;
+  servingAxes: ServingAxes;
 }
 
 export function CloudPanel({
@@ -135,6 +185,7 @@ export function CloudPanel({
   modelSaving,
   modelSaveSuccess,
   onModelFieldChange,
+  servingAxes,
 }: CloudPanelProps) {
   const t = useAppSelector((s) => s.t);
   const cloudActive =
@@ -191,10 +242,7 @@ export function CloudPanel({
       {needsSignIn ? (
         <div className="p-3 sm:px-4">
           <div className="rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
-            {t("providerpanels.cloudUnsignedUsingLocal", {
-              defaultValue:
-                "Eliza Cloud isn't signed in. Chat replies are using Local.",
-            })}
+            {describeUnsignedCloudChat(servingAxes, t, "panel")}
           </div>
         </div>
       ) : (
