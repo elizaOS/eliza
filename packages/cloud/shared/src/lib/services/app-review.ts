@@ -27,6 +27,11 @@ import { type App, apps } from "../../db/schemas/apps";
 import { getLanguageModel, hasLanguageModelProviderConfigured } from "../providers/language-model";
 import { logger } from "../utils/logger";
 import { appsService } from "./apps";
+import {
+  type GenerativeOperationContext,
+  retainGenerativeTask,
+  runFlatProviderOperation,
+} from "./generative-operation";
 
 /** Bump when the rubric or category taxonomy changes so old rows stay attributable. */
 export const RUBRIC_VERSION = "2026-07-01.1";
@@ -301,7 +306,10 @@ export interface ClassifierResult {
  * Throws if the app needs the LLM (no pre-filter match) but no provider is
  * configured — the caller must treat that as "cannot approve" (fail closed).
  */
-export async function classifyCandidate(document: string): Promise<ClassifierResult> {
+export async function classifyCandidate(
+  document: string,
+  operationContext?: GenerativeOperationContext,
+): Promise<ClassifierResult> {
   const pre = preFilter(document);
   if (pre.matched) {
     return {
@@ -321,14 +329,32 @@ export async function classifyCandidate(document: string): Promise<ClassifierRes
     );
   }
 
-  const { object } = await generateObject({
-    model: getLanguageModel(modelId),
-    schema: ClassifierSchema,
-    system: POLICY_RUBRIC,
-    prompt: `Review this app listing and decide allow or ban.\n\n${document}`,
-    temperature: 0,
-    maxRetries: 2,
-  });
+  if (!operationContext) {
+    throw new Error("[AppReview] Provider-backed classification requires generative admission");
+  }
+
+  const { object } = await runFlatProviderOperation(
+    operationContext,
+    {
+      provider: providerOf(modelId),
+      billingSource:
+        providerOf(modelId) === "unknown"
+          ? "gateway"
+          : (providerOf(modelId) as "anthropic" | "cerebras" | "openai" | "groq"),
+      model: modelId,
+      operation: "app_review_classification",
+      cost: 0.01,
+    },
+    async () =>
+      await generateObject({
+        model: getLanguageModel(modelId),
+        schema: ClassifierSchema,
+        system: POLICY_RUBRIC,
+        prompt: `Review this app listing and decide allow or ban.\n\n${document}`,
+        temperature: 0,
+        maxRetries: 2,
+      }),
+  );
 
   return {
     disposition: object.disposition,
@@ -351,6 +377,7 @@ function providerOf(modelId: string): string {
 
 export interface RunAppReviewParams {
   app: App;
+  operationContext?: GenerativeOperationContext;
   triggeredByUserId?: string | null;
   trajectoryRef?: string | null;
 }
@@ -363,7 +390,7 @@ export interface RunAppReviewParams {
 export async function runAppReview(params: RunAppReviewParams): Promise<AppReview> {
   const { app, triggeredByUserId = null, trajectoryRef = null } = params;
   const candidate = buildReviewCandidate(app);
-  const result = await classifyCandidate(candidate.document);
+  const result = await classifyCandidate(candidate.document, params.operationContext);
 
   const reviewStatus = result.disposition === "allow" ? "approved" : "rejected";
   const now = new Date();
@@ -416,13 +443,32 @@ export async function runAppReview(params: RunAppReviewParams): Promise<AppRevie
   // leaves the payment gate reading a stale "approved" row. Mirrors the
   // invalidate-on-mutation invariant documented at apps.ts:105-111. Best-effort:
   // a cache-eviction failure must not fail the (already-committed) review.
-  try {
-    await appsService.invalidateCache(app.id, app.api_key_id ?? undefined, app.slug ?? undefined);
-  } catch (err) {
-    logger.warn("[AppReview] cache invalidation after review failed", {
-      appId: app.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
+  const cacheInvalidation = appsService.invalidateCache(
+    app.id,
+    app.api_key_id ?? undefined,
+    app.slug ?? undefined,
+  );
+  if (params.operationContext) {
+    await retainGenerativeTask(
+      params.operationContext,
+      {
+        provider: result.modelProvider ?? "local",
+        billingSource: "gateway",
+        model: result.model ?? "deterministic-prefilter",
+        operation: "app_review_cache_invalidation",
+        cost: 0,
+      },
+      cacheInvalidation,
+    );
+  } else {
+    try {
+      await cacheInvalidation;
+    } catch (err) {
+      logger.warn("[AppReview] cache invalidation after review failed", {
+        appId: app.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   logger.info("[AppReview] Completed review", {

@@ -3,8 +3,16 @@
  * filtering, creation, and local-directory loading controls.
  */
 
-import { Loader2, Play, RotateCw, Square } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, MoreHorizontal, Play, Plus } from "lucide-react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
@@ -16,6 +24,12 @@ import type {
 import { useAppSelector } from "../../state";
 import { ContentState } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { SettingsInput } from "../ui/settings-controls";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
@@ -79,6 +93,62 @@ function AppRowActionButton({
   );
 }
 
+function AppRowActions({
+  app,
+  busy,
+  running,
+  onLaunch,
+  onRelaunch,
+  onEdit,
+  onStop,
+}: {
+  app: InstalledAppInfo;
+  busy: boolean;
+  running: boolean;
+  onLaunch: () => void;
+  onRelaunch: () => void;
+  onEdit: () => void;
+  onStop: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <AppRowActionButton
+        agentId={`apps-launch-${app.name}`}
+        label={`Launch ${app.displayName}`}
+        group="apps-list"
+        disabled={busy}
+        onClick={onLaunch}
+        className="size-10"
+      >
+        <Play className="size-4" aria-hidden />
+      </AppRowActionButton>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghostMuted"
+            size="icon"
+            className="size-10"
+            disabled={busy}
+            aria-label={`More actions for ${app.displayName}`}
+          >
+            <MoreHorizontal className="size-4" aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44">
+          <DropdownMenuItem onClick={onRelaunch}>Relaunch</DropdownMenuItem>
+          <DropdownMenuItem onClick={onEdit}>Edit</DropdownMenuItem>
+          {running ? (
+            <DropdownMenuItem className="text-danger" onClick={onStop}>
+              Stop
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 interface CreateAppResponse {
   ok?: boolean;
   status?: string;
@@ -104,7 +174,113 @@ type AsyncStatus =
   | { state: "loading"; message?: string }
   | { state: "error"; message: string };
 
-export function AppsManagementSection() {
+interface AppsManagementActionsProps {
+  showCreate: boolean;
+  showLoad: boolean;
+  setShowCreate: Dispatch<SetStateAction<boolean>>;
+  setShowLoad: Dispatch<SetStateAction<boolean>>;
+}
+
+export function AppsManagementActions({
+  showCreate,
+  showLoad,
+  setShowCreate,
+  setShowLoad,
+}: AppsManagementActionsProps) {
+  const t = useAppSelector((s) => s.t);
+  const { ref: createToggleRef, agentProps: createToggleAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "apps-create-toggle",
+      role: "button",
+      label: t("settings.sections.apps.createNew", {
+        defaultValue: "Create new app",
+      }),
+      group: "apps-management",
+      status: showCreate ? "active" : "inactive",
+      onActivate: () => {
+        setShowCreate((value) => !value);
+        setShowLoad(false);
+      },
+    });
+  const { ref: loadToggleRef, agentProps: loadToggleAgentProps } =
+    useAgentElement<HTMLDivElement>({
+      id: "apps-load-toggle",
+      role: "button",
+      label: "Import from directory",
+      group: "apps-management",
+      status: showLoad ? "active" : "inactive",
+      onActivate: () => {
+        setShowLoad((value) => !value);
+        setShowCreate(false);
+      },
+    });
+
+  return (
+    <section
+      className="flex items-center justify-end gap-1"
+      aria-label="App actions"
+    >
+      <Button
+        ref={createToggleRef}
+        type="button"
+        variant="default"
+        size="icon"
+        className="size-10"
+        aria-label="Create new app"
+        title="Create new app"
+        onClick={() => {
+          setShowCreate((value) => !value);
+          setShowLoad(false);
+        }}
+        {...createToggleAgentProps}
+      >
+        <Plus className="size-4" aria-hidden />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghostMuted"
+            size="icon"
+            className="size-10"
+            aria-label="More app actions"
+            title="More app actions"
+          >
+            <MoreHorizontal className="size-4" aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44">
+          <DropdownMenuItem
+            ref={loadToggleRef}
+            onSelect={() => {
+              setShowLoad((value) => !value);
+              setShowCreate(false);
+            }}
+            {...loadToggleAgentProps}
+          >
+            Import from directory
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </section>
+  );
+}
+
+interface AppsManagementSectionProps {
+  showCreate?: boolean;
+  showLoad?: boolean;
+  setShowCreate?: Dispatch<SetStateAction<boolean>>;
+  setShowLoad?: Dispatch<SetStateAction<boolean>>;
+  hideActions?: boolean;
+}
+
+export function AppsManagementSection({
+  showCreate: controlledShowCreate,
+  showLoad: controlledShowLoad,
+  setShowCreate: controlledSetShowCreate,
+  setShowLoad: controlledSetShowLoad,
+  hideActions = false,
+}: AppsManagementSectionProps = {}) {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const t = useAppSelector((s) => s.t);
   const advancedEnabled = useAdvancedSettingsEnabled();
@@ -119,14 +295,18 @@ export function AppsManagementSection() {
   const [busyApp, setBusyApp] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
 
-  const [showCreate, setShowCreate] = useState(false);
+  const [internalShowCreate, setInternalShowCreate] = useState(false);
   const [createIntent, setCreateIntent] = useState("");
   const [createEditTarget, setCreateEditTarget] = useState("");
   const [createStatus, setCreateStatus] = useState<AsyncStatus>({
     state: "idle",
   });
 
-  const [showLoad, setShowLoad] = useState(false);
+  const [internalShowLoad, setInternalShowLoad] = useState(false);
+  const showCreate = controlledShowCreate ?? internalShowCreate;
+  const showLoad = controlledShowLoad ?? internalShowLoad;
+  const setShowCreate = controlledSetShowCreate ?? setInternalShowCreate;
+  const setShowLoad = controlledSetShowLoad ?? setInternalShowLoad;
   const [loadDirectory, setLoadDirectory] = useState("");
   const [loadStatus, setLoadStatus] = useState<AsyncStatus>({ state: "idle" });
 
@@ -418,7 +598,7 @@ export function AppsManagementSection() {
         });
       }
     },
-    [createEditTarget, createIntent, refresh, setActionNotice],
+    [createEditTarget, createIntent, refresh, setActionNotice, setShowCreate],
   );
 
   const handleLoadSubmit = useCallback(
@@ -463,7 +643,7 @@ export function AppsManagementSection() {
         });
       }
     },
-    [loadDirectory, refresh, setActionNotice],
+    [loadDirectory, refresh, setActionNotice, setShowLoad],
   );
 
   const isCreating = createStatus.state === "loading";
@@ -480,34 +660,6 @@ export function AppsManagementSection() {
       onFill: setFilter,
     });
 
-  const { ref: createToggleRef, agentProps: createToggleAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "apps-create-toggle",
-      role: "button",
-      label: t("settings.sections.apps.createNew", {
-        defaultValue: "Create new app",
-      }),
-      group: "apps-management",
-      status: showCreate ? "active" : "inactive",
-      onActivate: () => {
-        setShowCreate((v) => !v);
-        setShowLoad(false);
-      },
-    });
-  const { ref: loadToggleRef, agentProps: loadToggleAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "apps-load-toggle",
-      role: "button",
-      label: t("settings.sections.apps.loadFromDirectory", {
-        defaultValue: "Load from directory",
-      }),
-      group: "apps-management",
-      status: showLoad ? "active" : "inactive",
-      onActivate: () => {
-        setShowLoad((v) => !v);
-        setShowCreate(false);
-      },
-    });
   const { ref: createSubmitRef, agentProps: createSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "apps-create-submit",
@@ -562,40 +714,16 @@ export function AppsManagementSection() {
 
   return (
     <SettingsStack className="gap-6 min-[700px]:gap-8">
+      {!hideActions ? (
+        <AppsManagementActions
+          showCreate={showCreate}
+          showLoad={showLoad}
+          setShowCreate={setShowCreate}
+          setShowLoad={setShowLoad}
+        />
+      ) : null}
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              ref={createToggleRef}
-              type="button"
-              variant="default"
-              size="touch"
-              onClick={() => {
-                setShowCreate((v) => !v);
-                setShowLoad(false);
-              }}
-              {...createToggleAgentProps}
-            >
-              {t("settings.sections.apps.createNew", {
-                defaultValue: "Create new app",
-              })}
-            </Button>
-            <Button
-              ref={loadToggleRef}
-              type="button"
-              variant="outline"
-              size="touch"
-              onClick={() => {
-                setShowLoad((v) => !v);
-                setShowCreate(false);
-              }}
-              {...loadToggleAgentProps}
-            >
-              {t("settings.sections.apps.loadFromDirectory", {
-                defaultValue: "Load from directory",
-              })}
-            </Button>
-          </div>
+        <div className="flex justify-end">
           <AdvancedToggle label="Advanced" />
         </div>
         {advancedEnabled ? (
@@ -843,6 +971,7 @@ export function AppsManagementSection() {
             {filteredInstalled.length === 0 ? (
               <ContentState
                 state="empty"
+                role="status"
                 placement="inset"
                 className="min-h-32"
                 title={
@@ -889,49 +1018,15 @@ export function AppsManagementSection() {
                           {app.name} · {app.version || "Version unavailable"}
                         </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1 sm:justify-end">
-                        <AppRowActionButton
-                          agentId={`apps-launch-${app.name}`}
-                          label={`Launch ${app.displayName}`}
-                          group="apps-list"
-                          disabled={busy}
-                          onClick={() => void handleLaunch(app)}
-                        >
-                          <Play className="size-3.5" aria-hidden />
-                        </AppRowActionButton>
-                        <AppRowActionButton
-                          agentId={`apps-relaunch-${app.name}`}
-                          label={`Relaunch ${app.displayName}`}
-                          group="apps-list"
-                          disabled={busy}
-                          onClick={() => void handleRelaunch(app)}
-                        >
-                          <RotateCw className="size-3.5" aria-hidden />
-                        </AppRowActionButton>
-                        <AppRowActionButton
-                          agentId={`apps-edit-${app.name}`}
-                          label={`Edit ${app.displayName}`}
-                          group="apps-list"
-                          disabled={busy}
-                          onClick={() => void handleEdit(app)}
-                        >
-                          {t("settings.sections.apps.edit", {
-                            defaultValue: "Edit",
-                          })}
-                        </AppRowActionButton>
-                        {running ? (
-                          <AppRowActionButton
-                            agentId={`apps-stop-${app.name}`}
-                            label={`Stop ${app.displayName}`}
-                            group="apps-list"
-                            className="px-2 text-xs text-danger hover:text-danger"
-                            disabled={busy}
-                            onClick={() => void handleStop(app)}
-                          >
-                            <Square className="size-3.5" aria-hidden />
-                          </AppRowActionButton>
-                        ) : null}
-                      </div>
+                      <AppRowActions
+                        app={app}
+                        busy={busy}
+                        running={running}
+                        onLaunch={() => void handleLaunch(app)}
+                        onRelaunch={() => void handleRelaunch(app)}
+                        onEdit={() => void handleEdit(app)}
+                        onStop={() => void handleStop(app)}
+                      />
                     </div>
                   );
                 })}

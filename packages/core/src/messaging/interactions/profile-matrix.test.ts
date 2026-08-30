@@ -47,7 +47,7 @@ async function productionRegistrationSites(): Promise<
 			)?.length;
 			if (registrations) {
 				found.push({
-					site: path.relative(pluginsRoot, file),
+					site: path.relative(pluginsRoot, file).replaceAll(path.sep, "/"),
 					registrations,
 				});
 			}
@@ -71,10 +71,12 @@ describe("first-party interaction capability matrix", () => {
 	});
 
 	it("matches the committed reviewer-readable golden artifact", async () => {
-		const golden = await fs.readFile(
-			path.join(import.meta.dirname, "CAPABILITY_MATRIX.md"),
-			"utf8",
-		);
+		const golden = (
+			await fs.readFile(
+				path.join(import.meta.dirname, "CAPABILITY_MATRIX.md"),
+				"utf8",
+			)
+		).replaceAll("\r\n", "\n");
 		expect(`${renderFirstPartyInteractionCapabilityMatrix()}\n`).toBe(golden);
 	});
 });

@@ -67,15 +67,6 @@ mock.module("./index", () => ({
   },
 }));
 
-// Isolate the send path from the credit/LLM generator: postAnnouncement is
-// called with explicit text so generateAnnouncement is never reached.
-mock.module("../credits", () => ({
-  creditsService: {
-    deductCredits: async () => ({ success: true, newBalance: 100, transaction: null }),
-    refundCredits: async () => ({ transaction: {}, newBalance: 100 }),
-  },
-}));
-
 mock.module("../character-prompt-helper", () => ({
   getCharacterPromptContext: async () => null,
   buildCharacterSystemPrompt: () => "",

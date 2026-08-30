@@ -131,6 +131,27 @@ describe("current_view state provider", () => {
 		expect(r.text).toContain("currently viewing");
 	});
 
+	it("frames ambient view state as routing context that is not narrated in the reply", async () => {
+		h.getCurrentView.mockResolvedValue({
+			viewId: "notes",
+			viewLabel: "Notes",
+			viewPath: "/notes",
+			viewType: "gui",
+			justSwitched: false,
+			updatedAt: "x",
+		});
+		const r = await currentViewProvider.get(
+			runtime,
+			msg("whats 128 times 64?"),
+			{ values: {}, data: {}, text: "" },
+		);
+		expect(r.text).toContain("currently viewing the Notes view");
+		expect(r.text).toContain("switch with the VIEWS action");
+		expect(r.text).toContain(
+			"do not mention or restate the current view in the reply",
+		);
+	});
+
 	it("returns empty when no current view and no imminent switch", async () => {
 		h.getCurrentView.mockResolvedValue(null);
 		const r = await currentViewProvider.get(runtime, msg("how are you"), {

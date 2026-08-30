@@ -78,8 +78,12 @@ describe("AppsManagementSection failure states", () => {
     });
     render(<AppsManagementSection />);
 
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More app actions" }),
+      { button: 0, pointerId: 1 },
+    );
     fireEvent.click(
-      screen.getByRole("button", { name: "Load from directory" }),
+      await screen.findByRole("menuitem", { name: "Import from directory" }),
     );
     fireEvent.change(screen.getByLabelText("Directory path"), {
       target: { value: "/workspace/my-app" },
@@ -110,6 +114,7 @@ describe("AppsManagementSection failure states", () => {
     await waitFor(() => {
       expect(clientMock.listInstalledApps).toHaveBeenCalledTimes(2);
     });
-    expect(await screen.findByText("No apps installed")).toBeTruthy();
+    const emptyState = await screen.findByRole("status");
+    expect(emptyState.textContent).toContain("No apps installed");
   });
 });

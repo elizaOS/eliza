@@ -81,7 +81,7 @@ test("calendar decomposed view: day selection and month navigation", async ({
     timeout: 15_000,
   });
   await expect(
-    page.getByRole("img", { name: /^1 event on / }).first(),
+    page.getByRole("button", { name: /\. 1 event$/ }).first(),
   ).toBeVisible({ timeout: 15_000 });
   // The initial fetch is a month-grid window (42 local days; ±1 for DST).
   await expect
@@ -149,7 +149,7 @@ test("calendar decomposed view: day selection and month navigation", async ({
     timeout: 15_000,
   });
   await expect(
-    page.getByRole("img", { name: /^1 event on / }).first(),
+    page.getByRole("button", { name: /\. 1 event$/ }).first(),
   ).toBeVisible({ timeout: 15_000 });
 
   // Reverse path: "Today" returns the grid to the current month.
@@ -292,7 +292,7 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
   // branch. Toggling the "Organizations" kind filter narrows the node list to
   // the organization node only; "All" restores it.
   await openAppPath(page, "/relationships");
-  await expect(page.getByText("Graph (3)").first()).toBeVisible({
+  await expect(page.getByText("3 entities").first()).toBeVisible({
     timeout: 60_000,
   });
   await expect(page.getByText("Pat Doe").first()).toBeVisible({
@@ -319,10 +319,14 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     }
   }
 
+  const kindFilter = page.getByRole("button", {
+    name: /^Filter relationship type/,
+  });
+  await kindFilter.click();
   await page
-    .getByRole("button", { name: "Organizations", exact: true })
+    .getByRole("menuitemradio", { name: "Organizations", exact: true })
     .click();
-  await expect(page.getByText("Graph (1)").first()).toBeVisible({
+  await expect(page.getByText("1 entity").first()).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("Pat Doe")).toHaveCount(0, { timeout: 15_000 });
@@ -330,15 +334,13 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     timeout: 15_000,
   });
 
-  // #11144 guard: the first "All" kind chip is the one that used to sit under
-  // the removed global corner back button. Drive the real restore path through
-  // it, then assert every kind is visible again.
-  const allChip = page
-    .getByRole("button", { name: "All", exact: true })
-    .first();
-  await expectTopmostAtCenter(allChip, "Relationships All kind chip");
-  await allChip.click();
-  await expect(page.getByText("Graph (3)").first()).toBeVisible({
+  // #11144 guard: the filter trigger must remain reachable above the graph.
+  // Drive the real restore path through the dropdown and assert every kind is
+  // visible again.
+  await expectTopmostAtCenter(kindFilter, "Relationships kind filter");
+  await kindFilter.click();
+  await page.getByRole("menuitemradio", { name: "All", exact: true }).click();
+  await expect(page.getByText("3 entities").first()).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("Pat Doe").first()).toBeVisible({

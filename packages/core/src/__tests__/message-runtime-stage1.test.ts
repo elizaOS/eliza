@@ -19,7 +19,6 @@ import { HANDLED_STEP_FALLBACK_MESSAGE } from "../runtime/planner-loop";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { validateCharacter } from "../schemas/character";
 import {
 	GazetteerEntityRecognizer,
 	hardenIncomingUserMessage,
@@ -398,6 +397,57 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
 		}
+	});
+
+	it("tolerates a partial runtime without model registration introspection", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hello from a partial runtime.",
+			}),
+		]);
+		delete (runtime as Partial<IAgentRuntime>).getModelRegistrations;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Hello from a partial runtime.",
+			);
+		}
+	});
+
+	it("does not restore the retired maxReplyTokens Stage-1 ceiling", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "This reply uses the provider model boundary.",
+			}),
+		]);
+		runtime.character.settings = {};
+		(
+			runtime.character.settings as unknown as Record<string, unknown>
+		).maxReplyTokens = 200;
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			maxTokens?: number;
+			omitMaxTokens?: boolean;
+		};
+		expect(params.maxTokens).toBeUndefined();
+		expect(params.omitMaxTokens).toBe(true);
 	});
 
 	it("short-circuits an explicit owner-private candidate denied by disclosure", async () => {
@@ -915,56 +965,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(domainJson);
 		}
 		expect(runtime.reportError).not.toHaveBeenCalled();
-	});
-
-	// #16395: a per-agent maxReplyTokens setting caps Stage-1 with a real
-	// max_tokens, overriding the 2048 group default.
-	it("caps Stage-1 max_tokens at a per-agent maxReplyTokens setting", async () => {
-		const runtime = makeRuntime([
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "mh-1",
-						name: "HANDLE_RESPONSE",
-						arguments: {
-							shouldRespond: "RESPOND",
-							thought: "Direct answer.",
-							replyText: "Hi.",
-							contexts: ["simple"],
-							intents: [],
-							candidateActionNames: [],
-							facts: [],
-							relationships: [],
-							addressedTo: [],
-						},
-					},
-				],
-				finishReason: "tool_calls",
-			},
-		]);
-		// Round-trip through the character schema: maxReplyTokens must survive
-		// validation as a known top-level settings key (not be relocated into
-		// settings.extra, which would silently strip the budget).
-		const validated = validateCharacter({
-			name: runtime.character.name ?? "Test",
-			settings: { maxReplyTokens: 200 },
-		});
-		expect(validated.success).toBe(true);
-		if (!validated.success) return;
-		expect(validated.data.settings?.maxReplyTokens).toBe(200);
-		runtime.character.settings = validated.data.settings;
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
-		});
-
-		const params = useModelCalls(runtime)[0]?.[1] as { maxTokens?: number };
-		// Hard-capped at the per-agent budget, overriding the 2048 group default.
-		expect(params.maxTokens).toBe(200);
 	});
 
 	it("restores PII surrogates at the direct reply boundary only", async () => {

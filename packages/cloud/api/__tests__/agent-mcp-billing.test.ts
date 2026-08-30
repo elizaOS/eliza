@@ -201,7 +201,8 @@ beforeEach(() => {
   recordCreatorEarnings.mockReset();
   reserve.mockReset();
   admitOrganizationInference.mockClear();
-  markProviderDispatched.mockClear();
+  markProviderDispatched.mockReset();
+  markProviderDispatched.mockResolvedValue(undefined);
 
   estimateRequestCost.mockResolvedValue(0.01);
   calculateCost.mockResolvedValue({ totalCost: 0.01 });
@@ -412,8 +413,8 @@ describe("Agent MCP billing", () => {
     expect(streamText).not.toHaveBeenCalled();
   });
 
-  test("missing provider usage fails and refunds instead of fabricating zero metering", async () => {
-    const reconcile = makeReservation({ adjustmentType: "refund" });
+  test("missing provider usage settles the reserved estimate instead of fabricating zero metering", async () => {
+    const reconcile = makeReservation({ adjustmentType: "none" });
     streamText.mockResolvedValue({
       textStream: textStream("unmetered output"),
       usage: Promise.resolve({
@@ -430,11 +431,12 @@ describe("Agent MCP billing", () => {
 
     expect(body.error?.code).toBe(-32000);
     expect(reconcile).toHaveBeenCalledTimes(1);
-    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
+    expect(markProviderDispatched).toHaveBeenCalledTimes(1);
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
   });
 
-  test("a provider error refunds the reservation and returns -32000", async () => {
+  test("a provider rejection settles the reserved estimate and returns -32000", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
     streamText.mockRejectedValue(new Error("provider unavailable"));
 
@@ -445,8 +447,44 @@ describe("Agent MCP billing", () => {
 
     expect(body.error?.code).toBe(-32000);
     expect(body.error?.message).toBe("provider unavailable");
-    // The whole reservation is refunded (reconcile(0)); no creator earnings.
+    expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
+    expect(markProviderDispatched).toHaveBeenCalledTimes(1);
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test("incomplete provider output settles the reserved estimate", async () => {
+    const reconcile = makeReservation({ adjustmentType: "none" });
+    streamText.mockResolvedValue({
+      textStream: textStream("partial output"),
+      finishReason: Promise.resolve("length"),
+      usage: Promise.resolve({
+        inputTokens: 100,
+        outputTokens: 25,
+        totalTokens: 125,
+      }),
+    });
+
+    const response = await callChat();
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32000);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test("a dispatch-marker failure refunds before provider dispatch", async () => {
+    const reconcile = makeReservation({ adjustmentType: "refund" });
+    markProviderDispatched.mockRejectedValue(new Error("marker unavailable"));
+
+    const response = await callChat();
+
+    expect(response.status).toBe(200);
+    expect(reconcile).toHaveBeenCalledTimes(1);
     expect(reconcile).toHaveBeenCalledWith(0);
+    expect(streamText).not.toHaveBeenCalled();
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
   });
 });

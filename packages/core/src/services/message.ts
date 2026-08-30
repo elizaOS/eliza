@@ -227,6 +227,10 @@ import {
 	reportOutboundEnvelopeBlock,
 } from "../security/outbound-envelope-guard";
 import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticArgs,
+} from "../security/tool-diagnostics";
+import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	getTrustedDeliveryAudience,
 	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
@@ -236,6 +240,7 @@ import {
 	trustedDeliveryAudienceIsBoundToRuntime,
 } from "../security/trusted-delivery-audience";
 import {
+	emitStreamingHook,
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
 	runWithStreamingContext,
@@ -246,7 +251,6 @@ import {
 	runWithTrajectoryContext,
 } from "../trajectory-context";
 import { withEvaluatorStep } from "../trajectory-utils";
-import type { CharacterSettings } from "../types/agent";
 import type { CodingActionProfile } from "../types/coding";
 import type {
 	Action,
@@ -413,24 +417,6 @@ export {
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 };
-
-/**
- * Per-agent reply-length budget (#16395): a positive-integer `max_tokens`
- * ceiling applied to the Stage-1/synthesis call so operators can pin terse
- * replies (e.g. group-chat turns) without rewriting the persona, and have it
- * enforced by the provider rather than requested politely in `system`.
- * `characterSchema` validates the field (`z.number().int().positive()`); the
- * integer guard here only covers characters constructed without validation.
- * Unset or invalid → undefined, i.e. the unchanged channel default applies.
- */
-function resolveMaxReplyTokens(
-	settings: CharacterSettings | undefined,
-): number | undefined {
-	const raw = settings?.maxReplyTokens;
-	return typeof raw === "number" && Number.isInteger(raw) && raw > 0
-		? raw
-		: undefined;
-}
 
 const STAGE1_COMPLETION_LIMIT_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
@@ -1449,8 +1435,10 @@ function withProviderOverflowText(state: State): State | null {
 function responseHandlerContextWindow(
 	runtime: IAgentRuntime,
 ): number | undefined {
-	return runtime
-		.getModelRegistrations()
+	const getModelRegistrations = runtime.getModelRegistrations;
+	if (typeof getModelRegistrations !== "function") return undefined;
+	return getModelRegistrations
+		.call(runtime)
 		.find(
 			(registration) =>
 				registration.modelType === ModelType.RESPONSE_HANDLER &&
@@ -8267,6 +8255,40 @@ function collectPreviousActionResults(
 }
 
 /**
+ * Streaming status parity for tool executions that bypass the planner loop —
+ * the pre-LLM shortcut gate and response-handler deterministic tool calls.
+ * The planner loop announces every tool through the streaming `onToolCall`
+ * hook, which the chat SSE surface projects onto its existing
+ * `{type:"status",kind:"running_tool"}` frame and inline tool row; without
+ * this, exactly the fastest turns render no activity between "thinking" and
+ * the final reply. Same wire payload as planner-loop's executeQueuedToolCall;
+ * the executor's own emitToolResult settles the row.
+ */
+async function announceDirectToolCallToStream(
+	runtime: IAgentRuntime,
+	toolCall: PlannerToolCall,
+): Promise<void> {
+	const streamingContext = getStreamingContext();
+	if (!streamingContext?.onToolCall) return;
+	const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
+	await emitStreamingHook(streamingContext, "onToolCall", {
+		toolCall: {
+			id: toolCall.id ?? toolCall.name,
+			name: toolCall.name,
+			arguments: (projectToolDiagnosticArgs(
+				toolCall.params ?? {},
+				redactDiagnosticText,
+			) ?? {}) as Record<string, JsonValue>,
+			status: "pending",
+		},
+		...(streamingContext.messageId
+			? { messageId: streamingContext.messageId }
+			: {}),
+		metadata: { deterministic: true },
+	});
+}
+
+/**
  * Pre-LLM action shortcut gate (#8791).
  *
  * Matches explicit slash/`!` protocol invocations against the runtime's
@@ -8314,6 +8336,12 @@ export async function runShortcutGate(args: {
 	if (!action) return null;
 
 	let captured: string | undefined;
+	const shortcutToolCall: PlannerToolCall = {
+		id: `shortcut:${normalizeActionIdentifier(action.name)}`,
+		name: action.name,
+		params: { ...target.parameters, ...match.parameters },
+	};
+	await announceDirectToolCallToStream(args.runtime, shortcutToolCall);
 	// Shortcuts enter the same executor as planner-selected tools so component
 	// gates, argument validation, callback buffering, audience revalidation, and
 	// action events remain one non-bypassable contract.
@@ -8331,10 +8359,7 @@ export async function runShortcutGate(args: {
 				return [];
 			},
 		},
-		{
-			name: action.name,
-			params: { ...target.parameters, ...match.parameters },
-		},
+		shortcutToolCall,
 		{
 			actions: [action],
 			...(args.onSettledActionResult
@@ -8918,20 +8943,17 @@ export async function runV5MessageRuntimeStage1(args: {
 				.eliza ?? {}),
 			thinking: "off",
 		};
-		// An operator may explicitly cap every channel with a real max_tokens.
-		// Without that setting the selected provider/model owns the output boundary.
-		const maxReplyTokens = resolveMaxReplyTokens(
-			args.runtime.character.settings,
-		);
 		const stage1ModelParams = {
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
 			tools: messageHandlerTools,
 			toolChoice: "required" as const,
-			// Stage 1 packs the whole answer into `replyText`; a hidden channel default
-			// can cut the structured envelope off mid-generation.
-			maxTokens: maxReplyTokens,
-			omitMaxTokens: maxReplyTokens == null,
+			// Stage 1 packs the complete structured response and user-visible answer
+			// into one generation on every channel. Let the adapter use the selected
+			// provider/model maximum; an application-level ceiling can only turn a
+			// valid long answer into an incomplete envelope.
+			maxTokens: undefined,
+			omitMaxTokens: true,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known. User-visible `replyText`
@@ -10171,6 +10193,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					name: action?.name ?? selected.name,
 					...(selected.params ? { params: selected.params } : {}),
 				};
+				await announceDirectToolCallToStream(args.runtime, toolCall);
 				const startedAt = Date.now();
 				let callbackDelivered = false;
 				const deterministicCallback: HandlerCallback | undefined =
