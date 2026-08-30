@@ -88,9 +88,7 @@ describe("FilesystemRuntimeOperationRepository idempotency pruning", () => {
     await expect(
       fs.access(join(operationsDir, `${oldOperation.id}.json`)),
     ).rejects.toThrow();
-    await expect(
-      fs.access(join(operationsDir, `${currentOperation.id}.json`)),
-    ).resolves.toBeUndefined();
+    await fs.access(join(operationsDir, `${currentOperation.id}.json`));
     expect(await repository.findByIdempotencyKey(idempotencyKey)).toEqual(
       currentOperation,
     );
