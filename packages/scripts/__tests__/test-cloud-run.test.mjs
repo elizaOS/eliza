@@ -569,7 +569,7 @@ describe("watchdog configuration", () => {
     });
 
     expect(identity).toBe("win-creation:638915887234567890");
-    expect(invocation.command).toBe("powershell.exe");
+    expect(invocation.command).toBe("pwsh.exe");
     expect(invocation.args).toContain("-NoProfile");
     expect(invocation.args.at(-1)).toContain("Get-Process -Id 321");
     expect(invocation.args.at(-1)).not.toContain("Get-CimInstance");
@@ -579,6 +579,25 @@ describe("watchdog configuration", () => {
       timeout: 10_000,
       maxBuffer: 4096,
     });
+  });
+
+  it("falls back to Windows PowerShell when PowerShell 7 is unavailable", () => {
+    const invocations = [];
+    const identity = readProcessIdentity(321, {
+      platform: "win32",
+      spawnSyncFn: (command) => {
+        invocations.push(command);
+        if (command === "pwsh.exe") {
+          return {
+            error: Object.assign(new Error("missing"), { code: "ENOENT" }),
+          };
+        }
+        return { status: 0, stdout: "638915887234567890" };
+      },
+    });
+
+    expect(identity).toBe("win-creation:638915887234567890");
+    expect(invocations).toEqual(["pwsh.exe", "powershell.exe"]);
   });
 
   it("rejects missing or malformed Windows process identities", () => {
