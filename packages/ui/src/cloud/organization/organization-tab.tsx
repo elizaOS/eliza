@@ -17,7 +17,6 @@
 import { KeyRound, Settings, Users } from "lucide-react";
 import { useState } from "react";
 import {
-  BrandCard,
   BrandTabs,
   BrandTabsContent,
   BrandTabsList,
@@ -73,7 +72,7 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
   return (
     <div className="flex flex-col gap-4 md:gap-6 pb-6 md:pb-8">
       {/* Organization Overview Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
         <div className="relative z-10 flex flex-col sm:flex-row items-start justify-between gap-4">
           <div className="flex-1">
@@ -96,7 +95,7 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
             </div>
           </Card>
         </div>
-      </BrandCard>
+      </Card>
 
       {/* Tabs */}
       <BrandTabs

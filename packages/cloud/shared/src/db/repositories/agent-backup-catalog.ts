@@ -2,6 +2,7 @@
 
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_MANIFEST_V2_LIMITS,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
@@ -31,6 +32,10 @@ import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
 import {
+  agentBackupNodeAdmissionCursors,
+  agentBackupOrganizationAdmissionCursors,
+} from "../schemas/agent-backup-admission";
+import {
   type AgentBackupCopyRole,
   type AgentBackupObject,
   type AgentBackupObjectProvider,
@@ -39,6 +44,7 @@ import {
   agentBackupObjects,
   agentBackupRestoreLeases,
 } from "../schemas/agent-backup-catalog";
+import { agentNodeIncarnationHistories } from "../schemas/agent-node-incarnation-histories";
 import {
   type AgentBackupCatalogState,
   type AgentBackupKind,
@@ -50,12 +56,11 @@ import {
   agentSandboxes,
   type StoredAgentSandboxBackup,
 } from "../schemas/agent-sandboxes";
-import { dockerNodes } from "../schemas/docker-nodes";
 import {
   AgentBackupSourceAuthorityError,
   requireCanonicalNodeIncarnation,
   requireCanonicalProviderServerId,
-  resolveAgentBackupManifestSourceAuthorityInTransaction,
+  resolveAgentBackupManifestSourceOccurrenceAuthorityInTransaction,
 } from "./agent-backup-source-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
@@ -94,6 +99,25 @@ export class AgentBackupCatalogConflictError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, { cause: options?.cause });
     this.name = "AgentBackupCatalogConflictError";
+  }
+}
+
+/** Expected contention that must roll back a preliminary lease and retry later. */
+export const AGENT_BACKUP_ADMISSION_CONTENDED_CODE =
+  "BACKUP_OPERATION_ADMISSION_CONTENDED" as const;
+
+export class AgentBackupAdmissionContendedError extends ElizaError {
+  override readonly name = "AgentBackupAdmissionContendedError";
+
+  constructor() {
+    super("Backup admission authority changed while the claim was waiting", {
+      code: AGENT_BACKUP_ADMISSION_CONTENDED_CODE,
+      context: {
+        operation: "claim",
+        retryAction: "retry-operation-claim",
+      },
+      severity: "ephemeral",
+    });
   }
 }
 
@@ -424,9 +448,21 @@ function validateReservationInput(input: ReserveAgentBackupOperationInput): void
 function assertReservationReplay(
   row: StoredAgentSandboxBackup,
   input: ReserveAgentBackupOperationInput,
-  sourceNodeHistoryId: string,
   payloadDigest: string,
+  sourceNodeHistoryId: string,
 ): void {
+  const replayRequiresSourceNode =
+    row.catalog_state === "scheduled" ||
+    row.catalog_state === "capturing" ||
+    (row.catalog_state === "failed_retryable" &&
+      (row.catalog_resume_state === "scheduled" || row.catalog_resume_state === "capturing"));
+  // The cutover intentionally leaves pre-existing publication rows unbound:
+  // their historical occurrence cannot be inferred, but publication no longer
+  // consumes the node lane. Exact payload replay may return that same immutable
+  // row; the DB CHECK prevents any NULL-occurrence row from re-entering capture.
+  const sourceOccurrenceMatches =
+    row.source_node_history_id === sourceNodeHistoryId ||
+    (row.source_node_history_id === null && !replayRequiresSourceNode);
   const matches =
     row.backup_operation_id === input.operationId.toLowerCase() &&
     row.catalog_organization_id === input.organizationId.toLowerCase() &&
@@ -443,7 +479,7 @@ function assertReservationReplay(
     row.source_node_record_id === input.sourceNodeRecordId.toLowerCase() &&
     row.source_node_id === input.sourceNodeId &&
     row.source_node_incarnation === input.sourceNodeIncarnation &&
-    row.source_node_history_id === sourceNodeHistoryId &&
+    sourceOccurrenceMatches &&
     row.source_provider_server_id === input.sourceProviderServerId &&
     row.source_provider_handle === input.sourceProviderHandle &&
     row.source_container_id === input.sourceContainerId &&
@@ -560,20 +596,22 @@ export async function reserveAgentBackupOperationInTransaction(
   ) {
     throw new AgentBackupCatalogConflictError("Backup source generation no longer matches");
   }
-  let sourceAuthority;
+  let sourceOccurrenceAuthority;
   try {
-    sourceAuthority = await resolveAgentBackupManifestSourceAuthorityInTransaction(tx, {
-      nodeRecordId: input.sourceNodeRecordId,
-      nodeId: input.sourceNodeId,
-      nodeIncarnation: input.sourceNodeIncarnation,
-      containerId: input.sourceContainerId,
-    });
+    sourceOccurrenceAuthority =
+      await resolveAgentBackupManifestSourceOccurrenceAuthorityInTransaction(tx, {
+        nodeRecordId: input.sourceNodeRecordId,
+        nodeId: input.sourceNodeId,
+        nodeIncarnation: input.sourceNodeIncarnation,
+        containerId: input.sourceContainerId,
+      });
   } catch (cause) {
     if (cause instanceof AgentBackupSourceAuthorityError) {
       throw new AgentBackupCatalogConflictError(cause.message);
     }
     throw cause;
   }
+  const sourceAuthority = sourceOccurrenceAuthority.source;
   const sourceKind = input.sourceProvider === "operator-onboarded" ? "robot" : "cloud";
   const resolvedProviderServerId =
     sourceAuthority.kind === "cloud" ? sourceAuthority.providerServerId : null;
@@ -585,23 +623,18 @@ export async function reserveAgentBackupOperationInTransaction(
       "Backup source node record or Robot/Cloud provider authority does not match",
     );
   }
-  const [sourceOccurrence] = await tx
-    .select({ historyId: dockerNodes.current_node_history_id })
-    .from(dockerNodes)
-    .where(
-      and(
-        eq(dockerNodes.id, input.sourceNodeRecordId),
-        eq(dockerNodes.node_incarnation, input.sourceNodeIncarnation),
-      ),
-    )
-    .limit(1);
-  if (!sourceOccurrence?.historyId) {
-    throw new AgentBackupCatalogConflictError(
-      "Backup source node lacks exact append-only occurrence authority",
-    );
-  }
-  const sourceNodeHistoryId = sourceOccurrence.historyId;
-  const payloadDigest = await sha256Hex(canonicalReservationPayload(input, sourceNodeHistoryId));
+  const payloadDigest = await sha256Hex(
+    canonicalReservationPayload(input, sourceOccurrenceAuthority.nodeHistoryId),
+  );
+
+  await tx
+    .insert(agentBackupOrganizationAdmissionCursors)
+    .values({ organization_id: input.organizationId.toLowerCase() })
+    .onConflictDoNothing();
+  await tx
+    .insert(agentBackupNodeAdmissionCursors)
+    .values({ node_history_id: sourceOccurrenceAuthority.nodeHistoryId })
+    .onConflictDoNothing();
 
   if (input.backupKind === "incremental") {
     const [directParent] = await tx
@@ -698,7 +731,7 @@ export async function reserveAgentBackupOperationInTransaction(
       source_node_record_id: input.sourceNodeRecordId.toLowerCase(),
       source_node_id: input.sourceNodeId,
       source_node_incarnation: input.sourceNodeIncarnation,
-      source_node_history_id: sourceNodeHistoryId,
+      source_node_history_id: sourceOccurrenceAuthority.nodeHistoryId,
       source_provider_server_id: input.sourceProviderServerId,
       source_provider_handle: input.sourceProviderHandle,
       source_container_id: input.sourceContainerId,
@@ -743,7 +776,7 @@ export async function reserveAgentBackupOperationInTransaction(
     .for("update")
     .limit(1);
   if (!row) throw new Error("Backup operation reservation disappeared");
-  assertReservationReplay(row, input, sourceNodeHistoryId, payloadDigest);
+  assertReservationReplay(row, input, payloadDigest, sourceOccurrenceAuthority.nodeHistoryId);
   const authority = await lockAgentBackupCatalogAuthority(tx, input.organizationId, input.agentId);
   if (row.catalog_revision > authority.catalog_revision) {
     throw new AgentBackupCatalogConflictError(
@@ -762,9 +795,10 @@ async function renewAgentBackupOperationLeasesAfterLocks(
     generation: string;
     leaseMs: number;
     leaseMustRemainValidUntil?: Date;
+    databaseNow?: Date;
   },
 ): Promise<StoredAgentSandboxBackup[]> {
-  const databaseNow = await readPostLockDatabaseNow(tx);
+  const databaseNow = params.databaseNow ?? (await readPostLockDatabaseNow(tx));
   if (
     params.leaseMustRemainValidUntil &&
     params.leaseMustRemainValidUntil.getTime() <= databaseNow.getTime()
@@ -795,9 +829,257 @@ async function renewAgentBackupOperationLeasesAfterLocks(
   return renewed;
 }
 
+interface DueAgentBackupOperationCandidate {
+  id: string;
+  organization_id: string;
+  requires_source_node: boolean;
+  source_node_record_id: string;
+  source_node_incarnation: string;
+  node_history_id: string | null;
+  organization_cursor_at: string | null;
+  node_cursor_at: string | null;
+}
+
+interface LockedAgentBackupAdmissionAuthorities {
+  organizationIds: string[];
+  nodeHistoryIds: string[];
+}
+
 /**
- * Fairly claim at most one due operation per tenant. Every capture/upload
- * mutation must carry the returned owner+generation fence.
+ * Lock admission-only rows after the candidate backup and sandbox are already
+ * locked. Lifecycle, billing, replacement, and node-registration writers never
+ * own these rows, so fairness cannot invert their canonical lock orders.
+ */
+async function lockAgentBackupAdmissionAuthorities(
+  tx: DbTransaction,
+  candidates: DueAgentBackupOperationCandidate[],
+): Promise<LockedAgentBackupAdmissionAuthorities> {
+  const organizationIds = [...new Set(candidates.map((row) => row.organization_id))].sort();
+  const sourceNodeCandidates = candidates.filter((candidate) => candidate.requires_source_node);
+  const candidateByNodeHistoryId = new Map<string, DueAgentBackupOperationCandidate>();
+  for (const candidate of sourceNodeCandidates) {
+    if (!candidate.node_history_id) {
+      throw new AgentBackupCatalogConflictError(
+        "Backup capture admission is missing exact source-node history",
+      );
+    }
+    candidateByNodeHistoryId.set(candidate.node_history_id, candidate);
+  }
+  const nodeHistoryIds = [...candidateByNodeHistoryId.keys()].sort();
+  if (
+    organizationIds.length !== candidates.length ||
+    nodeHistoryIds.length !== sourceNodeCandidates.length
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      "Backup admission selected more than one operation from the same fairness lane",
+    );
+  }
+
+  const lockedOrganizations = await tx
+    .select({
+      id: agentBackupOrganizationAdmissionCursors.organization_id,
+      cursorAt: sql<string | null>`${agentBackupOrganizationAdmissionCursors.cursor_at}::text`,
+    })
+    .from(agentBackupOrganizationAdmissionCursors)
+    .where(inArray(agentBackupOrganizationAdmissionCursors.organization_id, organizationIds))
+    .orderBy(agentBackupOrganizationAdmissionCursors.organization_id)
+    .for("update");
+  if (lockedOrganizations.length !== organizationIds.length) {
+    throw new AgentBackupCatalogConflictError(
+      "Backup admission organization authority disappeared",
+    );
+  }
+  const expectedOrganizationCursorById = new Map(
+    candidates.map((candidate) => [candidate.organization_id, candidate.organization_cursor_at]),
+  );
+  for (const organization of lockedOrganizations) {
+    if (organization.cursorAt !== expectedOrganizationCursorById.get(organization.id)) {
+      throw new AgentBackupAdmissionContendedError();
+    }
+  }
+
+  if (nodeHistoryIds.length > 0) {
+    const lockedNodes = await tx
+      .select({
+        historyId: agentBackupNodeAdmissionCursors.node_history_id,
+        cursorAt: sql<string | null>`${agentBackupNodeAdmissionCursors.cursor_at}::text`,
+      })
+      .from(agentBackupNodeAdmissionCursors)
+      .where(inArray(agentBackupNodeAdmissionCursors.node_history_id, nodeHistoryIds))
+      .orderBy(agentBackupNodeAdmissionCursors.node_history_id)
+      .for("update");
+    if (lockedNodes.length !== nodeHistoryIds.length) {
+      throw new AgentBackupCatalogConflictError(
+        "Backup capture admission occurrence cursor disappeared",
+      );
+    }
+    for (const node of lockedNodes) {
+      const expected = candidateByNodeHistoryId.get(node.historyId);
+      if (!expected || node.cursorAt !== expected.node_cursor_at) {
+        throw new AgentBackupAdmissionContendedError();
+      }
+    }
+  }
+  return {
+    organizationIds,
+    nodeHistoryIds,
+  };
+}
+
+async function assertAgentBackupAdmissionLanesRemainFree(
+  tx: DbTransaction,
+  candidates: DueAgentBackupOperationCandidate[],
+  databaseNow: Date,
+): Promise<void> {
+  const candidateLanes = sql.join(
+    candidates.map(
+      (candidate) => sql`(
+        ${candidate.id}::uuid,
+        ${candidate.organization_id}::uuid,
+        ${candidate.requires_source_node}::boolean,
+        ${candidate.source_node_record_id}::uuid,
+        ${candidate.source_node_incarnation}::uuid,
+        ${candidate.node_history_id}::uuid
+      )`,
+    ),
+    sql`, `,
+  );
+  const [conflict] = await sqlRows<{ id: string }>(
+    tx,
+    sql`
+      WITH claimed_lanes (
+        id, organization_id, requires_source_node,
+        source_node_record_id, source_node_incarnation,
+        node_history_id
+      ) AS (VALUES ${candidateLanes})
+      SELECT active.id
+      FROM ${agentSandboxBackups} AS active
+      WHERE active.catalog_lease_expires_at > ${databaseNow}
+        AND NOT EXISTS (
+          SELECT 1 FROM claimed_lanes AS own_claim WHERE own_claim.id = active.id
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM claimed_lanes AS claimed
+          WHERE active.catalog_organization_id = claimed.organization_id
+            OR (
+              claimed.requires_source_node
+              AND
+              (
+                active.source_node_history_id = claimed.node_history_id
+                OR (
+                  active.source_node_history_id IS NULL
+                  AND active.source_node_record_id = claimed.source_node_record_id
+                  AND active.source_node_incarnation = claimed.source_node_incarnation
+                )
+              )
+              AND (
+                active.catalog_state IN ('scheduled', 'capturing')
+                OR (
+                  active.catalog_state = 'failed_retryable'
+                  AND active.catalog_resume_state IN ('scheduled', 'capturing')
+                )
+              )
+            )
+        )
+      LIMIT 1
+    `,
+  );
+  if (conflict) throw new AgentBackupAdmissionContendedError();
+}
+
+async function advanceAgentBackupAdmissionCursors(
+  tx: DbTransaction,
+  authorities: LockedAgentBackupAdmissionAuthorities,
+  cursorAt: string,
+): Promise<void> {
+  const organizationsAdvanced = await tx
+    .update(agentBackupOrganizationAdmissionCursors)
+    .set({
+      cursor_at: sql`${cursorAt}::timestamptz`,
+      updated_at: sql`${cursorAt}::timestamptz`,
+    })
+    .where(
+      inArray(agentBackupOrganizationAdmissionCursors.organization_id, authorities.organizationIds),
+    )
+    .returning({ id: agentBackupOrganizationAdmissionCursors.organization_id });
+  if (organizationsAdvanced.length !== authorities.organizationIds.length) {
+    throw new AgentBackupCatalogConflictError(
+      "Backup admission did not advance every organization cursor",
+    );
+  }
+  if (authorities.nodeHistoryIds.length > 0) {
+    const nodesAdvanced = await tx
+      .update(agentBackupNodeAdmissionCursors)
+      .set({
+        cursor_at: sql`${cursorAt}::timestamptz`,
+        updated_at: sql`${cursorAt}::timestamptz`,
+      })
+      .where(inArray(agentBackupNodeAdmissionCursors.node_history_id, authorities.nodeHistoryIds))
+      .returning({
+        historyId: agentBackupNodeAdmissionCursors.node_history_id,
+      });
+    if (nodesAdvanced.length !== authorities.nodeHistoryIds.length) {
+      throw new AgentBackupCatalogConflictError(
+        "Backup admission did not advance every exact source-node cursor",
+      );
+    }
+  }
+}
+
+/** Produce one exact logical turn that is newer than every locked lane. */
+async function readNextAgentBackupAdmissionCursor(
+  tx: DbTransaction,
+  authorities: LockedAgentBackupAdmissionAuthorities,
+): Promise<string> {
+  const organizationIds = sql.join(
+    authorities.organizationIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const nodeCursorUnion =
+    authorities.nodeHistoryIds.length > 0
+      ? sql`
+        UNION ALL
+        SELECT node_cursor.cursor_at
+        FROM ${agentBackupNodeAdmissionCursors} AS node_cursor
+        WHERE node_cursor.node_history_id IN (${sql.join(
+          authorities.nodeHistoryIds.map((id) => sql`${id}::uuid`),
+          sql`, `,
+        )})
+      `
+      : sql``;
+  const [turn] = await sqlRows<{ cursor_at: string }>(
+    tx,
+    sql`
+      SELECT GREATEST(
+        clock_timestamp(),
+        COALESCE(MAX(lane.cursor_at), '-infinity'::timestamptz)
+          + INTERVAL '1 microsecond'
+      )::text AS cursor_at
+      FROM (
+        SELECT organization_cursor.cursor_at
+        FROM ${agentBackupOrganizationAdmissionCursors} AS organization_cursor
+        WHERE organization_cursor.organization_id IN (${organizationIds})
+        ${nodeCursorUnion}
+      ) AS lane
+    `,
+  );
+  if (!turn?.cursor_at) {
+    throw new AgentBackupCatalogConflictError(
+      "Backup admission could not allocate an exact monotonic cursor",
+    );
+  }
+  return turn.cursor_at;
+}
+
+/**
+ * Claim at most one due operation per tenant and, while capture still needs
+ * the source runtime, per exact source-node lane. The durable lane cursors are
+ * last-service hints; global starvation freedom belongs to the queued/deferred
+ * cohort authority and must not be inferred from this operation-level claim.
+ * Publication is driven from the durable capture spool/R2 inventory and
+ * advances only its tenant cursor. Every applicable cursor advances in the
+ * same commit as the returned owner+generation lease fence.
  */
 export async function claimDueAgentBackupOperations(params: {
   ownerId: string;
@@ -822,71 +1104,292 @@ export async function claimDueAgentBackupOperations(params: {
   const generation = randomUUID();
 
   return dbWrite.transaction(async (tx) => {
-    const candidates = await sqlRows<{ id: string }>(
+    const candidates = await sqlRows<DueAgentBackupOperationCandidate>(
       tx,
       sql`
-        WITH fair AS MATERIALIZED (
-          SELECT DISTINCT ON (backup.catalog_organization_id)
+          WITH RECURSIVE operation_base AS MATERIALIZED (
+            SELECT
+              backup.id,
+              backup.catalog_organization_id AS organization_id,
+              backup.sandbox_record_id,
+              backup.catalog_state,
+              backup.catalog_resume_state,
+              backup.catalog_next_attempt_at,
+              (
+                backup.catalog_state IN ('scheduled', 'capturing')
+                OR (
+                  backup.catalog_state = 'failed_retryable'
+                  AND backup.catalog_resume_state IN ('scheduled', 'capturing')
+                )
+              ) AS requires_source_node,
+              backup.source_node_record_id,
+              backup.source_node_id,
+              backup.source_node_incarnation,
+              backup.source_node_history_id AS node_history_id,
+              backup.source_provider,
+              backup.source_provider_server_id,
+              backup.source_provider_handle,
+              backup.source_container_id,
+              organization_cursor.cursor_at AS organization_cursor_at,
+              COALESCE(backup.catalog_next_attempt_at, backup.created_at) AS due_at,
+              backup.created_at
+            FROM ${agentSandboxBackups} AS backup
+            JOIN ${agentBackupOrganizationAdmissionCursors} AS organization_cursor
+              ON organization_cursor.organization_id = backup.catalog_organization_id
+            WHERE backup.catalog_version = 2
+              AND backup.sandbox_record_id IS NOT NULL
+              AND backup.source_provider IN ('operator-onboarded', 'hetzner-cloud')
+              AND backup.source_node_record_id IS NOT NULL
+              AND backup.source_node_id IS NOT NULL
+              AND backup.source_node_id <> ''
+              AND backup.source_node_incarnation IS NOT NULL
+              AND backup.source_provider_handle IS NOT NULL
+              AND backup.source_provider_handle <> ''
+              AND backup.source_container_id ~ '^[0-9a-f]{64}$'
+              AND backup.source_provider_handle <> backup.source_container_id
+              AND (
+                (backup.source_provider = 'operator-onboarded'
+                  AND backup.source_provider_server_id IS NULL)
+                OR
+                (backup.source_provider = 'hetzner-cloud'
+                  AND CASE
+                    WHEN backup.source_provider_server_id ~ '^[1-9][0-9]{0,19}$'
+                      THEN backup.source_provider_server_id::numeric <= 18446744073709551615
+                    ELSE FALSE
+                  END)
+              )
+              AND backup.catalog_state IN (
+                'scheduled', 'capturing', 'captured', 'uploading',
+                'primary_uploaded', 'primary_verified', 'secondary_pending',
+                'failed_retryable'
+              )
+              AND (backup.catalog_next_attempt_at IS NULL
+                OR backup.catalog_next_attempt_at <= statement_timestamp())
+              AND (backup.catalog_lease_expires_at IS NULL
+                OR backup.catalog_lease_expires_at <= statement_timestamp())
+          ), eligible AS MATERIALIZED (
+            SELECT
+              operation_base.*,
+              node_cursor.cursor_at AS node_cursor_at,
+              CASE
+                WHEN operation_base.requires_source_node THEN node_cursor.cursor_at
+                ELSE operation_base.organization_cursor_at
+              END AS effective_node_cursor_at,
+              CASE
+                WHEN operation_base.requires_source_node THEN GREATEST(
+                  COALESCE(operation_base.organization_cursor_at, '-infinity'::timestamptz),
+                  COALESCE(node_cursor.cursor_at, '-infinity'::timestamptz)
+                )
+                ELSE COALESCE(
+                  operation_base.organization_cursor_at,
+                  '-infinity'::timestamptz
+                )
+              END AS admission_cursor_at
+            FROM operation_base
+            LEFT JOIN ${agentNodeIncarnationHistories} AS source_occurrence
+              ON operation_base.requires_source_node
+              AND source_occurrence.id = operation_base.node_history_id
+              AND source_occurrence.docker_node_record_id = operation_base.source_node_record_id
+              AND source_occurrence.node_incarnation = operation_base.source_node_incarnation
+            LEFT JOIN ${agentBackupNodeAdmissionCursors} AS node_cursor
+              ON operation_base.requires_source_node
+              AND node_cursor.node_history_id = operation_base.node_history_id
+            WHERE (
+                NOT operation_base.requires_source_node
+                OR (
+                  operation_base.node_history_id IS NOT NULL
+                  AND source_occurrence.id IS NOT NULL
+                  AND source_occurrence.node_id = operation_base.source_node_id
+                  AND source_occurrence.infrastructure_provider = 'hetzner'
+                  AND btrim(source_occurrence.host_key_fingerprint) <> ''
+                  AND node_cursor.node_history_id IS NOT NULL
+                  AND (
+                    (operation_base.source_provider = 'operator-onboarded'
+                      AND source_occurrence.fleet_kind = 'robot'
+                      AND source_occurrence.provider_server_id IS NULL)
+                    OR
+                    (operation_base.source_provider = 'hetzner-cloud'
+                      AND source_occurrence.fleet_kind = 'cloud'
+                      AND source_occurrence.provider_server_id =
+                        operation_base.source_provider_server_id)
+                  )
+                )
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM ${agentSandboxBackups} AS active
+                WHERE active.catalog_lease_expires_at > statement_timestamp()
+                  AND (
+                    active.catalog_organization_id = operation_base.organization_id
+                    OR (
+                      operation_base.requires_source_node
+                      AND (
+                        active.source_node_history_id = operation_base.node_history_id
+                        OR (
+                          active.source_node_history_id IS NULL
+                          AND active.source_node_record_id = operation_base.source_node_record_id
+                          AND active.source_node_incarnation = operation_base.source_node_incarnation
+                        )
+                      )
+                      AND (
+                        active.catalog_state IN ('scheduled', 'capturing')
+                        OR (
+                          active.catalog_state = 'failed_retryable'
+                          AND active.catalog_resume_state IN ('scheduled', 'capturing')
+                        )
+                      )
+                    )
+                  )
+              )
+          ), ordered AS MATERIALIZED (
+            SELECT
+              eligible.*,
+              ROW_NUMBER() OVER (
+                ORDER BY
+                  admission_cursor_at,
+                  COALESCE(organization_cursor_at, '-infinity'::timestamptz),
+                  COALESCE(effective_node_cursor_at, '-infinity'::timestamptz),
+                  due_at,
+                  created_at,
+                  organization_id,
+                  COALESCE(node_history_id, id),
+                  id
+              ) AS candidate_ordinal
+            FROM eligible
+          ), greedy AS (
+            SELECT
+              0::bigint AS candidate_ordinal,
+              ARRAY[]::uuid[] AS backup_ids,
+              ARRAY[]::uuid[] AS organization_ids,
+              ARRAY[]::uuid[] AS node_history_ids
+            UNION ALL
+            SELECT
+              candidate.candidate_ordinal,
+              CASE
+                WHEN decision.consider_candidate
+                  AND locked.id IS NOT NULL
+                  AND locked.is_fresh
+                THEN array_append(greedy.backup_ids, candidate.id)
+                ELSE greedy.backup_ids
+              END,
+              CASE WHEN decision.consider_candidate
+                THEN array_append(greedy.organization_ids, candidate.organization_id)
+                ELSE greedy.organization_ids
+              END,
+              CASE WHEN decision.consider_candidate AND candidate.requires_source_node
+                THEN array_append(greedy.node_history_ids, candidate.node_history_id)
+                ELSE greedy.node_history_ids
+              END
+            FROM greedy
+            JOIN ordered AS candidate
+              ON candidate.candidate_ordinal = greedy.candidate_ordinal + 1
+            CROSS JOIN LATERAL (
+              SELECT
+                NOT (candidate.organization_id = ANY(greedy.organization_ids))
+                AND (
+                  NOT candidate.requires_source_node
+                  OR NOT (candidate.node_history_id = ANY(greedy.node_history_ids))
+                ) AS consider_candidate
+            ) AS decision
+            LEFT JOIN LATERAL (
+              SELECT
+                backup.id,
+                ((
+                  backup.catalog_version = 2
+                  AND backup.catalog_organization_id = candidate.organization_id
+                  AND backup.sandbox_record_id = candidate.sandbox_record_id
+                  AND backup.catalog_state = candidate.catalog_state
+                  AND backup.catalog_resume_state
+                    IS NOT DISTINCT FROM candidate.catalog_resume_state
+                  AND backup.catalog_next_attempt_at
+                    IS NOT DISTINCT FROM candidate.catalog_next_attempt_at
+                  AND backup.source_node_record_id = candidate.source_node_record_id
+                  AND backup.source_node_id = candidate.source_node_id
+                  AND backup.source_node_incarnation = candidate.source_node_incarnation
+                  AND backup.source_node_history_id
+                    IS NOT DISTINCT FROM candidate.node_history_id
+                  AND backup.source_provider = candidate.source_provider
+                  AND backup.source_provider_server_id
+                    IS NOT DISTINCT FROM candidate.source_provider_server_id
+                  AND backup.source_provider_handle = candidate.source_provider_handle
+                  AND backup.source_container_id = candidate.source_container_id
+                  AND backup.created_at = candidate.created_at
+                  AND (
+                    backup.catalog_state IN ('scheduled', 'capturing')
+                    OR (
+                      backup.catalog_state = 'failed_retryable'
+                      AND backup.catalog_resume_state IN ('scheduled', 'capturing')
+                    )
+                  ) = candidate.requires_source_node
+                  AND backup.catalog_state IN (
+                    'scheduled', 'capturing', 'captured', 'uploading',
+                    'primary_uploaded', 'primary_verified', 'secondary_pending',
+                    'failed_retryable'
+                  )
+                  AND (backup.catalog_next_attempt_at IS NULL
+                    OR backup.catalog_next_attempt_at <= statement_timestamp())
+                  AND (backup.catalog_lease_expires_at IS NULL
+                    OR backup.catalog_lease_expires_at <= statement_timestamp())
+                ) IS TRUE) AS is_fresh
+              FROM ${agentSandboxBackups} AS backup
+              JOIN ${agentSandboxes} AS sandbox_row
+                ON sandbox_row.id = backup.sandbox_record_id
+                AND sandbox_row.organization_id = candidate.organization_id
+              WHERE decision.consider_candidate
+                AND backup.id = candidate.id
+              LIMIT 1
+              FOR UPDATE OF backup SKIP LOCKED
+              FOR KEY SHARE OF sandbox_row SKIP LOCKED
+            ) AS locked ON TRUE
+            WHERE cardinality(greedy.backup_ids) < ${params.limit}
+          ), selected AS MATERIALIZED (
+            SELECT backup_ids
+            FROM greedy
+            ORDER BY candidate_ordinal DESC
+            LIMIT 1
+          ), chosen AS MATERIALIZED (
+            SELECT chosen_backup.id, chosen_backup.ordinality
+            FROM selected
+            CROSS JOIN LATERAL unnest(selected.backup_ids)
+              WITH ORDINALITY AS chosen_backup(id, ordinality)
+          )
+          SELECT
             backup.id,
-            backup.catalog_organization_id,
-            COALESCE(backup.catalog_next_attempt_at, backup.created_at) AS due_at,
-            backup.created_at
+            candidate.organization_id,
+            candidate.requires_source_node,
+            candidate.source_node_record_id,
+            candidate.source_node_incarnation,
+            candidate.node_history_id,
+            candidate.organization_cursor_at::text AS organization_cursor_at,
+            candidate.node_cursor_at::text AS node_cursor_at
           FROM ${agentSandboxBackups} AS backup
-          WHERE backup.catalog_version = 2
-            AND backup.sandbox_record_id IS NOT NULL
-            AND backup.source_provider IN ('operator-onboarded', 'hetzner-cloud')
-            AND backup.source_node_record_id IS NOT NULL
-            AND backup.source_node_id IS NOT NULL
-            AND backup.source_node_id <> ''
-            AND backup.source_node_incarnation IS NOT NULL
-            AND backup.source_provider_handle IS NOT NULL
-            AND backup.source_provider_handle <> ''
-            AND backup.source_container_id ~ '^[0-9a-f]{64}$'
-            AND backup.source_provider_handle <> backup.source_container_id
-            AND (
-              (backup.source_provider = 'operator-onboarded'
-                AND backup.source_provider_server_id IS NULL)
-              OR
-              (backup.source_provider = 'hetzner-cloud'
-                AND CASE
-                  WHEN backup.source_provider_server_id ~ '^[1-9][0-9]{0,19}$'
-                    THEN backup.source_provider_server_id::numeric <= 18446744073709551615
-                  ELSE FALSE
-                END)
-            )
-            AND backup.catalog_state IN (
-              'scheduled', 'capturing', 'captured', 'uploading',
-              'primary_uploaded', 'primary_verified', 'secondary_pending',
-              'failed_retryable'
-            )
-            AND (backup.catalog_next_attempt_at IS NULL OR backup.catalog_next_attempt_at <= NOW())
-            AND (backup.catalog_lease_expires_at IS NULL OR backup.catalog_lease_expires_at <= NOW())
-          ORDER BY backup.catalog_organization_id,
-            COALESCE(backup.catalog_next_attempt_at, backup.created_at), backup.created_at
-        )
-        SELECT backup.id
-        FROM ${agentSandboxBackups} AS backup
-        JOIN fair ON fair.id = backup.id
-        ORDER BY fair.due_at, fair.created_at, backup.id
-        LIMIT ${params.limit}
-        FOR UPDATE OF backup SKIP LOCKED
-      `,
+          JOIN chosen ON chosen.id = backup.id
+          JOIN ordered AS candidate ON candidate.id = backup.id
+          ORDER BY chosen.ordinality
+        `,
     );
     if (candidates.length === 0) return [];
+
+    const authorities = await lockAgentBackupAdmissionAuthorities(tx, candidates);
+    const preClaimDatabaseNow = await readPostLockDatabaseNow(tx);
+    await assertAgentBackupAdmissionLanesRemainFree(tx, candidates, preClaimDatabaseNow);
+    await tx.execute(sql`
+        SELECT set_config('eliza.agent_backup_admission_protocol', '2', TRUE)
+      `);
     const claimed = await tx
       .update(agentSandboxBackups)
       .set({
         catalog_lease_owner: params.ownerId,
         catalog_lease_generation: generation,
-        // Preliminary fence. A backup-mutation trigger may still block after
-        // these expressions are evaluated, so this is renewed below from a
-        // post-trigger database clock before the transaction can commit.
+        // The backup, sandbox, and dedicated lane rows are already locked.
+        // This marker-bearing mutation is the atomic lease activation.
         catalog_lease_expires_at: sql`clock_timestamp()
-          + (${params.leaseMs} * INTERVAL '1 millisecond')`,
+            + (${params.leaseMs} * INTERVAL '1 millisecond')`,
         catalog_updated_at: sql`clock_timestamp()`,
       })
       .where(
         and(
+          eq(agentSandboxBackups.catalog_version, 2),
           inArray(
             agentSandboxBackups.id,
             candidates.map((candidate) => candidate.id),
@@ -895,42 +1398,64 @@ export async function claimDueAgentBackupOperations(params: {
           sql`${agentSandboxBackups.source_provider} IN ('operator-onboarded', 'hetzner-cloud')`,
           sql`${agentSandboxBackups.source_node_record_id} IS NOT NULL`,
           sql`${agentSandboxBackups.source_node_id} IS NOT NULL
-            AND ${agentSandboxBackups.source_node_id} <> ''`,
+              AND ${agentSandboxBackups.source_node_id} <> ''`,
           sql`${agentSandboxBackups.source_node_incarnation} IS NOT NULL`,
           sql`${agentSandboxBackups.source_provider_handle} IS NOT NULL
-            AND ${agentSandboxBackups.source_provider_handle} <> ''`,
+              AND ${agentSandboxBackups.source_provider_handle} <> ''`,
           sql`${agentSandboxBackups.source_container_id} ~ '^[0-9a-f]{64}$'`,
           sql`${agentSandboxBackups.source_provider_handle}
-            <> ${agentSandboxBackups.source_container_id}`,
+              <> ${agentSandboxBackups.source_container_id}`,
           sql`(
-            (${agentSandboxBackups.source_provider} = 'operator-onboarded'
-              AND ${agentSandboxBackups.source_provider_server_id} IS NULL)
-            OR
-            (${agentSandboxBackups.source_provider} = 'hetzner-cloud'
-              AND CASE
-                WHEN ${agentSandboxBackups.source_provider_server_id} ~ '^[1-9][0-9]{0,19}$'
-                  THEN ${agentSandboxBackups.source_provider_server_id}::numeric
-                    <= 18446744073709551615
-                ELSE FALSE
-              END)
-          )`,
+              (${agentSandboxBackups.source_provider} = 'operator-onboarded'
+                AND ${agentSandboxBackups.source_provider_server_id} IS NULL)
+              OR
+              (${agentSandboxBackups.source_provider} = 'hetzner-cloud'
+                AND CASE
+                  WHEN ${agentSandboxBackups.source_provider_server_id} ~ '^[1-9][0-9]{0,19}$'
+                    THEN ${agentSandboxBackups.source_provider_server_id}::numeric
+                      <= 18446744073709551615
+                  ELSE FALSE
+                END)
+            )`,
           sql`(${agentSandboxBackups.catalog_lease_expires_at} IS NULL
-            OR ${agentSandboxBackups.catalog_lease_expires_at} <= NOW())`,
+              OR ${agentSandboxBackups.catalog_lease_expires_at} <= clock_timestamp())`,
+          inArray(agentSandboxBackups.catalog_state, EXECUTION_OWNED_STATES),
+          or(
+            isNull(agentSandboxBackups.catalog_next_attempt_at),
+            lte(agentSandboxBackups.catalog_next_attempt_at, sql`clock_timestamp()`),
+          ),
         ),
       )
       .returning();
-    if (claimed.length === 0) return [];
+    if (claimed.length !== candidates.length) {
+      throw new AgentBackupCatalogConflictError(
+        "Backup admission could not lease every selected operation",
+      );
+    }
+
+    // No external writer can mutate a locked lane. Rechecking here also
+    // fences database triggers or mixed-version code in this transaction.
+    await lockAgentBackupAdmissionAuthorities(tx, candidates);
+    const cursorAt = await readNextAgentBackupAdmissionCursor(tx, authorities);
+    const databaseNow = await readPostLockDatabaseNow(tx);
     const renewed = await renewAgentBackupOperationLeasesAfterLocks(tx, {
       backupIds: claimed.map((backup) => backup.id),
       ownerId: params.ownerId,
       generation,
       leaseMs: params.leaseMs,
+      databaseNow,
     });
-    return renewed.map((backup) => ({
-      backup,
-      ownerId: params.ownerId,
-      generation,
-    }));
+    await advanceAgentBackupAdmissionCursors(tx, authorities, cursorAt);
+    const renewedById = new Map(renewed.map((backup) => [backup.id, backup]));
+    return candidates.map((candidate) => {
+      const backup = renewedById.get(candidate.id);
+      if (!backup) {
+        throw new AgentBackupCatalogConflictError(
+          "Backup admission lost a renewed operation while preserving fair order",
+        );
+      }
+      return { backup, ownerId: params.ownerId, generation };
+    });
   });
 }
 
@@ -951,32 +1476,91 @@ export async function heartbeatAgentBackupOperation(params: {
     throw new Error(`leaseMs must be between 1 and ${MAX_OPERATION_LEASE_MS}`);
   }
   return dbWrite.transaction(async (tx) => {
-    const [leased] = await tx
-      .select({
-        id: agentSandboxBackups.id,
-        leaseExpiresAt: agentSandboxBackups.catalog_lease_expires_at,
-      })
-      .from(agentSandboxBackups)
-      .where(
-        and(
-          eq(agentSandboxBackups.id, params.backupId),
-          eq(agentSandboxBackups.catalog_organization_id, params.organizationId),
-          eq(agentSandboxBackups.catalog_lease_owner, params.execution.ownerId),
-          eq(agentSandboxBackups.catalog_lease_generation, params.execution.generation),
-          sql`${agentSandboxBackups.sandbox_record_id} IS NOT NULL`,
-          sql`${agentSandboxBackups.catalog_state} IN (${sql.join(
-            EXECUTION_OWNED_STATES.map((state) => sql`${state}`),
-            sql`, `,
-          )})`,
-        ),
-      )
-      .limit(1)
-      .for("update");
-    if (!leased?.leaseExpiresAt) {
+    const [candidate] = await sqlRows<
+      DueAgentBackupOperationCandidate & { lease_expires_at: Date | string }
+    >(
+      tx,
+      sql`
+        SELECT
+          backup.id,
+          backup.catalog_organization_id AS organization_id,
+          (
+            backup.catalog_state IN ('scheduled', 'capturing')
+            OR (
+              backup.catalog_state = 'failed_retryable'
+              AND backup.catalog_resume_state IN ('scheduled', 'capturing')
+            )
+          ) AS requires_source_node,
+          backup.source_node_record_id,
+          backup.source_node_incarnation,
+          backup.source_node_history_id AS node_history_id,
+          organization_cursor.cursor_at::text AS organization_cursor_at,
+          node_cursor.cursor_at::text AS node_cursor_at,
+          backup.catalog_lease_expires_at AS lease_expires_at
+        FROM ${agentSandboxBackups} AS backup
+        JOIN ${agentSandboxes} AS sandbox_row
+          ON sandbox_row.id = backup.sandbox_record_id
+          AND sandbox_row.organization_id = backup.catalog_organization_id
+        JOIN ${agentBackupOrganizationAdmissionCursors} AS organization_cursor
+          ON organization_cursor.organization_id = backup.catalog_organization_id
+        LEFT JOIN ${agentBackupNodeAdmissionCursors} AS node_cursor
+          ON (
+            backup.catalog_state IN ('scheduled', 'capturing')
+            OR (
+              backup.catalog_state = 'failed_retryable'
+              AND backup.catalog_resume_state IN ('scheduled', 'capturing')
+            )
+          )
+          AND node_cursor.node_history_id = backup.source_node_history_id
+        WHERE backup.id = ${params.backupId}::uuid
+          AND backup.catalog_version = 2
+          AND backup.catalog_organization_id = ${params.organizationId}::uuid
+          AND backup.catalog_lease_owner = ${params.execution.ownerId}
+          AND backup.catalog_lease_generation = ${params.execution.generation}::uuid
+          AND backup.catalog_lease_expires_at > clock_timestamp()
+          AND backup.source_node_record_id IS NOT NULL
+          AND backup.source_node_incarnation IS NOT NULL
+          AND backup.catalog_state IN (
+            'scheduled', 'capturing', 'captured', 'uploading',
+            'primary_uploaded', 'primary_verified', 'secondary_pending',
+            'failed_retryable'
+          )
+          AND (
+            NOT (
+              backup.catalog_state IN ('scheduled', 'capturing')
+              OR (
+                backup.catalog_state = 'failed_retryable'
+                AND backup.catalog_resume_state IN ('scheduled', 'capturing')
+              )
+            )
+            OR (
+              backup.source_node_history_id IS NOT NULL
+              AND node_cursor.node_history_id IS NOT NULL
+            )
+          )
+        LIMIT 1
+        FOR UPDATE OF backup SKIP LOCKED
+        FOR KEY SHARE OF sandbox_row SKIP LOCKED
+      `,
+    );
+    if (!candidate?.lease_expires_at) {
       throw new AgentBackupCatalogConflictError(
         "Backup operation heartbeat lost its execution generation",
       );
     }
+    const leaseExpiresAt =
+      candidate.lease_expires_at instanceof Date
+        ? candidate.lease_expires_at
+        : new Date(candidate.lease_expires_at);
+    if (!Number.isFinite(leaseExpiresAt.getTime())) {
+      throw new AgentBackupCatalogConflictError(
+        "Backup operation heartbeat read an invalid lease expiry",
+      );
+    }
+    await lockAgentBackupAdmissionAuthorities(tx, [candidate]);
+    await tx.execute(sql`
+      SELECT set_config('eliza.agent_backup_admission_protocol', '2', TRUE)
+    `);
     const [updated] = await tx
       .update(agentSandboxBackups)
       .set({
@@ -1004,12 +1588,13 @@ export async function heartbeatAgentBackupOperation(params: {
         "Backup operation heartbeat lost its execution generation",
       );
     }
+    await lockAgentBackupAdmissionAuthorities(tx, [candidate]);
     const [renewed] = await renewAgentBackupOperationLeasesAfterLocks(tx, {
       backupIds: [updated.id],
       ownerId: params.execution.ownerId,
       generation: params.execution.generation,
       leaseMs: params.leaseMs,
-      leaseMustRemainValidUntil: leased.leaseExpiresAt,
+      leaseMustRemainValidUntil: leaseExpiresAt,
     });
     if (!renewed) {
       throw new AgentBackupCatalogConflictError(
@@ -1728,26 +2313,29 @@ export async function recordCapturedAgentBackupManifest(params: {
         "Backup source activation changed before the manifest was recorded",
       );
     }
-    let currentSourceAuthority;
+    let currentSourceOccurrenceAuthority;
     try {
-      currentSourceAuthority = await resolveAgentBackupManifestSourceAuthorityInTransaction(tx, {
-        nodeRecordId: row.source_node_record_id,
-        nodeId: row.source_node_id,
-        nodeIncarnation: row.source_node_incarnation,
-        containerId: row.source_container_id,
-      });
+      currentSourceOccurrenceAuthority =
+        await resolveAgentBackupManifestSourceOccurrenceAuthorityInTransaction(tx, {
+          nodeRecordId: row.source_node_record_id,
+          nodeId: row.source_node_id,
+          nodeIncarnation: row.source_node_incarnation,
+          containerId: row.source_container_id,
+        });
     } catch (cause) {
       if (cause instanceof AgentBackupSourceAuthorityError) {
         throw new AgentBackupCatalogConflictError(cause.message);
       }
       throw cause;
     }
+    const currentSourceAuthority = currentSourceOccurrenceAuthority.source;
     const currentProviderServerId =
       currentSourceAuthority.kind === "cloud" ? currentSourceAuthority.providerServerId : null;
     if (
       currentSourceAuthority.kind !==
         (row.source_provider === "operator-onboarded" ? "robot" : "cloud") ||
-      currentProviderServerId !== row.source_provider_server_id
+      currentProviderServerId !== row.source_provider_server_id ||
+      currentSourceOccurrenceAuthority.nodeHistoryId !== row.source_node_history_id
     ) {
       throw new AgentBackupCatalogConflictError(
         "Backup source node authority changed before the manifest was recorded",

@@ -211,6 +211,27 @@ describe("local development Cloud target", () => {
     expect(configured.env.ELIZA_DEV_CLOUD_API_KEY).toBe("");
   });
 
+  it("rejects a production target whose only credential is staging-specific", () => {
+    expect(() =>
+      configureDevCloudEnvironment([], {
+        ELIZA_DEV_CLOUD_TARGET: "production",
+        ELIZA_DEV_CLOUD_API_KEY: "staging-only-key",
+      }),
+    ).toThrow(/production.*requires ELIZAOS_CLOUD_API_KEY/i);
+  });
+
+  it("ignores the staging-specific credential when selecting a production alias", () => {
+    const configured = configureDevCloudEnvironment([], {
+      ELIZA_DEV_CLOUD_TARGET: "production",
+      ELIZA_DEV_CLOUD_API_KEY: "staging-only-key",
+      ELIZA_CLOUD_API_KEY: "production-legacy-key",
+    });
+
+    expect(configured.env.ELIZAOS_CLOUD_API_KEY).toBe("production-legacy-key");
+    expect(configured.env.ELIZA_DEV_CLOUD_API_KEY).toBe("");
+    expect(configured.env.ELIZA_CLOUD_API_KEY).toBe("");
+  });
+
   it.each([
     ["ELIZAOS_CLOUD_API_KEY", "generic-key"],
     ["ELIZA_CLOUD_API_KEY", "legacy-alias-key"],

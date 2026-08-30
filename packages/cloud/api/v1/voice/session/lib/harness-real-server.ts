@@ -424,7 +424,18 @@ export async function startRealVoiceServer(
       req.method === "GET" &&
       url.pathname === "/api/v1/voice/session/health"
     ) {
-      writeJson(res, 200, { ready: true });
+      const requestedConversationIds =
+        url.searchParams.getAll("conversationId");
+      const conversationReady =
+        requestedConversationIds.length === 0 ||
+        (requestedConversationIds.length === 1 &&
+          requestedConversationIds[0] === config.conversationId);
+      writeJson(res, 200, {
+        ready: conversationReady,
+        ...(conversationReady && requestedConversationIds.length === 1
+          ? { conversationId: requestedConversationIds[0] }
+          : {}),
+      });
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/v1/voice/tts") {

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { resolve } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 import {
   ALLOWED_NON_RUNTIME_CHANGES,
@@ -23,14 +25,94 @@ const policyFixtureSha = execFileSync(
     encoding: "utf8",
   },
 ).trim();
-const prePolicyFixtureSha = execFileSync(
-  "git",
-  ["-C", repoRoot, "rev-parse", "HEAD^"],
-  { encoding: "utf8" },
-).trim();
+
+function fixtureGit(fixtureRoot, ...args) {
+  return execFileSync("git", ["-C", fixtureRoot, ...args], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_EMAIL: "policy-fixture@example.invalid",
+      GIT_AUTHOR_NAME: "Policy Fixture",
+      GIT_COMMITTER_EMAIL: "policy-fixture@example.invalid",
+      GIT_COMMITTER_NAME: "Policy Fixture",
+    },
+  }).trim();
+}
+
+function createGitFixture(label) {
+  const fixtureRoot = mkdtempSync(
+    join(tmpdir(), `hyperdrive-${label}-fixture-`),
+  );
+  try {
+    fixtureGit(fixtureRoot, "init", "--quiet", "--object-format=sha1");
+    return fixtureRoot;
+  } catch (error) {
+    rmSync(fixtureRoot, { force: true, recursive: true });
+    throw error;
+  }
+}
+
+function commitGitFixture(fixtureRoot, message) {
+  fixtureGit(fixtureRoot, "add", "--all");
+  fixtureGit(
+    fixtureRoot,
+    "commit",
+    "--quiet",
+    "--no-verify",
+    "--no-gpg-sign",
+    "-m",
+    message,
+  );
+  return fixtureGit(fixtureRoot, "rev-parse", "HEAD");
+}
+
+function writeGitFixture(fixtureRoot, path, source) {
+  const fixturePath = join(fixtureRoot, path);
+  mkdirSync(dirname(fixturePath), { recursive: true });
+  writeFileSync(fixturePath, source, "utf8");
+}
+
+function createMissingTrustedPolicyFixture() {
+  const fixtureRoot = createGitFixture("policy");
+  try {
+    for (const path of TRUSTED_POLICY_PATHS) {
+      writeGitFixture(fixtureRoot, path, `${path}\n`);
+    }
+    const policySha = commitGitFixture(fixtureRoot, "trusted policy fixture");
+    const missingPath = TRUSTED_POLICY_PATHS.at(-1);
+    if (!missingPath)
+      throw new Error("Trusted policy fixture requires at least one path");
+    rmSync(join(fixtureRoot, missingPath));
+    const candidateSha = commitGitFixture(
+      fixtureRoot,
+      "missing trusted policy fixture",
+    );
+    return { candidateSha, fixtureRoot, policySha };
+  } catch (error) {
+    rmSync(fixtureRoot, { force: true, recursive: true });
+    throw error;
+  }
+}
 
 function config(id = oldId, extra = "") {
   return `name = "cloud"\n${extra}\n[env.production]\nname = "cloud-production"\n[[env.production.hyperdrive]]\nbinding = "HYPERDRIVE"\nid = "${id}"\n\n[env.staging]\nname = "cloud-staging"\n[[env.staging.hyperdrive]]\nbinding = "HYPERDRIVE"\nid = "${"3".repeat(32)}"\n`;
+}
+
+function createProductionBindingFixture() {
+  const fixtureRoot = createGitFixture("binding");
+  try {
+    writeGitFixture(fixtureRoot, WRANGLER_PATH, config(oldId));
+    const baseSha = commitGitFixture(fixtureRoot, "served binding fixture");
+    writeGitFixture(fixtureRoot, WRANGLER_PATH, config(newId));
+    const candidateSha = commitGitFixture(
+      fixtureRoot,
+      "candidate binding fixture",
+    );
+    return { baseSha, candidateSha, fixtureRoot };
+  } catch (error) {
+    rmSync(fixtureRoot, { force: true, recursive: true });
+    throw error;
+  }
 }
 
 function valid(overrides = {}) {
@@ -84,15 +166,20 @@ describe("production Hyperdrive binding-only admission", () => {
     ]);
   });
 
-  test("admits the reviewed production binding commit from its served base", () => {
-    expect(
-      admitProductionHyperdriveBindingFromGit({
-        repoRoot,
-        baseSha: "c0a8de04019f62a96c5f6bf21ee7c15ee554cafe",
-        candidateSha: "579d546d2d23c954c0aef9775356781e674cb689",
-        force: false,
-      }),
-    ).toMatchObject({ verdict: "pass", changedPathCount: 3 });
+  test("admits a production binding commit from its served base", () => {
+    const fixture = createProductionBindingFixture();
+    try {
+      expect(
+        admitProductionHyperdriveBindingFromGit({
+          repoRoot: fixture.fixtureRoot,
+          baseSha: fixture.baseSha,
+          candidateSha: fixture.candidateSha,
+          force: false,
+        }),
+      ).toMatchObject({ verdict: "pass", changedPathCount: 1 });
+    } finally {
+      rmSync(fixture.fixtureRoot, { force: true, recursive: true });
+    }
   });
 
   test("requires all production policy blobs to equal the trusted develop policy", () => {
@@ -110,13 +197,18 @@ describe("production Hyperdrive binding-only admission", () => {
   });
 
   test("rejects a candidate missing the trusted policy blobs", () => {
-    expect(() =>
-      validateTrustedPolicyIdentityFromGit({
-        repoRoot,
-        policySha: policyFixtureSha,
-        candidateSha: prePolicyFixtureSha,
-      }),
-    ).toThrow(/production_hyperdrive_binding_admission/);
+    const fixture = createMissingTrustedPolicyFixture();
+    try {
+      expect(() =>
+        validateTrustedPolicyIdentityFromGit({
+          repoRoot: fixture.fixtureRoot,
+          policySha: fixture.policySha,
+          candidateSha: fixture.candidateSha,
+        }),
+      ).toThrow(/production_hyperdrive_binding_admission/);
+    } finally {
+      rmSync(fixture.fixtureRoot, { force: true, recursive: true });
+    }
   });
 
   test.each([

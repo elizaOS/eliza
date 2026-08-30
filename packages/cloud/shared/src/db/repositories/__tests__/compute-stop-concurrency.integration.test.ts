@@ -233,7 +233,17 @@ beforeAll(async () => {
         created_at timestamp NOT NULL, updated_at timestamp NOT NULL
       );
       CREATE TABLE agent_sandboxes (
-        id uuid PRIMARY KEY, organization_id uuid NOT NULL
+        id uuid PRIMARY KEY, organization_id uuid NOT NULL,
+        user_id uuid NOT NULL,
+        status text NOT NULL DEFAULT 'pending',
+        billing_status text NOT NULL DEFAULT 'active',
+        scheduled_shutdown_at timestamptz,
+        execution_tier text NOT NULL DEFAULT 'shared',
+        pool_status text,
+        deletion_attempt_id uuid,
+        deleted_at timestamptz,
+        replacement_cleanup_sandbox_id text,
+        lifecycle_revision bigint NOT NULL DEFAULT 0
       );
       CREATE TABLE compute_billing_rate_segments (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
@@ -278,19 +288,23 @@ beforeAll(async () => {
         ON agent_compute_stop_intents (organization_id, agent_id, lifecycle_revision)
         WHERE "authorization" = 'user_request';
       CREATE TABLE billing_cancel_commands (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
-        requested_by_user_id uuid NOT NULL, resource_type text NOT NULL,
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid,
+        requested_by_user_id uuid, resource_type text NOT NULL,
         resource_id uuid NOT NULL, expected_lifecycle_revision bigint NOT NULL,
-        action text NOT NULL DEFAULT 'stop', job_id uuid NOT NULL UNIQUE,
+        action text NOT NULL DEFAULT 'stop', job_id uuid UNIQUE,
+        organization_deletion_request_id uuid,
+        requesting_user_deletion_request_id uuid,
         created_at timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT billing_cancel_commands_id_org_unique UNIQUE (id, organization_id),
         CONSTRAINT billing_cancel_commands_logical_unique UNIQUE
           (organization_id, resource_type, resource_id, expected_lifecycle_revision, action)
       );
       CREATE TABLE billing_cancel_command_keys (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid,
         idempotency_key_hash text NOT NULL, request_digest text NOT NULL,
-        command_id uuid NOT NULL, requested_by_user_id uuid NOT NULL,
+        command_id uuid NOT NULL, requested_by_user_id uuid,
+        organization_deletion_request_id uuid,
+        requesting_user_deletion_request_id uuid,
         created_at timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT billing_cancel_command_keys_org_key_unique
           UNIQUE (organization_id, idempotency_key_hash),
@@ -578,9 +592,9 @@ realPostgres("compute stop concurrency", () => {
       sql`INSERT INTO users(id, organization_id, steward_user_id, role)
           VALUES (${userId}, ${organizationId}, ${stewardUserId}, 'owner')`,
     );
-    await dbWrite.execute(
-      sql`INSERT INTO agent_sandboxes(id, organization_id) VALUES (${agentId}, ${organizationId})`,
-    );
+    await dbWrite.execute(sql`INSERT INTO agent_sandboxes
+      (id, organization_id, user_id, status, billing_status, execution_tier, lifecycle_revision)
+      VALUES (${agentId}, ${organizationId}, ${userId}, 'running', 'active', 'dedicated-lazy', 5)`);
     const [seededJob] = await dbWrite
       .insert(jobsTable)
       .values({
@@ -1130,9 +1144,19 @@ realPostgres("compute stop concurrency", () => {
     }
     const organizationId = randomUUID();
     const agentId = randomUUID();
+    const userId = randomUUID();
     await dbWrite.execute(
       sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
     );
+    await dbWrite.execute(
+      sql`INSERT INTO users(id, organization_id, steward_user_id)
+          VALUES (${userId}, ${organizationId}, ${`steward:${userId}`})`,
+    );
+    await dbWrite.execute(sql`INSERT INTO agent_sandboxes
+      (id, organization_id, user_id, status, billing_status, scheduled_shutdown_at,
+       execution_tier, lifecycle_revision)
+      VALUES (${agentId}, ${organizationId}, ${userId}, 'running', 'shutdown_pending',
+        NOW() - interval '2 minutes', 'dedicated-lazy', 5)`);
     await dbWrite.execute(sql`INSERT INTO agent_compute_stop_intents
       (organization_id, agent_id, lifecycle_revision, status, attempts, next_attempt_at)
       VALUES (${organizationId}, ${agentId}, 5, 'terminal_attention', 3, NOW() - interval '1 minute')`);

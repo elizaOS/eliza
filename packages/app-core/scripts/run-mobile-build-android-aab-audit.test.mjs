@@ -286,8 +286,28 @@ function writeSyntheticCloudAab(
       "clean synthetic DEX io/ionic/android_js_engine/NativeWebAPI",
       "utf8",
     ),
+    "base/lib/arm64-v8a/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI arm64-v8a",
+      "utf8",
+    ),
+    "base/lib/armeabi-v7a/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI armeabi-v7a",
+      "utf8",
+    ),
+    "base/lib/x86/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI x86",
+      "utf8",
+    ),
+    "base/lib/x86_64/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI x86_64",
+      "utf8",
+    ),
     "base/manifest/AndroidManifest.xml": Buffer.from(
       "compiled manifest placeholder",
+      "utf8",
+    ),
+    "base/res/drawable-nodpi-v4/eliza_cloud_splash_mark.png": Buffer.from(
+      "synthetic transparent splash mark",
       "utf8",
     ),
     "base/assets/capacitor.config.json": Buffer.from("{}", "utf8"),
@@ -1452,7 +1472,7 @@ describe("Android Cloud outer audit boundary", () => {
     }
   });
 
-  it("keeps the Play AAB native-free when Background Runner is stripped", () => {
+  it("accepts the exact packaged DataStore JNI set after Background Runner is stripped", () => {
     const temporaryDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "eliza-outer-aab-no-background-runner-jni-"),
     );
@@ -1475,6 +1495,40 @@ describe("Android Cloud outer audit boundary", () => {
       expect(log.mock.calls.at(-1)?.[0]).toContain(
         "android-cloud artifact audit passed",
       );
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects native code beyond the exact packaged DataStore JNI set", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-outer-aab-extra-jni-"),
+    );
+    const log = vi.fn();
+    try {
+      const artifact = writeSyntheticCloudAab(temporaryDir, {
+        extraEntries: {
+          "base/lib/arm64-v8a/libunexpected.so": Buffer.from(
+            "unexpected JNI payload",
+            "utf8",
+          ),
+        },
+      });
+
+      expect(() =>
+        auditAndroidCloudArtifact(
+          { artifact, env: {}, javaHome: JAVA_HOME },
+          { inspectAndroidAppBundleImpl: () => syntheticAabEvidence(), log },
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+          message: expect.stringContaining(
+            "base/lib/arm64-v8a/libunexpected.so",
+          ),
+        }),
+      );
+      expect(log).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(temporaryDir, { force: true, recursive: true });
     }

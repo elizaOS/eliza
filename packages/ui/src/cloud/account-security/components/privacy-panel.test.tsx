@@ -6,27 +6,11 @@
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../shell/CloudI18nProvider", () => ({
   useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
     options?.defaultValue ?? _key,
-}));
-
-vi.mock("../../../cloud-ui", () => ({
-  BrandButton: ({
-    children,
-    ...props
-  }: ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button type="button" {...props}>
-      {children}
-    </button>
-  ),
-  BrandCard: ({ children }: { children: ReactNode }) => (
-    <section>{children}</section>
-  ),
-  CornerBrackets: () => null,
 }));
 
 const consentMock = vi.hoisted(() => ({

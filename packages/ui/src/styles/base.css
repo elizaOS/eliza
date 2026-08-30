@@ -56,6 +56,8 @@
   --bg-launcher-icon-hover: rgb(28 29 32 / 74%);
   --bg-launcher-icon-focus: rgb(28 29 32 / 78%);
   --bg-wallpaper-overlay: rgb(0 0 0 / 85%);
+  --border-wallpaper-overlay: rgb(255 255 255 / 14%);
+  --txt-wallpaper-overlay: rgb(255 255 255 / 85%);
   --border-launcher-icon: rgb(255 255 255 / 24%);
   --txt-launcher-icon: rgb(255 255 255);
   --shadow-launcher-icon:

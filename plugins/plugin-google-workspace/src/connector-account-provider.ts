@@ -34,7 +34,6 @@ import {
 import { OAuth2Client } from "google-auth-library";
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
 import {
-  buildConnectorCredentialVaultRef,
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
   CONNECTOR_VAULT_SERVICE_TYPES,
   persistConnectorCredentialRefs,
@@ -1280,12 +1279,6 @@ export function createGoogleConnectorAccountProvider(
         );
         pendingAccountId = pendingAccount.id;
         const credentialRefAccountSegment = `${pendingAccount.id}-${randomBytes(12).toString("hex")}`;
-        attemptedVaultRef = buildConnectorCredentialVaultRef({
-          agentId: nonEmptyString(runtime.agentId) ?? "agent",
-          provider: GOOGLE_SERVICE_NAME,
-          accountId: credentialRefAccountSegment,
-          credentialType: "oauth.tokens",
-        });
         const credentialPersist = await persistConnectorCredentialRefs({
           runtime,
           manager,
@@ -1317,6 +1310,9 @@ export function createGoogleConnectorAccountProvider(
             },
           ],
         });
+        attemptedVaultRef = credentialPersist.refs.find(
+          (ref) => ref.credentialType === "oauth.tokens"
+        )?.vaultRef;
 
         const accountPatch: ConnectorAccountPatch & {
           provider: string;

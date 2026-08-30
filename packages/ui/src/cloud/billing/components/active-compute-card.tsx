@@ -3,7 +3,7 @@
 "use client";
 
 import type { Observed } from "@elizaos/cloud-sdk/account-billing-snapshot";
-import { BrandCard, Button } from "@elizaos/ui/cloud-ui";
+import { Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   Box,
@@ -646,14 +646,15 @@ function RetryButton({
 
 function LoadingCard({ t }: { t: Translator }) {
   return (
-    <BrandCard
-      cornerSize="sm"
+    <Card
+      variant="brand"
       role="status"
       aria-busy="true"
       aria-label={t("cloud.billing.compute.loading", {
         defaultValue: "Loading active compute",
       })}
     >
+      <CornerBrackets size="sm" />
       <div className="relative z-10 space-y-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
@@ -667,7 +668,7 @@ function LoadingCard({ t }: { t: Translator }) {
           <Skeleton className="h-40 w-full" />
         </div>
       </div>
-    </BrandCard>
+    </Card>
   );
 }
 
@@ -688,7 +689,8 @@ export function ActiveComputeCardView({
     const paused = state.kind === "paused";
     const retrying = state.kind === "error" && state.retrying;
     return (
-      <BrandCard cornerSize="sm">
+      <Card variant="brand">
+        <CornerBrackets size="sm" />
         <div className="relative z-10 flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
           <div role="alert" className="flex min-w-0 items-start gap-3">
             <AlertCircle
@@ -722,7 +724,7 @@ export function ActiveComputeCardView({
             <RetryButton onRetry={onRetry} retrying={retrying} t={t} />
           ) : null}
         </div>
-      </BrandCard>
+      </Card>
     );
   }
 
@@ -775,7 +777,8 @@ export function ActiveComputeCardView({
               });
 
   return (
-    <BrandCard cornerSize="sm" aria-busy={state.refreshing || undefined}>
+    <Card variant="brand" aria-busy={state.refreshing || undefined}>
+      <CornerBrackets size="sm" />
       <div className="relative z-10 space-y-5">
         <p
           role="status"
@@ -973,6 +976,6 @@ export function ActiveComputeCardView({
           </Card>
         ) : null}
       </div>
-    </BrandCard>
+    </Card>
   );
 }

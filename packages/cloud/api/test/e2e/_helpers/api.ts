@@ -156,6 +156,36 @@ export interface FetchOptions {
   body?: unknown;
 }
 
+function isJsonMediaType(contentType: string | null): boolean {
+  const mediaType = (contentType ?? "").split(";", 1)[0]?.trim().toLowerCase();
+  const subtype = mediaType?.split("/", 2)[1];
+  return subtype === "json" || subtype?.endsWith("+json") === true;
+}
+
+async function isLocalWranglerRecycleResponse(
+  method: string,
+  response: Response,
+): Promise<boolean> {
+  if (
+    (method !== "GET" && method !== "HEAD") ||
+    !isLocalTarget() ||
+    (response.status !== 500 && response.status !== 503) ||
+    response.headers.get("server")?.trim().toLowerCase() !== "workerd" ||
+    !response.headers
+      .get("content-type")
+      ?.toLowerCase()
+      .startsWith("text/plain") ||
+    isJsonMediaType(response.headers.get("content-type"))
+  ) {
+    return false;
+  }
+
+  if (method === "HEAD") return true;
+  const expectedBody =
+    response.status === 500 ? "Internal Server Error" : "Service Unavailable";
+  return (await response.clone().text()).trim() === expectedBody;
+}
+
 async function request(
   method: string,
   path: string,
@@ -176,17 +206,13 @@ async function request(
     return init;
   };
   let res = await fetch(url(path), makeInit());
-  // Local wrangler dev can answer with its OWN plain-text 503 while workerd
-  // recycles the isolate (typically right after a long/heavy request); the
-  // Hono app never sees such a request. The app's real 503s always carry a
-  // JSON envelope from failureResponse, so a non-JSON 503 from a local target
-  // is infrastructure noise, not the contract under test — retry it.
+  // Local wrangler dev can answer with workerd's own plain-text 500/503 while
+  // recycling the isolate. Retry only the exact local workerd signature and
+  // only for idempotent reads. Mutation methods, deployed targets, structured
+  // JSON failures, and other plain-text application failures remain fail-closed.
   for (
     let attempt = 0;
-    attempt < 2 &&
-    res.status === 503 &&
-    isLocalTarget() &&
-    !(res.headers.get("content-type") ?? "").includes("application/json");
+    attempt < 2 && (await isLocalWranglerRecycleResponse(method, res));
     attempt++
   ) {
     await new Promise((resolve) => setTimeout(resolve, 500));

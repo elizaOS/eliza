@@ -2,7 +2,7 @@
 // single-pane landings. Both views render the same card medallion + chips so the
 // two surfaces read as one product. Pure presentation — no data fetching.
 
-import { Button, Card, Input, StatusPulseDot } from "@elizaos/ui";
+import { Button, Card, Input, Separator, StatusPulseDot } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Archive,
@@ -263,34 +263,36 @@ export function TaskCard({
     description: `Open the "${title}" task`,
   });
   return (
-    <Button
-      variant="selection"
-      size="eventRow"
-      align="start"
-      ref={ref}
-      type="button"
-      onClick={() => onOpen(id)}
-      data-testid="task-card"
-      className="group relative"
-      {...agentProps}
-    >
-      <TaskStatusMedallion status={status} />
-      <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-txt-strong">
-            {title}
+    <>
+      <Button
+        variant="selection"
+        size="eventRow"
+        align="start"
+        ref={ref}
+        type="button"
+        onClick={() => onOpen(id)}
+        data-testid="task-card"
+        className="group relative py-3"
+        {...agentProps}
+      >
+        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-txt-strong">
+              {title}
+            </span>
+            {forked ? (
+              <GitBranch className="size-3.5 shrink-0 text-muted" aria-hidden />
+            ) : null}
+            <TaskStatusChip status={status} t={t} />
           </span>
-          {forked ? (
-            <GitBranch className="size-3.5 shrink-0 text-muted" aria-hidden />
+          {subtitle ? (
+            <span className="line-clamp-1 text-xs text-muted">{subtitle}</span>
           ) : null}
-          <TaskStatusChip status={status} t={t} />
+          <span className="flex flex-wrap items-center gap-1.5">{chips}</span>
         </span>
-        {subtitle ? (
-          <span className="line-clamp-1 text-xs text-muted">{subtitle}</span>
-        ) : null}
-        <span className="flex flex-wrap items-center gap-1.5">{chips}</span>
-      </span>
-    </Button>
+      </Button>
+      <Separator tone="subtle40" />
+    </>
   );
 }
 
@@ -351,8 +353,7 @@ export function TaskCountChip({
   );
 }
 
-/** Quiet empty state: one glyph + a short title, lots of open space. The longer
- * hint stays for screen readers only — on screen, the icon carries the meaning. */
+/** Quiet list-empty state bounded by the same separators as populated rows. */
 export function TaskEmptyState({
   title,
   hint,
@@ -363,19 +364,23 @@ export function TaskEmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div
-      className="flex flex-col items-center gap-3 py-16 text-center"
-      data-testid="task-empty-state"
-    >
-      <CircleDashed
-        className="size-10 text-accent/40"
-        strokeWidth={1.5}
-        aria-hidden
-      />
-      <p className="text-sm font-medium text-muted">{title}</p>
-      <p className="max-w-xs text-xs text-muted/80">{hint}</p>
-      {action ? <div>{action}</div> : null}
-    </div>
+    <>
+      <Separator tone="subtle40" />
+      <div
+        className="flex min-h-64 flex-col items-center justify-center gap-3 py-10 text-center"
+        data-testid="task-empty-state"
+      >
+        <CircleDashed
+          className="size-10 text-accent/40"
+          strokeWidth={1.5}
+          aria-hidden
+        />
+        <p className="text-sm font-medium text-muted">{title}</p>
+        <p className="max-w-xs text-xs text-muted/80">{hint}</p>
+        {action ? <div>{action}</div> : null}
+      </div>
+      <Separator tone="subtle40" />
+    </>
   );
 }
 

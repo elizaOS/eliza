@@ -1165,6 +1165,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 */
 	getMemories(params: {
 		entityId?: UUID;
+		/** Restrict returned rows by author while `entityId` remains the RLS principal. */
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		limit?: number;
 		count?: number;
@@ -1175,6 +1177,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		start?: number;
 		end?: number;
 		roomId?: UUID;
+		/** Exclude internal rooms before ordering and LIMIT are applied. */
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		/**

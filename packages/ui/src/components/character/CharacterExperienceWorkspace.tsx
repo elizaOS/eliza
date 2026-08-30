@@ -559,7 +559,7 @@ const ExperienceGraphPanel = memo(function ExperienceGraphPanel({
   );
 });
 
-const ExperienceQueueRow = memo(function ExperienceQueueRow({
+export const ExperienceQueueRow = memo(function ExperienceQueueRow({
   experience,
   isSelected,
   onSelect,

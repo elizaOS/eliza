@@ -70,6 +70,7 @@ export function TrajectoryCodeBlock({
       <CodeBlock
         value={displayContent}
         presentation="attachment"
+        role="region"
         wrap
         tabIndex={0}
         aria-label={typeof label === "string" ? label : "Trajectory content"}

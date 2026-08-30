@@ -6,6 +6,8 @@
  * readiness polling, and the atomic Shared history cutover.
  */
 
+import type { DedicatedAdoptionConfirmationRequester } from "../../../api/client-cloud";
+
 /** The slice of `ElizaClient` the join flow drives. */
 export interface JoinFlowClient {
   ensurePersonalDedicatedEliza(options: {
@@ -13,6 +15,7 @@ export interface JoinFlowClient {
     authToken: string;
     signal?: AbortSignal;
     onProgress?: (status: string, detail?: string) => void;
+    requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
   }): Promise<{
     personalElizaId: string;
     agentId: string;
@@ -46,6 +49,7 @@ export interface RunJoinFlowArgs {
   authToken: string;
   onProgress?: (status: string, detail?: string) => void;
   signal?: AbortSignal;
+  requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
 }
 
 export interface JoinFlowResult {
@@ -61,7 +65,15 @@ export interface JoinFlowResult {
 export async function runJoinFlow(
   args: RunJoinFlowArgs,
 ): Promise<JoinFlowResult> {
-  const { client, effects, cloudApiBase, authToken, onProgress, signal } = args;
+  const {
+    client,
+    effects,
+    cloudApiBase,
+    authToken,
+    onProgress,
+    signal,
+    requestDedicatedAdoptionConfirmation,
+  } = args;
   signal?.throwIfAborted();
   onProgress?.("connecting", "Opening your personal Eliza…");
 
@@ -70,6 +82,9 @@ export async function runJoinFlow(
     authToken,
     ...(onProgress ? { onProgress } : {}),
     ...(signal ? { signal } : {}),
+    ...(requestDedicatedAdoptionConfirmation
+      ? { requestDedicatedAdoptionConfirmation }
+      : {}),
   });
   signal?.throwIfAborted();
 

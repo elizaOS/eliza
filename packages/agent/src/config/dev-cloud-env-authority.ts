@@ -396,10 +396,16 @@ export function applyDevCloudConfigAuthority(
     delete existingCloud[key];
   }
 
+  const stagingSpecificApiKey =
+    env.ELIZA_DESKTOP_PACKAGED_RUNTIME !== "1" &&
+    (snapshot.authority === "staging-explicit" ||
+      snapshot.authority === "self-hosted")
+      ? usableCredential(snapshot.values.ELIZA_DEV_CLOUD_API_KEY)
+      : undefined;
   const apiKey = activationBlocked
     ? undefined
     : (usableCredential(snapshot.values.ELIZAOS_CLOUD_API_KEY) ??
-      usableCredential(snapshot.values.ELIZA_DEV_CLOUD_API_KEY) ??
+      stagingSpecificApiKey ??
       usableCredential(snapshot.values.ELIZA_CLOUD_API_KEY) ??
       usableCredential(snapshot.values.ELIZACLOUD_API_KEY));
   const baseUrl = trimmed(snapshot.values.ELIZAOS_CLOUD_BASE_URL);

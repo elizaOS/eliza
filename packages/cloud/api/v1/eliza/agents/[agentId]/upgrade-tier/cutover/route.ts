@@ -488,7 +488,15 @@ app.post("/", async (c) => {
     let markerCommitted = false;
     let remindersReserved = false;
     try {
-      if (history.some((message) => !message.id)) {
+      // Lifecycle system turns remain in Shared's model history, but they are
+      // not authored chat messages and the Dedicated import boundary rejects
+      // caller-supplied system authority. Count and transfer only the same
+      // user/assistant transcript that the Dedicated receipt can attest.
+      const transferableHistory = history.filter(
+        (message): message is typeof message & { role: "user" | "assistant" } =>
+          message.role === "user" || message.role === "assistant",
+      );
+      if (transferableHistory.some((message) => !message.id)) {
         return json(
           {
             success: false,
@@ -527,7 +535,7 @@ app.post("/", async (c) => {
       }
       const importUrl = `${base}/api/conversations/${encodeURIComponent(sourceAgentId)}/import`;
       let todoSnapshot = await readTodoCutoverSnapshot(sourceAgentId, user.id);
-      const importedMessages = history.map((message) => ({
+      const importedMessages = transferableHistory.map((message) => ({
         sourceId: message.id,
         role: message.role,
         text: message.content,
@@ -561,7 +569,7 @@ app.post("/", async (c) => {
         if (
           !confirmsPersonalImport(
             receipt,
-            history.length,
+            importedMessages.length,
             scheduledTasks.length,
             todoSnapshot,
             false,
@@ -614,7 +622,7 @@ app.post("/", async (c) => {
         sourceAgentId,
         dedicatedAgentId: target.id,
         cutoverToken: sealToken,
-        sharedMessageCount: history.length,
+        sharedMessageCount: importedMessages.length,
         sharedScheduledTaskCount: scheduledTasks.length,
         sharedTodoCount: todoSnapshot.todos.length,
         sharedTodoMutationCount: todoSnapshot.mutations.length,
@@ -643,7 +651,7 @@ app.post("/", async (c) => {
         !activation.response.ok ||
         !confirmsPersonalImport(
           activation.receipt,
-          history.length,
+          importedMessages.length,
           scheduledTasks.length,
           todoSnapshot,
           true,
@@ -678,7 +686,7 @@ app.post("/", async (c) => {
               c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
               new URL(c.req.url).origin,
             ) ?? base,
-          importedMessages: history.length,
+          importedMessages: importedMessages.length,
           importedScheduledTasks: scheduledTasks.length,
           importedTodos: todoSnapshot.todos.length,
           importedTodoMutations: todoSnapshot.mutations.length,

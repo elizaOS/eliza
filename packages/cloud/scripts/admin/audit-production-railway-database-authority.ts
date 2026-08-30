@@ -19,12 +19,16 @@ import { readDatabaseIdentityReceipt } from "./database-identity-receipt";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_EVIDENCE_BYTES = 4 * 1024 * 1024;
 
+// Provisioning relations added here must also be considered by the worker's
+// startup gate in preflight-job-execution-interruptions.ts.
 export const REQUIRED_PRODUCTION_RELATIONS = [
   "public.apps",
   "public.organizations",
   "public.users",
   "public.api_keys",
   "public.mobile_app_auth_grants",
+  "public.agent_sandboxes",
+  "public.jobs",
   "steward.users",
   "steward.accounts",
   "steward.sessions",
@@ -243,6 +247,8 @@ async function relationPresence(
       to_regclass('public.users') IS NOT NULL AS "public.users",
       to_regclass('public.api_keys') IS NOT NULL AS "public.api_keys",
       to_regclass('public.mobile_app_auth_grants') IS NOT NULL AS "public.mobile_app_auth_grants",
+      to_regclass('public.agent_sandboxes') IS NOT NULL AS "public.agent_sandboxes",
+      to_regclass('public.jobs') IS NOT NULL AS "public.jobs",
       to_regclass('steward.users') IS NOT NULL AS "steward.users",
       to_regclass('steward.accounts') IS NOT NULL AS "steward.accounts",
       to_regclass('steward.sessions') IS NOT NULL AS "steward.sessions",

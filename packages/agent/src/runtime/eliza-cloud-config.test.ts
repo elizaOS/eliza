@@ -45,6 +45,7 @@ const ENV_KEYS: readonly string[] = [
   ...DEV_CLOUD_ENV_RESTORE_KEYS,
   "ELIZA_DEV_SOURCE",
   DEV_CLOUD_ENV_AUTHORITY_KEY,
+  "ELIZA_DESKTOP_PACKAGED_RUNTIME",
   "ELIZA_CLOUD_PROVISIONED",
   "ELIZAOS_CLOUD_USE_INFERENCE",
   "ELIZAOS_CLOUD_USE_EMBEDDINGS",
@@ -640,6 +641,64 @@ describe("launcher-owned local development Cloud policy", () => {
       );
     },
   );
+
+  it("does not activate production authority from a staging-specific credential", () => {
+    setDevCloudAuthority("production", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app/api/v1",
+      ELIZA_DEV_CLOUD_API_KEY: "staging-specific-key",
+    });
+
+    const view = createDevCloudConfigAuthorityView(
+      hostilePersistedCloudConfig(),
+    );
+
+    expect(view.cloud?.enabled).toBe(false);
+    expect(view.cloud?.apiKey).toBe("");
+    expect(collectPluginNames(view).has("@elizaos/plugin-elizacloud")).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    ["staging-explicit", "https://api-staging.eliza.app/api/v1"],
+    ["self-hosted", "https://api.private.example/api/v1"],
+  ] as const)(
+    "%s authority may consume its target-scoped development credential",
+    (authority, baseUrl) => {
+      setDevCloudAuthority(authority, {
+        ELIZAOS_CLOUD_BASE_URL: baseUrl,
+        ELIZA_DEV_CLOUD_API_KEY: "target-scoped-key",
+      });
+
+      const view = createDevCloudConfigAuthorityView(
+        hostilePersistedCloudConfig(),
+      );
+
+      expect(view.cloud).toMatchObject({
+        enabled: true,
+        apiKey: "target-scoped-key",
+        baseUrl,
+      });
+    },
+  );
+
+  it("does not activate a packaged runtime from a staging-specific credential", () => {
+    setDevCloudAuthority("staging-explicit", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZA_DEV_CLOUD_API_KEY: "staging-specific-key",
+    });
+    process.env.ELIZA_DESKTOP_PACKAGED_RUNTIME = "1";
+
+    const view = createDevCloudConfigAuthorityView(
+      hostilePersistedCloudConfig(),
+    );
+
+    expect(view.cloud?.enabled).toBe(false);
+    expect(view.cloud?.apiKey).toBe("");
+    expect(collectPluginNames(view).has("@elizaos/plugin-elizacloud")).toBe(
+      false,
+    );
+  });
 
   it("ignores an authority marker that was not stamped by a dev launcher", () => {
     process.env[DEV_CLOUD_ENV_AUTHORITY_KEY] = "staging-default";

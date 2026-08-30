@@ -1,5 +1,5 @@
 /**
- * Verifies app development entrypoints share one Node-backed Vite command,
+ * Verifies app development entrypoints share one active-runtime Vite command,
  * including dashboard flags, child lifecycle, and dependency diagnostics.
  */
 
@@ -97,15 +97,17 @@ async function runMirroredChildProbe({ childSource, wrapperSignal }) {
 }
 
 describe("development Vite process commands", () => {
-  it("runs the shared server through Node with source import support", () => {
+  it("runs the shared server through Bun without the Node-only loader", () => {
     assert.deepEqual(
-      resolveViteCommand({ appDir, nodePath: "/usr/local/bin/node" }),
+      resolveViteCommand({
+        appDir,
+        runtime: "bun",
+        runtimePath: "/usr/local/bin/bun",
+      }),
       {
-        command: "/usr/local/bin/node",
+        command: "/usr/local/bin/bun",
         args: [
           "--conditions=eliza-source",
-          "--import",
-          "tsx",
           viteCli,
           "--configLoader",
           "bundle",
@@ -119,15 +121,14 @@ describe("development Vite process commands", () => {
       resolveViteCommand({
         appDir,
         force: true,
-        nodePath: "/usr/bin/node",
+        runtime: "bun",
+        runtimePath: "/usr/bin/bun",
         port: 2138,
       }),
       {
-        command: "/usr/bin/node",
+        command: "/usr/bin/bun",
         args: [
           "--conditions=eliza-source",
-          "--import",
-          "tsx",
           viteCli,
           "--configLoader",
           "bundle",
@@ -140,15 +141,14 @@ describe("development Vite process commands", () => {
     assert.deepEqual(
       resolveViteCommand({
         appDir,
-        nodePath: "/usr/bin/node",
+        runtime: "bun",
+        runtimePath: "/usr/bin/bun",
         port: 2138,
       }),
       {
-        command: "/usr/bin/node",
+        command: "/usr/bin/bun",
         args: [
           "--conditions=eliza-source",
-          "--import",
-          "tsx",
           viteCli,
           "--configLoader",
           "bundle",
@@ -162,11 +162,33 @@ describe("development Vite process commands", () => {
   it("forwards direct Vite CLI flags after the canonical dev arguments", () => {
     const resolved = resolveViteCommand({
       appDir,
-      nodePath: "/usr/bin/node",
+      runtime: "bun",
+      runtimePath: "/usr/bin/bun",
       viteArgs: ["--host", "127.0.0.1"],
     });
 
     assert.deepEqual(resolved.args.slice(-2), ["--host", "127.0.0.1"]);
+  });
+
+  it("keeps the explicit Node fallback source-aware", () => {
+    assert.deepEqual(
+      resolveViteCommand({
+        appDir,
+        runtime: "node",
+        runtimePath: "/usr/bin/node",
+      }),
+      {
+        command: "/usr/bin/node",
+        args: [
+          "--conditions=eliza-source",
+          "--import",
+          "tsx",
+          viteCli,
+          "--configLoader",
+          "bundle",
+        ],
+      },
+    );
   });
 
   it("keeps direct package dev commands on Node with source import support", () => {
@@ -241,10 +263,11 @@ describe("development Vite process commands", () => {
     });
   }
 
-  it("loads NodeNext workspace source with the production child argv", () => {
+  it("loads workspace source with the active-runtime child argv", () => {
     const viteCommand = resolveViteCommand({
       appDir,
-      nodePath: "node",
+      runtime: "bun",
+      runtimePath: process.execPath,
     });
     const viteCliIndex = viteCommand.args.indexOf(viteCli);
     assert.notEqual(viteCliIndex, -1);
@@ -265,16 +288,17 @@ describe("development Vite process commands", () => {
     assert.equal(result.status, 0, result.stderr);
   });
 
-  it("fails before spawning when Node or the Vite CLI is unavailable", () => {
+  it("fails before spawning when the runtime or Vite CLI is unavailable", () => {
     assert.throws(
-      () => resolveViteCommand({ appDir, nodePath: null }),
-      /Node.js is required/,
+      () => resolveViteCommand({ appDir, runtimePath: "" }),
+      /JavaScript runtime is required/,
     );
     assert.throws(
       () =>
         resolveViteCommand({
           appDir: path.join(appDir, "missing"),
-          nodePath: "/usr/bin/node",
+          runtime: "bun",
+          runtimePath: "/usr/bin/bun",
         }),
       /Vite CLI not found/,
     );

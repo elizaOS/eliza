@@ -395,7 +395,10 @@ export function parseArgs(args) {
   if (!/^[A-Z][A-Z0-9_]+$/.test(options.apiKeyEnv)) {
     throw new Error("--api-key-env must name an environment variable");
   }
-  if (!/^[A-Z][A-Z0-9_]+$/.test(options.suspendedApiKeyEnv)) {
+  if (
+    options.suspendedApiKeyEnv &&
+    !/^[A-Z][A-Z0-9_]+$/.test(options.suspendedApiKeyEnv)
+  ) {
     throw new Error(
       "--suspended-api-key-env must name an environment variable",
     );
@@ -843,13 +846,21 @@ export function summarizeDeferredCacheWrites(workerLogs) {
   );
 }
 
-export function summarizeAuthSamples(records, deploySha) {
+export function summarizeAuthSamples(
+  records,
+  deploySha,
+  suspendedGuard = "not_requested",
+) {
+  if (suspendedGuard !== "observed" && suspendedGuard !== "not_requested") {
+    throw new Error("Invalid suspended guard summary status");
+  }
   const hits = records.filter((record) => record.phase === "hit");
   const misses = records.filter((record) => record.phase === "miss");
   return {
     kind: "summary",
     deploySha,
     counts: { hit: hits.length, miss: misses.length },
+    suspendedGuard,
     hitAuthResolveMs: metricSummary(
       hits,
       (record) => record.timings.auth_resolve,
@@ -888,11 +899,14 @@ function sleep(durationMs) {
 export async function runAuthProbes(options, dependencies = {}) {
   const env = dependencies.env ?? process.env;
   const apiKey = env[options.apiKeyEnv];
-  const suspendedApiKey = env[options.suspendedApiKeyEnv];
+  const runSuspended = Boolean(options.suspendedApiKeyEnv);
+  const suspendedApiKey = runSuspended
+    ? env[options.suspendedApiKeyEnv]
+    : undefined;
   const probeToken = env[options.probeTokenEnv];
   if (!apiKey)
     throw new Error("Auth probe API key environment variable is missing");
-  if (!suspendedApiKey)
+  if (runSuspended && !suspendedApiKey)
     throw new Error(
       "Suspended auth probe API key environment variable is missing",
     );
@@ -965,7 +979,12 @@ export async function runAuthProbes(options, dependencies = {}) {
   }
 
   const guards = [];
-  for (const guard of ["invalid_key", "suspended_key", "forged_probe"]) {
+  const requestedGuards = [
+    "invalid_key",
+    "forged_probe",
+    ...(runSuspended ? ["suspended_key"] : []),
+  ];
+  for (const guard of requestedGuards) {
     const record = await probeAuthGuardSample({
       baseUrl: options.baseUrl,
       apiKey: guard === "suspended_key" ? suspendedApiKey : apiKey,
@@ -994,7 +1013,11 @@ export async function runAuthProbes(options, dependencies = {}) {
     if (options.intervalMs > 0) await wait(options.intervalMs);
   }
 
-  const summary = summarizeAuthSamples(records, options.deploySha);
+  const summary = summarizeAuthSamples(
+    records,
+    options.deploySha,
+    runSuspended ? "observed" : "not_requested",
+  );
   emit(summary);
   return { deployment, records, guards, summary };
 }

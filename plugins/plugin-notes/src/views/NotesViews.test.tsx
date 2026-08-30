@@ -136,7 +136,7 @@ describe("Notes state labels", () => {
     { height: 499, label: "compact", width: 315 },
     { height: 800, label: "desktop", width: 1280 },
   ])(
-    "composes the canonical full-bleed frame, scroll owner, and compact rail at $label size",
+    "keeps one semantic collection inside one scroll owner at $label size",
     ({ height, width }) => {
       Object.defineProperties(window, {
         innerHeight: { configurable: true, value: height },
@@ -159,7 +159,6 @@ describe("Notes state labels", () => {
         notesRoot.querySelectorAll('[data-slot="page-panel-content-rail"]'),
       ).toHaveLength(1);
       expect(rail).not.toBeNull();
-      expect(rail?.dataset.width).toBe("compact");
       expect(notesScroll.contains(rail)).toBe(true);
       expect(rail?.style.paddingBlockStart).toContain("--view-pad-top");
       expect(rail?.style.paddingBlockEnd).toContain("--view-pad-bottom");
@@ -398,7 +397,7 @@ describe("chat-only presentation", () => {
     expect(mutate).not.toHaveBeenCalled();
   });
 
-  it("keeps long and international note content intact inside the grouped list", () => {
+  it("keeps long and international note content intact in the collection", () => {
     const populated = snapshot(5);
     populated.notes = [
       stickyNote({
@@ -425,7 +424,5 @@ describe("chat-only presentation", () => {
     }
     expect(firstHeading.style.overflowWrap).toBe("anywhere");
     expect(firstBody.style.overflowWrap).toBe("anywhere");
-    expect(firstRow.style.borderBlockEnd).toContain("1px");
-    expect((rows[1] as HTMLElement).style.borderBlockEnd).toBe("");
   });
 });

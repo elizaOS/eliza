@@ -8,13 +8,7 @@
 
 "use client";
 
-import {
-  BrandButton,
-  BrandCard,
-  CornerBrackets,
-  Input,
-  Label,
-} from "@elizaos/ui/cloud-ui";
+import { CornerBrackets, Input, Label } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   CheckCircle,
@@ -684,7 +678,7 @@ export function BillingTab({
   return (
     <div className="flex flex-col gap-4 md:gap-6 pb-6 md:pb-8">
       {/* Credit Balance Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
 
         <div className="relative z-10 space-y-6">
@@ -866,9 +860,9 @@ export function BillingTab({
 
                   {(paymentMethod !== "crypto" ||
                     !cryptoStatus?.directWallet?.enabled) && (
-                    <BrandButton
+                    <Button
                       type="submit"
-                      variant="primaryBilling"
+                      variant={isProcessingCheckout ? "outline" : "default"}
                       disabled={isProcessingCheckout}
                       className="h-11 px-6 w-full sm:w-auto shrink-0 font-mono text-base whitespace-nowrap sm:mt-[26px]"
                     >
@@ -891,7 +885,7 @@ export function BillingTab({
                           defaultValue: "Buy credits",
                         })
                       )}
-                    </BrandButton>
+                    </Button>
                   )}
                 </SemanticForm>
 
@@ -944,7 +938,7 @@ export function BillingTab({
             </div>
           </div>
         </div>
-      </BrandCard>
+      </Card>
 
       <ActiveComputeCardView
         state={billingSnapshotState}
@@ -965,7 +959,7 @@ export function BillingTab({
       <AutoTopUpCard />
 
       {/* Invoices Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
 
         <div className="relative z-10 space-y-6">
@@ -1138,7 +1132,7 @@ export function BillingTab({
             )}
           </div>
         </div>
-      </BrandCard>
+      </Card>
     </div>
   );
 }

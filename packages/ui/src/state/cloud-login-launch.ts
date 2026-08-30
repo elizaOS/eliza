@@ -157,16 +157,31 @@ function isPlainWebPlatform(): boolean {
   return true;
 }
 
-function isLoopbackHostname(hostname: string): boolean {
+function isCliReturnLoopbackHostname(hostname: string): boolean {
   const normalized = hostname
     .trim()
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
-  if (normalized === "localhost" || normalized === "::1") return true;
-  if (!/^127(?:\.\d{1,3}){3}$/.test(normalized)) return false;
-  return normalized
-    .split(".")
-    .every((octet) => Number.parseInt(octet, 10) <= 255);
+  return (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1"
+  );
+}
+
+/**
+ * Plain-web origin accepted by the hosted CLI-login returnTo sanitizer.
+ * Keep this policy exact: a launch origin that the hosted page would discard
+ * cannot complete the bridge back to the local app.
+ */
+export function isCliReturnLoopbackWebOrigin(): boolean {
+  return (
+    isPlainWebPlatform() &&
+    (window.location.protocol === "http:" ||
+      window.location.protocol === "https:") &&
+    isCliReturnLoopbackHostname(window.location.hostname)
+  );
 }
 
 /**
@@ -175,8 +190,7 @@ function isLoopbackHostname(hostname: string): boolean {
  * callers route it through the hosted CLI-session exchange instead.
  */
 function loopbackStewardDevelopmentTarget(): "staging" | "other" | null {
-  if (!isPlainWebPlatform()) return null;
-  if (!isLoopbackHostname(window.location.hostname)) return null;
+  if (!isCliReturnLoopbackWebOrigin()) return null;
 
   const configuredUrl = configuredStewardApiUrlOverride();
   if (!configuredUrl) return null;

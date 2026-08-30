@@ -784,6 +784,12 @@ function dedicatedProxyPreflight(request: Request, url: URL): Response {
   if (!applyDedicatedProxyCors(request, url, headers)) {
     return new Response(null, { status: 403, headers });
   }
+  // The browser's CORS-preflight cache is separate from its HTTP cache, so
+  // `Cache-Control: no-store` still protects the response while this bounded
+  // grant avoids another full Worker/auth-router round trip on every chat
+  // turn. The cache is keyed by origin, URL, method, credentials mode, and
+  // requested headers; the Worker revalidates the real bearer on every POST.
+  headers.set("access-control-max-age", "600");
   return new Response(null, { status: 204, headers });
 }
 
@@ -976,7 +982,15 @@ export function handleDedicatedAgentProxy(
     if (request.method === "OPTIONS") {
       return dedicatedProxyPreflight(request, url);
     }
-    const response = await proxyDedicatedAgent(request, env, url, agentId);
+    // UUID-subdomain requests bypass bootstrap-app.ts, including its
+    // request-scoped DB cache middleware. Enter the same boundary here so the
+    // auth/JIT lookup and sandbox ownership lookup reuse one Hyperdrive
+    // connection within this request instead of reconnecting for every query.
+    // The cache is connection-scoped only: credentials and ownership are still
+    // revalidated on every request and no I/O object crosses Worker requests.
+    const response = await runWithDbCacheAsync(() =>
+      proxyDedicatedAgent(request, env, url, agentId),
+    );
     return withDedicatedProxyBrowserPolicy(request, url, response);
   });
 }

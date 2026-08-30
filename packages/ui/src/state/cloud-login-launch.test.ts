@@ -17,6 +17,7 @@ import {
   canNavigateSameTabForBlockedPopup,
   claimCloudLoginWindow,
   hasSameOriginStewardLogin,
+  isCliReturnLoopbackWebOrigin,
   isTouchPrimaryWebBrowser,
   preOpenCloudLoginWindow,
   prepareDesktopCloudLoginSession,
@@ -253,6 +254,29 @@ describe("hasSameOriginStewardLogin", () => {
     stubHostname("127.0.0.1", "http:");
     vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
     expect(hasSameOriginStewardLogin()).toBe(true);
+  });
+});
+
+describe("isCliReturnLoopbackWebOrigin", () => {
+  it.each(["localhost", "ui.localhost", "127.0.0.1", "::1"])(
+    "accepts the hosted CLI returnTo loopback host %s",
+    (hostname) => {
+      stubHostname(hostname, "http:");
+      expect(isCliReturnLoopbackWebOrigin()).toBe(true);
+    },
+  );
+
+  it.each(["127.0.0.2", "192.168.1.8", "attacker.example"])(
+    "does not broaden the hosted CLI returnTo allowlist to %s",
+    (hostname) => {
+      stubHostname(hostname, "http:");
+      expect(isCliReturnLoopbackWebOrigin()).toBe(false);
+    },
+  );
+
+  it("rejects a localhost name outside HTTP(S)", () => {
+    stubHostname("localhost", "file:");
+    expect(isCliReturnLoopbackWebOrigin()).toBe(false);
   });
 });
 

@@ -28,6 +28,10 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
+import {
+  createAgentBackupCaptureV3RuntimeContextResolver,
+  isResolvedAgentBackupCaptureV3RuntimeAuthorityStale,
+} from "../../../lib/services/agent-backup-capture-v3-runtime-context";
 import { executeAgentBackupGcClaims } from "../../../lib/services/agent-backup-catalog-worker";
 import { createAgentBackupObjectStoreRegistry } from "../../../lib/storage/agent-backup-object-store";
 import type {
@@ -36,6 +40,10 @@ import type {
 } from "../../../lib/storage/r2-runtime-binding";
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import {
+  agentBackupNodeAdmissionCursors,
+  agentBackupOrganizationAdmissionCursors,
+} from "../../schemas/agent-backup-admission";
 import {
   agentBackupCatalogAuthorities,
   agentBackupGcOutbox,
@@ -48,13 +56,18 @@ import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
-import type { AgentBackupOperationExecution } from "../agent-backup-catalog";
+import type {
+  AgentBackupOperationClaim,
+  AgentBackupOperationExecution,
+} from "../agent-backup-catalog";
 import {
+  AgentBackupAdmissionContendedError,
   agentBackupObjectInventoryDigest,
   buildAgentBackupObjectKey,
   claimDueAgentBackupOperations,
   failAgentBackupOperation,
   handoffCapturedAgentBackupOperation,
+  heartbeatAgentBackupOperation,
   markAgentBackupObjectUploading,
   markAgentBackupObjectVerified,
   recordAgentBackupObjectPresent,
@@ -83,6 +96,16 @@ const PGLITE_TIMEOUT = 60_000;
 const ORG_ID = "00000000-0000-4000-8000-00000000c001";
 const FOREIGN_ORG_ID = "00000000-0000-4000-8000-00000000c00a";
 const FOREIGN_AGENT_ID = "00000000-0000-4000-8000-00000000c01a";
+const FOREIGN_USER_ID = "00000000-0000-4000-8000-00000000c016";
+const FOREIGN_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000c017";
+const FOREIGN_NODE_INCARNATION = "00000000-0000-4000-8000-00000000c018";
+const THIRD_ORG_ID = "00000000-0000-4000-8000-00000000c019";
+const THIRD_USER_ID = "00000000-0000-4000-8000-00000000c01b";
+const THIRD_AGENT_ID = "00000000-0000-4000-8000-00000000c01c";
+const SAME_ORG_USER_ID = "00000000-0000-4000-8000-00000000c030";
+const SAME_ORG_AGENT_ID = "00000000-0000-4000-8000-00000000c031";
+const SAME_ORG_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000c032";
+const SAME_ORG_NODE_INCARNATION = "00000000-0000-4000-8000-00000000c033";
 const USER_ID = "00000000-0000-4000-8000-00000000c002";
 const AGENT_ID = "00000000-0000-4000-8000-00000000c003";
 const OPERATION_ID = "00000000-0000-4000-8000-00000000c004";
@@ -188,13 +211,19 @@ function exactReservation(
 
 async function reserveTestBackup(overrides: Partial<TestBackupReservation> = {}) {
   const input = reservation(overrides);
-  const [sourceOccurrence] = await dbWrite
+  const [sourceNode] = await dbWrite
     .select({ historyId: dockerNodes.current_node_history_id })
     .from(dockerNodes)
     .where(eq(dockerNodes.id, input.sourceNodeRecordId));
-  if (!sourceOccurrence?.historyId) {
-    throw new Error("Expected exact source node occurrence fixture");
-  }
+  if (!sourceNode?.historyId) throw new Error("Expected exact source occurrence fixture");
+  await dbWrite
+    .insert(agentBackupOrganizationAdmissionCursors)
+    .values({ organization_id: input.organizationId })
+    .onConflictDoNothing();
+  await dbWrite
+    .insert(agentBackupNodeAdmissionCursors)
+    .values({ node_history_id: sourceNode.historyId })
+    .onConflictDoNothing();
   await dbWrite
     .insert(agentBackupCatalogAuthorities)
     .values({ organization_id: input.organizationId, agent_id: input.agentId })
@@ -229,7 +258,7 @@ async function reserveTestBackup(overrides: Partial<TestBackupReservation> = {})
       source_node_record_id: input.sourceNodeRecordId,
       source_node_id: input.sourceNodeId,
       source_node_incarnation: input.sourceNodeIncarnation,
-      source_node_history_id: sourceOccurrence.historyId,
+      source_node_history_id: sourceNode.historyId,
       source_provider_server_id: input.sourceProviderServerId,
       source_provider_handle: input.sourceProviderHandle,
       source_container_id: input.sourceContainerId,
@@ -241,6 +270,126 @@ async function reserveTestBackup(overrides: Partial<TestBackupReservation> = {})
     .returning();
   if (!backup) throw new Error("Expected catalogue backup fixture");
   return backup;
+}
+
+async function seedAdditionalFairnessLane(params: {
+  organizationId: string;
+  userId: string;
+  agentId: string;
+  nodeRecordId: string;
+  nodeIncarnation: string;
+  nodeId: string;
+  providerHandle: string;
+  providerServerId?: string;
+}): Promise<void> {
+  const suffix = params.agentId.slice(-4);
+  await dbWrite
+    .insert(organizations)
+    .values({
+      id: params.organizationId,
+      name: `Backup fairness ${suffix}`,
+      slug: `backup-fairness-${suffix}`,
+    })
+    .onConflictDoNothing();
+  await dbWrite
+    .insert(users)
+    .values({
+      id: params.userId,
+      steward_user_id: `backup-fairness-${suffix}`,
+      organization_id: params.organizationId,
+    })
+    .onConflictDoNothing();
+  await dbWrite
+    .insert(dockerNodes)
+    .values({
+      id: params.nodeRecordId,
+      node_id: params.nodeId,
+      hostname: `${params.nodeId}.example.test`,
+      host_key_fingerprint: `sha256:${params.nodeId}-host-key`,
+      fleet_kind: params.providerServerId ? "cloud" : "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: params.providerServerId ?? null,
+      node_incarnation: params.nodeIncarnation,
+      status: "healthy",
+      enabled: true,
+    })
+    .onConflictDoNothing();
+  const [baselineSandbox] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, AGENT_ID));
+  if (!baselineSandbox?.activation_receipt) {
+    throw new Error("Expected baseline sandbox fairness fixture");
+  }
+  await dbWrite.insert(agentSandboxes).values({
+    ...baselineSandbox,
+    id: params.agentId,
+    organization_id: params.organizationId,
+    user_id: params.userId,
+    agent_name: `Backup fairness ${suffix}`,
+    sandbox_id: params.providerHandle,
+    node_id: params.nodeId,
+    container_name: `backup-fairness-${suffix}`,
+    activation_receipt: {
+      ...baselineSandbox.activation_receipt,
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      receiptId: params.nodeIncarnation,
+    },
+    activation_node_id: params.nodeId,
+    activation_boot_id: params.nodeIncarnation,
+  });
+}
+
+async function terminallyReleaseFairnessClaim(
+  claim: AgentBackupOperationClaim,
+  errorCode: string,
+): Promise<void> {
+  const backup = claim.backup;
+  if (
+    !backup.catalog_organization_id ||
+    !backup.backup_operation_id ||
+    !backup.lifecycle_generation
+  ) {
+    throw new Error("Expected exact fairness claim identity");
+  }
+  await failAgentBackupOperation({
+    organizationId: backup.catalog_organization_id,
+    backupId: backup.id,
+    operationId: backup.backup_operation_id,
+    lifecycleGeneration: backup.lifecycle_generation,
+    expectedState: "scheduled",
+    terminal: true,
+    error: { code: errorCode, message: "Fairness fixture completed" },
+    execution: { ownerId: claim.ownerId, generation: claim.generation },
+  });
+}
+
+async function expectClaimAdvancedBothAdmissionCursors(
+  claim: AgentBackupOperationClaim,
+): Promise<void> {
+  const backup = claim.backup;
+  if (
+    !backup.catalog_organization_id ||
+    !backup.source_node_history_id ||
+    !backup.catalog_updated_at
+  ) {
+    throw new Error("Expected timestamped fairness claim authority");
+  }
+  const [organization] = await dbWrite
+    .select({
+      cursorAt: sql<string | null>`${agentBackupOrganizationAdmissionCursors.cursor_at}::text`,
+    })
+    .from(agentBackupOrganizationAdmissionCursors)
+    .where(
+      eq(agentBackupOrganizationAdmissionCursors.organization_id, backup.catalog_organization_id),
+    );
+  const [node] = await dbWrite
+    .select({ cursorAt: sql<string | null>`${agentBackupNodeAdmissionCursors.cursor_at}::text` })
+    .from(agentBackupNodeAdmissionCursors)
+    .where(eq(agentBackupNodeAdmissionCursors.node_history_id, backup.source_node_history_id));
+  expect(organization?.cursorAt).not.toBeNull();
+  expect(node?.cursorAt).toBe(organization?.cursorAt);
 }
 
 function objectDescriptor(index = 0) {
@@ -988,6 +1137,8 @@ beforeAll(async () => {
         users,
         userCharacters,
         agentNodeIncarnationHistories,
+        agentBackupOrganizationAdmissionCursors,
+        agentBackupNodeAdmissionCursors,
         dockerNodes,
         agentSandboxes,
         agentSandboxBackups,
@@ -1011,6 +1162,8 @@ beforeEach(async () => {
   await dbWrite.delete(agentBackupGcOutbox);
   await dbWrite.delete(agentBackupObjects);
   await dbWrite.delete(agentSandboxBackups);
+  await dbWrite.delete(agentBackupNodeAdmissionCursors);
+  await dbWrite.delete(agentBackupOrganizationAdmissionCursors);
   await dbWrite.delete(agentBackupCatalogAuthorities);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(dockerNodes);
@@ -1102,39 +1255,47 @@ afterAll(async () => {
 });
 
 describe("agent backup catalogue on primary PGlite", () => {
-  test("proves repeated limit-one claims reset tenant fairness for A,A versus B", async () => {
-    const [baselineSandbox] = await dbWrite
-      .select()
-      .from(agentSandboxes)
-      .where(eq(agentSandboxes.id, AGENT_ID));
-    if (!baselineSandbox) throw new Error("Expected baseline sandbox fixture");
-    await dbWrite.insert(agentSandboxes).values({
-      ...baselineSandbox,
-      id: FOREIGN_AGENT_ID,
-      organization_id: FOREIGN_ORG_ID,
-      agent_name: "Foreign Backup Catalogue Agent",
-      sandbox_id: "foreign-container-generation-1",
-      container_name: "foreign-backup-catalogue-agent",
-      activation_receipt: baselineSandbox.activation_receipt
-        ? {
-            ...baselineSandbox.activation_receipt,
-            agentId: FOREIGN_AGENT_ID,
-            organizationId: FOREIGN_ORG_ID,
-          }
-        : null,
+  test("rotates durable organization fairness A,B,A across limit-one claims", async () => {
+    await seedAdditionalFairnessLane({
+      organizationId: ORG_ID,
+      userId: SAME_ORG_USER_ID,
+      agentId: SAME_ORG_AGENT_ID,
+      nodeRecordId: SAME_ORG_NODE_RECORD_ID,
+      nodeIncarnation: SAME_ORG_NODE_INCARNATION,
+      nodeId: "robot-node-2",
+      providerHandle: "same-org-container-generation-1",
+    });
+    await seedAdditionalFairnessLane({
+      organizationId: FOREIGN_ORG_ID,
+      userId: FOREIGN_USER_ID,
+      agentId: FOREIGN_AGENT_ID,
+      nodeRecordId: FOREIGN_NODE_RECORD_ID,
+      nodeIncarnation: FOREIGN_NODE_INCARNATION,
+      nodeId: "robot-node-3",
+      providerHandle: "foreign-container-generation-1",
     });
 
     const firstA = await reserveTestBackup({
       operationId: "00000000-0000-4000-8000-00000000c021",
     });
     const secondA = await reserveTestBackup({
+      organizationId: ORG_ID,
+      agentId: SAME_ORG_AGENT_ID,
+      sandboxRecordId: SAME_ORG_AGENT_ID,
       operationId: "00000000-0000-4000-8000-00000000c022",
+      sourceNodeRecordId: SAME_ORG_NODE_RECORD_ID,
+      sourceNodeId: "robot-node-2",
+      sourceNodeIncarnation: SAME_ORG_NODE_INCARNATION,
+      sourceProviderHandle: "same-org-container-generation-1",
     });
     const tenantB = await reserveTestBackup({
       organizationId: FOREIGN_ORG_ID,
       agentId: FOREIGN_AGENT_ID,
       sandboxRecordId: FOREIGN_AGENT_ID,
       operationId: "00000000-0000-4000-8000-00000000c023",
+      sourceNodeRecordId: FOREIGN_NODE_RECORD_ID,
+      sourceNodeId: "robot-node-3",
+      sourceNodeIncarnation: FOREIGN_NODE_INCARNATION,
       sourceProviderHandle: "foreign-container-generation-1",
     });
     await dbWrite
@@ -1151,22 +1312,761 @@ describe("agent backup catalogue on primary PGlite", () => {
       .where(eq(agentSandboxBackups.id, tenantB.id));
 
     const [firstClaim] = await claimDueAgentBackupOperations({
-      ownerId: "fairness-proof-1",
+      ownerId: "organization-fairness-proof-1",
       limit: 1,
       leaseMs: 60_000,
     });
+    if (!firstClaim) throw new Error("Expected the first organization fairness claim");
+    expect(firstClaim.backup.id).toBe(firstA.id);
+    await expectClaimAdvancedBothAdmissionCursors(firstClaim);
+    await terminallyReleaseFairnessClaim(firstClaim, "ORGANIZATION_FAIRNESS_A1_COMPLETE");
+
     const [secondClaim] = await claimDueAgentBackupOperations({
-      ownerId: "fairness-proof-2",
+      ownerId: "organization-fairness-proof-2",
       limit: 1,
       leaseMs: 60_000,
     });
-    expect(firstClaim?.backup.id).toBe(firstA.id);
-    expect(secondClaim?.backup.id).toBe(secondA.id);
-    const [unclaimedB] = await dbWrite
+    if (!secondClaim) throw new Error("Expected the second organization fairness claim");
+    expect(secondClaim.backup.id).toBe(tenantB.id);
+    await expectClaimAdvancedBothAdmissionCursors(secondClaim);
+    const [stillQueuedA] = await dbWrite
       .select({ owner: agentSandboxBackups.catalog_lease_owner })
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.id, tenantB.id));
-    expect(unclaimedB?.owner).toBeNull();
+      .where(eq(agentSandboxBackups.id, secondA.id));
+    expect(stillQueuedA?.owner).toBeNull();
+    await terminallyReleaseFairnessClaim(secondClaim, "ORGANIZATION_FAIRNESS_B1_COMPLETE");
+
+    const [thirdClaim] = await claimDueAgentBackupOperations({
+      ownerId: "organization-fairness-proof-3",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!thirdClaim) throw new Error("Expected the third organization fairness claim");
+    expect(thirdClaim.backup.id).toBe(secondA.id);
+    await expectClaimAdvancedBothAdmissionCursors(thirdClaim);
+  });
+
+  test("rotates durable exact-node fairness X,Y,X across limit-one claims", async () => {
+    await seedAdditionalFairnessLane({
+      organizationId: FOREIGN_ORG_ID,
+      userId: FOREIGN_USER_ID,
+      agentId: FOREIGN_AGENT_ID,
+      nodeRecordId: FOREIGN_NODE_RECORD_ID,
+      nodeIncarnation: FOREIGN_NODE_INCARNATION,
+      nodeId: "robot-node-3",
+      providerHandle: "foreign-container-generation-1",
+    });
+    await seedAdditionalFairnessLane({
+      organizationId: THIRD_ORG_ID,
+      userId: THIRD_USER_ID,
+      agentId: THIRD_AGENT_ID,
+      nodeRecordId: NODE_RECORD_ID,
+      nodeIncarnation: NODE_INCARNATION,
+      nodeId: "robot-node-1",
+      providerHandle: "third-container-generation-1",
+    });
+
+    const firstX = await reserveTestBackup({
+      operationId: "00000000-0000-4000-8000-00000000c024",
+    });
+    const secondX = await reserveTestBackup({
+      organizationId: THIRD_ORG_ID,
+      agentId: THIRD_AGENT_ID,
+      sandboxRecordId: THIRD_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c025",
+      sourceProviderHandle: "third-container-generation-1",
+    });
+    const nodeY = await reserveTestBackup({
+      organizationId: FOREIGN_ORG_ID,
+      agentId: FOREIGN_AGENT_ID,
+      sandboxRecordId: FOREIGN_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c026",
+      sourceNodeRecordId: FOREIGN_NODE_RECORD_ID,
+      sourceNodeId: "robot-node-3",
+      sourceNodeIncarnation: FOREIGN_NODE_INCARNATION,
+      sourceProviderHandle: "foreign-container-generation-1",
+    });
+    for (const [backup, dueAt] of [
+      [firstX, "2020-01-01T00:00:00.000Z"],
+      [secondX, "2020-01-02T00:00:00.000Z"],
+      [nodeY, "2020-01-03T00:00:00.000Z"],
+    ] as const) {
+      await dbWrite
+        .update(agentSandboxBackups)
+        .set({ catalog_next_attempt_at: new Date(dueAt) })
+        .where(eq(agentSandboxBackups.id, backup.id));
+    }
+
+    const [firstClaim] = await claimDueAgentBackupOperations({
+      ownerId: "node-fairness-proof-1",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!firstClaim) throw new Error("Expected the first node fairness claim");
+    expect(firstClaim.backup.id).toBe(firstX.id);
+    await expectClaimAdvancedBothAdmissionCursors(firstClaim);
+    await terminallyReleaseFairnessClaim(firstClaim, "NODE_FAIRNESS_X1_COMPLETE");
+
+    const [secondClaim] = await claimDueAgentBackupOperations({
+      ownerId: "node-fairness-proof-2",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!secondClaim) throw new Error("Expected the second node fairness claim");
+    expect(secondClaim.backup.id).toBe(nodeY.id);
+    await expectClaimAdvancedBothAdmissionCursors(secondClaim);
+    await terminallyReleaseFairnessClaim(secondClaim, "NODE_FAIRNESS_Y1_COMPLETE");
+
+    const [thirdClaim] = await claimDueAgentBackupOperations({
+      ownerId: "node-fairness-proof-3",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!thirdClaim) throw new Error("Expected the third node fairness claim");
+    expect(thirdClaim.backup.id).toBe(secondX.id);
+    await expectClaimAdvancedBothAdmissionCursors(thirdClaim);
+  });
+
+  test("does not let older work from one tenant starve another tenant on a shared node", async () => {
+    await seedAdditionalFairnessLane({
+      organizationId: ORG_ID,
+      userId: SAME_ORG_USER_ID,
+      agentId: SAME_ORG_AGENT_ID,
+      nodeRecordId: NODE_RECORD_ID,
+      nodeIncarnation: NODE_INCARNATION,
+      nodeId: "robot-node-1",
+      providerHandle: "same-org-shared-node-generation-1",
+    });
+    await seedAdditionalFairnessLane({
+      organizationId: THIRD_ORG_ID,
+      userId: THIRD_USER_ID,
+      agentId: THIRD_AGENT_ID,
+      nodeRecordId: NODE_RECORD_ID,
+      nodeIncarnation: NODE_INCARNATION,
+      nodeId: "robot-node-1",
+      providerHandle: "third-shared-node-generation-1",
+    });
+    const firstA = await reserveTestBackup({
+      operationId: "00000000-0000-4000-8000-00000000c034",
+    });
+    const secondA = await reserveTestBackup({
+      organizationId: ORG_ID,
+      agentId: SAME_ORG_AGENT_ID,
+      sandboxRecordId: SAME_ORG_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c035",
+      sourceProviderHandle: "same-org-shared-node-generation-1",
+    });
+    const tenantB = await reserveTestBackup({
+      organizationId: THIRD_ORG_ID,
+      agentId: THIRD_AGENT_ID,
+      sandboxRecordId: THIRD_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c036",
+      sourceProviderHandle: "third-shared-node-generation-1",
+    });
+    for (const [backup, dueAt] of [
+      [firstA, "2020-01-01T00:00:00.000Z"],
+      [secondA, "2020-01-02T00:00:00.000Z"],
+      [tenantB, "2020-01-03T00:00:00.000Z"],
+    ] as const) {
+      await dbWrite
+        .update(agentSandboxBackups)
+        .set({ catalog_next_attempt_at: new Date(dueAt) })
+        .where(eq(agentSandboxBackups.id, backup.id));
+    }
+
+    const [firstClaim] = await claimDueAgentBackupOperations({
+      ownerId: "shared-node-fairness-proof-1",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!firstClaim) throw new Error("Expected the first shared-node claim");
+    expect(firstClaim.backup.id).toBe(firstA.id);
+    await terminallyReleaseFairnessClaim(firstClaim, "SHARED_NODE_A1_COMPLETE");
+
+    const [secondClaim] = await claimDueAgentBackupOperations({
+      ownerId: "shared-node-fairness-proof-2",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!secondClaim) throw new Error("Expected the second shared-node claim");
+    expect(secondClaim.backup.id).toBe(tenantB.id);
+    const [stillQueuedA] = await dbWrite
+      .select({ owner: agentSandboxBackups.catalog_lease_owner })
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.id, secondA.id));
+    expect(stillQueuedA?.owner).toBeNull();
+  });
+
+  test("fills a crossing two-row batch with independent tenant and node lanes", async () => {
+    await seedAdditionalFairnessLane({
+      organizationId: ORG_ID,
+      userId: SAME_ORG_USER_ID,
+      agentId: SAME_ORG_AGENT_ID,
+      nodeRecordId: SAME_ORG_NODE_RECORD_ID,
+      nodeIncarnation: SAME_ORG_NODE_INCARNATION,
+      nodeId: "robot-node-2",
+      providerHandle: "same-org-crossing-generation-1",
+    });
+    await seedAdditionalFairnessLane({
+      organizationId: FOREIGN_ORG_ID,
+      userId: FOREIGN_USER_ID,
+      agentId: FOREIGN_AGENT_ID,
+      nodeRecordId: FOREIGN_NODE_RECORD_ID,
+      nodeIncarnation: FOREIGN_NODE_INCARNATION,
+      nodeId: "robot-node-3",
+      providerHandle: "foreign-crossing-z-generation-1",
+    });
+    await seedAdditionalFairnessLane({
+      organizationId: FOREIGN_ORG_ID,
+      userId: THIRD_USER_ID,
+      agentId: THIRD_AGENT_ID,
+      nodeRecordId: NODE_RECORD_ID,
+      nodeIncarnation: NODE_INCARNATION,
+      nodeId: "robot-node-1",
+      providerHandle: "foreign-crossing-x-generation-1",
+    });
+
+    const aOnX = await reserveTestBackup({
+      operationId: "00000000-0000-4000-8000-00000000c037",
+    });
+    const aOnY = await reserveTestBackup({
+      organizationId: ORG_ID,
+      agentId: SAME_ORG_AGENT_ID,
+      sandboxRecordId: SAME_ORG_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c038",
+      sourceNodeRecordId: SAME_ORG_NODE_RECORD_ID,
+      sourceNodeId: "robot-node-2",
+      sourceNodeIncarnation: SAME_ORG_NODE_INCARNATION,
+      sourceProviderHandle: "same-org-crossing-generation-1",
+    });
+    const bOnZ = await reserveTestBackup({
+      organizationId: FOREIGN_ORG_ID,
+      agentId: FOREIGN_AGENT_ID,
+      sandboxRecordId: FOREIGN_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c039",
+      sourceNodeRecordId: FOREIGN_NODE_RECORD_ID,
+      sourceNodeId: "robot-node-3",
+      sourceNodeIncarnation: FOREIGN_NODE_INCARNATION,
+      sourceProviderHandle: "foreign-crossing-z-generation-1",
+    });
+    const bOnX = await reserveTestBackup({
+      organizationId: FOREIGN_ORG_ID,
+      agentId: THIRD_AGENT_ID,
+      sandboxRecordId: THIRD_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c03a",
+      sourceProviderHandle: "foreign-crossing-x-generation-1",
+    });
+    for (const [backup, dueAt] of [
+      [bOnZ, "2020-01-01T00:00:00.000Z"],
+      [bOnX, "2020-01-02T00:00:00.000Z"],
+      [aOnX, "2020-01-03T00:00:00.000Z"],
+      [aOnY, "2020-01-04T00:00:00.000Z"],
+    ] as const) {
+      await dbWrite
+        .update(agentSandboxBackups)
+        .set({ catalog_next_attempt_at: new Date(dueAt) })
+        .where(eq(agentSandboxBackups.id, backup.id));
+    }
+
+    const claims = await claimDueAgentBackupOperations({
+      ownerId: "crossing-batch-proof",
+      limit: 2,
+      leaseMs: 60_000,
+    });
+    expect(claims.map((claim) => claim.backup.id)).toEqual([bOnZ.id, aOnX.id]);
+    await Promise.all(claims.map(expectClaimAdvancedBothAdmissionCursors));
+  });
+
+  test("advances exact lane cursors by one microsecond across a backward database clock", async () => {
+    const first = await reserveTestBackup({
+      operationId: "00000000-0000-4000-8000-00000000c03b",
+    });
+    const second = await reserveTestBackup({
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      sandboxRecordId: AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c03c",
+    });
+    const sourceNodeHistoryId = first.source_node_history_id;
+    if (!sourceNodeHistoryId) throw new Error("Expected exact cursor node authority");
+    await dbWrite.execute(sql`
+      UPDATE ${agentBackupOrganizationAdmissionCursors}
+      SET cursor_at = '2099-01-01T00:00:00.123455Z'::timestamptz
+      WHERE organization_id = ${ORG_ID}
+    `);
+    await dbWrite.execute(sql`
+      UPDATE ${agentBackupNodeAdmissionCursors}
+      SET cursor_at = '2099-01-01T00:00:00.123456Z'::timestamptz
+      WHERE node_history_id = ${sourceNodeHistoryId}
+    `);
+    const readExactCursors = async () => {
+      const [row] = await dbWrite
+        .select({
+          organization_cursor_at: sql<string>`to_char(
+            ${agentBackupOrganizationAdmissionCursors.cursor_at} AT TIME ZONE 'UTC',
+            'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+          )`,
+          node_cursor_at: sql<string>`to_char(
+            ${agentBackupNodeAdmissionCursors.cursor_at} AT TIME ZONE 'UTC',
+            'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+          )`,
+        })
+        .from(agentBackupOrganizationAdmissionCursors)
+        .innerJoin(
+          agentBackupNodeAdmissionCursors,
+          eq(agentBackupNodeAdmissionCursors.node_history_id, sourceNodeHistoryId),
+        )
+        .where(eq(agentBackupOrganizationAdmissionCursors.organization_id, ORG_ID));
+      return row;
+    };
+
+    const [firstClaim] = await claimDueAgentBackupOperations({
+      ownerId: "microsecond-cursor-proof-1",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!firstClaim) throw new Error("Expected first microsecond cursor claim");
+    expect(firstClaim.backup.id).toBe(first.id);
+    expect(await readExactCursors()).toEqual({
+      node_cursor_at: "2099-01-01T00:00:00.123457Z",
+      organization_cursor_at: "2099-01-01T00:00:00.123457Z",
+    });
+    await terminallyReleaseFairnessClaim(firstClaim, "MICROSECOND_CURSOR_1_COMPLETE");
+
+    const [secondClaim] = await claimDueAgentBackupOperations({
+      ownerId: "microsecond-cursor-proof-2",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!secondClaim) throw new Error("Expected second microsecond cursor claim");
+    expect(secondClaim.backup.id).toBe(second.id);
+    expect(await readExactCursors()).toEqual({
+      node_cursor_at: "2099-01-01T00:00:00.123458Z",
+      organization_cursor_at: "2099-01-01T00:00:00.123458Z",
+    });
+  });
+
+  test("blocks active organization and exact-node lanes while an independent lane progresses", async () => {
+    await seedAdditionalFairnessLane({
+      organizationId: ORG_ID,
+      userId: SAME_ORG_USER_ID,
+      agentId: SAME_ORG_AGENT_ID,
+      nodeRecordId: SAME_ORG_NODE_RECORD_ID,
+      nodeIncarnation: SAME_ORG_NODE_INCARNATION,
+      nodeId: "robot-node-2",
+      providerHandle: "same-org-container-generation-1",
+    });
+    await seedAdditionalFairnessLane({
+      organizationId: FOREIGN_ORG_ID,
+      userId: FOREIGN_USER_ID,
+      agentId: FOREIGN_AGENT_ID,
+      nodeRecordId: FOREIGN_NODE_RECORD_ID,
+      nodeIncarnation: FOREIGN_NODE_INCARNATION,
+      nodeId: "robot-node-3",
+      providerHandle: "foreign-container-generation-1",
+    });
+    await seedAdditionalFairnessLane({
+      organizationId: THIRD_ORG_ID,
+      userId: THIRD_USER_ID,
+      agentId: THIRD_AGENT_ID,
+      nodeRecordId: NODE_RECORD_ID,
+      nodeIncarnation: NODE_INCARNATION,
+      nodeId: "robot-node-1",
+      providerHandle: "third-container-generation-1",
+    });
+
+    const active = await reserveTestBackup({
+      operationId: "00000000-0000-4000-8000-00000000c027",
+    });
+    const sameOrganization = await reserveTestBackup({
+      organizationId: ORG_ID,
+      agentId: SAME_ORG_AGENT_ID,
+      sandboxRecordId: SAME_ORG_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c028",
+      sourceNodeRecordId: SAME_ORG_NODE_RECORD_ID,
+      sourceNodeId: "robot-node-2",
+      sourceNodeIncarnation: SAME_ORG_NODE_INCARNATION,
+      sourceProviderHandle: "same-org-container-generation-1",
+    });
+    const sameNode = await reserveTestBackup({
+      organizationId: THIRD_ORG_ID,
+      agentId: THIRD_AGENT_ID,
+      sandboxRecordId: THIRD_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c029",
+      sourceProviderHandle: "third-container-generation-1",
+    });
+    const independent = await reserveTestBackup({
+      organizationId: FOREIGN_ORG_ID,
+      agentId: FOREIGN_AGENT_ID,
+      sandboxRecordId: FOREIGN_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c02a",
+      sourceNodeRecordId: FOREIGN_NODE_RECORD_ID,
+      sourceNodeId: "robot-node-3",
+      sourceNodeIncarnation: FOREIGN_NODE_INCARNATION,
+      sourceProviderHandle: "foreign-container-generation-1",
+    });
+    for (const [backup, dueAt] of [
+      [active, "2020-01-01T00:00:00.000Z"],
+      [sameOrganization, "2020-01-02T00:00:00.000Z"],
+      [sameNode, "2020-01-03T00:00:00.000Z"],
+      [independent, "2020-01-04T00:00:00.000Z"],
+    ] as const) {
+      await dbWrite
+        .update(agentSandboxBackups)
+        .set({ catalog_next_attempt_at: new Date(dueAt) })
+        .where(eq(agentSandboxBackups.id, backup.id));
+    }
+
+    const [activeClaim] = await claimDueAgentBackupOperations({
+      ownerId: "active-lane-proof-1",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!activeClaim) throw new Error("Expected the active-lane fixture claim");
+    expect(activeClaim.backup.id).toBe(active.id);
+    const independentClaims = await claimDueAgentBackupOperations({
+      ownerId: "active-lane-proof-2",
+      limit: 3,
+      leaseMs: 60_000,
+    });
+    expect(independentClaims.map((claim) => claim.backup.id)).toEqual([independent.id]);
+    const blocked = await dbWrite
+      .select({ id: agentSandboxBackups.id, owner: agentSandboxBackups.catalog_lease_owner })
+      .from(agentSandboxBackups)
+      .where(sql`${agentSandboxBackups.id} IN (${sameOrganization.id}, ${sameNode.id})`);
+    expect(blocked).toHaveLength(2);
+    expect(blocked.every((row) => row.owner === null)).toBe(true);
+  });
+
+  test("rolls back a preliminary lease without erasing existing cursor history", async () => {
+    const backup = await reserveTestBackup({
+      operationId: "00000000-0000-4000-8000-00000000c02b",
+    });
+    if (!backup.source_node_history_id) throw new Error("Expected source occurrence fixture");
+    const organizationSentinel = new Date("2026-08-25T10:11:12.123Z");
+    const nodeSentinel = new Date("2026-08-25T10:11:13.456Z");
+    await dbWrite
+      .update(agentBackupOrganizationAdmissionCursors)
+      .set({ cursor_at: organizationSentinel })
+      .where(eq(agentBackupOrganizationAdmissionCursors.organization_id, ORG_ID));
+    await dbWrite
+      .update(agentBackupNodeAdmissionCursors)
+      .set({ cursor_at: nodeSentinel })
+      .where(eq(agentBackupNodeAdmissionCursors.node_history_id, backup.source_node_history_id));
+    await dbWrite.execute(sql`
+      CREATE OR REPLACE FUNCTION test_contend_backup_claim_cursor() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.catalog_lease_owner = 'contended-cursor-claim-worker'
+          AND OLD.catalog_lease_owner IS NULL THEN
+          UPDATE agent_backup_organization_admission_cursors
+          SET cursor_at = '2026-08-25T10:11:14.789Z'::timestamptz
+          WHERE organization_id = NEW.catalog_organization_id;
+        END IF;
+        RETURN NEW;
+      END;
+      $$
+    `);
+    await dbWrite.execute(sql`
+      CREATE TRIGGER test_contend_backup_claim_cursor
+      BEFORE UPDATE ON agent_sandbox_backups
+      FOR EACH ROW EXECUTE FUNCTION test_contend_backup_claim_cursor()
+    `);
+    try {
+      await expect(
+        claimDueAgentBackupOperations({
+          ownerId: "contended-cursor-claim-worker",
+          limit: 1,
+          leaseMs: 60_000,
+        }),
+      ).rejects.toBeInstanceOf(AgentBackupAdmissionContendedError);
+      const [persistedBackup] = await dbWrite
+        .select({
+          owner: agentSandboxBackups.catalog_lease_owner,
+          generation: agentSandboxBackups.catalog_lease_generation,
+          expiresAt: agentSandboxBackups.catalog_lease_expires_at,
+        })
+        .from(agentSandboxBackups)
+        .where(eq(agentSandboxBackups.id, backup.id));
+      const [organization] = await dbWrite
+        .select({ cursorAt: agentBackupOrganizationAdmissionCursors.cursor_at })
+        .from(agentBackupOrganizationAdmissionCursors)
+        .where(eq(agentBackupOrganizationAdmissionCursors.organization_id, ORG_ID));
+      const [node] = await dbWrite
+        .select({ cursorAt: agentBackupNodeAdmissionCursors.cursor_at })
+        .from(agentBackupNodeAdmissionCursors)
+        .where(eq(agentBackupNodeAdmissionCursors.node_history_id, backup.source_node_history_id));
+      expect(persistedBackup).toEqual({ owner: null, generation: null, expiresAt: null });
+      expect(organization?.cursorAt?.getTime()).toBe(organizationSentinel.getTime());
+      expect(node?.cursorAt?.getTime()).toBe(nodeSentinel.getTime());
+    } finally {
+      await dbWrite.execute(
+        sql`DROP TRIGGER IF EXISTS test_contend_backup_claim_cursor ON agent_sandbox_backups`,
+      );
+      await dbWrite.execute(sql`DROP FUNCTION IF EXISTS test_contend_backup_claim_cursor()`);
+    }
+  });
+
+  test("claims Cloud work only through the exact current provider authority", async () => {
+    await seedAdditionalFairnessLane({
+      organizationId: FOREIGN_ORG_ID,
+      userId: FOREIGN_USER_ID,
+      agentId: FOREIGN_AGENT_ID,
+      nodeRecordId: FOREIGN_NODE_RECORD_ID,
+      nodeIncarnation: FOREIGN_NODE_INCARNATION,
+      nodeId: "cloud-node-1",
+      providerHandle: "cloud-container-generation-1",
+      providerServerId: "12345",
+    });
+    const exact = await reserveTestBackup({
+      organizationId: FOREIGN_ORG_ID,
+      agentId: FOREIGN_AGENT_ID,
+      sandboxRecordId: FOREIGN_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c02d",
+      sourceProvider: "hetzner-cloud",
+      sourceNodeRecordId: FOREIGN_NODE_RECORD_ID,
+      sourceNodeId: "cloud-node-1",
+      sourceNodeIncarnation: FOREIGN_NODE_INCARNATION,
+      sourceProviderServerId: "12345",
+      sourceProviderHandle: "cloud-container-generation-1",
+    });
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ catalog_next_attempt_at: new Date("2020-01-02T00:00:00.000Z") })
+      .where(eq(agentSandboxBackups.id, exact.id));
+
+    const claims = await claimDueAgentBackupOperations({
+      ownerId: "cloud-authority-claim-worker",
+      limit: 2,
+      leaseMs: 60_000,
+    });
+    expect(claims.map((claim) => claim.backup.id)).toEqual([exact.id]);
+  });
+
+  test("rejects mismatched Cloud provider and fleet projections at claim time", async () => {
+    await seedAdditionalFairnessLane({
+      organizationId: FOREIGN_ORG_ID,
+      userId: FOREIGN_USER_ID,
+      agentId: FOREIGN_AGENT_ID,
+      nodeRecordId: FOREIGN_NODE_RECORD_ID,
+      nodeIncarnation: FOREIGN_NODE_INCARNATION,
+      nodeId: "cloud-node-negative",
+      providerHandle: "cloud-negative-generation-1",
+      providerServerId: "12345",
+    });
+    const exact = await reserveTestBackup({
+      organizationId: FOREIGN_ORG_ID,
+      agentId: FOREIGN_AGENT_ID,
+      sandboxRecordId: FOREIGN_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c03d",
+      sourceProvider: "hetzner-cloud",
+      sourceNodeRecordId: FOREIGN_NODE_RECORD_ID,
+      sourceNodeId: "cloud-node-negative",
+      sourceNodeIncarnation: FOREIGN_NODE_INCARNATION,
+      sourceProviderServerId: "12345",
+      sourceProviderHandle: "cloud-negative-generation-1",
+    });
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ source_provider_server_id: "12346" })
+      .where(eq(agentSandboxBackups.id, exact.id));
+    expect(
+      await claimDueAgentBackupOperations({
+        ownerId: "cloud-negative-server-worker",
+        limit: 1,
+        leaseMs: 60_000,
+      }),
+    ).toEqual([]);
+
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ source_provider: "operator-onboarded", source_provider_server_id: null })
+      .where(eq(agentSandboxBackups.id, exact.id));
+    expect(
+      await claimDueAgentBackupOperations({
+        ownerId: "cloud-negative-fleet-worker",
+        limit: 1,
+        leaseMs: 60_000,
+      }),
+    ).toEqual([]);
+
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ source_provider: "hetzner-cloud", source_provider_server_id: "12345" })
+      .where(eq(agentSandboxBackups.id, exact.id));
+    const [claim] = await claimDueAgentBackupOperations({
+      ownerId: "cloud-negative-repaired-worker",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    expect(claim?.backup.id).toBe(exact.id);
+  });
+
+  test("classifies failed-retryable capture resumption on both exact lanes", async () => {
+    const backup = await reserveTestBackup({
+      operationId: "00000000-0000-4000-8000-00000000c03e",
+    });
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        catalog_state: "failed_retryable",
+        catalog_resume_state: "capturing",
+        catalog_next_attempt_at: new Date("2020-01-01T00:00:00.000Z"),
+      })
+      .where(eq(agentSandboxBackups.id, backup.id));
+    const [claim] = await claimDueAgentBackupOperations({
+      ownerId: "failed-retryable-capture-worker",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    expect(claim?.backup).toMatchObject({
+      id: backup.id,
+      catalog_state: "failed_retryable",
+      catalog_resume_state: "capturing",
+    });
+    if (!claim) throw new Error("Expected failed-retryable capture claim");
+    await expectClaimAdvancedBothAdmissionCursors(claim);
+  });
+
+  test("classifies failed-retryable publication on the tenant lane only", async () => {
+    const operationId = "00000000-0000-4000-8000-00000000c03f";
+    const backup = await reserveAgentBackupOperation(exactReservation({ operationId }));
+    const [captureClaim] = await claimDueAgentBackupOperations({
+      ownerId: "failed-retryable-publication-capture-worker",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!backup.source_node_history_id || !captureClaim) {
+      throw new Error("Expected publication node cursor and capture claim");
+    }
+    const captureExecution = {
+      ownerId: captureClaim.ownerId,
+      generation: captureClaim.generation,
+    };
+    await transitionAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: backup.id,
+      operationId,
+      lifecycleGeneration: LIFECYCLE_GENERATION,
+      expectedState: "scheduled",
+      to: "capturing",
+      execution: captureExecution,
+    });
+    await recordCapturedAgentBackupManifest({
+      organizationId: ORG_ID,
+      backupId: backup.id,
+      operationId,
+      expectedActivationGeneration: LIFECYCLE_GENERATION,
+      expectedLifecycleRevision: "0",
+      execution: captureExecution,
+      manifest: await capturedManifest([objectDescriptor()], {
+        operationId,
+        createdAt: backup.created_at.toISOString(),
+      }),
+    });
+    await failAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: backup.id,
+      operationId,
+      lifecycleGeneration: LIFECYCLE_GENERATION,
+      expectedState: "captured",
+      terminal: false,
+      retryDelayMs: 1,
+      error: { code: "PUBLICATION_RETRY_PROOF", message: "retry publication" },
+      execution: captureExecution,
+    });
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        catalog_next_attempt_at: new Date("2020-01-01T00:00:00.000Z"),
+      })
+      .where(eq(agentSandboxBackups.id, backup.id));
+    const [nodeBefore] = await dbWrite
+      .select({
+        cursorAt: sql<string | null>`${agentBackupNodeAdmissionCursors.cursor_at}::text`,
+      })
+      .from(agentBackupNodeAdmissionCursors)
+      .where(eq(agentBackupNodeAdmissionCursors.node_history_id, backup.source_node_history_id));
+    const [organizationBefore] = await dbWrite
+      .select({
+        cursorAt: sql<string | null>`${agentBackupOrganizationAdmissionCursors.cursor_at}::text`,
+      })
+      .from(agentBackupOrganizationAdmissionCursors)
+      .where(eq(agentBackupOrganizationAdmissionCursors.organization_id, ORG_ID));
+    if (!nodeBefore?.cursorAt || !organizationBefore?.cursorAt) {
+      throw new Error("Expected exact capture admission cursors before publication retry");
+    }
+    const [claim] = await claimDueAgentBackupOperations({
+      ownerId: "failed-retryable-publication-worker",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    expect(claim?.backup).toMatchObject({
+      id: backup.id,
+      catalog_state: "failed_retryable",
+      catalog_resume_state: "captured",
+    });
+    const [nodeAfter] = await dbWrite
+      .select({
+        cursorAt: sql<string | null>`${agentBackupNodeAdmissionCursors.cursor_at}::text`,
+      })
+      .from(agentBackupNodeAdmissionCursors)
+      .where(eq(agentBackupNodeAdmissionCursors.node_history_id, backup.source_node_history_id));
+    expect(nodeAfter?.cursorAt).toEqual(nodeBefore?.cursorAt);
+    const [organizationAfter] = await dbWrite
+      .select({
+        cursorAt: sql<string | null>`${agentBackupOrganizationAdmissionCursors.cursor_at}::text`,
+        advanced: sql<boolean>`${agentBackupOrganizationAdmissionCursors.cursor_at}
+          > ${organizationBefore.cursorAt}::timestamptz`,
+      })
+      .from(agentBackupOrganizationAdmissionCursors)
+      .where(eq(agentBackupOrganizationAdmissionCursors.organization_id, ORG_ID));
+    expect(organizationAfter).toEqual({ cursorAt: expect.any(String), advanced: true });
+  });
+
+  test("holds the exact admission lanes while heartbeating without advancing their turn", async () => {
+    const backup = await reserveTestBackup({
+      operationId: "00000000-0000-4000-8000-00000000c040",
+    });
+    const [claim] = await claimDueAgentBackupOperations({
+      ownerId: "heartbeat-lane-worker",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    const sourceNodeHistoryId = backup.source_node_history_id;
+    if (!claim || !sourceNodeHistoryId) {
+      throw new Error("Expected heartbeat admission claim");
+    }
+    const readCursors = () =>
+      Promise.all([
+        dbWrite
+          .select({
+            cursorAt: sql<
+              string | null
+            >`${agentBackupOrganizationAdmissionCursors.cursor_at}::text`,
+          })
+          .from(agentBackupOrganizationAdmissionCursors)
+          .where(eq(agentBackupOrganizationAdmissionCursors.organization_id, ORG_ID)),
+        dbWrite
+          .select({
+            cursorAt: sql<string | null>`${agentBackupNodeAdmissionCursors.cursor_at}::text`,
+          })
+          .from(agentBackupNodeAdmissionCursors)
+          .where(eq(agentBackupNodeAdmissionCursors.node_history_id, sourceNodeHistoryId)),
+      ]);
+    const cursorsBefore = await readCursors();
+    expect(cursorsBefore[0]).toEqual([{ cursorAt: expect.any(String) }]);
+    expect(cursorsBefore[1]).toEqual([{ cursorAt: cursorsBefore[0][0]?.cursorAt }]);
+    const heartbeat = await heartbeatAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: backup.id,
+      execution: { ownerId: claim.ownerId, generation: claim.generation },
+      leaseMs: 120_000,
+    });
+    expect(heartbeat.catalog_lease_expires_at?.getTime()).toBeGreaterThan(
+      claim.backup.catalog_lease_expires_at?.getTime() ?? 0,
+    );
+    expect(await readCursors()).toEqual(cursorsBefore);
   });
 
   test("reserves and claims only one exact active source authority", async () => {
@@ -1192,6 +2092,143 @@ describe("agent backup catalogue on primary PGlite", () => {
     });
     expect(claims).toHaveLength(1);
     expect(claims[0]?.backup.id).toBe(first.id);
+  });
+
+  test("rejects an A1-B-A2 source before heartbeat, vault, decrypt, or routing", async () => {
+    const reserved = await reserveAgentBackupOperation(
+      exactReservation({ operationId: "00000000-0000-4000-8000-00000000c041" }),
+    );
+    const [claim] = await claimDueAgentBackupOperations({
+      ownerId: "runtime-occurrence-aba-worker",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!claim || !reserved.source_node_history_id) {
+      throw new Error("Expected exact capture claim before runtime occurrence rotation");
+    }
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: "00000000-0000-4000-8000-00000000c042" })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: NODE_INCARNATION })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    const [rearmed] = await dbWrite
+      .select({ historyId: dockerNodes.current_node_history_id })
+      .from(dockerNodes)
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    expect(rearmed?.historyId).not.toBe(reserved.source_node_history_id);
+
+    let heartbeats = 0;
+    let vaultReads = 0;
+    let decryptions = 0;
+    let routeAuthorizations = 0;
+    const resolveRuntimeContext = createAgentBackupCaptureV3RuntimeContextResolver(
+      {
+        spool: {
+          stateDirectory: "/var/lib/eliza-backup-catalog/spool",
+          maxSpoolBytes: 1024 ** 3,
+          minFreeBytes: 1024,
+        },
+        keyBundle: { kind: "shared-key-bundle" } as never,
+        runtime: {
+          agentSchemaVersion: "2.0.0",
+          databaseSchemaVersion: "330",
+          plugins: [],
+        },
+      },
+      {
+        async loadVaultAuthority() {
+          vaultReads += 1;
+          throw new Error("vault must not be read for stale runtime occurrence");
+        },
+        async decryptEnvironmentVars() {
+          decryptions += 1;
+          throw new Error("environment must not be decrypted for stale runtime occurrence");
+        },
+        async authorizePublicUrl() {
+          routeAuthorizations += 1;
+          throw new Error("route must not be authorized for stale runtime occurrence");
+        },
+      },
+    );
+    let failure: unknown;
+    try {
+      await resolveRuntimeContext({
+        claim,
+        request: { agentId: AGENT_ID } as never,
+        expectedSource: {
+          kind: "robot",
+          provider: "hetzner",
+          nodeRecordId: NODE_RECORD_ID,
+          nodeId: "robot-node-1",
+          nodeIncarnation: NODE_INCARNATION,
+          containerId: SOURCE_CONTAINER_ID,
+        },
+        async heartbeat() {
+          heartbeats += 1;
+          return true;
+        },
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({ code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE" });
+    expect(isResolvedAgentBackupCaptureV3RuntimeAuthorityStale(failure)).toBe(true);
+    expect({ heartbeats, vaultReads, decryptions, routeAuthorizations }).toEqual({
+      heartbeats: 0,
+      vaultReads: 0,
+      decryptions: 0,
+      routeAuthorizations: 0,
+    });
+  });
+
+  test("replays a legacy publication row without inferring its source occurrence", async () => {
+    const operationId = "00000000-0000-4000-8000-00000000c043";
+    const reservation = exactReservation({ operationId });
+    const reserved = await reserveAgentBackupOperation(reservation);
+    const [claim] = await claimDueAgentBackupOperations({
+      ownerId: "legacy-publication-replay-capture-worker",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!claim || !reserved.source_node_history_id) {
+      throw new Error("Expected exact capture before legacy publication replay");
+    }
+    const execution = { ownerId: claim.ownerId, generation: claim.generation };
+    await transitionAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: reserved.id,
+      operationId,
+      lifecycleGeneration: LIFECYCLE_GENERATION,
+      expectedState: "scheduled",
+      to: "capturing",
+      execution,
+    });
+    await recordCapturedAgentBackupManifest({
+      organizationId: ORG_ID,
+      backupId: reserved.id,
+      operationId,
+      expectedActivationGeneration: LIFECYCLE_GENERATION,
+      expectedLifecycleRevision: "0",
+      execution,
+      manifest: await capturedManifest([objectDescriptor()], {
+        operationId,
+        createdAt: reserved.created_at.toISOString(),
+      }),
+    });
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ source_node_history_id: null })
+      .where(eq(agentSandboxBackups.id, reserved.id));
+
+    const replay = await reserveAgentBackupOperation(reservation);
+    expect(replay).toMatchObject({
+      id: reserved.id,
+      catalog_state: "captured",
+      source_node_history_id: null,
+    });
   });
 
   test("derives manifest projections and revalidates the active image before capture commit", async () => {
@@ -1250,7 +2287,7 @@ describe("agent backup catalogue on primary PGlite", () => {
     });
   });
 
-  test("hands an exact captured fence to publication without waiting for lease expiry", async () => {
+  test("hands captured work to publication across a source-node ABA", async () => {
     const reserved = await reserveAgentBackupOperation(exactReservation());
     const [claim] = await claimDueAgentBackupOperations({
       ownerId: "capture-worker-handoff",
@@ -1323,6 +2360,9 @@ describe("agent backup catalogue on primary PGlite", () => {
       catalog_lease_generation: null,
       catalog_lease_expires_at: null,
     });
+    if (!handedOff.source_node_history_id) {
+      throw new Error("Expected reservation-bound source occurrence");
+    }
 
     await expect(
       handoffCapturedAgentBackupOperation({
@@ -1334,6 +2374,43 @@ describe("agent backup catalogue on primary PGlite", () => {
       }),
     ).rejects.toThrow("exact execution fence");
 
+    const [nodeCursorBeforePublication] = await dbWrite
+      .select({
+        cursorAt: sql<string | null>`${agentBackupNodeAdmissionCursors.cursor_at}::text`,
+      })
+      .from(agentBackupNodeAdmissionCursors)
+      .where(eq(agentBackupNodeAdmissionCursors.node_history_id, handedOff.source_node_history_id));
+    const [organizationCursorBeforePublication] = await dbWrite
+      .select({
+        cursorAt: sql<string | null>`${agentBackupOrganizationAdmissionCursors.cursor_at}::text`,
+      })
+      .from(agentBackupOrganizationAdmissionCursors)
+      .where(eq(agentBackupOrganizationAdmissionCursors.organization_id, ORG_ID));
+    if (!nodeCursorBeforePublication?.cursorAt || !organizationCursorBeforePublication?.cursorAt) {
+      throw new Error("Expected exact capture admission cursors before ABA publication");
+    }
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: "00000000-0000-4000-8000-00000000c01d" })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: NODE_INCARNATION })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    const [rearmedNode] = await dbWrite
+      .select({ historyId: dockerNodes.current_node_history_id })
+      .from(dockerNodes)
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    expect(rearmedNode?.historyId).not.toBe(handedOff.source_node_history_id);
+    if (!rearmedNode?.historyId) throw new Error("Expected rearmed exact node occurrence");
+    const [rearmedNodeCursorBeforePublication] = await dbWrite
+      .select({
+        cursorAt: sql<string | null>`${agentBackupNodeAdmissionCursors.cursor_at}::text`,
+      })
+      .from(agentBackupNodeAdmissionCursors)
+      .where(eq(agentBackupNodeAdmissionCursors.node_history_id, rearmedNode.historyId));
+    expect(rearmedNodeCursorBeforePublication).toBeUndefined();
+
     const [publicationClaim] = await claimDueAgentBackupOperations({
       ownerId: "publication-worker-handoff",
       limit: 1,
@@ -1344,6 +2421,32 @@ describe("agent backup catalogue on primary PGlite", () => {
       backup: { id: reserved.id, catalog_state: "captured" },
     });
     expect(publicationClaim?.generation).not.toBe(execution.generation);
+    const [nodeCursorAfterPublication] = await dbWrite
+      .select({
+        cursorAt: sql<string | null>`${agentBackupNodeAdmissionCursors.cursor_at}::text`,
+      })
+      .from(agentBackupNodeAdmissionCursors)
+      .where(eq(agentBackupNodeAdmissionCursors.node_history_id, handedOff.source_node_history_id));
+    expect(nodeCursorAfterPublication?.cursorAt).toBe(nodeCursorBeforePublication?.cursorAt);
+    const [rearmedNodeCursorAfterPublication] = await dbWrite
+      .select({
+        cursorAt: sql<string | null>`${agentBackupNodeAdmissionCursors.cursor_at}::text`,
+      })
+      .from(agentBackupNodeAdmissionCursors)
+      .where(eq(agentBackupNodeAdmissionCursors.node_history_id, rearmedNode.historyId));
+    expect(rearmedNodeCursorAfterPublication).toBeUndefined();
+    if (!publicationClaim?.backup.catalog_updated_at) {
+      throw new Error("Expected publication claim timestamp");
+    }
+    const [organizationCursor] = await dbWrite
+      .select({
+        cursorAt: sql<string | null>`${agentBackupOrganizationAdmissionCursors.cursor_at}::text`,
+        advanced: sql<boolean>`${agentBackupOrganizationAdmissionCursors.cursor_at}
+          > ${organizationCursorBeforePublication.cursorAt}::timestamptz`,
+      })
+      .from(agentBackupOrganizationAdmissionCursors)
+      .where(eq(agentBackupOrganizationAdmissionCursors.organization_id, ORG_ID));
+    expect(organizationCursor).toEqual({ cursorAt: expect.any(String), advanced: true });
   });
 
   test("persists and exactly replays one manifest-v3 operation key bundle", async () => {

@@ -14,6 +14,7 @@ import {
   test,
 } from "bun:test";
 import { runInNewContext } from "node:vm";
+import { hasDbCacheContext } from "@/db/client";
 import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
 import * as authActual from "@/lib/auth";
@@ -52,6 +53,8 @@ const browserClaimCalls: Array<{
   binding: { agentId: string; expectedOrigin: string };
 }> = [];
 const authRequests: Request[] = [];
+const authDbCacheContexts: boolean[] = [];
+const sandboxDbCacheContexts: boolean[] = [];
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   ...cloudBindingsActual,
@@ -61,6 +64,7 @@ mock.module("@/lib/auth", () => ({
   ...authActual,
   requireAuthOrApiKeyWithOrg: async (request: Request) => {
     authRequests.push(request);
+    authDbCacheContexts.push(hasDbCacheContext());
     if (authResult === "throw") throw new AuthenticationError("unauthorized");
     if (authResult === "forbidden") throw new ForbiddenError("forbidden");
     if (authResult === "unexpected") throw new Error("auth dependency failed");
@@ -71,7 +75,10 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
   ...agentSandboxesActual,
   agentSandboxesRepository: {
     ...agentSandboxesActual.agentSandboxesRepository,
-    findByIdAndOrg: async () => sandboxResult,
+    findByIdAndOrg: async () => {
+      sandboxDbCacheContexts.push(hasDbCacheContext());
+      return sandboxResult;
+    },
   },
 }));
 mock.module("@/lib/services/provisioning-jobs", () => ({
@@ -245,6 +252,8 @@ beforeEach(() => {
   browserClaimError = null;
   browserClaimCalls.length = 0;
   authRequests.length = 0;
+  authDbCacheContexts.length = 0;
+  sandboxDbCacheContexts.length = 0;
   rateLimitResult = { success: true };
   rateLimitError = null;
   rateLimitKeys.length = 0;
@@ -900,6 +909,8 @@ describe("dedicated-agent-proxy — unified auth", () => {
 
     expect(res.status).toBe(200);
     expect(authRequests).toHaveLength(1);
+    expect(authDbCacheContexts).toEqual([true]);
+    expect(sandboxDbCacheContexts).toEqual([true]);
     expect(authRequests[0]?.headers.get("cookie")).toBeNull();
     expect(captured).not.toBeNull();
     // The container gets the agent's own token, NOT the cloud token.
@@ -1320,6 +1331,8 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-max-age")).toBe("600");
+    expect(res.headers.get("cache-control")).toBe("no-store");
     expect(captured).toBeNull(); // preflight is answered at the edge
   });
 
@@ -1350,6 +1363,7 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(
       deniedPreflight.headers.get("access-control-allow-origin"),
     ).toBeNull();
+    expect(deniedPreflight.headers.get("access-control-max-age")).toBeNull();
 
     const request = makeRequest("victim-cloud-token", attackerOrigin, {
       cookie: "steward-token=victim-session",

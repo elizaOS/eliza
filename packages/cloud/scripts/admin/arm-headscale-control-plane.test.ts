@@ -158,7 +158,7 @@ describe("Headscale control-plane self-enrollment", () => {
     expect(forceReauth).toBeLessThan(loginServer);
     expect(remote.match(/--force-reauth/g)).toHaveLength(1);
     expect(remote).toContain(
-      "already enrolled in headscale; skipping tailscale up",
+      "CP router enrollment already present (category=cp-router-already-enrolled)",
     );
   });
 

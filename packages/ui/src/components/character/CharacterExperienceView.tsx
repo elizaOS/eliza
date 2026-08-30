@@ -101,12 +101,9 @@ export function CharacterExperienceView({
 
   return (
     <ShellViewAgentSurface viewId="experience">
-      <FramedPage>
+      <FramedPage gutterOwner="framed-page">
         {pageChrome}
-        <FramedPageBody
-          padded={false}
-          className="gap-4 pt-1 [@media(min-width:768px)_and_(min-height:600px)]:px-6 lg:px-8"
-        >
+        <FramedPageBody className="gap-4 pt-1">
           {error ? (
             <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
               {error}

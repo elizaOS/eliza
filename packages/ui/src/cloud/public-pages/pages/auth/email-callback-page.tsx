@@ -14,7 +14,6 @@ import {
   clearStoredAppAuthorizeReturnTo,
   readStoredAppAuthorizeReturnTo,
 } from "../../../../cloud-ui/components/auth/authorize-return";
-import { BrandButton } from "../../../../cloud-ui/components/brand/brand-button";
 import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
@@ -363,12 +362,12 @@ function EmailCallbackContent() {
           {t("cloud.emailCallback.signedIn", { defaultValue: "Signed in" })}
         </h1>
         <p className="text-sm text-muted">{successCopy}</p>
-        <BrandButton
+        <Button
           className="mt-2"
           onClick={() => navigate(destination, { replace: true })}
         >
           {buttonCopy}
-        </BrandButton>
+        </Button>
       </Frame>
     );
   }

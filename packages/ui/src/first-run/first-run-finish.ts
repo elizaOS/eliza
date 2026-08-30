@@ -14,6 +14,7 @@
 
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import type { DedicatedAdoptionConfirmationRequester } from "../api/client-cloud";
 import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
@@ -121,6 +122,14 @@ export interface FirstRunFinishPorts {
    * degraded into OAuth.
    */
   onInteractiveLogin?: () => void;
+  /**
+   * Fires immediately after interactive Cloud login settles successfully so
+   * the conductor can retire the OAuth-only recovery deadline before personal
+   * agent activation begins.
+   */
+  onInteractiveLoginComplete?: () => void;
+  /** Visible first-run quote/consent seam; absent callers stay read-only. */
+  requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
 }
 
 type FirstRunRuntimeStateKey =
@@ -793,6 +802,7 @@ export async function listOrAutoProvisionCloudAgent(
     // it can seed the waiting turn and arm the bounded recovery deadline.
     ports.onInteractiveLogin?.();
     await ports.handleInteractiveCloudLogin({ requireClientAuth: true });
+    ports.onInteractiveLoginComplete?.();
     ports.signal?.throwIfAborted();
   }
   const authToken = getCloudAuthToken(client) ?? "";
@@ -813,6 +823,12 @@ export async function listOrAutoProvisionCloudAgent(
     authToken,
     signal: ports.signal,
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
+    ...(ports.requestDedicatedAdoptionConfirmation
+      ? {
+          requestDedicatedAdoptionConfirmation:
+            ports.requestDedicatedAdoptionConfirmation,
+        }
+      : {}),
   });
   addAgentProfile({
     kind: "cloud",
