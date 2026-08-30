@@ -999,9 +999,11 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			"if the window is open, close it",
 			"the view is open and I can see it",
 		]) {
+			// Non-inspection sentences must not surface a VIEWS candidate:
+			// the inference stays empty (no direct action invented).
 			expect(
 				inferDirectCurrentRequestCandidateInference([viewsAction], message),
-			).not.toEqual({ names: [], kind: null });
+			).toEqual({ names: [], kind: null });
 		}
 	});
 
