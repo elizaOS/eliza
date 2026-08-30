@@ -544,9 +544,7 @@ async function actionCreate({
 
 /** The visible locator a caller used for a content-addressed mutation. */
 function visibleLocator(params: TodoActionParameters): string {
-  return (
-    readString(params.targetContent) ?? readString(params.content) ?? ""
-  );
+  return readString(params.targetContent) ?? readString(params.content) ?? "";
 }
 
 async function actionUpdate({
