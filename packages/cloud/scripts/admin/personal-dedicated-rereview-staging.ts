@@ -4,8 +4,9 @@
  * Dedicated selection owned by the deployed smoke account. An existing receipt
  * is re-reviewed; a missing receipt is bootstrapped only when one candidate has
  * canonical restore authority. The command resolves identifiers internally,
- * binds execution to a prior redacted preview, and proves that agent and job
- * rows did not change.
+ * binds execution to a prior redacted preview, and audits that agent and job
+ * rows did not change. The snapshot is post-commit detection, not rollback
+ * authority; the canonical transaction owns its exact receipt write set.
  */
 
 import { createHash, createHmac } from "node:crypto";
@@ -49,6 +50,45 @@ interface MutationSnapshot {
   jobDigest: string;
 }
 
+interface SelectionPreviewBase {
+  inventoryFingerprint: string;
+  stateDisposition: RereviewOperatorEvidence["stateDisposition"];
+  candidateCount: number;
+  replacesTarget: boolean;
+}
+
+type SelectionPreview =
+  | (SelectionPreviewBase & {
+      operation: "bootstrap";
+      receiptFingerprint: null;
+      receiptUpdatedAt: null;
+      previousRetainedAgentId: null;
+    })
+  | (SelectionPreviewBase & {
+      operation: "rereview";
+      receiptFingerprint: string;
+      receiptUpdatedAt: string;
+      previousRetainedAgentId: string;
+    });
+
+type SelectionExecuteInput =
+  | (ResolvedSelection & {
+      operation: "bootstrap";
+      expectedReceiptFingerprint: null;
+      expectedReceiptUpdatedAt: null;
+      expectedPreviousRetainedAgentId: null;
+      expectedInventoryFingerprint: string;
+      expectedStateDisposition: RereviewOperatorEvidence["stateDisposition"];
+    })
+  | (ResolvedSelection & {
+      operation: "rereview";
+      expectedReceiptFingerprint: string;
+      expectedReceiptUpdatedAt: string;
+      expectedPreviousRetainedAgentId: string;
+      expectedInventoryFingerprint: string;
+      expectedStateDisposition: RereviewOperatorEvidence["stateDisposition"];
+    });
+
 export interface RereviewOperatorConfig {
   mode: Mode;
   apiKey: string;
@@ -79,20 +119,8 @@ export interface RereviewOperatorEvidence {
 export interface RereviewOperatorDependencies {
   verifyDeployment(expectedCommit: string): Promise<void>;
   resolveSelection(apiKey: string): Promise<ResolvedSelection>;
-  preview(input: ResolvedSelection): Promise<{
-    receiptFingerprint: string | null;
-    inventoryFingerprint: string;
-    stateDisposition: RereviewOperatorEvidence["stateDisposition"];
-    candidateCount: number;
-    replacesTarget: boolean;
-  }>;
-  execute(
-    input: ResolvedSelection & {
-      expectedReceiptFingerprint: string | null;
-      expectedInventoryFingerprint: string;
-      expectedStateDisposition: RereviewOperatorEvidence["stateDisposition"];
-    },
-  ): Promise<void>;
+  preview(input: ResolvedSelection): Promise<SelectionPreview>;
+  execute(input: SelectionExecuteInput): Promise<void>;
   snapshot(input: ResolvedSelection): Promise<MutationSnapshot>;
 }
 
@@ -202,11 +230,7 @@ function approvalDigest(
       JSON.stringify({
         schemaVersion: 1,
         ...resolved,
-        receiptFingerprint: preview.receiptFingerprint,
-        inventoryFingerprint: preview.inventoryFingerprint,
-        stateDisposition: preview.stateDisposition,
-        candidateCount: preview.candidateCount,
-        replacesTarget: preview.replacesTarget,
+        ...preview,
       }),
     )
     .digest("hex");
@@ -235,6 +259,11 @@ export async function runRereviewOperator(
   await dependencies.verifyDeployment(config.expectedCloudCommit);
   const resolved = await dependencies.resolveSelection(config.apiKey);
   const preview = await dependencies.preview(resolved);
+  if (preview.operation !== resolved.operation) {
+    throw new PersonalDedicatedRereviewOperatorError(
+      "selection_operation_changed",
+    );
+  }
   const digest = approvalDigest(config.apiKey, resolved, preview);
   const before = await dependencies.snapshot(resolved);
   const requiredConfirmation =
@@ -267,14 +296,39 @@ export async function runRereviewOperator(
         "reviewed_reason_required",
       );
     }
-    await dependencies.execute({
-      ...resolved,
-      expectedReceiptFingerprint: preview.receiptFingerprint,
-      expectedInventoryFingerprint: preview.inventoryFingerprint,
-      expectedStateDisposition: preview.stateDisposition,
-    });
+    if (resolved.operation === "rereview") {
+      if (preview.operation !== "rereview") {
+        throw new PersonalDedicatedRereviewOperatorError(
+          "selection_operation_changed",
+        );
+      }
+      await dependencies.execute({
+        ...resolved,
+        expectedReceiptFingerprint: preview.receiptFingerprint,
+        expectedReceiptUpdatedAt: preview.receiptUpdatedAt,
+        expectedPreviousRetainedAgentId: preview.previousRetainedAgentId,
+        expectedInventoryFingerprint: preview.inventoryFingerprint,
+        expectedStateDisposition: preview.stateDisposition,
+      });
+    } else {
+      if (preview.operation !== "bootstrap") {
+        throw new PersonalDedicatedRereviewOperatorError(
+          "selection_operation_changed",
+        );
+      }
+      await dependencies.execute({
+        ...resolved,
+        expectedReceiptFingerprint: null,
+        expectedReceiptUpdatedAt: null,
+        expectedPreviousRetainedAgentId: null,
+        expectedInventoryFingerprint: preview.inventoryFingerprint,
+        expectedStateDisposition: preview.stateDisposition,
+      });
+    }
   }
 
+  // Detection happens after the receipt transaction and cannot roll it back.
+  // Write-set prevention belongs to the canonical selection transaction.
   const after = await dependencies.snapshot(resolved);
   assertNoComputeMutation(before, after);
   return {
@@ -534,13 +588,21 @@ const defaultDependencies: RereviewOperatorDependencies = {
       reason: "duplicate_owned_dedicated_inventory",
     } as const;
     if (input.operation === "rereview") {
-      return personalDedicatedAdoptionSelectionService.previewRereview(common);
+      return {
+        ...(await personalDedicatedAdoptionSelectionService.previewRereview(
+          common,
+        )),
+        operation: "rereview" as const,
+      };
     }
     const preview =
       await personalDedicatedAdoptionSelectionService.preview(common);
     return {
       ...preview,
+      operation: "bootstrap" as const,
       receiptFingerprint: null,
+      receiptUpdatedAt: null,
+      previousRetainedAgentId: null,
       replacesTarget: false,
     };
   },
@@ -554,14 +616,11 @@ const defaultDependencies: RereviewOperatorDependencies = {
       reason: "duplicate_owned_dedicated_inventory",
     } as const;
     if (input.operation === "rereview") {
-      if (!input.expectedReceiptFingerprint) {
-        throw new PersonalDedicatedRereviewOperatorError(
-          "selection_receipt_fingerprint_missing",
-        );
-      }
       await personalDedicatedAdoptionSelectionService.executeRereview({
         ...common,
         expectedReceiptFingerprint: input.expectedReceiptFingerprint,
+        expectedReceiptUpdatedAt: input.expectedReceiptUpdatedAt,
+        expectedPreviousRetainedAgentId: input.expectedPreviousRetainedAgentId,
       });
       return;
     }

@@ -204,6 +204,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "last_backup_at" timestamptz,
   "last_backup_attempt_at" timestamptz,
   "backup_unsupported_reason" text,
+  "backup_admission_xid" xid8 NOT NULL DEFAULT '0'::xid8,
   "last_heartbeat_at" timestamptz,
   "error_message" text,
   "error_count" integer NOT NULL DEFAULT 0,
