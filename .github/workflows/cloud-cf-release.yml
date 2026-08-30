@@ -2897,7 +2897,7 @@ jobs:
   deployed-renderer-staging:
     name: Verify deployed staging renderer (Pages alias)
     needs: [deploy-app, verify-routing]
-    if: ${{ !cancelled() && inputs.target_environment == 'staging' && ((vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success' && needs.deploy-app.outputs.pages_deployed == 'true' && needs.verify-routing.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)) }}
+    if: ${{ !cancelled() && inputs.target_environment == 'staging' && ((github.event_name != 'workflow_dispatch' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success' && needs.deploy-app.outputs.pages_deployed == 'true' && needs.verify-routing.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)) }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 45

@@ -241,7 +241,7 @@ describe("Cloudflare deployed browser workflow contract", () => {
       "inputs.run_deployed_renderer_staging == true",
     );
     expect(deployedJob.if).toContain(
-      "vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success'",
+      "github.event_name != 'workflow_dispatch' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success'",
     );
     expect(deployedJob.if).toContain(
       "|| (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)",
