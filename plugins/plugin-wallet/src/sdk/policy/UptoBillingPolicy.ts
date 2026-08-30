@@ -165,6 +165,43 @@ export class UptoBillingPolicy {
     options: UptoSettlementOptions = {},
   ): UptoBillingSnapshot {
     const auth = this.requireAuthorization(authorizationId);
+    const settlementList = this.settlements.get(authorizationId);
+    if (!settlementList) {
+      throw new Error(
+        `[UptoBillingPolicy] Missing settlements for authorization ${authorizationId}`,
+      );
+    }
+
+    // txHash idempotency is intentionally scoped to one authorization. A single
+    // on-chain transaction may settle multiple logical authorizations, while a
+    // repeated hash within the same authorization represents the same wallet
+    // movement. txHash remains optional for off-chain/unkeyed settlements;
+    // those calls are additive and therefore are not deduplicated.
+    if (options.txHash) {
+      const existing = settlementList.find(
+        (settlement) => settlement.txHash === options.txHash,
+      );
+      if (existing) {
+        if (existing.amount !== amount) {
+          throw new Error(
+            `Settlement txHash ${options.txHash} was already recorded with amount ${existing.amount}, received conflicting amount ${amount}`,
+          );
+        }
+
+        // A recovery retry may add the terminal effect after the movement was
+        // already booked. Preserve idempotency for the wallet delta while still
+        // honoring finalize/release semantics instead of silently dropping it.
+        if (options.finalize) {
+          this.finalizeAuthorization(
+            authorizationId,
+            options.settledAt ?? existing.settledAt,
+            options.reference ?? existing.reference,
+          );
+        }
+
+        return this.getSnapshot(authorizationId);
+      }
+    }
 
     if (auth.status === "settled" || auth.status === "released") {
       throw new Error(`Authorization is already finalized: ${authorizationId}`);
@@ -193,12 +230,6 @@ export class UptoBillingPolicy {
     auth.remainingAmount -= amount;
     auth.status = auth.remainingAmount === 0n ? "settled" : "partially_settled";
 
-    const settlementList = this.settlements.get(authorizationId);
-    if (!settlementList) {
-      throw new Error(
-        `[UptoBillingPolicy] Missing settlements for authorization ${authorizationId}`,
-      );
-    }
     settlementList.push(settlement);
 
     const ledger = this.ledger.get(authorizationId);
