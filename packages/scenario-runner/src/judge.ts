@@ -96,12 +96,8 @@ function parseJudgeJson(raw: string): JudgeResult | null {
 export class JudgeParseError extends Error {
   readonly raw: string;
   constructor(attempts: number, raw: string) {
-    const preview =
-      raw.length <= 300
-        ? raw
-        : `${raw.slice(0, 150)} … ${raw.slice(-100)} (${raw.length} chars)`;
     super(
-      `[scenario-judge] model did not return a parseable JSON object after ${attempts} attempt(s). Raw: ${preview}`,
+      `[scenario-judge] model did not return a parseable JSON object after ${attempts} attempt(s). Raw: ${raw}`,
     );
     this.name = "JudgeParseError";
     this.raw = raw;

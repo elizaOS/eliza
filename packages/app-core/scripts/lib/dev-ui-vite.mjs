@@ -1,5 +1,5 @@
 /**
- * Resolves the Node-backed Vite subprocess used by app development entrypoints.
+ * Resolves the Vite subprocess used by app development entrypoints.
  * Vite's bundled config loader keeps the renderer and its React plugins on the
  * same Vite major while still resolving source-conditioned TypeScript imports
  * before the dev server exists. Central validation keeps dashboard and
@@ -9,25 +9,19 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { resolveNodeExecPath } from "../run-node-runtime.mjs";
 
 export function resolveViteCommand({
   appDir,
   force = false,
-  nodePath,
+  runtime = process.versions.bun ? "bun" : "node",
+  runtimePath = process.execPath,
   port,
   viteArgs = [],
 }) {
-  const resolvedNodePath =
-    nodePath === undefined
-      ? resolveNodeExecPath({
-          currentExecPath: process.execPath,
-          explicitNodePath: process.env.ELIZA_NODE_PATH,
-          platform: process.platform,
-        })
-      : nodePath;
-  if (!resolvedNodePath) {
-    throw new Error("Node.js is required to run the Vite dev server.");
+  if (!runtimePath?.trim()) {
+    throw new Error(
+      "A JavaScript runtime is required to run the Vite dev server.",
+    );
   }
   const viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
   if (!existsSync(viteCli)) {
@@ -40,16 +34,14 @@ export function resolveViteCommand({
   // The bundled loader keeps one Vite owner and still handles the config's
   // source TypeScript graph; the tsx import remains for source-conditioned
   // runtime modules loaded after config evaluation.
-  const args = [
-    "--conditions=eliza-source",
-    "--import",
-    "tsx",
-    viteCli,
-    "--configLoader",
-    "bundle",
-  ];
+  const args = ["--conditions=eliza-source"];
+  // Node needs tsx for source-conditioned TypeScript runtime modules. Bun
+  // handles those modules natively, and loading tsx under Bun fails before
+  // Vite starts because tsx's Node-specific CJS bridge cannot be resolved.
+  if (runtime === "node") args.push("--import", "tsx");
+  args.push(viteCli, "--configLoader", "bundle");
   if (force) args.push("--force");
   if (port !== undefined) args.push("--port", String(port));
   args.push(...viteArgs);
-  return { command: resolvedNodePath, args };
+  return { command: runtimePath, args };
 }

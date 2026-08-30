@@ -206,7 +206,7 @@ export function WalletBalanceWidget(
           .map((h) => `${h.symbol} ${formatPrice(h.priceUsd)}`)
           .join(", ")}. Open wallet.`}
         onClick={() => nav.openView("/wallet", "wallet")}
-        variant="surface"
+        variant="homeWidget"
         size="card"
         align="start"
         className="w-full"

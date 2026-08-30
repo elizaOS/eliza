@@ -21,8 +21,11 @@
  */
 
 import { Hono } from "hono";
+import {
+  asGenerativeCacheApiError,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { logger, redact } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -236,9 +239,9 @@ app.get("/*", async (c) => {
   try {
     // Auth: a real cloud session or org API key. We require a valid linked
     // account and capture the identity for usage attribution below.
-    const account = await requireUserOrApiKeyWithOrg(c);
-    const userId = account.id;
-    const orgId = account.organization_id;
+    const caller = await requireGenerativeRouteCaller(c);
+    const userId = caller.user.id;
+    const orgId = caller.user.organization_id;
     if (!orgId) {
       return c.json({ error: "Organization is required." }, 403);
     }
@@ -377,7 +380,7 @@ app.get("/*", async (c) => {
       headers: responseHeaders,
     });
   } catch (error) {
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 
