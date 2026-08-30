@@ -1279,17 +1279,110 @@ function hasOuterFocusedCall(node, sourceFile, aliases) {
 
 function classifiedOptionCalls(node, sourceFile) {
   const options = [];
-  for (const argument of node.arguments) {
-    const value = unwrapExpression(argument);
-    if (!ts.isObjectLiteralExpression(value)) continue;
-    for (const property of value.properties) {
-      if (
-        ts.isShorthandPropertyAssignment(property) &&
-        property.name.text === "only"
-      ) {
-        options.push({ modifier: "only", documented: false });
+  const activeSpreadDeclarations = new Set();
+
+  const propertyEvidenceIsDocumented = (property) => {
+    const evidence = sourceFile.text.slice(
+      property.getFullStart(),
+      property.getEnd(),
+    );
+    return TRACKING_REF.test(evidence) || REASON_MARKER.test(evidence);
+  };
+
+  const classifyObject = (
+    object,
+    fromSpread = false,
+    spreadEvidenceDocumented = false,
+  ) => {
+    for (const property of object.properties) {
+      if (ts.isShorthandPropertyAssignment(property)) {
+        if (!["only", "skip", "todo"].includes(property.name.text)) continue;
+        if (property.name.text === "only") {
+          options.push({ modifier: "only", documented: false });
+          continue;
+        }
+        const declaration = immutablePriorVariableDeclaration(property.name);
+        const initializer = declaration?.initializer;
+        const truthy = initializer ? staticTruthiness(initializer) : undefined;
+        const skipDisposition =
+          property.name.text === "skip" && initializer
+            ? nodeOptionDisposition(initializer)
+            : undefined;
+        if (
+          (property.name.text === "only" && truthy !== false) ||
+          (property.name.text === "todo" && truthy !== false) ||
+          (property.name.text === "skip" && skipDisposition !== NODE_OPTION_RUN)
+        ) {
+          options.push({
+            modifier: property.name.text,
+            conditional: skipDisposition === NODE_OPTION_CONDITIONAL,
+            documented: propertyEvidenceIsDocumented(property),
+          });
+        }
         continue;
       }
+
+      if (
+        ts.isGetAccessorDeclaration(property) ||
+        ts.isMethodDeclaration(property)
+      ) {
+        if (
+          !property.name ||
+          !(
+            ts.isIdentifier(property.name) ||
+            ts.isStringLiteralLike(property.name)
+          ) ||
+          !["only", "skip", "todo"].includes(property.name.text)
+        ) {
+          continue;
+        }
+        options.push({
+          modifier: property.name.text,
+          conditional: false,
+          documented: propertyEvidenceIsDocumented(property),
+        });
+        continue;
+      }
+
+      if (ts.isSpreadAssignment(property)) {
+        const expression = unwrapExpression(property.expression);
+        if (ts.isObjectLiteralExpression(expression)) {
+          classifyObject(
+            expression,
+            true,
+            propertyEvidenceIsDocumented(property),
+          );
+          continue;
+        }
+        const declaration = ts.isIdentifier(expression)
+          ? immutablePriorVariableDeclaration(expression)
+          : undefined;
+        const initializer = declaration?.initializer
+          ? unwrapExpression(declaration.initializer)
+          : undefined;
+        if (
+          declaration &&
+          initializer &&
+          ts.isObjectLiteralExpression(initializer) &&
+          !activeSpreadDeclarations.has(declaration)
+        ) {
+          activeSpreadDeclarations.add(declaration);
+          classifyObject(
+            initializer,
+            true,
+            propertyEvidenceIsDocumented(property),
+          );
+          activeSpreadDeclarations.delete(declaration);
+          continue;
+        }
+        options.push({
+          modifier: "opaque-options-spread",
+          conditional: false,
+          documented: propertyEvidenceIsDocumented(property),
+        });
+        continue;
+      }
+
       if (
         !ts.isPropertyAssignment(property) ||
         !(
@@ -1313,10 +1406,6 @@ function classifiedOptionCalls(node, sourceFile) {
               skipDisposition !== NODE_OPTION_RUN)))
       ) {
         const reason = unwrapExpression(property.initializer);
-        const propertyEvidence = sourceFile.text.slice(
-          property.getFullStart(),
-          property.getEnd(),
-        );
         const conditional =
           property.name.text === "skip"
             ? skipDisposition === NODE_OPTION_CONDITIONAL
@@ -1324,18 +1413,24 @@ function classifiedOptionCalls(node, sourceFile) {
         options.push({
           modifier: property.name.text,
           conditional,
-          documented:
-            (ts.isStringLiteralLike(reason) &&
-              reason.text.trim().length >= 8) ||
-            TRACKING_REF.test(propertyEvidence) ||
-            REASON_MARKER.test(propertyEvidence) ||
-            (conditional &&
-              RUNTIME_OPTION_REASON.test(
-                property.initializer.getText(sourceFile),
-              )),
+          documented: fromSpread
+            ? spreadEvidenceDocumented || propertyEvidenceIsDocumented(property)
+            : (ts.isStringLiteralLike(reason) &&
+                reason.text.trim().length >= 8) ||
+              propertyEvidenceIsDocumented(property) ||
+              (conditional &&
+                RUNTIME_OPTION_REASON.test(
+                  property.initializer.getText(sourceFile),
+                )),
         });
       }
     }
+  };
+
+  for (const argument of node.arguments) {
+    const value = unwrapExpression(argument);
+    if (!ts.isObjectLiteralExpression(value)) continue;
+    classifyObject(value);
   }
   return options;
 }
@@ -1501,7 +1596,7 @@ export function findViolations(filePath, content) {
         }
       } else {
         const optionDisable = optionCalls.find(({ modifier }) =>
-          ["skip", "todo"].includes(modifier),
+          ["skip", "todo", "opaque-options-spread"].includes(modifier),
         );
         const modifier = disabledModifier(chain) ?? optionDisable?.modifier;
         let documented = true;

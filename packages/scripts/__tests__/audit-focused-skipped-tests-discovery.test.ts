@@ -252,6 +252,38 @@ describe("anti-larp test discovery", () => {
     ).toEqual(["orphaned-skip", "orphaned-skip", "orphaned-skip"]);
   });
 
+  test("fails closed for shorthand, accessor, method, and spread runner options", () => {
+    const source = `
+      import test from "node:test";
+      const skip = "always skipped via shorthand";
+      const opts = { skip: "always skipped via spread" };
+      test("shorthand", { skip }, () => {});
+      test("getter", { get skip() { return "always skipped via getter"; } }, () => {});
+      test("method", { skip() { return "always skipped via method"; } }, () => {});
+      test("spread", { ...opts }, () => {});
+    `;
+    expect(
+      findViolations("fixture.test.mjs", source).map(({ kind }) => kind),
+    ).toEqual([
+      "orphaned-skip",
+      "orphaned-skip",
+      "orphaned-skip",
+      "orphaned-skip",
+    ]);
+    expect(findConditionalSkipSites("fixture.test.mjs", source)).toEqual([]);
+  });
+
+  test("does not flag statically disabled shorthand or harmless known spreads", () => {
+    const source = `
+      import test from "node:test";
+      const skip = false;
+      const options = { timeout: 1_000 };
+      test("shorthand runs", { skip }, () => {});
+      test("spread runs", { ...options }, () => {});
+    `;
+    expect(findViolations("fixture.test.mjs", source)).toEqual([]);
+  });
+
   test("classifies documented runtime Node option skips without blessing lookalikes", () => {
     const runtimeOption = `
       import test from "node:test";
