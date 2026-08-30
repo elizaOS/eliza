@@ -27,6 +27,8 @@ import { usePageTitle } from "../../lib/use-page-title";
 type TFn = ReturnType<typeof useCloudT>;
 
 const COMPLETE_TIMEOUT_MS = 30_000;
+const CLI_LOGIN_SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type CompletionState =
   | { status: "idle" }
@@ -84,6 +86,13 @@ function sanitizeCliLoginReturnTo(value: string | null): string | null {
     void error;
     return null;
   }
+}
+
+function sanitizeCliLoginSessionId(value: string | null): string | null {
+  const sessionId = value?.trim();
+  return sessionId && CLI_LOGIN_SESSION_ID_PATTERN.test(sessionId)
+    ? sessionId
+    : null;
 }
 
 /**
@@ -218,7 +227,7 @@ export default function CliLoginPage() {
   const { authenticated, ready } = useSessionAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const sessionId = searchParams.get("session");
+  const sessionId = sanitizeCliLoginSessionId(searchParams.get("session"));
   const launchReturnTo = sanitizeCliLoginReturnTo(searchParams.get("returnTo"));
   const [completion, setCompletion] = useState<CompletionState>({
     status: "idle",
