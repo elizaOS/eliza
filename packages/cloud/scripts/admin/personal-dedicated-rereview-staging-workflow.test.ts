@@ -63,6 +63,12 @@ describe("personal Dedicated staging re-review workflow", () => {
     expect(guard.run).toContain(
       "REREVIEW_STALE_SELECTION_WITHOUT_COMPUTE_MUTATION",
     );
+    expect(guard.run).toContain(
+      "select_unique_verified_backup_after_duplicate_inventory_review",
+    );
+    expect(guard.run).toContain(
+      "SELECT_UNIQUE_VERIFIED_BACKUP_WITHOUT_COMPUTE_MUTATION",
+    );
   });
 
   test("binds protected identity and smoke account authorities without artifacts", () => {
