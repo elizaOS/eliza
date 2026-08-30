@@ -20,6 +20,7 @@ import {
   assertInlinePayloadFits,
   hydrateJsonField,
   hydrateTextField,
+  InlinePayloadTooLargeError,
   offloadJsonField,
   offloadTextField,
 } from "../../lib/storage/object-store";
@@ -398,6 +399,46 @@ export async function hydrateJob(job: Job): Promise<Job> {
   };
 }
 
+/**
+ * Byte-safe UTF-8 prefix of `value` plus an explicit truncation marker, whose
+ * total encoded size never exceeds `capBytes`. The marker names the original
+ * size so a reader can tell the stored summary from the whole dump.
+ */
+export function clampTextToByteCap(value: string, capBytes: number, originalBytes: number): string {
+  const marker = `\n[truncated: ${originalBytes} bytes]`;
+  if (capBytes <= byteLengthOf(marker)) {
+    return marker.slice(0, Math.max(0, capBytes));
+  }
+  const keepBytes = capBytes - byteLengthOf(marker);
+  let output = "";
+  let size = 0;
+  for (const char of value) {
+    const charSize = byteLengthOf(char);
+    if (size + charSize > keepBytes) break;
+    output += char;
+    size += charSize;
+  }
+  return `${output}${marker}`;
+}
+
+function byteLengthOf(value: string): number {
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit <= 0x7f) {
+      bytes += 1;
+    } else if (codeUnit <= 0x7ff) {
+      bytes += 2;
+    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff && index + 1 < value.length) {
+      bytes += 4;
+      index += 1;
+    } else {
+      bytes += 3;
+    }
+  }
+  return bytes;
+}
+
 async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
   data: T,
   context: Pick<Job, "id" | "organization_id" | "created_at">,
@@ -470,6 +511,20 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
             field: "error",
             createdAt,
             value: data.error,
+          }).catch((cause: unknown) => {
+            // A job error dump is operator diagnostics, not a payload that must
+            // stay whole: when it exceeds the SQL inline ceiling and no object
+            // storage exists to offload it, persist a byte-bounded prefix with
+            // an explicit truncation marker instead of failing the insert or
+            // silently writing the whole dump (#22553). Structured fields keep
+            // the strict typed rejection in offloadJsonField, and the explicit
+            // force-inline branch above keeps its strict whole-value contract.
+            if (!(cause instanceof InlinePayloadTooLargeError)) throw cause;
+            return {
+              value: clampTextToByteCap(String(data.error), cause.maxInlineBytes, cause.sizeBytes),
+              storage: "inline" as const,
+              key: null,
+            };
           }),
   ]);
 
