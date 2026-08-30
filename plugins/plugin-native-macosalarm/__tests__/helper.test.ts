@@ -10,6 +10,7 @@ function createFakeSpawn(options: {
   stderr?: string;
   closeCode?: number;
   error?: Error;
+  stdinError?: Error;
 }): { spawn: HelperSpawn; requests: string[] } {
   const requests: string[] = [];
   const spawn: HelperSpawn = vi.fn(() => {
@@ -19,7 +20,7 @@ function createFakeSpawn(options: {
     proc.stdin = new Writable({
       write(chunk, _encoding, callback) {
         requests.push(chunk.toString());
-        callback();
+        callback(options.stdinError);
       },
       final(callback) {
         queueMicrotask(() => {
@@ -100,6 +101,18 @@ describe("runHelper", () => {
         { spawnImpl: fakeSpawn, binPathOverride: "/tmp/helper" },
       ),
     ).rejects.toThrow("spawn denied");
+  });
+
+  it("rejects stdin EPIPE instead of throwing uncaught", async () => {
+    const epipe = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+    const { spawn: fakeSpawn } = createFakeSpawn({ stdinError: epipe });
+
+    await expect(
+      runHelper(
+        { action: "schedule", id: "alarm-1" },
+        { spawnImpl: fakeSpawn, binPathOverride: "/tmp/helper" },
+      ),
+    ).rejects.toThrow("EPIPE");
   });
 
   it("kills the spawned helper child when the timeout fires", async () => {
