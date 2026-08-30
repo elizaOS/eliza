@@ -9,7 +9,7 @@ import type { DockerNode } from "../../../db/schemas/docker-nodes";
 import * as nodeAutoscaler from "../containers/node-autoscaler";
 import { dockerNodeManager } from "../docker-node-manager";
 import * as dockerPortAllocation from "../docker-port-allocation";
-import { DockerSandboxProvider } from "../docker-sandbox-provider";
+import { DockerSandboxProvider, requiredHeadscaleIngressFailure } from "../docker-sandbox-provider";
 import {
   getReplacementCandidateObservedReceipt,
   getReplacementControlSecretEnvPath,
@@ -20,6 +20,7 @@ import {
 import { DockerSSHClient } from "../docker-ssh";
 import { type HeadscaleNode, headscaleClient } from "../headscale-client";
 import { headscaleIntegration } from "../headscale-integration";
+import { jobErrorText } from "../job-error-text";
 import {
   type SandboxCreateConfig,
   type SandboxHandle,
@@ -347,6 +348,56 @@ describe("DockerSandboxProvider replacement cleanup", () => {
 
     expect(persistIntent).toHaveBeenCalledWith(legacyIntent);
     expect(persistCreated).toHaveBeenCalledWith(legacyCreated);
+  });
+
+  test("preserves a precise remote failure for durable replacements that settle after health", async () => {
+    const provider = replacementProvider();
+    const precise = new Error(
+      "Docker candidate cannot complete required Headscale registration: auth_required",
+    );
+    spyOn(
+      provider as unknown as {
+        _createOnce: (
+          config: SandboxCreateConfig,
+          tracker?: { causes: unknown[] },
+        ) => Promise<SandboxHandle>;
+      },
+      "_createOnce",
+    ).mockImplementation(async (config, tracker) => {
+      const intent = replacementIntentHandle(config.replacementAttemptId);
+      const created = replacementHandle(config.replacementAttemptId);
+      await config.onReplacementCreateIntent?.(intent);
+      await config.onReplacementCreated?.(created);
+      tracker?.causes.push(precise);
+      throw new SandboxReplacementCleanupUnresolvedError(
+        {
+          sandboxId: created.sandboxId,
+          nodeId: NODE.node_id,
+          containerName: CONTAINER_NAME,
+          replacementAttemptId: config.replacementAttemptId ?? null,
+          containerId: CONTAINER_ID,
+          vpnNodeId: null,
+        },
+        requiredHeadscaleIngressFailure(
+          "Headscale routing is required, but the sandbox did not register a headscale_ip.",
+          tracker?.causes ?? [],
+        ),
+      );
+    });
+
+    const error = await provider
+      .create(
+        replacementCreateConfig({
+          replacementAttemptId: ATTEMPT_ID,
+          onReplacementCreateIntent: async () => {},
+          onReplacementCreated: async () => {},
+        }),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(jobErrorText(error)).toContain(
+      "caused by: Error: Docker candidate cannot complete required Headscale registration: auth_required",
+    );
   });
 
   test("rejects unpaired exact-success callbacks before effects", async () => {

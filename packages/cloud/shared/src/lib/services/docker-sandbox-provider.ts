@@ -2265,7 +2265,11 @@ export class DockerSandboxProvider implements SandboxProvider {
           }
         : {}),
     };
-    const remoteCompletionTracker = persistReplacementSettlement
+    // Every durable replacement intent needs the precise provider-side cause,
+    // even when its consumer defers primary cutover until a later health check
+    // and therefore has no create-settlement callback. Without this tracker,
+    // required Headscale failure collapsed to the generic missing-IP verdict.
+    const remoteCompletionTracker = persistReplacementIntent
       ? ({ causes: [] } satisfies RemoteCompletionTracker)
       : undefined;
     let handle: SandboxHandle;
