@@ -98,6 +98,25 @@ function appLoginUrl(appOrigin: string, returnTo: string): string {
 }
 
 /**
+ * Remove single-use exchange credentials from the visible URL without
+ * notifying the router. ExchangeLeg already captured both values as props, so
+ * this attempt can continue while copied links and browser history retain only
+ * the non-secret callback context.
+ */
+function stripExchangeCredentialsFromAddressBar(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("code") && !url.searchParams.has("state")) return;
+  url.searchParams.delete("code");
+  url.searchParams.delete("state");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+}
+
+/**
  * The legitimate mint leg is ALWAYS a cross-origin navigation from the paired
  * app origin, whose default referrer policy (strict-origin-when-cross-origin)
  * sends exactly that origin. A third-party page cannot forge it — a forced
@@ -207,13 +226,14 @@ function ExchangeLeg({
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
+    stripExchangeCredentialsFromAddressBar();
 
     // State nonce first, before ANY network call: the stored value is
     // consumed single-shot, and only an exact echo of what THIS origin
     // created may proceed. Missing/mismatched state (a handshake this origin
     // never initiated — login CSRF) aborts to the local login; the code is
-    // never EXCHANGED, but a well-formed one is BURNED so it cannot sit live
-    // in the address bar and request logs for the rest of its TTL.
+    // never EXCHANGED, but a well-formed one is BURNED so it cannot remain
+    // redeemable from previously recorded redirect/request logs for its TTL.
     const stored = consumeSsoBridgeState();
     const verifier = consumeSsoBridgeVerifier();
     const stateOk =
