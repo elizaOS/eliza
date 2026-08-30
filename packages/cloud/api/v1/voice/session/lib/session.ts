@@ -79,7 +79,7 @@ const HALF_DUPLEX_PLAYBACK_SETTLE_MS = 600;
 /** Accrue metered minutes in whole seconds to keep the store's math simple. */
 const METER_FLUSH_SECONDS = 5;
 /** Nominal minutes charged on admission before ANY audio is forwarded (SEC-15). */
-const ADMISSION_MINUTES = METER_FLUSH_SECONDS / 60;
+export const VOICE_PROVIDER_ADMISSION_MINUTES = METER_FLUSH_SECONDS / 60;
 /** Cap pre-admission buffered frames so an in-flight check can't be flooded. */
 const MAX_PREADMISSION_FRAMES = 64; // ~5s of 80ms frames.
 /** Cover provider WebSocket setup without dropping the user's first words. */
@@ -228,6 +228,8 @@ export interface VoiceSessionConfig {
   // Metering (SEC-15). Server-derived only.
   usageStore: VoiceUsageStore;
   usageLimits: VoiceUsageLimits;
+  /** Initial window already atomically recorded immediately before start(). */
+  initialUsageAdmissionMinutes?: number;
 
   downlink: VoiceSessionDownlink;
   registry?: VoiceSessionRegistry;
@@ -345,6 +347,19 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       organizationId: config.organizationId,
       userId: config.userId,
     };
+    if (config.initialUsageAdmissionMinutes !== undefined) {
+      if (
+        !Number.isFinite(config.initialUsageAdmissionMinutes) ||
+        config.initialUsageAdmissionMinutes <= 0
+      ) {
+        throw new RangeError("initial voice usage admission must be positive");
+      }
+      this.meteringAdmitted = true;
+      this.turnSttMs = Math.round(config.initialUsageAdmissionMinutes * 60_000);
+      this.unmeteredUplinkBytes = -Math.round(
+        config.initialUsageAdmissionMinutes * 60 * PCM16_BYTES_PER_SECOND,
+      );
+    }
     this.cartesiaAdapter = new CartesiaSonicTtsAdapter({
       apiKey: config.cartesiaApiKey,
       voiceId: config.cartesiaVoiceId,
@@ -751,7 +766,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       try {
         const decision = await this.config.usageStore.checkAndRecord(
           this.usageIdentity,
-          ADMISSION_MINUTES,
+          VOICE_PROVIDER_ADMISSION_MINUTES,
           this.config.usageLimits,
         );
         if (this.closed) return;
@@ -762,7 +777,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           return;
         }
         this.meteringAdmitted = true;
-        this.turnSttMs += Math.round(ADMISSION_MINUTES * 60_000);
+        this.turnSttMs += Math.round(VOICE_PROVIDER_ADMISSION_MINUTES * 60_000);
         // Release the buffered frames now that we are admitted.
         const buffered = this.preAdmissionFrames.splice(0);
         for (const frame of buffered) if (!this.forwardSttFrame(frame)) break;
