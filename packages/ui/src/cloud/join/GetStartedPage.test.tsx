@@ -233,6 +233,38 @@ describe("GetStartedPage", () => {
     expect(storePendingOnboardingSession).toHaveBeenCalledTimes(2);
   });
 
+  it("does not discard an ordinary messaging continuation when storage is blocked", async () => {
+    pageState.session = { ready: true, authenticated: false };
+    pageState.persistenceBlocked = true;
+    const entry = `/get-started?onboardingSession=${TOKEN}`;
+    window.history.replaceState(null, "", entry);
+
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/get-started" element={<GetStartedPage />} />
+          <Route
+            path="/login"
+            element={<div>login without continuation</div>}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(
+        "Allow browser storage, then try again. Your messaging connection was not changed.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("login without continuation")).toBeNull();
+
+    pageState.persistenceBlocked = false;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText("login without continuation")).toBeTruthy();
+    expect(storePendingOnboardingSession).toHaveBeenCalledTimes(2);
+  });
+
   it("retries a failed preview without silently confirming the identity link", async () => {
     vi.mocked(previewPendingOnboardingContinuation).mockRejectedValueOnce(
       new Error("preview temporarily unavailable"),
