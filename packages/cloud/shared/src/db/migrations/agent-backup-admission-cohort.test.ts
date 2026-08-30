@@ -34,6 +34,7 @@ const migrationNames = [
   "0366_agent_backup_admission_enrollment_source_indexes.sql",
   "0367_agent_backup_admission_enrollment_watermark_guard.sql",
   "0368_agent_backup_admission_enrollment_source_stamp.sql",
+  "0369_agent_backup_admission_recovery_cursor.sql",
 ] as const;
 const migrations = await Promise.all(
   migrationNames.map((name) => Bun.file(new URL(`./${name}`, import.meta.url)).text()),
@@ -238,6 +239,7 @@ describe("backup admission cohort migrations", () => {
       "agent_backup_admission_enrollment_shards_pkey",
       "agent_backup_admission_claim_shards_pkey",
       "agent_backup_admission_claim_shards_bounds_check",
+      "agent_backup_admission_claim_shards_recovery_shape_check",
       "agent_backup_admission_claim_shards_cycle_shape_check",
       "agent_backup_admission_claim_shards_proof_shape_check",
       "agent_backup_admission_work_claim_proof_shape_check",
@@ -260,6 +262,7 @@ describe("backup admission cohort migrations", () => {
     expect(claimShardConfig.checks.map((constraint) => constraint.name)).toEqual(
       expect.arrayContaining([
         "agent_backup_admission_claim_shards_bounds_check",
+        "agent_backup_admission_claim_shards_recovery_shape_check",
         "agent_backup_admission_claim_shards_cycle_shape_check",
         "agent_backup_admission_claim_shards_proof_shape_check",
       ]),
