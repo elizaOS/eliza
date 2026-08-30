@@ -31,7 +31,6 @@ const STAGING_BASE_URL = "https://api-staging.eliza.app";
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai";
 const STAGING_WORKER = "eliza-cloud-api-staging";
 const EXPECTED_PAIRED_RECORDS = 44;
-const EXPECTED_AUTH_RECORDS = 45;
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -68,6 +67,7 @@ export function parseCertificationArgs(argv) {
       "deploy-sha": { type: "string" },
       "output-dir": { type: "string" },
       auth: { type: "boolean", default: false },
+      suspended: { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -78,7 +78,15 @@ export function parseCertificationArgs(argv) {
   }
   const outputDir = values["output-dir"]?.trim() ?? "";
   if (!outputDir) throw new Error("--output-dir is required");
-  return { deploySha, outputDir: resolve(outputDir), runAuth: values.auth };
+  if (values.suspended && !values.auth) {
+    throw new Error("--suspended requires --auth");
+  }
+  return {
+    deploySha,
+    outputDir: resolve(outputDir),
+    runAuth: values.auth,
+    runSuspended: values.suspended,
+  };
 }
 
 function requireSecret(env, name) {
@@ -94,14 +102,19 @@ export function requirePairedSecrets(env) {
   };
 }
 
-export function requireAuthSecrets(env) {
-  return {
+export function requireAuthSecrets(env, runSuspended = false) {
+  const secrets = {
     apiKey: requireSecret(env, "ELIZAOS_CLOUD_API_KEY"),
-    suspendedApiKey: requireSecret(env, "ELIZA_STAGING_SUSPENDED_API_KEY"),
     probeToken: requireSecret(env, "INFERENCE_AUTH_PROBE_TOKEN"),
     cloudflareApiToken: requireSecret(env, "CLOUDFLARE_API_TOKEN"),
     cloudflareAccountId: requireSecret(env, "CLOUDFLARE_ACCOUNT_ID"),
   };
+  return runSuspended
+    ? {
+        ...secrets,
+        suspendedApiKey: requireSecret(env, "ELIZA_STAGING_SUSPENDED_API_KEY"),
+      }
+    : secrets;
 }
 
 export async function verifyExactDeployment(deploySha, fetchImpl = fetch) {
@@ -161,11 +174,12 @@ export function validatePairedEvidence(text, deploySha) {
   return { records, counts };
 }
 
-export function validateAuthEvidence(text, deploySha) {
+export function validateAuthEvidence(text, deploySha, runSuspended = false) {
   const records = parseJsonLines(text, "Inference auth evidence");
-  if (records.length !== EXPECTED_AUTH_RECORDS) {
+  const expectedRecordCount = runSuspended ? 45 : 44;
+  if (records.length !== expectedRecordCount) {
     throw new Error(
-      `Inference auth evidence must contain ${EXPECTED_AUTH_RECORDS} records`,
+      `Inference auth evidence must contain ${expectedRecordCount} records`,
     );
   }
   const deployment = records.filter((record) => record.kind === "deployment");
@@ -175,7 +189,7 @@ export function validateAuthEvidence(text, deploySha) {
   if (
     deployment.length !== 1 ||
     samples.length !== 40 ||
-    guards.length !== 3 ||
+    guards.length !== (runSuspended ? 3 : 2) ||
     summaries.length !== 1
   ) {
     throw new Error("Inference auth evidence has an invalid record matrix");
@@ -223,14 +237,24 @@ export function validateAuthEvidence(text, deploySha) {
   const guardByName = new Map(guards.map((record) => [record.guard, record]));
   if (
     guardByName.get("invalid_key")?.status !== 401 ||
-    guardByName.get("suspended_key")?.status !== 403 ||
     guardByName.get("forged_probe")?.status !== 400
   ) {
     throw new Error("Inference auth guard evidence is incomplete");
   }
+  const suspendedGuard = guardByName.get("suspended_key");
+  if (
+    (runSuspended && suspendedGuard?.status !== 403) ||
+    (!runSuspended && suspendedGuard !== undefined)
+  ) {
+    throw new Error("Inference auth suspended guard evidence is inconsistent");
+  }
+  const expectedSuspendedStatus = runSuspended ? "observed" : "not_requested";
+  if (summaries[0]?.suspendedGuard !== expectedSuspendedStatus) {
+    throw new Error("Inference auth summary misstates the suspended guard");
+  }
   const traceIds = [...samples, ...guards].map((record) => record.traceId);
   if (
-    traceIds.length !== 43 ||
+    traceIds.length !== (runSuspended ? 43 : 42) ||
     new Set(traceIds).size !== traceIds.length ||
     traceIds.some((traceId) => !UUID_PATTERN.test(traceId))
   ) {
@@ -422,8 +446,8 @@ async function runPaired({ deploySha, outputDir, env }) {
   }
 }
 
-async function runAuth({ deploySha, outputDir, env }) {
-  const secrets = requireAuthSecrets(env);
+async function runAuth({ deploySha, outputDir, env, runSuspended }) {
+  const secrets = requireAuthSecrets(env, runSuspended);
   const privateRoot = env.RUNNER_TEMP?.trim() || tmpdir();
   return await withPrivateTailDirectory(async (directory) => {
     const { child, rawPath } = await startPrivateTail(directory, env);
@@ -457,8 +481,6 @@ async function runAuth({ deploySha, outputDir, env }) {
             STAGING_BASE_URL,
             "--api-key-env",
             "ELIZAOS_CLOUD_API_KEY",
-            "--suspended-api-key-env",
-            "ELIZA_STAGING_SUSPENDED_API_KEY",
             "--probe-token-env",
             "INFERENCE_AUTH_PROBE_TOKEN",
             "--deploy-sha",
@@ -471,6 +493,9 @@ async function runAuth({ deploySha, outputDir, env }) {
             "30000",
             "--interval-ms",
             "250",
+            ...(runSuspended
+              ? ["--suspended-api-key-env", "ELIZA_STAGING_SUSPENDED_API_KEY"]
+              : []),
           ],
           stdoutPath: outputPath,
           stderrPath,
@@ -481,6 +506,7 @@ async function runAuth({ deploySha, outputDir, env }) {
       const validation = validateAuthEvidence(
         await readFile(outputPath, "utf8"),
         deploySha,
+        runSuspended,
       );
       const workerRecords = await raceTailLifetime(
         child,
@@ -495,6 +521,7 @@ async function runAuth({ deploySha, outputDir, env }) {
       result = {
         records: validation.records.length,
         workerRecords: workerRecords.length,
+        suspendedGuard: runSuspended ? "observed" : "not_requested",
         deferredCacheWriteMs: summarizeDeferredCacheWrites(workerRecords),
       };
     } catch (error) {
@@ -529,7 +556,11 @@ export async function runCertification(
   const paired = await runPaired({ ...options, env });
   const auth = options.runAuth
     ? await runAuth({ ...options, env })
-    : { skipped: true, reason: "not_requested" };
+    : {
+        skipped: true,
+        reason: "not_requested",
+        suspendedGuard: "not_requested",
+      };
   const summary = {
     kind: "cloud_latency_certification",
     deploySha: options.deploySha,

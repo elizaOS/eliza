@@ -69,7 +69,14 @@ describe("Cloud latency certification workflow", () => {
     });
     expect(inputs?.run_auth).toEqual({
       description:
-        "Also run protected inference-auth hit, miss, guard, and sanitized Worker Tail proof.",
+        "Also run protected inference-auth hit, miss, non-standing guards, and sanitized Worker Tail proof.",
+      required: true,
+      default: false,
+      type: "boolean",
+    });
+    expect(inputs?.run_suspended).toEqual({
+      description:
+        "Also prove the optional suspended-standing 403 guard (requires run_auth).",
       required: true,
       default: false,
       type: "boolean",
@@ -81,6 +88,9 @@ describe("Cloud latency certification workflow", () => {
     expect(preflight).toContain('"$GITHUB_REF" != "refs/heads/develop"');
     expect(preflight).toContain("^[a-f0-9]{40}$");
     expect(preflight).toContain('if [[ "$RUN_AUTH" == "true" ]]');
+    expect(preflight).toContain(
+      'if [[ "$RUN_SUSPENDED" == "true" && "$RUN_AUTH" != "true" ]]',
+    );
   });
 
   test("fails closed on paired and optional auth credentials before checkout", () => {
@@ -105,6 +115,10 @@ describe("Cloud latency certification workflow", () => {
       expect(preflight.run).toContain(name);
       expect(job?.env?.[name]).toContain(`secrets.${name}`);
     }
+    expect(preflight.run).toContain('if [[ "$RUN_SUSPENDED" == "true" ]]');
+    expect(preflight.run).toContain(
+      "required+=(ELIZA_STAGING_SUSPENDED_API_KEY)",
+    );
   });
 
   test("runs the bounded orchestrator and never selects arbitrary checkout bytes", () => {
@@ -119,6 +133,7 @@ describe("Cloud latency certification workflow", () => {
     );
     expect(run).toContain('--deploy-sha "$EXPECTED_DEPLOY_SHA"');
     expect(run).toContain("args+=(--auth)");
+    expect(run).toContain("args+=(--suspended)");
     expect(run).not.toContain("wrangler tail");
   });
 
