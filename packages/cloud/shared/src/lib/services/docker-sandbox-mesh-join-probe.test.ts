@@ -1,6 +1,10 @@
 /** Exercises early Docker mesh-join classification with deterministic evidence. */
 import { describe, expect, test } from "bun:test";
-import { classifyDockerMeshJoinProbe } from "./docker-sandbox-provider";
+import {
+  classifyDockerMeshJoinProbe,
+  requiredHeadscaleIngressFailure,
+} from "./docker-sandbox-provider";
+import { jobErrorText } from "./job-error-text";
 
 describe("classifyDockerMeshJoinProbe", () => {
   test.each([
@@ -58,5 +62,23 @@ describe("classifyDockerMeshJoinProbe", () => {
       containerState: "exited",
       exitCode: 137,
     });
+  });
+});
+
+describe("required Headscale ingress failure", () => {
+  test("keeps the precise mesh failure reachable through durable job cause text", () => {
+    const precise = new Error(
+      "Docker candidate cannot complete required Headscale registration: auth_required",
+    );
+    const failure = requiredHeadscaleIngressFailure(
+      "Headscale routing is required, but the sandbox did not register a headscale_ip.",
+      [precise],
+    );
+
+    expect(jobErrorText(failure)).toContain(
+      "caused by: Error: Docker candidate cannot complete required Headscale registration: auth_required",
+    );
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toEqual([precise]);
   });
 });

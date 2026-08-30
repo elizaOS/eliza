@@ -38,6 +38,16 @@ export type ManagedDedicatedProvisionFailureCode =
   | "image"
   | "secrets"
   | "database"
+  | "ingress_headscale_not_configured"
+  | "ingress_headscale_api_auth"
+  | "ingress_headscale_api_failure"
+  | "ingress_mesh_auth_required"
+  | "ingress_mesh_candidate_exited"
+  | "ingress_headscale_identity_missing"
+  | "ingress_headscale_identity_mismatch"
+  | "ingress_headscale_registration_unresolved"
+  | "ingress_headscale_rename_unresolved"
+  | "ingress_headscale_ip_missing"
   | "ingress"
   | "container_ssh_auth"
   | "container_ssh_timeout"
@@ -201,10 +211,69 @@ export function classifyManagedDedicatedProvisionFailure(
   if (typeof value !== "string" || value.length === 0 || value.length > 8_000) {
     throw new Error(`${label} must be a bounded string or null`);
   }
-  // Job persistence appends stack frames for operator diagnosis. Classifying
-  // the whole value makes source paths such as docker-sandbox-provider.ts look
-  // like the failure itself, so only the primary error line may choose a code.
-  const primary = value.split(/\r?\n/, 1)[0] ?? "";
+  // Job persistence appends stack frames for operator diagnosis. Admit the
+  // primary line and explicit cause summaries only: this preserves a wrapped
+  // Headscale cause without letting source paths choose a failure family.
+  const diagnosticLines = value.split(/\r?\n/).filter((line, index) => {
+    return index === 0 || line.startsWith("caused by:");
+  });
+  const diagnostic = diagnosticLines.join("\n");
+  const primary = diagnosticLines[0] ?? "";
+
+  if (
+    /Headscale routing is required.*HEADSCALE_API_KEY is not configured/i.test(
+      diagnostic,
+    )
+  ) {
+    return "ingress_headscale_not_configured";
+  }
+  if (/Headscale API \S+ \S+ failed: (?:401|403)(?:\s|$)/i.test(diagnostic)) {
+    return "ingress_headscale_api_auth";
+  }
+  if (/Headscale API \S+ \S+ failed:/i.test(diagnostic)) {
+    return "ingress_headscale_api_failure";
+  }
+  if (
+    /Docker candidate cannot complete required Headscale registration: auth_required/i.test(
+      diagnostic,
+    )
+  ) {
+    return "ingress_mesh_auth_required";
+  }
+  if (
+    /Docker candidate cannot complete required Headscale registration: container_exited/i.test(
+      diagnostic,
+    )
+  ) {
+    return "ingress_mesh_candidate_exited";
+  }
+  if (
+    /Docker container identity is missing for Headscale binding/i.test(
+      diagnostic,
+    )
+  ) {
+    return "ingress_headscale_identity_missing";
+  }
+  if (
+    /Headscale registration does not match the exact Docker candidate/i.test(
+      diagnostic,
+    )
+  ) {
+    return "ingress_headscale_identity_mismatch";
+  }
+  if (
+    /Headscale registration did not reach an exact observable completion/i.test(
+      diagnostic,
+    )
+  ) {
+    return "ingress_headscale_registration_unresolved";
+  }
+  if (/Headscale rename completion/i.test(diagnostic)) {
+    return "ingress_headscale_rename_unresolved";
+  }
+  if (/sandbox did not register a headscale_ip/i.test(diagnostic)) {
+    return "ingress_headscale_ip_missing";
+  }
 
   if (
     /(?:secret|credential|decrypt|encryption|kms|master key|api[_ -]?key)/i.test(

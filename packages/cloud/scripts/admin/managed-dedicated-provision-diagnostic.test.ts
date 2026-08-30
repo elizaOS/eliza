@@ -77,6 +77,30 @@ describe("managed Dedicated provision diagnostic", () => {
     ).toBe("ingress");
     expect(
       classifyManagedDedicatedProvisionFailure(
+        "Replacement cleanup is unresolved: Headscale routing is required, but the sandbox did not register a headscale_ip.\ncaused by: AggregateError: Headscale routing is required, but the sandbox did not register a headscale_ip.\ncaused by: ElizaError: Docker candidate cannot complete required Headscale registration: auth_required\n    at /private/docker-sandbox-provider.ts:42:7",
+        "x",
+      ),
+    ).toBe("ingress_mesh_auth_required");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Replacement cleanup is unresolved: Headscale routing is required, but the sandbox did not register a headscale_ip.\ncaused by: Error: Headscale registration did not reach an exact observable completion",
+        "x",
+      ),
+    ).toBe("ingress_headscale_registration_unresolved");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Headscale routing is required, but the sandbox did not register a headscale_ip.",
+        "x",
+      ),
+    ).toBe("ingress_headscale_ip_missing");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Headscale routing is required, but HEADSCALE_API_KEY is not configured.",
+        "x",
+      ),
+    ).toBe("ingress_headscale_not_configured");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
         "No available Docker nodes",
         "x",
       ),
