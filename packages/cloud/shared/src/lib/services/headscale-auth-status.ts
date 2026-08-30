@@ -56,12 +56,8 @@ const AUTH_EXPIRED_LOG_PATTERNS: readonly string[] = [
   '"authurl":"http',
   "authurl=true",
   "authurl is http",
-  '"backendstate": "needslogin"',
-  '"backendstate":"needslogin"',
   '"backendstate": "needsmachineauth"',
   '"backendstate":"needsmachineauth"',
-  "machineauthorized=false",
-  '"machineauthorized":false',
   "interactive authorization",
   // The distinct FATAL line the entrypoint prints before exiting 78.
   "node needs re-keying",

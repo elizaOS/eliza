@@ -142,6 +142,95 @@ sleep 5
 `;
 }
 
+// A fresh tailscaled legitimately enters NeedsLogin before its auth-key
+// RegisterReq completes. machineAuthorized=false with authURL=false is likewise
+// not an interactive-registration verdict. The entrypoint must keep observing
+// the bounded `tailscale up` command until it succeeds or emits definitive
+// rejection evidence.
+function tailscaledTransientLoginFixture(socketPath: string): string {
+  return `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    --socket=*) socket="\${arg#--socket=}" ;;
+  esac
+done
+: "\${socket:=${socketPath}}"
+mkdir -p "$(dirname "$socket")"
+: > "$socket"
+printf '%s\\n' \\
+  'Switching ipn state NoState -> NeedsLogin' \\
+  'RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false'
+sleep 5
+`;
+}
+
+const TAILSCALE_DELAYED_SUCCESS_FIXTURE = `#!/bin/sh
+printf '%s\\n' "$@" > "$TAILSCALE_ARGS_LOG"
+sleep 1
+exit 0
+`;
+
+describeIfPosix("fresh mesh login transition", () => {
+  testIfLinux(
+    "both cloud entrypoints wait through transient NeedsLogin before starting the agent",
+    async () => {
+      for (const [name, run] of [
+        ["canonical", runDockerEntrypoint],
+        ["cloud-agent", runEntrypoint],
+      ] as const) {
+        const root = await mkdtemp(
+          path.join(tmpdir(), `${name}-transient-login-`),
+        );
+        const binDir = path.join(root, "bin");
+        const stateDir = path.join(root, "state");
+        const socketPath = path.join(root, "tailscaled.sock");
+        const argsLog = path.join(root, "tailscale-args.log");
+        await mkdir(binDir, { recursive: true });
+        await mkdir(stateDir, { recursive: true });
+        await writeExecutable(path.join(binDir, "id"), ID_ROOT_FIXTURE);
+        await writeExecutable(
+          path.join(binDir, "tailscaled"),
+          tailscaledTransientLoginFixture(socketPath),
+        );
+        await writeExecutable(
+          path.join(binDir, "tailscale"),
+          TAILSCALE_DELAYED_SUCCESS_FIXTURE,
+        );
+        await writeExecutable(
+          path.join(binDir, "gosu"),
+          `#!/bin/sh
+shift
+exec "$@"
+`,
+        );
+
+        const result = run(
+          {
+            PATH: `${binDir}:/usr/bin:/bin`,
+            TS_AUTHKEY: KEY_CI_TEST,
+            TS_UP_TIMEOUT_SECONDS: "5",
+            SANDBOX_AGENT_ID: `agent-${name}-transient`,
+            TS_STATE_DIR: stateDir,
+            TS_SOCKET: socketPath,
+            HEADSCALE_URL: "https://headscale.example.test",
+            TAILSCALE_ARGS_LOG: argsLog,
+          },
+          ["/bin/sh", "-c", "printf agent-started"],
+        );
+
+        expect(result, name).toMatchObject({
+          code: 0,
+          stdout: "agent-started",
+        });
+        expect(result.stderr, name).not.toContain("node needs re-keying");
+        await expect(readFile(argsLog, "utf8")).resolves.toContain(
+          `--auth-key=${KEY_CI_TEST}`,
+        );
+      }
+    },
+  );
+});
+
 describeIfPosix("docker entrypoint", () => {
   test("preserves port normalization and starts without tailscale when no auth key is configured", () => {
     const result = runDockerEntrypoint(
@@ -476,7 +565,7 @@ exit 1
       expect(Date.now() - startedAt).toBeLessThan(3_000);
       expect(result).toMatchObject({ code: 78, stdout: "" });
       expect(result.stderr).toContain(
-        "interactive authorization (AuthURL/NeedsLogin)",
+        "interactive authorization (AuthURL/NeedsMachineAuth)",
       );
       expect(result.stderr).not.toContain("private-node-token");
       expect(result.stderr).toContain("node needs re-keying");
@@ -753,7 +842,7 @@ exec "$@"
       expect(Date.now() - startedAt).toBeLessThan(3_000);
       expect(result).toMatchObject({ code: 78, stdout: "" });
       expect(result.stderr).toContain(
-        "interactive authorization (AuthURL/NeedsLogin)",
+        "interactive authorization (AuthURL/NeedsMachineAuth)",
       );
       expect(result.stderr).not.toContain("private-node-token");
       expect(result.stderr).toContain("node needs re-keying");

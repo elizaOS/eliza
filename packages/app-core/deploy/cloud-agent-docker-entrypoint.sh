@@ -10,8 +10,7 @@ TS_UP_TIMEOUT_SECONDS="${TS_UP_TIMEOUT_SECONDS:-120}"
 ts_interactive_auth_required() {
   case "$1" in
     *'"authurl": "http'*|*'"authurl":"http'*|*"authurl=true"*|*"authurl is http"*) return 0 ;;
-    *"needslogin"*|*"needsmachineauth"*) return 0 ;;
-    *"machineauthorized=false"*|*'"machineauthorized":false'*) return 0 ;;
+    *"needsmachineauth"*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -57,8 +56,10 @@ ts_up() {
 
   # JSON exposes interactive state when the CLI prints it. With --auth-key the
   # CLI suppresses that URL, so also inspect tailscaled's private log for the
-  # RegisterReq machineAuthorized=false / authURL=true response. Never copy the
-  # raw authorization URL to container logs; --timeout bounds silent stalls.
+  # RegisterReq authURL=true response. A fresh daemon normally passes through
+  # NeedsLogin and may report machineAuthorized=false before the auth-key
+  # exchange completes; neither transient signal is terminal by itself. Never
+  # copy the raw authorization URL to container logs; --timeout bounds stalls.
   # shellcheck disable=SC2086
   tailscale --socket="$ts_socket" up \
     --json \
@@ -201,7 +202,7 @@ start_tailscale_if_configured() {
 
     # 4) DISTINCT AUTH-EXPIRED SIGNAL.
     if [ "$ts_up_interactive_auth" -eq 1 ]; then
-      echo "[cloud-agent-entrypoint] tailscale requires interactive authorization (AuthURL/NeedsLogin); unattended mesh join rejected" >&2
+      echo "[cloud-agent-entrypoint] tailscale requires interactive authorization (AuthURL/NeedsMachineAuth); unattended mesh join rejected" >&2
     fi
     echo "[cloud-agent-entrypoint] FATAL: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying" >&2
     printf 'auth_expired hostname=%s\n' "$ts_hostname" > "$ts_authkey_expired_marker" 2>/dev/null || true

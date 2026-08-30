@@ -8,7 +8,7 @@ import { jobErrorText } from "./job-error-text";
 
 describe("classifyDockerMeshJoinProbe", () => {
   test.each([
-    "[docker-entrypoint] tailscale requires interactive authorization (AuthURL/NeedsLogin); unattended mesh join rejected",
+    "[docker-entrypoint] tailscale requires interactive authorization (AuthURL/NeedsMachineAuth); unattended mesh join rejected",
     "[cloud-agent-entrypoint] FATAL: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying",
   ])("terminates a running candidate on its entrypoint-owned Headscale auth signal", (line) => {
     expect(classifyDockerMeshJoinProbe(`state=running exit=0\n${line}`)).toEqual({

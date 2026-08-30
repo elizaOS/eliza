@@ -1353,8 +1353,8 @@ export type DockerMeshJoinProbeVerdict =
     };
 
 const ENTRYPOINT_MESH_AUTH_TERMINAL_PREFIXES: readonly string[] = [
-  "[docker-entrypoint] tailscale requires interactive authorization (authurl/needslogin);",
-  "[cloud-agent-entrypoint] tailscale requires interactive authorization (authurl/needslogin);",
+  "[docker-entrypoint] tailscale requires interactive authorization (authurl/needsmachineauth);",
+  "[cloud-agent-entrypoint] tailscale requires interactive authorization (authurl/needsmachineauth);",
   "[docker-entrypoint] fatal: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying",
   "[cloud-agent-entrypoint] fatal: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying",
 ];

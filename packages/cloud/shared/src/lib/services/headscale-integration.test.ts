@@ -6,8 +6,8 @@ import {
   HeadscaleIntegration,
   inferHeadscaleUser,
   inferTailscaleHostname,
-  resolveRegistrationTimeoutMs,
   normalizeHeadscaleSegment,
+  resolveRegistrationTimeoutMs,
 } from "./headscale-integration";
 
 const savedEnv = { ...process.env };
