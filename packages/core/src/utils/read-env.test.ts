@@ -1,45 +1,53 @@
-/**
- * Covers readEnv / readEnvBool: canonical-key lookup, default fallback,
- * whitespace-only treated as unset, and truthy/falsy string parsing (against an
- * injected env map, not process.env).
- */
 import { describe, expect, it } from "vitest";
-import { readEnv, readEnvBool } from "./read-env.ts";
+import { readEnv, readEnvBool } from "./read-env";
 
 describe("readEnv", () => {
-	it("reads the canonical key", () => {
-		expect(readEnv("ELIZA_FOO", { env: { ELIZA_FOO: "canon" } })).toBe("canon");
+	it("reads from env", () => {
+		expect(readEnv("HOME", { env: { HOME: "/home/user" } })).toBe("/home/user");
 	});
 
-	it("returns the default when nothing is set", () => {
-		expect(readEnv("ELIZA_NOPE", { env: {}, defaultValue: "d" })).toBe("d");
-		expect(readEnv("ELIZA_NOPE", { env: {} })).toBeUndefined();
+	it("trims whitespace", () => {
+		expect(readEnv("HOME", { env: { HOME: "  /home/user  " } })).toBe("/home/user");
 	});
 
-	it("treats whitespace-only values as unset", () => {
-		expect(
-			readEnv("ELIZA_FOO", {
-				env: { ELIZA_FOO: "   " },
-				defaultValue: "default",
-			}),
-		).toBe("default");
+	it("treats empty strings as unset", () => {
+		expect(readEnv("HOME", { env: { HOME: "" } })).toBeUndefined();
+		expect(readEnv("HOME", { env: { HOME: "   " } })).toBeUndefined();
+	});
+
+	it("returns defaultValue when unset", () => {
+		expect(readEnv("MISSING", { defaultValue: "fallback" })).toBe("fallback");
+	});
+
+	it("returns undefined when unset and no default", () => {
+		expect(readEnv("MISSING")).toBeUndefined();
 	});
 });
 
 describe("readEnvBool", () => {
-	it("parses common truthy/falsy values", () => {
-		for (const v of ["1", "true", "TRUE", "yes", "on"]) {
-			expect(readEnvBool("ELIZA_FLAG", { env: { ELIZA_FLAG: v } })).toBe(true);
-		}
-		for (const v of ["0", "false", "no", "off"]) {
-			expect(readEnvBool("ELIZA_FLAG", { env: { ELIZA_FLAG: v } })).toBe(false);
-		}
+	it("returns true for truthy values", () => {
+		expect(readEnvBool("ENABLED", { env: { ENABLED: "true" } })).toBe(true);
+		expect(readEnvBool("ENABLED", { env: { ENABLED: "1" } })).toBe(true);
+		expect(readEnvBool("ENABLED", { env: { ENABLED: "yes" } })).toBe(true);
+		expect(readEnvBool("ENABLED", { env: { ENABLED: "on" } })).toBe(true);
 	});
 
-	it("returns the default when unset", () => {
-		expect(readEnvBool("ELIZA_FLAG", { env: {} })).toBe(false);
-		expect(readEnvBool("ELIZA_FLAG", { env: {}, defaultValue: true })).toBe(
-			true,
-		);
+	it("returns false for falsy values", () => {
+		expect(readEnvBool("ENABLED", { env: { ENABLED: "false" } })).toBe(false);
+		expect(readEnvBool("ENABLED", { env: { ENABLED: "0" } })).toBe(false);
+		expect(readEnvBool("ENABLED", { env: { ENABLED: "no" } })).toBe(false);
+		expect(readEnvBool("ENABLED", { env: { ENABLED: "off" } })).toBe(false);
+	});
+
+	it("defaults to false when unset", () => {
+		expect(readEnvBool("MISSING")).toBe(false);
+	});
+
+	it("returns defaultValue when unset", () => {
+		expect(readEnvBool("MISSING", { defaultValue: true })).toBe(true);
+	});
+
+	it("returns false for unrecognized values", () => {
+		expect(readEnvBool("ENABLED", { env: { ENABLED: "maybe" } })).toBe(false);
 	});
 });
