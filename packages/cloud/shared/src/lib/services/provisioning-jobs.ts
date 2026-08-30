@@ -1483,8 +1483,13 @@ class RetryableProvisionTransportError extends Error {
   readonly retrySnapshot: Job;
   readonly maxRequeues: number;
 
-  constructor(message: string, retrySnapshot: Job, maxRequeues: number) {
-    super(message);
+  constructor(
+    message: string,
+    retrySnapshot: Job,
+    maxRequeues: number,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
     this.name = "RetryableProvisionTransportError";
     this.retrySnapshot = retrySnapshot;
     this.maxRequeues = maxRequeues;
@@ -6538,10 +6543,16 @@ export class ProvisioningJobService {
         }),
       });
       if (provResult.retryable) {
+        const failureCause = provResult.error.startsWith(REPLACEMENT_CLEANUP_ONLY_PREFIX)
+          ? job.error
+            ? new Error(job.error)
+            : provResult.failureCause
+          : provResult.failureCause;
         throw new RetryableProvisionTransportError(
           provisionError,
           retrySnapshot,
           PROVISION_TRANSPORT_MAX_FREE_RETRIES,
+          failureCause === undefined ? undefined : { cause: failureCause },
         );
       }
       throw new Error(provisionError);

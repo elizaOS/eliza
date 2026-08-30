@@ -8726,6 +8726,73 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     }
   });
 
+  test("retains a typed replacement failure for the provisioning queue", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row = provisioningReadyRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockResolvedValue(row);
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => ({ ...row, ...data }) as AgentSandbox,
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const meshCause = new Error(
+      "Docker candidate cannot complete required Headscale registration: auth_required",
+    );
+    const unresolved = new SandboxReplacementCleanupUnresolvedError(
+      {
+        sandboxId: "replacement-sandbox",
+        nodeId: "replacement-node",
+        containerName: "replacement-container",
+        replacementAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        containerId: "sha256:replacement",
+        allocationCounted: true,
+      },
+      meshCause,
+    );
+    const create = mock(async () => {
+      throw unresolved;
+    });
+    const svc = new ElizaSandboxService();
+    const persistFenceSpy = spyOn(
+      svc as unknown as {
+        persistUnresolvedReplacementCleanupFence(
+          agentId: string,
+          orgId: string,
+          error: SandboxReplacementCleanupUnresolvedError,
+        ): Promise<void>;
+      },
+      "persistUnresolvedReplacementCleanupFence",
+    ).mockResolvedValue(undefined);
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue(replacementAwareProvider({ create } as unknown as SandboxProvider));
+
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      expect(res).toMatchObject({ success: false, retryable: true });
+      if (res.success) throw new Error("Expected failed provision result");
+      expect(res.failureCause).toBe(unresolved);
+      expect(persistFenceSpy).toHaveBeenCalledWith(AGENT, ORG, unresolved);
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+      findByIdSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      persistFenceSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+
   test("(9) readiness probe transport_unresolved → retryable, container NOT stopped, handle persisted, status stays provisioning (#15310 #6)", async () => {
     // The false-negative split-brain: the post-create readiness probe never
     // reaches the (likely-healthy) container. provision() must NOT tear the

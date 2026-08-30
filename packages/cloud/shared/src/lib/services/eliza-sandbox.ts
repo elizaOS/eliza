@@ -434,6 +434,12 @@ export type ProvisionResult =
       sandboxRecord?: AgentSandbox;
       error: string;
       /**
+       * Internal typed failure retained for the provisioning queue's durable
+       * operator diagnostic. Callers must never serialize this field into a
+       * public result; `error` remains the owner-safe boundary value.
+       */
+      failureCause?: unknown;
+      /**
        * True when the failure is a transient, retryable condition (e.g. the
        * readiness probe could not reach the container). The provision JOB
        * should retry rather than treat this as a permanent failure that flips
@@ -4011,6 +4017,7 @@ export class ElizaSandboxService {
             retryable: true,
             sandboxRecord: await agentSandboxesRepository.findById(rec.id),
             error: msg,
+            failureCause: err,
           };
         }
         await this.markError(rec, `Sandbox creation failed: ${msg}`);
