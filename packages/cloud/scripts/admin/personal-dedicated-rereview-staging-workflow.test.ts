@@ -80,6 +80,23 @@ describe("personal Dedicated staging re-review workflow", () => {
     ).toBe(false);
   });
 
+  test("materializes the linked runtime required by fresh-checkout imports", () => {
+    const setup = step("Setup Bun workspace");
+    expect(setup.uses).toBe("./.github/actions/setup-bun-workspace");
+    expect(setup.with).toMatchObject({
+      "bun-version": "1.3.14",
+      "setup-python": "false",
+      "install-protoc": "false",
+      "install-native-deps": "false",
+      "run-postinstall": "false",
+    });
+    const linkedBuild = step("Build required linked runtime").run;
+    expect(linkedBuild).toContain(
+      "bun run --cwd packages/prompts build:package",
+    );
+    expect(linkedBuild).toContain("bun run --cwd packages/shared build");
+  });
+
   test("uses primary database authority for identity and mutation proofs", () => {
     const command = readFileSync(
       resolve(
