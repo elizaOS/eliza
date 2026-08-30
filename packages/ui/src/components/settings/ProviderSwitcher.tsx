@@ -131,6 +131,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     });
 
   const { visibleProviderPanelId, resolvedSelectedId } = selection;
+  const settingsContentReady =
+    bootstrap.routingConfigResolved || selection.cloudRuntimeLocked;
 
   // The tiles below only answer "who computes chat replies?". Runtime is the
   // other, independent axis — without it a hosted Cloud agent and a local
@@ -346,13 +348,13 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
       {/* Per-role model configuration (small/large chat brains + coding
           sub-agent), driven by the validated /api/models catalog. */}
-      {!selection.cloudRuntimeLocked ? (
+      {settingsContentReady && !selection.cloudRuntimeLocked ? (
         <ModelConfigurationPanel
           activeChatProvider={activeChatCatalogProvider}
         />
       ) : null}
 
-      {!selection.cloudRuntimeLocked ? (
+      {settingsContentReady && !selection.cloudRuntimeLocked ? (
         <SettingsGroup
           title={t("providerswitcher.accountsGroupTitle", {
             defaultValue: "Accounts",
@@ -380,43 +382,49 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       {/* Voice folds into this section for MVP (the standalone Voice tab is
           developer-only): speech is pinned to the bundled Kokoro TTS, so a
           read-only status row is the whole story. */}
-      <SettingsGroup
-        title={t("providerswitcher.voiceGroupTitle", { defaultValue: "Voice" })}
-        bare
-      >
-        <SettingsRow
-          label={
-            <span className="flex items-center gap-2">
-              <Mic className="size-[18px] shrink-0 text-accent" aria-hidden />
-              {selection.cloudRuntimeLocked
-                ? t("providerswitcher.cloudVoiceRowLabel", {
-                    defaultValue: "Eliza Cloud voice",
+      {settingsContentReady ? (
+        <SettingsGroup
+          title={t("providerswitcher.voiceGroupTitle", {
+            defaultValue: "Voice",
+          })}
+          bare
+        >
+          <SettingsRow
+            label={
+              <span className="flex items-center gap-2">
+                <Mic className="size-[18px] shrink-0 text-accent" aria-hidden />
+                {selection.cloudRuntimeLocked
+                  ? t("providerswitcher.cloudVoiceRowLabel", {
+                      defaultValue: "Eliza Cloud voice",
+                    })
+                  : t("providerswitcher.voiceRowLabel", {
+                      defaultValue: "Kokoro (on-device)",
+                    })}
+              </span>
+            }
+            description={
+              selection.cloudRuntimeLocked
+                ? t("providerswitcher.cloudVoiceRowDescription", {
+                    defaultValue:
+                      "Speech recognition and playback use your signed-in Eliza Cloud service. This app does not download a local voice model.",
                   })
-                : t("providerswitcher.voiceRowLabel", {
-                    defaultValue: "Kokoro (on-device)",
-                  })}
-            </span>
-          }
-          description={
-            selection.cloudRuntimeLocked
-              ? t("providerswitcher.cloudVoiceRowDescription", {
-                  defaultValue:
-                    "Speech recognition and playback use your signed-in Eliza Cloud service. This app does not download a local voice model.",
-                })
-              : t("providerswitcher.voiceRowDescription", {
-                  defaultValue:
-                    "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
-                })
-          }
-          control={
-            <span className="text-xs text-accent">
-              {t("providerswitcher.activeProvider", { defaultValue: "Active" })}
-            </span>
-          }
-        />
-      </SettingsGroup>
+                : t("providerswitcher.voiceRowDescription", {
+                    defaultValue:
+                      "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
+                  })
+            }
+            control={
+              <span className="text-xs text-accent">
+                {t("providerswitcher.activeProvider", {
+                  defaultValue: "Active",
+                })}
+              </span>
+            }
+          />
+        </SettingsGroup>
+      ) : null}
 
-      {!selection.cloudRuntimeLocked ? (
+      {settingsContentReady && !selection.cloudRuntimeLocked ? (
         <SettingsGroup
           title={t("providerswitcher.advancedGroupTitle", {
             defaultValue: "Advanced",

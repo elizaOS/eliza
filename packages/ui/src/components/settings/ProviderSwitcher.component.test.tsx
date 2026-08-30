@@ -253,6 +253,9 @@ describe("ProviderSwitcher", () => {
     bootstrapState.routingConfigResolved = false;
     render(<ProviderSwitcher />);
     expect(screen.queryByRole("button", { name: "local panel" })).toBeNull();
+    expect(screen.queryByText("model config")).toBeNull();
+    expect(screen.queryByText("accounts panel")).toBeNull();
+    expect(screen.queryByText("Kokoro (on-device)")).toBeNull();
     expect(screen.getByRole("button", { name: "Local" })).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByTestId("serving-inference-value").textContent).toBe(

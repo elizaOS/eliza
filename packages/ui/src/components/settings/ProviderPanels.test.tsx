@@ -56,12 +56,16 @@ describe("ProviderPanels", () => {
   it("activates local and cloud routing", () => {
     const local = vi.fn();
     const cloud = vi.fn();
-    const { rerender } = render(
+    const { container, rerender } = render(
       <LocalProviderPanel
         cloudCallsDisabled={false}
         routingModeSaving={false}
         onSelectLocalOnly={local}
       />,
+    );
+    expect(container.firstElementChild?.className).toContain("min-h-[28rem]");
+    expect(container.firstElementChild?.className).toContain(
+      "sm:min-h-[32rem]",
     );
     fireEvent.click(screen.getByRole("button", { name: "Use local only" }));
     expect(local).toHaveBeenCalled();

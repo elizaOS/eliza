@@ -60,7 +60,7 @@ export function LocalProviderPanel({
 }) {
   const t = useAppSelector((s) => s.t);
   return (
-    <div className="min-w-0">
+    <div className="min-h-[28rem] min-w-0 sm:min-h-[32rem]">
       <ProviderPanelHeader
         icon={Cpu}
         title={t("providerpanels.localProvider", {
