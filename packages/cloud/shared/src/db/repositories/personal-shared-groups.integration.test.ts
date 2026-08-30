@@ -59,8 +59,21 @@ beforeAll(async () => {
   ({ personalSharedGroupsRepository: repository } = await import("./personal-shared-groups"));
   const database = getPgliteClientForTests();
   await database.exec(`
-    CREATE TABLE organizations (id uuid PRIMARY KEY);
-    CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE organizations (
+      id uuid PRIMARY KEY,
+      is_active boolean NOT NULL DEFAULT true
+    );
+    CREATE TABLE users (
+      id uuid PRIMARY KEY,
+      organization_id uuid REFERENCES organizations(id),
+      steward_user_id text,
+      telegram_id text,
+      phone_number text,
+      phone_verified boolean,
+      is_anonymous boolean,
+      is_active boolean,
+      deleted_at timestamptz
+    );
   `);
   const migration = await Bun.file(
     new URL("../migrations/0297_personal_shared_group_bindings.sql", import.meta.url),
@@ -80,6 +93,14 @@ beforeAll(async () => {
     new URL("../migrations/0312_personal_shared_group_delivery_attempts.sql", import.meta.url),
   ).text();
   await database.exec(attemptsMigration);
+  const participantsMigration = await Bun.file(
+    new URL("../migrations/0311_personal_shared_group_participants.sql", import.meta.url),
+  ).text();
+  await database.exec(participantsMigration);
+  const consentMigration = await Bun.file(
+    new URL("../migrations/0320_personal_shared_multi_principal_consent.sql", import.meta.url),
+  ).text();
+  await database.exec(consentMigration);
 });
 
 beforeEach(async () => {
@@ -91,7 +112,8 @@ beforeEach(async () => {
       users,
       organizations CASCADE;
     INSERT INTO organizations (id) VALUES ('${ORG_A}'), ('${ORG_B}');
-    INSERT INTO users (id) VALUES ('${USER_A}'), ('${USER_B}');
+    INSERT INTO users (id, organization_id)
+    VALUES ('${USER_A}', '${ORG_A}'), ('${USER_B}', '${ORG_B}');
   `);
 });
 

@@ -11,7 +11,7 @@ process.argv = [
   "--platform",
   "unit-test",
 ];
-const smoke = await import("./mobile-local-chat-smoke.mjs");
+const smoke = await import("./mobile-local-chat-smoke.mjs?port-policy");
 process.argv = originalArgv;
 
 afterAll(() => {

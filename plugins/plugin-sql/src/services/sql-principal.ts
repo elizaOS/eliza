@@ -16,6 +16,7 @@ import {
   type IdentityClaimConflict,
   type IdentityClaimScope,
   type IdentityCluster,
+  type IdentityDeliveryClaimResolution,
   type IdentityJournalPage,
   type IdentityMergeConfirmation,
   type IdentityMergePlan,
@@ -26,13 +27,14 @@ import {
   type OwnerBindingEvaluation,
   PrincipalService,
   type ProposeIdentityMergeRequest,
+  type ResolveIdentityDeliveryClaimRequest,
   type Service,
   type SplitIdentityRequest,
   type UUID,
   type VerifyIdentityPersonLinkRequest,
 } from "@elizaos/core";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { authOwnerBindingTable } from "../schema/authOwnerBinding";
 import { connectorAccountsTable } from "../schema/connectorAccounts";
 import { entityTable } from "../schema/entity";
@@ -431,6 +433,46 @@ export class SqlPrincipalService extends PrincipalService {
         (claim.verification === "verified" || claim.verification === "owner_bound") &&
         (connectorAccountId === undefined || claim.connectorAccountId === connectorAccountId)
     );
+  }
+
+  /**
+   * Delivery-claim eligibility: a claim may route a send only through a
+   * connector account that is still connected, not soft-deleted, and whose
+   * provider matches the claim's connector authority. The decision pipeline
+   * and ordering live in the shared PrincipalService base.
+   */
+  protected async filterConnectorAccountEligibleClaims(
+    agentId: UUID,
+    claims: readonly IdentityClaim[]
+  ): Promise<readonly IdentityClaim[]> {
+    this.assertAgent(agentId);
+    if (claims.length === 0) return [];
+    const accountIds = [...new Set(claims.map((claim) => claim.connectorAccountId))];
+    const accountRows = await this.db
+      .select({ id: connectorAccountsTable.id, provider: connectorAccountsTable.provider })
+      .from(connectorAccountsTable)
+      .where(
+        and(
+          eq(connectorAccountsTable.agentId, agentId),
+          inArray(connectorAccountsTable.id, accountIds),
+          eq(connectorAccountsTable.status, "connected"),
+          isNull(connectorAccountsTable.deletedAt)
+        )
+      );
+    const eligibleProviders = new Map(
+      accountRows.map((account) => [account.id, account.provider.trim().toLowerCase()])
+    );
+    return claims.filter(
+      (claim) =>
+        eligibleProviders.get(claim.connectorAccountId) === claim.connectorId.trim().toLowerCase()
+    );
+  }
+
+  override async resolveIdentityDeliveryClaim(
+    request: ResolveIdentityDeliveryClaimRequest
+  ): Promise<IdentityDeliveryClaimResolution> {
+    this.assertAgent(request.agentId);
+    return super.resolveIdentityDeliveryClaim(request);
   }
 
   async evaluateOwnerBinding(

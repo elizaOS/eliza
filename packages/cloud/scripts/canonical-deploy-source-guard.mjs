@@ -12,6 +12,10 @@
  * Cloud CF Deploy push run for that exact head. Ancestry alone is insufficient:
  * path-filtered commits and manual production dispatches may have no successor.
  * Divergence, missing successor proof, and unverifiable state all fail hard.
+ * With --allow-monotonic-forward-progress, protected staging may continue
+ * after develop advances only when the served commit is an ancestor of the run
+ * SHA and the run SHA is an ancestor of the new develop head. This prevents
+ * sustained merge traffic from starving staging without permitting rollback.
  */
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -19,6 +23,7 @@ import {
   execFileSync,
   spawnSync,
 } from "../../scripts/lib/spawn-sync-captured.mjs";
+import { fetchServedCommit } from "./deploy-freshness-guard.mjs";
 
 const COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/;
 const CANONICAL_REFS = new Set(["refs/heads/develop", "refs/heads/main"]);
@@ -72,6 +77,9 @@ export function parseCanonicalRemoteHead(output, canonicalRef) {
  * @param {boolean} [input.force]
  * @param {boolean|null} [input.runShaIsAncestorOfHead]
  * @param {boolean} [input.successorRunOwnsHead]
+ * @param {boolean} [input.allowMonotonicForwardProgress]
+ * @param {string|null|undefined} [input.servedCommit]
+ * @param {boolean|null} [input.servedCommitIsAncestorOfRun]
  */
 export function decideCanonicalDeploySource({
   runSha,
@@ -80,6 +88,9 @@ export function decideCanonicalDeploySource({
   force = false,
   runShaIsAncestorOfHead = null,
   successorRunOwnsHead = false,
+  allowMonotonicForwardProgress = false,
+  servedCommit = null,
+  servedCommitIsAncestorOfRun = null,
 }) {
   const normalizedRun = normalizeSha(runSha);
   const normalizedHead = normalizeSha(canonicalHead);
@@ -118,6 +129,36 @@ export function decideCanonicalDeploySource({
         runSha: normalizedRun,
         canonicalRef: normalizedRef,
         canonicalHead: normalizedHead,
+      };
+    }
+    const normalizedServed = normalizeSha(servedCommit);
+    if (
+      allowMonotonicForwardProgress &&
+      normalizedRef === "refs/heads/develop" &&
+      runShaIsAncestorOfHead === true &&
+      normalizedServed &&
+      servedCommitIsAncestorOfRun === true
+    ) {
+      return {
+        allowed: true,
+        reason: "monotonic_forward_progress",
+        runSha: normalizedRun,
+        canonicalRef: normalizedRef,
+        canonicalHead: normalizedHead,
+        servedCommit: normalizedServed,
+      };
+    }
+    if (allowMonotonicForwardProgress && runShaIsAncestorOfHead === true) {
+      return {
+        allowed: false,
+        neutral: false,
+        reason: normalizedServed
+          ? "non_monotonic_source"
+          : "served_commit_unresolved",
+        runSha: normalizedRun,
+        canonicalRef: normalizedRef,
+        canonicalHead: normalizedHead,
+        servedCommit: normalizedServed,
       };
     }
     return {
@@ -223,11 +264,16 @@ function parseArgs(argv) {
     canonicalRef: null,
     force: false,
     neutralWhenSuperseded: false,
+    allowMonotonicForwardProgress: false,
+    servedUrl: null,
+    servedPath: "/api/health",
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--force") {
       parsed.force = true;
+    } else if (argument === "--allow-monotonic-forward-progress") {
+      parsed.allowMonotonicForwardProgress = true;
     } else if (argument === "--neutral-when-superseded") {
       parsed.neutralWhenSuperseded = true;
     } else if (argument === "--run-sha") {
@@ -236,10 +282,20 @@ function parseArgs(argv) {
     } else if (argument === "--canonical-ref") {
       parsed.canonicalRef = argv[index + 1] ?? null;
       index += 1;
+    } else if (argument === "--served-url") {
+      parsed.servedUrl = argv[index + 1] ?? null;
+      index += 1;
+    } else if (argument === "--served-path") {
+      parsed.servedPath = argv[index + 1] ?? null;
+      index += 1;
     } else if (argument.startsWith("--run-sha=")) {
       parsed.runSha = argument.slice("--run-sha=".length);
     } else if (argument.startsWith("--canonical-ref=")) {
       parsed.canonicalRef = argument.slice("--canonical-ref=".length);
+    } else if (argument.startsWith("--served-url=")) {
+      parsed.servedUrl = argument.slice("--served-url=".length);
+    } else if (argument.startsWith("--served-path=")) {
+      parsed.servedPath = argument.slice("--served-path=".length);
     } else {
       throw new Error(`Unsupported argument: ${argument}`);
     }
@@ -264,14 +320,14 @@ function resolveCanonicalHead(canonicalRef) {
 }
 
 /**
- * Probes whether the run SHA is a strict git ancestor of the canonical head.
- * Fetches the head commit's history treelessly so the probe stays cheap in a
+ * Probes whether one commit is a strict-or-equal git ancestor of another.
+ * Fetches the descendant's history treelessly so the probe stays cheap in a
  * shallow CI checkout; any probe failure propagates so the caller fails closed.
- * @param {string} runSha
- * @param {string} canonicalHead
+ * @param {string} ancestorSha
+ * @param {string} descendantSha
  * @returns {boolean}
  */
-function runShaIsAncestorOfCanonicalHead(runSha, canonicalHead) {
+function isAncestorOf(ancestorSha, descendantSha) {
   execFileSync(
     "git",
     [
@@ -280,19 +336,19 @@ function runShaIsAncestorOfCanonicalHead(runSha, canonicalHead) {
       "--no-recurse-submodules",
       "--filter=tree:0",
       "origin",
-      canonicalHead,
+      descendantSha,
     ],
     { stdio: ["ignore", "pipe", "pipe"], timeout: 120000 },
   );
   const probe = spawnSync(
     "git",
-    ["merge-base", "--is-ancestor", runSha, canonicalHead],
+    ["merge-base", "--is-ancestor", ancestorSha, descendantSha],
     { encoding: "utf8", timeout: 60000 },
   );
   if (probe.status === 0) return true;
   if (probe.status === 1) return false;
   throw new Error(
-    `Ancestry probe for ${runSha} under ${canonicalHead} failed: ${probe.stderr || probe.error?.message || `exit ${probe.status}`}`,
+    `Ancestry probe for ${ancestorSha} under ${descendantSha} failed: ${probe.stderr || probe.error?.message || `exit ${probe.status}`}`,
   );
 }
 
@@ -308,6 +364,8 @@ function reportDecision(decision, { neutralized = false } = {}) {
     console.log(`canonicalRef=${decision.canonicalRef}`);
   if (decision.canonicalHead)
     console.log(`canonicalHead=${decision.canonicalHead}`);
+  if (decision.servedCommit)
+    console.log(`servedCommit=${decision.servedCommit}`);
 }
 
 function emitNeutralSupersession(decision, environment = process.env) {
@@ -349,21 +407,36 @@ async function main() {
   if (
     !decision.allowed &&
     decision.reason === "superseded_source" &&
-    args.neutralWhenSuperseded
+    (args.neutralWhenSuperseded || args.allowMonotonicForwardProgress)
   ) {
-    const runShaIsAncestorOfHead = runShaIsAncestorOfCanonicalHead(
-      decision.runSha,
-      canonicalHead,
-    );
+    const runShaIsAncestorOfHead = isAncestorOf(decision.runSha, canonicalHead);
     const successorRunOwnsHead =
+      args.neutralWhenSuperseded &&
       runShaIsAncestorOfHead &&
       args.canonicalRef === "refs/heads/develop" &&
       (await proveSuccessorReleaseRun(canonicalHead));
+    let servedCommit = null;
+    let servedCommitIsAncestorOfRun = null;
+    if (args.allowMonotonicForwardProgress && runShaIsAncestorOfHead) {
+      servedCommit = normalizeSha(
+        await fetchServedCommit(args.servedUrl, {
+          stampPath: args.servedPath,
+        }),
+      );
+      if (servedCommit) {
+        servedCommitIsAncestorOfRun = isAncestorOf(
+          servedCommit,
+          decision.runSha,
+        );
+      }
+    }
     decision = decideCanonicalDeploySource({
       ...args,
       canonicalHead,
       runShaIsAncestorOfHead,
       successorRunOwnsHead,
+      servedCommit,
+      servedCommitIsAncestorOfRun,
     });
   }
   const neutralized =

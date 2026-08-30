@@ -3,6 +3,7 @@
  */
 import { MoreHorizontal } from "lucide-react";
 import type { ComponentType, MouseEvent, ReactNode } from "react";
+import { Button } from "../../../components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
 import { cn } from "../../lib/utils";
-import { BrandButton } from "../brand";
 
 type ListActionMenuItem =
   | {
@@ -62,7 +62,7 @@ export function ListActionMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <BrandButton
+        <Button
           variant="ghost"
           size="icon"
           className={cn("size-8 shrink-0", triggerClassName)}
@@ -70,7 +70,7 @@ export function ListActionMenu({
         >
           <MoreHorizontal className="size-4" />
           <span className="sr-only">Open actions</span>
-        </BrandButton>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align={align}

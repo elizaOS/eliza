@@ -496,6 +496,25 @@ describe("resolveSharedAgent", () => {
     });
   });
 
+  test("rejects an unknown future tier during pending and provisioning", async () => {
+    for (const status of ["pending", "provisioning"]) {
+      findByIdAndOrg.mockResolvedValue(
+        agent({
+          execution_tier: "future-tier",
+          status,
+          bridge_url: null,
+        }),
+      );
+
+      await expect(resolveSharedAgent(apiKeyContext("agent-1") as never)).resolves.toEqual({
+        error: "Not a shared-runtime agent",
+        status: 404,
+        refusal: "dedicated-agent",
+      });
+    }
+    expect(cacheSet).not.toHaveBeenCalled();
+  });
+
   test("returns 404 when no org-scoped agent exists", async () => {
     await expect(resolveSharedAgent(apiKeyContext("agent-missing") as never)).resolves.toEqual({
       error: "Agent not found",

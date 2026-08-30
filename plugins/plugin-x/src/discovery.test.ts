@@ -9,6 +9,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import type { ClientBase, TwitterAccountSession } from "./base";
 import { TwitterDiscoveryClient } from "./discovery";
+import { quoteTweetTemplate, replyTweetTemplate } from "./templates";
 import type { TwitterClientState } from "./types";
 
 type DiscoveryHarness = {
@@ -384,7 +385,7 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
         messages: [
           {
             role: "user",
-            content: expect.stringMatching(/under 280 characters/i),
+            content: expect.not.stringMatching(/(?:under|max) 280 characters/i),
           },
         ],
         omitMaxTokens: true,
@@ -392,6 +393,8 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
       expect(request).not.toHaveProperty("prompt");
       expect(request).not.toHaveProperty("maxTokens");
     }
+    expect(quoteTweetTemplate).not.toMatch(/(?:under|max) 280 characters/i);
+    expect(replyTweetTemplate).not.toMatch(/(?:under|max) 280 characters/i);
   });
 
   it.each([

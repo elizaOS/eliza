@@ -4,6 +4,7 @@
  */
 import { type ReactElement, useState } from "react";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 
 /**
  * Collapsed-by-default "Thinking" disclosure that renders an assistant turn's
@@ -25,7 +26,11 @@ export function ThinkingBlock({
     return null;
   }
   return (
-    <div className="my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden">
+    <Card
+      surface="accentSubtle"
+      border="accent"
+      className="my-2 overflow-hidden"
+    >
       <Button
         variant="sectionToggle"
         size="content"
@@ -46,6 +51,6 @@ export function ThinkingBlock({
           {trimmed}
         </pre>
       ) : null}
-    </div>
+    </Card>
   );
 }

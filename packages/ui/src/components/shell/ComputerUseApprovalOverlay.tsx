@@ -274,7 +274,11 @@ export function ComputerUseApprovalOverlay() {
       tabIndex={-1}
       className={OVERLAY_SHELL_CLASS}
     >
-      <Card variant="overlayWide">
+      <Card
+        surface="cardOverlay"
+        border="subtle"
+        className="relative z-10 w-full max-w-[820px] overflow-hidden"
+      >
         <CardHeader className="bg-warning/5 pb-6 pt-6">
           <div className="flex flex-col gap-4">
             <StatusBadge

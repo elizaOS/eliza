@@ -13,7 +13,7 @@ import {
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 
 interface DirectCloudBindingClient {
-  getPersonalSharedEliza(options: {
+  ensurePersonalDedicatedEliza(options: {
     cloudApiBase: string;
     authToken: string;
   }): Promise<{
@@ -21,7 +21,7 @@ interface DirectCloudBindingClient {
     activeAgentId: string;
     agentName: string;
     apiBase: string;
-    runtime: "shared" | "dedicated";
+    runtime: "dedicated";
   }>;
   setBaseUrl(base: string, options?: { persist?: boolean }): void;
   setToken(token: string): void;
@@ -32,7 +32,7 @@ export async function bindDirectCloudLoginToPersonalAgent(options: {
   cloudApiBase: string;
   token: string;
 }): Promise<void> {
-  const personal = await options.client.getPersonalSharedEliza({
+  const personal = await options.client.ensurePersonalDedicatedEliza({
     cloudApiBase: options.cloudApiBase,
     authToken: options.token,
   });

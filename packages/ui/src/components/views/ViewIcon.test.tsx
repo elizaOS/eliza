@@ -50,6 +50,34 @@ describe("ViewIcon lucide glyphs", () => {
     const svg = container.querySelector("svg");
     expect(svg?.classList.contains("size-7")).toBe(true);
   });
+
+  it.each([
+    ["CalendarDays", "lucide-calendar-days"],
+    ["Cloud", "lucide-cloud"],
+    ["Grid3x3", "lucide-grid-3x3"],
+    ["Map", "lucide-map"],
+    ["MonitorUp", "lucide-monitor-up"],
+    ["TerminalSquare", "lucide-square-terminal"],
+  ])("resolves maintained registered-page glyph %s", (icon, expectedClass) => {
+    const { container } = render(
+      <ViewIcon icon={icon} label="Registered page" />,
+    );
+
+    expect(container.querySelector(`svg.${expectedClass}`)).toBeTruthy();
+  });
+
+  it("honors a registered-page icon before conflicting label inference", () => {
+    const registered = render(
+      <ViewIcon icon="CalendarDays" label="Crypto Wallet" />,
+    );
+    const inferred = render(<ViewIcon label="Crypto Wallet" />);
+    const registeredGlyph = registered.container.querySelector("svg");
+    const inferredGlyph = inferred.container.querySelector("svg");
+
+    expect(registeredGlyph).toBeTruthy();
+    expect(registeredGlyph?.getAttribute("aria-hidden")).toBe("true");
+    expect(registeredGlyph?.innerHTML).not.toBe(inferredGlyph?.innerHTML);
+  });
 });
 
 describe("ViewIcon keyword inference (no/unknown icon name)", () => {

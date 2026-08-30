@@ -848,13 +848,12 @@ async function reachChatReady(ctx: StepContext): Promise<void> {
 
 // --- tutorial driving -------------------------------------------------------
 
-/** The chat-native tour's six steps, in order (tutorial-script.ts). */
+/** The chat-native tour's five steps, in order (tutorial-script.ts). */
 const TUTORIAL_STEP_ORDER = [
   "welcome",
   "send-message",
   "voice",
   "navigate",
-  "new-chat",
   "done",
 ] as const;
 const FIRST_RUN_READY_TIMEOUT_MS = {
@@ -1032,7 +1031,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
   {
     n: "04",
     id: "tutorial",
-    title: "Chat-native tutorial (all 6 steps)",
+    title: "Chat-native tutorial (all 5 steps)",
     expectation:
       "A typed 'start tutorial' command in the chat composer starts the chat-native tour: one conversational turn per step lands in the live transcript, the send-message step auto-advances on a real composer send, and Done completes the run.",
     async run({ page }) {

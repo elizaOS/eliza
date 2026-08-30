@@ -30,8 +30,16 @@ import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
-type MediaType = "all" | "image" | "video" | "audio";
+const MEDIA_TYPES = ["all", "image", "video", "audio"] as const;
+type MediaType = (typeof MEDIA_TYPES)[number];
 
 interface MediaItem {
   url: string;
@@ -97,7 +105,9 @@ function mediaTypeLabel(t: TranslateFn, type: MediaType): string {
   }
 }
 
-const FILTER_CHIPS: readonly MediaType[] = ["all", "image", "video", "audio"];
+function isMediaType(value: string): value is MediaType {
+  return MEDIA_TYPES.some((type) => type === value);
+}
 
 /** Extract media URLs from arbitrary row data by scanning all string values. */
 function extractMediaFromRows(
@@ -185,42 +195,6 @@ function collectStrings(obj: unknown, out: Set<string>) {
   }
 }
 
-function MediaFilterChip({
-  chip,
-  label,
-  isActive,
-  onSelect,
-}: {
-  chip: MediaType;
-  label: string;
-  isActive: boolean;
-  onSelect: (chip: MediaType) => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `filter-${chip}`,
-    role: "tab",
-    label,
-    group: "media-filters",
-    status: isActive ? "active" : "inactive",
-    description: `Filter media by ${label}`,
-    onActivate: () => onSelect(chip),
-  });
-  return (
-    <Button
-      ref={ref}
-      variant="selection"
-      size="compact"
-      align="start"
-      data-state={isActive ? "on" : "off"}
-      aria-current={isActive ? "page" : undefined}
-      onClick={() => onSelect(chip)}
-      {...agentProps}
-    >
-      {label}
-    </Button>
-  );
-}
-
 const MediaListItem = memo(function MediaListItem({
   item,
   index,
@@ -286,6 +260,18 @@ export function MediaGalleryView({
   const [filter, setFilter] = useState<MediaType>("all");
   const [search, setSearch] = useState("");
   const [selectedMediaUrl, setSelectedMediaUrl] = useState<string | null>(null);
+  const { ref: filterRef, agentProps: filterAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "media-type-filter",
+      role: "select",
+      label: "Media type",
+      group: "media-filters",
+      options: [...MEDIA_TYPES],
+      getValue: () => filter,
+      onFill: (value) => {
+        if (isMediaType(value)) setFilter(value);
+      },
+    });
 
   // The floating chat IS the search box for this view. Stable binding
   // (setSearch is a stable useState setter; placeholder changes only on locale).
@@ -455,44 +441,65 @@ export function MediaGalleryView({
   const mediaSidebar = (
     <AppPageSidebar testId="media-sidebar" collapsible contentIdentity="media">
       <SidebarPanel>
-        <div className="space-y-3 pt-4">
-          {leftNav}
-          <PagePanel.SummaryCard>
-            <div className="text-sm font-semibold text-txt">
-              {filtered.length === 1
-                ? t("mediagalleryview.ItemCountOne", {
-                    count: filtered.length,
-                    defaultValue: "{{count}} item",
-                  })
-                : t("mediagalleryview.ItemCountMany", {
-                    count: filtered.length,
-                    defaultValue: "{{count}} items",
-                  })}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/75">
-              <MetaPill>
-                {filter === "all"
-                  ? t("mediagalleryview.AllMedia", {
-                      defaultValue: "All media",
+        <div className="[@media(orientation:landscape)_and_(max-height:520px)]:grid [@media(orientation:landscape)_and_(max-height:520px)]:grid-cols-2 [@media(orientation:landscape)_and_(max-height:520px)]:gap-4">
+          <div className="space-y-3 pt-4">
+            {leftNav}
+            <PagePanel.SummaryCard>
+              <div className="text-sm font-semibold text-txt">
+                {filtered.length === 1
+                  ? t("mediagalleryview.ItemCountOne", {
+                      count: filtered.length,
+                      defaultValue: "{{count}} item",
                     })
-                  : mediaTypeLabel(t, filter)}
-              </MetaPill>
-            </div>
-            <ChatSearchHint noun="media" query={search} className="mt-3" />
-          </PagePanel.SummaryCard>
-        </div>
+                  : t("mediagalleryview.ItemCountMany", {
+                      count: filtered.length,
+                      defaultValue: "{{count}} items",
+                    })}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/75">
+                <MetaPill>
+                  {filter === "all"
+                    ? t("mediagalleryview.AllMedia", {
+                        defaultValue: "All media",
+                      })
+                    : mediaTypeLabel(t, filter)}
+                </MetaPill>
+              </div>
+              <ChatSearchHint noun="media" query={search} className="mt-3" />
+            </PagePanel.SummaryCard>
+          </div>
 
-        <div className="space-y-3 pt-4">
-          <div className="grid grid-cols-2 gap-1.5">
-            {FILTER_CHIPS.map((chip) => (
-              <MediaFilterChip
-                key={chip}
-                chip={chip}
-                label={mediaTypeLabel(t, chip)}
-                isActive={filter === chip}
-                onSelect={setFilter}
-              />
-            ))}
+          <div className="space-y-3 pt-4">
+            <div className="space-y-1.5">
+              <div
+                id="media-type-filter-label"
+                className="px-1 text-xs font-medium text-muted"
+              >
+                Media type
+              </div>
+              <Select
+                value={filter}
+                onValueChange={(value) => {
+                  if (isMediaType(value)) setFilter(value);
+                }}
+              >
+                <SelectTrigger
+                  ref={filterRef}
+                  className="w-full"
+                  aria-labelledby="media-type-filter-label"
+                  {...filterAgentProps}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MEDIA_TYPES.map((chip) => (
+                    <SelectItem key={chip} value={chip}>
+                      {mediaTypeLabel(t, chip)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
@@ -660,7 +667,7 @@ export function MediaGalleryView({
             </PagePanel>
 
             {/* Flat — no card/border. Whitespace separates the details block. */}
-            <div className="mt-6 text-sm text-muted">
+            <div className="mt-6 px-6 pb-6 text-sm text-muted">
               <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted/60">
                 {t("mediagalleryview.MediaDetails", {
                   defaultValue: "Media Details",

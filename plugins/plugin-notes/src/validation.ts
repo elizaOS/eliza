@@ -104,7 +104,10 @@ function parseText(value: unknown, field: string): string {
  * Split the one user-authored note field into the storage schema's stable list
  * label and remainder. The first line is the label; overflow and later lines
  * stay in the body, so the transformation never asks a model to invent text or
- * discards user content.
+ * discards user content. A one-line note written as "Label: details" keeps the
+ * label as the title and the details as the body — planners flatten "titled X
+ * saying Y" into exactly that shape — and the colon must be followed by
+ * whitespace so URLs ("https://…") and clock times ("5:30") never split.
  */
 export function parseNoteContent(
   value: unknown,
@@ -115,10 +118,21 @@ export function parseNoteContent(
     maxLength: MAX_NOTE_CONTENT_LENGTH,
   });
   const [firstLine = "", ...remainingLines] = content.split(/\r?\n/);
-  const safeFirstLine = toWellFormedUnicode(firstLine.trim());
-  const title = truncateWellFormed(safeFirstLine, MAX_TITLE_LENGTH).trim();
-  const overflow = safeFirstLine.slice(title.length).trim();
-  const body = [overflow, ...remainingLines].join("\n").trim();
+  let labelLine = toWellFormedUnicode(firstLine.trim());
+  let inlineDetails = "";
+  if (remainingLines.length === 0) {
+    const labeled = /^([^:]+):\s+(.+)$/.exec(labelLine);
+    if (labeled) {
+      labelLine = labeled[1].trim();
+      inlineDetails = labeled[2].trim();
+    }
+  }
+  const title = truncateWellFormed(labelLine, MAX_TITLE_LENGTH).trim();
+  const overflow = labelLine.slice(title.length).trim();
+  const body = [overflow, inlineDetails, ...remainingLines]
+    .filter((part, index) => index >= 2 || part.length > 0)
+    .join("\n")
+    .trim();
   return {
     title: parseRequiredTitle(title, `${field}.firstLine`),
     body: parseText(body, `${field}.remainder`),

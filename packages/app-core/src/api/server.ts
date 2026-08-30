@@ -32,6 +32,7 @@ import {
   handleRuntimeModeRemoteForward,
   isAllowedHost,
   isAuthorized,
+  loadEffectiveElizaConfig,
   loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
@@ -44,6 +45,7 @@ import {
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
 } from "@elizaos/agent";
+import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-env-authority";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
 // Override the wallet export rejection function with the hardened version
@@ -155,10 +157,14 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
+import { handleDesktopAuthBootstrapRoute } from "./desktop-auth-bootstrap-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
-import { resolveFeatureRouteReadinessFailure } from "./feature-route-readiness.js";
+import {
+  isFeatureRouteHandlerAvailable,
+  resolveFeatureRouteReadinessFailure,
+} from "./feature-route-readiness.js";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
@@ -174,7 +180,11 @@ import {
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
-import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
+import {
+  CORS_ALLOWED_HEADERS,
+  getCorsAllowedPorts,
+  isAllowedOrigin,
+} from "./server-cors";
 
 const _require = createRequire(import.meta.url);
 
@@ -449,11 +459,15 @@ function patchCompatStatusResponse(
 }
 
 /**
- * Load config from disk and backfill `cloud.apiKey` from sealed secrets when the
- * user is still linked to Eliza Cloud but a stale write dropped the key.
+ * Resolve the Cloud config used by app-core's compatibility routes. A valid
+ * development Cloud authority owns the complete operational connection and is
+ * returned as an ephemeral, sanitized view; that view must never be repaired
+ * from sealed/env/runtime state or persisted. Outside authority mode, retain
+ * the legacy repair behavior for linked Cloud accounts whose persisted key was
+ * dropped by a stale write.
  */
 function resolveCloudConfig(runtime?: unknown): ElizaConfig {
-  const config = loadElizaConfig();
+  const config = loadEffectiveElizaConfig();
   const cloudRec =
     config.cloud && typeof config.cloud === "object"
       ? (config.cloud as Record<string, unknown>)
@@ -466,6 +480,14 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
         .sort()
         .join(",")}`,
     );
+  }
+  if (isDevCloudConfigAuthorityView(config)) {
+    if (isElizaSettingsDebugEnabled()) {
+      logger.debug(
+        "[eliza][settings][compat] resolveCloudConfig using launcher-owned ephemeral Cloud view",
+      );
+    }
+    return config;
   }
   const linkedAccounts = resolveLinkedAccountsInConfig(
     config as Record<string, unknown>,
@@ -661,6 +683,12 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     // before any other auth handler so it owns the root `/pair` URL.
     id: "cloud-pair",
     handler: ({ req, res }) => handleCloudPairRoute(req, res),
+  },
+  {
+    // One-shot local desktop session proof must precede generic auth routes.
+    id: "desktop-auth-bootstrap",
+    handler: ({ req, res, state }) =>
+      handleDesktopAuthBootstrapRoute(req, res, state),
   },
   {
     // Must precede the auth-pairing handler so the rate-limited route owns
@@ -1001,10 +1029,7 @@ async function runCompatRequestPipeline(
       "Access-Control-Allow-Methods",
       "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     );
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Eliza-Platform, X-Eliza-CSRF",
-    );
+    res.setHeader("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
     res.setHeader("Access-Control-Allow-Credentials", "true");
   }
 
@@ -1051,10 +1076,17 @@ async function runCompatRequestPipeline(
   const readinessFailure = resolveFeatureRouteReadinessFailure(
     pathname,
     state.current !== null,
-    deferredBoot.phases["app-route-tail"],
+    deferredBoot.phases,
+    isFeatureRouteHandlerAvailable({
+      method: req.method ?? "GET",
+      pathname,
+      runtimeRoutes: state.current?.routes,
+    }),
   );
   if (readinessFailure) {
-    res.setHeader("Retry-After", "1");
+    if (readinessFailure.retryable) {
+      res.setHeader("Retry-After", "1");
+    }
     sendJsonResponse(res, 503, readinessFailure);
     return;
   }

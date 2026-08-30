@@ -5,6 +5,7 @@
   "files": [
     "assets",
     "entitlements",
+    "native",
     "scripts",
     "remotes",
     "src",

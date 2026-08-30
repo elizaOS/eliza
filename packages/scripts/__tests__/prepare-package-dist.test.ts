@@ -38,6 +38,68 @@ afterEach(() => {
 });
 
 describe("prepare-package-dist", () => {
+  test("recursively rewrites nested module export conditions for dist", () => {
+    const root = temporaryRepository();
+    writeJson(root, "package.json", {
+      name: "workspace-fixture",
+      private: true,
+      workspaces: ["packages/*"],
+    });
+    writeJson(root, "packages/prompts/package.json", {
+      name: "@fixture/prompts",
+      version: "1.0.0",
+      main: "./src/index.ts",
+      types: "./src/index.ts",
+      exports: {
+        ".": {
+          types: "./src/index.ts",
+          module: {
+            types: "./src/index.ts",
+            development: {
+              types: "./src/development.ts",
+              import: "./src/development.ts",
+              default: "./src/development.ts",
+            },
+            import: "./src/index.ts",
+            default: "./src/index.ts",
+          },
+          import: "./src/index.ts",
+          default: "./src/index.ts",
+        },
+      },
+    });
+
+    const prepared = preparePackageDist({
+      repositoryRoot: root,
+      packageDirectory: "packages/prompts",
+      optionalPluginFallbackVersions: new Map(),
+    });
+    const expectedExports = {
+      ".": {
+        types: "./index.d.ts",
+        module: {
+          types: "./index.d.ts",
+          development: {
+            types: "./development.d.ts",
+            import: "./development.js",
+            default: "./development.js",
+          },
+          import: "./index.js",
+          default: "./index.js",
+        },
+        import: "./index.js",
+        default: "./index.js",
+      },
+      "./package.json": "./package.json",
+    };
+
+    expect(prepared.exports).toEqual(expectedExports);
+    const written = JSON.parse(
+      readFileSync(join(root, "packages/prompts/dist/package.json"), "utf8"),
+    );
+    expect(written.exports).toEqual(expectedExports);
+  });
+
   test("ignores a stale nested manifest that repeats a workspace name", () => {
     const root = temporaryRepository();
     writeJson(root, "package.json", {

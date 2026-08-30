@@ -23,8 +23,16 @@ import {
   hasElectrobunViewExport,
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
+import { canReuseDesktopRuntimePackage } from "./lib/desktop-runtime-package-policy.mjs";
 import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
+import {
+  nativeActivityTrackerBundleBinary,
+  nativeActivityTrackerSourceBinary,
+  nativeActivityTrackerStagedBinary,
+  shouldPackageNativeActivityTracker,
+  verifyNativeActivityTrackerBinary,
+} from "./lib/native-activity-tracker-packaging.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
 
@@ -40,6 +48,10 @@ const STAGE_MACOS_RELEASE_SCRIPT = path.join(
   ELECTROBUN_DIR,
   "scripts",
   "stage-macos-release-artifacts.sh",
+);
+const BUILD_EXPERIMENTAL_EXACT_WINDOW_HELPER_SCRIPT = path.join(
+  SCRIPT_DIR,
+  "build-experimental-exact-window-helper.mjs",
 );
 const PROFILE_EXCLUDED_OPTIONAL_PACKS = {
   full: [],
@@ -210,6 +222,10 @@ const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
 const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-local-inference",
 );
+const PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR = resolveWorkspacePluginDir(
+  "plugin-native-activity-tracker",
+);
+const PLUGIN_SQL_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-sql");
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
 const VAULT_PACKAGE_DIR = resolveWorkspacePackageDir("vault");
@@ -259,6 +275,17 @@ const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
 const nativeEffectsExplicitlyRequested =
   getBooleanArg(args, "build-native-effects") ||
   process.env.ELIZA_DESKTOP_BUILD_NATIVE_EFFECTS === "1";
+const experimentalExactWindowHelperRequested =
+  getBooleanArg(args, "build-experimental-exact-window-helper") ||
+  process.env.ELIZA_BUILD_EXPERIMENTAL_EXACT_WINDOW_HELPER === "1";
+if (experimentalExactWindowHelperRequested && buildVariant === "store") {
+  fail(
+    "Experimental exact-window helper is forbidden for --build-variant=store",
+  );
+}
+if (experimentalExactWindowHelperRequested) {
+  process.env.ELIZA_BUILD_EXPERIMENTAL_EXACT_WINDOW_HELPER = "1";
+}
 
 function resolveBuildVariant(raw) {
   if (raw === "store" || raw === "direct") return raw;
@@ -621,6 +648,28 @@ function ensureAppDirs() {
   }
 }
 
+function patchElectrobunLinuxCefProfile({ requireNative = false } = {}) {
+  if (process.platform !== "linux") return;
+  run(
+    "node",
+    [
+      path.join(
+        ROOT,
+        "packages",
+        "scripts",
+        "patch-electrobun-linux-cef-profile.mjs",
+      ),
+      ...(requireNative ? ["--require"] : []),
+    ],
+    {
+      cwd: ROOT,
+      label: requireNative
+        ? "Requiring materialized Electrobun Linux CEF profile hotfix"
+        : "Verifying available Electrobun Linux CEF profile hotfix inputs",
+    },
+  );
+}
+
 function logPreflightDiagnostic(fields) {
   console.log(`[desktop-preflight] ${JSON.stringify(fields)}`);
 }
@@ -639,6 +688,10 @@ function failPreflight(message, fields = {}, detailLines = []) {
 
 function runDesktopPreflight() {
   ensureAppDirs();
+  // Electrobun downloads its platform-native wrapper lazily during the first
+  // package pass. Patch the BrowserWindow source now, but allow a genuinely
+  // absent native directory until packageDesktopBuild has materialized it.
+  patchElectrobunLinuxCefProfile();
   const moduleName = "electrobun/view";
   const preflightCwd = ELECTROBUN_DIR;
 
@@ -920,8 +973,11 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
   }
 
   if (
-    process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES !== "1" &&
-    workspaceRuntimePackageLooksBuilt(packageName, packageDir)
+    canReuseDesktopRuntimePackage({
+      packageName,
+      forceRebuild: process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES === "1",
+      looksBuilt: workspaceRuntimePackageLooksBuilt(packageName, packageDir),
+    })
   ) {
     console.log(
       `[desktop-build] Reusing existing ${packageName} runtime package`,
@@ -997,8 +1053,59 @@ function ensureWorkspaceRuntimePackagesBuilt() {
     "@elizaos/plugin-local-inference",
     PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,
   );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-sql",
+    PLUGIN_SQL_PACKAGE_DIR,
+  );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/agent", AGENT_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
+}
+
+function shouldStageNativeActivityTracker() {
+  return shouldPackageNativeActivityTracker({
+    platform: process.platform,
+    buildVariant,
+    buildProfile,
+    cloudOnly: cloudOnlyBuild,
+  });
+}
+
+function stageNativeActivityTrackerSourceBinary() {
+  if (!shouldStageNativeActivityTracker()) return;
+
+  runBun(["run", "build:swift"], {
+    cwd: PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR,
+    label: "Building native macOS activity collector",
+  });
+  const result = verifyNativeActivityTrackerBinary(
+    nativeActivityTrackerSourceBinary(ROOT),
+    { arch: process.arch, label: "generated activity collector" },
+  );
+  console.log(
+    `[desktop-build] Verified generated activity collector (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function verifyStagedNativeActivityTrackerBinary() {
+  if (!shouldStageNativeActivityTracker()) return;
+  const result = verifyNativeActivityTrackerBinary(
+    nativeActivityTrackerStagedBinary(ROOT),
+    { arch: process.arch, label: "staged activity collector" },
+  );
+  console.log(
+    `[desktop-build] Verified staged activity collector (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function verifyPackagedNativeActivityTrackerBinary(appBundlePath) {
+  if (!shouldStageNativeActivityTracker()) return;
+  const result = verifyNativeActivityTrackerBinary(
+    nativeActivityTrackerBundleBinary(appBundlePath),
+    { arch: process.arch, label: "packaged activity collector" },
+  );
+  console.log(
+    `[desktop-build] Verified packaged activity collector (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
 }
 
 function desktopRendererBuildEnv() {
@@ -1430,6 +1537,7 @@ function stageDesktopBuild() {
 
   ensureRootRuntimeBundle();
   ensureWorkspaceRuntimePackagesBuilt();
+  stageNativeActivityTrackerSourceBinary();
 
   // Build + bundle the fused local-inference native lib so the packaged app
   // serves local AI out of the box. Gated (see stageDesktopFusedLib) so plain
@@ -1445,6 +1553,7 @@ function stageDesktopBuild() {
   });
 
   copyRuntimeNodeModulesWithRetry();
+  verifyStagedNativeActivityTrackerBinary();
 
   // `bun install` for these workspaces can emit benign EEXIST errors when
   // file: deps overlap with manually-linked @elizaos/* symlinks. The links
@@ -1521,6 +1630,21 @@ function stageDesktopBuild() {
         cwd: ELECTROBUN_DIR,
         label: "Building native macOS effects dylib",
       });
+    }
+
+    if (experimentalExactWindowHelperRequested) {
+      run(
+        "node",
+        [
+          BUILD_EXPERIMENTAL_EXACT_WINDOW_HELPER_SCRIPT,
+          `--build-variant=${buildVariant}`,
+        ],
+        {
+          cwd: ROOT,
+          label:
+            "Building optional direct-only experimental exact-window helper",
+        },
+      );
     }
   }
 }
@@ -1722,10 +1846,19 @@ function packageDesktopBuild() {
       : "Packaging Electrobun app",
   });
 
+  // The first Electrobun package pass may have downloaded the Linux native
+  // wrapper. Require and apply the pinned CEF profile patch now, then repackage
+  // once so the emitted artifact cannot retain the unpatched wrapper.
+  const repackageForLinuxCefProfile = process.platform === "linux";
+  if (repackageForLinuxCefProfile) {
+    patchElectrobunLinuxCefProfile({ requireNative: true });
+  }
+
   // The Electrobun CLI downloads its platform core lazily. If that happened
   // during the first build, harden the new copy and package once more so the
   // artifact cannot retain the dependency's wildcard RPC listener.
-  if (hardenInstalledElectrobunRpc() > 0) {
+  const repackageForRpcHardening = hardenInstalledElectrobunRpc() > 0;
+  if (repackageForLinuxCefProfile || repackageForRpcHardening) {
     console.log(
       "[desktop-build] Repackaging after hardening the downloaded Electrobun core.",
     );
@@ -1739,6 +1872,12 @@ function packageDesktopBuild() {
   }
 
   hardenPackagedLinuxArtifacts();
+
+  // Verify after every possible package pass so this gate covers the final
+  // bundle rather than an intermediate bundle that may have been replaced.
+  if (process.platform === "darwin") {
+    verifyPackagedNativeActivityTrackerBinary(findLatestMacAppBundle());
+  }
 
   // The legacy compatibility path (APP_DIR/electrobun) is not read by any
   // production code — only docs and this mirror fn reference it (the inno
@@ -1880,6 +2019,8 @@ Options:
   --stage-macos-release-app        Stage a direct macOS .app + DMG from the Electrobun build output
   --exclude-optional-pack <name>   Exclude a manifest-classified optional capability pack during staging
   --build-native-effects           Require the native macOS effects dylib build (hard-fail if Xcode CLT is missing)
+  --build-experimental-exact-window-helper
+                                   Build and package the optional direct-only experimental Computer Use helper
   --verify-mas                     After MAS codesign, walk the bundle and verify the tightened
                                    entitlements via mas-smoke.mjs. Off by default; ELIZA_VERIFY_MAS=1
                                    also enables it.

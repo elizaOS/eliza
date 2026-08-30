@@ -55,7 +55,7 @@ const LOADERS: Record<string, () => Promise<{ default: ComponentType }>> = {
     ) as Promise<{ default: ComponentType }>,
   documents: () =>
     import(
-      "../../../../plugins/plugin-documents/src/components/documents/DocumentsView.tsx"
+      "../../../../plugins/plugin-documents/src/components/documents/KnowledgeDocumentsView.tsx"
     ) as Promise<{ default: ComponentType }>,
   relationships: () =>
     import(

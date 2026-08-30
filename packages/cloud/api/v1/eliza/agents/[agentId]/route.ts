@@ -19,7 +19,9 @@ import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { adminService } from "@/lib/services/admin";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { publicJobErrorSummary } from "@/lib/services/job-error-text";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { getStewardAgent } from "@/lib/services/steward-client";
 import type {
   AgentAdminDetailsDto,
@@ -136,6 +138,13 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
 
+    // Personal Shared identities are rowless namespaced ids. Reject them
+    // before the UUID-backed repository so this endpoint remains a uniform
+    // not-found boundary during Shared-to-Dedicated handoff polling.
+    if (isPersonalSharedAgentId(agentId)) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
+
     const agent = await elizaSandboxService.getAgent(
       agentId,
       user.organization_id,
@@ -231,7 +240,9 @@ app.get("/", async (c) => {
       databaseStatus: agent.database_status,
       lastBackupAt: toIsoStringOrNull(agent.last_backup_at),
       lastHeartbeatAt: toIsoStringOrNull(agent.last_heartbeat_at),
-      errorMessage: agent.error_message,
+      // Match the list/jobs owner boundary: keep the full redacted diagnostic
+      // in storage, never expose server frames through the normal-user DTO.
+      errorMessage: publicJobErrorSummary(agent.error_message),
       errorCount: agent.error_count,
       createdAt: toIsoString(agent.created_at),
       updatedAt: toIsoString(agent.updated_at),
@@ -280,6 +291,9 @@ app.patch("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
+    if (isPersonalSharedAgentId(agentId)) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
     const body = await c.req.json().catch(() => null);
 
     // A body without `action` is an in-place profile edit (rename / config
@@ -460,6 +474,9 @@ app.delete("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
+    if (isPersonalSharedAgentId(agentId)) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
     let expectedIdentity:
       | {
           agentName: string;

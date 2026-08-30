@@ -20,6 +20,7 @@
 @import "./shadcn-utilities.css";
 @import "./base.css";
 @import "./tailwind-theme.css";
+@import "./settings-surface.css";
 @import "./electrobun-mac-window-drag.css";
 /* React Flow base styles — required for @xyflow/react canvas to render correctly */
 @import "@xyflow/react/dist/style.css";
@@ -175,23 +176,9 @@ html.eliza-chat-overlay-shell #root {
   pointer-events: none;
 }
 
-html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
-  /* The popup floats over arbitrary desktop content, so its local palette is a
-     stable dark material rather than inheriting a page theme that may make the
-     conversation translucent white. The eliza-glass-sheet recipe owns the
-     fill and blur; these variables keep its descendants on the same contrast
-     contract. */
-  --card: rgb(20 20 24 / 82%);
-  --card-foreground: #f5f5f5;
-  --text: #f5f5f5;
-  --text-strong: #ffffff;
-  --txt: var(--text);
-  --muted: rgb(255 255 255 / 64%);
-  --muted-strong: rgb(255 255 255 / 78%);
-  --foreground: var(--text);
-  --muted-foreground: var(--muted);
-  --bg: rgb(12 12 14);
-  --accent-subtle: rgb(255 88 0 / 18%);
+html.eliza-chat-overlay-shell .shell-assistant-overlay-positioner {
+  /* Card owns the fixed dark palette and glass paint; this shell selector
+     keeps only native-popup placement and animation geometry. */
   top: auto;
   right: auto;
   /* Keep the conversation physically above the persistent Flow handle. The
@@ -215,8 +202,6 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
      `motion-safe:animate-[shell-overlay-in_220ms_ease-out]` utility (the
      `-anchored` keyframes are declared in base.css next to the base ones). */
   animation-name: shell-overlay-in-anchored;
-  border-radius: 1.5rem;
-  border-color: rgb(255 255 255 / 20%);
 }
 
 /* `body.pwa-standalone` mirrors the native mobile lockdown for an INSTALLED
@@ -580,6 +565,56 @@ kbd {
   border-color: var(--accent);
   background-color: var(--accent-subtle);
   color: var(--text-strong);
+}
+
+/* Devices & Runtimes is a keyboard-heavy administration surface. Its scoped
+   filled + underlined focus state remains visible even though the product-wide
+   rule above suppresses outlines and shadows. The solid border is part of the
+   control box, so it does not introduce a layout jump. */
+.devices-runtimes-accessible :where(button, summary) {
+  min-block-size: 2.75rem;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.devices-runtimes-accessible summary {
+  border: 2px solid transparent;
+}
+
+.devices-runtimes-accessible :where(button, input, summary):focus-visible {
+  border: 2px solid var(--accent) !important;
+  background-color: var(--accent-subtle) !important;
+  color: var(--text-strong) !important;
+  text-decoration-line: underline;
+  text-decoration-thickness: max(0.125rem, 2px);
+  text-underline-offset: 0.2em;
+}
+
+@media (forced-colors: active) {
+  .devices-runtimes-accessible {
+    forced-color-adjust: auto;
+  }
+
+  .devices-runtimes-accessible
+    :where(article, details, [role="alert"], [role="status"]) {
+    border-color: CanvasText;
+  }
+
+  .devices-runtimes-accessible [aria-label$=", selected"] {
+    border-color: Highlight;
+  }
+
+  .devices-runtimes-accessible :where(button, input, summary):focus-visible {
+    forced-color-adjust: none;
+    border-color: Highlight !important;
+    background-color: Highlight !important;
+    color: HighlightText !important;
+  }
+
+  .devices-runtimes-accessible svg[aria-label^="QR code"] {
+    forced-color-adjust: none;
+  }
 }
 /* biome-ignore-end lint/complexity/noImportantStyles: end focus-ring ban override */
 
