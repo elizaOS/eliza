@@ -96,7 +96,7 @@ describe("personal Dedicated staging re-review operator", () => {
         })),
         (candidate) => candidate.authority,
       ),
-    ).toThrow("selection_bootstrap_decision_required");
+    ).toThrow("selection_bootstrap_no_restore_authority");
     expect(() =>
       resolveBootstrapCandidate(
         candidates.map((candidate) => ({
@@ -105,13 +105,25 @@ describe("personal Dedicated staging re-review operator", () => {
         })),
         (candidate) => candidate.authority,
       ),
-    ).toThrow("selection_bootstrap_decision_required");
+    ).toThrow("selection_bootstrap_multiple_restore_authorities");
     expect(() =>
       resolveBootstrapCandidate(
         [candidates[1]],
         (candidate) => candidate.authority,
       ),
-    ).toThrow("selection_bootstrap_decision_required");
+    ).toThrow("selection_bootstrap_single_candidate");
+    expect(() => resolveBootstrapCandidate([], () => "fresh-boot")).toThrow(
+      "selection_bootstrap_zero_candidates",
+    );
+    expect(() =>
+      resolveBootstrapCandidate(
+        Array.from({ length: 101 }, (_, index) => ({
+          id: String(index),
+          authority: index === 0 ? "from-legacy-backup" : "fresh-boot",
+        })),
+        (candidate) => candidate.authority,
+      ),
+    ).toThrow("selection_bootstrap_inventory_over_limit");
   });
 
   test("returns identifier-free preview evidence and does not execute", async () => {
