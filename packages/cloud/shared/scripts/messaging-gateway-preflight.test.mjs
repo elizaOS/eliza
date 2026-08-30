@@ -257,6 +257,7 @@ test("workflow keeps trusted configuration behind exact-develop manual dispatch"
   );
   assert.match(dispatchAdmission, /if: github\.event_name == 'workflow_dispatch'/);
   assert.match(dispatchAdmission, /SOURCE_REF: \$\{\{ github\.ref \}\}/);
+  assert.match(dispatchAdmission, /working-directory: \./);
   assert.match(dispatchAdmission, /\[\[ "\$SOURCE_REF" != "refs\/heads\/develop" \]\]/);
   assert.match(dispatchAdmission, /exit 1/);
   assert.doesNotMatch(dispatchAdmission, /environment:|secrets\.|actions\/checkout/);
@@ -275,7 +276,10 @@ test("workflow keeps trusted configuration behind exact-develop manual dispatch"
     "trusted configuration must inspect the checked-out develop source",
   );
   assert.doesNotMatch(trustedConfig, /Require canonical trusted-configuration source|SOURCE_REF/);
-  assert.doesNotMatch(testJob, /^\s{4}if:/m);
+  assert.match(
+    testJob,
+    /if: github\.event_name != 'workflow_dispatch' \|\| github\.ref == 'refs\/heads\/develop'/,
+  );
   for (const [sentinel, source] of [
     ["HAS_ELIZACLOUD_API_URL", "secrets.ELIZACLOUD_API_URL"],
     ["HAS_CEREBRAS_API_KEY", "secrets.CEREBRAS_API_KEY"],

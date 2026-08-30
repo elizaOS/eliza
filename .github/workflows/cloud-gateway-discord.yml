@@ -34,6 +34,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Reject non-develop manual runs
+        working-directory: .
         env:
           SOURCE_REF: ${{ github.ref }}
         run: |
@@ -77,6 +78,7 @@ jobs:
 
   test:
     name: Test
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/develop'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
