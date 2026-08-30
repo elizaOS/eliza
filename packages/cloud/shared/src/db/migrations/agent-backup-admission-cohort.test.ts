@@ -8,7 +8,7 @@ import {
   agentBackupAdmissionEnrollmentShards,
   agentBackupAdmissionWork,
 } from "../schemas/agent-backup-admission";
-import { agentSandboxBackups } from "../schemas/agent-sandboxes";
+import { agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
 
 const migrationNames = [
   "0346_agent_backup_admission_sandbox_source_stamp.sql",
@@ -31,6 +31,9 @@ const migrationNames = [
   "0363_agent_backup_admission_claim_guard.sql",
   "0364_agent_backup_admission_claim_eligibility.sql",
   "0365_agent_backup_admission_unsettled_schedule_index.sql",
+  "0366_agent_backup_admission_enrollment_source_indexes.sql",
+  "0367_agent_backup_admission_enrollment_watermark_guard.sql",
+  "0368_agent_backup_admission_enrollment_source_stamp.sql",
 ] as const;
 const migrations = await Promise.all(
   migrationNames.map((name) => Bun.file(new URL(`./${name}`, import.meta.url)).text()),
@@ -97,6 +100,7 @@ async function database(): Promise<PGlite> {
       activation_authority_published_at timestamptz, activation_dispatched_at timestamptz,
       activation_completed_at timestamptz, next_backup_at timestamptz,
       backup_schedule_last_protected_at timestamptz,
+      deleted_at timestamptz, deletion_attempt_id uuid,
       CONSTRAINT agent_sandboxes_id_organization_unique UNIQUE (id, organization_id)
     );
     CREATE TABLE docker_nodes (
@@ -229,6 +233,7 @@ describe("backup admission cohort migrations", () => {
     const claimShardConfig = getTableConfig(agentBackupAdmissionClaimShards);
     const workConfig = getTableConfig(agentBackupAdmissionWork);
     const backupConfig = getTableConfig(agentSandboxBackups);
+    const sandboxConfig = getTableConfig(agentSandboxes);
     const expectedConstraints = [
       "agent_backup_admission_enrollment_shards_pkey",
       "agent_backup_admission_claim_shards_pkey",
@@ -289,6 +294,14 @@ describe("backup admission cohort migrations", () => {
     expect(backupConfig.indexes.map(({ config }) => config.name)).toEqual(
       expect.arrayContaining(expectedBackupIndexes),
     );
+    const expectedSourceIndexes = [
+      "agent_sandboxes_backup_admission_initial_frontier_idx",
+      "agent_sandboxes_backup_admission_scheduled_frontier_idx",
+      "agent_sandboxes_backup_admission_rpo_frontier_idx",
+    ];
+    expect(sandboxConfig.indexes.map(({ config }) => config.name)).toEqual(
+      expect.arrayContaining(expectedSourceIndexes),
+    );
 
     const db = await database();
     const deployedConstraints = await db.query<{ name: string }>(`
@@ -316,6 +329,25 @@ describe("backup admission cohort migrations", () => {
     expect(deployedBackupIndexes.rows.map(({ name }) => name)).toEqual(
       expect.arrayContaining(expectedBackupIndexes),
     );
+    const deployedSourceIndexes = await db.query<{ definition: string; name: string }>(`
+      SELECT indexname AS name, indexdef AS definition FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename = 'agent_sandboxes'
+        AND indexname LIKE 'agent_sandboxes_backup_admission_%_frontier_idx'
+      ORDER BY indexname
+    `);
+    expect(deployedSourceIndexes.rows.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(expectedSourceIndexes),
+    );
+    for (const { definition } of deployedSourceIndexes.rows) {
+      expect(definition).toMatch(/get_byte\(uuid_send\(id\), 0\).*64/i);
+      expect(definition).toMatch(/WHERE.*status.*running.*activation_phase.*active/is);
+      expect(definition).toContain("'dedicated-lazy'");
+      expect(definition).toContain("'dedicated-always'");
+      expect(definition).toContain("'custom'");
+      expect(definition).toMatch(/deleted_at IS NULL/i);
+      expect(definition).toMatch(/deletion_attempt_id IS NULL/i);
+      expect(definition).not.toContain("<> 'shared'");
+    }
     const deployedClaimIndexes = await db.query<{ name: string }>(`
       SELECT indexname AS name FROM pg_indexes
       WHERE schemaname = 'public' AND tablename = 'agent_backup_admission_claim_shards'

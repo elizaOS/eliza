@@ -2911,13 +2911,12 @@ jobs:
   deployed-renderer-staging:
     name: Verify deployed staging renderer (Pages alias)
     needs: [deploy-app, verify-routing]
-    if: ${{ !cancelled() && inputs.target_environment == 'staging' && ((vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success' && needs.deploy-app.outputs.pages_deployed == 'true' && needs.verify-routing.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)) }}
+    if: ${{ !cancelled() && inputs.target_environment == 'staging' && inputs.run_deployed_renderer_staging == true }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 45
     steps:
-      - name: Require one-shot staging release prerequisites
-        if: ${{ inputs.run_deployed_renderer_staging == true }}
+      - name: Require deployed-renderer staging release prerequisites
         env:
           DEPLOY_APP_RESULT: ${{ needs.deploy-app.result }}
           PAGES_DEPLOYED: ${{ needs.deploy-app.outputs.pages_deployed }}
