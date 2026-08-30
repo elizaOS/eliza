@@ -512,10 +512,15 @@ async function handleDeleteContact(
 
 export const imessageDataRoutes: Route[] = [
   {
+    name: "imessage-blooio-webhook",
     type: "POST",
     path: "/api/imessage/webhook/blooio",
     handler: handleBlooioWebhook,
     rawPath: true,
+    public: true,
+    publicReason: "Blooio webhook delivery is authenticated by its HMAC signature.",
+    publicWrite:
+      "Inbound Blooio webhook POST authenticated by the X-Blooio-Signature header, not the local gate.",
   },
   {
     type: "GET",
