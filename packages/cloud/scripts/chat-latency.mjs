@@ -15,6 +15,9 @@ import { parseArgs } from "node:util";
 
 const TARGETS = new Set(["direct", "gateway", "paired", "dedicated"]);
 const REASONING_EFFORTS = new Set(["omit", "none", "low", "medium", "high"]);
+const DELTA_STREAM_PROTOCOL = "delta-v2";
+const SHARED_TURN_CORRELATION_HEADER = "X-ElizaOS-Turn-Correlation";
+const SHARED_TURN_ATTEMPT_HEADER = "X-ElizaOS-Turn-Attempt";
 const SAFE_RESPONSE_HEADERS = [
   "cf-placement",
   "cf-ray",
@@ -589,6 +592,34 @@ async function createConversation(
   return id;
 }
 
+/** Build the first-attempt conversation stream wire used by the frontend client. */
+export function buildDedicatedStreamRequest({
+  apiKey,
+  prompt,
+  clientMessageId,
+  turnCorrelation,
+  traceId,
+}) {
+  return {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      "X-Eliza-Trace-Id": traceId,
+      "X-Eliza-Telemetry": "full",
+      [SHARED_TURN_CORRELATION_HEADER]: turnCorrelation,
+      [SHARED_TURN_ATTEMPT_HEADER]: "1",
+      "User-Agent": "eliza-chat-latency/1.0",
+    },
+    body: JSON.stringify({
+      text: prompt,
+      channelType: "DM",
+      clientMessageId,
+      streamProtocol: DELTA_STREAM_PROTOCOL,
+    }),
+  };
+}
+
 export async function probeDedicated({
   agentId,
   baseUrl,
@@ -615,6 +646,13 @@ export async function probeDedicated({
       fetchImpl,
     );
     const startedAt = performance.now();
+    const streamRequest = buildDedicatedStreamRequest({
+      apiKey,
+      prompt,
+      clientMessageId: randomUUID(),
+      turnCorrelation: randomUUID(),
+      traceId,
+    });
     const response = await fetchImpl(
       baseUrl +
         "/api/conversations/" +
@@ -622,19 +660,7 @@ export async function probeDedicated({
         "/messages/stream",
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-          "X-Eliza-Trace-Id": traceId,
-          "X-Eliza-Telemetry": "full",
-          "User-Agent": "eliza-chat-latency/1.0",
-        },
-        body: JSON.stringify({
-          text: prompt,
-          channelType: "DM",
-          clientMessageId: randomUUID(),
-        }),
+        ...streamRequest,
         signal: requestSignal(timeoutMs),
       },
     );
