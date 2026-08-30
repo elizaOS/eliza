@@ -2,9 +2,10 @@
  * Coalesces canonical pricing reads and owns the Worker-safe rate cache.
  *
  * Catalog rows remain short-lived process caches for non-Worker billing work.
- * Cache-only inference admission reads canonical token rates from an L1 plus
- * the configured Worker cache; misses hydrate from authoritative catalogs only
- * under `waitUntil`, so Postgres and provider HTTP never join model dispatch.
+ * Cache-only inference admission reads canonical rates from an L1 plus the
+ * configured Worker cache. A normal cold miss may join the same coalesced
+ * authoritative catalog load under a bounded deadline, while durable writes
+ * and stale refreshes remain under `waitUntil` without a cache readback.
  */
 import type { AiPricingEntry } from "../../../db/schemas/ai-pricing";
 import { cache } from "../../cache/client";
@@ -465,7 +466,9 @@ export async function getCachedTextPricingRates(
 function isCachedFlatPricingEntry(value: unknown): value is CachedFlatPricingEntry {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  if (record.v !== 1 || typeof record.cachedAt !== "number") return false;
+  if (record.v !== 1 || typeof record.cachedAt !== "number" || !Number.isFinite(record.cachedAt)) {
+    return false;
+  }
   if (!record.entry || typeof record.entry !== "object") return false;
   const entry = record.entry as Record<string, unknown>;
   return (

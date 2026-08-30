@@ -404,6 +404,39 @@ test("rejected or invalid flat hydration fails closed without a durable write", 
   expect(write).not.toHaveBeenCalled();
 });
 
+test("flat pricing rejects non-finite durable timestamps instead of serving them forever", async () => {
+  for (const [label, cachedAt] of [
+    ["infinity", Number.POSITIVE_INFINITY],
+    ["nan", Number.NaN],
+  ] as const) {
+    __clearPersistedPricingCache();
+    const read = spyOn(cache, "getWithOutcome").mockResolvedValueOnce({
+      kind: "hit",
+      backend: "memory",
+      value: { v: 1, cachedAt, entry: FLAT_ENTRY },
+    });
+    const write = spyOn(cache, "setWithOutcome").mockResolvedValue({
+      kind: "written",
+      backend: "memory",
+    });
+    const loader = mock(async () => FLAT_ENTRY);
+    const background: Promise<unknown>[] = [];
+
+    await expect(
+      getCachedFlatPricingEntry(
+        `flat-corrupt-timestamp-${label}`,
+        loader,
+        workerOptions(background),
+      ),
+    ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
+    await Promise.all(background);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledTimes(1);
+    mock.restore();
+  }
+});
+
 test("timed-out flat hydration fails closed, then finishes its background write without readback", async () => {
   __clearPersistedPricingCache();
   const { read, write } = stubColdDurableCache();
