@@ -1,8 +1,9 @@
 /**
  * Tests `DesktopWeb`'s browser-fallback contracts — permission bridging,
- * notifications, window focus/blur listeners, external URL safety, and
- * battery state — against a stubbed `window`/`navigator` and mocked
- * Electrobun RPC, not a real browser or native host.
+ * notifications, window focus/blur listeners, external URL safety, fullscreen
+ * promise propagation, and battery state — against a stubbed
+ * `window`/`navigator`/`document` and mocked Electrobun RPC, not a real browser
+ * or native host.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +25,13 @@ function setNavigator(value: Partial<Navigator>): void {
 
 function setWindow(value: Partial<Window> & Record<string, unknown>): void {
   Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value,
+  });
+}
+
+function setDocument(value: Record<string, unknown>): void {
+  Object.defineProperty(globalThis, "document", {
     configurable: true,
     value,
   });
@@ -246,6 +254,87 @@ describe("DesktopWeb browser fallback contracts", () => {
       "_blank",
       "noopener",
     );
+  });
+
+  it("propagates exitFullscreen rejection instead of fabricating success", async () => {
+    // exitFullscreen rejects with a TypeError when the document is not
+    // currently fullscreen; the caller must observe that rejection.
+    const rejection = new TypeError("Document not active");
+    const exitFullscreen = vi.fn(() => Promise.reject(rejection));
+    const requestFullscreen = vi.fn(() => Promise.resolve());
+    setDocument({
+      documentElement: { requestFullscreen },
+      exitFullscreen,
+    });
+
+    await expect(new DesktopWeb().setFullscreen({ flag: false })).rejects.toBe(
+      rejection,
+    );
+    expect(exitFullscreen).toHaveBeenCalledTimes(1);
+    expect(requestFullscreen).not.toHaveBeenCalled();
+  });
+
+  it("propagates requestFullscreen rejection when there is no user gesture", async () => {
+    const rejection = new TypeError(
+      "API can only be initiated by a user gesture.",
+    );
+    const requestFullscreen = vi.fn(() => Promise.reject(rejection));
+    const exitFullscreen = vi.fn(() => Promise.resolve());
+    setDocument({
+      documentElement: { requestFullscreen },
+      exitFullscreen,
+    });
+
+    await expect(new DesktopWeb().setFullscreen({ flag: true })).rejects.toBe(
+      rejection,
+    );
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(exitFullscreen).not.toHaveBeenCalled();
+  });
+
+  it("resolves when the underlying fullscreen transition succeeds", async () => {
+    const requestFullscreen = vi.fn(() => Promise.resolve());
+    const exitFullscreen = vi.fn(() => Promise.resolve());
+    setDocument({
+      documentElement: { requestFullscreen },
+      exitFullscreen,
+    });
+
+    const plugin = new DesktopWeb();
+    await expect(plugin.setFullscreen({ flag: true })).resolves.toBeUndefined();
+    await expect(
+      plugin.setFullscreen({ flag: false }),
+    ).resolves.toBeUndefined();
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(exitFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("emits no unhandled rejection when a fullscreen transition fails", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    setDocument({
+      documentElement: {
+        requestFullscreen: () =>
+          Promise.reject(new TypeError("no user gesture")),
+      },
+      exitFullscreen: () => Promise.reject(new TypeError("not fullscreen")),
+    });
+
+    const plugin = new DesktopWeb();
+    // The caller's try/catch owns the rejection for both flag values.
+    await expect(plugin.setFullscreen({ flag: true })).rejects.toThrow(
+      "no user gesture",
+    );
+    await expect(plugin.setFullscreen({ flag: false })).rejects.toThrow(
+      "not fullscreen",
+    );
+    // Flush the microtask/macrotask queue so any stray rejection would surface.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    process.off("unhandledRejection", onUnhandled);
+    expect(unhandled).toEqual([]);
   });
 
   it("clamps valid battery levels and ignores malformed battery fields", async () => {
