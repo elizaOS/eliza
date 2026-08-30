@@ -265,6 +265,30 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("catalog load states", () => {
+  it("reserves the ready panel geometry while the catalog loads", async () => {
+    const catalog = deferred<unknown>();
+    const config = deferred<ModelsConfigResponse>();
+    clientMock.getModelsCatalog.mockReset().mockReturnValue(catalog.promise);
+    clientMock.getModelsConfig.mockReset().mockReturnValue(config.promise);
+
+    render(<ModelConfigurationPanel />);
+
+    expect(
+      screen.getByRole("status", { name: "Loading model catalog…" }),
+    ).toBeTruthy();
+    expect(
+      document.querySelectorAll('[data-slot="settings-row"]'),
+    ).toHaveLength(12);
+
+    await act(async () => {
+      catalog.resolve({ providers: {}, catalog: fixtureCatalog() });
+      config.resolve(fixtureConfig());
+    });
+    await waitFor(() =>
+      expect(agentElements.has("models-small-provider")).toBe(true),
+    );
+  });
+
   it("reaches ready after the StrictMode effect lifecycle replay", async () => {
     render(
       <StrictMode>
