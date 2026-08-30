@@ -70,8 +70,9 @@ describe("isRuntimeManagementOperation", () => {
   });
 
   it("rejects non-string values", () => {
-    // The guard must type-discriminate before membership so untrusted JSON
-    // bodies carrying numbers, arrays, or objects cannot reach the dispatch.
+    // Membership must not coerce: an array or object body must never
+    // stringify into a member, so untrusted JSON values cannot reach
+    // the dispatch.
     expect(isRuntimeManagementOperation(undefined)).toBe(false);
     expect(isRuntimeManagementOperation(null)).toBe(false);
     expect(isRuntimeManagementOperation(0)).toBe(false);
