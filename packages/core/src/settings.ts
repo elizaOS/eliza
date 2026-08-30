@@ -18,7 +18,9 @@
  * callers receive a typed error rather than accidentally consuming ciphertext
  * as a usable secret. Write-time ciphertext detection verifies the candidate
  * under the active salt so plaintext that merely resembles a stored format is
- * encrypted instead of leaking at rest.
+ * encrypted instead of leaking at rest. A genuine ciphertext from another salt
+ * cannot be distinguished from that collision: it is encrypted as plaintext,
+ * and a structured redacted warning makes the resulting extra layer visible.
  */
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors";
@@ -196,7 +198,12 @@ export function clearSaltCache(): void {
 }
 
 function isCiphertextForSalt(value: string, salt: string): boolean {
-	if (!isEncryptedV1(value) && !isEncryptedV2(value)) {
+	const format = isEncryptedV2(value)
+		? "v2"
+		: isEncryptedV1(value)
+			? "v1"
+			: null;
+	if (format === null) {
 		return false;
 	}
 
@@ -206,6 +213,14 @@ function isCiphertextForSalt(value: string, salt: string): boolean {
 	} catch {
 		// error-policy:J3 Ciphertext-shaped user input that is invalid under the
 		// active salt is plaintext and must continue through encryption.
+		logger.warn(
+			{
+				src: "core:settings",
+				event: "core.settings.reencrypted_unauthenticated_ciphertext_shape",
+				format,
+			},
+			"Ciphertext-shaped secret setting failed authentication under the active salt and will be encrypted as plaintext",
+		);
 		return false;
 	}
 }

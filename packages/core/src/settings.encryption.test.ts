@@ -8,7 +8,8 @@
  * returning ciphertext or garbled/partial plaintext as a usable value.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "./logger";
 import {
 	clearSaltCache,
 	decryptedCharacter,
@@ -106,6 +107,49 @@ describe("encryptStringValue / decryptStringValue", () => {
 		expect(() => decryptStringValue(enc, "wrong-salt")).toThrow(
 			"Failed to decrypt secret setting",
 		);
+	});
+
+	it("warns and preserves fail-closed semantics when re-encrypting cross-salt ciphertext", () => {
+		const otherSalt = "salt-beta";
+		const ciphertext = encryptStringValue(SECRET, SALT);
+		const warnSpy = vi
+			.spyOn(logger, "warn")
+			.mockImplementation(() => undefined);
+
+		try {
+			expect(() => decryptStringValue(ciphertext, otherSalt)).toThrow(
+				"Failed to decrypt secret setting",
+			);
+
+			const reencrypted = encryptStringValue(ciphertext, otherSalt);
+			expect(reencrypted).not.toBe(ciphertext);
+			expect(reencrypted).toMatch(/^v2:/);
+
+			const outerValue = decryptStringValue(reencrypted, otherSalt);
+			expect(outerValue).toBe(ciphertext);
+			expect(outerValue).not.toBe(SECRET);
+			expect(() => decryptStringValue(reencrypted, SALT)).toThrow(
+				"Failed to decrypt secret setting",
+			);
+
+			expect(warnSpy).toHaveBeenCalledTimes(1);
+			const [context, message] = warnSpy.mock.calls[0];
+			expect(context).toEqual({
+				src: "core:settings",
+				event: "core.settings.reencrypted_unauthenticated_ciphertext_shape",
+				format: "v2",
+			});
+			expect(message).toBe(
+				"Ciphertext-shaped secret setting failed authentication under the active salt and will be encrypted as plaintext",
+			);
+
+			const warningRecord = JSON.stringify(warnSpy.mock.calls);
+			for (const protectedValue of [SECRET, ciphertext, SALT, otherSalt]) {
+				expect(warningRecord).not.toContain(protectedValue);
+			}
+		} finally {
+			warnSpy.mockRestore();
+		}
 	});
 });
 
