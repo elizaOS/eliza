@@ -1,4 +1,4 @@
-name: Personal Dedicated stale selection re-review
+name: Personal Dedicated selection review
 
 on:
   workflow_dispatch:
@@ -27,11 +27,11 @@ on:
         required: false
         type: string
       reviewed_reason:
-        description: Type retain_current_receipt_target_after_duplicate_inventory_review
+        description: Exact reviewed reason emitted by the selected operation runbook
         required: false
         type: string
       confirmation:
-        description: Type REREVIEW_STALE_SELECTION_WITHOUT_COMPUTE_MUTATION
+        description: Exact non-compute confirmation emitted by the selected operation runbook
         required: false
         type: string
 
@@ -92,8 +92,9 @@ jobs:
             if (!/^[0-9a-f]{40}$/.test(expected) || expected !== process.env.CHECKED_OUT_COMMIT) process.exit(1);
             if (process.env.MODE === "execute") {
               if (!/^[0-9a-f]{64}$/.test(process.env.APPROVAL_DIGEST ?? "")) process.exit(1);
-              if (process.env.REVIEWED_REASON !== "retain_current_receipt_target_after_duplicate_inventory_review") process.exit(1);
-              if (process.env.CONFIRMATION !== "REREVIEW_STALE_SELECTION_WITHOUT_COMPUTE_MUTATION") process.exit(1);
+              const rereview = process.env.REVIEWED_REASON === "retain_current_receipt_target_after_duplicate_inventory_review" && process.env.CONFIRMATION === "REREVIEW_STALE_SELECTION_WITHOUT_COMPUTE_MUTATION";
+              const bootstrap = process.env.REVIEWED_REASON === "select_unique_verified_backup_after_duplicate_inventory_review" && process.env.CONFIRMATION === "SELECT_UNIQUE_VERIFIED_BACKUP_WITHOUT_COMPUTE_MUTATION";
+              if (!rereview && !bootstrap) process.exit(1);
             }
           '
 
