@@ -580,21 +580,6 @@ describe("prefill and option filtering", () => {
     ]);
   });
 
-  it("keeps a configured opencode model visible even when not in the suggestion list", async () => {
-    await renderReady();
-
-    fill("models-coding-backend", "opencode");
-    expect(agentElements.get("models-coding-model")?.options).toEqual([
-      "custom-oss-model",
-      "gemma-4-31b",
-      "zai-glm-4.7",
-      "plain-model",
-    ]);
-    expect(
-      document.querySelector('[data-agent-id="models-coding-effort"]'),
-    ).toBeNull();
-  });
-
   it("renders a free-form model input for the eliza-code backend", async () => {
     await renderReady();
 

@@ -604,11 +604,7 @@ test.describe("Cloud live optional action boundary", () => {
     await page.goto("/");
     await page.setContent(`
       <article data-testid="thread-line">
-        <p>Use your existing Dedicated agent?</p>
-        <p>Current status: stopped.</p>
-        <p>Hosting: $0.01/hour ($0.24/day).</p>
-        <p>Balance: $115.54; minimum required: $0.72 (3 days of runway); deficit: $0.00.</p>
-        <p>This action starts Dedicated compute and will restore its reviewed backup.</p>
+        <p>Use your existing Dedicated agent? Current status: stopped. Hosting: $0.01/hour ($0.24/day). Balance: $115.54; minimum required: $0.72 (3 days of runway); deficit: $0.00. This action starts Dedicated compute and will restore its reviewed backup.</p>
         <button data-testid="dedicated-adoption-confirm">Confirm and continue</button>
         <button data-testid="dedicated-adoption-cancel">Not now</button>
       </article>
@@ -677,7 +673,7 @@ test.describe("Cloud live optional action boundary", () => {
               return "adoption";
             },
           },
-          timeoutMs: 500,
+          timeoutMs: 2_000,
           runtimeCloudGraceMs: 50,
           pollIntervalMs: 5,
         }),

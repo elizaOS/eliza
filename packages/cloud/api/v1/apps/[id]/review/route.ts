@@ -10,7 +10,11 @@
  */
 
 import { Hono } from "hono";
-import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
@@ -50,6 +54,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
     const review = await runAppReview({
       app: appRow,
       triggeredByUserId: user.id,
+      operationContext: getGenerativeOperationContext(c, caller),
     });
 
     logger.info("[AppReview API] Submitted app for review", {
@@ -72,7 +77,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
     });
   } catch (error) {
     logger.error("[AppReview API] Review submission failed", { error });
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 

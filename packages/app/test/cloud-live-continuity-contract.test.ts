@@ -265,6 +265,17 @@ describe("forbidden Cloud agent mutations", () => {
       decodedDedicatedCutoverFinalResponseCount: 0,
       uninspectableDedicatedCutoverResponseBodyCount: 0,
       dedicatedAdoptionQuoteGetRequestCount: 0,
+      successfulDedicatedAdoptionQuoteGetResponseCount: 0,
+      clientErrorDedicatedAdoptionQuoteGetResponseCount: 0,
+      serverErrorDedicatedAdoptionQuoteGetResponseCount: 0,
+      otherDedicatedAdoptionQuoteGetResponseCount: 0,
+      failedDedicatedAdoptionQuoteGetRequestCount: 0,
+      pendingDedicatedAdoptionQuoteGetRequestCount: 0,
+      completedDedicatedAdoptionQuoteResponseBodyCount: 0,
+      parsedDedicatedAdoptionQuoteResponseBodyCount: 0,
+      decodedAdoptableDedicatedAdoptionQuoteCount: 0,
+      decodedUnavailableDedicatedAdoptionQuoteCount: 0,
+      uninspectableDedicatedAdoptionQuoteResponseBodyCount: 0,
       dedicatedAdoptionConfirmationPostRequestCount: 0,
       dedicatedApprovalBindingPresent: false,
       dedicatedLifecycleBindingMismatchCount: 0,
@@ -348,7 +359,40 @@ describe("forbidden Cloud agent mutations", () => {
         data: { runtime: "dedicated", activeAgentId: "private-target" },
       }).responseBody,
     );
-    audit.observeRequest("GET", `${upgrade}/adopt-existing`);
+    const adoption = `${upgrade}/adopt-existing`;
+    audit.observeRequest("GET", adoption);
+    audit.observeResponse(
+      "GET",
+      adoption,
+      200,
+      boundedJsonBody({
+        success: true,
+        data: {
+          requiresConfirmation: true,
+          action: "adopt_existing_dedicated",
+          canAdopt: true,
+          quoteId: "private-adoption-quote",
+          dedicatedAgentId: "private-adoption-target",
+        },
+      }).responseBody,
+    );
+    audit.observeRequest("GET", adoption);
+    audit.observeResponse(
+      "GET",
+      adoption,
+      404,
+      boundedJsonBody({
+        success: false,
+        code: "dedicated_adoption_unavailable",
+      }).responseBody,
+    );
+    audit.observeRequest("GET", adoption);
+    audit.observeResponse("GET", adoption, 503);
+    audit.observeRequest("GET", adoption);
+    audit.observeResponse("GET", adoption, 302);
+    audit.observeRequest("GET", adoption);
+    audit.observeRequestFailure("GET", adoption, "private timeout detail");
+    audit.observeRequest("GET", adoption);
     audit.observeRequest("POST", `${upgrade}/adopt-existing`);
     audit.observeRequest("GET", upgrade);
     audit.observeRequestFailure("GET", upgrade, "private timeout detail");
@@ -404,7 +448,18 @@ describe("forbidden Cloud agent mutations", () => {
       decodedDedicatedCutoverPendingResponseCount: 1,
       decodedDedicatedCutoverFinalResponseCount: 1,
       uninspectableDedicatedCutoverResponseBodyCount: 0,
-      dedicatedAdoptionQuoteGetRequestCount: 1,
+      dedicatedAdoptionQuoteGetRequestCount: 6,
+      successfulDedicatedAdoptionQuoteGetResponseCount: 1,
+      clientErrorDedicatedAdoptionQuoteGetResponseCount: 1,
+      serverErrorDedicatedAdoptionQuoteGetResponseCount: 1,
+      otherDedicatedAdoptionQuoteGetResponseCount: 1,
+      failedDedicatedAdoptionQuoteGetRequestCount: 1,
+      pendingDedicatedAdoptionQuoteGetRequestCount: 1,
+      completedDedicatedAdoptionQuoteResponseBodyCount: 2,
+      parsedDedicatedAdoptionQuoteResponseBodyCount: 2,
+      decodedAdoptableDedicatedAdoptionQuoteCount: 1,
+      decodedUnavailableDedicatedAdoptionQuoteCount: 1,
+      uninspectableDedicatedAdoptionQuoteResponseBodyCount: 2,
       dedicatedAdoptionConfirmationPostRequestCount: 1,
       dedicatedApprovalBindingPresent: false,
       dedicatedLifecycleBindingMismatchCount: 4,
