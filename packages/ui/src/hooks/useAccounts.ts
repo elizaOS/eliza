@@ -167,6 +167,18 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
       const requestId = ++listRequestIdRef.current;
       const stateVersion = stateVersionRef.current;
       try {
+        // StrictMode replaces an effect before the next microtask. Defer the
+        // inventory GET until then so the discarded lifecycle can be aborted
+        // before it reaches the account store; canceling after dispatch still
+        // leaves that server-side read competing with its successor.
+        await Promise.resolve();
+        if (
+          abortController.signal.aborted ||
+          activeListAbortRef.current !== abortController ||
+          !mountedRef.current ||
+          listRequestIdRef.current !== requestId
+        )
+          return;
         const next = await client.listAccounts({
           signal: abortController.signal,
         });

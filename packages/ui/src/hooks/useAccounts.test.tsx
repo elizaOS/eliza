@@ -110,26 +110,18 @@ beforeEach(() => {
 });
 
 describe("useAccounts", () => {
-  it("aborts the replaced StrictMode inventory request and keeps the current load", async () => {
-    const first = deferred<AccountsListResponse>();
+  it("coalesces the replaced StrictMode lifecycle before inventory transport", async () => {
     const current = deferred<AccountsListResponse>();
-    client.listAccounts
-      .mockReset()
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(current.promise);
+    client.listAccounts.mockReset().mockReturnValue(current.promise);
 
     const { result } = renderHook(() => useAccounts({ pollMs: 0 }), {
       wrapper: StrictMode,
     });
-    await waitFor(() => expect(client.listAccounts).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(client.listAccounts).toHaveBeenCalledTimes(1));
 
-    const firstSignal = client.listAccounts.mock.calls[0]?.[0]?.signal as
+    const currentSignal = client.listAccounts.mock.calls[0]?.[0]?.signal as
       | AbortSignal
       | undefined;
-    const currentSignal = client.listAccounts.mock.calls[1]?.[0]?.signal as
-      | AbortSignal
-      | undefined;
-    expect(firstSignal?.aborted).toBe(true);
     expect(currentSignal?.aborted).toBe(false);
 
     await act(async () => current.resolve(initial));
