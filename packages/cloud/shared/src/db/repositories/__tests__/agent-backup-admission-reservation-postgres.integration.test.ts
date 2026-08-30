@@ -85,7 +85,7 @@ const MIGRATIONS = [
   "0363_agent_backup_admission_claim_guard",
   "0364_agent_backup_admission_claim_eligibility",
   "0365_agent_backup_admission_unsettled_schedule_index",
-  "0366_agent_backup_admission_recovery_cursor",
+  "0369_agent_backup_admission_recovery_cursor",
 ] as const;
 
 const ORIGINAL_ENV = {
