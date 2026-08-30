@@ -76,6 +76,7 @@ const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
 	"transient_failure",
 	"handler_error",
 	"persistence_error",
+	"coding_verification_failed",
 ]);
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -240,6 +241,50 @@ function dedupeAssistantRunMessages(
 	return deduped;
 }
 
+/**
+ * The canonical dialogue-hygiene boundary predicate: true when a stored room
+ * row is real conversation that may be exposed to the model, false for
+ * machinery and noise — the agent's own `action_result` records, internal
+ * bridge relays (sub-agent-router / swarm-synthesis), synthetic assistant
+ * failure replies, transient orchestrator status posts, leaked tool
+ * transcripts, and leaked local-path dumps. This is the single model-exposure
+ * contract for room history: RECENT_MESSAGES applies it to the prompt
+ * transcript and CHANNEL_RECAP applies it before rows count toward a
+ * requested recap depth, so a row this boundary strips can never resurface
+ * through either surface. Exported for that reuse — do not fork the logic.
+ */
+export function isHygienicDialogueMessage(
+	memory: Memory,
+	agentId: UUID | undefined,
+): boolean {
+	return (
+		!(memory.content && memory.content.type === "action_result") &&
+		!isInternalBridgeMessage(memory) &&
+		!isSyntheticAssistantFailureMessage(memory, agentId) &&
+		!isTransientStatusMessage(memory, agentId) &&
+		!isLeakedAssistantToolTranscript(memory, agentId) &&
+		!isLeakedAssistantPathDump(memory, agentId)
+	);
+}
+
+/**
+ * The canonical dialogue dedup pass, applied to CHRONOLOGICAL (oldest-first)
+ * rows after {@link isHygienicDialogueMessage}: collapses consecutive
+ * duplicates from any sender, then repeated assistant texts within one
+ * uninterrupted assistant run. Exported alongside the hygiene predicate so
+ * CHANNEL_RECAP serves the identical deduped dialogue the RECENT_MESSAGES
+ * prompt transcript exposes.
+ */
+export function dedupeHygienicDialogueMessages(
+	messages: Memory[],
+	agentId: UUID | undefined,
+): Memory[] {
+	return dedupeAssistantRunMessages(
+		dedupeConsecutiveDialogueMessages(messages),
+		agentId,
+	);
+}
+
 function buildFormattingFallbackEntity(memory: Memory): Entity | null {
 	const metadata = memory.metadata as CustomMetadata | undefined;
 	const entityName =
@@ -261,7 +306,14 @@ function buildFormattingFallbackEntity(memory: Memory): Entity | null {
 	} as Entity;
 }
 
-async function ensureFormattingEntities(
+/**
+ * Backfill formatting entities for message senders missing from the room's
+ * entity list: re-resolve each missing sender by id (they may have left the
+ * room but still have an entity row), then fall back to a synthetic entity
+ * built from the message's stamped `entityName` metadata. Exported so the
+ * CHANNEL_RECAP action names historical senders identically to this provider.
+ */
+export async function ensureFormattingEntities(
 	runtime: IAgentRuntime,
 	entities: Entity[],
 	messages: Memory[],
@@ -435,15 +487,7 @@ export const recentMessagesProvider: Provider = {
 			);
 
 			const rawDialogueMessages = recentMessagesData
-				.filter(
-					(msg) =>
-						!(msg.content && msg.content.type === "action_result") &&
-						!isInternalBridgeMessage(msg) &&
-						!isSyntheticAssistantFailureMessage(msg, runtime.agentId) &&
-						!isTransientStatusMessage(msg, runtime.agentId) &&
-						!isLeakedAssistantToolTranscript(msg, runtime.agentId) &&
-						!isLeakedAssistantPathDump(msg, runtime.agentId),
-				)
+				.filter((msg) => isHygienicDialogueMessage(msg, runtime.agentId))
 				.sort((a, b) => {
 					// Chronological (oldest first) is the order the prompt renders. A
 					// non-finite `createdAt` from an adapter row made the raw subtraction
@@ -457,8 +501,8 @@ export const recentMessagesProvider: Provider = {
 					if (aSafe !== bSafe) return aSafe - bSafe;
 					return String(a.id ?? "").localeCompare(String(b.id ?? ""));
 				});
-			const dialogueMessages = dedupeAssistantRunMessages(
-				dedupeConsecutiveDialogueMessages(rawDialogueMessages),
+			const dialogueMessages = dedupeHygienicDialogueMessages(
+				rawDialogueMessages,
 				runtime.agentId,
 			);
 

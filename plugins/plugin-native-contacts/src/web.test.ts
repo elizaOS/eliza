@@ -7,13 +7,13 @@ import { describe, expect, it } from "vitest";
 import { ContactsWeb } from "./web";
 
 describe("ContactsWeb fallback", () => {
-  it.each([0, -1, 501, Number.POSITIVE_INFINITY, Number.NaN])(
+  it.each([0, -1, 1.5, Number.POSITIVE_INFINITY, Number.NaN])(
     "rejects malformed listContacts limit %s",
     async (limit) => {
       const contacts = new ContactsWeb();
 
       await expect(contacts.listContacts({ limit })).rejects.toThrow(
-        "limit must be between 1 and 500",
+        "limit must be a positive safe integer",
       );
     },
   );
@@ -22,8 +22,16 @@ describe("ContactsWeb fallback", () => {
     const contacts = new ContactsWeb();
 
     await expect(
-      contacts.listContacts({ limit: 25.9, query: "../../ada" }),
+      contacts.listContacts({ limit: 25, query: "../../ada" }),
     ).resolves.toEqual({ contacts: [] });
+  });
+
+  it("accepts explicit limits above the former arbitrary ceiling", async () => {
+    const contacts = new ContactsWeb();
+
+    await expect(contacts.listContacts({ limit: 5_000 })).resolves.toEqual({
+      contacts: [],
+    });
   });
 
   it("rejects malformed create/import payloads before Android-only fallback errors", async () => {

@@ -281,9 +281,11 @@ export const TaskWidget = memo(function TaskWidget({
         <Button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          variant="ghost"
+          variant="sectionToggle"
+          size="content"
+          align="start"
           aria-expanded={expanded}
-          className="flex h-auto min-w-0 flex-1 items-start justify-start gap-2 whitespace-normal rounded-sm -mx-2 px-2 py-1.5 text-left font-normal transition-colors hover:bg-bg-hover"
+          className="-mx-2 min-w-0 flex-1"
         >
           <span
             className={`mt-0.5 inline-flex size-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
@@ -363,8 +365,9 @@ export const TaskWidget = memo(function TaskWidget({
           <Button
             type="button"
             onClick={handleOpenWorkbench}
-            variant="ghost"
-            className="h-auto w-fit self-start px-2 py-1 text-xs text-accent hover:text-accent-hover"
+            variant="externalLink"
+            size="content"
+            className="self-start"
           >
             Open in workbench →
           </Button>

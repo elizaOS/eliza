@@ -22,8 +22,10 @@ import {
   ConnectionInstructions,
 } from "../../cloud-ui/components/connection-card";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
@@ -184,7 +186,7 @@ export function WhatsAppConnection() {
         name={t("cloud.whatsapp.cardName", {
           defaultValue: "WhatsApp Business",
         })}
-        icon={<MessageSquare className="text-green-500" />}
+        icon={<MessageSquare className="text-accent" />}
         description={t("cloud.whatsapp.cardDescription", {
           defaultValue: "Connect WhatsApp Business for AI-powered automation",
         })}
@@ -198,7 +200,7 @@ export function WhatsAppConnection() {
       name={t("cloud.whatsapp.cardName", {
         defaultValue: "WhatsApp Business",
       })}
-      icon={<MessageSquare className="text-green-500" />}
+      icon={<MessageSquare className="text-accent" />}
       description={t("cloud.whatsapp.cardDescription", {
         defaultValue: "Connect WhatsApp Business for AI-powered automation",
       })}
@@ -220,8 +222,8 @@ export function WhatsAppConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Phone className="size-6 text-green-600" />}
-            iconClassName="bg-green-100"
+            icon={<Phone className="size-6 text-accent" />}
+            iconClassName="bg-accent-subtle"
             title={
               status?.businessPhone ||
               t("cloud.whatsapp.cardName", {
@@ -275,17 +277,17 @@ export function WhatsAppConnection() {
             <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
               <li>
                 {t("cloud.whatsapp.instructGoTo", { defaultValue: "Go to" })}{" "}
-                <a
+                <TextLink
                   href="https://developers.facebook.com/apps"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-txt-strong hover:underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1 text-txt-strong"
                 >
                   {t("cloud.whatsapp.metaDashboard", {
                     defaultValue: "Meta App Dashboard",
                   })}
                   <ExternalLink className="size-3" />
-                </a>
+                </TextLink>
               </li>
               <li>
                 {t("cloud.whatsapp.webhookStep2", {
@@ -357,15 +359,15 @@ export function WhatsAppConnection() {
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
                 {t("cloud.whatsapp.instructGoTo", { defaultValue: "Go to" })}{" "}
-                <a
+                <TextLink
                   href="https://developers.facebook.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-green-600 hover:underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1"
                 >
                   developers.facebook.com
                   <ExternalLink className="size-3" />
-                </a>{" "}
+                </TextLink>{" "}
                 {t("cloud.whatsapp.instructCreateApp", {
                   defaultValue: "and create a Meta Business App",
                 })}
@@ -487,7 +489,7 @@ export function WhatsAppConnection() {
           </div>
 
           {/* Capabilities preview */}
-          <div className="p-4 bg-muted rounded-sm">
+          <Card variant="flatPadded">
             <h4 className="font-medium mb-2">
               {t("cloud.whatsapp.whatYouCanDo", {
                 defaultValue: "What you can do with WhatsApp:",
@@ -515,7 +517,7 @@ export function WhatsAppConnection() {
                 })}
               </li>
             </ul>
-          </div>
+          </Card>
 
           {/* Connect button */}
           <Button
@@ -526,7 +528,7 @@ export function WhatsAppConnection() {
               !phoneNumberId.trim() ||
               !appSecret.trim()
             }
-            className="w-full bg-green-600 hover:bg-green-700"
+            className="w-full"
           >
             {isConnecting ? (
               <>

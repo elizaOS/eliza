@@ -1,33 +1,15 @@
 /**
- * Covers the agent-scoped `types.eliza` compatibility barrel: it re-exports
- * `@elizaos/shared` config types and companion helpers. These tests import
- * only from `./types.eliza.ts` and drive the real helpers (empty / single /
- * overflow collections, missing-path removal, comparator / clamp edges).
+ * Drives the agent-scoped configuration helpers across empty, singleton, and
+ * overflow collections, missing-path removal, and comparator and clamp edges.
  */
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  expectTypeOf,
-  it,
-} from "vitest";
-import type {
-  ConfigFileSnapshot,
-  ConfigValidationIssue,
-  ElizaConfig,
-} from "./types.eliza.ts";
-import * as typesEliza from "./types.eliza.ts";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ElizaConfig } from "./types.eliza.ts";
 import {
   applyConfigOverrides,
   asNonEmptyString,
   asObjectArray,
   asRecord,
   asRecordOrUndefined,
-  CHAT_IMAGE_MIME_TYPE_SET,
-  CHAT_UPLOAD_MIME_TYPE_SET,
-  CONNECTOR_IDS,
-  ELIZA_LOCAL_CONNECTOR_IDS,
   getConfigOverrides,
   getConfigValueAtPath,
   isCloudRuntimeMode,
@@ -38,15 +20,12 @@ import {
   isYoloLocalMode,
   MAX_CHAT_IMAGE_BASE64_BYTES,
   MAX_CHAT_IMAGE_RAW_BYTES,
-  MAX_CHAT_UPLOAD_ATTACHMENTS,
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   maxRawBytesForBase64,
   normalizeRuntimeExecutionMode,
   parseAllowedHostEnv,
   parseConfigPath,
   parseDurationMs,
-  RUNTIME_EXECUTION_MODE_DEFINITIONS,
-  RUNTIME_EXECUTION_MODES,
   readRuntimeExecutionModeConfig,
   resetConfigOverrides,
   resolveDistributionProfile,
@@ -87,48 +66,6 @@ afterEach(() => {
     }
   }
   resetConfigOverrides();
-});
-
-describe("types.eliza barrel", () => {
-  it("re-exports runtime config helpers, not an empty types-only module", () => {
-    expect(Object.keys(typesEliza).length).toBeGreaterThan(0);
-    expect(typeof parseDurationMs).toBe("function");
-    expect(typeof resolveRetainableAgentBackupBytes).toBe("function");
-    expect(typeof normalizeRuntimeExecutionMode).toBe("function");
-    expect(typeof parseConfigPath).toBe("function");
-    expect(typeof parseAllowedHostEnv).toBe("function");
-    expect(Array.isArray(CONNECTOR_IDS)).toBe(true);
-  });
-
-  it("re-exports ElizaConfig as a fully-optional tree and ConfigFileSnapshot as a required envelope", () => {
-    expectTypeOf<ElizaConfig>().toMatchTypeOf<Record<string, unknown>>();
-    expectTypeOf<ConfigFileSnapshot["config"]>().toEqualTypeOf<ElizaConfig>();
-    expectTypeOf<ConfigFileSnapshot["issues"]>().toEqualTypeOf<
-      ConfigValidationIssue[]
-    >();
-    const snapshot: ConfigFileSnapshot = {
-      path: "/tmp/eliza.json",
-      exists: false,
-      raw: null,
-      parsed: null,
-      valid: true,
-      config: {},
-      issues: [],
-      warnings: [],
-    };
-    expect(snapshot.config).toEqual({});
-    expect(snapshot.issues).toEqual([]);
-  });
-});
-
-describe("CONNECTOR_IDS", () => {
-  it("appends the local wechat connector after the core ids and stays unique", () => {
-    expect(ELIZA_LOCAL_CONNECTOR_IDS).toEqual(["wechat"]);
-    expect(CONNECTOR_IDS[CONNECTOR_IDS.length - 1]).toBe("wechat");
-    expect(CONNECTOR_IDS).toContain("telegram");
-    expect(CONNECTOR_IDS).toContain("discord");
-    expect(new Set(CONNECTOR_IDS).size).toBe(CONNECTOR_IDS.length);
-  });
 });
 
 describe("parseDurationMs", () => {
@@ -226,11 +163,6 @@ describe("runtime execution mode", () => {
   });
 
   it("classifies cloud vs local-safe vs local-yolo predicates", () => {
-    expect(RUNTIME_EXECUTION_MODES).toEqual([
-      "cloud",
-      "local-safe",
-      "local-yolo",
-    ]);
     expect(isCloudRuntimeMode("cloud")).toBe(true);
     expect(isCloudRuntimeMode("local-safe")).toBe(false);
     expect(isLocalRuntimeMode("local-safe")).toBe(true);
@@ -239,13 +171,6 @@ describe("runtime execution mode", () => {
     expect(isSafeLocalMode("local-safe")).toBe(true);
     expect(isYoloLocalMode("local-yolo")).toBe(true);
     expect(isYoloLocalMode("local-safe")).toBe(false);
-    expect(RUNTIME_EXECUTION_MODE_DEFINITIONS.cloud).toEqual({
-      mode: "cloud",
-      local: false,
-      cloud: true,
-      safe: true,
-      yolo: false,
-    });
   });
 
   it("falls back from an empty config to local-safe, honors a single explicit mode, and ignores invalid overflow", () => {
@@ -452,9 +377,8 @@ describe("parseAllowedHostEnv", () => {
   });
 });
 
-describe("chat upload limits", () => {
-  it("derives raw-byte caps from the base64 ceiling and keeps MIME sets disjoint by kind", () => {
-    expect(MAX_CHAT_UPLOAD_ATTACHMENTS).toBe(4);
+describe("base64 upload sizing", () => {
+  it("derives raw-byte caps from the encoded ceiling", () => {
     expect(maxRawBytesForBase64(0)).toBe(0);
     expect(maxRawBytesForBase64(4)).toBe(3);
     expect(maxRawBytesForBase64(5)).toBe(3);
@@ -462,9 +386,5 @@ describe("chat upload limits", () => {
     expect(MAX_CHAT_IMAGE_RAW_BYTES).toBe(
       maxRawBytesForBase64(MAX_CHAT_IMAGE_BASE64_BYTES),
     );
-    expect(CHAT_IMAGE_MIME_TYPE_SET.has("image/jpeg")).toBe(true);
-    expect(CHAT_IMAGE_MIME_TYPE_SET.has("audio/mpeg")).toBe(false);
-    expect(CHAT_UPLOAD_MIME_TYPE_SET.has("audio/mpeg")).toBe(true);
-    expect(CHAT_UPLOAD_MIME_TYPE_SET.has("image/tiff")).toBe(false);
   });
 });

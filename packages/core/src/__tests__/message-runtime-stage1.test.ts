@@ -15,10 +15,10 @@ import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-fi
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
+import { HANDLED_STEP_FALLBACK_MESSAGE } from "../runtime/planner-loop";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { validateCharacter } from "../schemas/character";
 import {
 	GazetteerEntityRecognizer,
 	hardenIncomingUserMessage,
@@ -26,6 +26,7 @@ import {
 } from "../security/index.js";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+	messageContinuesAfterRecentAgentCorrection,
 	messageHandlerFromFieldResult,
 	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
@@ -190,6 +191,25 @@ function stage1Response(fields: {
 	};
 }
 
+// A toolless planner turn whose terminal REPLY carries tool-call narration.
+// isUnsafeUserVisibleText rejects that shape, no tool exposed user-facing text,
+// so userSafeFinalMessage degrades the turn to HANDLED_STEP_FALLBACK_MESSAGE —
+// and with no successful non-terminal tool step the tool-turn reply guarantee
+// cannot synthesize a replacement. The placeholder is therefore RUNTIME-emitted
+// here, never model text, which is what the ambient-silence tests need to pin.
+function plannerReplyRejectedByEgress() {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "reply-1",
+				name: "REPLY",
+				arguments: { text: "We need to call SEARCH for that." },
+			},
+		],
+	};
+}
+
 function makeRuntime(
 	responses: unknown[],
 	settings?: Record<string, string>,
@@ -211,6 +231,7 @@ function makeRuntime(
 		providers: [],
 		getService: vi.fn(() => null),
 		getRoom: vi.fn(async () => null),
+		getModelRegistrations: vi.fn(() => []),
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
@@ -376,6 +397,57 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
 		}
+	});
+
+	it("tolerates a partial runtime without model registration introspection", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hello from a partial runtime.",
+			}),
+		]);
+		delete (runtime as Partial<IAgentRuntime>).getModelRegistrations;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Hello from a partial runtime.",
+			);
+		}
+	});
+
+	it("does not restore the retired maxReplyTokens Stage-1 ceiling", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "This reply uses the provider model boundary.",
+			}),
+		]);
+		runtime.character.settings = {};
+		(
+			runtime.character.settings as unknown as Record<string, unknown>
+		).maxReplyTokens = 200;
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			maxTokens?: number;
+			omitMaxTokens?: boolean;
+		};
+		expect(params.maxTokens).toBeUndefined();
+		expect(params.omitMaxTokens).toBe(true);
 	});
 
 	it("short-circuits an explicit owner-private candidate denied by disclosure", async () => {
@@ -893,56 +965,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(domainJson);
 		}
 		expect(runtime.reportError).not.toHaveBeenCalled();
-	});
-
-	// #16395: a per-agent maxReplyTokens setting caps Stage-1 with a real
-	// max_tokens, overriding the 2048 group default.
-	it("caps Stage-1 max_tokens at a per-agent maxReplyTokens setting", async () => {
-		const runtime = makeRuntime([
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "mh-1",
-						name: "HANDLE_RESPONSE",
-						arguments: {
-							shouldRespond: "RESPOND",
-							thought: "Direct answer.",
-							replyText: "Hi.",
-							contexts: ["simple"],
-							intents: [],
-							candidateActionNames: [],
-							facts: [],
-							relationships: [],
-							addressedTo: [],
-						},
-					},
-				],
-				finishReason: "tool_calls",
-			},
-		]);
-		// Round-trip through the character schema: maxReplyTokens must survive
-		// validation as a known top-level settings key (not be relocated into
-		// settings.extra, which would silently strip the budget).
-		const validated = validateCharacter({
-			name: runtime.character.name ?? "Test",
-			settings: { maxReplyTokens: 200 },
-		});
-		expect(validated.success).toBe(true);
-		if (!validated.success) return;
-		expect(validated.data.settings?.maxReplyTokens).toBe(200);
-		runtime.character.settings = validated.data.settings;
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
-		});
-
-		const params = useModelCalls(runtime)[0]?.[1] as { maxTokens?: number };
-		// Hard-capped at the per-agent budget, overriding the 2048 group default.
-		expect(params.maxTokens).toBe(200);
 	});
 
 	it("restores PII surrogates at the direct reply boundary only", async () => {
@@ -3163,6 +3185,79 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it.each([
+		{
+			caseName: "currently-open adjective order",
+			prompt:
+				'Reply in one concise sentence beginning with "BUDGET-READONLY" and identify the currently open view. Do not use tools or change anything.',
+			reply:
+				"BUDGET-READONLY the notes view is open, where I can list notes or read one.",
+		},
+		{
+			caseName: "current-open adjective order",
+			prompt:
+				"Identify the current open view. Reply with the view name and exact nonce CEREBRAS-E1F-20260826-0952. Do not use tools or change anything.",
+			reply: "notes CEREBRAS-E1F-20260826-0952",
+		},
+	] as const)(
+		"keeps read-only current-view inspection direct when the view tool surface would overflow a planner call: $caseName",
+		async ({ prompt, reply }) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: reply,
+				}),
+			]);
+			const viewsHandler = vi.fn(async () => ({
+				success: true,
+				text: "unexpected navigation",
+			}));
+			runtime.actions = [
+				{
+					name: "VIEWS",
+					similes: ["VIEW", "SHOW_VIEW", "OPEN_VIEW", "OPEN_SETTINGS"],
+					tags: ["views", "ui", "panel", "view-capability", "notes"],
+					description: `Manage and navigate UI views. ${"x".repeat(500_000)}`,
+					parameters: [
+						{
+							name: "action",
+							description: "Operation",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+					examples: [],
+					validate: async () => true,
+					handler: viewsHandler,
+				},
+			] as never;
+			const message = makeMessage();
+			message.content = {
+				...message.content,
+				text: prompt,
+				mentionContext: { isMention: true },
+			};
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			expect(viewsHandler).not.toHaveBeenCalled();
+			// The complete Stage-1 answer is the whole read-only turn. Adding the
+			// intentionally oversized tool definition to a planner request would cross
+			// the provider boundary, so this also fences the redundant-call overflow.
+			expect(useModelCalls(runtime)).toHaveLength(1);
+			expect(reportErrorCalls(runtime)).toHaveLength(0);
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(reply);
+			}
+		},
+	);
+
 	it("keeps external-content armor out of deterministic action inference", async () => {
 		const directAnswer =
 			"Dinner is at 6:30 PM for four people at Saffron House.";
@@ -4118,13 +4213,33 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerContent).toContain(
 			"Never send a status update, a progress note, or a description of your own process",
 		);
+		// The instruction names the forbidden SHAPE and quotes no sentence. It
+		// used to quote HANDLED_STEP_FALLBACK_MESSAGE as its example; putting an
+		// emittable forbidden sentence in context is a known way to get a weak
+		// model to emit it, and the guarantee is structural now (the ambient
+		// placeholder resolves to the silent terminal) rather than instructional.
+		expect(plannerContent).not.toContain(HANDLED_STEP_FALLBACK_MESSAGE);
+		expect(plannerContent).toContain(
+			"any sentence whose subject is what you did, tried, handled, or checked",
+		);
 		// Stage 1 carries the same policy in shouldRespond terms (the planner
 		// wording names the IGNORE tool, which Stage 1 cannot call): an
 		// ambient-mode group forwards every message, and without this the
 		// shouldRespond field guidance alone read as RESPOND on nearly all of
 		// them (live five-room evaluation: 7-10 unsolicited replies per room).
 		expect(stage1Content).toContain("ambient_turn_policy:");
+		expect(stage1Content).toContain(
+			"a direct mention, reply, or clear continuation addressed to Test Agent -> RESPOND",
+		);
+		expect(stage1Content).not.toContain("addressed to  ->");
 		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
+		expect(stage1Content).toContain(
+			"challenges or asks to clarify your immediately preceding prior_message:agent reply",
+		);
+		expect(stage1Content).toContain("explicit standing responsibility");
+		expect(stage1Content).not.toContain("someone asks the group");
+		expect(stage1Content).not.toContain("active in the conversation");
+		expect(stage1Content).not.toContain("able to usefully add");
 		expect(stage1Content).not.toContain(
 			"end the turn by calling the IGNORE tool",
 		);
@@ -4134,6 +4249,221 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "terminal") {
 			expect(result.action).toBe("IGNORE");
 		}
+	});
+
+	it("recognizes a bounded continuation from the participant who corrected the agent", () => {
+		const runtime = makeRuntime([]);
+		const correctingEntityId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const otherEntityId = "00000000-0000-0000-0000-000000000005" as UUID;
+		const recentMessages: Memory[] = [
+			{
+				...makeMessage({ text: "You should send a follow-up email." }),
+				id: "00000000-0000-0000-0000-000000000010" as UUID,
+				entityId: runtime.agentId,
+			},
+			{
+				...makeMessage({
+					text: "Please don't fix it. In this chat we listen unless someone asks for ideas.",
+				}),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: correctingEntityId,
+			},
+			{
+				...makeMessage({ text: "yeah, no homework assignment right now" }),
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				entityId: otherEntityId,
+			},
+		];
+		const state: State = {
+			...makeState(),
+			data: { providers: { RECENT_MESSAGES: { data: { recentMessages } } } },
+		};
+		const continuation = makeMessage({
+			text: "and now I remembered I blanked on the easiest question",
+			channelType: ChannelType.GROUP,
+		});
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(runtime, continuation, state),
+		).toBe(true);
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{ ...continuation, entityId: otherEntityId },
+				state,
+			),
+		).toBe(false);
+	});
+
+	it("does not treat incidental or third-party correction language as agent repair", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const agentMessage = {
+			...makeMessage({ text: "Here is my thought." }),
+			id: "00000000-0000-0000-0000-000000000010" as UUID,
+			entityId: runtime.agentId,
+		};
+		const continuation = {
+			...makeMessage({
+				text: "and now I remembered another part",
+				channelType: ChannelType.GROUP,
+			}),
+			entityId: speakerId,
+		};
+		for (const text of [
+			"The bus stop is nearby.",
+			"That quote is too much for us.",
+			"Please do not deploy that.",
+			"Bob, stop explaining it to me.",
+		]) {
+			const correction = {
+				...makeMessage({ text }),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: speakerId,
+			};
+			const state: State = {
+				...makeState(),
+				data: {
+					providers: {
+						RECENT_MESSAGES: {
+							data: { recentMessages: [agentMessage, correction] },
+						},
+					},
+				},
+			};
+			expect(
+				messageContinuesAfterRecentAgentCorrection(
+					runtime,
+					continuation,
+					state,
+				),
+			).toBe(false);
+		}
+	});
+
+	it("fails closed when the current continuation has no stable message id", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const state: State = {
+			...makeState(),
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									...makeMessage({ text: "You should follow up." }),
+									id: "00000000-0000-0000-0000-000000000010" as UUID,
+									entityId: runtime.agentId,
+								},
+								{
+									...makeMessage({ text: "Please don't fix it." }),
+									id: "00000000-0000-0000-0000-000000000011" as UUID,
+									entityId: speakerId,
+								},
+							],
+						},
+					},
+				},
+			},
+		};
+		const continuation = {
+			...makeMessage({
+				text: "and now I remembered another part",
+				channelType: ChannelType.GROUP,
+			}),
+			id: undefined,
+			entityId: speakerId,
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(runtime, continuation, state),
+		).toBe(false);
+	});
+
+	it("expires repair permission after the correcting participant's first continuation", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const recentMessages: Memory[] = [
+			{
+				...makeMessage({ text: "You should send a follow-up email." }),
+				id: "00000000-0000-0000-0000-000000000010" as UUID,
+				entityId: runtime.agentId,
+			},
+			{
+				...makeMessage({ text: "Please don't fix it." }),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: speakerId,
+			},
+			{
+				...makeMessage({ text: "and now I remembered another part" }),
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				entityId: speakerId,
+			},
+		];
+		const state: State = {
+			...makeState(),
+			data: { providers: { RECENT_MESSAGES: { data: { recentMessages } } } },
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{
+					...makeMessage({
+						text: "also, lunch at noon?",
+						channelType: ChannelType.GROUP,
+					}),
+					entityId: speakerId,
+				},
+				state,
+			),
+		).toBe(false);
+	});
+
+	it("expires a sparse-room repair exchange after fifteen minutes", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const correction = {
+			...makeMessage({ text: "Please don't fix it." }),
+			id: "00000000-0000-0000-0000-000000000011" as UUID,
+			entityId: speakerId,
+			createdAt: 1_000,
+		};
+		const state: State = {
+			...makeState(),
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									...makeMessage({ text: "You should follow up." }),
+									id: "00000000-0000-0000-0000-000000000010" as UUID,
+									entityId: runtime.agentId,
+								},
+								correction,
+							],
+						},
+					},
+				},
+			},
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{
+					...makeMessage({
+						text: "and I remembered another part",
+						channelType: ChannelType.GROUP,
+					}),
+					entityId: speakerId,
+					createdAt: 15 * 60_000 + 1_001,
+				},
+				state,
+			),
+		).toBe(false);
 	});
 
 	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {
@@ -4182,6 +4512,174 @@ describe("runV5MessageRuntimeStage1", () => {
 			);
 			// Effect honesty: nothing ran this turn, so no failure narrative.
 			expect(text).not.toMatch(/ran the steps|failed/i);
+		}
+	});
+
+	it("resolves an ambient turn whose only planner text is the handled-step placeholder to a recorded IGNORE", async () => {
+		// Live five-room group evaluation (real Cerebras, two runs, same script
+		// position in two rooms): Eliza posted "I handled the available step."
+		// unsolicited into a group. The string is NOT the model echoing the
+		// forbidden example from its prompt — it is HANDLED_STEP_FALLBACK_MESSAGE,
+		// which userSafeFinalMessage emits when every model candidate fails the
+		// egress safety chain and no tool exposed user-facing text. The tool-turn
+		// reply guarantee only replaces it after a successful non-terminal tool
+		// step, so a turn with no tool work ships it verbatim. The fixture
+		// reproduces exactly that: a terminal REPLY carrying tool-call narration
+		// ("we need to call SEARCH"), which the egress chain rejects, with no tool
+		// executed. On an unaddressed turn the placeholder is a description of the
+		// agent's own process posted to other people — the empty outcome the
+		// ambient policy says means silence — so it must reach the same recorded
+		// IGNORE terminal a planner IGNORE does, not a delivered message.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Ambient chatter, but check whether tools have anything.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			plannerReplyRejectedByEgress(),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-00000000f001" as UUID,
+		});
+
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+	});
+
+	it("still delivers real planner content on an ambient turn", async () => {
+		// Over-reach guard: ambient silence is scoped to the placeholder outcome,
+		// never to a turn that actually produced something for the participants.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "They are asking the group something I know.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-2",
+						name: "REPLY",
+						arguments: { text: "The cafe on 5th closes at 6." },
+					},
+				],
+			},
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "anyone know when it closes?",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-00000000f002" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"The cafe on 5th closes at 6.",
+			);
+		}
+	});
+
+	it("turns rejected planner output into a truthful no-answer on an ADDRESSED turn", async () => {
+		// Someone asked Eliza directly, so the addressed delivery floor (#23223)
+		// must answer rather than silently discard the turn. Byte-identical fixture
+		// to the ambient case except for the platform mention: the unsafe model text
+		// is still rejected, but the internal handled-step marker must become the
+		// neutral toolless recovery contract instead of claiming work succeeded.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Addressed follow-up; see if the planner has anything.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			plannerReplyRejectedByEgress(),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-00000000f003" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I don't have a useful answer to that right now — ask again and I will retry.",
+			);
+			expect(result.result.responseContent?.text).not.toBe(
+				HANDLED_STEP_FALLBACK_MESSAGE,
+			);
+		}
+	});
+
+	it("keeps truthful no-answer delivery on reply_gate 'always' and trigger-prompt bypass turns", async () => {
+		// #25279 regressed exactly these two classes and #25341 repaired them by
+		// restoring reply_gate "always" and the configured/canonical bypasses.
+		// Both turns are unaddressed group traffic, so only the bypass keeps them
+		// off the ambient path. They still owe a response, but rejected planner text
+		// must resolve through the neutral toolless recovery contract.
+		const cases = [
+			{
+				label: "reply_gate always",
+				withGate: (runtime: IAgentRuntime) =>
+					withReplyGateSlots(runtime, "always", "addressed_or_ambient"),
+				content: { channelType: ChannelType.GROUP } as Partial<
+					Memory["content"]
+				>,
+			},
+			{
+				label: "trigger-prompt automation",
+				withGate: (runtime: IAgentRuntime) => runtime,
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "trigger-prompt",
+				} as Partial<Memory["content"]>,
+			},
+		];
+
+		for (const testCase of cases) {
+			const runtime = testCase.withGate(
+				makeRuntime([
+					stage1Response({
+						thought: "Bypassed turn; the planner still runs.",
+						contexts: ["general"],
+						replyText: "",
+					}),
+					plannerReplyRejectedByEgress(),
+				]),
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "what was it for?",
+					...testCase.content,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-00000000f004" as UUID,
+			});
+
+			expect(result.kind, testCase.label).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text, testCase.label).toBe(
+					"I don't have a useful answer to that right now — ask again and I will retry.",
+				);
+			}
 		}
 	});
 
@@ -6149,6 +6647,34 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("observes a RESPOND decision without entering reply generation or planning", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				replyText: "Let me answer that.",
+			}),
+		]);
+		const observations: Array<{ decision: string; prefixHash: string }> = [];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			stage1DecisionOnly: true,
+			onStage1Decision: ({ decision, prefixHash }) => {
+				observations.push({ decision, prefixHash });
+			},
+		});
+
+		expect(result).toMatchObject({ kind: "decision", action: "RESPOND" });
+		expect(observations).toHaveLength(1);
+		expect(observations[0]?.decision).toBe("RESPOND");
+		expect(observations[0]?.prefixHash).toMatch(/^[a-f0-9]{64}$/);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
 	it("renders direct-message instructions that forbid ungrounded simple replies and phantom action claims", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -6362,6 +6888,293 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent).toBeNull();
 			expect(result.result.responseMessages).toEqual([]);
 		}
+	});
+
+	it("reconciles the exact Computer Use fallback candidates before planner selection", async () => {
+		const delivered = "Telegram launch dispatched through Computer Use.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["browser", "automation"],
+				intents: ["open telegram using computer use"],
+				candidateActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Use the requested host-control capability.",
+				toolCalls: [
+					{
+						id: "computer-use-1",
+						name: "COMPUTER_USE",
+						args: { action: "launch", app: "Telegram" },
+					},
+				],
+			},
+		]);
+		const computerUseHandler = vi.fn(
+			async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({
+					text: delivered,
+					source: "action",
+					action: "COMPUTER_USE",
+				});
+				return {
+					success: true,
+					text: delivered,
+					userFacingText: delivered,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					data: {
+						actionName: "COMPUTER_USE",
+						action: "launch",
+						app: "Telegram",
+					},
+				};
+			},
+		);
+		runtime.actions = [
+			{
+				name: "COMPUTER_USE",
+				tags: [
+					"domain:computer-use",
+					"capability:desktop-control",
+					"effect:host-action",
+				],
+				description: "Control native applications on the owner's computer.",
+				contexts: ["browser", "automation", "admin"],
+				suppressPostActionContinuation: true,
+				parameters: [
+					{
+						name: "action",
+						description: "Desktop action",
+						required: true,
+						schema: { type: "string", enum: ["launch"] },
+					},
+					{
+						name: "app",
+						description: "Application name",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: async () => true,
+				handler: computerUseHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.computer-use.explicit-host-control",
+			actionNames: ["COMPUTER_USE"],
+			replacesActionNames: [
+				"BROWSER",
+				"BROWSER_NAVIGATE",
+				"AUTOMATION_TRIGGER",
+				"TRIGGER",
+				"VIEWS",
+			],
+			requiredActionTags: [
+				"domain:computer-use",
+				"capability:desktop-control",
+				"effect:host-action",
+			],
+			contexts: ["automation", "admin"],
+			matches: (text) => /\bcomputer[\s_-]*use\s+to\b/iu.test(text),
+		});
+		const directRouteEvaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) =>
+				evaluator.name === "core.direct_registered_capability_request",
+		);
+		if (!directRouteEvaluator)
+			throw new Error("direct route evaluator missing");
+		runtime.responseHandlerEvaluators = [directRouteEvaluator];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "can u use computer use to open telegram",
+			}),
+			state: {
+				...makeState(),
+				values: {
+					availableContexts: "general, browser, automation, admin",
+				},
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(result.messageHandler.plan.candidateActions).toEqual([
+			"COMPUTER_USE",
+		]);
+		expect(result.messageHandler.plan.candidateActions).not.toContain(
+			"BROWSER_NAVIGATE",
+		);
+		expect(result.messageHandler.plan.candidateActions).not.toContain(
+			"AUTOMATION_TRIGGER",
+		);
+		expect(computerUseHandler).toHaveBeenCalledTimes(1);
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+	});
+
+	it("does not execute browser or automation fallbacks when explicit Computer Use is unavailable", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["browser", "automation"],
+				intents: ["open telegram using computer use"],
+				candidateActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+		]);
+		const browserHandler = vi.fn(async () => ({
+			success: true,
+			text: "Browser fallback ran.",
+		}));
+		const automationHandler = vi.fn(async () => ({
+			success: true,
+			text: "Automation fallback ran.",
+		}));
+		runtime.actions = [
+			{
+				name: "BROWSER_NAVIGATE",
+				description: "Navigate a browser.",
+				contexts: ["browser"],
+				validate: async () => true,
+				handler: browserHandler,
+			},
+			{
+				name: "AUTOMATION_TRIGGER",
+				description: "Run an automation.",
+				contexts: ["automation"],
+				validate: async () => true,
+				handler: automationHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.computer-use.explicit-host-control",
+			actionNames: ["COMPUTER_USE"],
+			replacesActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+			requiredActionTags: [
+				"domain:computer-use",
+				"capability:desktop-control",
+				"effect:host-action",
+			],
+			contexts: ["automation", "admin"],
+			unavailable: {
+				code: "COMPUTER_USE_UNAVAILABLE",
+				reply:
+					"Computer Use is unavailable in this app session. Enable Computer Use, restart the app session, and try again. (COMPUTER_USE_UNAVAILABLE)",
+			},
+			matches: (text) => /\bcomputer[\s_-]*use\s+to\b/iu.test(text),
+		});
+		const directRouteEvaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) =>
+				evaluator.name === "core.direct_registered_capability_request",
+		);
+		if (!directRouteEvaluator)
+			throw new Error("direct route evaluator missing");
+		runtime.responseHandlerEvaluators = [directRouteEvaluator];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "can u use computer use to open telegram",
+			}),
+			state: {
+				...makeState(),
+				values: {
+					availableContexts: "general, browser, automation, admin",
+				},
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(result.messageHandler.plan.requiresTool).toBe(false);
+		expect(result.messageHandler.plan.candidateActions).toBeUndefined();
+		expect(browserHandler).not.toHaveBeenCalled();
+		expect(automationHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Computer Use is unavailable in this app session. Enable Computer Use, restart the app session, and try again. (COMPUTER_USE_UNAVAILABLE)",
+			);
+		}
+	});
+
+	it("does not execute an unrelated Stage-1 tool for explicit unavailable Computer Use", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["terminal"],
+				intents: ["open telegram using computer use"],
+				candidateActionNames: ["SHELL"],
+				replyText: "Running that now.",
+				extra: { requiresTool: true },
+			}),
+		]);
+		const shellHandler = vi.fn(async () => ({
+			success: true,
+			text: "Shell fallback ran.",
+		}));
+		runtime.actions = [
+			{
+				name: "SHELL",
+				description: "Execute a local shell command.",
+				contexts: ["terminal"],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.computer-use.explicit-host-control",
+			actionNames: ["COMPUTER_USE"],
+			replacesActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+			requiredActionTags: [
+				"domain:computer-use",
+				"capability:desktop-control",
+				"effect:host-action",
+			],
+			contexts: ["automation", "admin"],
+			unavailable: {
+				code: "COMPUTER_USE_UNAVAILABLE",
+				reply:
+					"Computer Use is unavailable in this app session. Enable Computer Use, restart the app session, and try again. (COMPUTER_USE_UNAVAILABLE)",
+			},
+			matches: (text) => /\bcomputer[\s_-]*use\s+to\b/iu.test(text),
+		});
+		const directRouteEvaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) =>
+				evaluator.name === "core.direct_registered_capability_request",
+		);
+		if (!directRouteEvaluator)
+			throw new Error("direct route evaluator missing");
+		runtime.responseHandlerEvaluators = [directRouteEvaluator];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "can u use computer use to open telegram",
+			}),
+			state: {
+				...makeState(),
+				values: {
+					availableContexts: "general, terminal, automation, admin",
+				},
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(result.messageHandler.plan.requiresTool).toBe(false);
+		expect(result.messageHandler.plan.candidateActions).toBeUndefined();
+		expect(shellHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
 	});
 
 	it("reconciles the owner reminder route without dropping a compound Stage-1 candidate", async () => {

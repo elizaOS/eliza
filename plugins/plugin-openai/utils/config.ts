@@ -430,10 +430,6 @@ export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
   return getNumericSetting(runtime, "OPENAI_EMBEDDING_DIMENSIONS", 1536);
 }
 
-export function getImageDescriptionMaxTokens(runtime: IAgentRuntime): number {
-  return getNumericSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS", 8192);
-}
-
 export function getResearchModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "OPENAI_RESEARCH_MODEL") ?? "o3-deep-research";
 }

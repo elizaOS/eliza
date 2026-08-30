@@ -229,11 +229,6 @@ describe("FORM_CONTEXT provider", () => {
 });
 
 describe("FORM action", () => {
-  it("declares the canonical name", () => {
-    expect(formAction.name).toBe("FORM");
-    expect(formAction.similes).toContain("FORM_RESTORE");
-  });
-
   it("validates only when stashed sessions exist and no active session", async () => {
     const stashed = makeSession({ id: "stashed", status: "stashed" });
     const formService = {

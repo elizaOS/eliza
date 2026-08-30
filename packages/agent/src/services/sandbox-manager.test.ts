@@ -889,14 +889,15 @@ describe("SandboxManager", () => {
       expect(manager.getEventLog()).toHaveLength(1);
     });
 
-    it("trims the log to the newest 500 events once it exceeds 1000", async () => {
+    it("preserves every event after the former rolling-window boundary", async () => {
       const manager = await startReady(workspaceRoot);
       const before = manager.getEventLog().length;
       const extra = 1001 - before;
       for (let i = 0; i < extra; i += 1) {
         await manager.exec({ command: `echo ${i}` });
       }
-      expect(manager.getEventLog()).toHaveLength(500);
+      expect(manager.getEventLog()).toHaveLength(1001);
+      expect(manager.getEventLog()[0]?.type).toBe("state_change");
       const last = manager.getEventLog().at(-1);
       expect(last?.type).toBe("exec");
       expect(last?.detail).toBe(`echo ${extra - 1}`);

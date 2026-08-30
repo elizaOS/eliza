@@ -15,6 +15,8 @@ export const GOOGLE_GMAIL_READ_SCOPE =
   "https://www.googleapis.com/auth/gmail.readonly";
 export const GOOGLE_GMAIL_SEND_SCOPE =
   "https://www.googleapis.com/auth/gmail.send";
+export const GOOGLE_GMAIL_COMPOSE_SCOPE =
+  "https://www.googleapis.com/auth/gmail.compose";
 export const GOOGLE_GMAIL_MODIFY_SCOPE =
   "https://www.googleapis.com/auth/gmail.modify";
 export const GOOGLE_GMAIL_SETTINGS_BASIC_SCOPE =
@@ -26,6 +28,7 @@ const GOOGLE_CAPABILITY_SCOPE_MAP: Record<LifeOpsGoogleCapability, string[]> = {
   "google.calendar.write": [GOOGLE_CALENDAR_WRITE_SCOPE],
   // Reading message bodies requires gmail.readonly rather than gmail.metadata.
   "google.gmail.triage": [GOOGLE_GMAIL_READ_SCOPE],
+  "google.gmail.compose": [GOOGLE_GMAIL_COMPOSE_SCOPE],
   "google.gmail.send": [GOOGLE_GMAIL_SEND_SCOPE],
   // Managing labels, filters, and archive/trash flows (auto-unsubscribe).
   "google.gmail.manage": [
@@ -134,6 +137,9 @@ export function googleScopesToCapabilities(
 
   if (granted.has(GOOGLE_GMAIL_SEND_SCOPE)) {
     capabilities.push("google.gmail.send");
+  }
+  if (granted.has(GOOGLE_GMAIL_COMPOSE_SCOPE)) {
+    capabilities.push("google.gmail.compose");
   }
   if (
     granted.has(GOOGLE_GMAIL_MODIFY_SCOPE) &&

@@ -175,7 +175,7 @@ describe("WorkflowEditor", () => {
   it("persists a new workflow before starting its first run", async () => {
     render(<WorkflowEditor />);
     const runButton = screen.getByRole("button", { name: "Run" });
-    expect(runButton.className).toContain("hover:bg-accent/85");
+    expect(runButton.className).toContain("hover:bg-accent-hover");
     fireEvent.click(runButton);
     await waitFor(() =>
       expect(api.createWorkflowDefinition).toHaveBeenCalledTimes(1),
@@ -227,8 +227,8 @@ describe("WorkflowEditor", () => {
     render(<WorkflowEditor initial={configured} />);
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     expect(
-      ((await screen.findByRole("checkbox")) as HTMLInputElement).checked,
-    ).toBe(false);
+      (await screen.findByRole("checkbox")).getAttribute("aria-checked"),
+    ).toBe("false");
     fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
     await waitFor(() =>
       expect(api.runWorkflowDefinition).toHaveBeenCalledWith("workflow-1", {

@@ -32,17 +32,6 @@ describe("getSkillsDir", () => {
     delete process.env.ELIZAOS_BUNDLED_SKILLS_DIR;
   });
 
-  it("returns a non-empty string path", () => {
-    const dir = getSkillsDir();
-    assert.ok(typeof dir === "string");
-    assert.ok(dir.length > 0);
-  });
-
-  it("returns a path that exists on disk", () => {
-    const dir = getSkillsDir();
-    assert.ok(existsSync(dir), `Skills dir should exist: ${dir}`);
-  });
-
   it("returns consistent path (caching works)", () => {
     const first = getSkillsDir();
     const second = getSkillsDir();

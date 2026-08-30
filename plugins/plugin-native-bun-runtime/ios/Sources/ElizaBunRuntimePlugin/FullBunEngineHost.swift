@@ -509,7 +509,7 @@ final class FullBunEngineHost {
         }
         let maxTokens = int32Value(payload, "max_tokens")
             ?? int32Value(payload, "maxTokens")
-            ?? 256
+            ?? Int32.max
         let temperature = floatValue(payload, "temperature") ?? 0.7
         let topP = floatValue(payload, "top_p") ?? floatValue(payload, "topP") ?? 0.95
         let topK = int32Value(payload, "top_k") ?? int32Value(payload, "topK") ?? 40
@@ -542,6 +542,8 @@ final class FullBunEngineHost {
             "promptTokens": NSNumber(value: result.promptTokens),
             "outputTokens": NSNumber(value: result.outputTokens),
             "durationMs": NSNumber(value: result.durationMs),
+            "finishReason": result.finishReason,
+            "incomplete": NSNumber(value: result.incomplete),
         ])
     }
 

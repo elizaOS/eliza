@@ -2621,7 +2621,7 @@ async function runTurnAssertions(
     plannerExcludes.length > 0
   ) {
     const plannerBlob = buildPlannerAssertionBlob(execution);
-    const plannerPreview = JSON.stringify(plannerBlob.slice(0, 500));
+    const plannerEvidence = JSON.stringify(plannerBlob);
     if (plannerIncludesAll.length > 0) {
       const missing = plannerIncludesAll.filter(
         (pattern) => !matchesTurnMatcher(plannerBlob, pattern),
@@ -2630,7 +2630,7 @@ async function runTurnAssertions(
         failures.push(
           `plannerIncludesAll: expected planner trace to include ${formatTurnMatcher(
             missing[0] as TurnMatcher,
-          )}, saw ${plannerPreview}`,
+          )}, saw ${plannerEvidence}`,
         );
       }
     }
@@ -2642,7 +2642,7 @@ async function runTurnAssertions(
         failures.push(
           `plannerIncludesAny: expected planner trace to include any of [${formatTurnMatchers(
             plannerIncludesAny,
-          )}], saw ${plannerPreview}`,
+          )}], saw ${plannerEvidence}`,
         );
       }
     }
@@ -2654,7 +2654,7 @@ async function runTurnAssertions(
         failures.push(
           `plannerExcludes: expected planner trace to exclude [${formatTurnMatchers(
             hits,
-          )}], saw ${plannerPreview}`,
+          )}], saw ${plannerEvidence}`,
         );
       }
     }

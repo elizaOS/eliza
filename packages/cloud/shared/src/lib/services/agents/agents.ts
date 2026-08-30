@@ -352,7 +352,7 @@ class AgentsService {
 
     // PERFORMANCE: Fetch messages and participants in parallel
     const [messages, participantIds] = await Promise.all([
-      memoriesRepository.findMessages(roomId, { limit: 20 }),
+      memoriesRepository.findMessages(roomId),
       participantsRepository.getEntityIdsByRoomId(roomId),
     ]);
 

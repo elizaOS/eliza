@@ -350,7 +350,7 @@ export class TelegramDomain {
         const messages = await this.searchTelegramMessages({
           side,
           query: "",
-          limit: request.recentLimit ?? 10,
+          limit: request.recentLimit,
         });
         read = {
           ok: true,

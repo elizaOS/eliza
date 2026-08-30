@@ -155,9 +155,7 @@ export function EditSkillModal({
             <DialogTitle className="font-semibold text-sm truncate">
               {skillName}
             </DialogTitle>
-            <AdminMonoMeta className="rounded-sm border border-border bg-bg-hover px-1.5 py-0.5">
-              {t("skillsview.SKILLMd")}
-            </AdminMonoMeta>
+            <AdminMonoMeta>{t("skillsview.SKILLMd")}</AdminMonoMeta>
             <DialogDescription className="sr-only">
               {t("skillsview.editSkillSourceDescription", {
                 defaultValue:
@@ -188,8 +186,7 @@ export function EditSkillModal({
               <Button
                 ref={retryControl.ref}
                 variant="outline"
-                size="sm"
-                className="text-xs"
+                size="compact"
                 onClick={() => loadSource()}
                 {...retryControl.agentProps}
               >
@@ -219,8 +216,7 @@ export function EditSkillModal({
             <Button
               ref={closeControl.ref}
               variant="outline"
-              size="sm"
-              className="text-xs"
+              size="compact"
               onClick={onClose}
               {...closeControl.agentProps}
             >
@@ -231,12 +227,7 @@ export function EditSkillModal({
             <Button
               ref={saveControl.ref}
               variant="default"
-              size="sm"
-              className={`text-xs font-medium ${
-                saveSuccess
-                  ? "border-ok/40 bg-ok text-white hover:bg-ok/90"
-                  : ""
-              }`}
+              size="compact"
               onClick={() => handleSave()}
               disabled={saving || !hasChanges}
               {...saveControl.agentProps}
@@ -399,12 +390,14 @@ export function SkillsModalView() {
           ) : (
             filtered.map((skill) => (
               <Button
-                variant="ghost"
+                variant="selection"
+                size="card"
                 key={skill.id}
                 type="button"
                 role="option"
                 aria-selected={effectiveSelectedId === skill.id}
-                className={`plugins-game-card${effectiveSelectedId === skill.id ? " is-selected" : ""}${!skill.enabled ? " is-disabled" : ""} h-auto`}
+                data-state={effectiveSelectedId === skill.id ? "on" : "off"}
+                className={`plugins-game-card${!skill.enabled ? " is-disabled" : ""}`}
                 onClick={() => setSelectedId(skill.id)}
               >
                 <div className="plugins-game-card-icon-shell">

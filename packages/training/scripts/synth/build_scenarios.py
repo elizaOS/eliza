@@ -3,10 +3,11 @@
 Source: data/synthesized/{should_respond_routing,dialogue_routing,
                           action_pairs/*,...}/*.jsonl
 Each record already has roomName/agentId/memoryEntries/currentMessage.
-We re-emit it as a `scenario` line for `drive_eliza.py`.
+We re-emit it as a scenario line for the project-simulation inputs.
 
 Output: scripts/synth/scenarios/all.jsonl (1 scenario per line)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,8 +34,10 @@ def to_scenario(rec: dict, source: str) -> dict | None:
         "user_text": text,
         "context": {
             "channel": cm.get("channel", "dm"),
-            "available_actions": rec.get("availableActions") or [
-                "REPLY", "IGNORE",
+            "available_actions": rec.get("availableActions")
+            or [
+                "REPLY",
+                "IGNORE",
             ],
             "memory": [
                 {"role": m.get("role", "user"), "content": m.get("content", "")}

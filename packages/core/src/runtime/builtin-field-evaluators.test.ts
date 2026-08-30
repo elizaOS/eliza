@@ -24,6 +24,24 @@ import {
 } from "./builtin-field-evaluators.ts";
 
 describe("shouldRespondFieldEvaluator", () => {
+	it("does not treat mere participation or possible helpfulness as a reason to interrupt", () => {
+		expect(shouldRespondFieldEvaluator.description).toContain(
+			"current message",
+		);
+		expect(shouldRespondFieldEvaluator.description).not.toContain(
+			"active in the conversation",
+		);
+		expect(shouldRespondFieldEvaluator.description).not.toContain(
+			"able to usefully add",
+		);
+		expect(shouldRespondFieldEvaluator.schema.description).not.toContain(
+			"active conversation",
+		);
+		expect(shouldRespondFieldEvaluator.schema.description).not.toContain(
+			"usefully add",
+		);
+	});
+
 	it("accepts the three enum values in any case or surrounding whitespace", () => {
 		expect(shouldRespondFieldEvaluator.parse("RESPOND")).toBe("RESPOND");
 		expect(shouldRespondFieldEvaluator.parse("  ignore ")).toBe("IGNORE");

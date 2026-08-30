@@ -21,6 +21,7 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
   elizaCloudEnvironmentForHostname,
 } from "@elizaos/shared/elizacloud";
+import { runWithDbCacheAsync } from "@/db/client";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -36,6 +37,11 @@ import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { checkProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health";
+import { isContainerBackedExecutionTier } from "@/lib/services/sandbox-provider-types";
+import {
+  dedicatedAgentTransportToken,
+  personalDedicatedAgentApiBase,
+} from "@/lib/services/shared-runtime/personal-shared-agent";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -418,6 +424,151 @@ type Sandbox = NonNullable<
   Awaited<ReturnType<typeof agentSandboxesRepository.findByIdAndOrg>>
 >;
 
+export interface OwnedDedicatedVoiceConversationClaims {
+  agentId: string;
+  conversationId: string;
+  organizationId: string;
+  userId: string;
+}
+
+export type OwnedDedicatedVoiceConversationResolution =
+  | { kind: "not_dedicated" }
+  | { kind: "dedicated"; fetch: typeof fetch };
+
+function fixedOwnedDedicatedVoiceResponse(
+  body: Record<string, unknown>,
+  status: number,
+  headers?: HeadersInit,
+): OwnedDedicatedVoiceConversationResolution {
+  return {
+    kind: "dedicated",
+    fetch: (async () =>
+      Response.json(body, { status, headers })) as unknown as typeof fetch,
+  };
+}
+
+/**
+ * Resolve the same owner-scoped Dedicated runtime transport used by the public
+ * agent subdomain, but for a short-lived server-authenticated voice session.
+ *
+ * The caller already verified the voice JWT and the internal service headers;
+ * this boundary re-checks the authoritative sandbox row (org + user + tier)
+ * before retaining the container credential in a session-local closure. The
+ * returned fetch maps only the canonical conversation stream to the runtime;
+ * no Cloud credential crosses into the tenant container.
+ */
+export async function createOwnedDedicatedVoiceConversationFetch(
+  env: Bindings,
+  claims: OwnedDedicatedVoiceConversationClaims,
+): Promise<OwnedDedicatedVoiceConversationResolution> {
+  return runWithDbCacheAsync(async () => {
+    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
+      claims.agentId,
+      claims.organizationId,
+    );
+    if (!sandbox || sandbox.user_id !== claims.userId) {
+      return fixedOwnedDedicatedVoiceResponse(
+        {
+          success: false,
+          error: "Agent not found",
+          code: "agent_not_found",
+        },
+        404,
+      );
+    }
+    if (sandbox.execution_tier === "shared") {
+      return { kind: "not_dedicated" };
+    }
+    if (!isContainerBackedExecutionTier(sandbox.execution_tier)) {
+      return fixedOwnedDedicatedVoiceResponse(
+        {
+          success: false,
+          code: "agent_unavailable",
+          error: "Dedicated agent connection is unavailable",
+        },
+        503,
+      );
+    }
+    if (sandbox.status !== "running") {
+      return fixedOwnedDedicatedVoiceResponse(
+        {
+          success: false,
+          code: "agent_not_running",
+          error: "Dedicated agent is not running yet",
+          data: { status: sandbox.status },
+        },
+        503,
+        { "Retry-After": String(RETRY_AFTER_SECONDS) },
+      );
+    }
+
+    const localSentinel = env.ELIZA_CLOUD_AGENT_BASE_DOMAIN === "https://";
+    const headscaleIp = (sandbox.headscale_ip ?? "").trim();
+    if (!localSentinel && !headscaleIp && !isBridgeHostFallbackEnabled(env)) {
+      return fixedOwnedDedicatedVoiceResponse(
+        {
+          success: false,
+          code: "agent_unroutable",
+          error:
+            "Agent is running but has no routable network ingress yet (mesh join incomplete). Retry shortly.",
+        },
+        503,
+        { "Retry-After": String(RETRY_AFTER_SECONDS) },
+      );
+    }
+
+    const runtimeBase = personalDedicatedAgentApiBase(
+      sandbox,
+      env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+    );
+    const agentToken = dedicatedAgentTransportToken(sandbox);
+    if (!runtimeBase || !agentToken) {
+      return fixedOwnedDedicatedVoiceResponse(
+        {
+          success: false,
+          code: "agent_unavailable",
+          error: "Dedicated agent connection is unavailable",
+        },
+        503,
+      );
+    }
+
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const incoming = new Request(input, init);
+      const target = new URL(runtimeBase);
+      target.pathname = `/api/conversations/${encodeURIComponent(
+        claims.conversationId,
+      )}/messages/stream`;
+      target.search = new URL(incoming.url).search;
+      target.hash = "";
+
+      const headers = new Headers(incoming.headers);
+      headers.delete("host");
+      stripCloudOnlyCredentials(headers);
+      headers.delete("x-api-key");
+      headers.set("authorization", `Bearer ${agentToken}`);
+      const method = incoming.method.toUpperCase();
+      const requestInit: RequestInit = {
+        method,
+        headers,
+        redirect: "manual",
+        signal: incoming.signal,
+      };
+      if (method !== "GET" && method !== "HEAD") {
+        requestInit.body = await incoming.arrayBuffer();
+      }
+      const runtimeRequest = new Request(target, requestInit);
+
+      // The local cloud harness deliberately has no agent-router hostname;
+      // its canonical transport is the loopback base resolved above.
+      if (localSentinel) return fetch(runtimeRequest);
+      return proxyToOrigin(runtimeRequest, env, target, agentToken);
+    }) as typeof fetch;
+
+    return { kind: "dedicated", fetch: fetchImpl };
+  });
+}
+
 /**
  * A non-`running` dedicated agent can't be reached. Kick off (or detect an
  * in-flight) resume and tell the client to retry — the same self-healing flow
@@ -633,6 +784,12 @@ function dedicatedProxyPreflight(request: Request, url: URL): Response {
   if (!applyDedicatedProxyCors(request, url, headers)) {
     return new Response(null, { status: 403, headers });
   }
+  // The browser's CORS-preflight cache is separate from its HTTP cache, so
+  // `Cache-Control: no-store` still protects the response while this bounded
+  // grant avoids another full Worker/auth-router round trip on every chat
+  // turn. The cache is keyed by origin, URL, method, credentials mode, and
+  // requested headers; the Worker revalidates the real bearer on every POST.
+  headers.set("access-control-max-age", "600");
   return new Response(null, { status: 204, headers });
 }
 
@@ -825,7 +982,15 @@ export function handleDedicatedAgentProxy(
     if (request.method === "OPTIONS") {
       return dedicatedProxyPreflight(request, url);
     }
-    const response = await proxyDedicatedAgent(request, env, url, agentId);
+    // UUID-subdomain requests bypass bootstrap-app.ts, including its
+    // request-scoped DB cache middleware. Enter the same boundary here so the
+    // auth/JIT lookup and sandbox ownership lookup reuse one Hyperdrive
+    // connection within this request instead of reconnecting for every query.
+    // The cache is connection-scoped only: credentials and ownership are still
+    // revalidated on every request and no I/O object crosses Worker requests.
+    const response = await runWithDbCacheAsync(() =>
+      proxyDedicatedAgent(request, env, url, agentId),
+    );
     return withDedicatedProxyBrowserPolicy(request, url, response);
   });
 }
@@ -945,7 +1110,7 @@ async function proxyDedicatedAgent(
       agentId,
       orgId,
     );
-    if (!sandbox || sandbox.execution_tier === "shared") {
+    if (!sandbox || !isContainerBackedExecutionTier(sandbox.execution_tier)) {
       return Response.json(
         {
           success: false,

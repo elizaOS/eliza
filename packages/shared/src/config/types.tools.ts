@@ -53,8 +53,6 @@ export type MediaUnderstandingModelConfig = {
   args?: string[];
   /** Optional prompt override for this model entry. */
   prompt?: string;
-  /** Optional max output characters for this model entry. */
-  maxChars?: number;
   /** Optional max bytes for this model entry. */
   maxBytes?: number;
   /** Optional timeout override (seconds) for this model entry. */
@@ -80,8 +78,6 @@ export type MediaUnderstandingConfig = {
   scope?: MediaUnderstandingScopeConfig;
   /** Default max bytes to send. */
   maxBytes?: number;
-  /** Default max output characters. */
-  maxChars?: number;
   /** Default prompt. */
   prompt?: string;
   /** Default timeout (seconds). */
@@ -333,10 +329,6 @@ export type ToolsConfig = {
     fetch?: {
       /** Enable web fetch tool (default: true). */
       enabled?: boolean;
-      /** Max characters to return from fetched content. */
-      maxChars?: number;
-      /** Hard cap for maxChars (tool or config), defaults to 50000. */
-      maxCharsCap?: number;
       /** Timeout in seconds for fetch requests. */
       timeoutSeconds?: number;
       /** Cache TTL in minutes for fetched content. */

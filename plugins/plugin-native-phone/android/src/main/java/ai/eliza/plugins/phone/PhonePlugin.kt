@@ -85,11 +85,12 @@ class PhonePlugin : Plugin() {
             call.reject("READ_CALL_LOG permission is required")
             return
         }
-        val limit = call.getInt("limit") ?: 100
-        if (limit <= 0 || limit > 500) {
-            call.reject("limit must be between 1 and 500")
+        val requestedLimit = call.getInt("limit")
+        if (requestedLimit != null && requestedLimit <= 0) {
+            call.reject("limit must be positive")
             return
         }
+        val limit = requestedLimit ?: Int.MAX_VALUE
         val number = call.getString("number")?.trim()
         val selection = if (number.isNullOrEmpty()) null else "${CallLog.Calls.NUMBER} LIKE ?"
         val selectionArgs = if (number.isNullOrEmpty()) null else arrayOf("%$number%")

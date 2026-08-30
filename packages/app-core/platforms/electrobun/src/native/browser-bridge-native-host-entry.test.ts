@@ -98,13 +98,8 @@ describe("browser bridge native-host executable", () => {
       broker,
     });
     try {
-      const bunExecutable = path.join(
-        process.env.BUN_INSTALL ?? path.join(os.homedir(), ".bun"),
-        "bin",
-        "bun",
-      );
       const child = spawn(
-        bunExecutable,
+        "bun",
         [
           path.join(import.meta.dirname, "browser-bridge-native-host-main.ts"),
           `chrome-extension://${extensionId}/`,

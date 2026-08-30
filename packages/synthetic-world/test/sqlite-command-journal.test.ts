@@ -125,10 +125,8 @@ describe("SqliteSyntheticCommandJournal", () => {
       "durable-command-journal",
       "production-runtime-boot",
       "production-pglite-readback",
-    ]);
-    expect(SYNTHETIC_WORLD_CAPABILITIES.unavailable).toContain(
       "cloud-command-journal-adapter",
-    );
+    ]);
     expect(SYNTHETIC_WORLD_CAPABILITIES.unavailable).toContain(
       "observation-ledger",
     );
@@ -205,6 +203,61 @@ describe("SqliteSyntheticCommandJournal", () => {
         mutate,
       ),
     ).rejects.toMatchObject({ code: "SYNTHETIC_COMMAND_ID_CONFLICT" });
+    store.close();
+  });
+
+  test("awaits an asynchronous mutation inside the guarded transaction", async () => {
+    const databasePath = tempDatabase();
+    const store = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
+    const authority = await acquire(store, "async-mutation", "owner", 5_000);
+    const journal = new SqliteSyntheticCommandJournal(store);
+    const execution = await journal.execute(
+      authority,
+      command(authority, "async-command"),
+      async (database) => {
+        await Promise.resolve();
+        database.run("CREATE TABLE async_domain_write (value TEXT NOT NULL)");
+        database.run("INSERT INTO async_domain_write (value) VALUES (?)", [
+          "committed",
+        ]);
+        return { async: true };
+      },
+    );
+    expect(execution.result).toEqual({ async: true });
+    expect(
+      store.database
+        .query<{ value: string }, []>("SELECT value FROM async_domain_write")
+        .get(),
+    ).toEqual({ value: "committed" });
+    store.close();
+  });
+
+  test("rolls back an asynchronous mutation that rejects", async () => {
+    const databasePath = tempDatabase();
+    const store = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
+    const authority = await acquire(store, "async-rollback", "owner", 5_000);
+    const journal = new SqliteSyntheticCommandJournal(store);
+    await expect(
+      journal.execute(
+        authority,
+        command(authority, "async-rejection"),
+        async (database) => {
+          database.run("CREATE TABLE rejected_domain_write (value TEXT)");
+          await Promise.resolve();
+          throw new Error("async mutation rejected");
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "SYNTHETIC_COMMAND_EXECUTION_FAILED",
+    });
+    expect(() =>
+      store.database.query("SELECT * FROM rejected_domain_write").all(),
+    ).toThrow();
+    expect(await journal.inspect(authority, "async-rejection")).toMatchObject({
+      phase: "FAILED",
+      outcome: "KNOWN_FAILURE",
+      error: { message: "async mutation rejected" },
+    });
     store.close();
   });
 
@@ -446,6 +499,32 @@ describe("SqliteSyntheticCommandJournal", () => {
     await expect(
       journal.execute(authority, input, () => ({ accepted: true })),
     ).rejects.toMatchObject({ code: "SYNTHETIC_COMMAND_STORAGE_FAILURE" });
+    store.close();
+  });
+
+  test("inspect and recover fail closed on a terminal row from a future generation", async () => {
+    const databasePath = tempDatabase();
+    const store = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
+    const authority = await acquire(store, "future-terminal", "owner", 5_000);
+    const journal = new SqliteSyntheticCommandJournal(store);
+    const input = command(authority, "future-terminal-command", { value: 1 });
+    await journal.execute(authority, input, () => ({ accepted: true }));
+
+    const database = new Database(databasePath, { strict: true });
+    database.run(
+      `UPDATE synthetic_world_commands
+       SET generation = ?
+       WHERE namespace = ? AND command_id = ?`,
+      [authority.generation + 1, authority.namespace, input.commandId],
+    );
+    database.close();
+
+    await expect(
+      journal.inspect(authority, input.commandId),
+    ).rejects.toMatchObject({ code: "SYNTHETIC_COMMAND_STORAGE_FAILURE" });
+    await expect(journal.recover(authority)).rejects.toMatchObject({
+      code: "SYNTHETIC_COMMAND_STORAGE_FAILURE",
+    });
     store.close();
   });
 

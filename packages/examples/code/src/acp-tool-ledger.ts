@@ -2,7 +2,7 @@
  * Bridges the child runtime's completed coding actions onto ACP `tool_call`
  * updates. The orchestrator's write ledger, deterministic verifier, and
  * deliverable capture read only ACP tool events; this runtime executes
- * FILE/SHELL in-process, so without the bridge every tool call was invisible
+ * coding tools in-process, so without the bridge every tool call was invisible
  * to the parent and the verifier judged prose alone (live 2026-08-21: a script
  * that ran with exit 0 failed verification for "no execution logs", costing a
  * coaching lap on every build).
@@ -100,6 +100,23 @@ export function toolCallUpdateFromAction(
         kind,
         status,
         rawInput: { path, ...(operation ? { operation } : {}) },
+        locations: [{ path }],
+        ...(output ? { rawOutput: output } : {}),
+      },
+    };
+  }
+  if (name === "WRITE" || name === "EDIT") {
+    const path = str(data?.path);
+    if (!path) return undefined;
+    return {
+      sessionId,
+      update: {
+        sessionUpdate: "tool_call",
+        toolCallId,
+        title: `${name} ${path}`,
+        kind: "edit",
+        status,
+        rawInput: { path },
         locations: [{ path }],
         ...(output ? { rawOutput: output } : {}),
       },

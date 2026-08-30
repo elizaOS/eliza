@@ -66,7 +66,7 @@ final class InferenceMemoryPolicy {
      * non-flash-attn compute buffers scale with n_ctx; 4096 halves the
      * constrained class's persistent KV footprint vs the previous flat 8192
      * (f16 KV on the 2B: ~0.4 GB at 8k → ~0.2 GB at 4k) while still holding a
-     * full chat turn (prompt cap is enforced upstream by the token budget).
+     * full chat turn; oversized complete prompts are rejected before decode.
      */
     static final int CONSTRAINED_LLM_CONTEXT_TOKENS = 4096;
     static final int STANDARD_LLM_CONTEXT_TOKENS = 8192;

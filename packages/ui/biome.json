@@ -7,7 +7,8 @@
       "src/**",
       "!src/**/*.d.ts",
       "!src/**/*.d.ts.map",
-      "!src/**/__e2e__"
+      "!src/**/__e2e__",
+      "!src/components/views/view-icons/ionicons"
     ]
   },
   "overrides": [

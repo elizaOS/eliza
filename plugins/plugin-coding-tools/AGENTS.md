@@ -10,7 +10,7 @@ Adds filesystem operations, shell command execution, and git worktree management
 
 ### Actions
 
-- **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
+- **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit and relative `path` values for grep/glob/ls resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
 - **READ / WRITE / EDIT** — strict, operation-specific schemas for direct coding loops. They delegate to the same FILE handlers and preserve its sandbox, stale-file, secret, and size checks.
 - **SHELL** — `action=run` executes a command via `/bin/bash -c` and returns the complete accepted redacted stdout/stderr to the planner; output above the explicit 1,000,000-character capture ceiling is rejected with no partial result. `read_output_artifact` remains available for scoped artifacts retained by earlier runtimes. `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
@@ -28,7 +28,7 @@ Adds filesystem operations, shell command execution, and git worktree management
 | `ExecApprovalService` | `"exec_approval"` | Command approval gating: file-backed allowlist, routes unapproved commands through the elizaOS `ApprovalService` UI. Lives in `src/shell/approvals/`. |
 | `SandboxService` | `CODING_TOOLS_SANDBOX` | Path-blocklist policy for FILE, WORKTREE, and the SHELL working directory. Defaults block `~/pvt`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/.kube`, `~/.netrc`, `~/Library`, plus per-OS system paths. Optional allow-roots via `CODING_TOOLS_WORKSPACE_ROOTS`; these do not confine paths referenced by a shell command. |
 | `FileStateService` | `CODING_TOOLS_FILE_STATE` | Per-(conversation, file) mtime tracking. Write/Edit check that the file was not externally modified since the last Read. |
-| `SessionCwdService` | `CODING_TOOLS_SESSION_CWD` | Per-conversation working directory. Defaults to `process.cwd()`. Read/Write/Edit resolve relative paths against it; Glob/Grep/LS/Shell use it when no explicit `path`/`cwd` is given. Worktree push/pop mutates it. |
+| `SessionCwdService` | `CODING_TOOLS_SESSION_CWD` | Per-conversation working directory. Defaults to `process.cwd()`. Read/Write/Edit and Glob/Grep/LS resolve relative paths against it; Shell uses it when no explicit `cwd` is given. Worktree push/pop mutates it. |
 | `BackgroundShellService` | `CODING_TOOLS_BACKGROUND_SHELL` | Per-conversation background shell process manager. Owns stable handles, stdin writes, bounded stdout/stderr rings, SIGTERM→SIGKILL termination, and teardown reaping. |
 | `RipgrepService` | `CODING_TOOLS_RIPGREP` | Wraps `@vscode/ripgrep` binary. Used by `grep` operation. Always excludes VCS dirs. 30 s hard cap. |
 
@@ -104,9 +104,8 @@ All settings are read via `runtime.getSetting(key)` or `process.env`. None are r
 | `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Optional canonical decimal integer from `100` through `600000` used as the default SHELL timeout (ms); invalid values fail before execution and per-call `timeout` takes precedence within the same range. |
 | `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
 | `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
-| `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read before truncation. |
+| `CODING_TOOLS_MAX_READ_LINES` | `2000` | Default line page size for revision-bound FILE reads; responses include exact continuation state. |
 | `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Byte cap for selected FILE read content. Larger files are paged with bounded line or byte reads. |
-| `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Default `head_limit` for GREP output. Set to 0 to disable. |
 
 The folded `ShellService` also retains compatibility settings for external
 consumers of `runtime.getService("shell").exec()` / `executeCommand()`. The

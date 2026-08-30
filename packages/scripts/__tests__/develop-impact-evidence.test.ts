@@ -241,11 +241,11 @@ describe("Develop Full impact graph", () => {
       ),
     ).toBe(true);
 
-    const executableSite = manifest(["packages/os-homepage/src/index.ts"]);
-    expect(executableSite.unknownPaths).toEqual([
-      "packages/os-homepage/src/index.ts",
+    const unownedSite = manifest(["packages/unowned-site/src/index.ts"]);
+    expect(unownedSite.unknownPaths).toEqual([
+      "packages/unowned-site/src/index.ts",
     ]);
-    expect(executableSite.surfaces.every((surface) => surface.forceRun)).toBe(
+    expect(unownedSite.surfaces.every((surface) => surface.forceRun)).toBe(
       true,
     );
   });

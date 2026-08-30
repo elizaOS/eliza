@@ -6,6 +6,7 @@
 
 import type { InferenceTurnSummary } from "../inference-timing";
 import type { RoomHandlerLease } from "../runtime/room-handler-queue";
+import type { CodingActionProfile } from "./coding";
 import type {
 	ActionResult,
 	AgentContext,
@@ -33,6 +34,11 @@ export interface MessageProcessingOptions {
 	 * an authorization signal; normal role and action gates still apply.
 	 */
 	codingMode?: boolean;
+	/**
+	 * Optional trusted host policy for the model-facing action set of this coding
+	 * turn. Omission preserves the complete authorized coding surface.
+	 */
+	codingActionProfile?: CodingActionProfile;
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
 	/**

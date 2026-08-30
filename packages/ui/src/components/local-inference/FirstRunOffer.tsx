@@ -86,8 +86,7 @@ export function FirstRunOffer({
       </div>
       {recommended ? (
         <Button
-          size="sm"
-          className="h-7 rounded-sm px-2 text-xs"
+          size="tiny"
           onClick={() => onDownload(recommended.id)}
           disabled={busy || Boolean(defaultDownload)}
         >

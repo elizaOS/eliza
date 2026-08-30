@@ -122,13 +122,21 @@ isolated visual harness.
 | Variable | Default | Purpose |
 |---|---|---|
 | `VITE_ELIZACLOUD_API_URL` | `https://api.eliza.app` | Eliza Cloud backend base URL |
-| `VITE_TELEGRAM_BOT_USERNAME` | `ElizaIsNotABot` | Optional Telegram bot username override |
-| `VITE_TELEGRAM_BOT_ID` | `8931353359` | Optional numeric Telegram bot ID override |
+| `VITE_TELEGRAM_BOT_USERNAME` | `ElizaIsNotABot` | Local/direct-build Telegram username fallback; with the ID, the repository-scoped staging release authority |
+| `VITE_TELEGRAM_BOT_ID` | `8931353359` | Local/direct-build numeric Telegram ID fallback; with the username, the repository-scoped staging release authority |
 | `VITE_DISCORD_CLIENT_ID` | `1468649258654630063` | Optional Discord Application ID override |
 | `WHATSAPP_PUBLIC_ENABLED` | disabled | Deployment-only switch that admits the public WhatsApp CTA |
 | `VITE_WHATSAPP_PHONE_NUMBER` | — | Admitted Blooio WhatsApp sender (E.164); production uses the shared `+18087881821` number only after its WhatsApp channel passes live proof |
 
 Auth token is stored in `localStorage` under key `eliza_app_session`. The test signer hook is `window.__siwsTestSigner` (used by Playwright e2e to skip wallet interaction).
+
+The Telegram defaults above do not authorize a protected staging Pages
+artifact. The Cloud release preflight requires the explicit, valid repository
+pair before staging migrations or API deployment, and neither component may
+match production. Production ignores the repository pair and derives its exact
+identity from `src/lib/contact.ts` at the checked-out release SHA. Do not treat
+same-named GitHub Environment variables as overrides: they arrive after the
+repository `vars` context has already been resolved.
 
 ## How to extend
 

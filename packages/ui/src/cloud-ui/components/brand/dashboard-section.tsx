@@ -2,6 +2,7 @@
  * A titled dashboard content section wrapper (cloud brand).
  */
 import type { ReactNode } from "react";
+import { StatusDot } from "../../../components/ui/status-badge";
 import { cn } from "../../lib/utils";
 
 interface DashboardSectionProps {
@@ -22,7 +23,7 @@ export function DashboardSection({
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex items-center gap-2">
-        <span className="inline-block size-2 bg-accent" />
+        <StatusDot tone="accent" />
         <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-muted-foreground">
           {label}
         </p>

@@ -342,7 +342,8 @@ export default function AppChargePaymentPage() {
               </div>
             </div>
             <Button
-              variant="ghost"
+              variant="outlineMuted"
+              size="icon"
               type="button"
               aria-label={t("cloud.appCharge.refreshStatus", {
                 defaultValue: "Refresh status",
@@ -352,7 +353,7 @@ export default function AppChargePaymentPage() {
               })}
               onClick={() => loadCharge()}
               disabled={isLoading}
-              className="flex size-10 shrink-0 items-center justify-center border border-border bg-bg-elevated text-muted transition hover:border-border-strong hover:text-txt disabled:opacity-40"
+              className="shrink-0"
             >
               <RotateCcw className="size-4" />
             </Button>
@@ -404,7 +405,8 @@ export default function AppChargePaymentPage() {
 
           <div className="mt-8 grid grid-cols-2 gap-3">
             <Button
-              variant="ghost"
+              variant="surfaceAccent"
+              size="card"
               type="button"
               aria-label={t("cloud.appCharge.payWithCard", {
                 defaultValue: "Pay with card",
@@ -415,7 +417,7 @@ export default function AppChargePaymentPage() {
                 checkoutProvider !== null
               }
               onClick={() => beginCheckout("stripe")}
-              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 bg-accent-subtle text-txt transition hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-30"
+              className="group aspect-[1.35]"
             >
               {checkoutProvider === "stripe" ? (
                 <Loader2 className="size-9 animate-spin" />
@@ -427,7 +429,8 @@ export default function AppChargePaymentPage() {
               </span>
             </Button>
             <Button
-              variant="ghost"
+              variant="outlineMuted"
+              size="card"
               type="button"
               aria-label={t("cloud.appCharge.payWithCrypto", {
                 defaultValue: "Pay with crypto",
@@ -438,7 +441,7 @@ export default function AppChargePaymentPage() {
                 checkoutProvider !== null
               }
               onClick={() => beginCheckout("oxapay")}
-              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-status-success/25 bg-status-success-bg text-status-success transition hover:border-status-success/60 disabled:pointer-events-none disabled:opacity-30"
+              className="group aspect-[1.35]"
             >
               {checkoutProvider === "oxapay" ? (
                 <Loader2 className="size-9 animate-spin" />

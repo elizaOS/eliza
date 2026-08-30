@@ -901,6 +901,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				await handleBuiltinSlashCommand(interaction, service.runtime, {
 					entityId,
 					roomId,
+					accountId,
 				});
 			}
 		} catch (error) {

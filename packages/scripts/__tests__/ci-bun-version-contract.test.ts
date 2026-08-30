@@ -60,7 +60,6 @@ const SHA = "0c5077e51419868618aeaa5fe8019c62421857d6";
 const GATE_WORKFLOWS = [
   "test.yml",
   "pr-static-smoke.yml",
-  "cloud-cf-deploy.yml",
   "cloud-cf-release.yml",
 ];
 
@@ -216,22 +215,22 @@ describe("ci-bun-version-contract", () => {
 
   test("fails when a gate workflow drops the canonical pin entirely", () => {
     expectViolation(
-      buildRepo({ overrides: { "cloud-cf-deploy.yml": GATE_NO_PIN } }),
+      buildRepo({ overrides: { "pr-static-smoke.yml": GATE_NO_PIN } }),
       /does not wire the canonical Bun pin/,
     );
   });
 
   test("fails loudly when a gate workflow is missing, instead of skipping", () => {
     expectViolation(
-      buildRepo({ overrides: { "cloud-cf-deploy.yml": null } }),
-      /cloud-cf-deploy\.yml/,
+      buildRepo({ overrides: { "pr-static-smoke.yml": null } }),
+      /pr-static-smoke\.yml/,
     );
   });
 
   test("fails loudly when the canonical release workflow is missing (#19183)", () => {
-    // After #18996 split the canary deploy from the canonical release, the
-    // release workflow publishes to production. A missing release gate must
-    // fail loudly the same way a missing canary gate does, not silently pass.
+    // The dispatch wrapper delegates every install and build to the canonical
+    // release workflow. A missing release gate must fail loudly, not silently
+    // pass because the wrapper itself needs no Bun runtime.
     expectViolation(
       buildRepo({ overrides: { "cloud-cf-release.yml": null } }),
       /cloud-cf-release\.yml/,

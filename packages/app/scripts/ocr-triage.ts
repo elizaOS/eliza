@@ -161,6 +161,10 @@ export function selectSemanticallyBestOcrAttempt<T extends OcrResult>(
 ): { record: T; finding: OcrContentFinding } {
   let bestRecord = record;
   let bestFinding = evaluateOcrContent({ ocr: record, ...policy });
+  const requiredAllMisses = (finding: OcrContentFinding): number =>
+    (policy.expectation.requireAll ?? []).filter((label) =>
+      finding.missingRequired.includes(label),
+    ).length;
 
   for (const attempt of record.attempts ?? []) {
     if (!attempt.ok) continue;
@@ -184,12 +188,35 @@ export function selectSemanticallyBestOcrAttempt<T extends OcrResult>(
         finding.forbiddenPresent.includes(label),
       ) &&
       finding.blankPixels === bestFinding.blankPixels;
-    if (
-      preservesSafetySignals &&
-      finding.missingRequired.length < bestFinding.missingRequired.length
-    ) {
+    const candidateRequiredAllMisses = requiredAllMisses(finding);
+    const bestRequiredAllMisses = requiredAllMisses(bestFinding);
+    const provesMoreSemantics =
+      candidateRequiredAllMisses < bestRequiredAllMisses ||
+      (candidateRequiredAllMisses === bestRequiredAllMisses &&
+        finding.missingRequired.length < bestFinding.missingRequired.length);
+    if (preservesSafetySignals && provesMoreSemantics) {
       bestRecord = candidate;
       bestFinding = finding;
+    }
+
+    const combined = {
+      ...record,
+      text: `${record.text}\n${attempt.text}`,
+      lines: `${record.text}\n${attempt.text}`.split("\n").filter(Boolean),
+      words: record.words + attempt.words,
+      meanConfidence: Math.min(record.meanConfidence, attempt.meanConfidence),
+      selectedMode: `${record.selectedMode ?? "selected"}+${attempt.mode}`,
+    } as T;
+    const combinedFinding = evaluateOcrContent({ ocr: combined, ...policy });
+    const combinedRequiredAllMisses = requiredAllMisses(combinedFinding);
+    const combinedProvesMoreSemantics =
+      combinedRequiredAllMisses < requiredAllMisses(bestFinding) ||
+      (combinedRequiredAllMisses === requiredAllMisses(bestFinding) &&
+        combinedFinding.missingRequired.length <
+          bestFinding.missingRequired.length);
+    if (combinedProvesMoreSemantics) {
+      bestRecord = combined;
+      bestFinding = combinedFinding;
     }
   }
 

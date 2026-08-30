@@ -97,7 +97,7 @@ export interface BackendPlan {
 export interface GenerateArgs extends StructuredGenerateParams {
 	prompt: string;
 	stopSequences?: string[];
-	/** Upper bound on output tokens; defaults to 2048. */
+	/** Caller-requested output boundary. Omitted uses the complete remaining context. */
 	maxTokens?: number;
 	/** 0..1; 0.7 default. */
 	temperature?: number;

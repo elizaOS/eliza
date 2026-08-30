@@ -71,7 +71,6 @@ class HTTPPolicy:
     temperature_step: float = 0.1
     temperature_floor: float | None = None  # None = step UP toward 0.9
     temperature_cap: float = 0.9
-    max_tokens: int = 250
     extra_headers: dict[str, str] = field(default_factory=dict)
 
 
@@ -149,7 +148,6 @@ async def synth_one(
             {"role": "system", "content": cfg.system_prompt},
             {"role": "user", "content": user_text},
         ],
-        "max_tokens": cfg.http.max_tokens,
         "temperature": cfg.http.initial_temperature,
         "reasoning_effort": "low",
     }
@@ -195,8 +193,7 @@ async def synth_one(
         except (KeyError, IndexError):
             return last_content
         if not content:
-            # gpt-oss occasionally puts the answer in `reasoning` when
-            # max_tokens was hit.
+            # Some reasoning models return the visible answer in `reasoning`.
             try:
                 rs = (choice["message"].get("reasoning") or "").strip()
                 if rs:

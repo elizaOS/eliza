@@ -1,12 +1,8 @@
 /**
  * LOGS action=search must disclose every narrowing it applied and return the
- * NEWEST entries. Three narrowings stack invisibly: the source/level/tag/since
- * filters, the server's 200-entry tail of a larger ring buffer, and the
- * action's own `limit`. "Any errors from discord in the last hour?" answered a
- * bare "No log entries match." (read as "no errors happened"), and "show me
- * the last 20 errors" returned the twenty OLDEST entries of the recent window
- * because the preview sliced from the head. Deterministic: `fetch` is stubbed,
- * no server runs.
+ * NEWEST entries when the caller explicitly requests a tail page. Omitted
+ * pagination must preserve the complete filtered server buffer. Deterministic:
+ * `fetch` is stubbed, no server runs.
  */
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
@@ -68,7 +64,7 @@ afterEach(() => {
 });
 
 describe("LOGS action=search window disclosure", () => {
-  it("names the filters and the server cap when nothing matched", async () => {
+  it("names filters and confirms the complete current buffer was searched", async () => {
     stubLogs([]);
 
     const result = await search({ source: "discord", level: "error" });
@@ -77,8 +73,7 @@ describe("LOGS action=search window disclosure", () => {
     expect(text).toContain("No log entries match.");
     expect(text).toContain("source=discord");
     expect(text).toContain("level=error");
-    expect(text).toContain("most recent buffered log entries");
-    expect(text).toContain("not proof nothing was logged");
+    expect(text).toContain("complete current in-memory log buffer");
   });
 
   it("reports matched-vs-shown counts and the filters on a populated result", async () => {
@@ -89,7 +84,7 @@ describe("LOGS action=search window disclosure", () => {
 
     expect(text).toContain("Showing 20 of 60 matching entries");
     expect(text).toContain("level=error");
-    expect(text).toContain("most recent buffered log entries");
+    expect(text).toContain("complete current in-memory log buffer");
     expect(result.values).toMatchObject({ count: 60, shown: 20 });
   });
 
@@ -108,5 +103,17 @@ describe("LOGS action=search window disclosure", () => {
     const entries = (result.data as { entries: StubEntry[] }).entries;
     expect(entries).toHaveLength(20);
     expect(entries[entries.length - 1].message).toBe("entry-59");
+  });
+
+  it("returns every entry when pagination is omitted", async () => {
+    stubLogs(makeEntries(260));
+
+    const result = await search({});
+    const entries = (result.data as { entries: StubEntry[] }).entries;
+
+    expect(entries).toHaveLength(260);
+    expect(entries[0]?.message).toBe("entry-0");
+    expect(entries.at(-1)?.message).toBe("entry-259");
+    expect(String(result.text)).toContain("Showing all 260 matching entries");
   });
 });

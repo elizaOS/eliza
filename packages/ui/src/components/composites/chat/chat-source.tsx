@@ -4,8 +4,11 @@
  * normalization come from chat-source.helpers so icon and bubble outline agree.
  */
 import { Crown, Mic } from "lucide-react";
+import * as React from "react";
 
 import { cn } from "../../../lib/utils";
+import { Badge } from "../../ui/badge";
+import { Card } from "../../ui/card";
 import {
   getChatSourceMeta,
   normalizeChatSourceKey,
@@ -29,19 +32,23 @@ export function ChatSourceIcon({
   const normalized = normalizeChatSourceKey(source);
 
   return (
-    <span
-      data-testid="chat-source-icon"
-      data-source={normalized ?? undefined}
-      className={cn(
-        "inline-flex shrink-0 items-center justify-center",
-        meta.iconClassName,
+    <Card asChild variant="transparentSquare">
+      {React.createElement(
+        "span",
+        {
+          "data-testid": "chat-source-icon",
+          "data-source": normalized ?? undefined,
+          className: cn(
+            "inline-flex shrink-0 items-center justify-center",
+            meta.iconClassName,
+          ),
+          ...(decorative
+            ? { "aria-hidden": true }
+            : { "aria-label": meta.label, role: "img", title: meta.label }),
+        },
+        <Icon className={className} />,
       )}
-      {...(decorative
-        ? { "aria-hidden": true }
-        : { "aria-label": meta.label, role: "img", title: meta.label })}
-    >
-      <Icon className={className} />
-    </span>
+    </Card>
   );
 }
 
@@ -66,13 +73,13 @@ export function ChatVoiceSpeakerBadge({
   if (!speaker || !label) return null;
   const isOwner = speaker.isOwner === true;
   return (
-    <span
+    <Badge
+      variant="outline"
+      size="micro"
+      tone="muted"
       data-testid={dataTestId ?? "chat-voice-speaker"}
       data-owner={isOwner ? "true" : undefined}
-      className={cn(
-        "inline-flex items-center gap-1 rounded-sm border border-border bg-card px-1.5 py-0.5 text-2xs font-medium text-muted",
-        className,
-      )}
+      className={cn("gap-1", className)}
       title={isOwner ? `${label} (OWNER)` : label}
       role="img"
       aria-label={isOwner ? `${label}, OWNER, spoken` : `${label}, spoken`}
@@ -86,6 +93,6 @@ export function ChatVoiceSpeakerBadge({
           data-testid="chat-voice-speaker-owner-crown"
         />
       ) : null}
-    </span>
+    </Badge>
   );
 }

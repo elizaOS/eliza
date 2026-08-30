@@ -25,7 +25,7 @@
  *     (declared in `message-fetcher.ts`), implemented by the host's connector
  *     projections.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   type GetLifeOpsInboxRequest,
   LIFEOPS_INBOX_CHANNELS,
@@ -50,11 +50,7 @@ import {
 } from "./priority-scoring.ts";
 import type { InboundMessage } from "./types.ts";
 
-const DEFAULT_INBOX_LIMIT = 100;
 const INBOX_CACHE_FRESH_MS = 60_000;
-const INBOX_CACHE_WARM_LIMIT = 200;
-const INBOX_CACHE_READ_LIMIT = 800;
-const INBOX_CACHE_FULL_LIMIT = 5000;
 const INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(LIFEOPS_INBOX_CHANNELS);
 const PHONE_BACKED_INBOX_CHANNELS = new Set<LifeOpsInboxChannel>([
   "imessage",
@@ -166,9 +162,26 @@ export function toInboxMessage(
     channel === "gmail"
       ? (message.gmailMessageId ?? message.id)
       : (message.entityId ?? message.roomId ?? message.id);
-  const receivedAt = Number.isFinite(message.timestamp)
-    ? new Date(message.timestamp).toISOString()
-    : new Date(0).toISOString();
+  if (!Number.isFinite(message.timestamp)) {
+    throw new ElizaError(
+      "Inbox message timestamp must be a finite epoch value",
+      {
+        code: "INBOX_MESSAGE_TIMESTAMP_INVALID",
+        context: { messageId: message.id, source: message.source },
+      },
+    );
+  }
+  const receivedDate = new Date(message.timestamp);
+  if (!Number.isFinite(receivedDate.getTime())) {
+    throw new ElizaError(
+      "Inbox message timestamp is outside the supported date range",
+      {
+        code: "INBOX_MESSAGE_TIMESTAMP_INVALID",
+        context: { messageId: message.id, source: message.source },
+      },
+    );
+  }
+  const receivedAt = receivedDate.toISOString();
   const subject =
     channel === "gmail"
       ? message.channelName.startsWith("Email from ")
@@ -180,9 +193,9 @@ export function toInboxMessage(
   // read state (the fetcher maps dm.readAt -> lastSeenAt and dm.repliedAt ->
   // repliedAt), so a read-or-replied DM must not inflate unread counts. Chat
   // memories still lack a read flag, so they stay unread for triage.
-  const hasSeenState =
-    (typeof message.lastSeenAt === "string" && message.lastSeenAt.length > 0) ||
-    (typeof message.repliedAt === "string" && message.repliedAt.length > 0);
+  const hasSeenState = [message.lastSeenAt, message.repliedAt].some(
+    (value) => typeof value === "string" && Number.isFinite(Date.parse(value)),
+  );
   const unread =
     channel === "gmail"
       ? Boolean(
@@ -193,7 +206,15 @@ export function toInboxMessage(
         ? !hasSeenState
         : true;
 
+  const gmailAccountId = message.gmailAccountId?.trim();
+  const gmailIdentityPrefix =
+    channel === "gmail" && gmailAccountId
+      ? `gmail:${encodeURIComponent(gmailAccountId)}:`
+      : null;
   const threadId = deriveThreadId(message, channel, externalId);
+  const scopedThreadId = gmailIdentityPrefix
+    ? `${gmailIdentityPrefix}${encodeURIComponent(threadId)}`
+    : threadId;
   const chatType: InboxChatType =
     message.chatType ??
     (channel === "gmail"
@@ -203,7 +224,9 @@ export function toInboxMessage(
         : "dm");
 
   return {
-    id: `${channel}:${externalId || `${message.timestamp}-${index}`}`,
+    id: gmailIdentityPrefix
+      ? `${gmailIdentityPrefix}${encodeURIComponent(externalId)}`
+      : `${channel}:${externalId || `${message.timestamp}-${index}`}`,
     channel,
     sender: {
       id: senderId,
@@ -227,10 +250,10 @@ export function toInboxMessage(
         : {}),
       ...(message.phoneNumber ? { phoneNumber: message.phoneNumber } : {}),
     },
-    threadId,
+    threadId: scopedThreadId,
     chatType,
     participantCount: message.participantCount,
-    gmailAccountId: message.gmailAccountId,
+    gmailAccountId,
     gmailAccountEmail: message.gmailAccountEmail,
     phoneAccountId: message.phoneAccountId,
     phoneAccountLabel: message.phoneAccountLabel,
@@ -256,7 +279,7 @@ export function toInboxMessages(
 }
 
 interface InboxBuildOptions {
-  limit: number;
+  limit?: number;
   allowed: Set<LifeOpsInboxChannel>;
   /**
    * Per-source connector health for the fetch/read that produced the input
@@ -530,7 +553,7 @@ export function buildInboxFromMessages(
   });
 
   const trimmed =
-    collected.length > options.limit
+    options.limit !== undefined && collected.length > options.limit
       ? collected.slice(0, options.limit)
       : collected;
 
@@ -571,24 +594,15 @@ export function buildInboxFromMessages(
   return inbox;
 }
 
-function cacheReadLimitFor(resolved: ResolvedInboxRequest): number {
-  if (resolved.cacheMode === "cache-only") {
-    return Math.max(resolved.limit, resolved.cacheLimit);
-  }
-  if (resolved.cacheLimit > INBOX_CACHE_READ_LIMIT) {
-    return Math.max(resolved.limit, resolved.cacheLimit);
-  }
-  return Math.min(
-    INBOX_CACHE_READ_LIMIT,
-    Math.max(resolved.limit * 4, INBOX_CACHE_WARM_LIMIT),
-  );
+function cacheReadLimitFor(resolved: ResolvedInboxRequest): number | undefined {
+  if (resolved.limit === undefined) return resolved.cacheLimit;
+  return resolved.cacheLimit === undefined
+    ? resolved.limit
+    : Math.max(resolved.limit, resolved.cacheLimit);
 }
 
-function cacheWarmLimitFor(resolved: ResolvedInboxRequest): number {
-  if (resolved.cacheMode === "refresh") {
-    return resolved.cacheLimit;
-  }
-  return Math.min(500, Math.max(resolved.limit, INBOX_CACHE_WARM_LIMIT));
+function cacheWarmLimitFor(resolved: ResolvedInboxRequest): number | undefined {
+  return resolved.cacheLimit ?? resolved.limit;
 }
 
 function isFreshCache(records: readonly CachedInboxMessage[]): boolean {
@@ -616,7 +630,7 @@ function flattenInboxMessages(inbox: LifeOpsInbox): LifeOpsInboxMessage[] {
 }
 
 export interface ResolvedInboxRequest {
-  limit: number;
+  limit?: number;
   allowed: Set<LifeOpsInboxChannel>;
   groupByThread: boolean;
   chatTypeFilter?: ReadonlyArray<InboxChatType>;
@@ -626,7 +640,7 @@ export interface ResolvedInboxRequest {
   missedOnly: boolean;
   sortByPriority: boolean;
   cacheMode: LifeOpsInboxCacheMode;
-  cacheLimit: number;
+  cacheLimit?: number;
 }
 
 export function resolveInboxRequest(
@@ -636,8 +650,8 @@ export function resolveInboxRequest(
     typeof request.limit === "number" &&
     Number.isFinite(request.limit) &&
     request.limit > 0
-      ? Math.min(Math.floor(request.limit), 500)
-      : DEFAULT_INBOX_LIMIT;
+      ? Math.floor(request.limit)
+      : undefined;
   const requestedChannels =
     request.channels && request.channels.length > 0
       ? (request.channels.filter((channel) =>
@@ -660,13 +674,7 @@ export function resolveInboxRequest(
     request.cacheLimit > 0
       ? Math.floor(request.cacheLimit)
       : undefined;
-  const cacheLimit = Math.min(
-    requestedCacheLimit ??
-      (cacheMode === "read-through"
-        ? INBOX_CACHE_WARM_LIMIT
-        : INBOX_CACHE_FULL_LIMIT),
-    INBOX_CACHE_FULL_LIMIT,
-  );
+  const cacheLimit = requestedCacheLimit;
   const phoneAccountIds =
     Array.isArray(request.phoneAccountIds) && request.phoneAccountIds.length > 0
       ? new Set(
@@ -678,7 +686,7 @@ export function resolveInboxRequest(
         )
       : undefined;
   return {
-    limit,
+    ...(limit === undefined ? {} : { limit }),
     allowed: new Set<LifeOpsInboxChannel>(requestedChannels),
     groupByThread: request.groupByThread === true,
     chatTypeFilter,
@@ -697,7 +705,7 @@ export function resolveInboxRequest(
     missedOnly: request.missedOnly === true,
     sortByPriority: request.sortByPriority === true,
     cacheMode,
-    cacheLimit,
+    ...(cacheLimit === undefined ? {} : { cacheLimit }),
   };
 }
 
@@ -770,7 +778,7 @@ async function buildInboxWithLlm(
   // honor the chatType / participant / gmail filters here because LLM scoring
   // should only run on messages the user will actually see.
   const initial = buildInbox(inbound, {
-    limit: resolved.limit,
+    ...(resolved.limit === undefined ? {} : { limit: resolved.limit }),
     allowed: resolved.allowed,
     sources,
     chatTypeFilter: resolved.chatTypeFilter,
@@ -793,7 +801,7 @@ async function buildInboxWithLlm(
   // Second pass: re-build with the LLM scores so thread grouping picks them
   // up and missedOnly can filter on score >= 50.
   return buildInbox(inbound, {
-    limit: resolved.limit,
+    ...(resolved.limit === undefined ? {} : { limit: resolved.limit }),
     allowed: resolved.allowed,
     sources,
     chatTypeFilter: resolved.chatTypeFilter,
@@ -818,8 +826,13 @@ export async function fetchInbox(
   const resolved = resolveInboxRequest(request);
   const { messages: inbound, sources } = await fetchAllMessages(runtime, {
     sources: Array.from(resolved.allowed),
-    limit:
-      resolved.cacheMode === "refresh" ? resolved.cacheLimit : resolved.limit,
+    ...(resolved.cacheMode === "refresh"
+      ? resolved.cacheLimit === undefined
+        ? {}
+        : { limit: resolved.cacheLimit }
+      : resolved.limit === undefined
+        ? {}
+        : { limit: resolved.limit }),
     includeGmail: resolved.allowed.has("gmail"),
     gmailSource,
     xDmSource,
@@ -911,7 +924,7 @@ export class InboxDomain {
       sourceStatuses: LifeOpsInboxSourceStatus[],
     ): LifeOpsInbox =>
       buildInboxFromMessages(messages, {
-        limit: resolved.limit,
+        ...(resolved.limit === undefined ? {} : { limit: resolved.limit }),
         allowed: resolved.allowed,
         sources: sourceStatuses,
         chatTypeFilter: resolved.chatTypeFilter,
@@ -923,9 +936,10 @@ export class InboxDomain {
         missedOnly: resolved.missedOnly,
         sortByPriority: resolved.sortByPriority,
       });
+    const cacheReadLimit = cacheReadLimitFor(resolved);
     const cached = await cache.listCachedInboxMessages(runtime.agentId, {
       channels: Array.from(resolved.allowed),
-      maxResults: cacheReadLimitFor(resolved),
+      ...(cacheReadLimit === undefined ? {} : { maxResults: cacheReadLimit }),
       gmailAccountId: resolved.gmailAccountId,
     });
     if (resolved.cacheMode === "cache-only") {
@@ -935,10 +949,11 @@ export class InboxDomain {
       return buildFromCache(cached, await probeStatuses());
     }
 
+    const cacheWarmLimit = cacheWarmLimitFor(resolved);
     const { messages: inbound, sources: sourceStatuses } =
       await fetchAllMessages(runtime, {
         sources: Array.from(resolved.allowed),
-        limit: cacheWarmLimitFor(resolved),
+        ...(cacheWarmLimit === undefined ? {} : { limit: cacheWarmLimit }),
         includeGmail: resolved.allowed.has("gmail"),
         gmailSource: sources,
         xDmSource: sources,

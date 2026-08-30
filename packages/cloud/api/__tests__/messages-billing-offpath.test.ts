@@ -421,10 +421,9 @@ function postMessages(bodyOverrides: Record<string, unknown> = {}) {
 
 describe("messages route preforward telemetry", () => {
   // #16081 invariant on /v1/messages: MODEL (gpt-oss-120b) is a reasoning model,
-  // so the provider's maxOutputTokens is floored ABOVE the requested 256. The
-  // reservation must admit that same floored ceiling — reserving the raw 256
-  // would let the provider bill far more output than was reserved.
-  test("reserves the same reasoning-floored ceiling the provider is capped at", async () => {
+  // The provider and reservation must both preserve the caller-authored 256
+  // token output and spend ceiling, including for reasoning models.
+  test("reserves the same caller ceiling the provider is capped at", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     routeReservation = ledger.reservation;
     let capturedConfig: Record<string, unknown> | undefined;
@@ -444,20 +443,16 @@ describe("messages route preforward telemetry", () => {
     expect(response.status).toBe(200);
 
     const providerCap = capturedConfig?.maxOutputTokens as number;
-    // Reasoning model → the provider cap is floored above the requested 256.
-    expect(providerCap).toBeGreaterThan(256);
-    // The reservation admitted that exact ceiling (3rd arg to reserveCredits),
-    // not the raw request.max_tokens.
+    expect(providerCap).toBe(256);
+    // The reservation admits that exact ceiling (3rd arg to reserveCredits).
     const reserveArgs = reserveCredits.mock.calls[0] as unknown as
       | [unknown, number, number]
       | undefined;
     expect(reserveArgs?.[2]).toBe(providerCap);
   });
 
-  // Streaming sibling of the reservation-parity test above: the stream handler
-  // recomputes the same floored ceiling before streamText, and the reservation
-  // taken by the route (before the stream/non-stream fork) must match it.
-  test("streaming: reserves the same reasoning-floored ceiling streamText is capped at", async () => {
+  // Streaming sibling of the reservation-parity test above.
+  test("streaming: reserves the same caller ceiling streamText is capped at", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     routeReservation = ledger.reservation;
     let capturedConfig: Record<string, unknown> | undefined;
@@ -487,18 +482,15 @@ describe("messages route preforward telemetry", () => {
     expect(body).toContain('"type":"message_stop"');
 
     const providerCap = capturedConfig?.maxOutputTokens as number;
-    // Reasoning model → the streamText cap is floored above the requested 256.
-    expect(providerCap).toBeGreaterThan(256);
+    expect(providerCap).toBe(256);
     const reserveArgs = reserveCredits.mock.calls[0] as unknown as
       | [unknown, number, number]
       | undefined;
     expect(reserveArgs?.[2]).toBe(providerCap);
   });
 
-  // Pass-through regression: for a NON-reasoning model the floor must not
-  // fire — the reservation admits exactly the requested max_tokens, and the
-  // provider is capped at the same value.
-  test("non-reasoning model: reservation passes request.max_tokens through unfloored", async () => {
+  // Pass-through regression for a non-reasoning model.
+  test("non-reasoning model: reservation passes request.max_tokens through", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     routeReservation = ledger.reservation;
     let capturedConfig: Record<string, unknown> | undefined;
@@ -520,7 +512,7 @@ describe("messages route preforward telemetry", () => {
     });
     expect(response.status).toBe(200);
 
-    // No floor: provider cap and reservation both equal the raw request value.
+    // Provider cap and reservation both equal the caller's request value.
     expect(capturedConfig?.maxOutputTokens).toBe(512);
     const reserveArgs = reserveCredits.mock.calls[0] as unknown as
       | [unknown, number, number]

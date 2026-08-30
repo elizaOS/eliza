@@ -28,6 +28,13 @@ import {
 } from "../api/client-base";
 import { describeCreditGateError } from "../api/credit-gate-error";
 import {
+  consumePendingCapabilityIntent,
+  findCapabilityHandoff,
+  markPendingCapabilityReady,
+  readPendingCapabilityReadyAgentId,
+  rememberCapabilityHandoff,
+} from "../capability-handoff";
+import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
   normalizeSlashCommandName,
@@ -37,6 +44,7 @@ import { dispatchDoorDashHumanHandoff } from "../doordash-human-handoff";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
+  dispatchChatPrefill,
 } from "../events";
 import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
@@ -65,6 +73,7 @@ import {
   normalizeCustomActionName,
   parseCustomActionParams,
   parseSlashCommandInput,
+  type StreamingTextModification,
   shouldApplyFinalStreamText,
 } from "./internal";
 import {
@@ -72,6 +81,7 @@ import {
   persistPendingChatTurn,
 } from "./pending-chat-turns";
 import { streamingRenderDelayMs } from "./streaming-render-cadence";
+import type { ConversationMessageStateMutation } from "./useDataLoaders";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -402,6 +412,10 @@ export interface UseChatSendDeps {
 
   // Chat state
   activeConversationId: string | null;
+  /** Current composer text, used to avoid overwriting a draft on setup resume. */
+  chatInput?: string;
+  /** Setup continuation waits until first-run no longer owns the composer. */
+  firstRunComplete?: boolean;
   /** Stable ref whose .current mirrors the latest ptySessions array. */
   ptySessionsRef: MutableRefObject<CodingAgentSession[]>;
 
@@ -449,6 +463,7 @@ export interface UseChatSendDeps {
   chatReplyTargetRef: MutableRefObject<ChatReplyTarget | null>;
   conversationsRef: MutableRefObject<Conversation[]>;
   conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
+  conversationHydrationEpochRef: MutableRefObject<number>;
   chatAbortRef: MutableRefObject<AbortController | null>;
   chatSendBusyRef: MutableRefObject<boolean>;
   chatSendNonceRef: MutableRefObject<number>;
@@ -458,6 +473,27 @@ export interface UseChatSendDeps {
   loadConversationMessages: (
     convId: string,
   ) => Promise<LoadConversationMessagesResult>;
+  claimConversationMessagesOwnership: (conversationId: string | null) => number;
+  isConversationMessagesOwnershipCurrent: (
+    conversationId: string | null,
+    generation: number,
+  ) => boolean;
+  registerConversationMessageOverlay: (
+    conversationId: string | null,
+    lineages: readonly string[],
+    explicitMessages?: readonly ConversationMessage[],
+  ) => void;
+  applyConversationMessageOverlayModification: (
+    conversationId: string | null,
+    lineage: string,
+    modification: StreamingTextModification,
+    options?: { onlyIfEmpty?: boolean },
+  ) => void;
+  removeConversationMessageStateMessages?: (
+    conversationId: string,
+    mutation: ConversationMessageStateMutation,
+  ) => void;
+  discardConversationMessageState: (conversationId?: string) => void;
   /**
    * Waits for any startup conversation restore to settle before a user turn
    * claims conversation ownership. Callers without startup hydration may omit
@@ -517,6 +553,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     uiLanguage,
     tab,
     activeConversationId,
+    chatInput = "",
+    firstRunComplete = true,
     ptySessionsRef,
     setChatInput,
     setChatSending,
@@ -537,11 +575,18 @@ export function useChatSend(deps: UseChatSendDeps) {
     chatReplyTargetRef,
     conversationsRef,
     conversationMessagesRef,
+    conversationHydrationEpochRef,
     chatAbortRef,
     chatSendBusyRef,
     chatSendNonceRef,
     loadConversations,
     loadConversationMessages,
+    claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent,
+    registerConversationMessageOverlay,
+    applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
+    discardConversationMessageState,
     settleConversationHydrationForSend,
     elizaCloudEnabled,
     elizaCloudConnected,
@@ -652,10 +697,21 @@ export function useChatSend(deps: UseChatSendDeps) {
       conversationId: string | null,
       modification: Parameters<typeof applyStreamingTextModification>[1],
     ) => {
-      if (!isConversationCommitActive(conversationId)) return;
+      if (!isConversationCommitActive(conversationId)) {
+        applyConversationMessageOverlayModification(
+          conversationId,
+          modification.messageId,
+          modification,
+        );
+        return;
+      }
       applyStreamingTextModification(setConversationMessages, modification);
     },
-    [isConversationCommitActive, setConversationMessages],
+    [
+      applyConversationMessageOverlayModification,
+      isConversationCommitActive,
+      setConversationMessages,
+    ],
   );
 
   const reconcileTerminalStream = useCallback(
@@ -678,12 +734,24 @@ export function useChatSend(deps: UseChatSendDeps) {
         return null;
       }
 
+      const capabilityHandoff = findCapabilityHandoff(
+        data.actionResults,
+        directCloudSharedAgentIdFromBase(client.getBaseUrl()),
+      );
+      if (capabilityHandoff) {
+        rememberCapabilityHandoff(
+          data.messageId ?? assistantMessageId,
+          capabilityHandoff,
+        );
+      }
+
       // A non-durable failure belongs only to the turn that produced it. If a
       // later user turn already exists, this request settled out of order after
       // a remount/history reload; dropping its placeholder prevents an old
       // fallback from appearing beneath a newer successful reply.
       if (
         data.assistantEphemeral &&
+        isConversationCommitActive(conversationId) &&
         hasNewerUserTurn(conversationMessagesRef.current, {
           ...options.origin,
           ...(data.userMessageId
@@ -710,7 +778,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
       }
 
-      if (!data.text.trim()) {
+      if (!data.text.trim() && !capabilityHandoff) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           ...(data.failureKind
@@ -726,6 +794,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       } else if (
         shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
         (options.includeReasoning && data.reasoning) ||
+        capabilityHandoff ||
         data.messageId
       ) {
         applyStreamingModificationForConversation(conversationId, {
@@ -739,6 +808,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           ...(options.includeAccountConnect && data.accountConnect
             ? { accountConnect: data.accountConnect }
             : {}),
+          ...(capabilityHandoff ? { capabilityHandoff } : {}),
           ...(options.includeReasoning && data.reasoning
             ? { reasoning: data.reasoning }
             : {}),
@@ -754,12 +824,18 @@ export function useChatSend(deps: UseChatSendDeps) {
             ? { terminalFailure: data.terminalFailure }
             : {}),
         });
-      } else if (options.includeAccountConnect && data.accountConnect) {
+      } else if (
+        (options.includeAccountConnect && data.accountConnect) ||
+        capabilityHandoff
+      ) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           mode: "complete",
           fullText: data.text,
-          accountConnect: data.accountConnect,
+          ...(options.includeAccountConnect && data.accountConnect
+            ? { accountConnect: data.accountConnect }
+            : {}),
+          ...(capabilityHandoff ? { capabilityHandoff } : {}),
           ...(data.assistantEphemeral ? { assistantEphemeral: true } : {}),
           ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
         });
@@ -780,6 +856,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     [
       applyStreamingModificationForConversation,
       conversationMessagesRef,
+      isConversationCommitActive,
       setConversationMessagesForConversation,
     ],
   );
@@ -799,46 +876,62 @@ export function useChatSend(deps: UseChatSendDeps) {
   // Safe to call when nothing is pending (no-op).
   const commitStreamingBuffer = useCallback(() => {
     const buffer = streamingFlushRef.current;
-    if (!isConversationCommitActive(buffer.conversationId)) {
-      buffer.pendingText = null;
-      buffer.pendingToolEvents = [];
-      buffer.pendingStatus = NO_PENDING_STATUS;
-      return;
-    }
+    const commitVisible = isConversationCommitActive(buffer.conversationId);
     let committed = false;
     if (buffer.pendingText !== null) {
       const fullText = buffer.pendingText;
       const provisional = buffer.pendingTextProvisional;
       buffer.pendingText = null;
       buffer.pendingTextProvisional = false;
-      applyStreamingTextModification(setConversationMessages, {
+      const modification: StreamingTextModification = {
         messageId: buffer.messageId,
         mode: "replace",
         fullText,
         provisional,
-      });
+      };
+      if (commitVisible) {
+        applyStreamingTextModification(setConversationMessages, modification);
+      } else {
+        applyConversationMessageOverlayModification(
+          buffer.conversationId,
+          buffer.messageId,
+          modification,
+        );
+      }
       committed = true;
     }
     if (buffer.pendingToolEvents.length > 0) {
       const toolEvents = buffer.pendingToolEvents;
       buffer.pendingToolEvents = [];
       for (const event of toolEvents) {
-        applyStreamingTextModification(setConversationMessages, {
+        const modification: StreamingTextModification = {
           messageId: buffer.messageId,
           mode: "tool",
           event,
-        });
+        };
+        if (commitVisible) {
+          applyStreamingTextModification(setConversationMessages, modification);
+        } else {
+          applyConversationMessageOverlayModification(
+            buffer.conversationId,
+            buffer.messageId,
+            modification,
+          );
+        }
       }
       committed = true;
     }
     if (buffer.pendingStatus !== NO_PENDING_STATUS) {
       const status = buffer.pendingStatus;
       buffer.pendingStatus = NO_PENDING_STATUS;
-      setServerTurnStatus(status);
-      committed = true;
+      if (commitVisible) {
+        setServerTurnStatus(status);
+        committed = true;
+      }
     }
     if (committed) buffer.lastFlushAtMs = performance.now();
   }, [
+    applyConversationMessageOverlayModification,
     isConversationCommitActive,
     setConversationMessages,
     setServerTurnStatus,
@@ -1098,33 +1191,65 @@ export function useChatSend(deps: UseChatSendDeps) {
   }, [interruptActiveChatPipelineWithDraft]);
 
   const appendLocalCommandTurn = useCallback(
-    (userText: string, assistantText: string) => {
+    (
+      userText: string,
+      assistantText: string,
+      conversationId: string | null,
+      ownershipGeneration: number | null,
+    ) => {
+      if (
+        ownershipGeneration === null ||
+        !isConversationMessagesOwnershipCurrent(
+          conversationId,
+          ownershipGeneration,
+        )
+      ) {
+        return;
+      }
       const now = Date.now();
       const nonce = Math.random().toString(36).slice(2, 8);
-      setConversationMessages((prev: ConversationMessage[]) => [
-        ...prev,
-        {
-          id: `local-user-${now}-${nonce}`,
-          role: "user",
-          text: userText,
-          timestamp: now,
-        },
-        {
-          id: `local-assistant-${now}-${nonce}`,
-          role: "assistant",
-          text: assistantText,
-          timestamp: now,
-          source: "local_command",
-        },
-      ]);
+      setConversationMessagesForConversation(
+        conversationId,
+        (prev: ConversationMessage[]) => [
+          ...prev,
+          {
+            id: `local-user-${now}-${nonce}`,
+            role: "user",
+            text: userText,
+            timestamp: now,
+          },
+          {
+            id: `local-assistant-${now}-${nonce}`,
+            role: "assistant",
+            text: assistantText,
+            timestamp: now,
+            source: "local_command",
+          },
+        ],
+      );
     },
-    [setConversationMessages],
+    [
+      isConversationMessagesOwnershipCurrent,
+      setConversationMessagesForConversation,
+    ],
   );
 
   const tryHandlePrefixedChatCommand = useCallback(
     async (
       rawText: string,
+      conversationId: string | null,
+      ownershipGeneration: number | null,
     ): Promise<{ handled: boolean; rewrittenText?: string }> => {
+      const commitLocalCommandTurn = (
+        userText: string,
+        assistantText: string,
+      ) =>
+        appendLocalCommandTurn(
+          userText,
+          assistantText,
+          conversationId,
+          ownershipGeneration,
+        );
       const slash = parseSlashCommandInput(rawText);
       if (slash) {
         const savedCommand = loadSavedCustomCommands().find(
@@ -1136,7 +1261,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             slash.argsRaw,
           );
           if (!rewrittenText.trim()) {
-            appendLocalCommandTurn(
+            commitLocalCommandTurn(
               rawText,
               `Saved command "/${slash.name}" is empty.`,
             );
@@ -1145,7 +1270,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           return { handled: false, rewrittenText };
         }
 
-        if (slash.name === "commands") {
+        if (slash.name === "/commands") {
           const customActions = (await client.listCustomActions()).filter(
             (action) => action.enabled,
           );
@@ -1161,7 +1286,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             "Use #remember ... to save memory notes. Use #memory or #documents to target retrieval.",
             "Use $query for a quick, non-persistent context answer.",
           ];
-          appendLocalCommandTurn(rawText, lines.join("\n\n"));
+          commitLocalCommandTurn(rawText, lines.join("\n\n"));
           return { handled: true };
         }
 
@@ -1191,7 +1316,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             slash.argsRaw,
           );
           if (missingRequired.length > 0) {
-            appendLocalCommandTurn(
+            commitLocalCommandTurn(
               rawText,
               `Missing required parameter(s): ${missingRequired.join(", ")}`,
             );
@@ -1200,7 +1325,7 @@ export function useChatSend(deps: UseChatSendDeps) {
 
           const result = await client.testCustomAction(customAction.id, params);
           if (!result.ok) {
-            appendLocalCommandTurn(
+            commitLocalCommandTurn(
               rawText,
               `Custom action "${customAction.name}" failed: ${
                 result.error ?? "unknown error"
@@ -1209,7 +1334,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             return { handled: true };
           }
 
-          appendLocalCommandTurn(
+          commitLocalCommandTurn(
             rawText,
             result.output?.trim() || `(no output from ${customAction.name})`,
           );
@@ -1220,7 +1345,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       if (rawText.startsWith("#")) {
         const commandBody = rawText.slice(1).trim();
         if (!commandBody) {
-          appendLocalCommandTurn(
+          commitLocalCommandTurn(
             rawText,
             "Usage: #remember <text>, #memory <query>, #documents <query>, or #<query>.",
           );
@@ -1237,11 +1362,11 @@ export function useChatSend(deps: UseChatSendDeps) {
             .replace(/^(remember|remmeber|save)\s+/i, "")
             .trim();
           if (!memoryText) {
-            appendLocalCommandTurn(rawText, "Nothing to remember.");
+            commitLocalCommandTurn(rawText, "Nothing to remember.");
             return { handled: true };
           }
           await client.rememberMemory(memoryText);
-          appendLocalCommandTurn(rawText, `Saved memory note: "${memoryText}"`);
+          commitLocalCommandTurn(rawText, `Saved memory note: "${memoryText}"`);
           return { handled: true };
         }
 
@@ -1259,7 +1384,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
 
         if (!query) {
-          appendLocalCommandTurn(rawText, "Search query cannot be empty.");
+          commitLocalCommandTurn(rawText, "Search query cannot be empty.");
           return { handled: true };
         }
 
@@ -1283,7 +1408,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               `${index + 1}. ${item.text.replace(/\s+/g, " ").trim()} (sim ${item.similarity.toFixed(2)})`,
           ) ?? [];
 
-        appendLocalCommandTurn(
+        commitLocalCommandTurn(
           rawText,
           [
             scope === "memory"
@@ -1308,7 +1433,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       if (rawText.startsWith("$")) {
         const queryRaw = rawText.slice(1).trim();
         if (queryRaw) {
-          appendLocalCommandTurn(
+          commitLocalCommandTurn(
             rawText,
             "Use bare `$` only. `$ <text>` is not supported.",
           );
@@ -1326,7 +1451,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           (item, index) =>
             `${index + 1}. ${item.text.replace(/\s+/g, " ").trim()} (sim ${item.similarity.toFixed(2)})`,
         );
-        appendLocalCommandTurn(
+        commitLocalCommandTurn(
           rawText,
           [
             quick.answer,
@@ -1348,13 +1473,26 @@ export function useChatSend(deps: UseChatSendDeps) {
   // send-failure branch so the predicate lives in one place and can't drift.
   const dropEmptyAssistantPlaceholder = useCallback(
     (conversationId: string | null, assistantMsgId: string) => {
+      if (!isConversationCommitActive(conversationId)) {
+        applyConversationMessageOverlayModification(
+          conversationId,
+          assistantMsgId,
+          { messageId: assistantMsgId, mode: "drop" },
+          { onlyIfEmpty: true },
+        );
+        return;
+      }
       setConversationMessagesForConversation(conversationId, (prev) =>
         prev.filter(
           (message) => !(message.id === assistantMsgId && !message.text.trim()),
         ),
       );
     },
-    [setConversationMessagesForConversation],
+    [
+      applyConversationMessageOverlayModification,
+      isConversationCommitActive,
+      setConversationMessagesForConversation,
+    ],
   );
 
   // Re-attach a stopped/interrupted turn's partial reply after the post-turn
@@ -1530,6 +1668,16 @@ export function useChatSend(deps: UseChatSendDeps) {
       const channelType = turn.channelType;
       const imagesToSend = turn.images;
       const clientMessageId = turn.clientMessageId;
+      const optimisticOwnerConversationId =
+        turn.conversationId ?? activeConversationIdRef.current ?? null;
+      // Snapshot ownership before the first command-resolution await. A queued
+      // turn has already been shifted out of the queue at this point, so a
+      // new-chat/select cannot find it to cancel; this token prevents the older
+      // continuation from painting or rerouting itself when that await returns.
+      const optimisticOwnerGeneration =
+        activeConversationIdRef.current === optimisticOwnerConversationId
+          ? claimConversationMessagesOwnership(optimisticOwnerConversationId)
+          : null;
       let controller: AbortController | null = null;
       let abortServerTurn: (() => void) | null = null;
       let convRoomId: string | null = null;
@@ -1540,11 +1688,17 @@ export function useChatSend(deps: UseChatSendDeps) {
       if (rawText) {
         let commandResult: { handled: boolean; rewrittenText?: string };
         try {
-          commandResult = await tryHandlePrefixedChatCommand(rawText);
+          commandResult = await tryHandlePrefixedChatCommand(
+            rawText,
+            optimisticOwnerConversationId,
+            optimisticOwnerGeneration,
+          );
         } catch (err) {
           appendLocalCommandTurn(
             rawText,
             `Command failed: ${err instanceof Error ? err.message : "unknown error"}`,
+            optimisticOwnerConversationId,
+            optimisticOwnerGeneration,
           );
           return;
         }
@@ -1557,6 +1711,35 @@ export function useChatSend(deps: UseChatSendDeps) {
         ) {
           text = commandResult.rewrittenText.trim();
         }
+      }
+
+      if (
+        optimisticOwnerGeneration !== null &&
+        !isConversationMessagesOwnershipCurrent(
+          optimisticOwnerConversationId,
+          optimisticOwnerGeneration,
+        )
+      ) {
+        setConversationMessagesForConversation(
+          optimisticOwnerConversationId,
+          (prev) =>
+            prev.filter(
+              (message) =>
+                message.id !== turn.optimisticTurn.userMsgId &&
+                message.id !== turn.optimisticTurn.assistantMsgId,
+            ),
+        );
+        applyConversationMessageOverlayModification(
+          optimisticOwnerConversationId,
+          turn.optimisticTurn.userMsgId,
+          { messageId: turn.optimisticTurn.userMsgId, mode: "drop" },
+        );
+        applyConversationMessageOverlayModification(
+          optimisticOwnerConversationId,
+          turn.optimisticTurn.assistantMsgId,
+          { messageId: turn.optimisticTurn.assistantMsgId, mode: "drop" },
+        );
+        return;
       }
 
       const optimisticTurn = turn.optimisticTurn;
@@ -1573,9 +1756,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         text: "",
         timestamp: now,
       };
-      const optimisticOwnerConversationId =
-        turn.conversationId ?? activeConversationIdRef.current ?? null;
-      setCompanionMessageCutoffTs(now);
+      if (isConversationCommitActive(optimisticOwnerConversationId)) {
+        setCompanionMessageCutoffTs(now);
+      }
       // The user row is painted at enqueue. Drain owns the assistant placeholder
       // because only now do prefixed commands resolve to local output, rewritten
       // chat, or a real model turn. The idempotent merge also covers a cold-start
@@ -1607,12 +1790,16 @@ export function useChatSend(deps: UseChatSendDeps) {
           return [...prev, optimisticUserMessage, optimisticAssistantMessage];
         },
       );
+      registerConversationMessageOverlay(
+        optimisticOwnerConversationId,
+        [userMsgId, assistantMsgId],
+        [optimisticUserMessage, optimisticAssistantMessage],
+      );
       if (isConversationCommitActive(optimisticOwnerConversationId)) {
         setChatFirstTokenReceived(false);
       }
 
-      let convId: string =
-        turn.conversationId ?? activeConversationIdRef.current ?? "";
+      let convId: string = optimisticOwnerConversationId ?? "";
       if (!convId) {
         try {
           const { conversation: rawConversation } =
@@ -1625,13 +1812,26 @@ export function useChatSend(deps: UseChatSendDeps) {
           const conversation = rawConversation;
           const nextCutoffTs = Date.now();
           setConversations((prev) => [conversation, ...prev]);
-          if (
-            activeConversationIdRef.current === optimisticOwnerConversationId
-          ) {
+          // Re-home only this cold-open turn's exact registered lineages. If a
+          // real selection won while createConversation was pending, this keeps
+          // A's overlay with A without claiming or mutating B's visible store.
+          registerConversationMessageOverlay(conversation.id, [
+            userMsgId,
+            assistantMsgId,
+          ]);
+          const shouldActivateCreatedConversation =
+            optimisticOwnerGeneration !== null &&
+            activeConversationIdRef.current === optimisticOwnerConversationId &&
+            isConversationMessagesOwnershipCurrent(
+              optimisticOwnerConversationId,
+              optimisticOwnerGeneration,
+            );
+          if (shouldActivateCreatedConversation) {
+            claimConversationMessagesOwnership(conversation.id);
             setActiveConversationId(conversation.id);
             activeConversationIdRef.current = conversation.id;
+            setCompanionMessageCutoffTs(nextCutoffTs);
           }
-          setCompanionMessageCutoffTs(nextCutoffTs);
           convId = conversation.id;
           convRoomId = conversation.roomId;
         } catch {
@@ -1647,12 +1847,31 @@ export function useChatSend(deps: UseChatSendDeps) {
                   message.id !== userMsgId && message.id !== assistantMsgId,
               ),
           );
-          chatInputRef.current = rawText;
-          setChatInput(rawText);
-          if (imagesToSend?.length) {
-            const restoredImages = [...imagesToSend];
-            chatPendingImagesRef.current = restoredImages;
-            setChatPendingImages(restoredImages);
+          applyConversationMessageOverlayModification(
+            optimisticOwnerConversationId,
+            userMsgId,
+            { messageId: userMsgId, mode: "drop" },
+          );
+          applyConversationMessageOverlayModification(
+            optimisticOwnerConversationId,
+            assistantMsgId,
+            { messageId: assistantMsgId, mode: "drop" },
+          );
+          if (
+            optimisticOwnerGeneration !== null &&
+            activeConversationIdRef.current === optimisticOwnerConversationId &&
+            isConversationMessagesOwnershipCurrent(
+              optimisticOwnerConversationId,
+              optimisticOwnerGeneration,
+            )
+          ) {
+            chatInputRef.current = rawText;
+            setChatInput(rawText);
+            if (imagesToSend?.length) {
+              const restoredImages = [...imagesToSend];
+              chatPendingImagesRef.current = restoredImages;
+              setChatPendingImages(restoredImages);
+            }
           }
           setActionNotice(
             `Couldn't start the conversation — check your connection and try again. ${imagesToSend?.length ? "Your message and attachments were restored." : "Your message was restored."}`,
@@ -1670,10 +1889,12 @@ export function useChatSend(deps: UseChatSendDeps) {
         sentAt: now,
       });
 
-      client.sendWsMessage({
-        type: "active-conversation",
-        conversationId: convId,
-      });
+      if (activeConversationIdRef.current === convId) {
+        client.sendWsMessage({
+          type: "active-conversation",
+          conversationId: convId,
+        });
+      }
 
       const activeConv = conversationsRef.current.find((c) => c.id === convId);
       // The room id is used only by the optional abort side-channel. Never hold
@@ -1815,7 +2036,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
 
         const completedTurnSnapshot =
-          data.completed && data.userMessageId
+          isConversationCommitActive(convId) &&
+          data.completed &&
+          data.userMessageId
             ? captureCompletedTurnForHistoryRefresh(
                 conversationMessagesRef.current,
                 {
@@ -1888,10 +2111,12 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
         }
 
-        const userMessageCount = conversationMessagesRef.current.filter(
-          (message) =>
-            message.role === "user" && !message.id.startsWith("temp-"),
-        ).length;
+        const userMessageCount = isConversationCommitActive(convId)
+          ? conversationMessagesRef.current.filter(
+              (message) =>
+                message.role === "user" && !message.id.startsWith("temp-"),
+            ).length
+          : null;
 
         if (
           userMessageCount === 1 &&
@@ -2028,14 +2253,22 @@ export function useChatSend(deps: UseChatSendDeps) {
           const replayAssistantId = `temp-resp-${replayNow}`;
           try {
             const nextCutoffTs = Date.now();
+            const shouldActivateReplay =
+              activeConversationIdRef.current === convId;
+            discardConversationMessageState(convId);
             setConversations((prev) => [conversation, ...prev]);
-            setActiveConversationId(conversation.id);
-            activeConversationIdRef.current = conversation.id;
-            setCompanionMessageCutoffTs(nextCutoffTs);
-            client.sendWsMessage({
-              type: "active-conversation",
-              conversationId: conversation.id,
-            });
+            if (shouldActivateReplay) {
+              claimConversationMessagesOwnership(conversation.id);
+              setActiveConversationId(conversation.id);
+              activeConversationIdRef.current = conversation.id;
+              setCompanionMessageCutoffTs(nextCutoffTs);
+            }
+            if (shouldActivateReplay) {
+              client.sendWsMessage({
+                type: "active-conversation",
+                conversationId: conversation.id,
+              });
+            }
 
             // Seed the recreated conversation with the user turn + an empty
             // assistant placeholder, then REPLAY as a token stream — the 404
@@ -2044,15 +2277,31 @@ export function useChatSend(deps: UseChatSendDeps) {
             // Seed unfiltered (like the primary send path) — the empty assistant
             // placeholder must survive so streamed tokens have a target;
             // filterRenderableConversationMessages would drop an empty turn.
-            setConversationMessagesForConversation(conversation.id, [
-              { id: replayUserId, role: "user", text, timestamp: replayNow },
+            const replayMessages: ConversationMessage[] = [
+              {
+                id: replayUserId,
+                clientRenderId: replayUserId,
+                role: "user",
+                text,
+                timestamp: replayNow,
+              },
               {
                 id: replayAssistantId,
+                clientRenderId: replayAssistantId,
                 role: "assistant",
                 text: "",
                 timestamp: replayNow,
               },
-            ]);
+            ];
+            setConversationMessagesForConversation(
+              conversation.id,
+              replayMessages,
+            );
+            registerConversationMessageOverlay(
+              conversation.id,
+              [replayUserId, replayAssistantId],
+              replayMessages,
+            );
 
             let replayStreamedText = "";
             const retryData = await client.sendConversationMessageStream(
@@ -2098,6 +2347,14 @@ export function useChatSend(deps: UseChatSendDeps) {
 
             // Commit any throttle-parked token before the terminal modification.
             flushStreamingText();
+
+            if (retryData.userMessageId) {
+              applyStreamingModificationForConversation(conversation.id, {
+                messageId: replayUserId,
+                mode: "rekey",
+                persistedMessageId: retryData.userMessageId,
+              });
+            }
 
             reconcileTerminalStream(
               conversation.id,
@@ -2155,14 +2412,20 @@ export function useChatSend(deps: UseChatSendDeps) {
             // ImageAttachment shape that was sent) — back in the composer, and
             // say exactly why the server rejected it, because resending the
             // same payload unchanged would fail identically.
-            if (rawText) setChatInput(rawText);
-            if (imagesToSend?.length) setChatPendingImages([...imagesToSend]);
-            const restored =
-              rawText && imagesToSend?.length
+            const restoredToComposer = isConversationCommitActive(convId);
+            if (restoredToComposer) {
+              if (rawText) setChatInput(rawText);
+              if (imagesToSend?.length) {
+                setChatPendingImages([...imagesToSend]);
+              }
+            }
+            const restored = restoredToComposer
+              ? rawText && imagesToSend?.length
                 ? "Your text and attachments were restored to the input."
                 : imagesToSend?.length
                   ? "Your attachments were restored to the input."
-                  : "Your message was restored to the input.";
+                  : "Your message was restored to the input."
+              : "Return to that conversation to edit and retry the rejected turn.";
             setActionNotice(
               `${buildSendFailureNotice(err)} ${restored}`,
               "error",
@@ -2229,6 +2492,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       reconcileTerminalStream,
       loadConversationMessages,
       loadConversations,
+      claimConversationMessagesOwnership,
+      isConversationMessagesOwnershipCurrent,
+      registerConversationMessageOverlay,
+      applyConversationMessageOverlayModification,
+      discardConversationMessageState,
       tryHandlePrefixedChatCommand,
       activeConversationIdRef,
       chatAbortRef,
@@ -2332,6 +2600,22 @@ export function useChatSend(deps: UseChatSendDeps) {
         handoffFrozenRef.current = true;
         return;
       }
+      if (
+        (detail.phase === "switched" || detail.phase === "switched-empty") &&
+        markPendingCapabilityReady(detail.agentId) &&
+        firstRunComplete &&
+        !chatInputRef.current.trim()
+      ) {
+        const originalIntent = consumePendingCapabilityIntent(detail.agentId);
+        if (originalIntent) {
+          setChatInput(originalIntent);
+          dispatchChatPrefill({ text: originalIntent, select: true });
+          setActionNotice(
+            "Your workspace is ready. Review your request, then send it when you want.",
+            "success",
+          );
+        }
+      }
       // Any terminal phase ends the window. Drain whatever queued up — by now
       // the client base is the dedicated container (on a switch) or unchanged
       // (on timeout/failure), so the flush targets the right agent either way.
@@ -2342,7 +2626,13 @@ export function useChatSend(deps: UseChatSendDeps) {
     };
     window.addEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
     return () => window.removeEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
-  }, [flushQueuedChatSends]);
+  }, [
+    chatInputRef,
+    firstRunComplete,
+    flushQueuedChatSends,
+    setActionNotice,
+    setChatInput,
+  ]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationIdRef is a ref — its .current is read at ENQUEUE time (always latest) and must NOT be a dependency, or this callback's identity churns on every conversation switch.
   const sendChatTextInternal = useCallback(
@@ -2425,6 +2715,9 @@ export function useChatSend(deps: UseChatSendDeps) {
               : [...current, optimisticUserMessage];
           },
         );
+        registerConversationMessageOverlay(conversationId, [
+          optimisticTurn.userMsgId,
+        ]);
       }
 
       await new Promise<void>((resolve, reject) => {
@@ -2444,6 +2737,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       setChatSending,
       setCompanionMessageCutoffTs,
       setConversationMessagesForConversation,
+      registerConversationMessageOverlay,
       tab,
     ],
   );
@@ -2504,6 +2798,11 @@ export function useChatSend(deps: UseChatSendDeps) {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      // Actions can be fired from shell surfaces while startup hydration is
+      // still choosing the initial conversation. Use the same bounded barrier
+      // as composer sends so a cold action cannot create A and then be hidden
+      // by the late hydration claim of H (or vice versa).
+      await settleConversationHydrationForSend?.();
       if (chatSendBusyRef.current) return;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
@@ -2512,8 +2811,13 @@ export function useChatSend(deps: UseChatSendDeps) {
       let convRoomId: string | null = null;
 
       try {
-        let convId: string = activeConversationId ?? "";
+        const optimisticOwnerConversationId =
+          activeConversationIdRef.current ?? activeConversationId ?? null;
+        let convId: string = optimisticOwnerConversationId ?? "";
         if (!convId) {
+          const coldOwnershipGeneration = claimConversationMessagesOwnership(
+            optimisticOwnerConversationId,
+          );
           try {
             const actionTitle =
               trimmed.length > 50 ? `${trimmed.slice(0, 47)}...` : trimmed;
@@ -2536,9 +2840,19 @@ export function useChatSend(deps: UseChatSendDeps) {
             const conversation = rawConversation;
             const nextCutoffTs = Date.now();
             setConversations((prev) => [conversation, ...prev]);
-            setActiveConversationId(conversation.id);
-            activeConversationIdRef.current = conversation.id;
-            setCompanionMessageCutoffTs(nextCutoffTs);
+            if (
+              activeConversationIdRef.current ===
+                optimisticOwnerConversationId &&
+              isConversationMessagesOwnershipCurrent(
+                optimisticOwnerConversationId,
+                coldOwnershipGeneration,
+              )
+            ) {
+              claimConversationMessagesOwnership(conversation.id);
+              setActiveConversationId(conversation.id);
+              activeConversationIdRef.current = conversation.id;
+              setCompanionMessageCutoffTs(nextCutoffTs);
+            }
             convId = conversation.id;
             convRoomId = conversation.roomId;
           } catch {
@@ -2555,10 +2869,12 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
         }
 
-        client.sendWsMessage({
-          type: "active-conversation",
-          conversationId: convId,
-        });
+        if (activeConversationIdRef.current === convId) {
+          client.sendWsMessage({
+            type: "active-conversation",
+            conversationId: convId,
+          });
+        }
 
         // Eagerly rename "New Chat" using a snippet of the first message
         const activeConv = conversationsRef.current.find(
@@ -2587,14 +2903,33 @@ export function useChatSend(deps: UseChatSendDeps) {
         const userMsgId = `temp-action-${now}`;
         const assistantMsgId = `temp-action-resp-${now}`;
 
-        setCompanionMessageCutoffTs(now);
+        if (activeConversationIdRef.current === convId) {
+          setCompanionMessageCutoffTs(now);
+        }
+        const actionMessages: ConversationMessage[] = [
+          {
+            id: userMsgId,
+            clientRenderId: userMsgId,
+            role: "user",
+            text: trimmed,
+            timestamp: now,
+          },
+          {
+            id: assistantMsgId,
+            clientRenderId: assistantMsgId,
+            role: "assistant",
+            text: "",
+            timestamp: now,
+          },
+        ];
         setConversationMessagesForConversation(
           convId,
-          (prev: ConversationMessage[]) => [
-            ...prev,
-            { id: userMsgId, role: "user", text: trimmed, timestamp: now },
-            { id: assistantMsgId, role: "assistant", text: "", timestamp: now },
-          ],
+          (prev: ConversationMessage[]) => [...prev, ...actionMessages],
+        );
+        registerConversationMessageOverlay(
+          convId,
+          [userMsgId, assistantMsgId],
+          actionMessages,
         );
         if (isConversationCommitActive(convId)) {
           setChatSending(true);
@@ -2654,6 +2989,13 @@ export function useChatSend(deps: UseChatSendDeps) {
           // Commit any token parked by the throttle before the terminal
           // drop/complete/fail/interrupt — no streamed tokens may be lost.
           flushStreamingText();
+          if (data.userMessageId) {
+            applyStreamingModificationForConversation(convId, {
+              messageId: userMsgId,
+              mode: "rekey",
+              persistedMessageId: data.userMessageId,
+            });
+          }
           await handoffCompletedAction(data.actionResults, (message) => {
             setActionNotice(message, "error", 8_000);
           });
@@ -2709,6 +3051,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             dropEmptyAssistantPlaceholder(convId, assistantMsgId);
             return;
           }
+          dropEmptyAssistantPlaceholder(convId, assistantMsgId);
           // Surface a status-specific notice so an inbox/connector send that
           // 5xxs, times out, or auth-fails is never silent dead air — the
           // main-chat send path already does this; this one did not (#10231).
@@ -2759,6 +3102,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     },
     [
       activeConversationId,
+      claimConversationMessagesOwnership,
+      isConversationMessagesOwnershipCurrent,
       chatSendQueueRef,
       elizaCloudEnabled,
       elizaCloudConnected,
@@ -2771,6 +3116,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       restoreEvictedUserTurn,
       dropEmptyAssistantPlaceholder,
       reattachInterruptedPartial,
+      registerConversationMessageOverlay,
       isConversationCommitActive,
       setConversationMessagesForConversation,
       setChatFirstTokenReceived,
@@ -2779,6 +3125,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       uiLanguage,
       scheduleStreamingText,
       scheduleToolEvent,
+      settleConversationHydrationForSend,
       flushStreamingText,
     ],
   );
@@ -2832,12 +3179,18 @@ export function useChatSend(deps: UseChatSendDeps) {
       // in memory and resent, producing a duplicate [Q, fail, Q-dup, new] turn.
       if (canTruncate && convId) {
         interruptActiveChatPipeline();
+        const removedTail = currentMessages.slice(userIdx);
         const preservedMessages = currentMessages.slice(0, userIdx);
         conversationMessagesRef.current = preservedMessages;
         setConversationMessages(preservedMessages);
         try {
           await client.truncateConversationMessages(convId, userMsg.id, {
             inclusive: true,
+          });
+          removeConversationMessageStateMessages?.(convId, {
+            mode: "truncate",
+            removedMessages: removedTail,
+            preservedMessages,
           });
           await sendChatText(retryText, { conversationId: convId });
         } catch (err) {
@@ -2889,6 +3242,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       activeConversationIdRef,
       interruptActiveChatPipeline,
       loadConversationMessages,
+      removeConversationMessageStateMessages,
       setActionNotice,
     ],
   );
@@ -2932,6 +3286,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         setChatInput("");
       }
 
+      const removedTail = currentMessages.slice(messageIndex);
       const preservedMessages = currentMessages.slice(0, messageIndex);
       conversationMessagesRef.current = preservedMessages;
       setConversationMessages(preservedMessages);
@@ -2939,6 +3294,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       try {
         await client.truncateConversationMessages(convId, messageId, {
           inclusive: true,
+        });
+        removeConversationMessageStateMessages?.(convId, {
+          mode: "truncate",
+          removedMessages: removedTail,
+          preservedMessages,
         });
         await sendChatText(nextText, { conversationId: convId });
         return true;
@@ -2954,6 +3314,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     },
     [
       loadConversationMessages,
+      removeConversationMessageStateMessages,
       sendChatText,
       setActionNotice,
       activeConversationIdRef.current,
@@ -2997,6 +3358,10 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       try {
         await client.deleteConversationMessage(convId, messageId);
+        removeConversationMessageStateMessages?.(convId, {
+          mode: "delete-exact",
+          removedMessages: [target],
+        });
         return true;
       } catch (err) {
         // Roll back so the message stays visible — never a silent local-only
@@ -3029,40 +3394,50 @@ export function useChatSend(deps: UseChatSendDeps) {
     [
       activeConversationIdRef,
       conversationMessagesRef,
+      removeConversationMessageStateMessages,
       setConversationMessages,
       setActionNotice,
     ],
   );
 
   const handleChatClear = useCallback(async () => {
-    const convId = activeConversationId;
+    const convId = activeConversationIdRef.current ?? activeConversationId;
     if (!convId) {
       setActionNotice("No active conversation to clear.", "info", 2200);
       return;
     }
     interruptActiveChatPipeline();
-    try {
-      await client.deleteConversation(convId);
-      setActiveConversationId(null);
-      activeConversationIdRef.current = null;
-      setConversationMessages([]);
+    const removeClearedConversationLocally = () => {
+      const clearingCurrentActive = activeConversationIdRef.current === convId;
+      if (clearingCurrentActive) {
+        conversationHydrationEpochRef.current += 1;
+        claimConversationMessagesOwnership(null);
+      }
+      discardConversationMessageState(convId);
+      if (clearingCurrentActive) {
+        setActiveConversationId(null);
+        activeConversationIdRef.current = null;
+        conversationMessagesRef.current = [];
+        setConversationMessages([]);
+        client.sendWsMessage({
+          type: "active-conversation",
+          conversationId: null,
+        });
+      }
       setUnreadConversations((prev) => {
         const next = new Set(prev);
         next.delete(convId);
         return next;
       });
+    };
+    try {
+      await client.deleteConversation(convId);
+      removeClearedConversationLocally();
       await loadConversations();
     } catch (err) {
       const status = (err as { status?: number }).status;
       if (status === 404) {
-        setActiveConversationId(null);
-        activeConversationIdRef.current = null;
-        setConversationMessages([]);
-        setUnreadConversations((prev) => {
-          const next = new Set(prev);
-          next.delete(convId);
-          return next;
-        });
+        removeClearedConversationLocally();
         await loadConversations();
         setActionNotice("Conversation was already cleared.", "info", 2600);
         return;
@@ -3075,14 +3450,32 @@ export function useChatSend(deps: UseChatSendDeps) {
     }
   }, [
     activeConversationId,
+    activeConversationIdRef,
+    claimConversationMessagesOwnership,
+    conversationHydrationEpochRef,
+    conversationMessagesRef,
+    discardConversationMessageState,
     interruptActiveChatPipeline,
     loadConversations,
     setActionNotice,
-    activeConversationIdRef,
     setActiveConversationId,
     setConversationMessages,
     setUnreadConversations,
   ]);
+
+  useEffect(() => {
+    if (!firstRunComplete || chatInput.trim()) return;
+    const readyAgentId = readPendingCapabilityReadyAgentId();
+    if (!readyAgentId) return;
+    const originalIntent = consumePendingCapabilityIntent(readyAgentId);
+    if (!originalIntent) return;
+    setChatInput(originalIntent);
+    dispatchChatPrefill({ text: originalIntent, select: true });
+    setActionNotice(
+      "Your workspace is ready. Review your request, then send it when you want.",
+      "success",
+    );
+  }, [chatInput, firstRunComplete, setActionNotice, setChatInput]);
 
   return {
     chatSendQueueRef,

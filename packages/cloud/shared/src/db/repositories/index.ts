@@ -69,6 +69,7 @@ export * from "./app-earnings";
 // ============================================
 export * from "./apps";
 export * from "./auto-top-up-attempts";
+export * from "./billing-cancel-commands";
 // ============================================
 // Character Domain (User-created definitions)
 // ============================================
@@ -128,6 +129,7 @@ export * from "./seo-provider-calls";
 export * from "./seo-requests";
 export * from "./service-pricing";
 export * from "./synthetic-environment-leases";
+export * from "./synthetic-world-commands";
 // ============================================
 // Token Redemptions (elizaOS payouts)
 // ============================================

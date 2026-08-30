@@ -147,10 +147,10 @@ describe("ENTITY_GRAPH provider", () => {
     expect(result.text).toContain("you -[manages]-> Alice");
     expect(result.text).toContain("Alice (person)");
     // queried from `self` ego-network only.
-    expect(relationshipStore.list).toHaveBeenCalledWith(
-      expect.objectContaining({ fromEntityId: "self" }),
-    );
-    expect(entityStore.list).toHaveBeenCalled();
+    expect(relationshipStore.list).toHaveBeenCalledWith({
+      fromEntityId: "self",
+    });
+    expect(entityStore.list).toHaveBeenCalledWith({});
   });
 
   it("renders a degraded error shape and reports when the store read fails", async () => {

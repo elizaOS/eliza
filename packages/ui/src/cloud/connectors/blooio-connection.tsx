@@ -22,8 +22,11 @@ import {
 } from "../../cloud-ui/components/connection-card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Separator } from "../../components/ui/separator";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
@@ -218,7 +221,7 @@ export function BlooioConnection() {
         name={t("cloud.blooio.cardName", {
           defaultValue: "iMessage (Blooio)",
         })}
-        icon={<MessageCircle className="text-green-500" />}
+        icon={<MessageCircle className="text-accent" />}
         description={t("cloud.blooio.cardDescription", {
           defaultValue: "Connect iMessage for AI-powered text conversations",
         })}
@@ -230,7 +233,7 @@ export function BlooioConnection() {
   return (
     <ConnectionCard
       name={t("cloud.blooio.cardName", { defaultValue: "iMessage (Blooio)" })}
-      icon={<MessageCircle className="text-green-500" />}
+      icon={<MessageCircle className="text-accent" />}
       description={t("cloud.blooio.cardDescription", {
         defaultValue: "Connect iMessage for AI-powered text conversations",
       })}
@@ -252,19 +255,21 @@ export function BlooioConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Smartphone className="size-6 text-green-600" />}
-            iconClassName="bg-green-100"
+            icon={<Smartphone className="size-6 text-accent" />}
+            iconClassName="bg-accent-subtle"
             title={status?.phoneNumber}
             subtitle={t("cloud.blooio.connectedVia", {
               defaultValue: "iMessage Connected via Blooio",
             })}
           >
             {status?.webhookConfigured && (
-              <Badge variant="outline" className="mt-1 text-xs">
-                {t("cloud.blooio.webhookActive", {
-                  defaultValue: "Webhook Active",
-                })}
-              </Badge>
+              <div className="mt-1">
+                <Badge variant="outline">
+                  {t("cloud.blooio.webhookActive", {
+                    defaultValue: "Webhook Active",
+                  })}
+                </Badge>
+              </div>
             )}
           </ConnectionIdentityPanel>
 
@@ -285,9 +290,14 @@ export function BlooioConnection() {
           )}
 
           {status?.webhookUrl && !status.hasWebhookSecret && (
-            <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-sm space-y-3">
+            <Card
+              variant="warningNotice"
+              padding="compact"
+              stack="compact"
+              className="text-base"
+            >
               <div>
-                <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-1">
+                <p className="text-sm font-medium text-status-warning mb-1">
                   {t("cloud.blooio.step2Title", {
                     defaultValue: "Step 2: Create a webhook in Blooio",
                   })}
@@ -316,8 +326,9 @@ export function BlooioConnection() {
                   </li>
                 </ol>
               </div>
-              <div className="space-y-2 pt-2 border-t border-yellow-500/20">
-                <Label className="text-xs text-yellow-700 dark:text-yellow-400">
+              <Separator />
+              <div className="space-y-2 pt-2">
+                <Label className="text-xs text-status-warning">
                   {t("cloud.blooio.step3Label", {
                     defaultValue: "Step 3: Paste signing secret here",
                   })}
@@ -343,7 +354,7 @@ export function BlooioConnection() {
                   </Button>
                 </div>
               </div>
-            </div>
+            </Card>
           )}
 
           {status?.hasWebhookSecret && (
@@ -400,15 +411,15 @@ export function BlooioConnection() {
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
                 {t("cloud.blooio.instructGoTo", { defaultValue: "Go to" })}{" "}
-                <a
+                <TextLink
                   href="https://app.blooio.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-green-600 hover:underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1"
                 >
                   app.blooio.com
                   <ExternalLink className="size-3" />
-                </a>
+                </TextLink>
               </li>
               <li>
                 {t("cloud.blooio.instructCreateAccount", {
@@ -480,7 +491,7 @@ export function BlooioConnection() {
             </p>
           </div>
 
-          <div className="p-4 bg-muted rounded-sm">
+          <Card variant="flatPadded">
             <h4 className="font-medium mb-2">
               {t("cloud.blooio.whatYouCanDo", {
                 defaultValue: "What you can do with iMessage:",
@@ -508,12 +519,12 @@ export function BlooioConnection() {
                 })}
               </li>
             </ul>
-          </div>
+          </Card>
 
           <Button
             onClick={handleConnect}
             disabled={isConnecting || !apiKey.trim() || !phoneNumber.trim()}
-            className="w-full bg-green-600 hover:bg-green-700"
+            className="w-full"
           >
             {isConnecting ? (
               <>

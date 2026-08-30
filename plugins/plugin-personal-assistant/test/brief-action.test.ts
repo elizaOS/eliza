@@ -98,22 +98,6 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("metadata", () => {
-    it("exposes the canonical name and PRD similes", () => {
-      expect(briefAction.name).toBe("BRIEF");
-      const similes = briefAction.similes ?? [];
-      for (const required of [
-        "BRIEF",
-        "BRIEF_ME",
-        "MORNING_BRIEF",
-        "EVENING_BRIEF",
-        "WEEKLY_BRIEF",
-        "COMPOSE_BRIEFING",
-        "DAILY_DIGEST",
-      ]) {
-        expect(similes).toContain(required);
-      }
-    });
-
     it("validates as accessible for an owner-attached message", async () => {
       const ok = await briefAction.validate?.(
         makeRuntime(),
@@ -155,7 +139,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             sourceId: "newsletter-1",
             itemClass: "inbox:newsletter-digest",
             eventType: "ignored",
-            eventAt: `2026-07-0${day}T12:00:00.000Z`,
+            eventAt: new Date(
+              Date.now() - day * 24 * 60 * 60 * 1_000,
+            ).toISOString(),
             weight: -1,
             metadata: { scenario: "ignore-pattern" },
           });

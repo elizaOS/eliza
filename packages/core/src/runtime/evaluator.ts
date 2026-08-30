@@ -335,7 +335,9 @@ export async function runEvaluator(
 				segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
 				promptSegments: input.promptSegments,
 				provider,
-				conversationId: params.trajectoryId,
+				conversationId: params.cacheConversationId
+					? `${params.cacheConversationId}:evaluator`
+					: params.trajectoryId,
 			}),
 			budget,
 		) as Record<string, unknown> & { eliza?: Record<string, unknown> };
@@ -771,14 +773,18 @@ function renderEvaluatorModelInput(params: {
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
 } {
-	const renderedContext = renderContextObject(params.context);
+	const renderedContext = renderContextObject(
+		params.trajectory.modelBaseContext ?? params.context,
+	);
 	const template = params.template ?? evaluatorTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
-		redactText: params.redactText,
-	});
+	const stepMessages =
+		params.trajectory.modelHistory ??
+		trajectoryStepsToMessages(params.trajectory.steps, {
+			redactText: params.redactText,
+		});
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.

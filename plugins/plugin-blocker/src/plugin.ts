@@ -47,6 +47,7 @@ export const blockerPlugin: Plugin = {
         "Website + app blocking schedule and active session controls",
       icon: "ShieldOff",
       path: "/focus",
+      responseContext: { primaryContext: "productivity" },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the

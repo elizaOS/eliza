@@ -6,6 +6,7 @@
  * All model-supplied ids are parsed before touching the database so a bad
  * id becomes a clean handled result, never a raw SQL error in model context.
  */
+import { createHash } from "node:crypto";
 import type {
   Action,
   ActionResult,
@@ -44,6 +45,9 @@ interface MemoryParams {
   entityId?: string;
   roomId?: string;
   query?: string;
+  limit?: number;
+  offset?: number;
+  snapshot?: string;
   memoryId?: string;
   confirm?: boolean;
 }
@@ -58,8 +62,59 @@ interface MemoryListItem {
   createdAt: number;
 }
 
-function fail(text: string, error: string): ActionResult {
-  return { success: false, text, data: { error } };
+const SEARCH_QUERY_STOP_WORDS = new Set([
+  "a",
+  "am",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "did",
+  "do",
+  "does",
+  "for",
+  "from",
+  "had",
+  "has",
+  "have",
+  "how",
+  "i",
+  "in",
+  "is",
+  "it",
+  "me",
+  "my",
+  "of",
+  "on",
+  "or",
+  "our",
+  "that",
+  "the",
+  "this",
+  "to",
+  "was",
+  "we",
+  "were",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "why",
+  "with",
+  "you",
+  "your",
+]);
+
+function fail(
+  text: string,
+  error: string,
+  context?: Record<string, unknown>,
+): ActionResult {
+  return { success: false, text, data: { error, ...context } };
 }
 
 type UuidParamName = "entityId" | "roomId" | "memoryId";
@@ -99,23 +154,42 @@ function scoreText(text: string, query: string): number {
   const t = text.toLowerCase();
   const q = query.toLowerCase();
   if (!t || !q) return 0;
-  const terms = q
-    .split(/\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length >= 2);
+  const terms = [
+    ...new Set(
+      q
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(
+          (term) => term.length >= 2 && !SEARCH_QUERY_STOP_WORDS.has(term),
+        ),
+    ),
+  ];
   const whole = t.includes(q) ? 1 : 0;
   if (terms.length === 0) return whole;
+  const textTerms = new Set(t.split(/[^\p{L}\p{N}]+/u).filter(Boolean));
   let matches = 0;
-  for (const term of terms) if (t.includes(term)) matches += 1;
+  for (const term of terms) if (textTerms.has(term)) matches += 1;
+  const requiredMatches = terms.length >= 3 ? 2 : 1;
+  if (whole === 0 && matches < requiredMatches) return 0;
   return whole + matches / terms.length;
 }
 
+function searchableMemoryText(memory: Memory): string {
+  const text = memory.content.text ?? "";
+  const attachments = (memory.content.attachments ?? []).map((attachment) => {
+    const label =
+      attachment.filename ?? attachment.title ?? attachment.id ?? "attachment";
+    const mediaType = attachment.mimeType ?? attachment.contentType;
+    const readableContent = attachment.text ?? attachment.description;
+    return `[attachment: ${label}${mediaType ? `; ${mediaType}` : ""}${readableContent ? `; ${readableContent}` : ""}]`;
+  });
+  return [text, ...attachments].filter(Boolean).join(" ");
+}
+
 function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
-  const content = memory.content as Record<string, unknown> | undefined;
   return {
     id: memory.id ?? "",
     type,
-    text: (content?.text as string) ?? "",
+    text: searchableMemoryText(memory),
     entityId: memory.entityId,
     roomId: memory.roomId,
     agentId: memory.agentId ?? null,
@@ -208,7 +282,9 @@ interface CandidateScan {
   scanned: number;
 }
 
-const COMPLETE_MEMORY_PAGE_SIZE = 500;
+const COMPLETE_MEMORY_PAGE_SIZE = 10_000;
+export const MAX_MEMORY_PAGE_ITEMS = 50;
+export const MAX_MEMORY_ACTION_RESULT_CHARS = 256 * 1024;
 
 function traversalError(
   code: string,
@@ -241,6 +317,25 @@ function compareMemoryTuple(left: Memory, right: Memory): number {
   return String(right.id)
     .toLowerCase()
     .localeCompare(String(left.id).toLowerCase());
+}
+
+function memoryPageSnapshot(items: readonly MemoryListItem[]): string {
+  const hash = createHash("sha256");
+  for (const item of items) {
+    const canonical = JSON.stringify([
+      item.id,
+      item.type,
+      item.text,
+      item.entityId,
+      item.roomId,
+      item.agentId,
+      item.createdAt,
+    ]);
+    hash.update(String(Buffer.byteLength(canonical)));
+    hash.update(":");
+    hash.update(canonical);
+  }
+  return hash.digest("hex");
 }
 
 async function scanCompleteMemoryTable(
@@ -399,8 +494,7 @@ async function collectCandidates(
   }
 
   let filtered = collected.filter((c) => {
-    const text = (c.memory.content as { text?: string } | undefined)?.text;
-    return typeof text === "string" && text.trim().length > 0;
+    return searchableMemoryText(c.memory).trim().length > 0;
   });
 
   if (scope.entityId) {
@@ -415,15 +509,20 @@ async function collectCandidates(
   if (scope.query) {
     const query = scope.query;
     filtered = filtered.filter((c) => {
-      const text =
-        (c.memory.content as { text?: string } | undefined)?.text ?? "";
-      return scoreText(text, query) > 0;
+      return scoreText(searchableMemoryText(c.memory), query) > 0;
     });
   }
 
-  filtered.sort(
-    (a, b) => (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0),
-  );
+  filtered.sort((a, b) => {
+    if (scope.query) {
+      const leftText = searchableMemoryText(a.memory);
+      const rightText = searchableMemoryText(b.memory);
+      const relevance =
+        scoreText(rightText, scope.query) - scoreText(leftText, scope.query);
+      if (relevance !== 0) return relevance;
+    }
+    return (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0);
+  });
   return { matches: filtered, tables, scanned: collected.length };
 }
 
@@ -473,6 +572,28 @@ async function doSearch(
     );
   }
   const query = params.query?.trim();
+  const limit = params.limit;
+  const offset = params.offset ?? 0;
+  const requestedSnapshot = params.snapshot?.trim();
+  if (
+    (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1)) ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    (limit === undefined && offset !== 0) ||
+    (offset > 0 && !requestedSnapshot)
+  ) {
+    return fail(
+      "search limit must be a positive integer, and a continuation offset requires limit and snapshot.",
+      "MEMORY_INVALID_PAGE",
+    );
+  }
+  if (limit !== undefined && limit > MAX_MEMORY_PAGE_ITEMS) {
+    return fail(
+      `search limit ${limit} exceeds the maximum page size of ${MAX_MEMORY_PAGE_ITEMS}. Retry with a smaller limit.`,
+      "MEMORY_PAGE_LIMIT_EXCEEDED",
+      { requestedLimit: limit, maxLimit: MAX_MEMORY_PAGE_ITEMS },
+    );
+  }
 
   const scope = {
     type,
@@ -482,25 +603,63 @@ async function doSearch(
   };
   const scan = await collectCandidates(runtime, scope);
 
-  const totalMatches = scan.matches.length;
-  const items = scan.matches.map((c) => toListItem(c.memory, c.type));
+  const allItems = scan.matches.map((candidate) =>
+    toListItem(candidate.memory, candidate.type),
+  );
+  const totalMatches = allItems.length;
+  const snapshot = memoryPageSnapshot(allItems);
+  if (requestedSnapshot && requestedSnapshot !== snapshot) {
+    return fail(
+      "The ordered memory matches changed after the previous page. Restart this search at offset 0.",
+      "MEMORY_PAGE_SNAPSHOT_CHANGED",
+    );
+  }
+  if (limit === undefined && totalMatches > MAX_MEMORY_PAGE_ITEMS) {
+    return fail(
+      `The complete search has ${totalMatches} matches, which exceeds the maximum safe result size of ${MAX_MEMORY_PAGE_ITEMS} records. Retry with limit at most ${MAX_MEMORY_PAGE_ITEMS}.`,
+      "MEMORY_SEARCH_REQUIRES_PAGINATION",
+      {
+        totalMatches,
+        maxLimit: MAX_MEMORY_PAGE_ITEMS,
+        suggestedLimit: Math.min(20, MAX_MEMORY_PAGE_ITEMS),
+        snapshot,
+      },
+    );
+  }
+  const items =
+    limit === undefined ? allItems : allItems.slice(offset, offset + limit);
+  const nextOffset =
+    limit !== undefined && offset + items.length < totalMatches
+      ? offset + items.length
+      : undefined;
   // The text projection carries enough of each hit for model reasoning; the
   // complete records remain machine data for state and trajectory consumers.
   const lines = items.map(
-    (m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`,
+    (m) =>
+      `- [${m.type}] ${m.id} at ${new Date(m.createdAt).toISOString()}: ${toWellFormedUnicode(m.text)}`,
   );
   const userFacingText = items.length
     ? [
         `I found ${items.length} matching memory record(s):`,
         ...items.map(
-          (item) => `- [${item.type}] ${toWellFormedUnicode(item.text)}`,
+          (item) =>
+            `- [${item.type}] at ${new Date(item.createdAt).toISOString()}: ${toWellFormedUnicode(item.text)}`,
         ),
       ].join("\n")
     : undefined;
 
-  const renderNote = `Showing all ${lines.length} match(es) found in the complete scan`;
+  const renderNote =
+    limit === undefined
+      ? `Showing all ${lines.length} match(es) found in the complete scan`
+      : `Showing ${lines.length} match(es) at offset ${offset} of ${totalMatches} found in the complete scan`;
+  const continuationNote =
+    nextOffset === undefined
+      ? []
+      : [
+          `More matches remain. To continue losslessly, call MEMORY_SEARCH with the same filters, limit=${limit}, offset=${nextOffset}, snapshot=${snapshot}.`,
+        ];
 
-  return {
+  const result: ActionResult = {
     success: true,
     text: [
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
@@ -509,8 +668,11 @@ async function doSearch(
         : []),
       describeCompleteScan(scan),
       ...lines,
+      ...continuationNote,
     ].join("\n"),
-    ...(userFacingText && recallTerminalEnabled(runtime)
+    ...(userFacingText &&
+    nextOffset === undefined &&
+    recallTerminalEnabled(runtime)
       ? {
           userFacingText,
           verifiedUserFacing: true,
@@ -522,6 +684,9 @@ async function doSearch(
       rendered: lines.length,
       totalMatches,
       scanned: scan.scanned,
+      offset,
+      nextOffset: nextOffset ?? null,
+      snapshot,
     },
     data: {
       actionName: "MEMORY",
@@ -529,6 +694,9 @@ async function doSearch(
       memories: items,
       totalMatches,
       scanned: scan.scanned,
+      offset,
+      nextOffset: nextOffset ?? null,
+      snapshot,
     },
     promptData: {
       actionName: "MEMORY",
@@ -536,19 +704,74 @@ async function doSearch(
       totalMatches,
       rendered: lines.length,
       scanned: scan.scanned,
+      offset,
+      nextOffset: nextOffset ?? null,
+      snapshot,
     },
   };
+  const serializedChars = JSON.stringify(result).length;
+  if (serializedChars > MAX_MEMORY_ACTION_RESULT_CHARS) {
+    if (limit === undefined) {
+      return fail(
+        `The complete search result requires ${serializedChars} characters, exceeding the safe action-result budget of ${MAX_MEMORY_ACTION_RESULT_CHARS}. Retry with an explicit page limit.`,
+        "MEMORY_SEARCH_REQUIRES_PAGINATION",
+        {
+          totalMatches,
+          renderedChars: serializedChars,
+          maxResultChars: MAX_MEMORY_ACTION_RESULT_CHARS,
+          suggestedLimit: Math.min(20, MAX_MEMORY_PAGE_ITEMS),
+          snapshot,
+        },
+      );
+    }
+    if (items.length === 1) {
+      return fail(
+        `Memory ${items[0].id} alone requires ${serializedChars} action-result characters, exceeding the safe budget of ${MAX_MEMORY_ACTION_RESULT_CHARS}. Narrow the search or use a provider with a larger input boundary.`,
+        "MEMORY_RECORD_EXCEEDS_PAGE_BUDGET",
+        {
+          memoryId: items[0].id,
+          renderedChars: serializedChars,
+          maxResultChars: MAX_MEMORY_ACTION_RESULT_CHARS,
+        },
+      );
+    }
+    const suggestedLimit = Math.max(
+      1,
+      Math.min(
+        items.length - 1,
+        Math.floor(
+          (items.length * MAX_MEMORY_ACTION_RESULT_CHARS) / serializedChars,
+        ),
+      ),
+    );
+    return fail(
+      `The requested page requires ${serializedChars} action-result characters, exceeding the safe budget of ${MAX_MEMORY_ACTION_RESULT_CHARS}. Retry with limit=${suggestedLimit}.`,
+      "MEMORY_PAGE_RESULT_TOO_LARGE",
+      {
+        requestedLimit: limit,
+        suggestedLimit,
+        renderedChars: serializedChars,
+        maxResultChars: MAX_MEMORY_ACTION_RESULT_CHARS,
+        snapshot,
+      },
+    );
+  }
+  return result;
 }
 
 async function doUpdate(
   runtime: IAgentRuntime,
+  message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
   const memoryParam = parseUuidParam(params.memoryId, "memoryId");
   if (!memoryParam.ok) return memoryParam.result;
   const memoryId = memoryParam.id;
+  const query = params.query?.trim();
   const text = typeof params.text === "string" ? params.text.trim() : "";
-  if (!memoryId) return fail("memoryId is required.", "MEMORY_MISSING_ID");
+  if (!memoryId && !query) {
+    return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
+  }
   if (!text) return fail("text is required.", "MEMORY_MISSING_TEXT");
   if (params.confirm !== true) {
     return fail(
@@ -557,38 +780,101 @@ async function doUpdate(
     );
   }
 
-  const existing = await runtime.getMemoryById(memoryId);
-  if (!existing) {
-    return fail(`Memory ${memoryId} was not found.`, "MEMORY_NOT_FOUND");
-  }
-
-  const existingContent =
-    (existing.content as Record<string, unknown> | undefined) ?? {};
-  const nextContent = { ...existingContent, text };
-
-  const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, { text });
-  if (!Array.isArray(embedding) || embedding.length === 0) {
-    return fail(
-      "Embedding model returned no vector.",
-      "MEMORY_EMBEDDING_FAILED",
+  let existingMemories: Memory[];
+  if (memoryId) {
+    const existing = await runtime.getMemoryById(memoryId);
+    if (!existing) {
+      return fail(`Memory ${memoryId} was not found.`, "MEMORY_NOT_FOUND");
+    }
+    existingMemories = [existing];
+  } else {
+    const scan = await collectCandidates(runtime, {
+      type:
+        params.type && MEMORY_TYPES.includes(params.type)
+          ? params.type
+          : undefined,
+      entityId: message.entityId,
+      query,
+    });
+    const matched = scan.matches.filter((candidate) => {
+      const candidateText =
+        (candidate.memory.content as { text?: string } | undefined)?.text ?? "";
+      return scoreText(candidateText, query ?? "") >= 1;
+    });
+    if (matched.length === 0) {
+      return fail(
+        `No stored memory matches "${query}". ${describeCompleteScan(scan)}`,
+        "MEMORY_NOT_FOUND",
+      );
+    }
+    const distinctTexts = new Set(
+      matched.map((candidate) =>
+        (
+          (candidate.memory.content as { text?: string } | undefined)?.text ??
+          ""
+        )
+          .trim()
+          .toLowerCase(),
+      ),
     );
+    if (distinctTexts.size > 1) {
+      const lines = matched.map((candidate) => {
+        const item = toListItem(candidate.memory, candidate.type);
+        return `- [${item.type}] ${item.id}: ${toWellFormedUnicode(item.text)}`;
+      });
+      return {
+        success: false,
+        text: [
+          `Query "${query}" matches ${distinctTexts.size} distinct memories. Update by memoryId instead:`,
+          ...lines,
+        ].join("\n"),
+        data: { error: "MEMORY_AMBIGUOUS_QUERY" },
+      };
+    }
+    existingMemories = matched.map((candidate) => candidate.memory);
   }
 
-  await runtime.updateMemory({
-    id: memoryId,
-    content: nextContent,
-    embedding,
-  });
+  const updatedIds: UUID[] = [];
+  for (const existing of existingMemories) {
+    if (!existing.id) continue;
+    const existingContent =
+      (existing.content as Record<string, unknown> | undefined) ?? {};
+    const nextContent = { ...existingContent, text };
+    let embedding: number[] | undefined;
+    if (Array.isArray(existing.embedding) && existing.embedding.length > 0) {
+      const regenerated = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+        text,
+      });
+      if (!Array.isArray(regenerated) || regenerated.length === 0) {
+        return fail(
+          "Embedding model returned no vector.",
+          "MEMORY_EMBEDDING_FAILED",
+        );
+      }
+      embedding = regenerated;
+    }
 
-  const updated = await runtime.getMemoryById(memoryId);
+    await runtime.updateMemory({
+      id: existing.id,
+      content: nextContent,
+      ...(embedding ? { embedding } : {}),
+    });
+    updatedIds.push(existing.id);
+  }
+
+  const primaryMemoryId = updatedIds[0];
+  const updated = primaryMemoryId
+    ? await runtime.getMemoryById(primaryMemoryId)
+    : null;
   return {
     success: true,
-    text: `Updated memory ${memoryId}.`,
-    values: { memoryId },
+    text: `Updated ${updatedIds.length} memory record(s).`,
+    values: { memoryId: primaryMemoryId, updatedCount: updatedIds.length },
     data: {
       actionName: "MEMORY",
       op: "update" as const,
-      memoryId,
+      memoryId: primaryMemoryId,
+      memoryIds: updatedIds,
       memory: updated ?? null,
     },
   };
@@ -761,9 +1047,9 @@ export const memoryAction: Action = {
     "MODIFY_MEMORY",
   ],
   description:
-    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory by memoryId or by query text match (requires confirm:true).",
+    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); op:delete removes by memoryId or requester-scoped query match (requires confirm:true).",
   descriptionCompressed:
-    "manage agent memory create search update delete; delete by memoryId or query; update/delete require confirm:true",
+    "manage agent memory create search update delete; update/delete by memoryId or query; update/delete require confirm:true",
   routingHint:
     "NOTES ARE NOT MEMORY: 'make a note', 'note to self', 'jot this down', 'what notes do i have' -> the NOTES action, which writes the durable note store the user sees in the Notes view. MEMORY is the agent's own recall of the conversation. store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY. This includes recalling or COUNTING what was said earlier than the messages shown in context ('how many times have I mentioned X', 'have I ever told you about X', 'what did we say about X last week') — the conversation block in context is only the most recent turns, so answer those from op:search over the stored record, never from that block alone. Do NOT use for open-web lookups -> WEB_SEARCH, for searching connected external channels such as email or another platform's inbox -> MESSAGE (action=search), or for the skill catalog -> SKILL",
   validate: async () => true,
@@ -789,7 +1075,7 @@ export const memoryAction: Action = {
         case "search":
           return await doSearch(runtime, params);
         case "update":
-          return await doUpdate(runtime, params);
+          return await doUpdate(runtime, message, params);
         case "delete":
           return await doDelete(runtime, message, params);
       }
@@ -865,15 +1151,40 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        "search/delete: case-insensitive text match against memory content. delete: resolves the memory to remove when memoryId is unknown; scoped to the requesting user's own memories.",
+        "search/update/delete: case-insensitive text match against memory content. update/delete: resolves the memory to mutate when memoryId is unknown; scoped to the requesting user's own memories.",
       required: false,
       schema: { type: "string" as const },
     },
     {
+      name: "limit",
+      description: `search: optional positive page size up to ${MAX_MEMORY_PAGE_ITEMS}. Large complete results reject with a typed instruction to retry using this lossless pagination contract.`,
+      required: false,
+      schema: {
+        type: "integer" as const,
+        minimum: 1,
+        maximum: MAX_MEMORY_PAGE_ITEMS,
+      },
+    },
+    {
+      name: "offset",
+      description:
+        "search: zero-based continuation offset from a previous paginated result. Requires the same filters and limit.",
+      required: false,
+      schema: { type: "integer" as const, minimum: 0 },
+    },
+    {
+      name: "snapshot",
+      description:
+        "search: continuation fingerprint returned by the previous page. Required with a positive offset so changed results reject instead of shifting pages.",
+      required: false,
+      schema: { type: "string" as const, pattern: "^[0-9a-f]{64}$" },
+    },
+    {
       name: "memoryId",
       description:
-        "update/delete: id of the memory to mutate. delete: optional when query is provided.",
+        "update/delete: id of the memory to mutate; optional when query is provided.",
       required: false,
+      modelOmissionSentinels: ["", "null", "undefined"],
       schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
     {

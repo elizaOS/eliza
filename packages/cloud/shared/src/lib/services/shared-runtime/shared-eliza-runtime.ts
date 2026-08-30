@@ -810,7 +810,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           ),
         }
       : {}),
-    transport: sharedCapabilityTransportForSource(input.execution.channel.source),
+    transport: sharedCapabilityTransportForSource(
+      input.execution.channel.source,
+      input.execution.channel.type,
+    ),
     mediaPlugin,
     reminderPlugin,
     todoPlugin,

@@ -43,12 +43,14 @@ import { findConnectorCardRegions } from "../../chat/message-connector-parser";
 import { findFollowupsRegions } from "../../chat/message-followups-parser";
 import { findFormRegions } from "../../chat/message-form-parser";
 import { RelativeTime } from "../../shell/RelativeTime";
+import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import {
   Message as MessageRow,
   MessageContent as MessageRowContent,
   MessageFooter as MessageRowFooter,
 } from "../../ui/message";
+import { Separator } from "../../ui/separator";
 import { Textarea } from "../../ui/textarea";
 import { ChatBubble, GLASS_EASE } from "./chat-bubble";
 import {
@@ -341,15 +343,15 @@ function ReactionStrip({
             ? reaction.users.join(", ")
             : undefined;
         return (
-          <span
+          <Badge
+            variant="outline"
             key={`${reaction.emoji}:${reaction.count}`}
             data-testid="chat-reaction-badge"
             title={title}
-            className="inline-flex items-center gap-1 rounded-sm border border-border bg-bg px-2 py-1 text-xs-tight font-medium text-txt-strong "
           >
             <ReactionEmoji emoji={reaction.emoji} />
             {reaction.count > 1 ? <span>{reaction.count}</span> : null}
-          </span>
+          </Badge>
         );
       })}
     </div>
@@ -512,7 +514,7 @@ export const ChatMessage = memo(function ChatMessage({
   const [editBubbleWidth, setEditBubbleWidth] = useState<number | null>(null);
   const [draftText, setDraftText] = useState(message.text);
   const [savingEdit, setSavingEdit] = useState(false);
-  const articleRef = useRef<HTMLElement | null>(null);
+  const articleRef = useRef<HTMLDivElement | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const tapStartRef = useRef<{ x: number; y: number } | null>(null);
   const accessoryModeRef = useRef<"actions" | "edit">("actions");
@@ -823,7 +825,7 @@ export const ChatMessage = memo(function ChatMessage({
       {glass ? (
         <>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
             aria-label={labels.cancel ?? "Cancel"}
             title={labels.cancel ?? "Cancel"}
@@ -833,12 +835,12 @@ export const ChatMessage = memo(function ChatMessage({
               handleCancelEditing();
             }}
             disabled={savingEdit}
-            className="keyboard-focus-emphasis size-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="keyboard-focus-emphasis transition-[color,transform] duration-150 active:scale-95"
           >
             <X className="size-3.5" />
           </Button>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
             aria-label={
               savingEdit
@@ -852,7 +854,7 @@ export const ChatMessage = memo(function ChatMessage({
               void handleSaveEdit();
             }}
             disabled={editSaveDisabled}
-            className="keyboard-focus-emphasis size-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="keyboard-focus-emphasis transition-[color,transform] duration-150 active:scale-95"
           >
             {savingEdit ? (
               <LoaderCircle
@@ -867,19 +869,25 @@ export const ChatMessage = memo(function ChatMessage({
       ) : (
         <>
           <Button
-            unstyled
+            variant="ghostMuted"
+            size="tiny"
             onClick={handleCancelEditing}
             disabled={savingEdit}
-            className="keyboard-focus-emphasis min-h-7 px-2 py-1 text-xs font-medium text-white/60 transition-colors duration-150 hover:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+            className="keyboard-focus-emphasis transition-colors duration-150"
           >
             {labels.cancel ?? "Cancel"}
           </Button>
-          <span aria-hidden className="mx-0.5 h-3.5 w-px bg-white/15" />
+          <Separator
+            aria-hidden
+            orientation="vertical"
+            className="mx-0.5 h-3.5"
+          />
           <Button
-            unstyled
+            variant="ghostMuted"
+            size="tiny"
             onClick={() => void handleSaveEdit()}
             disabled={editSaveDisabled}
-            className="keyboard-focus-emphasis min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+            className="keyboard-focus-emphasis transition-colors duration-150"
           >
             {savingEdit
               ? (labels.saving ?? "Saving…")
@@ -907,12 +915,8 @@ export const ChatMessage = memo(function ChatMessage({
         onChange={(event) => setDraftText(event.target.value)}
         onKeyDown={handleEditKeyDown}
         rows={Math.min(6, Math.max(1, draftText.split("\n").length))}
-        className={cn(
-          "field-sizing-content min-h-0 max-h-40 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent p-0 shadow-none outline-none transition-opacity duration-200 disabled:cursor-default",
-          glass
-            ? "font-chat text-chat-body text-white caret-white"
-            : "font-chat text-chat-body text-txt-strong caret-txt-strong",
-        )}
+        variant="mobileComposer"
+        density="singleLine"
         disabled={savingEdit}
       />
       {glass ? null : inlineEditControls}
@@ -938,7 +942,7 @@ export const ChatMessage = memo(function ChatMessage({
     ) {
       return (
         <motion.div
-          ref={articleRef as React.RefObject<HTMLDivElement>}
+          ref={articleRef}
           id={getChatMessageAnchorId(message.id)}
           data-testid="thread-line"
           data-role={message.role}
@@ -1042,8 +1046,8 @@ export const ChatMessage = memo(function ChatMessage({
               <div className="flex items-center gap-1">
                 {onAcceptSuggestion ? (
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant="surfaceAccent"
+                    size="badge"
                     data-testid="thread-line-suggestion-accept"
                     title="Do it"
                     aria-label="Do it"
@@ -1051,14 +1055,13 @@ export const ChatMessage = memo(function ChatMessage({
                       e.stopPropagation();
                       onAcceptSuggestion(message);
                     }}
-                    className="h-auto rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-[rgb(255,148,84)] transition-colors hover:bg-white/20"
                   >
                     Do it
                   </Button>
                 ) : null}
                 {onDismissSuggestion ? (
                   <Button
-                    variant="ghost"
+                    variant="ghostMuted"
                     size="icon-sm"
                     data-testid="thread-line-suggestion-dismiss"
                     title="Dismiss suggestion"
@@ -1067,7 +1070,6 @@ export const ChatMessage = memo(function ChatMessage({
                       e.stopPropagation();
                       onDismissSuggestion(message.id);
                     }}
-                    className="size-6 rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
                   >
                     <X className="size-3.5" aria-hidden="true" />
                   </Button>
@@ -1097,22 +1099,23 @@ export const ChatMessage = memo(function ChatMessage({
       // short greetings from stretching across the full onboarding column;
       // longer copy still wraps at the row's existing 22rem maximum.
       isFirstRun &&
-        "w-fit max-w-full rounded-2xl rounded-bl-md border border-white/20 bg-black/35 px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
+        "w-fit max-w-full px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
       // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
       // Align the user bubble's bordered text edge with the flat assistant
       // text edge so the reserved action lane has the same visual rhythm.
       isUser && "py-[3px]",
-      // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
-      // a proactive offer reads as a suggestion, not a normal reply. Placed
-      // last so it wins over the glass hairline.
-      isSuggestion &&
-        "border border-dashed border-[rgb(255,88,0)]/45 bg-[rgb(255,88,0)]/[0.06]",
     );
+
+    const bubbleAppearance = isFirstRun
+      ? "firstRun"
+      : isSuggestion
+        ? "suggestion"
+        : "default";
 
     return (
       <MotionMessageRow
-        ref={articleRef as React.RefObject<HTMLDivElement>}
+        ref={articleRef}
         id={getChatMessageAnchorId(message.id)}
         align={isUser ? "end" : "start"}
         data-testid="thread-line"
@@ -1156,7 +1159,11 @@ export const ChatMessage = memo(function ChatMessage({
             hasActionLane &&
               "transition-[padding-bottom] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-100",
             hasActionLane &&
-              (supportsHover ? "pb-6" : accessoryVisible ? "pb-9" : "pb-0"),
+              (supportsHover
+                ? "pb-6"
+                : accessoryVisible
+                  ? "pb-6 pointer-coarse:pb-11"
+                  : "pb-0"),
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
@@ -1166,6 +1173,7 @@ export const ChatMessage = memo(function ChatMessage({
         >
           {bubbleInteractive ? (
             <ChatBubble
+              appearance={bubbleAppearance}
               variant="glass"
               bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
@@ -1191,6 +1199,7 @@ export const ChatMessage = memo(function ChatMessage({
             </ChatBubble>
           ) : (
             <ChatBubble
+              appearance={bubbleAppearance}
               variant="glass"
               bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
@@ -1285,15 +1294,14 @@ export const ChatMessage = memo(function ChatMessage({
               row) so a stalled turn isn't a dead end the user has to retype. */}
           {canRetry ? (
             <Button
-              variant="ghost"
-              size="sm"
+              variant="surfaceAccent"
+              size="badge"
               data-testid="thread-line-retry"
               aria-label="Retry"
               onClick={(e) => {
                 e.stopPropagation();
                 onRetry?.(message.id);
               }}
-              className="h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-sm-tight font-medium text-white/80 transition-colors hover:bg-white/20"
             >
               <RotateCcw className="size-3.5" aria-hidden />
               Retry
@@ -1306,12 +1314,12 @@ export const ChatMessage = memo(function ChatMessage({
 
   // ── Panel chrome (ChatView / detached windows) ─────────────────────────────
   return (
-    <article
+    <MessageRow
       ref={articleRef}
       id={getChatMessageAnchorId(message.id)}
-      className={`flex items-start gap-2 sm:gap-3 ${
-        isRightAligned ? "justify-end" : "justify-start"
-      } ${isGrouped ? "mt-0.5" : "mt-1.5"} ${
+      role="article"
+      align={isRightAligned ? "end" : "start"}
+      className={`items-start sm:gap-3 ${isGrouped ? "mt-0.5" : "mt-1.5"} ${
         enterOnMount
           ? "motion-safe:animate-[chat-turn-in_320ms_cubic-bezier(0.22,1,0.36,1)]"
           : ""
@@ -1408,15 +1416,10 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
         ) : null}
         <ChatBubble
+          appearance={isSuggestion ? "suggestion" : "default"}
           tone={isUser ? "user" : "assistant"}
           source={normalizedSource}
-          className={cn(
-            "relative group py-1 font-chat text-chat-body whitespace-pre-wrap break-words",
-            // Suggestion treatment: subtle accent tint + dashed accent border so
-            // a proactive offer reads as a suggestion, not a normal reply.
-            isSuggestion &&
-              "border border-dashed border-accent/45 bg-accent/[0.06]",
-          )}
+          className="relative group py-1 font-chat text-chat-body whitespace-pre-wrap break-words"
           style={
             isEditing && editBubbleWidth
               ? { width: editBubbleWidth, maxWidth: "100%" }
@@ -1434,10 +1437,9 @@ export const ChatMessage = memo(function ChatMessage({
               <div className="flex items-center gap-1">
                 {onAcceptSuggestion ? (
                   <Button
-                    variant="surface"
-                    size="sm"
+                    variant="surfaceAccent"
+                    size="micro"
                     onClick={() => onAcceptSuggestion(message)}
-                    className="h-6 rounded-sm px-2 text-xs-tight text-accent"
                     title={labels.acceptSuggestion ?? "Do it"}
                     aria-label={labels.acceptSuggestion ?? "Do it"}
                   >
@@ -1446,10 +1448,9 @@ export const ChatMessage = memo(function ChatMessage({
                 ) : null}
                 {onDismissSuggestion ? (
                   <Button
-                    variant="surface"
-                    size="icon"
+                    variant="ghostMuted"
+                    size="icon-sm"
                     onClick={() => onDismissSuggestion(message.id)}
-                    className="size-6 rounded-sm text-muted"
                     title={labels.dismiss ?? "Dismiss suggestion"}
                     aria-label={labels.dismiss ?? "Dismiss suggestion"}
                   >
@@ -1460,13 +1461,19 @@ export const ChatMessage = memo(function ChatMessage({
             </div>
           ) : null}
           {showReplyReference ? (
-            <a
-              href={`#${getChatMessageAnchorId(replyTargetId)}`}
-              onClick={handleReplyReferenceClick}
-              className="mb-2 block text-xs font-medium text-muted underline decoration-border/60 underline-offset-2 transition-colors hover:text-txt-strong"
+            <Button
+              asChild
+              variant="externalLink"
+              size="content"
+              className="mb-2 block"
             >
-              {replyReferenceLabel}
-            </a>
+              <a
+                href={`#${getChatMessageAnchorId(replyTargetId)}`}
+                onClick={handleReplyReferenceClick}
+              >
+                {replyReferenceLabel}
+              </a>
+            </Button>
           ) : null}
           {isEditing
             ? inlineEditor
@@ -1475,10 +1482,11 @@ export const ChatMessage = memo(function ChatMessage({
               message.text)}
 
           {!isUser && message.interrupted ? (
-            <div className="mt-2 border-t border-danger/30 pt-2">
-              <span className="inline-flex rounded-sm border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">
+            <div className="mt-2">
+              <Separator className="mb-2" />
+              <Badge variant="outline" tone="danger">
                 {labels.responseInterrupted ?? "Response interrupted"}
-              </span>
+              </Badge>
             </div>
           ) : null}
 
@@ -1522,6 +1530,6 @@ export const ChatMessage = memo(function ChatMessage({
           reactions={visibleReactions}
         />
       </div>
-    </article>
+    </MessageRow>
   );
 }, arePropsEqual);

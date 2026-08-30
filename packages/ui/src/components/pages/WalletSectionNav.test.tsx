@@ -14,10 +14,16 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../../registry-host";
 import { isWalletSectionPath, WalletSectionNav } from "./WalletSectionNav";
+
+const platformMocks = vi.hoisted(() => ({ platform: "web" }));
+
+vi.mock("../../platform/platform-guards", () => ({
+  getFrontendPlatform: () => platformMocks.platform,
+}));
 
 function registerWalletSectionPages(): void {
   registerAppShellPage({
@@ -53,6 +59,7 @@ function registerWalletSectionPages(): void {
 }
 
 beforeEach(() => {
+  platformMocks.platform = "web";
   resetUiRegistryHostForTests();
   registerWalletSectionPages();
 });
@@ -111,6 +118,22 @@ describe("WalletSectionNav", () => {
     expect(
       within(header).getByRole("button", { name: "Back to launcher" }),
     ).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("wallet-section-header-inset")
+        .className.includes("safe-area-top"),
+    ).toBe(false);
+  });
+
+  it("moves the safe-area inset inside the Wallet header on native", () => {
+    platformMocks.platform = "android";
+    render(<WalletSectionNav activePath="/inventory" />);
+
+    expect(
+      screen
+        .getByTestId("wallet-section-header-inset")
+        .className.includes("safe-area-top"),
+    ).toBe(true);
   });
 
   it("suppresses the secondary strip when only one group member is registered", () => {

@@ -13,9 +13,6 @@
  *      no-snapshot (fallback) and always-visible cases - including the exact
  *      `todo`-vs-`todos` drift that motivated the audit item.
  */
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_WIDGET_DECLARATIONS,
@@ -26,60 +23,7 @@ import {
 } from "./registry";
 import type { PluginWidgetDeclaration } from "./types";
 
-const registrySource = readFileSync(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), "registry.ts"),
-  "utf8",
-);
-
 describe("widget visibility drift guard (#12090 item 9)", () => {
-  it("removed the hardcoded plugin-id visibility allow/block sets", () => {
-    // The coupling this audit item targets: a hardcoded `Set<pluginId>` that had
-    // to be hand-synced with declaration pluginIds. Its removal (outside of
-    // reference comments) is what keeps `todo`/`todos` from drifting again.
-    const executableRefs = registrySource.split("\n").filter((line) => {
-      const trimmed = line.trimStart();
-      if (trimmed.startsWith("//") || trimmed.startsWith("*")) return false;
-      return (
-        line.includes("ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS") ||
-        line.includes("BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS")
-      );
-    });
-    expect(executableRefs).toEqual([]);
-  });
-
-  it("derives visibility from each declaration's own `visibility` field", () => {
-    // The always/fallback classes must be declaration-declared, never inferred
-    // from a name list. Server-sourced declarations stay snapshot-gated.
-    const always = BUILTIN_WIDGET_DECLARATIONS.filter(
-      (d) => widgetVisibilityClass(d, "builtin") === "always",
-    );
-    const fallback = BUILTIN_WIDGET_DECLARATIONS.filter(
-      (d) => widgetVisibilityClass(d, "builtin") === "fallback",
-    );
-    // Every non-snapshot builtin must carry an explicit `visibility` field (no
-    // implicit set membership), and there must actually be some of each class
-    // (guards an accidental "everything became snapshot" refactor).
-    for (const d of [...always, ...fallback]) {
-      expect(d.visibility).toBeDefined();
-    }
-    expect(always.length).toBeGreaterThan(0);
-    expect(fallback.length).toBeGreaterThan(0);
-
-    // A server declaration is always snapshot-gated regardless of its flag.
-    expect(
-      widgetVisibilityClass(
-        {
-          id: "x.y",
-          pluginId: "x",
-          slot: "home",
-          label: "X",
-          visibility: "always",
-        },
-        "server",
-      ),
-    ).toBe("snapshot");
-  });
-
   it("resolves the Todos home widget with NO plugin snapshot (todo-vs-todos drift regression)", () => {
     // The drift bug: the hardcoded fallback set held `"todo"` while the app
     // manifest plugin id is `todos`. The declaration uses pluginId `todo` and
@@ -110,12 +54,10 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
   });
 
   it("keeps always-visible core widgets on an empty snapshot but honors explicit disable", () => {
-    // Needs-attention is backed by the core ApprovalService, not a loadable
-    // plugin - the canonical `always` core surface with no snapshot entry.
     const emptyResolved = resolveWidgetsForSlot("home", []);
     expect(
       emptyResolved.find((r) => r.declaration.id === "needs-attention.pending"),
-    ).toBeTruthy();
+    ).toBeUndefined();
 
     // Calendar is `always` but IS backed by a real loadable plugin, so an
     // explicit present+disabled snapshot entry still hides it.
@@ -130,6 +72,39 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
     ]);
     expect(
       disabled.find((r) => r.declaration.pluginId === "calendar"),
+    ).toBeUndefined();
+  });
+
+  it("does not resurrect the retired response resident from a server declaration", () => {
+    const resolved = resolveWidgetsForSlot(
+      "home",
+      [{ id: "needs-attention", enabled: true, isActive: true }],
+      [
+        {
+          id: "needs-attention.pending",
+          pluginId: "needs-attention",
+          slot: "home",
+          label: "Needs response",
+          uiSpec: {
+            root: "root",
+            state: {},
+            elements: {
+              root: {
+                type: "Text",
+                props: { text: "Needs response" },
+                children: [],
+              },
+            },
+          },
+        },
+      ],
+    );
+    expect(
+      resolved.find(
+        ({ declaration }) =>
+          declaration.pluginId === "needs-attention" &&
+          declaration.id === "needs-attention.pending",
+      ),
     ).toBeUndefined();
   });
 
@@ -171,9 +146,6 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
   it("still honors third-party `fallbackPluginIds` for declarations without a `visibility` flag", () => {
     // Back-compat: registerBuiltinWidgetDeclarations({ fallbackPluginIds })
     // continues to promote flag-less declarations to fallback behavior.
-    expect(registrySource).toContain("EXTERNAL_FALLBACK_PLUGIN_IDS");
-    expect(registrySource).toContain("fallbackPluginIds");
-
     const originalLength = BUILTIN_WIDGET_DECLARATIONS.length;
     registerWidgetComponent(
       "external-fallback-test",

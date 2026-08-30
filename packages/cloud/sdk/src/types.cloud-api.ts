@@ -219,6 +219,7 @@ export interface NormalizedAgentListItemDto
 interface AgentAdminDetailsDto {
   nodeId: string | null;
   containerName: string | null;
+  internalBridgeUrl: string | null;
   headscaleIp: string | null;
   bridgePort: number | null;
   webUiPort: number | null;
@@ -231,7 +232,6 @@ interface AgentAdminDetailsDto {
 export type AgentWalletStatus = "active" | "pending" | "none" | "error";
 
 export interface AgentDetailDto extends AgentListItemDto {
-  bridgeUrl: string | null;
   errorCount: number;
   walletAddress: string | null;
   walletProvider: string | null;

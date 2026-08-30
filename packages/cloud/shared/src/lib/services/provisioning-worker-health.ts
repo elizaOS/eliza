@@ -24,6 +24,8 @@ const HEARTBEAT_SET_TIMEOUT_MS = 5_000;
  * cheaper than a DB round-trip and gives self-healing via TTL.
  */
 export const PROVISIONING_WORKER_HEARTBEAT_KEY = "provisioning_worker:health";
+export const REVIEWED_BACKUP_RESTORE_CAPABILITY = "reviewed-backup-restore-v1";
+const PROVISIONING_WORKER_CAPABILITIES = [REVIEWED_BACKUP_RESTORE_CAPABILITY] as const;
 
 /**
  * How long a single heartbeat is valid. The daemon refreshes every ~15s
@@ -38,6 +40,7 @@ export type ProvisioningWorkerHealth =
       ok: true;
       required: boolean;
       lastHeartbeatAt?: string;
+      capabilities?: readonly string[];
     }
   | {
       ok: false;
@@ -46,7 +49,8 @@ export type ProvisioningWorkerHealth =
       code:
         | "PROVISIONING_WORKER_NOT_CONFIGURED"
         | "PROVISIONING_WORKER_UNHEALTHY"
-        | "PROVISIONING_WORKER_UNREACHABLE";
+        | "PROVISIONING_WORKER_UNREACHABLE"
+        | "PROVISIONING_WORKER_CAPABILITY_REQUIRED";
       error: string;
     };
 
@@ -82,9 +86,9 @@ export async function checkProvisioningWorkerHealth(
     return { ok: true, required: false };
   }
 
-  let raw: string | null;
+  let raw: unknown;
   try {
-    raw = (await redis.get(PROVISIONING_WORKER_HEARTBEAT_KEY)) as string | null;
+    raw = await redis.get(PROVISIONING_WORKER_HEARTBEAT_KEY);
   } catch (error) {
     return {
       ok: false,
@@ -108,7 +112,58 @@ export async function checkProvisioningWorkerHealth(
     };
   }
 
-  return { ok: true, required: true, lastHeartbeatAt: raw };
+  let lastHeartbeatAt = typeof raw === "string" ? raw : undefined;
+  let capabilities: readonly string[] = [];
+  let parsed: unknown = raw;
+  try {
+    if (typeof raw === "string") parsed = JSON.parse(raw);
+  } catch {
+    // error-policy:J3 Legacy workers publish a bare ISO timestamp, which is
+    // valid liveness but intentionally carries no execution capabilities.
+    parsed = null;
+  }
+  if (parsed !== null && typeof parsed === "object") {
+    const heartbeat = parsed as { timestamp?: unknown; capabilities?: unknown };
+    if (typeof heartbeat.timestamp === "string") lastHeartbeatAt = heartbeat.timestamp;
+    if (
+      Array.isArray(heartbeat.capabilities) &&
+      heartbeat.capabilities.every((capability) => typeof capability === "string")
+    ) {
+      capabilities = heartbeat.capabilities;
+    }
+  }
+
+  return { ok: true, required: true, lastHeartbeatAt, capabilities };
+}
+
+/** Fail closed when the API is about to enqueue a job older workers misinterpret. */
+export async function checkProvisioningWorkerCapability(
+  capability: string,
+  redisOverride?: CompatibleRedis | null,
+): Promise<ProvisioningWorkerHealth> {
+  if (!isProvisioningWorkerRequired()) return { ok: true, required: false };
+  const redis = redisOverride === undefined ? getRedis() : redisOverride;
+  if (!redis) {
+    return {
+      ok: false,
+      required: true,
+      status: 503,
+      code: "PROVISIONING_WORKER_NOT_CONFIGURED",
+      error: "Provisioning worker capability cannot be verified.",
+    };
+  }
+  const health = await checkProvisioningWorkerHealth(redis);
+  if (!health.ok) return health;
+  if (!health.capabilities?.includes(capability)) {
+    return {
+      ok: false,
+      required: true,
+      status: 503,
+      code: "PROVISIONING_WORKER_CAPABILITY_REQUIRED",
+      error: "Provisioning worker must be updated before this Dedicated activation can start.",
+    };
+  }
+  return health;
 }
 
 export function provisioningWorkerFailureBody(
@@ -136,10 +191,13 @@ export async function publishProvisioningWorkerHeartbeat(
 ): Promise<boolean> {
   const redis = redisOverride === undefined ? getRedis() : redisOverride;
   if (!redis) return false;
-  const timestamp = new Date().toISOString();
+  const heartbeat = JSON.stringify({
+    timestamp: new Date().toISOString(),
+    capabilities: PROVISIONING_WORKER_CAPABILITIES,
+  });
   await withTimeout(
     Promise.resolve(
-      redis.set(PROVISIONING_WORKER_HEARTBEAT_KEY, timestamp, {
+      redis.set(PROVISIONING_WORKER_HEARTBEAT_KEY, heartbeat, {
         ex: PROVISIONING_WORKER_HEARTBEAT_TTL_S,
       }),
     ),

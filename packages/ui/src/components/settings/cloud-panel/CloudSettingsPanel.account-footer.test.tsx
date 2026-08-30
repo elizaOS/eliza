@@ -124,7 +124,7 @@ describe("CloudSettingsPanel account footer navigation", () => {
       render(<CloudSettingsPanel />);
 
       const accountButton = screen.getByRole("button", { name: "Connected" });
-      expect(accountButton.className).toContain("keyboard-focus-surface");
+      expect(accountButton.className).toContain("min-h-16");
       expect(accountButton.getAttribute("aria-expanded")).toBe("false");
       fireEvent.click(accountButton);
       expect(accountButton.getAttribute("aria-expanded")).toBe("true");
@@ -159,7 +159,7 @@ describe("CloudSettingsPanel account footer navigation", () => {
         screen.getByRole("heading", { level: 1, name: sectionLabel }),
       ).toBeTruthy();
       expect(screen.queryByRole("button", { name: "Connected" })).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+      fireEvent.click(screen.getByRole("button", { name: "Back to Settings" }));
       expect(screen.getByRole("button", { name: /General/ })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Connected" })).toBeTruthy();
     },
@@ -176,7 +176,7 @@ describe("CloudSettingsPanel account footer navigation", () => {
       fireEvent.click(screen.getByRole("link", { name: label }));
       expect(screen.getByTestId(`section-${sectionId}`)).toBeTruthy();
 
-      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+      fireEvent.click(screen.getByRole("button", { name: "Back to Settings" }));
       expect(screen.getByRole("button", { name: "Connected" })).toBeTruthy();
     },
   );
@@ -199,7 +199,7 @@ describe("CloudSettingsPanel account footer navigation", () => {
       expect(appState.handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
       expect(
         screen.getByRole("button", { name: "Connect Cloud" }).className,
-      ).toContain("keyboard-focus-surface");
+      ).toContain("min-h-16");
     },
   );
 
@@ -275,7 +275,7 @@ describe("CloudSettingsPanel account footer navigation", () => {
     expect(screen.getByTestId("section-cloud-security")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Connected" }));
     const signOutButton = screen.getByRole("button", { name: "Sign out" });
-    expect(signOutButton.className).toContain("keyboard-focus-surface");
+    expect(signOutButton.className).toContain("bg-destructive-subtle");
     fireEvent.click(signOutButton);
 
     expect(appState.handleCloudSignOut).toHaveBeenCalledTimes(1);

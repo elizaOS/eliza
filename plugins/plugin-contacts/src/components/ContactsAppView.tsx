@@ -18,10 +18,14 @@ import {
   type CreateContactOptions,
 } from "@elizaos/capacitor-contacts";
 import type { OverlayAppContext } from "@elizaos/shared";
+import {
+  AvatarFallback,
+  Avatar as AvatarRoot,
+  Button,
+  Input,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { PermissionRecoveryCallout } from "@elizaos/ui/components";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
 import { isNative } from "@elizaos/ui/platform";
 import {
   ArrowLeft,
@@ -262,9 +266,9 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
           <Button
             ref={back.ref}
             {...back.agentProps}
-            variant="ghost"
-            size="icon"
-            className="size-9 shrink-0 text-muted hover:text-txt"
+            variant="ghostMuted"
+            size="icon-sm"
+            className="shrink-0"
             onClick={mode === "list" ? exitToApps : handleBackToList}
             aria-label={backLabel}
           >
@@ -287,9 +291,8 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
           <Button
             ref={newEl.ref}
             {...newEl.agentProps}
-            variant="ghost"
-            size="icon"
-            className="size-9 text-muted hover:text-txt"
+            variant="ghostMuted"
+            size="icon-sm"
             onClick={handleOpenNew}
             aria-label={newLabel}
             data-testid="contacts-new"
@@ -531,12 +534,13 @@ function ContactListItem({
   return (
     <li>
       <Button
-        unstyled
+        variant="selection"
+        align="start"
         ref={ref}
         {...agentProps}
         type="button"
         onClick={() => onSelect(contact.id)}
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-bg-accent/40 focus:bg-bg-accent/40 focus:outline-none"
+        className="w-full"
       >
         <Avatar name={contact.displayName} photoUri={contact.photoUri} />
         <div className="min-w-0 flex-1">
@@ -659,9 +663,9 @@ function ContactPhoneRow({
       <Button
         ref={callEl.ref}
         {...callEl.agentProps}
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0 rounded-lg text-muted hover:text-txt"
+        variant="ghostMuted"
+        size="icon-sm"
+        className="shrink-0"
         onClick={() => navigateToPhoneWithNumber(value)}
         aria-label={`${callLabel} ${value}`}
         data-testid="contacts-detail-call"
@@ -671,9 +675,9 @@ function ContactPhoneRow({
       <Button
         ref={textEl.ref}
         {...textEl.agentProps}
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0 rounded-lg text-muted hover:text-txt"
+        variant="ghostMuted"
+        size="icon-sm"
+        className="shrink-0"
         onClick={() => navigateToMessagesWithNumber(value)}
         aria-label={`${textLabel} ${value}`}
         data-testid="contacts-detail-text"
@@ -867,19 +871,16 @@ function Avatar({
   const dimension = size === "lg" ? "h-16 w-16 text-xl" : "h-10 w-10 text-sm";
   if (photoUri) {
     return (
-      <img
-        src={photoUri}
-        alt=""
-        className={`${dimension} shrink-0 object-cover`}
-      />
+      <AvatarRoot className={dimension}>
+        <img src={photoUri} alt="" className="size-full object-cover" />
+      </AvatarRoot>
     );
   }
   return (
-    <div
-      aria-hidden="true"
-      className={`${dimension} flex shrink-0 items-center justify-center bg-bg-accent font-semibold text-muted`}
-    >
-      {getInitials(name)}
-    </div>
+    <AvatarRoot className={dimension} aria-hidden="true">
+      <AvatarFallback className="font-semibold text-muted">
+        {getInitials(name)}
+      </AvatarFallback>
+    </AvatarRoot>
   );
 }

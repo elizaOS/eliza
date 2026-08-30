@@ -15,6 +15,7 @@
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccountManager,
+  ElizaError,
   type IAgentRuntime,
 } from "@elizaos/core";
 
@@ -89,6 +90,7 @@ interface PersistConnectorCredentialRefsParams {
 type VaultWriter = {
   name: string;
   write: (vaultRef: string, credential: ConnectorCredentialInput) => Promise<string>;
+  remove: (vaultRef: string) => Promise<void>;
 };
 
 type CredentialRefWriter = {
@@ -126,24 +128,51 @@ export async function persistConnectorCredentialRefs(
     );
   }
 
-  for (const credential of params.credentials) {
-    const plannedRef = buildConnectorCredentialVaultRef({
-      agentId: nonEmptyString(params.runtime.agentId) ?? "agent",
-      provider: params.provider,
-      accountId: params.accountIdForRef,
-      credentialType: credential.credentialType,
-    });
-    const vaultRef = await writeWithFirstAvailableVault(vaultWriters, plannedRef, credential);
-    refs.push({
-      credentialType: credential.credentialType,
-      vaultRef,
-      ...(credential.expiresAt !== undefined ? { expiresAt: credential.expiresAt } : {}),
-      ...(credential.metadata ? { metadata: credential.metadata } : {}),
-    });
-  }
+  const committedVaultWrites: Array<{ writer: VaultWriter; vaultRef: string }> = [];
+  try {
+    for (const credential of params.credentials) {
+      const plannedRef = buildConnectorCredentialVaultRef({
+        agentId: nonEmptyString(params.runtime.agentId) ?? "agent",
+        provider: params.provider,
+        accountId: params.accountIdForRef,
+        credentialType: credential.credentialType,
+      });
+      const committed = await writeWithFirstAvailableVault(vaultWriters, plannedRef, credential);
+      committedVaultWrites.push(committed);
+      refs.push({
+        credentialType: credential.credentialType,
+        vaultRef: committed.vaultRef,
+        ...(credential.expiresAt !== undefined ? { expiresAt: credential.expiresAt } : {}),
+        ...(credential.metadata ? { metadata: credential.metadata } : {}),
+      });
+    }
 
-  if (refs.length > 0) {
-    await writeRefsToStorage(storageWriters, refs);
+    if (refs.length > 0) {
+      await writeRefsToStorage(storageWriters, refs);
+    }
+  } catch (cause) {
+    const rollbackErrors: unknown[] = [];
+    for (const committed of committedVaultWrites.reverse()) {
+      try {
+        // error-policy:J6 A credential-ref commit failure must remove every
+        // secret written by this attempt before the failure is propagated.
+        await committed.writer.remove(committed.vaultRef);
+      } catch (rollbackCause) {
+        // error-policy:J2 Preserve cleanup failures alongside the primary
+        // writer failure; callers must know the local rollback was incomplete.
+        rollbackErrors.push(rollbackCause);
+      }
+    }
+    if (rollbackErrors.length === 0) throw cause;
+    throw new ElizaError("Google OAuth credential persistence rollback was incomplete.", {
+      code: "GOOGLE_OAUTH_CREDENTIAL_ROLLBACK_FAILED",
+      cause: new AggregateError(
+        [cause, ...rollbackErrors],
+        "Google OAuth credential persistence and rollback failed"
+      ),
+      context: { rollbackFailureCount: rollbackErrors.length },
+      severity: "fatal",
+    });
   }
 
   return {
@@ -224,8 +253,12 @@ function resolveVaultWriters(
       value: string;
       caller?: string;
     }) => Promise<string> | string;
+    remove?: (vaultRef: string) => Promise<void> | void;
   } | null;
-  if (typeof credentialStore?.putSecret === "function") {
+  if (
+    typeof credentialStore?.putSecret === "function" &&
+    typeof credentialStore.remove === "function"
+  ) {
     writers.push({
       name: "connector_credential_store",
       write: async (vaultRef, credential) =>
@@ -238,6 +271,9 @@ function resolveVaultWriters(
           value: credential.value,
           caller: context.caller,
         }) ?? vaultRef,
+      remove: async (vaultRef) => {
+        await credentialStore.remove?.(vaultRef);
+      },
     });
   }
 
@@ -247,8 +283,9 @@ function resolveVaultWriters(
       value: string,
       options?: { sensitive?: boolean; caller?: string }
     ) => Promise<void> | void;
+    remove?: (key: string) => Promise<void> | void;
   } | null;
-  if (typeof vault?.set === "function") {
+  if (typeof vault?.set === "function" && typeof vault.remove === "function") {
     writers.push({
       name: "vault",
       write: async (vaultRef, credential) => {
@@ -257,6 +294,9 @@ function resolveVaultWriters(
           caller: context.caller,
         });
         return vaultRef;
+      },
+      remove: async (vaultRef) => {
+        await vault.remove?.(vaultRef);
       },
     });
   }
@@ -328,11 +368,11 @@ async function writeWithFirstAvailableVault(
   writers: VaultWriter[],
   plannedRef: string,
   credential: ConnectorCredentialInput
-): Promise<string> {
+): Promise<{ writer: VaultWriter; vaultRef: string }> {
   const errors: string[] = [];
   for (const writer of writers) {
     try {
-      return await writer.write(plannedRef, credential);
+      return { writer, vaultRef: await writer.write(plannedRef, credential) };
     } catch (error) {
       errors.push(`${writer.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -358,7 +398,7 @@ async function writeRefsToStorage(
   throw new Error(`Failed to persist connector credential refs: ${errors.join("; ")}`);
 }
 
-function buildConnectorCredentialVaultRef(params: {
+export function buildConnectorCredentialVaultRef(params: {
   agentId: string;
   provider: string;
   accountId: string;

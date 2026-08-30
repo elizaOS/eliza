@@ -123,6 +123,37 @@ export const AllRows: Story = {
   render: () => <AllRowsDemo />,
 };
 
+export const DisabledRows: Story = {
+  render: () => (
+    <div className="mx-auto max-w-2xl">
+      <SettingsGroup title="Unavailable controls">
+        <CloudSwitchRow
+          agentId="story-disabled-switch"
+          label="Background sync"
+          description="Requires an active cloud agent."
+          checked={false}
+          onCheckedChange={() => {}}
+          disabled
+        />
+        <CloudInputRow
+          agentId="story-disabled-input"
+          label="Wake word"
+          value="Hey Eliza"
+          onValueChange={() => {}}
+          disabled
+        />
+        <CloudActionButton
+          agentId="story-disabled-action"
+          label="Test notification"
+          buttonLabel="Send test"
+          onActivate={() => {}}
+          disabled
+        />
+      </SettingsGroup>
+    </div>
+  ),
+};
+
 function ModalDemo() {
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);

@@ -896,3 +896,491 @@ describe("fact speaker attribution", () => {
 		);
 	});
 });
+
+// ── Parse failure codes beyond empty input ───────────────────────────────────
+//
+// The original suite pinned FACTS_MODEL_OUTPUT_MISSING and the malformed
+// relationship path. These pin the remaining parse branches: unparseable
+// prose, schema-shape violations per field, and the malformed-fact index
+// carried in the error context.
+
+describe("parseFactsAndRelationshipsOutput — invalid payload codes", () => {
+	it("rejects prose containing no JSON object as FACTS_MODEL_OUTPUT_INVALID", () => {
+		expect(() =>
+			parseFactsAndRelationshipsOutput(
+				"I could not find any facts worth keeping.",
+			),
+		).toThrow(expect.objectContaining({ code: "FACTS_MODEL_OUTPUT_INVALID" }));
+	});
+
+	it("rejects a non-array facts field as schema-invalid", () => {
+		expect(() =>
+			parseFactsAndRelationshipsOutput(
+				JSON.stringify({
+					facts: "the user likes tea",
+					relationships: [],
+					thought: "ok",
+				}),
+			),
+		).toThrow(
+			expect.objectContaining({ code: "FACTS_MODEL_OUTPUT_SCHEMA_INVALID" }),
+		);
+	});
+
+	it("rejects non-array relationships as schema-invalid", () => {
+		expect(() =>
+			parseFactsAndRelationshipsOutput(
+				JSON.stringify({
+					facts: [],
+					relationships: { subject: "user", predicate: "x", object: "y" },
+					thought: "ok",
+				}),
+			),
+		).toThrow(
+			expect.objectContaining({ code: "FACTS_MODEL_OUTPUT_SCHEMA_INVALID" }),
+		);
+	});
+
+	it("rejects a non-string thought as schema-invalid", () => {
+		expect(() =>
+			parseFactsAndRelationshipsOutput(
+				JSON.stringify({ facts: [], relationships: [], thought: 7 }),
+			),
+		).toThrow(
+			expect.objectContaining({ code: "FACTS_MODEL_OUTPUT_SCHEMA_INVALID" }),
+		);
+	});
+
+	it("reports the index of a malformed fact entry in the error context", () => {
+		expect(() =>
+			parseFactsAndRelationshipsOutput(
+				JSON.stringify({
+					facts: [{ subject: "Alice", fact: "likes oolong tea" }, 42],
+					relationships: [],
+					thought: "ok",
+				}),
+			),
+		).toThrow(
+			expect.objectContaining({
+				code: "FACTS_MODEL_OUTPUT_SCHEMA_INVALID",
+				context: { factIndex: 1 },
+			}),
+		);
+	});
+
+	it("drops blank fact entries after trimming and defaults a missing subject to 'user'", () => {
+		const result = parseFactsAndRelationshipsOutput(
+			JSON.stringify({
+				facts: [
+					{ subject: "Alice", fact: "   " },
+					{ fact: "likes oolong tea" },
+					{ subject: "  Bob  ", fact: "  commutes by ferry  " },
+				],
+				relationships: [],
+				thought: "one blank dropped",
+			}),
+		);
+		expect(result.facts).toEqual([
+			{ subject: "user", fact: "likes oolong tea" },
+			{ subject: "Bob", fact: "commutes by ferry" },
+		]);
+	});
+
+	it("trims whitespace from relationship fields instead of persisting padded values", () => {
+		const result = parseFactsAndRelationshipsOutput(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{ subject: " Alice ", predicate: " works_with ", object: " Bob " },
+				],
+				thought: "",
+			}),
+		);
+		expect(result.relationships).toEqual([
+			{ subject: "Alice", predicate: "works_with", object: "Bob" },
+		]);
+	});
+});
+
+// ── Exported tool contract ──────────────────────────────────────────────────
+
+describe("facts stage exported tool contract", () => {
+	it("exposes a strict function tool bound to the shared schema and name", async () => {
+		const mod = await import("../facts-and-relationships");
+		const tool = mod.createFactsAndRelationshipsTool();
+		expect(tool.name).toBe(mod.FACTS_AND_RELATIONSHIPS_TOOL_NAME);
+		expect(tool.type).toBe("function");
+		expect(tool.strict).toBe(true);
+		expect(tool.parameters).toBe(mod.factsAndRelationshipsSchema);
+		expect(mod.factsAndRelationshipsSchema.required).toEqual([
+			"facts",
+			"relationships",
+			"thought",
+		]);
+	});
+});
+
+// ── Candidate deduplication and normalization before the model call ──────────
+
+describe("runFactsAndRelationshipsStage — candidate deduplication and normalization", () => {
+	it("collapses case and punctuation duplicates of the same fact into one candidate", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["Alice lives in Paris"],
+				relationships: [],
+				thought: "dedup",
+			}),
+		);
+		await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: {
+				facts: ["Alice lives in Paris", "alice   lives in PARIS!!"],
+			},
+		});
+		const validationCall = runtime.useModel.mock.calls.find(
+			(call) =>
+				typeof call[0] === "string" &&
+				(call[0] === ModelType.TEXT_LARGE || call[0] === "TEXT_LARGE"),
+		);
+		const params = validationCall?.[1] as {
+			messages?: Array<{ role: string; content: string }>;
+		};
+		const candidateLines =
+			params.messages?.[1]?.content.match(/^- fact: .+$/gm) ?? [];
+		// Both spellings normalize to the same comparison key, so the model sees
+		// exactly one candidate — the first-seen surface form.
+		expect(candidateLines).toEqual(["- fact: Alice lives in Paris"]);
+	});
+
+	it("normalizes relationship predicates to snake_case and drops cross-case duplicate pairs", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{ subject: "User", predicate: "works_with", object: "Alice" },
+				],
+				thought: "normalized",
+			}),
+		);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: {
+				relationships: [
+					{
+						subject: "User",
+						predicate: "Works With!",
+						object: "Alice",
+					},
+					{
+						subject: "USER",
+						predicate: "works_with",
+						object: "ALICE",
+					},
+				],
+			},
+		});
+		const validationCall = runtime.useModel.mock.calls.find(
+			(call) =>
+				typeof call[0] === "string" &&
+				(call[0] === ModelType.TEXT_LARGE || call[0] === "TEXT_LARGE"),
+		);
+		const params = validationCall?.[1] as {
+			messages?: Array<{ role: string; content: string }>;
+		};
+		const content = params.messages?.[1]?.content ?? "";
+		expect(content.match(/^- relationship: .+$/gm)).toEqual([
+			"- relationship: User works_with Alice",
+		]);
+		expect(result.written.relationships).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({
+					type: "relationship",
+					subject: "User",
+					predicate: "works_with",
+					object: "Alice",
+				}),
+			}),
+			"facts",
+			true,
+		);
+		expect(runtime.createRelationship).toHaveBeenCalledWith(
+			expect.objectContaining({ tags: ["works_with"] }),
+		);
+	});
+
+	it("writes the echo memory but skips the entity edge for self-relationships", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{ subject: "user", predicate: "mentors", object: "user" },
+				],
+				thought: "self reference",
+			}),
+		);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: {
+				relationships: [
+					{ subject: "user", predicate: "mentors", object: "user" },
+				],
+			},
+		});
+		// The echo is still recorded under the facts table…
+		expect(result.written.relationships).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({
+					type: "relationship",
+					text: "user mentors user",
+				}),
+			}),
+			"facts",
+			true,
+		);
+		// …but a source===target edge is never created.
+		expect(runtime.createRelationship).not.toHaveBeenCalled();
+	});
+});
+
+// ── Required deduplication reads fail before persistence ─────────────────────
+
+describe("runFactsAndRelationshipsStage — deduplication read failures", () => {
+	it("rejects a facts-store read failure before model dispatch or persistence", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["a fresh fact"],
+				relationships: [],
+				thought: "kept",
+			}),
+		);
+		(runtime.getMemories as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+			new Error("facts store unavailable"),
+		);
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { facts: ["a fresh fact"] },
+			}),
+		).rejects.toMatchObject({
+			code: "FACTS_DEDUP_READ_FAILED",
+			cause: expect.objectContaining({ message: "facts store unavailable" }),
+		});
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+
+	it("rejects a relationships-store read failure before model dispatch or persistence", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{ subject: "user", predicate: "works_with", object: "Alice" },
+				],
+				thought: "must not be written",
+			}),
+		);
+		(
+			runtime.getRelationships as ReturnType<typeof vi.fn>
+		).mockRejectedValueOnce(new Error("relationship store unavailable"));
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: {
+					relationships: [
+						{
+							subject: "user",
+							predicate: "works_with",
+							object: "Alice",
+						},
+					],
+				},
+			}),
+		).rejects.toMatchObject({
+			code: "RELATIONSHIP_DEDUP_READ_FAILED",
+			cause: expect.objectContaining({
+				message: "relationship store unavailable",
+			}),
+		});
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+		expect(runtime.createRelationship).not.toHaveBeenCalled();
+	});
+
+	it("rejects a non-array facts-store response before model dispatch or persistence", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["a fresh fact"],
+				relationships: [],
+				thought: "must not be written",
+			}),
+		);
+		(runtime.getMemories as ReturnType<typeof vi.fn>).mockResolvedValueOnce(42);
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { facts: ["a fresh fact"] },
+			}),
+		).rejects.toMatchObject({ code: "FACTS_DEDUP_RESPONSE_INVALID" });
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+
+	it("rejects a non-array relationships-store response before model dispatch or persistence", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{ subject: "user", predicate: "works_with", object: "Alice" },
+				],
+				thought: "must not be written",
+			}),
+		);
+		(
+			runtime.getRelationships as ReturnType<typeof vi.fn>
+		).mockResolvedValueOnce({ invalid: true });
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: {
+					relationships: [
+						{
+							subject: "user",
+							predicate: "works_with",
+							object: "Alice",
+						},
+					],
+				},
+			}),
+		).rejects.toMatchObject({ code: "RELATIONSHIP_DEDUP_RESPONSE_INVALID" });
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+		expect(runtime.createRelationship).not.toHaveBeenCalled();
+	});
+});
+
+// ── Persistence-time subject resolution and redaction ────────────────────────
+
+describe("runFactsAndRelationshipsStage — persistence-time subject resolution", () => {
+	const runWithFact = async (modelFact: unknown, candidate?: string) => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [modelFact],
+				relationships: [],
+				thought: "kept",
+			}),
+		);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: { facts: [candidate ?? "seed candidate"] },
+		});
+		return { runtime, result };
+	};
+
+	it("credits a fact to the agent when the model names the character", async () => {
+		const { runtime } = await runWithFact({
+			subject: "Eliza",
+			fact: "Eliza prefers terse replies",
+		});
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: "00000000-0000-0000-0000-000000000002",
+			}),
+			"facts",
+			true,
+		);
+	});
+
+	it("accepts a bare UUID subject as an explicit entity reference", async () => {
+		const { runtime } = await runWithFact({
+			subject: "00000000-0000-0000-0000-0000000000a1",
+			fact: "Alice commutes by ferry",
+		});
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: "00000000-0000-0000-0000-0000000000a1",
+			}),
+			"facts",
+			true,
+		);
+	});
+
+	it("redacts secret-shaped tokens at candidate and persistence time without dropping the fact", async () => {
+		const { runtime, result } = await runWithFact(
+			{ subject: "user", fact: "the staging token is [REDACTED]" },
+			"the staging token is sk-test-shortkey",
+		);
+		// The token is short enough to survive the drop-list, so the fact is
+		// kept — but redacted before the model ever sees it.
+		const validationCall = runtime.useModel.mock.calls.find(
+			(call) =>
+				typeof call[0] === "string" &&
+				(call[0] === ModelType.TEXT_LARGE || call[0] === "TEXT_LARGE"),
+		);
+		const params = validationCall?.[1] as {
+			messages?: Array<{ role: string; content: string }>;
+		};
+		const content = params.messages?.[1]?.content ?? "";
+		expect(content).toContain("- fact: the staging token is [REDACTED]");
+		expect(content).not.toContain("sk-test-shortkey");
+		expect(result.written.facts).toBe(1);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({
+					text: "the staging token is [REDACTED]",
+				}),
+			}),
+			"facts",
+			true,
+		);
+	});
+});
+
+// ── Mobile platform gate ─────────────────────────────────────────────────────
+
+describe("runFactsAndRelationshipsStage — platform gate", () => {
+	it("skips the whole stage on mobile platforms without calling the model", async () => {
+		const previous = process.env.ELIZA_PLATFORM;
+		process.env.ELIZA_PLATFORM = "ios";
+		try {
+			const runtime = makeRuntime("");
+			const result = await runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { facts: ["the user likes squash"] },
+			});
+			expect(result.parsed.thought).toBe("skipped on mobile");
+			expect(result.parsed.facts).toEqual([]);
+			expect(result.parsed.relationships).toEqual([]);
+			expect(result.messages).toEqual([]);
+			expect(result.tools).toEqual([]);
+			expect(result.written).toEqual({ facts: 0, relationships: 0 });
+			expect(runtime.useModel).not.toHaveBeenCalled();
+			expect(runtime.createMemory).not.toHaveBeenCalled();
+		} finally {
+			if (previous === undefined) {
+				delete process.env.ELIZA_PLATFORM;
+			} else {
+				process.env.ELIZA_PLATFORM = previous;
+			}
+		}
+	});
+});

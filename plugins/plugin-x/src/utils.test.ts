@@ -2,8 +2,9 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { ClientBase, type TwitterProfile } from "./base";
+import { countTwitterWeightedLength } from "./tweet-length";
 import type { TwitterClientState } from "./types";
-import { sendChunkedTweet, sendTweet } from "./utils";
+import { sendChunkedTweet, sendTweet, splitTweetContent } from "./utils";
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -24,6 +25,20 @@ function profile(id: string): TwitterProfile {
 }
 
 describe("sendTweet", () => {
+  it("keeps a weighted emoji grapheme intact when it fits the post boundary", () => {
+    const familyEmoji = "👨‍👩‍👧‍👦";
+    const prefix = "a".repeat(278);
+    const completeText = `${prefix}${familyEmoji}tail`;
+
+    const chunks = splitTweetContent(completeText, 280);
+
+    expect(chunks).toEqual([`${prefix}${familyEmoji}`, "tail"]);
+    expect(chunks.join("")).toBe(completeText);
+    expect(
+      chunks.every((chunk) => countTwitterWeightedLength(chunk) <= 280),
+    ).toBe(true);
+  });
+
   it("does not advance the mention cursor when publishing an outgoing tweet", async () => {
     // Regression for #22433: an outgoing post must never move the incoming
     // mention cursor (`lastCheckedTweetId`). The published tweet always carries
@@ -343,9 +358,10 @@ describe("sendTweet", () => {
       sendTweet: send,
     } as unknown as ClientBase["twitterClient"];
 
+    const completeText = `https://example.com${")".repeat(300)}`;
     const memories = await sendChunkedTweet(
       client,
-      { text: `${"a".repeat(280)}\n\n${"b".repeat(20)}` },
+      { text: completeText },
       "00000000-0000-0000-0000-000000000002" as UUID,
       "stale-caller-username",
       "parent",
@@ -359,6 +375,14 @@ describe("sendTweet", () => {
       "https://x.com/captured-a/status/201",
       "https://x.com/captured-a/status/202",
     ]);
+    expect(memories.map((memory) => memory.content.text).join("")).toBe(
+      completeText,
+    );
+    expect(
+      send.mock.calls.every(
+        (call) => countTwitterWeightedLength(String(call[0])) <= 280,
+      ),
+    ).toBe(true);
   });
 
   it("aborts a chunked thread before another egress when its captured session rotates", async () => {

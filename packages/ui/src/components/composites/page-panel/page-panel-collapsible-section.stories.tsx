@@ -3,6 +3,7 @@
  * used to compose dense dashboard pages.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../ui/button";
 import { PagePanelCollapsibleSection } from "./page-panel-collapsible-section";
 
 const meta = {
@@ -61,13 +62,9 @@ export const WithActions: Story = {
     heading: "Sync schedule",
     description: "Background sync runs every 15 minutes.",
     actions: (
-      <button
-        type="button"
-        className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted"
-        onClick={() => {}}
-      >
+      <Button type="button" variant="outline" size="tiny" onClick={() => {}}>
         Edit
-      </button>
+      </Button>
     ),
   },
 };

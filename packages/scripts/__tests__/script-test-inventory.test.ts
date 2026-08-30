@@ -864,7 +864,7 @@ jobs:
     // describe.skip`) are the only files permitted to report skips; a skip in
     // any other discovered file is silently-dropped coverage and must fail.
     const conditional =
-      "packages/cloud/scripts/admin/daemons/provisioning-worker-env-reconcile.test.ts";
+      "packages/scripts/__tests__/cloud-cf-voice-deploy-workflow.test.ts";
     const unconditional =
       "packages/scripts/__tests__/script-test-inventory.test.ts";
     const junitFor = (file: string) => `<?xml version="1.0"?>

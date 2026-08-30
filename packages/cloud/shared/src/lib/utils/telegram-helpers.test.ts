@@ -40,6 +40,8 @@ describe("splitMessage", () => {
     const chunks = splitMessage(long, 4);
     expect(chunks.every((c) => c.length <= 4)).toBe(true);
     expect(chunks.join("")).toBe(long);
+    const whitespace = "\n\n  exact whitespace  \n";
+    expect(splitMessage(whitespace, 4).join("")).toBe(whitespace);
   });
 });
 

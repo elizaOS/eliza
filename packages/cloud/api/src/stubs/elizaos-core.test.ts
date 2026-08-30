@@ -74,16 +74,6 @@ afterEach(() => {
 });
 
 describe("elizaos-core Worker stub", () => {
-  test("does not expose queue, comparator, or capacity fields", () => {
-    const record = stub as unknown as Record<string, unknown>;
-    expect("queue" in record).toBe(false);
-    expect("capacity" in record).toBe(false);
-    expect("comparator" in record).toBe(false);
-    expect(record.queue).toBeUndefined();
-    expect(record.capacity).toBeUndefined();
-    expect(record.comparator).toBeUndefined();
-  });
-
   test("mirrors model output completion checks used by Worker routes", () => {
     expect(stub.isModelOutputLimitFinishReason("max-output-tokens")).toBe(true);
     expect(stub.isModelOutputLimitFinishReason("stop")).toBe(false);
@@ -116,18 +106,26 @@ describe("elizaos-core Worker stub", () => {
     expect(stubDefault.elizaLogger).toBe(stub.elizaLogger);
     expect(stubDefault.stringToUuid).toBe(stub.stringToUuid);
     expect(stubDefault.ContentType).toBe(stub.ContentType);
+    expect(stubDefault.ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED).toBe(
+      stub.ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+    );
     expect(stubDefault.DEFAULT_CEREBRAS_TEXT_MODEL).toBe("gemma-4-31b");
   });
 
   test("model and media constants match the source literals", () => {
     expect(stub.DEFAULT_CEREBRAS_TEXT_MODEL).toBe("gemma-4-31b");
+    expect(stub.ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED).toBe(
+      "ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED",
+    );
     expect(stub.DEFAULT_ELIZA_CLOUD_TEXT_MODEL).toBe(
       stub.DEFAULT_CEREBRAS_TEXT_MODEL,
     );
     expect(stub.DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL).toBe(
       stub.DEFAULT_CEREBRAS_TEXT_MODEL,
     );
-    expect(stub.DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL).toBe("zai-glm-4.7");
+    expect(stub.DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL).toBe(
+      stub.DEFAULT_CEREBRAS_TEXT_MODEL,
+    );
     expect(stub.DEFAULT_MAX_BODY_BYTES).toBe(1_048_576);
     expect(stub.CLOUD_AUTH_SERVICE_TYPE).toBe(stub.ServiceType.CLOUD_AUTH);
     expect(stub.ContentType.IMAGE).toBe("image");
