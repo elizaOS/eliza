@@ -322,7 +322,28 @@ export class HetznerCloudClient implements ComputeProvider {
   }
 
   async deleteServer(serverId: number): Promise<void> {
+    // Hetzner documents DELETE /servers/{id} as returning HTTP 204 (no
+    // content). Accept 204 only as a provisional success, then prove the
+    // exact target is gone with a by-id readback: the deletion is
+    // reported successful only when the server returns 404; a still-present
+    // server or failed readback fails closed (#30017).
     await this.request<unknown>("DELETE", `/servers/${serverId}`);
+    const readback = await this.request<{ server: HetznerServer } | null>(
+      "GET",
+      `/servers/${serverId}`,
+    ).catch((error) => {
+      if (error instanceof HetznerCloudError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    });
+    if (readback !== null) {
+      throw new HetznerCloudError(
+        "server_still_exists",
+        `Hetzner server ${serverId} still exists after DELETE (204)`,
+        409,
+      );
+    }
     logger.info("[hcloud] Deleted server", { serverId });
   }
 
