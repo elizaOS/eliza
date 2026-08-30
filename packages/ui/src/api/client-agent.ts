@@ -523,7 +523,7 @@ declare module "./client-base" {
       providers: Record<string, ProviderModelRecord[]>;
       catalog: ModelCatalog;
     }>;
-    getModelsConfig(): Promise<ModelsConfigResponse>;
+    getModelsConfig(init?: RequestInit): Promise<ModelsConfigResponse>;
     updateModelsConfig(
       request: ModelsConfigWriteRequest,
     ): Promise<ModelsConfigWriteResult>;
@@ -2082,8 +2082,13 @@ ElizaClient.prototype.getModelsCatalog = async function (
     : this.fetch("/api/models?catalogOnly=1", init);
 };
 
-ElizaClient.prototype.getModelsConfig = async function (this: ElizaClient) {
-  return this.fetch("/api/models/config");
+ElizaClient.prototype.getModelsConfig = async function (
+  this: ElizaClient,
+  init,
+) {
+  return init === undefined
+    ? this.fetch("/api/models/config")
+    : this.fetch("/api/models/config", init);
 };
 
 ElizaClient.prototype.updateModelsConfig = async function (

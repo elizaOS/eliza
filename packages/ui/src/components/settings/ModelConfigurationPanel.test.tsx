@@ -276,6 +276,18 @@ describe("catalog load states", () => {
       expect(agentElements.has("models-small-provider")).toBe(true),
     );
     expect(screen.queryByText("Loading model catalog…")).toBeNull();
+    const firstCatalogSignal = clientMock.getModelsCatalog.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const currentCatalogSignal = clientMock.getModelsCatalog.mock.calls[1]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const firstConfigSignal = clientMock.getModelsConfig.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const currentConfigSignal = clientMock.getModelsConfig.mock.calls[1]?.[0]
+      ?.signal as AbortSignal | undefined;
+    expect(firstCatalogSignal?.aborted).toBe(true);
+    expect(firstConfigSignal?.aborted).toBe(true);
+    expect(currentCatalogSignal?.aborted).toBe(false);
+    expect(currentConfigSignal?.aborted).toBe(false);
   });
 
   it("keeps the current StrictMode load when the stale load succeeds later", async () => {
@@ -368,9 +380,15 @@ describe("catalog load states", () => {
     clientMock.getModelsCatalog.mockReset().mockReturnValue(catalog.promise);
     clientMock.getModelsConfig.mockReset().mockReturnValue(config.promise);
     const view = render(<ModelConfigurationPanel />);
+    const catalogSignal = clientMock.getModelsCatalog.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+    const configSignal = clientMock.getModelsConfig.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
     expect(screen.getByText("Loading model catalog…")).toBeTruthy();
 
     view.unmount();
+    expect(catalogSignal?.aborted).toBe(true);
+    expect(configSignal?.aborted).toBe(true);
     await act(async () => {
       catalog.resolve({ providers: {}, catalog: fixtureCatalog() });
       config.resolve(fixtureConfig());
