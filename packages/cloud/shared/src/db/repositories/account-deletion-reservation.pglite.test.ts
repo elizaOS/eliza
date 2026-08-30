@@ -934,6 +934,197 @@ describe("personal account deletion reservation", () => {
     });
   });
 
+  test("rearms revocation when an exact export PUT is acknowledged after deletion", async () => {
+    const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000060", "late-export-put"),
+    );
+    if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("late-export-put")).resolves.toMatchObject({
+      outcome: "activated",
+    });
+
+    const exportLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export",
+      leaseOwnerDigest: "late-export-worker",
+      now,
+      leaseMilliseconds: 60_000,
+    });
+    if (!exportLease) throw new Error("export lease failed");
+    expect(
+      await accountDeletionRequestsRepository.markExportBuilding({
+        requestId: reserved.request.id,
+        phaseReceiptId: exportLease.receipt.id,
+        generation: exportLease.generation,
+        now,
+      }),
+    ).toBe(true);
+    expect(
+      await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+        exportLease.receipt.id,
+        exportLease.generation,
+        now,
+      ),
+    ).toBe(true);
+
+    const revokeAt = new Date(now.getTime() + 1_000);
+    await accountDeletionRequestsRepository.ensureExportRevocationPhase({
+      requestId: reserved.request.id,
+      idempotencyKeyDigest: "late-export-revoke",
+      nextAttemptAt: revokeAt,
+      now: revokeAt,
+    });
+    const firstRevokeLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export_revoke",
+      leaseOwnerDigest: "first-revoke-worker",
+      now: revokeAt,
+      leaseMilliseconds: 60_000,
+    });
+    if (!firstRevokeLease) throw new Error("first export revocation lease failed");
+    expect(
+      await accountDeletionRequestsRepository.completeExportRevocation({
+        requestId: reserved.request.id,
+        phaseReceiptId: firstRevokeLease.receipt.id,
+        generation: firstRevokeLease.generation,
+        providerReceiptDigest: "first-delete-receipt",
+        now: revokeAt,
+      }),
+    ).toBe(true);
+
+    const lateAcknowledgementAt = new Date(revokeAt.getTime() + 1_000);
+    expect(
+      await accountDeletionRequestsRepository.completeExportPhase({
+        requestId: reserved.request.id,
+        phaseReceiptId: exportLease.receipt.id,
+        generation: exportLease.generation,
+        contentDigest: "late-content-digest",
+        objectReceiptDigest: "late-object-receipt",
+        byteCount: 321,
+        now: lateAcknowledgementAt,
+      }),
+    ).toBe(false);
+
+    const [fencedExport] = await dbWrite
+      .select()
+      .from(accountDeletionExports)
+      .where(eq(accountDeletionExports.request_id, reserved.request.id));
+    const phases = await accountDeletionRequestsRepository.listPhaseReceipts(reserved.request.id);
+    const fencedExportPhase = phases.find((phase) => phase.phase === "export");
+    const rearmedRevoke = phases.find((phase) => phase.phase === "export_revoke");
+    expect(fencedExport).toMatchObject({
+      status: "expired",
+      content_digest: "late-content-digest",
+      object_receipt_digest: "late-object-receipt",
+      byte_count: 321,
+      ready_at: null,
+      deleted_at: null,
+      last_error_code: "ACCOUNT_DELETION_EXPORT_LATE_PUT_REQUIRES_REVOCATION",
+    });
+    expect(fencedExportPhase).toMatchObject({
+      status: "canceled",
+      lease_generation: exportLease.generation,
+      provider_receipt_digest: "late-object-receipt",
+      last_error_code: "ACCOUNT_DELETION_EXPORT_LATE_PUT_REQUIRES_REVOCATION",
+    });
+    expect(rearmedRevoke).toMatchObject({
+      id: firstRevokeLease.receipt.id,
+      status: "pending",
+      lease_generation: firstRevokeLease.generation,
+      attempt_count: 0,
+      provider_receipt_digest: "first-delete-receipt",
+      next_attempt_at: lateAcknowledgementAt,
+      last_error_code: "ACCOUNT_DELETION_EXPORT_LATE_PUT_REQUIRES_REVOCATION",
+    });
+    expect(
+      await accountDeletionRequestsRepository.findExportRevocationsDue(lateAcknowledgementAt, 10),
+    ).toContainEqual({
+      requestId: reserved.request.id,
+      requestDigest: "request-late-export-put",
+    });
+
+    const secondRevokeLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export_revoke",
+      leaseOwnerDigest: "second-revoke-worker",
+      now: new Date(lateAcknowledgementAt.getTime() + 1),
+      leaseMilliseconds: 60_000,
+    });
+    if (!secondRevokeLease) throw new Error("rearmed export revocation lease failed");
+    expect(secondRevokeLease.generation).toBe(firstRevokeLease.generation + 1);
+    expect(
+      await accountDeletionRequestsRepository.completeExportRevocation({
+        requestId: reserved.request.id,
+        phaseReceiptId: secondRevokeLease.receipt.id,
+        generation: secondRevokeLease.generation,
+        providerReceiptDigest: "second-delete-receipt",
+        now: new Date(lateAcknowledgementAt.getTime() + 1),
+      }),
+    ).toBe(true);
+    const [deletedAgain] = await dbWrite
+      .select()
+      .from(accountDeletionExports)
+      .where(eq(accountDeletionExports.request_id, reserved.request.id));
+    expect(deletedAgain).toMatchObject({
+      status: "deleted",
+      content_digest: null,
+      object_receipt_digest: "second-delete-receipt",
+      byte_count: null,
+    });
+  });
+
+  test("rejects a leased export after revocation scheduling fences its generation", async () => {
+    const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000061", "fenced-export-lease"),
+    );
+    if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("fenced-export-lease")).resolves.toMatchObject({
+      outcome: "activated",
+    });
+    const exportLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export",
+      leaseOwnerDigest: "fenced-export-worker",
+      now,
+      leaseMilliseconds: 60_000,
+    });
+    if (!exportLease) throw new Error("export lease failed");
+
+    const revokeAt = new Date(now.getTime() + 1);
+    await accountDeletionRequestsRepository.ensureExportRevocationPhase({
+      requestId: reserved.request.id,
+      idempotencyKeyDigest: "fenced-export-revoke",
+      nextAttemptAt: revokeAt,
+      now: revokeAt,
+    });
+    expect(
+      await accountDeletionRequestsRepository.markExportBuilding({
+        requestId: reserved.request.id,
+        phaseReceiptId: exportLease.receipt.id,
+        generation: exportLease.generation,
+        now: new Date(revokeAt.getTime() + 1),
+      }),
+    ).toBe(false);
+
+    const [fencedExport] = await dbWrite
+      .select()
+      .from(accountDeletionExports)
+      .where(eq(accountDeletionExports.request_id, reserved.request.id));
+    const phases = await accountDeletionRequestsRepository.listPhaseReceipts(reserved.request.id);
+    expect(fencedExport?.status).toBe("expired");
+    expect(phases.find((phase) => phase.phase === "export")).toMatchObject({
+      status: "canceled",
+      lease_generation: exportLease.generation,
+      lease_owner_digest: null,
+      lease_expires_at: null,
+      last_error_code: "ACCOUNT_DELETION_EXPORT_REVOCATION_FENCED",
+    });
+    expect(phases.find((phase) => phase.phase === "export_revoke")).toMatchObject({
+      status: "pending",
+      next_attempt_at: revokeAt,
+    });
+  });
+
   test("preserves reconciliation mode across an explicit lost-response retry", async () => {
     const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
       reservationInput("50000000-0000-4000-8000-000000000006", "reconcile"),

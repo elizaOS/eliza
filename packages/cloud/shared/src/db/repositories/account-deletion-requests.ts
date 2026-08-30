@@ -1,5 +1,6 @@
 /** Persists durable deletion receipts and generation-fenced worker state transitions. */
 
+import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import {
   and,
@@ -82,9 +83,13 @@ async function settleBackupAdmissionForDeletion(
 async function lockAccountDeletionRequest(
   tx: DbTransaction,
   requestId: string,
-): Promise<Pick<AccountDeletionRequest, "id" | "status"> | undefined> {
+): Promise<Pick<AccountDeletionRequest, "id" | "status" | "request_digest"> | undefined> {
   const [request] = await tx
-    .select({ id: accountDeletionRequests.id, status: accountDeletionRequests.status })
+    .select({
+      id: accountDeletionRequests.id,
+      status: accountDeletionRequests.status,
+      request_digest: accountDeletionRequests.request_digest,
+    })
     .from(accountDeletionRequests)
     .where(eq(accountDeletionRequests.id, requestId))
     .for("update")
@@ -108,6 +113,18 @@ async function lockAccountDeletionExport(
     .limit(1);
   return exportReceipt;
 }
+
+function exportRevocationIdempotencyKeyDigest(request: {
+  id: string;
+  request_digest: string | null;
+}): string {
+  return createHash("sha256")
+    .update(`account-deletion-export-revoke:v1:${request.request_digest ?? request.id}`)
+    .digest("hex");
+}
+
+const EXPORT_REVOCATION_FENCE_ERROR = "ACCOUNT_DELETION_EXPORT_REVOCATION_FENCED";
+const LATE_EXPORT_PUT_ERROR = "ACCOUNT_DELETION_EXPORT_LATE_PUT_REQUIRES_REVOCATION";
 
 export interface ReservePersonalAccountDeletionInput {
   requestId: string;
@@ -1486,7 +1503,14 @@ export class AccountDeletionRequestsRepository {
     now: Date;
   }): Promise<boolean> {
     return await dbWrite.transaction(async (tx) => {
-      if (!(await lockAccountDeletionExport(tx, input.requestId))) return false;
+      const request = await lockAccountDeletionRequest(tx, input.requestId);
+      if (!request || (request.status !== "reserved" && request.status !== "recovery")) {
+        return false;
+      }
+      const exportReceipt = await lockAccountDeletionExport(tx, input.requestId);
+      if (!exportReceipt || !["pending", "building", "failed"].includes(exportReceipt.status)) {
+        return false;
+      }
       const [phase] = await tx
         .select({ id: accountDeletionPhaseReceipts.id })
         .from(accountDeletionPhaseReceipts)
@@ -1494,6 +1518,7 @@ export class AccountDeletionRequestsRepository {
           and(
             eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
             eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+            eq(accountDeletionPhaseReceipts.phase, "export"),
             eq(accountDeletionPhaseReceipts.status, "leased"),
             eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
           ),
@@ -1504,7 +1529,12 @@ export class AccountDeletionRequestsRepository {
       const [updated] = await tx
         .update(accountDeletionExports)
         .set({ status: "building", last_error_code: null, updated_at: input.now })
-        .where(eq(accountDeletionExports.request_id, input.requestId))
+        .where(
+          and(
+            eq(accountDeletionExports.request_id, input.requestId),
+            inArray(accountDeletionExports.status, ["pending", "building", "failed"]),
+          ),
+        )
         .returning({ id: accountDeletionExports.id });
       return updated !== undefined;
     });
@@ -1520,76 +1550,217 @@ export class AccountDeletionRequestsRepository {
     now: Date;
   }): Promise<boolean> {
     return await dbWrite.transaction(async (tx) => {
-      if (!(await lockAccountDeletionRequest(tx, input.requestId))) return false;
-      const exportExists = await lockAccountDeletionExport(tx, input.requestId);
-      const [completed] = await tx
+      const request = await lockAccountDeletionRequest(tx, input.requestId);
+      if (!request) return false;
+      const exportReceipt = await lockAccountDeletionExport(tx, input.requestId);
+      if (!exportReceipt) return false;
+      const phases = await tx
+        .select()
+        .from(accountDeletionPhaseReceipts)
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+            inArray(accountDeletionPhaseReceipts.phase, ["export", "export_revoke"]),
+          ),
+        )
+        .orderBy(
+          asc(accountDeletionPhaseReceipts.phase_order),
+          asc(accountDeletionPhaseReceipts.id),
+        )
+        .for("update");
+      const exportPhase = phases.find(
+        (phase) => phase.id === input.phaseReceiptId && phase.phase === "export",
+      );
+      if (!exportPhase || exportPhase.lease_generation !== input.generation) return false;
+
+      const requestCanPublish = request.status === "reserved" || request.status === "recovery";
+      const phaseCanPublish =
+        exportPhase.status === "calling" || exportPhase.status === "reconciling";
+      if (requestCanPublish && phaseCanPublish && exportReceipt.status === "building") {
+        const [published] = await tx
+          .update(accountDeletionExports)
+          .set({
+            status: "ready",
+            content_digest: input.contentDigest,
+            object_receipt_digest: input.objectReceiptDigest,
+            byte_count: input.byteCount,
+            ready_at: input.now,
+            deleted_at: null,
+            last_error_code: null,
+            updated_at: input.now,
+          })
+          .where(
+            and(
+              eq(accountDeletionExports.request_id, input.requestId),
+              eq(accountDeletionExports.status, "building"),
+            ),
+          )
+          .returning({ id: accountDeletionExports.id });
+        if (!published) return false;
+
+        const [completed] = await tx
+          .update(accountDeletionPhaseReceipts)
+          .set({
+            status: "completed",
+            provider_receipt_digest: input.objectReceiptDigest,
+            provider_acknowledged_at: input.now,
+            reconciled_at: input.now,
+            completed_at: input.now,
+            lease_owner_digest: null,
+            lease_expires_at: null,
+            next_attempt_at: null,
+            last_error_code: null,
+            updated_at: input.now,
+          })
+          .where(
+            and(
+              eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+              eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+              eq(accountDeletionPhaseReceipts.phase, "export"),
+              inArray(accountDeletionPhaseReceipts.status, ["calling", "reconciling"]),
+              eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
+            ),
+          )
+          .returning({ id: accountDeletionPhaseReceipts.id });
+        if (!completed) {
+          throw new ElizaError("Deletion export generation changed during completion", {
+            code: "ACCOUNT_DELETION_EXPORT_COMPLETION_GENERATION_CHANGED",
+            severity: "fatal",
+          });
+        }
+
+        const [recovery] = await tx
+          .update(accountDeletionRequests)
+          .set({ status: "recovery", updated_at: input.now })
+          .where(
+            and(
+              eq(accountDeletionRequests.id, input.requestId),
+              inArray(accountDeletionRequests.status, ["reserved", "recovery"]),
+            ),
+          )
+          .returning({ id: accountDeletionRequests.id });
+        if (!recovery) {
+          throw new ElizaError("Deletion request cannot enter recovery after export", {
+            code: "ACCOUNT_DELETION_EXPORT_RECOVERY_TRANSITION_MISSING",
+            severity: "fatal",
+          });
+        }
+        return true;
+      }
+
+      // The provider can acknowledge a PUT after revocation already expired or
+      // deleted its object. Retain that proof without republishing recovery
+      // authority, then make the unique deletion phase runnable again.
+      const lateProviderAcknowledgement =
+        exportPhase.before_provider_call_at !== null &&
+        ["calling", "reconciling", "canceled", "completed", "action_required"].includes(
+          exportPhase.status,
+        );
+      if (
+        !lateProviderAcknowledgement ||
+        (exportReceipt.status !== "expired" && exportReceipt.status !== "deleted")
+      ) {
+        return false;
+      }
+
+      const [fencedExport] = await tx
+        .update(accountDeletionExports)
+        .set({
+          status: "expired",
+          content_digest: input.contentDigest,
+          object_receipt_digest: input.objectReceiptDigest,
+          byte_count: input.byteCount,
+          ready_at: null,
+          deleted_at: null,
+          last_error_code: LATE_EXPORT_PUT_ERROR,
+          updated_at: input.now,
+        })
+        .where(
+          and(
+            eq(accountDeletionExports.request_id, input.requestId),
+            inArray(accountDeletionExports.status, ["expired", "deleted"]),
+          ),
+        )
+        .returning({ id: accountDeletionExports.id });
+      if (!fencedExport) return false;
+
+      const [fencedPhase] = await tx
         .update(accountDeletionPhaseReceipts)
         .set({
-          status: "completed",
+          status: "canceled",
           provider_receipt_digest: input.objectReceiptDigest,
           provider_acknowledged_at: input.now,
           reconciled_at: input.now,
-          completed_at: input.now,
+          completed_at: exportPhase.completed_at ?? input.now,
           lease_owner_digest: null,
           lease_expires_at: null,
           next_attempt_at: null,
-          last_error_code: null,
+          last_error_code: LATE_EXPORT_PUT_ERROR,
           updated_at: input.now,
         })
         .where(
           and(
             eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
             eq(accountDeletionPhaseReceipts.request_id, input.requestId),
-            inArray(accountDeletionPhaseReceipts.status, ["calling", "reconciling"]),
+            eq(accountDeletionPhaseReceipts.phase, "export"),
             eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
           ),
         )
         .returning({ id: accountDeletionPhaseReceipts.id });
-      if (!completed) return false;
-      if (!exportExists) {
-        throw new ElizaError("Deletion export receipt disappeared during completion", {
-          code: "ACCOUNT_DELETION_EXPORT_COMPLETION_RECEIPT_MISSING",
+      if (!fencedPhase) {
+        throw new ElizaError("Deletion export generation changed during late PUT fencing", {
+          code: "ACCOUNT_DELETION_EXPORT_LATE_PUT_GENERATION_CHANGED",
           severity: "fatal",
         });
       }
 
-      const [exportReceipt] = await tx
-        .update(accountDeletionExports)
-        .set({
-          status: "ready",
-          content_digest: input.contentDigest,
-          object_receipt_digest: input.objectReceiptDigest,
-          byte_count: input.byteCount,
-          ready_at: input.now,
-          last_error_code: null,
+      const revokePhase = phases.find((phase) => phase.phase === "export_revoke");
+      if (!revokePhase) {
+        await tx.insert(accountDeletionPhaseReceipts).values({
+          request_id: input.requestId,
+          phase: "export_revoke",
+          phase_order: request.status === "canceling" || request.status === "canceled" ? 1_010 : 3,
+          status: "pending",
+          idempotency_key_digest: exportRevocationIdempotencyKeyDigest(request),
+          next_attempt_at: input.now,
+          last_error_code: LATE_EXPORT_PUT_ERROR,
+          created_at: input.now,
           updated_at: input.now,
-        })
-        .where(eq(accountDeletionExports.request_id, input.requestId))
-        .returning({ id: accountDeletionExports.id });
-      if (!exportReceipt) {
-        throw new ElizaError("Deletion export receipt disappeared during completion", {
-          code: "ACCOUNT_DELETION_EXPORT_COMPLETION_RECEIPT_MISSING",
-          severity: "fatal",
         });
+      } else {
+        const invalidateConcurrentLease = ["leased", "calling", "reconciling"].includes(
+          revokePhase.status,
+        );
+        const [rearmed] = await tx
+          .update(accountDeletionPhaseReceipts)
+          .set({
+            status: "pending",
+            lease_generation: invalidateConcurrentLease
+              ? revokePhase.lease_generation + 1
+              : revokePhase.lease_generation,
+            lease_owner_digest: null,
+            lease_expires_at: null,
+            attempt_count: 0,
+            retry_class: null,
+            next_attempt_at: input.now,
+            last_error_code: LATE_EXPORT_PUT_ERROR,
+            updated_at: input.now,
+          })
+          .where(
+            and(
+              eq(accountDeletionPhaseReceipts.id, revokePhase.id),
+              eq(accountDeletionPhaseReceipts.lease_generation, revokePhase.lease_generation),
+            ),
+          )
+          .returning({ id: accountDeletionPhaseReceipts.id });
+        if (!rearmed) {
+          throw new ElizaError("Deletion export revocation changed during late PUT fencing", {
+            code: "ACCOUNT_DELETION_EXPORT_LATE_PUT_REVOCATION_CHANGED",
+            severity: "fatal",
+          });
+        }
       }
-
-      const [request] = await tx
-        .update(accountDeletionRequests)
-        .set({ status: "recovery", updated_at: input.now })
-        .where(
-          and(
-            eq(accountDeletionRequests.id, input.requestId),
-            inArray(accountDeletionRequests.status, ["reserved", "recovery"]),
-          ),
-        )
-        .returning({ id: accountDeletionRequests.id });
-      if (!request) {
-        throw new ElizaError("Deletion request cannot enter recovery after export", {
-          code: "ACCOUNT_DELETION_EXPORT_RECOVERY_TRANSITION_MISSING",
-          severity: "fatal",
-        });
-      }
-      return true;
+      return false;
     });
   }
 
@@ -1961,6 +2132,55 @@ export class AccountDeletionRequestsRepository {
       }
       if (exportReceipt.status === "deleted") return;
 
+      const phases = await tx
+        .select()
+        .from(accountDeletionPhaseReceipts)
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+            inArray(accountDeletionPhaseReceipts.phase, ["export", "export_revoke"]),
+          ),
+        )
+        .orderBy(
+          asc(accountDeletionPhaseReceipts.phase_order),
+          asc(accountDeletionPhaseReceipts.id),
+        )
+        .for("update");
+      const exportPhase = phases.find((phase) => phase.phase === "export");
+      if (!exportPhase) {
+        throw new ElizaError("Deletion export phase disappeared before revocation scheduling", {
+          code: "ACCOUNT_DELETION_EXPORT_REVOCATION_PHASE_MISSING",
+          severity: "fatal",
+        });
+      }
+      if (exportPhase.status !== "completed" && exportPhase.status !== "canceled") {
+        const [fencedPhase] = await tx
+          .update(accountDeletionPhaseReceipts)
+          .set({
+            status: "canceled",
+            lease_owner_digest: null,
+            lease_expires_at: null,
+            next_attempt_at: null,
+            completed_at: input.now,
+            last_error_code: EXPORT_REVOCATION_FENCE_ERROR,
+            updated_at: input.now,
+          })
+          .where(
+            and(
+              eq(accountDeletionPhaseReceipts.id, exportPhase.id),
+              eq(accountDeletionPhaseReceipts.lease_generation, exportPhase.lease_generation),
+              notInArray(accountDeletionPhaseReceipts.status, ["completed", "canceled"]),
+            ),
+          )
+          .returning({ id: accountDeletionPhaseReceipts.id });
+        if (!fencedPhase) {
+          throw new ElizaError("Deletion export generation changed before revocation scheduling", {
+            code: "ACCOUNT_DELETION_EXPORT_REVOCATION_FENCE_CHANGED",
+            severity: "fatal",
+          });
+        }
+      }
+
       const [expired] = await tx
         .update(accountDeletionExports)
         .set({ status: "expired", updated_at: input.now })
@@ -1977,9 +2197,9 @@ export class AccountDeletionRequestsRepository {
           severity: "fatal",
         });
       }
-      await tx
-        .insert(accountDeletionPhaseReceipts)
-        .values({
+      const revokePhase = phases.find((phase) => phase.phase === "export_revoke");
+      if (!revokePhase) {
+        await tx.insert(accountDeletionPhaseReceipts).values({
           request_id: input.requestId,
           phase: "export_revoke",
           phase_order: 3,
@@ -1988,8 +2208,34 @@ export class AccountDeletionRequestsRepository {
           next_attempt_at: input.nextAttemptAt,
           created_at: input.now,
           updated_at: input.now,
-        })
-        .onConflictDoNothing();
+        });
+      } else if (revokePhase.status === "completed" || revokePhase.status === "canceled") {
+        const [rearmed] = await tx
+          .update(accountDeletionPhaseReceipts)
+          .set({
+            status: "pending",
+            lease_owner_digest: null,
+            lease_expires_at: null,
+            attempt_count: 0,
+            retry_class: null,
+            next_attempt_at: input.nextAttemptAt,
+            last_error_code: EXPORT_REVOCATION_FENCE_ERROR,
+            updated_at: input.now,
+          })
+          .where(
+            and(
+              eq(accountDeletionPhaseReceipts.id, revokePhase.id),
+              eq(accountDeletionPhaseReceipts.lease_generation, revokePhase.lease_generation),
+            ),
+          )
+          .returning({ id: accountDeletionPhaseReceipts.id });
+        if (!rearmed) {
+          throw new ElizaError("Deletion export revocation changed while being rescheduled", {
+            code: "ACCOUNT_DELETION_EXPORT_REVOCATION_REARM_CHANGED",
+            severity: "fatal",
+          });
+        }
+      }
     });
   }
 
