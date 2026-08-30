@@ -81,7 +81,7 @@ Run from repo root with `--cwd packages/app-core`:
 - Ports: `ELIZA_API_PORT`/`ELIZA_PORT`/`ELIZA_UI_PORT` are read via `@elizaos/shared` `resolveDesktopApiPort`/`resolveServerOnlyPort`/`syncResolvedApiPort`. Never hardcode; the orchestrator shifts and syncs them.
 - `LOG_LEVEL` / `--debug` / `--verbose` / `--no-color` — set in `entry.ts` before runtime imports; also drives `NODE_LLAMA_CPP_LOG_LEVEL`.
 - `DATABASE_URL` → bridged to `POSTGRES_URL` for `plugin-sql` (cloud/sandbox provisioners inject `DATABASE_URL`).
-- `ELIZAOS_CLOUD_API_KEY` (dev fallback `ELIZA_DEV_CLOUD_API_KEY` in non-prod).
+- `ELIZAOS_CLOUD_API_KEY` (`ELIZA_DEV_CLOUD_API_KEY` is accepted only by explicit staging or self-hosted development launchers).
 - `ELIZA_API_PROCESS_SPAWNED_AT_MS` / `ELIZA_PROCESS_SPAWNED_AT_MS` — startup timing (dev-server).
 - `/api/dev/stack` response schema tag is the `ELIZA_DEV_STACK_SCHEMA` constant (`"elizaos.dev.stack/v1"`) from `api/dev-stack.ts` — it is a code constant, not an env var. State dir via `@elizaos/core` `resolveStateDir`. Provider key aliases normalized in `run-main.ts` (`Z_AI_API_KEY`→`ZAI_API_KEY`, `KIMI_API_KEY`→`MOONSHOT_API_KEY`).
 - **App-route boot knobs** (owned by `runtime/startup/app-contributors.ts`):

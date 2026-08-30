@@ -17,9 +17,13 @@ const getAgent = mock(async () => ({ id: "sandbox-agent-1" }));
 const approveTransaction = mock(async () => ({ ok: true, txId: "tx-1" }));
 const denyTransaction = mock(async () => ({}));
 const setPolicies = mock(async () => undefined);
+const stewardGetAgent = mock(async () => ({
+  walletAddress: "0x1",
+  walletAddresses: {},
+}));
 const createStewardClient = mock(async () => ({
   getAddresses: async () => ({ addresses: [] }),
-  getAgent: async () => ({ walletAddress: "0x1", walletAddresses: {} }),
+  getAgent: stewardGetAgent,
   getBalance: async () => ({
     balances: { native: "0", chainId: 56, symbol: "BNB" },
   }),
@@ -62,6 +66,9 @@ mock.module("@/lib/utils/logger", () => ({
 }));
 
 const { handleDirectWalletRequest } = await import("./route");
+const { personalSharedAgentId } = await import(
+  "@/lib/services/shared-runtime/personal-shared-agent"
+);
 
 function context(bodyText: string) {
   return {
@@ -111,5 +118,150 @@ describe("wallet-path malformed JSON", () => {
     );
     expect(response.status).toBe(200);
     expect(approveTransaction).toHaveBeenCalled();
+  });
+
+  test("canonical Personal id bypasses UUID-backed sandbox and wallet repositories", async () => {
+    getAgent.mockClear();
+    dbSelect.mockClear();
+    const personalId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({ agentId: personalId, path: ["addresses"] }),
+      "GET",
+    );
+
+    expect(response.status).toBe(200);
+    expect(getAgent).not.toHaveBeenCalled();
+    expect(dbSelect).not.toHaveBeenCalled();
+  });
+
+  test("canonical Personal id is normalized before Steward lookup", async () => {
+    stewardGetAgent.mockClear();
+    const personalId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({
+        agentId: personalId.toUpperCase(),
+        path: ["addresses"],
+      }),
+      "GET",
+    );
+
+    expect(response.status).toBe(200);
+    expect(stewardGetAgent).toHaveBeenCalledWith(personalId);
+  });
+
+  test("canonical Personal id without a Steward agent returns the existing typed 404", async () => {
+    getAgent.mockClear();
+    dbSelect.mockClear();
+    stewardGetAgent.mockImplementationOnce(async () => {
+      throw new Error("Steward agent unavailable");
+    });
+    const personalId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({ agentId: personalId, path: ["addresses"] }),
+      "GET",
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "No Steward-managed wallet found for this agent",
+    });
+    expect(getAgent).not.toHaveBeenCalled();
+    expect(dbSelect).not.toHaveBeenCalled();
+  });
+
+  test("cross-user Personal id is indistinguishable from a missing agent", async () => {
+    getAgent.mockClear();
+    dbSelect.mockClear();
+    createStewardClient.mockClear();
+    const otherAccountId = personalSharedAgentId({
+      userId: "other-user",
+      organizationId: "org-1",
+    });
+
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({ agentId: otherAccountId, path: ["addresses"] }),
+      "GET",
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Agent not found",
+    });
+    expect(getAgent).not.toHaveBeenCalled();
+    expect(dbSelect).not.toHaveBeenCalled();
+    expect(createStewardClient).not.toHaveBeenCalled();
+  });
+
+  test("cross-organization Personal id is indistinguishable from a missing agent", async () => {
+    getAgent.mockClear();
+    dbSelect.mockClear();
+    const otherOrganizationId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "other-org",
+    });
+
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({ agentId: otherOrganizationId, path: ["addresses"] }),
+      "GET",
+    );
+
+    expect(response.status).toBe(404);
+    expect(getAgent).not.toHaveBeenCalled();
+    expect(dbSelect).not.toHaveBeenCalled();
+  });
+
+  test("normal sandbox id keeps the organization-scoped sandbox lookup", async () => {
+    getAgent.mockClear();
+
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({ agentId: "sandbox-agent-1", path: ["addresses"] }),
+      "GET",
+    );
+
+    expect(response.status).toBe(200);
+    expect(getAgent).toHaveBeenCalledWith("sandbox-agent-1", "org-1");
+  });
+
+  test("canonical Personal optional wallet response remains capability-specific", async () => {
+    getAgent.mockClear();
+    createStewardClient.mockClear();
+    const personalId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({ agentId: personalId, path: ["nfts"] }),
+      "GET",
+    );
+
+    expect(response.status).toBe(501);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "wallet_nfts_unavailable",
+      capability: "nfts",
+    });
+    expect(getAgent).not.toHaveBeenCalled();
+    expect(createStewardClient).not.toHaveBeenCalled();
   });
 });

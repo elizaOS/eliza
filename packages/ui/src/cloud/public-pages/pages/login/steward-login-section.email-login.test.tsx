@@ -180,6 +180,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
   });
 
   it("redeems only six digits and establishes the session from the verify response", async () => {
+    window.localStorage.setItem("eliza_sso_logged_out", "1");
     renderSection();
     await startEmailLogin();
 
@@ -204,6 +205,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
         "refresh-token",
       ),
     );
+    expect(window.localStorage.getItem("eliza_sso_logged_out")).toBeNull();
   });
 
   it("binds consumed-link recovery to the challenged email", async () => {

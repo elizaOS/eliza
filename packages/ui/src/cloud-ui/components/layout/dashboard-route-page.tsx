@@ -8,6 +8,7 @@ import type {
   DependencyList,
   ReactNode,
 } from "react";
+import { Alert } from "../../../components/ui/alert";
 import { cn } from "../../lib/utils";
 import { DashboardPageContainer, DashboardPageStack } from "./dashboard-page";
 import { EnsurePageHeaderProvider } from "./page-header-context";
@@ -38,14 +39,12 @@ interface DashboardRoutePageProps {
   bannerClassName?: string;
 }
 
-const bannerTones: Record<DashboardRoutePageBannerTone, string> = {
-  // Brand rule: no blue. Slate reads as neutral "info" alongside the
-  // emerald/amber/red tones below.
-  info: "border-slate-400/30 bg-slate-400/10 text-slate-100",
-  success: "border-status-success/30 bg-status-success-bg text-status-success",
-  warning: "border-status-warning/30 bg-status-warning-bg text-status-warning",
-  error: "border-destructive/40 bg-destructive-subtle text-destructive",
-};
+const bannerTones = {
+  info: "dashboardInfo",
+  success: "dashboardSuccess",
+  warning: "dashboardWarning",
+  error: "dashboardError",
+} as const;
 
 function normalizeLayoutProps<T extends object>(
   value: boolean | T | undefined,
@@ -95,15 +94,12 @@ function DashboardRoutePageBody({
   let content = (
     <>
       {banner ? (
-        <div
-          className={cn(
-            "mb-4 border px-4 py-3 text-sm",
-            bannerTones[bannerTone],
-            bannerClassName,
-          )}
+        <Alert
+          variant={bannerTones[bannerTone]}
+          className={cn("mb-4", bannerClassName)}
         >
           {banner}
-        </div>
+        </Alert>
       ) : null}
       {children}
     </>

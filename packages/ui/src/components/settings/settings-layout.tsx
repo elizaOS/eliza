@@ -6,6 +6,7 @@ import { ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 
 /**
  * Settings layout vocabulary.
@@ -26,7 +27,16 @@ export function SettingsStack({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col gap-8", className)} {...props} />;
+  return (
+    <div
+      data-slot="settings-stack"
+      className={cn(
+        "settings-surface flex flex-col gap-7 min-[700px]:gap-10",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export interface SettingsGroupProps
@@ -39,6 +49,8 @@ export interface SettingsGroupProps
   action?: React.ReactNode;
   /** Helper / disclaimer rendered under the card. */
   footer?: React.ReactNode;
+  /** Heading level for the group title. Section bodies default to h3. */
+  headingLevel?: 2 | 3;
   /** Drop the card chrome and render children directly (custom content). */
   bare?: boolean;
   children?: React.ReactNode;
@@ -49,33 +61,75 @@ export function SettingsGroup({
   description,
   action,
   footer,
+  headingLevel = 3,
   bare = false,
   className,
   children,
   ...props
 }: SettingsGroupProps) {
   const hasHeader = Boolean(title || description || action);
+  const Heading = headingLevel === 2 ? "h2" : "h3";
   return (
-    <section className={cn("flex flex-col gap-1.5", className)} {...props}>
+    <section
+      data-slot="settings-group"
+      className={cn("flex flex-col gap-3", className)}
+      {...props}
+    >
       {hasHeader ? (
-        <div className="flex min-h-[1.5rem] flex-wrap items-end justify-between gap-x-3 gap-y-2">
+        <div
+          data-slot="settings-group-header"
+          className="flex min-h-6 flex-wrap items-end justify-between gap-x-3 gap-y-2 px-1"
+        >
           <div className="min-w-0">
             {title ? (
-              <h3 className="text-xs font-medium text-muted">{title}</h3>
+              <Heading
+                data-slot="settings-group-title"
+                className="text-[13px] font-semibold uppercase leading-5 tracking-[0.04em] text-[color:var(--settings-muted)]"
+              >
+                {title}
+              </Heading>
             ) : null}
             {description ? (
-              <p className="mt-1 text-xs leading-relaxed text-muted">
+              <p
+                data-slot="settings-group-description"
+                className="mt-1 text-[13px] leading-5 text-[color:var(--settings-muted)]"
+              >
                 {description}
               </p>
             ) : null}
           </div>
-          {action ? <div className="shrink-0">{action}</div> : null}
+          {action ? (
+            <div data-slot="settings-group-action" className="shrink-0">
+              {action}
+            </div>
+          ) : null}
         </div>
       ) : null}
-      {/* Flat list — no card, no dividers; rows breathe via their own spacing. */}
-      {bare ? children : <div className="flex flex-col">{children}</div>}
+      {bare ? (
+        children
+      ) : (
+        <Card
+          surface="card"
+          border="standard"
+          radius="xlarge"
+          data-slot="settings-group-surface"
+          className="overflow-hidden"
+        >
+          <div
+            data-slot="settings-group-rows"
+            className="settings-group-rows flex flex-col"
+          >
+            {children}
+          </div>
+        </Card>
+      )}
       {footer ? (
-        <p className="pt-1 text-xs leading-relaxed text-muted">{footer}</p>
+        <p
+          data-slot="settings-group-footer"
+          className="px-1 text-xs leading-5 text-[color:var(--settings-muted)]"
+        >
+          {footer}
+        </p>
       ) : null}
     </section>
   );
@@ -91,6 +145,8 @@ export interface SettingsRowProps {
    */
   icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   iconClassName?: string;
+  /** Optional paint and geometry for a leading icon medallion. */
+  iconContainerClassName?: string;
   /** Primary label. */
   label: React.ReactNode;
   /** Secondary description under the label. */
@@ -134,6 +190,7 @@ export interface SettingsRowProps {
 function SettingsRowBody({
   icon: Icon,
   iconClassName,
+  iconContainerClassName,
   label,
   description,
   control,
@@ -141,10 +198,12 @@ function SettingsRowBody({
   tone,
   trailing,
   chevron,
+  interactive = false,
 }: Pick<
   SettingsRowProps,
   | "icon"
   | "iconClassName"
+  | "iconContainerClassName"
   | "label"
   | "description"
   | "control"
@@ -152,25 +211,58 @@ function SettingsRowBody({
   | "tone"
   | "trailing"
   | "chevron"
->) {
+> & { interactive?: boolean }) {
   const LabelTag = htmlFor ? "label" : "span";
+  const resolvedTrailing =
+    trailing ??
+    (chevron ? (
+      <ChevronRight
+        data-slot="settings-row-chevron"
+        className="size-4 text-[color:var(--settings-muted)]"
+        aria-hidden
+      />
+    ) : null);
+  const hasTrailing = trailing != null || Boolean(chevron);
   return (
-    <div className="flex w-full items-center gap-3">
+    <div
+      data-slot="settings-row-body"
+      className={cn(
+        "flex w-full items-center px-5",
+        interactive &&
+          "min-h-12 py-2.5 transition-colors group-focus-visible:ring-2 group-focus-visible:ring-[color:var(--settings-ring)] group-focus-visible:ring-inset",
+      )}
+    >
       {Icon ? (
-        <Icon
-          className={cn(
-            "h-[18px] w-[18px] shrink-0 text-muted/80",
-            tone === "danger" && "text-warn",
-            iconClassName,
-          )}
+        <span
+          data-slot="settings-row-icon-container"
           aria-hidden
-        />
+          className={cn(
+            "mr-3 flex shrink-0 items-center justify-center",
+            iconContainerClassName,
+          )}
+        >
+          <Icon
+            className={cn(
+              "h-[18px] w-[18px] shrink-0",
+              iconContainerClassName
+                ? "text-current"
+                : "text-[color:var(--settings-muted)]",
+              tone === "danger" && "text-warn",
+              iconClassName,
+            )}
+            aria-hidden
+          />
+        </span>
       ) : null}
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span
+        data-slot="settings-row-copy"
+        className="flex min-w-0 flex-1 flex-col"
+      >
         <LabelTag
+          data-slot="settings-row-label"
           {...(htmlFor ? { htmlFor } : {})}
           className={cn(
-            "text-sm font-medium leading-5 text-txt-strong",
+            "text-[15px] font-medium leading-6 text-[color:var(--settings-foreground)] group-disabled:text-[color:var(--settings-muted)]",
             tone === "danger" && "text-warn",
             htmlFor && "cursor-pointer",
           )}
@@ -178,16 +270,27 @@ function SettingsRowBody({
           {label}
         </LabelTag>
         {description ? (
-          <span className="text-xs leading-relaxed text-muted">
+          <span
+            data-slot="settings-row-description"
+            className="text-[13px] leading-5 text-[color:var(--settings-muted)]"
+          >
             {description}
           </span>
         ) : null}
       </span>
-      {control ? <span className="shrink-0">{control}</span> : null}
-      {trailing ??
-        (chevron ? (
-          <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
-        ) : null)}
+      {control ? (
+        <span data-slot="settings-row-control" className="ml-6 shrink-0">
+          {control}
+        </span>
+      ) : null}
+      {hasTrailing ? (
+        <span
+          data-slot="settings-row-trailing"
+          className={cn("shrink-0", control ? "ml-3" : "ml-6")}
+        >
+          {resolvedTrailing}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -195,6 +298,7 @@ function SettingsRowBody({
 export function SettingsRow({
   icon,
   iconClassName,
+  iconContainerClassName,
   label,
   description,
   control,
@@ -218,9 +322,10 @@ export function SettingsRow({
     return (
       <Button
         ref={buttonRef}
-        variant="selection"
-        size="touch"
+        variant="settingsRow"
+        size="rowContent"
         align="start"
+        data-slot="settings-row"
         data-state={active ? "on" : "off"}
         onClick={onClick}
         disabled={disabled}
@@ -231,40 +336,53 @@ export function SettingsRow({
         <SettingsRowBody
           icon={icon}
           iconClassName={iconClassName}
+          iconContainerClassName={iconContainerClassName}
           label={label}
           description={description}
           control={control}
           tone={tone}
           trailing={trailing}
           chevron={chevron ?? true}
+          interactive
         />
       </Button>
     );
   }
 
   return (
-    <div
-      aria-current={active ? "true" : undefined}
-      className={cn(
-        "flex min-h-[3rem] flex-col justify-center py-2.5",
-        active && "rounded-lg bg-accent/10",
-        className,
-      )}
+    <Card
+      asChild
+      variant="transparent"
+      flow="column"
+      surface={active ? "raised" : "transparent"}
+      radius={active ? "large" : "none"}
     >
-      <SettingsRowBody
-        icon={icon}
-        iconClassName={iconClassName}
-        label={label}
-        description={description}
-        control={stacked ? undefined : control}
-        htmlFor={htmlFor}
-        tone={tone}
-        trailing={trailing}
-        chevron={chevron}
-      />
-      {children ? (
-        <div className={cn(stacked ? "mt-3" : "mt-2")}>{children}</div>
-      ) : null}
-    </div>
+      <div
+        data-slot="settings-row"
+        aria-current={active ? "true" : undefined}
+        className={cn("min-h-12 justify-center py-2.5", className)}
+      >
+        <SettingsRowBody
+          icon={icon}
+          iconClassName={iconClassName}
+          iconContainerClassName={iconContainerClassName}
+          label={label}
+          description={description}
+          control={stacked ? undefined : control}
+          htmlFor={htmlFor}
+          tone={tone}
+          trailing={trailing}
+          chevron={chevron}
+        />
+        {children ? (
+          <div
+            data-slot="settings-row-content"
+            className={cn("px-5", stacked ? "mt-3" : "mt-2")}
+          >
+            {children}
+          </div>
+        ) : null}
+      </div>
+    </Card>
   );
 }

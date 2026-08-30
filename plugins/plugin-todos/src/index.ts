@@ -16,6 +16,7 @@ export const todosPlugin: Plugin = {
       description: "Three-lane todo board: Today / Upcoming / Someday",
       icon: "ListChecks",
       path: "/todos",
+      responseContext: { primaryContext: "todos" },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the

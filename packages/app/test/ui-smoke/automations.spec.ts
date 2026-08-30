@@ -632,6 +632,13 @@ async function installAutomationsApi(
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const origin = window.location.origin;
+    const host = window as unknown as Record<string, unknown>;
+    host.__ELIZA_APP_API_BASE__ = origin;
+    host.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
+    host.__ELIZAOS_API_BASE__ = origin;
+  });
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
 });
@@ -647,11 +654,14 @@ test("automations overview empty state encourages creating tasks and workflows",
   await expect(
     page.getByRole("heading", { name: "Automations" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Prompts" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Workflows" })).toBeVisible();
+  const filterMenu = page.getByRole("button", {
+    name: "Filter automations, All selected",
+  });
+  await expect(filterMenu).toBeVisible();
   await expect(page.getByText("Nothing scheduled yet")).toBeVisible();
 
-  await page.getByRole("button", { name: "Workflows" }).click();
+  await filterMenu.click();
+  await page.getByRole("menuitemradio", { name: /Workflows/ }).click();
   await expect(page.getByTestId("automations-empty-state")).toHaveAttribute(
     "aria-label",
     "No workflows",
@@ -741,6 +751,45 @@ test("automations empty state remains reachable beside chat in short landscape",
   expect(geometry?.sidePadding).toBeGreaterThan(0);
 });
 
+test("populated automations remain readable beside chat in short landscape", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  const workflow = workflowFixture(
+    "workflow-message-pipeline",
+    "Message pipeline",
+  );
+  await installAutomationsApi(page, [eventTaskItem(), workflowItem(workflow)]);
+
+  await openAppPath(page, "/automations");
+
+  const title = page.getByText("Message pipeline");
+  await expect(title).toBeVisible();
+  await expect(page.getByText("Every hour")).toBeVisible();
+  const geometry = await page.evaluate(() => {
+    const body = document.querySelector("[data-framed-page-body]");
+    const row = document.querySelector(
+      "[data-agent-label='Open Message pipeline']",
+    );
+    if (!(body instanceof HTMLElement) || !(row instanceof HTMLElement)) {
+      return null;
+    }
+    const bodyRect = body.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    return {
+      bodyWidth: bodyRect.width,
+      rowWidth: rowRect.width,
+      rowRight: rowRect.right,
+      viewportWidth: window.innerWidth,
+    };
+  });
+
+  expect(geometry).not.toBeNull();
+  expect(geometry?.bodyWidth).toBeGreaterThanOrEqual(400);
+  expect(geometry?.rowWidth).toBeGreaterThanOrEqual(300);
+  expect(geometry?.rowRight).toBeLessThan(geometry?.viewportWidth ?? 0);
+});
+
 test("automations can list tasks, create a task, and inspect Smithers source", async ({
   page,
 }) => {
@@ -755,12 +804,20 @@ test("automations can list tasks, create a task, and inspect Smithers source", a
 
   await openAppPath(page, "/automations");
 
-  await expect(page.getByRole("button", { name: "Prompts" })).toContainText(
-    "1",
-  );
-  await expect(page.getByRole("button", { name: "Workflows" })).toContainText(
-    "1",
-  );
+  await expect(page.getByTestId("automations-shell")).toBeVisible();
+  await expect(page.getByText("Message pipeline")).toBeVisible();
+  const filterMenu = page.getByRole("button", {
+    name: "Filter automations, All selected",
+  });
+  await expect(filterMenu).toContainText("2");
+  await filterMenu.click();
+  await expect(
+    page.getByRole("menuitemradio", { name: /Prompts/ }),
+  ).toContainText("1");
+  await expect(
+    page.getByRole("menuitemradio", { name: /Workflows/ }),
+  ).toContainText("1");
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", { name: "Message triage" }),
   ).toBeVisible();

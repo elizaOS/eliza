@@ -10,6 +10,7 @@ import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { TextLink } from "../ui/text-link";
 
 type TelegramSetupStatus = "idle" | "validating" | "connected" | "error";
 
@@ -149,14 +150,13 @@ export function TelegramBotSetupPanel() {
               {t("common.open", {
                 defaultValue: "Open ",
               })}
-              <a
+              <TextLink
                 href="https://t.me/BotFather"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-accent underline"
               >
                 @BotFather
-              </a>
+              </TextLink>
               {t("pluginsview.TelegramStep1b", {
                 defaultValue: " on Telegram",
               })}

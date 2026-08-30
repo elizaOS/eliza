@@ -426,7 +426,7 @@ function ModelProgressCard({
       data-testid="chat-widget-model-download"
       aria-label={ariaLabel}
       onClick={onActivate}
-      variant="surface"
+      variant="homeWidget"
       size="card"
       align="start"
       className="group transition-opacity hover:opacity-80"

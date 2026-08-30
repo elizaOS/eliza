@@ -620,8 +620,8 @@ export function ComputerUseSessionsView({
                 session={selected}
               />
               <div className="min-w-0 text-xs text-muted-foreground">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-32 flex-1">
                     <h2 className="text-sm font-semibold text-foreground">
                       {selected.label}
                     </h2>
@@ -702,7 +702,7 @@ export function ComputerUseSessionsView({
                         type="button"
                       >
                         <div className="min-w-0">
-                          <h2 className="truncate text-sm font-semibold">
+                          <h2 className="break-words text-left text-sm font-semibold leading-tight">
                             {session.label}
                           </h2>
                           <p className="truncate text-xs text-muted-foreground">

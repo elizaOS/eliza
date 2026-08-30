@@ -158,6 +158,25 @@ describe("FAL video provider", () => {
     });
   });
 
+  test("prefers the canonical FAL_API_KEY when both deployment keys exist", async () => {
+    createFalClient.mockClear();
+    subscribe.mockImplementationOnce(async () => ({
+      request_id: "canonical-key-result",
+      video: { url: "https://fal.media/canonical.mp4" },
+    }));
+
+    await generateFalVideo({
+      model: "fal-ai/veo3",
+      prompt: "a lighthouse",
+      apiKeys: { FAL_KEY: "stale-legacy-key", FAL_API_KEY: "canonical-key" },
+    });
+
+    expect(createFalClient).toHaveBeenCalledWith({
+      credentials: "canonical-key",
+      suppressLocalCredentialsWarning: true,
+    });
+  });
+
   test("rejects missing FAL credentials before calling upstream", async () => {
     createFalClient.mockClear();
 

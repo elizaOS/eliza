@@ -9,6 +9,10 @@ import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudStewardOperationalTuple,
+} from "@elizaos/shared/elizacloud";
 import type {
   CancelOrderRequest,
   CancelResult,
@@ -660,13 +664,20 @@ export class StewardTradingService extends Service {
       venue === "hyperliquid"
         ? "STEWARD_HYPERLIQUID_TRADE_SESSION_ID"
         : "STEWARD_POLYMARKET_TRADE_SESSION_ID";
-    const sessionId =
-      normalizeOptionalString(this.runtime.getSetting(settingName)) ??
-      normalizeOptionalString(process.env[settingName]) ??
-      normalizeOptionalString(
-        this.runtime.getSetting("STEWARD_TRADE_SESSION_ID"),
-      ) ??
-      normalizeOptionalString(process.env.STEWARD_TRADE_SESSION_ID);
+    const authoritative = resolveDevCloudStewardOperationalTuple();
+    const sessionId = authoritative
+      ? (normalizeOptionalString(
+          resolveDevCloudAuthorityEnvValue(settingName),
+        ) ??
+        normalizeOptionalString(
+          resolveDevCloudAuthorityEnvValue("STEWARD_TRADE_SESSION_ID"),
+        ))
+      : (normalizeOptionalString(this.runtime.getSetting(settingName)) ??
+        normalizeOptionalString(process.env[settingName]) ??
+        normalizeOptionalString(
+          this.runtime.getSetting("STEWARD_TRADE_SESSION_ID"),
+        ) ??
+        normalizeOptionalString(process.env.STEWARD_TRADE_SESSION_ID));
     if (!sessionId) {
       return {
         ok: false,
@@ -739,6 +750,24 @@ export class StewardTradingService extends Service {
   }
 
   private resolveConfig(): StewardTradingConfig | null {
+    const authoritative = resolveDevCloudStewardOperationalTuple();
+    if (authoritative) {
+      if (
+        !authoritative.enabled ||
+        !authoritative.agentToken ||
+        !isSecureStewardApiUrl(authoritative.apiUrl)
+      ) {
+        return null;
+      }
+      return {
+        apiUrl: authoritative.apiUrl,
+        agentId: authoritative.agentId,
+        agentToken: authoritative.agentToken,
+        ...(authoritative.apiKey ? { apiKey: authoritative.apiKey } : {}),
+        ...(authoritative.tenantId ? { tenantId: authoritative.tenantId } : {}),
+      };
+    }
+
     const persisted = readPersistedStewardCredentials();
     const apiUrl =
       normalizeOptionalString(this.runtime.getSetting("STEWARD_API_URL")) ??

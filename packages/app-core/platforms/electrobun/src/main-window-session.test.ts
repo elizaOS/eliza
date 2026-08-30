@@ -64,7 +64,7 @@ describe("main window session", () => {
     ).toBeNull();
   });
 
-  it("keeps Linux CEF in the primary BrowserWindow with its partition", () => {
+  it("uses the patched single partitioned BrowserWindow for Linux CEF", () => {
     expect(
       shouldUseIsolatedMainView({
         platform: "linux",

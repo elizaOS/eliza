@@ -31,13 +31,13 @@ import {
 } from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  BrandButton,
 } from "@elizaos/ui/cloud-ui";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -54,6 +54,7 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { client, ElizaClient } from "../../../api";
+import { Alert } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { getBootConfig } from "../../../config/boot-config";
 import { dispatchCloudHandoffPhase } from "../../../events";
@@ -209,6 +210,10 @@ export function ElizaAgentActions({
     retry: false,
   });
   const upgradeJob = upgradePoller.getStatus(agentId);
+  const isResumingDedicatedSetup =
+    upgradeQuoteQuery.data?.activation.state === "in_progress";
+  const quotedSetupIsResuming =
+    upgradeQuote?.activation.state === "in_progress";
   const isStopped = ["stopped", "error", "pending", "disconnected"].includes(
     effectiveStatus,
   );
@@ -441,10 +446,15 @@ export function ElizaAgentActions({
       }
       setUpgradeTargetId(dedicatedAgentId);
       toast.success(
-        t("cloud.containers.agentActions.upgradeStarted", {
-          defaultValue:
-            "Upgrade started — provisioning your dedicated agent. Keep this page open.",
-        }),
+        quotedSetupIsResuming
+          ? t("cloud.containers.agentActions.upgradeResumed", {
+              defaultValue:
+                "Dedicated setup resumed — recovering your existing agent. Keep this page open.",
+            })
+          : t("cloud.containers.agentActions.upgradeStarted", {
+              defaultValue:
+                "Upgrade started — provisioning your dedicated agent. Keep this page open.",
+            }),
       );
 
       const cloudApiBase =
@@ -541,8 +551,9 @@ export function ElizaAgentActions({
     <>
       <div className="space-y-4">
         {isSleeping && (
-          <div
-            className="flex items-start gap-3 rounded-sm border border-white/10 bg-white/5 p-3"
+          <Alert
+            variant="sidebar"
+            className="flex items-start gap-3 p-3"
             data-testid="agent-deactivated-panel"
           >
             <Moon className="size-4 shrink-0 mt-0.5 text-white/50" />
@@ -555,14 +566,14 @@ export function ElizaAgentActions({
                   "This agent is deactivated. It is not running and is not consuming hourly credits; its data is retained. Reactivation can take a few minutes and requires available credits.",
               })}
             </p>
-          </div>
+          </Alert>
         )}
 
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-wrap gap-3">
             {hasStandaloneWebUi && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
                 onClick={() => void openWebUIWithPairing(agentId)}
@@ -571,12 +582,12 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.openWebUi", {
                   defaultValue: "Open Web UI",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {canUpgrade && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
                 onClick={() => void reviewDedicatedQuote()}
@@ -596,15 +607,19 @@ export function ElizaAgentActions({
                   ? t("cloud.containers.agentActions.addCredits", {
                       defaultValue: "Add funds to upgrade",
                     })
-                  : t("cloud.containers.agentActions.upgrade", {
-                      defaultValue: "Upgrade to Dedicated",
-                    })}
-              </BrandButton>
+                  : isResumingDedicatedSetup
+                    ? t("cloud.containers.agentActions.upgradeResume", {
+                        defaultValue: "Resume Dedicated setup",
+                      })
+                    : t("cloud.containers.agentActions.upgrade", {
+                        defaultValue: "Upgrade to Dedicated",
+                      })}
+              </Button>
             )}
 
             {isStopped && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
                 onClick={() => doAction("resume")}
@@ -618,12 +633,12 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.resume", {
                   defaultValue: "Resume Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {canWake && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
                 onClick={() => doAction("wake")}
@@ -641,11 +656,11 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.reactivate", {
                   defaultValue: "Reactivate Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {isRunning && isDedicated && (
-              <BrandButton
+              <Button
                 variant="outline"
                 size="sm"
                 className="min-h-touch"
@@ -660,13 +675,13 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.suspend", {
                   defaultValue: "Suspend Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
           </div>
 
           <div className="flex flex-wrap gap-2 lg:justify-end">
             {canSleep && (
-              <BrandButton
+              <Button
                 variant="outline"
                 size="sm"
                 className="min-h-touch"
@@ -685,24 +700,27 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.deactivate", {
                   defaultValue: "Deactivate Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {isDedicated && !showDeleteConfirm ? (
-              <BrandButton
-                variant="outline"
+              <Button
+                variant="dangerOutline"
                 size="sm"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={!!loading || isBusy}
-                className="min-h-touch text-destructive border-destructive/30 hover:bg-destructive-subtle hover:text-destructive"
+                className="min-h-touch"
               >
                 <Trash2 className="size-4" />
                 {t("cloud.containers.agentActions.delete", {
                   defaultValue: "Delete Agent",
                 })}
-              </BrandButton>
+              </Button>
             ) : isDedicated ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-sm border border-destructive/30 bg-destructive-subtle p-3">
+              <Alert
+                variant="dangerConfirm"
+                className="flex flex-wrap items-center gap-2 p-3"
+              >
                 <span
                   className="text-sm text-destructive"
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -711,12 +729,12 @@ export function ElizaAgentActions({
                     defaultValue: "Confirm delete?",
                   })}
                 </span>
-                <BrandButton
-                  variant="outline"
+                <Button
+                  variant="dangerOutline"
                   size="sm"
                   onClick={() => doAction("delete", "DELETE")}
                   disabled={!!loading}
-                  className="min-h-touch text-destructive border-destructive/50 hover:bg-destructive-subtle"
+                  className="min-h-touch"
                 >
                   {loading === "delete" ? (
                     <Loader2 className="size-3 animate-spin" />
@@ -724,18 +742,18 @@ export function ElizaAgentActions({
                   {t("cloud.containers.agentActions.yesDelete", {
                     defaultValue: "Yes, delete",
                   })}
-                </BrandButton>
-                <BrandButton
-                  variant="outline"
+                </Button>
+                <Button
+                  variant="outlineMuted"
                   size="sm"
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="min-h-touch text-white/60"
+                  className="min-h-touch"
                 >
                   {t("cloud.containers.agentActions.cancel", {
                     defaultValue: "Cancel",
                   })}
-                </BrandButton>
-              </div>
+                </Button>
+              </Alert>
             ) : null}
           </div>
         </div>
@@ -747,10 +765,15 @@ export function ElizaAgentActions({
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               <Loader2 className="size-4 animate-spin" />
-              {t("cloud.containers.agentActions.upgradeProgressHint", {
-                defaultValue:
-                  "Upgrading — provisioning a dedicated agent and moving your conversation onto it. This can take a few minutes; keep this page open.",
-              })}
+              {quotedSetupIsResuming
+                ? t("cloud.containers.agentActions.upgradeResumeProgressHint", {
+                    defaultValue:
+                      "Recovering your existing Dedicated Agent and moving your conversation only after it is healthy. This can take a few minutes; keep this page open.",
+                  })
+                : t("cloud.containers.agentActions.upgradeProgressHint", {
+                    defaultValue:
+                      "Upgrading — provisioning a dedicated agent and moving your conversation onto it. This can take a few minutes; keep this page open.",
+                  })}
             </p>
             {upgradeJob && (
               <p
@@ -811,10 +834,7 @@ export function ElizaAgentActions({
         )}
 
         {trackedJob?.status === "failed" && (
-          <div
-            role="alert"
-            className="rounded-md border border-destructive/30 bg-destructive-subtle p-3"
-          >
+          <Alert variant="destructive" className="block p-3">
             <p
               className="text-sm text-destructive"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -830,7 +850,7 @@ export function ElizaAgentActions({
                   "Your agent was left in its previous state. Review the message, then retry the action when ready.",
               })}
             </p>
-          </div>
+          </Alert>
         )}
       </div>
 
@@ -840,22 +860,33 @@ export function ElizaAgentActions({
         open={showUpgradeConfirm}
         onOpenChange={setShowUpgradeConfirm}
       >
-        <AlertDialogContent className="bg-card border-border">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-txt-strong">
-              {t("cloud.containers.agentActions.upgradeTitle", {
-                defaultValue: "Upgrade to a Dedicated Agent?",
-              })}
+              {quotedSetupIsResuming
+                ? t("cloud.containers.agentActions.upgradeResumeTitle", {
+                    defaultValue: "Resume Dedicated setup?",
+                  })
+                : t("cloud.containers.agentActions.upgradeTitle", {
+                    defaultValue: "Upgrade to a Dedicated Agent?",
+                  })}
             </AlertDialogTitle>
             {upgradeQuote ? (
               <AlertDialogDescription className="text-muted">
                 <span className="block">
-                  {t("cloud.containers.agentActions.upgradeBody1", {
-                    defaultValue:
-                      "Your Shared Agent becomes a private, always-on Dedicated Agent. Dedicated hosting uses {{daily}} per day ({{rate}}) while running.",
-                    daily: formatUSD(upgradeQuote.dailyRateUsd),
-                    rate: formatHourlyRate(upgradeQuote.hourlyRateUsd),
-                  })}
+                  {quotedSetupIsResuming
+                    ? t("cloud.containers.agentActions.upgradeResumeBody1", {
+                        defaultValue:
+                          "A Dedicated Agent already exists for this upgrade, but setup did not finish. Resuming reuses that agent — it does not create another one. Hosting uses {{daily}} per day ({{rate}}) while running.",
+                        daily: formatUSD(upgradeQuote.dailyRateUsd),
+                        rate: formatHourlyRate(upgradeQuote.hourlyRateUsd),
+                      })
+                    : t("cloud.containers.agentActions.upgradeBody1", {
+                        defaultValue:
+                          "Your Shared Agent becomes a private, always-on Dedicated Agent. Dedicated hosting uses {{daily}} per day ({{rate}}) while running.",
+                        daily: formatUSD(upgradeQuote.dailyRateUsd),
+                        rate: formatHourlyRate(upgradeQuote.hourlyRateUsd),
+                      })}
                 </span>
                 <span className="mt-3 block text-txt-strong">
                   {t("cloud.containers.agentActions.upgradeBalance", {
@@ -867,10 +898,15 @@ export function ElizaAgentActions({
                   })}
                 </span>
                 <span className="mt-3 block">
-                  {t("cloud.containers.agentActions.upgradeBody3", {
-                    defaultValue:
-                      "Shared keeps working while Dedicated starts. Your conversation moves only after the new Eliza is healthy; if setup fails, nothing switches.",
-                  })}
+                  {quotedSetupIsResuming
+                    ? t("cloud.containers.agentActions.upgradeResumeBody3", {
+                        defaultValue:
+                          "Shared keeps working while the existing Dedicated Agent recovers. Your conversation moves only after it is healthy; if recovery fails, nothing switches.",
+                      })
+                    : t("cloud.containers.agentActions.upgradeBody3", {
+                        defaultValue:
+                          "Shared keeps working while Dedicated starts. Your conversation moves only after the new Eliza is healthy; if setup fails, nothing switches.",
+                      })}
                 </span>
                 {!upgradeQuote.canActivate ? (
                   <span className="mt-3 block text-destructive" role="alert">
@@ -886,43 +922,49 @@ export function ElizaAgentActions({
             ) : null}
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-border bg-transparent text-txt hover:bg-surface">
-              {t("cloud.containers.agentActions.cancel", {
-                defaultValue: "Cancel",
-              })}
-            </AlertDialogCancel>
-            {upgradeQuote?.canActivate ? (
-              <Button
-                type="button"
-                disabled={!!loading || isBusy}
-                onClick={() => void doUpgrade()}
-                data-testid="agent-upgrade-tier-confirm"
-              >
-                {loading === "upgrade-tier" ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Rocket className="size-4" />
-                )}
-                {upgradeQuote.activation.state === "in_progress"
-                  ? t("cloud.containers.agentActions.upgradeContinue", {
-                      defaultValue: "Continue activation",
-                    })
-                  : t("cloud.containers.agentActions.upgradeConfirm", {
-                      defaultValue: "Activate Dedicated",
-                    })}
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                onClick={() => {
-                  setShowUpgradeConfirm(false);
-                  navigate("/cloud/billing");
-                }}
-              >
-                {t("cloud.containers.agentActions.addCredits", {
-                  defaultValue: "Add funds to upgrade",
+            <AlertDialogCancel asChild>
+              <Button variant="outline">
+                {t("cloud.containers.agentActions.cancel", {
+                  defaultValue: "Cancel",
                 })}
               </Button>
+            </AlertDialogCancel>
+            {upgradeQuote?.canActivate ? (
+              <AlertDialogAction asChild>
+                <Button
+                  type="button"
+                  disabled={!!loading || isBusy}
+                  onClick={() => void doUpgrade()}
+                  data-testid="agent-upgrade-tier-confirm"
+                >
+                  {loading === "upgrade-tier" ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Rocket className="size-4" />
+                  )}
+                  {quotedSetupIsResuming
+                    ? t("cloud.containers.agentActions.upgradeContinue", {
+                        defaultValue: "Resume setup",
+                      })
+                    : t("cloud.containers.agentActions.upgradeConfirm", {
+                        defaultValue: "Activate Dedicated",
+                      })}
+                </Button>
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction asChild>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setShowUpgradeConfirm(false);
+                    navigate("/cloud/billing");
+                  }}
+                >
+                  {t("cloud.containers.agentActions.addCredits", {
+                    defaultValue: "Add funds to upgrade",
+                  })}
+                </Button>
+              </AlertDialogAction>
             )}
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -934,7 +976,7 @@ export function ElizaAgentActions({
         open={showDeactivateConfirm}
         onOpenChange={setShowDeactivateConfirm}
       >
-        <AlertDialogContent className="bg-card border-border">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-txt-strong">
               {t("cloud.containers.agentActions.deactivateTitle", {
@@ -964,25 +1006,29 @@ export function ElizaAgentActions({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-border bg-transparent text-txt hover:bg-surface">
-              {t("cloud.containers.agentActions.cancel", {
-                defaultValue: "Cancel",
-              })}
+            <AlertDialogCancel asChild>
+              <Button variant="outline">
+                {t("cloud.containers.agentActions.cancel", {
+                  defaultValue: "Cancel",
+                })}
+              </Button>
             </AlertDialogCancel>
-            <Button
-              type="button"
-              disabled={!!loading || isBusy}
-              onClick={() => doAction("sleep")}
-            >
-              {loading === "sleep" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Moon className="size-4" />
-              )}
-              {t("cloud.containers.agentActions.deactivateConfirm", {
-                defaultValue: "Yes, deactivate",
-              })}
-            </Button>
+            <AlertDialogAction asChild>
+              <Button
+                type="button"
+                disabled={!!loading || isBusy}
+                onClick={() => doAction("sleep")}
+              >
+                {loading === "sleep" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Moon className="size-4" />
+                )}
+                {t("cloud.containers.agentActions.deactivateConfirm", {
+                  defaultValue: "Yes, deactivate",
+                })}
+              </Button>
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

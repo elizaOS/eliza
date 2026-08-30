@@ -46,6 +46,7 @@ function validateTransactionHashFormat(hash: string, network: string): boolean {
 const confirmSchema = z.object({
   transactionHash: z.string().min(1, "Transaction hash is required"),
 });
+const paymentIdSchema = z.string().uuid();
 
 const app = new Hono<AppEnv>();
 
@@ -58,6 +59,9 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserWithOrg(c);
     const id = c.req.param("id") ?? "";
+    if (!paymentIdSchema.safeParse(id).success) {
+      return c.json({ error: "Invalid payment ID" }, 400);
+    }
 
     const payment = await cryptoPaymentsRepository.findById(id);
     if (!payment) {

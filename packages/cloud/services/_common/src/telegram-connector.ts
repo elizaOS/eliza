@@ -6,6 +6,8 @@
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_MESSAGE_LENGTH = 4096;
+export const TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER =
+  "X-Eliza-Connector-Account-Id";
 export const TELEGRAM_HOSTED_FILE_MAX_BYTES = 20 * 1024 * 1024;
 export const TELEGRAM_VOICE_MAX_BYTES = 8 * 1024 * 1024;
 const TELEGRAM_API_TIMEOUT_MS = 10_000;
@@ -37,6 +39,7 @@ export interface TelegramConnectorEvent {
   groupActorRole?: "creator" | "administrator" | "member" | "unknown";
   membershipChange?: "joined" | "removed";
   replyToMessageId?: string;
+  providerThreadId?: string;
   providerSentAtMs?: number;
   voiceNote?: {
     fileId: string;
@@ -76,6 +79,7 @@ export interface TelegramResolvedVoiceNote {
 
 export interface TelegramMessage {
   message_id: number;
+  message_thread_id?: number;
   date?: number;
   from?: {
     id: number;
@@ -316,6 +320,17 @@ export function parseTelegramWebhook(
   const isGroup =
     message.chat.type === "group" || message.chat.type === "supergroup";
   if (!isPrivate && !isGroup) return null;
+  const providerThreadId =
+    message.message_thread_id === undefined
+      ? undefined
+      : Number.isSafeInteger(message.message_thread_id) &&
+          message.message_thread_id > 0
+        ? String(message.message_thread_id)
+        : null;
+  if (providerThreadId === null) {
+    logger?.warn("Rejected invalid Telegram message thread identifier");
+    return null;
+  }
   const text = message.text || message.caption || "";
   const voice = message.voice;
   if (!text && !voice) return null;
@@ -359,6 +374,7 @@ export function parseTelegramWebhook(
     ...(Number.isInteger(message.reply_to_message?.message_id)
       ? { replyToMessageId: String(message.reply_to_message?.message_id) }
       : {}),
+    ...(providerThreadId ? { providerThreadId } : {}),
     ...(typeof message.date === "number" &&
     Number.isInteger(message.date) &&
     message.date > 0
@@ -544,6 +560,21 @@ export function splitTelegramMessage(
   return chunks;
 }
 
+function telegramThreadParams(event: TelegramConnectorEvent): {
+  message_thread_id?: number;
+} {
+  const providerThreadId = event.providerThreadId;
+  if (providerThreadId === undefined) return {};
+  if (!/^[1-9]\d{0,15}$/.test(providerThreadId)) {
+    throw new TypeError("Invalid Telegram provider thread identifier");
+  }
+  const messageThreadId = Number(providerThreadId);
+  if (!Number.isSafeInteger(messageThreadId)) {
+    throw new TypeError("Invalid Telegram provider thread identifier");
+  }
+  return { message_thread_id: messageThreadId };
+}
+
 export async function sendTelegramReply(
   config: TelegramConnectorConfig,
   event: TelegramConnectorEvent,
@@ -554,6 +585,7 @@ export async function sendTelegramReply(
   if (!config.botToken) throw new Error("Missing botToken for Telegram reply");
   const providerMessageIds: string[] = [];
   const chunks = splitTelegramMessage(text);
+  const threadParams = telegramThreadParams(event);
   await deliveryHooks?.prepare(chunks);
   for (const [chunkIndex, chunk] of chunks.entries()) {
     let rejectionRetries = 0;
@@ -575,7 +607,12 @@ export async function sendTelegramReply(
           message = await telegramApi<TelegramMessage>(
             config.botToken,
             "sendMessage",
-            { chat_id: event.chatId, text: chunk, parse_mode: "Markdown" },
+            {
+              chat_id: event.chatId,
+              ...threadParams,
+              text: chunk,
+              parse_mode: "Markdown",
+            },
           );
         } catch (error) {
           // error-policy:J4 retry without formatting only for Telegram's exact parse rejection.
@@ -592,7 +629,7 @@ export async function sendTelegramReply(
           message = await telegramApi<TelegramMessage>(
             config.botToken,
             "sendMessage",
-            { chat_id: event.chatId, text: chunk },
+            { chat_id: event.chatId, ...threadParams, text: chunk },
           );
         }
         const providerMessageId = String(message.message_id);
@@ -635,6 +672,7 @@ export async function sendTelegramTyping(
   if (!config.botToken) throw new Error("Missing botToken for Telegram typing");
   await telegramApi(config.botToken, "sendChatAction", {
     chat_id: event.chatId,
+    ...telegramThreadParams(event),
     action: "typing",
   });
 }

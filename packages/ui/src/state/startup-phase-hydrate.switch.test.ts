@@ -8,6 +8,7 @@
 // fetch (the result callback transport) are doubled.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setBootConfig } from "../config/boot-config";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { addAgentProfile } from "./agent-profiles";
 import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
@@ -35,6 +36,18 @@ const clientMock = vi.hoisted(() => {
 });
 
 vi.mock("../api", () => ({ client: clientMock }));
+
+const executeRuntimeManagementCommand = vi.hoisted(() =>
+  vi.fn(async (request: { op: string }) => ({
+    ok: true,
+    op: request.op,
+    data: { applied: true },
+  })),
+);
+
+vi.mock("../platform/runtime-management", () => ({
+  executeRuntimeManagementCommand,
+}));
 
 const setActionNotice = vi.fn();
 
@@ -247,6 +260,135 @@ describe("bindReadyPhase shell:switch-agent handler", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(clientMock.repointBaseUrl).not.toHaveBeenCalled();
 
+    cleanup();
+  });
+});
+
+describe("bindReadyPhase shell:manage-runtime handler", () => {
+  beforeEach(() => {
+    clientMock.handlers.clear();
+    executeRuntimeManagementCommand.mockClear();
+    setActionNotice.mockClear();
+    setBootConfig({ branding: {}, apiToken: "runtime-owner-token" });
+    // biome-ignore lint/suspicious/noDocumentCookie: jsdom has no Cookie Store API.
+    document.cookie = "eliza_csrf=runtime-csrf-token; path=/";
+  });
+
+  it("claims before executing and reports the exact result", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ claimed: true, claimToken: "claim-1" }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ accepted: true }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+
+    clientMock.handlers.get("shell:manage-runtime")?.({
+      requestId: "request-1",
+      request: { op: "inspect_ssh", target: "user@host", sshPort: 22 },
+    });
+    await vi.waitFor(() =>
+      expect(executeRuntimeManagementCommand).toHaveBeenCalledTimes(1),
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "/api/runtime/manage/claim",
+    );
+    for (const [, init] of fetchMock.mock.calls as [string, RequestInit][]) {
+      const headers = new Headers(init.headers);
+      expect(headers.get("authorization")).toBe("Bearer runtime-owner-token");
+      expect(headers.get("x-eliza-csrf")).toBe("runtime-csrf-token");
+      expect(init.credentials).toBe("include");
+    }
+    expect(executeRuntimeManagementCommand).toHaveBeenCalledWith({
+      op: "inspect_ssh",
+      target: "user@host",
+      sshPort: 22,
+    });
+    const resultCall = fetchMock.mock.calls[1];
+    if (!resultCall) throw new Error("runtime result callback was not sent");
+    const resultBody = JSON.parse(
+      String((resultCall[1] as RequestInit).body),
+    ) as Record<string, unknown>;
+    expect(resultBody).toEqual({
+      requestId: "request-1",
+      claimToken: "claim-1",
+      ok: true,
+      data: { applied: true },
+    });
+    cleanup();
+  });
+
+  it("does not execute when another shell already claimed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ claimed: false }), { status: 200 }),
+      ),
+    );
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+    clientMock.handlers.get("shell:manage-runtime")?.({
+      requestId: "request-2",
+      request: { op: "revoke", targetId: "host:mac" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(executeRuntimeManagementCommand).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("does not execute when the authenticated claim is rejected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 401 })),
+    );
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+    clientMock.handlers.get("shell:manage-runtime")?.({
+      requestId: "request-auth-rejected",
+      request: { op: "remove", runtimeId: "vps-1" },
+    });
+    await vi.waitFor(() =>
+      expect(setActionNotice).toHaveBeenCalledWith(
+        expect.stringContaining("could not claim"),
+        "error",
+      ),
+    );
+    expect(executeRuntimeManagementCommand).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("surfaces a lost result callback after a local mutation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ claimed: true, claimToken: "claim-3" }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 503 })),
+    );
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+
+    clientMock.handlers.get("shell:manage-runtime")?.({
+      requestId: "request-3",
+      request: { op: "remove", runtimeId: "vps-1" },
+    });
+
+    await vi.waitFor(() =>
+      expect(setActionNotice).toHaveBeenCalledWith(
+        expect.stringContaining("completed locally"),
+        "error",
+      ),
+    );
     cleanup();
   });
 });

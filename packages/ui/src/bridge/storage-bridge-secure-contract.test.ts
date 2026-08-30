@@ -59,6 +59,12 @@ vi.mock("@capacitor/preferences", () => ({
 }));
 
 vi.mock("@elizaos/logger", () => ({
+  createLogger: () => ({
+    debug: () => undefined,
+    error: () => undefined,
+    info: () => undefined,
+    warn: () => undefined,
+  }),
   logger: { error: () => undefined },
 }));
 
@@ -608,5 +614,46 @@ describe("native protected-storage bridge contract", () => {
     expect(await bridge.getStorageValue("elizaos:active-server")).toBe(
       "new-token",
     );
+  });
+
+  it("does not finish active-server teardown before native deletion commits", async () => {
+    const bridge = await import("./storage-bridge");
+    const persistence = await import("../state/persistence");
+    // Production installs the native storage proxy before any auth/runtime
+    // state is published. Model that boot boundary so synchronous persistence
+    // readers observe the verified secure-store cache rather than raw disk.
+    await bridge.initializeStorageBridge();
+    await bridge.setStorageValue(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "cloud:previous-account-agent",
+        kind: "cloud",
+        label: "Previous account agent",
+        apiBase: "https://previous-account-agent.cloud.eliza.app",
+      }),
+    );
+    expect(persistence.loadPersistedActiveServer()).not.toBeNull();
+
+    let releaseDelete: () => void = () => {};
+    nativeStores.secureDeleteWait = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    let settled = false;
+    const removal = persistence.clearPersistedActiveServerDurably().then(() => {
+      settled = true;
+    });
+
+    await vi.waitFor(() => {
+      expect(nativeStores.operations).toContain(
+        "delete:start:runtime.active_server",
+      );
+    });
+    expect(settled).toBe(false);
+    expect(persistence.loadPersistedActiveServer()).not.toBeNull();
+
+    releaseDelete();
+    await removal;
+    expect(settled).toBe(true);
+    expect(persistence.loadPersistedActiveServer()).toBeNull();
   });
 });

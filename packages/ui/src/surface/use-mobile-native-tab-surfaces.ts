@@ -12,10 +12,10 @@
  * view falls back to a sandboxed iframe, but a mobile in-realm iframe still
  * shares the host WebView's renderer process and storage partition — the exact
  * cross-surface leak the isolation epic closes. The native surface uses the
- * platform's strongest renderer boundary plus an isolated data store (the
- * explicit {@link NativeSurfacePolicy} derived from the manifest, passed
- * through verbatim), so nothing a page writes is reachable from the host or a
- * sibling tab.
+ * platform's strongest renderer boundary plus the explicit
+ * {@link NativeSurfacePolicy} chosen by the Browser host. Ordinary builds use
+ * an isolated data store; constrained device profiles may explicitly request a
+ * shared Browser store while retaining the out-of-app renderer boundary.
  *
  * Two constraints shape the effects. (1) Native layers z-order ABOVE the host
  * WebView, so React chrome is mirrored into rounded native occlusion regions;
@@ -124,6 +124,22 @@ export interface MobileNativeSurfaceError {
  */
 function surfaceIdOf(tabId: string): string {
   return `browser-tab:${tabId}`;
+}
+
+function describeNativeSurfaceFailure(error: unknown): string {
+  const messages: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current !== null && current !== undefined && !seen.has(current)) {
+    seen.add(current);
+    if (current instanceof Error && current.message.trim().length > 0) {
+      if (messages.at(-1) !== current.message) messages.push(current.message);
+      current = current.cause;
+      continue;
+    }
+    break;
+  }
+  return messages.join(" <- ") || "The native Browser surface is unavailable.";
 }
 
 // Native surface identity outlives a React view instance. One process-scoped
@@ -251,6 +267,17 @@ function parseCornerRadius(value: string): number | null {
     : null;
 }
 
+function firstParsedCornerRadius(
+  ...values: ReadonlyArray<string | undefined>
+): number {
+  for (const value of values) {
+    if (value === undefined) continue;
+    const radius = parseCornerRadius(value);
+    if (radius !== null) return radius;
+  }
+  return 0;
+}
+
 const ZERO_CORNER_RADII: SurfaceCornerRadii = {
   topLeft: 0,
   topRight: 0,
@@ -370,14 +397,19 @@ export function collectSurfaceOcclusionRects(
       y: roundedCssPixel(rect.top),
       width: roundedCssPixel(rect.width),
       height: roundedCssPixel(rect.height),
-      cornerRadius:
-        parseCornerRadius(
-          element.style.borderTopLeftRadius ||
-            element.style.borderRadius ||
-            style?.borderTopLeftRadius ||
-            style?.borderRadius ||
-            "0",
-        ) ?? 0,
+      // Motion-driven chat chrome writes `border-radius` as a CSS variable
+      // (`var(--chat-sheet-radius)`). The inline token is intentionally not a
+      // number, while computed style contains the resolved pixel radius. Keep
+      // explicit numeric inline geometry authoritative, but continue through
+      // unparseable inline tokens to their computed values; otherwise Android
+      // receives radius 0 and cuts a square native-WebView hole behind the
+      // rounded chat sheet.
+      cornerRadius: firstParsedCornerRadius(
+        element.style.borderTopLeftRadius,
+        element.style.borderRadius,
+        style?.borderTopLeftRadius,
+        style?.borderRadius,
+      ),
     });
   }
   // A native mask represents the union of these regions. Nested portal/status
@@ -535,10 +567,7 @@ export function useMobileNativeTabSurfaces(
           (error: unknown) => {
             if (observedCommands.current.get(key) !== command) return;
             command.status = "failed";
-            command.error =
-              error instanceof Error
-                ? error.message
-                : "The native Browser surface is unavailable.";
+            command.error = describeNativeSurfaceFailure(error);
             command.permanent = isNativeSurfaceCapabilityDenial(error);
             notifyCommandStateChanged();
           },

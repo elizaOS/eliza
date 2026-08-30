@@ -64,6 +64,10 @@ export const inboxPlugin: Plugin = {
       description: "Cross-channel inbox triage",
       icon: "Inbox",
       path: "/inbox",
+      responseContext: {
+        primaryContext: "messaging",
+        secondaryContexts: ["email"],
+      },
       // The shipped view is GUI-only. `modalities` is a plain literal here
       // (plugin.ts is not in the view bundle).
       modalities: ["gui"],

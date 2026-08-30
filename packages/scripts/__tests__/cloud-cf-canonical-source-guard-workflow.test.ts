@@ -83,11 +83,11 @@ describe("Cloud CF canonical source mutation guards", () => {
     expect(workflow.on.workflow_call.outputs?.superseded?.value).toContain(
       "jobs.migrate-db.outputs.superseded",
     );
-    for (const dependent of [
-      "deploy-api",
-      "resolve-pages-environment-config",
-      "build-pages",
-    ]) {
+    // The read-only public-identity preflight now precedes migrate-db. Only
+    // downstream mutation/build jobs can consume migrate-db's supersession
+    // result; the preflight-to-migration edge is covered by the homepage
+    // workflow contract test.
+    for (const dependent of ["deploy-api", "build-pages"]) {
       expect(workflow.jobs[dependent].if).toContain(
         "needs.migrate-db.outputs.superseded != 'true'",
       );

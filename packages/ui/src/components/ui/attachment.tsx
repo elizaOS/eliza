@@ -21,6 +21,11 @@ const attachmentVariants = cva(
         horizontal: "min-w-40 items-center",
         vertical: "w-24 flex-col has-data-[slot=attachment-content]:w-30",
       },
+      presentation: {
+        default: "",
+        chatTile:
+          "min-h-touch border-border bg-card text-txt hover:border-border-strong hover:bg-bg-hover",
+      },
     },
   },
 );
@@ -30,6 +35,7 @@ function Attachment({
   state = "done",
   size = "default",
   orientation = "horizontal",
+  presentation = "default",
   ...props
 }: React.ComponentProps<"div"> &
   VariantProps<typeof attachmentVariants> & {
@@ -41,7 +47,10 @@ function Attachment({
       data-state={state}
       data-size={size}
       data-orientation={orientation}
-      className={cn(attachmentVariants({ size, orientation }), className)}
+      className={cn(
+        attachmentVariants({ size, orientation, presentation }),
+        className,
+      )}
       {...props}
     />
   );
@@ -53,6 +62,7 @@ const attachmentMediaVariants = cva(
     variants: {
       variant: {
         icon: "",
+        transparent: "bg-transparent text-muted",
         image:
           "opacity-60 group-data-[state=done]/attachment:opacity-100 group-data-[state=idle]/attachment:opacity-100 *:[img]:aspect-square *:[img]:w-full *:[img]:object-cover",
       },

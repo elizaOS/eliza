@@ -19,6 +19,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildCorsAllowedPorts,
+  CORS_ALLOWED_HEADERS,
   getAllowedRemoteOrigins,
   invalidateCorsAllowedPorts,
   isAllowedOrigin,
@@ -127,6 +128,17 @@ describe("server CORS origin allowlist", () => {
     expect(isAllowedOrigin("ionic://evil.example")).toBe(false);
     expect(isAllowedOrigin("app://evil.example")).toBe(false);
     expect(isAllowedOrigin("tauri://evil.example")).toBe(false);
+  });
+
+  it("advertises the turn headers used by the streaming chat client", () => {
+    const allowedHeaders = new Set(
+      CORS_ALLOWED_HEADERS.split(",").map((header) =>
+        header.trim().toLowerCase(),
+      ),
+    );
+
+    expect(allowedHeaders).toContain("x-elizaos-turn-correlation");
+    expect(allowedHeaders).toContain("x-elizaos-turn-attempt");
   });
 });
 

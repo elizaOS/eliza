@@ -94,7 +94,6 @@ import {
   toneForViewerAttachment,
 } from "../apps/extensions/surface.helpers.ts";
 import {
-  SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
@@ -106,6 +105,7 @@ import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input.tsx";
 import { Spinner } from "../ui/spinner.tsx";
+import { StatusBadge } from "../ui/status-badge.tsx";
 import { SandboxedViewFrame } from "./SandboxedViewFrame";
 import {
   navigateToViews,
@@ -388,7 +388,7 @@ const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   useApp,
   useAppSelector,
   useAppSelectorShallow,
-  SurfaceBadge,
+  StatusBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
@@ -550,8 +550,34 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/state": () => import("../../state/index.ts"),
   "@elizaos/ui/state/useApp": () => import("../../state/useApp.ts"),
   "@elizaos/ui/utils": () => import("../../utils/index.ts"),
+  "@elizaos/ui/hooks/resource-cache": () =>
+    import("../../hooks/resource-cache.ts"),
+  "@elizaos/ui/hooks/runtime-capability-retry": () =>
+    import("../../hooks/runtime-capability-retry.ts"),
+  "@elizaos/ui/hooks/useActiveAgentAuthority": () =>
+    import("../../hooks/useActiveAgentAuthority.ts"),
+  "@elizaos/ui/utils/attachment-url": () =>
+    import("../../utils/attachment-url.ts"),
+  "@elizaos/ui/utils/desktop-dialogs": () =>
+    import("../../utils/desktop-dialogs.ts"),
+  "@elizaos/ui/utils/download-share": () =>
+    import("../../utils/download-share.ts"),
   "@elizaos/ui/components/composites/page-panel": () =>
     import("../composites/page-panel/index.ts"),
+  "@elizaos/ui/components/composites/settings": () =>
+    import("../composites/settings/index.ts"),
+  "@elizaos/ui/components/shared/confirm-delete-control": () =>
+    import("../shared/confirm-delete-control.tsx"),
+  "@elizaos/ui/components/shared/SectionNav": () =>
+    import("../shared/SectionNav.tsx"),
+  "@elizaos/ui/components/shared/ViewHeader": () =>
+    import("../shared/ViewHeader.tsx"),
+  "@elizaos/ui/components/transcripts/TranscriptPlayer": () =>
+    import("../transcripts/TranscriptPlayer.tsx"),
+  "@elizaos/ui/components/transcripts/TranscriptsView": () =>
+    import("../transcripts/TranscriptsView.tsx"),
+  "@elizaos/ui/components/views/ShellViewAgentSurface": () =>
+    import("./ShellViewAgentSurface.tsx"),
   "@elizaos/ui/components/composites/sidebar/sidebar-content": () =>
     import("../composites/sidebar/sidebar-content.tsx"),
   "@elizaos/ui/components/composites/sidebar/sidebar-panel": () =>
@@ -564,6 +590,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
     import("../pages/vector-browser-utils.ts"),
   "@elizaos/ui/components/shared/AppPageSidebar": () =>
     import("../shared/AppPageSidebar.tsx"),
+  "@elizaos/ui/components/shared": () => import("../shared/index.ts"),
   "@elizaos/ui/components/ui/button": () => import("../ui/button.tsx"),
   "@elizaos/ui/components/ui/input": () => import("../ui/input.tsx"),
   "@elizaos/ui/components/ui/select": () => import("../ui/select.tsx"),
@@ -638,6 +665,108 @@ declare global {
   }
 }
 
+type ViewBundleModuleImporter = (
+  moduleUrl: string,
+) => Promise<Record<string, unknown>>;
+
+const BUNDLE_CREDENTIAL_QUERY_PARAM =
+  /^(?:access[_-]?token|api[_-]?key|authorization|bearer|credential|password|secret|token)$/iu;
+
+/**
+ * View bundles are resolved against the shell URL but fetched through the
+ * active authenticated API transport. A paired browser therefore has two
+ * trusted origins: the page origin that supplied relative descriptors and the
+ * API origin that actually serves those descriptors. No other origin may
+ * supply executable code.
+ */
+function isTrustedViewBundleOrigin(origin: string): boolean {
+  if (typeof window === "undefined") return true;
+  if (origin === window.location.origin) return true;
+
+  const apiBase = client.baseUrl.trim();
+  if (!apiBase) return false;
+  try {
+    return origin === new URL(apiBase, window.location.href).origin;
+  } catch {
+    return false;
+  }
+}
+
+function trustedBundleRequestPath(bundleUrl: string): string {
+  if (typeof window === "undefined") return bundleUrl;
+  const parsed = new URL(bundleUrl, window.location.href);
+  if (!isTrustedViewBundleOrigin(parsed.origin)) {
+    throw new Error(
+      "DynamicViewLoader: refusing to import a cross-origin view bundle",
+    );
+  }
+  for (const name of parsed.searchParams.keys()) {
+    if (BUNDLE_CREDENTIAL_QUERY_PARAM.test(name)) {
+      throw new Error(
+        "DynamicViewLoader: refusing a view bundle URL with embedded credentials",
+      );
+    }
+  }
+  return `${parsed.pathname}${parsed.search}`;
+}
+
+// Protected view bundles are build artifacts and can legitimately take longer
+// than the generic 10-second read budget over an authenticated remote tunnel.
+const VIEW_BUNDLE_DOWNLOAD_TIMEOUT_MS = 120_000;
+
+function isJavaScriptBundleResponse(response: Response): boolean {
+  const contentType = response.headers.get("content-type")?.toLowerCase();
+  return (
+    contentType?.startsWith("application/javascript") === true ||
+    contentType?.startsWith("text/javascript") === true ||
+    contentType?.startsWith("application/ecmascript") === true ||
+    contentType?.startsWith("text/ecmascript") === true
+  );
+}
+
+const importBundleModuleUrl: ViewBundleModuleImporter = (moduleUrl) =>
+  import(/* @vite-ignore */ moduleUrl);
+
+/**
+ * Fetch a protected host-external bundle through the active API client before
+ * executing it from a temporary module URL. Authentication stays inside the
+ * client's transport layer; the module URL contains only the fetched source.
+ */
+export async function importAuthenticatedViewBundle(
+  bundleUrl: string,
+  moduleImporter: ViewBundleModuleImporter = importBundleModuleUrl,
+): Promise<Record<string, unknown>> {
+  const requestPath = trustedBundleRequestPath(bundleUrl);
+  const response = await client.rawRequest(
+    requestPath,
+    { headers: { Accept: "application/javascript" } },
+    {
+      allowNonOk: true,
+      timeoutMs: VIEW_BUNDLE_DOWNLOAD_TIMEOUT_MS,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `DynamicViewLoader: protected view bundle request failed (HTTP ${response.status})`,
+    );
+  }
+  if (!isJavaScriptBundleResponse(response)) {
+    throw new Error(
+      "DynamicViewLoader: protected view bundle response was not JavaScript",
+    );
+  }
+
+  const source = await response.text();
+  const moduleUrl = URL.createObjectURL(
+    new Blob([source], { type: "application/javascript" }),
+  );
+  try {
+    return await moduleImporter(moduleUrl);
+  } finally {
+    URL.revokeObjectURL(moduleUrl);
+  }
+}
+
 /**
  * Resolve one host-external specifier to the host shell's live singleton (the
  * framework trunk map first, then registered plugin/build-variant specifiers).
@@ -676,17 +805,18 @@ const DEV_POLL_INTERVAL_MS = 2000;
  * A view bundle is executed as an ES module in the host realm (it receives the
  * host React singleton, the API client, and the native bridges via the
  * host-external map), so it runs with full app privilege. Only ever import a
- * bundle served by THIS origin: a cross-origin `bundleUrl` (which an untrusted
- * view descriptor can announce) would be arbitrary attacker code
- * executing against the user's authenticated session. Every shipped view is
- * same-origin (`/api/views/<id>/bundle.js`); a future remote/CDN bundle must add
- * Subresource-Integrity before this gate can be relaxed.
+ * bundle served by the page origin or the active authenticated API origin: an
+ * unrelated `bundleUrl` (which an untrusted view descriptor can announce)
+ * would be arbitrary attacker code executing against the user's authenticated
+ * session. Paired browser previews intentionally resolve relative descriptors
+ * at the page origin and fetch them through `client.baseUrl`; a future CDN
+ * bundle must add Subresource-Integrity before this gate can be relaxed.
  */
 export function isSameOriginBundleUrl(bundleUrl: string): boolean {
   if (typeof window === "undefined") return true;
   try {
-    return (
-      new URL(bundleUrl, window.location.href).origin === window.location.origin
+    return isTrustedViewBundleOrigin(
+      new URL(bundleUrl, window.location.href).origin,
     );
   } catch {
     return false;
@@ -715,7 +845,7 @@ async function importViewBundle(
   const hostExternalUrl = buildHostExternalBundleUrl(bundleUrl);
   if (hostExternalUrl) {
     return resolveBundleNamespace(
-      await import(/* @vite-ignore */ hostExternalUrl),
+      await importAuthenticatedViewBundle(hostExternalUrl),
     );
   }
 
@@ -734,13 +864,15 @@ async function importViewBundle(
       `DynamicViewLoader: bundle at ${bundleUrl} could not use host externals`,
     );
   }
-  return resolveBundleNamespace(await import(/* @vite-ignore */ rewrittenUrl));
+  return resolveBundleNamespace(
+    await importAuthenticatedViewBundle(rewrittenUrl),
+  );
 }
 
 function buildHostExternalBundleUrl(bundleUrl: string): string | null {
   if (typeof window === "undefined") return null;
   const rewrittenUrl = new URL(bundleUrl, window.location.href);
-  if (rewrittenUrl.origin !== window.location.origin) return null;
+  if (!isTrustedViewBundleOrigin(rewrittenUrl.origin)) return null;
   if (!rewrittenUrl.pathname.startsWith("/api/views/")) return null;
   rewrittenUrl.searchParams.set(HOST_EXTERNAL_RUNTIME_PARAM, "1");
   rewrittenUrl.searchParams.set(
@@ -1286,6 +1418,8 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     () => resolveSurfaceManifest({ surface }),
     [surface],
   );
+  const recoveryBackAction =
+    resolvedManifest.header === "normal" ? undefined : navigateToViews;
   // A `sandboxed-iframe` view is never imported into the host realm — that is
   // the whole point of the level. It renders in an `<iframe sandbox>` (#14180)
   // and talks to the shell only through the postMessage broker, so the in-realm
@@ -1418,10 +1552,20 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     if (!import.meta.env.DEV || !bundleUrl || !dynamicLoadingAllowed) return;
 
     const cacheKey = `${bundleUrl}::${componentExport}`;
+    let requestPath: string;
+    try {
+      requestPath = trustedBundleRequestPath(bundleUrl);
+    } catch {
+      // The import path reports the authoritative user-facing failure; polling
+      // must not raise a second unhandled error for the same invalid bundle.
+      return;
+    }
 
     const id = setInterval(() => {
-      void fetch(bundleUrl, { method: "HEAD" })
+      void client
+        .rawRequest(requestPath, { method: "HEAD" }, { allowNonOk: true })
         .then((res) => {
+          if (!res.ok) return;
           const etag = res.headers.get("etag");
           if (lastEtagRef.current !== null && etag !== lastEtagRef.current) {
             // Bundle changed on disk — evict cache and trigger re-import.
@@ -1469,7 +1613,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
               "Sandboxed iframe views require a frameUrl HTML document; bundleUrl is a JavaScript module.",
             )
           }
-          onBack={navigateToViews}
+          onBack={recoveryBackAction}
         />
       );
     }
@@ -1499,7 +1643,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
             `Dynamic view "${viewId}" requires bundleUrl unless it declares sandboxed-iframe isolation with frameUrl.`,
           )
         }
-        onBack={navigateToViews}
+        onBack={recoveryBackAction}
       />
     );
   }
@@ -1509,7 +1653,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
         viewId={viewId}
         error={loadError}
         onRetry={recoverView}
-        onBack={navigateToViews}
+        onBack={recoveryBackAction}
       />
     );
   }
@@ -1555,7 +1699,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
                 resetErrorBoundary();
                 recoverView();
               }}
-              onBack={navigateToViews}
+              onBack={recoveryBackAction}
             />
           )}
         >

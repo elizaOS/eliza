@@ -2,7 +2,7 @@
 
 import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import { describe, expect, it } from "vitest";
-import { SimpleCalendarView } from "./components/calendar/SimpleCalendarView.tsx";
+import { CalendarPage } from "./components/calendar/CalendarPage.tsx";
 import "./register.ts";
 
 describe("Calendar app registration", () => {
@@ -12,9 +12,10 @@ describe("Calendar app registration", () => {
     );
 
     expect(
-      pages.map(({ id, label, path, viewKind }) => ({
+      pages.map(({ id, label, icon, path, viewKind }) => ({
         id,
         label,
+        icon,
         path,
         viewKind,
       })),
@@ -22,6 +23,7 @@ describe("Calendar app registration", () => {
       {
         id: "calendar",
         label: "Calendar",
+        icon: "CalendarDays",
         path: "/calendar",
         viewKind: "release",
       },
@@ -32,6 +34,6 @@ describe("Calendar app registration", () => {
       capabilities: ["agent-surface"],
     });
     const loaded = await pages[0]?.loader?.();
-    expect(loaded?.default).toBe(SimpleCalendarView);
+    expect(loaded?.default).toBe(CalendarPage);
   });
 });

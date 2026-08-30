@@ -17,7 +17,7 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
-import { loadElizaConfig } from "../config/config.ts";
+import { loadEffectiveElizaConfig } from "../config/config.ts";
 import type {
   AudioGenConfig,
   ImageConfig,
@@ -31,7 +31,7 @@ import {
 } from "../providers/media-provider.ts";
 
 function getMediaProviderOptions(): MediaProviderFactoryOptions {
-  const config = loadElizaConfig();
+  const config = loadEffectiveElizaConfig();
   const cloudMediaSelected = isElizaCloudServiceSelectedInConfig(
     config as Record<string, unknown>,
     "media",
@@ -273,7 +273,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
   canGenerateMedia(
     request: Pick<MediaGenerationRequest, "mediaType" | "audioKind">,
   ): boolean {
-    const config = loadElizaConfig();
+    const config = loadEffectiveElizaConfig();
     const providerOptions = getMediaProviderOptions();
     try {
       if (request.mediaType === "image") {
@@ -309,7 +309,7 @@ export class AgentMediaGenerationService extends IMediaGenerationService {
   async generateMedia(
     request: MediaGenerationRequest,
   ): Promise<MediaGenerationResponse> {
-    const config = loadElizaConfig();
+    const config = loadEffectiveElizaConfig();
     const providerOptions = getMediaProviderOptions();
 
     if (request.mediaType === "image") {
