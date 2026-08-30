@@ -542,7 +542,8 @@ describe("GitHub action supply-chain references", () => {
     );
     expect(qualitySource).toContain("packages/homepage/");
     expect(qualitySource).toContain("Build the only deployable frontend");
-    expect(source).toContain("Build consolidated frontend artifact");
+    expect(source).toContain("uses: ./.github/workflows/cloud-cf-release.yml");
+    expect(source).not.toContain("Build consolidated frontend artifact");
     expect(releaseSource).toContain("Build consolidated frontend artifact");
     expect(releaseSource).toContain("PAGES_PROJECT: eliza-app");
     for (const workflowSource of [source, releaseSource]) {

@@ -29,18 +29,44 @@ describe("SettingsRow", () => {
         control={<span data-testid="ctrl">on</span>}
       />,
     );
-    expect(screen.getByText("Notifications")).toBeTruthy();
-    expect(screen.getByText("Ping me on updates")).toBeTruthy();
-    expect(screen.getByTestId("ctrl")).toBeTruthy();
+    const row = screen
+      .getByText("Notifications")
+      .closest("[data-slot='settings-row']");
+    expect(row?.tagName).toBe("DIV");
+    expect(screen.getByText("Notifications").getAttribute("data-slot")).toBe(
+      "settings-row-label",
+    );
+    expect(
+      screen.getByText("Ping me on updates").getAttribute("data-slot"),
+    ).toBe("settings-row-description");
+    expect(
+      screen.getByTestId("ctrl").closest("[data-slot='settings-row-control']"),
+    ).toBeTruthy();
+    expect(
+      row?.querySelector("[data-slot='settings-row-icon-container']"),
+    ).toBeTruthy();
   });
 
   it("becomes a button with a chevron when given onClick", () => {
     const onClick = vi.fn();
     render(<SettingsRow label="Open thing" onClick={onClick} />);
-    const button = screen.getByText("Open thing").closest("button");
-    expect(button).toBeTruthy();
-    fireEvent.click(button as HTMLButtonElement);
+    const button = screen.getByRole("button", { name: "Open thing" });
+    expect(button.getAttribute("data-slot")).toBe("settings-row");
+    expect(
+      button.querySelector("[data-slot='settings-row-chevron']"),
+    ).toBeTruthy();
+    fireEvent.click(button);
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("paints the full interactive row on hover and when current", () => {
+    render(<SettingsRow label="Current section" active onClick={() => {}} />);
+    const button = screen.getByRole("button", { name: "Current section" });
+
+    expect(button.getAttribute("data-state")).toBe("on");
+    expect(button.getAttribute("aria-current")).toBe("true");
+    expect(button.className).toContain("hover:bg-bg-hover");
+    expect(button.className).toContain("data-[state=on]:bg-bg-hover");
   });
 
   it("renders stacked children below the label", () => {
@@ -49,7 +75,9 @@ describe("SettingsRow", () => {
         <input data-testid="wide" />
       </SettingsRow>,
     );
-    expect(screen.getByTestId("wide")).toBeTruthy();
+    expect(
+      screen.getByTestId("wide").closest("[data-slot='settings-row-content']"),
+    ).toBeTruthy();
   });
 
   it("marks a static row current when active", () => {
@@ -59,25 +87,66 @@ describe("SettingsRow", () => {
     const row = screen
       .getByText("This device")
       .closest("[aria-current='true']");
-    expect(row).toBeTruthy();
-    expect(row?.className).toContain("bg-accent/10");
+    expect(row?.getAttribute("data-slot")).toBe("settings-row");
+    expect(row?.getAttribute("aria-current")).toBe("true");
   });
 });
 
 describe("SettingsGroup", () => {
-  it("renders a kicker title and its rows", () => {
+  it("exposes the shared group, surface, row, and footer structure", () => {
     render(
       <SettingsStack>
-        <SettingsGroup title="Agent" description="Core behavior">
+        <SettingsGroup
+          title="Agent"
+          description="Core behavior"
+          action={<button type="button">Add</button>}
+          footer="Changes apply immediately."
+        >
           <SettingsRow label="Row A" />
           <SettingsRow label="Row B" />
         </SettingsGroup>
       </SettingsStack>,
     );
-    expect(screen.getByText("Agent")).toBeTruthy();
-    expect(screen.getByText("Core behavior")).toBeTruthy();
-    expect(screen.getByText("Row A")).toBeTruthy();
-    expect(screen.getByText("Row B")).toBeTruthy();
+    const heading = screen.getByRole("heading", { name: "Agent", level: 3 });
+    const group = heading.closest("section");
+    const surface = group?.querySelector(
+      "[data-slot='settings-group-surface']",
+    );
+    const rows = surface?.querySelector("[data-slot='settings-group-rows']");
+
+    expect(heading.getAttribute("data-slot")).toBe("settings-group-title");
+    expect(group?.getAttribute("data-slot")).toBe("settings-group");
+    expect(
+      group?.closest("[data-slot='settings-stack']")?.getAttribute("data-slot"),
+    ).toBe("settings-stack");
+    expect(surface).toBeTruthy();
+    expect(rows?.querySelectorAll("[data-slot='settings-row']")).toHaveLength(
+      2,
+    );
+    expect(screen.getByText("Core behavior").getAttribute("data-slot")).toBe(
+      "settings-group-description",
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Add" })
+        .closest("[data-slot='settings-group-action']"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Changes apply immediately.").getAttribute("data-slot"),
+    ).toBe("settings-group-footer");
+  });
+
+  it("keeps bespoke content unframed only when bare is explicit", () => {
+    render(
+      <SettingsGroup title="Custom" bare>
+        <div>Custom content</div>
+      </SettingsGroup>,
+    );
+    expect(
+      screen
+        .getByText("Custom content")
+        .closest("[data-slot='settings-group-surface']"),
+    ).toBeNull();
   });
 });
 
@@ -213,7 +282,6 @@ describe("agent-addressable rows", () => {
     expect(input.getAttribute("aria-describedby")).toBe(
       "security-password-confirm-error",
     );
-    expect(alert.className).toContain("text-danger");
   });
 
   it("SettingsSelectRow registers as an agent-addressable select", () => {

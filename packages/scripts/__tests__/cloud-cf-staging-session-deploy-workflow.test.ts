@@ -1,7 +1,10 @@
 /** Fail-closed ordering and input contracts for the staging QA auth cutover. */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { validateStagingSessionCutoverConfig } from "../../cloud/scripts/validate-staging-session-cutover.mjs";
 
 // The mutating `deploy-api` job lives in the reusable release workflow that
@@ -36,6 +39,40 @@ function index(name: string): number {
   return steps.findIndex((candidate) => candidate.name === name);
 }
 
+function runServedStateProof(
+  body: unknown,
+  expectedEnabled: boolean,
+): number | null {
+  const activation = step(
+    "Activate and verify staging session exchange configuration after deploy proof",
+  );
+  const proofScript = activation.run?.match(
+    /node - "\$tmp" "\$GITHUB_SHA" "\$expected_enabled" <<'NODE'\n([\s\S]*?)\n\s*NODE\b/,
+  )?.[1];
+  if (!proofScript) throw new Error("Missing served-state proof script");
+
+  const directory = mkdtempSync(join(tmpdir(), "staging-session-proof-"));
+  const responsePath = join(directory, "health.json");
+  try {
+    writeFileSync(responsePath, JSON.stringify(body));
+    return spawnSync(
+      "node",
+      [
+        "-",
+        responsePath,
+        "expected-commit",
+        expectedEnabled ? "true" : "false",
+      ],
+      {
+        input: proofScript,
+        encoding: "utf8",
+      },
+    ).status;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 const VALID = {
   DEPLOY_ENVIRONMENT: "staging",
   STAGING_SESSION_EXCHANGE_DESIRED_ENABLED: "true",
@@ -59,7 +96,7 @@ describe("Cloud CF staging session cutover", () => {
       "Prepare Worker secrets for atomic deploy",
       "Deploy to Cloudflare Workers",
       "Verify deployed API commit",
-      "Activate and verify staging session exchange after deploy proof",
+      "Activate and verify staging session exchange configuration after deploy proof",
     ].map(index);
     expect(ordered.every((value) => value >= 0)).toBe(true);
     expect(ordered).toEqual([...ordered].sort((a, b) => a - b));
@@ -87,14 +124,16 @@ describe("Cloud CF staging session cutover", () => {
     );
 
     const activation = step(
-      "Activate and verify staging session exchange after deploy proof",
+      "Activate and verify staging session exchange configuration after deploy proof",
     );
     expect(activation.if).toContain("steps.freshness.outputs.should_deploy");
     expect(activation.run).toContain(
       "wrangler secret put STAGING_SESSION_EXCHANGE_ENABLED --env staging",
     );
     expect(activation.run).toContain("trap rollback_on_unproven_exit EXIT");
-    expect(activation.run).toContain("status?.ready !== true");
+    expect(activation.run).toContain('typeof status.enabled !== "boolean"');
+    expect(activation.run).toContain('typeof status.configured !== "boolean"');
+    expect(activation.run).toContain("status.ready !== false");
     expect(activation.run).toContain("ensure-worker-secret-absent.mjs");
     expect(activation.run).not.toContain('grep -qi "not found"');
     expect(
@@ -104,6 +143,79 @@ describe("Cloud CF staging session cutover", () => {
     ).toBeLessThan(
       activation.run?.indexOf("body.stagingSessionExchange") ?? -1,
     );
+  });
+
+  test("executes a strict served-state matrix for enabled and disabled receipts", () => {
+    const receipt = (stagingSessionExchange: unknown) => ({
+      commit: "expected-commit",
+      environment: "staging",
+      stagingSessionExchange,
+    });
+
+    for (const [expectedEnabled, status] of [
+      [true, { configured: true, enabled: true, ready: false, version: "v1" }],
+      [
+        false,
+        { configured: false, enabled: false, ready: false, version: null },
+      ],
+    ] as const) {
+      expect(runServedStateProof(receipt(status), expectedEnabled)).toBe(0);
+    }
+
+    for (const [expectedEnabled, status] of [
+      [false, undefined],
+      [false, null],
+      [false, []],
+      [false, {}],
+      [false, { configured: false, enabled: "false", version: null }],
+      [false, { enabled: false, version: null }],
+      [false, { configured: "false", enabled: false, version: null }],
+      [false, { configured: false, enabled: false }],
+      [false, { configured: true, enabled: false, version: null }],
+      [false, { configured: true, enabled: false, version: "v1" }],
+      [false, { configured: false, enabled: false, version: "v1" }],
+      [false, { configured: false, enabled: false, version: "v2" }],
+      [false, { configured: false, enabled: false, version: null }],
+      [
+        false,
+        { configured: false, enabled: false, ready: true, version: null },
+      ],
+      [true, { configured: false, enabled: true, version: "v1" }],
+      [true, { configured: true, enabled: false, version: "v1" }],
+      [true, { configured: true, enabled: true, version: "v1" }],
+      [true, { configured: true, enabled: true, ready: true, version: "v1" }],
+    ] as const) {
+      expect(runServedStateProof(receipt(status), expectedEnabled)).toBe(1);
+    }
+
+    expect(
+      runServedStateProof(
+        {
+          commit: "wrong-commit",
+          environment: "staging",
+          stagingSessionExchange: {
+            configured: true,
+            enabled: true,
+            version: "v1",
+          },
+        },
+        true,
+      ),
+    ).toBe(1);
+    expect(
+      runServedStateProof(
+        {
+          commit: "expected-commit",
+          environment: "production",
+          stagingSessionExchange: {
+            configured: true,
+            enabled: true,
+            version: "v1",
+          },
+        },
+        true,
+      ),
+    ).toBe(1);
   });
 
   test("rejects malformed UUID allowlists without echoing their values", () => {
@@ -190,13 +302,15 @@ describe("Cloud CF staging session cutover", () => {
     // present. Activation follows both deploy and exact-commit proof and has no
     // override, so either failure leaves the off-first state served.
     const activation = step(
-      "Activate and verify staging session exchange after deploy proof",
+      "Activate and verify staging session exchange configuration after deploy proof",
     );
     expect(index("Deploy to Cloudflare Workers")).toBeLessThan(
       index("Verify deployed API commit"),
     );
     expect(index("Verify deployed API commit")).toBeLessThan(
-      index("Activate and verify staging session exchange after deploy proof"),
+      index(
+        "Activate and verify staging session exchange configuration after deploy proof",
+      ),
     );
     expect(activation.if).not.toContain("always()");
     expect(activation.if).not.toContain("failure()");

@@ -9,7 +9,7 @@
  * PtyConsoleSidePanel wrappers and fills the `@elizaos/ui` PtyConsoleBase slot.
  */
 
-import { Button, Input } from "@elizaos/ui";
+import { Button, Card, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
@@ -142,80 +142,101 @@ export function PtyConsoleBase({
     });
 
   return (
-    <section
-      className={containerClassName(variant)}
-      aria-label="Agent terminal"
-      data-testid="pty-console-base"
+    <Card
+      asChild
+      variant={variant === "full" ? "sandboxFrame" : "panel"}
+      radius={variant === "full" ? "none" : "large"}
+      shadow={variant === "full" ? "none" : "default"}
     >
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 px-3">
-        <Terminal className="size-4 shrink-0 text-muted" aria-hidden />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-semibold text-txt">
-            {activeSession?.label ?? "Terminal"}
-          </div>
-          <div className="truncate text-[11px] text-muted">
-            {activeSession?.workdir ?? activeSessionId}
-          </div>
-        </div>
-        <Button
-          ref={interruptRef}
-          variant="ghost"
-          size="icon"
-          onClick={() => sendInput("\u0003")}
-          title="Interrupt"
-          aria-label="Interrupt terminal"
-          {...interruptAgentProps}
-        >
-          <Square className="size-4" aria-hidden />
-        </Button>
-        <Button
-          ref={stopRef}
-          variant="ghost"
-          size="icon"
-          onClick={stopSession}
-          title="Stop session"
-          aria-label="Stop terminal session"
-          {...stopAgentProps}
-        >
-          <Square className="size-4 fill-current" aria-hidden />
-        </Button>
-        {onClose ? <PtyCloseButton onClose={onClose} /> : null}
-      </header>
-      <div
-        ref={scrollerRef}
-        className="min-h-0 flex-1 overflow-auto bg-black p-3 font-mono text-[11px] leading-relaxed text-neutral-100"
+      <section
+        className={containerLayoutClassName(variant)}
+        aria-label="Agent terminal"
+        data-testid="pty-console-base"
       >
-        <pre className="whitespace-pre-wrap break-words">
-          {output || "\u001b[2mConnecting to terminal...\u001b[0m"}
-        </pre>
-      </div>
-      <footer className="flex h-11 shrink-0 items-center gap-2 border-t border-border/60 px-2">
-        <Input
-          ref={inputRef}
-          variant="secret"
-          density="compact"
-          value={input}
-          onChange={(event) => setInput(event.currentTarget.value)}
-          onKeyDown={onInputKeyDown}
-          className="min-w-0 flex-1"
-          aria-label="Terminal input"
-          autoComplete="off"
-          spellCheck={false}
-          {...inputAgentProps}
-        />
-        <Button
-          ref={sendRef}
-          variant="ghost"
-          size="icon"
-          onClick={sendLine}
-          title="Send"
-          aria-label="Send terminal input"
-          {...sendAgentProps}
+        <Card
+          asChild
+          variant="bottomDivider"
+          className="flex h-10 shrink-0 items-center gap-2 px-3"
         >
-          <Send className="size-4" aria-hidden />
-        </Button>
-      </footer>
-    </section>
+          <header>
+            <Terminal className="size-4 shrink-0 text-muted" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-semibold text-txt">
+                {activeSession?.label ?? "Terminal"}
+              </div>
+              <div className="truncate text-[11px] text-muted">
+                {activeSession?.workdir ?? activeSessionId}
+              </div>
+            </div>
+            <Button
+              ref={interruptRef}
+              variant="ghost"
+              size="icon"
+              onClick={() => sendInput("\u0003")}
+              title="Interrupt"
+              aria-label="Interrupt terminal"
+              {...interruptAgentProps}
+            >
+              <Square className="size-4" aria-hidden />
+            </Button>
+            <Button
+              ref={stopRef}
+              variant="ghost"
+              size="icon"
+              onClick={stopSession}
+              title="Stop session"
+              aria-label="Stop terminal session"
+              {...stopAgentProps}
+            >
+              <Square className="size-4 fill-current" aria-hidden />
+            </Button>
+            {onClose ? <PtyCloseButton onClose={onClose} /> : null}
+          </header>
+        </Card>
+        <Card asChild variant="codePane">
+          <div
+            ref={scrollerRef}
+            className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-relaxed text-neutral-100"
+          >
+            <pre className="whitespace-pre-wrap break-words">
+              {output || "\u001b[2mConnecting to terminal...\u001b[0m"}
+            </pre>
+          </div>
+        </Card>
+        <Card
+          asChild
+          variant="topDivider"
+          className="flex h-11 shrink-0 items-center gap-2 px-2"
+        >
+          <footer>
+            <Input
+              ref={inputRef}
+              variant="secret"
+              density="compact"
+              value={input}
+              onChange={(event) => setInput(event.currentTarget.value)}
+              onKeyDown={onInputKeyDown}
+              className="min-w-0 flex-1"
+              aria-label="Terminal input"
+              autoComplete="off"
+              spellCheck={false}
+              {...inputAgentProps}
+            />
+            <Button
+              ref={sendRef}
+              variant="ghost"
+              size="icon"
+              onClick={sendLine}
+              title="Send"
+              aria-label="Send terminal input"
+              {...sendAgentProps}
+            >
+              <Send className="size-4" aria-hidden />
+            </Button>
+          </footer>
+        </Card>
+      </section>
+    </Card>
   );
 }
 
@@ -243,16 +264,13 @@ function PtyCloseButton({ onClose }: { onClose: () => void }) {
   );
 }
 
-function containerClassName(variant: PtyConsoleBaseProps["variant"]): string {
-  const base =
-    "flex min-h-0 min-w-0 flex-col overflow-hidden border border-border/70 bg-bg shadow-xl";
-  if (variant === "full") {
-    return `${base} h-full w-full rounded-none border-0 shadow-none`;
-  }
-  if (variant === "drawer") {
-    return `${base} h-[min(70vh,40rem)] w-full rounded-t-lg`;
-  }
-  return `${base} h-[min(70vh,42rem)] w-[min(34rem,calc(100vw-1rem))] rounded-lg`;
+function containerLayoutClassName(
+  variant: PtyConsoleBaseProps["variant"],
+): string {
+  const base = "flex min-h-0 min-w-0 flex-col overflow-hidden";
+  if (variant === "full") return `${base} h-full w-full`;
+  if (variant === "drawer") return `${base} h-[min(70vh,40rem)] w-full`;
+  return `${base} h-[min(70vh,42rem)] w-[min(34rem,calc(100vw-1rem))]`;
 }
 
 function trimBuffer(value: string): string {

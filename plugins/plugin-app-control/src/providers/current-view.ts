@@ -67,7 +67,7 @@ export const currentViewProvider: Provider = {
 				: `${current.viewLabel} view${section}`;
 
 			return {
-				text: `The user is currently viewing the ${where}. If they ask to go somewhere else, switch with the VIEWS action.`,
+				text: `The user is currently viewing the ${where}. This is background UI state for choosing view and app tools — if they ask to go somewhere else, switch with the VIEWS action. When the message is not about the view itself, answer it directly and do not mention or restate the current view in the reply.`,
 				values: {
 					currentViewId: current.viewId,
 					currentViewLabel: current.viewLabel,

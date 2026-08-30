@@ -188,6 +188,44 @@ describe("buildPlugin (shared driver, issue #10200)", () => {
     expect(existsSync(distPath("KEEP.txt"))).toBe(true);
   });
 
+  test("pruneAfterDts removes declaration-only trees recreated by tsc", async () => {
+    makeFixture({});
+    mkdirSync(path.join(fixtureDir, "src", "renderer"), { recursive: true });
+    writeFileSync(
+      path.join(fixtureDir, "src", "renderer", "view.ts"),
+      "export interface ViewProps { title: string }\n",
+    );
+    writeFileSync(
+      path.join(fixtureDir, "src", "index.ts"),
+      'void import("./renderer/view");\nexport const loaded = true;\n',
+    );
+
+    await buildPlugin({
+      name: "@elizaos/fixture-plugin",
+      targets: [],
+      dtsProject: "tsconfig.json",
+      pruneAfterDts: ["renderer"],
+    });
+
+    expect(existsSync(distPath("renderer"))).toBe(false);
+    expect(existsSync(distPath("index.d.ts"))).toBe(true);
+    expect(readFileSync(distPath("index.d.ts"), "utf8")).not.toContain(
+      "renderer",
+    );
+  });
+
+  test("pruneAfterDts rejects targets outside dist", async () => {
+    makeFixture({ tsconfig: false });
+    await expect(
+      buildPlugin({
+        name: "@elizaos/fixture-plugin",
+        targets: [],
+        pruneAfterDts: ["../src"],
+      }),
+    ).rejects.toThrow("Refusing to prune path outside dist");
+    expect(existsSync(path.join(fixtureDir, "src", "index.ts"))).toBe(true);
+  });
+
   test("full path: target build + renames + flatten + shims + copies", async () => {
     makeFixture({});
     const config: BuildPluginConfig = {

@@ -329,4 +329,44 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
       findByIdSpy.mockRestore();
     }
   });
+
+  test("does NOT admit an unknown future tier while pending or provisioning", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+
+    for (const status of ["pending", "provisioning"] as const) {
+      const sandbox = dedicatedSandbox({
+        execution_tier: "future-tier" as never,
+        status,
+      });
+      const findRunningSpy = spyOn(
+        agentSandboxesRepository,
+        "findRunningSandbox",
+      ).mockResolvedValue(undefined);
+      const findByIdSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+        sandbox,
+      );
+
+      try {
+        const service = new ElizaSandboxService();
+        const response = await runWithCloudBindings({}, () =>
+          service.bridge(sandbox.id, sandbox.organization_id, {
+            jsonrpc: "2.0",
+            id: `unknown-tier-${status}`,
+            method: "message.send",
+            params: { text: "hello" },
+          }),
+        );
+
+        expect(response.result).toBeUndefined();
+        expect(response.error?.message).toBe("Sandbox is not running");
+        await expect(
+          service.getSharedRuntimeCharacter(sandbox.id, sandbox.organization_id),
+        ).resolves.toBeNull();
+        expect(runSharedAgentTurn).not.toHaveBeenCalled();
+      } finally {
+        findRunningSpy.mockRestore();
+        findByIdSpy.mockRestore();
+      }
+    }
+  });
 });

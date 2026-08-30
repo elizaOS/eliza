@@ -13,7 +13,8 @@
 import type { AppDto } from "@elizaos/cloud-sdk";
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
+import { toWellFormedUnicode, unwrapUserMessageText } from "@elizaos/core";
+import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/shared";
 
 /** Default Eliza Cloud API base URL (matches the cloud runtime default). */
 export const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
@@ -41,17 +42,56 @@ function apiBaseToSiteBaseUrl(apiBaseUrl: string): string {
     : trimmed;
 }
 
+/** @internal Atomic inputs used to construct the authenticated SDK client. */
+export interface CloudClientTuple {
+  readonly apiBaseUrl: string;
+  readonly apiKey: string | null;
+}
+
+/**
+ * Resolve the Cloud client inputs atomically. In a launcher-owned development
+ * process, both values come exclusively from the immutable launch snapshot so
+ * a late config/runtime merge cannot pair a launch credential with a different
+ * destination. Default staging and offline development deliberately remain
+ * unauthenticated.
+ */
+export function resolveCloudClientTuple(
+  runtime: IAgentRuntime,
+): CloudClientTuple {
+  const snapshot = captureDevCloudEnvAuthoritySnapshot();
+  if (!snapshot) {
+    return Object.freeze({
+      apiBaseUrl:
+        normalizeSecret(runtime.getSetting(CLOUD_BASE_URL_SETTING)) ??
+        DEFAULT_CLOUD_API_BASE_URL,
+      apiKey: normalizeSecret(runtime.getSetting(CLOUD_API_KEY_SETTING)),
+    });
+  }
+
+  const activationBlocked =
+    snapshot.authority === "staging-default" ||
+    snapshot.authority === "offline";
+  const authorityBaseUrl = normalizeSecret(
+    snapshot.values.ELIZAOS_CLOUD_BASE_URL,
+  );
+  return Object.freeze({
+    apiBaseUrl: authorityBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL,
+    apiKey: activationBlocked
+      ? null
+      : authorityBaseUrl
+        ? normalizeSecret(snapshot.values.ELIZAOS_CLOUD_API_KEY)
+        : null,
+  });
+}
+
 /** Resolve the Eliza Cloud API key from runtime settings. Returns null when unset. */
 export function resolveCloudApiKey(runtime: IAgentRuntime): string | null {
-  return normalizeSecret(runtime.getSetting(CLOUD_API_KEY_SETTING));
+  return resolveCloudClientTuple(runtime).apiKey;
 }
 
 /** Resolve the Eliza Cloud API base URL (ends at `/api/v1`). */
 export function resolveCloudApiBaseUrl(runtime: IAgentRuntime): string {
-  return (
-    normalizeSecret(runtime.getSetting(CLOUD_BASE_URL_SETTING)) ??
-    DEFAULT_CLOUD_API_BASE_URL
-  );
+  return resolveCloudClientTuple(runtime).apiBaseUrl;
 }
 
 /**
@@ -72,10 +112,11 @@ export function resolveCloudSiteBaseUrl(runtime: IAgentRuntime): string {
 export function getCloudClient(
   runtime: IAgentRuntime,
 ): ElizaCloudClient | null {
-  const apiKey = resolveCloudApiKey(runtime);
+  const tuple = resolveCloudClientTuple(runtime);
+  const apiKey = tuple.apiKey;
   if (!apiKey) return null;
 
-  const apiBaseUrl = trimTrailingSlash(resolveCloudApiBaseUrl(runtime));
+  const apiBaseUrl = trimTrailingSlash(tuple.apiBaseUrl);
   return new ElizaCloudClient({
     apiBaseUrl,
     baseUrl: apiBaseToSiteBaseUrl(apiBaseUrl),
@@ -396,15 +437,13 @@ export function describeAppReference(
 }
 
 /**
- * Render a reference for logs and machine-facing action text/data, where the
- * actual query matters. A blob-shaped fallback reference (see
- * {@link describeAppReference}) must still never travel whole: a weak planner
- * echoes tool text verbatim, and a multi-KB blob bloats context — so collapse
- * whitespace to one line and clamp to 120 chars with a trailing ellipsis.
+ * Render the complete reference for logs and machine-facing action text/data,
+ * where the actual query matters. Callers that only need a human-readable noun
+ * use {@link describeAppReference}; this surface preserves the query so action
+ * results do not silently replace it with an unaddressable prefix.
  */
 export function appReferenceLogView(reference: string): string {
-  const collapsed = reference.replace(/\s+/g, " ").trim();
-  return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
+  return toWellFormedUnicode(reference.trim());
 }
 
 export interface ResolvedApp {

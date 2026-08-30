@@ -8,18 +8,33 @@ import appPackage from "./package.json" with { type: "json" };
 
 export function resolveAndroidCapacitorPlugins(
   dependencies: Record<string, string>,
+  lp3RemoteFallback = false,
 ): string[] {
   return Object.keys(dependencies)
     .filter(
       (name) =>
-        name.startsWith("@elizaos/capacitor-") ||
-        name.startsWith("@capacitor-community/") ||
-        (name.startsWith("@capacitor/") &&
-          !["@capacitor/android", "@capacitor/core", "@capacitor/ios"].includes(
-            name,
-          )),
+        (!lp3RemoteFallback || name !== "@capacitor/push-notifications") &&
+        (name.startsWith("@elizaos/capacitor-") ||
+          name.startsWith("@capacitor-community/") ||
+          (name.startsWith("@capacitor/") &&
+            ![
+              "@capacitor/android",
+              "@capacitor/core",
+              "@capacitor/ios",
+            ].includes(name))),
     )
     .sort();
+}
+
+export function resolveCapacitorHttpEnabled(
+  target: string | undefined,
+  androidRuntimeMode: string | undefined,
+  androidCloudBuild: string | undefined = undefined,
+): boolean {
+  return !(
+    androidCloudBuild === "1" ||
+    (target === "android" && androidRuntimeMode === "cloud")
+  );
 }
 
 function isIosStoreBuild(): boolean {
@@ -123,6 +138,24 @@ const serverUrl = resolveServerUrl(process.env.ELIZA_CAPACITOR_SERVER_URL);
 function isFlagEnabled(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/i.test((value ?? "").trim());
 }
+
+/**
+ * Android Cloud clients retain Keystore-backed credentials across sessions,
+ * while Capacitor's default debug logging serializes native plugin results
+ * into logcat. Suppress bridge payload logging for every Cloud-derived target,
+ * including the launcher and SMS gateway, without disabling debug signing.
+ */
+export function resolveCapacitorLoggingBehavior(
+  env: NodeJS.ProcessEnv = process.env,
+): "debug" | "none" {
+  return isFlagEnabled(env.ELIZA_ANDROID_CLOUD_BUILD) ||
+    isFlagEnabled(env.ELIZA_ANDROID_LAUNCHER_BUILD) ||
+    isFlagEnabled(env.ELIZA_ANDROID_CLOUD_HYBRID_BUILD) ||
+    isFlagEnabled(env.ELIZA_ANDROID_VPS_SIDECAR)
+    ? "none"
+    : "debug";
+}
+
 const webViewDebuggingEnabled =
   !isIosStoreBuild() && isFlagEnabled(process.env.ELIZA_WEBVIEW_DEBUG);
 
@@ -135,15 +168,47 @@ export function resolveAndroidProjectPath(
     : "../app-core/platforms/android";
 }
 
-const androidProjectPath = resolveAndroidProjectPath(
-  process.env.ELIZA_ANDROID_USE_APP_DIR,
+export function resolveCapacitorAppId(
+  appIdOverride: string | undefined,
+  iosAppIdOverride: string | undefined,
+  configuredAppId: string,
+): string {
+  return appIdOverride?.trim() || iosAppIdOverride?.trim() || configuredAppId;
+}
+
+export function resolveCapacitorAndroidIdentity(
+  env: NodeJS.ProcessEnv,
+  configuredAppId: string,
+): { appId: string; projectPath: string } {
+  const appId = resolveCapacitorAppId(
+    env.ELIZA_APP_ID,
+    env.ELIZA_IOS_APP_ID,
+    configuredAppId,
+  );
+  return {
+    appId,
+    projectPath: resolveAndroidProjectPath(
+      env.ELIZA_ANDROID_USE_APP_DIR,
+      appId,
+    ),
+  };
+}
+
+const capacitorAndroidIdentity = resolveCapacitorAndroidIdentity(
+  process.env,
   appConfig.appId,
+);
+const capacitorHttpEnabled = resolveCapacitorHttpEnabled(
+  process.env.ELIZA_CAPACITOR_BUILD_TARGET,
+  process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE,
+  process.env.ELIZA_ANDROID_CLOUD_BUILD,
 );
 
 const config: CapacitorConfig = {
-  appId: appConfig.appId,
+  appId: capacitorAndroidIdentity.appId,
   appName: appConfig.appName,
   webDir: "dist",
+  loggingBehavior: resolveCapacitorLoggingBehavior(),
   server: {
     androidScheme: "https",
     iosScheme: "https",
@@ -161,12 +226,12 @@ const config: CapacitorConfig = {
       resize: "body",
       resizeOnFullScreen: true,
     },
-    // Patches `fetch`/`XMLHttpRequest` on native platforms to use the
-    // native HTTP stack (CFNetwork on iOS). Required for cross-origin
-    // requests like `https://api.eliza.app/api/auth/cli-session` —
-    // those fail under WKWebView's CORS check from `capacitor://localhost`.
+    // iOS requires CFNetwork for cross-origin Cloud requests. The Android
+    // Cloud API publishes the required CORS contract, so its WebView uses
+    // browser fetch directly; routing through CapacitorHttp can leave the
+    // hosted-login metadata request pending indefinitely on Custom Tab hosts.
     CapacitorHttp: {
-      enabled: true,
+      enabled: capacitorHttpEnabled,
     },
     BackgroundRunner: {
       label: "eliza-tasks",
@@ -213,11 +278,20 @@ const config: CapacitorConfig = {
     // Keep `cap sync` pointed at the same Android tree run-mobile-build will
     // package. Upstream elizaOS owns the shared app-core tree; white-label or
     // explicitly isolated builds use the app-local ignored android/ project.
-    path: androidProjectPath,
+    path: capacitorAndroidIdentity.projectPath,
     // Android owns the fused app runtime. Keep iOS's llama-cpp-capacitor
     // dependency out of raw Android sync while discovering every declared
     // Capacitor plugin, including the embedded Bun host, from package metadata.
-    includePlugins: resolveAndroidCapacitorPlugins(appPackage.dependencies),
+    // The dedicated LP3/VPS fallback has no distributor Firebase project.
+    // Keeping the FCM plugin in that build makes PushNotifications.register()
+    // terminate the Android process when FirebaseApp is absent, before the JS
+    // promise boundary can handle the error. Exclude only that native plugin;
+    // in-app/local notifications and the LP3 display-guard notification remain.
+    includePlugins: resolveAndroidCapacitorPlugins(
+      appPackage.dependencies,
+      isFlagEnabled(process.env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED) ||
+        isFlagEnabled(process.env.ELIZA_ANDROID_VPS_SIDECAR),
+    ),
     backgroundColor: "#000000",
     allowMixedContent: false,
     captureInput: true,

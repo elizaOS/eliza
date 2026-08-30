@@ -55,7 +55,11 @@ export function ConnectionLostOverlay() {
       aria-labelledby="connection-lost-title"
       className={OVERLAY_SHELL_CLASS}
     >
-      <Card variant="overlayMedium">
+      <Card
+        surface="cardOverlay"
+        border="subtle"
+        className="relative z-10 w-full max-w-[640px] overflow-hidden"
+      >
         <CardHeader className="bg-danger/5 pb-6 pt-6">
           <div className="flex flex-col gap-4">
             <div className="space-y-2">

@@ -211,6 +211,14 @@ describe("chunkSlackText", () => {
 });
 
 describe("splitSlackText", () => {
+  it("uses Slack's documented 40,000-character hard boundary by default", () => {
+    const text = "a".repeat(40_001);
+    const chunks = splitSlackText(text);
+
+    expect(chunks.map((chunk) => chunk.length)).toEqual([40_000, 1]);
+    expect(chunks.join("")).toBe(text);
+  });
+
   it.each(["\n", " "])(
     "keeps the service send path within the cap at an exact %j boundary",
     (boundary) => {

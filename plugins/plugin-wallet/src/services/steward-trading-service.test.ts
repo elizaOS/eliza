@@ -3,8 +3,15 @@
  * real `/v1/trade` route envelopes while avoiding live credentials or venue
  * funds; these tests pin the Eliza-side retry, outcome, and method boundary.
  */
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  resetDevCloudEnvAuthorityForTests,
+} from "@elizaos/shared/elizacloud";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => {
   return await import("../__tests__/core-vitest-mock.js");
@@ -597,5 +604,176 @@ describe("StewardTradingService", () => {
       error: "ROUTE_NOT_FOUND",
       retryable: false,
     });
+  });
+});
+
+const AUTHORITY_ENV_KEYS = [
+  "ELIZA_STATE_DIR",
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "STEWARD_API_URL",
+  "STEWARD_TENANT_ID",
+  "STEWARD_AGENT_ID",
+  "ELIZA_STEWARD_AGENT_ID",
+  "STEWARD_API_KEY",
+  "STEWARD_AGENT_TOKEN",
+  "STEWARD_TRADE_SESSION_ID",
+  "STEWARD_HYPERLIQUID_TRADE_SESSION_ID",
+  "STEWARD_POLYMARKET_TRADE_SESSION_ID",
+] as const;
+
+describe("StewardTradingService dev launcher authority", () => {
+  let saved: Record<(typeof AUTHORITY_ENV_KEYS)[number], string | undefined>;
+  let stateDir: string;
+
+  beforeEach(() => {
+    resetDevCloudEnvAuthorityForTests();
+    saved = Object.fromEntries(
+      AUTHORITY_ENV_KEYS.map((key) => [key, process.env[key]]),
+    ) as Record<(typeof AUTHORITY_ENV_KEYS)[number], string | undefined>;
+    for (const key of AUTHORITY_ENV_KEYS) delete process.env[key];
+    stateDir = mkdtempSync(
+      path.join(os.tmpdir(), "steward-trading-authority-"),
+    );
+    process.env.ELIZA_STATE_DIR = stateDir;
+  });
+
+  afterEach(() => {
+    for (const key of AUTHORITY_ENV_KEYS) {
+      const value = saved[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    resetDevCloudEnvAuthorityForTests();
+    rmSync(stateDir, { force: true, recursive: true });
+  });
+
+  it("does not trade from persisted or runtime production credentials in default staging", async () => {
+    writeFileSync(
+      path.join(stateDir, "steward-credentials.json"),
+      JSON.stringify({
+        apiUrl: "https://eliza.app/steward",
+        tenantId: "elizacloud",
+        agentId: "production-agent",
+        apiKey: "production-key",
+        agentToken: "production-token",
+      }),
+    );
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-default";
+    captureDevCloudEnvAuthoritySnapshot();
+    const fetchMock = vi.fn();
+    const service = new StewardTradingService(
+      runtime({
+        STEWARD_API_URL: "https://eliza.app/steward",
+        STEWARD_AGENT_ID: "production-agent",
+        STEWARD_AGENT_TOKEN: "production-token",
+        STEWARD_HYPERLIQUID_TRADE_SESSION_ID: "production-session",
+      }),
+      { fetch: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(service.capability()).toMatchObject({ canTrade: false });
+    await expect(service.resolveAccount("hyperliquid")).resolves.toMatchObject({
+      ok: false,
+      error: "SESSION_REQUIRED",
+    });
+    await expect(
+      service.submitOrder({
+        venue: "hyperliquid",
+        sessionId: "production-session",
+        coin: "BTC",
+        side: "buy",
+        size: 0.01,
+        idempotencyKey: "blocked-default-staging",
+      }),
+    ).rejects.toThrow(/not configured/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not let late runtime URL, token, and session values complete an explicit tuple", async () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+    process.env.STEWARD_API_URL = "https://staging.eliza.app/steward";
+    process.env.STEWARD_TENANT_ID = "elizacloud-staging";
+    process.env.STEWARD_AGENT_ID = "staging-agent";
+    captureDevCloudEnvAuthoritySnapshot();
+
+    process.env.STEWARD_API_URL = "https://eliza.app/steward";
+    process.env.STEWARD_AGENT_TOKEN = "late-production-token";
+    process.env.STEWARD_HYPERLIQUID_TRADE_SESSION_ID = "late-session";
+    const fetchMock = vi.fn();
+    const service = new StewardTradingService(
+      runtime({
+        STEWARD_API_URL: "https://eliza.app/steward",
+        STEWARD_AGENT_ID: "production-agent",
+        STEWARD_AGENT_TOKEN: "runtime-production-token",
+        STEWARD_HYPERLIQUID_TRADE_SESSION_ID: "runtime-session",
+      }),
+      { fetch: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(service.capability()).toMatchObject({ canTrade: false });
+    await expect(service.resolveAccount("hyperliquid")).resolves.toMatchObject({
+      ok: false,
+      error: "SESSION_REQUIRED",
+    });
+    await expect(
+      service.submitOrder({
+        venue: "hyperliquid",
+        sessionId: "late-session",
+        coin: "BTC",
+        side: "buy",
+        size: 0.01,
+        idempotencyKey: "blocked-late-runtime",
+      }),
+    ).rejects.toThrow(/not configured/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the frozen explicit URL, token, and governed session after late overrides", async () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+    process.env.STEWARD_API_URL = "https://staging.eliza.app/steward";
+    process.env.STEWARD_TENANT_ID = "elizacloud-staging";
+    process.env.STEWARD_AGENT_ID = "staging-agent";
+    process.env.STEWARD_AGENT_TOKEN = "staging-token";
+    process.env.STEWARD_HYPERLIQUID_TRADE_SESSION_ID = "sess_hl_fixture";
+    captureDevCloudEnvAuthoritySnapshot();
+
+    process.env.STEWARD_API_URL = "https://eliza.app/steward";
+    process.env.STEWARD_AGENT_TOKEN = "production-token";
+    process.env.STEWARD_HYPERLIQUID_TRADE_SESSION_ID = "production-session";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, stewardFixtures.tokenStatusObserved),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, stewardFixtures.activeHyperliquidSession),
+      );
+    const service = new StewardTradingService(
+      runtime({
+        STEWARD_API_URL: "https://eliza.app/steward",
+        STEWARD_AGENT_ID: "production-agent",
+        STEWARD_AGENT_TOKEN: "runtime-production-token",
+        STEWARD_HYPERLIQUID_TRADE_SESSION_ID: "runtime-session",
+      }),
+      { fetch: fetchMock as unknown as typeof fetch },
+    );
+
+    await expect(service.resolveAccount("hyperliquid")).resolves.toMatchObject({
+      ok: true,
+      audit: { sessionId: "sess_hl_fixture" },
+    });
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "https://staging.eliza.app/steward/v1/trade/token-status?agentId=staging-agent",
+      "https://staging.eliza.app/steward/v1/trade/sessions/sess_hl_fixture",
+    ]);
+    const firstHeaders = fetchMock.mock.calls[0]?.[1]?.headers as Record<
+      string,
+      string
+    >;
+    expect(firstHeaders.Authorization).toBe("Bearer staging-token");
   });
 });

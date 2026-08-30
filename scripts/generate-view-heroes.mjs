@@ -138,6 +138,13 @@ export const views = [
     icon: VIEW_HERO_ICONS.calendar,
   },
   {
+    out: "plugins/plugin-computeruse/assets/hero.svg",
+    id: "computer-use",
+    label: "Computer Use",
+    hue: 24,
+    icon: VIEW_HERO_ICONS.modelTester,
+  },
+  {
     out: "plugins/plugin-documents/assets/hero.svg",
     id: "documents",
     label: "Documents",
@@ -178,6 +185,13 @@ export const views = [
     label: "Inbox",
     hue: 168,
     icon: VIEW_HERO_ICONS.inbox,
+  },
+  {
+    out: "plugins/plugin-linear/assets/hero.svg",
+    id: "linear",
+    label: "Linear",
+    hue: 34,
+    icon: VIEW_HERO_ICONS.todos,
   },
   {
     out: "plugins/plugin-messages/assets/hero.svg",

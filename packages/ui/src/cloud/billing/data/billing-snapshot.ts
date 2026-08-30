@@ -49,6 +49,7 @@ export type BillingSnapshotResource = Pick<
   | "lastBilledAt"
   | "nextBillingAt"
   | "estimatedNextBillingAt"
+  | "cancellationControl"
 > & {
   ratePerHour: Observed<HourlyUsd>;
   estimatedRecurringComputeCostPerDay: Observed<DailyUsd>;
@@ -110,6 +111,13 @@ function exactInteger(value: unknown): string {
     return invalidResponse();
   }
   return value;
+}
+
+function nonNegativeSafeInteger(value: unknown): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    return invalidResponse();
+  }
+  return Number(value);
 }
 
 function exactUsdValue<Unit extends "usd" | "usd_per_hour" | "usd_per_day">(
@@ -196,9 +204,42 @@ function parseResource(value: unknown): BillingSnapshotResource {
     return invalidResponse();
   }
 
+  const resourceType = record.resourceType;
+  const resourceId = nonEmptyString(record.resourceId);
+  const control = asRecord(record.cancellationControl);
+  const expectedDisplayAction =
+    resourceType === "container" ? "stop" : "stop_compute";
+  if (
+    control.displayAction !== expectedDisplayAction ||
+    control.method !== "POST" ||
+    control.mode !== "stop" ||
+    control.endpoint !==
+      `/api/v1/billing/resources/${resourceId.toLowerCase()}/cancel?resourceType=${resourceType}` ||
+    typeof control.eligible !== "boolean" ||
+    !Array.isArray(control.blockers)
+  ) {
+    return invalidResponse();
+  }
+  const blockerSet = new Set<string>();
+  const blockers = control.blockers.map((blocker) => {
+    if (
+      blocker !== "interactive_session_required" &&
+      blocker !== "billing_account_ineligible" &&
+      blocker !== "owner_or_admin_role_required"
+    ) {
+      return invalidResponse();
+    }
+    if (blockerSet.has(blocker)) return invalidResponse();
+    blockerSet.add(blocker);
+    return blocker;
+  });
+  if (control.eligible !== (blockers.length === 0)) {
+    return invalidResponse();
+  }
+
   return {
-    resourceType: record.resourceType,
-    resourceId: nonEmptyString(record.resourceId),
+    resourceType,
+    resourceId,
     name: nonEmptyString(record.name),
     status: nonEmptyString(record.status),
     billingStatus: nonEmptyString(record.billingStatus),
@@ -211,6 +252,17 @@ function parseResource(value: unknown): BillingSnapshotResource {
     estimatedNextBillingAt: nullableCanonicalIsoTimestamp(
       record.estimatedNextBillingAt,
     ),
+    cancellationControl: {
+      displayAction: expectedDisplayAction,
+      method: "POST",
+      mode: "stop",
+      endpoint: control.endpoint,
+      expectedLifecycleRevision: nonNegativeSafeInteger(
+        control.expectedLifecycleRevision,
+      ),
+      eligible: control.eligible,
+      blockers,
+    },
     ratePerHour: parseObserved(record.ratePerHour, (amount) =>
       exactUsdValue(amount, "usd_per_hour"),
     ),

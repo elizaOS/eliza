@@ -155,9 +155,7 @@ export function EditSkillModal({
             <DialogTitle className="font-semibold text-sm truncate">
               {skillName}
             </DialogTitle>
-            <AdminMonoMeta className="rounded-sm border border-border bg-bg-hover px-1.5 py-0.5">
-              {t("skillsview.SKILLMd")}
-            </AdminMonoMeta>
+            <AdminMonoMeta>{t("skillsview.SKILLMd")}</AdminMonoMeta>
             <DialogDescription className="sr-only">
               {t("skillsview.editSkillSourceDescription", {
                 defaultValue:

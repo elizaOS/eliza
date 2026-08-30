@@ -466,7 +466,7 @@ function AllDayBandCell({
               onSelectEvent(event);
             }}
             className="block w-full truncate"
-            style={{
+            visualStyle={{
               background: selected ? color.bg : color.softBg,
               color: selected ? color.text : color.softText,
             }}
@@ -581,12 +581,14 @@ function DayColumnGrid({
             }}
             aria-pressed={isSelected}
             className="group absolute overflow-hidden"
-            style={{
+            layoutStyle={{
               top: `calc(${position.topPct}% + 0.1rem)`,
               height: `calc(${position.heightPct}% - 0.2rem)`,
               left: `calc(${position.leftPct}% + 0.125rem)`,
               width: `calc(${position.widthPct}% - 0.25rem)`,
               minHeight: "1.5rem",
+            }}
+            visualStyle={{
               background: color.bg,
               borderColor: color.border,
               color: color.text,
@@ -824,7 +826,7 @@ function MonthGrid({
                         onSelectEvent(event);
                       }}
                       className="min-w-0"
-                      style={{
+                      visualStyle={{
                         background: isSelected ? color.bg : color.softBg,
                         color: isSelected ? color.text : color.softText,
                       }}

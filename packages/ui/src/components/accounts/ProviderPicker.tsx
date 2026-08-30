@@ -23,8 +23,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -198,20 +198,19 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                   onMouseMove={() => setActiveIndex(index)}
                   onClick={() => onPick(option.id)}
                 >
-                  <span
-                    className={cn(
-                      "flex size-8 shrink-0 items-center justify-center rounded-md border",
-                      active
-                        ? "border-txt/25 bg-card text-txt-strong"
-                        : "border-border/50 bg-bg-accent/60 text-muted-strong",
-                    )}
+                  <Badge
+                    asChild
+                    variant={active ? "providerMarkActive" : "providerMark"}
+                    size="providerMark"
                   >
-                    <ProviderMark
-                      providerId={option.id}
-                      className="size-4"
-                      title={option.name}
-                    />
-                  </span>
+                    <span>
+                      <ProviderMark
+                        providerId={option.id}
+                        className="size-4"
+                        title={option.name}
+                      />
+                    </span>
+                  </Badge>
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-medium text-txt-strong">
                       {option.name}
@@ -221,9 +220,13 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                     </span>
                   </span>
                   {active ? (
-                    <kbd className="shrink-0 rounded border border-border/50 bg-card px-1.5 py-0.5 text-2xs font-medium text-muted">
-                      {t("accounts.add.enterHint", { defaultValue: "\u21b5" })}
-                    </kbd>
+                    <Badge asChild variant="keyHint">
+                      <kbd className="shrink-0">
+                        {t("accounts.add.enterHint", {
+                          defaultValue: "\u21b5",
+                        })}
+                      </kbd>
+                    </Badge>
                   ) : null}
                 </Button>
               </div>

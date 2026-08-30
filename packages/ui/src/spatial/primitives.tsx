@@ -18,7 +18,12 @@
  */
 
 import { type CSSProperties, type ReactNode, useId } from "react";
+import { Badge as UiBadge } from "../components/ui/badge";
 import { Button as UiButton } from "../components/ui/button";
+import {
+  Card as UiCard,
+  CardTitle as UiCardTitle,
+} from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import {
   Select,
@@ -27,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { Separator as UiSeparator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import { useSpatialContext } from "./context.ts";
 import type {
@@ -361,12 +367,6 @@ function toneColor(tone: SpatialTone | undefined): string | undefined {
   }
 }
 
-function toneSurface(tone: SpatialTone | undefined): string | undefined {
-  if (!tone || tone === "default") return undefined;
-  const color = toneColor(tone);
-  return color ? `color-mix(in srgb, ${color} 12%, transparent)` : undefined;
-}
-
 function lengthToCss(
   value: SpatialLength | undefined,
   cell: number,
@@ -437,53 +437,114 @@ function commonFlexStyle(
   return style;
 }
 
-const BORDER_CSS: Record<SpatialBorder, string | undefined> = {
-  none: undefined,
-  single: "1px solid var(--border, rgba(128,128,128,0.35))",
-  round: "1px solid var(--border, rgba(128,128,128,0.35))",
-  double: "3px double var(--border, rgba(128,128,128,0.5))",
-};
+function spatialToneBadgeTone(
+  tone: SpatialTone | undefined,
+): "default" | "accent" | "muted" | "success" | "warning" | "danger" {
+  switch (tone) {
+    case "primary":
+      return "accent";
+    case "muted":
+      return "muted";
+    case "success":
+      return "success";
+    case "warning":
+      return "warning";
+    case "danger":
+      return "danger";
+    default:
+      return "default";
+  }
+}
+
+function SpatialBorderFrame({ border }: { border: SpatialBorder }) {
+  if (border === "none") return null;
+  return (
+    <>
+      <UiSeparator className="pointer-events-none absolute inset-x-0 top-0 z-10" />
+      <UiSeparator className="pointer-events-none absolute inset-x-0 bottom-0 z-10" />
+      <UiSeparator
+        orientation="vertical"
+        className="pointer-events-none absolute inset-y-0 left-0 z-10"
+      />
+      <UiSeparator
+        orientation="vertical"
+        className="pointer-events-none absolute inset-y-0 right-0 z-10"
+      />
+      {border === "double" ? (
+        <>
+          <UiSeparator className="pointer-events-none absolute inset-x-1 top-1 z-10" />
+          <UiSeparator className="pointer-events-none absolute inset-x-1 bottom-1 z-10" />
+          <UiSeparator
+            orientation="vertical"
+            className="pointer-events-none absolute inset-y-1 left-1 z-10"
+          />
+          <UiSeparator
+            orientation="vertical"
+            className="pointer-events-none absolute inset-y-1 right-1 z-10"
+          />
+        </>
+      ) : null}
+    </>
+  );
+}
 
 export const Stack = brand<StackProps>("box", function Stack(props) {
   const { modality } = useSpatialContext();
   const cell = CELL_REM[modality];
   const spec = buildBoxSpec(props);
-  const style: CSSProperties = {
+  const layoutStyle: CSSProperties = {
     display: "flex",
-    flexDirection: spec.direction === "row" ? "row" : "column",
-    gap: `${spec.gap * cell}rem`,
+    flexDirection: props.direction === "row" ? "row" : "column",
+    gap: `${(props.gap ?? 0) * cell}rem`,
     boxSizing: "border-box",
+    position: "relative",
     minWidth: 0,
     minHeight: 0,
-    ...commonFlexStyle(spec, cell),
+    ...commonFlexStyle(props, cell),
   };
-  if (spec.padding) style.padding = paddingToCss(spec.padding, cell);
-  if (spec.align) style.alignItems = ALIGN_CSS[spec.align];
-  if (spec.justify) style.justifyContent = JUSTIFY_CSS[spec.justify];
-  if (spec.wrap) style.flexWrap = "wrap";
-  if (spec.border && spec.border !== "none") {
-    style.border = BORDER_CSS[spec.border];
-    style.borderRadius = spec.border === "round" ? "0.5rem" : undefined;
-  }
-  const surface = toneSurface(spec.tone);
-  if (surface) style.background = surface;
+  if (props.padding) layoutStyle.padding = paddingToCss(props.padding, cell);
+  if (props.align) layoutStyle.alignItems = ALIGN_CSS[props.align];
+  if (props.justify) layoutStyle.justifyContent = JUSTIFY_CSS[props.justify];
+  if (props.wrap) layoutStyle.flexWrap = "wrap";
+  const border = normalizeBorder(props.border) ?? "none";
   return (
-    <div data-spatial-kind="box" style={style} {...agentDataProps(spec.agent)}>
-      {spec.title ? (
-        <div
-          data-spatial-kind="title"
-          style={{
-            fontSize: `${TEXT_REM.label * cell * 4}rem`,
-            fontWeight: 600,
-            opacity: 0.8,
-            color: toneColor(spec.tone),
-          }}
-        >
-          {spec.title}
-        </div>
-      ) : null}
-      {props.children}
-    </div>
+    <UiCard
+      asChild
+      variant={border === "round" ? "transparent" : "transparentSquare"}
+    >
+      <div
+        data-spatial-kind="box"
+        style={layoutStyle}
+        {...agentDataProps(spec.agent)}
+      >
+        {spec.tone && spec.tone !== "default" ? (
+          <UiBadge
+            asChild
+            variant="visualAnchor"
+            tone={spatialToneBadgeTone(spec.tone)}
+          >
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0"
+            />
+          </UiBadge>
+        ) : null}
+        <SpatialBorderFrame border={border} />
+        {spec.title ? (
+          <UiCardTitle
+            data-spatial-kind="title"
+            style={{
+              fontSize: `${TEXT_REM.label * cell * 4}rem`,
+              fontWeight: 600,
+              opacity: 0.8,
+            }}
+          >
+            {spec.title}
+          </UiCardTitle>
+        ) : null}
+        {props.children}
+      </div>
+    </UiCard>
   );
 });
 
@@ -522,33 +583,35 @@ export const Button = brand<ButtonProps>("button", function Button(props) {
   const variant = spec.variant ?? "solid";
   const tone = spec.tone ?? "primary";
   const color = toneColor(tone) ?? "var(--primary, #d2691e)";
-  const css: CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "0.5em",
+  const layoutStyle: CSSProperties = {
     minHeight: "44px",
     minWidth: "44px",
     padding: modality === "xr" ? "0.6rem 1.1rem" : "0.4rem 0.8rem",
-    borderRadius: "0.4rem",
     fontWeight: 600,
     fontSize: modality === "xr" ? "1.15rem" : "0.9rem",
-    cursor: spec.disabled ? "not-allowed" : "pointer",
     opacity: spec.disabled ? 0.5 : 1,
-    border:
-      variant === "ghost" ? "1px solid transparent" : `1px solid ${color}`,
-    background: variant === "solid" ? color : "transparent",
-    color: variant === "solid" ? "var(--primary-foreground, #fff)" : color,
     ...commonFlexStyle(spec, cell),
   };
   return (
     <UiButton
-      variant="ghost"
+      variant={
+        variant === "solid"
+          ? "default"
+          : variant === "outline"
+            ? "outline"
+            : "ghost"
+      }
+      size="touch"
       data-spatial-kind="button"
       disabled={spec.disabled}
       aria-label={spec.agent?.label}
       aria-pressed={spec.pressed}
-      style={css}
+      style={layoutStyle}
+      visualStyle={{
+        backgroundColor: variant === "solid" ? color : "transparent",
+        borderColor: variant === "ghost" ? "transparent" : color,
+        color: variant === "solid" ? "var(--primary-foreground, #fff)" : color,
+      }}
       onClick={() => {
         if (spec.disabled) return;
         props.onPress?.();
@@ -572,16 +635,6 @@ export const Field = brand<FieldProps>("field", function Field(props) {
     fontWeight: 600,
     opacity: 0.7,
     marginBottom: "0.25rem",
-  };
-  const inputCss: CSSProperties = {
-    padding: "0.4rem 0.6rem",
-    borderRadius: "0.4rem",
-    border: "1px solid var(--border, rgba(128,128,128,0.35))",
-    background: "var(--background, transparent)",
-    color: "inherit",
-    fontSize: modality === "xr" ? "1.1rem" : "0.9rem",
-    width: "100%",
-    boxSizing: "border-box",
   };
   const fieldTextStyle: CSSProperties = {
     fontSize: modality === "xr" ? "1.1rem" : "0.9rem",
@@ -622,9 +675,10 @@ export const Field = brand<FieldProps>("field", function Field(props) {
           }
         >
           <SelectTrigger
+            variant="default"
             id={fieldId}
             aria-label={spec.label ?? spec.agent?.label}
-            style={inputCss}
+            style={fieldTextStyle}
             {...agentDataProps(spec.agent)}
           >
             <SelectValue placeholder={spec.placeholder ?? ""} />
@@ -668,14 +722,11 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
   const spec = buildDividerSpec(props);
   if (spec.orientation === "vertical") {
     return (
-      <div
+      <UiSeparator
+        orientation="vertical"
         aria-hidden="true"
         data-spatial-kind="divider"
-        style={{
-          width: 1,
-          alignSelf: "stretch",
-          background: "var(--border, rgba(128,128,128,0.35))",
-        }}
+        layoutStyle={{ alignSelf: "stretch", height: "auto" }}
       />
     );
   }
@@ -693,37 +744,19 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
           opacity: 0.7,
         }}
       >
-        <div
+        <UiSeparator
           aria-hidden="true"
-          style={{
-            flex: 1,
-            height: 1,
-            background: "var(--border, rgba(128,128,128,0.35))",
-          }}
+          layoutStyle={{ flex: 1, width: "auto" }}
         />
         <span style={{ fontSize: "0.75rem" }}>{spec.label}</span>
-        <div
+        <UiSeparator
           aria-hidden="true"
-          style={{
-            flex: 1,
-            height: 1,
-            background: "var(--border, rgba(128,128,128,0.35))",
-          }}
+          layoutStyle={{ flex: 1, width: "auto" }}
         />
       </div>
     );
   }
-  return (
-    <div
-      aria-hidden="true"
-      data-spatial-kind="divider"
-      style={{
-        height: 1,
-        alignSelf: "stretch",
-        background: "var(--border, rgba(128,128,128,0.35))",
-      }}
-    />
-  );
+  return <UiSeparator aria-hidden="true" data-spatial-kind="divider" />;
 });
 
 export const Spacer = brand<SpacerProps>("spacer", function Spacer(props) {

@@ -86,6 +86,13 @@ export default defineConfig({
         ),
       },
       {
+        find: "@elizaos/ui/card",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/components/ui/card.tsx",
+        ),
+      },
+      {
         find: "@elizaos/ui/dropdown-menu",
         replacement: path.resolve(
           __dirname,

@@ -209,6 +209,9 @@ export function mergeViewCatalog(input: {
 
   const viewEntries: ViewEntry[] = [];
   for (const v of views) {
+    // Routable consumers are action surfaces: an explicitly unavailable view
+    // must not look launchable. Manager surfaces retain it for diagnostics.
+    if (visibilityScope === "routable" && v.available === false) continue;
     if (!isViewVisible(v, enabledKinds)) continue;
     if (
       v.visibleInManager === false &&
