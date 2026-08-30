@@ -24,9 +24,9 @@
  *
  * `GET /api/models/config` reports the current effective value for every key
  * this route owns, with the source that won (`config.env` → `config.env.vars`
- * → `process.env`). `activeChat` names the serving provider only when the
- * runtime actually registered that handler — cloud-proxy without a signed-in
- * elizaOSCloud TEXT_SMALL handler omits the field (#20045).
+ * → `process.env`). `activeChat` names the serving provider only when its
+ * runtime handler and direct-provider credential are usable. Unresolved vault
+ * references and configured-but-unservable providers omit the field.
  */
 import {
   type AgentRuntime,
@@ -49,6 +49,7 @@ import {
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import type { RuntimeOperationManager } from "../runtime/operations/index.ts";
+import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
 import { hasCloudTextHandlerRegistered } from "./agent-model.ts";
 import {
   buildModelCatalog,
@@ -554,9 +555,9 @@ function resolveEffective(
  * canonical serviceRouting topology — the same signal the plugin-collector
  * uses to decide which model plugin loads. Cloud-proxy only reports
  * `elizacloud` when the runtime has a registered elizaOSCloud TEXT_SMALL
- * handler; a configured-but-unsigned-in cloud account falls through to
- * local inference and must not advertise Cloud as the active brain
- * (#20045). `endpoint` is the host that answers, so operator surfaces
+ * handler. Direct providers additionally require a matching text handler and
+ * usable credential; an unresolved vault reference is never serving evidence.
+ * `endpoint` is the host that answers, so operator surfaces
  * (/model show, the settings panel) can name what ACTUALLY serves instead
  * of guessing from OPENAI_BASE_URL, which stays pinned in the environment
  * even when cloud-proxy routing makes it inert.
@@ -578,18 +579,78 @@ function hostOf(value: string | undefined): string | null {
   }
 }
 
-function hasOpenAiTextHandlerRegistered(runtime: AgentRuntime): boolean {
+function hasTextHandlerRegistered(
+  runtime: AgentRuntime,
+  provider: string,
+): boolean {
   try {
     return (runtime.getModelRegistrations?.() ?? []).some(
       (entry) =>
         (entry.modelType === ModelType.TEXT_SMALL ||
           entry.modelType === ModelType.TEXT_LARGE) &&
-        entry.provider === "openai",
+        entry.provider === provider,
     );
   } catch {
     // error-policy:J7 diagnostics must not kill the serving-truth resolver.
     return false;
   }
+}
+
+const DIRECT_CHAT_SERVING_REQUIREMENTS: Readonly<
+  Record<string, { credentialKeys: readonly string[]; runtimeProvider: string }>
+> = {
+  cerebras: {
+    credentialKeys: ["CEREBRAS_API_KEY", "OPENAI_API_KEY"],
+    runtimeProvider: "openai",
+  },
+  openai: {
+    credentialKeys: ["OPENAI_API_KEY"],
+    runtimeProvider: "openai",
+  },
+  "claude-chat": {
+    credentialKeys: ["ANTHROPIC_API_KEY"],
+    runtimeProvider: "anthropic",
+  },
+};
+
+function isUsableProviderCredential(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    !isVaultRef(value.trim())
+  );
+}
+
+function hasDirectProviderServingEvidence(
+  provider: string,
+  processEnv: NodeJS.ProcessEnv,
+  runtime: AgentRuntime,
+): boolean {
+  const requirement = DIRECT_CHAT_SERVING_REQUIREMENTS[provider];
+  if (
+    !requirement ||
+    !hasTextHandlerRegistered(runtime, requirement.runtimeProvider)
+  ) {
+    return false;
+  }
+  for (const credentialKey of requirement.credentialKeys) {
+    let runtimeCredential: unknown;
+    try {
+      runtimeCredential = runtime.getSetting(credentialKey);
+    } catch {
+      // error-policy:J7 diagnostics must not kill the serving-truth resolver.
+      return false;
+    }
+    if (isUsableProviderCredential(runtimeCredential)) return true;
+    if (runtimeCredential !== null && runtimeCredential !== undefined) {
+      if (String(runtimeCredential).trim().length > 0) return false;
+      continue;
+    }
+    const environmentCredential = processEnv[credentialKey];
+    if (isUsableProviderCredential(environmentCredential)) return true;
+    if (environmentCredential?.trim()) return false;
+  }
+  return false;
 }
 
 export function resolveActiveChat(
@@ -612,7 +673,19 @@ export function resolveActiveChat(
         ? "elizacloud"
         : undefined;
   } else if (llmText?.transport === "direct" && backend !== undefined) {
-    provider = LLM_BACKEND_TO_CHAT_PROVIDER[backend];
+    const candidate = LLM_BACKEND_TO_CHAT_PROVIDER[backend];
+    if (candidate === "elizacloud") {
+      provider =
+        runtime && hasCloudTextHandlerRegistered(runtime)
+          ? candidate
+          : undefined;
+    } else if (
+      runtime &&
+      candidate &&
+      hasDirectProviderServingEvidence(candidate, processEnv, runtime)
+    ) {
+      provider = candidate;
+    }
   } else if (routing === null) {
     // Legacy/local launches may configure plugin-openai directly from the
     // environment without persisting a serviceRouting block. ELIZA_PROVIDER is
@@ -628,7 +701,7 @@ export function resolveActiveChat(
     if (
       explicitProvider === "cerebras" &&
       runtime &&
-      hasOpenAiTextHandlerRegistered(runtime)
+      hasDirectProviderServingEvidence("cerebras", processEnv, runtime)
     ) {
       provider = "cerebras";
     }
@@ -741,7 +814,7 @@ export async function handleModelConfigRoutes(
     const activeChat = resolveActiveChat(
       state.config,
       processEnv,
-      state.runtime,
+      state.runtime ?? null,
     );
     json(res, {
       targets: buildEffectiveConfig(state.config, processEnv, activeChat),
@@ -789,7 +862,8 @@ export async function handleModelConfigRoutes(
     const writes = resolveChatWrites(
       catalog,
       body,
-      resolveActiveChat(state.config, processEnv, state.runtime)?.provider,
+      resolveActiveChat(state.config, processEnv, state.runtime ?? null)
+        ?.provider,
     );
     if (
       devCloudAuthority &&
