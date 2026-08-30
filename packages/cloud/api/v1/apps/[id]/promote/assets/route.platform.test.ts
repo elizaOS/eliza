@@ -1,11 +1,13 @@
 /**
- * GET /api/v1/apps/:id/promote/assets `platform` is catalog-platform
- * identity, not leftover my-agents sortBy tax. Stock develop cast the
- * token and `getRecommendedSizes` fell through to Twitter cards, so
- * `platform=META` / `facebook` listed Twitter sizes.
+ * Exercises promotion-asset route billing output and catalog-platform
+ * validation through the real Hono boundary with deterministic service mocks.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import type {
+  AdCopyVariants,
+  GeneratedAsset,
+} from "@/lib/services/app-promotion-assets";
 
 const requireAuthOrApiKeyWithOrg = mock(async () => ({
   user: { id: "user-1", organization_id: "org-1" },
@@ -32,11 +34,17 @@ const AD_SIZES = {
   linkedin_post: { width: 1200, height: 627 },
   google_display_leaderboard: { width: 728, height: 90 },
 };
-const generateAssetBundle = mock(async () => ({
-  assets: [],
-  copy: undefined,
-  errors: [],
-}));
+const generateAssetBundle = mock(
+  async (): Promise<{
+    assets: GeneratedAsset[];
+    copy?: AdCopyVariants;
+    errors: string[];
+  }> => ({
+    assets: [],
+    copy: undefined,
+    errors: [],
+  }),
+);
 const operationContext = {
   organizationId: "org-1",
   userId: "user-1",
