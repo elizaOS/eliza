@@ -4528,9 +4528,14 @@ function filterSelectedContextsForRole(
 import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
+	replyClaimsInProgressWork,
 } from "./message/side-effect-claims.ts";
 
-export { replyClaimsCompletedSideEffect, replyClaimsEmptyTrackedWorkState };
+export {
+	replyClaimsCompletedSideEffect,
+	replyClaimsEmptyTrackedWorkState,
+	replyClaimsInProgressWork,
+};
 
 export interface EligibleDirectActionRoute {
 	rule: DirectActionRoutingRule;
@@ -5195,6 +5200,52 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					clearReply: true,
 					debug: [
 						`simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"})`,
+					],
+				};
+			},
+		},
+		{
+			name: "core.simple_progress_promise",
+			description:
+				"Blocks simple-path replies that promise in-progress work no tool performed and no handoff will deliver; reroutes the turn to the planner.",
+			priority: 30,
+			shouldRun: ({ messageHandler }) => {
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if (messageHandler.plan.requiresTool === true) return false;
+				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
+					(context) => context !== SIMPLE_CONTEXT_ID,
+				);
+				if (nonSimpleContexts.length > 0) return false;
+				const reply =
+					typeof messageHandler.plan.reply === "string"
+						? messageHandler.plan.reply
+						: "";
+				return replyClaimsInProgressWork(reply);
+			},
+			evaluate: ({ messageHandler, runtime }) => {
+				const reply =
+					typeof messageHandler.plan.reply === "string"
+						? messageHandler.plan.reply
+						: "";
+				const candidateActions = [
+					...new Set(
+						getCandidateActionBackstopRules(runtime)
+							.filter((rule) => rule.matches(reply))
+							.flatMap((rule) => [...rule.actionNames]),
+					),
+				];
+				return {
+					requiresTool: true,
+					addContexts: ["general"],
+					...(candidateActions.length > 0
+						? { addCandidateActions: candidateActions }
+						: {}),
+					// A bare promise carries no content worth delivering: drop it and
+					// let the planner do the promised work (observed live: "On it." /
+					// "Checking your list now." as terminal replies with zero tools).
+					clearReply: true,
+					debug: [
+						`simple reply promised in-progress work with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"})`,
 					],
 				};
 			},
