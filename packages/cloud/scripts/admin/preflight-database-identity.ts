@@ -49,8 +49,45 @@ export interface DatabaseIdentityConfig {
 
 export interface IdentityPreflightResult {
   mismatches: Array<"cluster" | "authority">;
+  failureCategory?: DatabaseIdentityFailureCategory;
   receipt?: DatabaseIdentityReceipt;
   status: "disabled" | "match" | "mismatch" | "reported" | "unavailable";
+}
+
+export type DatabaseIdentityFailureCategory =
+  | "dependency_unavailable"
+  | "database_connection_failed"
+  | "database_query_failed"
+  | "operator_setup_failed";
+
+const DEPENDENCY_ERROR_CODES = new Set([
+  "MODULE_NOT_FOUND",
+  "ERR_MODULE_NOT_FOUND",
+]);
+const CONNECTION_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETDOWN",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+  "28P01",
+  "3D000",
+]);
+
+/** Maps failures to a fixed non-sensitive class without retaining provider text. */
+export function classifyDatabaseIdentityFailure(
+  error: unknown,
+): Exclude<DatabaseIdentityFailureCategory, "database_query_failed"> {
+  if (typeof error === "object" && error !== null) {
+    const code = Reflect.get(error, "code");
+    if (typeof code === "string") {
+      if (DEPENDENCY_ERROR_CODES.has(code)) return "dependency_unavailable";
+      if (CONNECTION_ERROR_CODES.has(code)) return "database_connection_failed";
+    }
+  }
+  return "operator_setup_failed";
 }
 
 function readMode(value: string | undefined): DatabaseIdentityGateMode {
@@ -158,7 +195,11 @@ export async function runDatabaseIdentityPreflight(
     receipt = await readDatabaseIdentityReceipt(client, config.environment);
   } catch (error) {
     if (config.mode === "report") {
-      return { status: "unavailable", mismatches: [] };
+      return {
+        status: "unavailable",
+        mismatches: [],
+        failureCategory: "database_query_failed",
+      };
     }
     throw error;
   }
@@ -250,7 +291,7 @@ export async function publishDatabaseIdentityResult(
   }
   if (result.status === "unavailable") {
     process.stdout.write(
-      "::warning::database identity report unavailable; inspect protected operator logs\n",
+      `::warning::database identity report unavailable; category=${result.failureCategory ?? "operator_setup_failed"}\n`,
     );
   }
   if (config.ignoredExpectedDigests?.length) {
@@ -291,8 +332,9 @@ async function main(): Promise<void> {
     // error-policy:J1 the CLI boundary emits only a generic class so provider
     // errors cannot leak connection strings, hosts, roles, or database names.
     if (config.mode === "report") {
+      const failureCategory = classifyDatabaseIdentityFailure(error);
       process.stdout.write(
-        "::warning::database identity report unavailable; inspect protected operator logs\n",
+        `::warning::database identity report unavailable; category=${failureCategory}\n`,
       );
       return;
     }
