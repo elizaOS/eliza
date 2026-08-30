@@ -264,7 +264,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "plugin-computer-use-sessions-gui": expected({
-    requireAll: ["Computer sessions", "Research browser"],
+    requireAll: ["Computer sessions", "Research", "browser"],
     requireAny: [
       "Linux sandbox",
       "Sequence 12",
