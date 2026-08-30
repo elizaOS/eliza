@@ -103,6 +103,7 @@ const imessagePlugin: Plugin = {
   // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
   // in plugin-auto-enable-engine.ts still serves as a fallback.
   autoEnable: {
+    envKeys: ["IMESSAGE_TRANSPORT", "IMESSAGE_ENABLED"],
     connectorKeys: ["imessage"],
   },
 
