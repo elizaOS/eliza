@@ -42,6 +42,7 @@ let markRuntimePrewarmEntered = () => {};
 let rehydrateCalls = 0;
 let bridgeFunding: unknown;
 let recoveredCutoverTargetId: string | null = null;
+let cutoverRecoveryOverride: "conflict" | "absent" | null = null;
 let lastBridgeAgent: unknown;
 let lastStreamOptions: Record<string, unknown> | undefined;
 let apnsOutcome: { outcome: string; reason?: string; status?: number } = {
@@ -81,6 +82,19 @@ mock.module("@/lib/runtime/cloud-bindings", () => ({
 mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
   findActivePersonalDedicatedTarget: async () =>
     recoveredCutoverTargetId ? { id: recoveredCutoverTargetId } : null,
+  resolvePersonalDedicatedCutoverRecovery: async (params: {
+    userId?: string;
+    dedicatedAgentId: string;
+  }) =>
+    cutoverRecoveryOverride
+      ? { state: cutoverRecoveryOverride }
+      : recoveredCutoverTargetId === params.dedicatedAgentId
+        ? {
+            state: "committed",
+            agent: { id: recoveredCutoverTargetId },
+            userId: params.userId ?? "user-recovery",
+          }
+        : { state: "absent" },
 }));
 mock.module("@/lib/services/shared-runtime/cached-agent-dates", () => ({
   rehydrateCachedAgentDates: (agent: unknown) => {
@@ -314,6 +328,7 @@ beforeEach(() => {
   rehydrateCalls = 0;
   bridgeFunding = undefined;
   recoveredCutoverTargetId = null;
+  cutoverRecoveryOverride = null;
   lastBridgeAgent = undefined;
   lastStreamOptions = undefined;
   apnsOutcome = { outcome: "accepted" };
@@ -1235,6 +1250,7 @@ test("a cutover seal snapshots history and blocks new Shared turns until release
     token: "cutover-1",
     leaseMs: 60_000,
     organizationId: personalAgent.organization_id,
+    userId: personalAgent.user_id,
     dedicatedAgentId: "dedicated-agent-1",
   });
   expect(sealed.status).toBe(200);
@@ -1265,6 +1281,7 @@ test("a cutover seal snapshots history and blocks new Shared turns until release
     token: "cutover-2",
     leaseMs: 60_000,
     organizationId: personalAgent.organization_id,
+    userId: personalAgent.user_id,
     dedicatedAgentId: "dedicated-agent-1",
   }).then((response) => response.json());
   const committedSeal = await request({
@@ -1313,6 +1330,7 @@ test("an expired pending seal recovers the authoritative Dedicated marker", asyn
         expiresAt: 0,
         committed: false,
         organizationId: personalAgent.organization_id,
+        userId: personalAgent.user_id,
         sourceAgentId: personalAgent.id,
         dedicatedAgentId: recoveredCutoverTargetId,
       },
@@ -1351,6 +1369,116 @@ test("an expired pending seal recovers the authoritative Dedicated marker", asyn
   });
 });
 
+test("an expired legacy seal derives exact user authority and remains archived", async () => {
+  recoveredCutoverTargetId = "dedicated-agent-legacy";
+  const data = new Map<string, unknown>([
+    [
+      "personal-cutover-seal",
+      {
+        token: "cutover-legacy",
+        expiresAt: 0,
+        committed: false,
+        organizationId: "org-legacy",
+        sourceAgentId: "personal-agent-legacy",
+        dedicatedAgentId: recoveredCutoverTargetId,
+      },
+    ],
+  ]);
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "personal-bridge",
+        agent: {
+          id: "personal-agent-legacy",
+          organization_id: "org-legacy",
+          user_id: "user-recovery",
+          agent_name: "Eliza",
+          agent_config: {},
+          execution_tier: "shared",
+        },
+        rpc: {
+          jsonrpc: "2.0",
+          id: "legacy-turn",
+          method: "message.send",
+          params: { text: "stay archived", roomId: "personal-agent-legacy" },
+        },
+      }),
+    }),
+  );
+  expect(response.status).toBe(409);
+  expect(data.get("personal-cutover-seal")).toMatchObject({
+    committed: true,
+    userId: "user-recovery",
+    dedicatedAgentId: recoveredCutoverTargetId,
+  });
+});
+
+test("wrong-user or ambiguous legacy recovery stays blocked and cannot commit", async () => {
+  cutoverRecoveryOverride = "conflict";
+  const data = new Map<string, unknown>([
+    [
+      "personal-cutover-seal",
+      {
+        token: "cutover-conflict",
+        expiresAt: 0,
+        committed: false,
+        organizationId: "org-conflict",
+        userId: "wrong-user",
+        sourceAgentId: "personal-agent-conflict",
+        dedicatedAgentId: "dedicated-agent-conflict",
+      },
+    ],
+  ]);
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+  const turn = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "personal-bridge",
+        agent: {
+          id: "personal-agent-conflict",
+          organization_id: "org-conflict",
+          user_id: "actual-user",
+          agent_name: "Eliza",
+          agent_config: {},
+          execution_tier: "shared",
+        },
+        rpc: {
+          jsonrpc: "2.0",
+          id: "conflict-turn",
+          method: "message.send",
+          params: { text: "do not reopen", roomId: "personal-agent-conflict" },
+        },
+      }),
+    }),
+  );
+  expect(turn.status).toBe(423);
+  await turn.json();
+  expect(data.get("personal-cutover-seal")).toMatchObject({
+    recoveryBlocked: true,
+  });
+
+  const commit = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "cutover-commit",
+        token: "cutover-conflict",
+      }),
+    }),
+  );
+  expect(commit.status).toBe(409);
+  expect(data.get("personal-cutover-seal")).toMatchObject({ committed: false });
+});
+
 test("an expired pending seal releases Shared when no Dedicated marker exists", async () => {
   const personalAgent = {
     id: "personal-agent-release",
@@ -1369,6 +1497,7 @@ test("an expired pending seal releases Shared when no Dedicated marker exists", 
         expiresAt: 0,
         committed: false,
         organizationId: personalAgent.organization_id,
+        userId: personalAgent.user_id,
         sourceAgentId: personalAgent.id,
         dedicatedAgentId: "dedicated-agent-missing",
       },
@@ -1416,6 +1545,7 @@ test("target convergence reservation and Dedicated cutover serialize onto one wi
     token: "personal-cutover:target:dedicated",
     leaseMs: 60_000,
     organizationId: "00000000-0000-4000-8000-000000000001",
+    userId: "00000000-0000-4000-8000-000000000003",
     dedicatedAgentId: "00000000-0000-4000-8000-000000000002",
   };
   const race = async (

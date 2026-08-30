@@ -2,13 +2,11 @@
  * Canonical hardware product catalog.
  *
  * Single source of truth for hardware SKUs, copy, pricing, and color options
- * shared across:
- *   - `@elizaos/os-homepage` (marketing site product tiles + checkout)
- *   - `@elizaos/app` (signed-in checkout page)
- *   - `@elizaos/cloud-api` (Stripe checkout-session creation)
+ * The Cloud API consumes the SKU, pricing, and Stripe metadata from this
+ * catalog. Browser checkout surfaces can import the same product records
+ * instead of maintaining a parallel catalog.
  *
  * Adding a product here automatically:
- *   - Adds a tile to both checkout flows
  *   - Adds the SKU to the cloud-api Zod enum and Stripe line-item builder
  *
  * Do NOT add Stripe price IDs here unless we move to a managed-price model;

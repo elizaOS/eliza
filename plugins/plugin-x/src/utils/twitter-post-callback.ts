@@ -1,14 +1,12 @@
 /**
  * `createTwitterPostCallback` — the `HandlerCallback` the post loop hands the agent
- * for publishing a generated tweet: it normalizes text to the X length limit,
- * suppresses duplicate generations, honors `TWITTER_DRY_RUN`, publishes via the
- * client, and records the resulting memory (returning it even when the post-publish
- * persistence step fails).
+ * for publishing generated text: it suppresses duplicates, honors
+ * `TWITTER_DRY_RUN`, delivers complete text as an ordered thread, and records
+ * every provider receipt.
  */
 import {
   ChannelType,
   type Content,
-  createUniqueUuid,
   ElizaError,
   type HandlerCallback,
   type IAgentRuntime,
@@ -17,10 +15,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { ClientBase } from "../base";
-import { TWEET_MAX_LENGTH } from "../constants";
-import { countTwitterWeightedLength } from "../tweet-length";
 import type { TwitterClientState } from "../types";
-import { sendTweet } from "../utils";
+import { sendChunkedTweet } from "../utils";
 import {
   addToRecentTweets,
   createMemorySafe,
@@ -31,23 +27,6 @@ import { getSetting } from "./settings";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function normalizePostText(text: string): string {
-  const weightedLength = countTwitterWeightedLength(text);
-  if (weightedLength > TWEET_MAX_LENGTH) {
-    throw new ElizaError(
-      `Generated X post is limited to ${TWEET_MAX_LENGTH} weighted characters; received ${weightedLength}`,
-      {
-        code: "X_POST_LENGTH_EXCEEDED",
-        context: {
-          weightedLength,
-          maxWeightedLength: TWEET_MAX_LENGTH,
-        },
-      },
-    );
-  }
-  return text;
 }
 
 export function createTwitterPostCallback({
@@ -83,7 +62,7 @@ export function createTwitterPostCallback({
         return [];
       }
 
-      const postText = normalizePostText(generatedText);
+      const postText = generatedText;
       if (isDryRun) {
         runtime.logger.info(
           `[Twitter] [DRY RUN] Would post tweet: ${postText}`,
@@ -120,13 +99,24 @@ export function createTwitterPostCallback({
           runtime.logger.info("[Twitter] Skipping duplicate generated tweet");
           return [];
         }
-        const result = await sendTweet(client, postText, [], undefined, []);
-        const postedText =
-          typeof result.text === "string" && result.text.length > 0
-            ? result.text
-            : postText;
+        const deliveredMemories = await sendChunkedTweet(
+          client,
+          content,
+          roomId,
+          session.profile.username,
+        );
+        const firstTweetId =
+          typeof deliveredMemories[0]?.metadata === "object"
+            ? (deliveredMemories[0].metadata as { messageIdFull?: string })
+                .messageIdFull
+            : undefined;
+        if (!firstTweetId) {
+          throw new ElizaError("X thread delivery returned no usable receipt", {
+            code: "X_POST_RESPONSE_INVALID",
+          });
+        }
         runtime.logger.info(
-          `[Twitter] Tweet posted successfully! ID: ${result.id}`,
+          `[Twitter] Tweet thread posted successfully! First ID: ${firstTweetId}`,
         );
         try {
           onPosted?.();
@@ -135,18 +125,18 @@ export function createTwitterPostCallback({
           // notification callback must not convert delivery into a retry.
           runtime.reportError("XPostCallback.notificationReceipt", error, {
             accountId: client.accountId,
-            tweetId: result.id,
+            tweetId: firstTweetId,
           });
         }
 
         try {
-          await addToRecentTweets(runtime, cacheIdentity, postedText);
+          await addToRecentTweets(runtime, cacheIdentity, postText);
         } catch (error) {
           // error-policy:J7 X already accepted the post; local duplicate
           // history failure must be visible without replaying provider egress.
           runtime.reportError("XPostCallback.localReceipt", error, {
             accountId: client.accountId,
-            tweetId: result.id,
+            tweetId: firstTweetId,
           });
         }
 
@@ -158,46 +148,55 @@ export function createTwitterPostCallback({
             conversationId: `${session.profile.id}-home`,
           });
 
-          const postedMemory: Memory = {
-            id: createUniqueUuid(runtime, result.id),
-            entityId: runtime.agentId,
-            agentId: runtime.agentId,
-            roomId: context.roomId || roomId,
-            content: {
-              ...content,
-              text: postedText,
-              source: "twitter",
-              channelType: ChannelType.FEED,
-              type: "post",
-              metadata: {
-                accountId: client.accountId,
-                tweetId: result.id,
-                postedAt: Date.now(),
+          const postedMemories = deliveredMemories.map((memory) => {
+            const tweetId =
+              typeof memory.metadata === "object"
+                ? (memory.metadata as { messageIdFull?: string }).messageIdFull
+                : undefined;
+            if (!tweetId) {
+              throw new Error(
+                "X thread memory is missing its provider receipt",
+              );
+            }
+            return {
+              ...memory,
+              roomId: (context.roomId || roomId) as UUID,
+              content: {
+                ...content,
+                text: memory.content.text,
+                source: "twitter",
+                channelType: ChannelType.FEED,
+                type: "post",
+                metadata: {
+                  accountId: client.accountId,
+                  tweetId,
+                  postedAt: memory.createdAt,
+                },
               },
-            },
-            metadata: {
-              type: "message",
-              source: "twitter",
-              accountId: client.accountId,
-              provider: "twitter",
-              messageIdFull: result.id,
-              chatType: ChannelType.FEED,
-              fromBot: true,
-            } satisfies Memory["metadata"],
-            createdAt: Date.now(),
-          };
+              metadata: {
+                type: "message",
+                source: "twitter",
+                accountId: client.accountId,
+                provider: "twitter",
+                messageIdFull: tweetId,
+                chatType: ChannelType.FEED,
+                fromBot: true,
+              } satisfies Memory["metadata"],
+            } satisfies Memory;
+          });
 
-          await createMemorySafe(runtime, postedMemory, "messages");
-
-          return [postedMemory];
+          for (const postedMemory of postedMemories) {
+            await createMemorySafe(runtime, postedMemory, "messages");
+          }
+          return postedMemories;
         } catch (error) {
           // error-policy:J7 X already accepted the post; surface local memory
           // loss without returning an error that could cause duplicate egress.
           runtime.reportError("XPostCallback.memoryReceipt", error, {
             accountId: client.accountId,
-            tweetId: result.id,
+            tweetId: firstTweetId,
           });
-          return [];
+          return deliveredMemories;
         }
       });
     } catch (error) {

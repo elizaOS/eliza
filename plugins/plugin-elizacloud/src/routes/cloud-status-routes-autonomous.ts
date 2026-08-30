@@ -9,14 +9,14 @@ import type {
   RouteRequestMeta,
   Service,
 } from "@elizaos/core";
-import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
+import {
+  resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
+  resolveCloudBillingUrl,
+} from "../cloud/base-url.js";
 import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 
 const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
-const CLOUD_BILLING_URL =
-  "https://cloud.eliza.app/cloud/billing";
-
 interface CloudAuthIdentityService {
   isAuthenticated: () => boolean;
   getUserId?: () => string | undefined;
@@ -116,6 +116,7 @@ export async function handleCloudStatusRoutes(
   ctx: CloudStatusRouteContext,
 ): Promise<boolean> {
   const { res, method, pathname, config, runtime, json } = ctx;
+  const topUpUrl = resolveCloudBillingUrl(config.cloud?.baseUrl);
 
   if (method === "GET" && pathname === "/api/cloud/status") {
     migrateLegacyRuntimeConfig(config as Record<string, unknown>);
@@ -143,7 +144,7 @@ export async function handleCloudStatusRoutes(
         organizationId: authConnected
           ? cloudAuth?.getOrganizationId?.()
           : undefined,
-        topUpUrl: CLOUD_BILLING_URL,
+        topUpUrl,
         reason: authConnected
           ? undefined
           : runtime
@@ -207,7 +208,7 @@ export async function handleCloudStatusRoutes(
         balance,
         low,
         critical,
-        topUpUrl: CLOUD_BILLING_URL,
+        topUpUrl,
       });
       return true;
     }
@@ -233,7 +234,7 @@ export async function handleCloudStatusRoutes(
       balance,
       low,
       critical,
-      topUpUrl: CLOUD_BILLING_URL,
+      topUpUrl,
     });
     return true;
   }

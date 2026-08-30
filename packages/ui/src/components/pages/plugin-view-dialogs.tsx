@@ -9,6 +9,8 @@ import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo } from "../../api";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { AdminDialog } from "../ui/admin-dialog";
+import { Avatar, AvatarImage } from "../ui/avatar";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription, DialogTitle } from "../ui/dialog";
 import { PluginConfigForm } from "./PluginConfigForm";
@@ -49,14 +51,16 @@ function SettingsDialogIcon({ plugin }: { plugin: PluginInfo }) {
   if (typeof icon === "string") {
     const imageSrc = iconImageSource(icon);
     return imageSrc ? (
-      <img
-        src={imageSrc}
-        alt=""
-        className="size-6 rounded-sm object-contain"
-        onError={(event) => {
-          (event.currentTarget as HTMLImageElement).style.display = "none";
-        }}
-      />
+      <Avatar shape="square" className="size-6">
+        <AvatarImage
+          src={imageSrc}
+          alt=""
+          className="object-contain"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      </Avatar>
     ) : (
       <span className="text-base">{icon}</span>
     );
@@ -170,9 +174,9 @@ export function PluginSettingsDialog({
             <AdminDialog.MonoMeta>v{plugin.version}</AdminDialog.MonoMeta>
           )}
           {isShowcase && (
-            <span className="text-2xs font-bold tracking-widest px-2.5 py-[2px] border border-accent/30 text-txt bg-accent/10 rounded-full">
+            <Badge variant="metaAccent" size="compact">
               {t("pluginsview.DEMO")}
-            </span>
+            </Badge>
           )}
         </AdminDialog.Header>
         <AdminDialog.BodyScroll>
@@ -188,13 +192,15 @@ export function PluginSettingsDialog({
             {(plugin.tags?.length ?? 0) > 0 && (
               <span className="flex shrink-0 items-center gap-1.5">
                 {plugin.tags?.map((tag) => (
-                  <span
+                  <Badge
                     key={`${plugin.id}:${tag}:settings`}
-                    className="max-w-24 truncate border border-border/40 bg-bg-accent/80 px-1.5 py-px text-2xs lowercase tracking-wide text-muted-strong"
+                    variant="metaDefault"
+                    size="micro"
+                    className="max-w-24 truncate lowercase"
                     title={tag}
                   >
                     {tag}
-                  </span>
+                  </Badge>
                 ))}
               </span>
             )}
@@ -213,12 +219,9 @@ export function PluginSettingsDialog({
                     {t("pluginsview.dependsOn")}
                   </span>
                   {plugin.pluginDeps.map((dep: string) => (
-                    <span
-                      key={dep}
-                      className="text-2xs px-1.5 py-px border border-border bg-accent-subtle text-muted rounded-sm"
-                    >
+                    <Badge key={dep} variant="metaAccent" size="micro">
                       {dep}
-                    </span>
+                    </Badge>
                   ))}
                 </span>
               )}

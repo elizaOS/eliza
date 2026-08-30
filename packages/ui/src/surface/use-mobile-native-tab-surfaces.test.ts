@@ -11,7 +11,7 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { createElement, type ReactNode, StrictMode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 import {
   CapacitorNativeSurfaceShell,
@@ -390,6 +390,40 @@ describe("useMobileNativeTabSurfaces", () => {
         cornerRadius: 32,
       },
     ]);
+  });
+
+  it("resolves a CSS-variable radius before sending a native occlusion", () => {
+    const sheet = elementAt({ left: 12, top: 22, width: 336, height: 180 });
+    sheet.className = "overlay";
+    sheet.style.borderRadius = "var(--chat-sheet-radius)";
+    document.body.append(sheet);
+    const realGetComputedStyle = window.getComputedStyle.bind(window);
+    const computedStyle = vi
+      .spyOn(window, "getComputedStyle")
+      .mockImplementation((element) =>
+        element === sheet
+          ? ({
+              display: "block",
+              visibility: "visible",
+              borderRadius: "32px",
+              borderTopLeftRadius: "32px",
+            } as CSSStyleDeclaration)
+          : realGetComputedStyle(element),
+      );
+
+    try {
+      expect(collectSurfaceOcclusionRects(".overlay", document)).toEqual([
+        {
+          x: 12,
+          y: 22,
+          width: 336,
+          height: 180,
+          cornerRadius: 32,
+        },
+      ]);
+    } finally {
+      computedStyle.mockRestore();
+    }
   });
 
   it("reads the nearest real rounded overflow host without duplicating its CSS radius", () => {

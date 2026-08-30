@@ -11,10 +11,10 @@
 import { ChevronDown, ChevronUp, KeyRound, Trash2 } from "lucide-react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useModalState } from "../../hooks/useModalState";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { Progress } from "../ui/progress";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { EditableAccountLabel } from "./EditableAccountLabel";
@@ -79,14 +80,14 @@ interface UsageBarProps {
 function UsageBar({ label, pct, resetsAt }: UsageBarProps) {
   const clamped = clampPct(pct);
   const resetIn = formatResetIn(resetsAt);
-  const tone =
+  const tone: "muted" | "danger" | "warning" | "success" =
     clamped == null
-      ? "bg-muted/30"
+      ? "muted"
       : clamped >= 85
-        ? "bg-destructive"
+        ? "danger"
         : clamped >= 60
-          ? "bg-warn"
-          : "bg-ok";
+          ? "warning"
+          : "success";
 
   const titleParts = [
     `${label}: ${clamped == null ? "—" : `${Math.round(clamped)}%`}`,
@@ -104,12 +105,7 @@ function UsageBar({ label, pct, resetsAt }: UsageBarProps) {
       <span className="shrink-0 whitespace-nowrap text-2xs font-medium uppercase tracking-wider text-muted">
         {label}
       </span>
-      <div className="relative h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-bg-accent">
-        <div
-          className={cn("h-full transition-all", tone)}
-          style={{ width: `${clamped ?? 0}%` }}
-        />
-      </div>
+      <Progress variant="usage" tone={tone} value={clamped ?? 0} />
       <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-muted">
         {clamped == null ? "—" : `${Math.round(clamped)}%`}
       </span>
@@ -213,11 +209,14 @@ export function AccountCard({
   const refreshLabel = t("accounts.refresh", { defaultValue: "Refresh" });
 
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-2 rounded-sm border border-border/45 bg-card/35 px-3 py-2.5",
-        !account.enabled && "bg-muted/10",
-      )}
+    <Card
+      variant="transparent"
+      flow="column"
+      gap="compact"
+      padding="compact"
+      surface={account.enabled ? "card" : "backgroundSubtle"}
+      border="subtle"
+      className="py-2.5"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -464,6 +463,6 @@ export function AccountCard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Card>
   );
 }

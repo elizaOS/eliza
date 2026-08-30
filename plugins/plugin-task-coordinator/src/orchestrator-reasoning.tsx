@@ -3,7 +3,7 @@
  * preserving the streaming shimmer and disclosure state.
  */
 
-import { Button } from "@elizaos/ui";
+import { Button, Card } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Brain, ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -122,53 +122,52 @@ export function ReasoningCell({
   });
 
   return (
-    <div
-      className="rounded-md border border-border/50 bg-card/50"
-      data-testid="orchestrator-reasoning"
-    >
-      <Button
-        ref={ref}
-        variant="sectionToggle"
-        size="content"
-        align="start"
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        {...agentProps}
-      >
-        <ChevronRight
-          className={`size-3 shrink-0 text-muted transition-transform ${
-            open ? "rotate-90" : ""
-          }`}
-        />
-        <Brain className="size-3.5 shrink-0 text-muted-strong" />
-        <span
-          className={`min-w-0 flex-1 truncate text-2xs italic text-muted ${
-            // The header itself gets the shimmer while streaming so the cell
-            // reads as "alive" even when collapsed.
-            streaming ? "orchestrator-reasoning-shimmer" : ""
-          }`}
+    <Card asChild variant="panel">
+      <div data-testid="orchestrator-reasoning">
+        <Button
+          ref={ref}
+          variant="sectionToggle"
+          size="content"
+          align="start"
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          {...agentProps}
         >
-          {header}
-        </span>
-      </Button>
-      {open ? (
-        <div className="px-2.5 pb-2">
-          <div
-            className={`text-2xs italic text-muted ${
+          <ChevronRight
+            className={`size-3 shrink-0 text-muted transition-transform ${
+              open ? "rotate-90" : ""
+            }`}
+          />
+          <Brain className="size-3.5 shrink-0 text-muted-strong" />
+          <span
+            className={`min-w-0 flex-1 truncate text-2xs italic text-muted ${
+              // The header itself gets the shimmer while streaming so the cell
+              // reads as "alive" even when collapsed.
               streaming ? "orchestrator-reasoning-shimmer" : ""
             }`}
           >
-            <MarkdownText text={text} />
+            {header}
+          </span>
+        </Button>
+        {open ? (
+          <div className="px-2.5 pb-2">
+            <div
+              className={`text-2xs italic text-muted ${
+                streaming ? "orchestrator-reasoning-shimmer" : ""
+              }`}
+            >
+              <MarkdownText text={text} />
+            </div>
           </div>
-        </div>
-      ) : null}
-      {/* React-hoistable, deduplicated stylesheet: the shared `href` collapses
+        ) : null}
+        {/* React-hoistable, deduplicated stylesheet: the shared `href` collapses
           every ReasoningCell's copy of this rule to a single <head> node, so it
           is emitted once regardless of how many cells mount or re-render. */}
-      <style href="orchestrator-reasoning-shimmer" precedence="default">
-        {REASONING_SHIMMER_CSS}
-      </style>
-    </div>
+        <style href="orchestrator-reasoning-shimmer" precedence="default">
+          {REASONING_SHIMMER_CSS}
+        </style>
+      </div>
+    </Card>
   );
 }

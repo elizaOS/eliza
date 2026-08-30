@@ -20,6 +20,10 @@
 
 import { resolveCloudApiBaseUrl } from "../elizacloud/base-url.js";
 import { getCloudSecret } from "../elizacloud/cloud-secrets.js";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "../elizacloud/dev-cloud-env-authority.js";
 
 const DEFAULT_HF_HOST = "https://huggingface.co";
 
@@ -56,8 +60,13 @@ function parseMirrorBases(): string[] {
   return [...new Set(list)];
 }
 
-/** Read the Eliza Cloud API key from the sealed store (falls back to env). */
+/** Use launcher env under dev authority; otherwise use sealed/env compatibility. */
 function cloudApiKey(): string {
+  if (resolveDevCloudEnvAuthority()) {
+    return (
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY")?.trim() ?? ""
+    );
+  }
   return getCloudSecret("ELIZAOS_CLOUD_API_KEY")?.trim() ?? "";
 }
 

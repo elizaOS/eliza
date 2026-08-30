@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConversationMessageSearchResult } from "../../../api/client-types-chat";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Input } from "../../ui/input";
 
 const MIN_QUERY_LENGTH = 2;
@@ -215,13 +216,16 @@ export function MessageSearchPanel({
     // raised keyboard instead of pushing the input off-screen; the container
     // (in the overlay) is a bottom-anchored flex column bounded by panelMaxH.
     return (
-      <div
+      <Card
+        variant="transparent"
+        flow="column"
+        gap="compact"
         data-testid="message-search-panel"
         data-layout="keyboard-anchored"
         role="dialog"
         aria-label="Search messages"
         onKeyDown={onKeyDown}
-        className="flex min-h-0 flex-1 flex-col gap-2"
+        className="min-h-0 flex-1"
       >
         <div
           data-testid="message-search-scroll"
@@ -234,23 +238,25 @@ export function MessageSearchPanel({
           {statusEl}
           {inputEl}
         </div>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div
+    <Card
+      variant="transparent"
+      flow="column"
+      gap="compact"
       data-testid="message-search-panel"
       data-layout="stacked"
       role="dialog"
       aria-label="Search messages"
       onKeyDown={onKeyDown}
-      className="flex flex-col gap-2"
     >
       {inputEl}
       {statusEl}
       {resultsListEl}
-    </div>
+    </Card>
   );
 }
 

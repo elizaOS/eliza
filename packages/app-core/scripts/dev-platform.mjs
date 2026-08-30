@@ -77,6 +77,7 @@ import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs"
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./lib/desktop-startup-embedding-warmup-policy.mjs";
+import { configureDevCloudEnvironment } from "./lib/dev-cloud-target.mjs";
 import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import {
   isSpawnedProcessGroupAlive,
@@ -264,6 +265,17 @@ if (existsSync(_worktreeEnvPath)) {
   dotenvConfig({ path: _worktreeEnvPath, override: false });
 }
 
+// Stamp the same exact staging-by-default Cloud tuple used by web/package dev
+// before any renderer build or long-lived desktop child inherits the env.
+// Remove the dev-only selector from argv so Electrobun/Vite never see an
+// unknown --cloud-target option.
+const devCloud = configureDevCloudEnvironment(
+  process.argv.slice(2),
+  process.env,
+);
+Object.assign(process.env, devCloud.env);
+process.argv.splice(2, process.argv.length - 2, ...devCloud.passthroughArgs);
+
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`Usage: bun run dev:desktop [options]
        ELIZA_DESKTOP_VITE_WATCH=1 bun eliza/packages/app-core/scripts/dev-platform.mjs   # same as bun run dev
@@ -271,6 +283,8 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
 Starts Vite (optional), API (optional), and Electrobun with aligned ports and env.
 
 Options:
+  --cloud-target <staging|production|offline>
+                     Select the exact local Cloud environment (default: staging)
   --no-api           Skip the API server (Electrobun + renderer only)
   --force-renderer   Force vite build before starting (even if dist is fresh)
   --rollup-watch     Use vite build --watch instead of vite dev (requires ELIZA_DESKTOP_VITE_WATCH=1)

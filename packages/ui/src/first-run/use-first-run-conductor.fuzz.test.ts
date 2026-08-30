@@ -45,6 +45,16 @@ const mocks = vi.hoisted(() => ({
         created: false,
       }),
     ),
+    ensurePersonalDedicatedEliza: vi.fn(
+      async (_options: Record<string, unknown>) => ({
+        personalElizaId: "personal:00000000-0000-5000-8000-000000000001",
+        agentId: "personal:00000000-0000-5000-8000-000000000001",
+        activeAgentId: "00000000-0000-4000-8000-000000000020",
+        agentName: "Eliza Cloud",
+        apiBase: "https://00000000-0000-4000-8000-000000000020.cloud.eliza.app",
+        runtime: "dedicated" as const,
+      }),
+    ),
     submitFirstRun: vi.fn(async () => undefined),
     getFirstRunStatus: vi.fn(async () => ({ complete: false })),
     getBaseUrl: vi.fn(() => ""),

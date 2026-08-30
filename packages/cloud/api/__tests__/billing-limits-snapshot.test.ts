@@ -8,13 +8,36 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
 const seenOrgIds: string[] = [];
+type TestAuthMethod = "session" | "api_key";
+let currentAuthMethod: TestAuthMethod = "session";
+let currentRole = "member";
+let currentUserActive = true;
+let currentUserAnonymous = false;
+let currentOrganizationActive = true;
 
-const requireUserOrApiKeyWithOrg = mock(
-  async (): Promise<{ organization_id: string; role: string }> => ({
+async function resolveTestAuth(c: {
+  set(key: "authMethod", value: TestAuthMethod): void;
+}): Promise<{
+  organization_id: string;
+  role: string;
+  is_active: boolean;
+  is_anonymous: boolean;
+  organization: { id: string; is_active: boolean };
+}> {
+  c.set("authMethod", currentAuthMethod);
+  return {
     organization_id: "org-authed",
-    role: "viewer",
-  }),
-);
+    role: currentRole,
+    is_active: currentUserActive,
+    is_anonymous: currentUserAnonymous,
+    organization: {
+      id: "org-authed",
+      is_active: currentOrganizationActive,
+    },
+  };
+}
+
+const requireUserOrApiKeyWithOrg = mock(resolveTestAuth);
 
 const readPrimaryAccountBillingSnapshot = mock(
   async (organizationId: string) => {
@@ -66,8 +89,35 @@ const readPrimaryAccountBillingSnapshot = mock(
         blockingAttempt: false,
         blockingLegacyQuarantine: false,
       },
-      activeResources: [],
-      latestRateSegments: [],
+      activeResources: [
+        {
+          resourceType: "container" as const,
+          resourceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          name: "route-container",
+          status: "running",
+          billingStatus: "active",
+          lifecycleRevision: 12,
+          unitPrice: 1,
+          billingInterval: "day" as const,
+          lastBilledAt: null,
+          nextBillingAt: null,
+          estimatedNextBillingAt: null,
+          totalBilled: 0,
+          cancelEndpoint:
+            "/api/v1/billing/resources/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cancel?resourceType=container",
+          cancelAction: "stop" as const,
+          metadata: {},
+        },
+      ],
+      latestRateSegments: [
+        {
+          workloadKind: "container" as const,
+          workloadId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          billingState: "running",
+          ratePerHour: "0.100000",
+          effectiveAt: new Date("2026-08-20T11:00:00.000Z"),
+        },
+      ],
     };
   },
 );
@@ -120,15 +170,17 @@ const app = new Hono().route("/api/v1/billing/limits", route);
 describe("GET /api/v1/billing/limits", () => {
   beforeEach(() => {
     seenOrgIds.length = 0;
+    currentAuthMethod = "session";
+    currentRole = "member";
+    currentUserActive = true;
+    currentUserAnonymous = false;
+    currentOrganizationActive = true;
     requireUserOrApiKeyWithOrg.mockClear();
+    requireUserOrApiKeyWithOrg.mockImplementation(resolveTestAuth);
     readPrimaryAccountBillingSnapshot.mockClear();
-    requireUserOrApiKeyWithOrg.mockImplementation(async () => ({
-      organization_id: "org-authed",
-      role: "viewer",
-    }));
   });
 
-  test("a viewer reads the additive snapshot scoped to the authenticated org", async () => {
+  test("a member reads the additive snapshot scoped to the authenticated org", async () => {
     const response = await app.request("/api/v1/billing/limits");
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -140,6 +192,12 @@ describe("GET /api/v1/billing/limits", () => {
         v2: {
           balance: Record<string, unknown>;
           limits: { storage: { reserved: Record<string, unknown> } };
+          activeCompute: {
+            resources: {
+              status: string;
+              value: Array<{ cancellationControl: Record<string, unknown> }>;
+            };
+          };
         };
       };
     };
@@ -164,7 +222,96 @@ describe("GET /api/v1/billing/limits", () => {
       status: "unavailable",
       error: { code: "storage_reservation_decomposition_unavailable" },
     });
+    expect(
+      body.data.v2.activeCompute.resources.value[0]?.cancellationControl,
+    ).toEqual({
+      displayAction: "stop",
+      method: "POST",
+      mode: "stop",
+      endpoint:
+        "/api/v1/billing/resources/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cancel?resourceType=container",
+      expectedLifecycleRevision: 12,
+      eligible: false,
+      blockers: ["owner_or_admin_role_required"],
+    });
     expect(new Set(seenOrgIds)).toEqual(new Set(["org-authed"]));
+  });
+
+  test("projects an eligible control only for an owner interactive session", async () => {
+    currentRole = "owner";
+
+    const response = await app.request("/api/v1/billing/limits");
+    const body = (await response.json()) as {
+      data: {
+        v2: {
+          activeCompute: {
+            resources: {
+              value: Array<{ cancellationControl: Record<string, unknown> }>;
+            };
+          };
+        };
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(
+      body.data.v2.activeCompute.resources.value[0]?.cancellationControl,
+    ).toMatchObject({
+      eligible: true,
+      blockers: [],
+    });
+  });
+
+  test("projects an API-key owner as ineligible", async () => {
+    currentAuthMethod = "api_key";
+    currentRole = "owner";
+
+    const response = await app.request("/api/v1/billing/limits");
+    const body = (await response.json()) as {
+      data: {
+        v2: {
+          activeCompute: {
+            resources: {
+              value: Array<{ cancellationControl: Record<string, unknown> }>;
+            };
+          };
+        };
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(
+      body.data.v2.activeCompute.resources.value[0]?.cancellationControl,
+    ).toMatchObject({
+      eligible: false,
+      blockers: ["interactive_session_required"],
+    });
+  });
+
+  test("keeps an anonymous owner session cancellation-ineligible", async () => {
+    currentRole = "owner";
+    currentUserAnonymous = true;
+
+    const response = await app.request("/api/v1/billing/limits");
+    const body = (await response.json()) as {
+      data: {
+        v2: {
+          activeCompute: {
+            resources: {
+              value: Array<{ cancellationControl: Record<string, unknown> }>;
+            };
+          };
+        };
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(
+      body.data.v2.activeCompute.resources.value[0]?.cancellationControl,
+    ).toMatchObject({
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
+    });
   });
 
   test("a client-supplied organization id is ignored", async () => {

@@ -30,12 +30,9 @@ import {
   useHomeDismissals,
 } from "../../widgets/home-dismissal-store";
 import type { HomeWidgetSunset } from "../../widgets/types";
+import { Card } from "../ui/card";
 import { FINE_POINTER_EDGE_BUTTON_QUERY } from "./PagerEdgeButtons";
-import {
-  WALLPAPER_FLOAT_SHADOW,
-  WALLPAPER_GLASS,
-  WALLPAPER_TEXT,
-} from "./wallpaper-idiom";
+import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 export const SWIPE_HINT_WIDGET_KEY = "shell:first-session-swipe-hint";
 
@@ -169,11 +166,14 @@ export function FirstSessionSwipeHint({
       style={{ transitionDuration: `${SWIPE_HINT_FADE_MS}ms` }}
     >
       <style>{SWIPE_HINT_CSS}</style>
-      <div
-        className={cn(
-          "swipe-hint-pill flex items-center gap-2 rounded-full py-2 pr-3.5 pl-2.5",
-          WALLPAPER_GLASS.floatingControl,
-        )}
+      <Card
+        surface="backgroundStrong"
+        border="none"
+        radius="full"
+        flow="row"
+        gap="compact"
+        tone="inverse"
+        className="swipe-hint-pill py-2 pl-2.5 pr-3.5"
       >
         <span className="swipe-hint-chevrons flex items-center">
           <ChevronLeft className="-mr-2 size-4 opacity-40" aria-hidden />
@@ -189,7 +189,7 @@ export function FirstSessionSwipeHint({
         >
           Swipe for apps
         </span>
-      </div>
+      </Card>
     </div>
   );
 }

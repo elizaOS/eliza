@@ -248,6 +248,9 @@ jobs:
       - name: Run server tests
         run: bun run test:server
 
+      - name: Run synthetic-world transaction tests
+        run: bun run --cwd packages/synthetic-world test
+
   client-tests:
     name: Client Tests
     needs: changes
@@ -692,6 +695,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
+          run-postinstall: "true"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 

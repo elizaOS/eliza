@@ -74,6 +74,15 @@ function makeRuntimeBucket(): {
         deleteCalls.push(key);
         objects.delete(key);
       },
+      async list(options) {
+        const prefix = options?.prefix ?? "";
+        return {
+          objects: [...objects.entries()]
+            .filter(([key]) => key.startsWith(prefix))
+            .map(([key, metadata]) => ({ ...metadata, key })),
+          truncated: false,
+        };
+      },
     },
   };
 }
@@ -119,6 +128,24 @@ beforeAll(() => {
     hostname: "127.0.0.1",
     port: 0,
     async fetch(request) {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.searchParams.get("list-type") === "2") {
+        const prefix = url.searchParams.get("prefix") ?? "";
+        const contents = [...s3Objects.keys()]
+          .filter((candidate) => candidate.startsWith(prefix))
+          .sort()
+          .map((candidate) => `<Contents><Key>${candidate}</Key></Contents>`)
+          .join("");
+        return new Response(
+          [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            "<ListBucketResult><IsTruncated>false</IsTruncated>",
+            contents,
+            "</ListBucketResult>",
+          ].join(""),
+          { status: 200, headers: { "content-type": "application/xml" } },
+        );
+      }
       const key = parseS3Key(request);
       if (request.method === "HEAD") {
         const object = s3Objects.get(key);
@@ -207,6 +234,10 @@ describe("agent backup explicit object storage", () => {
     expect(uploaded.locator.backendIdentityFingerprint).toBe(
       store.authority.endpointIdentityFingerprint,
     );
+    await expect(store.listKeys({ prefix: "agent-sandbox-backups/org-a/" })).resolves.toEqual({
+      keys: [key],
+      truncated: false,
+    });
 
     const deleted = await store.delete({ key, locator: uploaded.locator });
     expect(deleted).toMatchObject({ status: "deleted", verifiedAbsent: true });
@@ -240,6 +271,10 @@ describe("agent backup explicit object storage", () => {
     });
     await expect(r2.head(r2Key)).resolves.toMatchObject({ status: "present" });
     await expect(hetzner.head(hetznerKey)).resolves.toMatchObject({ status: "present" });
+    await expect(r2.listKeys({ prefix: "agent-sandbox-backups/org-b/" })).resolves.toEqual({
+      keys: [hetznerKey, r2Key],
+      truncated: false,
+    });
   });
 
   test("refuses same-bucket deletion after account, binding, or credential repoint", async () => {
@@ -294,6 +329,7 @@ describe("agent backup explicit object storage", () => {
     ]);
     const original = originalRegistry.forNewObject("r2-primary-eu");
     expect(originalRegistry.forStoredObject(original.authority)).toBe(original);
+    expect(originalRegistry.configuredStores()).toEqual([original]);
 
     const repointedRegistry = await createAgentBackupObjectStoreRegistry([
       workerEndpoint(runtime.bucket, { accountIdentity: "cloudflare-account-repointed" }),

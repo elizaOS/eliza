@@ -9,8 +9,10 @@ import type * as React from "react";
 import { forwardRef } from "react";
 
 import { cn } from "../../lib/utils";
+import { Badge } from "./badge";
 import { DialogContent, DialogFooter, DialogHeader } from "./dialog";
 import { Input, type InputProps } from "./input";
+import { Textarea, type TextareaProps } from "./textarea";
 
 export interface AdminDialogContentProps
   extends React.ComponentPropsWithoutRef<typeof DialogContent> {
@@ -23,15 +25,7 @@ export function AdminDialogContent({
   className,
   ...props
 }: AdminDialogContentProps) {
-  return (
-    <DialogContent
-      className={cn(
-        "flex w-full flex-col overflow-hidden rounded-sm border border-border bg-card p-0 ",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <DialogContent variant="admin" className={className} {...props} />;
 }
 
 export interface AdminDialogHeaderProps
@@ -41,12 +35,7 @@ export function AdminDialogHeader({
   className,
   ...props
 }: AdminDialogHeaderProps) {
-  return (
-    <DialogHeader
-      className={cn("shrink-0 bg-card/80 px-5 py-4", className)}
-      {...props}
-    />
-  );
+  return <DialogHeader variant="admin" className={className} {...props} />;
 }
 
 export interface AdminDialogFooterProps
@@ -56,12 +45,7 @@ export function AdminDialogFooterChrome({
   className,
   ...props
 }: AdminDialogFooterProps) {
-  return (
-    <DialogFooter
-      className={cn("shrink-0 bg-card/80 px-5 py-4", className)}
-      {...props}
-    />
-  );
+  return <DialogFooter variant="admin" className={className} {...props} />;
 }
 
 export interface AdminDialogBodyScrollProps
@@ -99,10 +83,9 @@ export interface AdminMonoMetaProps
 
 export function AdminMonoMeta({ className, ...props }: AdminMonoMetaProps) {
   return (
-    <span
-      className={cn("text-2xs font-mono text-muted", className)}
-      {...props}
-    />
+    <Badge asChild variant="adminMono" className={className}>
+      <span {...props} />
+    </Badge>
   );
 }
 
@@ -114,16 +97,13 @@ export const AdminInput = forwardRef<HTMLInputElement, AdminInputProps>(
   },
 );
 
-export interface AdminCodeEditorProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+export interface AdminCodeEditorProps extends TextareaProps {}
 
 export function AdminCodeEditor({ className, ...props }: AdminCodeEditorProps) {
   return (
-    <textarea
-      className={cn(
-        "h-full w-full resize-none border-0 bg-bg-hover p-5 font-mono text-sm leading-relaxed text-txt    ",
-        className,
-      )}
+    <Textarea
+      variant="adminCodeEditor"
+      className={cn("h-full", className)}
       {...props}
     />
   );

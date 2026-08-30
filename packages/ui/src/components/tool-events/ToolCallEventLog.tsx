@@ -9,6 +9,8 @@ import { CheckCircle, ChevronDown, Clock3, XCircle } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { NativeToolCallEvent } from "../../api/client-types-cloud";
+import { Button } from "../ui/button";
+import { CodeBlock } from "../ui/code-block";
 import {
   getToolCallEventDisplayState,
   getToolCallName,
@@ -132,14 +134,17 @@ export function ToolCallEventLog({
       </div>
 
       <details className="group mt-3">
-        <summary className="flex cursor-pointer select-none items-center gap-1 text-xs-tight font-semibold text-muted hover:text-txt">
-          <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
-          JSON details
-        </summary>
-        {/* Keeps the code-block fill (it is code), border dropped. */}
-        <pre className="mt-2 max-h-[24rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 p-3 text-xs leading-6 text-txt">
-          {formatJson(event)}
-        </pre>
+        <Button asChild variant="mutedLink" size="content">
+          <summary className="flex cursor-pointer select-none items-center gap-1 text-xs-tight font-semibold">
+            <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
+            JSON details
+          </summary>
+        </Button>
+        <CodeBlock
+          value={formatJson(event)}
+          wrap
+          className="mt-2 max-h-[24rem] break-words"
+        />
       </details>
     </div>
   );

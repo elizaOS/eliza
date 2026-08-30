@@ -15,7 +15,11 @@ import type {
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
 import type { TranslateFn } from "../../../types";
+import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
+import { Progress } from "../../ui/progress";
+import { Separator } from "../../ui/separator";
+import { StatusDot, type StatusVariant } from "../../ui/status-badge";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 
 export const fallbackTranslate: TranslateFn = (key, vars) => {
@@ -29,11 +33,10 @@ export const fallbackTranslate: TranslateFn = (key, vars) => {
   });
 };
 
-function usageTone(pct: number | undefined): string {
-  if (pct === undefined) return "bg-muted/40";
-  if (pct >= 85) return "bg-destructive";
-  if (pct >= 60) return "bg-warn";
-  return "bg-ok";
+function usageTone(pct: number): "danger" | "warning" | "success" {
+  if (pct >= 85) return "danger";
+  if (pct >= 60) return "warning";
+  return "success";
 }
 
 function UsageBar({ label, pct }: { label: string; pct?: number }) {
@@ -44,12 +47,12 @@ function UsageBar({ label, pct }: { label: string; pct?: number }) {
       <span className="w-9 shrink-0 text-3xs uppercase tracking-wider text-muted">
         {label}
       </span>
-      <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted/20">
-        <div
-          className={`h-full rounded-full ${usageTone(pct)}`}
-          style={{ width: `${clamped}%` }}
-        />
-      </div>
+      <Progress
+        aria-label={label}
+        variant="usage"
+        tone={usageTone(pct)}
+        value={clamped}
+      />
       <span className="w-7 shrink-0 text-right text-3xs tabular-nums text-muted">
         {clamped}%
       </span>
@@ -57,13 +60,15 @@ function UsageBar({ label, pct }: { label: string; pct?: number }) {
   );
 }
 
-const HEALTH_TONE: Record<string, string> = {
-  ok: "bg-ok",
-  "rate-limited": "bg-warn",
-  "needs-reauth": "bg-destructive",
-  invalid: "bg-destructive",
-  unknown: "bg-muted/50",
-};
+const HEALTH_TONE: Record<AccountWithCredentialFlag["health"], StatusVariant> =
+  {
+    expired: "danger",
+    ok: "success",
+    "rate-limited": "warning",
+    "needs-reauth": "danger",
+    invalid: "danger",
+    unknown: "muted",
+  };
 
 export interface OrchestratorAccountsViewProps {
   accounts: AccountsListResponse | null;
@@ -148,9 +153,9 @@ export function OrchestratorAccountsView({
           <span>
             {t("agentorchestrator.strategy", { defaultValue: "Strategy" })}
           </span>
-          <span className="rounded-full bg-muted/15 px-1.5 py-0.5 font-medium text-muted">
+          <Badge variant="statusMuted" size="micro">
             {overview?.strategy ?? "least-used"}
-          </span>
+          </Badge>
         </div>
         {Object.keys(overview?.availability ?? {}).length > 0 ? (
           <div className="flex flex-wrap gap-1">
@@ -160,9 +165,10 @@ export function OrchestratorAccountsView({
                 const enabled = providers.reduce((n, p) => n + p.enabled, 0);
                 if (enabled === 0) return null;
                 return (
-                  <span
+                  <Badge
                     key={agentType}
-                    className="rounded-full bg-muted/10 px-1.5 py-0.5 text-3xs text-muted"
+                    variant="statusMuted"
+                    size="micro"
                     title={t("agentorchestrator.availabilityHint", {
                       defaultValue:
                         "{{healthy}} healthy of {{enabled}} enabled",
@@ -171,7 +177,7 @@ export function OrchestratorAccountsView({
                     })}
                   >
                     {agentType} · {healthy}/{enabled}
-                  </span>
+                  </Badge>
                 );
               },
             )}
@@ -185,8 +191,11 @@ export function OrchestratorAccountsView({
               className="space-y-1"
             >
               <div className="flex items-center gap-1.5">
-                <span
-                  className={`size-1.5 shrink-0 rounded-full ${HEALTH_TONE[account.health] ?? HEALTH_TONE.unknown}`}
+                <StatusDot
+                  aria-hidden="true"
+                  size="compact"
+                  className="shrink-0"
+                  tone={HEALTH_TONE[account.health]}
                 />
                 <span className="truncate font-medium text-txt">
                   {account.label}
@@ -195,12 +204,16 @@ export function OrchestratorAccountsView({
                   {account.providerId}
                 </span>
                 {inUse > 0 ? (
-                  <span className="ml-auto shrink-0 rounded-full bg-ok/15 px-1.5 py-0.5 text-3xs text-ok">
+                  <Badge
+                    variant="statusSuccess"
+                    size="micro"
+                    className="ml-auto shrink-0"
+                  >
                     {t("agentorchestrator.inUse", {
                       defaultValue: "{{count}} active",
                       count: inUse,
                     })}
-                  </span>
+                  </Badge>
                 ) : null}
               </div>
               <UsageBar
@@ -215,10 +228,8 @@ export function OrchestratorAccountsView({
           );
         })}
         {activeRooms.length > 0 ? (
-          <div
-            className="space-y-1.5 border-t border-border/40 pt-1.5"
-            data-testid="orchestrator-room-roster"
-          >
+          <div className="space-y-1.5" data-testid="orchestrator-room-roster">
+            <Separator tone="subtle40" />
             <div className="text-3xs font-medium uppercase tracking-wider text-muted">
               {t("agentorchestrator.taskRooms", { defaultValue: "Task rooms" })}
             </div>
@@ -229,12 +240,16 @@ export function OrchestratorAccountsView({
                     {room.taskTitle}
                   </span>
                   {room.multiParty ? (
-                    <span className="ml-auto shrink-0 rounded-full bg-muted/15 px-1.5 py-0.5 text-3xs text-muted">
+                    <Badge
+                      variant="statusMuted"
+                      size="micro"
+                      className="ml-auto shrink-0"
+                    >
                       {t("agentorchestrator.multiParty", {
                         defaultValue: "{{count}} agents",
                         count: room.activeAgentCount,
                       })}
-                    </span>
+                    </Badge>
                   ) : null}
                 </div>
                 {room.participants.map((p) => (
@@ -263,7 +278,8 @@ export function OrchestratorAccountsView({
             ))}
           </div>
         ) : activeAssignments.length > 0 ? (
-          <div className="space-y-0.5 border-t border-border/40 pt-1.5">
+          <div className="space-y-0.5">
+            <Separator tone="subtle40" className="mb-1.5" />
             {activeAssignments.map((a) => (
               <div
                 key={a.sessionId}

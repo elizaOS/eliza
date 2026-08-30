@@ -3,15 +3,48 @@
  * logic — with `fetch` mocked via `vi.spyOn`, no real PGlite WASM or network
  * calls involved.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  resetDevCloudEnvAuthorityForTests,
+} from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WriteBackService } from "../../write-back";
+
+const MANAGED_ENV_KEYS = [
+  "AGENT_ID",
+  "ELIZA_CLOUD_SERVICE_KEY",
+  "ELIZA_CLOUD_WRITE_BASE_URL",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZA_DEV_CLOUD_TARGET",
+  "ELIZA_DEV_SOURCE",
+] as const;
+
+const originalEnv = Object.fromEntries(
+  MANAGED_ENV_KEYS.map((key) => [key, process.env[key]])
+) as Record<(typeof MANAGED_ENV_KEYS)[number], string | undefined>;
 
 describe("WriteBackService", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
+  beforeEach(() => {
+    resetDevCloudEnvAuthorityForTests();
+    for (const key of MANAGED_ENV_KEYS) {
+      delete process.env[key];
+    }
+  });
+
   afterEach(() => {
     fetchSpy?.mockRestore();
     vi.useRealTimers();
+    for (const key of MANAGED_ENV_KEYS) {
+      const original = originalEnv[key];
+      if (original === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = original;
+      }
+    }
+    resetDevCloudEnvAuthorityForTests();
   });
 
   it("is disabled when no options are provided", () => {
@@ -35,6 +68,80 @@ describe("WriteBackService", () => {
     });
     expect(wb.enabled).toBe(true);
   });
+
+  it.each(["staging-default", "offline"] as const)(
+    "stays disabled under %s authority after late env and option pollution",
+    async (authority) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZA_DEV_CLOUD_TARGET = authority === "offline" ? "offline" : "staging";
+      expect(captureDevCloudEnvAuthoritySnapshot()).not.toBeNull();
+
+      process.env.ELIZA_CLOUD_WRITE_BASE_URL = "https://api.eliza.app";
+      process.env.ELIZA_CLOUD_SERVICE_KEY = "late-production-service-key";
+      fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response(null, { status: 200 }));
+
+      const wb = new WriteBackService({
+        writeBaseUrl: "https://constructor-production.example",
+        agentId: "agent-1",
+        serviceKey: "constructor-production-service-key",
+      });
+
+      expect(wb.enabled).toBe(false);
+      wb.enqueue("memories", "insert", { id: "m-1" });
+      await wb.flush();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    {
+      authority: "staging-explicit",
+      target: "staging",
+      launchBaseUrl: "https://api-staging.eliza.app/",
+      launchServiceKey: "staging-service-key",
+    },
+    {
+      authority: "self-hosted",
+      target: "self-hosted",
+      launchBaseUrl: "http://127.0.0.1:8787/",
+      launchServiceKey: "self-hosted-service-key",
+    },
+  ])(
+    "uses the frozen $authority destination and key after late pollution",
+    async ({ authority, target, launchBaseUrl, launchServiceKey }) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZA_DEV_CLOUD_TARGET = target;
+      process.env.ELIZA_CLOUD_WRITE_BASE_URL = launchBaseUrl;
+      process.env.ELIZA_CLOUD_SERVICE_KEY = launchServiceKey;
+      expect(captureDevCloudEnvAuthoritySnapshot()).not.toBeNull();
+
+      process.env.ELIZA_CLOUD_WRITE_BASE_URL = "https://api.eliza.app";
+      process.env.ELIZA_CLOUD_SERVICE_KEY = "late-production-service-key";
+      fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response(null, { status: 200 }));
+
+      const wb = new WriteBackService({
+        writeBaseUrl: "https://constructor-production.example",
+        agentId: "agent-1",
+        serviceKey: "constructor-production-service-key",
+      });
+      wb.enqueue("memories", "insert", { id: "m-1" });
+      await wb.flush();
+
+      expect(wb.enabled).toBe(true);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+        `${launchBaseUrl.replace(/\/+$/, "")}/api/v1/eliza/agents/agent-1/write`
+      );
+      const headers = fetchSpy.mock.calls[0]?.[1]?.headers as Record<string, string>;
+      expect(headers["X-Service-Key"]).toBe(launchServiceKey);
+    }
+  );
 
   it("builds the correct write URL", () => {
     const wb = new WriteBackService({

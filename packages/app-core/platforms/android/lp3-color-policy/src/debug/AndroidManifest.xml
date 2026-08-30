@@ -8,10 +8,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application android:networkSecurityConfig="@xml/lp3_usb_network_security_config">
+        <activity
+            android:name=".MainActivity"
+            android:screenOrientation="portrait" />
+
         <provider
             android:name=".Lp3ColorPolicyInitializer"
             android:authorities="${applicationId}.lp3-color-policy-initializer"

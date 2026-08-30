@@ -5,6 +5,10 @@
  */
 
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import { z } from "zod";
 import {
   normalizeCloudSiteUrl,
@@ -32,8 +36,16 @@ export function resolveEnvElizaCloudManagedClientConfig(
   env: Record<string, string | undefined> =
     typeof process === "undefined" ? {} : process.env,
 ): ElizaCloudManagedClientConfig {
-  const apiKey = normalizeElizaCloudApiKey(env.ELIZAOS_CLOUD_API_KEY);
-  const baseUrl = env.ELIZAOS_CLOUD_BASE_URL;
+  const processEnv = typeof process === "undefined" ? undefined : process.env;
+  const authorityEnv =
+    processEnv && resolveDevCloudEnvAuthority(processEnv) ? processEnv : env;
+  const apiKey = normalizeElizaCloudApiKey(
+    resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY", authorityEnv),
+  );
+  const baseUrl = resolveDevCloudAuthorityEnvValue(
+    "ELIZAOS_CLOUD_BASE_URL",
+    authorityEnv,
+  );
   return {
     configured: Boolean(apiKey),
     apiKey,

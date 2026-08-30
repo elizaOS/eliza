@@ -17,6 +17,12 @@ from public `@elizaos/cloud-sdk` subpaths. New browser consumers must import the
 SDK directly; do not add another runtime edge from a public package to this
 private package.
 
+The synthetic-world command repository is a Cloud-owned PostgreSQL/PGlite
+adapter for the storage-neutral journal contract. Its compare-and-set writes
+and production repository mutations must use the exact `DbTransaction` guarded
+by the synthetic environment lease store. Migrations own schema creation;
+repository initialization must not create tables at runtime.
+
 ## Layout
 
 ```
