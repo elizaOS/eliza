@@ -14,7 +14,10 @@
 
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
-import type { DedicatedAdoptionConfirmationRequester } from "../api/client-cloud";
+import type {
+  DedicatedActivationConfirmationRequester,
+  DedicatedAdoptionConfirmationRequester,
+} from "../api/client-cloud";
 import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
@@ -129,6 +132,8 @@ export interface FirstRunFinishPorts {
    */
   onInteractiveLoginComplete?: () => void;
   /** Visible first-run quote/consent seam; absent callers stay read-only. */
+  requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
+  /** Visible existing-row adoption quote/consent seam. */
   requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
 }
 
@@ -823,6 +828,12 @@ export async function listOrAutoProvisionCloudAgent(
     authToken,
     signal: ports.signal,
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
+    ...(ports.requestDedicatedActivationConfirmation
+      ? {
+          requestDedicatedActivationConfirmation:
+            ports.requestDedicatedActivationConfirmation,
+        }
+      : {}),
     ...(ports.requestDedicatedAdoptionConfirmation
       ? {
           requestDedicatedAdoptionConfirmation:

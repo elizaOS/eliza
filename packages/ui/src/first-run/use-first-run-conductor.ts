@@ -70,6 +70,8 @@ import type {
 } from "../api";
 import { client } from "../api";
 import type {
+  DedicatedActivationConfirmationQuote,
+  DedicatedActivationConfirmationRequester,
   DedicatedAdoptionConfirmationQuote,
   DedicatedAdoptionConfirmationRequester,
 } from "../api/client-cloud";
@@ -385,6 +387,33 @@ function dedicatedAdoptionConfirmationText(
   ].join("\n");
 }
 
+function dedicatedActivationConfirmationText(
+  quote: DedicatedActivationConfirmationQuote,
+  reason: "initial" | "quote_changed",
+): string {
+  const changed =
+    reason === "quote_changed"
+      ? "The hosting quote changed while you were reviewing it. Please review the updated terms.\n\n"
+      : "";
+  const status =
+    quote.activation.state === "available"
+      ? "No Dedicated runtime is active."
+      : `Current Dedicated status: ${quote.activation.status}.`;
+  return [
+    `${changed}Start your Dedicated Eliza?`,
+    "",
+    status,
+    `Hosting: $${quote.hourlyRateUsd.toFixed(2)}/hour ($${quote.dailyRateUsd.toFixed(2)}/day).`,
+    `Balance: $${quote.balanceUsd.toFixed(2)}; minimum required: $${quote.minimumBalanceUsd.toFixed(2)} (${quote.minimumRunwayDays} days of runway); deficit: $${quote.deficitUsd.toFixed(2)}.`,
+    "This confirmation starts or resumes Dedicated compute.",
+    "",
+    "[CHOICE:first-run id=dedicated-activation]",
+    `${FIRST_RUN_ACTION_PREFIX}dedicated-activation:confirm=Confirm and continue`,
+    `${FIRST_RUN_ACTION_PREFIX}dedicated-activation:cancel=Not now`,
+    "[/CHOICE]",
+  ].join("\n");
+}
+
 /**
  * Turn a raw finish error into a human sentence. The underlying message can be
  * a terse transport string ("Not found" for a 404, "Failed to fetch", …) that
@@ -541,6 +570,16 @@ export function useFirstRunConductor(): void {
   // popup/provision promise can never keep the busy latch or mutate the new
   // flow when it settles late.
   const activeCloudLoginCancelRef = React.useRef<(() => void) | null>(null);
+  const pendingDedicatedActivationRef = React.useRef<{
+    quote: DedicatedActivationConfirmationQuote;
+    resolve: (
+      confirmation: {
+        action: "activate_dedicated";
+        quoteId: string;
+      } | null,
+    ) => void;
+    dispose: () => void;
+  } | null>(null);
   const pendingDedicatedAdoptionRef = React.useRef<{
     quote: DedicatedAdoptionConfirmationQuote;
     resolve: (
@@ -632,6 +671,9 @@ export function useFirstRunConductor(): void {
     React.useCallback<DedicatedAdoptionConfirmationRequester>(
       (quote, context) => {
         context.signal?.throwIfAborted();
+        pendingDedicatedActivationRef.current?.resolve(null);
+        pendingDedicatedActivationRef.current?.dispose();
+        pendingDedicatedActivationRef.current = null;
         pendingDedicatedAdoptionRef.current?.resolve(null);
         pendingDedicatedAdoptionRef.current?.dispose();
         silentCloudEntryRef.current = false;
@@ -654,8 +696,41 @@ export function useFirstRunConductor(): void {
       [seedFreshChoiceTurn],
     );
 
+  const requestDedicatedActivationConfirmation =
+    React.useCallback<DedicatedActivationConfirmationRequester>(
+      (quote, context) => {
+        context.signal?.throwIfAborted();
+        pendingDedicatedAdoptionRef.current?.resolve(null);
+        pendingDedicatedAdoptionRef.current?.dispose();
+        pendingDedicatedAdoptionRef.current = null;
+        pendingDedicatedActivationRef.current?.resolve(null);
+        pendingDedicatedActivationRef.current?.dispose();
+        silentCloudEntryRef.current = false;
+        seedFreshChoiceTurn(
+          "first-run:dedicated-activation",
+          dedicatedActivationConfirmationText(quote, context.reason),
+        );
+        return new Promise((resolve, reject) => {
+          const onAbort = () => {
+            if (pendingDedicatedActivationRef.current?.quote !== quote) return;
+            pendingDedicatedActivationRef.current = null;
+            reject(context.signal?.reason);
+          };
+          context.signal?.addEventListener("abort", onAbort, { once: true });
+          const dispose = () =>
+            context.signal?.removeEventListener("abort", onAbort);
+          pendingDedicatedActivationRef.current = { quote, resolve, dispose };
+        });
+      },
+      [seedFreshChoiceTurn],
+    );
+
   React.useEffect(
     () => () => {
+      const pendingActivation = pendingDedicatedActivationRef.current;
+      pendingDedicatedActivationRef.current = null;
+      pendingActivation?.dispose();
+      pendingActivation?.resolve(null);
       const pending = pendingDedicatedAdoptionRef.current;
       pendingDedicatedAdoptionRef.current = null;
       pending?.dispose();
@@ -782,6 +857,7 @@ export function useFirstRunConductor(): void {
         seedTurn(makeTurn(`first-run:status:${text}`, text));
       },
       requestDedicatedAdoptionConfirmation,
+      requestDedicatedActivationConfirmation,
     }),
     [
       uiLanguage,
@@ -794,6 +870,7 @@ export function useFirstRunConductor(): void {
       seedTurn,
       runtimeChooserEnabled,
       requestDedicatedAdoptionConfirmation,
+      requestDedicatedActivationConfirmation,
     ],
   );
   const portsRef = React.useRef(ports);
@@ -1215,6 +1292,23 @@ export function useFirstRunConductor(): void {
       if (group === "cloud-login" && id === "retry") {
         activeCloudLoginCancelRef.current?.();
         startCloudProvisionFlow();
+        return true;
+      }
+
+      if (group === "dedicated-activation") {
+        if (id !== "confirm" && id !== "cancel") return true;
+        const pending = pendingDedicatedActivationRef.current;
+        if (!pending) return true;
+        pendingDedicatedActivationRef.current = null;
+        pending.dispose();
+        pending.resolve(
+          id === "confirm"
+            ? {
+                action: "activate_dedicated",
+                quoteId: pending.quote.quoteId,
+              }
+            : null,
+        );
         return true;
       }
 

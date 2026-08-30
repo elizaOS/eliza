@@ -2040,6 +2040,12 @@ declare module "./client-base" {
        * only after rendering the server quote and receiving a visible choice.
        */
       requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+      /**
+       * User-gesture boundary for starting or resuming ordinary Dedicated
+       * compute. The server marks these quotes as confirmation-required;
+       * callers without a visible consent surface must remain read-only.
+       */
+      requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
       pollIntervalMs?: number;
       timeoutMs?: number;
     }): Promise<{
@@ -4651,12 +4657,153 @@ export type DedicatedAdoptionConfirmationRequester = (
   quoteId: string;
 } | null>;
 
+export type DedicatedActivationStatus =
+  | "error"
+  | "pending"
+  | "provisioning"
+  | "running"
+  | "sleeping"
+  | "stopped";
+
+export interface DedicatedActivationConfirmationQuote {
+  quoteId: string;
+  sourceAgentId: string;
+  currentMode: "shared";
+  targetMode: "dedicated";
+  hourlyRateUsd: number;
+  dailyRateUsd: number;
+  minimumBalanceUsd: number;
+  minimumRunwayDays: number;
+  balanceUsd: number;
+  deficitUsd: number;
+  canActivate: boolean;
+  requiresConfirmation: true;
+  action: "activate_dedicated";
+  activation:
+    | { state: "available" }
+    | {
+        state: "in_progress";
+        dedicatedAgentId: string;
+        status: DedicatedActivationStatus;
+      };
+  unavailableReason?: string;
+}
+
+export type DedicatedActivationConfirmationRequester = (
+  quote: DedicatedActivationConfirmationQuote,
+  context: {
+    reason: "initial" | "quote_changed";
+    signal?: AbortSignal;
+  },
+) => Promise<{
+  action: "activate_dedicated";
+  quoteId: string;
+} | null>;
+
 const DEDICATED_ADOPTION_SELECTION_REQUIRED =
   "dedicated_adoption_selection_required";
 const DEDICATED_ADOPTION_QUOTE_CHANGED = "dedicated_adoption_quote_changed";
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+const DEDICATED_ACTIVATION_STATUSES = new Set<DedicatedActivationStatus>([
+  "error",
+  "pending",
+  "provisioning",
+  "running",
+  "sleeping",
+  "stopped",
+]);
+
+function parseDedicatedActivationQuote(
+  value: unknown,
+): DedicatedActivationConfirmationQuote | null {
+  const quote = recordOrNull(value);
+  const quoteId = firstString(quote?.quoteId);
+  const sourceAgentId = firstString(quote?.sourceAgentId);
+  const hourlyRateUsd = finiteNumber(quote?.hourlyRateUsd);
+  const dailyRateUsd = finiteNumber(quote?.dailyRateUsd);
+  const minimumBalanceUsd = finiteNumber(quote?.minimumBalanceUsd);
+  const minimumRunwayDays = finiteNumber(quote?.minimumRunwayDays);
+  const balanceUsd = finiteNumber(quote?.balanceUsd);
+  const deficitUsd = finiteNumber(quote?.deficitUsd);
+  const unavailableReason = firstString(quote?.unavailableReason);
+  const activation = recordOrNull(quote?.activation);
+  const activationState = firstString(activation?.state);
+  let parsedActivation: DedicatedActivationConfirmationQuote["activation"];
+  if (activationState === "available") {
+    parsedActivation = { state: "available" };
+  } else if (activationState === "in_progress") {
+    const dedicatedAgentId = firstString(activation?.dedicatedAgentId);
+    const status = firstString(activation?.status);
+    if (
+      !dedicatedAgentId ||
+      !status ||
+      !DEDICATED_ACTIVATION_STATUSES.has(status as DedicatedActivationStatus)
+    ) {
+      return null;
+    }
+    parsedActivation = {
+      state: "in_progress",
+      dedicatedAgentId,
+      status: status as DedicatedActivationStatus,
+    };
+  } else {
+    return null;
+  }
+  if (
+    !quoteId ||
+    !sourceAgentId ||
+    quote?.currentMode !== "shared" ||
+    quote?.targetMode !== "dedicated" ||
+    hourlyRateUsd === null ||
+    dailyRateUsd === null ||
+    minimumBalanceUsd === null ||
+    minimumRunwayDays === null ||
+    balanceUsd === null ||
+    deficitUsd === null ||
+    typeof quote?.canActivate !== "boolean" ||
+    quote.requiresConfirmation !== true ||
+    quote.action !== "activate_dedicated"
+  ) {
+    return null;
+  }
+  return {
+    quoteId,
+    sourceAgentId,
+    currentMode: "shared",
+    targetMode: "dedicated",
+    hourlyRateUsd,
+    dailyRateUsd,
+    minimumBalanceUsd,
+    minimumRunwayDays,
+    balanceUsd,
+    deficitUsd,
+    canActivate: quote.canActivate,
+    requiresConfirmation: true,
+    action: "activate_dedicated",
+    activation: parsedActivation,
+    ...(unavailableReason ? { unavailableReason } : {}),
+  };
+}
+
+function dedicatedActivationError(options: {
+  message: string;
+  code: string;
+  phase: "activation-confirmation" | "activation-quote";
+  field?: string;
+  cause?: unknown;
+}): ElizaError {
+  return new ElizaError(options.message, {
+    code: options.code,
+    context: {
+      phase: options.phase,
+      ...(options.field ? { field: options.field } : {}),
+    },
+    ...(options.cause !== undefined ? { cause: options.cause } : {}),
+  });
 }
 
 function parseDedicatedAdoptionQuote(
@@ -4931,95 +5078,54 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
   throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
   options.onProgress?.("provisioning", "Starting your Dedicated agent…");
 
-  const quoteResponse = await directCloudJsonResponse<unknown>(upgradeUrl, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${options.authToken}`,
-    },
-    ...(options.signal ? { signal: options.signal } : {}),
-  });
-  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
-  const quoteRoot = recordOrNull(quoteResponse.data);
-  const quote = recordOrNull(quoteRoot?.data);
-  const quoteId = firstString(quote?.quoteId);
-  if (!quoteResponse.ok || quoteRoot?.success !== true || !quoteId) {
-    throw Object.assign(
-      new Error(
-        directCloudResponseErrorMessage(
-          quoteResponse.status,
-          quoteResponse.data,
-        ),
-      ),
-      {
-        status: quoteResponse.status,
-        data: quoteResponse.data,
-        url: upgradeUrl,
+  const fetchActivationQuote = async () => {
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    const response = await directCloudJsonResponse<unknown>(upgradeUrl, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${options.authToken}`,
       },
-    );
-  }
-  if (quote?.canActivate !== true) {
-    throw Object.assign(
-      new Error(
-        firstString(quote?.unavailableReason) ??
-          "Dedicated compute is required for signed-in Eliza sessions, but this account does not have enough hosting credit.",
-      ),
-      { status: 402, data: quoteResponse.data, url: upgradeUrl },
-    );
-  }
-
-  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
-  const quoteActivation = recordOrNull(quote?.activation);
-  const activationState = firstString(quoteActivation?.state);
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    return response;
+  };
+  let quoteResponse = await fetchActivationQuote();
+  let confirmationReason: "initial" | "quote_changed" = "initial";
   let quotedTargetId: string | null = null;
-  let activationPostRequired = false;
   let dedicatedAgentId: string | null = null;
-  if (activationState === "in_progress") {
-    const existingTargetId = firstString(quoteActivation?.dedicatedAgentId);
-    const existingTargetStatus = firstString(quoteActivation?.status);
-    if (!existingTargetId || !existingTargetStatus) {
+  for (;;) {
+    const quoteRoot = recordOrNull(quoteResponse.data);
+    const quoteResponseCode = directCloudErrorMetadata(quoteResponse.data).code;
+    const renewedQuote =
+      confirmationReason === "quote_changed" &&
+      quoteResponse.status === 409 &&
+      quoteRoot?.success === false &&
+      quoteResponseCode === "dedicated_quote_changed";
+    const rawQuote = recordOrNull(quoteRoot?.data);
+    const rawActivation = recordOrNull(rawQuote?.activation);
+    const rawActivationState = firstString(rawActivation?.state);
+    if (
+      rawActivationState &&
+      rawActivationState !== "available" &&
+      rawActivationState !== "in_progress"
+    ) {
       throw new ElizaError(
-        "Eliza Cloud returned an invalid in-progress Dedicated activation.",
+        "Eliza Cloud returned an invalid Dedicated quote state.",
         {
-          code: "CLOUD_DEDICATED_ACTIVATION_INVALID",
-          context: { phase: "quote", field: "activation" },
+          code: "CLOUD_DEDICATED_QUOTE_STATE_UNKNOWN",
+          context: { phase: "quote", field: "activation.state" },
         },
       );
     }
-    quotedTargetId = existingTargetId;
-    const statusPolicy =
-      inProgressDedicatedActivationPolicy(existingTargetStatus);
-    if (statusPolicy === "reattach-without-post") {
-      // A prior POST can commit server-side even if its response body stalls
-      // or the client disconnects. These statuses already own live work (or
-      // healthy compute), so the read-only quote is sufficient authority to
-      // resume cutover without replaying the paid activation POST.
-      dedicatedAgentId = existingTargetId;
-    } else if (statusPolicy === "resume-with-confirmed-post") {
-      // An already-selected/adopted retained row must re-enter through the
-      // adoption service. The generic activation route can re-arm the same
-      // row without carrying its reviewed restore authority into the new job.
-      // A 404 here means there is no selection receipt, so the ordinary
-      // quote-bound activation path remains valid for that account.
-      const adoptedTargetId = await adoptSelectedPersonalDedicatedEliza(
-        upgradeUrl,
-        options,
-        deadline,
-      );
-      if (adoptedTargetId) {
-        if (adoptedTargetId !== existingTargetId) {
-          throw new ElizaError(
-            "Eliza Cloud resumed a different Dedicated target than the quoted activation.",
-            {
-              code: "CLOUD_DEDICATED_TARGET_MISMATCH",
-              context: { phase: "adoption", field: "dedicatedAgentId" },
-            },
-          );
-        }
-        dedicatedAgentId = adoptedTargetId;
-      } else {
-        activationPostRequired = true;
-      }
-    } else {
+    const rawActivationStatus = firstString(rawActivation?.status);
+    if (
+      rawActivationState === "in_progress" &&
+      rawActivationStatus &&
+      !DEDICATED_ACTIVATION_STATUSES.has(
+        rawActivationStatus as DedicatedActivationStatus,
+      )
+    ) {
       throw new ElizaError(
         "Eliza Cloud returned an invalid in-progress Dedicated status.",
         {
@@ -5028,19 +5134,144 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
         },
       );
     }
-  } else if (activationState === "available") {
-    activationPostRequired = true;
-  } else {
-    throw new ElizaError(
-      "Eliza Cloud returned an invalid Dedicated quote state.",
-      {
-        code: "CLOUD_DEDICATED_QUOTE_STATE_UNKNOWN",
-        context: { phase: "quote", field: "activation.state" },
-      },
-    );
-  }
+    const quote = parseDedicatedActivationQuote(rawQuote);
+    if (
+      ((!quoteResponse.ok || quoteRoot?.success !== true) && !renewedQuote) ||
+      !quote
+    ) {
+      throw Object.assign(
+        dedicatedActivationError({
+          message: directCloudResponseErrorMessage(
+            quoteResponse.status,
+            quoteResponse.data,
+          ),
+          code: "CLOUD_DEDICATED_ACTIVATION_QUOTE_INVALID",
+          phase: "activation-quote",
+        }),
+        {
+          status: quoteResponse.status,
+          data: quoteResponse.data,
+          url: upgradeUrl,
+        },
+      );
+    }
+    if (quote.sourceAgentId !== personal.personalElizaId) {
+      throw dedicatedActivationError({
+        message:
+          "Eliza Cloud returned a Dedicated quote for a different personal identity.",
+        code: "CLOUD_DEDICATED_SOURCE_MISMATCH",
+        phase: "activation-quote",
+        field: "sourceAgentId",
+      });
+    }
+    if (!quote.canActivate) {
+      throw dedicatedActivationError({
+        message:
+          quote.unavailableReason ??
+          "Dedicated compute is required for signed-in Eliza sessions, but this account does not have enough hosting credit.",
+        code: "CLOUD_DEDICATED_ACTIVATION_UNAVAILABLE",
+        phase: "activation-quote",
+        field: "canActivate",
+      });
+    }
 
-  if (activationPostRequired) {
+    let activationPostRequired = false;
+    if (quote.activation.state === "in_progress") {
+      const existingTargetId = quote.activation.dedicatedAgentId;
+      if (quotedTargetId && quotedTargetId !== existingTargetId) {
+        throw dedicatedActivationError({
+          message:
+            "Eliza Cloud changed the Dedicated target while awaiting confirmation.",
+          code: "CLOUD_DEDICATED_TARGET_MISMATCH",
+          phase: "activation-quote",
+          field: "activation.dedicatedAgentId",
+        });
+      }
+      quotedTargetId = existingTargetId;
+      const statusPolicy = inProgressDedicatedActivationPolicy(
+        quote.activation.status,
+      );
+      if (statusPolicy === "reattach-without-post") {
+        // A prior POST can commit server-side even if its response body stalls
+        // or the client disconnects. These statuses already own live work (or
+        // healthy compute), so the read-only quote is sufficient authority to
+        // resume cutover without replaying the paid activation POST.
+        dedicatedAgentId = existingTargetId;
+        break;
+      }
+      if (statusPolicy === "resume-with-confirmed-post") {
+        // An already-selected/adopted retained row must re-enter through the
+        // adoption service. The generic activation route can re-arm the same
+        // row without carrying its reviewed restore authority into the new job.
+        // A 404 here means there is no selection receipt, so the ordinary
+        // quote-bound activation path remains valid for that account.
+        const adoptedTargetId = await adoptSelectedPersonalDedicatedEliza(
+          upgradeUrl,
+          options,
+          deadline,
+        );
+        if (adoptedTargetId) {
+          if (adoptedTargetId !== existingTargetId) {
+            throw new ElizaError(
+              "Eliza Cloud resumed a different Dedicated target than the quoted activation.",
+              {
+                code: "CLOUD_DEDICATED_TARGET_MISMATCH",
+                context: { phase: "adoption", field: "dedicatedAgentId" },
+              },
+            );
+          }
+          dedicatedAgentId = adoptedTargetId;
+          break;
+        }
+        activationPostRequired = true;
+      } else {
+        throw dedicatedActivationError({
+          message:
+            "Eliza Cloud returned an invalid in-progress Dedicated status.",
+          code: "CLOUD_DEDICATED_STATUS_UNKNOWN",
+          phase: "activation-quote",
+          field: "activation.status",
+        });
+      }
+    } else {
+      if (quotedTargetId) {
+        throw dedicatedActivationError({
+          message:
+            "Eliza Cloud removed the quoted Dedicated target while awaiting confirmation.",
+          code: "CLOUD_DEDICATED_TARGET_MISMATCH",
+          phase: "activation-quote",
+          field: "activation.state",
+        });
+      }
+      activationPostRequired = true;
+    }
+
+    if (!activationPostRequired) continue;
+    const requester = options.requestDedicatedActivationConfirmation;
+    if (!requester) {
+      throw dedicatedActivationError({
+        message:
+          "Review and confirm the current Dedicated hosting quote before compute can start.",
+        code: "CLOUD_DEDICATED_ACTIVATION_CONFIRMATION_REQUIRED",
+        phase: "activation-confirmation",
+      });
+    }
+    const confirmation = await requester(quote, {
+      reason: confirmationReason,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    if (
+      confirmation?.action !== "activate_dedicated" ||
+      confirmation.quoteId !== quote.quoteId
+    ) {
+      throw dedicatedActivationError({
+        message: "Dedicated activation was not confirmed.",
+        code: "CLOUD_DEDICATED_ACTIVATION_CONFIRMATION_REQUIRED",
+        phase: "activation-confirmation",
+      });
+    }
+
     const activationResponse = await directCloudJsonResponse<unknown>(
       upgradeUrl,
       {
@@ -5050,7 +5281,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
           "Content-Type": "application/json",
           Authorization: `Bearer ${options.authToken}`,
         },
-        body: JSON.stringify({ action: "activate_dedicated", quoteId }),
+        body: JSON.stringify(confirmation),
         ...(options.signal ? { signal: options.signal } : {}),
       },
     );
@@ -5061,6 +5292,17 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
     const activationCode = directCloudErrorMetadata(
       activationResponse.data,
     ).code;
+    if (
+      activationResponse.status === 409 &&
+      activationRoot?.success === false &&
+      activationCode === "dedicated_quote_changed"
+    ) {
+      quoteResponse = parseDedicatedActivationQuote(activationRoot.data)
+        ? activationResponse
+        : await fetchActivationQuote();
+      confirmationReason = "quote_changed";
+      continue;
+    }
     const adoptionRequired =
       activationResponse.status === 409 &&
       activationRoot?.success === false &&
@@ -5110,6 +5352,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
       );
     }
     dedicatedAgentId = activatedTargetId;
+    break;
   }
   if (!dedicatedAgentId) {
     throw new Error(

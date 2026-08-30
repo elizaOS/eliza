@@ -6,7 +6,10 @@
  * readiness polling, and the atomic Shared history cutover.
  */
 
-import type { DedicatedAdoptionConfirmationRequester } from "../../../api/client-cloud";
+import type {
+  DedicatedActivationConfirmationRequester,
+  DedicatedAdoptionConfirmationRequester,
+} from "../../../api/client-cloud";
 
 /** The slice of `ElizaClient` the join flow drives. */
 export interface JoinFlowClient {
@@ -15,6 +18,7 @@ export interface JoinFlowClient {
     authToken: string;
     signal?: AbortSignal;
     onProgress?: (status: string, detail?: string) => void;
+    requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
     requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
   }): Promise<{
     personalElizaId: string;
@@ -49,6 +53,7 @@ export interface RunJoinFlowArgs {
   authToken: string;
   onProgress?: (status: string, detail?: string) => void;
   signal?: AbortSignal;
+  requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
   requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
 }
 
@@ -72,6 +77,7 @@ export async function runJoinFlow(
     authToken,
     onProgress,
     signal,
+    requestDedicatedActivationConfirmation,
     requestDedicatedAdoptionConfirmation,
   } = args;
   signal?.throwIfAborted();
@@ -82,6 +88,9 @@ export async function runJoinFlow(
     authToken,
     ...(onProgress ? { onProgress } : {}),
     ...(signal ? { signal } : {}),
+    ...(requestDedicatedActivationConfirmation
+      ? { requestDedicatedActivationConfirmation }
+      : {}),
     ...(requestDedicatedAdoptionConfirmation
       ? { requestDedicatedAdoptionConfirmation }
       : {}),

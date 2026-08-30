@@ -43,6 +43,30 @@ const SCREENSHOT_DIR = path.join(
 );
 const screenshot = makeScreenshotter(SCREENSHOT_DIR);
 
+function dedicatedActivationQuote(
+  quoteId: string,
+  activation:
+    | { state: "available" }
+    | { state: "in_progress"; dedicatedAgentId: string; status: string },
+) {
+  return {
+    quoteId,
+    sourceAgentId: PERSONAL_ELIZA_ID,
+    currentMode: "shared",
+    targetMode: "dedicated",
+    hourlyRateUsd: 0.01,
+    dailyRateUsd: 0.24,
+    minimumBalanceUsd: 0.72,
+    minimumRunwayDays: 3,
+    balanceUsd: 115.54059,
+    deficitUsd: 0,
+    canActivate: true,
+    requiresConfirmation: true,
+    action: "activate_dedicated",
+    activation,
+  };
+}
+
 /**
  * #14362: cloud-only onboarding lands the user straight in chat/home. The
  * one-time post-onboarding character-select landing was removed, so the
@@ -239,15 +263,11 @@ test.describe("cloud-only onboarding (production default)", () => {
           contentType: "application/json",
           body: JSON.stringify({
             success: true,
-            data: {
-              quoteId: "a".repeat(64),
-              canActivate: true,
-              activation: {
-                state: "in_progress",
-                dedicatedAgentId,
-                status: "stopped",
-              },
-            },
+            data: dedicatedActivationQuote("a".repeat(64), {
+              state: "in_progress",
+              dedicatedAgentId,
+              status: "stopped",
+            }),
           }),
         });
         return;
@@ -257,6 +277,9 @@ test.describe("cloud-only onboarding (production default)", () => {
     await seedAppStorage(page, {
       "eliza:first-run-complete": "",
       "eliza:enable-runtime-chooser": "0",
+      steward_session_token: "ui-smoke-onboarding-cloud-token",
+      steward_session_token_scope: "eliza-cloud:production",
+      steward_session_active_scope: "eliza-cloud:production",
     });
 
     const dedicatedAdoptionProof = installDedicatedAdoptionConsentProof(page);
@@ -403,11 +426,9 @@ test.describe("cloud-only onboarding (production default)", () => {
           contentType: "application/json",
           body: JSON.stringify({
             success: true,
-            data: {
-              quoteId: "a".repeat(64),
-              canActivate: true,
-              activation: { state: "available" },
-            },
+            data: dedicatedActivationQuote("a".repeat(64), {
+              state: "available",
+            }),
           }),
         });
         return;
@@ -433,6 +454,16 @@ test.describe("cloud-only onboarding (production default)", () => {
 
     const dedicatedAdoptionProof = installDedicatedAdoptionConsentProof(page);
     await page.goto("/", { waitUntil: "domcontentloaded" });
+    const activate = page.getByTestId(
+      "choice-__first_run__:dedicated-activation:confirm",
+    );
+    await expect(activate).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("$0.01/hour ($0.24/day)")).toBeVisible();
+    await expect(page.getByText(/Balance: \$115\.54/)).toBeVisible();
+    expect(activationPosts).toBe(0);
+    expect(adoptionQuoteGets).toBe(0);
+    await activate.click();
+
     const confirm = page.getByTestId(
       "choice-__first_run__:dedicated-adoption:confirm",
     );

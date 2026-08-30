@@ -1749,12 +1749,89 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       "authToken",
       "cloudApiBase",
       "onProgress",
+      "requestDedicatedActivationConfirmation",
       "requestDedicatedAdoptionConfirmation",
       "signal",
     ]);
     expect(
       mocks.client.getPersonalSharedEliza.mock.calls[0][0]?.signal,
     ).toBeInstanceOf(AbortSignal);
+    unmount();
+  });
+
+  it("shows exact Dedicated activation terms and does not release the flow before a visible gesture", async () => {
+    const quoteId = "a".repeat(64);
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    let confirmationSettled = false;
+    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+      async (options: Record<string, unknown>) => {
+        const request = options.requestDedicatedActivationConfirmation as (
+          quote: Record<string, unknown>,
+          context: { reason: "initial"; signal?: AbortSignal },
+        ) => Promise<Record<string, unknown> | null>;
+        const confirmation = await request(
+          {
+            quoteId,
+            sourceAgentId: PERSONAL_ELIZA_ID,
+            currentMode: "shared",
+            targetMode: "dedicated",
+            hourlyRateUsd: 0.01,
+            dailyRateUsd: 0.24,
+            minimumBalanceUsd: 0.72,
+            minimumRunwayDays: 3,
+            balanceUsd: 115.54,
+            deficitUsd: 0,
+            canActivate: true,
+            requiresConfirmation: true,
+            action: "activate_dedicated",
+            activation: { state: "available" },
+          },
+          {
+            reason: "initial",
+            signal: options.signal as AbortSignal,
+          },
+        );
+        confirmationSettled = true;
+        expect(confirmation).toEqual({
+          action: "activate_dedicated",
+          quoteId,
+        });
+        return {
+          personalElizaId: PERSONAL_ELIZA_ID,
+          agentId: PERSONAL_ELIZA_ID,
+          activeAgentId: dedicatedAgentId,
+          agentName: "Eliza Cloud",
+          apiBase: `https://${dedicatedAgentId}.cloud.eliza.app`,
+          runtime: "dedicated" as const,
+        };
+      },
+    );
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { turn, unmount } = renderConductor();
+
+    const confirmationTurn = await waitForTurn(
+      turn,
+      "first-run:dedicated-activation",
+    );
+    expect(confirmationTurn.text).toContain("$0.01/hour ($0.24/day)");
+    expect(confirmationTurn.text).toContain("No Dedicated runtime is active");
+    expect(confirmationTurn.text).toContain("Balance: $115.54");
+    expect(confirmationTurn.text).toContain("3 days of runway");
+    expect(confirmationTurn.text).toContain(
+      "starts or resumes Dedicated compute",
+    );
+    expect(confirmationTurn.text).not.toContain(quoteId);
+    expect(confirmationTurn.text).not.toContain(PERSONAL_ELIZA_ID);
+    expect(confirmationSettled).toBe(false);
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+
+    expect(
+      tryHandleFirstRunAction("__first_run__:dedicated-activation:confirm"),
+    ).toBe(true);
+    await waitFor(() => {
+      expect(confirmationSettled).toBe(true);
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    });
     unmount();
   });
 

@@ -46,6 +46,47 @@ function jsonResponse(
   });
 }
 
+const PERSONAL_ELIZA_ID = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+
+function dedicatedActivationQuote(
+  quoteId: string,
+  options: {
+    sourceAgentId?: string;
+    canActivate?: boolean;
+    activation?:
+      | { state: "available" }
+      | { state: "in_progress"; dedicatedAgentId: string; status: string };
+    balanceUsd?: number;
+    unavailableReason?: string;
+  } = {},
+) {
+  return {
+    quoteId,
+    sourceAgentId: options.sourceAgentId ?? PERSONAL_ELIZA_ID,
+    currentMode: "shared",
+    targetMode: "dedicated",
+    hourlyRateUsd: 0.01,
+    dailyRateUsd: 0.24,
+    minimumBalanceUsd: 0.72,
+    minimumRunwayDays: 3,
+    balanceUsd: options.balanceUsd ?? 115.54,
+    deficitUsd: 0,
+    canActivate: options.canActivate ?? true,
+    requiresConfirmation: true,
+    action: "activate_dedicated",
+    activation: options.activation ?? { state: "available" },
+    ...(options.unavailableReason
+      ? { unavailableReason: options.unavailableReason }
+      : {}),
+  };
+}
+
+async function confirmDedicatedActivation(quote: {
+  quoteId: string;
+}): Promise<{ action: "activate_dedicated"; quoteId: string }> {
+  return { action: "activate_dedicated", quoteId: quote.quoteId };
+}
+
 afterEach(() => {
   capacitorState.isNative = false;
   capacitorHttpRequestMock.mockReset();
@@ -367,11 +408,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
           return jsonResponse(200, {
             success: true,
-            data: {
-              quoteId: "a".repeat(64),
-              canActivate: true,
-              activation: { state: "available" },
-            },
+            data: dedicatedActivationQuote("a".repeat(64)),
           });
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -408,11 +445,15 @@ describe("ensurePersonalDedicatedEliza", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const onProgress = vi.fn();
+    const requestDedicatedActivationConfirmation = vi.fn(
+      confirmDedicatedActivation,
+    );
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
+        requestDedicatedActivationConfirmation,
         pollIntervalMs: 0,
         timeoutMs: 1_000,
         onProgress,
@@ -426,6 +467,11 @@ describe("ensurePersonalDedicatedEliza", () => {
       runtime: "dedicated",
     });
     expect(cutoverAttempts).toBe(4);
+    expect(requestDedicatedActivationConfirmation).toHaveBeenCalledOnce();
+    expect(requestDedicatedActivationConfirmation).toHaveBeenCalledWith(
+      dedicatedActivationQuote("a".repeat(64)),
+      expect.objectContaining({ reason: "initial" }),
+    );
     expect(
       fetchMock.mock.calls.filter(([url]) =>
         String(url).endsWith("/upgrade-tier/adopt-existing"),
@@ -439,6 +485,249 @@ describe("ensurePersonalDedicatedEliza", () => {
       "ready",
       "Connected to your Dedicated agent",
     );
+  });
+
+  it("keeps a fresh activation read-only until the exact visible quote is confirmed", async () => {
+    let activationPosts = 0;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/eliza/personal")) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              identity: {
+                id: PERSONAL_ELIZA_ID,
+                displayName: "Eliza",
+                runtime: "shared",
+              },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+          return jsonResponse(200, {
+            success: true,
+            data: dedicatedActivationQuote("a".repeat(64)),
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+          activationPosts += 1;
+        }
+        return jsonResponse(500, { error: "unexpected route" });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const rejection = await new ElizaClient()
+      .ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+      })
+      .catch((error: unknown) => error);
+
+    expect(rejection).toMatchObject({
+      name: "ElizaError",
+      code: "CLOUD_DEDICATED_ACTIVATION_CONFIRMATION_REQUIRED",
+      context: { phase: "activation-confirmation" },
+    });
+    expect(rejection).not.toHaveProperty("status");
+    expect(activationPosts).toBe(0);
+  });
+
+  it("fetches and visibly reconfirms a changed activation quote before one renewed POST", async () => {
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const initialQuoteId = "a".repeat(64);
+    const changedQuoteId = "c".repeat(64);
+    let quoteGets = 0;
+    let activationPosts = 0;
+    const confirmations: Array<{
+      quoteId: string;
+      reason: "initial" | "quote_changed";
+    }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/eliza/personal")) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              identity: {
+                id: PERSONAL_ELIZA_ID,
+                displayName: "Eliza",
+                runtime: "shared",
+              },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+          quoteGets += 1;
+          return jsonResponse(200, {
+            success: true,
+            data: dedicatedActivationQuote(
+              quoteGets === 1 ? initialQuoteId : changedQuoteId,
+              { balanceUsd: quoteGets === 1 ? 115.54 : 115.53 },
+            ),
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+          activationPosts += 1;
+          const body = JSON.parse(String(init.body));
+          if (activationPosts === 1) {
+            expect(body).toEqual({
+              action: "activate_dedicated",
+              quoteId: initialQuoteId,
+            });
+            return jsonResponse(409, {
+              success: false,
+              code: "dedicated_quote_changed",
+            });
+          }
+          expect(body).toEqual({
+            action: "activate_dedicated",
+            quoteId: changedQuoteId,
+          });
+          return jsonResponse(202, {
+            success: true,
+            data: { dedicatedAgentId },
+          });
+        }
+        if (url.endsWith("/upgrade-tier/cutover")) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              personalElizaId: PERSONAL_ELIZA_ID,
+              activeAgentId: dedicatedAgentId,
+              runtime: "dedicated",
+              apiBase: `https://${dedicatedAgentId}.cloud.eliza.app`,
+              importedMessages: 0,
+            },
+          });
+        }
+        return jsonResponse(500, { error: "unexpected route" });
+      }),
+    );
+
+    await expect(
+      new ElizaClient().ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+        requestDedicatedActivationConfirmation: async (quote, context) => {
+          confirmations.push({
+            quoteId: quote.quoteId,
+            reason: context.reason,
+          });
+          return { action: "activate_dedicated", quoteId: quote.quoteId };
+        },
+      }),
+    ).resolves.toMatchObject({
+      activeAgentId: dedicatedAgentId,
+      runtime: "dedicated",
+    });
+    expect(confirmations).toEqual([
+      { quoteId: initialQuoteId, reason: "initial" },
+      { quoteId: changedQuoteId, reason: "quote_changed" },
+    ]);
+    expect(quoteGets).toBe(2);
+    expect(activationPosts).toBe(2);
+  });
+
+  it("visibly reconfirms an embedded changed activation quote before one renewed POST", async () => {
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const initialQuoteId = "a".repeat(64);
+    const changedQuoteId = "c".repeat(64);
+    let quoteGets = 0;
+    let activationPosts = 0;
+    const confirmations: Array<{
+      quoteId: string;
+      reason: "initial" | "quote_changed";
+    }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/eliza/personal")) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              identity: {
+                id: PERSONAL_ELIZA_ID,
+                displayName: "Eliza",
+                runtime: "shared",
+              },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+          quoteGets += 1;
+          return jsonResponse(200, {
+            success: true,
+            data: dedicatedActivationQuote(initialQuoteId),
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+          activationPosts += 1;
+          const body = JSON.parse(String(init.body));
+          if (activationPosts === 1) {
+            expect(body).toEqual({
+              action: "activate_dedicated",
+              quoteId: initialQuoteId,
+            });
+            return jsonResponse(409, {
+              success: false,
+              code: "dedicated_quote_changed",
+              data: dedicatedActivationQuote(changedQuoteId, {
+                balanceUsd: 115.53,
+              }),
+            });
+          }
+          expect(body).toEqual({
+            action: "activate_dedicated",
+            quoteId: changedQuoteId,
+          });
+          return jsonResponse(202, {
+            success: true,
+            data: { dedicatedAgentId },
+          });
+        }
+        if (url.endsWith("/upgrade-tier/cutover")) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              personalElizaId: PERSONAL_ELIZA_ID,
+              activeAgentId: dedicatedAgentId,
+              runtime: "dedicated",
+              apiBase: `https://${dedicatedAgentId}.cloud.eliza.app`,
+              importedMessages: 0,
+            },
+          });
+        }
+        return jsonResponse(500, { error: "unexpected route" });
+      }),
+    );
+
+    await expect(
+      new ElizaClient().ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+        requestDedicatedActivationConfirmation: async (quote, context) => {
+          confirmations.push({
+            quoteId: quote.quoteId,
+            reason: context.reason,
+          });
+          return { action: "activate_dedicated", quoteId: quote.quoteId };
+        },
+      }),
+    ).resolves.toMatchObject({
+      activeAgentId: dedicatedAgentId,
+      runtime: "dedicated",
+    });
+    expect(confirmations).toEqual([
+      { quoteId: initialQuoteId, reason: "initial" },
+      { quoteId: changedQuoteId, reason: "quote_changed" },
+    ]);
+    expect(quoteGets).toBe(1);
+    expect(activationPosts).toBe(2);
   });
 
   it("adopts the selected existing Dedicated row after the create contract redirects it", async () => {
@@ -509,11 +798,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
           return jsonResponse(200, {
             success: true,
-            data: {
-              quoteId: activationQuoteId,
-              canActivate: true,
-              activation: { state: "available" },
-            },
+            data: dedicatedActivationQuote(activationQuoteId),
           });
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -550,6 +835,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       new ElizaClient().ensurePersonalDedicatedEliza({
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
+        requestDedicatedActivationConfirmation: confirmDedicatedActivation,
         pollIntervalMs: 0,
         timeoutMs: 1_000,
         requestDedicatedAdoptionConfirmation: async (quote) => ({
@@ -609,11 +895,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
           return jsonResponse(200, {
             success: true,
-            data: {
-              quoteId: "a".repeat(64),
-              canActivate: true,
-              activation: { state: "available" },
-            },
+            data: dedicatedActivationQuote("a".repeat(64)),
           });
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -662,6 +944,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       new ElizaClient().ensurePersonalDedicatedEliza({
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
+        requestDedicatedActivationConfirmation: confirmDedicatedActivation,
       }),
     ).rejects.toMatchObject({
       code: "CLOUD_DEDICATED_ADOPTION_CONFIRMATION_REQUIRED",
@@ -705,11 +988,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
             return jsonResponse(200, {
               success: true,
-              data: {
-                quoteId: "a".repeat(64),
-                canActivate: true,
-                activation: { state: "available" },
-              },
+              data: dedicatedActivationQuote("a".repeat(64)),
             });
           }
           if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -759,6 +1038,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         .ensurePersonalDedicatedEliza({
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
+          requestDedicatedActivationConfirmation: confirmDedicatedActivation,
           requestDedicatedAdoptionConfirmation: async (quote) => ({
             action: "adopt_existing_dedicated",
             quoteId: quote.quoteId,
@@ -802,15 +1082,13 @@ describe("ensurePersonalDedicatedEliza", () => {
           if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
             return jsonResponse(200, {
               success: true,
-              data: {
-                quoteId: "a".repeat(64),
-                canActivate: true,
+              data: dedicatedActivationQuote("a".repeat(64), {
                 activation: {
                   state: "in_progress",
                   dedicatedAgentId,
                   status,
                 },
-              },
+              }),
             });
           }
           if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -882,6 +1160,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         new ElizaClient().ensurePersonalDedicatedEliza({
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
+          requestDedicatedActivationConfirmation: confirmDedicatedActivation,
           requestDedicatedAdoptionConfirmation: async (quote) => ({
             action: "adopt_existing_dedicated",
             quoteId: quote.quoteId,
@@ -947,11 +1226,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
             return jsonResponse(200, {
               success: true,
-              data: {
-                quoteId: "a".repeat(64),
-                canActivate: true,
-                activation: { state: "available" },
-              },
+              data: dedicatedActivationQuote("a".repeat(64)),
             });
           }
           if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -1020,6 +1295,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         new ElizaClient().ensurePersonalDedicatedEliza({
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
+          requestDedicatedActivationConfirmation: confirmDedicatedActivation,
           timeoutMs: 1_000,
           requestDedicatedAdoptionConfirmation: async (quote, context) => {
             expect(adoptionPosts).toBe(context.reason === "initial" ? 0 : 1);
@@ -1105,11 +1381,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
           return jsonResponse(200, {
             success: true,
-            data: {
-              quoteId: "a".repeat(64),
-              canActivate: true,
-              activation: { state: "available" },
-            },
+            data: dedicatedActivationQuote("a".repeat(64)),
           });
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -1127,6 +1399,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       new ElizaClient().ensurePersonalDedicatedEliza({
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
+        requestDedicatedActivationConfirmation: confirmDedicatedActivation,
         requestDedicatedAdoptionConfirmation: async (quote) => ({
           action: "adopt_existing_dedicated",
           quoteId: quote.quoteId,
@@ -1165,15 +1438,13 @@ describe("ensurePersonalDedicatedEliza", () => {
           if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
             return jsonResponse(200, {
               success: true,
-              data: {
-                quoteId: "d".repeat(64),
-                canActivate: true,
+              data: dedicatedActivationQuote("d".repeat(64), {
                 activation: {
                   state: "in_progress",
                   dedicatedAgentId,
                   status: targetStatus,
                 },
-              },
+              }),
             });
           }
           if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -1216,6 +1487,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         new ElizaClient().ensurePersonalDedicatedEliza({
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
+          requestDedicatedActivationConfirmation: confirmDedicatedActivation,
           pollIntervalMs: 0,
           timeoutMs: 1_000,
         }),
@@ -1257,15 +1529,13 @@ describe("ensurePersonalDedicatedEliza", () => {
           if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
             return jsonResponse(200, {
               success: true,
-              data: {
-                quoteId: "e".repeat(64),
-                canActivate: true,
+              data: dedicatedActivationQuote("e".repeat(64), {
                 activation: {
                   state: "in_progress",
                   dedicatedAgentId,
                   status: targetStatus,
                 },
-              },
+              }),
             });
           }
           if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -1306,6 +1576,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         new ElizaClient().ensurePersonalDedicatedEliza({
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
+          requestDedicatedActivationConfirmation: confirmDedicatedActivation,
           pollIntervalMs: 0,
           timeoutMs: 1_000,
         }),
@@ -1340,9 +1611,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
           return jsonResponse(200, {
             success: true,
-            data: {
-              quoteId: "f".repeat(64),
-              canActivate: true,
+            data: dedicatedActivationQuote("f".repeat(64), {
               activation:
                 activationPosts === 0
                   ? { state: "available" }
@@ -1351,7 +1620,7 @@ describe("ensurePersonalDedicatedEliza", () => {
                       dedicatedAgentId,
                       status: "provisioning",
                     },
-            },
+            }),
           });
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -1390,6 +1659,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     const ambiguous = client.ensurePersonalDedicatedEliza({
       cloudApiBase: "https://api.eliza.app",
       authToken: "steward-token",
+      requestDedicatedActivationConfirmation: confirmDedicatedActivation,
       pollIntervalMs: 0,
       timeoutMs: 60_000,
     });
@@ -1404,6 +1674,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       client.ensurePersonalDedicatedEliza({
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
+        requestDedicatedActivationConfirmation: confirmDedicatedActivation,
         pollIntervalMs: 0,
         timeoutMs: 1_000,
       }),
@@ -1449,15 +1720,13 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
           return jsonResponse(200, {
             success: true,
-            data: {
-              quoteId: "4".repeat(64),
-              canActivate: true,
+            data: dedicatedActivationQuote("4".repeat(64), {
               activation: {
                 state: "in_progress",
                 dedicatedAgentId,
                 status: "provisioning",
               },
-            },
+            }),
           });
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -1535,15 +1804,13 @@ describe("ensurePersonalDedicatedEliza", () => {
           if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
             return jsonResponse(200, {
               success: true,
-              data: {
-                quoteId: "3".repeat(64),
-                canActivate: true,
+              data: dedicatedActivationQuote("3".repeat(64), {
                 activation: {
                   state: "in_progress",
                   dedicatedAgentId,
                   status: "provisioning",
                 },
-              },
+              }),
             });
           }
           if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -1658,15 +1925,13 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
           return jsonResponse(200, {
             success: true,
-            data: {
-              quoteId: "9".repeat(64),
-              canActivate: true,
+            data: dedicatedActivationQuote("9".repeat(64), {
               activation: {
                 state: "in_progress",
                 dedicatedAgentId,
                 status: "provisioning",
               },
-            },
+            }),
           });
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -1735,15 +2000,13 @@ describe("ensurePersonalDedicatedEliza", () => {
             1_000,
             jsonResponse(200, {
               success: true,
-              data: {
-                quoteId: "7".repeat(64),
-                canActivate: true,
+              data: dedicatedActivationQuote("7".repeat(64), {
                 activation: {
                   state: "in_progress",
                   dedicatedAgentId,
                   status: "stopped",
                 },
-              },
+              }),
             }),
           );
         }
@@ -1782,6 +2045,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       .ensurePersonalDedicatedEliza({
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
+        requestDedicatedActivationConfirmation: confirmDedicatedActivation,
         onProgress,
         pollIntervalMs: 30_000,
       })
@@ -1851,15 +2115,13 @@ describe("ensurePersonalDedicatedEliza", () => {
             status: 200,
             data: {
               success: true,
-              data: {
-                quoteId: "9".repeat(64),
-                canActivate: true,
+              data: dedicatedActivationQuote("9".repeat(64), {
                 activation: {
                   state: "in_progress",
                   dedicatedAgentId,
                   status: "provisioning",
                 },
-              },
+              }),
             },
           };
         }
@@ -1920,15 +2182,13 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
           return jsonResponse(200, {
             success: true,
-            data: {
-              quoteId: "8".repeat(64),
-              canActivate: true,
+            data: dedicatedActivationQuote("8".repeat(64), {
               activation: {
                 state: "in_progress",
                 dedicatedAgentId,
                 status: "provisioning",
               },
-            },
+            }),
           });
         }
         if (url.endsWith("/upgrade-tier/cutover")) {
@@ -1973,8 +2233,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
-              quoteId: "1".repeat(64),
-              canActivate: true,
+              ...dedicatedActivationQuote("1".repeat(64)),
               activation: {
                 state: "in_progress",
                 dedicatedAgentId: "00000000-0000-4000-8000-000000000020",
@@ -1992,6 +2251,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       new ElizaClient().ensurePersonalDedicatedEliza({
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
+        requestDedicatedActivationConfirmation: confirmDedicatedActivation,
       }),
     ).rejects.toMatchObject({
       code: "CLOUD_DEDICATED_STATUS_UNKNOWN",
@@ -2024,8 +2284,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
-              quoteId: "4".repeat(64),
-              canActivate: true,
+              ...dedicatedActivationQuote("4".repeat(64)),
               activation: { state: "unknown-future-state" },
             },
           });
@@ -2072,15 +2331,13 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
           return jsonResponse(200, {
             success: true,
-            data: {
-              quoteId: "2".repeat(64),
-              canActivate: true,
+            data: dedicatedActivationQuote("2".repeat(64), {
               activation: {
                 state: "in_progress",
                 dedicatedAgentId: quotedTargetId,
                 status: "stopped",
               },
-            },
+            }),
           });
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
@@ -2107,6 +2364,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       new ElizaClient().ensurePersonalDedicatedEliza({
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
+        requestDedicatedActivationConfirmation: confirmDedicatedActivation,
       }),
     ).rejects.toMatchObject({
       code: "CLOUD_DEDICATED_TARGET_MISMATCH",
@@ -2136,25 +2394,28 @@ describe("ensurePersonalDedicatedEliza", () => {
       }
       return jsonResponse(200, {
         success: true,
-        data: {
-          quoteId: "b".repeat(64),
+        data: dedicatedActivationQuote("b".repeat(64), {
           canActivate: false,
-          activation: { state: "available" },
+          balanceUsd: 0,
           unavailableReason: "Add hosting credits to continue.",
-        },
+        }),
       });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      new ElizaClient().ensurePersonalDedicatedEliza({
+    const rejection = await new ElizaClient()
+      .ensurePersonalDedicatedEliza({
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
-      }),
-    ).rejects.toMatchObject({
+      })
+      .catch((error: unknown) => error);
+    expect(rejection).toMatchObject({
       message: "Add hosting credits to continue.",
-      status: 402,
+      code: "CLOUD_DEDICATED_ACTIVATION_UNAVAILABLE",
+      context: { phase: "activation-quote", field: "canActivate" },
+      name: "ElizaError",
     });
+    expect(rejection).not.toHaveProperty("status");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
@@ -2317,12 +2578,11 @@ describe("personal Eliza runtime repoint", () => {
         if (url.endsWith("/upgrade-tier")) {
           return jsonResponse(200, {
             success: true,
-            data: {
-              quoteId: "c".repeat(64),
+            data: dedicatedActivationQuote("c".repeat(64), {
               canActivate: false,
-              activation: { state: "available" },
+              balanceUsd: 0,
               unavailableReason: "Dedicated hosting credit is required.",
-            },
+            }),
           });
         }
         return jsonResponse(200, {
