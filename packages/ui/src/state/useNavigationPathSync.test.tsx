@@ -93,6 +93,23 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
     expect(setTabRaw).not.toHaveBeenCalled();
   });
 
+  it("reconciles the active tab when browser history changes", () => {
+    window.history.replaceState(null, "", "/settings");
+    const setTabRaw = vi.fn();
+
+    renderHook(() =>
+      useNavigationPathSync({ tab: "settings" as Tab, setTabRaw }),
+    );
+
+    act(() => {
+      window.history.pushState(null, "", "/views");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    expect(setTabRaw).toHaveBeenCalledTimes(1);
+    expect(setTabRaw).toHaveBeenCalledWith("views");
+  });
+
   it.each([
     {
       path: "/inventory",
