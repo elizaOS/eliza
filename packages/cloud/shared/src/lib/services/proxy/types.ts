@@ -1,5 +1,4 @@
 // Coordinates cloud service types behavior behind route handlers.
-import type { UserWithOrganization } from "../../../db/repositories/users";
 import type { ApiKey } from "../../../db/schemas/api-keys";
 
 export type AuthLevel = "session" | "sessionWithOrg" | "apiKey" | "apiKeyWithOrg";
@@ -51,7 +50,10 @@ export interface ServiceConfig {
 
 export interface HandlerContext {
   body: ProxyRequestBody;
-  auth: { user: UserWithOrganization; apiKey?: ApiKey };
+  auth: {
+    user: { id: string; organization_id: string | null };
+    apiKey?: Pick<ApiKey, "id">;
+  };
   searchParams: URLSearchParams;
 }
 

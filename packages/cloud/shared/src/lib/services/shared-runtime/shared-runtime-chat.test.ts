@@ -643,6 +643,24 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("does not dispatch a second model call to extract facts after a landed turn", async () => {
+    process.env.SHARED_FACTS_ENABLED = "true";
+    const recordFacts = mock(async () => undefined);
+    sharedMemoryStoreOverride = {
+      listFacts: async () => [],
+      recordFacts,
+      recordTurnPair,
+    };
+    const h = harness();
+
+    const response = await new SharedRuntimeChatService().bridge(agent, rpc, h);
+    expect(response.result?.text).toBe("hello back");
+    await Promise.all(h.background);
+
+    expect(turnCalls).toBe(1);
+    expect(recordFacts).not.toHaveBeenCalled();
+  });
+
   test("samples success, error, and abort terminal receipts exactly once without content", async () => {
     process.env.SHARED_TURN_TRACES_ENABLED = "true";
     process.env.SHARED_TURN_TRACES_SAMPLE = "1";

@@ -11,9 +11,17 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { z } from "zod";
-import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { discordAppAutomationService } from "@/lib/services/discord-automation/app-automation";
+import {
+  type GenerativeOperationContext,
+  isGenerativeOperationAdmissionError,
+} from "@/lib/services/generative-operation";
 import { logger } from "@/lib/utils/logger";
 
 const postSchema = z.object({
@@ -24,6 +32,7 @@ async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
   caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
+  operationContext: GenerativeOperationContext,
 ): Promise<Response> {
   const { user } = caller;
   const { id: appId } = await params;
@@ -50,6 +59,7 @@ async function __hono_POST(
       user.organization_id,
       appId,
       body.text,
+      operationContext,
     );
 
     if (!result.success) {
@@ -68,6 +78,7 @@ async function __hono_POST(
       channelId: result.channelId,
     });
   } catch (error) {
+    if (isGenerativeOperationAdmissionError(error)) throw error;
     if (error instanceof Error && error.message === "App not found") {
       return Response.json({ error: "App not found" }, { status: 404 });
     }
@@ -92,9 +103,10 @@ __hono_app.post("/", async (c) => {
       c.req.raw,
       { params: Promise.resolve({ id: c.req.param("id")! }) },
       caller,
+      getGenerativeOperationContext(c, caller),
     );
   } catch (error) {
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 export default __hono_app;

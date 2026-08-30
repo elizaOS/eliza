@@ -5,11 +5,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
-const requireAuthOrApiKeyWithOrg = mock(async () => ({
-  user: { id: "user-1", organization_id: "org-1" },
-  apiKey: null,
-}));
-const isAppKeyOutOfScope = mock(async () => false);
 const getById = mock(async () => ({
   id: "app-1",
   organization_id: "org-1",
@@ -22,17 +17,37 @@ const getById = mock(async () => ({
   discord_automation: {},
   telegram_automation: {},
 }));
-const generateAnnouncement = mock(async () => "preview");
-const generateAppTweet = mock(async () => ({
-  text: "preview",
-  type: "promotional",
-}));
+const generateAnnouncement = mock(
+  async (_organizationId: string, _app: unknown, _operationContext?: unknown) =>
+    "preview",
+);
+const generateAppTweet = mock(
+  async (
+    _organizationId: string,
+    _app: unknown,
+    _type: string,
+    _operationContext?: unknown,
+  ) => ({
+    text: "preview",
+    type: "promotional",
+  }),
+);
+const operationContext = {
+  organizationId: "org-1",
+  userId: "user-1",
+  apiKeyId: null,
+  requestId: "request-1",
+};
 
-mock.module("@/lib/auth", () => ({
-  requireAuthOrApiKeyWithOrg,
-}));
-mock.module("@/lib/auth/app-key-scope", () => ({
-  isAppKeyOutOfScope,
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  requireGenerativeRouteCaller: mock(async () => ({
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: null,
+    authSource: "combined_cache",
+    appScopeId: null,
+  })),
+  getGenerativeOperationContext: () => operationContext,
+  asGenerativeCacheApiError: () => null,
 }));
 mock.module("@/lib/services/apps", () => ({
   appsService: { getById },
@@ -50,6 +65,9 @@ mock.module("@/lib/services/telegram-automation/app-automation", () => ({
 }));
 mock.module("@/lib/services/twitter-automation/app-automation", () => ({
   twitterAppAutomationService: { generateAppTweet },
+}));
+mock.module("@/lib/services/generative-operation", () => ({
+  isGenerativeOperationAdmissionError: () => false,
 }));
 mock.module("@/lib/utils/logger", () => ({
   logger: { info: () => undefined, error: () => undefined },
@@ -81,5 +99,6 @@ describe("POST /api/v1/apps/:id/promote/preview malformed JSON", () => {
     });
     expect(response.status).toBe(200);
     expect(generateAppTweet).toHaveBeenCalled();
+    expect(generateAppTweet.mock.calls[0]?.[3]).toBe(operationContext);
   });
 });

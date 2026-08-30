@@ -1,24 +1,23 @@
 /**
- * Regression (#11637): the MCP metered proxy debits the caller upfront, so
- * EVERY post-debit failure must refund — not only a non-ok HTTP status. Before
- * the fix an unreachable upstream / unsafe endpoint / down container returned
- * 502/400/503 while keeping the money = a silent over-charge.
+ * Exercises MCP proxy standing, flat admission, dispatch ordering, and retained
+ * settlement through the real Hono route with deterministic boundary mocks.
  *
- * Drives the real route handler with mocked deps and asserts `refundCredits` is
- * called on each failure branch and NOT on success. Red on develop tip (only
- * the non-ok branch refunded); green after the fix.
+ * Failures before upstream dispatch release admission; uncertain failures after
+ * dispatch settle conservatively instead of fabricating a zero-cost call.
  */
 import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { __mcpProxyHopTestHooks } from "../mcp/proxy/[mcpId]/proxy-body-budget";
 
-// mock.module is process-global — spread the real auth module so only
-// requireUserOrApiKeyWithOrg is overridden (mirrors agent-mcp-billing.test.ts).
-const requireUserOrApiKeyWithOrg = mock();
-const realAuth = await import("@/lib/auth/workers-hono-auth");
-mock.module("@/lib/auth/workers-hono-auth", () => ({
-  ...realAuth,
-  requireUserOrApiKeyWithOrg,
+const requireGenerativeRouteCaller = mock();
+const admitFlatGenerativeOperation = mock();
+let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError: () => null,
+  getGenerativeExecutionContext: () => executionCtx,
+  requireGenerativeRouteCaller,
 }));
 
 const assertSafeOutboundUrl = mock();
@@ -37,11 +36,21 @@ mock.module("@/lib/services/containers", () => ({
   containersService: { getById: containersGetById },
 }));
 
-const reserveAndDeductCredits = mock();
-const refundCredits = mock();
+class InsufficientCreditsError extends Error {
+  constructor(
+    public readonly required: number,
+    public readonly available: number,
+  ) {
+    super("Insufficient credits");
+  }
+}
 mock.module("@/lib/services/credits", () => ({
-  creditsService: { reserveAndDeductCredits, refundCredits },
+  InsufficientCreditsError,
 }));
+
+const settle = mock(async () => null);
+const settleUnknown = mock(async () => null);
+const markProviderDispatched = mock(async () => undefined);
 
 const getById = mock();
 const recordUsageWithoutDeduction = mock(async () => {});
@@ -52,8 +61,10 @@ mock.module("@/lib/services/user-mcps", () => ({
   },
 }));
 
+const loggerError = mock();
+const loggerWarn = mock();
 mock.module("@/lib/utils/logger", () => ({
-  logger: { error: mock(), info: mock(), warn: mock(), debug: mock() },
+  logger: { error: loggerError, info: mock(), warn: loggerWarn, debug: mock() },
 }));
 
 const mcpRoute = (await import("../mcp/proxy/[mcpId]/route")).default;
@@ -81,39 +92,119 @@ const EXTERNAL_MCP = {
 };
 
 beforeEach(() => {
-  requireUserOrApiKeyWithOrg.mockResolvedValue({
-    id: "u1",
-    organization_id: "org1",
+  executionCtx = undefined;
+  requireGenerativeRouteCaller.mockReset();
+  requireGenerativeRouteCaller.mockResolvedValue({
+    user: { id: "u1", organization_id: "org1" },
+    apiKeyId: "key1",
+    authSource: "combined_cache",
+    admissionSnapshot: { standing: "active" },
+    appScopeId: null,
+  });
+  settle.mockReset();
+  settle.mockResolvedValue(null);
+  settleUnknown.mockReset();
+  settleUnknown.mockResolvedValue(null);
+  markProviderDispatched.mockReset();
+  markProviderDispatched.mockResolvedValue(undefined);
+  admitFlatGenerativeOperation.mockReset();
+  admitFlatGenerativeOperation.mockResolvedValue({
+    settle,
+    settleUnknown,
+    markProviderDispatched,
+    reservation: { reservationTransactionId: "reservation-1" },
   });
   getById.mockResolvedValue({ ...EXTERNAL_MCP });
   getReferrer.mockReset();
   getReferrer.mockResolvedValue(null);
   recordUsageWithoutDeduction.mockClear();
-  reserveAndDeductCredits.mockClear();
-  reserveAndDeductCredits.mockResolvedValue({
-    success: true,
-    transaction: { id: "tx1" },
-    newBalance: 95,
-  });
-  refundCredits.mockReset();
-  refundCredits.mockResolvedValue({ newBalance: 100 });
   assertSafeOutboundUrl.mockResolvedValue(
     new URL("https://mcp.example.test/rpc"),
   );
   safeFetch.mockReset();
   containersGetById.mockReset();
+  loggerError.mockClear();
+  loggerWarn.mockClear();
 });
 
 afterEach(() => {
   __mcpProxyHopTestHooks.resetHopTimeoutMs();
 });
 
-test("unreachable upstream (502) refunds the upfront debit (#11637)", async () => {
+test("cached standing denial preserves its reason and skips admission", async () => {
+  requireGenerativeRouteCaller.mockRejectedValue(
+    new ApiError(403, "access_denied", "Organization is inactive", {
+      reason: "organization_inactive",
+    }),
+  );
+
+  const res = await post();
+  const body = (await res.json()) as {
+    details?: { reason?: string };
+  };
+
+  expect(res.status).toBe(403);
+  expect(body.details?.reason).toBe("organization_inactive");
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(safeFetch).not.toHaveBeenCalled();
+  expect(loggerWarn).toHaveBeenCalledWith(
+    "[MCP Proxy] Caller admission denied",
+    expect.objectContaining({
+      mcpId: "test-mcp",
+      reason: "organization_inactive",
+      errorName: "ApiError",
+    }),
+  );
+});
+
+test("admits before marking dispatch and marks immediately before fetch", async () => {
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+
+  const res = await post();
+
+  expect(res.status).toBe(200);
+  expect(requireGenerativeRouteCaller.mock.invocationCallOrder[0]).toBeLessThan(
+    assertSafeOutboundUrl.mock.invocationCallOrder[0],
+  );
+  expect(assertSafeOutboundUrl.mock.invocationCallOrder[0]).toBeLessThan(
+    admitFlatGenerativeOperation.mock.invocationCallOrder[0],
+  );
+  expect(admitFlatGenerativeOperation.mock.invocationCallOrder[0]).toBeLessThan(
+    markProviderDispatched.mock.invocationCallOrder[0],
+  );
+  expect(markProviderDispatched.mock.invocationCallOrder[0]).toBeLessThan(
+    safeFetch.mock.invocationCallOrder[0],
+  );
+});
+
+test("retains successful settlement and usage under waitUntil", async () => {
+  const retained: Promise<unknown>[] = [];
+  const waitUntil = mock((promise: Promise<unknown>) => {
+    retained.push(promise);
+  });
+  executionCtx = { waitUntil };
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+
+  const res = await post();
+
+  expect(res.status).toBe(200);
+  expect(waitUntil).toHaveBeenCalledTimes(1);
+  await Promise.all(retained);
+  expect(settle).toHaveBeenCalledWith(0.05);
+  expect(recordUsageWithoutDeduction).toHaveBeenCalledTimes(1);
+});
+
+test("unreachable upstream settles unknown after dispatch", async () => {
   safeFetch.mockRejectedValue(new Error("ECONNREFUSED"));
   const res = await post();
   expect(res.status).toBe(502);
-  expect(reserveAndDeductCredits).toHaveBeenCalledTimes(1);
-  expect(refundCredits).toHaveBeenCalledTimes(1);
+  expect(admitFlatGenerativeOperation).toHaveBeenCalledTimes(1);
+  expect(markProviderDispatched).toHaveBeenCalledTimes(1);
+  expect(settleUnknown).toHaveBeenCalledTimes(1);
 });
 
 test("non-owner org CANNOT invoke another org's PRIVATE MCP — 404, no billing (#11838)", async () => {
@@ -125,7 +216,7 @@ test("non-owner org CANNOT invoke another org's PRIVATE MCP — 404, no billing 
   });
   const res = await post();
   expect(res.status).toBe(404);
-  expect(reserveAndDeductCredits).not.toHaveBeenCalled();
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
   expect(safeFetch).not.toHaveBeenCalled();
 });
 
@@ -140,17 +231,19 @@ test("non-owner org CAN invoke a PUBLIC MCP — monetization model preserved (#1
   );
   const res = await post();
   expect(res.status).toBe(200);
-  expect(reserveAndDeductCredits).toHaveBeenCalledTimes(1);
+  expect(admitFlatGenerativeOperation).toHaveBeenCalledTimes(1);
 });
 
-test("unsafe/blocked external endpoint (400) refunds (#11637)", async () => {
+test("unsafe/blocked external endpoint is rejected before admission", async () => {
   assertSafeOutboundUrl.mockRejectedValue(new Error("SSRF blocked"));
   const res = await post();
   expect(res.status).toBe(400);
-  expect(refundCredits).toHaveBeenCalledTimes(1);
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
+  expect(markProviderDispatched).not.toHaveBeenCalled();
 });
 
-test("container-unavailable (503) refunds (#11637)", async () => {
+test("container-unavailable is rejected before admission", async () => {
   getById.mockResolvedValue({
     id: "test-mcp",
     name: "Container MCP",
@@ -163,10 +256,11 @@ test("container-unavailable (503) refunds (#11637)", async () => {
   containersGetById.mockResolvedValue(null); // no load_balancer_url
   const res = await post();
   expect(res.status).toBe(503);
-  expect(refundCredits).toHaveBeenCalledTimes(1);
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
 });
 
-test("container lookup failure (502) refunds after upfront debit (#11637)", async () => {
+test("container lookup failure is rejected before admission", async () => {
   getById.mockResolvedValue({
     id: "test-mcp",
     name: "Container MCP",
@@ -179,34 +273,31 @@ test("container lookup failure (502) refunds after upfront debit (#11637)", asyn
   containersGetById.mockRejectedValue(new Error("container DB down"));
   const res = await post();
   expect(res.status).toBe(502);
-  expect(refundCredits).toHaveBeenCalledTimes(1);
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
 });
 
-test("invalid JSON body (400) refunds after the upfront debit (#11637)", async () => {
+test("invalid JSON body is rejected before admission", async () => {
   const res = await post("{not json");
   expect(res.status).toBe(400);
-  expect(reserveAndDeductCredits).toHaveBeenCalledTimes(1);
-  expect(refundCredits).toHaveBeenCalledTimes(1);
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
 });
 
-test("oversized request body returns 413, refunds exact receipt, and skips upstream", async () => {
+test("oversized request body returns 413 before admission and skips upstream", async () => {
   const res = await post(`{"payload":"${"x".repeat(1_000_001)}"}`);
   expect(res.status).toBe(413);
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({ reason: "request_body_too_large" }),
-    }),
-  );
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
   expect(safeFetch).not.toHaveBeenCalled();
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
 
-test("non-ok upstream status refunds (existing behavior preserved)", async () => {
+test("non-ok upstream status settles unknown after dispatch", async () => {
   safeFetch.mockResolvedValue(new Response("upstream error", { status: 500 }));
   const res = await post();
   expect(res.status).toBe(500);
-  expect(refundCredits).toHaveBeenCalledTimes(1);
+  expect(settleUnknown).toHaveBeenCalledTimes(1);
 });
 
 test("upstream response body read failure refunds before usage is recorded", async () => {
@@ -220,12 +311,7 @@ test("upstream response body read failure refunds before usage is recorded", asy
   } as unknown as Response);
   const res = await post();
   expect(res.status).toBe(502);
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({ reason: "mcp_response_read_failed" }),
-    }),
-  );
+  expect(settleUnknown).toHaveBeenCalledTimes(1);
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
 
@@ -241,12 +327,7 @@ test("declared oversized upstream body returns 502 and refunds exact receipt", a
   );
   const res = await post();
   expect(res.status).toBe(502);
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({ reason: "mcp_response_too_large" }),
-    }),
-  );
+  expect(settleUnknown).toHaveBeenCalledTimes(1);
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
 
@@ -270,14 +351,7 @@ test("headers-resolve body-never-resolves returns 504, refunds exact receipt, an
   expect(res.status).toBe(504);
   const timedOut = (await res.json()) as { error: string };
   expect(timedOut).toEqual({ error: "MCP endpoint timed out" });
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({
-        reason: "upstream_deadline_exceeded",
-      }),
-    }),
-  );
+  expect(settleUnknown).toHaveBeenCalledTimes(1);
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
 
@@ -303,12 +377,7 @@ test("streamed oversized upstream body returns 502 and refunds exact receipt", a
   );
   const res = await post();
   expect(res.status).toBe(502);
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({ reason: "mcp_response_too_large" }),
-    }),
-  );
+  expect(settleUnknown).toHaveBeenCalledTimes(1);
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
 
@@ -345,14 +414,7 @@ test("container hop headers-resolve body-never-resolves returns 504 and refunds"
   try {
     const res = await post();
     expect(res.status).toBe(504);
-    expect(refundCredits).toHaveBeenCalledWith(
-      expect.objectContaining({
-        amount: 0.05,
-        metadata: expect.objectContaining({
-          reason: "upstream_deadline_exceeded",
-        }),
-      }),
-    );
+    expect(settleUnknown).toHaveBeenCalledTimes(1);
     expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
     expect(safeFetch).not.toHaveBeenCalled();
   } finally {
@@ -380,27 +442,22 @@ test("headers-never-resolve fetch abort refunds exact receipt and skips usage", 
   });
   const res = await post();
   expect(res.status).toBe(504);
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({
-        reason: "upstream_deadline_exceeded",
-      }),
-    }),
-  );
+  expect(settleUnknown).toHaveBeenCalledTimes(1);
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
 
-test("successful call does NOT refund", async () => {
+test("successful call settles exact cost and records usage", async () => {
   safeFetch.mockResolvedValue(
     new Response(JSON.stringify({ ok: true }), { status: 200 }),
   );
   const res = await post();
   expect(res.status).toBe(200);
-  expect(refundCredits).not.toHaveBeenCalled();
+  expect(settle).toHaveBeenCalledWith(0.05);
+  expect(settleUnknown).not.toHaveBeenCalled();
+  expect(recordUsageWithoutDeduction).toHaveBeenCalledTimes(1);
 });
 
-test("stalled endpoint prevalidation returns 504, refunds exact receipt, and skips usage", async () => {
+test("stalled endpoint prevalidation returns 504 before admission", async () => {
   __mcpProxyHopTestHooks.setHopTimeoutMs(20);
   assertSafeOutboundUrl.mockReturnValue(
     new Promise(() => {
@@ -417,14 +474,8 @@ test("stalled endpoint prevalidation returns 504, refunds exact receipt, and ski
   expect(res.status).toBe(504);
   const prevalidationTimedOut = (await res.json()) as { error: string };
   expect(prevalidationTimedOut).toEqual({ error: "MCP endpoint timed out" });
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({
-        reason: "upstream_deadline_exceeded",
-      }),
-    }),
-  );
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
   expect(safeFetch).not.toHaveBeenCalled();
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
@@ -446,18 +497,11 @@ test("stalled pre-socket DNS in safeFetch returns 504, refunds exact receipt, an
   expect(res.status).toBe(504);
   const dnsTimedOut = (await res.json()) as { error: string };
   expect(dnsTimedOut).toEqual({ error: "MCP endpoint timed out" });
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({
-        reason: "upstream_deadline_exceeded",
-      }),
-    }),
-  );
+  expect(settleUnknown).toHaveBeenCalledTimes(1);
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
 
-test("caller-aborted inbound JSON read returns 504, refunds exact receipt, and skips usage", async () => {
+test("caller-aborted inbound JSON read returns 504 before admission", async () => {
   const caller = new AbortController();
   const body = new ReadableStream<Uint8Array>({
     pull() {
@@ -483,14 +527,8 @@ test("caller-aborted inbound JSON read returns 504, refunds exact receipt, and s
   expect(res.status).toBe(504);
   const inboundTimedOut = (await res.json()) as { error: string };
   expect(inboundTimedOut).toEqual({ error: "MCP endpoint timed out" });
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({
-        reason: "upstream_deadline_exceeded",
-      }),
-    }),
-  );
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
   expect(safeFetch).not.toHaveBeenCalled();
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
@@ -506,7 +544,11 @@ test("affiliate surcharge uses one exact debit, persisted receipt, and refund au
   );
   const success = await post();
   expect(success.status).toBe(200);
-  expect(reserveAndDeductCredits.mock.calls[0]?.[0].amount).toBe(0.065);
+  expect(admitFlatGenerativeOperation.mock.calls[0]?.[0].cost).toEqual({
+    baseTotalCost: 0.05,
+    platformMarkup: 0.015,
+    totalCost: 0.065,
+  });
   expect(recordUsageWithoutDeduction).toHaveBeenCalledWith(
     expect.objectContaining({
       creditsCharged: 5,
@@ -526,10 +568,10 @@ test("affiliate surcharge uses one exact debit, persisted receipt, and refund au
   safeFetch.mockRejectedValue(new Error("offline"));
   const failure = await post();
   expect(failure.status).toBe(502);
-  expect(refundCredits.mock.calls[0]?.[0].amount).toBe(0.065);
+  expect(settleUnknown).toHaveBeenCalledTimes(1);
 });
 
-test("malformed UTF-8 request body returns 400, refunds exact receipt, and skips upstream (#24768)", async () => {
+test("malformed UTF-8 request body returns 400 before admission (#24768)", async () => {
   const malformed = new Uint8Array([
     0x7b, 0x22, 0x78, 0x22, 0x3a, 0x22, 0xc3, 0x28, 0x22, 0x7d,
   ]);
@@ -542,14 +584,8 @@ test("malformed UTF-8 request body returns 400, refunds exact receipt, and skips
   expect((await res.json()) as { error: string }).toEqual({
     error: "MCP request body is not valid UTF-8",
   });
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({
-        reason: "request_body_malformed_utf8",
-      }),
-    }),
-  );
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
   expect(safeFetch).not.toHaveBeenCalled();
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
@@ -575,13 +611,6 @@ test("malformed UTF-8 upstream response returns 502, refunds exact receipt, and 
   expect((await res.json()) as { error: string }).toEqual({
     error: "MCP response is not valid UTF-8",
   });
-  expect(refundCredits).toHaveBeenCalledWith(
-    expect.objectContaining({
-      amount: 0.05,
-      metadata: expect.objectContaining({
-        reason: "mcp_response_malformed_utf8",
-      }),
-    }),
-  );
+  expect(settleUnknown).toHaveBeenCalledTimes(1);
   expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
