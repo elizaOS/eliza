@@ -211,9 +211,10 @@ export const notesAction: Action = {
       });
     }
 
-    // ONE user-authored field, per the package contract: the label is derived
-    // deterministically from the first line by `parseNoteContent`, never
-    // invented by a model. `text`/`note`/`title` are planner aliases for it.
+    // The service still receives one user-authored content value. Providers
+    // may preserve an explicitly requested title and body as separate tool
+    // arguments, so normalize that losslessly before deriving the label.
+    // `text`/`note`/`title` remain planner aliases for `content`.
     const content =
       readString(params.content) ??
       readString(params.text) ??
@@ -224,8 +225,9 @@ export const notesAction: Action = {
     }
 
     if (op === "create") {
+      const body = readString(params.body);
       const created = await service.createNoteWithCommit(
-        parseNoteContent(content),
+        parseNoteContent(body ? `${content}\n${body}` : content),
       );
       const note = created.value;
       const text = created.replayed
@@ -298,7 +300,8 @@ export const notesAction: Action = {
     },
     {
       name: "body",
-      description: "On update only: the note's replacement text.",
+      description:
+        "For create, optional body text when the title was supplied in content. For update, the note's replacement text.",
       required: false,
       schema: { type: "string" },
     },

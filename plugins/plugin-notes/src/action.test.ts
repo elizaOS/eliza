@@ -234,6 +234,28 @@ describe("NOTES operation parsing", () => {
     expect(created.text).toContain("Demo Checklist — mic, charger, water");
   });
 
+  it("preserves a create body when the provider separates it from the title", async () => {
+    const runtime = await harness();
+    const created = await run(runtime, {
+      action: "create",
+      content: "Stable Local Notes QA",
+      body: "Cerebras local note persistence",
+    });
+
+    expect(created.success).toBe(true);
+    expect(created.text).toContain(
+      "Stable Local Notes QA — Cerebras local note persistence",
+    );
+    const listed = await run(runtime, { action: "list" });
+    expect(listed.data?.notes).toEqual([
+      {
+        title: "Stable Local Notes QA",
+        body: "Cerebras local note persistence",
+        color: "yellow",
+      },
+    ]);
+  });
+
   it("lets the owner create, search/list, update, and delete in one store", async () => {
     const runtime = await harness();
     const created = await run(runtime, {
