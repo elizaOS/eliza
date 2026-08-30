@@ -187,7 +187,7 @@ function projectReceipt(bundle: BillingCancelCommandBundle): BillingCancellation
         : { status: "pending", ratePerHour: AGENT_PRICING.IDLE_HOURLY_RATE };
   return {
     receiptId: command.id,
-    jobId: command.job_id,
+    jobId: job.id,
     resourceType: command.resource_type,
     resourceId: command.resource_id,
     action: "stop",
@@ -443,7 +443,7 @@ export class BillingResourceCancellationsService {
           409,
           "billing_state_conflict",
           "A different stop job already owns this resource lifecycle",
-          { receiptId: command.bundle.command.id, jobId: command.bundle.command.job_id },
+          { receiptId: command.bundle.command.id, jobId: command.bundle.job.id },
         );
       }
       const bound = await billingCancelCommandsRepository.bindKey(tx, {
@@ -474,7 +474,7 @@ export class BillingResourceCancellationsService {
           "[billing-cancel] Immediate job trigger failed; durable polling remains active",
           {
             receiptId: result.bundle.command.id,
-            jobId: result.bundle.command.job_id,
+            jobId: result.bundle.job.id,
             error: error instanceof Error ? error.message : String(error),
           },
         );
