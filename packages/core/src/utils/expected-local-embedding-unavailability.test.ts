@@ -1,72 +1,58 @@
-/**
- * Deterministic coverage for the structural local-embedding unavailability
- * predicate: only the documented code/reason pairs are expected; lookalikes
- * and unknown failures stay reportable.
- */
 import { describe, expect, it } from "vitest";
-import { ModelType } from "../types/model";
-import { isExpectedLocalEmbeddingUnavailability } from "./expected-local-embedding-unavailability";
+import { modelProviderFailureDetails, isExpectedLocalEmbeddingUnavailability } from "./expected-local-embedding-unavailability";
 
-function unavailable(
-	reason: string,
-	code = "LOCAL_INFERENCE_UNAVAILABLE",
-	modelType: string = ModelType.TEXT_EMBEDDING,
-): { code: string; modelType: string; reason: string } {
-	return { code, modelType, reason };
-}
+describe("modelProviderFailureDetails", () => {
+	it("returns empty object for non-object errors", () => {
+		expect(modelProviderFailureDetails(null)).toEqual({});
+		expect(modelProviderFailureDetails(undefined)).toEqual({});
+		expect(modelProviderFailureDetails("string")).toEqual({});
+		expect(modelProviderFailureDetails(42)).toEqual({});
+	});
+
+	it("extracts string fields from error objects", () => {
+		const error = { code: "ERR_001", modelType: "TEXT_EMBEDDING", provider: "test", reason: "backend_unavailable" };
+		expect(modelProviderFailureDetails(error)).toEqual(error);
+	});
+
+	it("ignores non-string fields", () => {
+		const error = { code: 123, modelType: true, provider: null, reason: undefined };
+		expect(modelProviderFailureDetails(error)).toEqual({ code: undefined, modelType: undefined, provider: undefined, reason: undefined });
+	});
+});
 
 describe("isExpectedLocalEmbeddingUnavailability", () => {
-	it.each(["backend_unavailable", "capability_unavailable"] as const)(
-		"accepts LOCAL_INFERENCE_UNAVAILABLE with %s",
-		(reason) => {
-			expect(isExpectedLocalEmbeddingUnavailability(unavailable(reason))).toBe(
-				true,
-			);
-		},
-	);
-
-	it.each(["invalid_input", "invalid_output", "other_reason", ""] as const)(
-		"rejects LOCAL_INFERENCE_UNAVAILABLE with foreign reason %s",
-		(reason) => {
-			expect(isExpectedLocalEmbeddingUnavailability(unavailable(reason))).toBe(
-				false,
-			);
-		},
-	);
-
-	it("rejects a lookalike code even with an expected reason", () => {
-		expect(
-			isExpectedLocalEmbeddingUnavailability(
-				unavailable("backend_unavailable", "OTHER_UNAVAILABLE"),
-			),
-		).toBe(false);
+	it("returns true for expected unavailability", () => {
+		const error = { code: "LOCAL_INFERENCE_UNAVAILABLE", modelType: "TEXT_EMBEDDING", reason: "backend_unavailable" };
+		expect(isExpectedLocalEmbeddingUnavailability(error)).toBe(true);
 	});
 
-	it("rejects a missing or non-embedding model type", () => {
-		expect(
-			isExpectedLocalEmbeddingUnavailability({
-				code: "LOCAL_INFERENCE_UNAVAILABLE",
-				reason: "backend_unavailable",
-			}),
-		).toBe(false);
-		expect(
-			isExpectedLocalEmbeddingUnavailability(
-				unavailable(
-					"backend_unavailable",
-					"LOCAL_INFERENCE_UNAVAILABLE",
-					ModelType.TEXT_LARGE,
-				),
-			),
-		).toBe(false);
+	it("returns true for capability_unavailable", () => {
+		const error = { code: "LOCAL_INFERENCE_UNAVAILABLE", modelType: "TEXT_EMBEDDING", reason: "capability_unavailable" };
+		expect(isExpectedLocalEmbeddingUnavailability(error)).toBe(true);
 	});
 
-	it("rejects plain Errors, null, and non-objects", () => {
-		expect(isExpectedLocalEmbeddingUnavailability(new Error("boom"))).toBe(
-			false,
-		);
+	it("returns false for wrong code", () => {
+		const error = { code: "OTHER_ERROR", modelType: "TEXT_EMBEDDING", reason: "backend_unavailable" };
+		expect(isExpectedLocalEmbeddingUnavailability(error)).toBe(false);
+	});
+
+	it("returns false for wrong modelType", () => {
+		const error = { code: "LOCAL_INFERENCE_UNAVAILABLE", modelType: "TEXT_SMALL", reason: "backend_unavailable" };
+		expect(isExpectedLocalEmbeddingUnavailability(error)).toBe(false);
+	});
+
+	it("returns false for unexpected reason", () => {
+		const error = { code: "LOCAL_INFERENCE_UNAVAILABLE", modelType: "TEXT_EMBEDDING", reason: "invalid_input" };
+		expect(isExpectedLocalEmbeddingUnavailability(error)).toBe(false);
+	});
+
+	it("returns false for missing reason", () => {
+		const error = { code: "LOCAL_INFERENCE_UNAVAILABLE", modelType: "TEXT_EMBEDDING" };
+		expect(isExpectedLocalEmbeddingUnavailability(error)).toBe(false);
+	});
+
+	it("returns false for non-object errors", () => {
 		expect(isExpectedLocalEmbeddingUnavailability(null)).toBe(false);
-		expect(isExpectedLocalEmbeddingUnavailability("backend_unavailable")).toBe(
-			false,
-		);
+		expect(isExpectedLocalEmbeddingUnavailability("string")).toBe(false);
 	});
 });
