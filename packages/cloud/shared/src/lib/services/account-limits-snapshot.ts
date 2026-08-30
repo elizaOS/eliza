@@ -20,6 +20,7 @@ import type {
   AccountBillingSnapshot,
   AccountBillingSnapshotV2,
   AccountLimitsSnapshotV1 as AccountLimitsSnapshot,
+  ActiveComputeCancellationBlockerCode,
   ActiveComputeRateSegmentSnapshot,
   ActiveComputeResourceSnapshot,
   AutoTopUpReadinessBlockerCode,
@@ -414,6 +415,14 @@ export interface AccountBillingSnapshotSources {
   maxContainers(creditBalance: number, settings?: unknown): number;
   runtimeTierCache(): Promise<RuntimeTierCacheObservation>;
   autoTopUpRuntimeEnabled(): boolean;
+  /** Current request identity used only to project a fail-closed UI affordance. */
+  cancellationAuthority: {
+    authMethod: "session" | "api_key" | "wallet_signature" | "anonymous" | null;
+    role: string | null;
+    userActive: boolean;
+    userAnonymous: boolean;
+    organizationActive: boolean;
+  };
   defaultStorageBytesLimit: bigint;
   now(): Date;
 }
@@ -753,6 +762,46 @@ interface ActiveComputeRateResult {
   ratePerHour: ActiveComputeResourceSnapshot["ratePerHour"];
   estimatedRecurringComputeCostPerDay: ActiveComputeResourceSnapshot["estimatedRecurringComputeCostPerDay"];
   dailyForAggregate: Decimal | null;
+}
+
+function activeComputeCancellationBlockers(
+  authority: AccountBillingSnapshotSources["cancellationAuthority"],
+): ActiveComputeCancellationBlockerCode[] {
+  const blockers: ActiveComputeCancellationBlockerCode[] = [];
+  if (authority.authMethod !== "session") blockers.push("interactive_session_required");
+  if (!authority.userActive || authority.userAnonymous || !authority.organizationActive) {
+    blockers.push("billing_account_ineligible");
+  }
+  if (authority.role !== "owner" && authority.role !== "admin") {
+    blockers.push("owner_or_admin_role_required");
+  }
+  return blockers;
+}
+
+function activeComputeCancellationControl(
+  resource: PrimaryAccountBillingReadModel["activeResources"][number],
+  authority: AccountBillingSnapshotSources["cancellationAuthority"],
+): ActiveComputeResourceSnapshot["cancellationControl"] {
+  if (
+    !Number.isSafeInteger(resource.lifecycleRevision) ||
+    resource.lifecycleRevision < 0 ||
+    (resource.cancelAction !== "stop" && resource.cancelAction !== "stop_compute") ||
+    typeof resource.cancelEndpoint !== "string" ||
+    resource.cancelEndpoint.length === 0
+  ) {
+    throw invalidSourceData("active compute cancellation control is invalid");
+  }
+
+  const blockers = activeComputeCancellationBlockers(authority);
+  return {
+    displayAction: resource.cancelAction,
+    method: "POST",
+    mode: "stop",
+    endpoint: resource.cancelEndpoint,
+    expectedLifecycleRevision: resource.lifecycleRevision,
+    eligible: blockers.length === 0,
+    blockers,
+  };
 }
 
 function unavailableActiveComputeRate(observedAt: string, code: string): ActiveComputeRateResult {
@@ -1448,6 +1497,10 @@ export async function buildAccountBillingSnapshot(
         rateSegment: rate.rateSegment,
         ratePerHour: rate.ratePerHour,
         estimatedRecurringComputeCostPerDay: rate.estimatedRecurringComputeCostPerDay,
+        cancellationControl: activeComputeCancellationControl(
+          resource,
+          sources.cancellationAuthority,
+        ),
       };
     });
     const activeResources = available("active-billing-service", observedAt, resources);

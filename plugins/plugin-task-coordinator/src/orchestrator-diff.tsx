@@ -1,4 +1,5 @@
 // Renders file diffs from orchestrator tool results.
+import { Card } from "@elizaos/ui";
 import type { ReactNode } from "react";
 import { type DiffRow, lineDiff } from "./orchestrator-diff.helpers";
 
@@ -29,10 +30,10 @@ export function DiffStat({
 
 // Meaning-only color: green for additions (--ok), red for deletions, muted for
 // everything unchanged. No fills heavier than /10 so the palette stays calm.
-const ROW_TONE: Record<DiffRow["type"], string> = {
+const ROW_TEXT_TONE: Record<DiffRow["type"], string> = {
   context: "text-muted",
-  add: "bg-ok/10 text-ok",
-  remove: "bg-destructive-subtle text-destructive",
+  add: "text-ok",
+  remove: "text-destructive",
 };
 
 const ROW_SIGN: Record<DiffRow["type"], string> = {
@@ -112,12 +113,14 @@ function Gutter({ value }: { value: number | null }): ReactNode {
 /** The "⋯ N unchanged" divider for a folded run of context. */
 function FoldDivider({ hidden }: { hidden: number }): ReactNode {
   return (
-    <div className="flex items-center gap-2 border-border/30 border-y bg-bg-accent/40 px-2 py-0.5 text-muted/50 text-2xs">
-      <span className="select-none">&ctdot;</span>
-      <span className="select-none tabular-nums">
-        {hidden} unchanged {hidden === 1 ? "line" : "lines"}
-      </span>
-    </div>
+    <Card asChild variant="codeHeader">
+      <div className="flex items-center gap-2 px-2 py-0.5 text-muted/50 text-2xs">
+        <span className="select-none">&ctdot;</span>
+        <span className="select-none tabular-nums">
+          {hidden} unchanged {hidden === 1 ? "line" : "lines"}
+        </span>
+      </div>
+    </Card>
   );
 }
 
@@ -146,31 +149,42 @@ export function DiffView({
   const view = foldContext(rows);
 
   return (
-    <div
-      className="overflow-x-hidden overflow-y-auto rounded-sm border border-border/40 bg-bg-accent font-mono text-2xs leading-snug"
-      style={{ maxHeight: "18rem" }}
-      data-testid="orchestrator-diff"
-    >
-      {view.map((row) =>
-        row.type === "fold" ? (
-          <FoldDivider key={row.key} hidden={row.hidden} />
-        ) : (
-          // (oldLine, newLine) pairs are unique within a diff, so no index key.
-          <div
-            key={`${row.oldLine ?? "_"}:${row.newLine ?? "_"}:${row.type}`}
-            className={`flex ${ROW_TONE[row.type]}`}
-          >
-            <Gutter value={row.oldLine} />
-            <Gutter value={row.newLine} />
-            <span className="w-3 shrink-0 select-none text-center opacity-70">
-              {ROW_SIGN[row.type]}
-            </span>
-            <span className="min-w-0 flex-1 whitespace-pre-wrap break-all pr-2">
-              {row.text}
-            </span>
-          </div>
-        ),
-      )}
-    </div>
+    <Card asChild variant="codeFrame">
+      <div
+        className="overflow-x-hidden overflow-y-auto font-mono text-2xs leading-snug"
+        style={{ maxHeight: "18rem" }}
+        data-testid="orchestrator-diff"
+      >
+        {view.map((row) =>
+          row.type === "fold" ? (
+            <FoldDivider key={row.key} hidden={row.hidden} />
+          ) : (
+            // (oldLine, newLine) pairs are unique within a diff, so no index key.
+            <Card
+              key={`${row.oldLine ?? "_"}:${row.newLine ?? "_"}:${row.type}`}
+              asChild
+              variant={
+                row.type === "add"
+                  ? "vaultSuccessStrip"
+                  : row.type === "remove"
+                    ? "vaultDangerStrip"
+                    : "transparentSquare"
+              }
+            >
+              <div className={`flex ${ROW_TEXT_TONE[row.type]}`}>
+                <Gutter value={row.oldLine} />
+                <Gutter value={row.newLine} />
+                <span className="w-3 shrink-0 select-none text-center opacity-70">
+                  {ROW_SIGN[row.type]}
+                </span>
+                <span className="min-w-0 flex-1 whitespace-pre-wrap break-all pr-2">
+                  {row.text}
+                </span>
+              </div>
+            </Card>
+          ),
+        )}
+      </div>
+    </Card>
   );
 }

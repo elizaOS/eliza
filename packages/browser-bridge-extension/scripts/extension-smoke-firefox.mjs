@@ -232,36 +232,26 @@ async function runInstalledFirefoxSmoke() {
       }
     }, pairingConfig);
     // Firefox BiDi exposes the externally opened extension tab through a
-    // stale about:blank navigation identity. Puppeteer's reload waits for a
-    // navigation event Firefox never reports, even though the background has
-    // already paired and executed the session. Close and reopen the real
-    // installed popup so its normal startup render reads the persisted state.
-    await popupPage.close();
-    await openInstalledFirefoxPopup(
-      executablePath,
-      profileDirectory,
-      extensionId,
-    );
-    popupPage = await waitForInstalledPairingGuide(browser);
-    try {
-      await popupPage.waitForFunction(
-        () =>
-          document
-            .querySelector("#statusTitle")
-            ?.textContent?.includes("Connected"),
-        { timeout: 20_000 },
-      );
-    } catch (error) {
-      const popupState = await popupPage.evaluate(() => ({
-        action: document.querySelector("#primaryAction")?.textContent,
-        title: document.querySelector("#statusTitle")?.textContent,
-      }));
+    // stale about:blank navigation identity. Verify the persisted background
+    // state through the extension runtime instead of closing and reopening the
+    // popup, which would require a second external Firefox tab launch.
+    const persistedState = await popupPage.evaluate(async () => {
+      const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
+      if (!runtime) throw new Error("extension runtime unavailable");
+      return await runtime.sendMessage({ type: "browser-bridge:get-state" });
+    });
+    if (
+      !persistedState?.ok ||
+      persistedState.state?.settingsSummary !== "active_tabs / control on"
+    ) {
       throw new Error(
-        `Firefox pairing setup did not settle: ${JSON.stringify(popupState)}`,
-        { cause: error },
+        `Firefox pairing state did not persist: ${JSON.stringify(persistedState)}`,
       );
     }
-    await saveScreenshot(popupPage, "firefox-pair-and-sync-success");
+    // Firefox BiDi keeps this externally opened popup's DOM at its initial
+    // render even though extension runtime messages remain live. Do not
+    // publish a misleading visual success artifact; the persisted background
+    // state above is the authoritative installed-extension acceptance check.
     await popupPage.close();
     await waitForFirefoxAction(appPage, mockServer.requests);
 

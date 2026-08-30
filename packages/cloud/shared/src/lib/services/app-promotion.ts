@@ -25,8 +25,12 @@ import type {
   CampaignOptimizationGoal,
 } from "./advertising/types";
 import { appsService } from "./apps";
-import { creditsService } from "./credits";
 import { discordAppAutomationService } from "./discord-automation/app-automation";
+import {
+  type GenerativeOperationContext,
+  isGenerativeOperationAdmissionError,
+  runFlatProviderOperation,
+} from "./generative-operation";
 import type { CreateSeoRequestParams } from "./seo";
 import { seoService } from "./seo";
 import { socialMediaService } from "./social-media";
@@ -230,6 +234,7 @@ class AppPromotionService {
   async generatePromotionalContent(
     app: App,
     targetAudience?: string,
+    operationContext?: GenerativeOperationContext,
   ): Promise<GeneratedPromotionalContent> {
     const appDescription = app.description || `${app.name} - An app built on Eliza Cloud`;
     const appUrl = app.app_url;
@@ -261,68 +266,79 @@ Generate the following in JSON format:
 Return ONLY valid JSON, no markdown.`;
 
     const promoModel = "anthropic/claude-sonnet-4.6";
+    if (!operationContext) {
+      throw new Error("Promotional content generation requires generative admission");
+    }
     // Note: When ANTHROPIC_COT_BUDGET is set, temperature is silently dropped by @ai-sdk/anthropic.
     // Promotional content generation is a background service that does not benefit from extended thinking.
     // Pass 0 as thinkingBudget to explicitly disable CoT for these internal service calls.
-    const result = await generateText({
-      model: getLanguageModel(promoModel),
-      temperature: 0.7,
-      prompt,
-      // Note: CoT is explicitly disabled (budget=0) for promotional content generation
-      // because it doesn't benefit from extended thinking and needs temperature control.
-      ...mergeAnthropicCotProviderOptions(promoModel, process.env, 0),
-    });
-    assertModelOutputComplete({
-      finishReason: result.finishReason,
-      provider: "anthropic",
-      model: promoModel,
-    });
-    const { text } = result;
+    return await runFlatProviderOperation(
+      operationContext,
+      {
+        provider: "anthropic",
+        billingSource: "anthropic",
+        model: promoModel,
+        operation: "app_promotional_content",
+        cost: PROMOTION_COSTS.contentGeneration,
+        metadata: { appId: app.id },
+      },
+      async () => {
+        const result = await generateText({
+          model: getLanguageModel(promoModel),
+          temperature: 0.7,
+          prompt,
+          ...mergeAnthropicCotProviderOptions(promoModel, process.env, 0),
+        });
+        assertModelOutputComplete({
+          finishReason: result.finishReason,
+          provider: "anthropic",
+          model: promoModel,
+        });
+        const { text } = result;
 
-    // Parse and validate the AI response
-    const extracted = text.trim();
-    let jsonText = extracted;
+        const extracted = text.trim();
+        let jsonText = extracted;
 
-    // Extract JSON from markdown code blocks if present
-    const fenceMatch = extracted.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) {
-      jsonText = fenceMatch[1].trim();
-    }
+        // Extract JSON from markdown code blocks if present
+        const fenceMatch = extracted.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (fenceMatch) jsonText = fenceMatch[1].trim();
 
-    // Find JSON boundaries
-    const jsonStart = jsonText.search(/[{[]/);
-    const lastBrace = jsonText.lastIndexOf("}");
-    const lastBracket = jsonText.lastIndexOf("]");
-    const jsonEnd = Math.max(lastBrace, lastBracket);
+        // Find JSON boundaries
+        const jsonStart = jsonText.search(/[{[]/);
+        const lastBrace = jsonText.lastIndexOf("}");
+        const lastBracket = jsonText.lastIndexOf("]");
+        const jsonEnd = Math.max(lastBrace, lastBracket);
 
-    if (jsonStart === -1 || jsonEnd === -1) {
-      throw new Error("No JSON found in AI response for promotional content");
-    }
+        if (jsonStart === -1 || jsonEnd === -1) {
+          throw new Error("No JSON found in AI response for promotional content");
+        }
 
-    const jsonString = jsonText.slice(jsonStart, jsonEnd + 1);
+        const jsonString = jsonText.slice(jsonStart, jsonEnd + 1);
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(jsonString);
-    } catch (parseError) {
-      logger.error("[AppPromotion] Failed to parse AI response JSON", {
-        appId: app.id,
-        error: parseError instanceof Error ? parseError.message : "Unknown error",
-        jsonString: jsonString.substring(0, 500),
-      });
-      throw new Error("Failed to parse promotional content JSON");
-    }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(jsonString);
+        } catch (parseError) {
+          logger.error("[AppPromotion] Failed to parse AI response JSON", {
+            appId: app.id,
+            error: parseError instanceof Error ? parseError.message : "Unknown error",
+            jsonString: jsonString.substring(0, 500),
+          });
+          throw new Error("Failed to parse promotional content JSON");
+        }
 
-    // Validate structure manually (bypasses Zod to avoid Turbopack bundling issues)
-    try {
-      return this.validatePromotionalContent(parsed);
-    } catch (validationError) {
-      logger.error("[AppPromotion] Content validation failed", {
-        appId: app.id,
-        error: validationError instanceof Error ? validationError.message : "Unknown error",
-      });
-      throw new Error("Promotional content validation failed");
-    }
+        // Validate structure manually (bypasses Zod to avoid Turbopack bundling issues)
+        try {
+          return this.validatePromotionalContent(parsed);
+        } catch (validationError) {
+          logger.error("[AppPromotion] Content validation failed", {
+            appId: app.id,
+            error: validationError instanceof Error ? validationError.message : "Unknown error",
+          });
+          throw new Error("Promotional content validation failed");
+        }
+      },
+    );
   }
 
   async promoteApp(
@@ -330,6 +346,7 @@ Return ONLY valid JSON, no markdown.`;
     userId: string,
     appId: string,
     config: PromotionConfig,
+    operationContext?: GenerativeOperationContext,
   ): Promise<PromotionResult> {
     logger.info("[AppPromotion] Starting app promotion", {
       appId,
@@ -357,32 +374,20 @@ Return ONLY valid JSON, no markdown.`;
     // Generate promotional content if needed
     let promotionalContent: GeneratedPromotionalContent | undefined;
     if (config.channels.includes("social") || config.channels.includes("advertising")) {
-      const contentDeduction = await creditsService.deductCredits({
-        organizationId,
-        amount: PROMOTION_COSTS.contentGeneration,
-        description: `Generate promotional content for ${app.name}`,
-        metadata: { appId, type: "content_generation" },
-      });
-
-      if (contentDeduction.success) {
+      try {
+        promotionalContent = await this.generatePromotionalContent(
+          app,
+          undefined,
+          operationContext,
+        );
         result.totalCreditsUsed += PROMOTION_COSTS.contentGeneration;
-        try {
-          promotionalContent = await this.generatePromotionalContent(app);
-        } catch (error) {
-          // Refund credits if content generation fails
-          await creditsService.refundCredits({
-            organizationId,
-            amount: PROMOTION_COSTS.contentGeneration,
-            description: `Refund: Content generation failed for ${app.name}`,
-            metadata: { appId, type: "content_generation_refund" },
-          });
-          result.totalCreditsUsed -= PROMOTION_COSTS.contentGeneration;
-          logger.error("[AppPromotion] Content generation failed, credits refunded", {
-            appId,
-            error: error instanceof Error ? error.message : "Unknown error",
-          });
-          result.errors.push("Content generation failed - credits refunded");
-        }
+      } catch (error) {
+        if (isGenerativeOperationAdmissionError(error)) throw error;
+        logger.error("[AppPromotion] Content generation failed", {
+          appId,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        result.errors.push("Content generation failed");
       }
     }
 
@@ -407,6 +412,7 @@ Return ONLY valid JSON, no markdown.`;
         userId,
         app,
         config.seo,
+        operationContext,
       );
       if (!result.channels.seo.success) {
         result.errors.push(`SEO optimization failed: ${result.channels.seo.error}`);
@@ -431,6 +437,7 @@ Return ONLY valid JSON, no markdown.`;
         organizationId,
         app,
         config.twitterAutomation,
+        operationContext,
       );
       if (!result.channels.twitterAutomation.success) {
         result.errors.push(`Twitter automation failed: ${result.channels.twitterAutomation.error}`);
@@ -447,6 +454,7 @@ Return ONLY valid JSON, no markdown.`;
         organizationId,
         app,
         config.telegramAutomation,
+        operationContext,
       );
       if (!result.channels.telegramAutomation.success) {
         result.errors.push(
@@ -465,6 +473,7 @@ Return ONLY valid JSON, no markdown.`;
         organizationId,
         app,
         config.discordAutomation,
+        operationContext,
       );
       if (!result.channels.discordAutomation.success) {
         result.errors.push(`Discord automation failed: ${result.channels.discordAutomation.error}`);
@@ -538,6 +547,7 @@ Return ONLY valid JSON, no markdown.`;
     userId: string,
     app: App,
     config: NonNullable<PromotionConfig["seo"]>,
+    operationContext?: GenerativeOperationContext,
   ): Promise<NonNullable<PromotionResult["channels"]["seo"]>> {
     if (!app.app_url) {
       return {
@@ -555,6 +565,7 @@ Return ONLY valid JSON, no markdown.`;
       pageUrl: app.app_url,
       keywords: [app.name, "ai app", "eliza cloud"],
       promptContext: `App: ${app.name}. ${app.description || ""}`,
+      operationContext,
     });
 
     return {
@@ -646,6 +657,7 @@ Return ONLY valid JSON, no markdown.`;
     organizationId: string,
     app: App,
     config: NonNullable<PromotionConfig["twitterAutomation"]>,
+    operationContext?: GenerativeOperationContext,
   ): Promise<NonNullable<PromotionResult["channels"]["twitterAutomation"]>> {
     try {
       // Enable automation with the provided config
@@ -667,7 +679,12 @@ Return ONLY valid JSON, no markdown.`;
       let initialTweetUrl: string | undefined;
 
       if (config.autoPost) {
-        const tweetResult = await twitterAppAutomationService.postAppTweet(organizationId, app.id);
+        const tweetResult = await twitterAppAutomationService.postAppTweet(
+          organizationId,
+          app.id,
+          undefined,
+          operationContext,
+        );
 
         if (tweetResult.success) {
           initialTweetId = tweetResult.tweetId;
@@ -688,6 +705,7 @@ Return ONLY valid JSON, no markdown.`;
         initialTweetUrl,
       };
     } catch (error) {
+      if (isGenerativeOperationAdmissionError(error)) throw error;
       logger.error("[AppPromotion] Twitter automation failed", {
         appId: app.id,
         error: extractErrorMessage(error),
@@ -709,6 +727,7 @@ Return ONLY valid JSON, no markdown.`;
     organizationId: string,
     app: App,
     config: NonNullable<PromotionConfig["telegramAutomation"]>,
+    operationContext?: GenerativeOperationContext,
   ): Promise<NonNullable<PromotionResult["channels"]["telegramAutomation"]>> {
     try {
       // If useExisting is true, just post using existing automation config
@@ -721,6 +740,9 @@ Return ONLY valid JSON, no markdown.`;
         const postResult = await telegramAppAutomationService.postAnnouncement(
           organizationId,
           app.id,
+          undefined,
+          undefined,
+          operationContext,
         );
 
         return {
@@ -763,6 +785,9 @@ Return ONLY valid JSON, no markdown.`;
         const postResult = await telegramAppAutomationService.postAnnouncement(
           organizationId,
           app.id,
+          undefined,
+          undefined,
+          operationContext,
         );
 
         if (postResult.success && postResult.messageId) {
@@ -784,6 +809,7 @@ Return ONLY valid JSON, no markdown.`;
         initialMessageId,
       };
     } catch (error) {
+      if (isGenerativeOperationAdmissionError(error)) throw error;
       logger.error("[AppPromotion] Telegram automation failed", {
         appId: app.id,
         error: extractErrorMessage(error),
@@ -805,6 +831,7 @@ Return ONLY valid JSON, no markdown.`;
     organizationId: string,
     app: App,
     config: NonNullable<PromotionConfig["discordAutomation"]>,
+    operationContext?: GenerativeOperationContext,
   ): Promise<NonNullable<PromotionResult["channels"]["discordAutomation"]>> {
     try {
       // If useExisting is true, just post using existing automation config
@@ -817,6 +844,8 @@ Return ONLY valid JSON, no markdown.`;
         const postResult = await discordAppAutomationService.postAnnouncement(
           organizationId,
           app.id,
+          undefined,
+          operationContext,
         );
 
         return {
@@ -857,6 +886,8 @@ Return ONLY valid JSON, no markdown.`;
         const postResult = await discordAppAutomationService.postAnnouncement(
           organizationId,
           app.id,
+          undefined,
+          operationContext,
         );
 
         if (postResult.success) {
@@ -880,6 +911,7 @@ Return ONLY valid JSON, no markdown.`;
         channelId,
       };
     } catch (error) {
+      if (isGenerativeOperationAdmissionError(error)) throw error;
       logger.error("[AppPromotion] Discord automation failed", {
         appId: app.id,
         error: extractErrorMessage(error),

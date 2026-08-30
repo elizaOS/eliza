@@ -26,6 +26,7 @@ const h = vi.hoisted(() => ({
   isElectrobunRuntime: vi.fn(() => false),
   loadDesktopWorkspaceSnapshot: vi.fn(async () => ({ supported: false })),
   capacitorGetPlatform: vi.fn(() => "web"),
+  capacitorIsPluginAvailable: vi.fn(() => true),
   capacitorIsNative: vi.fn(() => false),
   mobile: {
     checkPermissions: vi.fn(async () => ({ status: "granted" })),
@@ -113,9 +114,25 @@ vi.mock("@elizaos/ui/browser", () => ({
   },
 }));
 
+vi.mock("@elizaos/ui/auth-status", () => ({
+  APP_PAUSE_EVENT: "eliza:app-pause",
+  APP_RESUME_EVENT: "eliza:app-resume",
+  ElizaClient: h.ElizaClient,
+  client: {
+    getStatus: h.getStatus,
+    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
+  },
+  isApiError: h.isApiError,
+  isAuthenticatedNow: h.isAuthenticatedNow,
+  isElectrobunRuntime: h.isElectrobunRuntime,
+  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
+  subscribeAuthStatus: h.subscribeAuthStatus,
+}));
+
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     getPlatform: h.capacitorGetPlatform,
+    isPluginAvailable: h.capacitorIsPluginAvailable,
     isNativePlatform: h.capacitorIsNative,
   },
 }));
@@ -178,6 +195,7 @@ describe("personal-assistant renderer registration entry", () => {
     vi.clearAllMocks();
     h.getStatus.mockResolvedValue({ state: "running" });
     h.capacitorGetPlatform.mockReturnValue("web");
+    h.capacitorIsPluginAvailable.mockReturnValue(true);
     h.capacitorIsNative.mockReturnValue(false);
     h.mobile.checkPermissions.mockResolvedValue({ status: "granted" });
     h.mobile.addListener.mockImplementation(

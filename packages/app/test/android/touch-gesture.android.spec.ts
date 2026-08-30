@@ -815,6 +815,7 @@ test.describe
         );
         const rect = el?.getBoundingClientRect();
         return {
+          composerTop: rect ? rect.top : null,
           composerBottom: rect ? rect.bottom : null,
           viewportHeight: window.visualViewport?.height ?? window.innerHeight,
           innerHeight: window.innerHeight,
@@ -828,6 +829,10 @@ test.describe
         layout.composerBottom as number,
         "the composer must remain above the keyboard (within the visual viewport)",
       ).toBeLessThanOrEqual((layout.viewportHeight as number) + 4);
+      expect(
+        layout.composerBottom as number,
+        "the bottom-anchored composer must not double-lift to the status bar when adjustResize and keyboardWillShow race",
+      ).toBeGreaterThanOrEqual((layout.viewportHeight as number) - 128);
 
       matrixLog.push({ leg: "keyboard-avoidance", keyboardUp, ...layout });
       await testInfo.attach("keyboard avoidance leg", {

@@ -472,7 +472,7 @@
     "packages/ui/src/components/tool-events/ToolCallEventLog.tsx",
     "packages/ui/src/components/local-inference",
     "packages/ui/src/components/pages/BrowserWorkspaceView.tsx renderer pieces",
-    "packages/ui/src/components/pages/DocumentsView.tsx renderer pieces",
+    "plugins/plugin-documents/src/components/documents/KnowledgeDocumentsView.tsx renderer pieces",
     "packages/ui/src/components/pages/WorkflowGraphViewer.tsx renderer pieces",
     "packages/ui/src/components/apps",
     "packages/ui/src/components/composites/page-panel",

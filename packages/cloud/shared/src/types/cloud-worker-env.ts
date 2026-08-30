@@ -505,8 +505,24 @@ export interface Bindings {
    */
   ELIZA_APP_INBOUND_MEDIA_VISION_SENDER_DAILY_IMAGES?: string;
   ELIZA_APP_INBOUND_MEDIA_VISION_CONNECTOR_DAILY_IMAGES?: string;
+  /**
+   * Exactly `"true"` permits issuance of opt-in Personal Shared all-adults
+   * bindings after schema and egress enforcement are deployed fleet-wide.
+   * Unset is the safe rollout default; single-owner groups are unaffected.
+   */
+  ELIZA_APP_PERSONAL_SHARED_ALL_ADULTS_ENABLED?: string;
+  /**
+   * Stable 32-byte-or-longer HMAC key for source-idempotent, 60-bit join codes.
+   * Required before the all-adults issuance flag can create a new binding.
+   */
+  ELIZA_APP_PERSONAL_SHARED_JOIN_CODE_SECRET?: string;
   /** Moves only the official Personal Shared Telegram transport to the Worker edge. */
   PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+  /**
+   * Temporary exact-`"true"` bridge for a legacy Telegram Gateway without the
+   * account header or epoch-2 reconciliation. Keep absent outside a cutover.
+   */
+  PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED?: string;
   /** Collision-free secret used by the protected staging edge cutover. */
   PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
   /** Collision-free secret used by the protected production edge cutover; inert outside production. */

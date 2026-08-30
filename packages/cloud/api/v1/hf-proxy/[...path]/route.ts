@@ -21,14 +21,21 @@
  */
 
 import { Hono } from "hono";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  createHfProxyEgressQuotaStore,
+  type HfProxyEgressQuotaStore,
+} from "@/lib/services/hf-proxy-egress-quota";
 import { logger, redact } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const HF_UPSTREAM_HOST = "https://huggingface.co";
 const DEFAULT_MONTHLY_EGRESS_LIMIT_BYTES = 500 * 1024 ** 3;
-const MONTHLY_EGRESS_TTL_SECONDS = 35 * 24 * 60 * 60;
 
 /**
  * Only repos under this org may be proxied. The curated eliza-1 catalog lives at
@@ -74,13 +81,6 @@ const PASSTHROUGH_RESPONSE_HEADERS = [
 
 const app = new Hono<AppEnv>();
 
-interface EgressCounter {
-  bytes: number;
-  expiresAt: number;
-}
-
-const inMemoryEgressCounters = new Map<string, EgressCounter>();
-
 function monthlyEgressLimitBytes(env: AppEnv["Bindings"]): number {
   const raw = env.HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES;
   const parsed =
@@ -104,63 +104,6 @@ function retryAfterUntilNextUtcMonth(now: Date): string {
     (nextMonthStartedAt - now.getTime()) / 1000,
   );
   return String(Math.max(1, secondsUntilReset));
-}
-
-function egressKey(organizationId: string, now = new Date()): string {
-  return `hf-proxy:egress:${organizationId}:${monthBucket(now)}`;
-}
-
-async function readMonthlyEgress(
-  env: AppEnv["Bindings"],
-  organizationId: string,
-  bucketNow = new Date(),
-): Promise<number> {
-  const key = egressKey(organizationId, bucketNow);
-  const kv = env.CACHE_KV;
-  if (kv) {
-    const raw = await kv.get(key);
-    if (!raw) return 0;
-    try {
-      const parsed = JSON.parse(raw) as { bytes?: unknown };
-      return typeof parsed.bytes === "number" ? parsed.bytes : 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  const now = Date.now();
-  const counter = inMemoryEgressCounters.get(key);
-  if (!counter || counter.expiresAt <= now) {
-    inMemoryEgressCounters.delete(key);
-    return 0;
-  }
-  return counter.bytes;
-}
-
-async function addMonthlyEgress(
-  env: AppEnv["Bindings"],
-  organizationId: string,
-  bytes: number,
-): Promise<number> {
-  if (bytes <= 0) return readMonthlyEgress(env, organizationId);
-
-  const key = egressKey(organizationId);
-  const kv = env.CACHE_KV;
-  const current = await readMonthlyEgress(env, organizationId);
-  const next = current + bytes;
-  const value = JSON.stringify({
-    bytes: next,
-    updatedAt: new Date().toISOString(),
-  });
-  if (kv) {
-    await kv.put(key, value, { expirationTtl: MONTHLY_EGRESS_TTL_SECONDS });
-  } else {
-    inMemoryEgressCounters.set(key, {
-      bytes: next,
-      expiresAt: Date.now() + MONTHLY_EGRESS_TTL_SECONDS * 1000,
-    });
-  }
-  return next;
 }
 
 function parseContentLength(headers: Headers): number | null {
@@ -195,8 +138,11 @@ function egressLimitResponse(
 
 function streamWithEgressAccounting(args: {
   body: ReadableStream<Uint8Array>;
-  env: AppEnv["Bindings"];
+  quota: HfProxyEgressQuotaStore;
   organizationId: string;
+  month: string;
+  limitBytes: number;
+  reservedBytes: number;
   repo: string;
   path: string;
   status: number;
@@ -205,28 +151,39 @@ function streamWithEgressAccounting(args: {
   let bytes = 0;
   return args.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
+      async transform(chunk, controller) {
+        const nextBytes = bytes + chunk.byteLength;
+        if (nextBytes > args.reservedBytes) {
+          const decision = await args.quota.reserve(
+            args.organizationId,
+            args.month,
+            nextBytes - args.reservedBytes,
+            args.limitBytes,
+          );
+          if (!decision.allowed) {
+            throw new Error(
+              "Hugging Face egress quota exhausted while streaming",
+            );
+          }
+          args.reservedBytes = nextBytes;
+        }
         bytes += chunk.byteLength;
         controller.enqueue(chunk);
       },
       async flush() {
-        const record = addMonthlyEgress(
-          args.env,
-          args.organizationId,
+        const excess = args.reservedBytes - bytes;
+        if (excess > 0) {
+          await args.quota.release(args.organizationId, args.month, excess);
+        }
+        logger.info("[hf-proxy] egress metric", {
+          organizationId: args.organizationId,
+          repo: args.repo,
+          path: args.path,
           bytes,
-        ).then((usedBytes) => {
-          logger.info("[hf-proxy] egress metric", {
-            organizationId: args.organizationId,
-            repo: args.repo,
-            path: args.path,
-            bytes,
-            status: args.status,
-            cacheStatus: args.cacheStatus,
-            cacheHit: cacheHit(args.cacheStatus),
-            usedBytes,
-          });
+          status: args.status,
+          cacheStatus: args.cacheStatus,
+          cacheHit: cacheHit(args.cacheStatus),
         });
-        await record;
       },
     }),
   );
@@ -236,9 +193,9 @@ app.get("/*", async (c) => {
   try {
     // Auth: a real cloud session or org API key. We require a valid linked
     // account and capture the identity for usage attribution below.
-    const account = await requireUserOrApiKeyWithOrg(c);
-    const userId = account.id;
-    const orgId = account.organization_id;
+    const caller = await requireGenerativeRouteCaller(c);
+    const userId = caller.user.id;
+    const orgId = caller.user.organization_id;
     if (!orgId) {
       return c.json({ error: "Organization is required." }, 403);
     }
@@ -278,14 +235,31 @@ app.get("/*", async (c) => {
     }
 
     const limitBytes = monthlyEgressLimitBytes(c.env);
-    // Pin quota lookup and reset advice to one instant so a request at the UTC
-    // month boundary cannot read one bucket and advertise another reset.
+    const quota = createHfProxyEgressQuotaStore(c.env);
+    if (!quota) {
+      logger.error("[hf-proxy] atomic egress quota store is unavailable");
+      return c.json(
+        { error: "HuggingFace proxy quota service is unavailable." },
+        503,
+        { "Retry-After": "1" },
+      );
+    }
+    // Pin admission and reset advice to one instant so a request at the UTC
+    // month boundary cannot reserve one bucket and advertise another reset.
     const egressNow = new Date();
-    const usedBytes = await readMonthlyEgress(c.env, orgId, egressNow);
-    if (usedBytes >= limitBytes) {
-      return c.json(egressLimitResponse(orgId, limitBytes, usedBytes), 429, {
-        "Retry-After": retryAfterUntilNextUtcMonth(egressNow),
-      });
+    const month = monthBucket(egressNow);
+    // Reserve one byte atomically before the paid provider request. Known
+    // response lengths expand this reservation before any body is delivered;
+    // unknown-length streams reserve each chunk before enqueueing it.
+    const initialAdmission = await quota.reserve(orgId, month, 1, limitBytes);
+    if (!initialAdmission.allowed) {
+      return c.json(
+        egressLimitResponse(orgId, limitBytes, initialAdmission.usedBytes),
+        429,
+        {
+          "Retry-After": retryAfterUntilNextUtcMonth(egressNow),
+        },
+      );
     }
 
     const incomingUrl = new URL(c.req.url);
@@ -299,11 +273,20 @@ app.get("/*", async (c) => {
     const range = c.req.header("range");
     if (range) headers.set("range", range);
 
-    const upstreamResponse = await fetch(upstream, {
-      method: "GET",
-      headers,
-      redirect: "follow",
-    });
+    let upstreamResponse: Response;
+    try {
+      upstreamResponse = await fetch(upstream, {
+        method: "GET",
+        headers,
+        redirect: "follow",
+      });
+    } catch (error) {
+      const release = quota.release(orgId, month, 1);
+      const executionCtx = getGenerativeExecutionContext(c);
+      if (executionCtx) executionCtx.waitUntil(release);
+      else await release;
+      throw error;
+    }
 
     if (upstreamResponse.status >= 400) {
       logger.warn("[hf-proxy] upstream HuggingFace error", {
@@ -335,8 +318,12 @@ app.get("/*", async (c) => {
         status: upstreamResponse.status,
         cacheStatus: upstreamCacheStatus,
         cacheHit: cacheHit(upstreamCacheStatus),
-        usedBytes,
+        usedBytes: initialAdmission.usedBytes - 1,
       });
+      const release = quota.release(orgId, month, 1);
+      const executionCtx = getGenerativeExecutionContext(c);
+      if (executionCtx) executionCtx.waitUntil(release);
+      else await release;
       return c.json(
         {
           error: "HuggingFace repo is gated or unauthorized.",
@@ -347,10 +334,31 @@ app.get("/*", async (c) => {
       );
     }
 
-    if (contentLength !== null && usedBytes + contentLength > limitBytes) {
-      return c.json(egressLimitResponse(orgId, limitBytes, usedBytes), 429, {
-        "Retry-After": retryAfterUntilNextUtcMonth(egressNow),
-      });
+    let reservedBytes = 1;
+    if (contentLength !== null && contentLength > 1) {
+      const expanded = await quota.reserve(
+        orgId,
+        month,
+        contentLength - 1,
+        limitBytes,
+      );
+      if (!expanded.allowed) {
+        await upstreamResponse.body?.cancel();
+        const release = quota.release(orgId, month, 1);
+        const executionCtx = getGenerativeExecutionContext(c);
+        if (executionCtx) executionCtx.waitUntil(release);
+        else await release;
+        return c.json(
+          egressLimitResponse(
+            orgId,
+            limitBytes,
+            Math.max(0, expanded.usedBytes - 1),
+          ),
+          429,
+          { "Retry-After": retryAfterUntilNextUtcMonth(egressNow) },
+        );
+      }
+      reservedBytes = contentLength;
     }
 
     const responseHeaders = new Headers();
@@ -362,8 +370,11 @@ app.get("/*", async (c) => {
     const body = upstreamResponse.body
       ? streamWithEgressAccounting({
           body: upstreamResponse.body,
-          env: c.env,
+          quota,
           organizationId: orgId,
+          month,
+          limitBytes,
+          reservedBytes,
           repo,
           path,
           status: upstreamResponse.status,
@@ -377,7 +388,7 @@ app.get("/*", async (c) => {
       headers: responseHeaders,
     });
   } catch (error) {
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 

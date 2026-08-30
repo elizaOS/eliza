@@ -23,6 +23,7 @@ import {
   SettingsStack,
 } from "../../../components/settings/settings-layout";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
+import { SemanticForm } from "../../../components/ui/semantic-form";
 import { ApiError, apiFetch } from "../../lib/api-client";
 import type { UserProfile } from "../data/user";
 
@@ -170,7 +171,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
         description="Update your profile information and manage your account settings."
       >
         {!user.email && !emailAdded ? (
-          <form
+          <SemanticForm
             onSubmit={(event) => {
               event.preventDefault();
               void submitEmail();
@@ -213,7 +214,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 )}
               </SettingsActionButton>
             </div>
-          </form>
+          </SemanticForm>
         ) : null}
 
         {user.email ? (
@@ -241,7 +242,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
           </Alert>
         ) : null}
 
-        <form
+        <SemanticForm
           onSubmit={(event) => {
             event.preventDefault();
             submitName();
@@ -312,7 +313,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
               Cancel
             </SettingsActionButton>
           </div>
-        </form>
+        </SemanticForm>
       </SettingsGroup>
     </SettingsStack>
   );

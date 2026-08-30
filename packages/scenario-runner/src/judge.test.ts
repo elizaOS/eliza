@@ -64,4 +64,14 @@ describe("judgeTextWithLlm fallback parsing", () => {
     });
     expect(useModel).toHaveBeenCalledTimes(3);
   });
+
+  it("keeps the complete malformed model output in the typed error", () => {
+    const distinguishingTail = "judge-output-tail";
+    const raw = `${"x".repeat(1_000)}${distinguishingTail}`;
+    const error = new JudgeParseError(3, raw);
+
+    expect(error.raw).toBe(raw);
+    expect(error.message).toContain(distinguishingTail);
+    expect(error.message).toContain(raw);
+  });
 });

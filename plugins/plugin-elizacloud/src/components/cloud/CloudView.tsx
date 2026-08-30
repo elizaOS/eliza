@@ -4,12 +4,9 @@
  * billing summary) rendered app-native in the dark launcher aesthetic.
  *
  * Served as this plugin's `cloud` view bundle (`vite.config.views.ts`) and
- * mounted by the shell's DynamicViewLoader at `/cloud`, so it may import ONLY
- * host-external specifiers (react, `@elizaos/ui/api`) — console surfaces under
- * `@elizaos/ui/cloud/*` are not in the host-external map and cannot be reused
- * here. Data comes from the host `client` singleton's cloud wrappers, which
- * already handle steward-token auth, direct-cloud base resolution, and native
- * transport.
+ * mounted by the shell's DynamicViewLoader at `/cloud`. Data comes from the
+ * host `client` singleton's cloud wrappers, while navigation uses the host's
+ * scope broker and safe external-URL boundary.
  *
  * State machine honors the repo three-state rule: loading / signed-out
  * (designed connect CTA) / error (with retry) / ready — and inside ready each
@@ -19,7 +16,16 @@
 
 // Host-provided UI atoms and the narrow API singleton are both externalized by
 // the dynamic-view loader, so this bundle does not ship a second UI runtime.
-import { Button } from "@elizaos/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@elizaos/ui";
+import { navigateBrowserPath } from "@elizaos/ui/app-navigate-view";
 import { client } from "@elizaos/ui/api";
 import type {
   CloudApiKeys,
@@ -28,6 +34,7 @@ import type {
   CloudCredits,
   CloudStatus,
 } from "@elizaos/ui/api";
+import { openExternalUrl } from "@elizaos/ui/utils";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -55,11 +62,15 @@ const defaultFetchers: CloudViewFetchers = {
   fetchBillingSummary: () => client.getCloudBillingSummary(),
 };
 
-/** In-shell navigation: pushState + popstate, the launcher tile convention. */
-function navigateTo(path: string): void {
-  window.history.pushState({}, "", path);
-  window.dispatchEvent(new PopStateEvent("popstate"));
+export interface CloudViewInteractions {
+  navigateInternal: (path: string) => void;
+  openExternal: (url: string) => Promise<boolean>;
 }
+
+const defaultInteractions: CloudViewInteractions = {
+  navigateInternal: navigateBrowserPath,
+  openExternal: openExternalUrl,
+};
 
 // ---------------------------------------------------------------------------
 // Load-state machine.
@@ -69,7 +80,6 @@ function navigateTo(path: string): void {
 type Section<T> = { data: T; error: null } | { data: null; error: string };
 
 interface ReadyData {
-  status: CloudStatus;
   credits: Section<CloudCredits>;
   agents: Section<CloudCompatAgent[]>;
   apiKeys: Section<CloudApiKeys>;
@@ -106,14 +116,16 @@ async function loadAccount(fetchers: CloudViewFetchers): Promise<LoadState> {
   const agentsSection: Section<CloudCompatAgent[]> =
     agents.status === "fulfilled"
       ? agents.value.success
-        ? { data: agents.value.data ?? [], error: null }
-        : { data: null, error: agents.value.error ?? "Agents are unavailable right now." }
+        ? { data: agents.value.data, error: null }
+        : {
+            data: null,
+            error: agents.value.error ?? "Agents are unavailable right now.",
+          }
       : { data: null, error: "Agents are unavailable right now." };
 
   return {
     kind: "ready",
     data: {
-      status,
       credits: section(credits, "Credits are unavailable right now."),
       agents: agentsSection,
       apiKeys: section(apiKeys, "API keys are unavailable right now."),
@@ -126,15 +138,21 @@ async function loadAccount(fetchers: CloudViewFetchers): Promise<LoadState> {
 // Presentational pieces (token classes only — the launcher theme owns colors).
 // ---------------------------------------------------------------------------
 
-function Card(props: { title: string; children: ReactNode; action?: ReactNode }) {
+function CloudCard(props: {
+  title: string;
+  children: ReactNode;
+  action?: ReactNode;
+}) {
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-txt">{props.title}</h2>
-        {props.action}
-      </div>
-      {props.children}
-    </section>
+    <Card asChild variant="panel">
+      <section>
+        <CardHeader className="grid grid-cols-[1fr_auto] items-start gap-2 space-y-0 p-4 pb-3">
+          <CardTitle className="text-sm text-txt">{props.title}</CardTitle>
+          {props.action ? <CardAction>{props.action}</CardAction> : null}
+        </CardHeader>
+        <CardContent className="px-4 pb-4 pt-0">{props.children}</CardContent>
+      </section>
+    </Card>
   );
 }
 
@@ -142,25 +160,31 @@ function SectionNote(props: { message: string }) {
   return <p className="text-sm text-muted">{props.message}</p>;
 }
 
-function ExternalLink(props: { href: string; children: ReactNode }) {
+function ExternalAction(props: {
+  href: string;
+  children: ReactNode;
+  onOpen: (href: string) => void;
+}) {
   return (
-    <a
-      className="text-sm font-medium text-accent hover:underline"
-      href={props.href}
-      target="_blank"
-      rel="noreferrer"
+    <Button
+      type="button"
+      variant="externalLink"
+      onClick={() => props.onOpen(props.href)}
     >
       {props.children}
-    </a>
+    </Button>
   );
 }
 
-function agentStatusClass(status: string): string {
+function agentStatusTone(
+  status: string,
+): "success" | "danger" | "warning" | "muted" {
   const normalized = status.toLowerCase();
-  if (normalized === "running") return "text-ok";
-  if (normalized === "error") return "text-danger";
-  if (normalized === "provisioning" || normalized === "pending") return "text-warn";
-  return "text-muted";
+  if (normalized === "running") return "success";
+  if (normalized === "error") return "danger";
+  if (normalized === "provisioning" || normalized === "pending")
+    return "warning";
+  return "muted";
 }
 
 function balanceClass(credits: CloudCredits): string {
@@ -177,54 +201,30 @@ function formatBalance(balance: number | null): string {
 // Cards.
 // ---------------------------------------------------------------------------
 
-function AccountCard(props: { status: CloudStatus }) {
-  const { status } = props;
-  return (
-    <Card
-      title="Account"
-      action={
-        <span className="rounded-md bg-accent/12 px-2 py-0.5 text-xs font-medium text-accent">
-          Connected
-        </span>
-      }
-    >
-      <dl className="space-y-1 text-sm">
-        {status.organizationId ? (
-          <div className="flex justify-between gap-2">
-            <dt className="text-muted">Organization</dt>
-            <dd className="truncate text-txt" data-testid="cloud-org-id">
-              {status.organizationId}
-            </dd>
-          </div>
-        ) : null}
-        {status.userId ? (
-          <div className="flex justify-between gap-2">
-            <dt className="text-muted">User</dt>
-            <dd className="truncate text-txt">{status.userId}</dd>
-          </div>
-        ) : null}
-      </dl>
-    </Card>
-  );
-}
-
 function CreditsCard(props: {
   credits: Section<CloudCredits>;
   billing: Section<CloudBillingSummary>;
+  onOpen: (href: string) => void;
 }) {
-  const { credits, billing } = props;
+  const { credits, billing, onOpen } = props;
   if (!credits.data) {
     return (
-      <Card title="Credits">
+      <CloudCard title="Credits">
         <SectionNote message={credits.error} />
-      </Card>
+      </CloudCard>
     );
   }
   const topUpUrl = credits.data.topUpUrl ?? billing.data?.topUpUrl;
   return (
-    <Card
+    <CloudCard
       title="Credits"
-      action={topUpUrl ? <ExternalLink href={topUpUrl}>Top up</ExternalLink> : undefined}
+      action={
+        topUpUrl ? (
+          <ExternalAction href={topUpUrl} onOpen={onOpen}>
+            Top up
+          </ExternalAction>
+        ) : undefined
+      }
     >
       <p
         className={`text-2xl font-semibold ${balanceClass(credits.data)}`}
@@ -246,18 +246,18 @@ function CreditsCard(props: {
       ) : (
         <p className="mt-2 text-sm text-muted">{billing.error}</p>
       )}
-    </Card>
+    </CloudCard>
   );
 }
 
 function AgentsCard(props: { agents: Section<CloudCompatAgent[]> }) {
   const { agents } = props;
   return (
-    <Card title="Hosted agents">
+    <CloudCard title="Hosted agents">
       {agents.data === null ? (
         <SectionNote message={agents.error} />
       ) : agents.data.length === 0 ? (
-        <SectionNote message="No hosted agents yet. Ask me to create one, or provision from the console." />
+        <SectionNote message="No hosted agents." />
       ) : (
         <ul className="space-y-2" data-testid="cloud-agent-list">
           {agents.data.map((agent) => (
@@ -265,39 +265,52 @@ function AgentsCard(props: { agents: Section<CloudCompatAgent[]> }) {
               key={agent.agent_id}
               className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2"
             >
-              <span className="truncate text-sm text-txt">{agent.agent_name}</span>
-              <span className={`text-xs font-medium ${agentStatusClass(agent.status)}`}>
-                {agent.status}
+              <span className="truncate text-sm text-txt">
+                {agent.agent_name}
               </span>
+              <Badge
+                variant="outline"
+                size="micro"
+                tone={agentStatusTone(agent.status)}
+              >
+                {agent.status}
+              </Badge>
             </li>
           ))}
         </ul>
       )}
-    </Card>
+    </CloudCard>
   );
 }
 
-function ApiKeysCard(props: { apiKeys: Section<CloudApiKeys> }) {
-  const { apiKeys } = props;
+function ApiKeysCard(props: {
+  apiKeys: Section<CloudApiKeys>;
+  onOpen: (href: string) => void;
+}) {
+  const { apiKeys, onOpen } = props;
   if (apiKeys.data === null) {
     return (
-      <Card title="API keys">
+      <CloudCard title="API keys">
         <SectionNote message={apiKeys.error} />
-      </Card>
+      </CloudCard>
     );
   }
   const { keys, manageUrl, reason } = apiKeys.data;
   return (
-    <Card
+    <CloudCard
       title="API keys"
-      action={<ExternalLink href={manageUrl}>Manage</ExternalLink>}
+      action={
+        <ExternalAction href={manageUrl} onOpen={onOpen}>
+          Manage
+        </ExternalAction>
+      }
     >
       {keys === null ? (
         <SectionNote
           message={
             reason === "session-required"
-              ? "API keys can only be listed from a signed-in session — manage them in the console."
-              : "Sign in to Eliza Cloud to see your API keys."
+              ? "Open the console to view API keys for this account."
+              : "Open the console to view API keys."
           }
         />
       ) : (
@@ -305,7 +318,7 @@ function ApiKeysCard(props: { apiKeys: Section<CloudApiKeys> }) {
           {keys.length === 1 ? "1 API key" : `${keys.length} API keys`}
         </p>
       )}
-    </Card>
+    </CloudCard>
   );
 }
 
@@ -316,14 +329,40 @@ function ApiKeysCard(props: { apiKeys: Section<CloudApiKeys> }) {
 export interface CloudViewProps {
   /** Test/host injection seam. Defaults to the host `client` cloud wrappers. */
   fetchers?: CloudViewFetchers;
+  /** Test seam for the host-brokered internal and external navigation paths. */
+  interactions?: CloudViewInteractions;
 }
 
 export function CloudView(props: CloudViewProps = {}): ReactNode {
   const fetchers = props.fetchers ?? defaultFetchers;
+  const interactions = props.interactions ?? defaultInteractions;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [navigationError, setNavigationError] = useState<string | null>(null);
 
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
+  const interactionsRef = useRef(interactions);
+  interactionsRef.current = interactions;
+
+  const navigateInternal = useCallback((path: string) => {
+    setNavigationError(null);
+    try {
+      interactionsRef.current.navigateInternal(path);
+    } catch {
+      setNavigationError("Navigation is unavailable right now.");
+    }
+  }, []);
+
+  const openExternal = useCallback((url: string) => {
+    setNavigationError(null);
+    void interactionsRef.current
+      .openExternal(url)
+      .then((opened) => {
+        if (!opened)
+          setNavigationError("This link could not be opened safely.");
+      })
+      .catch(() => setNavigationError("This link could not be opened safely."));
+  }, []);
 
   // `background` refreshes in place (the 30s agent-status poll); user-driven
   // loads (mount, retry) show the loading state. Background refreshes keep the
@@ -367,7 +406,10 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
 
   if (state.kind === "loading") {
     return (
-      <div className="flex h-full items-center justify-center bg-bg" data-testid="cloud-loading">
+      <div
+        className="flex h-full items-center justify-center bg-bg"
+        data-testid="cloud-loading"
+      >
         <p className="text-sm text-muted">Loading your Eliza Cloud account…</p>
       </div>
     );
@@ -381,13 +423,14 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
       >
         <h1 className="text-lg font-semibold text-txt">Eliza Cloud</h1>
         <p className="max-w-sm text-sm text-muted">
-          Connect your Eliza Cloud account to see credits, hosted agents, API
-          keys, and billing here.
+          Connect to view credits, agents, API keys, and billing.
         </p>
-        <Button
-          type="button"
-          onClick={() => navigateTo("/settings")}
-        >
+        {navigationError ? (
+          <p role="alert" className="text-sm text-danger">
+            {navigationError}
+          </p>
+        ) : null}
+        <Button type="button" onClick={() => navigateInternal("/settings")}>
           Connect in Settings
         </Button>
       </div>
@@ -401,11 +444,7 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
         data-testid="cloud-error"
       >
         <p className="text-sm text-danger">{state.message}</p>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => load()}
-        >
+        <Button type="button" variant="outline" onClick={() => load()}>
           Retry
         </Button>
       </div>
@@ -416,11 +455,24 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
   return (
     <div className="h-full overflow-y-auto bg-bg" data-testid="cloud-ready">
       <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-6">
-        <h1 className="text-lg font-semibold text-txt">Eliza Cloud</h1>
-        <AccountCard status={data.status} />
-        <CreditsCard credits={data.credits} billing={data.billing} />
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-lg font-semibold text-txt">Eliza Cloud</h1>
+          <Badge variant="outline" size="micro" tone="success">
+            Connected
+          </Badge>
+        </div>
+        {navigationError ? (
+          <p role="alert" className="text-sm text-danger">
+            {navigationError}
+          </p>
+        ) : null}
+        <CreditsCard
+          credits={data.credits}
+          billing={data.billing}
+          onOpen={openExternal}
+        />
         <AgentsCard agents={data.agents} />
-        <ApiKeysCard apiKeys={data.apiKeys} />
+        <ApiKeysCard apiKeys={data.apiKeys} onOpen={openExternal} />
       </div>
     </div>
   );

@@ -26,7 +26,6 @@ import { appModeNavigation } from "../app-mode/app-mode";
 import { publishPersonalEntryHandoff } from "../app-mode/use-personal-entry";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
-  clearSsoLoggedOut,
   redirectToSsoBridge,
   shouldAutoBridgeToSso,
 } from "../sso-bridge/sso-bridge";
@@ -38,7 +37,7 @@ import {
 import { runJoinFlow } from "./lib/run-join-flow";
 import { useJoinSessionAuth } from "./lib/use-join-session";
 
-type JoinPhase = "connecting" | "ready" | "error";
+type JoinPhase = "connecting" | "ready" | "error" | "sign-out-error";
 
 function describeJoinError(err: unknown): string {
   if (err instanceof Error && err.message.trim()) return err.message;
@@ -139,7 +138,6 @@ export default function JoinPage(): React.JSX.Element {
       });
       return;
     }
-    clearSsoLoggedOut();
     if (appHandoff) {
       // The apex is the billing console and cannot boot chat. Hand off before
       // any Shared identity request. Preserve /join so the app host restores
@@ -168,9 +166,21 @@ export default function JoinPage(): React.JSX.Element {
     const { signOutFromSsoBridgedHost } = await import(
       "../sso-bridge/sso-bridge"
     );
-    await signOutFromSsoBridgedHost();
-    appModeNavigation.replace("/login");
-  }, [signingOut]);
+    try {
+      await signOutFromSsoBridgedHost();
+      appModeNavigation.replace("/login");
+    } catch {
+      // error-policy:J4 the server still owns an authenticated session, so
+      // keep the user here and expose a retry instead of claiming sign-out.
+      setError(
+        t("cloud.userMenu.signOutFailed", {
+          defaultValue: "Could not sign out safely. Please try again.",
+        }),
+      );
+      setPhase("sign-out-error");
+      setSigningOut(false);
+    }
+  }, [signingOut, t]);
 
   const signOutButton = (
     <Button
@@ -208,7 +218,19 @@ export default function JoinPage(): React.JSX.Element {
           draggable={false}
         />
 
-        {phase === "error" ? (
+        {phase === "sign-out-error" ? (
+          <div className="flex flex-col items-center gap-4">
+            <h1 className="font-poppins text-lg font-semibold text-white">
+              {t("cloud.join.signOutErrorTitle", {
+                defaultValue: "Couldn't sign out",
+              })}
+            </h1>
+            <p className="text-sm text-white/70" role="alert">
+              {error}
+            </p>
+            {signOutButton}
+          </div>
+        ) : phase === "error" ? (
           <div className="flex flex-col items-center gap-4">
             <h1 className="font-poppins text-lg font-semibold text-white">
               {t("cloud.join.errorTitle", {

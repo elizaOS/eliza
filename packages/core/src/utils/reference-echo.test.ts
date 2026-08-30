@@ -34,6 +34,13 @@ describe("describeUserReference", () => {
 		);
 	});
 
+	it("sanitizes lone surrogates before quoting", () => {
+		const lone = "item \uD800";
+		const described = describeUserReference(lone, FALLBACK);
+		expect(described).toBe('"item \uFFFD"');
+		expect(described.isWellFormed?.() ?? true).toBe(true);
+	});
+
 	it("falls back for an empty or whitespace-only reference", () => {
 		expect(describeUserReference("", FALLBACK)).toBe(FALLBACK);
 		expect(describeUserReference("   ", FALLBACK)).toBe(FALLBACK);

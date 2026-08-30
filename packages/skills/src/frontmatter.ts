@@ -68,14 +68,29 @@ function extractFrontmatter(content: string): {
     return { yamlString: null, body: normalized };
   }
 
+  // Scan forward to the first line that actually closes the block. A `\n---`
+  // sequence can also occur inside a quoted multi-line YAML scalar (e.g. a
+  // description quoting a markdown rule); cutting there truncates the value
+  // and turns legal frontmatter into invalid YAML.
   const startOffset = openMatch[0].length;
-  const endIndex = normalized.indexOf("\n---", startOffset - 1);
+  // Start one character back so an immediately adjacent closer (an empty
+  // frontmatter block, `---\n---`) is still recognized as a candidate.
+  let cursor = startOffset - 1;
+  let endIndex = -1;
+  while (cursor < normalized.length) {
+    const candidate = normalized.indexOf("\n---", cursor);
+    if (candidate === -1) break;
+    if (/^---\s*(?:\n|$)/.test(normalized.slice(candidate + 1))) {
+      endIndex = candidate;
+      break;
+    }
+    cursor = candidate + 1;
+  }
   if (endIndex === -1) {
     return { yamlString: null, body: normalized };
   }
 
-  const afterClosing = normalized.slice(endIndex + 1);
-  const closeMatch = afterClosing.match(/^---\s*(?:\n|$)/);
+  const closeMatch = normalized.slice(endIndex + 1).match(/^---\s*(?:\n|$)/);
   const closingLength = closeMatch ? closeMatch[0].length : 4;
 
   return {

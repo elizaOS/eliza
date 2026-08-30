@@ -34,6 +34,14 @@ beforeAll(() => {
 		path.join(installedPackageRoot, "dist/index.js"),
 		"export {};\n",
 	);
+	writeFileSync(
+		path.join(installedPackageRoot, "guild-management.ts"),
+		"export const unsafe = true;\n",
+	);
+	writeFileSync(
+		path.join(installedPackageRoot, "dist/guild-management.js"),
+		"export const unsafe = true;\n",
+	);
 });
 
 afterAll(() => {
@@ -68,5 +76,24 @@ describe("@elizaos/plugin-discord package exports", () => {
 				realpathSync(path.join(installedPackageRoot, "dist/index.js")),
 			),
 		);
+	});
+
+	it("does not expose the authorization-free guild executor as a package subpath", () => {
+		for (const conditions of [[], ["eliza-source"]]) {
+			const result = spawnSync(
+				"bun",
+				[
+					...conditions.map((condition) => `--conditions=${condition}`),
+					"--eval",
+					"await import('@elizaos/plugin-discord/guild-management');",
+				],
+				{ cwd: fixtureRoot, encoding: "utf8", timeout: 30_000 },
+			);
+
+			expect(result.status).not.toBe(0);
+			expect(result.stderr).toContain(
+				"@elizaos/plugin-discord/guild-management",
+			);
+		}
 	});
 });

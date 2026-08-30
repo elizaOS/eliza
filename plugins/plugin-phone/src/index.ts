@@ -15,6 +15,7 @@
 export { PhoneCompanionApp } from "./companion/components/PhoneCompanionApp.js";
 export * from "./companion/index.js";
 export * from "./companion/services/index.js";
+export { PhonePage } from "./components/PhonePage.js";
 export { PhoneView } from "./components/PhoneView.js";
 export { appPhonePlugin, default } from "./plugin.js";
 export { phoneCallLogProvider } from "./providers/call-log.js";

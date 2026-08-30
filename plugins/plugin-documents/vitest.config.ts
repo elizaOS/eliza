@@ -12,8 +12,8 @@ const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   : [];
 
 // Live/real e2e suites need running services + env; the unit suite below covers
-// the route handler (test/routes.test.ts) and the DocumentsView render +
-// tab-switch interaction (test/documents-view.test.tsx, jsdom via per-file
+// the route handler (test/routes.test.ts) and the DocumentsView/Knowledge
+// render + tab-switch interaction suites (jsdom via per-file
 // directive). The base config supplies the @elizaos/* source aliases that
 // routes.test.ts needs; the React aliases below pin a single React copy so
 // jsdom does not mix the workspace and hoisted peers.
@@ -32,6 +32,10 @@ export default defineConfig({
   ...baseConfig,
   resolve: {
     ...baseConfig.resolve,
+    // The package imports UI source through workspace links. Resolving those
+    // links to their physical package paths keeps react-router-dom beside its
+    // transitive react-router dependency in Bun's isolated install layout.
+    preserveSymlinks: false,
     alias: [
       {
         find: /^react$/,

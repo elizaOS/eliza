@@ -21,13 +21,14 @@ import {
   useState,
 } from "react";
 import { client } from "../../api";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
 import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { openEventSource } from "../../utils/event-source";
 import { isSafeNavigationUrl } from "../../utils/navigation-url";
+import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import {
   Dialog,
   DialogContent,
@@ -38,7 +39,9 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SemanticForm } from "../ui/semantic-form";
 import { Spinner } from "../ui/spinner";
+import { TextLink } from "../ui/text-link";
 import { ProviderPicker } from "./ProviderPicker";
 import { subscriptionOAuthModeForHostname } from "./subscription-oauth-mode";
 import {
@@ -872,34 +875,36 @@ export function AddAccountDialog({
                   <p className="text-xs text-txt">
                     1. Open this link in your browser and sign in
                   </p>
-                  <a
+                  <TextLink
+                    variant="instruction"
                     href={oauthUrl ?? "https://auth.openai.com/codex/device"}
                     target="_blank"
                     rel="noreferrer"
-                    className="select-all break-all text-xs font-medium text-txt underline underline-offset-2 hover:text-muted"
                   >
                     {oauthUrl ?? "https://auth.openai.com/codex/device"}
-                  </a>
+                  </TextLink>
                 </div>
                 <div className="grid gap-1">
                   <p className="text-xs text-txt">
                     2. Enter this one-time code after you sign in (expires in
                     ~15 minutes)
                   </p>
-                  <div className="rounded border border-border bg-card p-3 text-center">
-                    <code className="select-all text-lg font-semibold tracking-widest text-txt">
-                      {deviceCode}
-                    </code>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="mx-auto mt-2"
-                      onClick={() => void copyDeviceCode(deviceCode)}
-                    >
-                      {deviceCodeCopied ? "Copied" : "Copy code"}
-                    </Button>
-                  </div>
+                  <Card variant="outlinedPadded">
+                    <div className="text-center">
+                      <code className="select-all text-lg font-semibold tracking-widest text-txt">
+                        {deviceCode}
+                      </code>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="mx-auto mt-2"
+                        onClick={() => void copyDeviceCode(deviceCode)}
+                      >
+                        {deviceCodeCopied ? "Copied" : "Copy code"}
+                      </Button>
+                    </div>
+                  </Card>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted">
                   <Spinner className="size-3.5" />
@@ -930,7 +935,7 @@ export function AddAccountDialog({
         ) : null}
 
         {step === "oauth-need-code" ? (
-          <form onSubmit={submitOAuthCode} className="grid gap-3 py-2">
+          <SemanticForm onSubmit={submitOAuthCode} className="grid gap-3 py-2">
             {/* Show the sign-in link to open manually (not auto-opened) so the
                 user can sign in from any browser / a second device, then paste
                 the code back here. */}
@@ -939,14 +944,14 @@ export function AddAccountDialog({
                 <p className="text-xs text-txt">
                   1. Open this link and sign in
                 </p>
-                <a
+                <TextLink
+                  variant="instruction"
                   href={oauthUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="select-all break-all text-xs font-medium text-txt underline underline-offset-2 hover:text-muted"
                 >
                   {oauthUrl}
-                </a>
+                </TextLink>
                 <p className="mt-1 text-xs text-txt">
                   2. Paste the code (or full redirect URL) it gives you
                 </p>
@@ -977,16 +982,18 @@ export function AddAccountDialog({
                 defaultValue: "Submit code",
               })}
             </Button>
-          </form>
+          </SemanticForm>
         ) : null}
 
         {step === "apikey" || step === "apikey-submitting" ? (
-          <form onSubmit={submitApiKey} className="grid gap-3 py-2">
+          <SemanticForm onSubmit={submitApiKey} className="grid gap-3 py-2">
             {credentialRepairAccount ? (
-              <div className="rounded-sm border border-border/50 bg-bg-accent/50 px-3 py-2 text-xs text-muted">
-                Replacing the credential for {credentialRepairAccount.label}.
-                The account name and pool position will not change.
-              </div>
+              <Alert>
+                <AlertDescription>
+                  Replacing the credential for {credentialRepairAccount.label}.
+                  The account name and pool position will not change.
+                </AlertDescription>
+              </Alert>
             ) : (
               labelInput
             )}
@@ -1020,24 +1027,19 @@ export function AddAccountDialog({
                 t("accounts.add.save", { defaultValue: "Add account" })
               )}
             </Button>
-          </form>
+          </SemanticForm>
         ) : null}
 
         {step === "unavailable" ? (
-          <div className="rounded-sm border border-border/50 bg-bg-accent/50 px-3 py-2 text-sm text-muted">
-            {unavailableCopy}
-          </div>
+          <Alert>
+            <AlertDescription>{unavailableCopy}</AlertDescription>
+          </Alert>
         ) : null}
 
         {step === "error" && errorMessage ? (
-          <div
-            className={cn(
-              "rounded-sm border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive",
-            )}
-            role="alert"
-          >
-            {errorMessage}
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription>{errorMessage}</AlertDescription>
+          </Alert>
         ) : null}
 
         <DialogFooter className="gap-2">

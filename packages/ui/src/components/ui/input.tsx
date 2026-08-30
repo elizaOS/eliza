@@ -46,6 +46,7 @@ const inputVariants = cva(
           "h-12 flex-1 rounded-none border-0 bg-transparent px-3 text-sm text-inverse shadow-none placeholder:text-inverse/30",
         modal:
           "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted",
+        muted: "rounded-sm border-border bg-bg-hover text-txt",
         publicChat:
           "h-11 flex-1 rounded-full border-inverse/60 bg-inverse/50 px-4.5 text-base shadow-none",
         settingsCompact: "rounded-sm border-border bg-card px-3 text-xs",

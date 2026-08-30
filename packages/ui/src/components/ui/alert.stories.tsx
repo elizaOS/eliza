@@ -7,7 +7,10 @@ const meta = {
   component: Alert,
   tags: ["autodocs"],
   argTypes: {
-    variant: { control: "select", options: ["default", "destructive"] },
+    variant: {
+      control: "select",
+      options: ["default", "warning", "destructive"],
+    },
   },
   args: { variant: "default" },
 } satisfies Meta<typeof Alert>;
@@ -33,6 +36,18 @@ export const Destructive: Story = {
       <AlertTitle>Something went wrong</AlertTitle>
       <AlertDescription>
         We couldn't complete that request. Please try again.
+      </AlertDescription>
+    </Alert>
+  ),
+};
+
+export const Warning: Story = {
+  args: { variant: "warning" },
+  render: (args) => (
+    <Alert {...args}>
+      <AlertTitle>Action required</AlertTitle>
+      <AlertDescription>
+        Connect a provider before sending another message.
       </AlertDescription>
     </Alert>
   ),

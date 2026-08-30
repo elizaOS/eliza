@@ -11,9 +11,21 @@ import { resolveElizaCloudTopology } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import {
+  captureDevCloudEnvAuthority,
+  createDevCloudConfigAuthorityView,
+  createDevCloudRuntimeSettingsAuthorityOverlay,
+  DEV_CLOUD_ENV_AUTHORITY_KEY,
+  type DEV_CLOUD_ENV_OWNED_KEYS,
+  DEV_CLOUD_ENV_RESTORE_KEYS,
+  mergeDevCloudConfigAuthorityMutation,
+  resetDevCloudEnvAuthorityForTests,
+  resolveDevCloudEnvAuthority,
+} from "../config/dev-cloud-env-authority.ts";
+import {
   applyCloudConfigToEnv,
   cloudApiKeyFingerprint,
   ensureProvisionedCloudContainerConfig,
+  hydrateConfigEnvForBoot,
   resolveConfigEnvVaultRefsForBoot,
   resolveEmbeddingProviderPluginName,
   resolveRuntimeProviderName,
@@ -29,7 +41,11 @@ import { collectPluginNames } from "./plugin-collector.ts";
 // applyCloudConfigToEnv keeps inference cloud-routed for provisioned containers,
 // while embeddings stay on the explicitly selected provider so the runtime does
 // not silently steal the recall hot path.
-const ENV_KEYS = [
+const ENV_KEYS: readonly string[] = [
+  ...DEV_CLOUD_ENV_RESTORE_KEYS,
+  "ELIZA_DEV_SOURCE",
+  DEV_CLOUD_ENV_AUTHORITY_KEY,
+  "ELIZA_DESKTOP_PACKAGED_RUNTIME",
   "ELIZA_CLOUD_PROVISIONED",
   "ELIZAOS_CLOUD_USE_INFERENCE",
   "ELIZAOS_CLOUD_USE_EMBEDDINGS",
@@ -63,11 +79,12 @@ const ENV_KEYS = [
   "MEDIUM_MODEL",
   "LARGE_MODEL",
   "MEGA_MODEL",
-] as const;
+];
 
 let savedEnv: Record<string, string | undefined>;
 
 beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
   savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   for (const k of ENV_KEYS) delete process.env[k];
 });
@@ -80,6 +97,647 @@ afterEach(() => {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
+  resetDevCloudEnvAuthorityForTests();
+});
+
+function hostilePersistedCloudConfig(): ElizaConfig {
+  const cloudRoute = {
+    backend: "elizacloud",
+    transport: "cloud-proxy",
+    accountId: "elizacloud",
+  } as const;
+  return {
+    cloud: {
+      enabled: true,
+      provider: "elizacloud",
+      runtime: "cloud",
+      inferenceMode: "cloud",
+      services: {
+        inference: true,
+        tts: true,
+        media: true,
+        embeddings: true,
+        rpc: true,
+      },
+      apiKey: "persisted-production-key",
+      serviceKey: "persisted-production-service-key",
+      baseUrl: "https://api.eliza.app/api/v1",
+      agentId: "persisted-production-agent",
+    },
+    deploymentTarget: { runtime: "cloud", provider: "elizacloud" },
+    linkedAccounts: {
+      elizacloud: { status: "linked", source: "api-key" },
+    },
+    serviceRouting: {
+      llmText: { ...cloudRoute },
+      tts: { ...cloudRoute },
+      media: { ...cloudRoute },
+      embeddings: { ...cloudRoute },
+      rpc: { ...cloudRoute },
+    },
+    env: {
+      ELIZAOS_CLOUD_API_KEY: "persisted-top-level-key",
+      ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app/api/v1",
+      ELIZAOS_CLOUD_EMBEDDING_API_KEY: "persisted-embedding-key",
+      ELIZAOS_CLOUD_EMBEDDING_URL: "https://api.eliza.app/api/v1/embeddings",
+      ELIZA_CLOUD_API_BASE_URL: "https://api.eliza.app/api/v1",
+      ELIZA_CLOUD_AUTH_TOKEN: "persisted-cloud-auth-token",
+      SMALL_MODEL: "persisted-direct-small-model",
+      vars: {
+        ELIZAOS_CLOUD_API_KEY: "persisted-nested-key",
+        ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app/api/v1",
+        ELIZAOS_CLOUD_ENABLED: "true",
+        ELIZAOS_CLOUD_USE_INFERENCE: "true",
+      },
+    },
+    plugins: {
+      allow: ["elizacloud"],
+      entries: { elizacloud: { enabled: true } },
+    },
+    agents: {
+      list: [
+        {
+          name: "Persisted Agent",
+          settings: {
+            ELIZAOS_CLOUD_API_KEY: "persisted-agent-production-key",
+            ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app/api/v1",
+            KEEP_AGENT_SETTING: "preserved",
+            secrets: {
+              ELIZAOS_CLOUD_SERVICE_KEY:
+                "persisted-agent-production-service-key",
+              KEEP_AGENT_SECRET: "preserved",
+            },
+          },
+        },
+      ],
+    },
+  } as unknown as ElizaConfig;
+}
+
+function setDevCloudAuthority(
+  authority:
+    | "staging-default"
+    | "staging-explicit"
+    | "production"
+    | "offline"
+    | "self-hosted",
+  values: Partial<Record<(typeof DEV_CLOUD_ENV_OWNED_KEYS)[number], string>>,
+): void {
+  for (const key of DEV_CLOUD_ENV_RESTORE_KEYS) delete process.env[key];
+  process.env.ELIZA_DEV_SOURCE = "1";
+  process.env[DEV_CLOUD_ENV_AUTHORITY_KEY] = authority;
+  for (const [key, value] of Object.entries(values)) {
+    process.env[key] = value;
+  }
+}
+
+function snapshotOwnedDevCloudEnv(): Record<string, string | undefined> {
+  return Object.fromEntries(
+    DEV_CLOUD_ENV_RESTORE_KEYS.map((key) => [key, process.env[key]]),
+  );
+}
+
+describe("launcher-owned local development Cloud policy", () => {
+  it("builds a non-persisted default-staging runtime view", () => {
+    setDevCloudAuthority("staging-default", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZAOS_CLOUD_API_KEY: "",
+      ELIZAOS_CLOUD_ENABLED: "",
+      ELIZA_CLOUD_PROVISIONED: "",
+      ELIZA_CLOUD_AGENT_ID: "",
+      ELIZAOS_CLOUD_USE_INFERENCE: "",
+    });
+    const persisted = hostilePersistedCloudConfig();
+    const original = structuredClone(persisted);
+
+    const view = createDevCloudConfigAuthorityView(persisted);
+
+    expect(view).not.toBe(persisted);
+    expect(persisted).toEqual(original);
+    expect(view.deploymentTarget).toEqual({ runtime: "local" });
+    expect(view.linkedAccounts?.elizacloud).toBeUndefined();
+    expect(view.serviceRouting).toBeUndefined();
+    expect(view.cloud).toMatchObject({
+      enabled: false,
+      baseUrl: "https://api-staging.eliza.app/api/v1",
+    });
+    expect(view.cloud?.apiKey).toBe("");
+    expect((view.cloud as Record<string, unknown>)?.serviceKey).toBeUndefined();
+    expect(view.cloud?.agentId).toBeUndefined();
+    expect(view.env?.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    expect(view.env?.vars?.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    expect(view.env?.ELIZAOS_CLOUD_EMBEDDING_API_KEY).toBeUndefined();
+    expect(view.env?.ELIZAOS_CLOUD_EMBEDDING_URL).toBeUndefined();
+    expect(view.env?.ELIZA_CLOUD_API_BASE_URL).toBeUndefined();
+    expect(view.env?.ELIZA_CLOUD_AUTH_TOKEN).toBeUndefined();
+    expect(view.env?.SMALL_MODEL).toBe("persisted-direct-small-model");
+    const agentSettings = view.agents?.list?.[0]?.settings as
+      | Record<string, unknown>
+      | undefined;
+    expect(agentSettings?.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    expect(agentSettings?.ELIZAOS_CLOUD_BASE_URL).toBeUndefined();
+    expect(agentSettings?.KEEP_AGENT_SETTING).toBe("preserved");
+    expect(
+      (agentSettings?.secrets as Record<string, unknown> | undefined)
+        ?.ELIZAOS_CLOUD_SERVICE_KEY,
+    ).toBeUndefined();
+    expect(
+      (agentSettings?.secrets as Record<string, unknown> | undefined)
+        ?.KEEP_AGENT_SECRET,
+    ).toBe("preserved");
+    expect(shouldStartElizaCloudThinClient(view)).toBe(false);
+    expect(shouldStartElizaCloudThinClient(persisted)).toBe(true);
+  });
+
+  it("keeps the frozen launch tuple after later process-env pollution", () => {
+    setDevCloudAuthority("staging-default", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZAOS_CLOUD_API_KEY: "",
+      ELIZAOS_CLOUD_SERVICE_KEY: "",
+    });
+    createDevCloudConfigAuthorityView(hostilePersistedCloudConfig());
+
+    process.env.ELIZA_DEV_SOURCE = "0";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "production";
+    process.env.ELIZA_DEV_CLOUD_TARGET = "production";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+    process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+    process.env.ELIZAOS_CLOUD_SERVICE_KEY = "late-production-service-key";
+    const config = hostilePersistedCloudConfig();
+    applyCloudConfigToEnv(config);
+
+    expect(config.cloud).toMatchObject({
+      enabled: false,
+      baseUrl: "https://api-staging.eliza.app/api/v1",
+      apiKey: "",
+    });
+    expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBe(
+      "https://api-staging.eliza.app/api/v1",
+    );
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("");
+    expect(process.env.ELIZAOS_CLOUD_SERVICE_KEY).toBe("");
+    expect(process.env.ELIZA_DEV_SOURCE).toBe("1");
+    expect(process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY).toBe("staging-default");
+    expect(process.env.ELIZA_DEV_CLOUD_TARGET).toBeUndefined();
+  });
+
+  it("projects exact launch values over DB-backed runtime settings", () => {
+    setDevCloudAuthority("staging-default", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZAOS_CLOUD_API_KEY: "",
+    });
+
+    const overlay = createDevCloudRuntimeSettingsAuthorityOverlay();
+
+    expect(overlay).toMatchObject({
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZAOS_CLOUD_API_KEY: "",
+      ELIZAOS_CLOUD_SERVICE_KEY: "",
+      ELIZA_CLOUD_SERVICE_KEY: "",
+      ELIZA_CLOUD_WRITE_BASE_URL: "",
+      ELIZA_CLOUD_URL: "",
+    });
+  });
+
+  it("preserves direct non-text capability routes while removing stale Cloud routes", () => {
+    setDevCloudAuthority("staging-default", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZAOS_CLOUD_API_KEY: "",
+    });
+    const persisted = hostilePersistedCloudConfig();
+    persisted.serviceRouting = {
+      ...persisted.serviceRouting,
+      embeddings: { backend: "openai", transport: "direct" },
+      tts: { backend: "elevenlabs", transport: "direct" },
+    };
+
+    const view = createDevCloudConfigAuthorityView(persisted);
+
+    expect(view.serviceRouting?.llmText).toBeUndefined();
+    expect(view.serviceRouting?.embeddings).toMatchObject({
+      backend: "openai",
+      transport: "direct",
+    });
+    expect(view.serviceRouting?.tts).toMatchObject({
+      backend: "elevenlabs",
+      transport: "direct",
+    });
+    expect(view.env?.SMALL_MODEL).toBe("persisted-direct-small-model");
+  });
+
+  it("applies only route mutations back onto the untouched durable config", () => {
+    setDevCloudAuthority("staging-default", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZAOS_CLOUD_API_KEY: "",
+    });
+    const durable = hostilePersistedCloudConfig();
+    const before = createDevCloudConfigAuthorityView(durable);
+    const after = structuredClone(before);
+    after.wallet = {
+      ...(after.wallet ?? {}),
+      cloud: {
+        ...(after.wallet?.cloud ?? {}),
+        evm: { address: "0x1234567890123456789012345678901234567890" },
+      },
+    };
+
+    const merged = mergeDevCloudConfigAuthorityMutation(durable, before, after);
+
+    expect(merged.cloud).toEqual(durable.cloud);
+    expect(merged.deploymentTarget).toEqual(durable.deploymentTarget);
+    expect(merged.wallet?.cloud?.evm?.address).toBe(
+      "0x1234567890123456789012345678901234567890",
+    );
+  });
+
+  it.each(["staging-default", "offline"] as const)(
+    "%s cannot be reactivated by persisted config or plugin entries",
+    (authority) => {
+      setDevCloudAuthority(authority, {
+        ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+        ELIZAOS_CLOUD_API_KEY: "",
+        ELIZAOS_CLOUD_ENABLED: "",
+        ELIZA_CLOUD_PROVISIONED: "",
+        ELIZA_CLOUD_AGENT_ID: "",
+        ELIZAOS_CLOUD_USE_INFERENCE: "",
+        ELIZAOS_CLOUD_USE_TTS: "",
+        ELIZAOS_CLOUD_USE_STT: "",
+        ELIZAOS_CLOUD_USE_MEDIA: "",
+        ELIZAOS_CLOUD_USE_EMBEDDINGS: "",
+        ELIZAOS_CLOUD_USE_RPC: "",
+      });
+      const frozen = captureDevCloudEnvAuthority();
+      expect(frozen).not.toBeNull();
+      const expectedEnv = Object.fromEntries(
+        DEV_CLOUD_ENV_RESTORE_KEYS.map((key) => [key, frozen?.values[key]]),
+      );
+      const config = hostilePersistedCloudConfig();
+
+      applyCloudConfigToEnv(config);
+
+      expect(snapshotOwnedDevCloudEnv()).toEqual(expectedEnv);
+      expect(config.cloud).toMatchObject({
+        enabled: false,
+        baseUrl: "https://api-staging.eliza.app/api/v1",
+      });
+      expect(config.cloud?.apiKey).toBe("");
+      expect(config.serviceRouting).toBeUndefined();
+      expect(
+        collectPluginNames(config, undefined, [
+          "@elizaos/plugin-elizacloud",
+        ]).has("@elizaos/plugin-elizacloud"),
+      ).toBe(false);
+    },
+  );
+
+  it.each(["staging-default", "offline"] as const)(
+    "%s ignores late container and Cloud activation pollution across all surfaces",
+    (authority) => {
+      setDevCloudAuthority(authority, {
+        ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+        ELIZAOS_CLOUD_API_KEY: "",
+        ELIZAOS_CLOUD_ENABLED: "",
+        ELIZA_CLOUD_PROVISIONED: "",
+        ELIZAOS_CLOUD_USE_INFERENCE: "",
+        ELIZAOS_CLOUD_USE_EMBEDDINGS: "",
+      });
+      captureDevCloudEnvAuthority();
+
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+      process.env.ELIZAOS_CLOUD_ENABLED = "true";
+      process.env.ELIZA_CLOUD_PROVISIONED = "1";
+      process.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+      process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
+
+      const names = collectPluginNames(
+        hostilePersistedCloudConfig(),
+        undefined,
+        ["@elizaos/plugin-elizacloud"],
+      );
+
+      expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+      expect(names.has("agent-orchestrator")).toBe(false);
+      expect(names.has("@elizaos/plugin-pty")).toBe(false);
+      expect(names.has("@elizaos/plugin-cli-inference")).toBe(false);
+      expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+    },
+  );
+
+  it.each([
+    ["staging-explicit", "https://api-staging.eliza.app/api/v1"],
+    ["self-hosted", "https://api.private.example/api/v1"],
+  ] as const)(
+    "%s keeps the frozen capability-only plugin set after late activation pollution",
+    (authority, baseUrl) => {
+      setDevCloudAuthority(authority, {
+        ELIZAOS_CLOUD_BASE_URL: baseUrl,
+        ELIZAOS_CLOUD_API_KEY: "launcher-key",
+        ELIZAOS_CLOUD_ENABLED: "true",
+        ELIZA_CLOUD_PROVISIONED: "",
+        ELIZAOS_CLOUD_USE_INFERENCE: "false",
+      });
+      process.env.OPENAI_API_KEY = "direct-provider-key";
+      captureDevCloudEnvAuthority();
+
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+      process.env.ELIZA_CLOUD_PROVISIONED = "1";
+      process.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+
+      const names = collectPluginNames(
+        hostilePersistedCloudConfig(),
+        undefined,
+        ["@elizaos/plugin-openai"],
+      );
+
+      expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+      expect(names.has("@elizaos/plugin-openai")).toBe(true);
+      expect(names.has("agent-orchestrator")).toBe(false);
+      expect(names.has("@elizaos/plugin-pty")).toBe(false);
+      expect(names.has("@elizaos/plugin-cli-inference")).toBe(false);
+    },
+  );
+
+  it.each([
+    [
+      "staging-explicit",
+      "https://api-staging.eliza.app/api/v1",
+      "staging-launch-key",
+      "staging-agent",
+    ],
+    [
+      "production",
+      "https://api.eliza.app/api/v1",
+      "production-launch-key",
+      "production-agent",
+    ],
+    [
+      "self-hosted",
+      "https://api.private.example/api/v1",
+      "private-launch-key",
+      "private-agent",
+    ],
+  ] as const)(
+    "%s keeps only launch-time Cloud identity and matches inference ownership",
+    (authority, baseUrl, apiKey, agentId) => {
+      setDevCloudAuthority(authority, {
+        ELIZAOS_CLOUD_BASE_URL: baseUrl,
+        ELIZAOS_CLOUD_API_KEY: apiKey,
+        ELIZAOS_CLOUD_ENABLED: "true",
+        ELIZA_CLOUD_AGENT_ID: agentId,
+      });
+      process.env.OPENAI_API_KEY = "direct-provider-key";
+      const frozen = captureDevCloudEnvAuthority();
+      expect(frozen).not.toBeNull();
+      const expectedEnv = Object.fromEntries(
+        DEV_CLOUD_ENV_RESTORE_KEYS.map((key) => [key, frozen?.values[key]]),
+      );
+      const config = hostilePersistedCloudConfig();
+
+      applyCloudConfigToEnv(config);
+
+      expect(snapshotOwnedDevCloudEnv()).toEqual(expectedEnv);
+      expect(config.cloud).toMatchObject({
+        enabled: true,
+        baseUrl,
+        apiKey,
+        agentId,
+      });
+      expect(config.serviceRouting).toBeUndefined();
+      const names = collectPluginNames(config, undefined, [
+        "@elizaos/plugin-openai",
+      ]);
+      expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+      // plugin-elizacloud owns text when USE_INFERENCE is unset; direct model
+      // providers must not be left loaded under a higher-priority Cloud brain.
+      expect(names.has("@elizaos/plugin-openai")).toBe(false);
+    },
+  );
+
+  it("keeps direct providers when explicit Cloud is capability-only", () => {
+    setDevCloudAuthority("staging-explicit", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZAOS_CLOUD_API_KEY: "staging-launch-key",
+      ELIZAOS_CLOUD_USE_INFERENCE: "false",
+    });
+    process.env.OPENAI_API_KEY = "direct-provider-key";
+
+    const names = collectPluginNames(hostilePersistedCloudConfig(), undefined, [
+      "@elizaos/plugin-openai",
+    ]);
+
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+  });
+
+  it("keeps an explicit direct text route unless launch policy selects Cloud inference", () => {
+    setDevCloudAuthority("staging-explicit", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZAOS_CLOUD_API_KEY: "staging-launch-key",
+      ELIZAOS_CLOUD_USE_INFERENCE: "",
+    });
+    process.env.OPENAI_API_KEY = "direct-provider-key";
+    const config = hostilePersistedCloudConfig();
+    config.serviceRouting = {
+      llmText: { backend: "openai", transport: "direct" },
+      embeddings: { backend: "openai", transport: "direct" },
+    };
+
+    const view = createDevCloudConfigAuthorityView(config);
+    const names = collectPluginNames(view, undefined, [
+      "@elizaos/plugin-openai",
+    ]);
+    const settings = createDevCloudRuntimeSettingsAuthorityOverlay(
+      process.env,
+      view,
+    );
+    const registered: string[] = [];
+    registerTextInferenceModels({
+      getSetting: (key: string) => settings[key],
+      registerModel: (modelType: string) => registered.push(modelType),
+    } as unknown as IAgentRuntime);
+
+    expect(view.serviceRouting?.llmText?.backend).toBe("openai");
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+    expect(settings.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
+    expect(registered).toEqual([]);
+  });
+
+  it("lets explicit Cloud inference replace direct text but retains direct embeddings", () => {
+    setDevCloudAuthority("staging-explicit", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZAOS_CLOUD_API_KEY: "staging-launch-key",
+      ELIZAOS_CLOUD_USE_INFERENCE: "on",
+    });
+    process.env.OPENAI_API_KEY = "direct-provider-key";
+    const config = hostilePersistedCloudConfig();
+    config.serviceRouting = {
+      llmText: { backend: "openai", transport: "direct" },
+      embeddings: { backend: "openai", transport: "direct" },
+    };
+
+    const view = createDevCloudConfigAuthorityView(config);
+    const names = collectPluginNames(view, undefined, [
+      "@elizaos/plugin-openai",
+    ]);
+    const settings = createDevCloudRuntimeSettingsAuthorityOverlay(
+      process.env,
+      view,
+    );
+    const registered: string[] = [];
+    registerTextInferenceModels({
+      getSetting: (key: string) => settings[key],
+      registerModel: (modelType: string) => registered.push(modelType),
+    } as unknown as IAgentRuntime);
+
+    expect(view.serviceRouting?.llmText).toBeUndefined();
+    expect(view.serviceRouting?.embeddings?.backend).toBe("openai");
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+    expect(settings.ELIZAOS_CLOUD_USE_INFERENCE).toBe("on");
+    expect(registered.length).toBeGreaterThan(0);
+  });
+
+  it("does not load Cloud from an enabled flag without a usable launch credential", () => {
+    setDevCloudAuthority("staging-explicit", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZAOS_CLOUD_API_KEY: "",
+      ELIZAOS_CLOUD_ENABLED: "true",
+    });
+    process.env.OPENAI_API_KEY = "direct-provider-key";
+
+    const view = createDevCloudConfigAuthorityView(
+      hostilePersistedCloudConfig(),
+    );
+    const names = collectPluginNames(view, undefined, [
+      "@elizaos/plugin-openai",
+    ]);
+
+    expect(view.cloud?.enabled).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+  });
+
+  it.each([
+    "[REDACTED]",
+    "vault://ELIZAOS_CLOUD_API_KEY",
+    "VAULT://ELIZAOS_CLOUD_API_KEY",
+  ])(
+    "does not activate explicit Cloud from an unusable %s credential",
+    (apiKey) => {
+      setDevCloudAuthority("production", {
+        ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app/api/v1",
+        ELIZAOS_CLOUD_API_KEY: apiKey,
+      });
+
+      const view = createDevCloudConfigAuthorityView(
+        hostilePersistedCloudConfig(),
+      );
+
+      expect(view.cloud?.enabled).toBe(false);
+      expect(view.cloud?.apiKey).toBe("");
+      expect(collectPluginNames(view).has("@elizaos/plugin-elizacloud")).toBe(
+        false,
+      );
+    },
+  );
+
+  it("does not activate production authority from a staging-specific credential", () => {
+    setDevCloudAuthority("production", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app/api/v1",
+      ELIZA_DEV_CLOUD_API_KEY: "staging-specific-key",
+    });
+
+    const view = createDevCloudConfigAuthorityView(
+      hostilePersistedCloudConfig(),
+    );
+
+    expect(view.cloud?.enabled).toBe(false);
+    expect(view.cloud?.apiKey).toBe("");
+    expect(collectPluginNames(view).has("@elizaos/plugin-elizacloud")).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    ["staging-explicit", "https://api-staging.eliza.app/api/v1"],
+    ["self-hosted", "https://api.private.example/api/v1"],
+  ] as const)(
+    "%s authority may consume its target-scoped development credential",
+    (authority, baseUrl) => {
+      setDevCloudAuthority(authority, {
+        ELIZAOS_CLOUD_BASE_URL: baseUrl,
+        ELIZA_DEV_CLOUD_API_KEY: "target-scoped-key",
+      });
+
+      const view = createDevCloudConfigAuthorityView(
+        hostilePersistedCloudConfig(),
+      );
+
+      expect(view.cloud).toMatchObject({
+        enabled: true,
+        apiKey: "target-scoped-key",
+        baseUrl,
+      });
+    },
+  );
+
+  it("does not activate a packaged runtime from a staging-specific credential", () => {
+    setDevCloudAuthority("staging-explicit", {
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      ELIZA_DEV_CLOUD_API_KEY: "staging-specific-key",
+    });
+    process.env.ELIZA_DESKTOP_PACKAGED_RUNTIME = "1";
+
+    const view = createDevCloudConfigAuthorityView(
+      hostilePersistedCloudConfig(),
+    );
+
+    expect(view.cloud?.enabled).toBe(false);
+    expect(view.cloud?.apiKey).toBe("");
+    expect(collectPluginNames(view).has("@elizaos/plugin-elizacloud")).toBe(
+      false,
+    );
+  });
+
+  it("ignores an authority marker that was not stamped by a dev launcher", () => {
+    process.env[DEV_CLOUD_ENV_AUTHORITY_KEY] = "staging-default";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+    const config = hostilePersistedCloudConfig();
+
+    applyCloudConfigToEnv(config);
+
+    expect(config.cloud?.apiKey).toBe("persisted-production-key");
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("persisted-production-key");
+    expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBe(
+      "https://api.eliza.app/api/v1",
+    );
+  });
+
+  it("cannot hydrate forged launcher authority from persisted config env", () => {
+    const targetEnv: NodeJS.ProcessEnv = {};
+    hydrateConfigEnvForBoot(
+      {
+        env: {
+          ELIZA_DEV_SOURCE: "1",
+          ELIZA_DEV_CLOUD_ENV_AUTHORITY: "staging-default",
+          vars: {
+            ELIZA_DEV_CLOUD_TARGET: "production",
+            ELIZAOS_CLOUD_API_KEY: "persisted-production-key",
+            OPENAI_API_KEY: "preserved-direct-provider-key",
+          },
+        },
+      },
+      targetEnv,
+    );
+
+    expect(targetEnv.ELIZA_DEV_SOURCE).toBeUndefined();
+    expect(targetEnv.ELIZA_DEV_CLOUD_ENV_AUTHORITY).toBeUndefined();
+    expect(targetEnv.ELIZA_DEV_CLOUD_TARGET).toBeUndefined();
+    expect(targetEnv.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    expect(targetEnv.OPENAI_API_KEY).toBe("preserved-direct-provider-key");
+    expect(resolveDevCloudEnvAuthority(targetEnv)).toBeNull();
+  });
 });
 
 describe("applyCloudConfigToEnv cloud-container embeddings (#8769)", () => {

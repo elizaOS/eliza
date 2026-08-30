@@ -1,8 +1,9 @@
 /**
  * Verifies owner-gated group reminder destinations on the trusted messaging
  * route: the owner's group turn receives a destination pinned to the binding's
- * live delivery authority, and every other participant or binding state gets
- * none. Mocked account, runtime, and repository boundaries.
+ * live delivery authority, Telegram forum-topic identity is retained, and
+ * every other participant or binding state gets none. Mocked account,
+ * runtime, and repository boundaries.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -240,6 +241,38 @@ const ownerBlooioGroupTurn = {
   invocation: "mention",
 };
 
+const telegramGroupBinding = {
+  ...blooioGroupBinding,
+  id: "00000000-0000-4000-8000-000000000032",
+  platform: "telegram",
+  connector_account_id: "telegram:test-bot",
+  provider_chat_id: "-100123456789",
+  conversation_id: "group:00000000-0000-5000-8000-000000000032",
+  created_by_platform_user_id: "123456789",
+};
+const telegramGroupAuthority = {
+  bindingId: telegramGroupBinding.id,
+  ownerUserId: telegramGroupBinding.owner_user_id,
+  personalAgentId: telegramGroupBinding.personal_agent_id,
+  version: telegramGroupBinding.authority_version,
+};
+const ownerTelegramTopicTurn = {
+  platform: "telegram",
+  chatType: "supergroup",
+  project: "eliza-app",
+  connectorAccountId: "telegram:test-bot",
+  chatId: "-100123456789",
+  providerThreadId: "909",
+  actor: {
+    platformUserId: "123456789",
+    displayName: "Nubs",
+    role: "possessor",
+  },
+  messageId: "telegram:eliza:group-topic-42",
+  message: "Eliza remind this topic to pay rent in an hour",
+  invocation: "mention",
+};
+
 describe("personal Shared group reminder destinations", () => {
   beforeEach(() => {
     groupParticipantOrdinals.clear();
@@ -300,6 +333,46 @@ describe("personal Shared group reminder destinations", () => {
       kind: "group",
       authority: { ...blooioGroupAuthority, version: 4 },
     });
+  });
+
+  test("pins an owner reminder created in a Telegram forum topic to that topic", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => telegramGroupBinding,
+    );
+
+    const response = await request(ownerTelegramTopicTurn);
+
+    expect(response.status).toBe(200);
+    expect(sharedRestMessageSend).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend.mock.calls[0]?.[8]).toEqual({
+      platform: "telegram",
+      kind: "group",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      chatId: "-100123456789",
+      providerThreadId: "909",
+      ownerLabel: "Nubs",
+      authority: telegramGroupAuthority,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        groupDelivery: {
+          kind: "binding",
+          authority: telegramGroupAuthority,
+        },
+      },
+    });
+  });
+
+  test("rejects a non-canonical Telegram topic before reminder construction", async () => {
+    const response = await request({
+      ...ownerTelegramTopicTurn,
+      providerThreadId: "9999999999999999",
+    });
+
+    expect(response.status).toBe(400);
+    expect(resolveGroupBinding).not.toHaveBeenCalled();
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 
   test("labels an owner without a display name as the group owner", async () => {

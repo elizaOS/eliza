@@ -58,6 +58,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 		["open settings", "settings"],
 		["go to settings view", "settings"],
 		["go home", "chat"],
+		["go homr", "chat"],
 		["go back", "chat"],
 		["open the home dashboard", "chat"],
 		["show me my calendar", "calendar"],

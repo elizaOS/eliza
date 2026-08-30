@@ -83,6 +83,7 @@ export * from "./shortcut";
 export * from "./state";
 export * from "./streaming";
 export type {
+	PageLayoutManifest,
 	ResolvedSurfaceManifest,
 	SurfaceCapability,
 	SurfaceIsolationLevel,

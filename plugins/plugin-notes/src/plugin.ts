@@ -11,6 +11,7 @@ import { serverInteract } from "./interact.js";
 import { notesProvider } from "./provider.js";
 import { notesRoutes } from "./routes.js";
 import { NotesService } from "./service.js";
+import { NOTES_SURFACE } from "./surface.js";
 
 /**
  * Stage 1 classifies a turn into registered CONTEXTS, not actions: a context
@@ -62,10 +63,12 @@ export const notesPlugin: Plugin = {
         "scratchpad",
         "view switching",
       ],
+      responseContext: { primaryContext: "notes" },
       bundlePath: "dist/views/bundle.js",
       componentExport: "NotesView",
-      surface: { header: "fullscreen" },
+      surface: NOTES_SURFACE,
       capabilities: NOTES_CAPABILITIES,
+      relatedActions: ["NOTES"],
       serverInteract,
       visibleInManager: true,
       desktopTabEnabled: true,

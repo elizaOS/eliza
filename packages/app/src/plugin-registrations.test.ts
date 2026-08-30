@@ -35,11 +35,15 @@ const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-calendar#register",
   "@elizaos/plugin-computeruse#register",
   "@elizaos/plugin-contacts#register",
+  "@elizaos/plugin-documents#register",
+  "@elizaos/plugin-elizacloud#register",
   "@elizaos/plugin-maps#register",
+  "@elizaos/plugin-messages#register",
   "@elizaos/plugin-native-settings#register",
   "@elizaos/plugin-notes#register",
   "@elizaos/plugin-personal-assistant#register",
   "@elizaos/plugin-phone#register",
+  "@elizaos/plugin-relationships#register",
   "@elizaos/plugin-trajectory-logger#register",
   "@elizaos/plugin-wallet#register",
   "@elizaos/plugin-wifi#register",
@@ -48,6 +52,7 @@ const EXPECTED_SIDE_EFFECT_MODULES = [
 // Imported directly by the app shell (main.tsx), not via the manifest scan.
 const FIRST_RENDER_REGISTRATION_MODULES = [
   "@elizaos/plugin-task-coordinator/register",
+  "@elizaos/plugin-relationships/register",
 ] as const;
 
 describe("side-effect app module registration (manifest-driven)", () => {

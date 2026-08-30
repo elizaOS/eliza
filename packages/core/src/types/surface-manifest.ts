@@ -108,6 +108,34 @@ export type SurfaceCapability = (typeof SURFACE_CAPABILITIES)[number];
 export type SurfaceLifecyclePolicy = "ephemeral" | "retained";
 
 /**
+ * Semantic page topology carried across hosts with the rest of a view's
+ * surface policy. The UI maps these values to canonical page components and
+ * responsive rules; transport and plugins never name CSS classes or pixels.
+ */
+export type PageLayoutManifest =
+	| {
+			kind: "content";
+			topology?: "framed" | "ambient";
+			width: "reading" | "standard" | "wide";
+			scroll: "shell" | "view";
+			gutter?: "standard" | "none";
+	  }
+	| {
+			kind: "workspace";
+			topology?: "framed" | "ambient";
+			width: "wide" | "full";
+			scroll: "view";
+			gutter?: "standard" | "none";
+	  }
+	| {
+			kind: "immersive";
+			topology?: "framed" | "ambient";
+			width: "full";
+			scroll: "view";
+			gutter: "none";
+	  };
+
+/**
  * The declared surface contract for a view. Every field is optional at the
  * declaration site — {@link resolveSurfaceManifest} fills defaults and enforces
  * the invariants — so a plugin declares only what differs from the safe default
@@ -126,6 +154,8 @@ export interface SurfaceManifest {
 	isolation?: SurfaceIsolationLevel;
 	/** Retention expectation when backgrounded. Default `"ephemeral"`. */
 	lifecycle?: SurfaceLifecyclePolicy;
+	/** Page topology, width policy, and scroll ownership. */
+	layout?: PageLayoutManifest;
 	/**
 	 * Capabilities this view is granted. Anything not listed is denied by the
 	 * broker. Empty/omitted = a view with zero shell privileges beyond rendering
@@ -144,6 +174,7 @@ export interface ResolvedSurfaceManifest {
 	header: ViewHeaderPolicy;
 	isolation: SurfaceIsolationLevel;
 	lifecycle: SurfaceLifecyclePolicy;
+	layout: PageLayoutManifest;
 	/** The granted capabilities, de-duplicated and frozen. */
 	capabilities: ReadonlySet<SurfaceCapability>;
 }
@@ -179,6 +210,14 @@ function dedupeCapabilities(
 	return new Set(caps);
 }
 
+const DEFAULT_PAGE_LAYOUT_MANIFEST: PageLayoutManifest = Object.freeze({
+	kind: "content",
+	topology: "framed",
+	width: "standard",
+	scroll: "view",
+	gutter: "standard",
+});
+
 /**
  * Resolve a (possibly sparse) declaration into a {@link ResolvedSurfaceManifest}
  * with defaults applied and the wallpaper gate enforced.
@@ -212,6 +251,9 @@ export function resolveSurfaceManifest(
 		header: surface?.header ?? decl?.headerPolicy ?? "normal",
 		isolation: surface?.isolation ?? "in-process",
 		lifecycle: surface?.lifecycle ?? "ephemeral",
+		layout: surface?.layout
+			? { topology: "framed", ...surface.layout }
+			: DEFAULT_PAGE_LAYOUT_MANIFEST,
 		capabilities,
 	};
 }
@@ -250,5 +292,12 @@ export const IMMERSIVE_WALLPAPER_SURFACE: SurfaceManifest = {
 	background: "shared",
 	header: "immersive",
 	isolation: "immersive",
+	layout: {
+		kind: "immersive",
+		topology: "ambient",
+		width: "full",
+		scroll: "view",
+		gutter: "none",
+	},
 	capabilities: ["wallpaper", "background:apply"],
 };

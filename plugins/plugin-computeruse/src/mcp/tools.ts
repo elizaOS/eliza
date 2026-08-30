@@ -110,6 +110,11 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
         description:
           "Request the approval-gated last-resort physical pointer fallback.",
       },
+      allowExperimentalExactWindow: {
+        type: "boolean",
+        description:
+          "Explicitly opt into the direct-only exact-window experiment; disabled by default.",
+      },
     },
     required: ["app", "stateId", "element_index"],
   },
@@ -176,6 +181,11 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
         type: "boolean",
         description:
           "Request the approval-gated last-resort physical pointer fallback.",
+      },
+      allowExperimentalExactWindow: {
+        type: "boolean",
+        description:
+          "Explicitly opt into the direct-only exact-window experiment; disabled by default.",
       },
     },
     required: ["app", "stateId", "element_index"],

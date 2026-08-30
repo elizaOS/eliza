@@ -7,10 +7,19 @@ const createHostedBrowserSession = mock(async () => ({
   url: "https://example.com",
 }));
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
-  requireUserOrApiKeyWithOrg: async () => ({
-    id: "user-1",
-    organization_id: "org-1",
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  asGenerativeCacheApiError: () => null,
+  requireGenerativeRouteCaller: async () => ({
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: null,
+    authSource: "combined_cache",
+    appScopeId: null,
+  }),
+  getGenerativeOperationContext: () => ({
+    organizationId: "org-1",
+    userId: "user-1",
+    apiKeyId: null,
+    requestId: "request-1",
   }),
 }));
 
@@ -56,10 +65,10 @@ describe("POST /api/v1/browser/sessions malformed JSON", () => {
   });
 
   test("preserves non-syntax request decoding failures as server errors", async () => {
-    const originalJson = HonoRequest.prototype.json;
-    HonoRequest.prototype.json = mock(async () => {
+    const originalText = HonoRequest.prototype.text;
+    HonoRequest.prototype.text = mock(async () => {
       throw new Error("request stream failed");
-    }) as typeof HonoRequest.prototype.json;
+    }) as typeof HonoRequest.prototype.text;
 
     try {
       const response = await app.request("/", {
@@ -70,7 +79,7 @@ describe("POST /api/v1/browser/sessions malformed JSON", () => {
       expect(response.status).toBe(500);
       expect(createHostedBrowserSession).not.toHaveBeenCalled();
     } finally {
-      HonoRequest.prototype.json = originalJson;
+      HonoRequest.prototype.text = originalText;
     }
   });
 });

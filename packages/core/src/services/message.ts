@@ -227,6 +227,10 @@ import {
 	reportOutboundEnvelopeBlock,
 } from "../security/outbound-envelope-guard";
 import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticArgs,
+} from "../security/tool-diagnostics";
+import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	getTrustedDeliveryAudience,
 	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
@@ -236,6 +240,7 @@ import {
 	trustedDeliveryAudienceIsBoundToRuntime,
 } from "../security/trusted-delivery-audience";
 import {
+	emitStreamingHook,
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
 	runWithStreamingContext,
@@ -246,7 +251,6 @@ import {
 	runWithTrajectoryContext,
 } from "../trajectory-context";
 import { withEvaluatorStep } from "../trajectory-utils";
-import type { CharacterSettings } from "../types/agent";
 import type { CodingActionProfile } from "../types/coding";
 import type {
 	Action,
@@ -344,7 +348,10 @@ import {
 	getUserMessageText,
 	stripAugmentationForPersistence,
 } from "../utils/message-text";
-import { modelProviderErrorDetail } from "../utils/model-errors";
+import {
+	isProviderContextOverflowFailure,
+	modelProviderErrorDetail,
+} from "../utils/model-errors";
 import { readEnv } from "../utils/read-env";
 import {
 	createFirstSentenceStreamTracker,
@@ -384,6 +391,7 @@ import {
 	classifyStructuredFailureCause,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
+	isElizaCloudGatewayWarmingExhaustedError,
 	isInsufficientCreditsError,
 	isRateLimitError,
 	type StructuredFailureCause,
@@ -409,24 +417,6 @@ export {
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 };
-
-/**
- * Per-agent reply-length budget (#16395): a positive-integer `max_tokens`
- * ceiling applied to the Stage-1/synthesis call so operators can pin terse
- * replies (e.g. group-chat turns) without rewriting the persona, and have it
- * enforced by the provider rather than requested politely in `system`.
- * `characterSchema` validates the field (`z.number().int().positive()`); the
- * integer guard here only covers characters constructed without validation.
- * Unset or invalid → undefined, i.e. the unchanged channel default applies.
- */
-function resolveMaxReplyTokens(
-	settings: CharacterSettings | undefined,
-): number | undefined {
-	const raw = settings?.maxReplyTokens;
-	return typeof raw === "number" && Number.isInteger(raw) && raw > 0
-		? raw
-		: undefined;
-}
 
 const STAGE1_COMPLETION_LIMIT_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
@@ -644,6 +634,79 @@ export function messageChallengesPriorAgentReply(
 	const text = getUserMessageText(message) ?? "";
 	return /\b(counterintuitive|disagree|doubt|wrong|incorrect|confus(?:ed|ing)|clarify|actually|but i thought|i thought|are you sure|really|why)\b/iu.test(
 		text,
+	);
+}
+
+/** Detects a same-speaker continuation immediately after peers corrected this agent's behavior. */
+export function messageContinuesAfterRecentAgentCorrection(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+): boolean {
+	const providers = state.data?.providers;
+	if (!providers || typeof providers !== "object") return false;
+	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
+	if (!recent || typeof recent !== "object") return false;
+	const data = (recent as { data?: unknown }).data;
+	const recentMessages =
+		data && typeof data === "object" && "recentMessages" in data
+			? (data as { recentMessages?: unknown }).recentMessages
+			: undefined;
+	if (!Array.isArray(recentMessages) || !message.id) return false;
+	const priorMessages = recentMessages.filter(
+		(candidate): candidate is Memory =>
+			candidate !== null &&
+			typeof candidate === "object" &&
+			(candidate as Memory).id !== message.id,
+	);
+	let lastAgentIndex = -1;
+	for (let index = priorMessages.length - 1; index >= 0; index -= 1) {
+		if (priorMessages[index].entityId === runtime.agentId) {
+			lastAgentIndex = index;
+			break;
+		}
+	}
+	if (lastAgentIndex < 0) return false;
+	const turnsAfterAgent = priorMessages.slice(lastAgentIndex + 1);
+	// Repair ownership expires when the room has moved on; this is an adjacency
+	// signal, not permission to revive an old correction on later ambient turns.
+	if (turnsAfterAgent.length === 0 || turnsAfterAgent.length > 3) return false;
+	const correction = turnsAfterAgent[0];
+	if (
+		correction.entityId !== message.entityId ||
+		correction.entityId === runtime.agentId
+	) {
+		return false;
+	}
+	// Only a directive that begins as the speaker's own behavioral correction
+	// establishes repair ownership. Anchoring the directive rejects third-party
+	// exchanges such as "Bob, stop explaining" that merely follow an agent turn.
+	const explicitBehaviorCorrection =
+		/^\s*(?:(?:please\s+)?(?:don't|do not)\s+(?:try\s+to\s+)?(?:fix|solve|advise|recommend|suggest|coach|lecture|explain|give\s+(?:me|us)\s+advice)|stop\s+(?:trying\s+to\s+)?(?:fixing|solving|advising|recommending|suggesting|coaching|lecturing|explaining|giving\s+(?:me|us)\s+advice))\b/iu;
+	if (!explicitBehaviorCorrection.test(getUserMessageText(correction) ?? "")) {
+		return false;
+	}
+	const correctionCreatedAt = correction.createdAt;
+	const currentCreatedAt = message.createdAt;
+	if (
+		typeof correctionCreatedAt === "number" &&
+		typeof currentCreatedAt === "number" &&
+		currentCreatedAt - correctionCreatedAt > 15 * 60_000
+	) {
+		return false;
+	}
+	// A correction grants one later turn to its author. Once that participant
+	// has spoken again, later ambient messages must pass the ordinary gate.
+	if (
+		turnsAfterAgent
+			.slice(1)
+			.some((candidate) => candidate.entityId === message.entityId)
+	) {
+		return false;
+	}
+	const currentText = (getUserMessageText(message) ?? "").trim();
+	return /^(?:and\b|also\b|plus\b|yeah\b|honestly\b|still\b|then\b|i\s+(?:just|also|keep|remembered|feel|felt|was|am)\b)/iu.test(
+		currentText,
 	);
 }
 
@@ -1243,6 +1306,70 @@ function hasPageScopedRoutingMetadata(message: Memory): boolean {
 }
 
 /**
+ * The first-party app attaches this renderer-owned metadata to chat and voice
+ * turns. It is a relevance signal, never an authority boundary: it can promote
+ * the focused action family, but it must not remove any otherwise authorized
+ * action from the model-facing catalog.
+ */
+function hasUiViewPlannerScope(message: Memory): boolean {
+	const metadataCandidates = [message.content?.metadata, message.metadata];
+	for (const rawMetadata of metadataCandidates) {
+		if (!rawMetadata || typeof rawMetadata !== "object") continue;
+		const metadata = rawMetadata as Record<string, unknown>;
+		if (
+			(typeof metadata.uiView === "string" && metadata.uiView.trim()) ||
+			(typeof metadata.uiViewPath === "string" && metadata.uiViewPath.trim()) ||
+			Array.isArray(metadata.uiViewCapabilities)
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function uiViewActionNames(message: Memory): Set<string> {
+	const actionNames = new Set<string>();
+	const metadataCandidates = [message.content?.metadata, message.metadata];
+	for (const rawMetadata of metadataCandidates) {
+		if (!rawMetadata || typeof rawMetadata !== "object") continue;
+		const rawNames = (rawMetadata as Record<string, unknown>).uiViewActionNames;
+		if (!Array.isArray(rawNames)) continue;
+		for (const rawName of rawNames) {
+			if (typeof rawName !== "string") continue;
+			const normalized = normalizeActionIdentifier(rawName);
+			if (normalized) actionNames.add(normalized);
+		}
+	}
+	return actionNames;
+}
+
+function uiViewActionPriority(
+	action: Action,
+	selectedContexts: readonly AgentContext[] | undefined,
+	viewActionNames: ReadonlySet<string>,
+): number {
+	const actionName = normalizeActionIdentifier(action.name);
+	if (viewActionNames.has(actionName)) return 0;
+
+	const focusedContexts = (selectedContexts ?? [])
+		.map((context) => String(context).trim().toLowerCase())
+		.filter(
+			(context) =>
+				context.length > 0 &&
+				context !== "general" &&
+				!isPageScopedRoutingContext(context),
+		);
+	if (focusedContexts.length === 0) return 2;
+
+	const focused = new Set(focusedContexts);
+	return (action.contexts ?? []).some((context) =>
+		focused.has(String(context).trim().toLowerCase()),
+	)
+		? 1
+		: 2;
+}
+
+/**
  * The provider include list for Stage-1 response-state composition: the core
  * response providers plus always-on plugin providers. Exported for tests.
  */
@@ -1273,6 +1400,50 @@ async function composeResponseState(
 		);
 	}
 	return runtime.composeState(message, providers, true, skipCache);
+}
+
+/** Replace provider text only with explicitly declared lossless retrieval forms. */
+function withProviderOverflowText(state: State): State | null {
+	const providerResults = state.data.providers;
+	const providerOrder = Array.isArray(state.data.providerOrder)
+		? state.data.providerOrder.filter(
+				(name): name is string => typeof name === "string",
+			)
+		: Object.keys(providerResults ?? {});
+	if (!providerResults) return null;
+	let changed = false;
+	const nextProviders = { ...providerResults };
+	for (const name of providerOrder) {
+		const result = providerResults[name];
+		if (typeof result?.overflowText !== "string") continue;
+		nextProviders[name] = { ...result, text: result.overflowText };
+		changed = true;
+	}
+	if (!changed) return null;
+	const text = providerOrder
+		.map((name) => nextProviders[name]?.text)
+		.filter((value): value is string => Boolean(value?.trim()))
+		.join("\n");
+	return {
+		...state,
+		values: { ...state.values, providers: text },
+		data: { ...state.data, providers: nextProviders },
+		text,
+	};
+}
+
+function responseHandlerContextWindow(
+	runtime: IAgentRuntime,
+): number | undefined {
+	const getModelRegistrations = runtime.getModelRegistrations;
+	if (typeof getModelRegistrations !== "function") return undefined;
+	return getModelRegistrations
+		.call(runtime)
+		.find(
+			(registration) =>
+				registration.modelType === ModelType.RESPONSE_HANDLER &&
+				typeof registration.metadata?.contextWindowTokens === "number",
+		)?.metadata?.contextWindowTokens;
 }
 
 export function selectV5PlannerStateProviderNames(args: {
@@ -1633,8 +1804,10 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 export {
 	buildFailureReplyPrompt,
 	classifyStructuredFailureCause,
+	ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
+	isElizaCloudGatewayWarmingExhaustedError,
 	isInsufficientCreditsError,
 	isInsufficientCreditsMessage,
 	isModelProviderFallbackError,
@@ -2003,6 +2176,87 @@ export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
 
 const ASYNC_HANDOFF_ACK_MESSAGE = "on it, working on that now.";
 
+/**
+ * Structured machine effect parsed from a tool result's receipt `text` — the
+ * shape actions emit as an internal-visibility JSON receipt when the effect
+ * has already been applied out-of-band (plugin-app-control's
+ * `view_navigation`: `{"effect","status","viewId","label",...}`). `effect`
+ * and `status` are the family contract; `label` is the optional human name of
+ * the affected thing.
+ */
+interface StructuredToolEffect {
+	effect: string;
+	status: string;
+	label?: string;
+}
+
+function structuredEffectFromToolResult(
+	result: PlannerToolResult,
+): StructuredToolEffect | undefined {
+	const raw = result.text?.trim();
+	if (!raw?.startsWith("{")) return undefined;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		// error-policy:J3 a tool's diagnostic text is untrusted input for this
+		// projection; non-JSON text is explicitly "no structured effect" —
+		// never a fake-valid effect — and the caller keeps its fallback.
+		return undefined;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return undefined;
+	}
+	const { effect, status, label } = parsed as {
+		effect?: unknown;
+		status?: unknown;
+		label?: unknown;
+	};
+	if (typeof effect !== "string" || effect.trim().length === 0) {
+		return undefined;
+	}
+	if (typeof status !== "string" || status.trim().length === 0) {
+		return undefined;
+	}
+	return {
+		effect: effect.trim(),
+		status: status.trim(),
+		...(typeof label === "string" && label.trim().length > 0
+			? { label: label.trim() }
+			: {}),
+	};
+}
+
+/**
+ * Deterministic confirmation for the most recent successful tool result whose
+ * receipt carries an accepted structured effect. An internal-visibility
+ * success with no `userFacingText` used to fall through to the no-result
+ * apology even though the effect verifiably happened (live tj-a835d4c6da235f:
+ * a deterministic VIEWS navigation accepted `viewId:"chat"`, label "Home",
+ * and the turn closed with "finished without producing a result"). The old
+ * action-owned reply composer ("Opened Notes.") was deleted in the
+ * effect-receipt migration, so this is the one effect→text renderer; wording
+ * stays in the lowercase persona voice of the other canned replies. Only an
+ * `accepted` status may claim completion — pending/unconfirmed/unsupported
+ * receipts keep the honest no-result fallback.
+ */
+export function structuredEffectConfirmation(
+	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
+): string | undefined {
+	for (let index = settled.length - 1; index >= 0; index--) {
+		const entry = settled[index];
+		if (entry?.result.success !== true) continue;
+		if (isTerminalPlannerToolName(entry.name)) continue;
+		const effect = structuredEffectFromToolResult(entry.result);
+		if (effect?.status !== "accepted") continue;
+		if (effect.effect === "view_navigation" && effect.label) {
+			return `done — you're on ${effect.label}.`;
+		}
+		return effect.label ? `done — ${effect.label}.` : "done.";
+	}
+	return undefined;
+}
+
 function preservedVerifiedFailure(
 	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
 	deliveredVisibleTexts: ReadonlySet<string>,
@@ -2074,6 +2328,13 @@ export function answerlessToolTurnReport(args: {
 	if (candidateActionsIncludeAsyncHandoff(args.actions, acceptedActionNames)) {
 		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
 	}
+	// An accepted structured effect IS the turn's result — the effect receipt
+	// proves the work happened, so report it instead of apologizing for a
+	// missing result. Genuinely empty successes still fall through below.
+	const effectConfirmation = structuredEffectConfirmation(
+		args.settledToolResults,
+	);
+	if (effectConfirmation) return effectConfirmation;
 	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
 }
 
@@ -3335,8 +3596,32 @@ async function collectV5PlannerCandidateActions(args: {
 		}
 	};
 
-	for (const action of allRuntimeActions) {
-		await appendIfAllowed(action);
+	// View metadata changes ordering only. The complete runtime catalog still
+	// passes through the ordinary role/context/policy gates, so an ambiguous or
+	// cross-view request never loses an otherwise authorized action merely
+	// because Stage 1 did not guess its exact name.
+	const focusedViewActionNames = uiViewActionNames(args.message);
+	const baseRuntimeActions = hasUiViewPlannerScope(args.message)
+		? allRuntimeActions
+				.map((action, index) => ({ action, index }))
+				.sort((left, right) => {
+					const priorityDelta =
+						uiViewActionPriority(
+							left.action,
+							args.selectedContexts,
+							focusedViewActionNames,
+						) -
+						uiViewActionPriority(
+							right.action,
+							args.selectedContexts,
+							focusedViewActionNames,
+						);
+					return priorityDelta || left.index - right.index;
+				})
+				.map(({ action }) => action)
+		: allRuntimeActions;
+	for (const action of baseRuntimeActions) {
+		await appendIfAllowed(action, undefined, args.selectedContexts);
 	}
 
 	const explicitCandidateActions = Array.isArray(args.candidateActions)
@@ -3880,6 +4165,8 @@ async function createV5MessageContextObject(args: {
 	 * byte-identical to before, so addressed turns are untouched.
 	 */
 	ambientTurn?: boolean;
+	/** Trusted same-speaker continuation after a recent correction of this agent. */
+	peerCorrectionContinuation?: boolean;
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
@@ -4032,6 +4319,16 @@ async function createV5MessageContextObject(args: {
 					// nobody asked for. Unaddressed group chatter defaults to IGNORE;
 					// RESPOND is reserved for a concrete contribution.
 					"ambient_turn_policy: HARD GATE. The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Default shouldRespond=IGNORE. You MUST set shouldRespond=IGNORE unless the current turn explicitly challenges or asks to clarify your immediately preceding prior_message:agent reply, silence would allow a concrete consequential error or harm you can specifically prevent, or an explicit standing responsibility makes this turn yours to handle. A broadcast question, a useful fact you could add, your ability to answer, or your desire to keep the discussion moving is never enough. IGNORE banter, jokes, reactions, acknowledgements, open group questions, and side chatter where you would only answer, agree, comment, restate, or continue the conversation. Having replied earlier is a reason to stay silent unless the current turn directly challenges or needs clarification of that reply.",
+		});
+	}
+	if (args.peerCorrectionContinuation) {
+		events.push({
+			id: "peer-correction-continuation-policy",
+			type: "instruction",
+			source: "message-service",
+			stable: false,
+			content:
+				"peer_correction_continuation_policy: Trusted recent-message structure shows that the current participant corrected your last contribution and is now continuing within the same short exchange. Set shouldRespond=RESPOND. Follow the correction in a brief, natural acknowledgment; do not repeat the behavior they corrected or add unsolicited advice.",
 		});
 	}
 
@@ -4623,11 +4920,13 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					messageHandler.plan.requiresTool === true ||
 					nonSimpleContexts.length > 0
 				) {
-					return matchingRules.some((rule) =>
-						routeReplacesStage1Candidate(
-							rule,
-							messageHandler.plan.candidateActions,
-						),
+					return matchingRules.some(
+						(rule) =>
+							rule.unavailable !== undefined ||
+							routeReplacesStage1Candidate(
+								rule,
+								messageHandler.plan.candidateActions,
+							),
 					);
 				}
 				return true;
@@ -4640,23 +4939,49 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				userRoles,
 			}) => {
 				const text = getActionInferenceMessageText(message);
+				const matchingRules = getDirectActionRoutingRules(runtime).filter(
+					(rule) => rule.matches(text),
+				);
 				const declaredReplacementRules = new Set(
-					getDirectActionRoutingRules(runtime).filter(
-						(rule) =>
-							rule.matches(text) &&
-							routeReplacesStage1Candidate(
-								rule,
-								messageHandler.plan.candidateActions,
-							),
+					matchingRules.filter((rule) =>
+						routeReplacesStage1Candidate(
+							rule,
+							messageHandler.plan.candidateActions,
+						),
 					),
 				);
+				const authoritativeRules = new Set(
+					matchingRules.filter((rule) => rule.unavailable !== undefined),
+				);
+				const unavailablePatch = (rule: DirectActionRoutingRule) => {
+					const unavailable = rule.unavailable;
+					if (!unavailable) return undefined;
+					return {
+						requiresTool: false,
+						setContexts: [SIMPLE_CONTEXT_ID],
+						clearCandidateActions: true,
+						clearReply: true,
+						reply: unavailable.reply,
+						debug: [
+							`direct route unavailable: ${rule.id} (${unavailable.code})`,
+						],
+					};
+				};
 				const routes = await resolveEligibleDirectActionRoutes({
 					runtime,
 					message,
 					state,
 					userRoles,
 				});
-				if (routes.length === 0) return undefined;
+				if (routes.length === 0) {
+					const unavailableRule =
+						[...authoritativeRules].find((rule) => rule.unavailable) ??
+						[...declaredReplacementRules].find((rule) => rule.unavailable) ??
+						matchingRules.find((rule) => rule.unavailable);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
+				}
 				// A declared owner keeps exclusive reconciliation authority even when
 				// its action is unavailable. Falling through to a second text-matching
 				// direct route could execute adjacent work now instead of preserving the
@@ -4665,22 +4990,46 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					declaredReplacementRules.size > 0
 						? routes.filter(({ rule }) => declaredReplacementRules.has(rule))
 						: [];
+				const authoritativeRoutes =
+					authoritativeRules.size > 0
+						? routes.filter(({ rule }) => authoritativeRules.has(rule))
+						: [];
+				if (authoritativeRules.size > 0 && authoritativeRoutes.length === 0) {
+					const unavailableRule = [...authoritativeRules].find(
+						(rule) => rule.unavailable,
+					);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
+				}
 				if (declaredReplacementRules.size > 0 && replacingRoutes.length === 0) {
-					return undefined;
+					const unavailableRule = [...declaredReplacementRules].find(
+						(rule) => rule.unavailable,
+					);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
 				}
 				const selectedRoutes =
-					replacingRoutes.length > 0 ? replacingRoutes : routes;
+					authoritativeRoutes.length > 0
+						? authoritativeRoutes
+						: replacingRoutes.length > 0
+							? replacingRoutes
+							: routes;
 				const replacedActionNames = new Set(
 					replacingRoutes.flatMap(({ rule }) =>
 						(rule.replacesActionNames ?? []).map(normalizeActionIdentifier),
 					),
 				);
-				const retainedStage1Candidates = (
-					messageHandler.plan.candidateActions ?? []
-				).filter(
-					(candidate) =>
-						!replacedActionNames.has(normalizeActionIdentifier(candidate)),
-				);
+				const retainedStage1Candidates =
+					authoritativeRoutes.length > 0
+						? []
+						: (messageHandler.plan.candidateActions ?? []).filter(
+								(candidate) =>
+									!replacedActionNames.has(
+										normalizeActionIdentifier(candidate),
+									),
+							);
 				const candidateActions = uniqueActionNames([
 					...retainedStage1Candidates,
 					...selectedRoutes.map(({ action }) => action.name),
@@ -4692,7 +5041,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					requiresTool: true,
 					addContexts: contexts,
 					addCandidateActions: candidateActions,
-					...(replacingRoutes.length > 0
+					...(replacingRoutes.length > 0 || authoritativeRoutes.length > 0
 						? { clearCandidateActions: true }
 						: {}),
 					// A deterministic read route must not emit Stage-1's speculative
@@ -7906,6 +8255,40 @@ function collectPreviousActionResults(
 }
 
 /**
+ * Streaming status parity for tool executions that bypass the planner loop —
+ * the pre-LLM shortcut gate and response-handler deterministic tool calls.
+ * The planner loop announces every tool through the streaming `onToolCall`
+ * hook, which the chat SSE surface projects onto its existing
+ * `{type:"status",kind:"running_tool"}` frame and inline tool row; without
+ * this, exactly the fastest turns render no activity between "thinking" and
+ * the final reply. Same wire payload as planner-loop's executeQueuedToolCall;
+ * the executor's own emitToolResult settles the row.
+ */
+async function announceDirectToolCallToStream(
+	runtime: IAgentRuntime,
+	toolCall: PlannerToolCall,
+): Promise<void> {
+	const streamingContext = getStreamingContext();
+	if (!streamingContext?.onToolCall) return;
+	const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
+	await emitStreamingHook(streamingContext, "onToolCall", {
+		toolCall: {
+			id: toolCall.id ?? toolCall.name,
+			name: toolCall.name,
+			arguments: (projectToolDiagnosticArgs(
+				toolCall.params ?? {},
+				redactDiagnosticText,
+			) ?? {}) as Record<string, JsonValue>,
+			status: "pending",
+		},
+		...(streamingContext.messageId
+			? { messageId: streamingContext.messageId }
+			: {}),
+		metadata: { deterministic: true },
+	});
+}
+
+/**
  * Pre-LLM action shortcut gate (#8791).
  *
  * Matches explicit slash/`!` protocol invocations against the runtime's
@@ -7953,6 +8336,12 @@ export async function runShortcutGate(args: {
 	if (!action) return null;
 
 	let captured: string | undefined;
+	const shortcutToolCall: PlannerToolCall = {
+		id: `shortcut:${normalizeActionIdentifier(action.name)}`,
+		name: action.name,
+		params: { ...target.parameters, ...match.parameters },
+	};
+	await announceDirectToolCallToStream(args.runtime, shortcutToolCall);
 	// Shortcuts enter the same executor as planner-selected tools so component
 	// gates, argument validation, callback buffering, audience revalidation, and
 	// action events remain one non-bypassable contract.
@@ -7970,10 +8359,7 @@ export async function runShortcutGate(args: {
 				return [];
 			},
 		},
-		{
-			name: action.name,
-			params: { ...target.parameters, ...match.parameters },
-		},
+		shortcutToolCall,
 		{
 			actions: [action],
 			...(args.onSettledActionResult
@@ -8255,17 +8641,28 @@ export async function runV5MessageRuntimeStage1(args: {
 	// got a reply to nearly every message — the Stage-1 field guidance alone
 	// ("active in the conversation") reads as RESPOND. Also drives the planner's
 	// ambient-turn policy instruction and the deliberate-silence terminal below.
+	const peerCorrectionContinuation = messageContinuesAfterRecentAgentCorrection(
+		args.runtime,
+		args.message,
+		args.state,
+	);
 	const ambientTurn = isAmbientStage1Turn(
 		args.runtime,
 		args.message,
 		messageExplicitlyAddressesAgent(args.runtime, args.message) ||
-			messageChallengesPriorAgentReply(args.runtime, args.message, args.state),
+			messageChallengesPriorAgentReply(
+				args.runtime,
+				args.message,
+				args.state,
+			) ||
+			peerCorrectionContinuation,
 	);
-	const context = await createV5MessageContextObject({
+	let context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
 		ambientTurn,
+		peerCorrectionContinuation,
 		extraProviderExclusions: ambientTurnProviderExclusions(
 			args.runtime,
 			args.message,
@@ -8274,6 +8671,22 @@ export async function runV5MessageRuntimeStage1(args: {
 		// left RECENT_ERRORS in state, an unaddressed group turn must not
 		// render internal diagnostics into its Stage-1 context.
 	});
+	const overflowState = withProviderOverflowText(args.state);
+	const overflowContext = overflowState
+		? await createV5MessageContextObject({
+				...args,
+				state: overflowState,
+				userRoles: [senderRole],
+				availableContexts,
+				ambientTurn,
+				peerCorrectionContinuation,
+				extraProviderExclusions: ambientTurnProviderExclusions(
+					args.runtime,
+					args.message,
+				),
+			})
+		: null;
+	let useProviderOverflow = false;
 	const stage1PreprocessStartedAt = performance.now();
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
@@ -8364,7 +8777,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			);
 		const responseHandlerSchema =
 			args.runtime.responseHandlerFieldRegistry.composeSchema();
-		const messageHandlerInput = renderMessageHandlerModelInput(
+		let messageHandlerInput = renderMessageHandlerModelInput(
 			args.runtime,
 			context,
 			availableContexts,
@@ -8374,18 +8787,18 @@ export async function runV5MessageRuntimeStage1(args: {
 				responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			},
 		);
-		const stage1PrefixHashes = computePrefixHashes(
+		let stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
 		);
-		const stableStage1Segments = messageHandlerInput.promptSegments.filter(
+		let stableStage1Segments = messageHandlerInput.promptSegments.filter(
 			(segment) => segment.stable,
 		);
-		const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
-		const stage1SystemContent =
+		let stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+		let stage1SystemContent =
 			typeof messageHandlerInput.messages[0]?.content === "string"
 				? messageHandlerInput.messages[0].content
 				: "";
-		const stage1PrefixHash =
+		let stage1PrefixHash =
 			stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 			hashString(`stage1:${stage1SystemContent}`);
 		const messageHandlerTools = [
@@ -8396,6 +8809,46 @@ export async function runV5MessageRuntimeStage1(args: {
 					"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 			}),
 		];
+		const contextWindowTokens = responseHandlerContextWindow(args.runtime);
+		if (overflowContext && contextWindowTokens) {
+			const eagerBudget = buildModelInputBudget({
+				messages: messageHandlerInput.messages,
+				promptSegments: messageHandlerInput.promptSegments,
+				tools: messageHandlerTools,
+				contextWindowTokens,
+				estimationMode: "utf8-upper-bound",
+			});
+			if (
+				eagerBudget.estimatedInputTokens > eagerBudget.dispatchThresholdTokens
+			) {
+				useProviderOverflow = true;
+				context = overflowContext;
+				messageHandlerInput = renderMessageHandlerModelInput(
+					args.runtime,
+					context,
+					availableContexts,
+					{
+						directMessage: directMessageChannel && !voiceDirectMessageChannel,
+						voiceDirectMessage: voiceDirectMessageChannel,
+						responseHandlerFields: responseHandlerFieldPrompt.rendered,
+					},
+				);
+				stage1PrefixHashes = computePrefixHashes(
+					messageHandlerInput.promptSegments,
+				);
+				stableStage1Segments = messageHandlerInput.promptSegments.filter(
+					(segment) => segment.stable,
+				);
+				stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+				stage1SystemContent =
+					typeof messageHandlerInput.messages[0]?.content === "string"
+						? messageHandlerInput.messages[0].content
+						: "";
+				stage1PrefixHash =
+					stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
+					hashString(`stage1:${stage1SystemContent}`);
+			}
+		}
 		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
 			cacheProviderOptions({
 				prefixHash: stage1PrefixHash,
@@ -8490,20 +8943,17 @@ export async function runV5MessageRuntimeStage1(args: {
 				.eliza ?? {}),
 			thinking: "off",
 		};
-		// An operator may explicitly cap every channel with a real max_tokens.
-		// Without that setting the selected provider/model owns the output boundary.
-		const maxReplyTokens = resolveMaxReplyTokens(
-			args.runtime.character.settings,
-		);
 		const stage1ModelParams = {
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
 			tools: messageHandlerTools,
 			toolChoice: "required" as const,
-			// Stage 1 packs the whole answer into `replyText`; a hidden channel default
-			// can cut the structured envelope off mid-generation.
-			maxTokens: maxReplyTokens,
-			omitMaxTokens: maxReplyTokens == null,
+			// Stage 1 packs the complete structured response and user-visible answer
+			// into one generation on every channel. Let the adapter use the selected
+			// provider/model maximum; an application-level ceiling can only turn a
+			// valid long answer into an incomplete envelope.
+			maxTokens: undefined,
+			omitMaxTokens: true,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known. User-visible `replyText`
@@ -9242,6 +9692,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 			earlyReplySent = delivered !== false;
 		}
+		// A deterministic tool call skips the planner entirely, so the planner
+		// provider recompose (~600ms of planner-only providers) buys nothing the
+		// executor or the structured-effect confirmation reads — Stage-1 state is
+		// the executor state for that path.
 		const plannerProviderNames = selectV5PlannerStateProviderNames({
 			runtime: args.runtime,
 			message: args.message,
@@ -9249,7 +9703,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			userRoles: [senderRole],
 		});
 		const recomposedPlannerState =
-			typeof args.runtime.composeState === "function"
+			typeof args.runtime.composeState === "function" &&
+			!messageHandler.plan.deterministicToolCall
 				? // Reuse what the Stage-1 compose already ran for this message;
 					// refresh RECENT_MESSAGES only when an early reply actually
 					// changed history. An empty refresh set means maximum reuse;
@@ -9272,8 +9727,19 @@ export async function runV5MessageRuntimeStage1(args: {
 						},
 					}
 				: undefined;
+		// Once Stage 1 has explicitly selected the memory domain, the planner owns
+		// retrieval through its complete search tools. Repeating an eager corpus in
+		// every tool iteration adds no recall capability and can turn a technically
+		// admissible prompt into an operational timeout. Ordinary chat still keeps
+		// eager context; this branch is driven by the typed routing decision.
+		const retrievalContextSelected = selectedContexts.includes("memory");
+		const capacityAdjustedPlannerState =
+			useProviderOverflow || retrievalContextSelected
+				? (withProviderOverflowText(recomposedPlannerState) ??
+					recomposedPlannerState)
+				: recomposedPlannerState;
 		const plannerState = withContextRoutingValues(
-			attachAvailableContexts(recomposedPlannerState, args.runtime),
+			attachAvailableContexts(capacityAdjustedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
 		if (args.codingMode === true) {
@@ -9727,6 +10193,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					name: action?.name ?? selected.name,
 					...(selected.params ? { params: selected.params } : {}),
 				};
+				await announceDirectToolCallToStream(args.runtime, toolCall);
 				const startedAt = Date.now();
 				let callbackDelivered = false;
 				const deterministicCallback: HandlerCallback | undefined =
@@ -9839,6 +10306,37 @@ export async function runV5MessageRuntimeStage1(args: {
 					result.success === true &&
 					result.modelReplyRequired === true
 				) {
+					// Stage 1 already wrote this turn in the agent's voice. Hold that prose
+					// until the deterministic action returns an accepted effect receipt, then
+					// release it without a second inference. The normal reply-egress guard
+					// below still rejects unrelated mutation claims. Missing prose keeps the
+					// post-tool synthesis path so an internal receipt never becomes canned UI.
+					const acceptedEffect = structuredEffectFromToolResult(result);
+					const groundedModelReply = prePatchStageOneReply?.trim();
+					const groundedModelReplyEgress = groundedModelReply
+						? evaluatePlannedReplyEgress({
+								reply: groundedModelReply,
+								actionResults: [],
+								actions: args.runtime.actions,
+							})
+						: undefined;
+					if (
+						acceptedEffect?.status === "accepted" &&
+						groundedModelReply &&
+						groundedModelReplyEgress?.verdict === "allow"
+					) {
+						return {
+							status: "finished",
+							trajectory: {
+								context: plannerContextAfterEarlyReply,
+								steps: [{ iteration: 0, toolCall, result }],
+								archivedSteps: [],
+								plannedQueue: [],
+								evaluatorOutputs: [],
+							},
+							finalMessage: groundedModelReply,
+						};
+					}
 					return runPlannerLoop({
 						runtime: plannerRuntime,
 						context: plannerContextAfterEarlyReply,
@@ -10614,8 +11112,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		};
 	} catch (err) {
 		// error-policy:J2 Preserve the failing status for trajectory diagnostics,
-		// then rethrow the original failure to the message boundary.
-		endStatus = "errored";
+		// then rethrow the original failure to the message boundary. A provider
+		// context-overflow rejection classified by the planner boundary is the
+		// exception: the message boundary converts it into a designed
+		// honest reply, so the trajectory FINISHES with that outcome instead of
+		// recording a dead errored turn.
+		endStatus = isProviderContextOverflowFailure(err) ? "finished" : "errored";
 		throw err;
 	} finally {
 		// Trajectory persistence is diagnostic work. Preserve stage ordering in
@@ -15872,9 +16374,30 @@ export class DefaultMessageService implements IMessageService {
 				) {
 					return { kind: "noProvider" };
 				}
-				// Credit exhaustion is sticky across slots because no later
-				// fallback model can make a drained account retryable. The
-				// rate/auth flags still track the most recent slot's cause:
+				// Eliza Cloud already spent its complete in-handler warming
+				// budget. Starting the next failure-reply model slot would create a
+				// fresh useModel dispatch and repay that same provider budget (up to
+				// four times) before falling back to the canned reply. Treat the
+				// typed exhaustion as terminal for this fallback loop while
+				// preserving any more actionable sticky failure seen earlier.
+				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
+					runtime.logger.warn(
+						{
+							src: "service:message",
+							stage,
+							modelType,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Structured failure reply stopped after Cloud warming exhaustion",
+					);
+					if (sawCreditsExhausted) return { kind: "creditsExhausted" };
+					if (sawAuthError) return { kind: "authFailed" };
+					if (sawRateLimit) return { kind: "rateLimited" };
+					return { kind: "text", value: "" };
+				}
+				// Credit exhaustion and account authorization are sticky across
+				// slots because no later model tier can heal the shared account.
+				// The rate-limit flag still tracks the most recent slot's cause:
 				// reporting "rate-limited" only when the LAST attempted slot was
 				// a 429 avoids misleading the user in a mixed-failure run.
 				// Credits are classified before rate limits below: a 429 *with*
@@ -15882,7 +16405,7 @@ export class DefaultMessageService implements IMessageService {
 				// transient throttle ("try again in a few seconds").
 				sawCreditsExhausted ||= isInsufficientCreditsError(error);
 				sawRateLimit = isRateLimitError(error);
-				sawAuthError = isAuthError(error);
+				sawAuthError ||= isAuthError(error);
 				runtime.logger.warn(
 					{
 						src: "service:message",
@@ -16003,6 +16526,14 @@ export class DefaultMessageService implements IMessageService {
 						? fallbackTmpl({ state })
 						: fallbackTmpl) ||
 					"I ran out of attempts before I could finish that. Nothing was completed - please try again.";
+			} else if (cause === "context_overflow") {
+				// The provider rejected the call at its context limit; retrying the
+				// identical request cannot succeed, so the honest reply asks for a
+				// smaller ask instead of the generic "try again".
+				const tmpl = runtime.character.templates?.contextOverflowFailureReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					"That needed more context than my model can take in one call - try a smaller range or a narrower request.";
 			} else {
 				const tmpl = runtime.character.templates?.transientFailureReply;
 				replyText =

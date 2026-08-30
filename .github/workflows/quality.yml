@@ -76,22 +76,23 @@ jobs:
         if: steps.frontend-scope.outputs.run != 'true'
         run: echo "Skipping consolidated frontend build; this PR does not touch its source or release surfaces."
 
+      # The install above uses --ignore-scripts, so no workspace dist exists.
+      # Homepage typechecking resolves @elizaos/ui's public dist subpaths, while
+      # both UI and app transitively resolve core's default-condition import of
+      # @elizaos/prompts. Build that dependency chain before either consumer.
+      - name: Build frontend workspace dependencies
+        if: steps.frontend-scope.outputs.run == 'true'
+        run: |
+          bun run --cwd packages/prompts build:package
+          bun run build:core
+          bun run --cwd packages/ui build
+
       - name: Validate homepage source contracts
         if: steps.frontend-scope.outputs.run == 'true'
         working-directory: packages/homepage
         run: bun run typecheck && bun run lint:check && bun run test && bun run check:snapshot-inventory
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # The install above uses --ignore-scripts, so no workspace dist exists.
-      # packages/app/vite.config.ts imports ../shared/src/runtime-env.ts, whose
-      # barrels re-export from @elizaos/core, and Vite bundles the config with
-      # esbuild under default export conditions -- it cannot see core's
-      # eliza-source condition, so it needs core's real dist. cloud-cf-deploy.yml
-      # builds core the same way before the same build:web.
-      - name: Build linked elizaOS core workspace once
-        if: steps.frontend-scope.outputs.run == 'true'
-        run: bun run build:core
 
       - name: Build the only deployable frontend
         if: steps.frontend-scope.outputs.run == 'true'
