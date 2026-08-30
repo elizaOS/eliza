@@ -58,6 +58,7 @@ const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
     "Install or enable it",
     "App",
   ],
+  requireAny: ["Retry", "Back to views"],
 };
 
 export const VIEW_OCR_POLICIES = {
