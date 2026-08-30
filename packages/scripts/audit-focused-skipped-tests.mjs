@@ -955,8 +955,10 @@ export function findViolations(filePath, content) {
  * A site is runtime-conditional when whether the test skips is decided at run
  * time, not in the source text: a runner ternary (`cond ? describe :
  * describe.skip`), a `skipIf`/`todoIf` whose condition is not statically
- * decidable, or a `skip`/`fixme` whose first argument is a non-literal,
- * non-function condition. Unconditional skips — even documented ones — are
+ * decidable, a `skip`/`fixme` whose first argument is a non-literal,
+ * non-function condition, or a runner call whose options-object argument
+ * carries a `skip`/`fixme` property whose initializer is not statically
+ * decidable. Unconditional skips — even documented ones — are
  * never returned, and a file with any gate violation yields zero sites, so
  * consumers (the script-lane JUnit evidence gate) cannot bless a file the
  * anti-larp gate itself rejects. Throws on unparseable input.
@@ -1035,6 +1037,35 @@ export function findConditionalSkipSites(filePath, content) {
           staticTruthiness(firstValue) === undefined
         ) {
           record(node, `conditional-${modifier}`);
+        }
+      } else if (
+        isRunnerReference(chain) &&
+        ts.isStringLiteralLike(node.arguments[0]) &&
+        ts.isObjectLiteralExpression(node.arguments[1])
+      ) {
+        const options = node.arguments[1];
+        for (const prop of options.properties) {
+          if (!ts.isPropertyAssignment(prop)) continue;
+          let name;
+          if (ts.isIdentifier(prop.name)) name = prop.name.text;
+          else if (ts.isStringLiteralLike(prop.name)) name = prop.name.text;
+          else continue;
+          if (name !== "skip" && name !== "fixme") continue;
+          const initializer = prop.initializer;
+          if (!initializer) continue;
+          const value = unwrapExpression(initializer);
+          if (
+            !ts.isStringLiteralLike(value) &&
+            !ts.isFunctionLike(value) &&
+            staticTruthiness(value) === undefined
+          ) {
+            record(
+              prop,
+              name === "skip"
+                ? "conditional-skip-option"
+                : "conditional-fixme-option",
+            );
+          }
         }
       }
     }
@@ -1310,6 +1341,21 @@ function selfTest() {
       name: "conditional: non-runner ternary is ignored",
       src: 'const value = cond ? left : right;\nit("a", () => {});',
       expect: [],
+    },
+    {
+      name: "conditional: options-object skip: runtime condition is a site",
+      src: 'test("a", { skip: process.platform !== "win32" ? "reason" : false }, () => {});',
+      expect: ["conditional-skip-option"],
+    },
+    {
+      name: "conditional: options-object skip: statically-true is not runtime-conditional",
+      src: 'test("a", { skip: true }, () => {});',
+      expect: [],
+    },
+    {
+      name: "conditional: options-object fixme: runtime condition is a site",
+      src: 'test("a", { fixme: process.platform !== "win32" ? "reason" : false }, () => {});',
+      expect: ["conditional-fixme-option"],
     },
   ];
 
