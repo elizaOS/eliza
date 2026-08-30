@@ -111,6 +111,35 @@ const CONTROLLER = {
 };
 
 describe("Devices & Runtimes reconciliation", () => {
+  it("shows one embedded local runtime when persisted startup history contains duplicates", () => {
+    const activeLocal = {
+      ...LOCAL_PROFILE,
+      id: "local-profile-active",
+      label: "Local agent",
+      createdAt: "2026-08-22T00:00:00.000Z",
+    };
+    const targets = devicesRuntimesInternals.buildRuntimeTargets(
+      {
+        version: 1,
+        activeProfileId: activeLocal.id,
+        profiles: [LOCAL_PROFILE, activeLocal],
+      },
+      new Map(),
+      null,
+      new Map(),
+      null,
+    );
+
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toMatchObject({
+      id: activeLocal.id,
+      label: "Local agent",
+      kind: "local",
+      selected: true,
+      activity: "Currently in use",
+    });
+  });
+
   it("does not expose another controller's active session as this device's grant", () => {
     const target = devicesRuntimesInternals.hostTarget(
       HOST,
