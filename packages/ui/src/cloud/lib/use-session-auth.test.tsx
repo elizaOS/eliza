@@ -247,6 +247,18 @@ describe("useSessionAuth", () => {
       expect(result.current.user).toBeNull();
     });
 
+    it("ignores a JWT without the Steward expiry claim", () => {
+      storage.setItem(
+        "steward_session_token",
+        makeJwt({ userId: "foreign_user", email: "foreign@example.com" }),
+      );
+
+      const { result } = renderSessionAuth();
+
+      expect(result.current.authenticated).toBe(false);
+      expect(result.current.user).toBeNull();
+    });
+
     it("reads an undecodable token as signed out instead of throwing", () => {
       storage.setItem("steward_session_token", "legacy-local-agent-bearer");
 
