@@ -97,7 +97,14 @@ test("Discord preflight accepts raw operator values or exact names-only presence
       HAS_ELIZA_APP_DISCORD_BOT_TOKEN: invalid,
     });
     assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
-    assert.match(result.stdout, /\[fail\] discord: system bot token/);
+    assert.match(
+      result.stdout,
+      /\[fail\] discord: system bot token - Discord system bot token is not configured/,
+    );
+    assert.doesNotMatch(
+      result.stdout,
+      /\[fail\] discord: system bot token - Discord system bot token is configured/,
+    );
   }
 });
 
@@ -110,9 +117,19 @@ test("Discord shared ingress is distinct from human OAuth and generic bot aliase
   const output = `${result.stdout}\n${result.stderr}`;
 
   assert.equal(result.status, 1, output);
-  assert.match(result.stdout, /\[fail\] discord: system bot application id/);
-  assert.match(result.stdout, /\[fail\] discord: system bot enabled/);
-  assert.match(result.stdout, /\[fail\] discord: system bot token/);
+  assert.match(
+    result.stdout,
+    /\[fail\] discord: system bot application id - Discord system bot application id is not configured/,
+  );
+  assert.match(
+    result.stdout,
+    /\[fail\] discord: system bot enabled - Discord system bot is not explicitly enabled/,
+  );
+  assert.match(
+    result.stdout,
+    /\[fail\] discord: system bot token - Discord system bot token is not configured/,
+  );
+  assert.doesNotMatch(result.stdout, /\[fail\].* is configured|\[fail\].* is explicitly enabled/);
   assert.doesNotMatch(output, /legacy-contract-value-never-print/);
 });
 
@@ -124,7 +141,14 @@ test("Discord shared ingress requires the runtime's exact enabled value", () => 
     });
 
     assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
-    assert.match(result.stdout, /\[fail\] discord: system bot enabled/);
+    assert.match(
+      result.stdout,
+      /\[fail\] discord: system bot enabled - Discord system bot is not explicitly enabled/,
+    );
+    assert.doesNotMatch(
+      result.stdout,
+      /\[fail\] discord: system bot enabled - Discord system bot is explicitly enabled/,
+    );
   }
 });
 

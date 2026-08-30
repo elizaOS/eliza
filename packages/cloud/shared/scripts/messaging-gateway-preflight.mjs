@@ -51,28 +51,41 @@ function checkTelegram() {
 }
 
 function checkDiscord() {
+  const systemBotApplicationIdConfigured = hasConfiguredValue(
+    ["ELIZA_APP_DISCORD_APPLICATION_ID"],
+    "HAS_ELIZA_APP_DISCORD_APPLICATION_ID",
+  );
+  const systemBotEnabled = process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true";
+  const systemBotTokenConfigured = hasConfiguredValue(
+    ["ELIZA_APP_DISCORD_BOT_TOKEN"],
+    "HAS_ELIZA_APP_DISCORD_BOT_TOKEN",
+  );
+
   addCheck(
     "discord",
     "system bot application id",
-    hasConfiguredValue(
-      ["ELIZA_APP_DISCORD_APPLICATION_ID"],
-      "HAS_ELIZA_APP_DISCORD_APPLICATION_ID",
-    ),
-    "Discord system bot application id is configured",
+    systemBotApplicationIdConfigured,
+    systemBotApplicationIdConfigured
+      ? "Discord system bot application id is configured"
+      : "Discord system bot application id is not configured",
     "Set ELIZA_APP_DISCORD_APPLICATION_ID for the maintained Eliza App bot.",
   );
   addCheck(
     "discord",
     "system bot enabled",
-    process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true",
-    "Discord system bot is explicitly enabled",
+    systemBotEnabled,
+    systemBotEnabled
+      ? "Discord system bot is explicitly enabled"
+      : "Discord system bot is not explicitly enabled",
     "Set ELIZA_APP_DISCORD_BOT_ENABLED to exactly true.",
   );
   addCheck(
     "discord",
     "system bot token",
-    hasConfiguredValue(["ELIZA_APP_DISCORD_BOT_TOKEN"], "HAS_ELIZA_APP_DISCORD_BOT_TOKEN"),
-    "Discord system bot token is configured",
+    systemBotTokenConfigured,
+    systemBotTokenConfigured
+      ? "Discord system bot token is configured"
+      : "Discord system bot token is not configured",
     "Set ELIZA_APP_DISCORD_BOT_TOKEN for the maintained Eliza App bot.",
   );
 }
