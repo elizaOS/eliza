@@ -40,7 +40,7 @@ describe("ThinkingBlock (#10712)", () => {
     const html = container.innerHTML;
 
     expect(html).toContain("border-accent");
-    expect(html).toContain("text-accent");
+    expect(html).toContain("bg-accent");
     expect(html).not.toMatch(/blue/i);
   });
 });

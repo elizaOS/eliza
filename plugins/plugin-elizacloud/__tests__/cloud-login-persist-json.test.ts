@@ -11,17 +11,29 @@
 
 import type http from "node:http";
 import { Readable } from "node:stream";
-import { afterEach, describe, expect, it } from "vitest";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type CloudRouteState, handleCloudRoute } from "../src/routes/cloud-routes";
 
 const priorApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
 const priorEnabled = process.env.ELIZAOS_CLOUD_ENABLED;
+const priorDevSource = process.env.ELIZA_DEV_SOURCE;
+const priorDevCloudAuthority = process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
 
 afterEach(() => {
   if (priorApiKey === undefined) delete process.env.ELIZAOS_CLOUD_API_KEY;
   else process.env.ELIZAOS_CLOUD_API_KEY = priorApiKey;
   if (priorEnabled === undefined) delete process.env.ELIZAOS_CLOUD_ENABLED;
   else process.env.ELIZAOS_CLOUD_ENABLED = priorEnabled;
+  if (priorDevSource === undefined) delete process.env.ELIZA_DEV_SOURCE;
+  else process.env.ELIZA_DEV_SOURCE = priorDevSource;
+  if (priorDevCloudAuthority === undefined) {
+    delete process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
+  } else {
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = priorDevCloudAuthority;
+  }
+  resetDevCloudEnvAuthorityForTests();
+  vi.restoreAllMocks();
 });
 
 function requestWithRawBody(raw: string): http.IncomingMessage {
@@ -176,5 +188,89 @@ describe("POST /api/cloud/login/persist JSON body", () => {
       ok: false,
       error: "Cloud credential persistence was not applied",
     });
+  });
+
+  it("rejects even the launcher key before direct persistence side effects", async () => {
+    resetDevCloudEnvAuthorityForTests();
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+    process.env.ELIZAOS_CLOUD_API_KEY = "launcher-staging-key";
+    const saveElizaConfig = vi.fn();
+    const replaceApiKey = vi.fn(async () => {});
+    const config = { cloud: { apiKey: "durable-production-key" } };
+
+    const result = await persistRaw(
+      JSON.stringify({ apiKey: "launcher-staging-key" }),
+      persistState({
+        config,
+        cloudManager: { replaceApiKey } as CloudRouteState["cloudManager"],
+        services: { saveElizaConfig },
+      })
+    );
+
+    expect(result.statusCode).toBe(409);
+    expect(result.body).toEqual({
+      ok: false,
+      error:
+        "Cloud login cannot persist credentials owned by the immutable local development launch target",
+    });
+    expect(config).toEqual({ cloud: { apiKey: "durable-production-key" } });
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+    expect(replaceApiKey).not.toHaveBeenCalled();
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("launcher-staging-key");
+  });
+
+  it("rejects an authenticated same-key poll before fetch or persistence side effects", async () => {
+    resetDevCloudEnvAuthorityForTests();
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+    process.env.ELIZAOS_CLOUD_API_KEY = "launcher-staging-key";
+    const saveElizaConfig = vi.fn();
+    const replaceApiKey = vi.fn(async () => {});
+    const config = { cloud: { apiKey: "durable-production-key" } };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "authenticated",
+          apiKey: "launcher-staging-key",
+          keyPrefix: "launcher",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const req = {
+      headers: { host: "127.0.0.1:3000" },
+      method: "GET",
+      url: "/api/cloud/login/status?sessionId=same-key-session",
+    } as http.IncomingMessage;
+    const res = responseSink();
+
+    const handled = await handleCloudRoute(
+      req,
+      res,
+      "/api/cloud/login/status",
+      "GET",
+      persistState({
+        config,
+        cloudManager: { replaceApiKey } as CloudRouteState["cloudManager"],
+        services: {
+          saveElizaConfig,
+          validateCloudBaseUrl: async () => null,
+        },
+      })
+    );
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(409);
+    expect(res.jsonBody()).toEqual({
+      ok: false,
+      error:
+        "Cloud login cannot persist credentials owned by the immutable local development launch target",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(config).toEqual({ cloud: { apiKey: "durable-production-key" } });
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+    expect(replaceApiKey).not.toHaveBeenCalled();
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("launcher-staging-key");
   });
 });

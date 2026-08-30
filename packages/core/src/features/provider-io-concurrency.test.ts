@@ -343,7 +343,7 @@ describe("provider database I/O concurrency", () => {
 		expect(runtime.getParticipantsForRoom).not.toHaveBeenCalled();
 	});
 
-	it("uses the DOCUMENTS service's bounded concurrent read composition", async () => {
+	it("uses the DOCUMENTS service's complete concurrent read composition", async () => {
 		const composition = deferred<{
 			relevantFragments: Memory[];
 			documents: Memory[];
@@ -360,9 +360,7 @@ describe("provider database I/O concurrency", () => {
 
 		const resultPromise = documentsProvider.get(runtime, message, state);
 		await Promise.resolve();
-		expect(service.composeProviderDocuments).toHaveBeenCalledWith(message, {
-			limit: 25,
-		});
+		expect(service.composeProviderDocuments).toHaveBeenCalledWith(message);
 
 		composition.resolve({
 			relevantFragments: [],

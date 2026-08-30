@@ -1,9 +1,10 @@
 /**
- * A single dashboard stat card (label + value) built on BrandCard.
+ * A single dashboard stat card (label + value) built on canonical Card.
  */
 import type { ReactNode } from "react";
+import { Badge, type BadgeProps } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
 import { cn } from "../../lib/utils";
-import { BrandCard } from "./brand-card";
 
 type DashboardStatAccent =
   | "orange"
@@ -22,6 +23,19 @@ const accentStyles: Record<DashboardStatAccent, string> = {
   red: "text-danger",
   violet: "text-status-info",
   white: "text-txt-strong",
+};
+
+const accentBadges: Record<
+  DashboardStatAccent,
+  NonNullable<BadgeProps["variant"]>
+> = {
+  orange: "primingIcon",
+  amber: "statusWarning",
+  blue: "statusInfo",
+  emerald: "statusSuccess",
+  red: "statusDanger",
+  violet: "statusInfo",
+  white: "providerMarkActive",
 };
 
 interface DashboardStatCardProps {
@@ -44,9 +58,9 @@ export function DashboardStatCard({
   valueClassName,
 }: DashboardStatCardProps) {
   return (
-    <BrandCard
+    <Card
       className={cn("min-h-[108px] justify-between p-4", className)}
-      corners={false}
+      variant="brand"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-2">
@@ -64,19 +78,18 @@ export function DashboardStatCard({
           </p>
         </div>
         {icon ? (
-          <div
-            className={cn(
-              "flex size-10 shrink-0 items-center justify-center rounded-sm border border-current/15 bg-bg-elevated",
-              accentStyles[accent],
-            )}
+          <Badge
+            variant={accentBadges[accent]}
+            size="providerMark"
+            className="flex size-10 shrink-0 items-center justify-center"
           >
             {icon}
-          </div>
+          </Badge>
         ) : null}
       </div>
       {helper ? (
         <p className="text-xs text-muted-foreground">{helper}</p>
       ) : null}
-    </BrandCard>
+    </Card>
   );
 }

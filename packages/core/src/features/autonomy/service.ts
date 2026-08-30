@@ -714,7 +714,6 @@ export class AutonomyService extends Service {
 
 		const recentMemories = await this.runtime.getMemories({
 			roomId: this.autonomousRoomId,
-			limit: 3,
 			tableName: "memories",
 		});
 
@@ -982,7 +981,6 @@ export class AutonomyService extends Service {
 
 		const recentMemories = await this.runtime.getMemories({
 			roomId: this.autonomousRoomId,
-			limit: 3,
 			tableName: "memories",
 		});
 
@@ -1201,7 +1199,6 @@ export class AutonomyService extends Service {
 			model: this.resolveAutonomyModelSize(),
 			execOptions: {
 				temperature: 0.2,
-				maxTokens: 512,
 			},
 		});
 		this.runtime.logger.debug(

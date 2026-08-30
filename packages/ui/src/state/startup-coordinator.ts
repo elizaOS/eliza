@@ -52,6 +52,15 @@ export interface PlatformPolicy {
    */
   nativeConsecutiveFailureBudgetMs?: number;
   /**
+   * Capacitor-native remote-target analogue of
+   * `nativeConsecutiveFailureBudgetMs`. A restored Cloud/VPS target cannot be
+   * making local boot progress, so statusless network failures should expose
+   * Retry promptly instead of borrowing the on-device agent's 90s warm-up
+   * allowance. Successful probes reset this streak and reconnect keeps the
+   * same persisted target/session.
+   */
+  remoteNativeConsecutiveFailureBudgetMs?: number;
+  /**
    * Hosted-web analogue for a DEDICATED cloud agent base (issue #19627): how
    * long (ms) the backend poll may fail consecutively at the connection level
    * — no HTTP response at all, e.g. a TLS handshake failure on

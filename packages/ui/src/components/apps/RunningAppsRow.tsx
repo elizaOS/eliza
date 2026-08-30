@@ -62,10 +62,11 @@ const RunningAppCard = memo(function RunningAppCard({
       className="group relative overflow-hidden rounded-sm border border-accent/35 bg-card/72 transition-all hover:border-accent/55  "
     >
       <Button
-        variant="ghost"
+        variant="publicRow"
+        size="content"
         aria-label={`Open ${run.displayName}`}
         aria-busy={isBusy || undefined}
-        className="block h-auto w-full rounded-none p-0 text-left font-normal whitespace-normal hover:bg-transparent"
+        className="block"
         onClick={() => onOpenRun(run)}
       >
         <AppHero
@@ -97,12 +98,13 @@ const RunningAppCard = memo(function RunningAppCard({
 
       {onStopRun ? (
         <Button
-          variant="ghost"
+          variant="dangerGhost"
           size="icon-sm"
           data-testid={`running-app-stop-${run.runId}`}
           aria-label={`Stop ${run.displayName}`}
           disabled={isStopping}
-          className="absolute bottom-3 right-3 size-8 rounded-full bg-black/70 p-0 text-white/90 transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          shape="circle"
+          className="absolute bottom-3 right-3 transition-all"
           onClick={(event: MouseEvent<HTMLButtonElement>) => {
             event.stopPropagation();
             onStopRun(run);

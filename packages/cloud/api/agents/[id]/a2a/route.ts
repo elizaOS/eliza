@@ -59,7 +59,7 @@ import { admitOrganizationInference } from "@/lib/services/organization-inferenc
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
-const A2A_TEXT_OUTPUT_TOKENS = 500;
+const A2A_BILLING_OUTPUT_ESTIMATE_TOKENS = 500;
 
 const ProviderUsageSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
@@ -400,12 +400,12 @@ async function handleChat(
     envForThinking,
     agentThinkingBudget,
   );
-  const maxOutputTokens =
-    A2A_TEXT_OUTPUT_TOKENS + (effectiveThinkingBudget ?? 0);
+  const estimatedOutputTokens =
+    A2A_BILLING_OUTPUT_ESTIMATE_TOKENS + (effectiveThinkingBudget ?? 0);
   const baseCost = await estimateRequestCost(
     model,
     fullMessages,
-    maxOutputTokens,
+    estimatedOutputTokens,
   );
 
   const markupPct = Number(character.inference_markup_percentage || 0);
@@ -455,15 +455,13 @@ async function handleChat(
     throw error;
   }
 
+  let providerDispatchStarted = false;
   try {
     await admission.markProviderDispatched?.();
+    providerDispatchStarted = true;
     const result = await streamText({
       model: getLanguageModel(model),
       messages: fullMessages,
-      // Cap the provider at the exact ceiling billing reserved above, so final
-      // usage cannot outrun the admitted reservation (#16147). Omitting it let
-      // the provider bill more output than was priced upfront.
-      maxOutputTokens,
       ...mergeAnthropicCotProviderOptions(
         model,
         envForThinking,
@@ -559,11 +557,14 @@ async function handleChat(
       id: rpcId,
     });
   } catch (error) {
-    // error-policy:J1 the JSON-RPC boundary refunds a failed generation and
-    // returns a redacted structured failure instead of partial model output.
-    const release = admission.settle(0);
-    if (authUser.executionCtx) authUser.executionCtx.waitUntil(release);
-    else await release;
+    // error-policy:J1 the JSON-RPC boundary conservatively settles dispatches
+    // with unknown usage, while failures before provider dispatch are safe to
+    // refund in full.
+    const terminal = providerDispatchStarted
+      ? admission.settleUnknown()
+      : admission.settle(0);
+    if (authUser.executionCtx) authUser.executionCtx.waitUntil(terminal);
+    else await terminal;
     logger.error("[Agent A2A] Error generating response", {
       error: error instanceof Error ? error.message : "Unknown error",
       agentId: character.id,

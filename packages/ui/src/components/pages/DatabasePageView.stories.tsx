@@ -1,6 +1,6 @@
 /**
- * Storybook states for the Database page shell across tables, media, vectors,
- * and optional content-header layouts.
+ * Storybook states for the Database page shell across self-contained tables,
+ * media, and optional content-header layouts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp } from "../../storybook/mock-providers.helpers";
@@ -8,7 +8,9 @@ import { DatabasePageView } from "./DatabasePageView";
 
 /**
  * DatabasePageView is the Database page shell: a segmented control switches
- * between the Tables, Media, and Vectors sub-views. Each sub-view fetches its
+ * between the Tables, Media, and Vectors sub-views. The self-contained stories
+ * below exercise the first two; the vector browser's separately served plugin
+ * bundle is covered by the plugin-view browser lane. Each sub-view fetches its
  * own data from the API on mount; in Storybook there is no backend, so the
  * sub-views render their loading / empty states. The active tab is driven by
  * the `databaseSubTab` field of the app context.
@@ -35,15 +37,6 @@ export const Tables: Story = {
 /** Media gallery sub-view selected. */
 export const Media: Story = {
   decorators: [mockApp({ databaseSubTab: "media" })],
-};
-
-/**
- * Vectors sub-view selected. This dynamically loads a heavy three.js vector
- * browser bundle from the API, which is unavailable in Storybook, so the
- * dynamic-view loader renders its loading / fallback state.
- */
-export const Vectors: Story = {
-  decorators: [mockApp({ databaseSubTab: "vectors" })],
 };
 
 /** Rendered without a content header passed in. */

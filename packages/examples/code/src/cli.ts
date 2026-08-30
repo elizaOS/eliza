@@ -17,7 +17,11 @@ import * as fs from "node:fs/promises";
 import * as readline from "node:readline";
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
-import { getAgentClient } from "./lib/agent-client.js";
+import {
+  getAgentClient,
+  type SendMessageParams,
+  sendPiCodingTurn,
+} from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
 import { loadEnv } from "./lib/load-env.js";
 import { resolveModelProvider } from "./lib/model-provider.js";
@@ -54,6 +58,14 @@ interface CLIResult {
     completedAt: number;
     durationMs: number;
   };
+}
+
+/** Applies the CLI's trusted coding policy at its agent-client boundary. */
+function sendCliCodingTurn(
+  client: { sendMessage(params: SendMessageParams): Promise<string> },
+  params: Omit<SendMessageParams, "codingMode" | "codingActionProfile">,
+): Promise<string> {
+  return sendPiCodingTurn(client, params);
 }
 
 // ============================================================================
@@ -353,11 +365,10 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
     let didPrintStreaming = false;
 
     // Send message and get response
-    const response = await agentClient.sendMessage({
+    const response = await sendCliCodingTurn(agentClient, {
       room,
       text: message,
       identity: session.identity,
-      codingMode: true,
       onDelta: shouldStream
         ? (delta) => {
             // Write deltas directly for real-time streaming.
@@ -507,4 +518,5 @@ export {
   getMessage,
   parseArgs,
   runCLI,
+  sendCliCodingTurn,
 };

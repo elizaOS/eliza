@@ -149,8 +149,8 @@ class Scenario:
         if self.recent_news:
             lines.append("")
             lines.append("=== RECENT NEWS ===")
-            for news in self.recent_news[:3]:
-                lines.append(f"  [{news.source}]: {news.content[:80]}...")
+            for news in self.recent_news:
+                lines.append(f"  [{news.source}]: {news.content}")
 
         return "\n".join(lines)
 

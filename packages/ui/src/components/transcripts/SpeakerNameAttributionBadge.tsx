@@ -9,7 +9,7 @@ import type {
   SpeakerNameEvidenceSource,
 } from "@elizaos/shared";
 import type * as React from "react";
-import { cn } from "../../lib/utils";
+import { StatusBadge } from "../ui/status-badge";
 
 const SOURCE_LABELS: Record<SpeakerNameEvidenceSource, string> = {
   platform_roster: "roster",
@@ -64,29 +64,27 @@ export function SpeakerNameAttributionBadge({
     .join("; ");
 
   return (
-    <span
+    <StatusBadge
       data-testid="speaker-name-attribution"
       data-resolution={attribution.resolution}
       role="note"
-      className={cn(
-        "inline-flex max-w-full items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] font-medium",
-        attribution.resolution === "confirmed"
-          ? "border-accent/35 bg-accent/[0.08] text-txt-strong"
-          : "border-border bg-card text-muted",
-        className,
-      )}
+      className={className}
       aria-label={detail}
       title={detail}
-    >
-      <span>{decision}</span>
-      <span aria-hidden>·</span>
-      <span>{confidence}%</span>
-      {provenance.length > 0 ? (
+      tone={attribution.resolution === "confirmed" ? "info" : "muted"}
+      label={
         <>
+          <span>{decision}</span>
           <span aria-hidden>·</span>
-          <span className="truncate">{provenance.join(" + ")}</span>
+          <span>{confidence}%</span>
+          {provenance.length > 0 ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className="truncate">{provenance.join(" + ")}</span>
+            </>
+          ) : null}
         </>
-      ) : null}
-    </span>
+      }
+    />
   );
 }

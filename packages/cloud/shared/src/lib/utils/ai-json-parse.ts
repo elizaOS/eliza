@@ -1,6 +1,6 @@
-// Provides cloud utility ai json parse helpers shared by backend services.
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { z } from "zod";
+/** Extracts and validates complete JSON model outputs for cloud services. */
+import { ElizaError, toWellFormedUnicode } from "@elizaos/core";
+import type { z } from "zod";
 
 function extractJsonFromAiResponse(text: string): string {
   let cleaned = text.trim();
@@ -28,9 +28,15 @@ export function parseAiJson<T>(text: string, schema: z.ZodType<T>, context?: str
   let parsed: unknown;
   try {
     parsed = JSON.parse(extracted);
-  } catch {
-    throw new Error(
-      `Invalid JSON from AI${context ? ` (${context})` : ""}: ${truncateWellFormed(toWellFormedUnicode(extracted), 200)}...`,
+  } catch (cause) {
+    const completeOutput = toWellFormedUnicode(extracted);
+    throw new ElizaError(
+      `Invalid JSON from AI${context ? ` (${context})` : ""}: ${completeOutput}`,
+      {
+        code: "AI_JSON_PARSE_FAILED",
+        cause,
+        context: { operation: context, completeOutput },
+      },
     );
   }
 

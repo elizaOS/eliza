@@ -41,6 +41,7 @@ import type {
 } from "./environment";
 import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
+import type { IdentityClaim } from "./identity";
 import type { Memory, MemoryMetadata } from "./memory";
 import type { IMessageService } from "./message-service";
 import type {
@@ -137,6 +138,7 @@ export type MessageConnectorCapability =
 	| "webhook_identity"
 	| "rich_components"
 	| "rich_embed"
+	| "manage_server"
 	| (string & {});
 
 export type PostConnectorCapability =
@@ -254,6 +256,8 @@ export interface MessageConnectorQueryContext {
 
 export interface MessageConnectorTarget {
 	target: TargetInfo;
+	/** Connector-owned opaque key for auditing an identity-claim mapping. */
+	identityDeliveryKey?: string;
 	label?: string;
 	kind?: MessageTargetKind;
 	description?: string;
@@ -366,6 +370,56 @@ export interface MessageConnectorPostToThreadParams {
 	identity?: ConnectorPostIdentity;
 }
 
+/**
+ * Structural server/guild management request forwarded to a connector
+ * (create/edit/delete channels and roles, permission overwrites, member role
+ * assignment, invites, moderation, template reconcile). The connector owns
+ * validation, its own configuration gating (fail closed), and platform
+ * hierarchy checks; `operation` and `params` are treated as untrusted input.
+ */
+export interface MessageConnectorManageServerParams {
+	target?: TargetInfo;
+	/** Connector-defined management verb, e.g. "create_channel". */
+	operation: string;
+	/** Platform server/guild id the operation applies to. */
+	serverId?: string;
+	/** Trusted authorization minted by core for the exact destination binding. */
+	authorization: MessageConnectorManageServerAuthorization;
+	/** Bounded operation arguments; the connector validates every field. */
+	params?: Record<string, unknown>;
+}
+
+/** Exact connector destination resolved before any server-management write. */
+export interface MessageConnectorManageServerDestination {
+	source: string;
+	accountId: string;
+	serverId: string;
+	messageServerId: UUID;
+	destinationWorldId: UUID;
+	target: TargetInfo;
+}
+
+/**
+ * Trusted destination authorization carried from core to the connector. The
+ * connector must independently revalidate this envelope immediately before
+ * mutation; it is provenance, not a reusable capability grant.
+ */
+export interface MessageConnectorManageServerAuthorization
+	extends MessageConnectorManageServerDestination {
+	requesterEntityId: UUID;
+	authorizedEntityId: UUID;
+	role: "ADMIN" | "OWNER";
+	bindingRoomIds: UUID[];
+}
+
+/** Structured result of a connector server-management operation. */
+export interface MessageConnectorManageServerResult {
+	/** Human-readable receipt line for the acting agent. */
+	summary: string;
+	/** Structured receipt (created/updated/unchanged/skipped entities). */
+	data?: Record<string, unknown>;
+}
+
 export interface MessageConnector {
 	source: string;
 	accountId?: string;
@@ -393,6 +447,16 @@ export interface MessageConnector {
 		query: string,
 		context: MessageConnectorQueryContext,
 	) => Promise<MessageConnectorTarget[]> | MessageConnectorTarget[];
+	/**
+	 * Convert a verified provider claim into this connector's concrete delivery
+	 * target. Handles are display data, so the shared runtime never guesses that
+	 * a handle or provider subject is a channel, chat, phone number, or address.
+	 */
+	resolveIdentityClaimTarget?: (
+		claim: IdentityClaim,
+		context: MessageConnectorQueryContext,
+		canonicalPrincipalId: UUID,
+	) => Promise<MessageConnectorTarget | null> | MessageConnectorTarget | null;
 	listRecentTargets?: (
 		context: MessageConnectorQueryContext,
 	) => Promise<MessageConnectorTarget[]> | MessageConnectorTarget[];
@@ -468,6 +532,16 @@ export interface MessageConnector {
 		runtime: IAgentRuntime,
 		params: MessageConnectorPostToThreadParams,
 	) => Promise<Memory | undefined>;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
+	manageServerHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorManageServerParams,
+	) => Promise<MessageConnectorManageServerResult>;
 	contentShaping?: ConnectorContentShaping;
 }
 
@@ -566,6 +640,7 @@ type RuntimeDatabaseAdapterSurface = Omit<
 	| "updateDocumentDirectGrants"
 	| "replaceDocumentRevision"
 	| "deleteDocumentWithSnapshot"
+	| "compareAndSwapWorldMetadata"
 >;
 
 export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
@@ -873,6 +948,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		name,
 		source,
 		channelId,
+		serverId,
 		messageServerId,
 		type,
 		worldId,
@@ -886,6 +962,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		worldName?: string;
 		source?: string;
 		channelId?: string;
+		serverId?: string;
 		messageServerId?: UUID;
 		type?: ChannelType | string;
 		worldId?: UUID;

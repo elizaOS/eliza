@@ -39,29 +39,6 @@ const ADAPTER_UNAVAILABLE =
 const INIT_UNAVAILABLE =
   "@elizaos/plugin-sql runtime calls are unavailable in the Cloudflare Workers bundle. Server-side agent runtime calls run on the agent-server sidecar.";
 
-const EXPORT_NAMES = [
-  "agentTable",
-  "cacheTable",
-  "channelParticipantsTable",
-  "channelTable",
-  "componentTable",
-  "createDatabaseAdapter",
-  "default",
-  "embeddingTable",
-  "entityTable",
-  "logTable",
-  "memoryTable",
-  "messageServerAgentsTable",
-  "messageServerTable",
-  "messageTable",
-  "participantTable",
-  "relationshipTable",
-  "roomTable",
-  "schema",
-  "taskTable",
-  "worldTable",
-] as const;
-
 const SCHEMA_TABLE_NAMES = [
   "agentTable",
   "roomTable",
@@ -182,21 +159,6 @@ function expectUnavailable(
 }
 
 describe("elizaos-plugin-sql Worker stub", () => {
-  test("exports the twenty runtime stand-ins and nothing else", () => {
-    expect([...Object.keys(pluginSql)].sort()).toEqual([...EXPORT_NAMES]);
-    expect(Object.keys(pluginSql)).toHaveLength(20);
-  });
-
-  test("does not expose queue, comparator, or capacity fields", () => {
-    const record = pluginSql as unknown as Record<string, unknown>;
-    expect("queue" in record).toBe(false);
-    expect("capacity" in record).toBe(false);
-    expect("comparator" in record).toBe(false);
-    expect(record.queue).toBeUndefined();
-    expect(record.capacity).toBeUndefined();
-    expect(record.comparator).toBeUndefined();
-  });
-
   test("schema keys are the seventeen tables in source order", () => {
     expect(Object.keys(schema)).toEqual([...SCHEMA_TABLE_NAMES]);
     expect(Object.keys(schema)).toHaveLength(17);

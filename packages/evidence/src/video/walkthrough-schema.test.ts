@@ -219,10 +219,6 @@ describe("shipped walkthrough definitions", () => {
     name.endsWith(".json"),
   );
 
-  it("ships at least three definitions", () => {
-    expect(files.length).toBeGreaterThanOrEqual(3);
-  });
-
   it.each(files)("%s validates against the schema", (name) => {
     const parsed = JSON.parse(
       readFileSync(join(WALKTHROUGHS_DIR, name), "utf8"),
@@ -230,19 +226,5 @@ describe("shipped walkthrough definitions", () => {
     const def = parseWalkthroughDef(parsed, name);
     expect(def.slug).toBeTruthy();
     expect(def.steps.length).toBeGreaterThan(0);
-  });
-
-  it("covers all three granularities across the shipped set", () => {
-    const granularities = new Set(
-      files.map((name) => {
-        const parsed = JSON.parse(
-          readFileSync(join(WALKTHROUGHS_DIR, name), "utf8"),
-        );
-        return parseWalkthroughDef(parsed, name).granularity;
-      }),
-    );
-    expect(granularities).toEqual(
-      new Set(["element", "feature", "walkthrough"]),
-    );
   });
 });

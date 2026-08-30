@@ -55,7 +55,7 @@ describe("registerDefaultEscalationLadders", () => {
     registerDefaultEscalationLadders(reg);
     expect(reg.get("priority_low_default")?.steps).toEqual([]);
     expect(reg.get("priority_medium_default")?.steps).toHaveLength(1);
-    expect(reg.get("priority_high_default")?.steps).toHaveLength(9);
+    expect(reg.get("priority_high_default")?.steps).toHaveLength(8);
     // second call must not throw on already-present keys.
     expect(() => registerDefaultEscalationLadders(reg)).not.toThrow();
   });
@@ -105,7 +105,7 @@ describe("resolveEffectiveLadder", () => {
     ).toEqual([]);
     expect(
       resolveEffectiveLadder(task({ priority: "high" }), reg).steps,
-    ).toHaveLength(9);
+    ).toHaveLength(8);
   });
 
   it("falls back to the priority default when a named ladder is unknown", () => {
@@ -138,7 +138,7 @@ describe("nextEscalationStep", () => {
   it("returns null once the ladder is exhausted", () => {
     expect(
       nextEscalationStep(ladder, {
-        stepIndex: 8,
+        stepIndex: 7,
         lastDispatchedAt: "2026-06-23T10:00:00.000Z",
       }),
     ).toBeNull();

@@ -2,7 +2,7 @@
  * The experience provider for the experience capability: injects the most relevant
  * past learnings into turn context. Merges semantically matched experiences
  * (queried by the current message text) with the highest-quality top experiences,
- * dedupes by id, caps the set at MAX_RELEVANT_EXPERIENCES, and renders them into a
+ * dedupes by id and renders every match into a
  * `[RELEVANT EXPERIENCES]` block. No EXPERIENCE service, a too-short message, or no
  * matches yields empty output; errors fail soft to empty text.
  */
@@ -54,13 +54,11 @@ export const experienceProvider: Provider = {
 
 			const semanticExperiences = await experienceService.queryExperiences({
 				query: messageText,
-				limit: 5,
 				minConfidence: 0.6,
 				minImportance: 0.5,
 				includeRelated: true,
 			});
 			const topExperiences = await experienceService.listExperiences({
-				limit: 3,
 				minConfidence: 0.7,
 				minImportance: 0.7,
 			});

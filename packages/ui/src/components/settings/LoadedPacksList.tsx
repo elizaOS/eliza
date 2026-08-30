@@ -8,7 +8,8 @@ import type { ResolvedContentPack } from "@elizaos/shared";
 import { Check } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelector } from "../../state";
-import { SettingsGroup, SettingsRow } from "./settings-layout";
+import { ActionListRow } from "../shared/ActionListRow";
+import { SettingsGroup } from "./settings-layout";
 
 interface LoadedPacksListProps {
   loadedPacks: ResolvedContentPack[];
@@ -37,13 +38,14 @@ function LoadedPackRow({
     onActivate: onToggle,
   });
   return (
-    <SettingsRow
-      label={pack.manifest.name}
+    <ActionListRow
+      element="button"
+      title={pack.manifest.name}
       description={pack.manifest.description ?? undefined}
-      active={isActive}
+      selected={isActive}
       onClick={onToggle}
       buttonRef={ref}
-      buttonProps={agentProps}
+      {...agentProps}
       trailing={
         isActive ? (
           <span

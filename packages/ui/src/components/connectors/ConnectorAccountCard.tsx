@@ -18,7 +18,6 @@ import type {
   ConnectorAccountUpdateInput,
 } from "../../api/client-agent";
 import { useModalState } from "../../hooks/useModalState";
-import { cn } from "../../lib/utils";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -32,6 +31,7 @@ import {
 } from "../capabilities/connected-capability-presentation";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
@@ -210,15 +210,19 @@ export function ConnectorAccountCard({
   }, [onMakeDefault]);
 
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-3 rounded-sm border border-border/45 bg-card/35 p-3 transition-opacity",
-        !enabled && "bg-bg-muted/40",
-        selected && "border-accent/70 bg-accent/5",
-      )}
+    <Card
+      border={selected ? "strong" : "subtle"}
+      flow="column"
+      gap="default"
+      padding="default"
+      surface={selected ? "raised" : enabled ? "card" : "backgroundSubtle"}
+      className="transition-opacity"
     >
       <div className="flex flex-wrap items-start gap-3">
-        <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border/50 bg-bg-accent text-xs font-semibold text-muted">
+        <Card
+          variant="connectorAvatar"
+          className="flex size-9 shrink-0 items-center justify-center"
+        >
           {account.avatarUrl ? (
             <img
               src={account.avatarUrl}
@@ -230,7 +234,7 @@ export function ConnectorAccountCard({
           ) : (
             initials(account.label)
           )}
-        </div>
+        </Card>
 
         <div className="min-w-[180px] flex-1 space-y-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -248,7 +252,7 @@ export function ConnectorAccountCard({
               })}
             />
             {isDefault ? (
-              <Badge variant="outline" className="shrink-0 text-2xs">
+              <Badge variant="outline" size="compact" className="shrink-0">
                 {t("connectoraccount.default", { defaultValue: "Default" })}
               </Badge>
             ) : null}
@@ -274,7 +278,6 @@ export function ConnectorAccountCard({
               size="sm"
               disabled={saving || selected}
               onClick={onSelect}
-              className="h-7 px-2 text-xs"
             >
               {selected
                 ? t("connectoraccount.selected", { defaultValue: "Selected" })
@@ -291,7 +294,6 @@ export function ConnectorAccountCard({
               aria-label={t("connectoraccount.reconnect", {
                 defaultValue: "Reconnect account",
               })}
-              className="h-7 gap-1 px-2 text-xs"
             >
               {reconnectBusy ? (
                 <Spinner className="size-3" />
@@ -306,7 +308,7 @@ export function ConnectorAccountCard({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             disabled={saving || isDefault || defaultBusy}
             onClick={() => void handleMakeDefault()}
             aria-label={t("connectoraccount.makeDefault", {
@@ -315,7 +317,6 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.makeDefault", {
               defaultValue: "Make default account",
             })}
-            className="size-7 p-0"
           >
             {defaultBusy ? (
               <Spinner className="size-3" />
@@ -332,7 +333,6 @@ export function ConnectorAccountCard({
             aria-label={t("connectoraccount.test", {
               defaultValue: "Test connector account",
             })}
-            className="h-7 px-2 text-xs"
           >
             {testBusy ? (
               <Spinner className="size-3" />
@@ -343,7 +343,7 @@ export function ConnectorAccountCard({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="icon-sm"
             disabled={saving || refreshBusy}
             onClick={() => void onRefresh()}
             aria-label={t("connectoraccount.refresh", {
@@ -352,7 +352,6 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.refresh", {
               defaultValue: "Refresh connector account",
             })}
-            className="size-7 p-0"
           >
             {refreshBusy ? (
               <Spinner className="size-3" />
@@ -362,8 +361,8 @@ export function ConnectorAccountCard({
           </Button>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
+            variant="destructive"
+            size="icon-sm"
             disabled={saving}
             onClick={deleteModal.open}
             aria-label={t("connectoraccount.delete", {
@@ -372,7 +371,6 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.delete", {
               defaultValue: "Delete connector account",
             })}
-            className="size-7 p-0 text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="size-3.5" aria-hidden />
           </Button>
@@ -469,6 +467,6 @@ export function ConnectorAccountCard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Card>
   );
 }

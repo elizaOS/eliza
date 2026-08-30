@@ -72,6 +72,35 @@ Body`;
     assert.deepStrictEqual(result.frontmatter, {});
   });
 
+  it("rejects a typo'd ---- separator instead of swallowing frontmatter into the body", () => {
+    const content =
+      '---\ndescription: "A skill"\nname: my-skill\n----\nversion: 2\n---\nBody';
+    assert.throws(() => parseFrontmatter(content), (error: unknown) => {
+      assert.ok(error instanceof ElizaError);
+      assert.equal(error.code, INVALID_SKILL_FRONTMATTER_YAML);
+      return true;
+    });
+  });
+
+  it("preserves a dashes rule inside the body after a valid closer", () => {
+    const result = parseFrontmatter(
+      "---\nname: ok\n---\nRules\n----\nMore rules",
+    );
+    assert.deepStrictEqual(result.frontmatter, { name: "ok" });
+    assert.equal(result.body, "Rules\n----\nMore rules");
+  });
+
+  it("parses quoted scalars whose indented continuation contains ---", () => {
+    const result = parseFrontmatter(
+      '---\ndescription: "alpha\n  --- beta\n  gamma"\nname: quoted-skill\n---\nBody',
+    );
+    assert.deepStrictEqual(result.frontmatter, {
+      description: "alpha --- beta gamma",
+      name: "quoted-skill",
+    });
+    assert.equal(result.body, "Body");
+  });
+
   it("parses complex frontmatter with arrays", () => {
     const content = `---
 name: complex-skill

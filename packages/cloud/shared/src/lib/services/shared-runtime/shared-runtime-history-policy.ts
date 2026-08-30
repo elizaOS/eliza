@@ -503,7 +503,7 @@ function messageIdentity(message: SharedRuntimeHistoryMessageLike): string {
 export function selectSharedRuntimeContext<T extends SharedRuntimeHistoryMessageLike>(
   history: T[],
   _queryText: string,
-  _limit = Number.MAX_SAFE_INTEGER,
+  _limit?: number,
 ): T[] {
   return history.filter(isPersistedMessage);
 }
@@ -551,22 +551,15 @@ export function compareSharedRuntimeHistoryMessages(
   b: { createdAt?: unknown; id?: unknown },
 ): number {
   const aCreated =
-    typeof (a as any).createdAt === "number" && Number.isFinite((a as any).createdAt)
-      ? (a as any).createdAt
-      : 0;
+    typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
   const bCreated =
-    typeof (b as any).createdAt === "number" && Number.isFinite((b as any).createdAt)
-      ? (b as any).createdAt
-      : 0;
-  return (
-    aCreated - bCreated || String((a as any).id ?? "").localeCompare(String((b as any).id ?? ""))
-  );
+    typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
+  return aCreated - bCreated || String(a.id ?? "").localeCompare(String(b.id ?? ""));
 }
 
 export function mergeSharedRuntimeHistoryMessages<T extends SharedRuntimeHistoryMessageLike>(
   current: T[],
   incoming: T[],
-  _limit: number,
 ): T[] {
   const merged = new Map<string, T>();
   for (const message of [...current, ...incoming]) {

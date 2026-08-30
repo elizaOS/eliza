@@ -11,9 +11,9 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { ConnectorAccountCatalogEntry } from "./connector-account-catalog.js";
 import {
   CONNECTOR_ACCOUNT_CATALOG,
-  type ConnectorAccountCatalogEntry,
   getConnectorAccountCatalogEntry,
   hasConnectorAccountCatalogEntry,
   normalizeConnectorCatalogId,
@@ -88,6 +88,7 @@ describe("connector account catalog defaults", () => {
       ),
     ).toEqual([
       "gmail.read",
+      "gmail.compose",
       "gmail.send",
       "gmail.manage",
       "calendar.read",

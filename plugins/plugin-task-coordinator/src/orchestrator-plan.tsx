@@ -1,5 +1,5 @@
 // Renders the live orchestrator plan checklist.
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui";
 import { Check, ChevronRight, Circle, Loader } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
@@ -73,10 +73,11 @@ export function PlanDock({
       data-testid="orchestrator-plan"
     >
       <Button
-        unstyled
+        variant="sectionToggle"
+        size="content"
+        align="start"
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
       >
         <ChevronRight
           className={`size-3 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}

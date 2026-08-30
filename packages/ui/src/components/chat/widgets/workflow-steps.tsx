@@ -17,6 +17,7 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import type { WorkflowExecution } from "../../../api/client-types-chat";
 import { dispatchVisualizeWorkflow } from "../../pages/workflow-graph-events";
+import { Button } from "../../ui/button";
 import type {
   WorkflowSpec,
   WorkflowStepStatus,
@@ -175,28 +176,30 @@ export const WorkflowSteps = memo(function WorkflowSteps({
         {workflow.workflowId || (workflow.runId && !complete) ? (
           <div className="mt-2 flex gap-2 border-t border-border/60 pt-2">
             {workflow.workflowId ? (
-              <button
+              <Button
                 type="button"
+                variant="externalLink"
+                size="content"
                 onClick={() =>
                   dispatchVisualizeWorkflow(workflow.workflowId as string)
                 }
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
               >
                 <ExternalLink className="size-3.5" /> Open workflow
-              </button>
+              </Button>
             ) : null}
             {workflow.runId && !complete ? (
-              <button
+              <Button
                 type="button"
+                variant="ghostMuted"
+                size="tiny"
                 onClick={() =>
                   void client
                     .cancelWorkflowExecution(workflow.runId as string)
                     .then(setExecution)
                 }
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
               >
                 <Square className="size-3.5" /> Cancel run
-              </button>
+              </Button>
             ) : null}
           </div>
         ) : null}

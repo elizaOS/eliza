@@ -9,7 +9,9 @@
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 import { sql } from "drizzle-orm";
-import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with { type: "json" };
+import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
+  type: "json",
+};
 
 const CLOUD_AGENT_RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
 
@@ -144,7 +146,6 @@ const DATABASE_LIVENESS_STATUSES = new Set<DatabaseLivenessPayload["status"]>([
   "transient_error",
   "terminal_error",
 ]);
-const MAX_DATABASE_DIAGNOSTIC_CHARS = 4_096;
 
 function readProbeDiagnosticProperty(
   value: unknown,
@@ -176,11 +177,7 @@ function describeDatabaseProbeError(error: unknown): string {
       text = "[uninspectable thrown value]";
     }
   }
-  const clipped =
-    text.length > MAX_DATABASE_DIAGNOSTIC_CHARS
-      ? `${text.slice(0, MAX_DATABASE_DIAGNOSTIC_CHARS)}…[truncated]`
-      : text;
-  return Array.from(clipped, (character) => {
+  return Array.from(text, (character) => {
     const code = character.codePointAt(0) ?? 0;
     return code <= 0x1f ||
       (code >= 0x7f && code <= 0x9f) ||
@@ -974,7 +971,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           .filter((value): value is string => typeof value === "string"),
       );
       let inserted = 0;
-      let skipped = 0;
       for (const value of messages) {
         if (!value || typeof value !== "object") continue;
         const message = value as Record<string, unknown>;
@@ -990,7 +986,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           typeof message.sourceId === "string" ? message.sourceId.trim() : "";
         if (!role || !text || !sourceId) continue;
         if (existingSourceIds.has(sourceId)) {
-          skipped += 1;
           continue;
         }
         state.memories.push({

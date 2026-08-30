@@ -8,6 +8,7 @@ import {
   compareTriagedNotifications,
   fetchAllUnreadNotifications,
   formatTriageSummary,
+  notificationTriageAction,
   type TriagedNotification,
 } from "./notification-triage.js";
 
@@ -231,5 +232,40 @@ describe("compareTriagedNotifications", () => {
       0,
     );
     expect(compareTriagedNotifications(at("a", 5), at("b", 5))).toBeLessThan(0);
+  });
+});
+
+describe("notificationTriageAction", () => {
+  it("returns every ranked notification after lossless page traversal", async () => {
+    const notifications = Array.from({ length: 30 }, (_, index) => ({
+      id: `n-${index}`,
+      reason: "comment",
+      updated_at: "2026-08-16T00:00:00Z",
+      subject: { title: `Notification ${index}`, type: "Issue", url: null },
+      repository: { full_name: "elizaOS/eliza", pushed_at: null },
+    }));
+    const listNotificationsForAuthenticatedUser = vi
+      .fn()
+      .mockResolvedValueOnce({ data: notifications });
+    const runtime = {
+      getService: () => ({
+        getOctokit: () => ({
+          activity: { listNotificationsForAuthenticatedUser },
+        }),
+      }),
+    } as never;
+
+    const result = await notificationTriageAction.handler(
+      runtime,
+      {} as never,
+      undefined,
+      undefined,
+    );
+
+    expect(result.success).toBe(true);
+    expect(
+      (result.data as { notifications: unknown[] }).notifications,
+    ).toHaveLength(30);
+    expect(result.data).toMatchObject({ notificationLimit: null });
   });
 });

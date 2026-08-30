@@ -9,7 +9,7 @@ Adds two distinct surfaces to elizaOS. The Android surface provides a full-scree
 ## Plugin surface
 
 **Provider**
-- `phoneCallLog` — Dynamic, read-only. Fetches the last 50 Android calls via `@elizaos/capacitor-phone`. Available in `contacts` and `messaging` contexts; requires `ADMIN` role. Returns `{ count, items }` where each item has `id`, `number`, `cachedName`, `date`, `durationSeconds`, `type`, `isNew`.
+- `phoneCallLog` — Dynamic, read-only. Fetches the complete Android call log via `@elizaos/capacitor-phone`. Available in `contacts` and `messaging` contexts; requires `ADMIN` role. Returns `{ count, items }` where each item has `id`, `number`, `cachedName`, `date`, `durationSeconds`, `type`, `isNew`.
 
 **Actions**
 - None registered here. The canonical `VOICE_CALL` action is currently
@@ -39,6 +39,7 @@ src/
     call-log.ts                  phoneCallLog provider (dynamic, ADMIN-gated)
   components/
     phone-view-bundle.ts         View bundle entry: re-exports PhoneView + interact
+    PhonePage.tsx                App-shell page chrome and launcher back affordance
     PhoneView.tsx                GUI data wrapper (owns hooks/fetch),
                                  renders <SpatialSurface><PhoneSpatialView/></SpatialSurface>
     PhoneSpatialView.tsx         Pure spatial-primitive phone surface
@@ -104,7 +105,7 @@ The `phoneCallLog` provider reads no env vars; it calls `Phone.listRecentCalls` 
 
 ## Conventions / gotchas
 
-- **One GUI view, no overlay app.** The dialer + recent-calls surface ships only as the `phone` plugin view (`PhoneView` → `PhoneSpatialView`). There is no separate overlay-app registration; `src/register.ts` registers the companion page for hosts that mount it.
+- **One GUI view, no overlay app.** The dialer + recent-calls surface ships only as the `phone` plugin view (`PhoneView` → `PhoneSpatialView`). The native app-shell registration mounts `PhonePage`, which owns the launcher back button; `src/register.ts` also registers the companion page for hosts that mount it.
 - **VOICE_CALL is host-adapted.** Do not add a second phone action here unless
   the PA-hosted owner gating, approval queue flow, recipient policy, and Twilio
   dispatch move with parity tests.

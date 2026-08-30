@@ -4,45 +4,88 @@ import fs from "node:fs";
 import { createServer, type Server } from "node:http";
 import net from "node:net";
 import path from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, RuntimeSettings } from "@elizaos/core";
 import { createTestRuntime } from "../../src/testing/pglite-runtime.ts";
 
 const {
+	default: agentOrchestratorPlugin,
 	AcpService,
 	cleanForChat,
-	listAgentsAction,
 	sendToAgentAction,
 	spawnAgentAction,
 } = await import("@elizaos/plugin-agent-orchestrator");
 
 type Framework = "claude" | "codex";
 type Mode = "sequential" | "web";
+type AcpServiceInstance = InstanceType<typeof AcpService>;
 
 const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 
-async function createRuntime(settings: Record<string, unknown> = {}): Promise<{
+type RouterHandle = { isActive?: () => boolean };
+
+async function createRuntime(settings: RuntimeSettings = {}): Promise<{
 	runtime: AgentRuntime;
+	router: RouterHandle;
 	cleanup: () => Promise<void>;
 }> {
 	const { runtime, cleanup } = await createTestRuntime({
 		characterName: "TaskAgentLiveSmoke",
+		settings,
+		plugins: [agentOrchestratorPlugin],
 	});
-	const originalGetSetting = runtime.getSetting.bind(runtime);
-	runtime.getSetting = ((key: string) =>
-		settings[key] ??
-		originalGetSetting(key) ??
-		process.env[key]) as typeof runtime.getSetting;
-	return { runtime, cleanup };
+	const router = (await runtime.getServiceLoadPromise(
+		"ACPX_SUB_AGENT_ROUTER",
+	)) as RouterHandle;
+	assert.equal(
+		typeof router?.isActive,
+		"function",
+		"production SubAgentRouter must be registered in the live harness",
+	);
+	assert.equal(
+		router.isActive?.(),
+		false,
+		"ACPX_SUB_AGENT_ROUTER_DISABLED must take effect before plugin startup",
+	);
+	return { runtime, router, cleanup };
+}
+
+/**
+ * The router's start() retries binding to the ACP service on a backoff for
+ * roughly ten seconds, so an isActive() === false observed at startup can be
+ * a race rather than proof the disable flag held. Call this only after work
+ * that outlasts the bind-retry window (e.g. the first completed prompt) to
+ * prove the router never bound.
+ */
+function assertRouterStayedDisabled(router: RouterHandle): void {
+	assert.equal(
+		router.isActive?.(),
+		false,
+		"router must still be inactive after the bind-retry window; the disable flag was dropped",
+	);
 }
 
 function createMessage(content: Record<string, unknown> = {}) {
 	return {
 		id: `msg-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
 		userId: "live-user",
+		entityId: "live-user",
 		roomId: "live-room",
 		createdAt: Date.now(),
 		content,
 	};
+}
+
+function sessionIdFromSpawnResult(result: unknown): string | undefined {
+	if (!result || typeof result !== "object") return undefined;
+	const data = (result as Record<string, unknown>).data;
+	if (!data || typeof data !== "object") return undefined;
+	const record = data as Record<string, unknown>;
+	if (typeof record.sessionId === "string") return record.sessionId;
+	if (!Array.isArray(record.agents)) return undefined;
+	const first = record.agents[0];
+	if (!first || typeof first !== "object") return undefined;
+	const sessionId = (first as Record<string, unknown>).sessionId;
+	return typeof sessionId === "string" ? sessionId : undefined;
 }
 
 async function wait(ms: number): Promise<void> {
@@ -76,7 +119,7 @@ async function waitFor(
 }
 
 function ensureLiveBaseDir(): string {
-	const baseDir = path.join(process.cwd(), ".tmp-live");
+	const baseDir = path.join("/tmp", "eliza-task-agent-live-smoke");
 	fs.mkdirSync(baseDir, { recursive: true });
 	return baseDir;
 }
@@ -135,54 +178,42 @@ function sawTaskCompletion(
 }
 
 async function waitForTrackedSession(
-	runtime: AgentRuntime,
+	service: {
+		getSession: (
+			id: string,
+		) => Promise<{ agentType?: string } | null | undefined>;
+	},
 	sessionId: string,
 	expectedAgentType: Framework,
 ): Promise<void> {
-	let listResult:
-		| Awaited<ReturnType<typeof listAgentsAction.handler>>
-		| undefined;
 	await waitFor(
 		async () => {
-			listResult = await listAgentsAction.handler(
-				runtime,
-				createMessage({}) as never,
-			);
-			if (!listResult?.success) {
-				return false;
-			}
-			const sessions = Array.isArray(listResult.data?.sessions)
-				? listResult.data.sessions
-				: [];
-			const tasks = Array.isArray(listResult.data?.tasks)
-				? listResult.data.tasks
-				: [];
-			return (
-				sessions.some((entry) => entry.id === sessionId) &&
-				tasks.some(
-					(entry) =>
-						entry.sessionId === sessionId &&
-						entry.agentType === expectedAgentType,
-				)
-			);
+			const session = await service.getSession(sessionId);
+			return session?.agentType === expectedAgentType;
 		},
 		45_000,
 		1_000,
 	);
-
-	assert.ok(listResult?.text.includes(sessionId));
-	assert.ok(listResult?.text.includes(expectedAgentType));
 }
 
 async function runSequentialSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "reuse");
-	const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-	// Start the ACP service and register it under its real serviceType so the
-	// TASKS actions (which resolve it via getAcpService -> runtime.getService
-	// ("ACP_SUBPROCESS_SERVICE")) spawn into the SAME instance this script reads
-	// output from. (Replaces the removed PTYService; same start+register pattern.)
-	const service = await AcpService.start(runtime);
-	runtime.services.set(AcpService.serviceType, [service]);
+	const { runtime, router, cleanup } = await createRuntime({
+		SERVER_PORT: "31337",
+		// This smoke validates ACP child turns and durable reuse. Parent-broker
+		// relay behavior has separate coverage; disabling the router here keeps a
+		// synthetic no-parent fixture from manufacturing an endless child loop.
+		// "1" rather than "true": AgentRuntime.getSetting normalizes the string
+		// "true" to a boolean, and "1" survives as a string on every path.
+		ACPX_SUB_AGENT_ROUTER_DISABLED: "1",
+	});
+	// Use the single production service initialized by the plugin. Starting a
+	// second ACP instance lets TASKS spawn on one service while SubAgentRouter
+	// remains subscribed to the original, so cap-triggered stops target the
+	// wrong process and leave the prompt unresolved.
+	const service = (await runtime.getServiceLoadPromise(
+		AcpService.serviceType,
+	)) as AcpServiceInstance;
 
 	const events: Array<{ event: string; data: unknown }> = [];
 	const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
@@ -205,6 +236,7 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 			createMessage({
 				agentType,
 				workdir,
+				approvalPreset: "autonomous",
 				task:
 					`Create a file named ${firstFileName} in the current directory containing exactly "${agentType}-first". ` +
 					`Then print exactly "${firstSentinel}". Do not ask follow-up questions.`,
@@ -214,10 +246,10 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 			undefined,
 		);
 		assert.equal(spawnResult?.success, true);
-		assert.ok(spawnResult?.data?.sessionId);
+		assert.ok(sessionIdFromSpawnResult(spawnResult));
 
-		const sessionId = String(spawnResult?.data?.sessionId);
-		await waitForTrackedSession(runtime, sessionId, agentType);
+		const sessionId = sessionIdFromSpawnResult(spawnResult) as string;
+		await waitForTrackedSession(service, sessionId, agentType);
 		const firstTaskEventStart = events.length;
 
 		await waitFor(
@@ -237,39 +269,46 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 						details.instructions || "framework authentication is required",
 					);
 				}
-				if (
-					sessionInfo.status === "stopped" ||
-					sessionInfo.status === "error"
-				) {
-					const output = await service.getSessionOutput(sessionId, 200);
-					throw new Error(
-						`session ended early with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
-					);
-				}
 				if (!fs.existsSync(firstFilePath)) return false;
 				const fileText = fs.readFileSync(firstFilePath, "utf8").trim();
 				if (fileText !== `${agentType}-first`) return false;
 				const output = cleanForChat(await service.getSessionOutput(sessionId));
-				return (
-					output.includes(firstSentinel) ||
-					sawTaskCompletion(events, firstTaskEventStart)
-				);
+				if (
+					(output.includes(firstSentinel) ||
+						sawTaskCompletion(events, firstTaskEventStart)) &&
+					sessionInfo.status === "ready"
+				)
+					return true;
+				if (
+					sessionInfo.status === "stopped" ||
+					sessionInfo.status === "error"
+				) {
+					throw new Error(
+						`session ended before verified completion with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
+					);
+				}
+				return false;
 			},
 			6 * 60 * 1000,
 			3000,
 		);
+		// The first prompt's wait far exceeds the router's ~10s bind-retry
+		// window, so an inactive router here proves the disable flag held.
+		assertRouterStayedDisabled(router);
 
 		const secondTaskEventStart = events.length;
 		const sendResult = await sendToAgentAction.handler(
 			runtime,
-			createMessage({
-				sessionId,
-				task:
-					`Now create a second file named ${secondFileName} containing exactly "${agentType}-second". ` +
-					`Then print exactly "${secondSentinel}". Stay available for more work afterward and do not ask follow-up questions.`,
-			}) as never,
+			createMessage({ sessionId }) as never,
 			undefined,
-			{},
+			{
+				parameters: {
+					action: "send",
+					input:
+						`Now create a second file named ${secondFileName} containing exactly "${agentType}-second". ` +
+						`Then print exactly "${secondSentinel}". Stay available for more work afterward and do not ask follow-up questions.`,
+				},
+			},
 			undefined,
 		);
 		assert.equal(sendResult?.success, true);
@@ -280,24 +319,18 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 				const fileText = fs.readFileSync(secondFilePath, "utf8").trim();
 				if (fileText !== `${agentType}-second`) return false;
 				const output = cleanForChat(await service.getSessionOutput(sessionId));
+				const sessionInfo = await service.getSession(sessionId);
 				return (
-					output.includes(secondSentinel) ||
-					sawTaskCompletion(events, secondTaskEventStart)
+					(output.includes(secondSentinel) ||
+						sawTaskCompletion(events, secondTaskEventStart)) &&
+					sessionInfo?.status === "ready"
 				);
 			},
 			6 * 60 * 1000,
 			3000,
 		);
-
-		const finalList = await listAgentsAction.handler(
-			runtime,
-			createMessage({}) as never,
-		);
-		assert.equal(finalList?.success, true);
-		assert.ok(finalList?.text.includes(sessionId));
 	} finally {
 		unsubscribe();
-		await service.stop();
 		await cleanup();
 		if (!KEEP_ARTIFACTS) {
 			fs.rmSync(workdir, { recursive: true, force: true });
@@ -307,9 +340,13 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 
 async function runWebSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "web");
-	const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-	const service = await AcpService.start(runtime);
-	runtime.services.set(AcpService.serviceType, [service]);
+	const { runtime, router, cleanup } = await createRuntime({
+		SERVER_PORT: "31337",
+		ACPX_SUB_AGENT_ROUTER_DISABLED: "1",
+	});
+	const service = (await runtime.getServiceLoadPromise(
+		AcpService.serviceType,
+	)) as AcpServiceInstance;
 
 	const events: Array<{ event: string; data: unknown }> = [];
 	const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
@@ -336,6 +373,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 			createMessage({
 				agentType,
 				workdir,
+				approvalPreset: "autonomous",
 				task:
 					`Open the reference page at ${reference.url} and read it using your web or browser tools. ` +
 					`Create an index.html in the current directory that includes the exact phrases "Benchmark Ready" and "Task agents stay reusable." ` +
@@ -349,10 +387,10 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 			undefined,
 		);
 		assert.equal(spawnResult?.success, true);
-		assert.ok(spawnResult?.data?.sessionId);
+		assert.ok(sessionIdFromSpawnResult(spawnResult));
 
-		const sessionId = String(spawnResult?.data?.sessionId);
-		await waitForTrackedSession(runtime, sessionId, agentType);
+		const sessionId = sessionIdFromSpawnResult(spawnResult) as string;
+		await waitForTrackedSession(service, sessionId, agentType);
 		const webTaskEventStart = events.length;
 
 		await waitFor(
@@ -395,19 +433,14 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 			6 * 60 * 1000,
 			3000,
 		);
-
-		const finalList = await listAgentsAction.handler(
-			runtime,
-			createMessage({}) as never,
-		);
-		assert.equal(finalList?.success, true);
-		assert.ok(finalList?.text.includes(sessionId));
+		// The web task's wait far exceeds the router's ~10s bind-retry window,
+		// so an inactive router here proves the disable flag held.
+		assertRouterStayedDisabled(router);
 	} finally {
 		unsubscribe();
 		await new Promise<void>((resolve) =>
 			reference.server.close(() => resolve()),
 		);
-		await service.stop();
 		await cleanup();
 		if (!KEEP_ARTIFACTS) {
 			fs.rmSync(workdir, { recursive: true, force: true });

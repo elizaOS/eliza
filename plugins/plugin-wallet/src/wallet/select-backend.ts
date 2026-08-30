@@ -4,8 +4,12 @@
  * preferring Steward when the agent is cloud-provisioned.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
+import {
+  readAliasedEnv,
+  resolveDevCloudStewardOperationalTuple,
+} from "@elizaos/shared";
 import type { WalletBackend } from "./backend.js";
+import { StewardUnavailableError } from "./errors.js";
 import { LocalEoaBackend } from "./local-eoa-backend.js";
 import { StewardBackend } from "./steward-backend.js";
 
@@ -40,6 +44,20 @@ export async function resolveWalletBackend(
   runtime: IAgentRuntime,
 ): Promise<WalletBackend> {
   const mode = readMode(runtime);
+  const launcherSteward = resolveDevCloudStewardOperationalTuple();
+  if (launcherSteward) {
+    if (mode === "local") return LocalEoaBackend.create(runtime);
+    if (!launcherSteward.enabled || !launcherSteward.agentToken) {
+      if (mode === "steward") {
+        throw new StewardUnavailableError(
+          "The development launcher did not authorize a complete Steward wallet tuple.",
+        );
+      }
+      return LocalEoaBackend.create(runtime);
+    }
+    return StewardBackend.create(runtime, launcherSteward);
+  }
+
   if (mode === "steward") {
     return StewardBackend.create(runtime);
   }

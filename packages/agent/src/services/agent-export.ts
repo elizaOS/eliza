@@ -842,7 +842,6 @@ async function extractAgentData(
     const memories = await db.getMemories({
       agentId,
       tableName,
-      limit: Number.MAX_SAFE_INTEGER,
     });
     for (const mem of memories) {
       if (mem.id && !memoryIdSet.has(mem.id)) {
@@ -857,9 +856,8 @@ async function extractAgentData(
   for (const world of agentWorlds) {
     if (!world.id) continue;
     for (const tableName of MEMORY_TABLES) {
-      const worldMemories = await db.getMemoriesByWorldId({
-        worldIds: [world.id],
-        limit: Number.MAX_SAFE_INTEGER,
+      const worldMemories = await db.getMemories({
+        worldId: world.id,
         tableName,
       });
       for (const mem of worldMemories) {
@@ -885,9 +883,32 @@ async function extractAgentData(
   logger.info(`[agent-export] Found ${agentTasks.length} tasks`);
 
   // 9. Logs (optional)
-  let logs: Log[] = [];
+  const logs: Log[] = [];
   if (options.includeLogs) {
-    logs = await db.getLogs({ limit: Number.MAX_SAFE_INTEGER });
+    const pageSize = 500;
+    let offset = 0;
+    while (true) {
+      const page = await db.getLogs({ limit: pageSize, offset });
+      if (page.length > pageSize) {
+        throw new AgentExportError("Log export returned an oversized page", {
+          code: "AGENT_EXPORT_INVALID_LOG_PAGE",
+          context: { requested: pageSize, received: page.length, offset },
+        });
+      }
+      logs.push(
+        ...page.map(
+          (entry) =>
+            ({
+              ...entry,
+              // The manifest authenticates the JSON wire representation. Normalize
+              // Date objects before hashing so import verifies the same bytes.
+              createdAt: entry.createdAt.toISOString(),
+            }) as unknown as Log,
+        ),
+      );
+      if (page.length < pageSize) break;
+      offset += page.length;
+    }
     logger.info(`[agent-export] Found ${logs.length} logs`);
   }
 
@@ -1375,7 +1396,6 @@ export async function estimateExportSize(
     const mems = await db.getMemories({
       agentId,
       tableName,
-      limit: Number.MAX_SAFE_INTEGER,
     });
     memoriesCount += mems.length;
   }

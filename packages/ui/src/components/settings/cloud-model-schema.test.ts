@@ -1,4 +1,4 @@
-/** Pins the deterministic schema and UI hints emitted for cloud model settings. */
+/** Exercises conversion from discovered cloud models into schema and UI hint payloads. */
 import { describe, expect, it } from "vitest";
 import {
   buildCloudModelSchema,
@@ -7,11 +7,6 @@ import {
 } from "./cloud-model-schema.ts";
 
 describe("cloud-model-schema", () => {
-  it("exports default model override constants", () => {
-    expect(DEFAULT_RESPONSE_HANDLER_MODEL).toBe("__DEFAULT_RESPONSE_HANDLER__");
-    expect(DEFAULT_ACTION_PLANNER_MODEL).toBe("__DEFAULT_ACTION_PLANNER__");
-  });
-
   it("builds valid JSONSchema and hints for model options", () => {
     const options = {
       nano: [

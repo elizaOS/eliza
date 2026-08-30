@@ -1,3 +1,7 @@
+/**
+ * Verifies trajectory state snapshots preserve complete acyclic state while
+ * representing cycles and getter failures without crashing diagnostics.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { logger } from "../../logger";
 import type { Action, IAgentRuntime, Memory, State } from "../../types";
@@ -59,12 +63,12 @@ describe("snapshotStateForTrajectory", () => {
 		expect(snapped.self).toBe("[Circular]");
 	});
 
-	it("fail-closes past the sanitizer depth to [MaxDepth]", () => {
+	it("preserves complete deeply nested acyclic state", () => {
 		const snapped = snapshotStateForTrajectory(nest(21)) as Record<
 			string,
 			unknown
 		>;
-		expect(JSON.stringify(snapped)).toContain("[MaxDepth]");
+		expect(snapped).toEqual(nest(21));
 	});
 
 	it("keeps an honest shared-reference DAG", () => {

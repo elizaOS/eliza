@@ -3,8 +3,12 @@ import { assertModelOutputComplete } from "@elizaos/core";
 import { calculateCost, estimateRequestCost, normalizeModelName } from "../pricing";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
 import { logger } from "../utils/logger";
-import { apiKeysService } from "./api-keys";
-import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
+import {
+  type GenerativeOperationContext,
+  retainGenerativeTask,
+  runMeteredProviderOperation,
+} from "./generative-operation";
+import { buildSearchResults } from "./google-search-results";
 import { usageService } from "./usage";
 
 export interface HostedSearchOptions {
@@ -19,11 +23,7 @@ export interface HostedSearchOptions {
   endDate?: string;
 }
 
-export interface HostedSearchAuthContext {
-  organizationId?: string;
-  userId?: string;
-  apiKey?: string | null;
-  apiKeyId?: string | null;
+export interface HostedSearchOperationContext extends GenerativeOperationContext {
   requestSource?: "action" | "api" | "mcp" | "a2a";
 }
 
@@ -52,7 +52,7 @@ export interface HostedSearchResult {
   cost: number;
 }
 
-interface GoogleSearchResponse {
+export interface GoogleSearchResponse {
   candidates?: Array<{
     finishReason?: string;
     content?: {
@@ -87,9 +87,9 @@ interface GoogleSearchResponse {
   };
 }
 
+export { buildSearchResults } from "./google-search-results";
+
 const DEFAULT_SEARCH_MODEL = "google/gemini-2.5-flash";
-const DEFAULT_MAX_RESULTS = 5;
-const MAX_RESULTS = 10;
 const GOOGLE_GROUNDED_PROMPT_BASE_COST = 0.035;
 const GOOGLE_GROUNDED_PROMPT_COST =
   Math.round(GOOGLE_GROUNDED_PROMPT_BASE_COST * PLATFORM_MARKUP_MULTIPLIER * 1_000_000) / 1_000_000;
@@ -167,94 +167,17 @@ function extractAnswer(response: GoogleSearchResponse): string {
   ).trim();
 }
 
-function buildSearchResults(
-  response: GoogleSearchResponse,
-  maxResults: number,
-): HostedSearchResultItem[] {
-  const grounding = response.candidates?.[0]?.groundingMetadata;
-  const chunks = grounding?.groundingChunks ?? [];
-  const supports = grounding?.groundingSupports ?? [];
-  const byUrl = new Map<
-    string,
-    {
-      title: string;
-      content: string[];
-      scores: number[];
-    }
-  >();
-
-  for (const support of supports) {
-    const snippet = support.segment?.text?.trim();
-    const scores = support.confidenceScores ?? [];
-    for (const index of support.groundingChunkIndices ?? []) {
-      const chunk = chunks[index];
-      const url = chunk?.web?.uri?.trim();
-      if (!url) {
-        continue;
-      }
-
-      const current = byUrl.get(url) ?? {
-        title: chunk?.web?.title?.trim() || url,
-        content: [],
-        scores: [],
-      };
-
-      if (snippet && !current.content.includes(snippet)) {
-        current.content.push(snippet);
-      }
-
-      for (const score of scores) {
-        if (typeof score === "number" && Number.isFinite(score)) {
-          current.scores.push(score);
-        }
-      }
-
-      byUrl.set(url, current);
-    }
+function resolveExplicitMaxResults(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("maxResults must be a positive safe integer when provided");
   }
-
-  for (const chunk of chunks) {
-    const url = chunk?.web?.uri?.trim();
-    if (!url || byUrl.has(url)) {
-      continue;
-    }
-
-    byUrl.set(url, {
-      title: chunk?.web?.title?.trim() || url,
-      content: [],
-      scores: [],
-    });
-  }
-
-  return Array.from(byUrl.entries())
-    .map(([url, value]) => ({
-      title: value.title,
-      url,
-      content: value.content.join(" ").trim(),
-      score:
-        value.scores.length > 0
-          ? value.scores.reduce((total, score) => total + score, 0) / value.scores.length
-          : 1,
-    }))
-    .slice(0, maxResults);
+  return value;
 }
 
 function buildSearchQueries(response: GoogleSearchResponse): string[] {
   const queries = response.candidates?.[0]?.groundingMetadata?.webSearchQueries ?? [];
   return [...new Set(queries.map((query) => query.trim()).filter(Boolean))];
-}
-
-async function resolveApiKeyId(auth: HostedSearchAuthContext | undefined): Promise<string | null> {
-  if (auth?.apiKeyId) {
-    return auth.apiKeyId;
-  }
-
-  if (!auth?.apiKey) {
-    return null;
-  }
-
-  const apiKey = await apiKeysService.validateApiKey(auth.apiKey);
-  return apiKey?.id ?? null;
 }
 
 function buildUsage(response: GoogleSearchResponse): HostedSearchUsage {
@@ -266,7 +189,7 @@ function buildUsage(response: GoogleSearchResponse): HostedSearchUsage {
 
 export async function executeHostedGoogleSearch(
   options: HostedSearchOptions,
-  auth?: HostedSearchAuthContext,
+  context: HostedSearchOperationContext,
 ): Promise<HostedSearchResult> {
   const apiKey = resolveGoogleSearchApiKey(options.googleApiKey);
   if (!apiKey) {
@@ -282,151 +205,120 @@ export async function executeHostedGoogleSearch(
 
   const model = options.model?.trim() || DEFAULT_SEARCH_MODEL;
   const normalizedModel = normalizeModelName(model);
-  const maxResults = Math.min(Math.max(options.maxResults ?? DEFAULT_MAX_RESULTS, 1), MAX_RESULTS);
+  const maxResults = resolveExplicitMaxResults(options.maxResults);
   const prompt = buildSearchPrompt({ ...options, query, model });
   const routeStart = Date.now();
-
-  let reservation: CreditReservation | null = null;
-  const requestSource = auth?.requestSource ?? "api";
-
-  if (auth?.organizationId && auth?.userId) {
-    const estimatedCost =
-      (await estimateRequestCost(normalizedModel, [{ role: "user", content: prompt }])) +
-      GOOGLE_GROUNDED_PROMPT_COST;
-
-    try {
-      reservation = await creditsService.reserve({
-        organizationId: auth.organizationId,
-        amount: estimatedCost,
-        userId: auth.userId,
-        description: `Hosted Google search: ${normalizedModel}`,
-      });
-    } catch (error) {
-      if (error instanceof InsufficientCreditsError) {
-        throw new Error(
-          `Insufficient credits: need $${error.required.toFixed(4)}, have $${error.available.toFixed(4)}`,
-        );
-      }
-      throw error;
-    }
-  }
+  const requestSource = context.requestSource ?? "api";
+  const estimatedCost =
+    (await estimateRequestCost(normalizedModel, [{ role: "user", content: prompt }])) +
+    GOOGLE_GROUNDED_PROMPT_COST;
+  const operation = {
+    provider: "google",
+    billingSource: "gateway" as const,
+    model: normalizedModel,
+    operation: "hosted_google_search",
+    estimatedCost,
+    metadata: { requestSource },
+  };
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-        normalizedModel,
-      )}:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [
-              {
-                text: "Answer only with grounded web information. Do not invent unsupported facts.",
-              },
-            ],
-          },
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }],
+    const result = await runMeteredProviderOperation(context, operation, async () => {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+          normalizedModel,
+        )}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [
+                {
+                  text: "Answer only with grounded web information. Do not invent unsupported facts.",
+                },
+              ],
             },
-          ],
-          tools: [{ google_search: {} }],
-          generationConfig: {
-            temperature: 0.2,
-          },
-        }),
-        signal: AbortSignal.timeout(30_000),
-      },
-    );
-
-    const body = (await response.json()) as GoogleSearchResponse;
-    if (!response.ok) {
-      throw new Error(
-        body.error?.message || `Google Search request failed with ${response.status}`,
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            tools: [{ google_search: {} }],
+            generationConfig: { temperature: 0.2 },
+          }),
+          signal: AbortSignal.timeout(30_000),
+        },
       );
-    }
-
-    assertModelOutputComplete({
-      finishReason: body.candidates?.[0]?.finishReason,
-      provider: "google-search",
-      model: normalizedModel,
+      const body = (await response.json()) as GoogleSearchResponse;
+      if (!response.ok) {
+        throw new Error(
+          body.error?.message || `Google Search request failed with ${response.status}`,
+        );
+      }
+      assertModelOutputComplete({
+        finishReason: body.candidates?.[0]?.finishReason,
+        provider: "google-search",
+        model: normalizedModel,
+      });
+      const answer = extractAnswer(body);
+      if (!answer) throw new Error("Google Search returned no grounded answer");
+      const usage = buildUsage(body);
+      const results = buildSearchResults(body, maxResults);
+      const searchQueries = buildSearchQueries(body);
+      const tokenCost = await calculateCost(
+        normalizedModel,
+        "google",
+        usage.inputTokens,
+        usage.outputTokens,
+      );
+      const totalCost = tokenCost.totalCost + GOOGLE_GROUNDED_PROMPT_COST;
+      return {
+        actualCost: totalCost,
+        value: {
+          tokenCost,
+          result: {
+            answer,
+            model: normalizedModel,
+            provider: "google" as const,
+            query,
+            responseTime: Date.now() - routeStart,
+            results,
+            searchQueries,
+            usage,
+            cost: totalCost,
+          },
+        },
+      };
     });
 
-    const answer = extractAnswer(body);
-    if (!answer) {
-      throw new Error("Google Search returned no grounded answer");
-    }
-
-    const usage = buildUsage(body);
-    const results = buildSearchResults(body, maxResults);
-    const searchQueries = buildSearchQueries(body);
-    const tokenCost = await calculateCost(
-      normalizedModel,
-      "google",
-      usage.inputTokens,
-      usage.outputTokens,
-    );
-    const totalCost = tokenCost.totalCost + GOOGLE_GROUNDED_PROMPT_COST;
-
-    if (reservation) {
-      await reservation.reconcile(totalCost);
-    }
-
-    if (auth?.organizationId && auth?.userId) {
-      const apiKeyId = await resolveApiKeyId(auth);
-      await usageService.create({
-        organization_id: auth.organizationId,
-        user_id: auth.userId,
-        api_key_id: apiKeyId,
+    await retainGenerativeTask(
+      context,
+      operation,
+      usageService.create({
+        organization_id: context.organizationId,
+        user_id: context.userId,
+        api_key_id: context.apiKeyId,
         type: "search",
         model: normalizedModel,
         provider: "google",
-        input_tokens: usage.inputTokens,
-        output_tokens: usage.outputTokens,
-        input_cost: String(tokenCost.inputCost + GOOGLE_GROUNDED_PROMPT_COST),
-        output_cost: String(tokenCost.outputCost),
+        input_tokens: result.result.usage.inputTokens,
+        output_tokens: result.result.usage.outputTokens,
+        input_cost: String(result.tokenCost.inputCost + GOOGLE_GROUNDED_PROMPT_COST),
+        output_cost: String(result.tokenCost.outputCost),
         is_successful: true,
         metadata: {
           grounded_search_fee: GOOGLE_GROUNDED_PROMPT_COST,
           request_source: requestSource,
-          search_queries: searchQueries,
-          results_count: results.length,
+          search_queries: result.result.searchQueries,
+          results_count: result.result.results.length,
           source: options.source ?? null,
           topic: options.topic ?? null,
         },
-      });
-    }
-
-    return {
-      answer,
-      model: normalizedModel,
-      provider: "google",
-      query,
-      responseTime: Date.now() - routeStart,
-      results,
-      searchQueries,
-      usage,
-      cost: totalCost,
-    };
+      }),
+    );
+    return result.result;
   } catch (error) {
-    if (reservation) {
-      try {
-        await reservation.reconcile(0);
-      } catch (refundError) {
-        logger.error("[Hosted Google Search] Failed to refund reservation", {
-          error: refundError instanceof Error ? refundError.message : String(refundError),
-        });
-      }
-    }
-
     logger.error("[Hosted Google Search] Request failed", {
+      organizationId: context.organizationId,
+      requestId: context.requestId,
       error: error instanceof Error ? error.message : String(error),
-      query,
+      queryLength: query.length,
       requestSource,
     });
     throw error;

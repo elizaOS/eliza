@@ -31,6 +31,7 @@ import type {
 	TranscriptionParams,
 } from "@elizaos/core";
 import {
+	ElizaError,
 	EventType,
 	type IAgentRuntime,
 	logger,
@@ -54,6 +55,7 @@ import {
 import { streamCapacitorPrompt } from "./text-streaming";
 import {
 	type CapacitorLlamaCompletionParams,
+	type CapacitorLlamaCompletionResult,
 	type CapacitorLlamaContext,
 	type EmbeddingModelSpec,
 	MODEL_SPECS,
@@ -61,7 +63,6 @@ import {
 } from "./types";
 
 const DEFAULT_LOCAL_SYSTEM_PROMPT = "Respond to the current request only.";
-const OMIT_MAX_TOKENS_LOCAL_BUDGET = 64_000;
 
 interface ContextEntry {
 	ctx: CapacitorLlamaContext;
@@ -72,6 +73,39 @@ interface LocalGenerationResult {
 	text: string;
 	toolCalls: ToolCallResult[];
 	finishReason: string | undefined;
+}
+
+function assertCompleteGeneration(
+	result: CapacitorLlamaCompletionResult,
+): void {
+	if (
+		!result.truncated &&
+		!result.stopped_limit &&
+		!result.context_full &&
+		!result.interrupted
+	) {
+		return;
+	}
+
+	throw new ElizaError(
+		"Local model generation ended before completion; refusing to return partial output",
+		{
+			code: "LOCAL_INFERENCE_INCOMPLETE_OUTPUT",
+			context: {
+				truncated: result.truncated,
+				stoppedLimit: result.stopped_limit,
+				contextFull: result.context_full,
+				interrupted: result.interrupted,
+				tokensPredicted: result.tokens_predicted,
+			},
+		},
+	);
+}
+
+function completeFinishReason(
+	result: CapacitorLlamaCompletionResult,
+): "stop" | undefined {
+	return result.stopped_eos || result.stopped_word ? "stop" : undefined;
 }
 
 type LocalGenerateTextParams = GenerateTextParams & {
@@ -581,9 +615,9 @@ class LocalAIManager {
 
 		const baseParams: CapacitorLlamaCompletionParams = {
 			prompt: renderCompletionPrompt({ ...params, system: systemPrompt }),
-			n_predict: params.omitMaxTokens
-				? (params.maxTokens ?? OMIT_MAX_TOKENS_LOCAL_BUDGET)
-				: (params.maxTokens ?? 8192),
+			...(typeof params.maxTokens === "number"
+				? { n_predict: params.maxTokens }
+				: {}),
 			temperature: params.temperature ?? 0.7,
 			top_p: params.topP ?? 0.9,
 			...(typeof params.topK === "number" ? { top_k: params.topK } : {}),
@@ -610,22 +644,24 @@ class LocalAIManager {
 
 		if (plan.kind === "tools") {
 			const result = await runCompletion();
+			assertCompleteGeneration(result);
 			const toolCalls = extractToolCalls(result);
 			const text = stripThinkTags(result.content || result.text);
 			return {
 				text,
 				toolCalls,
-				finishReason: result.stopped_eos ? "stop" : undefined,
+				finishReason: completeFinishReason(result),
 			};
 		}
 
 		if (plan.kind === "schema" || plan.kind === "json_object") {
 			const result = await runCompletion();
+			assertCompleteGeneration(result);
 			const text = stripThinkTags(result.content || result.text);
 			return {
 				text,
 				toolCalls: [],
-				finishReason: result.stopped_eos ? "stop" : undefined,
+				finishReason: completeFinishReason(result),
 			};
 		}
 
@@ -655,11 +691,12 @@ class LocalAIManager {
 		}
 
 		const result = await runCompletion();
+		assertCompleteGeneration(result);
 		const text = stripThinkTags(result.content || result.text);
 		return {
 			text,
 			toolCalls: [],
-			finishReason: result.stopped_eos ? "stop" : undefined,
+			finishReason: completeFinishReason(result),
 		};
 	}
 }

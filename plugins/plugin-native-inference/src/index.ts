@@ -20,7 +20,6 @@ export {
   isAospEnabled,
   resolveAospAbiDir,
   resolveAospElizaInferenceLibPath,
-  resolveAospGenerateTokenBudget,
 } from "./aosp-llama-paths.js";
 
 export {
@@ -42,15 +41,14 @@ import {
   isAospEnabled as _bs_2_isAospEnabled,
   resolveAospAbiDir as _bs_3_resolveAospAbiDir,
   resolveAospElizaInferenceLibPath as _bs_4_resolveAospElizaInferenceLibPath,
-  resolveAospGenerateTokenBudget as _bs_5_resolveAospGenerateTokenBudget,
 } from "./aosp-llama-paths.js";
 import {
-  activateAospLocalInferenceModel as _bs_6_activateAospLocalInferenceModel,
-  buildAospLoadModelArgs as _bs_7_buildAospLoadModelArgs,
-  clearAospLocalInferenceModel as _bs_8_clearAospLocalInferenceModel,
-  ensureAospLocalInferenceHandlers as _bs_9_ensureAospLocalInferenceHandlers,
-  registerAospLlamaLoader as _bs_10_registerAospLlamaLoader,
-  tryBuildAospFusedTextLoader as _bs_11_tryBuildAospFusedTextLoader,
+  activateAospLocalInferenceModel as _bs_5_activateAospLocalInferenceModel,
+  buildAospLoadModelArgs as _bs_6_buildAospLoadModelArgs,
+  clearAospLocalInferenceModel as _bs_7_clearAospLocalInferenceModel,
+  ensureAospLocalInferenceHandlers as _bs_8_ensureAospLocalInferenceHandlers,
+  registerAospLlamaLoader as _bs_9_registerAospLlamaLoader,
+  tryBuildAospFusedTextLoader as _bs_10_tryBuildAospFusedTextLoader,
 } from "./aosp-local-inference-bootstrap.js";
 
 // Path-derived symbol so parents that `export *` two of these don't
@@ -60,13 +58,12 @@ const __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = [
   _bs_2_isAospEnabled,
   _bs_3_resolveAospAbiDir,
   _bs_4_resolveAospElizaInferenceLibPath,
-  _bs_5_resolveAospGenerateTokenBudget,
-  _bs_6_activateAospLocalInferenceModel,
-  _bs_7_buildAospLoadModelArgs,
-  _bs_8_clearAospLocalInferenceModel,
-  _bs_9_ensureAospLocalInferenceHandlers,
-  _bs_10_registerAospLlamaLoader,
-  _bs_11_tryBuildAospFusedTextLoader,
+  _bs_5_activateAospLocalInferenceModel,
+  _bs_6_buildAospLoadModelArgs,
+  _bs_7_clearAospLocalInferenceModel,
+  _bs_8_ensureAospLocalInferenceHandlers,
+  _bs_9_registerAospLlamaLoader,
+  _bs_10_tryBuildAospFusedTextLoader,
 ];
 const bundleSafetyGlobal = globalThis as typeof globalThis & {
   __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__?: typeof __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__;

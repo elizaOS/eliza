@@ -242,6 +242,7 @@ bun run --cwd plugins/plugin-agent-orchestrator build           # Build Node ESM
 bun run --cwd plugins/plugin-agent-orchestrator build:ts        # TypeScript-only build
 bun run --cwd plugins/plugin-agent-orchestrator dev             # Watch mode rebuild
 bun run --cwd plugins/plugin-agent-orchestrator typecheck       # Type-check without emit
+bun run --cwd plugins/plugin-agent-orchestrator typecheck:live-harness # Type-check the cross-package live wrapper and harness
 bun run --cwd plugins/plugin-agent-orchestrator test            # Run vitest suite
 bun run --cwd plugins/plugin-agent-orchestrator test:unit       # Unit tests only
 bun run --cwd plugins/plugin-agent-orchestrator test:watch      # Vitest watch mode
@@ -384,6 +385,12 @@ inventory consumers must preserve the billing disclosure.
   recency, and relevance options are compatibility-only and must not discard
   spawn- or model-facing context. Insight text remains exact regardless of
   length or surrounding whitespace, and malformed metadata fails explicitly.
+- **ACP output is complete by default.** Session and latest-turn buffers retain
+  every captured event. Planner providers, heartbeat summaries, recovery,
+  verification, and completion routing read the complete value; only an
+  explicit caller-supplied `lines` query may request suffix pagination. Never
+  replace a completion with a tail, selected tool block, diff-only summary, or
+  model output cap.
 - **Smithers task path.** By default (`ELIZA_ORCHESTRATOR_SMITHERS` not `0`), task
   execution goes through the smithers runner (`smithers-task-runner.ts`), which
   drives a structured provision→turn→submit loop. `TASKS:create` persists the

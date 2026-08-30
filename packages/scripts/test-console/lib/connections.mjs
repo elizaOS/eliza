@@ -35,6 +35,10 @@ export const OPT_IN_GATES = [
     label: "Orchestrator multi-account",
   },
   {
+    key: "ORCHESTRATOR_LIVE",
+    label: "Orchestrator task-agent sessions",
+  },
+  {
     key: "RUN_LIVE_SMITHERS_SUBSCRIPTION",
     label: "Smithers Codex subscription tests",
   },

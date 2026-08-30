@@ -236,7 +236,7 @@ async function resolveExternalCallRecipient(args: {
   }
 
   const service = new LifeOpsService(args.runtime);
-  const relationships = await service.listRelationships({ limit: 200 });
+  const relationships = await service.listRelationships();
   const haystack = normalizeLookup(
     [explicit ?? "", args.messageText ?? ""].join(" "),
   );

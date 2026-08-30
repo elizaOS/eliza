@@ -290,6 +290,30 @@ export class NativeAcpClient {
     );
     const sessionId = stringValue(result?.sessionId);
     if (!sessionId) throw new Error("ACP agent did not return a sessionId");
+    const modes = asRecord(result?.modes);
+    const advertisedModes = modes?.availableModes;
+    const availableModes = Array.isArray(advertisedModes)
+      ? advertisedModes
+          .map((mode) =>
+            mode && typeof mode === "object"
+              ? stringValue((mode as Record<string, unknown>).id)
+              : undefined,
+          )
+          .filter((mode): mode is string => Boolean(mode))
+      : [];
+    const requestedMode =
+      this.opts.approvalPreset === "autonomous" ||
+      this.opts.approvalPreset === "permissive"
+        ? "bypassPermissions"
+        : this.opts.approvalPreset === "readonly"
+          ? "plan"
+          : "dontAsk";
+    if (availableModes.includes(requestedMode)) {
+      await this.request("session/set_mode", {
+        sessionId,
+        modeId: requestedMode,
+      });
+    }
     return {
       sessionId,
       agentSessionId: extractAgentSessionId(result?._meta),

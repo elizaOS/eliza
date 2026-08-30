@@ -141,7 +141,7 @@ export async function getCatalogSkill(
 
 export async function searchCatalogSkills(
   query: string,
-  limit = 30,
+  limit: number,
 ): Promise<CatalogSearchResult[]> {
   const resultLimit = validateResultLimit(limit, "searchCatalogSkills");
   const skills = await getCatalogSkills();
@@ -212,7 +212,7 @@ export async function searchCatalogSkills(
   }));
 }
 
-export async function getTrendingSkills(limit = 30): Promise<CatalogSkill[]> {
+export async function getTrendingSkills(limit: number): Promise<CatalogSkill[]> {
   const resultLimit = validateResultLimit(limit, "getTrendingSkills");
   const skills = await getCatalogSkills();
   return [...skills]

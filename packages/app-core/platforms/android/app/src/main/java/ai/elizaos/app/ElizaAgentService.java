@@ -2394,26 +2394,6 @@ public class ElizaAgentService extends Service {
                     agentEnv.put("ELIZA_LLAMA_N_UBATCH", brandedAospBuild ? "512" : "256");
                 }
 
-                // Stage-1 RESPONSE_HANDLER is an internal structured planning
-                // call, not the user's requested chat completion budget. On the
-                // debug APK's in-process phone-CPU path, leaving it at the
-                // core default (1024) lets an unconstrained or malformed local
-                // decode run for minutes before the trajectory can record the
-                // first stage. The AOSP adapter now honors the Stage-1 GBNF
-                // grammar, so 384 tokens is ample for the HANDLE_RESPONSE
-                // envelope while still bounding failure cases tightly. Full
-                // branded AOSP keeps the core default unless explicitly set.
-                if (!brandedAospBuild && !env.containsKey("RESPONSE_HANDLER_MAX_TOKENS")) {
-                    agentEnv.put("RESPONSE_HANDLER_MAX_TOKENS", "384");
-                }
-                // Bound every native llama generation on debug APKs, not only
-                // Stage-1. Some downstream TEXT_LARGE calls request 8192
-                // tokens while the debug APK uses n_ctx=4096; without this cap
-                // the adapter must reserve the whole context for output and
-                // drops the prompt to a single token.
-                if (!brandedAospBuild && !env.containsKey("ELIZA_LLAMA_MAX_OUTPUT_TOKENS")) {
-                    agentEnv.put("ELIZA_LLAMA_MAX_OUTPUT_TOKENS", "384");
-                }
             }
             if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
                 agentEnv.put("ELIZA_AOSP_BUILD", "1");

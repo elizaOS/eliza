@@ -204,7 +204,7 @@ describe("evmWalletProvider prompt context", () => {
     });
   });
 
-  it("caps rendered balances but preserves the total chain count", async () => {
+  it("preserves every rendered balance and reports the complete chain count", async () => {
     const rt = runtime();
     const service = new EVMService(rt);
     const chains = Array.from({ length: 24 }, (_, index) => ({
@@ -230,9 +230,8 @@ describe("evmWalletProvider prompt context", () => {
     expect(result.data).toMatchObject({
       address: "0x1234",
       chainCount: 24,
-      displayedChainCount: 20,
+      displayedChainCount: 24,
     });
-    expect(result.text).toContain("... and 4 more chains");
-    expect(result.text).not.toContain("Chain 23: 23 C23");
+    expect(result.text).toContain("Chain 23: 23 C23");
   });
 });

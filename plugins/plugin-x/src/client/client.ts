@@ -461,14 +461,14 @@ export class Client {
    * @returns A promise that resolves to an array of tweets.
    */
   public async fetchHomeTimeline(
-    count: number,
+    count: number | undefined,
     _seenTweetIds: string[],
   ): Promise<Tweet[]> {
     return this.withAuthenticatedSession(async () => {
       const client = await this.requireAuth().getV2Client();
 
       const timeline = await client.v2.homeTimeline({
-        max_results: Math.min(count, 100),
+        max_results: count === undefined ? 100 : Math.min(count, 100),
         "tweet.fields": [
           "id",
           "text",
@@ -492,7 +492,7 @@ export class Client {
       const tweets: Tweet[] = [];
       for await (const tweet of timeline) {
         tweets.push(parseTweetV2ToV1(tweet, timeline.includes));
-        if (tweets.length >= count) break;
+        if (count !== undefined && tweets.length >= count) break;
       }
 
       return tweets;
@@ -507,7 +507,7 @@ export class Client {
    * @returns A promise that resolves to an array of tweets.
    */
   public async fetchFollowingTimeline(
-    count: number,
+    count: number | undefined,
     seenTweetIds: string[],
   ): Promise<Tweet[]> {
     // In v2 API, there's no separate following timeline endpoint
@@ -517,14 +517,14 @@ export class Client {
 
   async getUserTweets(
     userId: string,
-    maxTweets = 200,
+    maxTweets?: number,
     cursor?: string,
   ): Promise<{ tweets: Tweet[]; next?: string }> {
     return this.withAuthenticatedSession(async () => {
       const client = await this.requireAuth().getV2Client();
 
       const response = await client.v2.userTimeline(userId, {
-        max_results: Math.min(maxTweets, 100),
+        max_results: maxTweets === undefined ? 100 : Math.min(maxTweets, 100),
         "tweet.fields": [
           "id",
           "text",
@@ -549,7 +549,7 @@ export class Client {
       const tweets: Tweet[] = [];
       for await (const tweet of response) {
         tweets.push(parseTweetV2ToV1(tweet, response.includes));
-        if (tweets.length >= maxTweets) break;
+        if (maxTweets !== undefined && tweets.length >= maxTweets) break;
       }
 
       return {
@@ -561,26 +561,29 @@ export class Client {
 
   async *getUserTweetsIterator(
     userId: string,
-    maxTweets = 200,
+    maxTweets?: number,
+    initialCursor?: string,
   ): AsyncGenerator<Tweet, void> {
     const tweets = await this.withAuthenticatedSession(async () => {
       const collected: Tweet[] = [];
-      let cursor: string | undefined;
+      let cursor = initialCursor;
       let pageCount = 0;
       const seenCursors = new Set<string>();
 
-      while (collected.length < maxTweets) {
+      while (maxTweets === undefined || collected.length < maxTweets) {
         pageCount += 1;
         const response = await this.getUserTweets(
           userId,
-          maxTweets - collected.length,
+          maxTweets === undefined ? undefined : maxTweets - collected.length,
           cursor,
         );
         collected.push(
-          ...response.tweets.slice(0, maxTweets - collected.length),
+          ...(maxTweets === undefined
+            ? response.tweets
+            : response.tweets.slice(0, maxTweets - collected.length)),
         );
 
-        if (collected.length >= maxTweets) break;
+        if (maxTweets !== undefined && collected.length >= maxTweets) break;
 
         cursor = nextTimelinePageCursor(
           "getUserTweetsIterator",
@@ -609,10 +612,10 @@ export class Client {
   /**
    * Fetches tweets from a Twitter user.
    * @param user The user whose tweets should be returned.
-   * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
+   * @param maxTweets Optional caller-requested result count; omitted means all pages.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
-  public getTweets(user: string, maxTweets = 200): AsyncGenerator<Tweet> {
+  public getTweets(user: string, maxTweets?: number): AsyncGenerator<Tweet> {
     return this.authenticatedGenerator((auth) =>
       getTweets(user, maxTweets, auth),
     );
@@ -621,12 +624,12 @@ export class Client {
   /**
    * Fetches tweets from a Twitter user using their ID.
    * @param userId The user whose tweets should be returned.
-   * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
+   * @param maxTweets Optional caller-requested result count; omitted means all pages.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
   public getTweetsByUserId(
     userId: string,
-    maxTweets = 200,
+    maxTweets?: number,
   ): AsyncGenerator<Tweet, void> {
     return this.authenticatedGenerator((auth) =>
       getTweetsByUserId(userId, maxTweets, auth),
@@ -753,12 +756,12 @@ export class Client {
   /**
    * Fetches tweets and replies from a Twitter user.
    * @param user The user whose tweets should be returned.
-   * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
+   * @param maxTweets Optional caller-requested result count; omitted means all pages.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
   public getTweetsAndReplies(
     user: string,
-    maxTweets = 200,
+    maxTweets?: number,
   ): AsyncGenerator<Tweet> {
     return this.authenticatedGenerator((auth) =>
       getTweetsAndReplies(user, maxTweets, auth),
@@ -768,12 +771,12 @@ export class Client {
   /**
    * Fetches tweets and replies from a Twitter user using their ID.
    * @param userId The user whose tweets should be returned.
-   * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
+   * @param maxTweets Optional caller-requested result count; omitted means all pages.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
   public getTweetsAndRepliesByUserId(
     userId: string,
-    maxTweets = 200,
+    maxTweets?: number,
   ): AsyncGenerator<Tweet, void> {
     return this.authenticatedGenerator((auth) =>
       getTweetsAndRepliesByUserId(userId, maxTweets, auth),
@@ -1203,41 +1206,23 @@ export class Client {
   /**
    * Fetches all quoted tweets for a given tweet ID, handling pagination automatically.
    * @param tweetId The ID of the tweet to fetch quotes for.
-   * @param maxQuotes Maximum number of quotes to return (default: 100).
+   * @param maxQuotes Optional caller-requested result count; omitted means all results.
    * @returns An array of all quoted tweets.
    */
   public async fetchAllQuotedTweets(
     tweetId: string,
-    maxQuotes: number = 100,
+    maxQuotes?: number,
   ): Promise<Tweet[]> {
     return this.withAuthenticatedSession(async () => {
       const allQuotes: Tweet[] = [];
-      let cursor: string | undefined;
-      let totalFetched = 0;
-
-      while (totalFetched < maxQuotes) {
-        const batchSize = Math.min(40, maxQuotes - totalFetched);
-        const page = await this.fetchQuotedTweetsPage(
-          tweetId,
-          batchSize,
-          cursor,
-        );
-
-        if (page.tweets.length === 0) {
-          break;
-        }
-
-        allQuotes.push(...page.tweets);
-        totalFetched += page.tweets.length;
-
-        if (!page.next) {
-          break;
-        }
-
-        cursor = page.next;
+      for await (const quote of searchQuotedTweets(
+        tweetId,
+        maxQuotes,
+        this.requireAuth(),
+      )) {
+        allQuotes.push(quote);
       }
-
-      return allQuotes.slice(0, maxQuotes);
+      return allQuotes;
     });
   }
 
@@ -1251,10 +1236,19 @@ export class Client {
    */
   public async fetchQuotedTweetsPage(
     tweetId: string,
-    maxQuotes: number = 40,
-    _cursor?: string,
+    maxQuotes?: number,
+    cursor?: string,
   ): Promise<QueryTweetsResponse> {
     return this.withAuthenticatedSession(async () => {
+      if (cursor?.trim()) {
+        throw new ElizaError(
+          "X quote search does not expose lossless cursor pagination",
+          {
+            code: "X_QUOTE_PAGINATION_UNSUPPORTED",
+            context: { tweetId },
+          },
+        );
+      }
       const quotes: Tweet[] = [];
       let count = 0;
 
@@ -1265,7 +1259,7 @@ export class Client {
       )) {
         quotes.push(quote);
         count++;
-        if (count >= maxQuotes) break;
+        if (maxQuotes !== undefined && count >= maxQuotes) break;
       }
 
       return {

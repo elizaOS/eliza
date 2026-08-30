@@ -60,6 +60,7 @@ class InMemoryExportAdapter {
   relationships: Row[] = [];
   tasks: Row[] = [];
   logs: Row[] = [];
+  logReadOffsets: number[] = [];
 
   // ── reads (extract) ──────────────────────────────────────────────
   async getAgentsByIds(ids: string[]) {
@@ -154,8 +155,12 @@ class InMemoryExportAdapter {
   async getTasks({ agentIds }: { agentIds: string[] }) {
     return this.tasks.filter((t) => agentIds.includes(t.agentId as string));
   }
-  async getLogs() {
-    return [...this.logs];
+  async getLogs({ limit, offset = 0 }: { limit?: number; offset?: number }) {
+    this.logReadOffsets.push(offset);
+    return this.logs.slice(
+      offset,
+      limit === undefined ? undefined : offset + limit,
+    );
   }
 
   // ── writes (restore) ─────────────────────────────────────────────
@@ -450,6 +455,34 @@ describe("#9963 agent export → import round-trip", () => {
       ),
     ).rejects.toThrow(/Incorrect password|decryption failed/i);
     expect(target.entities.size).toBe(0); // nothing imported
+  });
+
+  it("losslessly pages every requested log into the encrypted export", async () => {
+    const { adapter: source, character } = populateSource();
+    source.logs = Array.from({ length: 501 }, (_, index) => ({
+      id: uuid(1_000 + index),
+      type: "model",
+      entityId: SOURCE_AGENT,
+      roomId: ROOM1,
+      body: { index },
+      createdAt: new Date(index),
+    }));
+
+    const fileBuffer = await exportAgent(
+      makeRuntime(source, SOURCE_AGENT, character),
+      PASSWORD,
+      { includeLogs: true },
+    );
+    expect(source.logReadOffsets).toEqual([0, 500]);
+
+    const target = new InMemoryExportAdapter();
+    const result = await importAgent(
+      makeRuntime(target, uuid(995), {}),
+      fileBuffer,
+      PASSWORD,
+    );
+    expect(result.counts.logs).toBe(501);
+    expect(target.logs).toHaveLength(501);
   });
 
   it("writes committed evidence artifacts when ELIZA_WRITE_9963_EVIDENCE=1", async () => {

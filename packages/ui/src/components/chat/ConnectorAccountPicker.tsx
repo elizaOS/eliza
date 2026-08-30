@@ -100,9 +100,10 @@ export function ConnectorAccountPicker({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="tiny"
+            shape="circle"
             disabled={disabled || loading}
-            className="h-7 max-w-full rounded-full px-2 text-xs-tight shadow-none"
+            className="max-w-full"
             data-testid="connector-account-picker-trigger"
           >
             {loading ? (
@@ -171,11 +172,7 @@ export function ConnectorAccountPicker({
                     ) : null}
                   </span>
                   <span className="mt-1 flex min-w-0 items-center gap-1.5">
-                    <StatusBadge
-                      label={status.label}
-                      tone={status.tone}
-                      className="px-1.5 py-0 text-3xs"
-                    />
+                    <StatusBadge label={status.label} tone={status.tone} />
                     <span className="truncate text-2xs text-muted">
                       {accountSecondaryText(account)}
                     </span>
@@ -185,8 +182,8 @@ export function ConnectorAccountPicker({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="size-7 shrink-0 p-0"
+                    size="tiny"
+                    className="shrink-0"
                     title="Reconnect account"
                     aria-label={`Reconnect ${connectorAccountDisplayName(account)}`}
                     onClick={(event) => {

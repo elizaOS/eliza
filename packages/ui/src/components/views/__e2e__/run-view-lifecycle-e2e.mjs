@@ -317,7 +317,7 @@ try {
 
   // Recover: disarm the crash, press Retry, confirm the view comes back.
   await lc("uncrash");
-  await p.locator('[data-testid="view-error-retry"]').first().click();
+  await p.getByRole("button", { name: "Retry", exact: true }).click();
   await settle(250);
   const recovered = await p.locator('[data-testid="work-crasher"]').count();
   assert(recovered === 1, "Retry recovered the crashed view");

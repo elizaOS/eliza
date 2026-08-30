@@ -340,6 +340,25 @@ describe("DocumentService list semantics", () => {
 		expect(getWorld).toHaveBeenCalledTimes(1);
 	});
 
+	it("returns every visible document when pagination was not requested", async () => {
+		const { adapter, runtime, service } = await makeHarness();
+		await seedDocuments(
+			runtime,
+			Array.from({ length: 501 }, (_, index) => documentMemory(index)),
+		);
+		const queryDocuments = vi.spyOn(adapter, "queryDocuments");
+
+		const result = await service.listDocumentsDetailed();
+
+		expect(result.documents).toHaveLength(501);
+		expect(new Set(result.documents.map((document) => document.id)).size).toBe(
+			501,
+		);
+		expect(result.hasMore).toBe(false);
+		expect(result.nextCursor).toBeUndefined();
+		expect(queryDocuments).toHaveBeenCalledTimes(6);
+	});
+
 	it("composes visible pinned documents beyond the recent page without leaking private pins", async () => {
 		const { runtime, service } = await makeHarness();
 		const documents = Array.from({ length: 126 }, (_, index) =>

@@ -15,6 +15,7 @@ import {
 import * as React from "react";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useAppSelector } from "../../state/app-store";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -272,9 +273,11 @@ function PrimingCard({
   return (
     <div className="flex flex-col gap-4" data-testid={`priming-card-${id}`}>
       <div className="flex items-start gap-3">
-        <span className="flex  size-10 shrink-0 items-center justify-center rounded-sm border border-border bg-bg-accent text-accent">
-          <Icon className="size-5" aria-hidden />
-        </span>
+        <Badge asChild variant="primingIcon">
+          <span className="flex size-10 shrink-0 items-center justify-center">
+            <Icon className="size-5" aria-hidden />
+          </span>
+        </Badge>
         <div className="min-w-0">
           <div className="text-base font-semibold text-txt-strong">{title}</div>
           <p className="mt-1 text-sm leading-snug text-txt">{rationale}</p>
@@ -395,14 +398,15 @@ function PrimingCard({
         </div>
       </div>
 
-      <button
+      <Button
         type="button"
-        className="self-center text-xs text-muted underline-offset-2 hover:text-txt hover:underline"
+        variant="mutedLink"
+        className="self-center"
         onClick={onSkipAll}
         data-testid="priming-skip-all"
       >
         {t("permissionpriming.skipAll", { defaultValue: "Skip for now" })}
-      </button>
+      </Button>
     </div>
   );
 }

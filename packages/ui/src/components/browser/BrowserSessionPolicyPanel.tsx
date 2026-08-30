@@ -99,7 +99,11 @@ function policyBadgeClass(allowed: boolean, mode: BrowserDomainPolicyMode) {
     : "border-border bg-muted/40 text-muted-foreground";
 }
 
-type LoadPhase = "loading" | "error" | "ready";
+type LoadPhase = "loading" | "error" | "ready" | "unsupported";
+
+function isBrowserBridgeRouteMissing(error: unknown): boolean {
+  return error instanceof Error && "status" in error && error.status === 404;
+}
 
 export function BrowserSessionPolicyPanel({
   api,
@@ -153,9 +157,17 @@ export function BrowserSessionPolicyPanel({
       setCompanions(companionsResponse.companions);
       setPhase("ready");
     } catch (error) {
+      // A plugin can be listed by a remote agent even when its optional policy
+      // routes are not registered in that runtime. Treat a missing route as an
+      // unsupported capability, not a broken Browser workspace. Authentication
+      // and server failures still retain the visible retryable error state.
       // error-policy:J4 user-facing degrade — the fetch failure becomes the
       // panel's visibly distinct error state with a retry affordance.
       if (!mountedRef.current) return;
+      if (isBrowserBridgeRouteMissing(error)) {
+        setPhase("unsupported");
+        return;
+      }
       setLoadError(error instanceof Error ? error.message : String(error));
       setPhase("error");
     }
@@ -282,6 +294,18 @@ export function BrowserSessionPolicyPanel({
     );
   }
 
+  if (phase === "unsupported") {
+    if (hideWhenEmpty) return null;
+    return (
+      <div
+        data-testid="browser-session-policy-unsupported"
+        className="rounded-sm border border-border bg-muted/30 p-4 text-sm text-muted-foreground"
+      >
+        Browser session controls are not available for this agent.
+      </div>
+    );
+  }
+
   if (phase === "error" || !settings) {
     return (
       <div
@@ -289,9 +313,7 @@ export function BrowserSessionPolicyPanel({
         className="flex flex-col gap-2 rounded-sm border border-danger/50 bg-danger/10 p-4 text-sm text-danger"
       >
         <span>Failed to load browser sessions.</span>
-        {loadError ? (
-          <span className="text-xs opacity-80">{loadError}</span>
-        ) : null}
+        {loadError ? <span className="text-xs">{loadError}</span> : null}
         <Button size="sm" variant="outline" onClick={() => void load()}>
           Retry
         </Button>

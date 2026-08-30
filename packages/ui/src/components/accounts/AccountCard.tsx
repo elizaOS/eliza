@@ -11,10 +11,10 @@
 import { ChevronDown, ChevronUp, KeyRound, Trash2 } from "lucide-react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useModalState } from "../../hooks/useModalState";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { Progress } from "../ui/progress";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { EditableAccountLabel } from "./EditableAccountLabel";
@@ -79,14 +80,14 @@ interface UsageBarProps {
 function UsageBar({ label, pct, resetsAt }: UsageBarProps) {
   const clamped = clampPct(pct);
   const resetIn = formatResetIn(resetsAt);
-  const tone =
+  const tone: "muted" | "danger" | "warning" | "success" =
     clamped == null
-      ? "bg-muted/30"
+      ? "muted"
       : clamped >= 85
-        ? "bg-destructive"
+        ? "danger"
         : clamped >= 60
-          ? "bg-warn"
-          : "bg-ok";
+          ? "warning"
+          : "success";
 
   const titleParts = [
     `${label}: ${clamped == null ? "—" : `${Math.round(clamped)}%`}`,
@@ -104,12 +105,7 @@ function UsageBar({ label, pct, resetsAt }: UsageBarProps) {
       <span className="shrink-0 whitespace-nowrap text-2xs font-medium uppercase tracking-wider text-muted">
         {label}
       </span>
-      <div className="relative h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-bg-accent">
-        <div
-          className={cn("h-full transition-all", tone)}
-          style={{ width: `${clamped ?? 0}%` }}
-        />
-      </div>
+      <Progress variant="usage" tone={tone} value={clamped ?? 0} />
       <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-muted">
         {clamped == null ? "—" : `${Math.round(clamped)}%`}
       </span>
@@ -209,13 +205,18 @@ export function AccountCard({
   const requiresCredentialRepair =
     account.health === "needs-reauth" || account.health === "invalid";
   const healthReason = account.healthDetail?.lastError?.trim();
+  const testLabel = t("accounts.test", { defaultValue: "Test" });
+  const refreshLabel = t("accounts.refresh", { defaultValue: "Refresh" });
 
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-2 rounded-sm border border-border/45 bg-card/35 px-3 py-2.5 transition-opacity",
-        !account.enabled && "opacity-60",
-      )}
+    <Card
+      variant="transparent"
+      flow="column"
+      gap="compact"
+      padding="compact"
+      surface={account.enabled ? "card" : "backgroundSubtle"}
+      border="subtle"
+      className="py-2.5"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -243,7 +244,7 @@ export function AccountCard({
               {account.email}
             </span>
           ) : null}
-          <Badge variant="outline" className="shrink-0 text-2xs uppercase">
+          <Badge variant="outline" size="compact" className="shrink-0">
             {isCodingPlan
               ? t("accounts.source.codingPlan", {
                   defaultValue: "Coding plan",
@@ -272,24 +273,22 @@ export function AccountCard({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             disabled={isFirst || saving}
             onClick={() => void onMoveUp()}
             aria-label={t("accounts.moveUp", { defaultValue: "Move up" })}
             title={t("accounts.moveUp", { defaultValue: "Move up" })}
-            className="size-7 p-0"
           >
             <ChevronUp className="size-3.5" aria-hidden />
           </Button>
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             disabled={isLast || saving}
             onClick={() => void onMoveDown()}
             aria-label={t("accounts.moveDown", { defaultValue: "Move down" })}
             title={t("accounts.moveDown", { defaultValue: "Move down" })}
-            className="size-7 p-0"
           >
             <ChevronDown className="size-3.5" aria-hidden />
           </Button>
@@ -313,7 +312,6 @@ export function AccountCard({
               size="sm"
               disabled={saving}
               onClick={onReauthenticate}
-              className="h-7 gap-1.5 px-2 text-xs"
             >
               <KeyRound className="size-3.5" aria-hidden />
               {account.source === "oauth"
@@ -331,13 +329,9 @@ export function AccountCard({
             size="sm"
             disabled={testBusy || saving}
             onClick={() => void onTest()}
-            className="h-7 px-2 text-xs"
+            aria-label={testLabel}
           >
-            {testBusy ? (
-              <Spinner className="size-3" />
-            ) : (
-              t("accounts.test", { defaultValue: "Test" })
-            )}
+            {testBusy ? <Spinner className="size-3" aria-hidden /> : testLabel}
           </Button>
           <Button
             type="button"
@@ -345,25 +339,24 @@ export function AccountCard({
             size="sm"
             disabled={refreshBusy || saving}
             onClick={() => void onRefreshUsage()}
-            className="h-7 px-2 text-xs"
+            aria-label={refreshLabel}
           >
             {refreshBusy ? (
-              <Spinner className="size-3" />
+              <Spinner className="size-3" aria-hidden />
             ) : (
-              t("accounts.refresh", { defaultValue: "Refresh" })
+              refreshLabel
             )}
           </Button>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
+            variant="destructive"
+            size="icon-sm"
             disabled={saving}
             onClick={deleteModal.open}
             aria-label={t("accounts.delete", {
               defaultValue: "Delete account",
             })}
             title={t("accounts.delete", { defaultValue: "Delete account" })}
-            className="size-7 p-0 text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="size-3.5" aria-hidden />
           </Button>
@@ -470,6 +463,6 @@ export function AccountCard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Card>
   );
 }

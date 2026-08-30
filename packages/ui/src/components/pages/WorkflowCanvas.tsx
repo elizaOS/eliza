@@ -80,7 +80,7 @@ function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
               : state === "finished"
                 ? "bg-status-success"
                 : state === "waiting"
-                  ? "bg-amber-500"
+                  ? "bg-warning"
                   : "animate-pulse bg-primary"
           }`}
           title={state}
@@ -147,19 +147,22 @@ export function WorkflowCanvas({
           />
         </ReactFlow>
       ) : (
-        <button
+        <Button
           type="button"
-          className="grid h-full w-full place-items-center text-muted-foreground/50"
+          variant="ghostMuted"
+          size="fill"
+          className="grid place-items-center"
           onClick={onAddStep}
           aria-label="Add first step with Eliza"
         >
           <Plus className="size-8" />
-        </button>
+        </Button>
       )}
       <Button
-        variant="ghost"
+        variant="surface"
         size="icon-sm"
-        className="absolute right-3 top-3 z-10 rounded-full bg-card/90 shadow-sm hover:bg-primary/15"
+        shape="circle"
+        className="absolute right-3 top-3 z-10"
         onClick={onAddStep}
         aria-label="Add step with Eliza"
         title="Add step"
@@ -168,8 +171,9 @@ export function WorkflowCanvas({
       </Button>
       {selected ? (
         <Button
-          variant="ghost"
-          className="absolute bottom-3 left-1/2 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 gap-2 rounded-full bg-card/95 px-3 shadow-lg hover:bg-primary/15"
+          variant="surface"
+          size="pillDense"
+          className="absolute bottom-3 left-1/2 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2"
           onClick={() => onEditStep(selected)}
           title={[selected.kind, selected.agent, selected.description]
             .filter(Boolean)

@@ -46,6 +46,8 @@ export type AospLlmStreamHandle = number | bigint;
 /** Pointer to the parent `EliInferenceContext`. */
 export type AospInferenceContextHandle = bigint;
 
+const DEFAULT_COMPLETE_TEXT_CAPTURE_BYTES = 1_048_576;
+
 export interface AospLlmStreamConfig {
   maxTokens: number;
   temperature: number;
@@ -352,7 +354,7 @@ export function createAospStreamingLlmBinding(deps: {
       maxTextBytes,
     }): AospLlmStreamStep {
       const tokenCap = maxTokensPerStep ?? 32;
-      const textCap = maxTextBytes ?? 1024;
+      const textCap = maxTextBytes ?? DEFAULT_COMPLETE_TEXT_CAPTURE_BYTES;
       const tokensOut = new Int32Array(tokenCap);
       const numTokensOut = new BigUint64Array(1);
       const textOut = new Uint8Array(textCap);
@@ -377,9 +379,19 @@ export function createAospStreamingLlmBinding(deps: {
         );
       }
       const n = Number(numTokensOut[0] ?? 0n);
-      const tokens = Array.from(tokensOut.subarray(0, Math.min(n, tokenCap)));
+      if (n > tokenCap) {
+        throw new Error(
+          `[aosp-llama-streaming] llm_stream_next returned ${n} tokens for a ${tokenCap}-token step buffer`,
+        );
+      }
+      const tokens = Array.from(tokensOut.subarray(0, n));
       const nul = textOut.indexOf(0, 0);
-      const len = nul >= 0 ? nul : textCap;
+      if (nul < 0) {
+        throw new Error(
+          `[aosp-llama-streaming] llm_stream_next reached its ${textCap}-byte native capture boundary; refusing to return partial text`,
+        );
+      }
+      const len = nul;
       const text = Buffer.from(
         textOut.buffer,
         textOut.byteOffset,
@@ -465,6 +477,8 @@ export interface AospStreamingLlmResult {
   steps: number;
   drafted: number;
   accepted: number;
+  outputTokens: number;
+  finishReason: "stop" | "length";
 }
 
 const DEFAULT_MAX_TOKENS_PER_STEP = 32;
@@ -512,6 +526,7 @@ export async function streamGenerate(
   let steps = 0;
   let drafted = 0;
   let accepted = 0;
+  let outputTokens = 0;
   try {
     binding.llmStreamPrefill({ stream, tokens: args.promptTokens });
     while (true) {
@@ -527,6 +542,7 @@ export async function streamGenerate(
       steps += 1;
       drafted += step.drafterDrafted;
       accepted += step.drafterAccepted;
+      outputTokens += step.tokens.length;
       if (step.text.length > 0) {
         chunks.push(step.text);
         if (args.onTextChunk) {
@@ -542,7 +558,14 @@ export async function streamGenerate(
     binding.llmStreamClose(stream);
   }
 
-  return { text: chunks.join(""), steps, drafted, accepted };
+  return {
+    text: chunks.join(""),
+    steps,
+    drafted,
+    accepted,
+    outputTokens,
+    finishReason: outputTokens >= args.config.maxTokens ? "length" : "stop",
+  };
 }
 
 /**

@@ -220,7 +220,8 @@ beforeEach(() => {
   recordCreatorEarnings.mockReset();
   reserve.mockReset();
   admitOrganizationInference.mockClear();
-  markProviderDispatched.mockClear();
+  markProviderDispatched.mockReset();
+  markProviderDispatched.mockResolvedValue(undefined);
   charactersGetById.mockReset();
   requireUserOrApiKeyWithOrg.mockReset();
 
@@ -335,30 +336,24 @@ describe("Agent A2A billing", () => {
     expect(body.result?.content).toBe("hello from model");
   });
 
-  // #16147: the output ceiling used to price/reserve must be the exact value
-  // capped on the provider call, for every resolved thinking budget including
-  // none. Here we prove the route forwards the resolved value to both sinks.
+  // Billing uses a conservative estimate without turning that estimate into a
+  // provider cap. Final usage is reconciled separately.
   test.each([
     [null, 500],
     [1024, 1524],
     [8000, 8500],
   ] as const)(
-    "prices and caps the provider at one admitted ceiling (budget=%p)",
-    async (budget, expectedCap) => {
+    "prices the request without capping provider output (budget=%p)",
+    async (budget, expectedEstimate) => {
       makeReservation({ adjustmentType: "none" });
       resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
 
       const response = await callChat("anthropic/claude-opus-4-5");
       expect(response.status).toBe(200);
 
-      // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
-      expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
-      // ...and the provider is capped at the identical value — never omitted.
+      expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedEstimate);
       expect(streamText).toHaveBeenCalledTimes(1);
-      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(expectedCap);
-      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
-        estimateRequestCost.mock.calls[0]?.[2],
-      );
+      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBeUndefined();
     },
   );
 
@@ -405,8 +400,8 @@ describe("Agent A2A billing", () => {
     },
   );
 
-  test("missing provider usage fails and refunds instead of fabricating zero metering", async () => {
-    const reconcile = makeReservation({ adjustmentType: "refund" });
+  test("missing provider usage settles the reserved estimate instead of fabricating zero metering", async () => {
+    const reconcile = makeReservation({ adjustmentType: "none" });
     streamText.mockResolvedValue({
       textStream: textStream("unmetered output"),
       usage: Promise.resolve({
@@ -423,7 +418,60 @@ describe("Agent A2A billing", () => {
 
     expect(body.error?.code).toBe(-32000);
     expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
+    expect(markProviderDispatched).toHaveBeenCalledTimes(1);
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test("a provider rejection settles the reserved estimate", async () => {
+    const reconcile = makeReservation({ adjustmentType: "none" });
+    streamText.mockRejectedValue(new Error("provider unavailable"));
+
+    const response = await callChat();
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32000);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
+    expect(markProviderDispatched).toHaveBeenCalledTimes(1);
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test("incomplete provider output settles the reserved estimate", async () => {
+    const reconcile = makeReservation({ adjustmentType: "none" });
+    streamText.mockResolvedValue({
+      textStream: textStream("partial output"),
+      finishReason: Promise.resolve("length"),
+      usage: Promise.resolve({
+        inputTokens: 100,
+        outputTokens: 25,
+        totalTokens: 125,
+      }),
+    });
+
+    const response = await callChat();
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32000);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test("a dispatch-marker failure refunds before provider dispatch", async () => {
+    const reconcile = makeReservation({ adjustmentType: "refund" });
+    markProviderDispatched.mockRejectedValue(new Error("marker unavailable"));
+
+    const response = await callChat();
+
+    expect(response.status).toBe(200);
+    expect(reconcile).toHaveBeenCalledTimes(1);
     expect(reconcile).toHaveBeenCalledWith(0);
+    expect(streamText).not.toHaveBeenCalled();
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
   });
 

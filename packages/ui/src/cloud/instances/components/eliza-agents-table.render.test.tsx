@@ -416,6 +416,33 @@ describe("ElizaAgentsTable per-row view model", () => {
     });
   });
 
+  it("does not carry a previous failure message into provisioning", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable
+          agents={[
+            row({
+              status: "provisioning",
+              errorMessage: "A previous provisioning attempt failed",
+            }),
+          ]}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getAllByText("provisioning").length).toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(screen.queryByText("Agent needs attention")).toBeNull();
+  });
+
   it("keeps the empty Agents page connected to the Eliza app create flow", () => {
     const queryClient = new QueryClient({
       defaultOptions: {

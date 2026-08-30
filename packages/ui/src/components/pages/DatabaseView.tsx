@@ -4,8 +4,8 @@
  *
  * Status, table list, and rows are read through the `client` database API and
  * seeded from `resource-cache` so a revisit paints the last-known shape while it
- * revalidates. Segmented tabs register with the agent surface via ref-less
- * `ViewModeTab` children (the SegmentedControl doesn't forward refs).
+ * revalidates. The canonical segmented control owns both the visible buttons
+ * and their agent-surface registrations.
  */
 import {
   ChevronLeft,
@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
 import {
   type ColumnInfo,
   client,
@@ -48,42 +47,17 @@ import {
 } from "./database-utils";
 import { SqlEditorPanel } from "./SqlEditorPanel";
 
-// The editor-mode SegmentedControl renders its own internal buttons and does
-// not forward refs to them, so each mode registers with the agent surface
-// through a tiny ref-less child that drives selection via onActivate (mirrors
-// SettingsNavButton in SettingsView.tsx).
-function ViewModeTab({
-  mode,
-  label,
-  isActive,
-  onSelect,
-}: {
-  mode: DbView;
-  label: string;
-  isActive: boolean;
-  onSelect: (mode: DbView) => void;
-}) {
-  useAgentElement({
-    id: `editor-mode-${mode}`,
-    role: "tab",
-    label,
-    group: "database-editor-modes",
-    status: isActive ? "active" : "inactive",
-    description: `Switch to the ${label} editor`,
-    onActivate: () => onSelect(mode),
-  });
-  return null;
-}
-
 export function DatabaseView({
   leftNav,
   contentHeader,
+  layout = "embedded",
 }: {
   leftNav?: ReactNode;
   contentHeader?: ReactNode;
+  layout?: "embedded" | "page";
 }) {
   const { t } = useTranslation();
-  const showExternalSidebar = Boolean(leftNav);
+  const showExternalSidebar = layout === "page" || Boolean(leftNav);
 
   // `t` from useApp is not guaranteed to be referentially stable across
   // renders. Reading it through a ref keeps the data loaders below stable so
@@ -353,32 +327,37 @@ export function DatabaseView({
   // focus listener above already covers the user-returns case.
   useIntervalWhenDocumentVisible(() => void revalidate(), 30_000);
 
-  const editorModes: Array<{ value: DbView; label: string }> = [
-    { value: "tables", label: t("databaseview.TableEditor") },
-    { value: "query", label: t("databaseview.SQLEditor") },
+  const editorModes = [
+    {
+      value: "tables" as const,
+      label: t("databaseview.TableEditor"),
+      agentId: "editor-mode-tables",
+      agentLabel: t("databaseview.TableEditor"),
+      agentGroup: "database-editor-modes",
+    },
+    {
+      value: "query" as const,
+      label: t("databaseview.SQLEditor"),
+      agentId: "editor-mode-query",
+      agentLabel: t("databaseview.SQLEditor"),
+      agentGroup: "database-editor-modes",
+    },
   ];
 
   const viewToggle = (
-    <>
+    <div className="space-y-1.5">
+      <div className="px-1 text-xs font-medium text-muted">Editor</div>
       <SegmentedControl
         value={view}
         onValueChange={(v) => setView(v)}
         items={editorModes}
-        aria-label={t("databaseview.EditorModes", {
-          defaultValue: "Database editor modes",
-        })}
-        buttonClassName="h-10 flex-1"
+        aria-label="Database editor modes"
+        className="rounded-lg bg-surface p-1"
+        buttonClassName="h-9 flex-1 px-3"
+        activeButtonClassName="bg-card shadow-sm hover:bg-card"
+        inactiveButtonClassName="text-muted"
       />
-      {editorModes.map((mode) => (
-        <ViewModeTab
-          key={mode.value}
-          mode={mode.value}
-          label={mode.label}
-          isActive={view === mode.value}
-          onSelect={setView}
-        />
-      ))}
-    </>
+    </div>
   );
 
   const sidebarSummary = (
@@ -492,13 +471,8 @@ export function DatabaseView({
                       key={table.name}
                       active={selectedTable === table.name}
                       onClick={() => handleSelectTable(table.name)}
-                      className="gap-2"
+                      className="rounded-none border-b border-border/50 px-1 py-2.5"
                     >
-                      <SidebarContent.ItemIcon
-                        active={selectedTable === table.name}
-                      >
-                        {table.name.slice(0, 1).toUpperCase()}
-                      </SidebarContent.ItemIcon>
                       <SidebarContent.ItemBody>
                         <SidebarContent.ItemTitle>
                           {table.name}
@@ -524,9 +498,8 @@ export function DatabaseView({
               </div>
               {queryHistory.slice(0, 8).map((q) => (
                 <Button
-                  variant="ghost"
+                  variant="queryHistory"
                   key={q}
-                  className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono text-muted-strong hover:text-txt"
                   onClick={() => setQueryText(q)}
                 >
                   <span className="truncate">{q}</span>
@@ -668,9 +641,8 @@ export function DatabaseView({
         <div className="p-3 border border-danger/50 bg-danger/20 text-danger text-sm rounded-sm mb-2 flex items-center justify-between">
           <span className="font-medium tracking-wide">{errorMessage}</span>
           <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 rounded-full text-danger hover:bg-danger/20 hover:text-danger-foreground transition-colors"
+            variant="dangerGhost"
+            size="disclosure"
             onClick={() => setErrorMessage("")}
           >
             ×
@@ -728,13 +700,8 @@ export function DatabaseView({
                         key={t.name}
                         active={selectedTable === t.name}
                         onClick={() => handleSelectTable(t.name)}
-                        className="gap-2"
+                        className="rounded-none border-b border-border/50 px-1 py-2.5"
                       >
-                        <SidebarContent.ItemIcon
-                          active={selectedTable === t.name}
-                        >
-                          {t.name.slice(0, 1).toUpperCase()}
-                        </SidebarContent.ItemIcon>
                         <SidebarContent.ItemBody>
                           <SidebarContent.ItemTitle>
                             {t.name}
@@ -754,9 +721,9 @@ export function DatabaseView({
           {/* Toggle sidebar */}
           {!showExternalSidebar && (
             <Button
-              variant="ghost"
-              size="icon"
-              className="my-auto flex size-11 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-card/50 text-muted transition-all hover:border-accent/40 hover:bg-bg-hover hover:text-txt"
+              variant="outlineMuted"
+              size="icon-lg"
+              className="my-auto shrink-0"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               title={
                 sidebarCollapsed
@@ -866,9 +833,8 @@ export function DatabaseView({
                     </div>
                     {queryHistory.slice(0, 8).map((q) => (
                       <Button
-                        variant="ghost"
+                        variant="queryHistory"
                         key={q}
-                        className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono text-muted-strong hover:text-txt"
                         onClick={() => setQueryText(q)}
                       >
                         <span className="truncate">{q}</span>

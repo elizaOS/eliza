@@ -1,5 +1,9 @@
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
+import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
 } from "./base-url.js";
@@ -72,6 +76,30 @@ export function normalizeLifeOpsScheduleSyncSecret(
 export function resolveLifeOpsScheduleSyncConfig(
   config: LifeOpsScheduleSyncConfigInput = {},
 ): ResolvedLifeOpsScheduleSyncConfig {
+  if (resolveDevCloudEnvAuthority()) {
+    const apiKey = normalizeLifeOpsScheduleSyncSecret(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
+    );
+    const agentId = normalizeLifeOpsScheduleSyncSecret(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_AGENT_ID"),
+    );
+    if (!apiKey || !agentId) {
+      return {
+        configured: false,
+        mode: "none",
+      };
+    }
+    return {
+      configured: true,
+      mode: "cloud",
+      apiBaseUrl: resolveCloudApiBaseUrl(
+        resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL"),
+      ),
+      apiKey,
+      agentId,
+    };
+  }
+
   const remoteApiBase = normalizeOptionalString(config.remoteApiBase);
   if (remoteApiBase) {
     return {

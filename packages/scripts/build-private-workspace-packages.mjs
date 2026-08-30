@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Build private/internal workspace packages whose `dist/` is referenced by
+ * Build workspace packages whose `dist/` is referenced by
  * other workspace packages but not produced by any other install step.
  *
- * Why this exists: private workspace packages may ship dist artifacts that
+ * Why this exists: workspace packages may ship dist artifacts that
  * consumers import directly. On a fresh clone
  * neither npm fetch nor the workspace symlink step produces those dist files
- * — only the package's own `bun run build` does — and nothing wires that
+ * — only the package's configured build script does — and nothing wires that
  * build into install, so `git clone … && bun install && bun run dev` fails
  * with ERR_MODULE_NOT_FOUND on the missing dist entry. (See #8143 for the
  * original repro and root cause.)
@@ -27,13 +27,17 @@ const REPO_ROOT = path.resolve(
   "../..",
 );
 
-// Dependency-ordered set, resolved through the discovery seam. Each private
-// package declares `elizaos.scripts.buildOnInstall = { sentinel, order }` in its
-// own package.json — `order` builds leaves before dependents, and `sentinel`
-// is the dist file whose presence proves it is already built. No package
-// names live in this file.
+// Dependency-ordered set, resolved through the discovery seam. Each selected
+// package declares `elizaos.scripts.buildOnInstall` in its own package.json —
+// `order` builds leaves before dependents, `sentinel` proves readiness, and an
+// optional `script` narrows generation-heavy packages to their dist-only build.
+// No package names live in this file.
 const PACKAGES = resolveBuildOnInstallPackages({ repoRoot: REPO_ROOT }).map(
-  (pkg) => ({ dir: pkg.dir, freshnessSentinel: pkg.sentinel }),
+  (pkg) => ({
+    dir: pkg.dir,
+    freshnessSentinel: pkg.sentinel,
+    buildScript: pkg.script ?? "build",
+  }),
 );
 
 function log(msg) {
@@ -55,7 +59,7 @@ function buildPackage(pkg) {
   }
 
   log(`building ${pkg.dir} …`);
-  const result = spawnSync("bun", ["run", "build"], {
+  const result = spawnSync("bun", ["run", pkg.buildScript], {
     cwd: pkgDir,
     stdio: "inherit",
     // On Windows `bun` resolves through the npm shim — let the platform

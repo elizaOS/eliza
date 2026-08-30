@@ -81,7 +81,7 @@ Run from repo root with `--cwd packages/app-core`:
 - Ports: `ELIZA_API_PORT`/`ELIZA_PORT`/`ELIZA_UI_PORT` are read via `@elizaos/shared` `resolveDesktopApiPort`/`resolveServerOnlyPort`/`syncResolvedApiPort`. Never hardcode; the orchestrator shifts and syncs them.
 - `LOG_LEVEL` / `--debug` / `--verbose` / `--no-color` — set in `entry.ts` before runtime imports; also drives `NODE_LLAMA_CPP_LOG_LEVEL`.
 - `DATABASE_URL` → bridged to `POSTGRES_URL` for `plugin-sql` (cloud/sandbox provisioners inject `DATABASE_URL`).
-- `ELIZAOS_CLOUD_API_KEY` (dev fallback `ELIZA_DEV_CLOUD_API_KEY` in non-prod).
+- `ELIZAOS_CLOUD_API_KEY` (`ELIZA_DEV_CLOUD_API_KEY` is accepted only by explicit staging or self-hosted development launchers).
 - `ELIZA_API_PROCESS_SPAWNED_AT_MS` / `ELIZA_PROCESS_SPAWNED_AT_MS` — startup timing (dev-server).
 - `/api/dev/stack` response schema tag is the `ELIZA_DEV_STACK_SCHEMA` constant (`"elizaos.dev.stack/v1"`) from `api/dev-stack.ts` — it is a code constant, not an env var. State dir via `@elizaos/core` `resolveStateDir`. Provider key aliases normalized in `run-main.ts` (`Z_AI_API_KEY`→`ZAI_API_KEY`, `KIMI_API_KEY`→`MOONSHOT_API_KEY`).
 - **App-route boot knobs** (owned by `runtime/startup/app-contributors.ts`):
@@ -110,6 +110,7 @@ Run from repo root with `--cwd packages/app-core`:
 - `plugin-local-inference` routes are imported lazily by the API compatibility boundary; startup hooks resolve through `runtime/startup/app-contributors.ts` to avoid static plugin coupling.
 - Peer deps `react`, `react-dom`, `three`; Capacitor mobile bridges are `optionalDependencies` (`@elizaos/capacitor-*`). Node `>=24`.
 - **iOS local-agent watchdog parity** (`platforms/ios/App/App/AgentWatchdog.swift`, wired from `AppDelegate`): the iOS equivalent of Android's `ElizaAgentService` watchdog (issue #10197). The iOS agent is in-process (the `ElizaBunRuntime` Capacitor plugin, no TCP port), so the watchdog polls liveness through the Capacitor bridge (`ElizaBunRuntime.getStatus().ready`) gated on `localStorage["eliza:mobile-runtime-mode"]` (dormant/no-op only in pure `cloud` mode; `local`, `cloud-hybrid`, and `tunnel-to-mobile` own a phone-side agent), accumulates 3 strikes like Android's `HEALTH_FAIL_STRIKES`, and on a confirmed crash emits a bounded restart *request* (`AgentWatchdog.restartRequestedNotification` + a `window` `eliza:local-agent-restart-requested` event, max 5 attempts/exponential backoff) for the renderer's existing `ElizaBunRuntime.start(...)` to honor — it never invents a second restart mechanism. To auto-recover end-to-end the renderer must honor that restart-request signal.
+- **Android bionic output integrity.** The native decode host uses the device's real context boundary when a caller omits an output limit. It reports model/stop completion separately from boundary or native-step exhaustion; every TypeScript caller must reject `incomplete: true` and must never restore the retired 32/256/2048-token defaults.
 
 ## Package completion evidence
 

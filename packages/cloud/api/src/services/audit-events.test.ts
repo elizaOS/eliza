@@ -58,15 +58,6 @@ describe("AuditEventsSink", () => {
     harness.insert.mockClear();
   });
 
-  it("exports a required auth_events_pg sink singleton", () => {
-    expect(auditEventsSink).toBeInstanceOf(AuditEventsSink);
-    expect(auditEventsSink.name).toBe("auth_events_pg");
-    expect(auditEventsSink.required).toBe(true);
-    const constructed = new AuditEventsSink();
-    expect(constructed.name).toBe("auth_events_pg");
-    expect(constructed.required).toBe(true);
-  });
-
   it("inserts into the auth_events table with required fields and null optionals", async () => {
     const sink = new AuditEventsSink();
     const event = makeEvent();

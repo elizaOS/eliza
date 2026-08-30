@@ -242,27 +242,20 @@ describe("device-class background budget (#11760 seam)", () => {
 		).toBeNull();
 	});
 
-	it("constrained budget limits output and wait without changing input", () => {
+	it("constrained devices use a shorter queue wait without an output budget", () => {
 		const constrained = resolveBackgroundInferenceBudget("constrained");
 		const standard = resolveBackgroundInferenceBudget("standard");
-		expect(constrained.maxTokens).toBeLessThan(standard.maxTokens);
 		expect(constrained.lockWaitMs).toBeLessThan(standard.lockWaitMs);
+		expect(constrained).not.toHaveProperty("maxTokens");
+		expect(standard).not.toHaveProperty("maxTokens");
 	});
 
-	it("rejects an unsupported output request without rewriting it", () => {
+	it("preserves a large explicit output request", () => {
 		const budget = resolveBackgroundInferenceBudget("constrained");
 		const prompt = "<start_of_turn>system\n".padEnd(150_000, "x");
-		expect(() =>
+		expect(
 			applyBackgroundInferenceBudget({ prompt, maxTokens: 8_192 }, budget),
-		).toThrowError(
-			expect.objectContaining({
-				code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_EXCEEDED",
-				context: {
-					requestedMaxTokens: 8_192,
-					supportedMaxTokens: budget.maxTokens,
-				},
-			}),
-		);
+		).toEqual({ prompt, maxTokens: 8_192, clamped: [] });
 	});
 
 	it("never clamps a request already inside the budget", () => {
@@ -276,29 +269,13 @@ describe("device-class background budget (#11760 seam)", () => {
 		expect(result.clamped).toEqual([]);
 	});
 
-	it("accepts the exact device boundary without adjustment", () => {
-		const budget = resolveBackgroundInferenceBudget("constrained");
-		const result = applyBackgroundInferenceBudget(
-			{ prompt: "p", maxTokens: budget.maxTokens },
-			budget,
-		);
-		expect(result.maxTokens).toBe(budget.maxTokens);
-		expect(result.clamped).toEqual([]);
-	});
-
-	it("uses the device maximum when the optional output ceiling is omitted", () => {
+	it("keeps the provider output boundary omitted when the caller omitted it", () => {
 		const budget = resolveBackgroundInferenceBudget("constrained");
 		expect(
 			applyBackgroundInferenceBudget(
 				{ prompt: "p", maxTokens: undefined },
 				budget,
 			),
-		).toEqual(
-			expect.objectContaining({
-				prompt: "p",
-				maxTokens: budget.maxTokens,
-				clamped: [],
-			}),
-		);
+		).toEqual({ prompt: "p", maxTokens: undefined, clamped: [] });
 	});
 });

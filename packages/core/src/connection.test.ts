@@ -9,6 +9,37 @@ import { recordOwnerGrant, recordRoleGrant } from "./roles";
 import { stringToUuid } from "./utils";
 
 describe("ensureConnection", () => {
+	it("persists an exact Discord server binding on the room", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		const agentId = stringToUuid("discord-binding-agent");
+		const entityId = stringToUuid("discord-binding-requester");
+		const roomId = stringToUuid("discord-binding-room");
+		const worldId = stringToUuid("discord-binding-world");
+		const serverId = "223456789012345678";
+		const messageServerId = stringToUuid(serverId);
+
+		await ensureConnection(adapter, {
+			agentId,
+			entityId,
+			roomId,
+			worldId,
+			messageServerId,
+			serverId,
+			source: "discord",
+			channelId: "323456789012345678",
+			metadata: { accountId: "primary" },
+		});
+
+		const [room] = await adapter.getRoomsByIds([roomId]);
+		expect(room).toMatchObject({
+			id: roomId,
+			worldId,
+			source: "discord",
+			serverId,
+			messageServerId,
+		});
+	});
+
 	it("preserves existing role grants when another caller reconciles", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("connection-role-agent");

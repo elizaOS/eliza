@@ -17,6 +17,7 @@
 import {
 	type AudioStreamResult,
 	applyBackgroundInferenceBudget,
+	canonicalPromptForModelCall,
 	EventType,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -80,8 +81,6 @@ export const LOCAL_INFERENCE_MODEL_TYPES = [
 	ModelType.TEXT_TO_SPEECH,
 	ModelType.TRANSCRIPTION,
 ] as const;
-
-const OMIT_MAX_TOKENS_LOCAL_BUDGET = 64_000;
 
 export type LocalInferenceUnavailableReason =
 	| "backend_unavailable"
@@ -288,21 +287,6 @@ function renderPromptContent(content: unknown): string {
 	return "";
 }
 
-function promptFromMessages(messages: readonly MessageLike[]): string {
-	return messages
-		.map((message) => {
-			const content = renderPromptContent(message.content);
-			if (!content) return "";
-			const role =
-				typeof message.role === "string" && message.role.trim()
-					? message.role.trim()
-					: "message";
-			return `${role}:\n${content}`;
-		})
-		.filter(Boolean)
-		.join("\n\n");
-}
-
 function promptFromParams(params: GenerateTextParams): string {
 	const record = params as GenerateTextParams & {
 		messages?: readonly MessageLike[];
@@ -311,12 +295,13 @@ function promptFromParams(params: GenerateTextParams): string {
 	const prompt =
 		typeof params.prompt === "string" && params.prompt.length > 0
 			? params.prompt
-			: Array.isArray(record.promptSegments) && record.promptSegments.length > 0
-				? record.promptSegments
-						.map((segment) => renderPromptContent(segment.content))
-						.join("")
-				: Array.isArray(record.messages) && record.messages.length > 0
-					? promptFromMessages(record.messages)
+			: Array.isArray(record.messages) && record.messages.length > 0
+				? canonicalPromptForModelCall({ messages: record.messages })
+				: Array.isArray(record.promptSegments) &&
+						record.promptSegments.length > 0
+					? record.promptSegments
+							.map((segment) => renderPromptContent(segment.content))
+							.join("")
 					: "";
 	if (typeof prompt !== "string" || prompt.trim().length === 0) {
 		throw unavailable(
@@ -334,9 +319,7 @@ function textGenerationArgsFromParams(
 	return {
 		prompt: promptFromParams(params),
 		stopSequences: mergeElizaTurnStopSequences(params.stopSequences),
-		maxTokens: params.omitMaxTokens
-			? (params.maxTokens ?? OMIT_MAX_TOKENS_LOCAL_BUDGET)
-			: params.maxTokens,
+		maxTokens: params.maxTokens,
 		temperature: params.temperature,
 		topP: params.topP,
 		signal: params.signal,
@@ -596,7 +579,7 @@ function createTextHandler(modelType: string) {
 		// bridge) decode one request at a time on a shared resident model, so
 		// route through the process-wide interactive-over-background lane
 		// (#11914): interactive turns dispatch first; background jobs wait a
-		// bounded time and take the device-class budget clamps.
+		// bounded time without changing prompt or output capacity.
 		const args = textGenerationArgsFromParams(params);
 		const priority = params.priority ?? "interactive";
 		let lockWaitMs: number | undefined;
@@ -658,7 +641,6 @@ function createPiiScrubHandler() {
 			() =>
 				generate.call(service, {
 					prompt,
-					maxTokens: 1024,
 					temperature: 0,
 				}),
 		);

@@ -1208,11 +1208,7 @@ def normalize_decision_payload(
     )
     if not response_text:
         if not _looks_like_reasoning_dump(raw):
-            cleaned_response = cleaned_raw
-            if len(cleaned_response) <= 220:
-                response_text = cleaned_response
-            else:
-                response_text = f"{cleaned_response[:219].rstrip()}…"
+            response_text = cleaned_raw
 
     prompt_source = str(prompt_text or "")
     assistant_source = cleaned_raw or response_text

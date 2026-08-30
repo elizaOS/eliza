@@ -112,7 +112,7 @@ export function ConnectorAccountAuditList({
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="icon-sm"
           disabled={loading}
           onClick={refresh}
           aria-label={t("connectoraudit.refreshAria", {
@@ -121,7 +121,6 @@ export function ConnectorAccountAuditList({
           title={t("connectoraudit.refreshAria", {
             defaultValue: "Refresh connector audit events",
           })}
-          className="size-8 p-0"
         >
           {loading ? (
             <Spinner className="size-3.5" />

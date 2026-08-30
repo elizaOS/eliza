@@ -7,9 +7,8 @@
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";
+import { Card } from "../../ui/card";
 import type { PagePanelProps } from "./page-panel-types";
-
-const BASE_SURFACE = "bg-transparent";
 
 export const PagePanelRoot = React.forwardRef<HTMLDivElement, PagePanelProps>(
   function PagePanelRoot(
@@ -19,24 +18,26 @@ export const PagePanelRoot = React.forwardRef<HTMLDivElement, PagePanelProps>(
     const Component = as ?? "div";
 
     return (
-      <Component
-        ref={ref as never}
+      <Card
+        asChild
+        variant="transparent"
         className={cn(
           variant === "surface"
-            ? `w-full ${BASE_SURFACE}`
+            ? "w-full"
             : variant === "workspace"
-              ? `flex min-h-[58vh] flex-col overflow-hidden ${BASE_SURFACE}`
+              ? "flex min-h-[58vh] flex-col overflow-hidden"
               : variant === "section"
-                ? `w-full overflow-visible ${BASE_SURFACE}`
+                ? "w-full overflow-visible"
                 : variant === "padded"
-                  ? `px-4 py-3 sm:px-5 sm:py-4 ${BASE_SURFACE}`
+                  ? "px-4 py-3 sm:px-5 sm:py-4"
                   : variant === "shell"
-                    ? `relative flex min-h-0 flex-1 overflow-hidden ${BASE_SURFACE}`
-                    : BASE_SURFACE,
+                    ? "relative flex min-h-0 flex-1 overflow-hidden"
+                    : undefined,
           className,
         )}
-        {...props}
-      />
+      >
+        <Component ref={ref as never} {...props} />
+      </Card>
     );
   },
 );

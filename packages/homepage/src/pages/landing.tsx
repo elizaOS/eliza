@@ -10,11 +10,13 @@
  * first room while keeping the five-room contract in the DOM.
  */
 
+import { Button } from "@elizaos/ui/button";
 import {
   DiscordIcon,
   IMessageIcon,
   TelegramIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
+import { NativeDialog } from "@elizaos/ui/native-dialog";
 import {
   lazy,
   Suspense,
@@ -832,7 +834,7 @@ function ContactSheet({
   }, [onClose]);
 
   return (
-    <dialog
+    <NativeDialog
       ref={dialogRef}
       className="landing-sheet"
       aria-labelledby="landing-contact-sheet-title"
@@ -856,13 +858,13 @@ function ContactSheet({
           </span>
         </header>
         <div className="landing-sheet-options">
-          <button type="button" className="landing-sheet-row" onClick={onText}>
+          <Button type="button" className="landing-sheet-row" onClick={onText}>
             <IMessageIcon className="size-6" style={{ color: "#34C759" }} />
             {t("homepage_eliza.landing.channelImessage", {
               defaultValue: "Text Eliza on iMessage",
             })}
-          </button>
-          <button type="button" className="landing-sheet-row" onClick={onCall}>
+          </Button>
+          <Button type="button" className="landing-sheet-row" onClick={onCall}>
             <svg
               viewBox="0 0 24 24"
               fill="currentColor"
@@ -874,7 +876,7 @@ function ContactSheet({
             {t("homepage_eliza.landing.channelPhone", {
               defaultValue: "Call Eliza",
             })}
-          </button>
+          </Button>
           <a
             className="landing-sheet-row"
             href={buildElizaTelegramHref()}
@@ -916,13 +918,13 @@ function ContactSheet({
             {accountLabel}
           </a>
         </div>
-        <button type="button" className="landing-sheet-close" onClick={onClose}>
+        <Button type="button" className="landing-sheet-close" onClick={onClose}>
           {t("homepage_eliza.landing.contactSheetClose", {
             defaultValue: "Close",
           })}
-        </button>
+        </Button>
       </div>
-    </dialog>
+    </NativeDialog>
   );
 }
 
@@ -1098,7 +1100,7 @@ export default function LandingPage() {
             })}
           </h1>
           <div className="landing-hero-actions">
-            <button
+            <Button
               type="button"
               className="landing-cta landing-cta--black"
               onClick={() => void handleMessageEliza()}
@@ -1107,8 +1109,8 @@ export default function LandingPage() {
               {t("homepage_eliza.landing.ctaText", {
                 defaultValue: "Text Eliza",
               })}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               className="landing-cta landing-cta--white"
               onClick={() => void handleCallEliza()}
@@ -1124,7 +1126,7 @@ export default function LandingPage() {
               {t("homepage_eliza.landing.ctaCall", {
                 defaultValue: "Call",
               })}
-            </button>
+            </Button>
           </div>
           <div className="landing-secondary-channels">
             {channels.map((channel) => (
@@ -1153,7 +1155,7 @@ export default function LandingPage() {
                 {phoneCopyLabel}
               </span>
               {phoneCopyState === "handoff" && (
-                <button
+                <Button
                   type="button"
                   className="landing-copy-notice-action"
                   onClick={() => void handleCopyPhone()}
@@ -1164,13 +1166,13 @@ export default function LandingPage() {
                   {t("homepage_eliza.landing.copyPhoneShort", {
                     defaultValue: "Copy number",
                   })}
-                </button>
+                </Button>
               )}
             </div>
           )}
         </div>
         <ResponsivePhoneMockup />
-        <button
+        <Button
           type="button"
           className="landing-tap-target"
           onClick={handleOpenContactSheet}

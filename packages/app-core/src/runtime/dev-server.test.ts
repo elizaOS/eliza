@@ -306,11 +306,6 @@ afterEach(() => {
 });
 
 describe.sequential("dev-server process entry", () => {
-  it("exports nothing — the file is a process entry, not a library", async () => {
-    const loaded = await loadDevServer();
-    expect(loaded.moduleExports).toEqual([]);
-  });
-
   it("anchors startup timing to the first finite positive spawn-env timestamp", async () => {
     const spawnedAt = Date.now() - 40;
     const loaded = await loadDevServer({

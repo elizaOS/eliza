@@ -21,7 +21,11 @@ import {
   type UUID,
   type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  resetDevCloudEnvAuthorityForTests,
+} from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import codingToolsPlugin, {
   SANDBOX_SERVICE,
   SandboxService,
@@ -696,6 +700,116 @@ describe("RemoteCodingCapabilityRouterService", () => {
     );
     expect(config.remoteHttpToken).toBe("token");
     expect(config.agentRunners).toEqual(["codex", "claude-code"]);
+  });
+
+  describe("launcher-owned dev Cloud authority", () => {
+    const authorityEnvKeys = [
+      "ELIZA_DEV_SOURCE",
+      "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+      "ELIZA_DEV_CLOUD_TARGET",
+      "ELIZAOS_CLOUD_API_KEY",
+      "ELIZAOS_CLOUD_BASE_URL",
+      "ELIZA_CLOUD_REMOTE_RUNNER_URL",
+      "ELIZA_CLOUD_SANDBOX_TOKEN",
+    ] as const;
+    const originalAuthorityEnv = Object.fromEntries(
+      authorityEnvKeys.map((key) => [key, process.env[key]]),
+    ) as Record<(typeof authorityEnvKeys)[number], string | undefined>;
+
+    beforeEach(() => {
+      resetDevCloudEnvAuthorityForTests();
+      for (const key of authorityEnvKeys) delete process.env[key];
+    });
+
+    afterEach(() => {
+      for (const key of authorityEnvKeys) {
+        const value = originalAuthorityEnv[key];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      resetDevCloudEnvAuthorityForTests();
+    });
+
+    it.each(["staging-default", "offline"] as const)(
+      "does not revive the Cloud runner from late production env in %s mode",
+      (authority) => {
+        process.env.ELIZA_DEV_SOURCE = "1";
+        process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+        process.env.ELIZA_DEV_CLOUD_TARGET =
+          authority === "offline" ? "offline" : "staging";
+        process.env.ELIZAOS_CLOUD_BASE_URL =
+          "https://api-staging.eliza.app/api/v1";
+        captureDevCloudEnvAuthoritySnapshot();
+
+        process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+        process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+        process.env.ELIZA_CLOUD_REMOTE_RUNNER_URL =
+          "https://production-runner.example";
+        process.env.ELIZA_CLOUD_SANDBOX_TOKEN = "late-production-token";
+
+        const config = resolveRemoteCodingRunnerConfig(
+          makeRuntime({
+            ELIZA_CODING_REMOTE_RUNNER: "eliza-cloud",
+            ELIZAOS_CLOUD_API_KEY: "",
+            ELIZAOS_CLOUD_BASE_URL: "",
+            ELIZA_CLOUD_REMOTE_RUNNER_URL: "",
+            ELIZA_CLOUD_SANDBOX_TOKEN: "",
+          }),
+        );
+
+        expect(config.cloudApiBaseUrl).toBe(
+          "https://api-staging.eliza.app/api/v1",
+        );
+        expect(config.cloudApiToken).toBeUndefined();
+        expect(config.remoteHttpBaseUrl).toBeUndefined();
+        expect(config.remoteHttpToken).toBeUndefined();
+      },
+    );
+
+    it("uses the frozen explicit staging credential after late env pollution", () => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+      process.env.ELIZA_DEV_CLOUD_TARGET = "staging";
+      process.env.ELIZAOS_CLOUD_API_KEY = "launcher-staging-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL =
+        "https://api-staging.eliza.app/api/v1";
+      captureDevCloudEnvAuthoritySnapshot();
+
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+
+      const config = resolveRemoteCodingRunnerConfig(
+        makeRuntime({
+          ELIZA_CODING_REMOTE_RUNNER: "eliza-cloud",
+          ELIZAOS_CLOUD_API_KEY: "persisted-production-key",
+          ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app/api/v1",
+        }),
+      );
+
+      expect(config.cloudApiBaseUrl).toBe(
+        "https://api-staging.eliza.app/api/v1",
+      );
+      expect(config.cloudApiToken).toBe("launcher-staging-key");
+    });
+
+    it("leaves Home runner resolution unchanged under Cloud authority", () => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "offline";
+      process.env.ELIZA_DEV_CLOUD_TARGET = "offline";
+      captureDevCloudEnvAuthoritySnapshot();
+
+      const config = resolveRemoteCodingRunnerConfig(
+        makeRuntime({
+          ELIZA_CODING_REMOTE_RUNNER: "home",
+          ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
+          ELIZA_HOME_REMOTE_RUNNER_TOKEN: "home-token",
+        }),
+      );
+
+      expect(config.provider).toBe("home");
+      expect(config.remoteHttpBaseUrl).toBe("http://home.local:2468");
+      expect(config.remoteHttpToken).toBe("home-token");
+    });
   });
 
   it("rejects runner timeout settings that overflow the JavaScript timer range", () => {

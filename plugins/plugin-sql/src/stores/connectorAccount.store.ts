@@ -22,6 +22,7 @@ import type {
   ConnectorOwnerBindingRecord,
   ConsumeOAuthFlowStateParams,
   CreateOAuthFlowStateParams,
+  DeleteConnectorAccountCredentialRefsParams,
   DeleteConnectorAccountParams,
   GetConnectorAccountCredentialRefParams,
   GetConnectorAccountParams,
@@ -223,15 +224,16 @@ export class ConnectorAccountStore implements Store {
       if (params.status) {
         conditions.push(eq(connectorAccountsTable.status, params.status));
       }
-      const limit = params.limit ?? 100;
       const offset = params.offset ?? 0;
-      const rows = await this.db
+      const orderedQuery = this.db
         .select()
         .from(connectorAccountsTable)
         .where(and(...conditions))
-        .orderBy(desc(connectorAccountsTable.updatedAt), connectorAccountsTable.id)
-        .limit(limit)
-        .offset(offset);
+        .orderBy(desc(connectorAccountsTable.updatedAt), connectorAccountsTable.id);
+      const rows =
+        params.limit === undefined
+          ? await orderedQuery.offset(offset)
+          : await orderedQuery.limit(params.limit).offset(offset);
       return rows.map(mapAccountRow);
     }, "ConnectorAccountStore.listAccounts");
   }
@@ -527,6 +529,21 @@ export class ConnectorAccountStore implements Store {
         );
       return rows.map(mapCredentialRow);
     }, "ConnectorAccountStore.listCredentialRefs");
+  }
+
+  async deleteCredentialRefs(params: DeleteConnectorAccountCredentialRefsParams): Promise<number> {
+    return this.ctx.withRetry(async () => {
+      const deleted = await this.db
+        .delete(connectorAccountCredentialsTable)
+        .where(
+          and(
+            eq(connectorAccountCredentialsTable.agentId, this.ctx.agentId as UUID),
+            eq(connectorAccountCredentialsTable.accountId, params.accountId)
+          )
+        )
+        .returning();
+      return deleted.length;
+    }, "ConnectorAccountStore.deleteCredentialRefs");
   }
 
   async appendAuditEvent(

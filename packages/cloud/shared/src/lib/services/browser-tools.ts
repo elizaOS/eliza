@@ -3,6 +3,11 @@ import { cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { isHostedBrowserSessionOwner } from "./browser-session-ownership";
+import {
+  type GenerativeOperationContext,
+  isGenerativeOperationAdmissionError,
+  runFlatProviderOperation,
+} from "./generative-operation";
 import { usageService } from "./usage";
 
 export interface HostedBrowserAuthContext {
@@ -11,6 +16,7 @@ export interface HostedBrowserAuthContext {
   organizationId?: string;
   requestSource?: "a2a" | "api" | "mcp";
   userId?: string;
+  operationContext?: GenerativeOperationContext;
 }
 
 export interface HostedBrowserTab {
@@ -167,16 +173,42 @@ function resolveFirecrawlBaseUrl(): string {
   );
 }
 
-async function firecrawlRequest<T>(pathname: string, init: RequestInit): Promise<T> {
-  const response = await fetch(`${resolveFirecrawlBaseUrl()}${pathname}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${resolveFirecrawlApiKey()}`,
-      "Content-Type": "application/json",
-      ...(init.headers ?? {}),
+function requireHostedBrowserOperationContext(
+  auth?: HostedBrowserAuthContext,
+): GenerativeOperationContext {
+  if (!auth?.operationContext) {
+    throw new Error("Hosted browser provider dispatch requires account-standing context");
+  }
+  return auth.operationContext;
+}
+
+async function firecrawlRequest<T>(
+  pathname: string,
+  init: RequestInit,
+  auth: HostedBrowserAuthContext | undefined,
+  operation: string,
+): Promise<T> {
+  const response = await runFlatProviderOperation(
+    requireHostedBrowserOperationContext(auth),
+    {
+      provider: "firecrawl",
+      billingSource: "gateway",
+      model: "firecrawl/browser",
+      operation,
+      cost: 0,
+      metadata: { requestSource: auth?.requestSource ?? "api" },
     },
-    signal: AbortSignal.timeout(60_000),
-  });
+    () =>
+      fetch(`${resolveFirecrawlBaseUrl()}${pathname}`, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${resolveFirecrawlApiKey()}`,
+          "Content-Type": "application/json",
+          ...(init.headers ?? {}),
+        },
+        signal: AbortSignal.timeout(60_000),
+      }),
+  );
 
   const text = await response.text();
   const payload = text.trim().length > 0 ? (JSON.parse(text) as Record<string, unknown>) : {};
@@ -475,6 +507,7 @@ async function logHostedBrowserUsage(
 async function executeFirecrawlBrowserCode(
   sessionId: string,
   code: string,
+  auth?: HostedBrowserAuthContext,
   options?: { language?: "bash" | "node" | "python"; timeoutSeconds?: number },
 ): Promise<FirecrawlBrowserExecuteResponse> {
   return firecrawlRequest<FirecrawlBrowserExecuteResponse>(
@@ -487,11 +520,14 @@ async function executeFirecrawlBrowserCode(
       }),
       method: "POST",
     },
+    auth,
+    "browser_execute",
   );
 }
 
 async function readHostedBrowserPageState(
   sessionId: string,
+  auth?: HostedBrowserAuthContext,
 ): Promise<FirecrawlResolvedPageState | null> {
   const response = await executeFirecrawlBrowserCode(
     sessionId,
@@ -502,6 +538,7 @@ const state = {
 };
 JSON.stringify(state);
     `.trim(),
+    auth,
   );
 
   const payload = parseExecutionPayload(response.result ?? response.stdout);
@@ -516,13 +553,17 @@ JSON.stringify(state);
   };
 }
 
-async function readHostedBrowserSnapshot(sessionId: string): Promise<{ data: string }> {
+async function readHostedBrowserSnapshot(
+  sessionId: string,
+  auth?: HostedBrowserAuthContext,
+): Promise<{ data: string }> {
   const response = await executeFirecrawlBrowserCode(
     sessionId,
     `
 const data = await page.screenshot({ type: "png", encoding: "base64" });
 data;
     `.trim(),
+    auth,
   );
 
   const payload = parseExecutionPayload(response.result ?? response.stdout);
@@ -533,10 +574,17 @@ data;
   return { data: payload };
 }
 
-async function listFirecrawlBrowserSessions(): Promise<FirecrawlBrowserSession[]> {
-  const response = await firecrawlRequest<FirecrawlBrowserListResponse>("/v2/browser", {
-    method: "GET",
-  });
+async function listFirecrawlBrowserSessions(
+  auth?: HostedBrowserAuthContext,
+): Promise<FirecrawlBrowserSession[]> {
+  const response = await firecrawlRequest<FirecrawlBrowserListResponse>(
+    "/v2/browser",
+    {
+      method: "GET",
+    },
+    auth,
+    "browser_list",
+  );
 
   return Array.isArray(response.sessions)
     ? response.sessions.filter(
@@ -554,7 +602,7 @@ async function resolveAuthorizedFirecrawlBrowserSession(
   session: FirecrawlBrowserSession;
 }> {
   const access = await assertHostedBrowserSessionAccess(sessionId, auth);
-  const sessions = await listFirecrawlBrowserSessions();
+  const sessions = await listFirecrawlBrowserSessions(auth);
   const session = sessions.find((entry) => entry.id === sessionId);
 
   if (!session) {
@@ -573,7 +621,7 @@ async function loadAuthorizedHostedBrowserTab(
   tab: HostedBrowserTab;
 }> {
   const { access, session } = await resolveAuthorizedFirecrawlBrowserSession(sessionId, auth);
-  const state = await readHostedBrowserPageState(sessionId).catch((error) => {
+  const state = await readHostedBrowserPageState(sessionId, auth).catch((error) => {
     warnHostedBrowserOptionalReadFailure("page_state", error, { sessionId });
     return null;
   });
@@ -721,13 +769,15 @@ export async function listHostedBrowserSessions(
   auth?: HostedBrowserAuthContext,
 ): Promise<HostedBrowserTab[]> {
   const organizationId = requireHostedBrowserOrganizationId(auth);
+  requireHostedBrowserOperationContext(auth);
   const sessionIds = await getStoredOrganizationSessionIds(organizationId);
   const tabs = await Promise.all(
     sessionIds.map(async (sessionId) => {
       try {
         const { tab } = await loadAuthorizedHostedBrowserTab(sessionId, auth);
         return tab;
-      } catch {
+      } catch (error) {
+        if (isGenerativeOperationAdmissionError(error)) throw error;
         // A same-organization session may belong to another user. Do not delete
         // its access record merely because it is intentionally invisible here.
         return null;
@@ -770,14 +820,19 @@ export async function createHostedBrowserSession(
   auth?: HostedBrowserAuthContext,
 ): Promise<HostedBrowserTab> {
   requireHostedBrowserOrganizationId(auth);
-  const created = await firecrawlRequest<FirecrawlBrowserCreateResponse>("/v2/browser", {
-    body: JSON.stringify({
-      activityTtl: options.activityTtl ?? DEFAULT_BROWSER_ACTIVITY_TTL_SECONDS,
-      streamWebView: true,
-      ttl: options.ttl ?? DEFAULT_BROWSER_TTL_SECONDS,
-    }),
-    method: "POST",
-  });
+  const created = await firecrawlRequest<FirecrawlBrowserCreateResponse>(
+    "/v2/browser",
+    {
+      body: JSON.stringify({
+        activityTtl: options.activityTtl ?? DEFAULT_BROWSER_ACTIVITY_TTL_SECONDS,
+        streamWebView: true,
+        ttl: options.ttl ?? DEFAULT_BROWSER_TTL_SECONDS,
+      }),
+      method: "POST",
+    },
+    auth,
+    "browser_create",
+  );
 
   if (!created.id) {
     throw new Error("Firecrawl returned no browser session id");
@@ -792,6 +847,7 @@ export async function createHostedBrowserSession(
 await page.goto(${JSON.stringify(options.url.trim())}, { waitUntil: "domcontentloaded" });
 JSON.stringify({ title: await page.title(), url: page.url() });
         `.trim(),
+        auth,
       );
     }
 
@@ -838,6 +894,7 @@ export async function navigateHostedBrowserSession(
 await page.goto(${JSON.stringify(url)}, { waitUntil: "domcontentloaded" });
 JSON.stringify({ title: await page.title(), url: page.url() });
     `.trim(),
+    auth,
   );
 
   const tab = await getHostedBrowserSession(sessionId, auth);
@@ -861,6 +918,8 @@ export async function deleteHostedBrowserSession(
     {
       method: "DELETE",
     },
+    auth,
+    "browser_delete",
   );
 
   await removeHostedBrowserSessionAccess(sessionId, access.organizationId);
@@ -882,7 +941,7 @@ export async function getHostedBrowserSnapshot(
   auth?: HostedBrowserAuthContext,
 ): Promise<{ data: string }> {
   await assertHostedBrowserSessionAccess(sessionId, auth);
-  const snapshot = await readHostedBrowserSnapshot(sessionId);
+  const snapshot = await readHostedBrowserSnapshot(sessionId, auth);
   await logHostedBrowserUsage(auth, {
     operation: "browser_snapshot",
     sessionId,
@@ -899,7 +958,7 @@ export async function executeHostedBrowserCommand(
 ): Promise<HostedBrowserCommandResult> {
   await assertHostedBrowserSessionAccess(sessionId, auth);
   const plan = buildCommandCode(command);
-  const executed = await executeFirecrawlBrowserCode(sessionId, plan.code, {
+  const executed = await executeFirecrawlBrowserCode(sessionId, plan.code, auth, {
     language: plan.language,
     timeoutSeconds: plan.timeoutSeconds,
   });
@@ -913,7 +972,7 @@ export async function executeHostedBrowserCommand(
   const snapshot =
     command.subaction === "state" || command.subaction === "get"
       ? undefined
-      : await readHostedBrowserSnapshot(sessionId).catch((error) => {
+      : await readHostedBrowserSnapshot(sessionId, auth).catch((error) => {
           warnHostedBrowserOptionalReadFailure("command_snapshot", error, { sessionId });
           return undefined;
         });
@@ -940,17 +999,22 @@ export async function extractHostedPage(
   options: HostedExtractOptions,
   auth?: HostedBrowserAuthContext,
 ): Promise<HostedExtractResult> {
-  const response = await firecrawlRequest<FirecrawlScrapeResponse>("/v2/scrape", {
-    body: JSON.stringify({
-      formats: options.formats ?? ["markdown"],
-      maxAge: 0,
-      onlyMainContent: options.onlyMainContent ?? true,
-      timeout: options.timeoutMs ?? DEFAULT_EXTRACT_TIMEOUT_MS,
-      url: options.url,
-      waitFor: options.waitFor ?? DEFAULT_EXTRACT_WAIT_FOR_MS,
-    }),
-    method: "POST",
-  });
+  const response = await firecrawlRequest<FirecrawlScrapeResponse>(
+    "/v2/scrape",
+    {
+      body: JSON.stringify({
+        formats: options.formats ?? ["markdown"],
+        maxAge: 0,
+        onlyMainContent: options.onlyMainContent ?? true,
+        timeout: options.timeoutMs ?? DEFAULT_EXTRACT_TIMEOUT_MS,
+        url: options.url,
+        waitFor: options.waitFor ?? DEFAULT_EXTRACT_WAIT_FOR_MS,
+      }),
+      method: "POST",
+    },
+    auth,
+    "extract_page",
+  );
 
   const data = response.data ?? {};
   const result: HostedExtractResult = {

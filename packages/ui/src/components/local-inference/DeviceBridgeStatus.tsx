@@ -21,8 +21,8 @@ export function DeviceBridgeStatusBar({
   const dotClass = status.connected
     ? "bg-status-success"
     : status.pendingRequests > 0
-      ? "bg-amber-500"
-      : "bg-muted-foreground/40";
+      ? "bg-warning"
+      : "bg-muted/40";
   const label = status.connected
     ? status.capabilities
       ? t("devicebridge.onlineWithDevice", {

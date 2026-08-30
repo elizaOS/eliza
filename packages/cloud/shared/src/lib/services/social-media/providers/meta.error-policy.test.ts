@@ -110,6 +110,34 @@ describe("metaProvider.getPostAnalytics — internal failure propagates, empty s
   });
 });
 
+describe("metaProvider.createPost Instagram carousel boundary", () => {
+  it("rejects an eleventh item before creating containers instead of dropping it", async () => {
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls++;
+      return jsonResponse({ id: "unexpected" });
+    }) as typeof fetch;
+
+    const result = await metaProvider.createPost(
+      { accessToken: TOKEN, accountId: "ig-1" } as never,
+      {
+        text: "all eleven items matter",
+        media: Array.from({ length: 11 }, (_, index) => ({
+          type: "image" as const,
+          url: `https://example.com/${index}.jpg`,
+          mimeType: "image/jpeg",
+        })),
+      },
+      { instagram: { accountId: "ig-1" } },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("at most 10 items");
+    expect(result.error).toContain("nothing was posted");
+    expect(fetchCalls).toBe(0);
+  });
+});
+
 describe("metaProvider.getAccountAnalytics — internal failure propagates, empty stays null", () => {
   it("returns null (designed 'not configured') without any fetch when the access token is absent", async () => {
     let fetchCalls = 0;

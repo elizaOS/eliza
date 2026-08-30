@@ -4,7 +4,7 @@
 // First-run onboarding gating for the floating chat overlay (`firstRunOpen`):
 // the sheet opens pinned at the shared HALF composer detent, every collapse path
 // (Escape, outside tap, drag/close) is a no-op, the drag handle is hidden, the
-// composer is sign-in-first/locked, transcript CHOICE widgets stay interactive,
+// composer accepts conductor-only text, transcript CHOICE widgets stay interactive,
 // external sign-in minimizes to the regular compact composer, and completion
 // opens the conversation at FULL.
 
@@ -132,13 +132,15 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.getByTestId("chat-thread")).toBeTruthy();
   });
 
-  it("locks the composer text during onboarding with a sign-in placeholder; attach + mic stay inert", () => {
+  it("accepts conductor text during onboarding while attach + mic stay inert", () => {
     const controller = makeController();
     render(<ChatOverlay controller={controller} firstRunOpen />);
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
-    expect(input.disabled).toBe(true);
-    expect(input.placeholder).toBe("Sign in to start chatting");
+    expect(input.disabled).toBe(false);
+    expect(input.placeholder).toBe("Hey Eliza…");
+    expect(input.getAttribute("aria-describedby")).toBe("cc-first-run-hint");
+    expect(screen.getByText(/answer stays in setup/i)).toBeTruthy();
 
     // The composer actions ("+") menu + mic have no agent to serve them yet —
     // still inert (pre-runtime). The "+" trigger is natively disabled.
@@ -172,7 +174,26 @@ describe("ChatOverlay first-run gating", () => {
     expect(input.placeholder).toBe("Connecting to Eliza Cloud…");
   });
 
-  it("ignores prefill/free-text entry during onboarding so setup stays sign-in-first", () => {
+  it("does not describe a failed Cloud connection as still connecting", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-error",
+          role: "assistant",
+          content:
+            "I couldn't finish setting up your agent: Couldn't connect to Eliza Cloud: session expired.",
+          createdAt: 2,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.placeholder).toBe("Hey Eliza…");
+  });
+
+  it("ignores external prefill during onboarding while direct typing stays local", () => {
     const sendActionMessage = seedAppStoreWithActionSpy();
     const controller = makeController();
     render(<ChatOverlay controller={controller} firstRunOpen />);
@@ -192,16 +213,16 @@ describe("ChatOverlay first-run gating", () => {
     expect(sendActionMessage).not.toHaveBeenCalled();
   });
 
-  it("does not submit typed text with Enter while the onboarding composer is locked", () => {
-    const sendActionMessage = seedAppStoreWithActionSpy();
-    const controller = makeController();
+  it("routes typed text to the onboarding conductor without sending to the agent", () => {
+    const sendFirstRunText = vi.fn();
+    const controller = makeController({ sendFirstRunText });
     render(<ChatOverlay controller={controller} firstRunOpen />);
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "will this work yet?" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(sendActionMessage).not.toHaveBeenCalled();
+    expect(sendFirstRunText).toHaveBeenCalledWith("will this work yet?");
     expect(controller.send).not.toHaveBeenCalled();
   });
 
@@ -254,7 +275,10 @@ describe("ChatOverlay first-run gating", () => {
     const surface = screen.getByTestId("chat-sheet-surface");
     expect(sheet.getAttribute("data-theme")).toBe("dark");
     expect(sheet.style.colorScheme).toBe("dark");
-    expect(surface.style.backgroundColor).toBe("var(--bg)");
+    expect(surface.style.backgroundColor).toBe("var(--chat-sheet-background)");
+    expect(surface.style.getPropertyValue("--chat-sheet-background")).toBe(
+      "var(--bg)",
+    );
   });
 
   it("fills a desktop bottom-bar host so transparent native pixels cannot block other apps", () => {
@@ -383,7 +407,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
-  it("keeps the transcript CHOICE widgets interactive while the composer is locked", () => {
+  it("keeps transcript CHOICE widgets interactive beside conductor text input", () => {
     const sendActionMessage = seedAppStoreWithActionSpy();
     const controller = makeController({
       messages: [
@@ -409,6 +433,80 @@ describe("ChatOverlay first-run gating", () => {
     expect(sendActionMessage).toHaveBeenCalledWith(
       "__first_run__:runtime:local",
     );
+  });
+
+  it("keeps the active setup choice visible after a conductor text reply", () => {
+    seedAppStoreWithActionSpy();
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:greeting",
+          role: "assistant",
+          content: RUNTIME_CHOICE_MESSAGE,
+          createdAt: 1,
+          source: "first_run",
+        },
+        {
+          id: "first-run:user:1",
+          role: "user",
+          content: "Plan my Monday.",
+          createdAt: 2,
+          source: "first_run",
+        },
+        {
+          id: "first-run:reply:choice:1",
+          role: "assistant",
+          content: "Choose above and I'll pick that up after setup.",
+          createdAt: 3,
+          source: "first_run",
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+
+    expect(
+      screen.getByTestId("choice-__first_run__:runtime:cloud"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Choose above and I'll pick that up after setup."),
+    ).toBeTruthy();
+  });
+
+  it("does not revive a stale setup choice while provisioning", () => {
+    seedAppStoreWithActionSpy();
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:greeting",
+          role: "assistant",
+          content: RUNTIME_CHOICE_MESSAGE,
+          createdAt: 1,
+          source: "first_run",
+        },
+        {
+          id: "first-run:user:1",
+          role: "user",
+          content: "Plan my Monday.",
+          createdAt: 2,
+          source: "first_run",
+        },
+        {
+          id: "first-run:reply:wait:1",
+          role: "assistant",
+          content: "I'm setting up your agent now.",
+          createdAt: 3,
+          source: "first_run",
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+
+    expect(
+      screen.queryByTestId("choice-__first_run__:runtime:cloud"),
+    ).toBeNull();
+    expect(screen.getByText("I'm setting up your agent now.")).toBeTruthy();
   });
 
   it("does NOT wrap a first-run CHOICE turn in a role=button bubble (keeps the choices in the AX tree for VoiceOver + on-device automation)", () => {
@@ -483,6 +581,11 @@ describe("ChatOverlay first-run gating", () => {
       expect(
         screen.getByTestId("choice-__first_run__:runtime:cloud"),
       ).toBeTruthy();
+      const composer = screen.getByTestId(
+        "chat-composer-textarea",
+      ) as HTMLTextAreaElement;
+      expect(composer.disabled).toBe(true);
+      expect(composer.placeholder).toBe("Sign in to get started");
     } finally {
       vi.useRealTimers();
     }
@@ -652,6 +755,133 @@ describe("ChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-detent")).toBe("full");
     expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
   });
+
+  it("reopens onboarding when a newer tutorial choice supersedes the retained Cloud sign-in wait", () => {
+    const waitingMessage = {
+      id: "first-run:cloud-login-waiting",
+      role: "assistant" as const,
+      content: [
+        "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+        "",
+        "[CHOICE:first-run id=cloud-login-retry-1]",
+        "__first_run__:cloud-login:retry=Open sign-in again",
+        "[/CHOICE]",
+      ].join("\n"),
+      createdAt: 2,
+    };
+    const waitingController = makeController({
+      messages: [waitingMessage],
+    } as unknown as Partial<ShellController>);
+    const { rerender } = render(
+      <ChatOverlay controller={waitingController} firstRunOpen />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+    const tutorialController = makeController({
+      messages: [
+        waitingMessage,
+        {
+          id: "first-run:tutorial",
+          role: "assistant",
+          content: [
+            "Want a quick tour?",
+            "",
+            "[CHOICE:first-run id=tutorial]",
+            "__first_run__:tutorial:start=Take the tutorial",
+            "__first_run__:tutorial:skip=Skip for now",
+            "[/CHOICE]",
+          ].join("\n"),
+          createdAt: 3,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    rerender(<ChatOverlay controller={tutorialController} firstRunOpen />);
+
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(
+      screen.getByTestId("choice-__first_run__:tutorial:start"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("choice-__first_run__:tutorial:skip"),
+    ).toBeTruthy();
+  });
+
+  it("keeps a refreshed Cloud wait collapsed when its semantic timestamp is newer than a later array entry", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          content: [
+            "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+            "",
+            "[CHOICE:first-run id=cloud-login-retry-2]",
+            "__first_run__:cloud-login:retry=Open sign-in again",
+            "[/CHOICE]",
+          ].join("\n"),
+          createdAt: 4,
+        },
+        {
+          id: "first-run:tutorial",
+          role: "assistant",
+          content: [
+            "Want a quick tour?",
+            "",
+            "[CHOICE:first-run id=tutorial]",
+            "__first_run__:tutorial:start=Take the tutorial",
+            "__first_run__:tutorial:skip=Skip for now",
+            "[/CHOICE]",
+          ].join("\n"),
+          createdAt: 3,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
+    fireEvent.click(screen.getByTestId("chat-composer-textarea"));
+    expect(
+      screen.getByTestId("choice-__first_run__:cloud-login:retry"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId("choice-__first_run__:tutorial:start"),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["newer status", 2, 3],
+    ["equal timestamps", 2, 2],
+    ["missing timestamps", undefined, undefined],
+  ])(
+    "lets a %s first-run turn supersede a retained Cloud wait",
+    (_label, waitingCreatedAt, activeCreatedAt) => {
+      const controller = makeController({
+        messages: [
+          {
+            id: "first-run:cloud-login-waiting",
+            role: "assistant",
+            content:
+              "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+            createdAt: waitingCreatedAt,
+          },
+          {
+            id: "first-run:cloud-error",
+            role: "assistant",
+            content: "Cloud setup needs attention. Choose a recovery action.",
+            createdAt: activeCreatedAt,
+          },
+        ],
+      } as unknown as Partial<ShellController>);
+
+      render(<ChatOverlay controller={controller} firstRunOpen />);
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "half",
+      );
+    },
+  );
 
   it("never idle-collapses first-run sign-in recovery into the handle-only pill", () => {
     vi.useFakeTimers();

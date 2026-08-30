@@ -59,7 +59,6 @@ def evaluate_model_variant(
     adapter_path: str | None,
     prompts: Sequence[dict[str, str]],
     system_prompt: str,
-    max_tokens: int,
     assistant_prefix: str | None = ACTION_REASON_ASSISTANT_PREFIX,
     score_fn=score_response_text,
     summarize_fn=summarize_results,
@@ -78,7 +77,6 @@ def evaluate_model_variant(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt["prompt"]},
                 ],
-                max_new_tokens=max_tokens,
                 assistant_prefix=assistant_prefix,
             )
             latency_ms = (time.perf_counter() - start) * 1000
@@ -133,7 +131,6 @@ def generate_comparison_report(
     backend: BackendName,
     prompts: Sequence[dict[str, str]] | None = None,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-    max_tokens: int = 120,
     include_decision_suite: bool = True,
     output_path: Path,
     manifest_path: Path | None = None,
@@ -141,7 +138,6 @@ def generate_comparison_report(
     suite_configs = build_suite_configs(
         prompts=list(prompts) if prompts is not None else None,
         system_prompt=system_prompt,
-        max_tokens=max_tokens,
         include_decision_suite=include_decision_suite,
     )
 
@@ -155,7 +151,6 @@ def generate_comparison_report(
                 adapter_path=adapter_path,
                 prompts=suite["prompts"],
                 system_prompt=suite["system_prompt"],
-                max_tokens=int(suite["max_tokens"]),
                 assistant_prefix=suite.get("assistant_prefix"),
                 score_fn=suite["score_fn"],
                 summarize_fn=suite["summarize_fn"],
@@ -204,7 +199,6 @@ def generate_comparison_report(
                 "name": suite["name"],
                 "system_prompt": suite["system_prompt"],
                 "prompt_count": len(suite["prompts"]),
-                "max_tokens": suite["max_tokens"],
             }
             for suite in suite_configs
         ],
@@ -242,7 +236,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--prompt-file",
         help="Optional JSON file with prompt objects ({id, prompt}) or strings",
     )
-    parser.add_argument("--max-tokens", type=int, default=120)
     parser.add_argument("--system-prompt", default=DEFAULT_SYSTEM_PROMPT)
     parser.add_argument(
         "--output",
@@ -281,7 +274,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         backend=backend,
         prompts=prompts,
         system_prompt=args.system_prompt,
-        max_tokens=args.max_tokens,
         include_decision_suite=include_decision_suite,
         output_path=output_path,
         manifest_path=manifest_path,

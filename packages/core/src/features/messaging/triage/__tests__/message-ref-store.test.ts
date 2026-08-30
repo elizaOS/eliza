@@ -1,7 +1,6 @@
 /**
- * Deterministic boundary coverage for MessageRefStore write-recency eviction.
- * The real in-memory store is exercised at its production message and draft
- * capacities without replacing the system under test.
+ * Deterministic boundary coverage proving MessageRefStore preserves messages
+ * and drafts beyond the former item-count thresholds.
  */
 
 import { describe, expect, it } from "vitest";
@@ -65,8 +64,8 @@ function fillDrafts(store: MessageRefStore): void {
 	}
 }
 
-describe("MessageRefStore write-recency eviction", () => {
-	it("keeps a singly refreshed message and evicts the oldest untouched message", () => {
+describe("MessageRefStore complete retention", () => {
+	it("keeps a singly refreshed message and every untouched message", () => {
 		const store = new MessageRefStore();
 		fillMessages(store);
 
@@ -74,9 +73,9 @@ describe("MessageRefStore write-recency eviction", () => {
 		store.saveMessage(message(MESSAGE_CAPACITY));
 
 		expect(store.getMessage("message-0")?.snippet).toBe("fresh message zero");
-		expect(store.getMessage("message-1")).toBeNull();
+		expect(store.getMessage("message-1")).not.toBeNull();
 		expect(store.getMessage(`message-${MESSAGE_CAPACITY}`)).not.toBeNull();
-		expect(store.listMessages()).toHaveLength(MESSAGE_CAPACITY);
+		expect(store.listMessages()).toHaveLength(MESSAGE_CAPACITY + 1);
 	});
 
 	it("uses complete batch order and the last duplicate value for recency", () => {
@@ -91,8 +90,8 @@ describe("MessageRefStore write-recency eviction", () => {
 
 		const listed = store.listMessages();
 		expect(store.getMessage("message-0")?.snippet).toBe("last refresh");
-		expect(store.getMessage("message-1")).toBeNull();
-		expect(listed).toHaveLength(MESSAGE_CAPACITY);
+		expect(store.getMessage("message-1")).not.toBeNull();
+		expect(listed).toHaveLength(MESSAGE_CAPACITY + 1);
 		expect(listed.slice(-2).map((ref) => ref.id)).toEqual([
 			`message-${MESSAGE_CAPACITY}`,
 			"message-0",
@@ -124,7 +123,7 @@ describe("MessageRefStore write-recency eviction", () => {
 			store.saveMessage(message(MESSAGE_CAPACITY));
 
 			expect(store.getMessage("message-0")?.tags).toEqual(expectedTags);
-			expect(store.getMessage("message-1")).toBeNull();
+			expect(store.getMessage("message-1")).not.toBeNull();
 		},
 	);
 
@@ -142,8 +141,8 @@ describe("MessageRefStore write-recency eviction", () => {
 		store.saveMessage(message(MESSAGE_CAPACITY));
 		store.saveDraft(draft(DRAFT_CAPACITY));
 
-		expect(store.getMessage("message-0")).toBeNull();
-		expect(store.getDraft("draft-0")).toBeNull();
+		expect(store.getMessage("message-0")).not.toBeNull();
+		expect(store.getDraft("draft-0")).not.toBeNull();
 	});
 
 	it.each([
@@ -164,11 +163,11 @@ describe("MessageRefStore write-recency eviction", () => {
 		expect(mutate(store)?.tags).toEqual(["keep"]);
 		store.saveMessage(message(MESSAGE_CAPACITY));
 
-		expect(store.getMessage("message-0")).toBeNull();
+		expect(store.getMessage("message-0")).not.toBeNull();
 		expect(store.getMessage("message-1")).not.toBeNull();
 	});
 
-	it("keeps an overwritten draft and evicts the oldest untouched draft", () => {
+	it("keeps an overwritten draft and every untouched draft", () => {
 		const store = new MessageRefStore();
 		fillDrafts(store);
 
@@ -176,7 +175,7 @@ describe("MessageRefStore write-recency eviction", () => {
 		store.saveDraft(draft(DRAFT_CAPACITY));
 
 		expect(store.getDraft("draft-0")?.body).toBe("fresh draft body");
-		expect(store.getDraft("draft-1")).toBeNull();
+		expect(store.getDraft("draft-1")).not.toBeNull();
 		expect(store.getDraft(`draft-${DRAFT_CAPACITY}`)).not.toBeNull();
 	});
 
@@ -194,7 +193,7 @@ describe("MessageRefStore write-recency eviction", () => {
 			sent: true,
 			sentExternalId: "provider-message-0",
 		});
-		expect(store.getDraft("draft-1")).toBeNull();
+		expect(store.getDraft("draft-1")).not.toBeNull();
 	});
 
 	it("keeps a scheduled draft and its durable commit across overflow", () => {
@@ -227,6 +226,6 @@ describe("MessageRefStore write-recency eviction", () => {
 			scheduledId: "schedule-0",
 			scheduleCommit,
 		});
-		expect(store.getDraft("draft-1")).toBeNull();
+		expect(store.getDraft("draft-1")).not.toBeNull();
 	});
 });

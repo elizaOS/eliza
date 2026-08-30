@@ -3,6 +3,7 @@
  * launcher, banner, and overlay contexts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Input } from "../ui/input";
 import { GlassIconButton } from "./glass-composer";
 import { GLASS_COMPOSER_CLASS } from "./glass-composer.helpers";
 
@@ -66,10 +67,12 @@ export const Disabled: Story = {
 export const ComposerBar: Story = {
   render: () => (
     <div className={GLASS_COMPOSER_CLASS} style={{ minWidth: 260 }}>
-      <input
+      <Input
         aria-label="Message"
         placeholder="Message…"
-        className="flex-1 bg-transparent px-2 text-base text-txt outline-none placeholder:text-txt/50 sm:text-sm"
+        variant="embeddedName"
+        density="denseResponsive"
+        className="flex-1"
       />
       <GlassIconButton icon="mic" label="Hold to talk" />
       <GlassIconButton icon="send" label="Send message" />

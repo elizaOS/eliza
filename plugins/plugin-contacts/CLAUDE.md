@@ -6,8 +6,8 @@ Android address-book overlay app for elizaOS: provides a full-screen UI surface 
 
 This plugin adds Android address-book capability to an Eliza agent. It ships two surfaces:
 
-1. A **dynamic provider** (`androidContacts`) that reads up to 50 contacts from the device and injects them as planning context — scoped to `contacts` and `messaging` conversation contexts, gated to `ADMIN` role sessions, cached per-turn.
-2. A **full-screen overlay app** (`ContactsAppView`) and one shipped GUI view declaration (`ContactsView`) registered via `@elizaos/ui`.
+1. A **dynamic provider** (`androidContacts`) that reads the complete contact list from the device and injects it as planning context — scoped to `contacts` and `messaging` conversation contexts, gated to `ADMIN` role sessions, cached per-turn.
+2. A **full-screen overlay app** (`ContactsAppView`) and one shipped GUI view declaration (`ContactsView`) registered via `@elizaos/ui`; the renderer page wrapper and launcher back button live in `ContactsPage`.
 
 The plugin is Android-only (`elizaos.app.androidOnly: true`). The `src/register.ts` side-effect module skips registration on non-elizaOS runtimes. The `/plugin` export is the entry point for the elizaOS runtime adapter.
 
@@ -17,7 +17,7 @@ Registered in `appContactsPlugin` (`src/plugin.ts`):
 
 | Kind | Name | Description |
 |------|------|-------------|
-| Provider | `androidContacts` | Read-only: fetches up to 50 contacts (id, displayName, phones, emails, starred) from `@elizaos/capacitor-contacts` and emits JSON context. Dynamic; contexts: `contacts`, `messaging`; roleGate: ADMIN; cacheScope: turn. |
+| Provider | `androidContacts` | Read-only: fetches all contacts (id, displayName, phones, emails, starred) from `@elizaos/capacitor-contacts` and emits JSON context. Dynamic; contexts: `contacts`, `messaging`; roleGate: ADMIN; cacheScope: turn. |
 | View | `contacts` | GUI address-book view — `ContactsView` component, path `/contacts`. |
 
 No actions, services, evaluators, events, or routes are registered.
@@ -28,7 +28,7 @@ No actions, services, evaluators, events, or routes are registered.
 src/
   index.ts                          Public package entry — re-exports plugin, app, register, ui
   plugin.ts                         appContactsPlugin definition (providers + views)
-  register.ts                       Side-effect: calls registerContactsApp() when isElizaOS()
+  register.ts                       Side-effect: registers the overlay app and Contacts page when isElizaOS()
   ui.ts                             Re-exports ContactsAppView, contactsApp, registerContactsApp
   providers/
     contacts.ts                     androidContacts provider implementation
@@ -39,6 +39,7 @@ src/
     contacts-view-bundle.ts         View bundle registration helpers
     contacts-contract.test.ts       Contract tests for the overlay-app view surface
     ContactsAppView.tsx             Full-screen overlay UI (list / detail / new modes)
+    ContactsPage.tsx                App-shell page chrome and launcher back affordance
     ContactsAppView.helpers.ts      Helper utilities for ContactsAppView
     ContactsAppView.interact.ts     Exports interact(capability, params) for programmatic view actions
     ContactsAppView.test.ts         Tests for ContactsAppView
@@ -66,7 +67,7 @@ bun run --cwd plugins/plugin-contacts clean        # rm -rf dist
 
 This plugin reads no environment variables and has no settings keys. All address-book access goes through `@elizaos/capacitor-contacts` Contacts native API, which requires the Android `READ_CONTACTS` / `WRITE_CONTACTS` permissions to be granted at the OS level.
 
-The provider limit is a hardcoded constant `CONTACTS_PROVIDER_LIMIT = 50` in `src/providers/contacts.ts`.
+The provider intentionally omits the native bridge's optional pagination limit so planner context receives the complete address book.
 
 ## How to extend
 
@@ -78,7 +79,7 @@ The provider limit is a hardcoded constant `CONTACTS_PROVIDER_LIMIT = 50` in `sr
 
 ## Conventions / gotchas
 
-- **Android-only.** `isElizaOS()` guard in `src/register.ts` prevents the overlay app from registering on web/iOS/desktop. The provider will still be instantiated anywhere the plugin is loaded, but `Contacts.listContacts` will throw on non-Android runtimes — the provider catches the error and returns `contactsAvailable: false`.
+- **Android-only.** `isElizaOS()` guard in `src/register.ts` prevents the overlay app and app-shell page from registering on web/iOS/desktop. The provider will still be instantiated anywhere the plugin is loaded, but `Contacts.listContacts` will throw on non-Android runtimes — the provider catches the error and returns `contactsAvailable: false`.
 - **No update or delete.** The `@elizaos/capacitor-contacts` native plugin does not expose contact mutation beyond create and import. The detail panel is read-only; the "Edit" path was intentionally omitted.
 - **In-app Call/Text linking.** The detail view phone rows do not use a `tel:` OS handoff. Each number renders "Call" and "Text" controls that dispatch `eliza:navigate:view` with `{ viewId, viewPath, payload }` for the in-app Phone and Messages views, pre-seeding the target through the generic navigation payload handoff. Email keeps its `mailto:` anchor (there is no in-app email view). Do not reintroduce `tel:`.
 - **Provider roleGate.** `roleGate: { minRole: "ADMIN" }` means the `androidContacts` provider only fires in admin-role sessions. Do not change this without reviewing the address-book privacy model.

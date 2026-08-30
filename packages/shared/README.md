@@ -17,7 +17,7 @@ Shared cross-platform contract library for [elizaOS](https://github.com/elizaOS/
 
 ## Who uses it
 
-Direct dependents: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/ui`, `@elizaos/app`, `@elizaos/cloud-api`, `@elizaos/cloud-frontend`, `@elizaos/os-homepage`, `@elizaos/browser-bridge-extension`, and `@elizaos/cloud-shared`.
+Direct dependents: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/ui`, `@elizaos/app`, `@elizaos/cloud-api`, `@elizaos/cloud-frontend`, `@elizaos/homepage-source`, `@elizaos/browser-bridge-extension`, and `@elizaos/cloud-shared`.
 
 ## Installation
 

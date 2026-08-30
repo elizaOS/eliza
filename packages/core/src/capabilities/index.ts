@@ -15,7 +15,10 @@
  * that pins the wire protocol.
  */
 import type { JsonObject, JsonValue } from "../types/primitives";
-import type { SurfaceCapability } from "../types/surface-manifest";
+import type {
+	PageLayoutManifest,
+	SurfaceCapability,
+} from "../types/surface-manifest";
 import {
 	normalizeWorkspaceDeltaReceipt,
 	type WorkspaceDeltaReceipt,
@@ -262,6 +265,7 @@ export type RemotePluginSurfaceManifest = JsonObject & {
 		| "immersive";
 	lifecycle?: "ephemeral" | "retained";
 	capabilities?: SurfaceCapability[];
+	layout?: PageLayoutManifest;
 };
 
 export type RemotePluginViewManifest = {
@@ -372,6 +376,7 @@ export type RemotePluginAppNavTabManifest = {
 	developerOnly?: boolean;
 	group?: string;
 	backgroundPolicy?: RemotePluginBackgroundPolicy;
+	surface?: RemotePluginSurfaceManifest;
 	componentExport?: string;
 };
 
@@ -2699,6 +2704,11 @@ function optionalSurfaceManifest(
 		"capabilities",
 		`${method}.${key}`,
 	);
+	const layout = optionalPageLayoutManifest(
+		value,
+		"layout",
+		`${method}.${key}`,
+	);
 
 	return {
 		...(background === undefined ? {} : { background }),
@@ -2706,7 +2716,73 @@ function optionalSurfaceManifest(
 		...(isolation === undefined ? {} : { isolation }),
 		...(lifecycle === undefined ? {} : { lifecycle }),
 		...(capabilities === undefined ? {} : { capabilities }),
+		...(layout === undefined ? {} : { layout }),
 	};
+}
+
+function optionalPageLayoutManifest(
+	object: JsonObject,
+	key: string,
+	method: string,
+): PageLayoutManifest | undefined {
+	const value = optionalJsonObject(object, key, method);
+	if (value === undefined) return undefined;
+	const kind = requireString(value, "kind", `${method}.${key}`);
+	const width = requireString(value, "width", `${method}.${key}`);
+	const scroll = requireString(value, "scroll", `${method}.${key}`);
+	const topology = optionalString(value, "topology", `${method}.${key}`);
+	const gutter = optionalString(value, "gutter", `${method}.${key}`);
+	if (
+		topology !== undefined &&
+		topology !== "framed" &&
+		topology !== "ambient"
+	) {
+		throw decodeError(method, `${key}.topology must be "framed" or "ambient".`);
+	}
+	if (gutter !== undefined && gutter !== "standard" && gutter !== "none") {
+		throw decodeError(method, `${key}.gutter must be "standard" or "none".`);
+	}
+	if (
+		kind === "content" &&
+		["reading", "standard", "wide"].includes(width) &&
+		(scroll === "shell" || scroll === "view")
+	) {
+		return {
+			kind,
+			...(topology === undefined ? {} : { topology }),
+			width: width as "reading" | "standard" | "wide",
+			scroll,
+			...(gutter === undefined ? {} : { gutter }),
+		};
+	}
+	if (
+		kind === "workspace" &&
+		["wide", "full"].includes(width) &&
+		scroll === "view"
+	) {
+		return {
+			kind,
+			...(topology === undefined ? {} : { topology }),
+			width: width as "wide" | "full",
+			scroll,
+			...(gutter === undefined ? {} : { gutter }),
+		};
+	}
+	if (
+		kind === "immersive" &&
+		width === "full" &&
+		scroll === "view" &&
+		gutter === "none"
+	) {
+		return {
+			kind,
+			...(topology === undefined ? {} : { topology }),
+			width,
+			scroll,
+			gutter,
+		};
+	}
+	throw decodeError(method, `${key} is not a valid page layout manifest.`);
 }
 
 function optionalSurfaceCapabilities(
@@ -3459,6 +3535,7 @@ function requireRemotePluginAppNavTab(
 		"backgroundPolicy",
 		method,
 	);
+	const surface = optionalSurfaceManifest(object, "surface", method);
 	const componentExport = optionalString(object, "componentExport", method);
 	const path = requireNonEmptyString(object, "path", method);
 	validateRemotePluginPath(path, "path", method);
@@ -3471,6 +3548,7 @@ function requireRemotePluginAppNavTab(
 		...(developerOnly === undefined ? {} : { developerOnly }),
 		...(group === undefined ? {} : { group }),
 		...(backgroundPolicy === undefined ? {} : { backgroundPolicy }),
+		...(surface === undefined ? {} : { surface }),
 		...(componentExport === undefined ? {} : { componentExport }),
 	};
 }

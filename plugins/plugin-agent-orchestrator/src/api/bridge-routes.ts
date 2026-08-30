@@ -28,6 +28,10 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE } from "@elizaos/core";
+import {
+  CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
+  matchesCredentialBridgeToken,
+} from "../services/credential-bridge-auth.js";
 import type { SessionInfo } from "../services/types.js";
 import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 import {
@@ -156,6 +160,18 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function requestCredentialBridgeToken(req: IncomingMessage): string | null {
+  const header = req.headers["x-eliza-session-token"];
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  const authorization = req.headers.authorization;
+  if (typeof authorization === "string") {
+    const match = authorization.match(/^Bearer\s+(.+)$/i);
+    if (match?.[1]?.trim()) return match[1].trim();
+  }
+  return null;
+}
+
 /**
  * Resolve the per-runtime credential adapter. The orchestrator registers it
  * as a runtime service under the well-known key below. Returning null lets
@@ -190,6 +206,20 @@ async function resolveActiveSession(
   return session;
 }
 
+function isSessionCallerAuthorized(
+  req: IncomingMessage,
+  session: SessionInfo,
+): boolean {
+  const token = requestCredentialBridgeToken(req);
+  return (
+    token !== null &&
+    matchesCredentialBridgeToken(
+      token,
+      session.metadata?.[CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA],
+    )
+  );
+}
+
 async function handlePost(
   req: IncomingMessage,
   res: ServerResponse,
@@ -218,6 +248,17 @@ async function handlePost(
         code: "session_not_active",
       },
       410,
+    );
+    return;
+  }
+  if (!isSessionCallerAuthorized(req, session)) {
+    sendJson(
+      res,
+      {
+        error: "invalid credential bridge session token",
+        code: "unauthorized",
+      },
+      401,
     );
     return;
   }
@@ -310,6 +351,17 @@ async function handleGet(
         code: "session_not_active",
       },
       410,
+    );
+    return;
+  }
+  if (!isSessionCallerAuthorized(req, session)) {
+    sendJson(
+      res,
+      {
+        error: "invalid credential bridge session token",
+        code: "unauthorized",
+      },
+      401,
     );
     return;
   }
