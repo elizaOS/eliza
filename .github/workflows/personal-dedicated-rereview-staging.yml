@@ -108,6 +108,10 @@ jobs:
         run: |
           bun run --cwd packages/prompts build:package
           bun run --cwd packages/shared build
+          bun run --cwd packages/core build
+
+      - name: Probe fixed runtime dependencies
+        run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies
 
       - name: Validate operator contracts
         run: >-
