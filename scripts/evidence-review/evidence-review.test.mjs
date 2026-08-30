@@ -278,36 +278,53 @@ test("bundle review never silently truncates a verified manifest", async () => {
   }
 });
 
-test("rejects reviewer output that could mutate the verified bundle", () => {
-  const bundle = path.resolve("/tmp/evidence-bundle");
-  assert.throws(() => assertSafeOutputDir(bundle, bundle), /must not overlap/);
-  assert.throws(
-    () => assertSafeOutputDir(path.join(bundle, "review"), bundle),
-    /must not overlap/,
+test("rejects reviewer output that could mutate the verified bundle", async () => {
+  const tmpDir = await mkdtemp(
+    path.join(os.tmpdir(), "evidence-overlap-paths-"),
   );
-  assert.throws(
-    () => assertSafeOutputDir(path.dirname(bundle), bundle),
-    /must not overlap/,
-  );
-  assert.doesNotThrow(() =>
-    assertSafeOutputDir(path.resolve("/tmp/evidence-review"), bundle),
-  );
+  try {
+    const bundle = path.join(tmpDir, "bundle");
+    assert.throws(
+      () => assertSafeOutputDir(bundle, bundle),
+      /must not overlap/,
+    );
+    assert.throws(
+      () => assertSafeOutputDir(path.join(bundle, "review"), bundle),
+      /must not overlap/,
+    );
+    assert.throws(
+      () => assertSafeOutputDir(path.dirname(bundle), bundle),
+      /must not overlap/,
+    );
+    assert.doesNotThrow(() =>
+      assertSafeOutputDir(path.join(tmpDir, "separate-review"), bundle),
+    );
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 });
 
-test("rejects reviewer output that overlaps an explicit compatibility source", () => {
-  const source = path.resolve("/tmp/evidence-source");
-  assert.throws(
-    () => assertSafeOutputDir(source, null, [source]),
-    /evidence source directories must not overlap/,
+test("rejects reviewer output that overlaps an explicit compatibility source", async () => {
+  const tmpDir = await mkdtemp(
+    path.join(os.tmpdir(), "evidence-source-paths-"),
   );
-  assert.throws(
-    () => assertSafeOutputDir(path.join(source, "review"), null, [source]),
-    /evidence source directories must not overlap/,
-  );
-  assert.throws(
-    () => assertSafeOutputDir(path.dirname(source), null, [source]),
-    /evidence source directories must not overlap/,
-  );
+  try {
+    const source = path.join(tmpDir, "source");
+    assert.throws(
+      () => assertSafeOutputDir(source, null, [source]),
+      /evidence source directories must not overlap/,
+    );
+    assert.throws(
+      () => assertSafeOutputDir(path.join(source, "review"), null, [source]),
+      /evidence source directories must not overlap/,
+    );
+    assert.throws(
+      () => assertSafeOutputDir(path.dirname(source), null, [source]),
+      /evidence source directories must not overlap/,
+    );
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test("rejects a reviewer output symlink into the verified bundle", async () => {
