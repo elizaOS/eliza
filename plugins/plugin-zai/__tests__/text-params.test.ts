@@ -128,7 +128,7 @@ describe("z.ai text parameter resolution", () => {
     const explicitCall = generateTextMock.mock.calls[1]?.[0] as Record<string, unknown>;
     expect(defaultCall).not.toHaveProperty("maxOutputTokens");
     expect(defaultCall).not.toHaveProperty("maxTokens");
-    expect(explicitCall.maxOutputTokens).toBe(123);
+    expect(explicitCall.maxTokens).toBe(123);
   });
 
   it("uses deprecated CoT budget settings to enable z.ai thinking mode", async () => {

@@ -32,6 +32,8 @@ vi.mock("@elizaos/capacitor-system", () => ({
 }));
 
 vi.mock("@elizaos/ui", () => ({
+  Badge: ({ children, ...props }: React.HTMLAttributes<HTMLSpanElement>) =>
+    React.createElement("span", props, children),
   Button: ({
     children,
     type = "button",
