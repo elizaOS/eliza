@@ -1,0 +1,109 @@
+name: Cloud Placement A/B
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_deploy_sha:
+        description: Exact 40-character develop SHA served by both staging arms.
+        required: true
+        type: string
+      smart_base_url:
+        description: Credential-free HTTPS origin for the Smart Placement staging arm.
+        required: true
+        type: string
+      control_base_url:
+        description: Credential-free HTTPS workers.dev origin for the default-placement staging arm.
+        required: true
+        type: string
+      smart_worker:
+        description: Cloudflare service name for the Smart Placement staging arm.
+        required: true
+        type: string
+      control_worker:
+        description: Cloudflare service name for the default-placement staging arm.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-placement-ab-staging
+  cancel-in-progress: false
+
+jobs:
+  certify-placement:
+    name: Certify staging Smart Placement against default placement
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: staging
+    env:
+      NODE_VERSION: "24.15.0"
+      EXPECTED_DEPLOY_SHA: ${{ inputs.expected_deploy_sha }}
+      SMART_BASE_URL: ${{ inputs.smart_base_url }}
+      CONTROL_BASE_URL: ${{ inputs.control_base_url }}
+      SMART_WORKER: ${{ inputs.smart_worker }}
+      CONTROL_WORKER: ${{ inputs.control_worker }}
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ELIZA_GATEWAY_DEPLOY_SHA: ${{ inputs.expected_deploy_sha }}
+    steps:
+      - name: Validate trusted exact-SHA staging dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_DEPLOY_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::expected_deploy_sha must be a lowercase 40-character commit."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/heads/develop" || "$GITHUB_SHA" != "$EXPECTED_DEPLOY_SHA" ]]; then
+            echo "::error::Dispatch develop at the exact SHA served by both staging arms."
+            exit 1
+          fi
+          required=(ELIZAOS_CLOUD_API_KEY CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID)
+          for name in "${required[@]}"; do
+            value_without_whitespace="${!name:-}"
+            value_without_whitespace="${value_without_whitespace//[[:space:]]/}"
+            if [[ -z "$value_without_whitespace" ]]; then
+              echo "::error::Missing protected staging secret: $name"
+              exit 1
+            fi
+          done
+          unset value_without_whitespace
+          echo "Protected staging credential names are configured; values were not printed."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run exact-SHA privacy-safe placement A/B
+        shell: bash
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/cloud-placement-ab.mjs \
+            --deploy-sha "$EXPECTED_DEPLOY_SHA" \
+            --smart-base-url "$SMART_BASE_URL" \
+            --control-base-url "$CONTROL_BASE_URL" \
+            --smart-worker "$SMART_WORKER" \
+            --control-worker "$CONTROL_WORKER" \
+            --success-pairs 30 \
+            --max-attempts 45 \
+            --output-dir "$GITHUB_WORKSPACE/artifacts/cloud-placement-ab"
+
+      - name: Upload sanitized placement evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-placement-ab-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/cloud-placement-ab/placement-ab.jsonl
+            artifacts/cloud-placement-ab/summary.json
+          if-no-files-found: warn
+          retention-days: 7
