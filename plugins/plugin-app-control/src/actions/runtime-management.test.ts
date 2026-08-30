@@ -10,7 +10,6 @@ import {
 	createRuntimeManagementAction,
 	parseRuntimeManagementRequest,
 	type RuntimeManagementFn,
-	requiresRuntimeManagementConfirmation,
 } from "./runtime-management.ts";
 
 const runtime = {} as IAgentRuntime;
@@ -21,12 +20,44 @@ function callback(): HandlerCallback {
 }
 
 describe("RUNTIMES action", () => {
-	it("requires confirmation for the exact complement of exempt operations", () => {
-		expect(
-			RUNTIME_MANAGEMENT_OPERATIONS.filter(
-				requiresRuntimeManagementConfirmation,
-			),
-		).toEqual(
+	it("requires confirmation for the exact complement of exempt operations", async () => {
+		const confirmationRequired: Array<
+			(typeof RUNTIME_MANAGEMENT_OPERATIONS)[number]
+		> = [];
+		for (const op of RUNTIME_MANAGEMENT_OPERATIONS) {
+			const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+				ok: true,
+				op: request.op,
+			}));
+			const result = await createRuntimeManagementAction({
+				manageRuntime,
+			}).handler(
+				runtime,
+				message,
+				undefined,
+				{
+					op,
+					targetId: "target-1",
+					runtimeId: "runtime-1",
+					target: "user@example.test",
+					sshPort: 22,
+					remoteApiPort: 2138,
+					expectedFingerprint: "SHA256:verified",
+					identityFile: "/tmp/id_ed25519",
+					apiBase: "http://runtime.example.test",
+					sessionId: "session-1",
+					code: "123456",
+					managedNetwork: false,
+					platform: "linux",
+				},
+				callback(),
+			);
+			if (result?.values?.awaitingConfirmation === true) {
+				confirmationRequired.push(op);
+			}
+		}
+
+		expect(confirmationRequired).toEqual(
 			RUNTIME_MANAGEMENT_OPERATIONS.filter(
 				(operation) =>
 					!RUNTIME_MANAGEMENT_OWNER_APPROVAL_EXEMPT_OPERATIONS.has(operation),
