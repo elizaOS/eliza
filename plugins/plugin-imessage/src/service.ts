@@ -1159,6 +1159,18 @@ export class IMessageService extends Service implements IIMessageService {
       return "ignored";
     }
     if (!verifyBlooioSignature(settings.blooioWebhookSecret, signature, rawBody)) {
+      logger.warn(
+        {
+          src: "plugin:imessage:blooio",
+          rawBodyBytes: Buffer.byteLength(rawBody),
+          rawBodySha256: crypto.createHash("sha256").update(rawBody).digest("hex"),
+          signaturePresent: Boolean(signature),
+          signatureLength: signature?.length ?? 0,
+          signatureSegmentCount: signature?.split(",").length ?? 0,
+          signatureContainsWhitespace: /\s/.test(signature ?? ""),
+        },
+        "[imessage] Rejected a Blooio webhook with an invalid signature"
+      );
       return "unauthorized";
     }
     const inbound = parseBlooioInbound(rawBody, settings.blooioChannelId);
