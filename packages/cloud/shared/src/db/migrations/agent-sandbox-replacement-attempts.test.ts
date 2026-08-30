@@ -378,12 +378,16 @@ describe("0321-0328 agent sandbox replacement attempts", () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
     };
-    expect(journal.entries.at(-1)).toMatchObject({
-      idx: 311,
-      tag: "0328_agent_sandbox_replacement_attempt_state_guard",
-    });
-    expect(journal.entries.slice(-8).map(({ tag }) => tag)).toEqual(
-      migrationUrls.map(migrationTag),
+    const expectedTags = migrationUrls.map(migrationTag);
+    const rangeStart = journal.entries.findIndex(({ tag }) => tag === expectedTags[0]);
+    expect(rangeStart).toBeGreaterThanOrEqual(0);
+    const range = journal.entries.slice(rangeStart, rangeStart + expectedTags.length);
+    expect(range.map(({ idx }) => idx)).toEqual(
+      Array.from({ length: expectedTags.length }, (_, offset) => 304 + offset),
+    );
+    expect(range.map(({ tag }) => tag)).toEqual(expectedTags);
+    expect(journal.entries.filter(({ tag }) => expectedTags.includes(tag))).toHaveLength(
+      expectedTags.length,
     );
 
     const db = await database();

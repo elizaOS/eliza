@@ -15,6 +15,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AccountDeletionExport,
@@ -29,7 +30,7 @@ import {
   accountDeletionRequests,
   type NewAccountDeletionRequest,
 } from "../schemas/account-deletion-requests";
-import { agentSandboxReplacementAttempts } from "../schemas/agent-sandbox-replacement-attempts";
+import { agentBackupAdmissionWork } from "../schemas/agent-backup-admission";
 import { apiKeys } from "../schemas/api-keys";
 import {
   billingCancelCommandKeys,
@@ -39,8 +40,74 @@ import { organizations } from "../schemas/organizations";
 import { providerAdmissions } from "../schemas/provider-admissions";
 import { userSessions } from "../schemas/user-sessions";
 import { users } from "../schemas/users";
+import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const TERMINAL_REQUEST_STATUSES = ["completed", "canceled"] as const;
+const ACCOUNT_DELETION_BACKUP_SETTLEMENT_REASON = "ACCOUNT_DELETION_IRREVERSIBLE";
+
+async function settleBackupAdmissionForDeletion(
+  tx: DbTransaction,
+  organizationId: string,
+  scheduleCaptureOnly: boolean,
+): Promise<void> {
+  const databaseNow = await readPostLockDatabaseNow(tx);
+  await tx
+    .update(agentBackupAdmissionWork)
+    .set({
+      state: "settled",
+      deferred_reason: null,
+      lease_owner: null,
+      lease_generation: null,
+      lease_expires_at: null,
+      settled_at: databaseNow,
+      settled_reason: ACCOUNT_DELETION_BACKUP_SETTLEMENT_REASON,
+      updated_at: databaseNow,
+    })
+    .where(
+      and(
+        eq(agentBackupAdmissionWork.organization_id, organizationId),
+        scheduleCaptureOnly
+          ? eq(agentBackupAdmissionWork.work_kind, "schedule_capture")
+          : undefined,
+        inArray(agentBackupAdmissionWork.state, ["queued", "deferred", "leased"]),
+      ),
+    );
+}
+
+/**
+ * Transactions that can contend on existing phase rows lock the owning
+ * request before any existing export or phase row. Organization-scoped
+ * lifecycle transitions take their organization/member locks first.
+ */
+async function lockAccountDeletionRequest(
+  tx: DbTransaction,
+  requestId: string,
+): Promise<Pick<AccountDeletionRequest, "id" | "status"> | undefined> {
+  const [request] = await tx
+    .select({ id: accountDeletionRequests.id, status: accountDeletionRequests.status })
+    .from(accountDeletionRequests)
+    .where(eq(accountDeletionRequests.id, requestId))
+    .for("update")
+    .limit(1);
+  return request;
+}
+
+/** Existing export rows precede any contended phase-row lock or mutation. */
+async function lockAccountDeletionExport(
+  tx: DbTransaction,
+  requestId: string,
+): Promise<Pick<AccountDeletionExport, "request_id" | "status"> | undefined> {
+  const [exportReceipt] = await tx
+    .select({
+      request_id: accountDeletionExports.request_id,
+      status: accountDeletionExports.status,
+    })
+    .from(accountDeletionExports)
+    .where(eq(accountDeletionExports.request_id, requestId))
+    .for("update")
+    .limit(1);
+  return exportReceipt;
+}
 
 export interface ReservePersonalAccountDeletionInput {
   requestId: string;
@@ -175,6 +242,7 @@ export class AccountDeletionRequestsRepository {
         .select()
         .from(users)
         .where(eq(users.organization_id, input.organizationId))
+        .orderBy(asc(users.id))
         .for("update");
       const current = members.find((member) => member.id === input.userId);
 
@@ -340,6 +408,7 @@ export class AccountDeletionRequestsRepository {
         .select()
         .from(users)
         .where(eq(users.organization_id, observed.organization_id!))
+        .orderBy(asc(users.id))
         .for("update");
       const [request] = await tx
         .select()
@@ -545,14 +614,42 @@ export class AccountDeletionRequestsRepository {
     exportRevocationNotBefore: Date;
     now: Date;
   }): Promise<ActivateExpiredAccountDeletionResult> {
+    const [observed] = await dbWrite
+      .select()
+      .from(accountDeletionRequests)
+      .where(eq(accountDeletionRequests.id, input.requestId))
+      .limit(1);
+    if (!observed?.user_id || !observed.organization_id) {
+      return { outcome: "account_unavailable" };
+    }
+
     return await dbWrite.transaction(async (tx) => {
+      const [organization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, observed.organization_id!))
+        .for("update")
+        .limit(1);
+      const members = await tx
+        .select()
+        .from(users)
+        .where(eq(users.organization_id, observed.organization_id!))
+        .orderBy(asc(users.id))
+        .for("update");
       const [request] = await tx
         .select()
         .from(accountDeletionRequests)
-        .where(eq(accountDeletionRequests.id, input.requestId))
+        .where(eq(accountDeletionRequests.id, observed.id))
         .for("update")
         .limit(1);
-      if (!request) return { outcome: "account_unavailable" };
+      if (
+        !organization ||
+        !request ||
+        request.organization_id !== observed.organization_id ||
+        request.user_id !== observed.user_id
+      ) {
+        return { outcome: "account_unavailable" };
+      }
       if (request.status === "scheduled" || request.status === "processing") {
         return { outcome: "already_activated", request };
       }
@@ -566,19 +663,8 @@ export class AccountDeletionRequestsRepository {
         return { outcome: "account_unavailable" };
       }
 
-      const [organization] = await tx
-        .select()
-        .from(organizations)
-        .where(eq(organizations.id, request.organization_id))
-        .for("update")
-        .limit(1);
-      const members = await tx
-        .select()
-        .from(users)
-        .where(eq(users.organization_id, request.organization_id))
-        .for("update");
       const current = members.find((member) => member.id === request.user_id);
-      if (!organization || !current) return { outcome: "account_unavailable" };
+      if (!current) return { outcome: "account_unavailable" };
 
       const [providerAdmission] = await tx
         .select({ id: providerAdmissions.id })
@@ -620,6 +706,10 @@ export class AccountDeletionRequestsRepository {
         .select()
         .from(accountDeletionPhaseReceipts)
         .where(eq(accountDeletionPhaseReceipts.request_id, request.id))
+        .orderBy(
+          asc(accountDeletionPhaseReceipts.phase_order),
+          asc(accountDeletionPhaseReceipts.id),
+        )
         .for("update");
       if (
         exportReceipt?.status !== "ready" ||
@@ -635,6 +725,9 @@ export class AccountDeletionRequestsRepository {
       }
 
       const lifecycleRevision = request.lifecycle_revision + 1;
+      // Only future captures lose authority at the irreversible boundary.
+      // Catalogue/GC effects remain owned by their later purge phases.
+      await settleBackupAdmissionForDeletion(tx, organization.id, true);
       await tx
         .update(organizations)
         .set({
@@ -888,6 +981,7 @@ export class AccountDeletionRequestsRepository {
     now: Date;
   }): Promise<boolean> {
     return await dbWrite.transaction(async (tx) => {
+      if (!(await lockAccountDeletionRequest(tx, input.requestId))) return false;
       const [phase] = await tx
         .update(accountDeletionPhaseReceipts)
         .set({
@@ -959,28 +1053,63 @@ export class AccountDeletionRequestsRepository {
     completionReceiptDigest: string;
     now: Date;
   }): Promise<FinalizePersonalAccountDeletionResult> {
+    const [observed] = await dbWrite
+      .select()
+      .from(accountDeletionRequests)
+      .where(eq(accountDeletionRequests.id, input.requestId))
+      .limit(1);
+    if (!observed) return { outcome: "account_unavailable" };
+    if (observed.status === "completed") return { outcome: "already_completed", request: observed };
+    if (!observed.user_id || !observed.organization_id) {
+      return { outcome: "account_unavailable" };
+    }
+
     return await dbWrite.transaction(async (tx) => {
+      const [organization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, observed.organization_id!))
+        .for("update")
+        .limit(1);
+      const members = await tx
+        .select()
+        .from(users)
+        .where(eq(users.organization_id, observed.organization_id!))
+        .orderBy(asc(users.id))
+        .for("update");
       const [request] = await tx
         .select()
         .from(accountDeletionRequests)
-        .where(eq(accountDeletionRequests.id, input.requestId))
+        .where(eq(accountDeletionRequests.id, observed.id))
         .for("update")
         .limit(1);
       if (!request) return { outcome: "account_unavailable" };
       if (request.status === "completed") return { outcome: "already_completed", request };
-      if (!request.user_id || !request.organization_id) {
+      if (
+        !organization ||
+        request.user_id !== observed.user_id ||
+        request.organization_id !== observed.organization_id
+      ) {
         return { outcome: "account_unavailable" };
       }
 
-      const [databasePhase] = await tx
+      // Export precedes phases for every writer that touches both. Taking the
+      // row lock even though terminal erasure only deletes it prevents an
+      // export helper from holding the export while waiting on a phase that
+      // this finalizer already owns.
+      await lockAccountDeletionExport(tx, request.id);
+      const phases = await tx
         .select()
         .from(accountDeletionPhaseReceipts)
-        .where(eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId))
-        .for("update")
-        .limit(1);
+        .where(eq(accountDeletionPhaseReceipts.request_id, request.id))
+        .orderBy(
+          asc(accountDeletionPhaseReceipts.phase_order),
+          asc(accountDeletionPhaseReceipts.id),
+        )
+        .for("update");
+      const databasePhase = phases.find((phase) => phase.id === input.phaseReceiptId);
       if (
         !databasePhase ||
-        databasePhase.request_id !== request.id ||
         databasePhase.phase !== "database_erasure" ||
         databasePhase.lease_generation !== input.generation ||
         (databasePhase.status !== "leased" && databasePhase.status !== "calling")
@@ -988,19 +1117,8 @@ export class AccountDeletionRequestsRepository {
         return { outcome: "stale_generation" };
       }
 
-      const [organization] = await tx
-        .select()
-        .from(organizations)
-        .where(eq(organizations.id, request.organization_id))
-        .for("update")
-        .limit(1);
-      const members = await tx
-        .select()
-        .from(users)
-        .where(eq(users.organization_id, request.organization_id))
-        .for("update");
       const current = members.find((member) => member.id === request.user_id);
-      if (!organization || !current) return { outcome: "account_unavailable" };
+      if (!current) return { outcome: "account_unavailable" };
       const activeOwners = members.filter(
         (member) => member.is_active && !member.deleted_at && member.role === "owner",
       );
@@ -1019,11 +1137,6 @@ export class AccountDeletionRequestsRepository {
         return { outcome: "account_unavailable" };
       }
 
-      const phases = await tx
-        .select()
-        .from(accountDeletionPhaseReceipts)
-        .where(eq(accountDeletionPhaseReceipts.request_id, request.id))
-        .for("update");
       const incomplete = phases
         .filter(
           (phase) =>
@@ -1035,13 +1148,13 @@ export class AccountDeletionRequestsRepository {
         .sort();
       if (incomplete.length > 0) return { outcome: "phases_incomplete", phases: incomplete };
 
-      // Replacement attempts may contain provider locators, so they remain
-      // restrictive until the compute phase proves every ambiguous effect is
-      // reconciled. At terminal database erasure the bounded request receipt,
-      // not the tenant-linked attempt row, becomes the retained evidence.
-      await tx
-        .delete(agentSandboxReplacementAttempts)
-        .where(eq(agentSandboxReplacementAttempts.organization_id, organization.id));
+      // Replacement attempts remain restrictive until their provider effects
+      // are terminal. Their database guard authorizes deletion only through
+      // the nested organization cascade below; a direct child DELETE is never
+      // valid, even for terminal history.
+      // All external purge phases are complete here, so no remaining admission
+      // work can own a provider effect or block the terminal organization cascade.
+      await settleBackupAdmissionForDeletion(tx, organization.id, false);
 
       // Billing cancellation commands and every idempotency-key alias are
       // immutable audit evidence. The exact generation-fenced database phase
@@ -1062,7 +1175,7 @@ export class AccountDeletionRequestsRepository {
         .where(
           or(
             eq(billingCancelCommandKeys.organization_id, organization.id),
-            eq(billingCancelCommandKeys.requested_by_user_id, request.user_id),
+            eq(billingCancelCommandKeys.requested_by_user_id, current.id),
           ),
         )
         .orderBy(asc(billingCancelCommandKeys.id))
@@ -1073,7 +1186,7 @@ export class AccountDeletionRequestsRepository {
         .where(
           or(
             eq(billingCancelCommands.organization_id, organization.id),
-            eq(billingCancelCommands.requested_by_user_id, request.user_id),
+            eq(billingCancelCommands.requested_by_user_id, current.id),
           ),
         )
         .orderBy(asc(billingCancelCommands.id))
@@ -1085,19 +1198,19 @@ export class AccountDeletionRequestsRepository {
             WHEN ${billingCancelCommandKeys.organization_id} = ${organization.id} THEN NULL
             ELSE ${billingCancelCommandKeys.organization_id} END`,
           requested_by_user_id: sql`CASE
-            WHEN ${billingCancelCommandKeys.requested_by_user_id} = ${request.user_id} THEN NULL
+            WHEN ${billingCancelCommandKeys.requested_by_user_id} = ${current.id} THEN NULL
             ELSE ${billingCancelCommandKeys.requested_by_user_id} END`,
           organization_deletion_request_id: sql`CASE
             WHEN ${billingCancelCommandKeys.organization_id} = ${organization.id} THEN ${request.id}::uuid
             ELSE ${billingCancelCommandKeys.organization_deletion_request_id} END`,
           requesting_user_deletion_request_id: sql`CASE
-            WHEN ${billingCancelCommandKeys.requested_by_user_id} = ${request.user_id} THEN ${request.id}::uuid
+            WHEN ${billingCancelCommandKeys.requested_by_user_id} = ${current.id} THEN ${request.id}::uuid
             ELSE ${billingCancelCommandKeys.requesting_user_deletion_request_id} END`,
         })
         .where(
           or(
             eq(billingCancelCommandKeys.organization_id, organization.id),
-            eq(billingCancelCommandKeys.requested_by_user_id, request.user_id),
+            eq(billingCancelCommandKeys.requested_by_user_id, current.id),
           ),
         );
       await tx
@@ -1107,7 +1220,7 @@ export class AccountDeletionRequestsRepository {
             WHEN ${billingCancelCommands.organization_id} = ${organization.id} THEN NULL
             ELSE ${billingCancelCommands.organization_id} END`,
           requested_by_user_id: sql`CASE
-            WHEN ${billingCancelCommands.requested_by_user_id} = ${request.user_id} THEN NULL
+            WHEN ${billingCancelCommands.requested_by_user_id} = ${current.id} THEN NULL
             ELSE ${billingCancelCommands.requested_by_user_id} END`,
           job_id: sql`CASE WHEN ${billingCancelCommands.organization_id} = ${organization.id}
             THEN NULL ELSE ${billingCancelCommands.job_id} END`,
@@ -1115,13 +1228,13 @@ export class AccountDeletionRequestsRepository {
             WHEN ${billingCancelCommands.organization_id} = ${organization.id} THEN ${request.id}::uuid
             ELSE ${billingCancelCommands.organization_deletion_request_id} END`,
           requesting_user_deletion_request_id: sql`CASE
-            WHEN ${billingCancelCommands.requested_by_user_id} = ${request.user_id} THEN ${request.id}::uuid
+            WHEN ${billingCancelCommands.requested_by_user_id} = ${current.id} THEN ${request.id}::uuid
             ELSE ${billingCancelCommands.requesting_user_deletion_request_id} END`,
         })
         .where(
           or(
             eq(billingCancelCommands.organization_id, organization.id),
-            eq(billingCancelCommands.requested_by_user_id, request.user_id),
+            eq(billingCancelCommands.requested_by_user_id, current.id),
           ),
         );
       await tx.execute(
@@ -1182,6 +1295,7 @@ export class AccountDeletionRequestsRepository {
     now: Date;
   }): Promise<boolean> {
     return await dbWrite.transaction(async (tx) => {
+      if (!(await lockAccountDeletionRequest(tx, input.requestId))) return false;
       const [completed] = await tx
         .update(accountDeletionPhaseReceipts)
         .set({
@@ -1229,6 +1343,7 @@ export class AccountDeletionRequestsRepository {
     now: Date;
   }): Promise<boolean> {
     return await dbWrite.transaction(async (tx) => {
+      if (!(await lockAccountDeletionRequest(tx, input.requestId))) return false;
       const [completed] = await tx
         .update(accountDeletionPhaseReceipts)
         .set({
@@ -1371,6 +1486,7 @@ export class AccountDeletionRequestsRepository {
     now: Date;
   }): Promise<boolean> {
     return await dbWrite.transaction(async (tx) => {
+      if (!(await lockAccountDeletionExport(tx, input.requestId))) return false;
       const [phase] = await tx
         .select({ id: accountDeletionPhaseReceipts.id })
         .from(accountDeletionPhaseReceipts)
@@ -1404,6 +1520,8 @@ export class AccountDeletionRequestsRepository {
     now: Date;
   }): Promise<boolean> {
     return await dbWrite.transaction(async (tx) => {
+      if (!(await lockAccountDeletionRequest(tx, input.requestId))) return false;
+      const exportExists = await lockAccountDeletionExport(tx, input.requestId);
       const [completed] = await tx
         .update(accountDeletionPhaseReceipts)
         .set({
@@ -1428,6 +1546,12 @@ export class AccountDeletionRequestsRepository {
         )
         .returning({ id: accountDeletionPhaseReceipts.id });
       if (!completed) return false;
+      if (!exportExists) {
+        throw new ElizaError("Deletion export receipt disappeared during completion", {
+          code: "ACCOUNT_DELETION_EXPORT_COMPLETION_RECEIPT_MISSING",
+          severity: "fatal",
+        });
+      }
 
       const [exportReceipt] = await tx
         .update(accountDeletionExports)
@@ -1502,19 +1626,28 @@ export class AccountDeletionRequestsRepository {
         .where(eq(organizations.id, observed.organization_id!))
         .for("update")
         .limit(1);
-      const [user] = await tx
+      const members = await tx
         .select()
         .from(users)
-        .where(eq(users.id, observed.user_id!))
-        .for("update")
-        .limit(1);
+        .where(eq(users.organization_id, observed.organization_id!))
+        .orderBy(asc(users.id))
+        .for("update");
       const [request] = await tx
         .select()
         .from(accountDeletionRequests)
         .where(eq(accountDeletionRequests.id, observed.id))
         .for("update")
         .limit(1);
-      if (!organization || !user || !request) return { outcome: "recovery_expired" };
+      const user = members.find((member) => member.id === observed.user_id);
+      if (
+        !organization ||
+        !user ||
+        !request ||
+        request.organization_id !== observed.organization_id ||
+        request.user_id !== observed.user_id
+      ) {
+        return { outcome: "recovery_expired" };
+      }
       if (request.status === "canceled") return { outcome: "already_canceled", request };
       if (request.status === "canceling") return { outcome: "already_canceling", request };
       if (
@@ -1526,6 +1659,13 @@ export class AccountDeletionRequestsRepository {
         return { outcome: "recovery_expired" };
       }
 
+      // Export precedes phases globally. This writer already owns the request,
+      // so moving the export mutation ahead of phase cancellation preserves
+      // atomic outcomes while avoiding export/phase cycles with worker helpers.
+      await tx
+        .update(accountDeletionExports)
+        .set({ status: "expired", updated_at: input.now })
+        .where(eq(accountDeletionExports.request_id, request.id));
       await tx
         .update(accountDeletionPhaseReceipts)
         .set({
@@ -1568,11 +1708,6 @@ export class AccountDeletionRequestsRepository {
           updated_at: input.now,
         })
         .onConflictDoNothing();
-      await tx
-        .update(accountDeletionExports)
-        .set({ status: "expired", updated_at: input.now })
-        .where(eq(accountDeletionExports.request_id, request.id));
-
       const [canceling] = await tx
         .update(accountDeletionRequests)
         .set({
@@ -1611,30 +1746,46 @@ export class AccountDeletionRequestsRepository {
 
   /** Restores account authority only after both cancellation cleanup receipts complete. */
   async finalizeCancellationIfComplete(input: { requestId: string; now: Date }): Promise<boolean> {
+    const [observed] = await dbWrite
+      .select()
+      .from(accountDeletionRequests)
+      .where(eq(accountDeletionRequests.id, input.requestId))
+      .limit(1);
+    if (!observed || observed.status === "canceled") return observed?.status === "canceled";
+    if (observed.status !== "canceling" || !observed.user_id || !observed.organization_id) {
+      return false;
+    }
+
     return await dbWrite.transaction(async (tx) => {
-      const [request] = await tx
-        .select()
-        .from(accountDeletionRequests)
-        .where(eq(accountDeletionRequests.id, input.requestId))
-        .for("update")
-        .limit(1);
-      if (!request || request.status === "canceled") return request?.status === "canceled";
-      if (request.status !== "canceling" || !request.user_id || !request.organization_id) {
-        return false;
-      }
       const [organization] = await tx
         .select()
         .from(organizations)
-        .where(eq(organizations.id, request.organization_id))
+        .where(eq(organizations.id, observed.organization_id!))
         .for("update")
         .limit(1);
-      const [user] = await tx
+      const members = await tx
         .select()
         .from(users)
-        .where(eq(users.id, request.user_id))
+        .where(eq(users.organization_id, observed.organization_id!))
+        .orderBy(asc(users.id))
+        .for("update");
+      const [request] = await tx
+        .select()
+        .from(accountDeletionRequests)
+        .where(eq(accountDeletionRequests.id, observed.id))
         .for("update")
         .limit(1);
-      if (!organization || !user) return false;
+      if (!request || request.status === "canceled") return request?.status === "canceled";
+      if (
+        !organization ||
+        request.status !== "canceling" ||
+        request.user_id !== observed.user_id ||
+        request.organization_id !== observed.organization_id
+      ) {
+        return false;
+      }
+      const user = members.find((member) => member.id === request.user_id);
+      if (!user) return false;
       const cleanup = await tx
         .select()
         .from(accountDeletionPhaseReceipts)
@@ -1643,6 +1794,10 @@ export class AccountDeletionRequestsRepository {
             eq(accountDeletionPhaseReceipts.request_id, request.id),
             inArray(accountDeletionPhaseReceipts.phase, ["steward_reactivation", "export_revoke"]),
           ),
+        )
+        .orderBy(
+          asc(accountDeletionPhaseReceipts.phase_order),
+          asc(accountDeletionPhaseReceipts.id),
         )
         .for("update");
       if (cleanup.length !== 2 || cleanup.some((phase) => phase.status !== "completed")) {
@@ -1788,7 +1943,25 @@ export class AccountDeletionRequestsRepository {
     now: Date;
   }): Promise<void> {
     await dbWrite.transaction(async (tx) => {
-      await tx
+      // The phase INSERT below acquires a request FK lock. Take the stronger
+      // request row lock before export mutation so this helper cannot cycle
+      // with expiry or terminal finalizers that follow request -> export.
+      const request = await lockAccountDeletionRequest(tx, input.requestId);
+      if (!request || request.status === "completed" || request.status === "canceled") return;
+
+      // A stale catalogue read may arrive after an earlier revocation or after
+      // terminal erasure. Never recreate work for a deleted export, and fail
+      // closed if a non-terminal request has lost its durable export receipt.
+      const exportReceipt = await lockAccountDeletionExport(tx, input.requestId);
+      if (!exportReceipt) {
+        throw new ElizaError("Deletion export receipt disappeared before revocation scheduling", {
+          code: "ACCOUNT_DELETION_EXPORT_REVOCATION_RECEIPT_MISSING",
+          severity: "fatal",
+        });
+      }
+      if (exportReceipt.status === "deleted") return;
+
+      const [expired] = await tx
         .update(accountDeletionExports)
         .set({ status: "expired", updated_at: input.now })
         .where(
@@ -1796,7 +1969,14 @@ export class AccountDeletionRequestsRepository {
             eq(accountDeletionExports.request_id, input.requestId),
             notInArray(accountDeletionExports.status, ["deleted"]),
           ),
-        );
+        )
+        .returning({ id: accountDeletionExports.id });
+      if (!expired) {
+        throw new ElizaError("Deletion export receipt disappeared before revocation scheduling", {
+          code: "ACCOUNT_DELETION_EXPORT_REVOCATION_RECEIPT_MISSING",
+          severity: "fatal",
+        });
+      }
       await tx
         .insert(accountDeletionPhaseReceipts)
         .values({
@@ -1860,6 +2040,7 @@ export class AccountDeletionRequestsRepository {
     now: Date;
   }): Promise<boolean> {
     return await dbWrite.transaction(async (tx) => {
+      const exportExists = await lockAccountDeletionExport(tx, input.requestId);
       const [phase] = await tx
         .update(accountDeletionPhaseReceipts)
         .set({
@@ -1884,6 +2065,12 @@ export class AccountDeletionRequestsRepository {
         )
         .returning({ id: accountDeletionPhaseReceipts.id });
       if (!phase) return false;
+      if (!exportExists) {
+        throw new ElizaError("Deletion export receipt disappeared during revocation", {
+          code: "ACCOUNT_DELETION_EXPORT_REVOCATION_RECEIPT_MISSING",
+          severity: "fatal",
+        });
+      }
       const [exportReceipt] = await tx
         .update(accountDeletionExports)
         .set({
