@@ -5,13 +5,14 @@
  * throw leaves the world untouched), and world-not-found. Real adapter over
  * real storage, no mocks.
  */
+import { randomUUID } from "node:crypto";
+
 import {
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type UUID,
   WORLD_METADATA_REVISION_KEY,
   type World,
 } from "@elizaos/core";
-import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
