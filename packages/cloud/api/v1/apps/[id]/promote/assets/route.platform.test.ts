@@ -32,7 +32,28 @@ const AD_SIZES = {
   linkedin_post: { width: 1200, height: 627 },
   google_display_leaderboard: { width: 728, height: 90 },
 };
+const generateAssetBundle = mock(async () => ({
+  assets: [],
+  copy: undefined,
+  errors: [],
+}));
+const operationContext = {
+  organizationId: "org-1",
+  userId: "user-1",
+  apiKeyId: null,
+  requestId: "request-1",
+};
 
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  requireGenerativeRouteCaller: mock(async () => ({
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: null,
+    authSource: "combined_cache",
+    appScopeId: null,
+  })),
+  getGenerativeOperationContext: () => operationContext,
+  asGenerativeCacheApiError: () => null,
+}));
 mock.module("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg }));
 mock.module("@/lib/auth/app-key-scope", () => ({ isAppKeyOutOfScope }));
 mock.module("@/lib/services/apps", () => ({
@@ -42,11 +63,7 @@ mock.module("@/lib/services/app-promotion-assets", () => ({
   AD_SIZES,
   appPromotionAssetsService: {
     getRecommendedSizes,
-    generateAssetBundle: mock(async () => ({
-      assets: [],
-      copy: null,
-      errors: [],
-    })),
+    generateAssetBundle,
   },
 }));
 mock.module("@/lib/promotion-pricing", () => ({
@@ -54,11 +71,8 @@ mock.module("@/lib/promotion-pricing", () => ({
   PROMO_IMAGE_COST: 2,
   estimateAssetGenerationCost: () => ({ total: 5, display: "5" }),
 }));
-mock.module("@/lib/services/credits", () => ({
-  creditsService: {
-    deductCredits: mock(async () => ({ success: true })),
-    refundCredits: mock(async () => undefined),
-  },
+mock.module("@/lib/services/generative-operation", () => ({
+  retainGenerativeTask: mock(async (_context, _operation, task) => await task),
 }));
 mock.module("@/lib/utils/logger", () => ({
   logger: { info: mock(() => undefined), error: mock(() => undefined) },
@@ -78,6 +92,32 @@ describe("GET /api/v1/apps/:id/promote/assets platform identity", () => {
       organization_id: "org-1",
       name: "Demo",
     });
+  });
+
+  test("does not report copy credits when only image generation succeeds", async () => {
+    generateAssetBundle.mockResolvedValueOnce({
+      assets: [
+        {
+          type: "social_card",
+          size: { width: 800, height: 418 },
+          url: "https://example.test/asset.png",
+          format: "png",
+          generatedAt: new Date("2026-08-29T00:00:00.000Z"),
+        },
+      ],
+      copy: undefined,
+      errors: ["Failed to generate copy"],
+    });
+
+    const response = await app.request("/app-1/promote/assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ includeCopy: true }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { creditsUsed: number };
+    expect(body.creditsUsed).toBe(2);
   });
 
   test.each(["", "?platform="])(

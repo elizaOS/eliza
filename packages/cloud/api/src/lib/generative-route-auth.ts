@@ -19,6 +19,7 @@ import type {
   InferenceAdmissionSnapshot,
   InferenceAuthRejectionReason,
 } from "@/lib/services/inference-auth-cache";
+import type { GenerativeOperationContext } from "@/lib/services/generative-operation";
 import type { EndpointType } from "@/lib/services/org-rate-limits";
 import type { OrganizationInferenceAdmission } from "@/lib/services/organization-inference-admission";
 import { logger } from "@/lib/utils/logger";
@@ -144,6 +145,20 @@ export function getGenerativeExecutionContext(
     // retain the authoritative compatibility path used by tests and tooling.
     return undefined;
   }
+}
+
+export function getGenerativeOperationContext(
+  c: AppContext,
+  caller: GenerativeRouteCaller,
+): GenerativeOperationContext {
+  return {
+    organizationId: caller.user.organization_id,
+    userId: caller.user.id,
+    apiKeyId: caller.apiKeyId,
+    requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
+    admissionSnapshot: caller.admissionSnapshot,
+    executionCtx: getGenerativeExecutionContext(c),
+  };
 }
 
 export function getGenerativePricingCacheOptions(
