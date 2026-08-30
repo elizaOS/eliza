@@ -62,6 +62,7 @@
       "plugins/plugin-meetings",
       "plugins/plugin-scheduling",
       "plugins/plugin-notes",
+      "plugins/plugin-sql",
       "plugins/plugin-telegram",
       "plugins/plugin-wallet",
       "plugins/plugin-whatsapp",
