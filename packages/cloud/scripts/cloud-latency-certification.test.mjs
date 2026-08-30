@@ -39,7 +39,7 @@ function authTrace(index) {
   return `11111111-1111-4111-8111-${suffix}`;
 }
 
-function authEvidence() {
+function authEvidence(runSuspended = false) {
   const records = [
     { kind: "deployment", deploySha: SHA, environment: "staging" },
   ];
@@ -81,21 +81,26 @@ function authEvidence() {
     {
       kind: "guard",
       deploySha: SHA,
-      guard: "suspended_key",
-      traceId: authTrace(41),
-      status: 403,
-    },
-    {
-      kind: "guard",
-      deploySha: SHA,
       guard: "forged_probe",
-      traceId: authTrace(42),
+      traceId: authTrace(41),
       status: 400,
     },
+    ...(runSuspended
+      ? [
+          {
+            kind: "guard",
+            deploySha: SHA,
+            guard: "suspended_key",
+            traceId: authTrace(42),
+            status: 403,
+          },
+        ]
+      : []),
     {
       kind: "summary",
       deploySha: SHA,
       counts: { hit: 30, miss: 10 },
+      suspendedGuard: runSuspended ? "observed" : "not_requested",
     },
   );
   return records;
@@ -118,6 +123,7 @@ test("parseCertificationArgs requires an exact SHA and explicit output directory
       deploySha: SHA,
       outputDir: join(process.cwd(), "artifacts/cert"),
       runAuth: true,
+      runSuspended: false,
     },
   );
   assert.throws(
@@ -129,6 +135,17 @@ test("parseCertificationArgs requires an exact SHA and explicit output directory
         "artifacts/cert",
       ]),
     /lowercase 40-character commit/,
+  );
+  assert.throws(
+    () =>
+      parseCertificationArgs([
+        "--deploy-sha",
+        SHA,
+        "--output-dir",
+        "artifacts/cert",
+        "--suspended",
+      ]),
+    /requires --auth/,
   );
 });
 
@@ -143,6 +160,21 @@ test("protected secret gates fail closed without exposing values", () => {
   };
   assert.equal(requirePairedSecrets(configured).directApiKey, "direct-private");
   assert.equal(requireAuthSecrets(configured).probeToken, "probe-private");
+  assert.equal(
+    requireAuthSecrets(
+      { ...configured, ELIZA_STAGING_SUSPENDED_API_KEY: " " },
+      false,
+    ).probeToken,
+    "probe-private",
+  );
+  assert.throws(
+    () =>
+      requireAuthSecrets(
+        { ...configured, ELIZA_STAGING_SUSPENDED_API_KEY: " " },
+        true,
+      ),
+    /ELIZA_STAGING_SUSPENDED_API_KEY/,
+  );
   const failure = (() => {
     try {
       requireAuthSecrets({ ...configured, INFERENCE_AUTH_PROBE_TOKEN: " " });
@@ -204,24 +236,49 @@ test("paired certification requires exactly 44 balanced successful proofs", () =
   );
 });
 
-test("auth certification requires the complete hit, miss, and guard matrix", () => {
-  const records = authEvidence();
+test("auth certification separates required guards from optional suspended standing", () => {
+  const records = authEvidence(false);
   const result = validateAuthEvidence(jsonl(records), SHA);
-  assert.equal(result.records.length, 45);
-  assert.equal(result.traceIds.length, 43);
+  assert.equal(result.records.length, 44);
+  assert.equal(result.traceIds.length, 42);
+  assert.throws(
+    () => validateAuthEvidence(jsonl(records), SHA, true),
+    /45 records/,
+  );
+
+  const suspendedRecords = authEvidence(true);
+  const suspended = validateAuthEvidence(jsonl(suspendedRecords), SHA, true);
+  assert.equal(suspended.records.length, 45);
+  assert.equal(suspended.traceIds.length, 43);
   assert.throws(
     () =>
       validateAuthEvidence(
         jsonl(
-          records.map((record) =>
+          suspendedRecords.map((record) =>
             record.guard === "suspended_key"
               ? { ...record, status: 401 }
               : record,
           ),
         ),
         SHA,
+        true,
       ),
-    /guard evidence/,
+    /suspended guard evidence/,
+  );
+  assert.throws(
+    () =>
+      validateAuthEvidence(
+        jsonl(
+          records.map((record) =>
+            record.kind === "summary"
+              ? { ...record, suspendedGuard: "observed" }
+              : record,
+          ),
+        ),
+        SHA,
+        false,
+      ),
+    /misstates the suspended guard/,
   );
 });
 
