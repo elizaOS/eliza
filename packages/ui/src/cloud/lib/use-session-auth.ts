@@ -198,17 +198,19 @@ export function useSessionAuth(): SessionAuthState {
     };
   }, []);
 
-  const providerUser: StewardSessionUser = providerAuth.user
-    ? {
-        id: providerAuth.user.id,
-        email: providerAuth.user.email ?? "",
-        walletAddress: providerAuth.user.walletAddress,
-      }
-    : null;
+  const providerUserId = providerAuth.user?.id.trim();
+  const providerUser: StewardSessionUser =
+    providerAuth.isAuthenticated && providerAuth.user && providerUserId
+      ? {
+          id: providerUserId,
+          email: providerAuth.user.email ?? "",
+          walletAddress: providerAuth.user.walletAddress,
+        }
+      : null;
 
   const user = providerUser ?? storageUser ?? apiKeyUser ?? testUser;
   const authenticated =
-    providerAuth.isAuthenticated ||
+    providerUser !== null ||
     storageUser !== null ||
     apiKeyUser !== null ||
     testUser !== null;
