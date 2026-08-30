@@ -377,9 +377,7 @@ describe("CliLoginPage", () => {
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
     expect(postMessage).not.toHaveBeenCalled();
     expect(
-      screen
-        .getByRole("link", { name: "Return to Eliza" })
-        .getAttribute("href"),
+      screen.getByRole("link", { name: "Return to App" }).getAttribute("href"),
     ).toBe("/");
     expect(screen.queryByRole("button", { name: "Close window" })).toBeNull();
     expect(screen.queryByText("API Key Details")).toBeNull();

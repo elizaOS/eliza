@@ -152,8 +152,8 @@ function PublicLoginPage(): React.JSX.Element {
               className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
             >
               <Link to="/">
-                {t("cloud.login.returnToEliza", {
-                  defaultValue: "Return to Eliza",
+                {t("cloud.authSuccess.returnToAppCta", {
+                  defaultValue: "Return to App",
                 })}
               </Link>
             </Button>
