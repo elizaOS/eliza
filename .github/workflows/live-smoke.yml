@@ -812,16 +812,27 @@ jobs:
           command_timeout: 2m
           script: |
             set -euo pipefail
-            line="$(
+            block="$(
               sudo journalctl \
                 -u eliza-provisioning-worker.service \
                 --since '5 minutes ago' \
+                -o cat \
                 --no-pager 2>/dev/null \
-                | grep -F '[agent-sandbox] Replacement cleanup remains pending' \
-                | tail -n 1 \
+                | awk '
+                    index($0, "[agent-sandbox] Replacement cleanup remains pending") {
+                      captured = $0
+                      remaining = 12
+                      next
+                    }
+                    remaining > 0 {
+                      captured = captured ORS $0
+                      remaining -= 1
+                    }
+                    END { print captured }
+                  ' \
                 || true
             )"
-            lower="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
+            lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
             case "$lower" in
               '') category='missing' ;;
               *'permission denied'*|*'publickey'*|*'authentication methods failed'*) category='ssh_auth' ;;
@@ -862,7 +873,7 @@ jobs:
             esac
             signals=''
             for signal in \
-              replacement_cleanup_unresolved docker_sandbox docker_ssh secret receipt \
+              replacement_cleanup_unresolved replacement docker_sandbox docker_ssh secret receipt \
               inspect identity attempt container headscale vpn node authority mismatch \
               missing malformed unavailable invalid not_registered cannot_prove failed \
               exit succeeded disappeared release allocation; do
@@ -879,7 +890,7 @@ jobs:
                 signals="${signals:+$signals,}$signal"
               fi
             done
-            unset line lower
+            unset block lower
             echo "replacement_cleanup_failure_category=$category"
             echo "replacement_cleanup_failure_signals=${signals:-none}"
 
