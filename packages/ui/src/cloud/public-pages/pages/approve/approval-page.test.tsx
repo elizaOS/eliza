@@ -123,4 +123,35 @@ describe("ApprovalPage public error and loading a11y (#18074)", () => {
     });
     expect(recovery.getAttribute("href")).toBe("/");
   });
+
+  it("keeps the approval request usable when its expiration is malformed", async () => {
+    apiMock.mockResolvedValue({
+      success: true,
+      approvalRequest: {
+        id: "qa-invalid-expiry",
+        organizationId: "org-1",
+        agentId: null,
+        userId: null,
+        challengeKind: "signature",
+        challengePayload: { message: "Sign this challenge" },
+        expectedSignerIdentityId: null,
+        status: "pending",
+        expiresAt: "not-a-date",
+        createdAt: "2030-01-01T00:00:00.000Z",
+        updatedAt: "2030-01-01T00:00:00.000Z",
+        metadata: null,
+      },
+    });
+
+    render(<ApprovalPage />);
+
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Approval request",
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText("Sign this challenge")).toBeTruthy();
+    expect(screen.queryByText("Expires")).toBeNull();
+  });
 });
