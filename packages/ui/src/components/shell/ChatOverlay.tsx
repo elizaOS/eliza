@@ -192,7 +192,7 @@ import {
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
 import { setChatComposerAccessoryBarHidden } from "./ios-chat-accessory-bar";
-import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
+import { liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
@@ -3398,9 +3398,6 @@ export function ChatOverlay({
     const percent = (clamp01(t) * 100).toFixed(3);
     return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
   });
-  const surfaceEdgeShadow = useTransform(fullBleedT, (t: number) =>
-    liquidGlassEdgeShadow(1 - t),
-  );
   // Keep transformed transcript children one physical border-width inside the
   // inset glass. The rim is translucent, so clipping at its outer edge lets
   // compositor-promoted text show through the antialiased top curve even when
@@ -6023,19 +6020,11 @@ export function ChatOverlay({
                     "--chat-sheet-backdrop-filter": cssSheetBackdropActive
                       ? GLASS_SHEET_BACKDROP_FILTER
                       : undefined,
-                    // Liquid-glass bevel: a bright top-left rim over a soft
-                    // bottom-right shade so the frosted edge catches light like a real
-                    // glass slab. Only on the inset sheet — full-bleed has no edge to
-                    // catch light. Depth here is the glass rim, not a drop shadow (the
-                    // flat system keeps all shadow tokens none).
-                    "--chat-sheet-shadow": surfaceEdgeShadow,
-                    // Specular sheen belongs to the inset glass slab, where there is
-                    // an edge to catch light. Fullscreen is a flat view surface; the
-                    // same image became a broad gray glow across its top edge.
-                    "--chat-sheet-image":
-                      firstRunOpen || fullBleed
-                        ? "none"
-                        : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
+                    // The strong perimeter and drag handle own the sheet edge. A
+                    // directional bevel, specular wash, or outer shadow stacks into
+                    // a distracting white arc above the conversation.
+                    "--chat-sheet-shadow": "none",
+                    "--chat-sheet-image": "none",
                   } satisfies ChatSheetMotionStyle),
                   // Full-bleed: extend the glass UP through the safe-area-top so the
                   // dark background reaches the true top of the screen. The panel
@@ -6144,18 +6133,6 @@ export function ChatOverlay({
                   }
                 }}
               >
-                {/* The top-edge sheen belongs only to the inset glass slab.
-                Fullscreen is a flat view surface; carrying this highlight into
-                full-bleed creates an unwanted gray glow across the viewport. */}
-                {!fullBleed ? (
-                  <Separator
-                    tone="subtle40"
-                    data-testid="chat-sheet-top-sheen"
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-0 top-0 z-0"
-                  />
-                ) : null}
-
                 {/* Top-bar pull-down-to-restore grab zone (#13531). Confined to the
                 safe-area + MAXIMIZE_RESTORE_ZONE_PX strip at the very top so the
                 transcript BELOW it stays freely scrollable (wheel + touch-drag)
@@ -6493,25 +6470,6 @@ export function ChatOverlay({
                         </AnimatePresence>
                       </MessageScroller>
                     </MessageScrollerProvider>
-                    {!firstRunOpen && !fullBleed ? (
-                      <motion.div
-                        data-testid="chat-thread-top-fade"
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
-                        style={{
-                          opacity: threadContentOpacity,
-                          // A fixed compositor layer lets messages dissolve beneath
-                          // the floating grabber without masking the scrolling
-                          // subtree. WebKit re-rasterizes CSS-masked scrollers while
-                          // their flex basis changes, which makes the pull gesture
-                          // stutter. Hold the panel color through the grabber's
-                          // footprint before beginning the dissolve so no glyph can
-                          // ghost through the antialiased rim or the handle itself.
-                          backgroundImage:
-                            "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
-                        }}
-                      />
-                    ) : null}
                   </motion.div>
                 ) : null}
                 {/* Cloud-agent provisioning status — rendered IN the chat, just

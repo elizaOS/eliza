@@ -1769,24 +1769,19 @@ describe("ChatOverlay", () => {
     expect(row?.className).toContain("w-full");
   });
 
-  it("fades the expanded transcript under the grabber without masking its scroller", () => {
+  it("keeps the expanded transcript free of decorative lighting beneath the grabber", () => {
     render(<ChatOverlay controller={makeController()} />);
     fireEvent.focus(screen.getByLabelText("message"));
 
-    const fade = screen.getByTestId("chat-thread-top-fade");
     const rim = screen.getByTestId("chat-sheet-rim");
     const surface = screen.getByTestId("chat-sheet-surface");
     const viewport = screen.getByTestId("chat-thread-scroll");
-    expect(fade.className).toContain("pointer-events-none");
-    expect(fade.className).toContain("absolute");
-    expect(fade.className).toContain("inset-x-px");
-    expect(fade.className).toContain("top-px");
-    expect(fade.className).toContain("z-30");
-    expect(fade.style.opacity).not.toBe("");
-    expect(fade.style.backgroundImage).toContain("linear-gradient");
-    expect(fade.style.backgroundImage).toContain("28%");
+    expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
+    expect(screen.queryByTestId("chat-sheet-top-sheen")).toBeNull();
     expect(rim.className).toContain("z-40");
     expect(rim.className).toContain("border-border-strong");
+    expect(surface.style.getPropertyValue("--chat-sheet-shadow")).toBe("none");
+    expect(surface.style.getPropertyValue("--chat-sheet-image")).toBe("none");
     expect(surface.className.split(/\s+/)).not.toContain("border");
     const content = screen.getByTestId("chat-content");
     expect(content.style.clipPath).toContain("inset(1px round");
@@ -4415,10 +4410,13 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
 
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(screen.queryByTestId("chat-sheet-top-sheen")).toBeNull();
+    expect(surface.style.getPropertyValue("--chat-sheet-image")).toBe("none");
+
     bigPullUp();
 
     const viewport = screen.getByTestId("chat-thread-scroll");
-    const surface = screen.getByTestId("chat-sheet-surface");
     expect(viewport.className.split(/\s+/)).toContain("scroll-fade");
     expect(viewport.className.split(/\s+/)).not.toContain("scroll-fade-b");
     expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
