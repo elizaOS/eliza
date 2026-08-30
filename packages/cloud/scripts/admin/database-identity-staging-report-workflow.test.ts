@@ -105,6 +105,10 @@ describe("database identity staging report workflow", () => {
       "bun run --cwd packages/prompts build:package",
     );
     expect(linkedBuild).toContain("bun run --cwd packages/shared build");
+    expect(linkedBuild).toContain("bun run --cwd packages/core build");
+    expect(step("Probe fixed runtime dependencies").run).toBe(
+      "bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies",
+    );
     expect(step("Validate identity reporter contracts").run).toContain(
       "preflight-database-identity.test.ts",
     );
