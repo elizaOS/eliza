@@ -5,7 +5,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";
-import { installDefaultAppRoutes } from "./helpers";
+import { installDefaultAppRoutes, UI_SMOKE_CPU_ONLY_HARDWARE } from "./helpers";
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 import {
@@ -444,17 +444,7 @@ export async function installHomeRoutes(
         updatedAt: new Date(0).toISOString(),
       },
       downloads: [],
-      hardware: {
-        totalRamGb: 8,
-        freeRamGb: 4,
-        gpu: null,
-        cpuCores: 4,
-        platform: "linux",
-        arch: "x64",
-        appleSilicon: false,
-        recommendedBucket: "small",
-        source: "os-fallback",
-      },
+      hardware: UI_SMOKE_CPU_ONLY_HARDWARE,
       assignments: {},
       textReadiness: {
         updatedAt: new Date(0).toISOString(),

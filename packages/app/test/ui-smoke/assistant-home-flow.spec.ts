@@ -11,6 +11,7 @@ import {
   installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
+  UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
@@ -279,17 +280,7 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
         updatedAt: new Date(0).toISOString(),
       },
       downloads: [],
-      hardware: {
-        totalRamGb: 8,
-        freeRamGb: 4,
-        gpu: null,
-        cpuCores: 4,
-        platform: "linux",
-        arch: "x64",
-        appleSilicon: false,
-        recommendedBucket: "small",
-        source: "os-fallback",
-      },
+      hardware: UI_SMOKE_CPU_ONLY_HARDWARE,
       assignments: {},
       textReadiness: {
         updatedAt: new Date(0).toISOString(),
