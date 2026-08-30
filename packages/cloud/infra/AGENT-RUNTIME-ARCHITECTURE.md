@@ -258,7 +258,7 @@ validation or exposing the key.
 | Canary diagnostics | cleanup failure overwrote the original provisioning failure and terminal job details collapsed to `job_failed` | Fixed in this change: preserve the primary phase and emit only an allowlisted subsystem category |
 | Staging admission | the canary identity was below the hosting-runway threshold | Cleared: run `33280890733` created one Dedicated row/job; the failure moved into provisioning |
 | Steward bootstrap | worker called a retired platform agent-registration route and received 404 before Docker create | Fixed: canonical Eliza-minted JWT/JWKS auth; protected signer reconciled to the worker |
-| Current staging provision | post-auth-fix canaries still fail before running/database/mesh readiness | Open: exact diagnostics now preserve the first startup cause across cleanup retries; the next clean canary will identify it after the fenced failed replacement is retired |
+| Current staging provision | the tenant database becomes ready and Docker creates the exact candidate, but required Headscale ingress produces no VPN node or `headscale_ip` | Open at the external boundary: source now retains and safely classifies the underlying Headscale auth, API, exit, timeout, rename, or identity cause; a clean post-deploy canary is required to select the exact category |
 | Failed replacement deletion | the API rejected every lifecycle job, including exact conditional cleanup, whenever a failed provision retained a replacement locator | Fixed: exact conditional delete owns the row, then the daemon proves that replacement absent before deleting the serving generation; ordinary lifecycle requests remain blocked |
 | Warm pool | both Worker and daemon are protected-off; no ready-count or live-claim proof exists | Intentionally disabled pending `#16961`; cold provisioning must work independently |
 | Deployment capacity | earlier production deploys queued/cancelled on unavailable runner labels | Partially cleared: run `33017962389` deployed the worker/router successfully; it predates this fix and is not a Dedicated canary |
@@ -347,6 +347,29 @@ is never deleted until exact remote absence converges. A final acceptance run
 still requires a canonical API deployment containing that contract, exact
 cleanup of this fenced canary, the newly exposed primary startup repair, and a
 fresh end-to-end canary.
+
+The reconciliation daemon subsequently proved the first fenced Docker
+candidate absent and atomically cleared its replacement locator; read-only run
+`33290462901` observed the cleared fence, and cleanup-only run `33290496255`
+then deleted exactly that canary without creating another agent. Fresh canary
+`33290598051` reached `database_status=ready` and created an exact Docker
+candidate, but it never obtained a VPN node, Headscale address, heartbeat,
+bridge, SSE stream, or chat readback. Read-only diagnostics `33291163769` and
+`33291437021` classify the durable failure as
+`ingress_headscale_ip_missing`; the latter uses the narrower privacy-safe
+classifier and confirms the replacement container identity is complete while
+the VPN identity is absent.
+
+That older attempt replaced the precise mesh failure with the generic required
+ingress verdict. Source `7cd43bb88be1ee6aa755bd7c719acad4f45c1582`
+preserves every recorded remote-completion cause behind the durable failure and
+exposes only closed categories for Headscale API authentication/failure,
+container mesh authentication, candidate exit, registration completion,
+rename completion, and exact Docker/VPN identity mismatch. Worker deployment
+`33291449482` installed that exact source after migrations, immutable checkout,
+systemd restart, and sustained health. The next clean candidate can therefore
+identify the real private-ingress failure without publishing raw logs,
+credentials, hostnames, container ids, or tailnet addresses.
 
 Required acceptance evidence is: one non-cancelled exact-SHA worker deploy;
 systemd active identity and effective env-name audit; matching API/daemon DB
