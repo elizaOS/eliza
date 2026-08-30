@@ -12,6 +12,7 @@ import {
 	clampPageWindow,
 	encodeUtf8Strict,
 	MEMORY_PAGE_MAX_BYTES,
+	MEMORY_SEGMENT_BYTES,
 	MEMORY_SEGMENTATION_THRESHOLD_BYTES,
 	memorySegmentFieldKey,
 	reassembleAndVerify,
@@ -210,5 +211,58 @@ describe("buildSegmentationRevision", () => {
 		expect(buildSegmentationRevision("g", "d".repeat(64))).toBe(
 			`seg:g:${"d".repeat(64)}`,
 		);
+	});
+});
+
+// The three exported budgets are wire-format-relevant limits, not internal
+// tuning: the page ceiling bounds a single memory read over the agent HTTP
+// surface, the segment budget fixes the segment-store row shape, and the
+// threshold decides which memories get a marker instead of inline content.
+// Each is pinned to its literal contracted value and to the observable
+// default-path and continuation-page behavior those values produce.
+describe("segmentation budget contracts (#25140)", () => {
+	it("pins the exported budget constants to their contracted values", () => {
+		expect(MEMORY_SEGMENT_BYTES).toBe(128 * 1024);
+		expect(MEMORY_SEGMENTATION_THRESHOLD_BYTES).toBe(128 * 1024);
+		expect(MEMORY_PAGE_MAX_BYTES).toBe(256 * 1024);
+	});
+
+	it("applies the default segment budget and covers the source exactly", () => {
+		// ASCII source: byte boundaries never snap, so the default budget's
+		// arithmetic is directly observable in the segment ranges.
+		const text = "a".repeat(200 * 1024);
+		const { segments, descriptor } = segmentMemoryContent(text, {
+			kind: "content.text",
+		});
+		expect(descriptor.totalBytes).toBe(200 * 1024);
+		expect(segments.length).toBe(2);
+		expect(segments[0].byteStart).toBe(0);
+		expect(segments[0].byteEnd).toBe(128 * 1024);
+		expect(segments[1].byteStart).toBe(128 * 1024);
+		expect(segments[1].byteEnd).toBe(200 * 1024);
+		// Coverage invariant: segmentation ends exactly at the source end.
+		expect(segments[segments.length - 1].byteEnd).toBe(descriptor.totalBytes);
+	});
+
+	it("holds the segmentation threshold at its contracted byte boundary", () => {
+		expect(shouldSegmentContent("a".repeat(128 * 1024))).toBe(false);
+		expect(shouldSegmentContent("a".repeat(128 * 1024 + 1))).toBe(true);
+	});
+
+	it("clamps a page read to the literal page ceiling, not a source-derived bound", () => {
+		expect(clampPageWindow(10 * 1024 * 1024, 0, undefined).end).toBe(
+			256 * 1024,
+		);
+		expect(clampPageWindow(10 * 1024 * 1024, 0, 99 * 1024 * 1024).end).toBe(
+			256 * 1024,
+		);
+		// A limit below the ceiling is honored exactly.
+		expect(clampPageWindow(10 * 1024 * 1024, 0, 4 * 1024).end).toBe(4 * 1024);
+		// Continuation pages clamp relative to the offset, not to the ceiling:
+		// offset + limit is the window end a paged reader advances to.
+		expect(clampPageWindow(10 * 1024 * 1024, 64 * 1024, undefined)).toEqual({
+			start: 64 * 1024,
+			end: 320 * 1024,
+		});
 	});
 });
