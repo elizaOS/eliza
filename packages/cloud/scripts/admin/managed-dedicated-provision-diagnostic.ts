@@ -11,6 +11,8 @@ type JsonRecord = Record<string, unknown>;
 const SUFFIX_PATTERN = /^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$/;
 const FORBIDDEN_OUTPUT_PATTERN =
   /(?:https?:\/\/|(?:\d{1,3}\.){3}\d{1,3}|\b(?:token|secret|password|api[_-]?key)\b|managed-dedicated-canary-|sha256:|[0-9a-f]{8}-[0-9a-f-]{27,})/i;
+const NORMAL_DIAGNOSTIC_MAX_CHARS = 8_000;
+const LEGACY_DIAGNOSTIC_MAX_CHARS = 1_048_576;
 
 const SANDBOX_STATUSES = new Set([
   "pending",
@@ -90,6 +92,7 @@ export type ManagedDedicatedProvisionFailureCode =
   | "runtime"
   | "lifecycle"
   | "timeout"
+  | "diagnostic_oversize"
   | "unclassified";
 
 export interface ManagedDedicatedProvisionDiagnostic {
@@ -208,7 +211,11 @@ export function classifyManagedDedicatedProvisionFailure(
   label: string,
 ): ManagedDedicatedProvisionFailureCode {
   if (value === null) return "none";
-  if (typeof value !== "string" || value.length === 0 || value.length > 8_000) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > LEGACY_DIAGNOSTIC_MAX_CHARS
+  ) {
     throw new Error(`${label} must be a bounded string or null`);
   }
   // Job persistence appends stack frames for operator diagnosis. Admit the
@@ -475,7 +482,9 @@ export function classifyManagedDedicatedProvisionFailure(
   ) {
     return "lifecycle";
   }
-  return "unclassified";
+  return value.length > NORMAL_DIAGNOSTIC_MAX_CHARS
+    ? "diagnostic_oversize"
+    : "unclassified";
 }
 
 export function sanitizeManagedDedicatedProvisionDiagnostic(

@@ -1482,17 +1482,19 @@ export class UpgradeFailedError extends Error {
 class RetryableProvisionTransportError extends Error {
   readonly retrySnapshot: Job;
   readonly maxRequeues: number;
+  readonly durableErrorText?: string;
 
   constructor(
     message: string,
     retrySnapshot: Job,
     maxRequeues: number,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown; durableErrorText?: string },
   ) {
     super(message, options);
     this.name = "RetryableProvisionTransportError";
     this.retrySnapshot = retrySnapshot;
     this.maxRequeues = maxRequeues;
+    this.durableErrorText = options?.durableErrorText;
   }
 }
 
@@ -4304,7 +4306,10 @@ export class ProvisioningJobService {
     // that has to carry a stack — the 16 conversions below it are log lines.
     const errorMsg = appCacheError
       ? finalizeJobErrorText(formatAppCacheInvalidationError(appCacheError))
-      : jobErrorText(err);
+      : retryableTransportError instanceof RetryableProvisionTransportError &&
+          retryableTransportError.durableErrorText !== undefined
+        ? retryableTransportError.durableErrorText
+        : jobErrorText(err);
     result?.errors.push({ jobId: job.id, error: errorMsg });
 
     if (safeErrorKind(err, RejectedAgentExecutionError)) {
@@ -6543,16 +6548,24 @@ export class ProvisioningJobService {
         }),
       });
       if (provResult.retryable) {
-        const failureCause = provResult.error.startsWith(REPLACEMENT_CLEANUP_ONLY_PREFIX)
-          ? job.error
-            ? new Error(job.error)
-            : provResult.failureCause
-          : provResult.failureCause;
+        const cleanupOnlyRetry = provResult.error.startsWith(REPLACEMENT_CLEANUP_ONLY_PREFIX);
+        const failureCause = cleanupOnlyRetry && job.error ? undefined : provResult.failureCause;
         throw new RetryableProvisionTransportError(
           provisionError,
           retrySnapshot,
           PROVISION_TRANSPORT_MAX_FREE_RETRIES,
-          failureCause === undefined ? undefined : { cause: failureCause },
+          failureCause === undefined && !(cleanupOnlyRetry && job.error)
+            ? undefined
+            : {
+                cause: failureCause,
+                // The original startup failure is already a complete,
+                // redacted durable diagnostic. Re-wrapping that serialized
+                // text as a new Error cause copies every prior stack on each
+                // cleanup retry and grows jobs.error geometrically. Preserve
+                // it byte-for-byte; the refreshed cleanup fact is retained in
+                // result.error above.
+                durableErrorText: cleanupOnlyRetry ? (job.error ?? undefined) : undefined,
+              },
         );
       }
       throw new Error(provisionError);

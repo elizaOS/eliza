@@ -1105,10 +1105,11 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       const preserved =
         "Sandbox health check timed out; replacement cleanup remains pending: second cleanup failure";
       expect(ctx.updateSpy.mock.calls[0]?.[1]?.result).toMatchObject({ error: preserved });
-      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toContain(preserved);
-      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toContain(
-        "Docker candidate cannot complete required Headscale registration: auth_required",
+      const durableError = String(ctx.retryLaterSpy.mock.calls[0]?.[1]);
+      expect(durableError).toBe(
+        "RetryableProvisionTransportError: first startup failure\ncaused by: Error: Docker candidate cannot complete required Headscale registration: auth_required",
       );
+      expect(durableError).not.toContain("second cleanup failure");
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
       ctx.claimSpy.mockRestore();

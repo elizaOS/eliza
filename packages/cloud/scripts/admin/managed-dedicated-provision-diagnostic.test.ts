@@ -141,6 +141,24 @@ describe("managed Dedicated provision diagnostic", () => {
     expect(canonical).not.toContain(SUFFIX);
   });
 
+  test("classifies legacy oversized retry diagnostics without emitting their text", () => {
+    const repeatedPriorError = `${"RetryableProvisionTransportError: cleanup pending\n".repeat(
+      220,
+    )}caused by: Error: Docker candidate cannot complete required Headscale registration: auth_required`;
+    expect(repeatedPriorError.length).toBeGreaterThan(8_000);
+    expect(
+      classifyManagedDedicatedProvisionFailure(repeatedPriorError, "x"),
+    ).toBe("ingress_mesh_auth_required");
+
+    const unknownOversized = "unknown legacy retry failure\n".repeat(400);
+    expect(
+      classifyManagedDedicatedProvisionFailure(unknownOversized, "x"),
+    ).toBe("diagnostic_oversize");
+    expect(() =>
+      classifyManagedDedicatedProvisionFailure("x".repeat(1_048_577), "x"),
+    ).toThrow("bounded string");
+  });
+
   test("accepts a terminal non-retryable failure before max attempts", () => {
     const raw = rawDiagnostic("invalid non-retryable provisioning input");
     raw.provisionJob.attempts = 1;
