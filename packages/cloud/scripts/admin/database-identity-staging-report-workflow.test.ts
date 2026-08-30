@@ -78,6 +78,9 @@ describe("database identity staging report workflow", () => {
 
   test("requires the exact develop commit", () => {
     const guard = step("Require exact develop commit");
+    expect(job.steps.indexOf(step("Setup Bun workspace"))).toBeLessThan(
+      job.steps.indexOf(guard),
+    );
     expect(guard.env?.EXPECTED_COMMIT).toBe(
       expression("inputs.expected_cloud_commit"),
     );
@@ -88,9 +91,23 @@ describe("database identity staging report workflow", () => {
   });
 
   test("runs only contract checks and the read-only reporter", () => {
-    expect(step("Setup Bun").with?.["bun-version"]).toBe("1.3.14");
-    expect(step("Install deterministic dependencies").run).toBe(
-      "bun install --frozen-lockfile --ignore-scripts",
+    const setup = step("Setup Bun workspace");
+    expect(setup.uses).toBe("./.github/actions/setup-bun-workspace");
+    expect(setup.with).toMatchObject({
+      "bun-version": "1.3.14",
+      "setup-python": "false",
+      "install-protoc": "false",
+      "install-native-deps": "false",
+      "run-postinstall": "false",
+    });
+    const linkedBuild = step("Build required linked runtime").run;
+    expect(linkedBuild).toContain(
+      "bun run --cwd packages/prompts build:package",
+    );
+    expect(linkedBuild).toContain("bun run --cwd packages/shared build");
+    expect(linkedBuild).toContain("bun run --cwd packages/core build");
+    expect(step("Probe fixed runtime dependencies").run).toBe(
+      "bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies",
     );
     expect(step("Validate identity reporter contracts").run).toContain(
       "preflight-database-identity.test.ts",

@@ -118,21 +118,6 @@ class LocationFixReader(private val context: Context) {
         return if (shouldShowRationale) "denied" else "prompt"
     }
 
-    fun readBackgroundPermissionStatus(foregroundStatus: String): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return foregroundStatus
-
-        val backgroundGranted = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-        ) == PackageManager.PERMISSION_GRANTED
-
-        return when {
-            backgroundGranted -> "granted"
-            foregroundStatus != "granted" -> "denied"
-            else -> "prompt"
-        }
-    }
-
     fun readProviderStatus(): ProviderStatus {
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val enabledProviders = manager.getProviders(true).sorted()

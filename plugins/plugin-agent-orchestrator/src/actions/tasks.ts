@@ -2146,20 +2146,37 @@ async function runSpawnAgent(
             });
           }
         } catch (error) {
-          // error-policy:J7 durable bookkeeping must not kill the already
-          // running session; the gap is surfaced through reportError so the
-          // owner sees the restart-durability exposure instead of silence.
+          // A live session without a durable owner cannot be recovered after a
+          // runtime restart. Stop it before returning a typed failure so the
+          // action never reports a successful dispatch that has no lifecycle
+          // record. If teardown itself fails, preserve both failures in
+          // diagnostics; the primary result remains the attach failure.
           durableTaskId = null;
+          try {
+            await service.stopSession(session.sessionId, true);
+          } catch (stopError) {
+            runtime.reportError?.(
+              "TASKS:spawn_agent.stop_orphan",
+              stopError instanceof Error
+                ? stopError
+                : new Error(String(stopError)),
+              { sessionId: session.sessionId, label },
+            );
+          }
           runtime.reportError?.(
             "TASKS:spawn_agent",
             error instanceof Error ? error : new Error(String(error)),
             { sessionId: session.sessionId, label },
           );
-          logger(runtime).error(
-            `[TASKS:spawn_agent] durable task persistence failed for ${session.sessionId}; session runs WITHOUT restart protection: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
+          throw new ElizaError("Failed to persist spawned task owner", {
+            code: "DURABLE_TASK_ATTACH_FAILED",
+            context: {
+              sessionId: session.sessionId,
+              label,
+              cause: error instanceof Error ? error.message : String(error),
+            },
+            cause: error instanceof Error ? error : undefined,
+          });
         }
       }
     }

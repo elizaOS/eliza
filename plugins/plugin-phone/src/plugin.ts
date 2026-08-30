@@ -45,6 +45,7 @@ export const appPhonePlugin: Plugin = {
       surface: { capabilities: ["agent-surface"] },
       componentExport: "PhoneView",
       tags: ["phone", "calls", "android"],
+      responseContext: { primaryContext: "phone" },
       visibleInManager: true,
       desktopTabEnabled: true,
       nativeOs: true,

@@ -74,13 +74,6 @@ mock.module("../../../db/repositories/apps", () => ({
   },
 }));
 
-mock.module("../credits", () => ({
-  creditsService: {
-    deductCredits: async () => ({ success: true, newBalance: 100, transaction: null }),
-    refundCredits: async () => ({ transaction: {}, newBalance: 100 }),
-  },
-}));
-
 mock.module("../character-prompt-helper", () => ({
   getCharacterPromptContext: async () => null,
   buildCharacterSystemPrompt: () => "IN CHARACTER",

@@ -43,7 +43,7 @@ jobs:
         run: bun run --cwd packages/ui build-storybook --output-dir storybook-static --quiet
 
       - name: Upload static Storybook catalog
-        if: always()
+        if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: storybook-static
@@ -54,7 +54,7 @@ jobs:
   story-shard:
     name: Story shard ${{ matrix.shard }}/8
     needs: build-catalog
-    if: ${{ always() }}
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
@@ -94,7 +94,7 @@ jobs:
           --concurrency 6
 
       - name: Upload shard report and evidence
-        if: ${{ always() }}
+        if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: story-gate-shard-${{ matrix.shard }}-of-8
@@ -105,7 +105,7 @@ jobs:
   aggregate:
     name: Aggregate Story Gate verdict
     needs: [build-catalog, story-shard]
-    if: ${{ always() }}
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -129,7 +129,7 @@ jobs:
           merge-multiple: false
 
       - name: Merge and validate complete catalog coverage
-        if: ${{ always() }}
+        if: ${{ always() && !cancelled() }}
         run: >-
           node packages/ui/test/story-gate/merge-story-gate.mjs
           --catalog packages/ui/storybook-static/index.json
@@ -138,7 +138,7 @@ jobs:
           --shards 8
 
       - name: Upload aggregate Story Gate output
-        if: ${{ always() }}
+        if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: story-gate-output

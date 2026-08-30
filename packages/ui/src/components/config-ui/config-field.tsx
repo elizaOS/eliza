@@ -14,7 +14,10 @@ import type {
 } from "../../config/config-catalog";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
+import { Alert } from "../ui/alert";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +27,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { StatusDot } from "../ui/status-badge";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { defaultRenderers } from "./config-field.helpers";
@@ -151,13 +155,13 @@ export function ConfigField({
   const statusBadges = (
     <>
       {renderProps.required && !renderProps.isSet ? (
-        <span className="shrink-0 rounded-sm bg-[color-mix(in_srgb,var(--destructive)_10%,transparent)] px-1.5 py-px text-2xs font-semibold text-destructive">
+        <Badge variant="requiredStatus" size="micro" className="shrink-0">
           {t("secretsview.Required")}
-        </span>
+        </Badge>
       ) : null}
       {renderProps.isSet && layout === "stacked" ? (
         <span className="inline-flex shrink-0 items-center gap-1 text-2xs font-medium text-ok">
-          <span className="inline-block size-1.5 rounded-full bg-ok" />
+          <StatusDot tone="success" className="size-1.5" />
           {t("config-field.Configured")}
         </span>
       ) : null}
@@ -203,238 +207,248 @@ export function ConfigField({
       : `field-${renderProps.key}`;
 
     return (
-      <div
-        id={fieldId}
-        className={cn(
-          "group/field border-b border-border/40 px-4 py-3.5 last:border-b-0",
-          renderProps.readonly && "pointer-events-none",
-        )}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium leading-snug text-txt-strong">
-                {label}
-              </span>
-              {statusBadges}
+      <Card asChild variant="configRow">
+        <div
+          id={fieldId}
+          className={cn(
+            "group/field px-4 py-3.5",
+            renderProps.readonly && "pointer-events-none",
+          )}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium leading-snug text-txt-strong">
+                  {label}
+                </span>
+                {statusBadges}
+              </div>
+              {helpBlock}
+              {errorBlock}
             </div>
-            {helpBlock}
-            {errorBlock}
-          </div>
 
-          <div className="shrink-0 pt-0.5">
-            {isBoolean ? (
-              <Switch
-                aria-label={label}
-                checked={
-                  renderProps.value === true ||
-                  renderProps.value === "true" ||
-                  renderProps.value === "1" ||
-                  (!renderProps.isSet &&
-                    (renderProps.schema.default === true ||
-                      renderProps.schema.default === "true"))
-                }
-                disabled={renderProps.readonly}
-                onCheckedChange={(next) => {
-                  renderProps.onChange(String(next));
-                }}
-              />
-            ) : usesEditDialog ? (
-              <>
-                <Button
-                  type="button"
-                  variant="choice"
-                  size="compact"
-                  align="start"
+            <div className="shrink-0 pt-0.5">
+              {isBoolean ? (
+                <Switch
+                  aria-label={label}
+                  checked={
+                    renderProps.value === true ||
+                    renderProps.value === "true" ||
+                    renderProps.value === "1" ||
+                    (!renderProps.isSet &&
+                      (renderProps.schema.default === true ||
+                        renderProps.schema.default === "true"))
+                  }
                   disabled={renderProps.readonly}
-                  onClick={() => {
-                    setClearConfirming(false);
-                    setEditOpen(true);
+                  onCheckedChange={(next) => {
+                    renderProps.onChange(String(next));
                   }}
-                  className="max-w-[14rem]"
-                  aria-label={t("config-field.editLabel", {
-                    defaultValue: "Edit {{label}}",
-                    label,
-                  })}
-                  data-testid={`config-field-edit-${renderProps.key}`}
-                >
-                  <span className="min-w-0 truncate">{chipLabel}</span>
-                  <Pencil className="size-3 shrink-0 text-muted" aria-hidden />
-                </Button>
+                />
+              ) : usesEditDialog ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="choice"
+                    size="compact"
+                    align="start"
+                    disabled={renderProps.readonly}
+                    onClick={() => {
+                      setClearConfirming(false);
+                      setEditOpen(true);
+                    }}
+                    className="max-w-[14rem]"
+                    aria-label={t("config-field.editLabel", {
+                      defaultValue: "Edit {{label}}",
+                      label,
+                    })}
+                    data-testid={`config-field-edit-${renderProps.key}`}
+                  >
+                    <span className="min-w-0 truncate">{chipLabel}</span>
+                    <Pencil
+                      className="size-3 shrink-0 text-muted"
+                      aria-hidden
+                    />
+                  </Button>
 
-                <Dialog
-                  open={editOpen}
-                  onOpenChange={(open) => {
-                    setEditOpen(open);
-                    if (!open) setClearConfirming(false);
-                  }}
-                >
-                  <DialogContent className="max-w-md gap-4 bg-card sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>
-                        {t("config-field.changeTitle", {
-                          defaultValue: "Change {{label}}",
-                          label,
-                        })}
-                      </DialogTitle>
-                      <DialogDescription>
-                        {helpText ||
-                          t("config-field.changeDescription", {
-                            defaultValue: "Enter a new value for {{label}}.",
+                  <Dialog
+                    open={editOpen}
+                    onOpenChange={(open) => {
+                      setEditOpen(open);
+                      if (!open) setClearConfirming(false);
+                    }}
+                  >
+                    <DialogContent
+                      variant="card"
+                      className="max-w-md gap-4 sm:max-w-md"
+                    >
+                      <DialogHeader>
+                        <DialogTitle>
+                          {t("config-field.changeTitle", {
+                            defaultValue: "Change {{label}}",
                             label,
                           })}
-                      </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-2">
-                      <label
-                        htmlFor={`${fieldId}-edit`}
-                        className="text-sm font-medium text-txt-strong"
-                      >
-                        {label}
-                      </label>
-                      {usesMultilineDialog ? (
-                        <Textarea
-                          id={`${fieldId}-edit`}
-                          value={draft}
-                          autoFocus
-                          rows={8}
-                          placeholder={
-                            renderProps.hint.placeholder ||
-                            t("config-field.enterValue", {
-                              defaultValue: "Enter a value",
-                            })
-                          }
-                          onChange={(event) => setDraft(event.target.value)}
-                          variant="configDialog"
-                          density="dialogEditor"
-                        />
-                      ) : (
-                        <Input
-                          variant="config"
-                          id={`${fieldId}-edit`}
-                          type={
-                            renderProps.fieldType === "password" ||
-                            renderProps.hint.sensitive
-                              ? "password"
-                              : renderProps.fieldType === "number"
-                                ? "number"
-                                : renderProps.fieldType === "email"
-                                  ? "email"
-                                  : renderProps.fieldType === "url"
-                                    ? "url"
-                                    : "text"
-                          }
-                          value={draft}
-                          autoFocus
-                          placeholder={
-                            renderProps.hint.placeholder ||
-                            (renderProps.hint.sensitive ||
-                            renderProps.fieldType === "password"
-                              ? t("config-field.secretPlaceholder", {
-                                  defaultValue: "Enter new value",
-                                })
-                              : undefined)
-                          }
-                          onChange={(event) => setDraft(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter") return;
-                            event.preventDefault();
-                            if (!canSaveDraft) return;
-                            renderProps.onChange(draft);
-                            setEditOpen(false);
-                          }}
-                        />
-                      )}
-                    </div>
-
-                    {clearConfirming ? (
-                      <div
-                        role="alert"
-                        className="rounded-sm border border-danger/50 bg-destructive-subtle px-3 py-2 text-xs text-danger"
-                      >
-                        {t("config-field.clearConfirmation", {
-                          defaultValue:
-                            "Remove {{label}}? The removal is applied when you save changes.",
-                          label,
-                        })}
-                      </div>
-                    ) : null}
-
-                    <DialogFooter className="gap-2 sm:gap-2">
-                      {clearConfirming ? (
-                        <>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setClearConfirming(false)}
-                          >
-                            {t("config-field.keepValue", {
-                              defaultValue: "Keep value",
+                        </DialogTitle>
+                        <DialogDescription>
+                          {helpText ||
+                            t("config-field.changeDescription", {
+                              defaultValue: "Enter a new value for {{label}}.",
+                              label,
                             })}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              renderProps.onChange("");
-                              setClearConfirming(false);
-                              setEditOpen(false);
-                            }}
-                          >
-                            {t("config-field.clearValue", {
-                              defaultValue: "Clear value",
-                            })}
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          {canClearSecret ? (
-                            <Button
-                              type="button"
-                              variant="surfaceDestructive"
-                              size="sm"
-                              className="mr-auto"
-                              onClick={() => setClearConfirming(true)}
-                            >
-                              {t("common.clear", { defaultValue: "Clear" })}
-                            </Button>
-                          ) : null}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setEditOpen(false)}
-                          >
-                            {t("common.cancel", { defaultValue: "Cancel" })}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="default"
-                            size="sm"
-                            disabled={!canSaveDraft}
-                            onClick={() => {
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-2">
+                        <label
+                          htmlFor={`${fieldId}-edit`}
+                          className="text-sm font-medium text-txt-strong"
+                        >
+                          {label}
+                        </label>
+                        {usesMultilineDialog ? (
+                          <Textarea
+                            id={`${fieldId}-edit`}
+                            value={draft}
+                            autoFocus
+                            rows={8}
+                            placeholder={
+                              renderProps.hint.placeholder ||
+                              t("config-field.enterValue", {
+                                defaultValue: "Enter a value",
+                              })
+                            }
+                            onChange={(event) => setDraft(event.target.value)}
+                            variant="configDialog"
+                            density="dialogEditor"
+                          />
+                        ) : (
+                          <Input
+                            variant="config"
+                            id={`${fieldId}-edit`}
+                            type={
+                              renderProps.fieldType === "password" ||
+                              renderProps.hint.sensitive
+                                ? "password"
+                                : renderProps.fieldType === "number"
+                                  ? "number"
+                                  : renderProps.fieldType === "email"
+                                    ? "email"
+                                    : renderProps.fieldType === "url"
+                                      ? "url"
+                                      : "text"
+                            }
+                            value={draft}
+                            autoFocus
+                            placeholder={
+                              renderProps.hint.placeholder ||
+                              (renderProps.hint.sensitive ||
+                              renderProps.fieldType === "password"
+                                ? t("config-field.secretPlaceholder", {
+                                    defaultValue: "Enter new value",
+                                  })
+                                : undefined)
+                            }
+                            onChange={(event) => setDraft(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") return;
+                              event.preventDefault();
                               if (!canSaveDraft) return;
                               renderProps.onChange(draft);
                               setEditOpen(false);
                             }}
-                          >
-                            {t("common.save", { defaultValue: "Save" })}
-                          </Button>
-                        </>
-                      )}
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </>
-            ) : (
-              <div className="w-[min(100%,16rem)]">{renderFn(renderProps)}</div>
-            )}
+                          />
+                        )}
+                      </div>
+
+                      {clearConfirming ? (
+                        <Alert
+                          variant="dangerConfirm"
+                          className="px-3 py-2 text-xs"
+                        >
+                          {t("config-field.clearConfirmation", {
+                            defaultValue:
+                              "Remove {{label}}? The removal is applied when you save changes.",
+                            label,
+                          })}
+                        </Alert>
+                      ) : null}
+
+                      <DialogFooter className="gap-2 sm:gap-2">
+                        {clearConfirming ? (
+                          <>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setClearConfirming(false)}
+                            >
+                              {t("config-field.keepValue", {
+                                defaultValue: "Keep value",
+                              })}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                renderProps.onChange("");
+                                setClearConfirming(false);
+                                setEditOpen(false);
+                              }}
+                            >
+                              {t("config-field.clearValue", {
+                                defaultValue: "Clear value",
+                              })}
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            {canClearSecret ? (
+                              <Button
+                                type="button"
+                                variant="surfaceDestructive"
+                                size="sm"
+                                className="mr-auto"
+                                onClick={() => setClearConfirming(true)}
+                              >
+                                {t("common.clear", { defaultValue: "Clear" })}
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditOpen(false)}
+                            >
+                              {t("common.cancel", { defaultValue: "Cancel" })}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="default"
+                              size="sm"
+                              disabled={!canSaveDraft}
+                              onClick={() => {
+                                if (!canSaveDraft) return;
+                                renderProps.onChange(draft);
+                                setEditOpen(false);
+                              }}
+                            >
+                              {t("common.save", { defaultValue: "Save" })}
+                            </Button>
+                          </>
+                        )}
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
+              ) : (
+                <div className="w-[min(100%,16rem)]">
+                  {renderFn(renderProps)}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </Card>
     );
   }
 

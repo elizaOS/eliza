@@ -10,6 +10,7 @@ import {
 	MAX_ENTITY_MATCH_DEPTH,
 	MAX_ENTITY_MATCH_NODES,
 	normalizeEntityMatches,
+	normalizeEntityMatchesStrict,
 } from "./entity-matches";
 import { ElizaError } from "./errors";
 import type { IAgentRuntime, Memory, State } from "./types";
@@ -34,6 +35,13 @@ describe("normalizeEntityMatches", () => {
 			}),
 		).toEqual([{ name: "Ada", reason: "exact" }, { name: "Bob" }]);
 		expect(normalizeEntityMatches(null)).toEqual([]);
+	});
+
+	it("marks whitespace-only names as dropped supplied evidence", () => {
+		expect(normalizeEntityMatchesStrict([{ name: "   " }])).toEqual({
+			matches: [],
+			dropped: true,
+		});
 	});
 
 	it(`accepts a ${MAX_ENTITY_MATCH_DEPTH}-deep match wrap`, () => {

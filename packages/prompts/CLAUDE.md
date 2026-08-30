@@ -17,10 +17,12 @@ root [`CLAUDE.md`](../../CLAUDE.md).
   backward compatibility. Runtime and codegen paths use complete authored
   descriptions directly; the alias must never rewrite text.
 - Also owns the action/provider **specs** under `specs/` and the generators in `scripts/` that build a merged plugin action spec and emit `packages/core/src/generated/action-docs.ts`.
-- Bun and `eliza-source` workspace consumers load the maintained TypeScript
-  source directly, and workspace TypeScript consumers resolve source types
-  before `dist/` exists. The generated publish manifest rewrites those type
-  paths so native Node and published-package consumers load compiled `dist/`
+- Bun, Vite's `module` condition, explicitly configured `eliza-source`
+  consumers, and targeted Vitest source aliases load the maintained TypeScript
+  source directly. Workspace TypeScript consumers resolve source types before
+  `dist/` exists. Normal native Node workspace consumers continue to load
+  compiled `dist/` JavaScript. The generated publish manifest rewrites every
+  source-facing condition so published-package consumers load compiled
   JavaScript and declarations. Both manifests expose only the package root.
   Internal source imports use explicit `.js` specifiers so NodeNext typechecking
   and emitted native ESM resolve the same sibling modules.
@@ -45,7 +47,7 @@ packages/prompts/
     registered-action-inventory.js  shared discovery inventory used by action codegen
     check-secrets.js                scans prompt .ts files for embedded secrets/PII
     file-utils.js                   readJson/readText/ensureDirectory helpers for the scripts
-  test/prompts.test.js  regression assertions on template wording (bun test)
+  test/prompts.test.js  rendered composition, injection, and lossless-context contracts (bun test)
 ```
 
 ## Key exports / surface
@@ -72,9 +74,11 @@ bun run --cwd packages/prompts clean                    # rm -rf dist
 maintained source modules. The package test lane builds and packs `dist/`
 exactly as the release path does, verifies that the tarball contains the
 compiled `dist/` contract rather than TypeScript runtime source, installs it
-into an isolated native Node consumer, separately exercises Bun's workspace
-package resolution, and emits the core prompt declarations after removing
-`dist/`; either path failing is a package-contract error.
+into an isolated native Node consumer, and proves that all published
+source-facing conditions still load compiled JavaScript. It separately
+exercises Bun's workspace resolution, native Node's compiled workspace entry,
+Vitest-compatible Vite resolution of core with `dist/` removed, and clean core
+declaration emission; any path failing is a package-contract error.
 
 ## Config / env vars
 
@@ -87,7 +91,7 @@ No required configuration. The generators resolve repo paths from `import.meta.u
 Add a prompt template:
 1. In `src/index.ts`, add `export const fooTemplate = \`...\`;` then `export const FOO_TEMPLATE = fooTemplate;` (always export both names).
 2. Use `{{camelCaseVar}}` placeholders, `{{#each}}` / `{{#if}}`, and end with the JSON-only output instruction other templates use.
-3. Re-export from `@elizaos/core` (`packages/core/src/prompts.ts`) if runtime code needs it, then add/adjust a wording assertion in `test/prompts.test.js`.
+3. Re-export from `@elizaos/core` (`packages/core/src/prompts.ts`) if runtime code needs it, then add or adjust a regression test for an observable composition, injection, lossless-context, or code-generation boundary. Do not add tests whose material assertion only pins prompt prose.
 
 Regenerate the plugin action spec after adding or renaming a plugin `Action`:
 - Run `build:plugin-action-spec`. It scans `plugins/**/*.ts`; never hand-edit `specs/actions/plugins.generated.json`. Actions intentionally excluded from the public surface live in the `RETIRED_IMPLEMENTATION_ONLY_ACTIONS` set in `scripts/generate-plugin-action-spec.js`.
@@ -102,13 +106,17 @@ Regenerate the plugin action spec after adding or renaming a plugin `Action`:
 - Never cap, condense, summarize, abbreviate, or otherwise rewrite model-facing
   prompt content. Provider limits reject before dispatch; explicit pagination
   must be lossless and caller requested.
+- Test observable rendered contracts rather than prompt wording. Prose-only
+  regex and substring assertions create copy-edit churn without proving model-facing behavior.
 - The generated action inventory is a public-surface audit, not a substitute
   for runtime action-registration tests.
 
 ## Package completion evidence
 
 Follow the repository-wide definition of done in the root guide. For prompt or
-spec changes, regenerate every owned artifact, inspect the diff, run prompt and
-secret tests, and execute affected behavior against a live model. Review the
-full trajectory—including rendered prompt, raw output, validation, action
-selection, and result—rather than approving a string diff alone.
+spec changes, regenerate every owned artifact, inspect the diff, and run prompt
+and secret tests. A deterministic test or guide change that does not alter a
+model-facing prompt needs rendered-contract evidence, not a live-model run.
+When prompt behavior changes, execute the affected behavior against a live model
+and review the full trajectory—including rendered prompt, raw output,
+validation, action selection, and result.

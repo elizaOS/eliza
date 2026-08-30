@@ -1,11 +1,10 @@
 /**
- * Provider that surfaces the user's recent messages and attachment descriptions
- * across connected platforms. It expands verified linked identities,
- * intersects their rooms with the agent's durable rooms, and renders the full
- * eligible cross-room history newest-first with source, time, and speaker
- * provenance; RECENT_MESSAGES owns the current-room transcript when present.
- * Suppressed inside automation and page-scoped rooms, which carry their own
- * context. Gated to ADMIN (enforced by applyPluginRoleGating).
+ * Provider that exposes complete authorized cross-platform conversation
+ * history with a lossless retrieval manifest for models whose input boundary
+ * cannot admit the eager representation. RECENT_MESSAGES owns the current-room
+ * transcript when present. Suppressed
+ * inside automation and page-scoped rooms, which carry their own context.
+ * Gated to ADMIN (enforced by applyPluginRoleGating).
  */
 import type {
   IAgentRuntime,
@@ -55,9 +54,9 @@ function attachmentPromptSummary(attachments: readonly Media[]): string {
 export const recentConversationsProvider: Provider = {
   name: "recent-conversations",
   description:
-    "Recent messages from the user's conversations across all connected platforms.",
+    "Authorized conversation-room manifest for storage-backed cross-platform recall.",
   descriptionCompressed:
-    "recent message user conversation across connect platform",
+    "authorized conversation room manifest search stored cross platform history",
   dynamic: true,
   // Cross-world continuity must be available to the response router itself;
   // waiting for a memory/messaging context selection is too late for a direct
@@ -135,42 +134,21 @@ export const recentConversationsProvider: Provider = {
         roomIds,
         accessContext,
       });
-
-      if (!memories || memories.length === 0) {
-        return { text: "", values: {}, data: {} };
-      }
-
-      // Sort newest first
       const sorted = memories
         .filter(
-          (m) =>
-            Boolean(m.content.text) || (m.content.attachments?.length ?? 0) > 0,
+          (memory) =>
+            Boolean(memory.content.text) ||
+            (memory.content.attachments?.length ?? 0) > 0,
         )
-        .sort((a, b) => {
-          const aTime =
-            typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
-              ? a.createdAt
-              : 0;
-          const bTime =
-            typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
-              ? b.createdAt
-              : 0;
-          return bTime - aTime;
-        });
-
+        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
       if (sorted.length === 0) {
         return { text: "", values: {}, data: {} };
       }
 
-      // Resolve source tags in one adapter read. A missing cosmetic tag must
-      // not remove otherwise eligible history from model context.
+      // Resolve room labels in one adapter read. Missing cosmetic labels do not
+      // remove an authorized room from the manifest or widen disclosure.
       const roomCache = new Map<string, Room | null>();
-      for (const mem of sorted) {
-        const rid = mem.roomId;
-        if (rid && !roomCache.has(rid)) {
-          roomCache.set(rid, null);
-        }
-      }
+      for (const roomId of roomIds) roomCache.set(roomId, null);
       const resultRoomIds = Array.from(roomCache.keys()) as UUID[];
       try {
         for (const room of await runtime.getRoomsByIds(resultRoomIds)) {
@@ -184,50 +162,43 @@ export const recentConversationsProvider: Provider = {
         });
       }
 
-      const lines: string[] = ["Recent conversations:"];
-      for (const mem of sorted) {
-        const room = roomCache.get(mem.roomId) ?? null;
-        const tag = roomSourceTag(room);
-        const age = formatRelativeTimestampPrefix(mem.createdAt);
-        const speaker = formatSpeakerLabel(runtime, mem);
-        const text = toWellFormedUnicode(mem.content.text ?? "");
+      const rooms = roomIds.map((roomId) => {
+        const room = roomCache.get(roomId) ?? null;
+        return {
+          id: roomId,
+          source: room?.source ?? null,
+          name: room?.name ?? null,
+          label: toWellFormedUnicode(roomSourceTag(room)),
+        };
+      });
+      const manifestLines = [
+        "Stored conversation manifest:",
+        `${sorted.length} stored message(s) across ${rooms.length} authorized room(s).`,
+        "Message bodies are not included here. Use MEMORY_SEARCH for complete historical recall.",
+        ...rooms.map((room) => `- ${room.label} roomId=${room.id}`),
+      ];
+      const eagerLines = ["Recent conversations:"];
+      for (const memory of sorted) {
+        const room = roomCache.get(memory.roomId) ?? null;
+        const text = toWellFormedUnicode(memory.content.text ?? "");
         const attachments = attachmentPromptSummary(
-          mem.content.attachments ?? [],
+          memory.content.attachments ?? [],
         );
-        lines.push(
-          `${tag} ${age}${speaker}: ${[text, attachments].filter(Boolean).join(" ")}`,
+        eagerLines.push(
+          `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[text, attachments].filter(Boolean).join(" ")}`,
         );
       }
 
       markOwnerExclusiveDisclosureUsed(message);
 
       return {
-        text: lines.join("\n"),
-        values: { recentConversationCount: sorted.length },
-        data: {
-          messages: sorted.map((m) => ({
-            id: m.id,
-            roomId: m.roomId,
-            entityId: m.entityId,
-            text: m.content.text,
-            attachments: (m.content.attachments ?? []).map((attachment) => ({
-              id: attachment.id,
-              title: attachment.title,
-              source: attachment.source,
-              description: attachment.description,
-              text: attachment.text,
-              contentType: attachment.contentType,
-              mimeType: attachment.mimeType,
-              filename: attachment.filename,
-              size: attachment.size,
-              checksum: attachment.checksum,
-              width: attachment.width,
-              height: attachment.height,
-              duration: attachment.duration,
-            })),
-            createdAt: m.createdAt,
-          })),
+        text: eagerLines.join("\n"),
+        overflowText: manifestLines.join("\n"),
+        values: {
+          recentConversationCount: sorted.length,
+          recentConversationRoomCount: rooms.length,
         },
+        data: { rooms },
       };
     } catch (error) {
       // error-policy:J4 recall failure degrades to no recent-conversations text,

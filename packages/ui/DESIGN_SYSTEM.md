@@ -25,6 +25,22 @@ border, radius, typography, control height, padding, focus, hover, disabled,
 selected, invalid, loading, and destructive presentation belong to the atom's
 typed interface.
 
+Raw semantic utilities can still reproduce a canonical recipe without using
+its owner. The compliance gate therefore normalizes class order and rejects the
+opaque padded surface recipe (`bg-card`, `rounded-sm`, and `p-4`) on raw hosts;
+use `Card variant="flatPadded"`. The corresponding outlined recipe is owned by
+`Card variant="outlinedPadded"` and is independently order-normalized and
+ratcheted to zero. Analytics-style report surfaces use
+`Card variant="reportPanel"`; repainting `Card` with that background and border
+pair is also rejected even when it arrives through an internal barrel. `Card`
+also owns repeated vertical content spacing through
+the typed `stack` axis and repeated column geometry through `flow`, so callers
+do not repaint or redensify the surface through `className`.
+
+Inset rows and compact settings panels use `insetPadded` or `insetCompact`.
+Their shared `bg-surface`/border/radius recipe is normalized independently of
+the density utilities, and repeated row alignment comes from the `flow` axis.
+
 The same ownership rule applies to computed classes and React `style` objects.
 Conditional expressions, templates, named class constants, CSS-module lookups,
 and styling helper calls cannot conceal atom paint. Canonical controls reject
@@ -52,6 +68,16 @@ count, and token role. The gate rejects unknown primitives, missing exports, mov
 compositions, count drift, and attempts to reuse an adapter's local recipe from
 another caller. Exceptions remain reserved for renderer, native, or external
 system boundaries; they do not waive the Button reuse rule.
+
+`scripts/component-inventory-decisions.json` classifies the current atomic
+inventory. `scripts/atomic-consolidation-ledger.json` separately records every
+component accepted as consolidation debt and its resolution. An unresolved
+entry remains an `atomic-duplicate` finding after deletion, rename, or decision
+relabeling. A deleted resolution stays valid only while the old component and
+any retired module remain absent and the canonical owner remains present. An
+adapter resolution must keep composing that exact canonical owner. The
+ordinary baseline may only hold or reduce the count. Completion uses the tight
+zero baseline.
 
 ## Token-role contracts
 
@@ -106,12 +132,19 @@ Use the narrowest shared lifecycle owner that fits:
 - `ContentState` owns empty and loading presentation across panel, inset,
   surface, and workspace placements. Page-specific wrappers supply copy and
   behavior rather than rebuilding the state geometry.
+- `PagePanel.ContentRail` owns centered content widths and the shared 16px to
+  24px responsive horizontal inset for routed views. Headers, scrolling,
+  vertical safe areas, and chat-composer clearance stay with their narrower
+  route or workspace lifecycle owner.
 - `ActionListRow` owns a single row-level action with native button, link, or
   static semantics and typed leading, copy, metadata, and trailing slots. It is
   not suitable for rows with multiple independent controls or domain progress.
-- `SelectableTile` owns controlled settings choices with a leading visual,
-  centered label, pressed state, and selected indicator. Selected state must
-  not add visible `ON` or `OFF` copy.
+- `AuthResultShell` owns the full-page background, centered card, and content
+  geometry for public authentication outcomes. Result pages supply only their
+  state-specific icon, copy, and actions.
+- `ConnectionCapabilityTile` owns the icon, title, and description hierarchy
+  used by connector setup grids. Provider screens supply translated content
+  and provider-specific icon paint.
 - `StatusBadge` owns status paint. Domain adapters map typed domain states to a
   canonical tone and label; they do not reproduce badge classes.
 
@@ -122,13 +155,64 @@ density presentation stay in the table primitives.
 
 Repeated multi-atom structures belong in a shared pattern only when they own
 the same behavior and state lifecycle. Dependency similarity alone is not a
-pattern. The molecular inventory records a final disposition and rationale for
-every detected cluster; unresolved candidates and duplicate implementations
-must not pass the completion gate. The accepted final dispositions are
-`distinct-domain-compositions` and `shared-lifecycle-owner`; adding another
-requires a gate and policy change in the same review. Run
-`audit:molecular-inventory` to update the committed report after source or
-decision changes. Package lint checks that the report is current.
+pattern.
+
+The molecular review follows this enforced sequence:
+
+1. Discovery groups components by role and atomic dependencies. Each decision
+   records the exact `file:symbol` member IDs and a semantic fingerprint of
+   every member's atomic dependencies and rendered tags. Membership or
+   rendered-structure drift invalidates the decision even when the broad
+   dependency signature stays the same.
+2. Review records `distinct-domain-compositions` or
+   `shared-lifecycle-owner` only after ownership is settled. `unresolved` and
+   `canonicalize` are explicit working states. Both fail the completion gate.
+   A `canonicalize` decision also names the canonical contract that will own
+   the result.
+3. Before broad caller migration, a new entry in
+   `scripts/molecule-contracts.json` must name at least two maintained
+   consumers from different files. It must also name a Storybook story and a
+   behavioral test that each render the contracted owner through its resolved
+   import, including aliases and barrels. The audit verifies the owner,
+   required composition signals, consumers, story, and test.
+4. Migrate the remaining callers, remove the non-final cluster decision, and
+   regenerate the report. `audit:molecular-inventory --check` derives JSON and
+   Markdown from one in-memory report and rejects either artifact when stale.
+
+Rendered stories and the app visual audit own geometry proof. Source-text class
+assertions are not a substitute for rendered behavior.
+
+## Design contract graph
+
+`audit:design-contract-graph` derives a typed ownership graph from the live
+semantic-token stylesheet, every maintained React component symbol, the
+canonical atom inventory, molecule contracts, and higher-order declarations.
+Source discovery is authoritative: aliases, barrels, and local wrappers are
+resolved through TypeScript symbols, atom dependencies are closed transitively,
+and reuse across independent source domains infers molecule ownership even when
+no registry entry names the component. Registries add semantic stability
+contracts to discovered owners; omission from a registry cannot hide an owner.
+
+The graph validates token aliases, canonical import identity, downward
+dependencies, real exported owners, raw capability ownership, and exact
+migration debt. Debt is keyed by a semantic fingerprint and match count, so
+removing one finding cannot make room for a different finding under the same
+aggregate count. Tight CI also rejects stale and expired debt.
+
+The graph distinguishes canonical implementations from route instances.
+Organism and page-shell declarations may name component owners and supported
+layout kinds, but route IDs and resolved layout policy remain in the existing
+route declarations and `SurfaceManifest`. `PageLayoutManifest` keeps content,
+workspace, and immersive topology separate from header framing and renderer
+isolation. This prevents the design graph from becoming another route registry.
+
+Repository-wide raw painted and interactive hosts remain migration inventory.
+Inside a source-inferred molecule, however, a raw host that claims surface,
+border, radius, elevation, or interaction capability is an enforced finding.
+New claims fail immediately. Existing migration debt is exact and expiring;
+tight mode also fails after a cleanup until the ledger is reduced, preventing
+removed debt from becoming allowance for unrelated drift. Completion requires
+that molecular capability debt reach zero.
 
 ## Story and accessibility proof
 

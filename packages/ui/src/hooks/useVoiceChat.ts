@@ -30,6 +30,7 @@ import {
   invokeDesktopBridgeRequest,
 } from "../bridge/electrobun-rpc";
 import {
+  getElizaPlayVoicePlugin,
   getTalkModePlugin,
   type TalkModeErrorEvent,
   type TalkModeStateEvent,
@@ -1519,15 +1520,23 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       audioSourceRef.current = null;
     }
 
-    // Native TalkMode TTS — interrupt any in-flight native speak so barge-in
-    // actually silences the agent. Without this the awaited TalkMode.speak()
-    // plays to completion and the agent talks over the user.
+    // Interrupt the native engine that owns the in-flight speak so barge-in
+    // actually silences the agent. Remote-only Android builds omit TalkMode
+    // and use the Play-safe system TTS bridge instead.
     if (Capacitor.isNativePlatform()) {
       // error-policy:J6 best-effort interrupt/teardown of in-flight native speak
       // for barge-in; if the stop fails there is no further recourse here.
-      void getTalkModePlugin()
-        .stopSpeaking?.()
-        .catch(() => {});
+      const talkMode = getTalkModePlugin();
+      const stopNativePlayback =
+        typeof talkMode.stopSpeaking === "function"
+          ? talkMode.stopSpeaking()
+          : getElizaPlayVoicePlugin().stop?.();
+      void stopNativePlayback?.catch((error: unknown) => {
+        logger.warn(
+          { error },
+          "[useVoiceChat] Native speech teardown failed during barge-in",
+        );
+      });
     }
 
     clearSpeechTimers();
@@ -2417,12 +2426,21 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ...task.telemetry,
             });
             try {
-              const result = await getTalkModePlugin().speak({
-                text: trimmed,
-                useLocalInferenceTts: true,
-              });
+              const talkMode = getTalkModePlugin();
+              if (typeof talkMode.speak === "function") {
+                const result = await talkMode.speak({
+                  text: trimmed,
+                  useLocalInferenceTts: true,
+                });
+                if (result?.error) throw new Error(result.error);
+              } else {
+                const playVoice = getElizaPlayVoicePlugin();
+                if (typeof playVoice.speak !== "function") {
+                  throw new Error("Native voice playback is unavailable");
+                }
+                await playVoice.speak({ text: trimmed });
+              }
               if (workerGeneration !== generationRef.current) break;
-              if (result?.error) throw new Error(result.error);
               continue;
             } catch (error) {
               if (

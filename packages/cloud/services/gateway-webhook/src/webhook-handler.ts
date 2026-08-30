@@ -8,6 +8,7 @@ import {
   executeResponseAttempts,
   type ResponseAttemptsResult,
 } from "@elizaos/cloud-services-common/response-attempts";
+import { TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER } from "@elizaos/cloud-services-common/telegram-connector";
 import {
   executeTelegramDelivery,
   type TelegramDeliveryHooks,
@@ -43,6 +44,7 @@ const PERSONAL_SHARED_ATTEMPTS = 3;
 const PERSONAL_SHARED_RETRY_DELAY_CAP_MS = 5_000;
 const PROCESSING_TTL_SECONDS = 120;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
+const PERSONAL_TELEGRAM_DELIVERY_EPOCH = 2;
 const CONNECTOR_PROCESSING = "processing";
 const CONNECTOR_DELIVERED = "delivered";
 const CONNECTOR_UNCERTAIN = "uncertain";
@@ -99,6 +101,7 @@ interface GroupDeliveryAuthority {
   ownerUserId: string;
   personalAgentId: string;
   version: number;
+  requiresAllAdultsConsent?: boolean;
 }
 
 type GroupDeliveryDirective =
@@ -126,13 +129,25 @@ function parseGroupDeliveryDirective(
     typeof candidate.personalAgentId !== "string" ||
     typeof candidate.version !== "number" ||
     !Number.isSafeInteger(candidate.version) ||
-    candidate.version <= 0
+    candidate.version <= 0 ||
+    (candidate.requiresAllAdultsConsent !== undefined &&
+      typeof candidate.requiresAllAdultsConsent !== "boolean")
   ) {
     return null;
   }
   return {
     kind: "binding",
-    authority: candidate as unknown as GroupDeliveryAuthority,
+    authority: {
+      bindingId: candidate.bindingId,
+      ownerUserId: candidate.ownerUserId,
+      personalAgentId: candidate.personalAgentId,
+      version: candidate.version,
+      ...(candidate.requiresAllAdultsConsent === undefined
+        ? {}
+        : {
+            requiresAllAdultsConsent: candidate.requiresAllAdultsConsent,
+          }),
+    },
   };
 }
 
@@ -197,6 +212,7 @@ async function sendReplyWithRequiredReceipt(
 async function reconcileLegacyTelegramDelivery(
   deps: HandlerDeps,
   project: string,
+  connectorAccountId: string,
   event: ChatEvent,
   traceId: string,
   operation: "mark_uncertain" | "mark_delivered",
@@ -215,7 +231,9 @@ async function reconcileLegacyTelegramDelivery(
         "X-Eliza-Webhook-Forwarder-Secret": secret,
       },
       body: JSON.stringify({
+        deliveryEpoch: PERSONAL_TELEGRAM_DELIVERY_EPOCH,
         project,
+        connectorAccountId,
         senderId: event.senderId,
         messageId: event.messageId,
         operation,
@@ -246,6 +264,7 @@ async function forwardPersonalTelegramToEdge(
   rawBody: string,
   deps: HandlerDeps,
   project: string,
+  connectorAccountId: string,
   event: ChatEvent,
   dedupKey: string,
   traceId: string,
@@ -259,6 +278,7 @@ async function forwardPersonalTelegramToEdge(
     const reconciled = await reconcileLegacyTelegramDelivery(
       deps,
       project,
+      connectorAccountId,
       event,
       traceId,
       legacy === TELEGRAM_DELIVERED ? "mark_delivered" : "mark_uncertain",
@@ -308,6 +328,7 @@ async function forwardPersonalTelegramToEdge(
         headers: {
           "Content-Type": "application/json",
           [ELIZA_TRACE_ID_HEADER]: traceId,
+          [TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER]: connectorAccountId,
           "X-Eliza-Webhook-Forwarder-Secret": secret,
           "X-Telegram-Bot-Api-Secret-Token": telegramSignature,
         },
@@ -319,6 +340,14 @@ async function forwardPersonalTelegramToEdge(
       await deps.redis.set(dedupKey, TELEGRAM_DELIVERED, {
         ex: TELEGRAM_DELIVERY_TTL_SECONDS,
       });
+    } else if (
+      response.status === 409 &&
+      response.headers.get("X-Eliza-Failure-Stage") === "connector_account"
+    ) {
+      // The Worker rejected the handoff before provider egress because this
+      // gateway resolved a different bot account. Reopen only this explicit,
+      // pre-egress failure so a corrected gateway/config can retry the update.
+      await deps.redis.del(dedupKey);
     }
     return response;
   } finally {
@@ -520,11 +549,19 @@ export async function handleWebhook(
         event.chatType !== "supergroup" &&
         deps.deliveryAuthoritySecret !== undefined
       ) {
+        const connectorAccountId = resolveConnectorAccountId(
+          "telegram",
+          config,
+        );
+        if (!connectorAccountId) {
+          throw new Error("Telegram connector account identity is missing");
+        }
         return forwardPersonalTelegramToEdge(
           request,
           rawBody,
           deps,
           project,
+          connectorAccountId,
           event,
           dedupKey,
           trace.traceId,
@@ -1174,6 +1211,9 @@ async function sendPersonalSharedReply(
                 messageId: `${adapter.platform}:${project}:${event.messageId}`,
                 message: event.text,
                 invocation: groupInvocationForEvent(event),
+                ...(adapter.platform === "telegram" && event.providerThreadId
+                  ? { providerThreadId: event.providerThreadId }
+                  : {}),
                 ...(event.replyToMessageId
                   ? { replyToMessageId: event.replyToMessageId }
                   : {}),

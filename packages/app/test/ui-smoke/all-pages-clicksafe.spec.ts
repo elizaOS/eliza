@@ -224,9 +224,15 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "rolodex",
     path: "/rolodex",
-    // /rolodex resolves to the launcher surface on this platform — same
-    // testid anchor as the apps catalog (old text probe never matches).
-    readyChecks: [{ selector: '[data-testid="launcher"]' }],
+    // Rolodex is a retired built-in route whose launcher entry canonicalizes
+    // to Relationships. Its retained deep link must remain a visible,
+    // recoverable unavailable state instead of presenting a healthy launcher.
+    readyChecks: [
+      {
+        selector:
+          '[data-view-status="unavailable"][data-view-id="rolodex"]',
+      },
+    ],
     timeoutMs: 60_000,
   },
   {

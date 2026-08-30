@@ -71,6 +71,15 @@ export const logger = {
 
 export const elizaLogger = logger;
 
+export function formatError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  try {
+    return String(error);
+  } catch {
+    return "Unknown error";
+  }
+}
+
 export function parseBooleanFromText(value: string): boolean {
   return /^(1|true|yes|y|on)$/i.test(value.trim());
 }

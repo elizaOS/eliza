@@ -19,6 +19,7 @@ import {
   WindowRegionCapture,
 } from "../app-control/defaults.js";
 import { MacosAxAdapter } from "../app-control/macos-ax-adapter.js";
+import { MacosExperimentalExactWindowDispatcher } from "../app-control/macos-exact-window-dispatcher.js";
 import type {
   AppActionOutcome,
   AppActionRequest,
@@ -113,6 +114,7 @@ import {
   readTerminal,
   typeTerminal,
 } from "../platform/terminal.js";
+import { isWaylandSession } from "../platform/wayland-portal.js";
 import {
   arrangeWindows,
   closeWindow,
@@ -368,6 +370,8 @@ export class ComputerUseService extends Service {
     capture: new WindowRegionCapture(),
     grounder: new RegisteredVisualGrounder(),
     pointer: guardedPhysicalPointer,
+    pointerObserver: { position: () => driverGetCursorPosition() },
+    exactWindowPointer: new MacosExperimentalExactWindowDispatcher(),
   });
   private displayIdDeprecationWarned = false;
   private sceneBuilder: SceneBuilder = new SceneBuilder({
@@ -645,6 +649,9 @@ export class ComputerUseService extends Service {
         : {}),
       ...(parameters.allowPhysicalFallback === true
         ? { allowPhysicalFallback: true }
+        : {}),
+      ...(parameters.allowExperimentalExactWindow === true
+        ? { allowExperimentalExactWindow: true }
         : {}),
     };
     try {
@@ -2549,6 +2556,9 @@ export class ComputerUseService extends Service {
       logger.debug(
         `[computeruse] per-display capture failed (${errorMessage(error)}); falling back to driver capture`,
       );
+      if (displayId !== undefined && listDisplays().length > 1) {
+        throw error;
+      }
       const buf = await driverCaptureScreenshot();
       return {
         base64: buf.toString("base64"),
@@ -2934,6 +2944,7 @@ export class ComputerUseService extends Service {
       osName: currentPlatform(),
       commandExists,
       isBrowserAvailable,
+      isWaylandSession,
       shell: process.env.SHELL,
     });
   }

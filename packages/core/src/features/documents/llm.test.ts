@@ -319,7 +319,7 @@ describe("generateText", () => {
 		);
 	});
 
-	test("dispatches OpenAI generation with override values and logs the response", async () => {
+	test("dispatches OpenAI generation with provider overrides and logs the response", async () => {
 		const { runtime } = textRuntime("anthropic", "configured-model");
 
 		await expect(
@@ -334,7 +334,6 @@ describe("generateText", () => {
 			prompt: "user prompt",
 			system: "system prompt",
 			temperature: 0.3,
-			maxOutputTokens: 99,
 		});
 		expect(logActiveTrajectoryLlmCallMock).toHaveBeenCalledWith(
 			runtime,
@@ -403,7 +402,6 @@ describe("generateText", () => {
 			prompt: "prompt",
 			system: "system",
 			temperature: 0.3,
-			maxOutputTokens: 321,
 			providerOptions: { openrouter: { usage: { include: true } } },
 		});
 	});

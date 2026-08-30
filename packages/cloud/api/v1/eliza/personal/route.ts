@@ -26,6 +26,7 @@ app.get("/", async (c) => {
     });
     const dedicated = await findActivePersonalDedicatedTarget(
       user.organization_id,
+      user.id,
       agent.id,
     );
     const dedicatedApiBase = dedicated

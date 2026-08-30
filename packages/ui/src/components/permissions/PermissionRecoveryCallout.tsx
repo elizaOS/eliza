@@ -12,6 +12,7 @@ import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { cn } from "../../lib/utils";
 import { openMobilePermissionSettings } from "../../platform/mobile-permissions-client";
+import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 
 export interface PermissionRecoveryCalloutProps {
@@ -88,13 +89,10 @@ export function PermissionRecoveryCallout({
   };
 
   return (
-    <div
-      role="alert"
+    <Alert
+      variant="warningStrong"
       data-testid={testId}
-      className={cn(
-        "rounded-sm border border-warn/30 bg-warn/10 p-3 text-left",
-        className,
-      )}
+      className={cn("p-3 text-left", className)}
     >
       <div className="text-sm font-semibold text-txt-strong">{title}</div>
       <p className="mt-1 text-sm leading-snug text-txt">{description}</p>
@@ -130,6 +128,6 @@ export function PermissionRecoveryCallout({
           </Button>
         ) : null}
       </div>
-    </div>
+    </Alert>
   );
 }

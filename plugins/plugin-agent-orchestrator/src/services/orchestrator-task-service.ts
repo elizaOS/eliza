@@ -164,6 +164,7 @@ import {
   type OrchestratorRoomRoster,
   type OrchestratorRoomRosterOverview,
   type OrchestratorTaskDocument,
+  type OrchestratorTaskEvent,
   type OrchestratorTaskPriority,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
@@ -197,6 +198,7 @@ import {
   renderDeterministicVerdict,
 } from "./producible-evidence.js";
 import {
+  assertProjectIdRegistered,
   resolveBoundProjectCloudAppId,
   resolveTaskProjectId,
   resolveTaskSpawnWorkdir,
@@ -1295,12 +1297,12 @@ export class OrchestratorTaskService extends Service {
 
   /** Retry persisted coordinator-review deliveries after a runtime restart. */
   async recoverCompletionBarriers(): Promise<number> {
-    const tasks = await this.store.listTasks();
+    const taskDocs = await this.store.listTaskDocuments();
     let recovered = 0;
-    for (const task of tasks) {
+    for (const doc of taskDocs) {
+      const task = doc.task;
       if (!task.completionCoordinatorSessionId) continue;
-      const doc = await this.store.getTask(task.id);
-      const coordinator = doc?.sessions.find(
+      const coordinator = doc.sessions.find(
         (session) => session.sessionId === task.completionCoordinatorSessionId,
       );
       if (!coordinator?.aggregateCompletionRequestedAt) continue;
@@ -1338,13 +1340,10 @@ export class OrchestratorTaskService extends Service {
     const acp = acpOverride ?? this.acp();
     if (!acp) throw new Error("ACP service unavailable for Smithers recovery");
 
-    const [acpSessions, taskRecords] = await Promise.all([
+    const [acpSessions, taskDocs] = await Promise.all([
       acp.listSessions(),
-      this.store.listTasks({}),
+      this.store.listTaskDocuments({}),
     ]);
-    const taskDocs = (
-      await Promise.all(taskRecords.map((task) => this.store.getTask(task.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
     const acpById = new Map(
       acpSessions.map((session) => [session.id, session]),
     );
@@ -3530,6 +3529,7 @@ export class OrchestratorTaskService extends Service {
    * binding.
    */
   private bindProject(input: CreateTaskInput): CreateTaskInput {
+    assertProjectIdRegistered(input.projectId);
     const projectId = resolveTaskProjectId(input);
     const { workdir: _workdir, ...rest } = input;
     const worldId =
@@ -3608,18 +3608,34 @@ export class OrchestratorTaskService extends Service {
   }
 
   async listTasks(filter: TaskListFilter = {}): Promise<TaskThreadDto[]> {
-    const records = await this.store.listTasks(filter);
-    const docs = await Promise.all(
-      records.map((record) => this.store.getTask(record.id)),
+    return (await this.store.listTaskDocuments(filter)).map(toTaskThread);
+  }
+
+  async listTaskDetails(
+    filter: TaskListFilter = {},
+  ): Promise<TaskThreadDetailDto[]> {
+    const docs = await this.store.listTaskDocuments(filter);
+    for (const doc of docs) assertProjectIdRegistered(doc.task.projectId);
+    const details = docs.map(toTaskThreadDetail);
+    if (!details.some((detail) => detail.admission)) return details;
+    const { queuedTaskIds } = await this.getAdmissionSnapshot();
+    const positions = new Map(
+      queuedTaskIds.map((taskId, index) => [taskId, index + 1]),
     );
-    return docs
-      .filter((doc): doc is OrchestratorTaskDocument => doc !== null)
-      .map(toTaskThread);
+    return details.map((detail) => {
+      if (!detail.admission) return detail;
+      detail.admission = {
+        ...detail.admission,
+        position: positions.get(detail.id) ?? 0,
+      };
+      return detail;
+    });
   }
 
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    assertProjectIdRegistered(doc.task.projectId);
     return this.withAdmissionPosition(toTaskThreadDetail(doc));
   }
 
@@ -6512,10 +6528,7 @@ export class OrchestratorTaskService extends Service {
   // ---- aggregate ---------------------------------------------------------
 
   async getStatus(): Promise<OrchestratorStatus> {
-    const records = await this.store.listTasks({ includeArchived: false });
-    const docs = (
-      await Promise.all(records.map((record) => this.store.getTask(record.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const docs = await this.store.listTaskDocuments({ includeArchived: false });
 
     const byStatus = {
       open: 0,
@@ -6556,10 +6569,7 @@ export class OrchestratorTaskService extends Service {
   }
 
   async getAccountOverview(): Promise<OrchestratorAccountOverview> {
-    const records = await this.store.listTasks({ includeArchived: false });
-    const docs = (
-      await Promise.all(records.map((record) => this.store.getTask(record.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const docs = await this.store.listTaskDocuments({ includeArchived: false });
 
     const assignments: OrchestratorAccountAssignment[] = [];
     for (const doc of docs) {
@@ -6626,10 +6636,7 @@ export class OrchestratorTaskService extends Service {
    * one sub-agent session are included (an empty room has no roster to show).
    */
   async getRoomRoster(): Promise<OrchestratorRoomRosterOverview> {
-    const records = await this.store.listTasks({ includeArchived: false });
-    const docs = (
-      await Promise.all(records.map((record) => this.store.getTask(record.id)))
-    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const docs = await this.store.listTaskDocuments({ includeArchived: false });
 
     const orchestratorLabel = this.runtime.character?.name ?? "Orchestrator";
     const rooms: OrchestratorRoomRoster[] = [];
@@ -6844,11 +6851,17 @@ export class OrchestratorTaskService extends Service {
     try {
       const thresholdMs = this.stuckTaskReapThresholdMs();
       const acp = this.acp();
-      const records = await this.store.listTasks({ includeArchived: false });
-      for (const record of records) {
-        if (record.status !== "active" || record.paused) continue;
-        const doc = await this.store.getTask(record.id);
-        if (doc?.task.status !== "active" || doc.task.paused) continue;
+      const docs = await this.store.listTaskDocuments({
+        includeArchived: false,
+        status: "active",
+      });
+      for (const candidate of docs) {
+        // The bulk snapshot is candidate discovery only. A session may attach
+        // while the scan is in flight, so the destructive decision must use a
+        // fresh document read immediately before evaluating liveness/idleness.
+        const doc = await this.store.getTask(candidate.task.id);
+        if (!doc) continue;
+        if (doc.task.status !== "active" || doc.task.paused) continue;
 
         const liveRows = doc.sessions.filter(
           (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
@@ -6882,17 +6895,9 @@ export class OrchestratorTaskService extends Service {
         const idleMs = nowMs - latestActivityMs;
         if (idleMs < thresholdMs) continue;
 
-        // Repair rows the bridge never saw go terminal, so DTOs stop counting
-        // phantom "active" sessions for the interrupted task.
-        for (const row of deadRows) {
-          await this.store.updateSession(row.sessionId, {
-            status: "stopped",
-            stoppedAt: nowMs,
-          });
-        }
-        await this.store.addEvent({
+        const event = {
           id: randomUUID(),
-          taskId: record.id,
+          taskId: doc.task.id,
           eventType: "task_stalled_reaped",
           summary: `No live sub-agent session and no activity for ${Math.round(
             idleMs / 60_000,
@@ -6904,14 +6909,26 @@ export class OrchestratorTaskService extends Service {
           },
           timestamp: nowMs,
           createdAt: nowIso(),
+        } satisfies OrchestratorTaskEvent;
+        const interrupted = await this.store.interruptStuckTaskIfUnchanged({
+          taskId: doc.task.id,
+          expectedTaskUpdatedAt: doc.task.updatedAt,
+          expectedSessions: doc.sessions.map((session) => ({
+            sessionId: session.sessionId,
+            status: session.status,
+            updatedAt: session.updatedAt,
+          })),
+          deadSessionIds: deadRows.map((row) => row.sessionId),
+          event,
+          nowMs,
         });
-        await this.advanceTaskStatus(record.id, "interrupted");
-        this.emitChange(record.id);
+        if (!interrupted) continue;
+        this.emitChange(doc.task.id);
         this.log("info", "stuck task reaped to interrupted", {
-          taskId: record.id,
+          taskId: doc.task.id,
           idleMs,
         });
-        reaped.push(record.id);
+        reaped.push(doc.task.id);
       }
     } catch (err) {
       // error-policy:J7 background reconcile tick — a store/ACP hiccup is
@@ -6919,6 +6936,7 @@ export class OrchestratorTaskService extends Service {
       this.log("warn", "stuck-task reap pass failed", {
         error: err instanceof Error ? err.message : String(err),
       });
+      this.runtime.reportError("OrchestratorTask.reapStuckTasks", err);
     } finally {
       this.stuckTaskReapInFlight = false;
     }

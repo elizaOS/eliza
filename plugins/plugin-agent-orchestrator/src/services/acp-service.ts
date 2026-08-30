@@ -78,6 +78,11 @@ import {
 } from "./coding-account-selection.js";
 import { readConfigEnvKey, readConfigMcpServers } from "./config-env.js";
 import {
+  CREDENTIAL_BRIDGE_TOKEN_ENV,
+  CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
+  createCredentialBridgeToken,
+} from "./credential-bridge-auth.js";
+import {
   applyCredentialProxyEnv,
   resolveOrchestratorCredentialProxyConfig,
 } from "./credential-proxy-env.js";
@@ -112,6 +117,7 @@ import {
 import { buildSkillsManifest } from "./skill-manifest.js";
 import { SMITHERS_DURABLE_RUN_METADATA_KEY } from "./smithers-task-integration.js";
 import {
+  applyDevCloudAuthorityToSubAgentEnv,
   forwardableSubAgentEnv as applySubAgentEnvPolicy,
   canonicalForwardedEnvKey,
   isCloudKeyForwardingOptIn,
@@ -1955,6 +1961,7 @@ export class AcpService extends Service {
   async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
     this.ensureStarted();
     const id = randomUUID();
+    const credentialBridgeToken = createCredentialBridgeToken();
     const name = opts.name?.trim() || id;
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
@@ -2075,6 +2082,7 @@ export class AcpService extends Service {
       const sessionEnv: Record<string, string> = {
         ...(opts.env ?? {}),
         ...(gitIndexIsolation?.env ?? {}),
+        [CREDENTIAL_BRIDGE_TOKEN_ENV]: credentialBridgeToken.token,
       };
       const spawnModel =
         agentType === "claude"
@@ -2147,6 +2155,7 @@ export class AcpService extends Service {
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
         [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
           this.getOrchestratorOwnedArtifacts(id),
+        [CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA]: credentialBridgeToken.hash,
         ...(spawnModel ? { [ACP_METADATA_SPAWN_MODEL]: spawnModel } : {}),
         transportMode: this.transportMode,
         slotClass,
@@ -5373,7 +5382,7 @@ export class AcpService extends Service {
         );
       }
     }
-    return env;
+    return applyDevCloudAuthorityToSubAgentEnv(env);
   }
 
   /**

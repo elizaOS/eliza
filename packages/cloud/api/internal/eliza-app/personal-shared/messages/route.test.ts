@@ -521,6 +521,7 @@ describe("personal Shared messaging deliveries", () => {
       {
         platform: "telegram",
         project: "eliza-app",
+        connectorAccountId: "telegram:test-bot",
         chatId: "123456789",
       },
       "hello",
@@ -784,6 +785,7 @@ describe("personal Shared messaging deliveries", () => {
         {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "telegram:test-bot",
           chatId: "123456789",
         },
         "please verify it\nremember the red bicycle",

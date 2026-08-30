@@ -18,7 +18,9 @@ import {
 } from "../../cloud-ui/components/connection-card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { ConnectionCapabilityTile } from "./connection-capability-tile";
 import { useOAuthConnections } from "./oauth-connection";
 
 export function MicrosoftConnection() {
@@ -26,10 +28,13 @@ export function MicrosoftConnection() {
   const {
     activeConnections,
     isLoading,
+    isError,
+    errorMessage,
     isConnecting,
     disconnectingId,
     connect: handleConnect,
     disconnect,
+    refetch,
   } = useOAuthConnections({ platform: "microsoft", label: "Microsoft" });
 
   // Microsoft is a single-account integration: surface the first active link.
@@ -108,7 +113,16 @@ export function MicrosoftConnection() {
         defaultValue:
           "Connect Outlook Mail, Calendar for AI-powered automation",
       })}
-      status={activeConnection ? "connected" : "disconnected"}
+      status={
+        isError ? "error" : activeConnection ? "connected" : "disconnected"
+      }
+      errorMessage={
+        errorMessage ??
+        t("cloud.microsoft.statusFetchFailed", {
+          defaultValue: "Couldn’t load Microsoft connections.",
+        })
+      }
+      onRetry={() => void refetch()}
       statusBadge={<ConnectionConnectedBadge />}
       connectedContent={
         <div className="space-y-4">
@@ -122,7 +136,7 @@ export function MicrosoftConnection() {
           />
 
           {activeConnection?.scopes && activeConnection.scopes.length > 0 && (
-            <div className="p-3 bg-muted rounded-sm">
+            <Card variant="flatPadded" className="p-3">
               <p className="text-sm font-medium mb-2">
                 {t("cloud.microsoft.permissionsGranted", {
                   defaultValue: "Permissions granted:",
@@ -138,7 +152,7 @@ export function MicrosoftConnection() {
                     </Badge>
                   ))}
               </div>
-            </div>
+            </Card>
           )}
 
           <ConnectionCallout
@@ -183,29 +197,25 @@ export function MicrosoftConnection() {
       }
       setupContent={
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Mail className="size-6 mx-auto mb-2 text-muted" />
-              <p className="text-sm font-medium">
-                {t("cloud.microsoft.outlook", { defaultValue: "Outlook" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.microsoft.outlookDesc", {
-                  defaultValue: "Send & read emails",
-                })}
-              </p>
-            </div>
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Calendar className="size-6 mx-auto mb-2 text-muted" />
-              <p className="text-sm font-medium">
-                {t("cloud.microsoft.calendar", { defaultValue: "Calendar" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.microsoft.calendarDesc", {
-                  defaultValue: "Manage events",
-                })}
-              </p>
-            </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <ConnectionCapabilityTile
+              icon={<Mail className="size-6 text-muted" aria-hidden />}
+              title={t("cloud.microsoft.outlook", {
+                defaultValue: "Outlook",
+              })}
+              description={t("cloud.microsoft.outlookDesc", {
+                defaultValue: "Send & read emails",
+              })}
+            />
+            <ConnectionCapabilityTile
+              icon={<Calendar className="size-6 text-muted" aria-hidden />}
+              title={t("cloud.microsoft.calendar", {
+                defaultValue: "Calendar",
+              })}
+              description={t("cloud.microsoft.calendarDesc", {
+                defaultValue: "Manage events",
+              })}
+            />
           </div>
 
           <ConnectionCallout

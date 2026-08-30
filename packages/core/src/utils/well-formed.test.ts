@@ -10,12 +10,14 @@
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors.ts";
 import {
+	assertSchemaAnnotationsSerializable,
 	deepToWellFormedUnicode,
 	MAX_WELL_FORMED_DEPTH,
 	MAX_WELL_FORMED_VISITS,
 	tailWellFormed,
 	toWellFormedUnicode,
 	truncateWellFormed,
+	wellFormedUnicodeSchemaStructure,
 } from "./well-formed";
 
 /** JSON.stringify escapes ONLY lone surrogates as \ud8xx..\udfff; well-formed
@@ -588,6 +590,543 @@ describe("deepToWellFormedUnicode unbounded input", () => {
 		try {
 			deepToWellFormedUnicode(input);
 			expect.unreachable("visit budget must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("visits");
+		}
+	});
+});
+
+describe("wellFormedUnicodeSchemaStructure key safety", () => {
+	function nestProperties(depth: number): Record<string, unknown> {
+		let node: Record<string, unknown> = { type: "string" };
+		for (let i = 0; i < depth; i++) {
+			node = { type: "object", properties: { x: node } };
+		}
+		return node;
+	}
+
+	it("preserves an own __proto__ properties key as data, not prototype mutation", () => {
+		const dirtyProps = JSON.parse(
+			'{"__proto__":{"minProperties":1},"sib":{"type":"string","description":"\\uD800"}}',
+		);
+		const output = wellFormedUnicodeSchemaStructure({
+			type: "object",
+			properties: dirtyProps,
+		});
+		const props = (output as { properties: Record<string, unknown> })
+			.properties;
+		const desc = Object.getOwnPropertyDescriptor(props, "__proto__");
+		expect(desc).toBeDefined();
+		expect(desc?.enumerable).toBe(true);
+		// The projected map must not inherit caller-controlled members.
+		expect("minProperties" in props).toBe(false);
+		expect(Object.getPrototypeOf(props)).toBe(Object.prototype);
+		// JSON round-trip keeps the key as a data member.
+		expect(JSON.stringify(output)).toContain('"__proto__"');
+	});
+
+	it("preserves __proto__ through the properties-map entry walk", () => {
+		const dirtyMap = JSON.parse(
+			'{"__proto__":{"polluted":true},"a":{"type":"string","description":"\\uD800"}}',
+		);
+		const output = wellFormedUnicodeSchemaStructure({
+			type: "object",
+			properties: dirtyMap,
+		});
+		const props = (output as { properties: Record<string, unknown> })
+			.properties;
+		expect(Object.getOwnPropertyDescriptor(props, "__proto__")).toBeDefined();
+		expect(Object.getPrototypeOf(props)).toBe(Object.prototype);
+	});
+
+	it("applies first-write-wins when two keys collapse onto one sanitized form", () => {
+		const output = wellFormedUnicodeSchemaStructure({
+			type: "object",
+			properties: {
+				"a\uD83Db": { type: "string" },
+				"a\uDC80b": { type: "number" },
+			},
+		});
+		const props = (output as { properties: Record<string, unknown> })
+			.properties;
+		expect(Object.keys(props)).toEqual(["a\ufffdb"]);
+		expect((props["a\ufffdb"] as { type: string }).type).toBe("string");
+	});
+
+	it("rejects an accessor under the properties map without invoking it", () => {
+		let reads = 0;
+		const holder: Record<string, unknown> = {};
+		Object.defineProperty(holder, "foo", {
+			enumerable: true,
+			get() {
+				reads += 1;
+				return { type: "string" };
+			},
+		});
+		try {
+			wellFormedUnicodeSchemaStructure({ type: "object", properties: holder });
+			expect.unreachable("accessor under properties must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNSAFE_VALUE");
+			expect((error as ElizaError).context).toEqual({
+				operation: "accessor",
+				propertyName: "foo",
+			});
+		}
+		expect(reads).toBe(0);
+	});
+
+	it("charges sparse array holes under non-schema keywords before serialization", () => {
+		const sparse = new Array(MAX_WELL_FORMED_VISITS + 1);
+		sparse[0] = "ok";
+		try {
+			wellFormedUnicodeSchemaStructure({
+				type: "object",
+				properties: {},
+				customKey: sparse,
+			});
+			expect.unreachable("sparse hole budget bypass must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("visits");
+		}
+	});
+
+	it("fails closed on a numeric accessor in the generic-array branch", () => {
+		let reads = 0;
+		const hostile: unknown[] = ["ok"];
+		Object.defineProperty(hostile, 1, {
+			enumerable: true,
+			get() {
+				reads += 1;
+				return "observed";
+			},
+		});
+		try {
+			wellFormedUnicodeSchemaStructure({
+				type: "object",
+				customKey: hostile,
+			});
+			expect.unreachable("numeric accessor must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNSAFE_VALUE");
+			expect((error as ElizaError).context).toEqual({
+				operation: "accessor",
+				propertyName: "1",
+			});
+		}
+		expect(reads).toBe(0);
+	});
+
+	it("fails closed on numeric accessors in schema-array keyword branches", () => {
+		// anyOf/prefixItems previously treated an accessor descriptor like a
+		// hole: changed stayed false and the ORIGINAL array survived to
+		// provider serialization, which invoked the getter.
+		for (const keyword of ["anyOf", "prefixItems"] as const) {
+			let reads = 0;
+			const hostile: unknown[] = [];
+			Object.defineProperty(hostile, 0, {
+				enumerable: true,
+				get() {
+					reads += 1;
+					return { type: "string" };
+				},
+			});
+			try {
+				wellFormedUnicodeSchemaStructure({
+					type: "object",
+					[keyword]: hostile,
+				});
+				expect.unreachable(`${keyword} accessor must fail closed`);
+			} catch (error) {
+				expect(error).toBeInstanceOf(ElizaError);
+				expect((error as ElizaError).code).toBe("WELL_FORMED_UNSAFE_VALUE");
+				expect((error as ElizaError).context).toEqual({
+					operation: "accessor",
+					propertyName: "0",
+				});
+			}
+			expect(reads).toBe(0);
+		}
+	});
+
+	it("does not double-charge present elements of a schema keyword array", () => {
+		// A schema-array wrapper costs 1 + length like every other branch;
+		// double-charging would push this ~40k-visit payload to ~80k and
+		// reject honest dense anyOf arrays at half their declared budget.
+		const dense = new Array(40_000).fill("ok");
+		expect(
+			wellFormedUnicodeSchemaStructure({ type: "object", anyOf: dense }),
+		).toBeDefined();
+	});
+
+	it("admits a schema keyword array exactly at the visit budget and rejects one past", () => {
+		// root(1) + object(1) + wrapper's `length || 1` charge with members
+		// prepaid inside it = 65,536 exactly.
+		const atBudget = new Array(MAX_WELL_FORMED_VISITS - 2).fill("ok");
+		expect(
+			wellFormedUnicodeSchemaStructure({ type: "object", anyOf: atBudget }),
+		).toBeDefined();
+
+		try {
+			wellFormedUnicodeSchemaStructure({
+				type: "object",
+				anyOf: new Array(MAX_WELL_FORMED_VISITS - 1).fill("ok"),
+			});
+			expect.unreachable("one past the budget must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("visits");
+		}
+	});
+
+	it("does not double-charge present elements of a dense array", () => {
+		// An array costs 1 + length: the hole charge covers present elements,
+		// so a dense 40k-element array must pass (a double-charge would push
+		// it past the 65,536 budget and regress honest dense payloads).
+		const dense = new Array(40_000).fill("ok");
+		expect(
+			wellFormedUnicodeSchemaStructure({ type: "object", customKey: dense }),
+		).toBeDefined();
+	});
+
+	it("admits a dense array exactly at the visit budget and rejects one past", () => {
+		// root(1) + customKey node(1) + array(1) + length = 65,536 exactly.
+		const atBudget = new Array(MAX_WELL_FORMED_VISITS - 3).fill("ok");
+		expect(
+			wellFormedUnicodeSchemaStructure({ type: "object", customKey: atBudget }),
+		).toBeDefined();
+
+		const overBudget = new Array(MAX_WELL_FORMED_VISITS - 2).fill("ok");
+		try {
+			wellFormedUnicodeSchemaStructure({
+				type: "object",
+				customKey: overBudget,
+			});
+			expect.unreachable("one past the dense budget must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("visits");
+		}
+	});
+
+	it("keeps the schema depth authority intact for honest deep schemas", () => {
+		// The leaf schema sits at wrap-count depth in the walker's accounting,
+		// so MAX_WELL_FORMED_DEPTH wraps is exactly at the authority.
+		const atBudget = nestProperties(MAX_WELL_FORMED_DEPTH);
+		expect(wellFormedUnicodeSchemaStructure(atBudget)).toBe(atBudget);
+
+		try {
+			wellFormedUnicodeSchemaStructure(
+				nestProperties(MAX_WELL_FORMED_DEPTH + 1),
+			);
+			expect.unreachable("one past the walker authority must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("depth");
+			expect((error as ElizaError).context?.max).toBe(MAX_WELL_FORMED_DEPTH);
+		}
+	});
+});
+
+describe("assertSchemaAnnotationsSerializable keyword-aware wire check", () => {
+	it("admits a full-authority schema whose annotation subtrees stay shallow", () => {
+		function nest(depth: number): Record<string, unknown> {
+			let node: Record<string, unknown> = { type: "string" };
+			for (let i = 0; i < depth; i++) {
+				node = { type: "object", properties: { x: node } };
+			}
+			return node;
+		}
+		const tools = [
+			{
+				name: "probe",
+				parameters: nest(MAX_WELL_FORMED_DEPTH - 3),
+			},
+		];
+		// Uniform charging: a walker-full-authority schema costs up to 2x its
+		// node depth here, so the doubled cap must admit it unchanged.
+		expect(() =>
+			assertSchemaAnnotationsSerializable(tools, {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			}),
+		).not.toThrow();
+	});
+
+	it("rejects hostile data hidden inside an annotation subtree without invoking it", () => {
+		let reads = 0;
+		const hostile = {} as Record<string, unknown>;
+		Object.defineProperty(hostile, "boom", {
+			enumerable: true,
+			get() {
+				reads += 1;
+				return "observed";
+			},
+		});
+		const tools = [
+			{
+				name: "probe",
+				parameters: {
+					type: "object",
+					default: hostile,
+					properties: {},
+				},
+			},
+		];
+		try {
+			assertSchemaAnnotationsSerializable(tools, {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			});
+			expect.unreachable("hostile annotation data must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toMatch(/^WELL_FORMED_/);
+		}
+		expect(reads).toBe(0);
+	});
+
+	it("rejects accessor-carrying annotation data without invoking it", () => {
+		let reads = 0;
+		const holder = {} as Record<string, unknown>;
+		Object.defineProperty(holder, "lazyValue", {
+			enumerable: true,
+			get() {
+				reads += 1;
+				return "observed";
+			},
+		});
+		const tools = [
+			{
+				name: "probe",
+				parameters: { type: "object", default: [holder], properties: {} },
+			},
+		];
+		try {
+			assertSchemaAnnotationsSerializable(tools, {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			});
+			expect.unreachable("annotation accessors must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNSAFE_VALUE");
+			expect((error as ElizaError).context).toEqual({
+				operation: "accessor",
+				propertyName: "lazyValue",
+			});
+		}
+		expect(reads).toBe(0);
+	});
+
+	it("rewrites a lone-surrogate annotation extension key onto the wire", () => {
+		const bad = "x-\ud800";
+		const schema: Record<string, unknown> = { type: "object" };
+		schema[bad] = { opaque: "ok" };
+		const out = wellFormedUnicodeSchemaStructure(schema) as Record<
+			string,
+			unknown
+		>;
+		// The rewrite must flip `changed`: returning the original reference
+		// shipped the lone surrogate to strict providers.
+		expect(out).not.toBe(schema);
+		const keys = Object.keys(out);
+		expect(keys).toContain("x-\uFFFD");
+		expect(keys).not.toContain(bad);
+		expect(JSON.stringify(out)).not.toMatch(/\\ud800/i);
+	});
+
+	it("charges a sparse annotation array by its logical length", () => {
+		// Holes are invisible to Reflect.ownKeys but JSON.stringify walks
+		// every index; the visit budget must cover the full logical length.
+		const sparse: unknown[] = [];
+		sparse.length = MAX_WELL_FORMED_VISITS * 4;
+		sparse[0] = "a";
+		sparse[MAX_WELL_FORMED_VISITS * 4 - 1] = "b";
+		expect(() =>
+			assertSchemaAnnotationsSerializable(
+				[{ name: "probe", parameters: { type: "object", default: sparse } }],
+				{ maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8 },
+			),
+		).toThrowError(expect.objectContaining({ code: "WELL_FORMED_UNBOUNDED" }));
+	});
+
+	it("admits a dense annotation array exactly at the visit budget and rejects one past", () => {
+		// root(1) + tool(1) + name(1) + parameters(1) + type(1) + array(1) +
+		// length = 65,536 exactly.
+		const tools = (length: number) => [
+			{
+				name: "probe",
+				parameters: { type: "object", default: new Array(length).fill("ok") },
+			},
+		];
+		expect(() =>
+			assertSchemaAnnotationsSerializable(tools(MAX_WELL_FORMED_VISITS - 6), {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			}),
+		).not.toThrow();
+		expect(() =>
+			assertSchemaAnnotationsSerializable(tools(MAX_WELL_FORMED_VISITS - 5), {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			}),
+		).toThrowError(expect.objectContaining({ code: "WELL_FORMED_UNBOUNDED" }));
+	});
+
+	it("rejects deep hostile nesting inside an annotation subtree", () => {
+		function nestAnnotation(depth: number): unknown {
+			let value: unknown = { s: "ok" };
+			for (let i = 0; i < depth; i++) {
+				value = { child: value };
+			}
+			return value;
+		}
+		const tools = [
+			{
+				name: "probe",
+				parameters: {
+					type: "object",
+					default: nestAnnotation(2 * MAX_WELL_FORMED_DEPTH + 12),
+					properties: {},
+				},
+			},
+		];
+		try {
+			assertSchemaAnnotationsSerializable(tools, {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			});
+			expect.unreachable("over-deep annotation data must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("depth");
+		}
+	});
+
+	it("rejects annotation cycles without dispatch", () => {
+		const annotation: Record<string, unknown> = { value: "opaque" };
+		annotation.self = annotation;
+		const tools = [
+			{ name: "probe", parameters: { type: "object", default: annotation } },
+		];
+		expect(() =>
+			assertSchemaAnnotationsSerializable(tools, {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			}),
+		).toThrowError(expect.objectContaining({ code: "WELL_FORMED_UNBOUNDED" }));
+	});
+
+	it("never rejects wrapper-region lazy SDK accessors on a ToolSet", () => {
+		let reads = 0;
+		const toolSet: Record<string, unknown> = {
+			probe: {
+				description: "probe",
+				parameters: { type: "object", properties: {} },
+				get inputSchema() {
+					reads += 1;
+					return { jsonSchema: { type: "object", properties: {} } };
+				},
+			},
+		};
+		expect(() =>
+			assertSchemaAnnotationsSerializable(toolSet, {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			}),
+		).not.toThrow();
+		expect(reads).toBe(0);
+	});
+
+	it("bounds a hostile deep wrapper structure before dispatch", () => {
+		function nestWrappers(depth: number): unknown {
+			let value: unknown = { type: "object", properties: {} };
+			for (let i = 0; i < depth; i++) {
+				value = { nestedToolWrapper: value };
+			}
+			return value;
+		}
+		const tools = [
+			{
+				name: "probe",
+				parameters: nestWrappers(2 * MAX_WELL_FORMED_DEPTH + 12),
+			},
+		];
+		try {
+			assertSchemaAnnotationsSerializable(tools, {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			});
+			expect.unreachable("over-deep wrapper structure must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("depth");
+		}
+	});
+
+	it("charges repeated schema-key-named wrapper nesting (no name-based exemptions)", () => {
+		// Hostile wrappers can nest under keys NAMED like schema keywords to
+		// dodge any name-based free-edge rule; uniform charging must bound
+		// them anyway. Depth far below the doubled cap still fails closed.
+		function nestPropertiesWrappers(depth: number): unknown {
+			let value: unknown = { type: "object", properties: {} };
+			for (let i = 0; i < depth; i++) {
+				value = { properties: { nested: value } };
+			}
+			return value;
+		}
+		const tools = [
+			{
+				name: "probe",
+				parameters: nestPropertiesWrappers(2 * MAX_WELL_FORMED_DEPTH + 4),
+			},
+		];
+		try {
+			assertSchemaAnnotationsSerializable(tools, {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			});
+			expect.unreachable("schema-key-named wrapper nesting must be charged");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
+			expect((error as ElizaError).context?.reason).toBe("depth");
+		}
+	});
+
+	it("admits an honest schema at the walker's full authority through the same uniform charging", () => {
+		// The honest counterpart of the spoof test above: a real properties
+		// chain at the walkers' full node depth passes the doubled cap.
+		function nest(depth: number): Record<string, unknown> {
+			let node: unknown = { type: "string" };
+			for (let i = 0; i < depth; i++) {
+				node = { type: "object", properties: { x: node } };
+			}
+			return node as Record<string, unknown>;
+		}
+		const tools = [
+			{ name: "probe", parameters: nest(MAX_WELL_FORMED_DEPTH - 3) },
+		];
+		expect(() =>
+			assertSchemaAnnotationsSerializable(tools, {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			}),
+		).not.toThrow();
+	});
+
+	it("bounds an extremely wide wrapper structure before dispatch", () => {
+		const wide: Record<string, unknown> = {};
+		for (let i = 0; i < MAX_WELL_FORMED_VISITS; i++) {
+			wide[`wrapperKey${i}`] = { type: "object", properties: {} };
+		}
+		const tools = [{ name: "probe", metadata: wide }];
+		try {
+			assertSchemaAnnotationsSerializable(tools, {
+				maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
+			});
+			expect.unreachable("over-wide wrapper structure must fail closed");
 		} catch (error) {
 			expect(error).toBeInstanceOf(ElizaError);
 			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");

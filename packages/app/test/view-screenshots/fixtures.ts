@@ -706,6 +706,7 @@ function calResult(over: Record<string, unknown> = {}) {
     status: "ready",
     loading: false,
     refreshing: false,
+    issue: null,
     error: null as string | null,
     viewMode: "week",
     setViewMode: noopFn,
@@ -713,6 +714,7 @@ function calResult(over: Record<string, unknown> = {}) {
     windowStart: new Date("2026-06-14T00:00:00.000Z"),
     windowEnd: new Date("2026-06-21T00:00:00.000Z"),
     refresh: asyncNoop,
+    goToDate: noopFn,
     goToToday: noopFn,
     goPrevious: noopFn,
     goNext: noopFn,
@@ -787,19 +789,18 @@ const calendarCalendarStates: Record<string, () => Record<string, unknown>> = {
     }),
   unavailable: () =>
     calResult({
-      feedState: "unavailable",
+      issue: {
+        kind: "runtime_unavailable",
+        message:
+          "Calendar isn’t available with this cloud setup yet. Connect a dedicated agent to use calendar sources.",
+        retryable: false,
+        upgradeRequired: true,
+      },
+      error:
+        "Calendar isn’t available with this cloud setup yet. Connect a dedicated agent to use calendar sources.",
+      feedState: null,
       status: "unavailable",
-      sources: [
-        calSource({
-          status: "disconnected",
-          syncedAt: null,
-          error: {
-            code: "OAUTH_REVOKED",
-            message: "Authorization was revoked.",
-            retryable: true,
-          },
-        }),
-      ],
+      sources: [],
     }),
   partial: () =>
     calResult({

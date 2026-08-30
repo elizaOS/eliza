@@ -10,6 +10,16 @@ import {
 	matchViewCommand,
 } from "./view-command-matcher.ts";
 
+describe("matchViewCommand — percent-encoded client text", () => {
+	it("decodes %20-encoded commands before matching (live LP3 case)", () => {
+		expect(matchViewCommand("open%20notes")).toBe("notes");
+		expect(matchViewCommand("go%20home")).toBe("chat");
+	});
+	it("leaves literal percent text alone", () => {
+		expect(matchViewCommand("50% off sale")).toBeNull();
+	});
+});
+
 describe("matchViewCommand — explicit user examples", () => {
 	const cases: Array<[string, string]> = [
 		["open settings", "settings"],
@@ -20,6 +30,7 @@ describe("matchViewCommand — explicit user examples", () => {
 		["take me to my settings", "settings"],
 		["settings", "settings"],
 		["go home", "chat"],
+		["go homr", "chat"],
 		["home", "chat"],
 		["go back", "chat"],
 		["back to home", "chat"],
@@ -265,6 +276,9 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 		"go back over the paragraph",
 		"go back and explain what changed",
 		"when I go back to school",
+		"go dome",
+		"go hope",
+		"go somewhere",
 		"",
 		"   ",
 	];
