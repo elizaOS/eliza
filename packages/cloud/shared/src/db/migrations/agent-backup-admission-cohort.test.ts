@@ -1202,6 +1202,22 @@ describe("backup admission cohort migrations", () => {
       }
     }
     await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'queued', lease_owner = NULL, lease_generation = NULL,
+        lease_expires_at = NULL, ready_cohort = ready_cohort + 1
+      WHERE id = '${exhaustedWork}'`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET state = 'leased', lease_owner = 'retry-epoch-13',
+          lease_generation = gen_random_uuid(),
+          lease_expires_at = clock_timestamp() + interval '1 hour',
+          attempts = attempts + 1
+        WHERE id = '${exhaustedWork}'`),
+    ).rejects.toThrow(/retry attempt limit/i);
+    const cappedWork = await db.query<{ state: string; attempts: number }>(
+      `SELECT state, attempts FROM agent_backup_admission_work WHERE id = '${exhaustedWork}'`,
+    );
+    expect(cappedWork.rows).toEqual([{ state: "queued", attempts: 12 }]);
+    await db.exec(`UPDATE agent_backup_admission_work
       SET state = 'settled', lease_owner = NULL, lease_generation = NULL,
         lease_expires_at = NULL, settled_at = clock_timestamp(),
         settled_reason = 'RETRY_EXHAUSTED'

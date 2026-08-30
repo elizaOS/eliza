@@ -71,6 +71,7 @@ import {
   DEFAULT_STEWARD_TENANT_ID,
 } from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
+import { clearSsoLoggedOut } from "../../../sso-bridge/sso-bridge";
 import { getErrorMessage } from "../../lib/error-message";
 import {
   consumePendingOAuthReturnTo,
@@ -186,6 +187,7 @@ async function persistStewardToken(token: string): Promise<void> {
       "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
     );
   }
+  clearSsoLoggedOut();
 }
 
 /**

@@ -1,6 +1,11 @@
 /** Generates authenticated promotion previews for cloud applications. */
 
 import { Hono } from "hono";
+import {
+  type GenerativeRouteCaller,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 
@@ -14,8 +19,6 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appsService } from "@/lib/services/apps";
 import {
   getDiscordConfigWithDefaults,
@@ -43,8 +46,9 @@ interface PostPreview {
 async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
+  caller: GenerativeRouteCaller,
 ): Promise<Response> {
-  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+  const { user } = caller;
   const { id } = await params;
 
   const decodedBody = await decodeRequestJson(request);
@@ -68,7 +72,7 @@ async function __hono_POST(
   if (!app || app.organization_id !== user.organization_id) {
     return Response.json({ error: "App not found" }, { status: 404 });
   }
-  if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+  if (caller.appScopeId && caller.appScopeId !== id) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
@@ -229,9 +233,18 @@ async function __hono_POST(
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
-);
+__hono_app.post("/", async (c) => {
+  try {
+    const caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+    });
+    return await __hono_POST(
+      c.req.raw,
+      { params: Promise.resolve({ id: c.req.param("id")! }) },
+      caller,
+    );
+  } catch (error) {
+    return failureResponse(c, error);
+  }
+});
 export default __hono_app;

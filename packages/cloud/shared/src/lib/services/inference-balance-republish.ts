@@ -9,12 +9,11 @@
  * graph for a single helper (and breaking callers that mock `db/helpers` at
  * its previous, narrower boundary).
  *
- * Its dependencies are exactly the three the ledger already carries or that are
- * leaves: `credits`, `inference-auth-cache`, and the isolate-local
+ * Its dependencies are leaves already used by both settlers:
+ * `inference-auth-cache` and the isolate-local
  * `inference-admission-refusal`.
  */
 
-import { creditsService } from "./credits";
 import { clearOrgAdmissionRefused } from "./inference-admission-refusal";
 import { republishOrgBalanceHint } from "./inference-auth-cache";
 
@@ -35,11 +34,9 @@ import { republishOrgBalanceHint } from "./inference-auth-cache";
  * `lowerOrgBalanceHint` cannot repair this: it is lower-only and bails when no
  * entry exists, so after the delete it is always a no-op.
  *
- * Republishing authoritatively (balance AND revision) costs nothing net: the
- * identical `getOrganizationBalanceSnapshot` read already happened moments
- * later as the 503's background hydration. This only moves that read off the
- * next request's critical path, and it keeps the revision fresh rather than
- * preserving a stale one.
+ * The debit statement returns both the committed balance and trigger-advanced
+ * revision. Passing that atomic result here avoids a post-debit primary read
+ * while keeping the revision fresh rather than preserving a stale one.
  *
  * Republication is one write with no cache readback. The cache is a projection,
  * not the monetary authority: Worker dispatch is fenced by the serialized,
@@ -48,12 +45,12 @@ import { republishOrgBalanceHint } from "./inference-auth-cache";
  * is never allowed to dispatch from this projection. Older snapshots therefore
  * cannot reopen an active gate even if concurrent writers reach Redis out of order.
  */
-export async function republishOrgBalanceHintAfterDebit(organizationId: string): Promise<void> {
-  // Captured BEFORE the authoritative read, matching `refreshOrgBalanceHint`:
-  // the timestamp marks when the read started, so a delayed old query can never
-  // masquerade as fresher than a debit that committed while it was in flight.
+export async function republishOrgBalanceHintAfterDebit(
+  organizationId: string,
+  balanceUsd: number,
+  balanceRevision: string,
+): Promise<void> {
   const balanceAt = Date.now();
-  const snapshot = await creditsService.getOrganizationBalanceSnapshot(organizationId);
-  await republishOrgBalanceHint(organizationId, snapshot.balanceUsd, balanceAt, snapshot.revision);
+  await republishOrgBalanceHint(organizationId, balanceUsd, balanceAt, balanceRevision);
   clearOrgAdmissionRefused(organizationId);
 }

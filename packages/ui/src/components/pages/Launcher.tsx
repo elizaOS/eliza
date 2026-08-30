@@ -27,7 +27,6 @@ import {
 } from "../shell/wallpaper-idiom";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Card } from "../ui/card";
 import { Skeleton } from "../ui/skeleton";
 import {
   LauncherAppIcon,
@@ -184,8 +183,9 @@ export function Launcher({
 
   const showSkeleton = loading && entries.length === 0;
   const showError = !showSkeleton && error !== null && entries.length === 0;
+  const showSourceStatus =
+    !showSkeleton && error !== null && entries.length > 0;
   const showEmpty = !showSkeleton && !showError && entries.length === 0;
-  const showPartialError = error !== null && entries.length > 0;
 
   return (
     <div
@@ -215,33 +215,6 @@ export function Launcher({
           )}
         >
           <div className="flex w-full max-w-2xl flex-col gap-6">
-            {showPartialError ? (
-              <Card
-                role="alert"
-                data-testid="launcher-partial-error"
-                radius="large"
-                border="subtle"
-                surface="wallpaperOverlay"
-                wallpaperText
-                className="flex items-center justify-between gap-3 px-3 py-2.5"
-              >
-                <span className="text-xs text-white/75">
-                  Some apps couldn&apos;t load.
-                </span>
-                {onRetry ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="overlayEdge"
-                    shape="circle"
-                    className="h-8 px-3 text-xs"
-                    onClick={onRetry}
-                  >
-                    Retry
-                  </Button>
-                ) : null}
-              </Card>
-            ) : null}
             {showSkeleton ? (
               <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 sm:grid-cols-5">
                 {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
@@ -295,13 +268,38 @@ export function Launcher({
                 </p>
               </div>
             ) : (
-              <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 max-sm:portrait:gap-y-8 sm:grid-cols-5">
-                {entries.map((entry) => (
-                  <div key={entry.id} className="flex justify-center">
-                    <IconTile entry={entry} onLaunch={handleLaunch} />
+              <>
+                <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 max-sm:portrait:gap-y-8 sm:grid-cols-5">
+                  {entries.map((entry) => (
+                    <div key={entry.id} className="flex justify-center">
+                      <IconTile entry={entry} onLaunch={handleLaunch} />
+                    </div>
+                  ))}
+                </div>
+                {showSourceStatus ? (
+                  <div
+                    role="status"
+                    data-testid="launcher-source-status"
+                    className={cn(
+                      "mx-auto flex min-h-11 items-center gap-2 text-xs",
+                      WALLPAPER_TEXT.muted,
+                    )}
+                  >
+                    <span>More apps unavailable</span>
+                    {onRetry ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="overlayEdge"
+                        className="min-h-9"
+                        onClick={onRetry}
+                      >
+                        Retry
+                      </Button>
+                    ) : null}
                   </div>
-                ))}
-              </div>
+                ) : null}
+              </>
             )}
           </div>
         </div>
