@@ -73,6 +73,18 @@ describe("managed Dedicated provision diagnostic", () => {
         "x",
       ),
     ).toBe("capacity");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-sandbox] Registered Docker nodes exist but none are available for placement",
+        "x",
+      ),
+    ).toBe("capacity");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-sandbox] No nodes available (excludeNodeId=none filtered out all seed nodes)",
+        "x",
+      ),
+    ).toBe("capacity");
   });
 
   test("emits only closed facts and never the raw operator error", () => {

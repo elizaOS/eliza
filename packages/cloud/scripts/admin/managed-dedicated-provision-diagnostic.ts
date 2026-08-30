@@ -178,7 +178,7 @@ export function classifyManagedDedicatedProvisionFailure(
     return "image";
   }
   if (
-    /(?:capacity|no (?:eligible|available) (?:docker )?nodes?|insufficient|quota|resource exhausted|allocation limit|server limit)/i.test(
+    /(?:capacity|no (?:eligible|available) (?:docker )?nodes?|no (?:docker )?nodes? available|none (?:are|is) available for placement|no valid nodes parsed|insufficient|quota|resource exhausted|allocation limit|server limit|placement unavailable)/i.test(
       value,
     )
   ) {
