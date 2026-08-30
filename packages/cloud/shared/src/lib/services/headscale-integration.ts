@@ -35,11 +35,35 @@ const POLL_INTERVAL_MAX_MS = 8_000;
  * redeploy. Exported so the docker-sandbox provider shares this single source
  * of truth instead of hardcoding its own timeout at the call site.
  */
-export const DEFAULT_REGISTRATION_TIMEOUT_MS = (() => {
-  const raw = process.env.VPN_REGISTRATION_TIMEOUT_MS;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 180_000;
-})();
+const MIN_REGISTRATION_TIMEOUT_MS = 180_000;
+
+/** Resolve the worker's mesh observation budget without permitting early abandonment. */
+export function resolveRegistrationTimeoutMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return MIN_REGISTRATION_TIMEOUT_MS;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new ElizaError("VPN_REGISTRATION_TIMEOUT_MS must be a positive integer", {
+      code: "HEADSCALE_REGISTRATION_TIMEOUT_INVALID",
+      context: { configured: true },
+      severity: "fatal",
+    });
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < MIN_REGISTRATION_TIMEOUT_MS) {
+    throw new ElizaError(
+      `VPN_REGISTRATION_TIMEOUT_MS must be at least ${MIN_REGISTRATION_TIMEOUT_MS}`,
+      {
+        code: "HEADSCALE_REGISTRATION_TIMEOUT_TOO_SHORT",
+        context: { minimumMs: MIN_REGISTRATION_TIMEOUT_MS },
+        severity: "fatal",
+      },
+    );
+  }
+  return parsed;
+}
+
+export const DEFAULT_REGISTRATION_TIMEOUT_MS = resolveRegistrationTimeoutMs(
+  process.env.VPN_REGISTRATION_TIMEOUT_MS,
+);
 
 function headscalePublicUrl(): string {
   return (

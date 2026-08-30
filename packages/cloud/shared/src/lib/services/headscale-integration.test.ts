@@ -6,6 +6,7 @@ import {
   HeadscaleIntegration,
   inferHeadscaleUser,
   inferTailscaleHostname,
+  resolveRegistrationTimeoutMs,
   normalizeHeadscaleSegment,
 } from "./headscale-integration";
 
@@ -634,5 +635,19 @@ describe("normalizeHeadscaleSegment + registration-timeout default", () => {
 
   test("DEFAULT_REGISTRATION_TIMEOUT_MS falls back to 180s when env is unset", () => {
     expect(DEFAULT_REGISTRATION_TIMEOUT_MS).toBe(180_000);
+  });
+
+  test("rejects an override shorter than the container join observation budget", () => {
+    expect(() => resolveRegistrationTimeoutMs("5000")).toThrow(
+      "VPN_REGISTRATION_TIMEOUT_MS must be at least 180000",
+    );
+    expect(() => resolveRegistrationTimeoutMs("180000ms")).toThrow(
+      "VPN_REGISTRATION_TIMEOUT_MS must be a positive integer",
+    );
+  });
+
+  test("allows operators to extend but not shorten the observation budget", () => {
+    expect(resolveRegistrationTimeoutMs(undefined)).toBe(180_000);
+    expect(resolveRegistrationTimeoutMs("240000")).toBe(240_000);
   });
 });
