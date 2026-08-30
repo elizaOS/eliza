@@ -10,6 +10,7 @@
  * data, not code. Contrast with `ConfigRenderer`, which drives a JSON-Schema
  * config form rather than a spec tree.
  */
+import { X } from "lucide-react";
 import type React from "react";
 import {
   createContext,
@@ -29,9 +30,20 @@ import type {
 } from "../../config/ui-spec";
 import { useAppSelector } from "../../state";
 import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
+import { Badge } from "../ui/badge";
+import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Progress } from "../ui/progress";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import {
   Select,
@@ -40,6 +52,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { Separator } from "../ui/separator";
+import { Skeleton } from "../ui/skeleton";
 import { Switch } from "../ui/switch";
 import {
   Table,
@@ -452,7 +466,7 @@ const GridComponent: ComponentFn = (props, children) => {
 const CardComponent: ComponentFn = (props, children) => {
   const maxW = props.maxWidth === "full" ? "max-w-full" : "";
   return (
-    <div className={`border border-border bg-card p-4 ${maxW}`}>
+    <Card variant="outlinedPadded" className={maxW}>
       {props.title ? (
         <div className="font-bold text-sm mb-0.5">{String(props.title)}</div>
       ) : null}
@@ -462,16 +476,17 @@ const CardComponent: ComponentFn = (props, children) => {
         </div>
       ) : null}
       {children}
-    </div>
+    </Card>
   );
 };
 
 const SeparatorComponent: ComponentFn = (props) => {
   const isVert = props.orientation === "vertical";
-  return isVert ? (
-    <div className="w-px bg-border self-stretch" />
-  ) : (
-    <hr className="my-2" />
+  return (
+    <Separator
+      orientation={isVert ? "vertical" : "horizontal"}
+      className={isVert ? "self-stretch" : "my-2"}
+    />
   );
 };
 
@@ -882,15 +897,17 @@ const CarouselComponent: ComponentFn = (props) => {
   const [current, setCurrent] = useState(0);
   return (
     <div className="relative">
-      <div className="border border-border bg-[var(--bg-hover)] p-4 min-h-[60px]">
-        {items[current] && (
-          <div>
-            <div className="text-xs font-bold">{items[current].title}</div>
-            <div className="text-xs text-muted mt-0.5">
-              {items[current].description}
+      <div className="min-h-[60px]">
+        <Card variant="insetPadded">
+          {items[current] && (
+            <div>
+              <div className="text-xs font-bold">{items[current].title}</div>
+              <div className="text-xs text-muted mt-0.5">
+                {items[current].description}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </Card>
       </div>
       <div className="flex justify-center gap-2 mt-2">
         <Button
@@ -923,20 +940,20 @@ const CarouselComponent: ComponentFn = (props) => {
 
 const BadgeComponent: ComponentFn = (props) => {
   const variant = String(props.variant ?? "default");
-  const cls: Record<string, string> = {
-    default: "bg-[var(--surface)] text-txt border-border",
-    success: "bg-[rgba(22,163,106,0.1)] text-ok border-ok",
-    warning:
-      "bg-[rgba(243,156,18,0.1)] text-[var(--warn,#f39c12)] border-[var(--warn,#f39c12)]",
-    error: "bg-[rgba(231,76,60,0.1)] text-destructive border-destructive",
-    info: "bg-[rgba(52,152,219,0.1)] text-accent border-accent",
-  };
+  const tone: NonNullable<React.ComponentProps<typeof Badge>["tone"]> =
+    variant === "success"
+      ? "success"
+      : variant === "warning"
+        ? "warning"
+        : variant === "error"
+          ? "danger"
+          : variant === "info"
+            ? "accent"
+            : "muted";
   return (
-    <span
-      className={`inline-block text-2xs font-medium px-2 py-0.5 border ${cls[variant] ?? cls.default}`}
-    >
-      {String(props.text ?? "")}
-    </span>
+    <Badge variant="outline" size="microBold" tone={tone} asChild>
+      <span>{String(props.text ?? "")}</span>
+    </Badge>
   );
 };
 
@@ -1030,12 +1047,7 @@ const ProgressComponent: ComponentFn = (props) => {
           <span className="text-muted">{Math.round(pct)}%</span>
         </div>
       ) : null}
-      <div className="w-full h-2 bg-[var(--bg-hover)] border border-border overflow-hidden">
-        <div
-          className="h-full w-full origin-left bg-accent transition-transform duration-300"
-          style={{ transform: `scaleX(${pct / 100})` }}
-        />
-      </div>
+      <Progress value={pct} />
     </div>
   );
 };
@@ -1140,43 +1152,30 @@ const LinkComponent: ComponentFn = (props, _children, ctx, el) => {
 };
 
 const DropdownMenuComponent: ComponentFn = (props, _children, ctx) => {
-  const [open, setOpen] = useState(false);
   const items = (props.items as Array<{ label: string; value: string }>) ?? [];
   return (
-    <div className="relative inline-block">
-      <Button
-        type="button"
-        variant="outline"
-        size="compact"
-        onClick={() => setOpen(!open)}
-      >
-        {String(props.label ?? "Menu")} ▾
-      </Button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 min-w-[120px] border border-border bg-card z-10">
-          {items.map((item) => (
-            <Button
-              key={item.value}
-              type="button"
-              variant="ghost"
-              size="touch"
-              align="start"
-              className="w-full"
-              onClick={() => {
-                setOpen(false);
-                if (ctx.onAction)
-                  ctx.onAction("menuSelect", {
-                    value: item.value,
-                    label: item.label,
-                  });
-              }}
-            >
-              {item.label}
-            </Button>
-          ))}
-        </div>
-      )}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" size="compact">
+          {String(props.label ?? "Menu")} ▾
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {items.map((item) => (
+          <DropdownMenuItem
+            key={item.value}
+            onSelect={() =>
+              ctx.onAction?.("menuSelect", {
+                value: item.value,
+                label: item.label,
+              })
+            }
+          >
+            {item.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 
@@ -1271,7 +1270,7 @@ const MetricComponent: ComponentFn = (props) => {
         ? "text-status-danger"
         : "text-muted";
   return (
-    <div className="flex flex-col gap-0.5 p-3 rounded-sm border border-border bg-card">
+    <Card variant="outlinedPadded" stack="compact">
       <div className="text-2xs text-muted uppercase tracking-wider font-medium">
         {String(props.label ?? "")}
       </div>
@@ -1288,7 +1287,7 @@ const MetricComponent: ComponentFn = (props) => {
           {String(props.change)}
         </div>
       )}
-    </div>
+    </Card>
   );
 };
 
@@ -1409,32 +1408,19 @@ const TooltipComponent: ComponentFn = (props) => {
 };
 
 const PopoverComponent: ComponentFn = (props) => {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="relative inline-block">
-      <Button
-        type="button"
-        variant="link"
-        size="content"
-        onClick={() => setOpen(!open)}
-      >
-        {String(props.trigger ?? "Click")}
-      </Button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 p-3 border border-border bg-card z-10 min-w-[150px]">
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="link" size="content">
+          {String(props.trigger ?? "Click")}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start">
+        <div>
           <div className="text-xs">{String(props.content ?? "")}</div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="content"
-            className="mt-1"
-            onClick={() => setOpen(false)}
-          >
-            Close
-          </Button>
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 };
 
@@ -1531,7 +1517,7 @@ const DialogComponent: ComponentFn = (props, children, ctx) => {
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-md border border-border bg-card p-5 ">
+      <Card variant="outlinedPadded" className="w-full max-w-md">
         <div className="flex items-center justify-between mb-3">
           <div>
             {props.title ? (
@@ -1546,15 +1532,15 @@ const DialogComponent: ComponentFn = (props, children, ctx) => {
           <Button
             type="button"
             variant="ghostMuted"
-            size="closeGlyph"
+            size="icon-sm"
             aria-label="Close dialog"
             onClick={close}
           >
-            ×
+            <X aria-hidden="true" />
           </Button>
         </div>
         {children}
-      </div>
+      </Card>
     </div>
   );
 };
@@ -1581,29 +1567,31 @@ const DrawerComponent: ComponentFn = (props, children, ctx) => {
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-h-[80vh] bg-card p-5 overflow-y-auto animate-[slide-up_200ms_ease]">
-        <Button
-          variant="ghost"
-          size="sm"
-          shape="circle"
-          aria-label="Close drawer"
-          onClick={close}
-          className="group mx-auto mb-3 w-32"
-        >
-          <span
-            className="h-1 w-10 rounded-full bg-border transition-all group-hover:w-14 group-hover:bg-accent/70"
-            aria-hidden
-          />
-        </Button>
-        {props.title ? (
-          <div className="font-bold text-sm">{String(props.title)}</div>
-        ) : null}
-        {props.description ? (
-          <div className="text-xs text-muted mt-0.5 mb-3">
-            {String(props.description)}
-          </div>
-        ) : null}
-        {children}
+      <div className="max-h-[80vh] w-full overflow-y-auto animate-[slide-up_200ms_ease]">
+        <Card variant="flatPadded">
+          <Button
+            variant="ghost"
+            size="sm"
+            shape="circle"
+            aria-label="Close drawer"
+            onClick={close}
+            className="group mx-auto mb-3 w-32"
+          >
+            <span
+              className="h-1 w-10 rounded-full bg-border transition-all group-hover:w-14 group-hover:bg-accent/70"
+              aria-hidden
+            />
+          </Button>
+          {props.title ? (
+            <div className="font-bold text-sm">{String(props.title)}</div>
+          ) : null}
+          {props.description ? (
+            <div className="text-xs text-muted mt-0.5 mb-3">
+              {String(props.description)}
+            </div>
+          ) : null}
+          {children}
+        </Card>
       </div>
     </div>
   );
@@ -1714,9 +1702,9 @@ function ElementRenderer({ elementId }: { elementId: string }) {
   const component = COMPONENTS[el.type as SupportedUiComponentType];
   if (!component) {
     return (
-      <div className="text-2xs text-destructive border border-dashed border-destructive p-2">
+      <Banner variant="error">
         {t("ui-renderer.UnknownComponent")} {el.type}
-      </div>
+      </Banner>
     );
   }
 
@@ -1854,14 +1842,19 @@ export function UiRenderer({
 
   if (loading && Object.keys(spec.elements).length === 0) {
     return (
-      <div
-        role="status"
-        aria-label="Loading interface"
-        className="flex min-h-24 flex-col gap-3 rounded-md border border-border bg-card p-4 animate-pulse"
-      >
-        <div className="h-4 w-3/4 rounded-sm bg-bg-muted" />
-        <div className="h-3 w-1/2 rounded-sm bg-bg-muted" />
-        <div className="h-3 w-5/6 rounded-sm bg-bg-muted" />
+      <div className="min-h-24">
+        <Card
+          variant="outlinedPadded"
+          role="status"
+          aria-label="Loading interface"
+          flow="column"
+          gap="default"
+          className="animate-pulse"
+        >
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-3 w-1/2" />
+          <Skeleton className="h-3 w-5/6" />
+        </Card>
       </div>
     );
   }
@@ -1870,13 +1863,14 @@ export function UiRenderer({
     <UiContext.Provider value={ctx}>
       <ElementRenderer elementId={spec.root} />
       {actionError && (
-        <div
+        <Banner
+          variant="error"
           role="alert"
           aria-label="Interactive action unavailable"
-          className="mt-2 rounded-sm border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger"
+          className="mt-2"
         >
           {actionError}
-        </div>
+        </Banner>
       )}
     </UiContext.Provider>
   );

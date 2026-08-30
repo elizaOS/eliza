@@ -1964,8 +1964,10 @@ export class AgentBackupCaptureV3Spool {
   /**
    * Explicit cleanup boundary. A failure returns `pending`; callers must retain
    * their durable cleanup/outbox intent and retry instead of recording success.
-   * Production wiring must invoke this only from a catalogue-authorized janitor
-   * after the backup is durably `protected`; `close()` is the handoff primitive.
+   * Production wiring invokes this from a catalogue-authorized janitor after
+   * durable protection, or from the account-deletion authority after exact
+   * database organization classification and lifecycle fencing. `close()` is
+   * the handoff primitive.
    */
   async cleanup(): Promise<AgentBackupCaptureV3CleanupReceipt> {
     if (this.closed) {

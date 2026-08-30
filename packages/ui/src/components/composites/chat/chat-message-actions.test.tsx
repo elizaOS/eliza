@@ -15,6 +15,30 @@ import { ChatMessageActions } from "./chat-message-actions";
 afterEach(cleanup);
 
 describe("ChatMessageActions copy", () => {
+  it("keeps the bare overlay controls and timestamp in one compact baseline", () => {
+    render(
+      <ChatMessageActions
+        appearance="glass-row"
+        canPlay
+        canReply
+        onCopy={vi.fn()}
+        onPlay={vi.fn()}
+        onReply={vi.fn()}
+        trailingAccessory={<span>6m</span>}
+      />,
+    );
+
+    const surface = screen.getByTestId("thread-line-action-surface");
+    expect(surface.className).toContain("items-center");
+    expect(surface.className).toContain("gap-0.5");
+    expect(surface.className).toContain("leading-none");
+
+    const accessory = screen.getByTestId("thread-line-action-accessory");
+    expect(accessory.className).toContain("ml-1.5");
+    expect(accessory.className).toContain("items-center");
+    expect(accessory.className).toContain("leading-none");
+  });
+
   it("invokes onCopy when the copy button is clicked", async () => {
     const onCopy = vi.fn();
     render(<ChatMessageActions onCopy={onCopy} />);

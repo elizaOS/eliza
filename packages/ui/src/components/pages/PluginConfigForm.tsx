@@ -10,6 +10,7 @@ import type { PluginInfo, PluginParamDef } from "../../api";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
 import type { ConfigUiHint } from "../../types";
+import { Card } from "../ui/card";
 import { Switch } from "../ui/switch";
 import { paramsToSchema } from "./plugin-list-utils";
 
@@ -40,7 +41,10 @@ function ModeToggleWithHiddenField({
 }) {
   const toggle = hint.modeToggle;
   return (
-    <div className="flex items-center justify-between rounded-sm border border-border bg-[var(--card,rgba(255,255,255,0.03))] px-4 py-3 mb-4">
+    <Card
+      variant="outlinedPadded"
+      className="mb-4 flex items-center justify-between px-4 py-3"
+    >
       <div className="flex flex-col gap-0.5">
         <span className="text-sm font-semibold text-txt">
           {checked ? toggle.enabledLabel : toggle.disabledLabel}
@@ -52,7 +56,7 @@ function ModeToggleWithHiddenField({
         )}
       </div>
       <Switch checked={checked} onCheckedChange={onToggle} />
-    </div>
+    </Card>
   );
 }
 

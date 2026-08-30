@@ -298,6 +298,22 @@ describe("documentAction.handler structured routing", () => {
 		);
 	});
 
+	it("rejects an explicit zero list limit instead of treating it as a sentinel", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("List 0 documents"),
+			undefined,
+			options({ action: "list", limit: 0, scope: "all-visible" }),
+		);
+
+		expect(service.listDocumentsDetailed).not.toHaveBeenCalled();
+		expect(res?.success).toBe(false);
+		expect(res?.values).toMatchObject({ error: "DOCUMENT_INVALID_LIMIT" });
+	});
+
 	it("keeps query-miss fallback documents separate from matched documents", async () => {
 		const service = makeService();
 		const document = {

@@ -99,6 +99,7 @@ const PRIVACY_SAFE_FAILURE_CODES = new Set([
   "request_failed",
   "invalid_response_shape",
   "invalid_agent_list",
+  "insufficient_hosting_credit",
   "job_failed",
   "job_timeout",
   "agent_not_initialized",
@@ -997,6 +998,9 @@ export async function runManagedDedicatedCanary(
         phase,
         `invalid_json_response_http_${response.status}`,
       );
+    }
+    if (phase === "create" && response.status === 402) {
+      throw new CanaryFailure(phase, "insufficient_hosting_credit");
     }
     if (!expectedStatuses.includes(response.status)) {
       throw new CanaryFailure(phase, `unexpected_http_${response.status}`);

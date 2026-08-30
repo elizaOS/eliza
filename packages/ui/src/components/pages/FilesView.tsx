@@ -14,6 +14,7 @@
 
 import {
   AlertTriangle,
+  ChevronDown,
   Download,
   FileAudio,
   FileText,
@@ -22,12 +23,19 @@ import {
   ImageIcon,
   Loader2,
   Lock,
+  MoreHorizontal,
   Share2,
   Trash2,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type StoredFile } from "../../api";
+import {
+  FramedPage,
+  FramedPageBody,
+  FramedPageHeader,
+  FramedPageNavigation,
+} from "../../layouts/framed-page";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import {
@@ -44,6 +52,16 @@ import {
 import { PagePanel } from "../composites/page-panel";
 import { RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 /* ── mime → kind facets ───────────────────────────────────────────────── */
@@ -58,6 +76,10 @@ const FACETS: readonly FileFacet[] = [
   "video",
   "document",
 ];
+
+function isFileFacet(value: string): value is FileFacet {
+  return FACETS.some((facet) => facet === value);
+}
 
 /**
  * Map a MIME type to one of the facet kinds. Anything that isn't image/audio/
@@ -113,87 +135,6 @@ function KindIcon({ kind }: { kind: FileKind }) {
   }
 }
 
-function FileFacetButton({
-  facet,
-  label,
-  count,
-  active,
-  onSelect,
-}: {
-  facet: FileFacet;
-  label: string;
-  count: number;
-  active: boolean;
-  onSelect: (facet: FileFacet) => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `file-facet-${facet}`,
-    role: "toggle",
-    label: `Show ${label} files`,
-    group: "file-facets",
-    status: active ? "active" : "inactive",
-    description: "Filter the Files view by file type",
-    onActivate: () => onSelect(facet),
-  });
-
-  return (
-    <Button
-      ref={ref}
-      {...agentProps}
-      data-testid={`file-facet-${facet}`}
-      aria-pressed={active}
-      onClick={() => onSelect(facet)}
-      variant="selection"
-      size="pillDense"
-      data-state={active ? "on" : "off"}
-    >
-      {label}
-      <span className="ml-1.5 text-muted">{count}</span>
-    </Button>
-  );
-}
-
-function FileShareButton({
-  file,
-  fileAgentId,
-  t,
-  onShare,
-}: {
-  file: StoredFile;
-  fileAgentId: string;
-  t: (key: string, vars?: Record<string, unknown>) => string;
-  onShare: (file: StoredFile) => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `file-share-${fileAgentId}`,
-    role: "button",
-    label: `Share ${file.fileName}`,
-    group: "file-actions",
-    description:
-      "Share this stored file, falling back to download when native sharing is unavailable",
-    onActivate: () => onShare(file),
-  });
-
-  return (
-    <Button
-      ref={ref}
-      {...agentProps}
-      type="button"
-      variant="outline"
-      size="sm"
-      data-testid="file-share"
-      aria-label={t("filesview.shareFile", {
-        name: file.fileName,
-        defaultValue: "Share {{name}}",
-      })}
-      onClick={() => onShare(file)}
-    >
-      <Share2 className="mr-1.5 size-4" aria-hidden />
-      {t("filesview.share", { defaultValue: "Share" })}
-    </Button>
-  );
-}
-
 /* ── per-file card ────────────────────────────────────────────────────── */
 
 interface FileCardProps {
@@ -232,7 +173,16 @@ const FileCard = memo(function FileCard({
     description: "Download this stored file",
     onActivate: () => onDownload(file),
   });
-  const deleteControl = useAgentElement<HTMLButtonElement>({
+  const shareControl = useAgentElement<HTMLDivElement>({
+    id: `file-share-${fileAgentId}`,
+    role: "button",
+    label: `Share ${file.fileName}`,
+    group: "file-actions",
+    description:
+      "Share this stored file, falling back to download when native sharing is unavailable",
+    onActivate: () => onShare(file),
+  });
+  const deleteControl = useAgentElement<HTMLDivElement>({
     id: `file-delete-${fileAgentId}`,
     role: "button",
     label: `Delete ${file.fileName}`,
@@ -244,13 +194,13 @@ const FileCard = memo(function FileCard({
 
   return (
     <li
-      className="flex flex-col gap-3 p-3"
+      className="grid min-h-20 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-1 py-3 sm:px-3"
       data-testid="file-card"
       data-file-name={file.fileName}
       data-file-kind={kind}
     >
-      <div className="flex items-start gap-3">
-        <div className="flex  size-14 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-surface/60">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-surface/60">
           {kind === "image" ? (
             <img
               src={previewUrl}
@@ -271,25 +221,26 @@ const FileCard = memo(function FileCard({
           >
             {file.fileName}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted">
-            <span className="rounded-full px-2 py-0.5 text-accent">
-              {kindLabel}
-            </span>
+          <div
+            className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 text-xs-tight text-muted"
+            title={absoluteDate}
+          >
+            <span>{kindLabel}</span>
+            <span aria-hidden>·</span>
             <span>{sizeLabel}</span>
-          </div>
-          <div className="mt-1 text-xs-tight text-muted" title={absoluteDate}>
-            {dateLabel}
+            <span aria-hidden>·</span>
+            <span>{dateLabel}</span>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex shrink-0 items-center justify-end gap-1">
         <Button
           ref={downloadControl.ref}
           {...downloadControl.agentProps}
           type="button"
           variant="outline"
-          size="sm"
+          size="icon"
           data-testid="file-download"
           aria-label={t("filesview.downloadFile", {
             name: file.fileName,
@@ -297,44 +248,60 @@ const FileCard = memo(function FileCard({
           })}
           onClick={() => onDownload(file)}
         >
-          <Download className="mr-1.5 size-4" aria-hidden />
-          {t("filesview.download", { defaultValue: "Download" })}
+          <Download className="size-4" aria-hidden />
         </Button>
-        {shareSupported ? (
-          <FileShareButton
-            file={file}
-            fileAgentId={fileAgentId}
-            t={t}
-            onShare={onShare}
-          />
-        ) : null}
-        {/* Store-wide destructive affordance: ADMIN+ only (#14781). The API
-            enforces the same tier server-side; the gate keeps lower-tier
-            viewers from seeing a control that can only fail. */}
-        <RoleGate minRole="ADMIN">
-          <Button
-            ref={deleteControl.ref}
-            {...deleteControl.agentProps}
-            type="button"
-            variant="surfaceDestructive"
-            size="sm"
-            className="ml-auto"
-            data-testid="file-delete"
-            disabled={deleting}
-            aria-label={t("filesview.deleteFile", {
-              name: file.fileName,
-              defaultValue: "Delete {{name}}",
-            })}
-            onClick={() => onDelete(file)}
-          >
-            {deleting ? (
-              <Loader2 className="mr-1.5 size-4 animate-spin" aria-hidden />
-            ) : (
-              <Trash2 className="mr-1.5 size-4" aria-hidden />
-            )}
-            {t("filesview.delete", { defaultValue: "Delete" })}
-          </Button>
-        </RoleGate>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t("filesview.moreActions", {
+                name: file.fileName,
+                defaultValue: "More actions for {{name}}",
+              })}
+              data-testid="file-actions"
+            >
+              <MoreHorizontal className="size-4" aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-44">
+            <DropdownMenuLabel className="max-w-56 truncate">
+              {file.fileName}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {shareSupported ? (
+              <DropdownMenuItem
+                ref={shareControl.ref}
+                {...shareControl.agentProps}
+                className="gap-2"
+                data-testid="file-share"
+                onSelect={() => onShare(file)}
+              >
+                <Share2 className="size-4" aria-hidden />
+                {t("filesview.share", { defaultValue: "Share" })}
+              </DropdownMenuItem>
+            ) : null}
+            {/* Store-wide destructive affordance: ADMIN+ only (#14781). */}
+            <RoleGate minRole="ADMIN">
+              <DropdownMenuItem
+                ref={deleteControl.ref}
+                {...deleteControl.agentProps}
+                className="gap-2 text-danger focus:text-danger"
+                data-testid="file-delete"
+                disabled={deleting}
+                onSelect={() => onDelete(file)}
+              >
+                {deleting ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <Trash2 className="size-4" aria-hidden />
+                )}
+                {t("filesview.delete", { defaultValue: "Delete" })}
+              </DropdownMenuItem>
+            </RoleGate>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </li>
   );
@@ -507,41 +474,77 @@ function FilesViewBody() {
     [files, t],
   );
 
-  const facetBar = (
-    <div
-      className="flex flex-wrap gap-2"
-      role="toolbar"
-      aria-label={t("filesview.filterByType", {
-        defaultValue: "Filter files by type",
-      })}
-    >
-      {FACETS.map((f) => {
-        const active = facet === f;
-        const label = facetLabel(t, f);
-        return (
-          <FileFacetButton
-            key={f}
-            facet={f}
-            label={label}
-            count={facetCounts[f]}
-            active={active}
-            onSelect={setFacet}
-          />
-        );
-      })}
-    </div>
+  const filterLabel = t("filesview.filterByType", {
+    defaultValue: "Filter files by type",
+  });
+  const facetControl = useAgentElement<HTMLButtonElement>({
+    id: "file-type-filter",
+    role: "button",
+    label: filterLabel,
+    group: "file-filters",
+    status: facetLabel(t, facet),
+    description: "Choose which file type appears in the Files list",
+  });
+  const facetMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          ref={facetControl.ref}
+          {...facetControl.agentProps}
+          type="button"
+          variant="ghost"
+          size="compact"
+          aria-label={`${filterLabel}, ${facetLabel(t, facet)} selected, ${facetCounts[facet]} files`}
+          data-testid="file-type-filter"
+          className="gap-1.5"
+        >
+          {facetLabel(t, facet)}
+          <span className="text-muted">{facetCounts[facet]}</span>
+          <ChevronDown className="size-4 text-muted" aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-48">
+        <DropdownMenuLabel>{filterLabel}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuRadioGroup
+          value={facet}
+          onValueChange={(value) => {
+            if (isFileFacet(value)) setFacet(value);
+          }}
+        >
+          {FACETS.map((entry) => (
+            <DropdownMenuRadioItem
+              key={entry}
+              value={entry}
+              data-testid={`file-facet-${entry}`}
+            >
+              <span className="flex min-w-0 flex-1 items-center justify-between gap-4">
+                <span>{facetLabel(t, entry)}</span>
+                <span className="text-muted">{facetCounts[entry]}</span>
+              </span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 
   return (
-    <section
-      className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 pt-[var(--view-pad-top)] pb-[var(--view-pad-bottom)] sm:px-6"
+    <FramedPage
+      gutterOwner="page-frame"
       data-testid="files-view"
-      aria-label={t("filesview.title", { defaultValue: "Files" })}
       aria-busy={loading}
     >
-      {facetBar}
-
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <FramedPageHeader
+        title={t("filesview.title", { defaultValue: "Files" })}
+      />
+      {!loading && !restricted && files.length > 0 ? (
+        <FramedPageNavigation className="flex items-center justify-between gap-3">
+          <span className="text-sm text-muted">Show</span>
+          {facetMenu}
+        </FramedPageNavigation>
+      ) : null}
+      <FramedPageBody scroll="page" className="device-layout gap-4 py-4">
         {downloadError ? (
           <div role="alert" className="text-sm text-danger">
             {downloadError}
@@ -590,12 +593,19 @@ function FilesViewBody() {
             />
           </div>
         ) : files.length === 0 ? (
-          <div className="flex flex-1 flex-col" data-testid="files-empty">
+          <div
+            className="flex flex-1 flex-col border-y border-border/50"
+            data-testid="files-empty"
+          >
             <PagePanel.Empty
-              className="flex-1"
+              variant="workspace"
+              className="flex-1 [@media(orientation:landscape)_and_(max-height:520px)]:py-4"
               icon={<FolderOpen className="size-6" aria-hidden />}
               title={t("filesview.emptyTitle", {
                 defaultValue: "No files yet",
+              })}
+              description={t("filesview.emptyDescription", {
+                defaultValue: "Files shared with Eliza will appear here.",
               })}
             />
           </div>
@@ -612,7 +622,7 @@ function FilesViewBody() {
           />
         ) : (
           <ul
-            className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+            className="flex flex-col divide-y divide-border/40 border-y border-border/50"
             data-testid="files-grid"
             aria-label={t("filesview.listLabel", { defaultValue: "Files" })}
           >
@@ -632,7 +642,7 @@ function FilesViewBody() {
             ))}
           </ul>
         )}
-      </div>
-    </section>
+      </FramedPageBody>
+    </FramedPage>
   );
 }

@@ -1,3 +1,7 @@
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  resetDevCloudEnvAuthorityForTests,
+} from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LifeOpsScheduleSyncClient,
@@ -8,7 +12,9 @@ import {
 } from "../../src/cloud/lifeops-schedule-sync-client";
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  resetDevCloudEnvAuthorityForTests();
 });
 
 describe("LifeOpsScheduleSyncClient", () => {
@@ -156,5 +162,29 @@ describe("LifeOps schedule sync config", () => {
       apiKey: "eliza_test",
       agentId: "agent-1",
     });
+  });
+
+  it("stays unconfigured after staging-default launch state is polluted", () => {
+    vi.stubEnv("ELIZA_DEV_SOURCE", "1");
+    vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "staging-default");
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "");
+    vi.stubEnv("ELIZAOS_CLOUD_AGENT_ID", "");
+    vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+    resetDevCloudEnvAuthorityForTests();
+    captureDevCloudEnvAuthoritySnapshot();
+
+    process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+    process.env.ELIZAOS_CLOUD_AGENT_ID = "late-production-agent";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+
+    expect(
+      resolveLifeOpsScheduleSyncConfig({
+        remoteApiBase: "https://production-agent.example",
+        remoteAccessToken: "persisted-production-token",
+        apiKey: "persisted-production-key",
+        baseUrl: "https://api.eliza.app/api/v1",
+        agentId: "persisted-production-agent",
+      })
+    ).toEqual({ configured: false, mode: "none" });
   });
 });

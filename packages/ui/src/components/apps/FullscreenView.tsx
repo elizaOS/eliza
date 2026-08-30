@@ -33,8 +33,13 @@ import {
 } from "../../utils";
 import { safeAttachmentUrl } from "../../utils/attachment-url";
 import { formatTime } from "../../utils/format";
+import { Alert } from "../ui/alert";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Input } from "../ui/input";
+import { Progress } from "../ui/progress";
+import { StatusBadge, type StatusTone } from "../ui/status-badge";
 import {
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,
@@ -173,13 +178,27 @@ function getApiStatus(err: unknown): number | null {
   return null;
 }
 
-/** Tag badge colors for logs panel. */
-const TAG_COLORS: Record<string, { bg: string; fg: string }> = {
-  agent: { bg: "rgba(99, 102, 241, 0.15)", fg: "rgb(99, 102, 241)" },
-  game: { bg: "rgba(34, 197, 94, 0.15)", fg: "rgb(34, 197, 94)" },
-  autonomy: { bg: "rgba(245, 158, 11, 0.15)", fg: "rgb(245, 158, 11)" },
-  websocket: { bg: "rgba(20, 184, 166, 0.15)", fg: "rgb(20, 184, 166)" },
+/** Canonical status tones for recognized log tags. */
+const TAG_TONES: Readonly<Partial<Record<string, StatusTone>>> = {
+  agent: "accent",
+  game: "success",
+  autonomy: "warning",
+  websocket: "info",
 };
+
+function heroHealthProgress(
+  current: number,
+  maximum: number,
+): { value: number; tone: "success" | "warning" | "danger" } {
+  const value = Math.min(
+    100,
+    Math.max(0, Math.round((current / maximum) * 100)),
+  );
+  return {
+    value,
+    tone: value > 50 ? "success" : value > 25 ? "warning" : "danger",
+  };
+}
 
 export function DesktopGameWindowControls({
   gameWindowId,
@@ -285,9 +304,9 @@ export function DesktopGameWindowControls({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="rounded-sm border border-border px-2 py-1 text-2xs text-muted">
-        {boundsLabel}
-      </span>
+      <Badge asChild variant="metaDefault" size="metaCompact">
+        <span>{boundsLabel}</span>
+      </Badge>
       <Button
         variant="outlineAccent"
         size="tiny"
@@ -1496,11 +1515,18 @@ export function FullscreenView() {
     const learningTelemetry = readLearningTelemetry(
       activeSessionState?.telemetry,
     );
+    const heroHp = activeSessionState?.telemetry?.heroHp;
+    const heroMaxHp = activeSessionState?.telemetry?.heroMaxHp;
+    const heroHealth =
+      typeof heroHp === "number" &&
+      typeof heroMaxHp === "number" &&
+      heroMaxHp > 0
+        ? heroHealthProgress(heroHp, heroMaxHp)
+        : null;
     return (
-      <div
-        className={`flex min-h-0 flex-col bg-card ${
-          layout === "sidebar" ? "w-80" : "h-full"
-        }`}
+      <Card
+        flow="column"
+        className={`min-h-0 ${layout === "sidebar" ? "w-80" : "h-full"}`}
       >
         <div className="flex items-center gap-2 px-3 py-2">
           <span className="font-bold text-xs">{t("game.agentActivity")}</span>
@@ -1543,41 +1569,22 @@ export function FullscreenView() {
                 <span className="text-danger font-semibold">DEAD</span>
               ) : null}
               {activeSessionState.telemetry.autoPlay ? (
-                <span className="px-1 py-0.5 rounded-sm bg-ok/15 text-ok font-semibold">
-                  AUTO
-                </span>
+                <StatusBadge label="AUTO" tone="success" />
               ) : (
-                <span className="px-1 py-0.5 rounded-sm bg-muted/15 text-muted">
-                  MANUAL
-                </span>
+                <StatusBadge label="MANUAL" tone="muted" />
               )}
             </div>
             {/* HP bar */}
-            {typeof activeSessionState.telemetry.heroHp === "number" &&
-            typeof activeSessionState.telemetry.heroMaxHp === "number" &&
-            activeSessionState.telemetry.heroMaxHp > 0 ? (
+            {heroHealth ? (
               <div className="flex items-center gap-2">
-                <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${Math.min(100, Math.round((Number(activeSessionState.telemetry.heroHp) / Number(activeSessionState.telemetry.heroMaxHp)) * 100))}%`,
-                      background:
-                        Number(activeSessionState.telemetry.heroHp) /
-                          Number(activeSessionState.telemetry.heroMaxHp) >
-                        0.5
-                          ? "rgb(34, 197, 94)"
-                          : Number(activeSessionState.telemetry.heroHp) /
-                                Number(activeSessionState.telemetry.heroMaxHp) >
-                              0.25
-                            ? "rgb(245, 158, 11)"
-                            : "rgb(239, 68, 68)",
-                    }}
-                  />
-                </div>
+                <Progress
+                  value={heroHealth.value}
+                  variant="usage"
+                  tone={heroHealth.tone}
+                  aria-label="Hero health"
+                />
                 <span className="text-muted whitespace-nowrap">
-                  {activeSessionState.telemetry.heroHp}/
-                  {activeSessionState.telemetry.heroMaxHp}
+                  {String(heroHp)}/{String(heroMaxHp)}
                 </span>
               </div>
             ) : null}
@@ -1697,12 +1704,12 @@ export function FullscreenView() {
           </div>
         ) : null}
         {logLoadError ? (
-          <div className="border-b border-danger/25 bg-danger/8 px-2 py-1.5 text-2xs text-danger">
+          <Alert variant="inlineDangerCompact">
             {t("logsview.LoadFailed", {
               defaultValue: "Failed to load logs: {{message}}",
               message: logLoadError,
             })}
-          </div>
+          </Alert>
         ) : null}
         {/* Chat input for sending commands to agent */}
         <div className="flex items-center gap-2 p-2">
@@ -1816,28 +1823,20 @@ export function FullscreenView() {
                   >
                     {entry.level}
                   </span>
-                  {(entry.tags ?? []).slice(0, 2).map((t: string) => {
-                    const c = TAG_COLORS[t];
-                    return (
-                      <span
-                        key={t}
-                        className="text-3xs px-1 py-px rounded-sm"
-                        style={{
-                          background: c ? c.bg : "var(--bg-muted)",
-                          color: c ? c.fg : "var(--muted)",
-                        }}
-                      >
-                        {t}
-                      </span>
-                    );
-                  })}
+                  {(entry.tags ?? []).slice(0, 2).map((tag: string) => (
+                    <StatusBadge
+                      key={tag}
+                      label={tag}
+                      tone={TAG_TONES[tag] ?? "muted"}
+                    />
+                  ))}
                 </div>
                 <div className="text-txt break-all">{entry.message}</div>
               </div>
             ))
           )}
         </div>
-      </div>
+      </Card>
     );
   };
 
@@ -1855,12 +1854,12 @@ export function FullscreenView() {
           activeGameRun?.health.state === "degraded"
         ? "Needs attention"
         : "Live";
-  const gameStatusClass =
+  const gameStatusTone: StatusTone =
     gameStatusLabel === "Live"
-      ? "border-ok/30 bg-ok/10 text-ok"
+      ? "success"
       : gameStatusLabel === "Needs attention"
-        ? "border-warn/35 bg-warn/10 text-warn"
-        : "border-border/45 bg-bg-hover/70 text-muted-strong";
+        ? "warning"
+        : "muted";
   const diagnostics = [
     { label: "Connection", value: connectionStatus },
     {
@@ -1910,7 +1909,12 @@ export function FullscreenView() {
   const renderViewerPane = () => {
     if (!hasViewer) {
       return (
-        <div className="flex h-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center">
+        <Card
+          variant="transparentSquare"
+          flow="column"
+          gap="default"
+          className="h-full items-center justify-center px-6 text-center"
+        >
           <div className="text-sm font-semibold text-txt">
             {activeGameDisplayName || activeGameApp}
           </div>
@@ -1918,13 +1922,18 @@ export function FullscreenView() {
             This run is alive, but it does not currently expose a viewer URL.
             You can keep steering it from the dashboard and running-runs panel.
           </div>
-        </div>
+        </Card>
       );
     }
 
     if (!viewerAttached) {
       return (
-        <div className="flex h-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center">
+        <Card
+          variant="transparentSquare"
+          flow="column"
+          gap="default"
+          className="h-full items-center justify-center px-6 text-center"
+        >
           <div className="text-sm font-semibold text-txt">Viewer detached</div>
           <div className="max-w-md text-xs leading-6 text-muted">
             The autonomous run is still active. Reattach the viewer to resume
@@ -1933,13 +1942,19 @@ export function FullscreenView() {
           <div className="flex flex-wrap justify-center gap-2">
             {renderOpenInNewTabButton("outline")}
           </div>
-        </div>
+        </Card>
       );
     }
 
     if (useNativeGameWindow) {
       return (
-        <div className="w-full h-full flex flex-col items-center justify-center bg-bg text-muted gap-3">
+        <Card
+          variant="transparentSquare"
+          flow="column"
+          gap="default"
+          tone="mutedStrong"
+          className="h-full w-full items-center justify-center"
+        >
           {gameWindowId ? (
             <>
               <span className="text-sm font-semibold text-txt">
@@ -1952,39 +1967,41 @@ export function FullscreenView() {
           ) : (
             <span className="text-xs italic">{t("common.launching")}</span>
           )}
-        </div>
+        </Card>
       );
     }
 
     return (
-      <iframe
-        ref={iframeRef}
-        src={resolvedActiveGameViewerUrl}
-        sandbox={activeGameSandbox}
-        allow="fullscreen *"
-        allowFullScreen
-        data-testid="game-view-iframe"
-        className="w-full h-full border-none"
-        title={
-          activeGameDisplayName || t("common.game", { defaultValue: "Game" })
-        }
-      />
+      <Card asChild variant="transparentSquare">
+        <iframe
+          ref={iframeRef}
+          src={resolvedActiveGameViewerUrl}
+          sandbox={activeGameSandbox}
+          allow="fullscreen *"
+          allowFullScreen
+          data-testid="game-view-iframe"
+          className="h-full w-full"
+          title={
+            activeGameDisplayName || t("common.game", { defaultValue: "Game" })
+          }
+        />
+      </Card>
     );
   };
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex flex-wrap items-center gap-3 bg-card px-4 py-2">
+      <Card flow="row" gap="default" padding="compact" className="flex-wrap">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-sm">
               {activeGameDisplayName || activeGameApp}
             </span>
-            <span
-              className={`rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.14em] ${gameStatusClass}`}
-            >
-              {gameStatusLabel}
-            </span>
+            <StatusBadge
+              label={gameStatusLabel}
+              tone={gameStatusTone}
+              presentation="pill"
+            />
           </div>
           {activeRunSummary ? (
             <div className="mt-1 max-w-3xl truncate text-xs-tight leading-5 text-muted-strong">
@@ -2082,32 +2099,33 @@ export function FullscreenView() {
         >
           {t("game.backToApps")}
         </Button>
-      </div>
+      </Card>
       {showDiagnostics ? (
-        <div className="border-t border-border/30 bg-card/70 px-4 py-2 text-xs-tight leading-5 text-muted-strong">
+        <Card
+          variant="topDivider"
+          padding="compact"
+          tone="mutedStrong"
+          className="text-xs-tight leading-5"
+        >
           <div className="flex flex-wrap gap-2">
             {diagnostics.map((item) => (
-              <span
-                key={item.label}
-                className="rounded-full border border-border/35 bg-bg/65 px-2.5 py-1"
-              >
-                <span className="text-muted">{item.label}: </span>
-                {item.value}
-              </span>
+              <Badge key={item.label} variant="metaDefault" size="metaCompact">
+                {item.label}: {item.value}
+              </Badge>
             ))}
             {activeGamePostMessageAuth ? (
-              <span className="rounded-full border border-border/35 bg-bg/65 px-2.5 py-1">
+              <Badge variant="metaDefault" size="metaCompact">
                 {t("gameview.postMessageAuth")}
-              </span>
+              </Badge>
             ) : null}
           </div>
           {activeGameRun?.health.message ? (
             <div className="mt-2">{activeGameRun.health.message}</div>
           ) : null}
-        </div>
+        </Card>
       ) : null}
       {dashboardPanelEnabled && isCompactLayout ? (
-        <div className="flex items-center gap-2 bg-card px-4 py-2">
+        <Card flow="row" gap="compact" padding="compact">
           <Button
             variant={mobileSurface === "game" ? "default" : "outlineAccent"}
             size="dense"
@@ -2140,7 +2158,7 @@ export function FullscreenView() {
               defaultValue: "Chat",
             })}
           </Button>
-        </div>
+        </Card>
       ) : null}
       <div
         className={`flex-1 min-h-0 ${

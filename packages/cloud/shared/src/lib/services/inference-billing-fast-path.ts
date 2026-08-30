@@ -439,11 +439,15 @@ export async function debitInferenceCost(
     }
     // The committed debit already evicted the gate hint via onCreditMutation.
     // Republish authoritative balance + revision so the NEXT turn hits a warm
-    // entry instead of a fail-closed cache-warming 503. A concurrent debit can
-    // only lower the value afterwards (lowerOrgBalanceHint), so this can never
-    // raise the gate above authoritative state.
+    // entry instead of a fail-closed cache-warming 503. The revision-aware
+    // Durable Object remains the Worker dispatch authority if concurrent cache
+    // writers arrive out of order.
     try {
-      await republishOrgBalanceHintAfterDebit(ctx.organizationId);
+      await republishOrgBalanceHintAfterDebit(
+        ctx.organizationId,
+        result.newBalance,
+        result.balanceRevision,
+      );
     } catch (cause) {
       markOrgAdmissionRefused(ctx.organizationId);
       try {

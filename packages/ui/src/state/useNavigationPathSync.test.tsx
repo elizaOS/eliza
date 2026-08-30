@@ -19,6 +19,34 @@ afterEach(() => {
 });
 
 describe("useNavigationPathSync — app-shell registry reactivity", () => {
+  it.each(["/documents", "/knowledge"])(
+    "replaces the retired Knowledge path %s with the canonical registry route",
+    (legacyPath) => {
+      window.history.replaceState(null, "", `${legacyPath}?source=bookmark`);
+      const setTabRaw = vi.fn();
+
+      renderHook(() =>
+        useNavigationPathSync({ tab: "views" as Tab, setTabRaw }),
+      );
+
+      expect(window.location.pathname).toBe("/character/documents");
+      expect(window.location.search).toBe("?source=bookmark");
+      expect(setTabRaw).toHaveBeenCalledWith("documents");
+    },
+  );
+
+  it("canonicalizes a retired Knowledge hash route in app-window navigation", () => {
+    window.history.replaceState(null, "", "/index.html?appWindow=1#/knowledge");
+    const setTabRaw = vi.fn();
+
+    renderHook(() => useNavigationPathSync({ tab: "views" as Tab, setTabRaw }));
+
+    expect(window.location.pathname).toBe("/index.html");
+    expect(window.location.search).toBe("?appWindow=1");
+    expect(window.location.hash).toBe("#/character/documents");
+    expect(setTabRaw).toHaveBeenCalledWith("documents");
+  });
+
   it("reconciles the active tab when a deep-linked app-shell page registers late", () => {
     window.history.replaceState(null, "", "/apps/custom-panel");
 

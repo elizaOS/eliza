@@ -3,11 +3,12 @@
 //
 // Three-state guard for the Memories people sidebar (#12784): a failed
 // relationships load must render the explicit "Could not load people." error
-// row — never the designed "No people yet." healthy-empty state. A 404 (the
-// relationships surface isn't hosted on this runtime) IS the designed empty
-// state, so it stays on the empty copy.
+// row, never the designed "No people yet." healthy-empty state. A typed
+// capability response (or a legacy 404) is a stable unavailable state without
+// a futile retry action.
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -85,6 +86,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   clientMock.getMemoryStats.mockReset();
   clientMock.getRelationshipsPeople.mockReset();
@@ -110,7 +112,7 @@ describe("MemoryViewerView people sidebar three-state rendering", () => {
       expect(screen.getByTestId("memory-people-error")).not.toBeNull(),
     );
     expect(screen.getByTestId("memory-people-error").textContent).toContain(
-      "Unable to load people.",
+      "People couldn't load.",
     );
     expect(screen.getByRole("button", { name: "Retry" }).textContent).toContain(
       "Retry",
@@ -131,7 +133,8 @@ describe("MemoryViewerView people sidebar three-state rendering", () => {
     expect(screen.queryByText("No people yet.")).toBeNull();
   });
 
-  it("renders the designed empty state (not an error) when the surface 404s", async () => {
+  it("renders a non-retryable unavailable state when the surface 404s", async () => {
+    vi.useFakeTimers();
     clientMock.getRelationshipsPeople.mockRejectedValue(
       new ApiError({
         kind: "http",
@@ -142,11 +145,39 @@ describe("MemoryViewerView people sidebar three-state rendering", () => {
     );
 
     render(<MemoryViewerView />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000);
+    });
+
+    expect(screen.getByTestId("memory-people-unavailable")).not.toBeNull();
+    expect(
+      screen.getByTestId("memory-people-unavailable").textContent,
+    ).toContain("People filters aren't available here.");
+    expect(screen.queryByTestId("memory-people-error")).toBeNull();
+    expect(screen.queryByText("No people yet.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByText("Open Relationships")).toBeNull();
+  });
+
+  it("renders the same unavailable state for the typed Shared capability response", async () => {
+    clientMock.getRelationshipsPeople.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/relationships/people",
+        message: "The Shared runtime does not host the relationships graph.",
+        status: 503,
+        code: "relationships_runtime_unavailable",
+        data: { retryable: false },
+      }),
+    );
+
+    render(<MemoryViewerView />);
 
     await waitFor(() =>
-      expect(screen.getByText("No people yet.")).not.toBeNull(),
+      expect(screen.getByTestId("memory-people-unavailable")).not.toBeNull(),
     );
     expect(screen.queryByTestId("memory-people-error")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("renders the people list on success", async () => {

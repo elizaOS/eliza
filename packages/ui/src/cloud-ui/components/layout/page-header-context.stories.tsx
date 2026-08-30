@@ -127,11 +127,11 @@ export const WithActions: Story = {
               type="button"
               onClick={() => {}}
               variant="outline"
-              size="short"
+              size="regularCompact"
             >
               Import
             </Button>
-            <Button type="button" onClick={() => {}} size="short">
+            <Button type="button" onClick={() => {}} size="regularCompact">
               New brand
             </Button>
           </div>

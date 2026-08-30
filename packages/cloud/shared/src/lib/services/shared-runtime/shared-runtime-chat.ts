@@ -8,7 +8,6 @@
 
 import crypto from "node:crypto";
 import {
-  assertModelOutputComplete,
   ChannelType,
   ElizaError,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -88,12 +87,7 @@ import {
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
-import {
-  buildSharedFactsContext,
-  extractSharedTurnFacts,
-  SHARED_FACTS_EXTRACTION_TIMEOUT_MS,
-  sharedFactsEnabled,
-} from "./shared-facts";
+import { buildSharedFactsContext, sharedFactsEnabled } from "./shared-facts";
 import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
 import {
   buildSharedRecallContext,
@@ -143,6 +137,7 @@ export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
+const SHARED_STREAM_TERMINAL_DEADLINE_MS = 75_000;
 const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
 const PERSONAL_SHARED_IMAGE_MODEL_ID = "fal-ai/flux/schnell";
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
@@ -177,6 +172,8 @@ export interface SharedRuntimeHistoryStore {
    * writes may omit this hook.
    */
   stagePending?(agentId: string, channelId: string, messages: SharedTurnMessage[]): void;
+  /** Waits only for the restart-safe pending-history checkpoint, not full turn finalization. */
+  checkpointPending?(): Promise<void>;
   merge(
     agentId: string,
     channelId: string,
@@ -757,68 +754,6 @@ function combinedTurnContext(
   return parts.length ? parts.join("\n\n") : undefined;
 }
 
-/**
- * P4 post-turn facts extraction, strictly off the response path (same shape as
- * the P5 trace recorder): one small extraction call through the SAME platform
- * model path the turn used, deduped against known facts, written as durable
- * `facts` rows. Runs only for landed user turns while the flag is on; any
- * failure is warned and dropped so knowledge accumulation can never fail or
- * slow a delivered reply.
- */
-function extractSharedTurnFactsOffPath(
-  executionCtx: BridgeExecutionContext | undefined,
-  store: SharedMemoryStore | null,
-  character: SharedAgentCharacter,
-  userMessage: string,
-  assistantReply: string,
-): void {
-  if (!store || !sharedFactsEnabled()) return;
-  const model = resolveSharedAgentTurnModel(character.model);
-  if (!model) return;
-  void settleOffResponsePath(executionCtx, async () => {
-    try {
-      const [{ generateText }, { getInteractiveCerebrasLanguageModel }, knownFacts] =
-        await Promise.all([
-          import("ai"),
-          import("../../providers/language-model"),
-          store.listFacts(),
-        ]);
-      const facts = await extractSharedTurnFacts({
-        agentName: character.name,
-        userMessage,
-        assistantReply,
-        knownFacts,
-        generate: async (prompt) => {
-          const result = await generateText({
-            model: getInteractiveCerebrasLanguageModel(model),
-            prompt,
-            temperature: 0,
-            maxRetries: 0,
-            // A stalled provider request must not pin the waitUntil task open;
-            // the deadline surfaces as a distinct AbortError in the J7 warn.
-            abortSignal: AbortSignal.timeout(SHARED_FACTS_EXTRACTION_TIMEOUT_MS),
-          });
-          assertModelOutputComplete({
-            finishReason: result.finishReason,
-            provider: "cerebras",
-            model,
-          });
-          return result.text;
-        },
-      });
-      if (facts.length) await store.recordFacts(facts);
-    } catch (error) {
-      // error-policy:J7 knowledge extraction is off-path enrichment; its
-      // failure must never surface into the already-delivered turn.
-      logger.warn(
-        `[shared-runtime-chat] facts extraction failed for this turn: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  });
-}
-
 function stableUuid(raw: string): string {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
     return raw;
@@ -1276,6 +1211,7 @@ function observeProviderCancellationOffPath(
   agentId: string,
   cancellation: Promise<void>,
   executionCtx: BridgeExecutionContext | undefined,
+  observationMs = PROVIDER_CANCELLATION_OBSERVE_MS,
 ): void {
   void settleOffResponsePath(executionCtx, async () => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1287,7 +1223,7 @@ function observeProviderCancellationOffPath(
         (error: unknown) => ({ state: "rejected" as const, error }),
       ),
       new Promise<{ state: "timed_out" }>((resolve) => {
-        timer = setTimeout(() => resolve({ state: "timed_out" }), PROVIDER_CANCELLATION_OBSERVE_MS);
+        timer = setTimeout(() => resolve({ state: "timed_out" }), observationMs);
       }),
     ]);
     if (timer !== undefined) clearTimeout(timer);
@@ -1336,6 +1272,8 @@ function sseError(message: string): Response {
 }
 
 export class SharedRuntimeChatService {
+  constructor(private readonly streamTerminalDeadlineMs = SHARED_STREAM_TERMINAL_DEADLINE_MS) {}
+
   async recordLifecycleEvent(
     agentId: string,
     roomId: string,
@@ -1515,9 +1453,6 @@ export class SharedRuntimeChatService {
       history,
       options.channel,
     );
-    if (!turn.degraded && turn.responded !== false && messageRole === "user") {
-      extractSharedTurnFactsOffPath(options.executionCtx, memoryStore, character, text, turn.reply);
-    }
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
@@ -1668,8 +1603,51 @@ export class SharedRuntimeChatService {
     timings.turn_admission = elapsedTurnMs(admissionStartedAt);
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const generationAbort = new AbortController();
+    let turnTimedOut = false;
+    let terminalDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let terminalBoundaryClosed = false;
+    let rejectTerminalBoundary: (reason?: unknown) => void = () => {};
+    const terminalBoundary = new Promise<never>((_resolve, reject) => {
+      rejectTerminalBoundary = reject;
+      terminalDeadlineTimer = setTimeout(() => {
+        const error = new ElizaError("Shared runtime turn exceeded its terminal deadline", {
+          code: "SHARED_RUNTIME_TURN_DEADLINE_EXCEEDED",
+          context: { timeoutMs: this.streamTerminalDeadlineMs },
+        });
+        failTerminalBoundary(error, true);
+      }, this.streamTerminalDeadlineMs);
+    });
+    const closeTerminalBoundary = () => {
+      terminalBoundaryClosed = true;
+      if (terminalDeadlineTimer !== undefined) {
+        clearTimeout(terminalDeadlineTimer);
+        terminalDeadlineTimer = undefined;
+      }
+    };
+    function failTerminalBoundary(error: unknown, timedOut: boolean): void {
+      if (terminalBoundaryClosed) return;
+      terminalBoundaryClosed = true;
+      turnTimedOut = timedOut;
+      if (terminalDeadlineTimer !== undefined) {
+        clearTimeout(terminalDeadlineTimer);
+        terminalDeadlineTimer = undefined;
+      }
+      generationAbort.abort(error);
+      rejectTerminalBoundary(error);
+    }
+    const withinTerminalDeadline = <T>(work: PromiseLike<T>): Promise<T> =>
+      Promise.race([Promise.resolve(work), terminalBoundary]);
     const abortFromRequest = () => {
-      generationAbort.abort(options.abortSignal?.reason);
+      const reason = options.abortSignal?.reason;
+      failTerminalBoundary(
+        reason instanceof Error
+          ? reason
+          : new ElizaError("Shared runtime request was aborted", {
+              code: "SHARED_RUNTIME_REQUEST_ABORTED",
+              context: {},
+            }),
+        false,
+      );
     };
     if (options.abortSignal?.aborted) {
       abortFromRequest();
@@ -1682,42 +1660,48 @@ export class SharedRuntimeChatService {
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
     const streamMemoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent, roomId);
-    const [streamFactsContext, streamRecallBlock] = await Promise.all([
-      sharedTurnFactsContext(streamMemoryStore),
-      sharedTurnRecallContext(streamMemoryStore, text, history),
-    ]);
-    const streamRecallContext = combinedTurnContext(streamFactsContext, streamRecallBlock);
     const streamTurnStartedAtEpochMs = Date.now();
     let streamTerminalTiming: SharedRuntimeTimingReceipt | undefined;
-    const providerSetupStartedAt = performance.now();
     try {
-      turn = await runSharedAgentTurnStream({
-        abortSignal: generationAbort.signal,
-        character,
-        history,
-        message: text,
-        ...(streamRecallContext ? { recallContext: streamRecallContext } : {}),
-        ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
-        messageRole,
-        messageIds,
-        ...(claimKey ? { originClientMessageId: claimKey } : {}),
-        onProviderDispatch: billing?.markProviderDispatched,
-        traceId: options.traceId ?? messageIds.assistant,
-        onRuntimeTiming: (receipt) => {
-          streamTerminalTiming = receipt;
-        },
-        execution: sharedElizaRuntimeExecution(
-          agent,
-          roomId,
-          claimKey,
-          params,
-          options.funding,
-          options.executionCtx,
-          options.mobilePushDispatch,
-          options.channel,
-        ),
-      });
+      const [streamFactsContext, streamRecallBlock] = await withinTerminalDeadline(
+        Promise.all([
+          sharedTurnFactsContext(streamMemoryStore),
+          sharedTurnRecallContext(streamMemoryStore, text, history),
+        ]),
+      );
+      const streamRecallContext = combinedTurnContext(streamFactsContext, streamRecallBlock);
+      const providerSetupStartedAt = performance.now();
+      turn = await withinTerminalDeadline(
+        runSharedAgentTurnStream({
+          abortSignal: generationAbort.signal,
+          character,
+          history,
+          message: text,
+          ...(streamRecallContext ? { recallContext: streamRecallContext } : {}),
+          ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
+          messageRole,
+          messageIds,
+          ...(claimKey ? { originClientMessageId: claimKey } : {}),
+          onProviderDispatch: billing?.markProviderDispatched,
+          traceId: options.traceId ?? messageIds.assistant,
+          onRuntimeTiming: (receipt) => {
+            streamTerminalTiming = receipt;
+          },
+          execution: sharedElizaRuntimeExecution(
+            agent,
+            roomId,
+            claimKey,
+            params,
+            options.funding,
+            options.executionCtx,
+            options.mobilePushDispatch,
+            options.channel,
+          ),
+        }),
+      );
+      timings.turn_provider_setup = elapsedTurnMs(providerSetupStartedAt);
     } catch (error) {
+      closeTerminalBoundary();
       recordFailedTurnTraceOffPath(
         options.executionCtx,
         agent,
@@ -1737,12 +1721,33 @@ export class SharedRuntimeChatService {
         error,
         "stream setup failed after admission",
       );
+      if (turnTimedOut) {
+        return withTurnTimingHeaders(sseError("Shared runtime stream timed out"), timings);
+      }
       throw error;
     }
-    timings.turn_provider_setup = elapsedTurnMs(providerSetupStartedAt);
     if (turn.degraded) {
+      try {
+        await withinTerminalDeadline(
+          billing ? billing.settle(0).then(() => undefined) : Promise.resolve(),
+        );
+      } catch (error) {
+        closeTerminalBoundary();
+        detachRequestAbort();
+        await settleFailedProviderWorkOffPath(
+          agent,
+          billing,
+          options.executionCtx,
+          error,
+          "degraded turn settlement exceeded terminal boundary",
+        );
+        if (turnTimedOut) {
+          return withTurnTimingHeaders(sseError("Shared runtime stream timed out"), timings);
+        }
+        throw error;
+      }
+      closeTerminalBoundary();
       detachRequestAbort();
-      await billing?.settle(0);
       recordTurnTraceOffPath(
         options.executionCtx,
         agent,
@@ -1780,13 +1785,19 @@ export class SharedRuntimeChatService {
       );
     }
     if (!turn.parts) {
-      detachRequestAbort();
-      await settleAmbiguousProviderWorkOffPath(
-        agent,
-        billing,
-        options.executionCtx,
-        "stream returned without a provider body",
-      );
+      try {
+        await withinTerminalDeadline(
+          settleAmbiguousProviderWorkOffPath(
+            agent,
+            billing,
+            options.executionCtx,
+            "stream returned without a provider body",
+          ),
+        );
+      } finally {
+        closeTerminalBoundary();
+        detachRequestAbort();
+      }
       return withTurnTimingHeaders(sseError("Shared runtime stream did not start"), timings);
     }
 
@@ -1818,6 +1829,7 @@ export class SharedRuntimeChatService {
     let streamedReply = "";
     let terminalSettlementStarted = false;
     let consumerCanceled = false;
+    let terminalDoneEmitted = false;
     const settleInterruptedTurn = async (reason: string): Promise<void> => {
       if (terminalSettlementStarted) return;
       terminalSettlementStarted = true;
@@ -1870,15 +1882,6 @@ export class SharedRuntimeChatService {
             }
           });
         }
-        if (!interrupted && messageRole === "user" && reply.trim()) {
-          extractSharedTurnFactsOffPath(
-            options.executionCtx,
-            streamMemoryStore,
-            character,
-            text,
-            reply,
-          );
-        }
         await afterWrite?.();
         finalized = true;
       })().catch((error) => {
@@ -1887,15 +1890,42 @@ export class SharedRuntimeChatService {
       });
       return finalizationPromise;
     };
+    const checkpointInterruptedTurn = async (reply: string): Promise<void> => {
+      const messages = makeTurnMessages(reply, true);
+      options.historyStore?.stagePending?.(agent.id, roomId, messages);
+      await options.historyStore?.checkpointPending?.();
+    };
+    const continueFinalizationOffPath = (finalization: Promise<void>): void => {
+      const observed = finalization.catch((error) => {
+        logger.warn("[SharedRuntimeChatService] interrupted finalization failed", {
+          agentId: agent.id,
+          roomId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+      if (options.executionCtx) {
+        options.executionCtx.waitUntil(observed);
+        return;
+      }
+      void observed;
+    };
     const stream = new ReadableStream<Uint8Array>({
       start: async (controller) => {
         let finished = false;
+        const parts = turn.parts!;
+        let iterator: ReturnType<(typeof parts)[typeof Symbol.asyncIterator]> | undefined;
         try {
+          iterator = parts[Symbol.asyncIterator]();
+          let pendingNext = iterator.next();
           // Flush one valid SSE comment before provider text so Workerd exposes
           // the Durable Object response headers independently of model latency.
           // Consumers ignore comments; the complete reply remains unchanged.
           controller.enqueue(encoder.encode(SSE_TRANSPORT_READY_COMMENT));
-          for await (const part of turn.parts!) {
+          while (true) {
+            const next = await withinTerminalDeadline(pendingNext);
+            if (next.done) break;
+            pendingNext = iterator.next();
+            const part = next.value;
             if (part.type === "text-delta") {
               streamedReply += part.text;
               if (consumerCanceled) continue;
@@ -1917,30 +1947,32 @@ export class SharedRuntimeChatService {
             finished = true;
             const finalReply = part.text.trim() || streamedReply.trim();
             if (part.responded === false) {
-              await finalizeMessages("", false, async () => {
-                if (claimKey && options.turnClaims) {
-                  await options.turnClaims.complete(claimKey, {
-                    text: "",
-                    responded: false,
-                    messageId: messageIds.assistant,
-                    userMessageId: messageIds.user,
-                    agentName: character.name,
-                    channelId: roomId,
-                    model: turn.model,
-                    degraded: false,
-                    runtime: "shared",
-                    transport: "shared-runtime",
-                    ...(part.timing ? { timing: part.timing } : {}),
-                  });
-                }
-                terminalSettlementStarted = true;
-                if (isProviderFreeTurn(turn)) await billing?.settle(0);
-                else if (billing) {
-                  await settleOffResponsePath(options.executionCtx, () =>
-                    finishBilling(agent, billing, "", text, part.usage),
-                  );
-                }
-              });
+              await withinTerminalDeadline(
+                finalizeMessages("", false, async () => {
+                  if (claimKey && options.turnClaims) {
+                    await options.turnClaims.complete(claimKey, {
+                      text: "",
+                      responded: false,
+                      messageId: messageIds.assistant,
+                      userMessageId: messageIds.user,
+                      agentName: character.name,
+                      channelId: roomId,
+                      model: turn.model,
+                      degraded: false,
+                      runtime: "shared",
+                      transport: "shared-runtime",
+                      ...(part.timing ? { timing: part.timing } : {}),
+                    });
+                  }
+                  terminalSettlementStarted = true;
+                  if (isProviderFreeTurn(turn)) await billing?.settle(0);
+                  else if (billing) {
+                    await settleOffResponsePath(options.executionCtx, () =>
+                      finishBilling(agent, billing, "", text, part.usage),
+                    );
+                  }
+                }),
+              );
               controller.enqueue(
                 encoder.encode(
                   chatSseFrame("done", {
@@ -1953,17 +1985,20 @@ export class SharedRuntimeChatService {
                   }),
                 ),
               );
-              continue;
+              terminalDoneEmitted = true;
+              break;
             }
             if (!finalReply) {
               // An empty completion is a failed turn: never fabricate, persist,
               // or bill a placeholder reply (repo policy: throw, never fabricate).
               terminalSettlementStarted = true;
-              await settleAmbiguousProviderWorkOffPath(
-                agent,
-                billing,
-                options.executionCtx,
-                "provider completed without visible output",
+              await withinTerminalDeadline(
+                settleAmbiguousProviderWorkOffPath(
+                  agent,
+                  billing,
+                  options.executionCtx,
+                  "provider completed without visible output",
+                ),
               );
               controller.enqueue(
                 encoder.encode(
@@ -1972,7 +2007,7 @@ export class SharedRuntimeChatService {
                   }),
                 ),
               );
-              continue;
+              break;
             }
             const actionResults = turnActionResults(
               {
@@ -1985,39 +2020,41 @@ export class SharedRuntimeChatService {
                 ...(claimKey ? { clientMessageId: claimKey } : {}),
               },
             );
-            await finalizeMessages(
-              finalReply,
-              false,
-              async () => {
-                // Durable claim completion before the done frame: a lost/dropped
-                // terminal frame replays this result on retry instead of
-                // re-dispatching the provider. Interrupted turns stay pending.
-                if (claimKey && options.turnClaims) {
-                  await options.turnClaims.complete(claimKey, {
-                    text: finalReply,
-                    messageId: messageIds.assistant,
-                    userMessageId: messageIds.user,
-                    agentName: character.name,
-                    channelId: roomId,
-                    model: turn.model,
-                    degraded: false,
-                    runtime: "shared",
-                    transport: "shared-runtime",
-                    ...(part.timing ? { timing: part.timing } : {}),
-                    ...(actionResults ? { actionResults } : {}),
-                  });
-                }
-                if (isProviderFreeTurn(turn)) {
-                  terminalSettlementStarted = true;
-                  await billing?.settle(0);
-                } else if (billing) {
-                  terminalSettlementStarted = true;
-                  await settleOffResponsePath(options.executionCtx, () =>
-                    finishBilling(agent, billing, finalReply, text, part.usage),
-                  );
-                }
-              },
-              turn.internalGrounding,
+            await withinTerminalDeadline(
+              finalizeMessages(
+                finalReply,
+                false,
+                async () => {
+                  // Durable claim completion before the done frame: a lost/dropped
+                  // terminal frame replays this result on retry instead of
+                  // re-dispatching the provider. Interrupted turns stay pending.
+                  if (claimKey && options.turnClaims) {
+                    await options.turnClaims.complete(claimKey, {
+                      text: finalReply,
+                      messageId: messageIds.assistant,
+                      userMessageId: messageIds.user,
+                      agentName: character.name,
+                      channelId: roomId,
+                      model: turn.model,
+                      degraded: false,
+                      runtime: "shared",
+                      transport: "shared-runtime",
+                      ...(part.timing ? { timing: part.timing } : {}),
+                      ...(actionResults ? { actionResults } : {}),
+                    });
+                  }
+                  if (isProviderFreeTurn(turn)) {
+                    terminalSettlementStarted = true;
+                    await billing?.settle(0);
+                  } else if (billing) {
+                    terminalSettlementStarted = true;
+                    await settleOffResponsePath(options.executionCtx, () =>
+                      finishBilling(agent, billing, finalReply, text, part.usage),
+                    );
+                  }
+                },
+                turn.internalGrounding,
+              ),
             );
             const done = actionResults
               ? {
@@ -2036,10 +2073,14 @@ export class SharedRuntimeChatService {
                   ...(part.timing ? { timing: part.timing } : {}),
                 };
             controller.enqueue(encoder.encode(chatSseFrame("done", done)));
+            terminalDoneEmitted = true;
+            break;
           }
           if (!finished) {
-            await finalizeMessages(streamedReply, true, () =>
-              settleInterruptedTurn("provider stream ended without completion"),
+            await withinTerminalDeadline(
+              finalizeMessages(streamedReply, true, () =>
+                settleInterruptedTurn("provider stream ended without completion"),
+              ),
             );
             if (!consumerCanceled) {
               controller.enqueue(
@@ -2053,19 +2094,37 @@ export class SharedRuntimeChatService {
           }
         } catch (error) {
           // error-policy:J1 partial SSE cannot become an HTTP error.
-          await finalizeMessages(streamedReply, true, async () => {
-            if (!terminalSettlementStarted) {
-              terminalSettlementStarted = true;
-              await settleFailedProviderWorkOffPath(
-                agent,
-                billing,
-                options.executionCtx,
-                error,
-                "provider stream failed after dispatch",
-                streamedReply.length > 0,
-              );
+          if (!consumerCanceled) {
+            const interruptedReply = streamedReply;
+            await checkpointInterruptedTurn(interruptedReply);
+            const finalization = finalizeMessages(interruptedReply, true, async () => {
+              if (!terminalSettlementStarted) {
+                terminalSettlementStarted = true;
+                await settleFailedProviderWorkOffPath(
+                  agent,
+                  billing,
+                  options.executionCtx,
+                  error,
+                  "provider stream failed after dispatch",
+                  interruptedReply.length > 0,
+                );
+              }
+            });
+            try {
+              await withinTerminalDeadline(finalization);
+            } catch {
+              continueFinalizationOffPath(finalization);
             }
-          });
+            const providerCancellation = Promise.resolve().then(async () => {
+              await Promise.all([iterator?.return?.(), turn.cancel?.(error)]);
+            });
+            observeProviderCancellationOffPath(
+              agent.id,
+              providerCancellation,
+              options.executionCtx,
+              Math.min(PROVIDER_CANCELLATION_OBSERVE_MS, this.streamTerminalDeadlineMs),
+            );
+          }
           logger.warn("[SharedRuntimeChatService] stream failed", {
             agentId: agent.id,
             error: error instanceof Error ? error.message : String(error),
@@ -2080,10 +2139,11 @@ export class SharedRuntimeChatService {
             );
           }
         } finally {
+          closeTerminalBoundary();
           // Runtime timing is emitted only when the provider iterator reaches
           // its terminal success/error/abort path. Persist it with the turn's
           // one durable trace row and therefore one deterministic sample.
-          if (streamTerminalTiming?.outcome === "success") {
+          if (!turnTimedOut && terminalDoneEmitted && streamTerminalTiming?.outcome === "success") {
             recordTurnTraceOffPath(
               options.executionCtx,
               agent,
@@ -2101,6 +2161,10 @@ export class SharedRuntimeChatService {
               options.channel,
             );
           } else {
+            const failureOutcome =
+              !turnTimedOut && (consumerCanceled || generationAbort.signal.aborted)
+                ? "aborted"
+                : "error";
             recordFailedTurnTraceOffPath(
               options.executionCtx,
               agent,
@@ -2108,10 +2172,12 @@ export class SharedRuntimeChatService {
               options.traceId ?? messageIds.assistant,
               turn.model,
               streamTurnStartedAtEpochMs,
-              streamTerminalTiming,
+              streamTerminalTiming
+                ? { ...streamTerminalTiming, outcome: failureOutcome }
+                : undefined,
               history,
               options.channel,
-              consumerCanceled || generationAbort.signal.aborted ? "aborted" : "error",
+              failureOutcome,
             );
           }
           detachRequestAbort();

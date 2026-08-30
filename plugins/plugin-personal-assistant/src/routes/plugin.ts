@@ -35,7 +35,11 @@ import {
   sendJsonError as httpSendJsonError,
   resolveOwnerEntityIdOrDefault,
 } from "@elizaos/core";
-import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
+import {
+  readJsonBody as httpReadJsonBody,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
@@ -219,6 +223,34 @@ function runtimeSetting(
 function buildCloudProxyConfig(
   runtime: AgentRuntime | null,
 ): CloudProxyConfigLike {
+  if (resolveDevCloudEnvAuthority()) {
+    const authorityValue = (...keys: string[]): string | undefined => {
+      for (const key of keys) {
+        const value = resolveDevCloudAuthorityEnvValue(key)?.trim();
+        if (value) return value;
+      }
+      return undefined;
+    };
+    return {
+      cloud: {
+        apiKey: authorityValue(
+          "ELIZAOS_CLOUD_API_KEY",
+          "ELIZA_CLOUD_API_KEY",
+          "ELIZACLOUD_API_KEY",
+        ),
+        baseUrl: authorityValue(
+          "ELIZAOS_CLOUD_BASE_URL",
+          "ELIZA_CLOUD_BASE_URL",
+          "ELIZA_CLOUD_URL",
+          "ELIZAOS_CLOUD_URL",
+        ),
+        serviceKey: authorityValue(
+          "ELIZAOS_CLOUD_SERVICE_KEY",
+          "ELIZA_CLOUD_SERVICE_KEY",
+        ),
+      },
+    };
+  }
   return {
     cloud: {
       apiKey:
@@ -259,6 +291,8 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "PUT", path: "/api/lifeops/app-state" },
   { type: "GET", path: "/api/lifeops/capabilities" },
   { type: "GET", path: "/api/lifeops/calendar/feed" },
+  { type: "POST", path: "/api/lifeops/calendar/imported-data/purge" },
+  { type: "POST", path: "/api/lifeops/calendar/seed" },
   { type: "GET", path: "/api/lifeops/calendar/sources" },
   { type: "POST", path: "/api/lifeops/calendar/sources" },
   { type: "GET", path: "/api/lifeops/calendar/meeting-auto-join" },
@@ -267,6 +301,9 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "PUT", path: "/api/lifeops/calendar/calendars/:id/include" },
   { type: "GET", path: "/api/lifeops/calendar/next-context" },
   { type: "GET", path: "/api/lifeops/gmail/triage" },
+  { type: "GET", path: "/api/lifeops/gmail/sync-health" },
+  { type: "POST", path: "/api/lifeops/gmail/seed" },
+  { type: "POST", path: "/api/lifeops/gmail/imported-data/purge" },
   { type: "GET", path: "/api/lifeops/gmail/search" },
   { type: "GET", path: "/api/lifeops/gmail/needs-response" },
   { type: "GET", path: "/api/lifeops/gmail/recommendations" },
@@ -281,6 +318,9 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/gmail/batch-reply-send" },
   { type: "POST", path: "/api/lifeops/gmail/manage" },
   { type: "POST", path: "/api/lifeops/gmail/events/ingest" },
+  { type: "GET", path: "/api/lifeops/connectors/google/status" },
+  { type: "POST", path: "/api/lifeops/connectors/google/connect" },
+  { type: "POST", path: "/api/lifeops/connectors/google/disconnect" },
   { type: "GET", path: "/api/lifeops/connectors/x/status" },
   { type: "POST", path: "/api/lifeops/x/posts" },
   { type: "GET", path: "/api/lifeops/x/dms/digest" },

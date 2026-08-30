@@ -112,14 +112,7 @@ test.describe("cloud console route wiring", () => {
     installPageDiagnosticsGuard(page);
     await installDefaultAppRoutes(page);
     await installCloudApiStubs(page);
-    await seedAppStorage(page, {
-      "elizaos:active-server": JSON.stringify({
-        id: "cloud:6f9619ff-8b86-4d01-b42d-00c04fc964ff",
-        kind: "cloud",
-        label: "Eliza Cloud",
-        accessToken: "ui-smoke-agent-access-token",
-      }),
-    });
+    await seedAppStorage(page);
     stewardToken = await seedStewardSession(page, {
       jwt: true,
       subject: "cloud-console-route-smoke-user",
@@ -132,6 +125,14 @@ test.describe("cloud console route wiring", () => {
   }) => {
     await page.goto("/cloud/analytics", { waitUntil: "domcontentloaded" });
 
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const server = localStorage.getItem("elizaos:active-server");
+          return server ? JSON.parse(server).kind : null;
+        }),
+      )
+      .toBe("local");
     await expect(page.locator("[data-app-shell-root]")).toBeVisible();
     await expect(page.getByTestId("view-header")).toHaveCount(1);
     await expect(
@@ -180,5 +181,34 @@ test.describe("cloud console route wiring", () => {
         ]),
       );
     await expectNoPageDiagnostics(page, "cloud MCPs persisted token gate");
+  });
+});
+
+test.describe("signed-out cloud console routing", () => {
+  test("preserves a protected Cloud deep link through the same-origin login returnTo", async ({
+    page,
+  }) => {
+    installPageDiagnosticsGuard(page);
+    await installDefaultAppRoutes(page);
+    await installCloudApiStubs(page);
+    await seedAppStorage(page);
+
+    await page.goto(
+      "/cloud/agents/565f9cb3-3836-4954-8ef5-cfa8d033dbc0?from=manual#status",
+      { waitUntil: "domcontentloaded" },
+    );
+
+    await expect
+      .poll(() => {
+        const url = new URL(page.url());
+        return `${url.pathname}${url.search}`;
+      })
+      .toBe(
+        "/login?returnTo=%2Fcloud%2Fagents%2F565f9cb3-3836-4954-8ef5-cfa8d033dbc0%3Ffrom%3Dmanual%23status",
+      );
+    await expect(
+      page.getByRole("heading", { name: "Sign in", level: 1 }),
+    ).toBeVisible();
+    await expectNoPageDiagnostics(page, "signed-out Cloud login returnTo");
   });
 });

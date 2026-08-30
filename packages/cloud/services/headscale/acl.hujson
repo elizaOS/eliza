@@ -14,7 +14,10 @@
     "tag:eliza-proxy": ["tunnel@"],
     // User-owned Mac/iPhone iMessage bridges use a dedicated tag so they can
     // reach only the tunnel proxy, never agent containers directly.
-    "tag:imessage-gateway": ["tunnel@"]
+    "tag:imessage-gateway": ["tunnel@"],
+    // Optional Devices enrollment uses a separate server identity. It receives
+    // no inbound edge and cannot address another remote host or the agent fleet.
+    "tag:eliza-remote-host": ["tunnel@"]
   },
 
   "groups": {},
@@ -62,8 +65,16 @@
       "action": "accept",
       "src": ["tag:imessage-gateway"],
       "dst": ["tag:eliza-proxy:443"]
+    },
+    // Managed Devices hosts may reach the same HTTPS relay proxy and nothing
+    // else on the tailnet. Tenant authority remains in the authenticated relay;
+    // the shared infrastructure tag never grants host-to-host reachability.
+    {
+      "action": "accept",
+      "src": ["tag:eliza-remote-host"],
+      "dst": ["tag:eliza-proxy:443"]
     }
-    // NO rule grants tag:eliza-tunnel or tag:imessage-gateway access to tag:agent.
+    // NO rule grants customer/gateway/remote-host tags access to tag:agent.
     // This isolation is the entire point of tag-based ACLs here.
   ]
 }

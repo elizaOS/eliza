@@ -71,7 +71,18 @@ export const smokeViewDeclarations = [
   ],
   ["messages", "Messages", "plugin-messages", "/messages", "MessagesView"],
   ["phone", "Phone", "plugin-phone", "/phone", "PhoneView"],
-  ["wallet", "Wallet", "plugin-wallet", "/wallet", "InventoryView"],
+  [
+    "wallet",
+    "Wallet",
+    "plugin-wallet",
+    "/wallet",
+    "InventoryView",
+    "gui",
+    {
+      background: "shared",
+      capabilities: ["agent-surface", "wallpaper"],
+    },
+  ],
   ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
   ["notes", "Notes", "plugin-notes", "/notes", "NotesView"],
   [

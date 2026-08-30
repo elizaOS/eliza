@@ -32,6 +32,7 @@ interface FixtureOptions {
   staleDeleteThrows?: boolean;
   staleIdentityMismatch?: boolean;
   staleTier?: string;
+  createStatus?: number;
   createdTier?: string;
   readyTier?: string;
   mesh?: boolean;
@@ -124,6 +125,12 @@ function createFixture(options: FixtureOptions = {}) {
     }
 
     if (url.pathname === "/api/v1/eliza/agents" && method === "POST") {
+      if (options.createStatus) {
+        return response(
+          { success: false, error: "redacted" },
+          options.createStatus,
+        );
+      }
       created = true;
       createBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
       if (options.postCommitsThenThrows) {
@@ -903,6 +910,24 @@ describe("managed dedicated canary", () => {
     expect(evidence.cleanup.status).toBe("passed");
     expect(evidence.timingsMs.create).toBe(7);
     expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
+  test("classifies an unfunded Dedicated admission before any agent can exist", async () => {
+    const { fixture, evidence } = await runFixture({ createStatus: 402 });
+
+    expect(evidence.failure).toEqual({
+      phase: "create",
+      code: "insufficient_hosting_credit",
+    });
+    expect(evidence.capacity.createdAgents).toBe(0);
+    expect(evidence.cleanup).toEqual({
+      status: "not-required",
+      possibleOrphan: false,
+    });
+    expect(fixture.created).toBe(false);
+    expect(
+      fixture.calls.filter((call) => call.method === "DELETE"),
+    ).toHaveLength(0);
   });
 
   test("red evidence classifies an unknown upstream tier without retaining it", async () => {

@@ -18,6 +18,10 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { requireConfirmation, toWellFormedUnicode } from "@elizaos/core";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { bindProjectCloudApp } from "./project-binding.js";
 import {
@@ -892,17 +896,27 @@ function runtimeSetting(
 }
 
 function resolveCloudBaseUrl(runtime: IAgentRuntime): string {
-  const raw =
-    readConfigEnvKey("ELIZA_CLOUD_BASE_URL") ??
-    readConfigEnvKey("ELIZA_CLOUD_URL") ??
-    readConfigEnvKey("ELIZAOS_CLOUD_URL") ??
-    runtimeSetting(runtime, "ELIZA_CLOUD_BASE_URL") ??
-    runtimeSetting(runtime, "ELIZA_CLOUD_URL") ??
-    runtimeSetting(runtime, "ELIZAOS_CLOUD_URL") ??
-    normalizeString(process.env.ELIZA_CLOUD_BASE_URL) ??
-    normalizeString(process.env.ELIZA_CLOUD_URL) ??
-    normalizeString(process.env.ELIZAOS_CLOUD_URL) ??
-    DEFAULT_CLOUD_BASE_URL;
+  const raw = resolveDevCloudEnvAuthority()
+    ? (normalizeString(
+        resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL"),
+      ) ??
+      normalizeString(
+        resolveDevCloudAuthorityEnvValue("ELIZA_CLOUD_BASE_URL"),
+      ) ??
+      normalizeString(resolveDevCloudAuthorityEnvValue("ELIZA_CLOUD_URL")) ??
+      normalizeString(resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_URL")) ??
+      DEFAULT_CLOUD_BASE_URL)
+    : (readConfigEnvKey("ELIZAOS_CLOUD_BASE_URL") ??
+      readConfigEnvKey("ELIZA_CLOUD_BASE_URL") ??
+      readConfigEnvKey("ELIZA_CLOUD_URL") ??
+      readConfigEnvKey("ELIZAOS_CLOUD_URL") ??
+      runtimeSetting(runtime, "ELIZA_CLOUD_BASE_URL") ??
+      runtimeSetting(runtime, "ELIZA_CLOUD_URL") ??
+      runtimeSetting(runtime, "ELIZAOS_CLOUD_URL") ??
+      normalizeString(process.env.ELIZA_CLOUD_BASE_URL) ??
+      normalizeString(process.env.ELIZA_CLOUD_URL) ??
+      normalizeString(process.env.ELIZAOS_CLOUD_URL) ??
+      DEFAULT_CLOUD_BASE_URL);
 
   return raw
     .replace(/\/+$/, "")
@@ -911,6 +925,17 @@ function resolveCloudBaseUrl(runtime: IAgentRuntime): string {
 }
 
 function resolveCloudApiKey(runtime: IAgentRuntime): string | undefined {
+  if (resolveDevCloudEnvAuthority()) {
+    return (
+      normalizeString(
+        resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
+      ) ??
+      normalizeString(
+        resolveDevCloudAuthorityEnvValue("ELIZA_CLOUD_API_KEY"),
+      ) ??
+      normalizeString(resolveDevCloudAuthorityEnvValue("ELIZACLOUD_API_KEY"))
+    );
+  }
   return (
     readConfigCloudKey("apiKey") ??
     readConfigCloudKey("api_key") ??
