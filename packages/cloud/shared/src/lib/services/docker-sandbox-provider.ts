@@ -241,6 +241,7 @@ const EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE = 78;
 const REPLACEMENT_VPN_SETTLE_OBSERVATIONS = 4;
 const REPLACEMENT_VPN_SETTLE_INTERVAL_MS = 750;
 const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
+const REPLACEMENT_VPN_MAX_RECOVERABLE_REGISTRATIONS = 32;
 // Converge window for an id-verified container whose attempt label drifted
 // from the fence record (#18032): the immutable Docker id plus a matching
 // deterministic name identify the fenced target beyond doubt, but a young
@@ -4912,25 +4913,34 @@ export class DockerSandboxProvider implements SandboxProvider {
             `[docker-sandbox] Cannot classify Headscale node ${node.id}: invalid createdAt`,
           );
         }
-        // Headscale may stamp the registration on a different host clock. The
-        // conservative lookback prevents a small negative skew from disguising
-        // this attempt; any extra match remains ambiguous and fails closed.
-        return createdAt >= startedAt - REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS;
+        // Headscale may stamp the registration on a different host clock. Bound
+        // both sides of the exact registration window: retries can legitimately
+        // create several same-intent nodes, while a later lifecycle generation
+        // must never be captured merely because it reused the deterministic name.
+        return (
+          createdAt >= startedAt - REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS &&
+          createdAt <= registrationDeadline
+        );
       });
 
-      if (candidates.length > 1) {
+      if (candidates.length > REPLACEMENT_VPN_MAX_RECOVERABLE_REGISTRATIONS) {
         throw new Error(
-          `[docker-sandbox] Cannot recover VPN identity for ${locator.containerName}: ${candidates.length} matching registrations`,
+          `[docker-sandbox] Cannot recover VPN identity for ${locator.containerName}: matching registration count exceeds the cleanup bound`,
         );
       }
-      const candidate = candidates[0];
-      if (candidate) {
+      if (candidates.length > 0) {
         consecutiveEmptyObservations = 0;
-        await withTimeout(
-          headscaleClient.deleteNode(candidate.id),
-          HEADSCALE_CLEANUP_TIMEOUT_MS,
-          "replacement headscale cleanup",
-        );
+        // Every match has the same name fence, belongs to this attempt's closed
+        // time window, and excludes the pre-cutover serving node. Retire the
+        // whole retry fan-out, then require two later empty observations before
+        // releasing the durable cleanup fence.
+        for (const candidate of candidates) {
+          await withTimeout(
+            headscaleClient.deleteNode(candidate.id),
+            HEADSCALE_CLEANUP_TIMEOUT_MS,
+            "replacement headscale cleanup",
+          );
+        }
       } else {
         consecutiveEmptyObservations += 1;
       }

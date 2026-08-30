@@ -2970,30 +2970,34 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(deleteVpn).toHaveBeenCalledWith("1408");
   });
 
-  test("fails closed when multiple new VPN registrations match the same intent", async () => {
+  test("retires every VPN registration in the exact failed-intent window", async () => {
     stubNodeLookup();
     stubSsh(async () => {
       throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
     });
-    spyOn(headscaleClient, "listNodesStrict").mockResolvedValue([
-      headscaleNode("1409", "agent-replacement", "2026-07-23T00:05:01.000Z"),
-      headscaleNode("1410", "agent-replacement-ab12cd34", "2026-07-23T00:05:02.000Z"),
-    ]);
+    const listNodes = spyOn(headscaleClient, "listNodesStrict")
+      .mockResolvedValueOnce([
+        headscaleNode("1409", "agent-replacement", "2026-07-23T00:05:01.000Z"),
+        headscaleNode("1410", "agent-replacement-ab12cd34", "2026-07-23T00:05:02.000Z"),
+      ])
+      .mockResolvedValue([]);
     const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
     const provider = replacementProvider();
 
-    await expect(
-      provider.stopOnSpecificNodeForReplacement(
-        NODE.node_id,
-        CONTAINER_NAME,
-        null,
-        legacyReplacementIdentity(),
-      ),
-    ).rejects.toThrow("2 matching registrations");
-    expect(deleteVpn).not.toHaveBeenCalled();
+    await provider.stopOnSpecificNodeForReplacement(
+      NODE.node_id,
+      CONTAINER_NAME,
+      null,
+      legacyReplacementIdentity(),
+    );
+
+    expect(listNodes).toHaveBeenCalledTimes(4);
+    expect(deleteVpn).toHaveBeenCalledTimes(2);
+    expect(deleteVpn).toHaveBeenNthCalledWith(1, "1409");
+    expect(deleteVpn).toHaveBeenNthCalledWith(2, "1410");
   });
 
-  test("fails closed when ambiguity appears after an initially empty Headscale list", async () => {
+  test("retires retry fan-out that appears after an initially empty Headscale list", async () => {
     stubNodeLookup();
     stubSsh(async () => {
       throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
@@ -3003,7 +3007,58 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       .mockResolvedValueOnce([
         headscaleNode("1411", "agent-replacement", "2026-07-23T00:05:01.000Z"),
         headscaleNode("1412", "agent-replacement-ab12cd34", "2026-07-23T00:05:02.000Z"),
-      ]);
+      ])
+      .mockResolvedValue([]);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const provider = replacementProvider();
+
+    await provider.stopOnSpecificNodeForReplacement(
+      NODE.node_id,
+      CONTAINER_NAME,
+      null,
+      legacyReplacementIdentity(),
+    );
+
+    expect(listNodes).toHaveBeenCalledTimes(4);
+    expect(deleteVpn).toHaveBeenCalledTimes(2);
+    expect(deleteVpn).toHaveBeenNthCalledWith(1, "1411");
+    expect(deleteVpn).toHaveBeenNthCalledWith(2, "1412");
+  });
+
+  test("preserves a same-name VPN registration created after the failed intent window", async () => {
+    stubNodeLookup();
+    stubSsh(async () => {
+      throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
+    });
+    const laterNode = headscaleNode(
+      "1413",
+      "agent-replacement-ab12cd34",
+      "2026-07-23T00:09:00.000Z",
+    );
+    const listNodes = spyOn(headscaleClient, "listNodesStrict").mockResolvedValue([laterNode]);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const provider = replacementProvider();
+
+    await provider.stopOnSpecificNodeForReplacement(
+      NODE.node_id,
+      CONTAINER_NAME,
+      null,
+      legacyReplacementIdentity(),
+    );
+
+    expect(listNodes).toHaveBeenCalledTimes(4);
+    expect(deleteVpn).not.toHaveBeenCalled();
+  });
+
+  test("fails closed before deleting an implausibly large VPN registration set", async () => {
+    stubNodeLookup();
+    stubSsh(async () => {
+      throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
+    });
+    const registrations = Array.from({ length: 33 }, (_, index) =>
+      headscaleNode(String(1500 + index), "agent-replacement-ab12cd34", "2026-07-23T00:05:01.000Z"),
+    );
+    spyOn(headscaleClient, "listNodesStrict").mockResolvedValue(registrations);
     const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
     const provider = replacementProvider();
 
@@ -3014,8 +3069,8 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         null,
         legacyReplacementIdentity(),
       ),
-    ).rejects.toThrow("2 matching registrations");
-    expect(listNodes).toHaveBeenCalledTimes(2);
+    ).rejects.toThrow("matching registration count exceeds the cleanup bound");
+
     expect(deleteVpn).not.toHaveBeenCalled();
   });
 
