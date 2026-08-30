@@ -150,6 +150,12 @@ describe("managed Dedicated provision diagnostic", () => {
     ).toBe("container_ssh_command_exit");
     expect(
       classifyManagedDedicatedProvisionFailure(
+        "[docker-ssh] Command exited with code 1 on node-a: ",
+        "x",
+      ),
+    ).toBe("container_ssh_command_exit_empty");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
         "[docker-sandbox] Failed to create container on node: Cannot connect to the Docker daemon",
         "x",
       ),

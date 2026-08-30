@@ -46,6 +46,7 @@ export type ManagedDedicatedProvisionFailureCode =
   | "container_ssh_reset"
   | "container_ssh_connect_error"
   | "container_ssh_exec_error"
+  | "container_ssh_command_exit_empty"
   | "container_ssh_command_exit"
   | "container_ssh_stream_error"
   | "container_ssh_transport"
@@ -245,6 +246,11 @@ export function classifyManagedDedicatedProvisionFailure(
   }
   if (/\[docker-ssh\] exec(?:stream)? error/i.test(primary)) {
     return "container_ssh_exec_error";
+  }
+  if (
+    /\[docker-ssh\] command exited with code \d+ on [^:]+:\s*$/i.test(primary)
+  ) {
+    return "container_ssh_command_exit_empty";
   }
   if (/\[docker-ssh\] command exited with code/i.test(primary)) {
     return "container_ssh_command_exit";
