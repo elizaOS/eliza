@@ -687,6 +687,7 @@ jobs:
             "$CANARY_DIAGNOSTIC_EVIDENCE_PATH"
 
       - name: Summarize replacement cleanup reconciliation eligibility
+        id: cleanup_reconciliation
         shell: bash
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
@@ -706,7 +707,11 @@ jobs:
           BEGIN READ ONLY;
           SET LOCAL statement_timeout = '20s';
           WITH target AS (
-            SELECT id, organization_id, replacement_cleanup_created_at
+            SELECT
+              id,
+              organization_id,
+              replacement_cleanup_created_at,
+              replacement_cleanup_sandbox_id IS NOT NULL AS cleanup_fence_present
             FROM agent_sandboxes
             WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
           ),
@@ -742,6 +747,7 @@ jobs:
           facts AS (
             SELECT
               target.replacement_cleanup_created_at,
+              target.cleanup_fence_present,
               target.replacement_cleanup_created_at <= NOW() - INTERVAL '30 minutes'
                 AS grace_elapsed,
               (
@@ -774,6 +780,7 @@ jobs:
           )
           SELECT json_build_object(
             'targetCount', (SELECT count(*) FROM target),
+            'cleanupFencePresent', COALESCE((SELECT cleanup_fence_present FROM facts), false),
             'cleanupCreatedAt', (SELECT replacement_cleanup_created_at FROM facts),
             'graceElapsed', COALESCE((SELECT grace_elapsed FROM facts), false),
             'activeExclusiveJobs', COALESCE((SELECT active_exclusive_jobs FROM facts), 0),
@@ -784,19 +791,28 @@ jobs:
           SQL
           } | sed '/^[[:space:]]*$/d' | head -n 1)"
           jq -e '
-            keys == ["activeExclusiveJobs", "cleanupCreatedAt", "graceElapsed", "olderEligibleFences", "targetCount", "totalEligibleFences"] and
+            keys == ["activeExclusiveJobs", "cleanupCreatedAt", "cleanupFencePresent", "graceElapsed", "olderEligibleFences", "targetCount", "totalEligibleFences"] and
             .targetCount == 1 and
-            (.cleanupCreatedAt | type == "string") and
-            (.cleanupCreatedAt | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})$")) and
+            (.cleanupFencePresent | type == "boolean") and
+            (
+              (
+                .cleanupFencePresent and
+                (.cleanupCreatedAt | type == "string") and
+                (.cleanupCreatedAt | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})$"))
+              ) or
+              ((.cleanupFencePresent | not) and .cleanupCreatedAt == null)
+            ) and
             (.graceElapsed | type == "boolean") and
             (.activeExclusiveJobs | type == "number") and
             (.olderEligibleFences | type == "number") and
             (.totalEligibleFences | type == "number")
           ' <<<"$summary" >/dev/null
+          echo "fence_present=$(jq -r '.cleanupFencePresent' <<<"$summary")" >> "$GITHUB_OUTPUT"
           echo "### Replacement cleanup reconciliation" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           jq -r '
-            "- cleanup fence created: `" + .cleanupCreatedAt + "`\n" +
+            "- cleanup fence present: `" + (.cleanupFencePresent | tostring) + "`\n" +
+            "- cleanup fence created: `" + (.cleanupCreatedAt // "none") + "`\n" +
             "- grace elapsed: `" + (.graceElapsed | tostring) + "`\n" +
             "- active exclusive jobs: `" + (.activeExclusiveJobs | tostring) + "`\n" +
             "- older eligible fences: `" + (.olderEligibleFences | tostring) + "`\n" +
@@ -804,6 +820,7 @@ jobs:
           ' <<<"$summary" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Classify control-plane replacement cleanup failure
+        if: steps.cleanup_reconciliation.outputs.fence_present == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}

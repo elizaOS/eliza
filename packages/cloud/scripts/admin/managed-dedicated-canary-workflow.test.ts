@@ -172,6 +172,24 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(classify?.run).toContain("rm -f --");
 
+    const reconciliation = diagnostic.steps.find(
+      (step) =>
+        step.name ===
+        "Summarize replacement cleanup reconciliation eligibility",
+    );
+    expect(reconciliation?.id).toBe("cleanup_reconciliation");
+    expect(reconciliation?.run).toContain("cleanupFencePresent");
+    expect(reconciliation?.run).toContain(".cleanupCreatedAt == null");
+    expect(reconciliation?.run).toContain("fence_present=");
+
+    const cleanupFailure = diagnostic.steps.find(
+      (step) =>
+        step.name === "Classify control-plane replacement cleanup failure",
+    );
+    expect(cleanupFailure?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.fence_present == 'true'",
+    );
+
     const upload = diagnostic.steps.find(
       (step) => step.name === "Upload privacy-safe provision diagnostic",
     );
