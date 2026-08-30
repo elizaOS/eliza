@@ -125,12 +125,13 @@ app.post("/", async (c) => {
         logger.debug("[Logout] Stamped SSO bridge logout marker");
       }
     } catch (error) {
-      // error-policy:J6 best-effort teardown — cookies are already cleared, so
-      // THIS origin is logged out; but the cross-host logout barrier did not
-      // land, which is a security-relevant condition worth an alert, not a
-      // debug line. The bridge's own store reads fail closed while the store
-      // is down, narrowing the exposure to a post-recovery window bounded by
-      // the access-token TTL.
+      // error-policy:J1 boundary translation — this catch now determines the
+      // transport response (flag → structured 503 below) as well as logging a
+      // security-relevant condition at error level, not a teardown-only J6.
+      // Cookies are already cleared, so THIS origin is logged out; but the
+      // cross-host logout barrier did not land. The bridge's own store reads
+      // fail closed while the store is down, narrowing the exposure to a
+      // post-recovery window bounded by the access-token TTL.
       logger.error(
         "[Logout] FAILED to stamp SSO bridge logout marker — cross-host logout barrier not persisted",
         {
@@ -167,7 +168,23 @@ app.post("/", async (c) => {
             ip: getRequestIp(c),
             user_agent: c.req.header("user-agent") ?? undefined,
             request_id: c.get("requestId"),
-            metadata: { method: "steward_session" },
+            // result stays "success" (this origin's cookies/sessions are
+            // torn down either way), but the marker flag must be visible to
+            // an auditor reading a success event next to an HTTP 503.
+            metadata: {
+              method: "steward_session",
+              ...(ssoMarkerUnconfirmed || strongRevocationFailed
+                ? {
+                    incomplete_logout: true,
+                    ...(ssoMarkerUnconfirmed
+                      ? { sso_marker_unconfirmed: true }
+                      : {}),
+                    ...(strongRevocationFailed
+                      ? { strong_revocation_unconfirmed: true }
+                      : {}),
+                  }
+                : {}),
+            },
           })
           // error-policy:J7 audit write is diagnostic; logout already succeeded via
           // the cookie clear above, so a dropped audit event is logged, not fatal.
