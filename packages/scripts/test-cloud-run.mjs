@@ -727,7 +727,7 @@ export function runCommandWithWatchdog(
           platform,
           graceMs: terminationGraceMs,
           expectedIdentity: childIdentity,
-          identityCaptured: true,
+          identityCaptured: childIdentity !== undefined,
           identityFn,
         })
           .catch((error) => {

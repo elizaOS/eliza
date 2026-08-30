@@ -857,6 +857,66 @@ describe("watchdog configuration", () => {
     expect(signalSource.listenerCount("SIGTERM")).toBe(0);
   });
 
+  it("recaptures an identity that was unavailable immediately after spawn", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    let terminationOptions;
+    const resultPromise = runCommandWithWatchdog("bun", ["test"], {
+      timeoutMs: 1,
+      writeOut: () => {},
+      writeErr: () => {},
+      platform: "win32",
+      signalSource,
+      identityFn: () => undefined,
+      spawnFn: () => child,
+      terminateTree: async (_pid, options) => {
+        terminationOptions = options;
+        child.emit("close", null, "SIGKILL");
+      },
+    });
+
+    const result = await resultPromise;
+
+    expect(result.timedOut).toBe(true);
+    expect(terminationOptions).toMatchObject({
+      expectedIdentity: undefined,
+      identityCaptured: false,
+    });
+  });
+
+  it("preserves a process identity captured immediately after spawn", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    let terminationOptions;
+    const resultPromise = runCommandWithWatchdog("bun", ["test"], {
+      timeoutMs: 1,
+      writeOut: () => {},
+      writeErr: () => {},
+      platform: "win32",
+      signalSource,
+      identityFn: () => "original-process",
+      spawnFn: () => child,
+      terminateTree: async (_pid, options) => {
+        terminationOptions = options;
+        child.emit("close", null, "SIGKILL");
+      },
+    });
+
+    const result = await resultPromise;
+
+    expect(result.timedOut).toBe(true);
+    expect(terminationOptions).toMatchObject({
+      expectedIdentity: "original-process",
+      identityCaptured: true,
+    });
+  });
+
   it("keeps the first termination cause when a parent signal races a timeout", async () => {
     const signalSource = new EventEmitter();
     const child = new EventEmitter();
