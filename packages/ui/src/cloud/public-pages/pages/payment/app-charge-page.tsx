@@ -176,6 +176,7 @@ export default function AppChargePaymentPage() {
       !charge ||
       isPaid ||
       isExpired ||
+      hasInvalidExpiry ||
       confirmationPolls >= 10
     ) {
       return;
@@ -192,6 +193,7 @@ export default function AppChargePaymentPage() {
     charge,
     isPaid,
     isExpired,
+    hasInvalidExpiry,
     confirmationPolls,
     loadCharge,
   ]);
