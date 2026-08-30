@@ -11,6 +11,8 @@ import { cache } from "../../cache/client";
 import { withRateLimit } from "../../middleware/rate-limit";
 import { logger } from "../../utils/logger";
 import { creditsService, InsufficientCreditsError } from "../credits";
+import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
+import { admitOrganizationInference } from "../organization-inference-admission";
 import { usageService } from "../usage";
 import { PricingNotFoundError } from "./pricing";
 import type {
@@ -28,6 +30,43 @@ type CachedProxyResponse = {
   cachedAt: number;
   ttl?: number;
 };
+
+export interface ProxyCombinedAdmission {
+  auth: {
+    user: { id: string; organization_id: string };
+    apiKey?: { id: string };
+  };
+  admissionSnapshot?: InferenceAdmissionSnapshot;
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  requestId: string;
+}
+
+interface ProxySettlement {
+  settle(actualCostUsd: number): Promise<unknown>;
+  settleUnknown(): Promise<unknown>;
+  markProviderDispatched?(): Promise<void>;
+}
+
+function retainProxySettlement(
+  settlement: Promise<unknown>,
+  executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined,
+  context: { serviceId: string; operation: string },
+): Promise<void> {
+  const observed = settlement.then(
+    () => undefined,
+    (error) => {
+      // error-policy:J7 provider settlement is a detached accounting update;
+      // the response boundary has already committed and the durable admission
+      // lease remains the recovery authority.
+      logger.error("[Proxy Engine] Deferred settlement failed", {
+        ...context,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  );
+  if (executionCtx) executionCtx.waitUntil(observed);
+  return observed;
+}
 
 async function getAuthForLevel(request: Request, level: AuthLevel) {
   switch (level) {
@@ -157,13 +196,14 @@ function isClientErrorMessage(message: string): boolean {
 export function createHandler(
   config: ServiceConfig,
   work: ServiceHandler,
+  combinedAdmission?: ProxyCombinedAdmission,
 ): (request: Request) => Promise<Response> {
   const handler = async (request: Request): Promise<Response> => {
     const startTime = Date.now();
     const searchParams = new URL(request.url).searchParams;
 
     try {
-      const auth = await getAuthForLevel(request, config.auth);
+      const auth = combinedAdmission?.auth ?? (await getAuthForLevel(request, config.auth));
       const { user } = auth;
       const apiKey = "apiKey" in auth ? auth.apiKey : undefined;
       const organizationId = user.organization_id;
@@ -188,12 +228,57 @@ export function createHandler(
       const method = getMethodFromBody(body);
       const cost = await config.getCost(body, searchParams);
 
-      const reservation = await creditsService.reserve({
-        organizationId,
-        userId: user.id,
-        amount: cost,
-        description: config.name,
-      });
+      let settlement: ProxySettlement;
+      if (combinedAdmission?.executionCtx) {
+        if (!combinedAdmission.admissionSnapshot) {
+          throw new Error("Combined proxy admission snapshot is required");
+        }
+        settlement = await admitOrganizationInference({
+          context: {
+            organizationId,
+            userId: user.id,
+            apiKeyId: apiKey?.id ?? null,
+            model: config.id,
+            provider: config.id,
+            billingSource: "gateway",
+            requestId: combinedAdmission.requestId,
+            description: config.name,
+          },
+          apiKeyId: apiKey?.id ?? null,
+          estimatedInputTokens: 0,
+          estimatedOutputTokens: 0,
+          flatCost: {
+            totalCost: cost,
+            baseTotalCost: cost,
+            platformMarkup: 0,
+          },
+          executionCtx: combinedAdmission.executionCtx,
+          admissionSnapshot: combinedAdmission.admissionSnapshot,
+        });
+      } else {
+        const reservation = await creditsService.reserve({
+          organizationId,
+          userId: user.id,
+          amount: cost,
+          description: config.name,
+        });
+        settlement = {
+          settle: (actualCostUsd) => reservation.reconcile(actualCostUsd),
+          settleUnknown: () => reservation.reconcile(cost),
+        };
+      }
+
+      const settle = async (actualCostUsd: number, operation: string) => {
+        const pending = settlement.settle(actualCostUsd);
+        if (combinedAdmission?.executionCtx) {
+          void retainProxySettlement(pending, combinedAdmission.executionCtx, {
+            serviceId: config.id,
+            operation,
+          });
+          return;
+        }
+        await pending;
+      };
 
       const cacheCandidate =
         config.cache && body && !Array.isArray(body)
@@ -226,7 +311,7 @@ export function createHandler(
               const cachedCost = cost * hitMultiplier;
               const remainingMaxAge = Math.max(effectiveMaxAge - age, 0);
 
-              await reservation.reconcile(cachedCost);
+              await settle(cachedCost, "cache_hit");
 
               const response = new Response(cachedResponse.body, {
                 status: cachedResponse.status,
@@ -273,11 +358,25 @@ export function createHandler(
 
       let result: HandlerResult;
       try {
+        // The durable dispatch marker is the last awaited operation before the
+        // provider boundary. Auth, standing, pricing, balance, and the lease
+        // all come from the caller's one combined admission projection.
+        await settlement.markProviderDispatched?.();
         result = await work({ body, auth, searchParams });
       } catch (error) {
-        // error-policy:J2 refund the credit reservation on handler failure, then rethrow
-        // unchanged so the outer boundary surfaces it (never a fabricated success)
-        await reservation.reconcile(0);
+        // error-policy:J2 provider dispatch may have been accepted before the
+        // transport threw, so conservatively settle the marked admission.
+        const pending = combinedAdmission?.executionCtx
+          ? settlement.settleUnknown()
+          : settlement.settle(0);
+        if (combinedAdmission?.executionCtx) {
+          void retainProxySettlement(pending, combinedAdmission.executionCtx, {
+            serviceId: config.id,
+            operation: "provider_error",
+          });
+        } else {
+          await pending;
+        }
         throw error;
       }
 
@@ -286,7 +385,7 @@ export function createHandler(
       // caller got no service, so it refunds the reservation just like the
       // thrown-error path above. See resolveBillableCost.
       const actualCost = resolveBillableCost(result, cost);
-      await reservation.reconcile(actualCost);
+      await settle(actualCost, "provider_result");
 
       if (cacheKey && cacheCandidate && config.cache) {
         const ttl = Math.min(cacheCandidate.clientMaxAge, config.cache.maxTTL);
@@ -405,7 +504,7 @@ export function createHandler(
     }
   };
 
-  if (config.rateLimit) {
+  if (config.rateLimit && !combinedAdmission) {
     return withRateLimit(handler, config.rateLimit);
   }
 

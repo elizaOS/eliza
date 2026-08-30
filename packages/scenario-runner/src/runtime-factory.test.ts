@@ -364,6 +364,22 @@ describe("scenario runtime deterministic model mode", () => {
     );
   });
 
+  it("preserves complete owner instructions in deterministic dispatch output", () => {
+    const distinguishingTail = "scheduled-owner-tail";
+    const ownerInstruction = `${"take a deliberate breath, ".repeat(8)}${distinguishingTail}`;
+    const prompt = [
+      "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.",
+      "Instruction:",
+      `Remind the owner to ${ownerInstruction}`,
+      "",
+      "Message:",
+    ].join("\n");
+
+    const rendered = deterministicScheduledDispatchRenderText(prompt);
+    expect(rendered).toContain(distinguishingTail);
+    expect(rendered).toBe(`Heads up: ${ownerInstruction}`);
+  });
+
   it("resolves the scheduled-dispatch render model call outside the fixture registry", () => {
     const prompt = [
       "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.",

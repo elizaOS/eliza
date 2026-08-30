@@ -844,7 +844,10 @@ jobs:
     with:
       target_environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       force: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
-      run_deployed_renderer_staging: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true }}
+      # Resolve the proof request at the entry workflow boundary. A live-ready
+      # automatic release is a Develop effect reconciliation with a bound
+      # digest; an ordinary manual dispatch must honor its explicit false.
+      run_deployed_renderer_staging: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' && (inputs.run_deployed_renderer_staging == true || (inputs.effect_digest != '' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1')) }}
       production_binding_only_recovery: ${{ github.event_name == 'workflow_dispatch' && inputs.production_binding_only_recovery == true }}
       certified_production_base_sha: ${{ inputs.certified_production_base_sha }}
       certified_recovery_policy_sha: ${{ inputs.certified_recovery_policy_sha }}

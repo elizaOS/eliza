@@ -1756,9 +1756,10 @@ function resolveOptionalLocalVoiceGatewayPort(
  * A configured loopback voice gateway is an explicit local-development opt-in
  * to the realtime voice stack. Keep deployed builds staged behind their
  * existing flags, while making the supported local gateway command sufficient
- * to enable the staged realtime client without an easy-to-miss Vite flag.
- * The force flag stays an explicit diagnostic bypass, so a missing agent id or
- * failed capability resolution remains visible. Explicit client flag values
+ * to enable both the staged realtime client and its self-hosted eligibility
+ * path. The eligibility path still requires a paired remote runtime and a live
+ * same-origin health probe. The force flag stays an explicit diagnostic bypass,
+ * so a failed capability check remains visible. Explicit client flag values
  * always win, including an explicit opt-out.
  */
 export function resolveLocalRealtimeVoiceDefines(
@@ -1771,6 +1772,10 @@ export function resolveLocalRealtimeVoiceDefines(
   const defines: Record<string, string> = {};
   if (env.VITE_VOICE_REALTIME_WS === undefined) {
     defines["import.meta.env.VITE_VOICE_REALTIME_WS"] = JSON.stringify("1");
+  }
+  if (env.VITE_VOICE_REALTIME_SELF_HOSTED === undefined) {
+    defines["import.meta.env.VITE_VOICE_REALTIME_SELF_HOSTED"] =
+      JSON.stringify("1");
   }
   return defines;
 }

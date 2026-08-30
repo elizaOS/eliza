@@ -272,6 +272,18 @@ const SMOKE_AGENT = {
   status: "running",
 } as const;
 
+export const UI_SMOKE_CPU_ONLY_HARDWARE = {
+  totalRamGb: 8,
+  freeRamGb: 4,
+  gpu: null,
+  cpuCores: 4,
+  platform: "linux",
+  arch: "x64",
+  appleSilicon: false,
+  recommendedBucket: "small",
+  source: "os-fallback",
+} as const;
+
 export async function seedAppStorage(
   page: Page,
   overrides: Record<string, string> = {},
@@ -1742,6 +1754,18 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         startedAt: Date.parse(SMOKE_GENERATED_AT),
         uptime: 60_000,
       }),
+    });
+  });
+
+  await page.route("**/api/local-inference/device/stream**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: "",
     });
   });
 

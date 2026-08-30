@@ -56,7 +56,7 @@ export function AppWorkspaceChrome({
       variant={
         surface === "transparent" ? "transparentSquare" : "appWindowState"
       }
-      className={`flex min-h-0 min-w-0 w-full flex-1 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))] ${
+      className={`flex min-h-0 min-w-0 w-full flex-1 pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px)))] ${
         isMobileViewport ? "flex-col" : ""
       }`}
       data-testid={testId}

@@ -15,6 +15,7 @@ const migrations = [
   "0346_agent_backup_admission_sandbox_source_stamp",
   "0347_agent_backup_admission_node_source_stamp",
   "0348_agent_backup_admission_snapshot_visibility",
+  "0368_agent_backup_admission_enrollment_source_stamp",
 ] as const;
 
 async function applyMigration(client: Client, migration: (typeof migrations)[number]) {
@@ -81,6 +82,8 @@ realPostgresTest(
           activation_completed_at timestamptz,
           next_backup_at timestamptz,
           backup_schedule_last_protected_at timestamptz,
+          deleted_at timestamptz,
+          deletion_attempt_id uuid,
           unrelated_note text
         );
         CREATE TABLE docker_nodes (
@@ -97,11 +100,14 @@ realPostgresTest(
         INSERT INTO agent_sandboxes (
           id, organization_id, status, pool_status, execution_tier, sandbox_id,
           activation_generation, activation_lifecycle_revision, lifecycle_revision,
-          activation_phase, activation_completed_at, next_backup_at
+          activation_phase, activation_completed_at, next_backup_at,
+          deleted_at, deletion_attempt_id
         )
         SELECT md5(series::text)::uuid, '10000000-0000-4000-8000-000000000001',
-          'running', NULL, 'dedicated', 'sandbox-' || series,
-          '60000000-0000-4000-8000-000000000001', 7, 7, 'active', now(), now()
+          'running', NULL, 'dedicated-always', 'sandbox-' || series,
+          '60000000-0000-4000-8000-000000000001', 7, 7, 'active', now(), now(),
+          CASE WHEN series = 2 THEN now() END,
+          CASE WHEN series = 3 THEN '80000000-0000-4000-8000-000000000003'::uuid END
         FROM generate_series(1, 10000) AS series;
         INSERT INTO docker_nodes (
           id, node_id, current_node_history_id, node_incarnation, fleet_kind,
@@ -120,6 +126,7 @@ realPostgresTest(
       await applyMigration(client, migrations[1]);
       expect(await relationFileNode(client, "docker_nodes")).toBe(nodeFileNode);
       await applyMigration(client, migrations[2]);
+      await applyMigration(client, migrations[3]);
 
       const historical = await client.query<{ total: number; sentinels: number }>(`
         SELECT count(*)::int AS total,
@@ -182,6 +189,34 @@ realPostgresTest(
       expect(fenced.rows[0]?.xid).not.toBe("0");
       expect(fenced.rows[0]?.visible).toBe(false);
 
+      const softDeletedSourceId = "c81e728d-9d4c-2f63-6f06-7f89cc14862c";
+      const deletionOwnedSourceId = "eccbc87e-4b5c-e2fe-2830-8fd9f2a7baf3";
+      await mutator.query("UPDATE agent_sandboxes SET deleted_at = NULL WHERE id = $1", [
+        softDeletedSourceId,
+      ]);
+      await mutator.query("UPDATE agent_sandboxes SET deletion_attempt_id = NULL WHERE id = $1", [
+        deletionOwnedSourceId,
+      ]);
+      const repaired = await client.query<{
+        id: string;
+        visible: boolean;
+        xid: string;
+      }>(
+        `SELECT id::text AS id, backup_admission_xid::text AS xid,
+          agent_backup_admission_source_visible(
+            backup_admission_xid, $3::pg_snapshot
+          ) AS visible
+        FROM agent_sandboxes
+        WHERE id IN ($1::uuid, $2::uuid)
+        ORDER BY id`,
+        [softDeletedSourceId, deletionOwnedSourceId, snapshot],
+      );
+      expect(repaired.rows.map(({ id }) => id)).toEqual(
+        [softDeletedSourceId, deletionOwnedSourceId].sort(),
+      );
+      expect(repaired.rows.every(({ xid }) => xid !== "0")).toBe(true);
+      expect(repaired.rows.every(({ visible }) => !visible)).toBe(true);
+
       await client.query(`INSERT INTO docker_nodes (id, node_id)
         VALUES ('70000000-0000-4000-8000-000000000002', 'node-b')`);
       const newNode = await client.query<{ xid: string }>(`
@@ -193,6 +228,7 @@ realPostgresTest(
       await applyMigration(client, migrations[0]);
       await applyMigration(client, migrations[1]);
       await applyMigration(client, migrations[2]);
+      await applyMigration(client, migrations[3]);
       const replay = await client.query<{ triggers: number; sentinels: number }>(`
         SELECT
           (SELECT count(*)::int FROM pg_trigger WHERE NOT tgisinternal
@@ -205,7 +241,7 @@ realPostgresTest(
           (SELECT count(*) FILTER (WHERE backup_admission_xid = '0'::xid8)::int
             FROM agent_sandboxes) AS sentinels
       `);
-      expect(replay.rows).toEqual([{ triggers: 2, sentinels: 9999 }]);
+      expect(replay.rows).toEqual([{ triggers: 2, sentinels: 9997 }]);
     } catch (cause) {
       // error-policy:J2 Preserve the primary failure while completing auditable teardown.
       testFailure = cause;

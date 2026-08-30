@@ -610,13 +610,15 @@ export function burnSsoBridgeCode(
  * local scrub stays synchronous so the login page never renders over a
  * half-signed-out session. On hostnames outside the deployed map (local dev)
  * the server call is skipped and this degrades to the local scrub, exactly
- * the previous local behavior. The returned promise settles with the
- * server teardown; callers may ignore it.
+ * the previous local behavior. A hosted non-success response or transport
+ * failure rejects so explicit sign-out cannot claim success over a server
+ * session that may still be live.
  */
 export async function signOutFromSsoBridgedHost(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
+  const stewardToken = readStoredStewardToken();
   // Invalidate before even issuing the server logout request: fetch adapters
   // may have synchronous hooks, and no re-entrant token publication may reuse
   // proof from the authority epoch being ended.
@@ -627,12 +629,21 @@ export async function signOutFromSsoBridgedHost(
     ? fetchFn(`${base}/api/auth/logout`, {
         method: "POST",
         credentials: "include",
-      }).catch(() => undefined)
+        headers: {
+          "Content-Type": "application/json",
+          ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
+        },
+      })
     : // error-policy:J6 best-effort server teardown — the local marker is
       // already set and the local scrub below always runs.
       Promise.resolve(undefined);
   await clearStaleStewardSession();
-  await serverLogout;
+  const response = await serverLogout;
+  if (response && !response.ok) {
+    throw new Error(
+      `Eliza Cloud could not end the browser session (${response.status}).`,
+    );
+  }
 }
 
 /**
@@ -645,6 +656,7 @@ export async function prepareSsoAccountSwitch(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
+  const stewardToken = readStoredStewardToken();
   invalidateStewardServerCookieSyncMarker();
   markSsoLoggedOut();
   const base = apiBaseForHostname(hostname);
@@ -656,6 +668,10 @@ export async function prepareSsoAccountSwitch(
   const serverLogout = fetchFn(`${base}/api/auth/logout`, {
     method: "POST",
     credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
+    },
   });
   await clearStaleStewardSession();
   const response = await serverLogout;

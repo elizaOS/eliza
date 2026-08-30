@@ -5,13 +5,14 @@
  * throw leaves the world untouched), and world-not-found. Real adapter over
  * real storage, no mocks.
  */
+import { randomUUID } from "node:crypto";
+
 import {
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type UUID,
   WORLD_METADATA_REVISION_KEY,
   type World,
 } from "@elizaos/core";
-import { v4 } from "uuid";
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
@@ -20,8 +21,8 @@ import { COLLECTIONS } from "./types";
 const AGENT_ID = "70000000-0000-0000-0000-000000000001" as UUID;
 const ACTOR_ID = "70000000-0000-0000-0000-000000000002" as UUID;
 const TARGET_ID = "70000000-0000-0000-0000-000000000003" as UUID;
-const ROOM_ID = v4() as UUID;
-const WORLD_ID = v4() as UUID;
+const ROOM_ID = randomUUID() as UUID;
+const WORLD_ID = randomUUID() as UUID;
 
 const BASE_METADATA = {
   ownership: { ownerId: String(ACTOR_ID) },
@@ -156,7 +157,7 @@ describe("InMemoryDatabaseAdapter.compareAndSwapWorldMetadata", () => {
   it("reports not_found for an unknown world", async () => {
     const adapter = await buildAdapter();
     const result = await adapter.compareAndSwapWorldMetadata({
-      worldId: v4() as UUID,
+      worldId: randomUUID() as UUID,
       expectedMetadata: {} as never,
       replacementMetadata: {} as never,
     });

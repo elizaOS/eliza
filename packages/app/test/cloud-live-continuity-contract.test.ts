@@ -83,7 +83,17 @@ function passingInput(): CloudLiveContinuityEvidenceInput {
       runtimeBindingReused: true,
       apiBaseReused: true,
     },
-    forbiddenAgentMutationCount: 0,
+    dedicatedMutationProof: {
+      approvalGrantedCount: 0,
+      confirmationClickCount: 0,
+      confirmationKind: "none",
+      adoptionConfirmationPostCount: 0,
+      activationPostCount: 0,
+      cutoverPostCount: 0,
+      forbiddenAgentMutationCount: 0,
+      approvalBindingPresent: false,
+      lifecycleBindingMismatchCount: 0,
+    },
     cleanupDisposition: "no-test-owned-agent",
     conversationHistoryDisposition: "preserved",
   };
@@ -240,6 +250,8 @@ describe("forbidden Cloud agent mutations", () => {
       parsedDedicatedActivationResponseBodyCount: 0,
       decodedDedicatedActivationReceiptCount: 0,
       uninspectableDedicatedActivationResponseBodyCount: 0,
+      dedicatedActivationResponseStatus: null,
+      dedicatedActivationResponseCode: null,
       dedicatedCutoverPostRequestCount: 0,
       successfulDedicatedCutoverPostResponseCount: 0,
       clientErrorDedicatedCutoverPostResponseCount: 0,
@@ -252,6 +264,21 @@ describe("forbidden Cloud agent mutations", () => {
       decodedDedicatedCutoverPendingResponseCount: 0,
       decodedDedicatedCutoverFinalResponseCount: 0,
       uninspectableDedicatedCutoverResponseBodyCount: 0,
+      dedicatedAdoptionQuoteGetRequestCount: 0,
+      successfulDedicatedAdoptionQuoteGetResponseCount: 0,
+      clientErrorDedicatedAdoptionQuoteGetResponseCount: 0,
+      serverErrorDedicatedAdoptionQuoteGetResponseCount: 0,
+      otherDedicatedAdoptionQuoteGetResponseCount: 0,
+      failedDedicatedAdoptionQuoteGetRequestCount: 0,
+      pendingDedicatedAdoptionQuoteGetRequestCount: 0,
+      completedDedicatedAdoptionQuoteResponseBodyCount: 0,
+      parsedDedicatedAdoptionQuoteResponseBodyCount: 0,
+      decodedAdoptableDedicatedAdoptionQuoteCount: 0,
+      decodedUnavailableDedicatedAdoptionQuoteCount: 0,
+      uninspectableDedicatedAdoptionQuoteResponseBodyCount: 0,
+      dedicatedAdoptionConfirmationPostRequestCount: 0,
+      dedicatedApprovalBindingPresent: false,
+      dedicatedLifecycleBindingMismatchCount: 0,
       historyGetRequestCount: 1,
       successfulHistoryGetCount: 1,
       clientErrorHistoryGetResponseCount: 0,
@@ -332,6 +359,41 @@ describe("forbidden Cloud agent mutations", () => {
         data: { runtime: "dedicated", activeAgentId: "private-target" },
       }).responseBody,
     );
+    const adoption = `${upgrade}/adopt-existing`;
+    audit.observeRequest("GET", adoption);
+    audit.observeResponse(
+      "GET",
+      adoption,
+      200,
+      boundedJsonBody({
+        success: true,
+        data: {
+          requiresConfirmation: true,
+          action: "adopt_existing_dedicated",
+          canAdopt: true,
+          quoteId: "private-adoption-quote",
+          dedicatedAgentId: "private-adoption-target",
+        },
+      }).responseBody,
+    );
+    audit.observeRequest("GET", adoption);
+    audit.observeResponse(
+      "GET",
+      adoption,
+      404,
+      boundedJsonBody({
+        success: false,
+        code: "dedicated_adoption_unavailable",
+      }).responseBody,
+    );
+    audit.observeRequest("GET", adoption);
+    audit.observeResponse("GET", adoption, 503);
+    audit.observeRequest("GET", adoption);
+    audit.observeResponse("GET", adoption, 302);
+    audit.observeRequest("GET", adoption);
+    audit.observeRequestFailure("GET", adoption, "private timeout detail");
+    audit.observeRequest("GET", adoption);
+    audit.observeRequest("POST", `${upgrade}/adopt-existing`);
     audit.observeRequest("GET", upgrade);
     audit.observeRequestFailure("GET", upgrade, "private timeout detail");
     audit.observeRequest("GET", upgrade);
@@ -372,6 +434,8 @@ describe("forbidden Cloud agent mutations", () => {
       parsedDedicatedActivationResponseBodyCount: 1,
       decodedDedicatedActivationReceiptCount: 1,
       uninspectableDedicatedActivationResponseBodyCount: 0,
+      dedicatedActivationResponseStatus: 202,
+      dedicatedActivationResponseCode: null,
       dedicatedCutoverPostRequestCount: 2,
       successfulDedicatedCutoverPostResponseCount: 1,
       clientErrorDedicatedCutoverPostResponseCount: 1,
@@ -384,8 +448,229 @@ describe("forbidden Cloud agent mutations", () => {
       decodedDedicatedCutoverPendingResponseCount: 1,
       decodedDedicatedCutoverFinalResponseCount: 1,
       uninspectableDedicatedCutoverResponseBodyCount: 0,
+      dedicatedAdoptionQuoteGetRequestCount: 6,
+      successfulDedicatedAdoptionQuoteGetResponseCount: 1,
+      clientErrorDedicatedAdoptionQuoteGetResponseCount: 1,
+      serverErrorDedicatedAdoptionQuoteGetResponseCount: 1,
+      otherDedicatedAdoptionQuoteGetResponseCount: 1,
+      failedDedicatedAdoptionQuoteGetRequestCount: 1,
+      pendingDedicatedAdoptionQuoteGetRequestCount: 1,
+      completedDedicatedAdoptionQuoteResponseBodyCount: 2,
+      parsedDedicatedAdoptionQuoteResponseBodyCount: 2,
+      decodedAdoptableDedicatedAdoptionQuoteCount: 1,
+      decodedUnavailableDedicatedAdoptionQuoteCount: 1,
+      uninspectableDedicatedAdoptionQuoteResponseBodyCount: 2,
+      dedicatedAdoptionConfirmationPostRequestCount: 1,
+      dedicatedApprovalBindingPresent: false,
+      dedicatedLifecycleBindingMismatchCount: 4,
     });
     expect(JSON.stringify(snapshot)).not.toMatch(/api\.test|private|timeout/);
+  });
+
+  it("retains only the bounded Dedicated activation status and error code", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const upgrade =
+      "https://api.test/api/v1/eliza/agents/private-target/upgrade-tier";
+    audit.observeRequest(
+      "POST",
+      upgrade,
+      JSON.stringify({ quoteId: "private-quote" }),
+    );
+    audit.observeResponse(
+      "POST",
+      upgrade,
+      409,
+      boundedJsonBody({
+        success: false,
+        code: "dedicated_quote_changed",
+        message: "private user detail",
+      }).responseBody,
+    );
+
+    const snapshot = await audit.snapshot();
+    expect(snapshot.dedicatedActivationResponseStatus).toBe(409);
+    expect(snapshot.dedicatedActivationResponseCode).toBe(
+      "dedicated_quote_changed",
+    );
+    expect(JSON.stringify(snapshot)).not.toMatch(/private user detail|quoteId/);
+  });
+
+  it("fails closed when an approved quote is followed by another agent target", async () => {
+    const sourceAgentId = "private-personal";
+    const dedicatedAgentId = "private-dedicated";
+    const quoteId = "private-quote";
+    const sourceBase = `https://api.test/api/v1/eliza/agents/${sourceAgentId}/upgrade-tier`;
+    const approved = createCloudLiveNetworkAudit();
+    approved.setDedicatedApprovalBinding({
+      confirmationKind: "adoption",
+      sourceAgentId,
+      quoteId,
+      dedicatedAgentId,
+    });
+    approved.observeRequest(
+      "POST",
+      sourceBase,
+      JSON.stringify({
+        action: "activate_dedicated",
+        quoteId: "selection-quote",
+      }),
+    );
+    approved.observeResponse(
+      "POST",
+      sourceBase,
+      409,
+      boundedJsonBody({
+        success: false,
+        code: "dedicated_adoption_selection_required",
+      }).responseBody,
+    );
+    approved.observeRequest(
+      "POST",
+      `${sourceBase}/adopt-existing`,
+      JSON.stringify({ action: "adopt_existing_dedicated", quoteId }),
+    );
+    approved.observeRequest(
+      "POST",
+      `${sourceBase}/cutover`,
+      JSON.stringify({ dedicatedAgentId }),
+    );
+    const approvedSnapshot = await approved.snapshot();
+    expect(approvedSnapshot).toMatchObject({
+      dedicatedApprovalBindingPresent: true,
+      dedicatedLifecycleBindingMismatchCount: 0,
+    });
+
+    const ambiguousSelection = createCloudLiveNetworkAudit();
+    ambiguousSelection.setDedicatedApprovalBinding({
+      confirmationKind: "adoption",
+      sourceAgentId,
+      quoteId,
+      dedicatedAgentId,
+    });
+    ambiguousSelection.observeRequest(
+      "POST",
+      sourceBase,
+      JSON.stringify({
+        action: "activate_dedicated",
+        quoteId: "selection-quote",
+      }),
+    );
+    ambiguousSelection.observeResponse(
+      "POST",
+      sourceBase,
+      409,
+      boundedJsonBody({ success: false, code: "unknown_client_error" })
+        .responseBody,
+    );
+    expect(await ambiguousSelection.snapshot()).toMatchObject({
+      dedicatedApprovalBindingPresent: true,
+      dedicatedLifecycleBindingMismatchCount: 1,
+    });
+
+    const mismatched = createCloudLiveNetworkAudit();
+    mismatched.setDedicatedApprovalBinding({
+      confirmationKind: "adoption",
+      sourceAgentId,
+      quoteId,
+      dedicatedAgentId,
+    });
+    mismatched.observeRequest(
+      "POST",
+      `${sourceBase}/adopt-existing`,
+      JSON.stringify({
+        action: "adopt_existing_dedicated",
+        quoteId: "different-private-quote",
+      }),
+    );
+    mismatched.observeRequest(
+      "POST",
+      `${sourceBase}/cutover`,
+      JSON.stringify({ dedicatedAgentId: "different-private-target" }),
+    );
+    const mismatchedSnapshot = await mismatched.snapshot();
+    expect(mismatchedSnapshot).toMatchObject({
+      dedicatedApprovalBindingPresent: true,
+      dedicatedLifecycleBindingMismatchCount: 2,
+    });
+    expect(JSON.stringify(mismatchedSnapshot)).not.toMatch(
+      /private-personal|private-quote|private-target|private-dedicated/,
+    );
+    expect(() =>
+      createCloudLiveContinuityEvidence({
+        ...passingInput(),
+        dedicatedMutationProof: {
+          approvalGrantedCount: 1,
+          confirmationClickCount: 1,
+          confirmationKind: "adoption",
+          adoptionConfirmationPostCount: 1,
+          activationPostCount: 0,
+          cutoverPostCount: 1,
+          forbiddenAgentMutationCount: 1,
+          approvalBindingPresent: true,
+          lifecycleBindingMismatchCount:
+            mismatchedSnapshot.dedicatedLifecycleBindingMismatchCount,
+        },
+      }),
+    ).toThrow("outside the approved target or quote");
+  });
+
+  it("binds generic activation and cutover to one decoded quote and target", async () => {
+    const sourceAgentId = "private-personal";
+    const dedicatedAgentId = "private-dedicated";
+    const quoteId = "private-quote";
+    const sourceBase = `https://api.test/api/v1/eliza/agents/${sourceAgentId}/upgrade-tier`;
+    const audit = createCloudLiveNetworkAudit();
+    audit.observeRequest("GET", sourceBase);
+    audit.observeResponse(
+      "GET",
+      sourceBase,
+      200,
+      boundedJsonBody({
+        success: true,
+        data: {
+          quoteId,
+          activation: { state: "available", dedicatedAgentId },
+        },
+      }).responseBody,
+    );
+    const binding = await audit.latestDedicatedActivationApprovalBinding();
+    expect(binding).toEqual({
+      confirmationKind: "activation",
+      sourceAgentId,
+      quoteId,
+      dedicatedAgentId,
+    });
+    if (!binding) throw new Error("activation binding missing");
+    audit.setDedicatedApprovalBinding(binding);
+    audit.observeRequest(
+      "POST",
+      sourceBase,
+      JSON.stringify({ action: "activate_dedicated", quoteId }),
+    );
+    audit.observeResponse(
+      "POST",
+      sourceBase,
+      200,
+      boundedJsonBody({ success: true, data: { dedicatedAgentId } })
+        .responseBody,
+    );
+    audit.observeRequest(
+      "POST",
+      `${sourceBase}/cutover`,
+      JSON.stringify({ dedicatedAgentId }),
+    );
+    expect(await audit.snapshot()).toMatchObject({
+      dedicatedApprovalBindingPresent: true,
+      dedicatedLifecycleBindingMismatchCount: 0,
+    });
+
+    const missingProvenance = createCloudLiveNetworkAudit();
+    missingProvenance.setDedicatedApprovalBinding(binding);
+    missingProvenance.observeRequest("POST", `${sourceBase}/cutover`, "{}");
+    expect(await missingProvenance.snapshot()).toMatchObject({
+      dedicatedApprovalBindingPresent: true,
+      dedicatedLifecycleBindingMismatchCount: 1,
+    });
   });
 
   it("distinguishes Personal response headers, body, parse, and runtime decode", async () => {
@@ -969,7 +1254,7 @@ describe("privacy-safe continuity evidence", () => {
 
   it("emits the flat closed proof and honest cleanup semantics", () => {
     expect(createCloudLiveContinuityEvidence(passingInput())).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       lane: "app-live-e2e-cloud-staging",
       challengeTurnCount: 1,
       noAdditionalChatSendAfterChallenge: true,
@@ -979,7 +1264,17 @@ describe("privacy-safe continuity evidence", () => {
       personalIdentityReused: true,
       runtimeBindingReused: true,
       apiBaseReused: true,
+      dedicatedApprovalDisposition: "not-approved",
+      dedicatedApprovalGrantedCount: 0,
+      dedicatedConfirmationKind: "none",
+      dedicatedConfirmationClickCount: 0,
+      dedicatedAdoptionConfirmationPostCount: 0,
+      dedicatedActivationPostCount: 0,
+      dedicatedCutoverPostCount: 0,
       forbiddenAgentMutationCount: 0,
+      otherForbiddenAgentMutationCount: 0,
+      dedicatedApprovalBindingPresent: false,
+      dedicatedLifecycleBindingMismatchCount: 0,
       cleanupDisposition: "no-test-owned-agent",
       conversationHistoryDisposition: "preserved",
     });
@@ -1007,9 +1302,141 @@ describe("privacy-safe continuity evidence", () => {
     expect(() =>
       createCloudLiveContinuityEvidence({
         ...passingInput(),
-        forbiddenAgentMutationCount: 1,
+        dedicatedMutationProof: {
+          ...passingInput().dedicatedMutationProof,
+          forbiddenAgentMutationCount: 1,
+        },
       }),
-    ).toThrow("must be zero");
+    ).toThrow("unauthorized agent lifecycle mutation");
+  });
+
+  it("allows only the exact explicitly approved Dedicated lifecycle", () => {
+    const adoption = createCloudLiveContinuityEvidence({
+      ...passingInput(),
+      dedicatedMutationProof: {
+        approvalGrantedCount: 1,
+        confirmationClickCount: 1,
+        confirmationKind: "adoption",
+        adoptionConfirmationPostCount: 1,
+        activationPostCount: 1,
+        cutoverPostCount: 2,
+        forbiddenAgentMutationCount: 3,
+        approvalBindingPresent: true,
+        lifecycleBindingMismatchCount: 0,
+      },
+    });
+    expect(adoption).toMatchObject({
+      dedicatedApprovalDisposition: "approved-ui-confirmation",
+      dedicatedConfirmationKind: "adoption",
+      dedicatedAdoptionConfirmationPostCount: 1,
+      dedicatedActivationPostCount: 1,
+      dedicatedCutoverPostCount: 2,
+      forbiddenAgentMutationCount: 3,
+      otherForbiddenAgentMutationCount: 0,
+    });
+    expect(parseCloudLiveContinuityEvidence(adoption)).toEqual(adoption);
+    expect(() =>
+      parseCloudLiveContinuityEvidence({
+        ...adoption,
+        otherForbiddenAgentMutationCount: 1,
+      }),
+    ).toThrow("artifact.otherForbiddenAgentMutationCount is invalid");
+
+    const activation = createCloudLiveContinuityEvidence({
+      ...passingInput(),
+      dedicatedMutationProof: {
+        approvalGrantedCount: 1,
+        confirmationClickCount: 1,
+        confirmationKind: "activation",
+        adoptionConfirmationPostCount: 0,
+        activationPostCount: 1,
+        cutoverPostCount: 1,
+        forbiddenAgentMutationCount: 2,
+        approvalBindingPresent: true,
+        lifecycleBindingMismatchCount: 0,
+      },
+    });
+    expect(activation).toMatchObject({
+      dedicatedApprovalDisposition: "approved-ui-confirmation",
+      dedicatedConfirmationKind: "activation",
+      dedicatedActivationPostCount: 1,
+      dedicatedCutoverPostCount: 1,
+      otherForbiddenAgentMutationCount: 0,
+    });
+
+    const approvalUnused = createCloudLiveContinuityEvidence({
+      ...passingInput(),
+      dedicatedMutationProof: {
+        ...passingInput().dedicatedMutationProof,
+        approvalGrantedCount: 1,
+      },
+    });
+    expect(approvalUnused.dedicatedApprovalDisposition).toBe("approval-unused");
+
+    for (const dedicatedMutationProof of [
+      {
+        ...passingInput().dedicatedMutationProof,
+        approvalGrantedCount: 1 as const,
+        confirmationClickCount: 1,
+        confirmationKind: "adoption" as const,
+        adoptionConfirmationPostCount: 1,
+        cutoverPostCount: 1,
+        forbiddenAgentMutationCount: 2,
+        approvalBindingPresent: true,
+        lifecycleBindingMismatchCount: 0,
+      },
+      {
+        approvalGrantedCount: 0 as const,
+        confirmationClickCount: 1,
+        confirmationKind: "activation" as const,
+        adoptionConfirmationPostCount: 0,
+        activationPostCount: 1,
+        cutoverPostCount: 1,
+        forbiddenAgentMutationCount: 2,
+        approvalBindingPresent: true,
+        lifecycleBindingMismatchCount: 0,
+      },
+      {
+        approvalGrantedCount: 1 as const,
+        confirmationClickCount: 1,
+        confirmationKind: "adoption" as const,
+        adoptionConfirmationPostCount: 2,
+        activationPostCount: 0,
+        cutoverPostCount: 1,
+        forbiddenAgentMutationCount: 1,
+        approvalBindingPresent: true,
+        lifecycleBindingMismatchCount: 0,
+      },
+      {
+        approvalGrantedCount: 1 as const,
+        confirmationClickCount: 1,
+        confirmationKind: "activation" as const,
+        adoptionConfirmationPostCount: 0,
+        activationPostCount: 1,
+        cutoverPostCount: 0,
+        forbiddenAgentMutationCount: 1,
+        approvalBindingPresent: true,
+        lifecycleBindingMismatchCount: 0,
+      },
+      {
+        approvalGrantedCount: 1 as const,
+        confirmationClickCount: 1,
+        confirmationKind: "activation" as const,
+        adoptionConfirmationPostCount: 0,
+        activationPostCount: 1,
+        cutoverPostCount: 1,
+        forbiddenAgentMutationCount: 2,
+        approvalBindingPresent: false,
+        lifecycleBindingMismatchCount: 0,
+      },
+    ]) {
+      expect(() =>
+        createCloudLiveContinuityEvidence({
+          ...passingInput(),
+          dedicatedMutationProof,
+        }),
+      ).toThrow();
+    }
   });
 
   it("rejects any extra or non-passing JSON field", () => {
