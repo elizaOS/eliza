@@ -3,6 +3,7 @@
  */
 
 import { execFile } from "node:child_process";
+import crypto from "node:crypto";
 import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { homedir, platform, tmpdir } from "node:os";
 import { extname, isAbsolute, join } from "node:path";
@@ -44,6 +45,11 @@ import {
   DEFAULT_ACCOUNT_ID as IMESSAGE_LOCAL_ACCOUNT_ID,
   normalizeAccountId as normalizeIMessageAccountId,
 } from "./accounts.js";
+import {
+  parseBlooioInbound,
+  sendBlooioMessage,
+  verifyBlooioSignature,
+} from "./blooio-transport.js";
 import {
   type ChatDbMessage,
   type ChatDbReader,
@@ -309,6 +315,7 @@ function firstAttachmentUrl(content: Content): string | undefined {
 
 function statusMetadata(status: IMessageServiceStatus): Record<string, string | boolean | null> {
   return {
+    transport: status.transport,
     available: status.available,
     connected: status.connected,
     chatDbAvailable: status.chatDbAvailable,
@@ -316,6 +323,8 @@ function statusMetadata(status: IMessageServiceStatus): Record<string, string | 
     chatDbPath: status.chatDbPath,
     reason: status.reason,
     permissionAction: status.permissionAction?.label ?? null,
+    webhookPath: status.webhookPath,
+    channelId: status.channelId,
   };
 }
 
@@ -547,7 +556,7 @@ async function resolveIMessageChatId(
 export class IMessageService extends Service implements IIMessageService {
   static serviceType: string = IMESSAGE_SERVICE_NAME;
 
-  capabilityDescription = "iMessage service for sending and receiving messages on macOS";
+  capabilityDescription = "iMessage service using native Messages or a Blooio gateway";
 
   private settings: IMessageSettings | null = null;
   private connected: boolean = false;
@@ -606,6 +615,8 @@ export class IMessageService extends Service implements IIMessageService {
   private contacts: ContactsMap = new Map();
   /** Whether the lazy contact load has been attempted this session. */
   private contactsLoadAttempted = false;
+  /** Webhook message ids accepted during this process lifetime. */
+  private blooioMessageIds = new Set<string>();
 
   /**
    * Start the iMessage service.
@@ -615,13 +626,11 @@ export class IMessageService extends Service implements IIMessageService {
 
     const service = new IMessageService(runtime);
 
-    // Check if running on macOS
-    if (!service.isMacOS()) {
-      throw new IMessageNotSupportedError();
-    }
-
     // Load settings
     service.settings = service.loadSettings();
+    if (service.settings.transport === "native" && !service.isMacOS()) {
+      throw new IMessageNotSupportedError();
+    }
     const settingFromRuntime =
       typeof service.runtime.getSetting === "function"
         ? service.runtime.getSetting("IMESSAGE_BACKFILL")
@@ -640,7 +649,8 @@ export class IMessageService extends Service implements IIMessageService {
     // the polling cursor from the current tip of the database so a freshly
     // started agent doesn't re-process its entire message backlog.
     service.chatDbPath = service.settings.dbPath || DEFAULT_CHAT_DB_PATH;
-    service.chatDb = await openChatDb(service.chatDbPath);
+    service.chatDb =
+      service.settings.transport === "native" ? await openChatDb(service.chatDbPath) : null;
     if (service.chatDb) {
       const tip = service.chatDb.getLatestRowId();
 
@@ -687,23 +697,30 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   static registerSendHandlers(runtime: IAgentRuntime, service: IMessageService): void {
+    const status = service.getStatus();
+    const isBlooio = status.transport === "blooio";
     const registration = {
       source: IMESSAGE_SERVICE_NAME,
       label: "iMessage",
-      capabilities: ["send_message", "attachments", "contact_resolution", "chat_context"],
+      capabilities: isBlooio
+        ? ["send_message", "chat_context"]
+        : ["send_message", "attachments", "contact_resolution", "chat_context"],
       supportedTargetKinds: ["phone", "email", "contact", "user", "group", "room"],
       contexts: ["phone", "social", "connectors"],
-      description:
-        "Send SMS/iMessage through macOS Messages using phone numbers, emails, contacts, or chat ids.",
+      description: isBlooio
+        ? "Send and receive iMessage through the configured Blooio channel."
+        : "Send SMS/iMessage through macOS Messages using phone numbers, emails, contacts, or chat ids.",
       metadata: {
         // `sms` is the canonical source owned by the Android Messages plugin.
         // Keeping the local bridge on its iMessage/Messages names makes source
         // selection deterministic when both first-party plugins are loaded.
         aliases: ["imessage", "messages"],
         accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
-        bridge: "macos-messages",
-        accountSemantics: "local-macos-messages-single-account",
-        status: statusMetadata(service.getStatus()),
+        bridge: isBlooio ? "blooio" : "macos-messages",
+        accountSemantics: isBlooio
+          ? "blooio-channel-single-account"
+          : "local-macos-messages-single-account",
+        status: statusMetadata(status),
       },
       sendHandler: async (_runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
         const accountId = assertLocalIMessageAccount(readTargetAccountId(target));
@@ -993,17 +1010,25 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   getStatus(): IMessageServiceStatus {
+    const transport = this.settings?.transport ?? "native";
     const chatDbAvailable = this.chatDb !== null;
-    const accessIssue = chatDbAvailable ? null : getLastChatDbAccessIssue(this.chatDbPath);
+    const accessIssue =
+      transport === "native" && !chatDbAvailable ? getLastChatDbAccessIssue(this.chatDbPath) : null;
 
     return {
+      transport,
       available: true,
       connected: this.connected,
       chatDbAvailable,
-      sendOnly: this.connected && !chatDbAvailable,
+      sendOnly: transport === "native" && this.connected && !chatDbAvailable,
       chatDbPath: this.chatDbPath,
-      reason: accessIssue?.reason ?? (chatDbAvailable ? null : "chat.db reader not available"),
+      reason:
+        transport === "blooio"
+          ? null
+          : (accessIssue?.reason ?? (chatDbAvailable ? null : "chat.db reader not available")),
       permissionAction: accessIssue?.permissionAction ?? null,
+      webhookPath: transport === "blooio" ? "/api/imessage/webhook/blooio" : null,
+      channelId: transport === "blooio" ? (this.settings?.blooioChannelId ?? null) : null,
     };
   }
 
@@ -1025,6 +1050,14 @@ export class IMessageService extends Service implements IIMessageService {
     const accountId = assertLocalIMessageAccount(options?.accountId);
     if (!this.settings) {
       return { success: false, error: "Service not initialized" };
+    }
+
+    if (this.settings.transport === "blooio" && options?.mediaUrl) {
+      return {
+        success: false,
+        error:
+          "Blooio media sends require a public attachment URL and are not supported by this endpoint yet",
+      };
     }
 
     // Format phone number if needed
@@ -1111,6 +1144,73 @@ export class IMessageService extends Service implements IIMessageService {
       messageId: Date.now().toString(),
       chatId: target,
     };
+  }
+
+  async handleBlooioWebhook(
+    rawBody: string,
+    signature: string | undefined
+  ): Promise<"accepted" | "ignored" | "unauthorized"> {
+    const settings = this.settings;
+    if (
+      settings?.transport !== "blooio" ||
+      !settings.blooioWebhookSecret ||
+      !settings.blooioChannelId
+    ) {
+      return "ignored";
+    }
+    if (!verifyBlooioSignature(settings.blooioWebhookSecret, signature, rawBody)) {
+      return "unauthorized";
+    }
+    const inbound = parseBlooioInbound(rawBody, settings.blooioChannelId);
+    if (!inbound || this.blooioMessageIds.has(inbound.messageId)) return "ignored";
+
+    const access: { allowed: boolean; pairingReplyMessage?: string } = inbound.isGroup
+      ? this.checkGroupAccess(inbound.sender)
+      : await this.checkDmAccess(inbound.sender);
+    if (!access.allowed) {
+      if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
+        await this.sendSingleMessage(inbound.sender, access.pairingReplyMessage);
+      }
+      return "ignored";
+    }
+
+    this.blooioMessageIds.add(inbound.messageId);
+    if (this.blooioMessageIds.size > 2_000) {
+      const oldest = this.blooioMessageIds.values().next().value;
+      if (typeof oldest === "string") this.blooioMessageIds.delete(oldest);
+    }
+
+    const media: Media[] = inbound.mediaUrls.map((url, index) => ({
+      id: `${inbound.messageId}-${index}`,
+      url,
+      source: "imessage",
+      title: "Blooio attachment",
+      description: "Inbound Blooio attachment",
+    }));
+    const row: ChatDbMessage = {
+      rowId: inbound.timestamp,
+      guid: inbound.messageId,
+      text: inbound.text,
+      kind: "text",
+      handle: inbound.sender,
+      chatId: inbound.chatId,
+      chatType: inbound.isGroup ? "group" : "direct",
+      displayName: null,
+      timestamp: inbound.timestamp,
+      isFromMe: false,
+      service: "iMessage",
+      isSent: false,
+      isDelivered: true,
+      isRead: false,
+      dateRead: 0,
+      dateEdited: 0,
+      dateRetracted: 0,
+      replyToGuid: inbound.replyToMessageId ?? null,
+      reaction: null,
+      attachments: [],
+    };
+    await this.dispatchInboundMessage(row, media);
+    return "accepted";
   }
 
   /**
@@ -1205,6 +1305,7 @@ export class IMessageService extends Service implements IIMessageService {
       return;
     }
     this.contactsLoadAttempted = true;
+    if (this.settings?.transport === "blooio") return;
     try {
       this.contacts = await loadContacts();
       this.recordContactsPermissionBlock("contacts.resolve");
@@ -1301,6 +1402,15 @@ export class IMessageService extends Service implements IIMessageService {
     };
 
     const dbPath = getStringSetting("IMESSAGE_DB_PATH", "IMESSAGE_DB_PATH") || undefined;
+    const transportRaw = getStringSetting("IMESSAGE_TRANSPORT", "IMESSAGE_TRANSPORT", "native")
+      .trim()
+      .toLowerCase();
+    if (transportRaw !== "native" && transportRaw !== "blooio") {
+      throw new IMessageConfigurationError(
+        "IMESSAGE_TRANSPORT must be native or blooio",
+        "IMESSAGE_TRANSPORT"
+      );
+    }
 
     const pollIntervalRaw = getStringSetting(
       "IMESSAGE_POLL_INTERVAL_MS",
@@ -1343,6 +1453,7 @@ export class IMessageService extends Service implements IIMessageService {
     const enabled = enabledRaw !== "false";
 
     return {
+      transport: transportRaw,
       dbPath,
       pollIntervalMs,
       heartbeatIntervalMs,
@@ -1350,12 +1461,41 @@ export class IMessageService extends Service implements IIMessageService {
       groupPolicy,
       allowFrom,
       enabled,
+      blooioApiKey:
+        getStringSetting("IMESSAGE_BLOOIO_API_KEY", "IMESSAGE_BLOOIO_API_KEY") ||
+        getStringSetting("BLOOIO_API_KEY", "BLOOIO_API_KEY") ||
+        undefined,
+      blooioWebhookSecret:
+        getStringSetting("IMESSAGE_BLOOIO_WEBHOOK_SECRET", "IMESSAGE_BLOOIO_WEBHOOK_SECRET") ||
+        getStringSetting("BLOOIO_WEBHOOK_SECRET", "BLOOIO_WEBHOOK_SECRET") ||
+        undefined,
+      blooioFromNumber:
+        getStringSetting("IMESSAGE_BLOOIO_FROM_NUMBER", "IMESSAGE_BLOOIO_FROM_NUMBER") ||
+        getStringSetting("BLOOIO_FROM_NUMBER", "BLOOIO_FROM_NUMBER") ||
+        undefined,
+      blooioChannelId:
+        getStringSetting("IMESSAGE_BLOOIO_CHANNEL_ID", "IMESSAGE_BLOOIO_CHANNEL_ID") || undefined,
     };
   }
 
   private async validateSettings(): Promise<void> {
     if (!this.settings) {
       throw new IMessageConfigurationError("Settings not loaded");
+    }
+
+    if (this.settings.transport === "blooio") {
+      for (const [setting, value] of [
+        ["IMESSAGE_BLOOIO_API_KEY", this.settings.blooioApiKey],
+        ["IMESSAGE_BLOOIO_WEBHOOK_SECRET", this.settings.blooioWebhookSecret],
+        ["IMESSAGE_BLOOIO_FROM_NUMBER", this.settings.blooioFromNumber],
+        ["IMESSAGE_BLOOIO_CHANNEL_ID", this.settings.blooioChannelId],
+      ] as const) {
+        if (!value)
+          throw new IMessageConfigurationError(
+            `${setting} is required for the Blooio transport`,
+            setting
+          );
+      }
     }
 
     // Do not probe Messages.app during service startup. Sending is gated by
@@ -1365,6 +1505,15 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   private async sendSingleMessage(to: string, text: string): Promise<IMessageSendResult> {
+    if (this.settings?.transport === "blooio") {
+      return await sendBlooioMessage({
+        apiKey: this.settings.blooioApiKey as string,
+        from: this.settings.blooioChannelId ?? (this.settings.blooioFromNumber as string),
+        to,
+        text,
+        idempotencyKey: `imessage-${crypto.randomUUID()}`,
+      });
+    }
     // Outbound delivery stays on Apple's local Messages automation surface.
     // No third-party CLI, daemon, network service, or fallback transport is
     // invoked from the native connector.
@@ -1600,7 +1749,7 @@ export class IMessageService extends Service implements IIMessageService {
         // follows the same IMESSAGE_AUTO_REPLY consent gate as agent replies.
         // Only the DM pairing path produces one; group denials never do.
         if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
-          const sendResult = await this.sendViaAppleScript(row.handle, access.pairingReplyMessage);
+          const sendResult = await this.sendSingleMessage(row.handle, access.pairingReplyMessage);
           if (!sendResult.success) {
             logger.warn(
               `[imessage] Pairing reply send failed for handle=${row.handle}: ${sendResult.error}`
@@ -1719,7 +1868,10 @@ export class IMessageService extends Service implements IIMessageService {
    * `source: "imessage"` tag on content, same HandlerCallback signature
    * for the reply path.
    */
-  private async dispatchInboundMessage(row: ChatDbMessage): Promise<void> {
+  private async dispatchInboundMessage(
+    row: ChatDbMessage,
+    externalMedia: Media[] = []
+  ): Promise<void> {
     if (!this.runtime) return;
     const accountId = IMESSAGE_LOCAL_ACCOUNT_ID;
 
@@ -1860,7 +2012,10 @@ export class IMessageService extends Service implements IIMessageService {
       ? createUniqueUuid(this.runtime, `imessage-guid-${row.replyToGuid}`)
       : undefined;
 
-    const rehostedAttachments = await this.rehostInboundAttachments(row.attachments);
+    const rehostedAttachments = [
+      ...(await this.rehostInboundAttachments(row.attachments)),
+      ...externalMedia,
+    ];
     const memoryContent: Content = {
       text: row.text,
       source: "imessage",
@@ -1942,7 +2097,7 @@ export class IMessageService extends Service implements IIMessageService {
         return [];
       }
 
-      const sendResult = await this.sendViaAppleScript(replyTarget, replyText);
+      const sendResult = await this.sendSingleMessage(replyTarget, replyText);
       if (!sendResult.success) {
         logger.error(`[imessage] Reply send failed for ROWID=${row.rowId}: ${sendResult.error}`);
         return [];
@@ -2228,7 +2383,10 @@ export class IMessageService extends Service implements IIMessageService {
         let tip = 0;
         let contactsCount = 0;
         try {
-          if (!this.chatDb) {
+          if (this.settings?.transport === "blooio") {
+            ok = this.connected;
+            reason = ok ? "" : "Blooio transport disconnected";
+          } else if (!this.chatDb) {
             ok = false;
             reason = "chat.db reader not available (send-only mode)";
           } else {
@@ -2288,8 +2446,7 @@ export class IMessageService extends Service implements IIMessageService {
       try {
         await this.runtime.createTask({
           name: "IMESSAGE_HEARTBEAT",
-          description:
-            "Periodic health probe for the iMessage connector (chat.db reader, contacts, polling cursor).",
+          description: "Periodic health probe for the active iMessage connector transport.",
           metadata: {
             updatedAt: Date.now(),
             updateInterval: heartbeatIntervalMs,
