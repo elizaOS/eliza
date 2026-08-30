@@ -27,11 +27,27 @@ permissions:
   contents: read
 
 jobs:
+  dispatch-admission:
+    name: Admit exact develop dispatch
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Reject non-develop manual runs
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          if [[ "$SOURCE_REF" != "refs/heads/develop" ]]; then
+            echo "::error::Trusted staging configuration may be checked only from refs/heads/develop."
+            exit 1
+          fi
+
   trusted-config:
     name: Trusted configuration
+    needs: dispatch-admission
     # Until develop and the staging Environment have enforced admission policy,
     # never attach staging configuration to the automatic reusable caller.
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+    if: needs.dispatch-admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
     environment: staging
     runs-on: ubuntu-24.04
     timeout-minutes: 10

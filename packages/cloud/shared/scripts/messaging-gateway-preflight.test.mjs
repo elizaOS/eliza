@@ -231,12 +231,16 @@ test("WhatsApp strict preflight wires complete and split authorities without lea
 test("workflow keeps trusted configuration behind exact-develop manual dispatch", () => {
   const workflow = readFileSync(WORKFLOW, "utf8");
   const developWorkflow = readFileSync(DEVELOP_WORKFLOW, "utf8");
+  const dispatchAdmissionStart = workflow.indexOf("  dispatch-admission:");
   const trustedConfigStart = workflow.indexOf("  trusted-config:");
   const testJobStart = workflow.indexOf("\n  test:");
 
+  assert.notEqual(dispatchAdmissionStart, -1);
   assert.notEqual(trustedConfigStart, -1);
+  assert.ok(trustedConfigStart > dispatchAdmissionStart);
   assert.ok(testJobStart > trustedConfigStart);
 
+  const dispatchAdmission = workflow.slice(dispatchAdmissionStart, trustedConfigStart);
   const trustedConfig = workflow.slice(trustedConfigStart, testJobStart);
   const testJob = workflow.slice(testJobStart);
 
@@ -251,9 +255,15 @@ test("workflow keeps trusted configuration behind exact-develop manual dispatch"
     developWorkflow,
     /cloud-gateway-discord:\s+[\s\S]*?uses: \.\/\.github\/workflows\/cloud-gateway-discord\.yml\s+secrets: inherit/,
   );
+  assert.match(dispatchAdmission, /if: github\.event_name == 'workflow_dispatch'/);
+  assert.match(dispatchAdmission, /SOURCE_REF: \$\{\{ github\.ref \}\}/);
+  assert.match(dispatchAdmission, /\[\[ "\$SOURCE_REF" != "refs\/heads\/develop" \]\]/);
+  assert.match(dispatchAdmission, /exit 1/);
+  assert.doesNotMatch(dispatchAdmission, /environment:|secrets\.|actions\/checkout/);
+  assert.match(trustedConfig, /needs: dispatch-admission/);
   assert.match(
     trustedConfig,
-    /if: github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/develop'/,
+    /if: needs\.dispatch-admission\.result == 'success' && github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/develop'/,
   );
   assert.match(trustedConfig, /environment: staging/);
   assert.doesNotMatch(trustedConfig, /production/);
