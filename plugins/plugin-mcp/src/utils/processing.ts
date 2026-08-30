@@ -82,7 +82,7 @@ export function processToolResult(
   toolName: string,
   runtime: IAgentRuntime,
   messageEntityId: string
-): { toolOutput: string; hasAttachments: boolean; attachments: Media[] } {
+): { toolOutput: string; hasAttachments: boolean; attachments: Media[]; isError: boolean } {
   let toolOutput = "";
   let hasAttachments = false;
   const attachments: Media[] = [];
@@ -122,7 +122,11 @@ export function processToolResult(
     }
   }
 
-  return { toolOutput, hasAttachments, attachments };
+  // Propagate the spec-mandated failure signal. MCP tools report execution
+  // failures via CallToolResult.isError=true with the error detail carried in
+  // `content`; without surfacing this the caller cannot distinguish a failed
+  // call from a successful one and would fabricate success on the planner path.
+  return { toolOutput, hasAttachments, attachments, isError: result.isError === true };
 }
 
 export async function handleResourceAnalysis(
@@ -175,7 +179,8 @@ export async function handleToolResponse(
   attachments: readonly Media[],
   state: State,
   mcpProvider: McpProviderArg,
-  callback?: HandlerCallback
+  callback?: HandlerCallback,
+  isError = false
 ): Promise<Memory> {
   await createMcpMemory(runtime, message, "tool", serverName, toolOutput, {
     toolName,
@@ -190,7 +195,8 @@ export async function handleToolResponse(
     serverName,
     message.content.text ?? "",
     toolOutput,
-    hasAttachments
+    hasAttachments,
+    isError
   );
 
   const reasonedResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -262,7 +268,8 @@ function createReasoningPrompt(
   serverName: string,
   userMessage: string,
   toolOutput: string,
-  hasAttachments: boolean
+  hasAttachments: boolean,
+  toolErrored: boolean
 ): string {
   const enhancedState: State = {
     ...state,
@@ -274,6 +281,7 @@ function createReasoningPrompt(
       userMessage,
       toolOutput,
       hasAttachments,
+      toolErrored,
     },
   };
 
