@@ -430,11 +430,14 @@ export class HetznerCloudClient implements ComputeProvider {
   async deleteServer(serverId: number): Promise<void> {
     validateResourceId(serverId, "serverId");
     const deadline = deadlineAfter(this.lifecycleTimeoutMs);
-    let data: Record<string, unknown>;
+    let deleteResponse: unknown | typeof NO_CONTENT;
     try {
-      data = requireEnvelope(
-        await this.request<unknown>("DELETE", `/servers/${serverId}`, undefined, deadline),
-        "delete server",
+      deleteResponse = await this.request<unknown>(
+        "DELETE",
+        `/servers/${serverId}`,
+        undefined,
+        deadline,
+        true,
       );
     } catch (error) {
       // error-policy:J4 an exact target 404 is the provider's explicit
@@ -442,13 +445,16 @@ export class HetznerCloudClient implements ComputeProvider {
       if (error instanceof HetznerCloudError && error.code === "not_found") return;
       throw error;
     }
-    await this.settleReturnedActions(
-      data.action,
-      Object.hasOwn(data, "next_actions") ? data.next_actions : [],
-      deadline,
-      { id: serverId, type: "server" },
-      true,
-    );
+    if (deleteResponse !== NO_CONTENT) {
+      const data = requireEnvelope(deleteResponse, "delete server");
+      await this.settleReturnedActions(
+        data.action,
+        Object.hasOwn(data, "next_actions") ? data.next_actions : [],
+        deadline,
+        { id: serverId, type: "server" },
+        true,
+      );
+    }
     if ((await this.getServerWithin(serverId, deadline)) !== null) {
       throw new HetznerCloudError(
         "server_error",
