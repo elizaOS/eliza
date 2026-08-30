@@ -257,6 +257,14 @@ describe("recentMessagesProvider", () => {
 				7000,
 				{ failureKind: "planner_exhaustion" },
 			),
+			makeMemory(
+				"msg-8",
+				AGENT_ID,
+				"Typecheck still fails after repair.",
+				"client_chat",
+				7500,
+				{ failureKind: "coding_verification_failed" },
+			),
 		];
 
 		const result = await recentMessagesProvider.get(
@@ -273,6 +281,7 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).not.toContain("Retrying...");
 		expect(result.text).not.toContain("Capability unavailable.");
 		expect(result.text).not.toContain("Attempts exhausted.");
+		expect(result.text).not.toContain("Typecheck still fails after repair.");
 	});
 
 	it("dedupes repeated assistant messages within one assistant run", async () => {

@@ -54,11 +54,5 @@ const STATUS_LABEL: Record<string, string> = {
 export function ApprovalStatusBadge({ status }: { status: string }) {
   const tone = STATUS_TONE[status] ?? "neutral";
   const label = STATUS_LABEL[status] ?? status;
-  return (
-    <SharedStatusBadge
-      label={label}
-      variant={TONE_VARIANT[tone]}
-      className="text-xs font-medium normal-case"
-    />
-  );
+  return <SharedStatusBadge label={label} variant={TONE_VARIANT[tone]} />;
 }

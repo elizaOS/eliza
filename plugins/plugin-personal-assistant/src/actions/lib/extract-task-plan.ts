@@ -27,10 +27,7 @@ import {
   LIFEOPS_REMINDER_INTENSITIES,
   type LifeOpsReminderIntensity,
 } from "../../contracts/index.js";
-import {
-  resolveContextWindow,
-  resolveDefaultTimeZone,
-} from "../../lifeops/defaults.js";
+import { resolveDefaultTimeZone } from "../../lifeops/defaults.js";
 import { normalizeExplicitTimeZoneToken } from "../../lifeops/time/timezone.js";
 import { getZonedDateParts } from "../../lifeops/time.js";
 import { UNDATED_TODO_EXTRACTION_GUIDANCE } from "./undated-todo-intent.js";
@@ -493,7 +490,6 @@ export async function extractTaskCreatePlanWithLlm(args: {
     runtime,
     message: args.message,
     state: args.state,
-    limit: resolveContextWindow(),
   });
   const recentConversation = recentWindow.join("\n");
   const prompt = buildExtractionPrompt(

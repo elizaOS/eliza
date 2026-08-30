@@ -19,6 +19,7 @@ import { Crown } from "lucide-react";
 import type * as React from "react";
 
 import { cn } from "../../lib/utils";
+import { Badge } from "../ui/badge";
 
 export type OwnerBadgeVariant = "inline" | "overlay" | "card";
 export type OwnerBadgeSize = "xs" | "sm" | "md";
@@ -45,9 +46,8 @@ const SIZE_CLASS: Record<OwnerBadgeSize, string> = {
 
 const VARIANT_CLASS: Record<OwnerBadgeVariant, string> = {
   inline: "inline-flex items-center align-baseline",
-  overlay:
-    "absolute -right-0.5 -top-0.5 inline-flex items-center justify-center rounded-sm bg-bg/90 p-0.5 shadow",
-  card: "inline-flex items-center justify-center rounded-sm bg-accent/15 px-2 py-1",
+  overlay: "inline-flex items-center justify-center",
+  card: "inline-flex items-center justify-center",
 };
 
 export function OwnerBadge({
@@ -61,17 +61,28 @@ export function OwnerBadge({
   if (!isOwner) return null;
 
   return (
-    <span
-      data-testid={dataTestId ?? "owner-badge"}
-      data-variant={variant}
-      data-size={size}
-      className={cn(VARIANT_CLASS[variant], className)}
-      title={tooltip}
-      aria-label={tooltip}
-      role="img"
+    <Badge
+      asChild
+      variant={
+        variant === "overlay"
+          ? "ownerOverlay"
+          : variant === "card"
+            ? "ownerCard"
+            : "ownerInline"
+      }
     >
-      <Crown className={cn(SIZE_CLASS[size], "text-accent")} aria-hidden />
-    </span>
+      <span
+        data-testid={dataTestId ?? "owner-badge"}
+        data-variant={variant}
+        data-size={size}
+        className={cn(VARIANT_CLASS[variant], className)}
+        title={tooltip}
+        aria-label={tooltip}
+        role="img"
+      >
+        <Crown className={cn(SIZE_CLASS[size], "text-accent")} aria-hidden />
+      </span>
+    </Badge>
   );
 }
 

@@ -44,7 +44,11 @@
  * under the user's finger; groups inherit the position of their highest-ranked
  * row.
  */
-import type { AgentNotification } from "@elizaos/core";
+import type {
+  AgentNotification,
+  PendingUserAction,
+  PendingUserActionOption,
+} from "@elizaos/core";
 import { RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -57,6 +61,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { dispatchChatOpen, dispatchChatPrefill } from "../../events";
 import {
   getMomentumReleaseVelocity,
   getVelocityAwareSettleDuration,
@@ -121,6 +126,7 @@ export {
   rowPropsEqual,
 } from "./notification-shade-content";
 
+import { Button } from "../ui/button";
 import {
   LIQUID_GLASS_BLUR,
   LIQUID_GLASS_EDGE_SHADOW,
@@ -144,6 +150,13 @@ import {
   PULL_TRAVEL_PX,
   visibleNotificationGroups,
 } from "./notification-shade-presentation";
+import {
+  derivePendingActionActivation,
+  derivePendingActionOptionReply,
+  pendingActionIdFromNotification,
+  reconcilePendingActionNotifications,
+  usePendingActions,
+} from "./pending-action-notifications";
 
 export {
   dampenPull,
@@ -660,6 +673,35 @@ export interface NotificationsHomeCenterProps {
   onOpenRequestHandled?: (requestId: number) => void;
 }
 
+export function NotificationStackClearButton({
+  confirming,
+  label,
+  onClick,
+}: {
+  confirming: boolean;
+  label: string;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <Button
+      type="button"
+      variant="overlayEdge"
+      size="content"
+      data-testid="notification-stack-clear"
+      data-confirming={confirming ? "true" : undefined}
+      data-notif-control=""
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium transition-[width,color] duration-200 ease-out",
+        confirming ? "w-12" : "w-8",
+      )}
+    >
+      <ClearConfirmationContent confirming={confirming} />
+    </Button>
+  );
+}
+
 export function NotificationsHomeCenter({
   emptyGestureTargetRef,
   shadeLayoutTargetRef,
@@ -668,7 +710,46 @@ export function NotificationsHomeCenter({
   onOpenRequestHandled,
 }: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
-  const { notifications, hydrated, hydrationStatus } = useNotifications();
+  const {
+    notifications: persistedNotifications,
+    hydrated,
+    hydrationStatus,
+  } = useNotifications();
+  const {
+    pending: pendingActions,
+    resolvedActionIds,
+    loaded: pendingActionsLoaded,
+    observedAt: pendingActionsObservedAt,
+  } = usePendingActions();
+  const notifications = useMemo(
+    () =>
+      reconcilePendingActionNotifications(
+        persistedNotifications,
+        pendingActions,
+        pendingActionsObservedAt,
+        resolvedActionIds,
+      ),
+    [
+      pendingActions,
+      pendingActionsObservedAt,
+      persistedNotifications,
+      resolvedActionIds,
+    ],
+  );
+  const pendingActionsById = useMemo(
+    () => new Map(pendingActions.map((item) => [item.id, item])),
+    [pendingActions],
+  );
+  const pendingNotificationIds = useMemo(
+    () =>
+      new Set(
+        notifications.flatMap((notification) => {
+          const actionId = pendingActionIdFromNotification(notification);
+          return actionId === null ? [] : [notification.id];
+        }),
+      ),
+    [notifications],
+  );
   const inboxEmpty = notifications.length === 0;
   const reduceMotion = usePrefersReducedMotion();
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
@@ -715,6 +796,9 @@ export function NotificationsHomeCenter({
   const [confirmingGroupKey, setConfirmingGroupKey] = useState<string | null>(
     null,
   );
+  const [expandedPendingActionId, setExpandedPendingActionId] = useState<
+    string | null
+  >(null);
   const [shadeClosing, setShadeClosing] = useState(false);
   const [pullCancellingDirection, setPullCancellingDirection] = useState<
     "expand" | "collapse" | null
@@ -1823,7 +1907,7 @@ export function NotificationsHomeCenter({
   // without this). `surfaceReady` re-runs the bind when hydration establishes a
   // genuinely empty inbox or when a notification arrives before hydration.
   const hasNotifications = !inboxEmpty;
-  const surfaceReady = hydrated || hasNotifications;
+  const surfaceReady = hasNotifications || (hydrated && pendingActionsLoaded);
   useEffect(() => {
     const list = scrollRef.current;
     if (!list || !surfaceReady) return;
@@ -2458,19 +2542,54 @@ export function NotificationsHomeCenter({
     [],
   );
 
-  const openNotification = useCallback((n: AgentNotification) => {
-    // Platform-shade acknowledgement (iOS/Android): tapping a notification
-    // acts on it AND removes it from the shade — no lingering "read" restyle.
-    // deepLink is producer/LLM-influenceable - only scheme-checked links
-    // navigate; anything else the tap just clears the row.
-    if (n.deepLink && isSafeDeepLink(n.deepLink)) {
-      navigateDeepLink(n.deepLink);
-    }
-    void removeNotification(n.id);
-  }, []);
-  const dismissNotification = useCallback((id: string) => {
-    void removeNotification(id);
-  }, []);
+  const openNotification = useCallback(
+    (n: AgentNotification) => {
+      const actionId = pendingActionIdFromNotification(n);
+      const pendingAction =
+        actionId === null ? undefined : pendingActionsById.get(actionId);
+      if (pendingAction) {
+        const activation = derivePendingActionActivation(pendingAction);
+        switch (activation.mode) {
+          case "choices":
+            setExpandedPendingActionId((current) =>
+              current === pendingAction.id ? null : pendingAction.id,
+            );
+            return;
+          case "prefill":
+            dispatchChatPrefill({ text: activation.text, select: true });
+            return;
+          case "open-chat":
+            dispatchChatOpen();
+            return;
+        }
+      }
+      // Platform-shade acknowledgement (iOS/Android): tapping an ordinary
+      // event acts on it AND removes it. State-backed pending actions above
+      // remain until their canonical request resolves.
+      if (n.deepLink && isSafeDeepLink(n.deepLink)) {
+        navigateDeepLink(n.deepLink);
+      }
+      void removeNotification(n.id);
+    },
+    [pendingActionsById],
+  );
+  const dismissNotification = useCallback(
+    (id: string) => {
+      if (pendingNotificationIds.has(id)) return;
+      void removeNotification(id);
+    },
+    [pendingNotificationIds],
+  );
+  const choosePendingActionOption = useCallback(
+    (item: PendingUserAction, option: PendingUserActionOption) => {
+      setExpandedPendingActionId(null);
+      dispatchChatPrefill({
+        text: derivePendingActionOptionReply(item, option),
+        select: true,
+      });
+    },
+    [],
+  );
   const clearProducer = useCallback(
     (key: string, ids: readonly string[]) => {
       if (confirmingGroupKey !== key) {
@@ -2576,7 +2695,7 @@ export function NotificationsHomeCenter({
   // Do not flash an empty result while the initial request is still in flight.
   // Once hydrated, keep the transparent pull target mounted so an empty shade
   // can communicate its state instead of ignoring the gesture.
-  if (hydrationStatus === "failed") {
+  if (hydrationStatus === "failed" && pendingActions.length === 0) {
     return (
       <section
         aria-label="Notifications"
@@ -2599,14 +2718,16 @@ export function NotificationsHomeCenter({
               still arrive.
             </p>
           </div>
-          <button
+          <Button
             type="button"
+            variant="default"
+            size="touch"
             onClick={() => void retryNotificationHydration()}
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
+            className="shrink-0"
           >
             <RefreshCw aria-hidden className="size-3.5" />
             Retry
-          </button>
+          </Button>
         </div>
       </section>
     );
@@ -2995,8 +3116,10 @@ export function NotificationsHomeCenter({
                       {group.label}
                     </span>
                     <span className="flex shrink-0 items-center gap-1">
-                      <button
+                      <Button
                         type="button"
+                        variant="ghostMuted"
+                        size="dense"
                         data-testid="notification-stack-collapse"
                         data-notification-stack-collapse=""
                         data-notification-stack-key={group.key}
@@ -3005,39 +3128,35 @@ export function NotificationsHomeCenter({
                         onClick={(event) =>
                           foldStack(group.key, event.detail === 0)
                         }
-                        className="h-8 px-2 text-xs font-medium text-white/60 transition-colors hover:text-white/90"
                       >
                         Show Less
-                      </button>
-                      <button
-                        type="button"
-                        data-testid="notification-stack-clear"
-                        data-confirming={
-                          confirmingGroupKey === group.key ? "true" : undefined
-                        }
-                        data-notif-control=""
-                        aria-label={
-                          confirmingGroupKey === group.key
-                            ? `Confirm clear ${group.label} notifications`
-                            : `Clear ${group.label} notifications`
-                        }
-                        onClick={() =>
-                          clearProducer(
-                            group.key,
-                            allGroupRows.map((notification) => notification.id),
-                          )
-                        }
-                        className={cn(
-                          "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
-                          confirmingGroupKey === group.key
-                            ? "w-12 text-white"
-                            : "w-8",
-                        )}
-                      >
-                        <ClearConfirmationContent
+                      </Button>
+                      {allGroupRows.some(
+                        (notification) =>
+                          !pendingNotificationIds.has(notification.id),
+                      ) ? (
+                        <NotificationStackClearButton
                           confirming={confirmingGroupKey === group.key}
+                          label={
+                            confirmingGroupKey === group.key
+                              ? `Confirm clear ${group.label} notifications`
+                              : `Clear ${group.label} notifications`
+                          }
+                          onClick={() =>
+                            clearProducer(
+                              group.key,
+                              allGroupRows
+                                .filter(
+                                  (notification) =>
+                                    !pendingNotificationIds.has(
+                                      notification.id,
+                                    ),
+                                )
+                                .map((notification) => notification.id),
+                            )
+                          }
                         />
-                      </button>
+                      ) : null}
                     </span>
                   </div>
                 ) : null}
@@ -3055,56 +3174,97 @@ export function NotificationsHomeCenter({
                       : undefined
                   }
                 >
-                  {rows.map((notification, rowIndex) => (
-                    <NotificationRow
-                      key={notification.id}
-                      notification={notification}
-                      stackKey={
-                        rowIndex === 0 && collapsedGroupHasMore
-                          ? group.key
-                          : undefined
-                      }
-                      stackCount={
-                        rowIndex === 0 && allGroupRows.length > 1
-                          ? allGroupRows.length
-                          : undefined
-                      }
-                      stackCountVisibility={
-                        rowIndex === 0 && allGroupRows.length > 1
-                          ? fanned
-                            ? Math.max(1 - stackFanProgress, shadeCloseProgress)
-                            : 1
-                          : undefined
-                      }
-                      stackPeeks={
-                        rowIndex === 0 && peeks.length > 0
-                          ? {
-                              count: peeks.length,
-                              disabled: stackClosing,
-                              expansionProgress: stackPeekExpansionProgress,
-                              fanned,
-                              groupLabel: group.label,
-                              mode: stackPeekMode,
-                              openOffsetsPx: stackPeekOpenOffsets.get(
-                                group.key,
-                              ),
-                              previewRows: peeks,
-                              testIdVisible: !fanned || shadeCloseProgress > 0,
-                              totalCount: allGroupRows.length,
-                              visibility: stackPeekVisibility,
-                            }
-                          : undefined
-                      }
-                      shadeVisibility={
-                        fanned && rowIndex > 0
-                          ? stackFanProgress * disposableLayoutVisibility
-                          : undefined
-                      }
-                      onExpandStack={expandStack}
-                      onOpen={openNotification}
-                      onDismiss={dismissNotification}
-                    />
-                  ))}
+                  {rows.map((notification, rowIndex) => {
+                    const actionId =
+                      pendingActionIdFromNotification(notification);
+                    const pendingAction =
+                      actionId === null
+                        ? undefined
+                        : pendingActionsById.get(actionId);
+                    const activation = pendingAction
+                      ? derivePendingActionActivation(pendingAction)
+                      : null;
+                    const actionContent =
+                      pendingAction &&
+                      activation?.mode === "choices" &&
+                      expandedPendingActionId === pendingAction.id ? (
+                        <fieldset
+                          className="flex min-w-0 flex-wrap items-center gap-1.5 border-0 p-0"
+                          aria-label={`Respond to: ${pendingAction.title}`}
+                          data-testid="pending-action-options"
+                        >
+                          {activation.options.map((option) => (
+                            <Button
+                              key={option.id}
+                              type="button"
+                              variant={option.isCancel ? "ghost" : "outline"}
+                              size="tinyWide"
+                              onClick={() =>
+                                choosePendingActionOption(pendingAction, option)
+                              }
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </fieldset>
+                      ) : undefined;
+                    return (
+                      <NotificationRow
+                        key={notification.id}
+                        notification={notification}
+                        actionContent={actionContent}
+                        dismissible={!pendingAction}
+                        stackKey={
+                          rowIndex === 0 && collapsedGroupHasMore
+                            ? group.key
+                            : undefined
+                        }
+                        stackCount={
+                          rowIndex === 0 && allGroupRows.length > 1
+                            ? allGroupRows.length
+                            : undefined
+                        }
+                        stackCountVisibility={
+                          rowIndex === 0 && allGroupRows.length > 1
+                            ? fanned
+                              ? Math.max(
+                                  1 - stackFanProgress,
+                                  shadeCloseProgress,
+                                )
+                              : 1
+                            : undefined
+                        }
+                        stackPeeks={
+                          rowIndex === 0 && peeks.length > 0
+                            ? {
+                                count: peeks.length,
+                                disabled: stackClosing,
+                                expansionProgress: stackPeekExpansionProgress,
+                                fanned,
+                                groupLabel: group.label,
+                                mode: stackPeekMode,
+                                openOffsetsPx: stackPeekOpenOffsets.get(
+                                  group.key,
+                                ),
+                                previewRows: peeks,
+                                testIdVisible:
+                                  !fanned || shadeCloseProgress > 0,
+                                totalCount: allGroupRows.length,
+                                visibility: stackPeekVisibility,
+                              }
+                            : undefined
+                        }
+                        shadeVisibility={
+                          fanned && rowIndex > 0
+                            ? stackFanProgress * disposableLayoutVisibility
+                            : undefined
+                        }
+                        onExpandStack={expandStack}
+                        onOpen={openNotification}
+                        onDismiss={dismissNotification}
+                      />
+                    );
+                  })}
                 </ul>
               </div>
             </motion.li>

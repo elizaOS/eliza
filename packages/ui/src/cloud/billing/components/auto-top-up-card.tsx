@@ -7,13 +7,13 @@
  * card charges only happen if earnings can't cover.
  *
  * Enable is a SettingsSwitchRow. Amount and threshold are SettingsInputRow
- * number fields. Save and BrandCard chrome stay as the multi-field editor.
+ * number fields. Save and canonical Card chrome stay as the multi-field editor.
  * Reads/writes /api/v1/billing/settings.
  */
 
 "use client";
 
-import { BrandCard, Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
+import { Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   CreditCard,
@@ -28,6 +28,9 @@ import {
   SettingsInputRow,
   SettingsSwitchRow,
 } from "../../../components/settings/settings-agent-rows";
+import { Alert } from "../../../components/ui/alert";
+import { Badge } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
@@ -331,13 +334,14 @@ export function AutoTopUpCard() {
     });
 
     return (
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
-        <div
+        <Card
+          variant="dangerNotice"
           role="alert"
           aria-labelledby="cloud-auto-top-up-load-error-title"
           aria-describedby="cloud-auto-top-up-load-error-description"
-          className="relative z-10 flex flex-col gap-4 border border-danger/30 bg-danger/10 p-4 sm:flex-row sm:items-center sm:justify-between"
+          className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex min-w-0 items-start gap-3">
             <AlertCircle
@@ -363,7 +367,6 @@ export function AutoTopUpCard() {
             type="button"
             variant="outline"
             size="sm"
-            className="min-h-touch shrink-0 font-mono"
             disabled={loading}
             aria-busy={loading}
             onClick={() => void load()}
@@ -378,14 +381,14 @@ export function AutoTopUpCard() {
             )}
             {retryLabel}
           </Button>
-        </div>
-      </BrandCard>
+        </Card>
+      </Card>
     );
   }
 
   if (loading || !settings || !limits) {
     return (
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
         <div
           className="flex items-center justify-center py-12"
@@ -399,20 +402,20 @@ export function AutoTopUpCard() {
           />
           <span className="sr-only">{loadingLabel}</span>
         </div>
-      </BrandCard>
+      </Card>
     );
   }
 
   const noPaymentMethod = !settings.hasPaymentMethod;
 
   return (
-    <BrandCard className="relative">
+    <Card variant="brand" className="relative">
       <CornerBrackets size="sm" className="opacity-50" />
 
       <div className="relative z-10 space-y-6">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <div className="size-2 rounded-full bg-muted" aria-hidden="true" />
+            <Badge variant="mutedDot" aria-hidden="true" />
             <h3 className="text-base font-mono text-txt uppercase">
               {t("cloud.autoTopUp.title", {
                 defaultValue: "Auto top-up (card)",
@@ -445,10 +448,11 @@ export function AutoTopUpCard() {
         />
 
         {noPaymentMethod && (
-          <div
+          <Alert
+            variant="dashboardWarning"
             role="status"
             aria-labelledby="cloud-billing-auto-top-up-payment-warning"
-            className="flex items-start gap-2 border border-status-warning/30 bg-status-warning-bg p-3"
+            className="flex items-start gap-2"
           >
             <Info
               className="mt-0.5 size-4 shrink-0 text-status-warning"
@@ -463,7 +467,7 @@ export function AutoTopUpCard() {
                   "No saved payment method. Add a card on the billing page first to enable auto top-up.",
               })}
             </p>
-          </div>
+          </Alert>
         )}
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -510,26 +514,27 @@ export function AutoTopUpCard() {
           />
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
-          <Button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || !!noPaymentMethod}
-            aria-busy={saving}
-            className="bg-txt hover:bg-txt/90 text-bg font-mono"
-          >
-            {saving ? (
-              <Loader2
-                className="size-4 animate-spin motion-reduce:animate-none"
-                aria-hidden="true"
-              />
-            ) : (
-              <CreditCard className="size-4" aria-hidden="true" />
-            )}
-            {saveLabel}
-          </Button>
-        </div>
+        <Card asChild variant="billingTopDivider">
+          <div className="flex items-center justify-end gap-3">
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || !!noPaymentMethod}
+              aria-busy={saving}
+            >
+              {saving ? (
+                <Loader2
+                  className="size-4 animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <CreditCard className="size-4" aria-hidden="true" />
+              )}
+              {saveLabel}
+            </Button>
+          </div>
+        </Card>
       </div>
-    </BrandCard>
+    </Card>
   );
 }

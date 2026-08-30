@@ -25,6 +25,8 @@ import {
   type UserModelMessage,
 } from "ai";
 import { Hono } from "hono";
+import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
+import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   enforceOrgRateLimit,
@@ -43,7 +45,6 @@ import {
   estimateTokens,
   getProviderFromModel,
   getSafeModelParams,
-  modelUsesReasoningTokens,
   normalizeModelName,
 } from "@/lib/pricing";
 import {
@@ -181,33 +182,12 @@ function normalizeModelId(model: string): string {
   return model;
 }
 
-const MESSAGES_MIN_RESPONSE_TOKENS = 4096;
-
-/**
- * Response-token budget for a /v1/messages generation. Mirrors the
- * chat/completions floor: Anthropic CoT needs headroom for thinking PLUS the
- * answer, and non-Anthropic reasoning models (cerebras zai-glm-4.7 /
- * gpt-oss-120b / gemma-4-31b) spend hidden reasoning tokens — without a floor a
- * small `max_tokens` is consumed by reasoning alone and the caller is billed
- * for empty output. Non-reasoning models pass their requested budget through.
- */
+/** Preserves the caller's explicit Anthropic-compatible output ceiling. */
 export function messagesEffectiveMaxTokens(
   requestMaxTokens: number | undefined,
-  cotBudget: number | null,
-  model: string,
+  _cotBudget: number | null,
+  _model: string,
 ): number | undefined {
-  if (cotBudget != null) {
-    return Math.max(
-      requestMaxTokens ?? MESSAGES_MIN_RESPONSE_TOKENS,
-      cotBudget + MESSAGES_MIN_RESPONSE_TOKENS,
-    );
-  }
-  if (modelUsesReasoningTokens(model)) {
-    return Math.max(
-      requestMaxTokens ?? MESSAGES_MIN_RESPONSE_TOKENS,
-      MESSAGES_MIN_RESPONSE_TOKENS,
-    );
-  }
   return requestMaxTokens;
 }
 
@@ -609,19 +589,24 @@ app.post("/", async (c) => {
       );
     }
     if (resolution.kind === "suspended") {
-      return anthropicError(
-        "permission_error",
-        "Your account has been suspended due to policy violations.",
-        403,
-      );
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "messages",
+        traceId,
+      });
+      return anthropicError(denial.type, denial.message, denial.status);
     }
     if (resolution.kind === "rejected") {
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "messages",
+        traceId,
+      });
       return anthropicError(
-        resolution.status === 403 ? "permission_error" : "authentication_error",
-        resolution.status === 403
-          ? "Account or organization access is disabled."
-          : "Authentication required.",
-        resolution.status,
+        denial.type,
+        denial.message,
+        denial.status,
+        denial.retryAfterSeconds
+          ? { "Retry-After": String(denial.retryAfterSeconds) }
+          : undefined,
       );
     }
     if (resolution.kind === "authorized") {
@@ -649,8 +634,34 @@ app.post("/", async (c) => {
       apiKey = await getRequestApiKeyId(c);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return anthropicError("authentication_error", message, 401);
+    // error-policy:J1 resolver infrastructure and typed auth failures retain
+    // their status; an unexpected failure is an Anthropic-shaped 500, never a
+    // fabricated authentication rejection.
+    const status = getErrorStatusCode(error);
+    if (status === 401 || status === 403 || status === 503) {
+      const denial = resolveInferenceAuthStandingDenial(
+        { kind: "rejected", status },
+        { route: "messages", traceId },
+      );
+      return anthropicError(
+        denial.type,
+        denial.message,
+        denial.status,
+        denial.retryAfterSeconds
+          ? { "Retry-After": String(denial.retryAfterSeconds) }
+          : undefined,
+      );
+    }
+    logger.error("[Messages] inference auth resolver failed", {
+      traceId,
+      status,
+      errorName: error instanceof Error ? error.name : "NonErrorThrown",
+    });
+    return anthropicError(
+      "api_error",
+      "Authorization could not be completed.",
+      status >= 400 && status <= 599 ? status : 500,
+    );
   }
   const tAuth = performance.now();
 
@@ -818,13 +829,9 @@ app.post("/", async (c) => {
   }
 
   const estimatedInputTokens = estimateInputTokens(estimateMessages);
-  // Reserve against the SAME ceiling the provider is capped at below, not the
-  // raw request.max_tokens. `messagesEffectiveMaxTokens` raises a reasoning
-  // model's provider budget to fit hidden reasoning PLUS the answer (e.g. a
-  // requested 256 becomes the 4096 floor), so reserving the raw value lets the
-  // provider bill well above the reservation — the #16081 invariant, fixed for
-  // /v1/chat/completions but not here. The provider paths recompute the same
-  // deterministic value, so admission and enforcement stay identical.
+  // Reserve against the same caller-authored ceiling enforced at the provider
+  // boundary. Reasoning configuration never silently increases generation or
+  // spend authority.
   const reservationCotBudget = resolveAnthropicThinkingBudgetTokens(
     model,
     process.env,
@@ -904,6 +911,8 @@ app.post("/", async (c) => {
         settleUnknownReservation = () => settle(reservation.reservedAmount);
       }
     } catch (error) {
+      // error-policy:J1 admission failures become terminal Anthropic responses
+      // before any provider dispatch.
       if (error instanceof InferenceAppAffiliateUnsupportedError) {
         return anthropicError(
           "invalid_request_error",
@@ -913,9 +922,9 @@ app.post("/", async (c) => {
       }
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
-          "rate_limit_error",
+          "billing_error",
           `Insufficient cloud credits. Required: $${error.required.toFixed(4)}`,
-          429,
+          402,
         );
       }
       if (
@@ -957,11 +966,13 @@ app.post("/", async (c) => {
       markProviderDispatched = admission.markProviderDispatched;
       billingReservation = admission.reservation;
     } catch (error) {
+      // error-policy:J1 admission failures become terminal Anthropic responses
+      // before any provider dispatch.
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
-          "rate_limit_error",
+          "billing_error",
           `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-          429,
+          402,
         );
       }
       if (error instanceof InferenceBalanceCacheWarmingError) {

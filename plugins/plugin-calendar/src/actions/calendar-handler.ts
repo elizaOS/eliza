@@ -132,7 +132,8 @@ function collectRecentConversationTexts(args: {
   runtime: IAgentRuntime;
   message?: Memory;
   state: State | undefined;
-  limit: number;
+  /** @deprecated Complete conversation context is always returned. */
+  limit?: number;
 }): Promise<string[]> {
   return deps().recentConversationTexts(args);
 }
@@ -5210,7 +5211,6 @@ const calendarAction: CalendarHandlerAction = {
             runtime,
             message,
             state,
-            limit: 8,
           })
         ).join("\n");
         if (queriesForSearch.length === 0) {

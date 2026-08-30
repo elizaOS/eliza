@@ -593,6 +593,8 @@ async function waitForLiveRuntimeBootstrap(
 export async function startLifeOpsLiveRuntime(options?: {
   bootTimeoutMs?: number;
   selectedProvider?: SelectedLiveProvider | null;
+  runtimeRoot?: string;
+  removeRuntimeRootOnClose?: boolean;
 }): Promise<StartedLifeOpsLiveRuntime> {
   const selectedProvider =
     options?.selectedProvider ?? (await selectLifeOpsLiveProvider());
@@ -603,7 +605,10 @@ export async function startLifeOpsLiveRuntime(options?: {
     );
   }
 
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "eliza-lifeops-live-"));
+  const ownsRuntimeRoot = !options?.runtimeRoot;
+  const tempRoot =
+    options?.runtimeRoot ??
+    (await mkdtemp(path.join(os.tmpdir(), "eliza-lifeops-live-")));
   const stateDir = path.join(tempRoot, "state");
   const pgliteDir = path.join(tempRoot, "pglite");
   const configPath = path.join(tempRoot, "eliza.json");
@@ -653,6 +658,7 @@ export async function startLifeOpsLiveRuntime(options?: {
       ? (baseConfig.cloud as Record<string, unknown>)
       : {};
 
+  await mkdir(tempRoot, { recursive: true });
   await mkdir(stateDir, { recursive: true });
   await mkdir(pgliteDir, { recursive: true });
   await writeFile(
@@ -805,7 +811,9 @@ export async function startLifeOpsLiveRuntime(options?: {
       child.kill("SIGKILL");
       await waitForChildExit(child, 5_000);
     }
-    await rm(tempRoot, { recursive: true, force: true });
+    if (ownsRuntimeRoot || options?.removeRuntimeRootOnClose === true) {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
     throw new Error(
       `Live runtime failed to start: ${error instanceof Error ? error.message : String(error)}\n${logTail}`,
     );
@@ -824,7 +832,9 @@ export async function startLifeOpsLiveRuntime(options?: {
           await waitForChildExit(child, 5_000);
         }
       }
-      await rm(tempRoot, { recursive: true, force: true });
+      if (ownsRuntimeRoot || options?.removeRuntimeRootOnClose === true) {
+        await rm(tempRoot, { recursive: true, force: true });
+      }
     },
   };
 }

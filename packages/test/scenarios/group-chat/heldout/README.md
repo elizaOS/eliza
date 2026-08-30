@@ -88,6 +88,21 @@ pseudo-labels, not human judgments that an intervention was correct. Reports
 must call them observational labels and use the replay set for relative
 distribution-shift comparisons, not absolute intervention accuracy.
 
+The production Stage-1 evaluator can consume this output with
+`--input-format=discord-replay`. A two-author paired SILENT row necessarily
+selects the author of the current turn as the target seat, but production only
+runs Stage 1 for inbound messages. The evaluator therefore records those rows
+as explicit eligibility exclusions and evaluates the observational SPEAK rows
+whose current turn is inbound to the selected seat. It never relabels an
+outbound turn as inbound.
+
+```bash
+bun run --cwd packages/scenario-runner eval:when2speak -- \
+  --input=/tmp/discord-replay.jsonl \
+  --input-format=discord-replay \
+  --provider=cli
+```
+
 Every JSONL row records the dataset, revision, split, source row index, and
 observed next-turn index. The adjacent manifest records all sampled offsets and
 the SHA-256 digest of the complete output.

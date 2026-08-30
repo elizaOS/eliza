@@ -39,7 +39,6 @@ import {
   PLUGIN_ROUTE_COVERAGE,
   SHORTCUT_COVERAGE,
   SHORTCUT_REGISTRY_HINTS,
-  VIEW_COVERAGE_GATES,
 } from "./manifest.ts";
 
 export const REPO_ROOT = path.resolve(
@@ -324,7 +323,7 @@ export function resolveCoverage(
 
 export interface SurfaceItem {
   id: string;
-  kind: "command" | "shortcut" | "view" | "plugin-route";
+  kind: "command" | "shortcut" | "plugin-route";
   status: "covered" | "exempt" | "missing";
   detail: string;
   artifacts: string[];
@@ -340,7 +339,6 @@ export interface CoverageMatrix {
     commands: { total: number; covered: number };
     shortcuts: { total: number; covered: number; gated: boolean };
     pluginRoutes: { total: number; covered: number; exempt: number };
-    views: { gates: number };
     blockingGaps: number;
     advisoryGaps: number;
   };
@@ -447,21 +445,6 @@ export function buildCoverageMatrix(options?: {
     });
   }
 
-  // ── Views (delegated to the existing view gates — not re-implemented here) ─
-  for (const gate of VIEW_COVERAGE_GATES) {
-    const exists = existsSync(path.join(root, gate));
-    items.push({
-      id: `view-gate:${gate}`,
-      kind: "view",
-      status: exists ? "covered" : "missing",
-      detail: exists
-        ? "views covered by the existing view ship-gate (referenced, not re-implemented per #8796/#8797/#8798)"
-        : `expected view gate file is missing: ${gate}`,
-      artifacts: exists ? [gate] : [],
-      blocking: true,
-    });
-  }
-
   const blockingGaps = items.filter(
     (item) => item.blocking && item.status === "missing",
   );
@@ -484,7 +467,6 @@ export function buildCoverageMatrix(options?: {
         covered: routesCovered,
         exempt: routesExempt,
       },
-      views: { gates: VIEW_COVERAGE_GATES.length },
       blockingGaps: blockingGaps.length,
       advisoryGaps: advisoryGaps.length,
     },

@@ -293,7 +293,7 @@ export interface SubscriptionsGmailGateway {
    */
   searchSubscriptionMessages(args: {
     windowDays: number;
-    maxResults: number;
+    maxResults?: number;
     now?: Date;
   }): Promise<LifeOpsGmailMessageSummary[]>;
 }
@@ -330,7 +330,7 @@ export function createSubscriptionsGmailGateway(
       const googleMessages = await searchMessages({
         accountId: accountIdForGrant(grant),
         query: `in:inbox newer_than:${windowDays}d`,
-        limit: args.maxResults,
+        ...(args.maxResults === undefined ? {} : { limit: args.maxResults }),
       });
       return googleMessages.map((message) =>
         gmailMessageFromGoogle({ message, grant, agentId, syncedAt }),

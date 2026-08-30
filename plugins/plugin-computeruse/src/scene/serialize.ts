@@ -1,14 +1,36 @@
 /**
- * Lossless Scene serializer.
+ * Complete Scene serializer with structural secure-field redaction.
  *
  * Used by the `scene` provider to render the current Scene into the agent
  * prompt. Every detected app, window, OCR block, and accessibility node is
- * retained so the model never reasons from a partial scene.
+ * retained, while values overlapping password/secure-text accessibility
+ * fields are replaced and accompanied by explicit redaction metadata.
  *
  * The output is fenced JSON for predictable downstream tokenization.
  */
 
 import type { Scene } from "./scene-types.js";
+
+const REDACTED_SECURE_FIELD = "[REDACTED_SECURE_FIELD]";
+
+function isSecureAxRole(role: string): boolean {
+  const normalized = role.toLowerCase().replaceAll(/[^a-z]/g, "");
+  return (
+    normalized.includes("password") || normalized.includes("securetextfield")
+  );
+}
+
+function overlaps(
+  left: [number, number, number, number],
+  right: [number, number, number, number],
+): boolean {
+  return (
+    left[0] < right[0] + right[2] &&
+    left[0] + left[2] > right[0] &&
+    left[1] < right[1] + right[3] &&
+    left[1] + left[3] > right[1]
+  );
+}
 
 export interface SerializeOptions {
   /** @deprecated Scene serialization is lossless; this option is ignored. */
@@ -52,6 +74,7 @@ export function serializeSceneForPrompt(
   const focusedAx = scene.ax.filter((n) => n.displayId === focusedDisplay);
   const remaining = scene.ax.filter((n) => n.displayId !== focusedDisplay);
   const completeAx = [...focusedAx, ...remaining];
+  const secureFields = completeAx.filter((node) => isSecureAxRole(node.role));
 
   // Prefer apps with visible windows while retaining every app and window.
   const appsByPriority = [...scene.apps].sort((a, b) => {
@@ -84,7 +107,12 @@ export function serializeSceneForPrompt(
     apps: compactApps,
     ocr: completeOcr.map((b) => ({
       id: b.id,
-      text: b.text,
+      text: secureFields.some(
+        (field) =>
+          field.displayId === b.displayId && overlaps(field.bbox, b.bbox),
+      )
+        ? REDACTED_SECURE_FIELD
+        : b.text,
       bbox: b.bbox,
       conf: Number(b.conf.toFixed(3)),
       displayId: b.displayId,
@@ -92,13 +120,19 @@ export function serializeSceneForPrompt(
     ax: completeAx.map((n) => ({
       id: n.id,
       role: n.role,
-      label: n.label,
+      label: isSecureAxRole(n.role) ? REDACTED_SECURE_FIELD : n.label,
       bbox: n.bbox,
       actions: n.actions,
       displayId: n.displayId,
     })),
     vlm_scene: scene.vlm_scene,
     vlm_elements: scene.vlm_elements,
+    redactions: secureFields.map((field) => ({
+      kind: "secure_field",
+      bounds: field.bbox,
+      displayId: field.displayId,
+      reason: "Accessibility role marks this region as credential input",
+    })),
   };
   return ["```json", JSON.stringify(compact, null, 2), "```"].join("\n");
 }

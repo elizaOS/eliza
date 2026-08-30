@@ -64,6 +64,7 @@ describe("isClaudeSdkApiErrorMessage", () => {
       "API Error: Request was aborted.",
       "API Error: Missing Tool Result Block",
       "API Error",
+      "Failed to authenticate. API Error: 401 Invalid bearer token",
     ]) {
       expect(isClaudeSdkApiErrorMessage(s)).toBe(true);
     }
@@ -77,6 +78,7 @@ describe("isClaudeSdkApiErrorMessage", () => {
       "Error handling matters — retry on API Error status codes like 429.",
       "API Error handling is a best practice for resilient clients.",
       "API Errors come in many flavors; retry the retryable ones.",
+      "The log says Failed to authenticate. API Error: 401 Invalid bearer token.",
       "42",
     ]) {
       expect(isClaudeSdkApiErrorMessage(s)).toBe(false);

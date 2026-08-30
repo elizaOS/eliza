@@ -6,6 +6,7 @@
  * distinct fetch parameters revalidate independently instead of colliding.
  */
 
+import { Radio } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -183,11 +184,10 @@ function TreeNode(props: {
       >
         {canExpand ? (
           <Button
-            variant="ghost"
-            size="icon"
+            variant="ghostMuted"
+            size="disclosure"
             type="button"
             onClick={() => onToggle(path)}
-            className="size-5 shrink-0 rounded-sm p-0 text-left text-muted hover:bg-bg-hover hover:text-txt"
             title={open ? t("common.collapse") : t("common.expand")}
           >
             {open ? "▾" : "▸"}
@@ -235,7 +235,7 @@ function OrderCard(props: { title: string; entries: RuntimeOrderItem[] }) {
           entries.map((entry) => (
             <div
               key={`${title}-${entry.index}`}
-              className="min-w-0 break-words text-txt"
+              className="min-w-max whitespace-nowrap text-txt"
             >
               {orderItemLabel(entry)}
             </div>
@@ -553,8 +553,11 @@ export function RuntimeView({
     defaultValue: "Filter sections",
   });
   const chatBinding = useMemo(
-    () => ({ placeholder: filterPlaceholder, onQuery: setSidebarSearch }),
-    [filterPlaceholder],
+    () =>
+      snapshot?.runtimeAvailable
+        ? { placeholder: filterPlaceholder, onQuery: setSidebarSearch }
+        : null,
+    [filterPlaceholder, snapshot?.runtimeAvailable],
   );
   useRegisterViewChatBinding(chatBinding);
 
@@ -601,11 +604,11 @@ export function RuntimeView({
           <Button
             ref={sidebarExpandControl.ref}
             variant="outline"
-            size="sm"
+            size="pillDense"
             type="button"
             onClick={expandTop}
             disabled={activeSection === "summary"}
-            className="h-8 w-full rounded-full text-xs-tight font-semibold"
+            className="w-full"
             {...sidebarExpandControl.agentProps}
           >
             {t("runtimeview.ExpandTop")}
@@ -710,7 +713,7 @@ export function RuntimeView({
   return (
     <ShellViewAgentSurface viewId="runtime">
       <PageLayout
-        sidebar={runtimeSidebar}
+        sidebar={snapshot?.runtimeAvailable ? runtimeSidebar : undefined}
         contentHeader={contentHeader}
         data-testid="runtime-view"
       >
@@ -722,21 +725,27 @@ export function RuntimeView({
           {loading && !snapshot ? (
             <DetailSkeleton className="min-h-[24rem]" />
           ) : !snapshot ? (
-            <PagePanel.Empty
-              variant="panel"
-              className="min-h-[24rem]"
-              description={t("runtimeview.loadingDescription")}
-              title={t("runtimeview.noSnapshotAvailable")}
-            />
+            <div className="grid min-h-[24rem] flex-1 place-items-center px-6 text-center [@media(max-height:480px)]:min-h-[9rem]">
+              <div className="flex max-w-sm flex-col items-center gap-3 text-muted">
+                <Radio className="size-6" aria-hidden />
+                <p className="text-sm">
+                  {t("runtimeview.noSnapshotAvailable")}{" "}
+                  {t("runtimeview.loadingDescription")}
+                </p>
+              </div>
+            </div>
           ) : !snapshot.runtimeAvailable ? (
-            <PagePanel.Empty
-              variant="panel"
-              className="min-h-[24rem] border-warning/25 bg-warning/10 text-warning"
-              description={t("runtimeview.runtimePendingDescription")}
-              title={t("runtimeview.AgentRuntimeIsNot")}
-            />
+            <div className="grid min-h-[24rem] flex-1 place-items-center px-6 text-center [@media(max-height:480px)]:min-h-[9rem]">
+              <div className="flex max-w-sm flex-col items-center gap-3 text-muted">
+                <Radio className="size-6" aria-hidden />
+                <p className="text-sm">
+                  {t("runtimeview.AgentRuntimeIsNot")}{" "}
+                  {t("runtimeview.runtimePendingDescription")}
+                </p>
+              </div>
+            </div>
           ) : activeSection === "summary" ? (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-4">
               <OrderCard
                 title={t("common.plugins")}
                 entries={snapshot.order.plugins}
@@ -771,10 +780,9 @@ export function RuntimeView({
                     <Button
                       ref={treeCollapseControl.ref}
                       variant="outline"
-                      size="sm"
+                      size="pillDense"
                       type="button"
                       onClick={collapseTree}
-                      className="h-8 rounded-full text-xs-tight font-semibold"
                       {...treeCollapseControl.agentProps}
                     >
                       {t("common.collapse")}
@@ -782,10 +790,9 @@ export function RuntimeView({
                     <Button
                       ref={treeExpandControl.ref}
                       variant="outline"
-                      size="sm"
+                      size="pillDense"
                       type="button"
                       onClick={expandTop}
-                      className="h-8 rounded-full text-xs-tight font-semibold"
                       {...treeExpandControl.agentProps}
                     >
                       {t("runtimeview.ExpandTop")}

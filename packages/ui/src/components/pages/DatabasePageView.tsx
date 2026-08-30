@@ -6,7 +6,12 @@
  */
 
 import type { ReactNode } from "react";
-import { useAgentElement } from "../../agent-surface";
+import {
+  FramedPage,
+  FramedPageBody,
+  FramedPageHeader,
+  FramedPageNavigation,
+} from "../../layouts/framed-page";
 import { useAppSelector } from "../../state";
 import { SegmentedControl } from "../ui/segmented-control";
 import { DynamicViewLoader } from "../views/DynamicViewLoader";
@@ -20,33 +25,6 @@ import { MediaGalleryView } from "./MediaGalleryView";
 // never with the always-loaded Database page.
 const VECTOR_BROWSER_BUNDLE_URL = "/api/views/vector-browser/bundle.js";
 const VECTOR_BROWSER_COMPONENT_EXPORT = "VectorBrowserView";
-
-// The SegmentedControl is a composite that renders its own internal buttons and
-// does not forward refs to them, so each tab registers with the agent surface
-// through a tiny ref-less child that drives selection via onActivate (mirrors
-// SettingsNavButton in SettingsView.tsx).
-function DatabaseTabButton({
-  id,
-  label,
-  isActive,
-  onSelect,
-}: {
-  id: "tables" | "media" | "vectors";
-  label: string;
-  isActive: boolean;
-  onSelect: (id: "tables" | "media" | "vectors") => void;
-}) {
-  useAgentElement({
-    id: `tab-${id}`,
-    role: "tab",
-    label,
-    group: "database-views",
-    status: isActive ? "active" : "inactive",
-    description: `Switch to the ${label} database view`,
-    onActivate: () => onSelect(id),
-  });
-  return null;
-}
 
 export function DatabasePageView({
   contentHeader,
@@ -79,46 +57,43 @@ export function DatabasePageView({
       <SegmentedControl
         value={databaseSubTab}
         onValueChange={selectTab}
-        items={dbTabs.map((tab) => ({ value: tab.id, label: tab.label }))}
+        items={dbTabs.map((tab) => ({
+          value: tab.id,
+          label: tab.label,
+          agentId: `tab-${tab.id}`,
+          agentLabel: tab.label,
+          agentGroup: "database-views",
+        }))}
         role="tablist"
         aria-label={t("aria.databaseViews")}
       />
-      {dbTabs.map((tab) => (
-        <DatabaseTabButton
-          key={tab.id}
-          id={tab.id}
-          label={tab.label}
-          isActive={databaseSubTab === tab.id}
-          onSelect={selectTab}
-        />
-      ))}
     </>
   );
 
-  // Each sub-view owns its own PageLayout + Sidebar.
-  // contentHeader and leftNav are passed through so the layout is uniform.
+  let content: ReactNode;
   if (databaseSubTab === "media") {
-    return (
-      <ShellViewAgentSurface viewId="database">
-        <MediaGalleryView leftNav={leftNav} contentHeader={contentHeader} />
-      </ShellViewAgentSurface>
+    content = <MediaGalleryView />;
+  } else if (databaseSubTab === "vectors") {
+    content = (
+      <DynamicViewLoader
+        bundleUrl={VECTOR_BROWSER_BUNDLE_URL}
+        componentExport={VECTOR_BROWSER_COMPONENT_EXPORT}
+        viewId="vector-browser"
+        viewProps={{ leftNav, contentHeader }}
+      />
     );
-  }
-  if (databaseSubTab === "vectors") {
-    return (
-      <ShellViewAgentSurface viewId="database">
-        <DynamicViewLoader
-          bundleUrl={VECTOR_BROWSER_BUNDLE_URL}
-          componentExport={VECTOR_BROWSER_COMPONENT_EXPORT}
-          viewId="vector-browser"
-          viewProps={{ leftNav, contentHeader }}
-        />
-      </ShellViewAgentSurface>
-    );
+  } else {
+    content = <DatabaseView layout="page" />;
   }
   return (
     <ShellViewAgentSurface viewId="database">
-      <DatabaseView leftNav={leftNav} contentHeader={contentHeader} />
+      <FramedPage gutterOwner="framed-page">
+        <FramedPageHeader title="Databases" actions={contentHeader} />
+        <FramedPageNavigation>{leftNav}</FramedPageNavigation>
+        <FramedPageBody scroll="view" padded={false}>
+          {content}
+        </FramedPageBody>
+      </FramedPage>
     </ShellViewAgentSurface>
   );
 }

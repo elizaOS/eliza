@@ -4,7 +4,7 @@
 // @elizaos/ui WidgetSection / EmptyWidgetState as transparent passthroughs (so
 // the widget's title/testId/onTitleClick and child rows render in the DOM) and
 // the @elizaos/ui/state useApp hook (aliased to @elizaos/ui by vitest.config.ts).
-// Asserts populated EVM/SOL rows + chain badges, dust-thresholded asset count,
+// Asserts one EVM row + one SOL row, chain badges, dust-thresholded asset count,
 // formatUsd value, copy buttons, title-click navigation, empty + disabled +
 // auto-load branches. Fixtures use the real runtime-owned wallet shapes.
 
@@ -88,10 +88,10 @@ const balances: WalletBalancesResponse = {
     address: EVM_ADDRESS,
     chains: [
       {
-        chain: "BSC",
-        chainId: 56,
+        chain: "Ethereum",
+        chainId: 1,
         nativeBalance: "1.25",
-        nativeSymbol: "BNB",
+        nativeSymbol: "ETH",
         nativeValueUsd: "750",
         tokens: [
           {
@@ -124,6 +124,26 @@ const balances: WalletBalancesResponse = {
   },
 };
 
+// Exact shape returned by the Shared Steward wallet adapter when it knows the
+// native holding but cannot quote fiat value for that managed wallet.
+const managedRouteBalances: WalletBalancesResponse = {
+  evm: {
+    address: EVM_ADDRESS,
+    chains: [
+      {
+        chain: "Ethereum",
+        chainId: 1,
+        nativeBalance: "1.25",
+        nativeSymbol: "ETH",
+        nativeValueUsd: "0",
+        tokens: [],
+        error: "USD valuation is unavailable for this managed wallet",
+      },
+    ],
+  },
+  solana: null,
+};
+
 const walletConfig: WalletConfigStatus = {
   evmAddress: EVM_ADDRESS,
   solanaAddress: SOL_ADDRESS,
@@ -138,7 +158,15 @@ const walletConfig: WalletConfigStatus = {
   ankrKeySet: false,
   heliusKeySet: true,
   birdeyeKeySet: true,
-  evmChains: ["BSC"],
+  evmChains: [
+    "Ethereum",
+    "Base",
+    "Arbitrum",
+    "Optimism",
+    "Polygon",
+    "BSC",
+    "Avalanche",
+  ],
   evmBalanceReady: true,
   solanaBalanceReady: true,
 };
@@ -170,24 +198,40 @@ afterEach(() => {
 });
 
 describe("WalletStatusSidebarWidget — populated", () => {
-  it("renders EVM/SOL rows, chain badges, dust-thresholded assets, and value", () => {
+  it("renders exactly one shared EVM row and one Solana row", () => {
     appHooks.useApp.mockReturnValue(makeAppState());
     render(React.createElement(WalletStatusSidebarWidget, {} as never));
 
     const widget = screen.getByTestId("chat-widget-wallet-status");
     expect(widget).toBeTruthy();
 
-    // EVM row: shortened address + at least one chain badge.
+    expect(
+      screen.getAllByTestId(/chat-widget-wallet-row-.+-address/),
+    ).toHaveLength(2);
+
+    // One shared EVM row represents the same address on every supported EVM
+    // chain; duplicate observations from config + balances collapse to one badge.
     const evmRow = screen.getByTestId("chat-widget-wallet-row-evm-address");
     expect(within(evmRow).getByText("0x1111…1111")).toBeTruthy();
-    expect(within(evmRow).getByTitle("BNB Chain")).toBeTruthy();
+    for (const chain of [
+      "Ethereum",
+      "Base",
+      "Arbitrum",
+      "Optimism",
+      "Polygon",
+      "BNB Chain",
+      "Avalanche",
+    ]) {
+      expect(within(evmRow).getByTitle(chain)).toBeTruthy();
+    }
+    expect(within(evmRow).getAllByTitle("Ethereum")).toHaveLength(1);
 
     // SOL row: shortened address + Solana badge.
     const solRow = screen.getByTestId("chat-widget-wallet-row-solana-address");
     expect(within(solRow).getByText("So1ana…1111")).toBeTruthy();
     expect(within(solRow).getByTitle("Solana")).toBeTruthy();
 
-    // Assets row: BNB native + USDC + SOL native = 3 (DUST excluded).
+    // Assets row: ETH native + USDC + SOL native = 3 (DUST excluded).
     const assetsRow = screen.getByTestId("chat-widget-wallet-row-assets");
     expect(within(assetsRow).getByText("3")).toBeTruthy();
 
@@ -196,7 +240,7 @@ describe("WalletStatusSidebarWidget — populated", () => {
     expect(within(valueRow).getByText("$1,150")).toBeTruthy();
   });
 
-  it("copies the full EVM address via the copy button", async () => {
+  it("copies the full shared EVM address", async () => {
     appHooks.useApp.mockReturnValue(makeAppState());
     render(React.createElement(WalletStatusSidebarWidget, {} as never));
 
@@ -223,6 +267,80 @@ describe("WalletStatusSidebarWidget — populated", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Wallet" }));
     expect(state.setTab).toHaveBeenCalledWith("inventory");
+  });
+
+  it("does not present a false $0 value for a positive managed holding without valuation", () => {
+    appHooks.useApp.mockReturnValue(
+      makeAppState({
+        walletAddresses: { evmAddress: EVM_ADDRESS, solanaAddress: null },
+        walletBalances: managedRouteBalances,
+      }),
+    );
+    render(React.createElement(WalletStatusSidebarWidget, {} as never));
+
+    const assetsRow = screen.getByTestId("chat-widget-wallet-row-assets");
+    expect(within(assetsRow).getByText("1")).toBeTruthy();
+
+    const valueRow = screen.getByTestId("chat-widget-wallet-row-value");
+    expect(within(valueRow).getByText("—")).toBeTruthy();
+    expect(within(valueRow).getByText("Unavailable")).toBeTruthy();
+    expect(within(valueRow).queryByText("$0.00")).toBeNull();
+  });
+
+  it("includes every recognized EVM chain in one summary and ignores unknown chains", () => {
+    const recognizedChains = [
+      ["Ethereum", 1, "100"],
+      ["Base", 8453, "200"],
+      ["Arbitrum", 42161, "300"],
+      ["Optimism", 10, "400"],
+      ["Polygon", 137, "500"],
+      ["BSC", 56, "600"],
+      ["Avalanche", 43114, "700"],
+    ] as const;
+    appHooks.useApp.mockReturnValue(
+      makeAppState({
+        walletAddresses: { evmAddress: EVM_ADDRESS, solanaAddress: null },
+        walletBalances: {
+          evm: {
+            address: EVM_ADDRESS,
+            chains: [
+              ...recognizedChains.map(([chain, chainId, nativeValueUsd]) => ({
+                chain,
+                chainId,
+                nativeBalance: "1",
+                nativeSymbol: "ETH",
+                nativeValueUsd,
+                tokens: [],
+                error: null,
+              })),
+              {
+                chain: "Unknown Rollup",
+                chainId: 999999,
+                nativeBalance: "1",
+                nativeSymbol: "UNKNOWN",
+                nativeValueUsd: "900",
+                tokens: [],
+                error: null,
+              },
+            ],
+          },
+          solana: null,
+        },
+      }),
+    );
+    render(React.createElement(WalletStatusSidebarWidget, {} as never));
+
+    expect(
+      screen.getAllByTestId("chat-widget-wallet-row-evm-address"),
+    ).toHaveLength(1);
+    expect(
+      screen.queryByTestId("chat-widget-wallet-row-solana-address"),
+    ).toBeNull();
+
+    const assetsRow = screen.getByTestId("chat-widget-wallet-row-assets");
+    expect(within(assetsRow).getByText("7")).toBeTruthy();
+    const valueRow = screen.getByTestId("chat-widget-wallet-row-value");
+    expect(within(valueRow).getByText("$2,800")).toBeTruthy();
   });
 });
 

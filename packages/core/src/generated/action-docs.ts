@@ -1206,26 +1206,64 @@ export const coreActionsSpec = {
 				{
 					name: "duration",
 					description:
-						"Optional target duration in seconds for video or audio.",
+						"Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					examples: [5, 30],
 					descriptionCompressed:
-						"Optional target duration in seconds for video or audio.",
+						"Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default.",
 				},
 				{
 					name: "aspectRatio",
 					description:
-						"Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+						"Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing.",
 					required: false,
 					schema: {
 						type: "string",
+						enum: ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
 					},
 					examples: ["16:9", "9:16"],
 					descriptionCompressed:
-						"Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+						"Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing.",
+				},
+				{
+					name: "resolution",
+					description:
+						"Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["480p", "720p"],
+					},
+					examples: ["480p", "720p"],
+					descriptionCompressed:
+						"Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p.",
+				},
+				{
+					name: "audio",
+					description:
+						"Whether video generation should include synchronized audio. Omit it to include audio.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					examples: [true, false],
+					descriptionCompressed:
+						"Whether video generation should include synchronized audio. Omit it to include audio.",
+				},
+				{
+					name: "seed",
+					description:
+						"Optional non-negative integer seed for reproducible media generation.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					examples: [42],
+					descriptionCompressed:
+						"Optional non-negative integer seed for reproducible media generation.",
 				},
 				{
 					name: "size",
@@ -1237,6 +1275,18 @@ export const coreActionsSpec = {
 					examples: ["1024x1024", "landscape_4_3"],
 					descriptionCompressed:
 						"Optional image size or image provider size preset.",
+				},
+				{
+					name: "imageUrl",
+					description:
+						"Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["https://media.example.com/source-image.png"],
+					descriptionCompressed:
+						"Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
 				},
 			],
 			examples: [
@@ -2886,26 +2936,64 @@ export const allActionsSpec = {
 				{
 					name: "duration",
 					description:
-						"Optional target duration in seconds for video or audio.",
+						"Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					examples: [5, 30],
 					descriptionCompressed:
-						"Optional target duration in seconds for video or audio.",
+						"Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default.",
 				},
 				{
 					name: "aspectRatio",
 					description:
-						"Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+						"Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing.",
 					required: false,
 					schema: {
 						type: "string",
+						enum: ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
 					},
 					examples: ["16:9", "9:16"],
 					descriptionCompressed:
-						"Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+						"Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing.",
+				},
+				{
+					name: "resolution",
+					description:
+						"Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["480p", "720p"],
+					},
+					examples: ["480p", "720p"],
+					descriptionCompressed:
+						"Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p.",
+				},
+				{
+					name: "audio",
+					description:
+						"Whether video generation should include synchronized audio. Omit it to include audio.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					examples: [true, false],
+					descriptionCompressed:
+						"Whether video generation should include synchronized audio. Omit it to include audio.",
+				},
+				{
+					name: "seed",
+					description:
+						"Optional non-negative integer seed for reproducible media generation.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					examples: [42],
+					descriptionCompressed:
+						"Optional non-negative integer seed for reproducible media generation.",
 				},
 				{
 					name: "size",
@@ -2917,6 +3005,18 @@ export const allActionsSpec = {
 					examples: ["1024x1024", "landscape_4_3"],
 					descriptionCompressed:
 						"Optional image size or image provider size preset.",
+				},
+				{
+					name: "imageUrl",
+					description:
+						"Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["https://media.example.com/source-image.png"],
+					descriptionCompressed:
+						"Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
 				},
 			],
 			examples: [

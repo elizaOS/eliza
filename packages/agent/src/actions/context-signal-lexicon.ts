@@ -1,12 +1,12 @@
 /**
  * Central lexicon mapping each context-signal key (affirmative, negative, the
  * lifeops_* family, calendar, gmail, web_search, send_message, and so on) to
- * its localized strong/weak keyword terms and a per-signal context-window limit.
+ * its localized strong/weak keyword terms.
  * `resolveContextSignalSpec` / `getContextSignalTerms` resolve a signal to
  * concrete terms for the requested character locale, drawing the raw phrase
  * lists from `@elizaos/shared`'s validation-keyword registry. Consumed by the
- * providers and action validators that decide when to widen or narrow the
- * context pulled into a prompt.
+ * providers and action validators that decide whether a signal is present in
+ * the complete available context.
  */
 import {
   type CharacterLanguage,
@@ -47,7 +47,6 @@ export type ContextSignalKey =
 export type ContextSignalStrength = "strong" | "weak";
 
 type ContextSignalSpec = {
-  contextLimit?: number;
   keywordKeys: {
     strong: string;
     weak?: string;
@@ -56,145 +55,120 @@ type ContextSignalSpec = {
 
 export type ResolvedContextSignalSpec = {
   locale: CharacterLanguage;
-  contextLimit: number;
   strongTerms: string[];
   weakTerms: string[];
 };
 
-const DEFAULT_CONTEXT_LIMIT = 8;
-
 const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
   affirmative: {
-    contextLimit: 4,
     keywordKeys: {
       strong: "contextSignal.affirmative.strong",
     },
   },
   draft_edit: {
-    contextLimit: 4,
     keywordKeys: {
       strong: "contextSignal.draft_edit.strong",
     },
   },
   negative: {
-    contextLimit: 4,
     keywordKeys: {
       strong: "contextSignal.negative.strong",
     },
   },
   temporal_followup: {
-    contextLimit: 6,
     keywordKeys: {
       strong: "contextSignal.temporal_followup.strong",
     },
   },
   temporal_next: {
-    contextLimit: 6,
     keywordKeys: {
       strong: "contextSignal.temporal_next.strong",
     },
   },
   gmail: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.gmail.strong",
       weak: "contextSignal.gmail.weak",
     },
   },
   lifeops: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops.strong",
       weak: "contextSignal.lifeops.weak",
     },
   },
   lifeops_cadence: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_cadence.strong",
     },
   },
   lifeops_complete: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_complete.strong",
     },
   },
   lifeops_delete: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_delete.strong",
     },
   },
   lifeops_overview: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_overview.strong",
     },
   },
   lifeops_reminder_pref: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_reminder_pref.strong",
     },
   },
   lifeops_skip: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_skip.strong",
     },
   },
   lifeops_snooze: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_snooze.strong",
     },
   },
   lifeops_escalation: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_escalation.strong",
     },
   },
   lifeops_goal: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_goal.strong",
     },
   },
   lifeops_phone: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_phone.strong",
     },
   },
   lifeops_review: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_review.strong",
     },
   },
   lifeops_update: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.lifeops_update.strong",
     },
   },
   link_entity: {
-    contextLimit: 8,
     keywordKeys: {
       strong: "contextSignal.link_entity.strong",
     },
   },
   calendar: {
-    contextLimit: 12,
     keywordKeys: {
       strong: "contextSignal.calendar.strong",
       weak: "contextSignal.calendar.weak",
     },
   },
   web_search: {
-    contextLimit: 6,
     keywordKeys: {
       strong: "contextSignal.web_search.strong",
       weak: "contextSignal.web_search.weak",
@@ -251,7 +225,6 @@ export function resolveContextSignalSpec(
 
   return {
     locale,
-    contextLimit: spec.contextLimit ?? DEFAULT_CONTEXT_LIMIT,
     strongTerms: getValidationKeywordTerms(spec.keywordKeys.strong, {
       includeAllLocales,
       locale,

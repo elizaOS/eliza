@@ -87,6 +87,9 @@ export default scenario({
       text: "just tired. long day.",
       responseExcludes: [OVER_PERK, GENERIC_FLATTEN],
       assertResponse: (text: string) => {
+        if (!text || text.trim().length === 0) {
+          return "expected a warm, present reply, got empty response";
+        }
         if (text.length > 280) {
           return `keep it soft and short (<=280 chars), got ${text.length}`;
         }

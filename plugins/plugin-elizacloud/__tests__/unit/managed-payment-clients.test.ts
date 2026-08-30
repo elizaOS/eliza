@@ -3,7 +3,11 @@
  * credentials opaque, and reject malformed Cloud responses.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  resetDevCloudEnvAuthorityForTests,
+} from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PaypalManagedClient,
   PaypalManagedClientError,
@@ -12,11 +16,136 @@ import {
   resolveEnvElizaCloudManagedClientConfig,
 } from "../../src/cloud/managed-payment-clients";
 
+const AUTHORITY_ENV_KEYS = [
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+] as const;
+let savedEnv: Record<string, string | undefined>;
+
+beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
+  savedEnv = Object.fromEntries(AUTHORITY_ENV_KEYS.map((key) => [key, process.env[key]]));
+  for (const key of AUTHORITY_ENV_KEYS) delete process.env[key];
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  for (const key of AUTHORITY_ENV_KEYS) {
+    const value = savedEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  resetDevCloudEnvAuthorityForTests();
 });
 
 describe("managed payment clients", () => {
+  it.each(["staging-default", "offline"] as const)(
+    "%s cannot be activated by late production env pollution",
+    async (authority) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+      process.env.ELIZAOS_CLOUD_API_KEY = "";
+      expect(captureDevCloudEnvAuthoritySnapshot()).not.toBeNull();
+
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal("fetch", fetchMock);
+      const config = resolveEnvElizaCloudManagedClientConfig();
+      const plaid = new PlaidManagedClient();
+      const paypal = new PaypalManagedClient();
+
+      expect(config).toMatchObject({
+        configured: false,
+        apiKey: null,
+        apiBaseUrl: "https://api-staging.eliza.app/api/v1",
+      });
+      expect(plaid.configured).toBe(false);
+      expect(paypal.configured).toBe(false);
+      await expect(plaid.createLinkToken()).rejects.toMatchObject({
+        status: 409,
+      });
+      await expect(paypal.buildAuthorizeUrl({ state: "state" })).rejects.toMatchObject({
+        status: 409,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it("keeps Plaid and PayPal on the frozen explicit-staging tuple", async () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+    process.env.ELIZAOS_CLOUD_API_KEY = "staging-launch-key";
+    expect(captureDevCloudEnvAuthoritySnapshot()).not.toBeNull();
+
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+    process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+    const fetchMock = vi.fn<typeof fetch>(async (input) =>
+      String(input).includes("/plaid/")
+        ? Response.json({
+            linkToken: "link-token",
+            expiration: "2026-01-01T00:00:00.000Z",
+            environment: "sandbox",
+          })
+        : Response.json({
+            url: "https://www.sandbox.paypal.com/connect",
+            scope: "openid",
+            environment: "sandbox",
+          })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const config = resolveEnvElizaCloudManagedClientConfig();
+
+    expect(config).toMatchObject({
+      configured: true,
+      apiKey: "staging-launch-key",
+      apiBaseUrl: "https://api-staging.eliza.app/api/v1",
+    });
+    await new PlaidManagedClient().createLinkToken();
+    await new PaypalManagedClient().buildAuthorizeUrl({ state: "state" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const [url, init] of fetchMock.mock.calls) {
+      expect(String(url)).toMatch(
+        /^https:\/\/api-staging\.eliza\.app\/api\/v1\/eliza\/(plaid|paypal)\//
+      );
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer staging-launch-key");
+    }
+  });
+
+  it("preserves live env configuration when no dev authority is active", async () => {
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://legacy.example/api/v1";
+    process.env.ELIZAOS_CLOUD_API_KEY = "legacy-live-key";
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        url: "https://www.paypal.com/connect",
+        scope: "openid",
+        environment: "live",
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const config = resolveEnvElizaCloudManagedClientConfig();
+    await new PaypalManagedClient().buildAuthorizeUrl({ state: "state" });
+
+    expect(config).toMatchObject({
+      configured: true,
+      apiKey: "legacy-live-key",
+      apiBaseUrl: "https://legacy.example/api/v1",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://legacy.example/api/v1/eliza/paypal/authorize",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer legacy-live-key",
+        }),
+      })
+    );
+  });
+
   it("normalizes cloud config from env without accepting redacted keys", () => {
     expect(
       resolveEnvElizaCloudManagedClientConfig({

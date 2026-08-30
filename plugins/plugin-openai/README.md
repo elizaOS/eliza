@@ -82,7 +82,6 @@ Set these as environment variables or in your character's `settings` object.
 | `OPENAI_IMAGE_DESCRIPTION_MODEL` | `gpt-5-mini` | Vision/description model |
 | `OPENAI_IMAGE_DESCRIPTION_BASE_URL` | `OPENAI_BASE_URL` | Separate endpoint for vision |
 | `OPENAI_IMAGE_DESCRIPTION_API_KEY` | `OPENAI_API_KEY` | Separate key for vision |
-| `OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS` | `8192` | Max tokens in description response |
 
 ### Audio
 

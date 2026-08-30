@@ -96,6 +96,25 @@ describe("searchMemories applies scope before the top-K cut", () => {
     expect(results[0]?.content.text).toBe("roomA 0");
   });
 
+  it("returns every eligible memory when no result limit is requested", async () => {
+    await seed(
+      Array.from({ length: 12 }, (_, index) => ({
+        entityId: entityA,
+        roomId: roomA,
+        content: { text: `complete ${index}` },
+        embedding: offAxis(index / 100),
+      }))
+    );
+
+    const results = await adapter.searchMemories({
+      tableName: "memories",
+      embedding: onAxis(),
+      match_threshold: 0,
+    });
+
+    expect(results).toHaveLength(12);
+  });
+
   it("honors worldId scope past a crowd of closer out-of-world vectors", async () => {
     const crowd: Memory[] = Array.from({ length: 15 }, (_, i) => ({
       entityId: entityB,

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from lib.generation_integrity import (
     IncompleteGenerationError,
+    remaining_model_context_tokens,
     require_complete_generated_tokens,
 )
 from typing import TYPE_CHECKING, Any, Literal
@@ -186,7 +187,6 @@ class LocalTextGenerator:
         self,
         messages: list[dict[str, str]],
         *,
-        max_new_tokens: int = 120,
         assistant_prefix: str | None = None,
         return_details: bool = False,
     ) -> str | GenerationResult:
@@ -197,6 +197,13 @@ class LocalTextGenerator:
                 messages,
                 add_generation_prompt=assistant_prefix is None,
                 assistant_prefix=assistant_prefix,
+            )
+            encoded_prompt = self.tokenizer.encode(rendered)
+            max_new_tokens = remaining_model_context_tokens(
+                self.model,
+                self.tokenizer,
+                prompt_tokens=len(encoded_prompt),
+                source="local_inference.mlx",
             )
             kwargs: dict[str, Any] = {
                 "prompt": rendered,
@@ -234,6 +241,10 @@ class LocalTextGenerator:
                 source="local_inference.mlx",
                 terminal_token_ids=self._eos_token_ids(),
             )
+            if finish_reason is None:
+                raise IncompleteGenerationError(
+                    "local_inference.mlx", "missing_finish_reason"
+                )
             if finish_reason == "length":
                 raise IncompleteGenerationError("local_inference.mlx", "length")
             raw_generated = self.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
@@ -258,6 +269,12 @@ class LocalTextGenerator:
             assistant_prefix=assistant_prefix,
         )
         inputs = self.tokenizer(rendered, return_tensors="pt")
+        max_new_tokens = remaining_model_context_tokens(
+            self.model,
+            self.tokenizer,
+            prompt_tokens=inputs["input_ids"].shape[1],
+            source="local_inference.transformers",
+        )
         if self.device == "cuda":
             inputs = {key: value.cuda() for key, value in inputs.items()}
 

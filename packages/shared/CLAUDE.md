@@ -122,7 +122,6 @@ packages/shared/
     env-utils.ts                 isTruthyEnvValue, env parsing helpers
     app-hero-art.ts              SVG/asset path constants
   assets/                        Static brand assets (logos, favicons, OG embeds)
-  assets-classic/                Eliza Classic brand assets
   scripts/
     generate-keywords.mjs        Builds i18n keyword data → src/i18n/generated/
     sync-to-public.mjs           Copies assets to consumer public/ dirs
@@ -195,7 +194,7 @@ bun run --cwd packages/shared sync           # copy assets to consumer public/ d
 
 **Add i18n keyword data:** edit the source `*.keywords.json` files in `src/i18n/keywords/`, then run `bun run --cwd packages/shared build:i18n` to regenerate `src/i18n/generated/`.
 
-**Add brand assets:** drop files under `assets/` or `assets-classic/`, update `src/brand/index.ts` constants, then run `bun run --cwd packages/shared sync` to propagate to consumers.
+**Add brand assets:** drop files under `assets/`, update `src/brand/index.ts` constants, then run `bun run --cwd packages/shared sync` to propagate to consumers.
 
 ## Conventions / gotchas
 
@@ -203,7 +202,7 @@ bun run --cwd packages/shared sync           # copy assets to consumer public/ d
 - **Sub-path exports are the escape hatch.** Modules with heavier or environment-specific concerns use dedicated sub-path exports (`/brand`, `/local-inference`, `/steward-session-client`, `/dev-settings-*`) so consumers opt in.
 - **Cycle guard in `src/config/env-vars.ts`.** This file is an empty compatibility module kept so older deep imports fail closed without creating a `shared → agent` cycle. `src/config/config.ts` contains migration helpers (`migrateCloudEnabledToProviders`) and re-exports `ElizaConfig` from `types.eliza.ts` for backward compatibility. Do not import from `@elizaos/agent` in either file or you will break the bench-server boot.
 - **`src/contracts/theme.ts` exports only types**, not the runtime theme engine. The runtime helpers (`ELIZA_DEFAULT_THEME`, `applyThemeToDocument`) live in `@elizaos/ui`.
-- **`assets/` and `assets-classic/` are published** (listed in `files`). Do not place generated build artifacts there.
+- **`assets/` is the active static-asset source** consumed by the public-tree sync. Do not place generated build artifacts there.
 - **i18n keyword files** under `src/i18n/generated/` are produced by `scripts/generate-keywords.mjs` from the hand-authored `*.keywords.json` sources in `src/i18n/keywords/`; edit the sources, then regenerate — never hand-edit the `generated/` output.
 - **Refresh tokens live exclusively in the HttpOnly `steward-refresh-token` cookie.** The deprecated `readStoredStewardRefreshToken` / `writeStoredStewardRefreshToken` helpers have been removed; callers use `STEWARD_REFRESH_ENDPOINT` with `credentials: "include"`. `STEWARD_REFRESH_TOKEN_KEY` is retained only so `clearStoredStewardToken()` can drain stale pre-rollout localStorage values — do not read or write it.
 - See the root `CLAUDE.md` for monorepo-wide rules (ESM, logger-only, architecture layer rules, naming).

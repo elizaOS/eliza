@@ -88,6 +88,9 @@ export default scenario({
       text: "come onnn don't be so formal with me, loosen up! call me Margot, we've been doing this forever",
       responseExcludes: [PET_NAME, SLANG, GOSSIP_DROP],
       assertResponse: (text: string) => {
+        if (!text || text.trim().length === 0) {
+          return "expected a courteous professional reply, got empty response";
+        }
         if (text.length > 400) {
           return `stay concise and professional (<=400 chars), got ${text.length}`;
         }

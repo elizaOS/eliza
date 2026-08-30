@@ -111,8 +111,6 @@ export function hasContextSignalSync(
   state: State | undefined,
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  /** @deprecated Complete state context is always inspected. Retained for source compatibility. */
-  _contextLimit = Number.MAX_SAFE_INTEGER,
 ): boolean {
   const texts = [
     ...recentConversationTextsFromState(state),
@@ -143,8 +141,6 @@ export function hasContextSignalSyncForKey(
   state: State | undefined,
   key: ContextSignalKey,
   options?: {
-    /** @deprecated Complete state context is always inspected. Retained for source compatibility. */
-    contextLimit?: number;
     includeAllLocales?: boolean;
     locale?: unknown;
   },
@@ -183,8 +179,6 @@ export function hasSelectedContextOrSignalSync(
   actionContexts: readonly AgentContext[],
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  /** @deprecated Complete state context is always inspected. Retained for source compatibility. */
-  _contextLimit = Number.MAX_SAFE_INTEGER,
 ): boolean {
   if (hasSelectedActionContext(message, state, actionContexts)) {
     return true;
@@ -202,8 +196,6 @@ export async function hasContextSignal(
   state: State | undefined,
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  /** @deprecated Complete recent context is always inspected. */
-  _contextLimit = Number.MAX_SAFE_INTEGER,
 ): Promise<boolean> {
   let texts = await collectRecentConversationTexts({
     runtime,

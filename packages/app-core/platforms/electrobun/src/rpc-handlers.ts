@@ -134,9 +134,14 @@ import {
 import {
   configureDesktopRemoteTarget,
   desktopRemoteTargetActivate,
+  desktopRemoteTargetCommitActivation,
+  desktopRemoteTargetCompensateActivation,
+  desktopRemoteTargetConfirmPairing,
+  desktopRemoteTargetCreatePairingChallenge,
   desktopRemoteTargetEnroll,
   desktopRemoteTargetFinalizeHostRevoke,
   desktopRemoteTargetGetIdentity,
+  desktopRemoteTargetReadPairingChallenge,
   desktopRemoteTargetRevoke,
   desktopRemoteTargetStart,
   desktopRemoteTargetStatus,
@@ -1416,6 +1421,10 @@ export function buildBunRpcHandlers({
     runtimeCredentialDelete: async (params) =>
       desktopDeleteRuntimeCredential(params),
     runtimeCredentialDeleteRecord: async (params) => {
+      // Credential revocation is also desired-state revocation: erase the SSH
+      // restart intent before deleting secrets so a later launch cannot revive
+      // a removed runtime.
+      await desktopStopSshRuntime({ runtimeId: params.runtimeId });
       await deleteRuntimeCredentialRecord(params.runtimeId);
       return { deleted: true };
     },
@@ -1438,10 +1447,24 @@ export function buildBunRpcHandlers({
       desktopAcknowledgeRemoteCommandEnqueue(params),
     remoteTargetEnroll: async (params) => desktopRemoteTargetEnroll(params),
     remoteTargetGetIdentity: async () => desktopRemoteTargetGetIdentity(),
+    remoteTargetCreatePairingChallenge: async () => {
+      await configureRemoteTargetForCurrentLoopback();
+      return desktopRemoteTargetCreatePairingChallenge();
+    },
+    remoteTargetReadPairingChallenge: async (params) =>
+      desktopRemoteTargetReadPairingChallenge(params),
+    remoteTargetConfirmPairing: async (params) => {
+      await configureRemoteTargetForCurrentLoopback();
+      return desktopRemoteTargetConfirmPairing(params);
+    },
     remoteTargetActivate: async (params) => {
       await configureRemoteTargetForCurrentLoopback();
       return desktopRemoteTargetActivate(params);
     },
+    remoteTargetCompensateActivation: async (params) =>
+      desktopRemoteTargetCompensateActivation(params),
+    remoteTargetCommitActivation: async (params) =>
+      desktopRemoteTargetCommitActivation(params),
     remoteTargetStart: async () => {
       await configureRemoteTargetForCurrentLoopback();
       return desktopRemoteTargetStart();

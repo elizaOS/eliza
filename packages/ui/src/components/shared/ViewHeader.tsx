@@ -8,6 +8,7 @@ import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { shouldUseHashNavigation } from "../../navigation";
 import { shellHistory } from "../../surface-realm-channel";
+import { Button } from "../ui/button";
 
 /**
  * Return to the combined home/apps surface — the default "back" for any
@@ -66,21 +67,17 @@ export function ViewBackButton({
   // footprint; the visual affordance (36px hover chip) lives on the inner span
   // so the resting/hover appearance is unchanged.
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="icon-lg"
       onClick={handleBack}
       aria-label={label}
-      className={cn(
-        "keyboard-focus-surface group -m-1 inline-flex size-11 items-center justify-center bg-transparent text-txt",
-        className,
-      )}
+      className={cn("keyboard-focus-surface -m-1", className)}
       {...agentProps}
     >
-      <span className="inline-flex size-9 items-center justify-center rounded-md transition-colors group-hover:bg-bg-hover">
-        <ArrowLeft className="size-5" aria-hidden />
-      </span>
-    </button>
+      <ArrowLeft className="size-5" aria-hidden />
+    </Button>
   );
 }
 

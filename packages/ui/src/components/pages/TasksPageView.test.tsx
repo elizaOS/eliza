@@ -138,9 +138,7 @@ describe("TasksPageView", () => {
 
     expect(screen.getByTestId("projects-apps-segment")).toBeTruthy();
     expect(screen.queryByTestId("coding-agent-tasks-panel-stub")).toBeNull();
-    expect(
-      screen.getByText("Install, create, and run your elizaOS apps."),
-    ).toBeTruthy();
+    expect(screen.getByRole("region", { name: "App actions" })).toBeTruthy();
     // The reused management surface mounts and finishes its empty catalog load
     // (client.listInstalledApps is the mocked read) without throwing.
     const { client } = await import("../../api/client");

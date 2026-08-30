@@ -6,11 +6,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  exchangeAnthropicAuthorizationCode,
-  refreshAnthropicToken,
-  startAnthropicLogin,
-} from "./anthropic.js";
+import { refreshAnthropicToken, startAnthropicLogin } from "./anthropic.js";
 
 describe("anthropic auth", () => {
   const originalFetch = globalThis.fetch;
@@ -18,10 +14,6 @@ describe("anthropic auth", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
-  });
-
-  it("exports exchangeAnthropicAuthorizationCode function", () => {
-    expect(typeof exchangeAnthropicAuthorizationCode).toBe("function");
   });
 
   it("initiates Anthropic OAuth login and resolves credentials on submitCode", async () => {

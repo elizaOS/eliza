@@ -2,6 +2,8 @@
  * Defines shell reducer state for overlays, launcher mode, notifications, and
  * surface coordination.
  */
+
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
@@ -73,6 +75,8 @@ export interface ShellMessage {
   attachments?: MessageAttachment[];
   /** Pending secret / OAuth request (rendered as an actionable block). */
   secretRequest?: ConversationSecretRequest;
+  /** Validated personal-workspace setup receipt for this assistant turn. */
+  capabilityHandoff?: CapabilityHandoffRequest;
   /** Short topic labels retained for search and memory semantics. */
   topics?: string[];
 }
@@ -126,6 +130,7 @@ export function filterRenderableShellMessages(
       m.content.trim() ||
       (m.attachments?.length ?? 0) > 0 ||
       m.secretRequest !== undefined ||
+      m.capabilityHandoff !== undefined ||
       m.failureKind !== undefined ||
       (m.role === "assistant" && phase === "responding"),
   );

@@ -1,8 +1,8 @@
 /**
  * Test stub for `@elizaos/ui`: minimal stand-ins for the app-shell primitives
- * the phone components import (Button, host detection, agent-surface, page/app
- * registration, navigate-view payload) so component tests run without the real
- * UI package and can seed a navigate-view payload.
+ * the phone components import (Button, Input, host detection, agent-surface,
+ * page/app registration, navigate-view payload) so component tests run without
+ * the real UI package and can seed a navigate-view payload.
  */
 
 import React from "react";
@@ -10,15 +10,39 @@ import React from "react";
 export type OverlayAppContext = Record<string, unknown>;
 export type OverlayApp = Record<string, unknown>;
 
-export const Button = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement>
->(function Button({ children, ...props }, ref) {
-  return React.createElement(
-    "button",
-    { ...props, ref, type: props.type ?? "button" },
-    children,
-  );
+interface StubButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: string;
+  size?: string;
+  shape?: string;
+  align?: string;
+}
+
+export const Button = React.forwardRef<HTMLButtonElement, StubButtonProps>(
+  function Button(
+    {
+      align: _align,
+      children,
+      shape: _shape,
+      size: _size,
+      variant: _variant,
+      ...props
+    },
+    ref,
+  ) {
+    return React.createElement(
+      "button",
+      { ...props, ref, type: props.type ?? "button" },
+      children,
+    );
+  },
+);
+
+export const Input = React.forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement>
+>(function Input(props, ref) {
+  return React.createElement("input", { ...props, ref });
 });
 
 export function isElizaOS(): boolean {

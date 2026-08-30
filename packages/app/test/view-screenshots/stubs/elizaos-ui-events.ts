@@ -12,3 +12,13 @@ export function dispatchNavigateViewEvent(_detail: {
   viewPath?: string | null;
   subview?: string;
 }): void {}
+
+export const VIEW_EVENTS = {
+  VIEW_REFRESH: "view:refresh",
+} as const;
+
+export function useViewEvent(
+  _eventType: string,
+  _handler: () => void,
+  _deps: readonly unknown[],
+): void {}

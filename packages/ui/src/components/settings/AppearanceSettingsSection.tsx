@@ -1,112 +1,21 @@
 /**
- * Settings → Appearance section: theme mode, brand accent preset, UI language,
- * the home time/date widget toggle, the background/wallpaper picker, and loaded
- * content packs. All choices persist through the app store (`useAppSelector`
- * setters); every tile is agent-addressable via `useAgentElement`. Background
- * lives here (not a separate tab) since it is one appearance choice; the
- * standalone Background settings section is consolidated into this one.
+ * Settings → General section (stable registry id: `appearance`): the compact,
+ * everyday app preferences that are real and useful in the demo. Accent
+ * customization remains backward-compatible in persistence/onboarding but is
+ * intentionally not exposed here. Background lives in this section rather
+ * than duplicating another top-level Settings destination.
  */
 
-import { Check } from "lucide-react";
-import { useAgentElement } from "../../agent-surface";
-import { ACCENT_PRESETS, useAppSelector, useContentPack } from "../../state";
-import type { AccentPreset } from "../../state/ui-preferences";
+import { useAppSelector, useContentPack } from "../../state";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
-import { Button } from "../ui/button";
-import { selectableTileClass } from "./appearance-primitives.helpers";
 import { BackgroundSettingsControls } from "./BackgroundSettingsControls";
 import { LoadedPacksList } from "./LoadedPacksList";
-import { SettingsSwitchRow } from "./settings-agent-rows";
+import { SettingsSelectRow, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
-
-function LanguageTileButton({
-  languageId,
-  label,
-  flag,
-  isActive,
-  onSelect,
-}: {
-  languageId: string;
-  label: string;
-  flag: string;
-  isActive: boolean;
-  onSelect: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `appearance-language-${languageId}`,
-    role: "tab",
-    label,
-    group: "appearance-language",
-    status: isActive ? "active" : "inactive",
-    onActivate: onSelect,
-  });
-  return (
-    <Button
-      ref={ref}
-      variant="ghost"
-      onClick={onSelect}
-      aria-current={isActive ? "true" : undefined}
-      className={selectableTileClass(isActive)}
-      {...agentProps}
-    >
-      <div className="flex items-center gap-2">
-        <span className="text-base leading-none">{flag}</span>
-        <span className="text-xs font-medium text-txt">{label}</span>
-      </div>
-      {isActive ? (
-        <Check className="absolute right-1.5 top-1.5 size-3 text-accent" />
-      ) : null}
-    </Button>
-  );
-}
-
-function AccentTileButton({
-  preset,
-  isActive,
-  onSelect,
-}: {
-  preset: AccentPreset;
-  isActive: boolean;
-  onSelect: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `appearance-accent-${preset.id}`,
-    role: "tab",
-    label: preset.label,
-    group: "appearance-accent",
-    status: isActive ? "active" : "inactive",
-    onActivate: onSelect,
-  });
-  // The `default` preset carries no color (brand accent) — render the live
-  // `--accent` token so its swatch tracks the brand accent.
-  const swatchColor = preset.color ?? "var(--accent)";
-  return (
-    <Button
-      ref={ref}
-      variant="ghost"
-      onClick={onSelect}
-      aria-current={isActive ? "true" : undefined}
-      className={selectableTileClass(isActive)}
-      {...agentProps}
-    >
-      <span
-        aria-hidden
-        className="size-5 rounded-full border border-border/40"
-        style={{ backgroundColor: swatchColor }}
-      />
-      <span className="text-xs font-medium text-txt">{preset.label}</span>
-      {isActive ? (
-        <Check className="absolute right-1.5 top-1.5 size-3 text-accent" />
-      ) : null}
-    </Button>
-  );
-}
 
 export function AppearanceSettingsSection() {
   const setUiLanguage = useAppSelector((s) => s.setUiLanguage);
   const uiLanguage = useAppSelector((s) => s.uiLanguage);
-  const uiAccentId = useAppSelector((s) => s.uiAccentId);
-  const setUiAccent = useAppSelector((s) => s.setUiAccent);
   const homeTimeWidgetHidden = useAppSelector((s) => s.homeTimeWidgetHidden);
   const setHomeTimeWidgetHidden = useAppSelector(
     (s) => s.setHomeTimeWidgetHidden,
@@ -117,41 +26,23 @@ export function AppearanceSettingsSection() {
   return (
     <SettingsStack>
       <SettingsGroup
-        bare
-        title={t("settings.accent", { defaultValue: "Accent color" })}
+        title={t("settings.general.display", { defaultValue: "Display" })}
       >
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-          {ACCENT_PRESETS.map((preset) => (
-            <AccentTileButton
-              key={preset.id}
-              preset={preset}
-              isActive={uiAccentId === preset.id}
-              onSelect={() => setUiAccent(preset.id)}
-            />
-          ))}
-        </div>
+        <SettingsSelectRow
+          agentId="general-language"
+          group="general"
+          label={t("settings.language", { defaultValue: "Language" })}
+          value={uiLanguage}
+          options={LANGUAGES.map((language) => ({
+            value: language.id,
+            label: `${language.flag} ${language.label}`,
+            textValue: language.label,
+          }))}
+          onValueChange={(value) => setUiLanguage(value as typeof uiLanguage)}
+        />
       </SettingsGroup>
 
       <SettingsGroup
-        bare
-        title={t("settings.language", { defaultValue: "Language" })}
-      >
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-          {LANGUAGES.map((language) => (
-            <LanguageTileButton
-              key={language.id}
-              languageId={language.id}
-              label={language.label}
-              flag={language.flag}
-              isActive={uiLanguage === language.id}
-              onSelect={() => setUiLanguage(language.id)}
-            />
-          ))}
-        </div>
-      </SettingsGroup>
-
-      <SettingsGroup
-        bare
         title={t("settings.homeDashboard", { defaultValue: "Home" })}
       >
         <SettingsSwitchRow
@@ -166,12 +57,11 @@ export function AppearanceSettingsSection() {
       </SettingsGroup>
 
       <SettingsGroup
-        bare
         title={t("settings.sections.background.label", {
-          defaultValue: "Background",
+          defaultValue: "Wallpaper",
         })}
       >
-        <BackgroundSettingsControls />
+        <BackgroundSettingsControls variant="filmstrip" className="p-4" />
       </SettingsGroup>
 
       <LoadedPacksList

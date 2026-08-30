@@ -100,7 +100,6 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `OPENAI_IMAGE_DESCRIPTION_MODEL` | no | `gpt-5-mini` | Vision model |
 | `OPENAI_IMAGE_DESCRIPTION_BASE_URL` | no | `OPENAI_BASE_URL` | Override vision endpoint |
 | `OPENAI_IMAGE_DESCRIPTION_API_KEY` | no | `OPENAI_API_KEY` | Separate vision auth |
-| `OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS` | no | `8192` | Max tokens for vision output |
 | `OPENAI_IMAGE_MODEL` | no | `dall-e-3` | Image generation model |
 | `OPENAI_TTS_MODEL` | no | `gpt-5-mini-tts` | Text-to-speech model |
 | `OPENAI_TTS_VOICE` | no | `nova` | TTS voice (alloy/echo/fable/onyx/nova/shimmer) |

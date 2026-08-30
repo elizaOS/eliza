@@ -54,6 +54,41 @@ describe("Notes boundary validation", () => {
       });
     });
 
+    it('splits a one-line "Label: details" note at the labelled colon', () => {
+      // Planners flatten "create a note titled X saying Y" and users write
+      // "create a note called X: Y" into exactly this one-line shape.
+      expect(parseNoteContent("Demo Checklist: mic, charger, water")).toEqual({
+        title: "Demo Checklist",
+        body: "mic, charger, water",
+      });
+      expect(parseNoteContent("Groceries: eggs, bread")).toEqual({
+        title: "Groceries",
+        body: "eggs, bread",
+      });
+    });
+
+    it("keeps colons that are not label separators in the title", () => {
+      expect(parseNoteContent("https://example.com/docs")).toEqual({
+        title: "https://example.com/docs",
+        body: "",
+      });
+      expect(parseNoteContent("Standup at 9:30")).toEqual({
+        title: "Standup at 9:30",
+        body: "",
+      });
+      expect(parseNoteContent("re:invent recap")).toEqual({
+        title: "re:invent recap",
+        body: "",
+      });
+    });
+
+    it("leaves multi-line content on the first-line label contract", () => {
+      expect(parseNoteContent("Demo Checklist: mic\ncharger")).toEqual({
+        title: "Demo Checklist: mic",
+        body: "charger",
+      });
+    });
+
     it("rejects non-string or empty content", () => {
       expect(() => parseNoteContent(123)).toThrow();
       expect(() => parseNoteContent("   ")).toThrow();

@@ -152,8 +152,8 @@ function memoryToLifeOpsXFeedItem(args: {
   };
 }
 
-function cachedLimit(opts: XReadOpts): number {
-  return Math.max(opts.limit ?? 20, 20);
+function cachedLimit(opts: XReadOpts): number | undefined {
+  return opts.limit;
 }
 
 function matchesCachedXSearchQuery(
@@ -309,7 +309,7 @@ export class XReadDomain {
         )),
       ]).filter((item) => matchesCachedXSearchQuery(item, trimmed));
       if (cached.length > 0) {
-        return cached.slice(0, opts.limit ?? cached.length);
+        return opts.limit === undefined ? cached : cached.slice(0, opts.limit);
       }
       lifeOpsReadDelegationFailed("x_search", delegated);
     }

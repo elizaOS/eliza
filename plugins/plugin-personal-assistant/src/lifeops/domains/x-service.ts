@@ -405,7 +405,7 @@ export class XDomain {
     } else {
       const cached = await this.ctx.repository.listXDms(this.ctx.agentId(), {
         conversationId: opts.conversationId,
-        limit: opts.limit ?? 25,
+        limit: opts.limit,
       });
       if (cached.length === 0) {
         fail(
@@ -418,7 +418,7 @@ export class XDomain {
     }
     const dms = await this.ctx.repository.listXDms(this.ctx.agentId(), {
       conversationId: opts.conversationId,
-      limit: opts.limit ?? 25,
+      limit: opts.limit,
     });
     const unread = dms.filter((dm) => dm.isInbound && dm.readAt === null);
     const read = dms.filter((dm) => dm.readAt !== null);

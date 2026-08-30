@@ -133,7 +133,6 @@ export async function extractActionParamsViaLlm<
     existingParams,
     requiredFields,
     modelType = ModelType.TEXT_SMALL,
-    recentMessagesLimit = Number.MAX_SAFE_INTEGER,
   } = args;
 
   const missing = requiredFields.filter((field) => {
@@ -146,10 +145,7 @@ export async function extractActionParamsViaLlm<
 
   const currentMessageText =
     typeof message.content.text === "string" ? message.content.text.trim() : "";
-  const recentConversation = collectRecentConversation(
-    state,
-    recentMessagesLimit,
-  );
+  const recentConversation = collectRecentConversation(state);
 
   const prompt = buildExtractionPrompt({
     actionName,
@@ -193,10 +189,7 @@ export async function extractActionParamsViaLlm<
   return merged as Partial<T>;
 }
 
-function collectRecentConversation(
-  state: State | undefined,
-  _limit: number,
-): string {
+function collectRecentConversation(state: State | undefined): string {
   if (!state) return "";
   const messages = getRecentMessagesData(state);
   if (messages.length === 0) return "";

@@ -92,6 +92,9 @@ export default scenario({
       text: "and how often should i reapply it",
       responseExcludes: [CORPORATE_OPENER, LIST_SCAFFOLD, BOILERPLATE],
       assertResponse: (text: string) => {
+        if (!text || text.trim().length === 0) {
+          return "expected a helpful, casual reply, got empty response";
+        }
         if (text.length > 640) {
           return `keep it conversational, not a brief (<=640 chars), got ${text.length}`;
         }

@@ -9,6 +9,9 @@ export interface VideoGenerationRequest {
   durationSeconds?: number;
   resolution?: string;
   audio?: boolean;
+  aspectRatio?: string;
+  seed?: number;
+  endUserId?: string;
   voiceControl?: boolean;
   apiKeys: Record<string, string | undefined>;
 }

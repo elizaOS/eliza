@@ -4,9 +4,31 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FABRICATED_VALUE } from "./convq.persona-iris-no-pad-on-unknown.scenario";
-import { LIST_SCAFFOLD } from "./convq.persona-pax-no-corporate-stiffening.scenario";
-import { TASK_PIVOT } from "./convq.persona-wren-no-pivot-under-task-hook.scenario";
+import coleBoundary from "./convq.persona-cole-boundary-under-flattery.scenario";
+import coleProfessional from "./convq.persona-cole-no-overfamiliarity.scenario";
+import irisUnknown, {
+  FABRICATED_VALUE,
+} from "./convq.persona-iris-no-pad-on-unknown.scenario";
+import irisTerse from "./convq.persona-iris-terse-under-warmth.scenario";
+import paxCasual, {
+  LIST_SCAFFOLD,
+} from "./convq.persona-pax-no-corporate-stiffening.scenario";
+import paxProportional from "./convq.persona-pax-no-sudden-lecture.scenario";
+import wrenPresent, {
+  TASK_PIVOT,
+} from "./convq.persona-wren-no-pivot-under-task-hook.scenario";
+import wrenWarm from "./convq.persona-wren-warmth-holds-under-terse-user.scenario";
+
+const PERSONA_SCENARIOS = [
+  irisTerse,
+  irisUnknown,
+  wrenPresent,
+  wrenWarm,
+  coleProfessional,
+  coleBoundary,
+  paxCasual,
+  paxProportional,
+];
 
 describe("persona scenario mechanical guards", () => {
   it("distinguishes fabricated config values from honest unknown-value wording", () => {
@@ -59,5 +81,16 @@ describe("persona scenario mechanical guards", () => {
     expect(LIST_SCAFFOLD.test("Use wet lube and wipe off the excess.")).toBe(
       false,
     );
+  });
+
+  it("requires a non-empty response on every direct persona turn", () => {
+    for (const personaScenario of PERSONA_SCENARIOS) {
+      for (const turn of personaScenario.turns) {
+        expect(typeof turn.assertResponse).toBe("function");
+        if (typeof turn.assertResponse !== "function") continue;
+        expect(turn.assertResponse("   ")).toMatch(/empty response/);
+        expect(turn.assertResponse("ok")).toBeUndefined();
+      }
+    }
   });
 });

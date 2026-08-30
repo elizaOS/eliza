@@ -8,8 +8,6 @@ import type { CloudAuthService } from "../services/cloud-auth";
 import type { CloudBridgeService } from "../services/cloud-bridge";
 import type { CloudContainerService } from "../services/cloud-container";
 
-const MAX_CONTAINER_SUMMARIES = 10;
-
 export const cloudStatusProvider: Provider = {
   name: "elizacloud_status",
   description: "ElizaCloud container and connection status",
@@ -46,7 +44,7 @@ export const cloudStatusProvider: Provider = {
         (c) => c.status === "pending" || c.status === "building" || c.status === "deploying"
       ).length;
 
-      const summaries = containers.slice(0, MAX_CONTAINER_SUMMARIES).map((c) => ({
+      const summaries = containers.map((c) => ({
         id: c.id,
         name: c.name,
         status: c.status,
@@ -75,7 +73,7 @@ export const cloudStatusProvider: Provider = {
           runningContainers: running,
           deployingContainers: deploying,
         },
-        data: { containers: summaries, truncated: containers.length > summaries.length },
+        data: { containers: summaries },
       };
     } catch {
       return { text: "", values: {}, data: {} };

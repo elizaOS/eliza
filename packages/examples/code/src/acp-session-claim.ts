@@ -5,6 +5,7 @@
  */
 import { timingSafeEqual } from "node:crypto";
 import { delimiter, isAbsolute } from "node:path";
+import { isHostExecutionBaselineMirrorKey } from "@elizaos/shared/host-execution-env";
 
 export type AcpSessionClaimMeta = {
   elizaSessionClaim?: {
@@ -61,6 +62,7 @@ export class AcpWarmSessionClaim {
       if (
         !/^[A-Z_][A-Z0-9_]*$/.test(key) ||
         key === "ELIZA_ACP_WARM_CLAIM_TOKEN" ||
+        isHostExecutionBaselineMirrorKey(key) ||
         typeof value !== "string"
       ) {
         throw new Error("invalid warm-session environment entry");

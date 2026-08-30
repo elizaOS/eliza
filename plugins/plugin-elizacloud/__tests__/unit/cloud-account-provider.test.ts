@@ -47,6 +47,22 @@ describe("cloudAccountProvider", () => {
     expect(result.values?.cloudCredits).toBe(12.34);
   });
 
+  it("renders every hosted agent without an implicit provider window", async () => {
+    server.state.agents = Array.from({ length: 12 }, (_, index) => ({
+      id: `agent-${index}`,
+      agentName: `agent name ${index}`,
+      status: index % 2 === 0 ? "running" : "stopped",
+    }));
+    const runtime = makeRuntime({ baseUrl: server.url });
+
+    const result = await cloudAccountProvider.get(runtime, MESSAGE, STATE);
+
+    expect(result.text).toContain("12 hosted agents");
+    expect(result.text).toContain("- agent name 11 (stopped)");
+    expect(result.text).not.toContain("…and");
+    expect((result.data?.agents as unknown[] | undefined)?.length).toBe(12);
+  });
+
   it("flags a low balance with the top-up pointer", async () => {
     server.state.balance = 0.25;
     const runtime = makeRuntime({ baseUrl: server.url });

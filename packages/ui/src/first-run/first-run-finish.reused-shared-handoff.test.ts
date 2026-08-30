@@ -44,6 +44,7 @@ const SHARED_AGENT_BASE =
 
 const clientMock = vi.hoisted(() => ({
   getPersonalSharedEliza: vi.fn(),
+  ensurePersonalDedicatedEliza: vi.fn(),
   selectOrProvisionCloudAgent: vi.fn(),
   submitFirstRun: vi.fn(async () => {}),
   setBaseUrl: vi.fn(),
@@ -169,6 +170,14 @@ beforeEach(() => {
     apiBase:
       "https://staging.elizacloud.ai/api/v1/eliza/agents/personal%3A00000000-0000-5000-8000-000000000001",
     runtime: "shared",
+  });
+  clientMock.ensurePersonalDedicatedEliza.mockResolvedValue({
+    personalElizaId: "personal:00000000-0000-5000-8000-000000000001",
+    agentId: "personal:00000000-0000-5000-8000-000000000001",
+    activeAgentId: "00000000-0000-4000-8000-000000000020",
+    agentName: "Eliza",
+    apiBase: "https://00000000-0000-4000-8000-000000000020.cloud.eliza.app",
+    runtime: "dedicated",
   });
   // Default boot config: shared-first with NO auto-upgrade (#18204).
   bootConfigMock.autoUpgradeSharedToDedicated = false;
@@ -364,22 +373,24 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
     window.localStorage.setItem("steward_session_token", "steward-jwt");
   });
 
-  it("routes Cloud first run directly to the rowless personal identity", async () => {
+  it("routes Cloud first run through Dedicated personal activation", async () => {
     const outcome = await runFirstRunFinish(
       { ...draft(), runtime: "cloud" },
       ports(),
     );
     expect(outcome.kind).toBe("done");
-    expect(clientMock.getPersonalSharedEliza).toHaveBeenCalledWith({
-      cloudApiBase: "https://staging.elizacloud.ai",
-      authToken: "steward-jwt",
-    });
+    expect(clientMock.ensurePersonalDedicatedEliza).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cloudApiBase: "https://staging.elizacloud.ai",
+        authToken: "steward-jwt",
+      }),
+    );
     expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
     expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
   it("surfaces personal identity failure without provisioning a fallback", async () => {
-    clientMock.getPersonalSharedEliza.mockRejectedValueOnce(
+    clientMock.ensurePersonalDedicatedEliza.mockRejectedValueOnce(
       new Error("identity unavailable"),
     );
     await expect(
@@ -413,7 +424,7 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
       requireClientAuth: true,
     });
     expect(outcome.kind).toBe("done");
-    expect(clientMock.getPersonalSharedEliza).toHaveBeenCalledWith(
+    expect(clientMock.ensurePersonalDedicatedEliza).toHaveBeenCalledWith(
       expect.objectContaining({ authToken: "fresh-client-token" }),
     );
     expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
@@ -429,7 +440,7 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
       requireClientAuth: true,
     });
     expect(outcome.kind).toBe("needs-cloud-login");
-    expect(clientMock.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(clientMock.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
     expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 });

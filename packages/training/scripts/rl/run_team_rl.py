@@ -129,7 +129,7 @@ class MockTeamBridge:
                     PredictionMarket(
                         m["id"], m["question"], m["yes_price"], round(1 - m["yes_price"], 2)
                     )
-                    for m in self.markets[:3]
+                    for m in self.markets
                 ],
             ),
             positions=[],

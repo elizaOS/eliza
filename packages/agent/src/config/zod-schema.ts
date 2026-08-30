@@ -229,9 +229,6 @@ const MemoryQmdUpdateSchema = z
 
 const MemoryQmdLimitsSchema = z
   .object({
-    maxResults: z.number().int().positive().optional(),
-    maxSnippetChars: z.number().int().positive().optional(),
-    maxInjectedChars: z.number().int().positive().optional(),
     timeoutMs: z.number().int().nonnegative().optional(),
   })
   .strict();

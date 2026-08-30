@@ -120,6 +120,9 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Build core contract for script tests
+        run: bun run build:core
+
       - name: Script contract tests
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"
@@ -346,7 +349,7 @@ jobs:
   android_aab:
     name: Android release AAB
     needs: changes
-    if: always()
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     steps:
@@ -401,6 +404,7 @@ jobs:
       - name: Build mobile package dependencies
         if: steps.selection.outputs.selected == 'true'
         run: |
+          bun run --cwd packages/prompts build:package
           bun run build:core
           bun run --cwd packages/ui build
           bun run --cwd packages/vault build
@@ -430,7 +434,7 @@ jobs:
 
       - name: Verify release AAB audit evidence
         id: release-aab-evidence
-        if: ${{ always() && steps.selection.outputs.selected == 'true' }}
+        if: ${{ always() && !cancelled() && steps.selection.outputs.selected == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -470,7 +474,7 @@ jobs:
           test -s "$SHA256"
 
       - name: Upload verified release AAB evidence
-        if: ${{ always() && steps.release-aab-evidence.outcome == 'success' }}
+        if: ${{ always() && !cancelled() && steps.release-aab-evidence.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: android-cloud-release-aab-audit
@@ -483,7 +487,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Android failure diagnostics
-        if: ${{ always() && steps.selection.outputs.selected == 'true' && steps.release-aab-evidence.outcome != 'success' }}
+        if: ${{ always() && !cancelled() && steps.selection.outputs.selected == 'true' && steps.release-aab-evidence.outcome != 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: android-cloud-release-aab-failure-diagnostics
@@ -536,7 +540,7 @@ jobs:
 
   required:
     name: All Tests Passed
-    if: always()
+    if: ${{ always() && !cancelled() }}
     needs:
       [
         changes,

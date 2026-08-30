@@ -114,7 +114,10 @@ def make_generator(local_module, tokenizer):
     gen = local_module.LocalTextGenerator.__new__(local_module.LocalTextGenerator)
     gen.backend = "mlx"
     gen.model_ref = "fake/model"
-    gen.model = SimpleNamespace(config=SimpleNamespace(), generation_config=None)
+    gen.model = SimpleNamespace(
+        config=SimpleNamespace(max_position_embeddings=128),
+        generation_config=None,
+    )
     gen.tokenizer = tokenizer
     gen.device = "cpu"
     gen.adapter_path = None
@@ -134,13 +137,13 @@ class TestMlxAuthoritativeFinishReason:
         install_mlx_stub(monkeypatch, [104, 105], final_reason="length")
         gen = make_generator(local_module, tokenizer)
         with pytest.raises(local_module.IncompleteGenerationError):
-            gen.generate_messages([{"role": "user", "content": "hi"}], max_new_tokens=120)
+            gen.generate_messages([{"role": "user", "content": "hi"}])
 
     def test_terminal_stop_is_accepted(self, local_module, monkeypatch):
         tokenizer = FakeTokenizer()
         install_mlx_stub(monkeypatch, [104, 105, 2], final_reason="stop")
         gen = make_generator(local_module, tokenizer)
-        out = gen.generate_messages([{"role": "user", "content": "hi"}], max_new_tokens=120)
+        out = gen.generate_messages([{"role": "user", "content": "hi"}])
         assert isinstance(out, str)
 
     def test_missing_final_reason_counts_as_unproven_budget_stop(
@@ -152,7 +155,7 @@ class TestMlxAuthoritativeFinishReason:
         install_mlx_stub(monkeypatch, list(range(50)), final_reason=None)
         gen = make_generator(local_module, tokenizer)
         with pytest.raises(local_module.IncompleteGenerationError):
-            gen.generate_messages([{"role": "user", "content": "hi"}], max_new_tokens=10)
+            gen.generate_messages([{"role": "user", "content": "hi"}])
 
     def test_token_ids_come_from_responses_not_reencoded_text(
         self, local_module, monkeypatch, capsys
@@ -170,5 +173,5 @@ class TestMlxAuthoritativeFinishReason:
         monkeypatch.setattr(local_module, "require_complete_generated_tokens", spy)
         install_mlx_stub(monkeypatch, [104, 105], final_reason="stop")
         gen = make_generator(local_module, tokenizer)
-        gen.generate_messages([{"role": "user", "content": "hi"}], max_new_tokens=120)
+        gen.generate_messages([{"role": "user", "content": "hi"}])
         assert captured["ids"] == [104, 105]

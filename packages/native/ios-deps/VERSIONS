@@ -4,13 +4,6 @@
 # Update these when bumping a dep. Each entry should match the version Bun
 # upstream pins for desktop, unless we have a specific reason to diverge.
 
-boringssl=excluded-from-ios-build
-c-ares=excluded-from-ios-build
-lol-html=excluded-from-ios-build
-mimalloc=excluded-from-ios-build
-zstd=excluded-from-ios-build
-brotli=excluded-from-ios-build
-
 # llama.cpp pin for on-device inference. Tracks the elizaOS fork at
 # https://github.com/elizaOS/llama.cpp (branch `main`), not upstream
 # ggml-org. The fork carries the elizaOS kernels (Q4_POLAR / QJL1_256 /

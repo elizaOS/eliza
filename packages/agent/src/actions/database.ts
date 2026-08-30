@@ -133,13 +133,33 @@ function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
+function parseOptionalPositiveInteger(
+  value: number | undefined,
+  name: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
+function parseOptionalNonNegativeInteger(
+  value: number | undefined,
+  name: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  return value;
+}
+
 // ---------------------------------------------------------------------------
 // Vector search category (kept as a separate runtime registration so the
 // shared search surface can route to vectors).
 // ---------------------------------------------------------------------------
 
-const VECTOR_SEARCH_DEFAULT_LIMIT = 10;
-const VECTOR_SEARCH_MAX_LIMIT = 100;
 const VECTOR_SEARCH_DEFAULT_TABLE = "messages";
 const VECTOR_SEARCH_ALLOWED_TABLES = new Set<string>([
   "messages",
@@ -343,8 +363,8 @@ async function opGetTable(
     };
   }
 
-  const limit = Math.min(500, Math.max(1, Math.floor(params.limit ?? 50)));
-  const offset = Math.max(0, Math.floor(params.offset ?? 0));
+  const limit = parseOptionalPositiveInteger(params.limit, "limit");
+  const offset = parseOptionalNonNegativeInteger(params.offset, "offset") ?? 0;
   const sortDir = params.sortDir === "desc" ? "DESC" : "ASC";
 
   let validSort = "";
@@ -371,7 +391,7 @@ async function opGetTable(
 
   const result = await executeRawSql(
     runtime,
-    `SELECT * FROM ${quoteIdent(tableName)} ${orderClause} LIMIT ${limit} OFFSET ${offset}`,
+    `SELECT * FROM ${quoteIdent(tableName)} ${orderClause}${limit === undefined ? "" : ` LIMIT ${limit}`}${offset === 0 ? "" : ` OFFSET ${offset}`}`,
   );
 
   return {
@@ -386,7 +406,7 @@ async function opGetTable(
       columns: result.columns,
       total,
       offset,
-      limit,
+      ...(limit === undefined ? {} : { limit }),
     },
   };
 }
@@ -478,10 +498,20 @@ async function opSearchVectors(
       },
     };
   }
-  const limit = Math.min(
-    VECTOR_SEARCH_MAX_LIMIT,
-    Math.max(1, Math.floor(params.limit ?? VECTOR_SEARCH_DEFAULT_LIMIT)),
-  );
+  if (params.limit === undefined) {
+    return {
+      success: false,
+      text: "limit is required for vector search because top-k retrieval must be explicitly requested.",
+      values: {
+        error: "DATABASE_SEARCH_VECTORS_FAILED",
+        reason: "MISSING_EXPLICIT_LIMIT",
+      },
+    };
+  }
+  const limit = parseOptionalPositiveInteger(params.limit, "limit");
+  if (limit === undefined) {
+    throw new Error("limit validation failed");
+  }
 
   const embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
     text: query,
@@ -666,7 +696,7 @@ export const databaseAction: Action = {
     {
       name: "limit",
       description:
-        "get_table (1-500): page size. search_vectors (1-100): max hits.",
+        "get_table: optional positive integer page size; omit to return the complete table. search_vectors: required positive integer top-k requested by the caller.",
       required: false,
       schema: { type: "number" as const },
     },

@@ -32,6 +32,7 @@ const TIKTOK_UPLOAD_CHUNK_BYTES = 10_000_000;
 const TIKTOK_UPLOAD_MAX_RETRIES = 2;
 const TIKTOK_UPLOAD_RETRY_BASE_DELAY_MS = 100;
 const TIKTOK_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+const TIKTOK_VIDEO_CAPTION_MAX_CODE_POINTS = 2_200;
 
 export interface TikTokUploadChunk {
   firstByte: number;
@@ -463,6 +464,14 @@ export const tiktokProvider: SocialMediaProvider = {
       };
     }
 
+    if (Array.from(content.text).length > TIKTOK_VIDEO_CAPTION_MAX_CODE_POINTS) {
+      return {
+        platform: "tiktok",
+        success: false,
+        error: `TikTok video captions must be at most ${TIKTOK_VIDEO_CAPTION_MAX_CODE_POINTS} Unicode code points; nothing was posted`,
+      };
+    }
+
     try {
       const video = content.media[0];
 
@@ -470,7 +479,7 @@ export const tiktokProvider: SocialMediaProvider = {
 
       // Build post info
       const postInfo: Record<string, unknown> = {
-        title: content.text.slice(0, 150), // TikTok caption limit
+        title: content.text,
         privacy_level: options?.tiktok?.privacyLevel || "PUBLIC_TO_EVERYONE",
         disable_duet: options?.tiktok?.disableDuet || false,
         disable_comment: options?.tiktok?.disableComment || false,

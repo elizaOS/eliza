@@ -24,6 +24,8 @@ export interface ChatEvent {
   membershipChange?: "joined" | "removed";
   /** Provider message referenced by an inline reply, when exposed. */
   replyToMessageId?: string;
+  /** Provider-owned sub-thread or topic containing the inbound message. */
+  providerThreadId?: string;
   /** Provider-accepted message time, used only for coarse ingress latency. */
   providerSentAtMs?: number;
   mediaUrls?: string[];
@@ -65,6 +67,7 @@ export interface PlatformAdapter {
     event: ChatEvent,
     text: string,
     deliveryHooks?: TelegramDeliveryHooks,
+    mediaUrls?: readonly string[],
   ): Promise<PlatformDeliveryReceipt>;
   sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void>;
   /** Clears an explicit provider typing state when the adapter supports it. */

@@ -43,6 +43,15 @@ app.get("/", async (c) => {
       runtimeTierCache: () => getOrgTierCacheOnly(organizationId),
       autoTopUpRuntimeEnabled: () =>
         c.env?.AUTO_TOP_UP_DURABLE_ENABLED === "true",
+      cancellationAuthority: {
+        authMethod: c.get("authMethod") ?? null,
+        role: user.role ?? null,
+        // Match the fresh account predicate enforced again by the mutation
+        // boundary. Optional auth-shim fields fail closed when absent.
+        userActive: user.is_active === true,
+        userAnonymous: user.is_anonymous !== false,
+        organizationActive: user.organization.is_active === true,
+      },
       defaultStorageBytesLimit: DEFAULT_ORG_STORAGE_BYTES_LIMIT,
       now: () => new Date(),
     });

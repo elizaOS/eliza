@@ -95,8 +95,8 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 
-		// The silent-failed-finish retry instruction names the failed tool AND
-		// its human-readable cause, with internal detail scrubbed.
+		// The complete model input retains the append-only raw trajectory while
+		// adding a scrubbed retry instruction that names the failed tool and cause.
 		const retryInstruction = loopComposedInstructionText(
 			useModel,
 			1,
@@ -108,8 +108,8 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(retryInstruction).toContain("<path>");
 		expect(retryInstruction).not.toContain("/home/milady");
 
-		// The failure synthesis prompt receives the failed step and cause the
-		// same way — scrubbed, human-shaped, no absolute paths.
+		// The failure synthesis prompt preserves the append-only trajectory while
+		// adding a scrubbed, human-shaped instruction for the model's next turn.
 		const synthesisInstruction = loopComposedInstructionText(
 			useModel,
 			2,

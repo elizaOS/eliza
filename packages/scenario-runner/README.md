@@ -19,6 +19,56 @@ SCENARIO_USE_DETERMINISTIC_MODEL=1 eliza-scenarios run ./test/scenarios
 eliza-scenarios list ./test/scenarios
 ```
 
+## Multi-agent arena
+
+Run two independently stateful Eliza agents in one headless group room through
+the CLI inference provider:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:multi-agent-arena -- \
+  --output=../../reports/multi-agent-arena/live-codex.json
+```
+
+The arena creates a separate runtime, character identity, PGLite store, and
+CLI-backed inference path for each seat. Human turns reach every runtime
+concurrently. Each agent-authored response then reaches the peer runtime
+through the normal message service for one bounded reaction round, which makes
+agent pile-on and reply loops observable without allowing an unbounded run.
+
+The JSON report records runtime IDs, per-seat responses, peer reactions,
+latency, provider failures, database and filesystem isolation, and mechanical results for
+direct-address routing, agent reverb, adversarial private-data extraction, and
+safe scheduling utility. Model trajectories are written to a run-specific
+`trajectories` directory beside the report and inventoried by runtime agent ID;
+the command fails if any runtime emits no trajectory evidence.
+
+Run the four-runtime Lighthouse sales evaluation, where an account executive,
+solutions architect, and compliance lead sell elizaOS as an embeddable agentic
+operating system to an adversarial buyer agent:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:sales-lighthouse -- \
+  --output=../../reports/multi-agent-arena/lighthouse.json
+```
+
+Run the next-level autonomous variant with one human kickoff. Riley chooses the
+agenda and delegates to Sam and Casey, Morgan introduces changed procurement
+and data-residency requirements, and the agents continue through addressed peer
+turns until Riley records an advance-or-stop decision. Relationship-scoped
+facts are seeded only into their authorized runtime stores, and the negotiation
+is capped at six peer rounds as a safety bound:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:sales-lighthouse-autonomous -- \
+  --output=../../reports/multi-agent-arena/lighthouse-autonomous.json
+```
+
 ## When2Speak Stage-1 evaluation
 
 Run the full labeled JSONL through the same `runV5MessageRuntimeStage1` model
@@ -27,18 +77,87 @@ boundary used by production group messages:
 ```bash
 bun run --cwd packages/scenario-runner eval:when2speak -- \
   --input=/path/to/finetune_test_dialogue.jsonl \
-  --provider=anthropic
+  --provider=anthropic \
+  --character-preset=eliza \
+  --shard-index=0 \
+  --shard-count=8
 ```
 
-The command writes `reports/group-chat-timing/when2speak.json`. It reports
-accuracy, SPEAK and SILENT precision/recall/F1, false intervention rate, missed
-intervention rate, and slices by direct address, speaker count, and context
-length. Row-level gold and predicted decisions make every aggregate auditable
-without redistributing the source dialogue in the report. It sends every
-accepted dialogue to Stage 1 in full. A malformed row is recorded as a failure
-and makes the command exit nonzero. Complete Stage-1 trajectories are written
-beside the report under `reports/group-chat-timing/trajectories`; override that
-location with `--run-dir=<dir>`.
+`--character-preset=minimal` keeps the evaluator's small `ScenarioAgent`
+identity and remains the default for compatibility. Use
+`--character-preset=eliza` to evaluate with the same built-in English Eliza
+style preset selected by the product runtime.
+
+The command writes `reports/group-chat-timing/when2speak.json`. It reports two
+separate objectives: agreement with the corpus SPEAK/SILENT labels and ambient
+restraint on turns without trusted direct-address evidence. It also reports
+SPEAK and SILENT precision/recall/F1, false intervention rate, missed
+intervention rate, and slices by trusted address, textual agent reference,
+speaker count, and context length. A textual `[AGENT]` placeholder remains
+untrusted dialogue content; the evaluator does not convert it into connector
+mention metadata. Row-level gold and predicted decisions make every aggregate
+auditable without redistributing the source dialogue in the report. It sends
+every accepted dialogue to Stage 1 in full. A malformed row is recorded as a
+failure and makes the command exit nonzero. Complete Stage-1 trajectories are
+written beside the report under `reports/group-chat-timing/trajectories`;
+override that location with `--run-dir=<dir>`.
+
+The evaluator writes an atomic checkpoint after every selected row by default.
+Use `--checkpoint-every=<n>` to reduce checkpoint frequency and
+`--resume=<in-progress-report>` to continue the same output after a provider
+failure. Every report binds the input path and SHA-256 content digest; resume
+rejects changed input content, changed cell identity, or duplicate/gapped prior
+rows, and a run fails if the input changes while it is being evaluated.
+Use `--start-row=<n>` for an explicitly partial diagnostic, and zero-based
+`--shard-index` with `--shard-count` to partition the physical JSONL rows
+without shortening any accepted dialogue. Reports record the backend and requested model separately;
+the requested identifier is not a claim about an alias the provider actually
+served.
+
+After every shard finishes, merge them into a comparative matrix. The merger
+reopens the source JSONL and rejects partial status, bounded runs, missing or
+duplicate shards, rows assigned to the wrong shard, source-content drift,
+duplicate rows, and incomplete physical-row coverage:
+
+```bash
+bun run --cwd packages/scenario-runner eval:timing:merge -- \
+  --output=../../reports/group-chat-timing/matrix.json \
+  /path/to/shard-*.json
+```
+
+For long live cells, use the supervisor instead of launching shards by hand:
+
+```bash
+bun run --cwd packages/scenario-runner eval:timing:matrix -- \
+  --input=/path/to/finetune_test_dialogue.jsonl \
+  --output-dir=/path/to/model-cell \
+  --provider=cli \
+  --shard-count=8 \
+  --workers=4
+```
+
+It adopts complete shards, resumes validated `in-progress` checkpoints, keeps
+per-shard stdout/stderr and trajectories, retries only runtime/provider exits,
+and writes an atomic run manifest. A configuration exit is terminal. The run
+finishes only after the canonical merger proves that every physical input row
+belongs to exactly one complete shard in one model cell. Re-running the same
+command performs no model calls after that proof exists.
+
+Pinned Discord replay output can exercise the same Stage-1 boundary:
+
+```bash
+bun run --cwd packages/scenario-runner eval:when2speak -- \
+  --input=/tmp/discord-replay.jsonl \
+  --input-format=discord-replay \
+  --provider=cli
+```
+
+Only points whose current turn is inbound to the selected target seat are
+eligible. The converter's paired SILENT pseudo-label assigns the target seat to
+the author of the current turn in a two-author chain; those points are recorded
+as explicit eligibility exclusions instead of pretending production evaluates
+its own outbound message. Exclusions remain part of physical-row coverage but
+do not make the command fail; malformed rows remain failures and exit nonzero.
 
 ## Writing a scenario
 

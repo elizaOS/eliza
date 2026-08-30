@@ -3,7 +3,11 @@
  * compose dense dashboard pages.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { PagePanelContentArea, PagePanelFrame } from "./page-panel-frame";
+import {
+  PagePanelContentArea,
+  PagePanelContentRail,
+  PagePanelFrame,
+} from "./page-panel-frame";
 
 const SCROLL_ROWS = Array.from({ length: 30 }, (_, i) => ({
   id: `scroll-row-${i + 1}`,
@@ -99,4 +103,28 @@ export const EmptyFrame: Story = {
       </PagePanelContentArea>
     ),
   },
+};
+
+export const ResponsiveContentRails: Story = {
+  render: () => (
+    <PagePanelFrame className="h-[34rem] flex-col rounded-lg border border-border">
+      <div className="shrink-0 border-b border-border px-4 py-3 text-sm font-semibold">
+        Fixed view header
+      </div>
+      <PagePanelContentArea aria-label="Scrollable view content">
+        <PagePanelContentRail
+          width="compact"
+          className="space-y-3 py-[var(--view-pad-top)]"
+        >
+          <div className="rounded-lg border border-border bg-card p-4">
+            Compact rail · 48rem
+          </div>
+          <div className="rounded-lg border border-border bg-card p-4">
+            The scrollport stays full width while content keeps the shared 16px
+            mobile / 24px larger-screen inset.
+          </div>
+        </PagePanelContentRail>
+      </PagePanelContentArea>
+    </PagePanelFrame>
+  ),
 };

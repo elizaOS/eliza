@@ -20,7 +20,10 @@ import pytest
 TRAINING_SCRIPTS = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TRAINING_SCRIPTS))
 
-from lib.generation_integrity import IncompleteGenerationError  # noqa: E402
+from lib.generation_integrity import (  # noqa: E402
+    IncompleteGenerationError,
+    PromptExceedsContextError,
+)
 
 MODULE_PATH = Path(__file__).with_name("tinker_client.py")
 SPEC = importlib.util.spec_from_file_location("tinker_integrity_subject_25157", MODULE_PATH)
@@ -54,15 +57,18 @@ class StubSamplingClient:
     def __init__(self, sequences):
         self._sequences = sequences
         self.calls = 0
+        self.sampling_params = None
 
     def sample(self, *, prompt, sampling_params, num_samples, include_prompt_logprobs):
         self.calls += 1
+        self.sampling_params = sampling_params
         return SimpleNamespace(
             result=lambda: SimpleNamespace(sequences=list(self._sequences), prompt_logprobs=None)
         )
 
     async def sample_async(self, *, prompt, sampling_params, num_samples, include_prompt_logprobs):
         self.calls += 1
+        self.sampling_params = sampling_params
         return SimpleNamespace(sequences=list(self._sequences), prompt_logprobs=None)
 
 
@@ -78,7 +84,7 @@ def make_client(sequences) -> FeedTinkerClient:
             SamplingParams=lambda **kw: kw,
         )
     cfg = SimpleNamespace(
-        default_max_tokens=16,
+        max_context_tokens=64,
         default_temperature=0.0,
         stop_sequences=[],
         sampling_timeout_seconds=5,
@@ -114,6 +120,15 @@ class TestTinkerAuthoritativeStopReason:
         client = make_client([seq(stop_reason="stop")])
         result = client.sample([{"role": "user", "content": "hi"}])
         assert result.finish_reasons == ["stop"]
+        prompt_length = len("hi|assistant:")
+        assert client._sampling_client.sampling_params["max_tokens"] == 64 - prompt_length
+
+    def test_complete_prompt_over_context_is_rejected_before_sampling(self):
+        client = make_client([seq(stop_reason="stop")])
+        client.config.max_context_tokens = 4
+        with pytest.raises(PromptExceedsContextError):
+            client.sample([{"role": "user", "content": "complete"}])
+        assert client._sampling_client.calls == 0
 
     def test_missing_completion_metadata_is_rejected_not_synthesized(self):
         # The old code synthesized "stop" via getattr(seq, "finish_reason", "stop").

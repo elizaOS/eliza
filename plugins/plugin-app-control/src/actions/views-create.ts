@@ -149,13 +149,15 @@ function rankViewMatches(
 // ---------------------------------------------------------------------------
 
 function fallbackNames(intent: string): { name: string; displayName: string } {
-	const tokens = tokenize(intent).slice(0, 4);
+	const tokens = tokenize(intent);
 	const slug = tokens.join("-").replace(/^-+|-+$/g, "") || "scratch-view";
 	const name = KEBAB_RE.test(slug) ? slug : "scratch-view";
-	const displayName =
+	const displayCandidate =
 		tokens.length === 0
 			? "Scratch View"
 			: tokens.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(" ");
+	const displayName =
+		displayCandidate.length <= 40 ? displayCandidate : "Scratch View";
 	return { name, displayName };
 }
 
@@ -193,11 +195,14 @@ async function extractNames(
 	const nameLine = raw.match(/name:\s*([^\n]+)/i)?.[1]?.trim() ?? "";
 	const displayLine = raw.match(/displayName:\s*([^\n]+)/i)?.[1]?.trim() ?? "";
 	const nameCandidate = nameLine.toLowerCase();
-	const displayCandidate = displayLine.replace(/\s+/g, " ").slice(0, 40);
+	const displayCandidate = displayLine.replace(/\s+/g, " ");
 
 	return {
 		name: KEBAB_RE.test(nameCandidate) ? nameCandidate : fallback.name,
-		displayName: displayCandidate || fallback.displayName,
+		displayName:
+			displayCandidate.length > 0 && displayCandidate.length <= 40
+				? displayCandidate
+				: fallback.displayName,
 	};
 }
 

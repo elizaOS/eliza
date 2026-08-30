@@ -97,7 +97,7 @@ All values are read via `runtime.getSetting(key)` first, then `process.env[key]`
 - **No direct Anthropic `budget_tokens`.** `ZAI_COT_BUDGET*` vars are deprecated shims; they enable `ZAI_THINKING_TYPE=enabled` behavior, but the actual Anthropic field is never forwarded. Use `ZAI_THINKING_TYPE` instead.
 - **Base URL validation is strict.** `normalizeDirectApiBaseURL` throws if the URL contains `/api/coding/` or `/api/anthropic`. Do not point this plugin at z.ai Coding Plan endpoints.
 - **Browser build omits the API key.** In browsers, use `ZAI_BROWSER_BASE_URL` to route through a proxy that holds the key server-side.
-- **`air`/`flash` models cap at 4096 max tokens** by default; all other models cap at 8192. This is hardcoded in `resolveTextParams`.
+- **Output boundaries are caller-owned.** Calls omit `maxOutputTokens` unless the caller explicitly supplies `maxTokens`, allowing the provider's full supported output capacity. A provider-reported length stop is rejected as incomplete rather than returned as text.
 - **`glm-4.5-air`** is the default small model; **`glm-5.1`** is the default large model. Both can be overridden per-runtime via settings.
 - **Per-call model override.** Text handlers honor `params.model` before slot-level model settings. Workflow generation uses this for isolated z.ai tests without changing every z.ai text call.
 - **Stop sequences fail closed.** The general z.ai API supports at most one stop word. A call with more than one sequence throws `ZAI_STOP_SEQUENCE_LIMIT_EXCEEDED` before provider dispatch; never slice the caller list.

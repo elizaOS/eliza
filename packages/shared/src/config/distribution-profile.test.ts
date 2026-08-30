@@ -27,10 +27,6 @@ describe("isDistributionProfile", () => {
     expect(isDistributionProfile(42)).toBe(false);
     expect(isDistributionProfile({})).toBe(false);
   });
-
-  it("exposes the tuple", () => {
-    expect([...DISTRIBUTION_PROFILES]).toEqual(["store", "unrestricted"]);
-  });
 });
 
 describe("resolveDistributionProfile", () => {
@@ -78,5 +74,11 @@ describe("resolveDistributionProfile", () => {
       if (prev === undefined) delete process.env.ELIZA_DISTRIBUTION_PROFILE;
       else process.env.ELIZA_DISTRIBUTION_PROFILE = prev;
     }
+  });
+});
+
+describe("DISTRIBUTION_PROFILES", () => {
+  it("exposes the canonical profile list", () => {
+    expect([...DISTRIBUTION_PROFILES]).toEqual(["store", "unrestricted"]);
   });
 });

@@ -132,7 +132,7 @@ const NOTICE_META: Record<string, NoticeMeta> = {
     label: "Auto-resolved",
   },
   escalation: { icon: CircleAlert, tone: "text-muted", label: "Escalation" },
-  error: { icon: CircleX, tone: "text-red-500", label: "Error" },
+  error: { icon: CircleX, tone: "text-destructive", label: "Error" },
 };
 
 function noticeMeta(eventType?: string): NoticeMeta {

@@ -91,6 +91,20 @@ const ALL_RECOGNIZED_SUBACTIONS = new Set([
 export const BRIDGE_SUPPORTED_SUBACTIONS: ReadonlySet<string> =
   BRIDGE_DIRECT_SUBACTIONS;
 
+/**
+ * Resolve bridge capability from the complete command shape. The `tab`
+ * subaction is only read-only when it is omitted or explicitly requests list;
+ * mutating tab actions belong to a target with a real tab lifecycle.
+ */
+export function bridgeSupports(command: BrowserWorkspaceCommand): boolean {
+  if (!BRIDGE_SUPPORTED_SUBACTIONS.has(command.subaction)) return false;
+  return (
+    command.subaction !== "tab" ||
+    command.tabAction === undefined ||
+    command.tabAction === "list"
+  );
+}
+
 function bridgeTabToWorkspaceTab(
   tab: BrowserBridgeTabSummary,
 ): BrowserWorkspaceTab {
@@ -125,6 +139,13 @@ export async function dispatchBridgeCommand(
   switch (command.subaction) {
     case "list":
     case "tab":
+      if (
+        command.subaction === "tab" &&
+        command.tabAction !== undefined &&
+        command.tabAction !== "list"
+      ) {
+        throw unsupported(command.subaction);
+      }
       // Bridge `tab` always behaves like list; the bridge has no concept of
       // creating an internal tab via the agent — the user owns the tabs.
       return {

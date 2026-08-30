@@ -1,0 +1,53 @@
+name: Mobile App Auth Registration Admin
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Protected GitHub Environment to inspect or repair
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      operation:
+        description: Diagnose is read-only; repair is idempotent and fail-closed
+        required: true
+        type: choice
+        options:
+          - diagnose
+          - repair
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-app-auth-registration-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+jobs:
+  registration:
+    name: ${{ inputs.operation }} ${{ inputs.target_environment }} registration
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact admin source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6.0.2
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.1.0
+        with:
+          node-version: "24"
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.1.2
+        with:
+          bun-version: "1.3.14"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Diagnose or repair protected registration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
+          ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
+        run: node packages/scripts/cloud/admin/repair-mobile-app-auth-registration.ts "${{ inputs.operation }}"

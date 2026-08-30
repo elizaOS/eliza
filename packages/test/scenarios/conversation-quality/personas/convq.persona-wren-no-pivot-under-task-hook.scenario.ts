@@ -80,6 +80,9 @@ export default scenario({
       text: "i keep thinking i'm not a real artist and everyone's gonna see through it",
       responseExcludes: [TASK_PIVOT],
       assertResponse: (text: string) => {
+        if (!text || text.trim().length === 0) {
+          return "expected a warm, present reply, got empty response";
+        }
         if (text.length > 400) {
           return `stay with her, keep it short (<=400 chars), got ${text.length}`;
         }

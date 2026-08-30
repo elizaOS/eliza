@@ -226,13 +226,15 @@ interface ExtractedNames {
 const KEBAB_RE = /^[a-z][a-z0-9-]{1,38}[a-z0-9]$/;
 
 function fallbackNamesFromIntent(intent: string): ExtractedNames {
-	const tokens = tokenize(intent).slice(0, 4);
+	const tokens = tokenize(intent);
 	const slug = tokens.join("-").replace(/^-+|-+$/g, "") || "scratch-app";
 	const safeSlug = KEBAB_RE.test(slug) ? slug : "scratch-app";
-	const displayName =
+	const displayCandidate =
 		tokens.length === 0
 			? "Scratch App"
 			: tokens.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(" ");
+	const displayName =
+		displayCandidate.length <= 40 ? displayCandidate : "Scratch App";
 	return { name: safeSlug, displayName };
 }
 
@@ -271,11 +273,14 @@ async function extractNames(
 	const displayLine = raw.match(/displayName:\s*([^\n]+)/i)?.[1]?.trim() ?? "";
 
 	const nameCandidate = nameLine.toLowerCase();
-	const displayCandidate = displayLine.replace(/\s+/g, " ").slice(0, 40);
+	const displayCandidate = displayLine.replace(/\s+/g, " ");
 
 	return {
 		name: KEBAB_RE.test(nameCandidate) ? nameCandidate : fallback.name,
-		displayName: displayCandidate || fallback.displayName,
+		displayName:
+			displayCandidate.length > 0 && displayCandidate.length <= 40
+				? displayCandidate
+				: fallback.displayName,
 	};
 }
 

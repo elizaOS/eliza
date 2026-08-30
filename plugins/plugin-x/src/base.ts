@@ -726,7 +726,7 @@ export class ClientBase {
    * Fetch timeline for twitter account, optionally only from followed accounts
    */
   async fetchHomeTimeline(
-    count: number,
+    count: number | undefined,
     following?: boolean,
   ): Promise<Tweet[]> {
     logger.debug("fetching home timeline");

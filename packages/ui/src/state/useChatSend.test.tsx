@@ -19,6 +19,11 @@ import type {
   ImageAttachment,
 } from "../api";
 import { StreamGenerationError } from "../api/client-base";
+import {
+  markPendingCapabilityReady,
+  readPendingCapabilityReadyAgentId,
+  rememberPendingCapabilityHandoff,
+} from "../capability-handoff";
 import { CLOUD_HANDOFF_PHASE_EVENT, NAVIGATE_VIEW_EVENT } from "../events";
 import { onViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
@@ -37,6 +42,20 @@ import {
 
 const SHARED_BASE = "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123";
 const DEDICATED_BASE = "https://agent-456.elizacloud.ai";
+const PENDING_CALENDAR_HANDOFF = {
+  version: 1 as const,
+  kind: "capability_handoff" as const,
+  capabilityId: "calendar" as const,
+  label: "Calendar",
+  availability: "needs_workspace" as const,
+  reason: "Calendar access needs your personal workspace.",
+  currentTier: "shared" as const,
+  requiredTier: "personal" as const,
+  nextAction: "upgrade_workspace" as const,
+  requiresConfirmation: true,
+  cta: { label: "Set up workspace", href: "/cloud/agents/agent-123" },
+  continuation: { originalIntent: "Move tomorrow's meeting to 3pm" },
+};
 
 function dispatchHandoffPhase(phase: string): void {
   window.dispatchEvent(
@@ -56,6 +75,7 @@ const mocks = vi.hoisted(() => ({
     stopCodingAgent: vi.fn(),
     renameConversation: vi.fn(() => Promise.resolve()),
     truncateConversationMessages: vi.fn(() => Promise.resolve()),
+    deleteConversation: vi.fn(() => Promise.resolve({ ok: true })),
     deleteConversationMessage: vi.fn(() =>
       Promise.resolve({ ok: true, deletedCount: 1 }),
     ),
@@ -75,6 +95,7 @@ vi.mock("@capacitor/core", () => ({
   Capacitor: {
     isNativePlatform: () => false,
     getPlatform: () => "web",
+    registerPlugin: () => ({}),
   },
   CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
@@ -180,6 +201,13 @@ function makeDeps(
     loadConversationMessages: vi.fn(
       async (): Promise<LoadConversationMessagesResult> => ({ ok: true }),
     ),
+    claimConversationMessagesOwnership: vi.fn(() => 0),
+    isConversationMessagesOwnershipCurrent: vi.fn(() => true),
+    conversationHydrationEpochRef: { current: 0 },
+    registerConversationMessageOverlay: vi.fn(),
+    applyConversationMessageOverlayModification: vi.fn(),
+    removeConversationMessageStateMessages: vi.fn(),
+    discardConversationMessageState: vi.fn(),
     elizaCloudEnabled: false,
     elizaCloudConnected: false,
     pollCloudCredits: vi.fn(async () => true),
@@ -582,6 +610,50 @@ describe("useChatSend stop handling", () => {
   });
 });
 
+describe("useChatSend clear ownership race", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+  });
+
+  it("does not clear B when deleting A resolves after the user selected B", async () => {
+    const deletion = deferred<{ ok: boolean }>();
+    mocks.client.deleteConversation.mockReturnValueOnce(deletion.promise);
+    const deps = makeDeps({
+      activeConversationId: "conv-A",
+      conversations: [
+        conversation("conv-A", "room-A"),
+        conversation("conv-B", "room-B"),
+      ],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let clearing: Promise<void>;
+    act(() => {
+      clearing = result.current.handleChatClear();
+    });
+    const bMessages: ConversationMessage[] = [
+      { id: "b-user", role: "user", text: "B stays", timestamp: 1 },
+    ];
+    deps.activeConversationIdRef.current = "conv-B";
+    deps.conversationMessagesRef.current = bMessages;
+
+    await act(async () => {
+      deletion.resolve({ ok: true });
+      await clearing;
+    });
+
+    expect(deps.activeConversationIdRef.current).toBe("conv-B");
+    expect(deps.conversationMessagesRef.current).toEqual(bMessages);
+    expect(deps.discardConversationMessageState).toHaveBeenCalledWith("conv-A");
+    expect(deps.setActiveConversationId).not.toHaveBeenCalledWith(null);
+    expect(mocks.client.sendWsMessage).not.toHaveBeenCalledWith({
+      type: "active-conversation",
+      conversationId: null,
+    });
+  });
+});
+
 function http404(): Error {
   return Object.assign(new Error("Not Found"), { status: 404 });
 }
@@ -593,6 +665,7 @@ function mockStream404() {
 describe("useChatSend 404 recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     mocks.client.getBaseUrl.mockReturnValue("");
   });
 
@@ -862,6 +935,7 @@ describe("useChatSend always streams (#9174)", () => {
 describe("useChatSend action handoff", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     mocks.client.getBaseUrl.mockReturnValue("");
     mocks.client.renameConversation.mockResolvedValue(undefined);
     window.history.replaceState(null, "", "/chat");
@@ -869,6 +943,68 @@ describe("useChatSend action handoff", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("renders and retains an action-only capability receipt from the matching Shared agent", async () => {
+    mocks.client.getBaseUrl.mockReturnValue(SHARED_BASE);
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "",
+      completed: true,
+      messageId: "persisted-capability-receipt",
+      actionResults: [
+        {
+          actionName: "REQUEST_PERSONAL_WORKSPACE",
+          success: false,
+          values: {
+            capabilityHandoff: {
+              version: 1,
+              kind: "capability_handoff",
+              capabilityId: "calendar",
+              label: "Calendar",
+              availability: "needs_workspace",
+              reason: "Calendar access needs your personal workspace.",
+              currentTier: "shared",
+              requiredTier: "personal",
+              nextAction: "upgrade_workspace",
+              requiresConfirmation: true,
+              cta: {
+                label: "Set up workspace",
+                href: "/cloud/agents/agent-123",
+              },
+              continuation: {
+                clientMessageId: "client-calendar-1",
+                originalIntent: "Move tomorrow's meeting to 3pm",
+              },
+            },
+          },
+        },
+      ],
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("move tomorrow's meeting", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const receipt = deps.conversationMessagesRef.current.find(
+      (message) => message.id === "persisted-capability-receipt",
+    );
+    expect(receipt?.capabilityHandoff).toMatchObject({
+      capabilityId: "calendar",
+      cta: { href: "/cloud/agents/agent-123" },
+      continuation: { originalIntent: "Move tomorrow's meeting to 3pm" },
+    });
+    expect(
+      window.sessionStorage.getItem(
+        "eliza:capability-handoff:message:persisted-capability-receipt",
+      ),
+    ).toContain('"kind":"capability_handoff"');
   });
 
   it("opens the completed action target without a WebSocket frame or global-state fetch", async () => {
@@ -1697,8 +1833,32 @@ describe("useChatSend non-404 send failures", () => {
 describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     mocks.client.getBaseUrl.mockReturnValue(SHARED_BASE);
     mocks.client.renameConversation.mockResolvedValue(undefined);
+  });
+
+  it("retains a ready continuation until first-run releases the composer", async () => {
+    rememberPendingCapabilityHandoff(PENDING_CALENDAR_HANDOFF);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    let firstRunComplete = false;
+    const view = renderHook(() => useChatSend({ ...deps, firstRunComplete }));
+
+    expect(markPendingCapabilityReady("agent-123")).toBe(true);
+
+    expect(deps.setChatInput).not.toHaveBeenCalled();
+    expect(readPendingCapabilityReadyAgentId()).toBe("agent-123");
+
+    firstRunComplete = true;
+    await act(async () => view.rerender());
+
+    expect(deps.setChatInput).toHaveBeenCalledWith(
+      "Move tomorrow's meeting to 3pm",
+    );
+    expect(readPendingCapabilityReadyAgentId()).toBeNull();
   });
 
   it("paints two accepted user turns immediately, then drains each matching assistant placeholder FIFO exactly once", async () => {
@@ -2232,6 +2392,17 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
       "u1",
       { inclusive: true },
     );
+    expect(deps.removeConversationMessageStateMessages).toHaveBeenCalledWith(
+      "conv-1",
+      expect.objectContaining({
+        mode: "truncate",
+        preservedMessages: [],
+        removedMessages: expect.arrayContaining([
+          expect.objectContaining({ id: "u1" }),
+          expect.objectContaining({ id: "a1" }),
+        ]),
+      }),
+    );
     // The text was resent once (re-run), not as a brand-new extra turn.
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
 
@@ -2435,6 +2606,17 @@ describe("useChatSend edit preserves a cancelled queued draft", () => {
     });
 
     expect(await editPromise).toBe(true);
+    expect(deps.removeConversationMessageStateMessages).toHaveBeenCalledWith(
+      "conv-1",
+      expect.objectContaining({
+        mode: "truncate",
+        preservedMessages: [],
+        removedMessages: expect.arrayContaining([
+          expect.objectContaining({ id: "u1" }),
+          expect.objectContaining({ id: "a1" }),
+        ]),
+      }),
+    );
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
     expect(mocks.client.sendConversationMessageStream.mock.calls[0]?.[1]).toBe(
       "edited",
@@ -3571,6 +3753,13 @@ describe("useChatSend — handleChatDelete persistent single-message delete (#13
     expect(mocks.client.deleteConversationMessage).toHaveBeenCalledWith(
       "c-1",
       "m-2",
+    );
+    expect(deps.removeConversationMessageStateMessages).toHaveBeenCalledWith(
+      "c-1",
+      {
+        mode: "delete-exact",
+        removedMessages: [expect.objectContaining({ id: "m-2" })],
+      },
     );
     // Target gone, neighbors intact (single-row delete, not truncate).
     const ids = deps.conversationMessagesRef.current.map((m) => m.id);

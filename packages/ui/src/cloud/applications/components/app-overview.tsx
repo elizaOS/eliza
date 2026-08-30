@@ -44,9 +44,9 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
-import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
@@ -311,7 +311,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     <div className="space-y-4">
       {/* New API Key Alert */}
       {showKey && displayApiKey && (
-        <div className="p-4 rounded-sm bg-card border border-border">
+        <Card variant="outlinedPadded">
           <div className="flex items-start gap-3">
             <Key className="size-5 text-muted mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -339,7 +339,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               </p>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Stats Grid */}
@@ -390,7 +390,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       </div>
 
       {/* Deployment (#9145) — the client trigger for POST /apps/:id/deploy. */}
-      <div className="bg-card rounded-sm p-4 space-y-3">
+      <Card stack="compact" variant="flatPadded">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Rocket className="size-4 text-muted" />
@@ -431,7 +431,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               placeholder="https://github.com/org/app.git"
               density="compact"
               hasError={Boolean(deployInputError)}
-              className="border-border bg-surface text-txt placeholder:text-neutral-600"
+              variant="form"
             />
           </label>
           <label className="space-y-1.5" htmlFor={deployRefInputId}>
@@ -447,15 +447,16 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               placeholder="40-character SHA"
               density="compact"
               hasError={Boolean(deployInputError)}
-              className="font-mono border-border bg-surface text-txt placeholder:text-neutral-600"
+              variant="form"
+              className="font-mono"
             />
           </label>
           <div className="flex items-end">
             <Button
-              variant="ghost"
+              variant="surface"
               type="submit"
               disabled={deploymentButtonDisabled}
-              className="h-9 w-full min-w-28 text-xs text-neutral-200 bg-surface hover:bg-bg-hover flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
+              size="sm"
             >
               {isDeploying || isPollingDeployment || deploymentInProgress ? (
                 <Loader2 className="size-3 animate-spin" />
@@ -491,20 +492,20 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               placeholder="Dockerfile"
               density="compact"
               hasError={Boolean(deployInputError)}
-              className="border-border bg-surface text-txt placeholder:text-neutral-600"
+              variant="form"
             />
           </label>
         </form>
         {deployInputError && (
-          <p className="text-xs text-red-300" role="alert">
+          <p className="text-xs text-destructive" role="alert">
             {deployInputError}
           </p>
         )}
-      </div>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         {/* API Key Card */}
-        <div className="bg-card rounded-sm p-4 space-y-4">
+        <Card stack="default" variant="flatPadded">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-txt flex items-center gap-2">
               <Key className="size-4 text-muted" />
@@ -512,12 +513,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             </h3>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  disabled={isRegenerating}
-                  className="text-xs text-neutral-400 hover:text-txt flex items-center gap-1 transition-colors"
-                >
+                <Button variant="ghost" type="button" disabled={isRegenerating}>
                   {isRegenerating ? (
                     <Loader2 className="size-3 animate-spin" />
                   ) : (
@@ -561,7 +557,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             </AlertDialog>
           </div>
 
-          <div className="bg-surface rounded-sm p-3 border border-border">
+          <Card variant="insetPadded">
             <div className="flex items-center gap-2">
               <code className="flex-1 text-xs text-muted font-mono overflow-x-auto">
                 {showKey && displayApiKey ? displayApiKey : maskedApiKey}
@@ -570,9 +566,9 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 <>
                   <Button
                     variant="ghost"
+                    size="icon-sm"
                     type="button"
                     onClick={() => setShowKey(!showKey)}
-                    className="p-1.5 hover:bg-bg-hover rounded-sm transition-colors"
                   >
                     {showKey ? (
                       <EyeOff className="size-3.5 text-muted" />
@@ -588,17 +584,17 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 </>
               )}
             </div>
-          </div>
+          </Card>
           <p className="text-xs text-neutral-500">
             {t("cloud.apps.overview.apiKeyHint", {
               defaultValue:
                 "Use this key to authenticate API requests from your app.",
             })}
           </p>
-        </div>
+        </Card>
 
         {/* Basic Info Card */}
-        <div className="bg-card rounded-sm p-4 space-y-4">
+        <Card stack="default" variant="flatPadded">
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Globe className="size-4 text-muted" />
             {t("cloud.apps.overview.appInformation", {
@@ -653,12 +649,12 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               />
             )}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Monetization Card */}
       {monetizationEnabled !== null && (
-        <div className="bg-card rounded-sm p-4">
+        <Card variant="flatPadded">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-sm bg-surface">
@@ -676,32 +672,26 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Badge
-                className={cn(
-                  monetizationEnabled
-                    ? "bg-green-500/20 text-green-400 border-green-500/30"
-                    : "bg-surface text-muted border-border",
-                )}
-              >
+              <Badge variant={monetizationEnabled ? "default" : "outline"}>
                 {monetizationEnabled ? "Enabled" : "Disabled"}
               </Badge>
               <Button
                 variant="ghost"
+                size="icon-sm"
                 type="button"
                 onClick={() =>
                   navigate(`/cloud/apps/${app.id}?tab=monetization`)
                 }
-                className="p-2 hover:bg-bg-hover rounded-sm transition-colors"
               >
                 <ChevronRight className="size-4 text-neutral-400" />
               </Button>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Allowed Origins */}
-      <div className="bg-card rounded-sm p-4 space-y-3">
+      <Card stack="compact" variant="flatPadded">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Shield className="size-4 text-muted" />
@@ -711,7 +701,6 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             variant="ghost"
             type="button"
             onClick={() => navigate(`/cloud/apps/${app.id}?tab=settings`)}
-            className="text-xs text-neutral-400 hover:text-txt transition-colors"
           >
             Edit
           </Button>
@@ -722,10 +711,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         <div className="flex flex-wrap gap-2">
           {allowedOrigins.length > 0 ? (
             allowedOrigins.map((origin) => (
-              <Badge
-                key={origin}
-                className="bg-surface text-muted border-border"
-              >
+              <Badge key={origin} variant="outline">
                 {origin}
               </Badge>
             ))
@@ -733,7 +719,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             <p className="text-xs text-neutral-500">No origins configured</p>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

@@ -271,11 +271,13 @@ describe("documentAction.handler structured routing", () => {
 		expect(service.listDocumentsDetailed).toHaveBeenCalledWith(
 			expect.anything(),
 			expect.objectContaining({
-				limit: 25,
 				query: undefined,
 				timeRangeStart: undefined,
 				timeRangeEnd: undefined,
 			}),
+		);
+		expect(service.listDocumentsDetailed.mock.calls[0]?.[1]).not.toHaveProperty(
+			"limit",
 		);
 	});
 
@@ -294,6 +296,22 @@ describe("documentAction.handler structured routing", () => {
 			expect.anything(),
 			expect.objectContaining({ query: "0" }),
 		);
+	});
+
+	it("rejects an explicit zero list limit instead of treating it as a sentinel", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("List 0 documents"),
+			undefined,
+			options({ action: "list", limit: 0, scope: "all-visible" }),
+		);
+
+		expect(service.listDocumentsDetailed).not.toHaveBeenCalled();
+		expect(res?.success).toBe(false);
+		expect(res?.values).toMatchObject({ error: "DOCUMENT_INVALID_LIMIT" });
 	});
 
 	it("keeps query-miss fallback documents separate from matched documents", async () => {
@@ -602,7 +620,7 @@ describe("documentAction.handler structured routing", () => {
 		);
 		expect(service.readDocumentRange).toHaveBeenCalledWith(
 			DOC_ID,
-			{ unit: "line", offset: 0, limit: 100 },
+			{ unit: "line", offset: 0 },
 			expect.anything(),
 		);
 		expect(res?.data).toMatchObject({ subaction: "read" });

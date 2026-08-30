@@ -28,6 +28,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
+import {
+  _resetAgentHostBridge,
+  defaultAgentHostBridge,
+  setAgentHostBridge,
+} from "../runtime/host-bridge.ts";
 import { startApiServer } from "./server.ts";
 import {
   __resetPendingWebSocketsForTests,
@@ -35,6 +40,8 @@ import {
   pendingWebSocketCount,
   WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";
+
+type WsClient = InstanceType<typeof WebSocket>;
 
 // The gate contract under test lives in server.ts. The cloud plugin's own
 // handler is NOT exercised here: under the source-alias test environment the
@@ -102,6 +109,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  _resetAgentHostBridge();
   if (api) {
     await api.close();
     api = null;
@@ -131,6 +139,34 @@ async function bootServer(
   process.env.ELIZA_API_PORT = String(api.port);
   return `http://127.0.0.1:${api.port}`;
 }
+
+describe("packaged desktop bootstrap host boundary", () => {
+  it("dispatches the host-owned bootstrap before generic API auth", async () => {
+    let calls = 0;
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      handleDesktopAuthBootstrapRoute: async (req, res) => {
+        if (req.url !== "/api/auth/desktop-bootstrap") return false;
+        calls += 1;
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ desktopBootstrap: true }));
+        return true;
+      },
+    });
+    const baseUrl = await bootServer();
+
+    const response = await fetch(`${baseUrl}/api/auth/desktop-bootstrap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ socketPath: "/unused-by-host-test" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ desktopBootstrap: true });
+    expect(calls).toBe(1);
+  }, 120_000);
+});
 
 /** Headers that make a loopback test client look like a proxied remote peer. */
 const REMOTE_HEADERS = { "x-forwarded-for": "203.0.113.10" } as const;
@@ -378,7 +414,7 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
     __resetPendingWebSocketsForTests();
   });
 
-  function openUnauthenticatedWs(port: number): Promise<WebSocket> {
+  function openUnauthenticatedWs(port: number): Promise<WsClient> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
       ws.once("open", () => resolve(ws));
@@ -386,7 +422,7 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
     });
   }
 
-  function waitForClose(ws: WebSocket, timeoutMs: number): Promise<number> {
+  function waitForClose(ws: WsClient, timeoutMs: number): Promise<number> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error("timed out waiting for the server close")),
@@ -400,7 +436,7 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
   }
 
   /** Waits for a specific frame type, ignoring the interleaved status/replay. */
-  function waitForFrame(ws: WebSocket, type: string): Promise<void> {
+  function waitForFrame(ws: WsClient, type: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`timed out waiting for ${type}`)),
