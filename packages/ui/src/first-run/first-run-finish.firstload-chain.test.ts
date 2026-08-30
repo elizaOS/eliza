@@ -1,4 +1,4 @@
-/** Verifies Cloud first-run binds the rowless account identity without provisioning compute. */
+/** Verifies Cloud first-run binds the account identity only after Dedicated activation. */
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ const SHARED_AGENT_BASE = `https://staging.elizacloud.ai/api/v1/eliza/agents/${S
 
 const clientStub = vi.hoisted(() => ({
   getPersonalSharedEliza: vi.fn(),
+  ensurePersonalDedicatedEliza: vi.fn(),
   selectOrProvisionCloudAgent: vi.fn(),
   submitFirstRun: vi.fn(async () => {}),
   setBaseUrl: vi.fn(),
@@ -139,6 +140,14 @@ beforeEach(() => {
     apiBase: SHARED_AGENT_BASE,
     runtime: "shared",
   });
+  clientStub.ensurePersonalDedicatedEliza.mockResolvedValue({
+    personalElizaId: SHARED_AGENT_ID,
+    agentId: SHARED_AGENT_ID,
+    activeAgentId: SHARED_AGENT_ID,
+    agentName: "Eliza",
+    apiBase: SHARED_AGENT_BASE,
+    runtime: "dedicated",
+  });
   stubSelection();
 });
 
@@ -149,7 +158,7 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
     expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
-    expect(clientStub.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    expect(clientStub.ensurePersonalDedicatedEliza).toHaveBeenCalledTimes(1);
     expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
@@ -162,10 +171,12 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     expect(outcome.kind).toBe("done");
     expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
-    expect(clientStub.getPersonalSharedEliza).toHaveBeenCalledWith({
-      cloudApiBase: "https://staging.elizacloud.ai",
-      authToken: "fresh-jwt",
-    });
+    expect(clientStub.ensurePersonalDedicatedEliza).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cloudApiBase: "https://staging.elizacloud.ai",
+        authToken: "fresh-jwt",
+      }),
+    );
     expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
@@ -175,7 +186,7 @@ describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
     expect(outcome.kind).toBe("needs-cloud-login");
     expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
-    expect(clientStub.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(clientStub.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
     expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 });

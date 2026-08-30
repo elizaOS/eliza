@@ -258,7 +258,7 @@ jobs:
 
   complete:
     name: Complete manifest
-    if: ${{ always() && needs.plan.result == 'success' }}
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' }}
     needs:
       - plan
       - canonical

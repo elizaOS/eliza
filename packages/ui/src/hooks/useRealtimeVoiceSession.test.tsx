@@ -770,6 +770,91 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.active).toBe(false);
   });
 
+  it("does not auto-restart after operational identity loss during deferred teardown", async () => {
+    const closeGate = deferred<void>();
+    const closeStarted = vi.fn();
+    class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
+      override async close(): Promise<void> {
+        closeStarted();
+        await closeGate.promise;
+        await super.close();
+      }
+    }
+    const { options, mint, ws } = makeOptions({
+      playbackContext: new DeferredPlaybackCloseContext(16_000),
+    });
+    const nextConversationId = "55555555-5555-4555-8555-555555555555";
+    const { result, rerender } = renderHook(
+      ({ agentId, conversationId, flagEnabled }) =>
+        useRealtimeVoiceSession({
+          ...options,
+          agentId,
+          conversationId,
+          flagEnabled,
+        }),
+      {
+        initialProps: {
+          agentId: AGENT_ID as string | null,
+          conversationId: CONV_ID,
+          flagEnabled: true,
+        },
+      },
+    );
+
+    const firstStart = beginStart(result);
+    await flushAsync();
+    await driveReady(ws, "s1", "T1");
+    await expect(firstStart).resolves.toEqual({ kind: "live" });
+
+    // The bound readiness probe disarms before the next conversation proves
+    // itself. Operational flag-off must synchronously revoke the hook's
+    // identity-restart ownership even though the old AudioContext is still
+    // closing.
+    act(() => {
+      rerender({
+        agentId: null,
+        conversationId: nextConversationId,
+        flagEnabled: false,
+      });
+    });
+    await waitFor(() => expect(closeStarted).toHaveBeenCalledTimes(1));
+
+    // A fast positive probe for B cannot resurrect realtime while teardown A
+    // is pending. Batch remains the owner until a later explicit user start.
+    act(() => {
+      rerender({
+        agentId: AGENT_ID,
+        conversationId: nextConversationId,
+        flagEnabled: true,
+      });
+    });
+    await flushAsync();
+    expect(mint.calls).toHaveLength(1);
+    expect(ws.sockets).toHaveLength(1);
+
+    closeGate.resolve();
+    await act(async () => {
+      await flushAsync();
+    });
+    await waitFor(() => expect(result.current.active).toBe(false));
+    expect(mint.calls).toHaveLength(1);
+    expect(ws.sockets).toHaveLength(1);
+
+    const explicitStart = beginStart(result);
+    await flushAsync();
+    expect(mint.calls).toHaveLength(2);
+    expect(mint.calls[1]).toMatchObject({
+      agentId: AGENT_ID,
+      conversationId: nextConversationId,
+    });
+    await driveReady(ws, "s2", "T2");
+    await expect(explicitStart).resolves.toEqual({ kind: "live" });
+
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
   it("does not re-mint after unmount during identity-change teardown", async () => {
     const closeGate = deferred<void>();
     const closeStarted = vi.fn();

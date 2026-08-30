@@ -10,6 +10,11 @@
  */
 
 import { Hono } from "hono";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
@@ -29,7 +34,10 @@ const app = new Hono<AppEnv>();
 // the redemptions POST).
 app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
   try {
-    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(c.req.raw);
+    const caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+    });
+    const { user } = caller;
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
 
@@ -39,13 +47,14 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
     // An app-scoped API key may only act on its own app, never a sibling (#10852).
-    if (await isAppKeyOutOfScope(apiKey?.id, appId)) {
+    if (caller.appScopeId && caller.appScopeId !== appId) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
     const review = await runAppReview({
       app: appRow,
       triggeredByUserId: user.id,
+      operationContext: getGenerativeOperationContext(c, caller),
     });
 
     logger.info("[AppReview API] Submitted app for review", {
@@ -68,7 +77,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
     });
   } catch (error) {
     logger.error("[AppReview API] Review submission failed", { error });
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 

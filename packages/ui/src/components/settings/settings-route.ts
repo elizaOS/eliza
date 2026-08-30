@@ -18,6 +18,7 @@ export type SettingsRoute =
 const CONNECTOR_DETAIL_HISTORY_KEY = "elizaSettingsConnectorDetail";
 
 const SETTINGS_HASH_ALIASES: Readonly<Record<string, string>> = {
+  general: "appearance",
   cloud: "ai-model",
   providers: "ai-model",
   billing: "cloud-billing",

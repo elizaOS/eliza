@@ -7,7 +7,7 @@
     "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
-    "types": ["node", "bun"],
+    "types": ["node", "bun", "vite/client"],
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "declaration": false,

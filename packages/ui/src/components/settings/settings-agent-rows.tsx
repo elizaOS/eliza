@@ -16,6 +16,7 @@ import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { Button, type ButtonProps } from "../ui/button";
+import { SegmentedControl } from "../ui/segmented-control";
 import {
   Select,
   SelectContent,
@@ -27,7 +28,6 @@ import {
 import {
   SettingsInput,
   type SettingsInputVariant,
-  SettingsSegmentedGroup,
   SettingsSelectTrigger,
   SettingsTextarea,
 } from "../ui/settings-controls";
@@ -329,7 +329,7 @@ export function SettingsSegmentedRow({
       description={description}
       stacked
     >
-      <SettingsSegmentedGroup
+      <div
         ref={ref}
         role="radiogroup"
         aria-label={resolvedLabel}
@@ -337,27 +337,19 @@ export function SettingsSegmentedRow({
         className={cn("w-full", className)}
         {...agentProps}
       >
-        {options.map((option) => {
-          const active = option.value === value;
-          return (
-            <Button
-              key={option.value}
-              role="radio"
-              aria-checked={active}
-              data-value={option.value}
-              data-active={active ? "true" : "false"}
-              disabled={disabled}
-              onClick={() => onValueChange(option.value)}
-              variant="selection"
-              size="compact"
-              data-state={active ? "on" : "off"}
-              className="flex-1"
-            >
-              {option.label}
-            </Button>
-          );
-        })}
-      </SettingsSegmentedGroup>
+        <SegmentedControl
+          className="w-full"
+          value={value}
+          onValueChange={onValueChange}
+          items={options.map((option) => ({
+            ...option,
+            disabled,
+            agentId: `${agentId}-${option.value}`,
+            agentGroup: group,
+          }))}
+          buttonClassName="flex-1"
+        />
+      </div>
     </SettingsRow>
   );
 }
@@ -459,7 +451,8 @@ export function SettingsInputRow({
         aria-invalid={isInvalid || undefined}
         aria-describedby={describedBy || undefined}
         data-testid={testId}
-        className={cn(isInvalid && "border-danger", inputClassName)}
+        hasError={isInvalid}
+        className={inputClassName}
         {...rowAgentProps}
       />
       {description ? (

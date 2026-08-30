@@ -1,5 +1,6 @@
-// app/api/v1/chat/completions/route.ts
+/** Implements the OpenAI-compatible chat-completions boundary and its streaming accounting. */
 import { Hono } from "hono";
+import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -1241,43 +1242,48 @@ export async function handleChatCompletionsPOST(
       );
     }
     if (resolution.kind === "suspended") {
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "chat_completions",
+        traceId,
+      });
       return attachPreforwardTelemetry(
         addCorsHeaders(
           Response.json(
             {
               error: {
-                message:
-                  "Your account has been suspended due to policy violations.",
-                type: "account_suspended",
-                code: "moderation_violation",
+                message: denial.message,
+                type: denial.type,
+                code: denial.code,
+                details: { reason: denial.reason },
               },
             },
-            { status: 403 },
+            { status: denial.status },
           ),
         ),
       );
     }
     if (resolution.kind === "rejected") {
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "chat_completions",
+        traceId,
+      });
       return attachPreforwardTelemetry(
         addCorsHeaders(
           Response.json(
             {
               error: {
-                message:
-                  resolution.status === 403
-                    ? "Account or organization access is disabled."
-                    : "Authentication required.",
-                type:
-                  resolution.status === 403
-                    ? "permission_error"
-                    : "authentication_error",
-                code:
-                  resolution.status === 403
-                    ? "access_denied"
-                    : "authentication_required",
+                message: denial.message,
+                type: denial.type,
+                code: denial.code,
+                details: { reason: denial.reason },
               },
             },
-            { status: resolution.status },
+            {
+              status: denial.status,
+              headers: denial.retryAfterSeconds
+                ? { "Retry-After": String(denial.retryAfterSeconds) }
+                : undefined,
+            },
           ),
         ),
       );

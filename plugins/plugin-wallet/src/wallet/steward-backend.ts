@@ -11,6 +11,7 @@
  * `getSolanaSigner()` always throws.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import type { DevCloudStewardOperationalTuple } from "@elizaos/shared";
 import { PublicKey } from "@solana/web3.js";
 import type { Account, Hex, TypedDataDefinition } from "viem";
 import { hexToBytes } from "viem";
@@ -49,6 +50,60 @@ interface StewardEvmAccountModule {
 }
 
 const STEWARD_MODULE_ID = ["@elizaos", "app-steward"].join("/");
+const STEWARD_ENV_KEYS = [
+  "STEWARD_API_URL",
+  "STEWARD_TENANT_ID",
+  "STEWARD_AGENT_ID",
+  "ELIZA_STEWARD_AGENT_ID",
+  "STEWARD_API_KEY",
+  "STEWARD_AGENT_TOKEN",
+] as const;
+
+let stewardProjectionTail = Promise.resolve();
+
+/** @internal Exported for deterministic authority-boundary tests. */
+export async function withProjectedStewardAuthority<T>(
+  tuple: Extract<DevCloudStewardOperationalTuple, { enabled: true }>,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const predecessor = stewardProjectionTail;
+  let release = (): void => {};
+  stewardProjectionTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await predecessor;
+
+  const saved = Object.fromEntries(
+    STEWARD_ENV_KEYS.map((key) => [key, process.env[key]]),
+  ) as Record<(typeof STEWARD_ENV_KEYS)[number], string | undefined>;
+  const projected: Record<
+    (typeof STEWARD_ENV_KEYS)[number],
+    string | undefined
+  > = {
+    STEWARD_API_URL: tuple.apiUrl,
+    STEWARD_TENANT_ID: tuple.tenantId,
+    STEWARD_AGENT_ID: tuple.agentId,
+    ELIZA_STEWARD_AGENT_ID: tuple.agentId,
+    STEWARD_API_KEY: tuple.apiKey,
+    STEWARD_AGENT_TOKEN: tuple.agentToken,
+  };
+
+  try {
+    for (const key of STEWARD_ENV_KEYS) {
+      const value = projected[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    return await operation();
+  } finally {
+    for (const key of STEWARD_ENV_KEYS) {
+      const value = saved[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    release();
+  }
+}
 
 /**
  * Cloud / mobile signing via Steward for EVM. Solana addresses may be exposed from
@@ -70,8 +125,23 @@ export class StewardBackend implements WalletBackend {
     this.solanaPubkey = solanaPubkey;
   }
 
-  static async create(_runtime: IAgentRuntime): Promise<StewardBackend> {
+  static async create(
+    _runtime: IAgentRuntime,
+    authorityTuple?: Extract<
+      DevCloudStewardOperationalTuple,
+      { enabled: true }
+    >,
+  ): Promise<StewardBackend> {
     void _runtime;
+    if (authorityTuple) {
+      return withProjectedStewardAuthority(authorityTuple, () =>
+        StewardBackend.createUnmanaged(),
+      );
+    }
+    return StewardBackend.createUnmanaged();
+  }
+
+  private static async createUnmanaged(): Promise<StewardBackend> {
     let steward: StewardEvmAccountModule;
     try {
       steward = (await import(STEWARD_MODULE_ID)) as StewardEvmAccountModule;

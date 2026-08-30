@@ -24,6 +24,11 @@ import {
   type Vault,
   type VaultEntryMeta,
 } from "@elizaos/vault";
+import {
+  isDevCloudEnvOwnedKey,
+  isDevCloudInternalEnvKey,
+  resolveDevCloudEnvAuthority,
+} from "../config/dev-cloud-env-authority.ts";
 
 export interface ResolveProfilesResult {
   /** Number of keys whose env value was overridden. */
@@ -63,9 +68,20 @@ export async function applyVaultProfilesForAgent(
   let overridden = 0;
   const skipped: string[] = [];
   const failed: string[] = [];
+  const devCloudAuthority = resolveDevCloudEnvAuthority();
 
   for (const entry of entries) {
     if (!entry.hasProfiles) continue;
+    // The local-dev launcher tuple is frozen before vault resolution. Profiled
+    // production credentials/endpoints must not redefine that authority later
+    // in boot; non-Cloud provider profiles remain unaffected.
+    if (
+      devCloudAuthority &&
+      (isDevCloudEnvOwnedKey(entry.key) || isDevCloudInternalEnvKey(entry.key))
+    ) {
+      skipped.push(entry.key);
+      continue;
+    }
     if (entry.kind === "reference") {
       // Reference entries resolve through their backing password
       // manager, not through profiles. Skip — but only after auditing

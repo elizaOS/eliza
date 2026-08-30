@@ -2,6 +2,7 @@
  * Loading skeleton matching the dashboard table column layout.
  */
 import type { ReactNode } from "react";
+import { Card } from "../../../components/ui/card";
 import { Skeleton } from "../../../components/ui/skeleton";
 import {
   Table,
@@ -37,7 +38,7 @@ export function DashboardTableSkeleton({
   );
 
   return (
-    <div className={cn("overflow-hidden rounded-sm border", className)}>
+    <Card className={cn("overflow-hidden", className)} variant="codeFrame">
       <Table>
         <TableHeader>
           <TableRow>
@@ -62,7 +63,7 @@ export function DashboardTableSkeleton({
           ))}
         </TableBody>
       </Table>
-    </div>
+    </Card>
   );
 }
 

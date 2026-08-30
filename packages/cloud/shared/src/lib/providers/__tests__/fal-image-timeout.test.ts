@@ -46,4 +46,30 @@ describe("Fal image request deadlines", () => {
     expect(image.mimeType).toBe("image/png");
     expect(image.bytes).toEqual(new Uint8Array([1, 2, 3]));
   });
+
+  it("prefers the canonical FAL_API_KEY when both deployment keys exist", async () => {
+    const requests: Request[] = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      requests.push(new Request(input, init));
+      if (requests.length === 1) {
+        return Response.json({ images: [{ url: "https://images.invalid/result.png" }] });
+      }
+      return new Response(new Uint8Array([1]), { headers: { "content-type": "image/png" } });
+    };
+
+    await generateFalImageWithFetch(
+      {
+        ...request,
+        apiKeys: {
+          FAL_KEY: "stale-legacy-key",
+          FAL_API_KEY: "canonical-key",
+          FAL_RUN_BASE_URL: "https://fal.invalid",
+        },
+      },
+      fetchImpl,
+      1_000,
+    );
+
+    expect(requests[0].headers.get("authorization")).toBe("Key canonical-key");
+  });
 });

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   SHELL_AUTHORITY_COMMAND_MESSAGE,
   SHELL_AUTHORITY_DELIVERY_MESSAGE,
+  SHELL_AUTHORITY_MAX_ERROR_BYTES,
   SHELL_SYNC_PROTOCOL_VERSION,
   ShellControllerAuthority,
 } from "./shell-sync-relay";
@@ -269,7 +270,7 @@ describe("ShellControllerAuthority data paths", () => {
     other.release();
   });
 
-  it("truncates error messages with surrogate safety", async () => {
+  it("preserves complete error messages with surrogate safety", async () => {
     const authority = new ShellControllerAuthority();
     const owner = authority.register("main", vi.fn());
     const follower = authority.register("tray", vi.fn());
@@ -280,7 +281,7 @@ describe("ShellControllerAuthority data paths", () => {
       protocolVersion: SHELL_SYNC_PROTOCOL_VERSION,
     });
 
-    const longError = `${"a".repeat(1999)}😀${"b".repeat(10)}`;
+    const longError = `${"a".repeat(2_001)}😀${"b".repeat(10)}\ud800tail`;
     const outcomePromise = follower.dispatchCommand({
       commandId: "cmd-err-1",
       command: {
@@ -305,9 +306,49 @@ describe("ShellControllerAuthority data paths", () => {
 
     const res = await outcomePromise;
     expect(res.ok).toBe(false);
-    expect(typeof res.error).toBe("string");
-    expect(res.error?.length).toBeLessThanOrEqual(2000);
-    expect(res.error?.endsWith("😀")).toBe(false);
-    expect(res.error?.endsWith("a")).toBe(true);
+    expect(res.error).toBe(`${"a".repeat(2_001)}😀${"b".repeat(10)}�tail`);
+  });
+
+  it("rejects oversized owner errors without retaining their contents", async () => {
+    const authority = new ShellControllerAuthority();
+    const owner = authority.register("main", vi.fn());
+    const follower = authority.register("tray", vi.fn());
+    const ownerState = owner.connect({
+      protocolVersion: SHELL_SYNC_PROTOCOL_VERSION,
+    });
+    const followerState = follower.connect({
+      protocolVersion: SHELL_SYNC_PROTOCOL_VERSION,
+    });
+    const command = {
+      commandId: "cmd-oversized-error",
+      command: {
+        kind: "routeOsIntent" as const,
+        intent: {
+          type: "start-voice" as const,
+          intentId: "launch-oversized",
+          source: "desktop-deep-link" as const,
+          mode: "converse" as const,
+        },
+        deliveryPolicy: "execute" as const,
+      },
+    };
+    const outcomePromise = follower.dispatchCommand(command);
+
+    owner.completeCommand({
+      generation: ownerState.generation,
+      commandId: command.commandId,
+      fromEndpointId: followerState.endpointId,
+      ok: false,
+      error: "x".repeat(SHELL_AUTHORITY_MAX_ERROR_BYTES + 1),
+    });
+
+    await expect(outcomePromise).resolves.toEqual({
+      ok: false,
+      error: "owner-command-error-too-large",
+    });
+    await expect(follower.dispatchCommand(command)).resolves.toEqual({
+      ok: false,
+      error: "owner-command-error-too-large",
+    });
   });
 });

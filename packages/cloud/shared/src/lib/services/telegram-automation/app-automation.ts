@@ -17,7 +17,7 @@ import {
   TELEGRAM_AUTOMATION_DEFAULTS,
 } from "../automation-constants";
 import { buildCharacterSystemPrompt, getCharacterPromptContext } from "../character-prompt-helper";
-import { creditsService } from "../credits";
+import { type GenerativeOperationContext, runFlatProviderOperation } from "../generative-operation";
 import { telegramAutomationService } from "./index";
 
 export interface TelegramAutomationConfig {
@@ -173,10 +173,13 @@ class TelegramAppAutomationService {
     };
   }
 
-  async generateAnnouncement(organizationId: string, app: App): Promise<string> {
-    // All throwable prep (character-context DB fetch, prompt build) runs BEFORE
-    // the deduction: nothing may throw between the charge and the refunding try,
-    // or the user is charged for a generation that never ran (#11685).
+  async generateAnnouncement(
+    organizationId: string,
+    app: App,
+    operationContext?: GenerativeOperationContext,
+  ): Promise<string> {
+    // Complete throwable prompt preparation before admission so validation or
+    // character lookup failures never reserve a provider operation.
     const config = app.telegram_automation as TelegramAutomationConfig;
     const vibeStyle = config?.vibeStyle || "professional and engaging";
 
@@ -227,42 +230,35 @@ Write in a ${vibeStyle} style. Keep it concise and engaging.
 Use appropriate emojis sparingly. Do not use hashtags excessively.
 Maximum 500 characters.`;
 
-    const deduction = await creditsService.deductCredits({
-      organizationId,
-      amount: TELEGRAM_POST_COST,
-      description: `Telegram AI announcement: ${app.name}`,
-      metadata: { appId: app.id, type: "telegram_announcement" },
-    });
-
-    if (!deduction.success) {
-      throw new Error(
-        `Insufficient credits for AI generation. Required: $${TELEGRAM_POST_COST.toFixed(4)}`,
-      );
+    if (!operationContext || operationContext.organizationId !== organizationId) {
+      throw new Error("Telegram AI generation requires trusted generative admission context");
     }
 
-    try {
-      const result = await generateText({
-        model: openai("gpt-5-mini"),
-        system: systemPrompt,
-        prompt:
-          "Create a compelling announcement about this app that would engage a Telegram community. Focus on what makes it unique and valuable.",
-      });
-      assertModelOutputComplete({
-        finishReason: result.finishReason,
+    return await runFlatProviderOperation(
+      operationContext,
+      {
         provider: "openai",
         model: "gpt-5-mini",
-      });
-
-      return result.text;
-    } catch (error) {
-      await creditsService.refundCredits({
-        organizationId,
-        amount: TELEGRAM_POST_COST,
-        description: "Refund for failed Telegram AI generation",
-        metadata: { appId: app.id, type: "telegram_announcement_refund" },
-      });
-      throw error;
-    }
+        billingSource: "openai",
+        operation: "telegram_automation_announcement",
+        cost: TELEGRAM_POST_COST,
+        metadata: { appId: app.id, type: "telegram_announcement" },
+      },
+      async () => {
+        const result = await generateText({
+          model: openai("gpt-5-mini"),
+          system: systemPrompt,
+          prompt:
+            "Create a compelling announcement about this app that would engage a Telegram community. Focus on what makes it unique and valuable.",
+        });
+        assertModelOutputComplete({
+          finishReason: result.finishReason,
+          provider: "openai",
+          model: "gpt-5-mini",
+        });
+        return result.text;
+      },
+    );
   }
 
   async generateReply(
@@ -270,8 +266,9 @@ Maximum 500 characters.`;
     app: App,
     userMessage: string,
     userName?: string,
+    operationContext?: GenerativeOperationContext,
   ): Promise<string> {
-    // Throwable prep stays ahead of the deduction — see generateAnnouncement (#11685).
+    // Throwable prompt preparation stays ahead of admission.
     const config = app.telegram_automation as TelegramAutomationConfig;
     const vibeStyle = config?.vibeStyle || "helpful and friendly";
 
@@ -308,43 +305,36 @@ Respond in a ${vibeStyle} style. Be helpful and concise.
 If asked about features not related to the app, politely redirect to the app's purpose.
 Maximum 300 characters.`;
 
-    const deduction = await creditsService.deductCredits({
-      organizationId,
-      amount: TELEGRAM_POST_COST,
-      description: `Telegram AI reply: ${app.name}`,
-      metadata: { appId: app.id, type: "telegram_reply" },
-    });
-
-    if (!deduction.success) {
-      throw new Error(
-        `Insufficient credits for AI generation. Required: $${TELEGRAM_POST_COST.toFixed(4)}`,
-      );
+    if (!operationContext || operationContext.organizationId !== organizationId) {
+      throw new Error("Telegram AI reply requires trusted generative admission context");
     }
 
-    try {
-      const result = await generateText({
-        model: openai("gpt-5-mini"),
-        system: systemPrompt,
-        prompt: userName
-          ? `User ${userName} says: "${userMessage}"`
-          : `User says: "${userMessage}"`,
-      });
-      assertModelOutputComplete({
-        finishReason: result.finishReason,
+    return await runFlatProviderOperation(
+      operationContext,
+      {
         provider: "openai",
         model: "gpt-5-mini",
-      });
-
-      return result.text;
-    } catch (error) {
-      await creditsService.refundCredits({
-        organizationId,
-        amount: TELEGRAM_POST_COST,
-        description: "Refund for failed Telegram AI reply",
-        metadata: { appId: app.id, type: "telegram_reply_refund" },
-      });
-      throw error;
-    }
+        billingSource: "openai",
+        operation: "telegram_automation_reply",
+        cost: TELEGRAM_POST_COST,
+        metadata: { appId: app.id, type: "telegram_reply" },
+      },
+      async () => {
+        const result = await generateText({
+          model: openai("gpt-5-mini"),
+          system: systemPrompt,
+          prompt: userName
+            ? `User ${userName} says: "${userMessage}"`
+            : `User says: "${userMessage}"`,
+        });
+        assertModelOutputComplete({
+          finishReason: result.finishReason,
+          provider: "openai",
+          model: "gpt-5-mini",
+        });
+        return result.text;
+      },
+    );
   }
 
   /**
@@ -378,6 +368,7 @@ Maximum 300 characters.`;
     appId: string,
     text?: string,
     chatIdOverride?: string,
+    operationContext?: GenerativeOperationContext,
   ): Promise<PostResult> {
     const app = await this.getAppForOrg(organizationId, appId);
     const config = app.telegram_automation;
@@ -391,7 +382,8 @@ Maximum 300 characters.`;
       return { success: false, error: "No channel or group configured" };
     }
 
-    const messageText = text || (await this.generateAnnouncement(organizationId, app));
+    const messageText =
+      text || (await this.generateAnnouncement(organizationId, app, operationContext));
 
     const botToken = await telegramAutomationService.getBotToken(organizationId);
     if (!botToken) {
@@ -506,6 +498,7 @@ Maximum 300 characters.`;
       userName?: string;
       replyToMessageId?: number;
     },
+    operationContext?: GenerativeOperationContext,
   ): Promise<PostResult> {
     const app = await this.getAppForOrg(organizationId, appId);
     const config = app.telegram_automation;
@@ -519,7 +512,13 @@ Maximum 300 characters.`;
       return { success: false, error: "Bot not connected" };
     }
 
-    const replyText = await this.generateReply(organizationId, app, message.text, message.userName);
+    const replyText = await this.generateReply(
+      organizationId,
+      app,
+      message.text,
+      message.userName,
+      operationContext,
+    );
 
     const bot = new Telegraf(botToken);
 

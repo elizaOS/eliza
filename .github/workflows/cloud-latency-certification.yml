@@ -1,0 +1,150 @@
+name: Cloud Latency Certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_deploy_sha:
+        description: Exact 40-character develop SHA that staging must serve.
+        required: true
+        type: string
+      run_auth:
+        description: Also run protected inference-auth hit, miss, non-standing guards, and sanitized Worker Tail proof.
+        required: true
+        default: false
+        type: boolean
+      run_suspended:
+        description: Also prove the optional suspended-standing 403 guard (requires run_auth).
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-latency-certification-staging
+  cancel-in-progress: false
+
+jobs:
+  certify-staging:
+    name: Certify staging gateway and auth latency
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: staging
+    env:
+      BUN_VERSION: "1.3.14"
+      NODE_VERSION: "24.15.0"
+      EXPECTED_DEPLOY_SHA: ${{ inputs.expected_deploy_sha }}
+      RUN_AUTH: ${{ inputs.run_auth }}
+      RUN_SUSPENDED: ${{ inputs.run_suspended }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+      ELIZA_STAGING_SUSPENDED_API_KEY: ${{ secrets.ELIZA_STAGING_SUSPENDED_API_KEY }}
+      INFERENCE_AUTH_PROBE_TOKEN: ${{ secrets.INFERENCE_AUTH_PROBE_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Validate trusted exact-SHA dispatch and protected credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_DEPLOY_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::expected_deploy_sha must be a lowercase 40-character commit."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/heads/develop" ]]; then
+            echo "::error::Cloud latency certification must dispatch the trusted develop workflow definition."
+            exit 1
+          fi
+          if [[ "$EXPECTED_DEPLOY_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error::Dispatch must select develop at the exact expected_deploy_sha; refusing arbitrary checkout bytes."
+            exit 1
+          fi
+          if [[ "$RUN_SUSPENDED" == "true" && "$RUN_AUTH" != "true" ]]; then
+            echo "::error::run_suspended is valid only when run_auth=true."
+            exit 1
+          fi
+          required=(CEREBRAS_API_KEY ELIZAOS_CLOUD_API_KEY)
+          if [[ "$RUN_AUTH" == "true" ]]; then
+            required+=(
+              INFERENCE_AUTH_PROBE_TOKEN
+              CLOUDFLARE_API_TOKEN
+              CLOUDFLARE_ACCOUNT_ID
+            )
+          fi
+          if [[ "$RUN_SUSPENDED" == "true" ]]; then
+            required+=(ELIZA_STAGING_SUSPENDED_API_KEY)
+          fi
+          missing=()
+          for name in "${required[@]}"; do
+            value_without_whitespace="${!name:-}"
+            value_without_whitespace="${value_without_whitespace//[[:space:]]/}"
+            [[ -n "$value_without_whitespace" ]] || missing+=("$name")
+          done
+          unset value_without_whitespace
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing required protected staging secret: %s\n' "${missing[@]}"
+            exit 1
+          fi
+          echo "Protected staging credential names are configured; values were not printed."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun for pinned Wrangler
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Run exact-SHA privacy-safe latency certification
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$GITHUB_WORKSPACE/artifacts/cloud-latency-certification"
+          args=(
+            --deploy-sha "$EXPECTED_DEPLOY_SHA"
+            --output-dir "$output_dir"
+          )
+          if [[ "$RUN_AUTH" == "true" ]]; then
+            args+=(--auth)
+          fi
+          if [[ "$RUN_SUSPENDED" == "true" ]]; then
+            args+=(--suspended)
+          fi
+          node packages/cloud/scripts/cloud-latency-certification.mjs "${args[@]}"
+
+      - name: Remove private Worker Tail material
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          private_tail_directories=("$RUNNER_TEMP"/eliza-inference-auth-tail-*)
+          for directory in "${private_tail_directories[@]}"; do
+            if [[ ! -d "$directory" || -L "$directory" ]]; then
+              echo "::error::Refusing unexpected private Tail cleanup target."
+              exit 1
+            fi
+            rm -rf -- "$directory"
+          done
+
+      - name: Upload sanitized certification evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-latency-certification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/cloud-latency-certification/deployment.json
+            artifacts/cloud-latency-certification/paired.jsonl
+            artifacts/cloud-latency-certification/inference-auth.jsonl
+            artifacts/cloud-latency-certification/inference-auth-worker.jsonl
+            artifacts/cloud-latency-certification/summary.json
+          if-no-files-found: warn
+          retention-days: 7

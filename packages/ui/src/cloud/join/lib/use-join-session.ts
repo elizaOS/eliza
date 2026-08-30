@@ -9,7 +9,7 @@
  * only what it needs: `{ ready, authenticated }`.
  */
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
 import { decodeJwtPayload } from "../../lib/jwt";
 import { LocalStewardAuthContext } from "../../shell/StewardProvider";
@@ -37,7 +37,7 @@ function tokenIsLive(token: string): boolean {
 function readStoredAuthenticated(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    const token = window.localStorage.getItem(STEWARD_TOKEN_KEY);
+    const token = readStoredStewardToken();
     return token ? tokenIsLive(token) : false;
   } catch {
     // error-policy:J3 storage unavailable reads as unauthenticated

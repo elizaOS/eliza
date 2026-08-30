@@ -111,7 +111,7 @@ export const Interactive: Story = {
               type="button"
               onClick={() => setIndex(i)}
               variant={i === index ? "default" : "outline"}
-              size="short"
+              size="regularCompact"
             >
               {p.title}
             </Button>

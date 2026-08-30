@@ -117,10 +117,12 @@ export function isRenderTelemetryEnabled(): boolean {
   const nodeEnv =
     typeof process !== "undefined" ? process.env.NODE_ENV : undefined;
   const meta = import.meta as ImportMetaWithEnv;
+  const viteDev = readEnvValue("DEV");
   const mode = meta.env?.MODE;
 
   return (
-    meta.env?.DEV === true ||
+    viteDev === true ||
+    viteDev === "true" ||
     mode === "development" ||
     mode === "test" ||
     nodeEnv === "development" ||

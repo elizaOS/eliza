@@ -257,6 +257,66 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
     expect(nodeName).not.toBe("11111111-1111-4111-8111-111111111111");
   });
 
+  test("waitForVPNRegistration aborts immediately on a proven terminal candidate", async () => {
+    let lookups = 0;
+    let probes = 0;
+    const fake = {
+      getNodeByNameOrSuffixed: async () => {
+        lookups += 1;
+        return null;
+      },
+    } as unknown as HeadscaleClient;
+
+    await expect(
+      new HeadscaleIntegration(fake).waitForVPNRegistration(nodeName, 5_000, {
+        probeTerminalCandidateFailure: async () => {
+          probes += 1;
+          return new Error("candidate requires interactive Headscale authorization");
+        },
+      }),
+    ).rejects.toThrow("candidate requires interactive Headscale authorization");
+    expect(lookups).toBe(1);
+    expect(probes).toBe(1);
+  });
+
+  test("waitForVPNRegistration preserves the normal budget while the candidate is pending", async () => {
+    let probes = 0;
+    const fake = {
+      getNodeByNameOrSuffixed: async () => null,
+    } as unknown as HeadscaleClient;
+
+    await expect(
+      new HeadscaleIntegration(fake).waitForVPNRegistration(nodeName, 25, {
+        probeTerminalCandidateFailure: async () => {
+          probes += 1;
+          return null;
+        },
+      }),
+    ).resolves.toBeNull();
+    expect(probes).toBeGreaterThanOrEqual(1);
+  });
+
+  test("waitForVPNRegistration returns a routed IP before consulting the terminal probe", async () => {
+    let probes = 0;
+    const fake = {
+      getNodeByNameOrSuffixed: async (name: string) => ({
+        id: "73",
+        name,
+        ipAddresses: ["100.64.0.73"],
+      }),
+    } as unknown as HeadscaleClient;
+
+    await expect(
+      new HeadscaleIntegration(fake).waitForVPNRegistration(nodeName, 1_000, {
+        probeTerminalCandidateFailure: async () => {
+          probes += 1;
+          return new Error("must not override a successful registration");
+        },
+      }),
+    ).resolves.toMatchObject({ ip: "100.64.0.73", nodeId: "73" });
+    expect(probes).toBe(0);
+  });
+
   test("waitForVPNRegistration rejects malformed runtime node identity", async () => {
     for (const malformedNode of [
       { id: "", name: nodeName, ipAddresses: ["100.64.0.7"] },

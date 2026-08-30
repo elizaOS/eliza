@@ -19,7 +19,6 @@
 import { AlertCircle, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import {
-  BrandButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -34,7 +33,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../cloud-ui";
+import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { SemanticForm } from "../../components/ui/semantic-form";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   POOLED_PROVIDER_LABELS,
@@ -115,7 +117,7 @@ export function ContributeCredentialDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="bg-bg border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
+      <DialogContent className="p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
         {result ? (
           <>
             <DialogHeader>
@@ -134,26 +136,26 @@ export function ContributeCredentialDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="bg-surface border border-brand-surface p-3">
+            <Card variant="insetPadded">
               <code className="text-xs font-mono text-txt-strong">
                 {t("cloud.contributeCredential.maskedAs", {
                   last4: result.last4,
                   defaultValue: "Listed in the pool as ••••{{last4}}",
                 })}
               </code>
-            </div>
+            </Card>
 
             <DialogFooter>
-              <BrandButton
+              <Button
                 type="button"
-                variant="primary"
+                variant="default"
                 onClick={handleClose}
                 className="font-mono text-sm"
               >
                 {t("cloud.contributeCredential.done", {
                   defaultValue: "Done",
                 })}
-              </BrandButton>
+              </Button>
             </DialogFooter>
           </>
         ) : (
@@ -173,17 +175,14 @@ export function ContributeCredentialDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <SemanticForm onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div
-                  role="alert"
-                  className="bg-danger/10 border border-danger/40 p-3 flex items-start gap-2"
-                >
+                <Alert variant="dashboardError" className="flex p-3">
                   <AlertCircle className="size-4 text-danger shrink-0 mt-0.5" />
                   <p className="text-xs md:text-sm font-mono text-danger">
                     {error}
                   </p>
-                </div>
+                </Alert>
               )}
 
               <div className="space-y-2">
@@ -202,13 +201,10 @@ export function ContributeCredentialDialog({
                   }
                   disabled={isSubmitting}
                 >
-                  <SelectTrigger
-                    id="credential-provider"
-                    className="bg-transparent border-border text-txt-strong"
-                  >
+                  <SelectTrigger id="credential-provider" variant="form">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-bg border-border">
+                  <SelectContent variant="form">
                     {POOLED_PROVIDERS.map((id) => (
                       <SelectItem key={id} value={id}>
                         <span className="font-mono text-txt-strong">
@@ -239,7 +235,8 @@ export function ContributeCredentialDialog({
                   required
                   autoFocus
                   autoComplete="off"
-                  className="bg-transparent border-border text-txt-strong font-mono"
+                  variant="form"
+                  className="font-mono"
                 />
                 <p className="text-xs font-mono text-muted">
                   {t("cloud.contributeCredential.apiKeyHint", {
@@ -269,7 +266,7 @@ export function ContributeCredentialDialog({
                   onChange={(e) => setLabel(e.target.value)}
                   disabled={isSubmitting}
                   maxLength={120}
-                  className="bg-transparent border-border text-txt-strong"
+                  variant="form"
                 />
               </div>
 
@@ -285,9 +282,9 @@ export function ContributeCredentialDialog({
                     defaultValue: "Cancel",
                   })}
                 </Button>
-                <BrandButton
+                <Button
                   type="submit"
-                  variant="primary"
+                  variant="default"
                   disabled={isSubmitting}
                   className="font-mono text-sm order-1 sm:order-2"
                 >
@@ -306,9 +303,9 @@ export function ContributeCredentialDialog({
                       })}
                     </>
                   )}
-                </BrandButton>
+                </Button>
               </DialogFooter>
-            </form>
+            </SemanticForm>
           </>
         )}
       </DialogContent>

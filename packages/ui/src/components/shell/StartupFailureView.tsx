@@ -12,6 +12,7 @@ import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
 import { startFreshFirstRunReload } from "../../platform";
 import type { StartupErrorState } from "../../state";
 import { type useApp, useAppSelector } from "../../state";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 
@@ -48,7 +49,7 @@ function startupReasonLabel(
 }
 
 const SCREEN_SHELL_CLASS =
-  "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";
+  "relative flex min-h-screen w-full items-center justify-center overflow-hidden px-4 py-6 font-body text-txt sm:px-6";
 interface StartupFailureViewProps {
   error: StartupErrorState;
   onRetry: () => void;
@@ -89,97 +90,124 @@ export function StartupFailureView({
   const startupDraft = buildStartupBugReportDraft(reasonLabel, error);
 
   return (
-    <div className={SCREEN_SHELL_CLASS}>
-      <Card variant="startupFailure">
-        <CardHeader className="pb-6 pt-6">
-          <div className="flex flex-col gap-4">
-            <span
-              aria-label={reasonLabel}
-              className="inline-flex size-9 items-center justify-center rounded-sm border border-destructive/35 bg-destructive/12 text-destructive"
-              role="img"
-              title={reasonLabel}
-            >
-              <AlertCircle className="size-5" aria-hidden />
-            </span>
-            <h1 className="text-xl font-semibold leading-tight text-destructive">
-              {reasonLabel}
-            </h1>
-          </div>
-        </CardHeader>
+    <Card asChild variant="sandboxFrame" className={SCREEN_SHELL_CLASS}>
+      <div>
+        <Card
+          surface="cardOverlay"
+          border="subtle"
+          className="relative z-10 w-full max-w-[720px] overflow-hidden"
+        >
+          <CardHeader className="pb-6 pt-6">
+            <div className="flex flex-col gap-4">
+              <Badge
+                asChild
+                variant="statusDanger"
+                size="providerMark"
+                aria-label={reasonLabel}
+                className="size-9"
+                role="img"
+                title={reasonLabel}
+              >
+                <span>
+                  <AlertCircle className="size-5" aria-hidden />
+                </span>
+              </Badge>
+              <h1 className="text-xl font-semibold leading-tight text-destructive">
+                {reasonLabel}
+              </h1>
+            </div>
+          </CardHeader>
 
-        <CardContent className="flex flex-col gap-5 pt-6">
-          {/* The human-readable reason, surfaced front-and-centre (not buried in
+          <CardContent className="flex flex-col gap-5 pt-6">
+            {/* The human-readable reason, surfaced front-and-centre (not buried in
               the bug-report draft) so a user staring at an offline phone learns
               what actually went wrong. */}
-          <p className="text-sm leading-relaxed text-txt">
-            {t("startupfailureview.TryAgainDescription", {
-              defaultValue:
-                "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
-            })}
-          </p>
-          <details className="group rounded-sm border border-border/60 bg-bg/50">
-            <summary className="cursor-pointer px-3 py-2 text-xs-tight font-semibold text-muted hover:text-txt">
-              {t("startupfailureview.TechnicalDetails", {
-                defaultValue: "Technical details",
+            <p className="text-sm leading-relaxed text-txt">
+              {t("startupfailureview.TryAgainDescription", {
+                defaultValue:
+                  "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
               })}
-            </summary>
-            <pre className="max-h-60 overflow-auto border-t border-border/60 p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
-              {[error.message, error.detail].filter(Boolean).join("\n\n")}
-            </pre>
-          </details>
-
-          <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
-            {error.reason === "backend-unreachable" ? (
-              <Button
-                variant="default"
-                size="lg"
-                onClick={() => startFreshFirstRunReload()}
-                className="w-full sm:w-auto sm:min-w-[11rem]"
-                data-testid="startup-start-over"
-              >
-                {t("startupfailureview.StartOver", {
-                  defaultValue: "Start over",
-                })}
-              </Button>
-            ) : null}
-            <Button
-              variant={
-                error.reason === "backend-unreachable" ? "outline" : "default"
-              }
-              size="lg"
-              onClick={onRetry}
-              className="w-full sm:w-auto sm:min-w-[11rem]"
-              data-testid="startup-retry"
+            </p>
+            <Card
+              asChild
+              surface="backgroundSubtle"
+              border="subtle"
+              className="group"
             >
-              {t("startupfailureview.RetryStartup")}
-            </Button>
-            {bugReport ? (
+              <details>
+                <Button
+                  asChild
+                  variant="disclosureMuted"
+                  size="content"
+                  className="cursor-pointer px-3 py-2 font-semibold"
+                >
+                  <summary>
+                    {t("startupfailureview.TechnicalDetails", {
+                      defaultValue: "Technical details",
+                    })}
+                  </summary>
+                </Button>
+                <Card asChild variant="topDivider">
+                  <pre className="max-h-60 overflow-auto p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
+                    {[error.message, error.detail].filter(Boolean).join("\n\n")}
+                  </pre>
+                </Card>
+              </details>
+            </Card>
+
+            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
+              {error.reason === "backend-unreachable" ? (
+                <Button
+                  variant="default"
+                  size="lg"
+                  onClick={() => startFreshFirstRunReload()}
+                  className="w-full sm:w-auto sm:min-w-[11rem]"
+                  data-testid="startup-start-over"
+                >
+                  {t("startupfailureview.StartOver", {
+                    defaultValue: "Start over",
+                  })}
+                </Button>
+              ) : null}
               <Button
-                variant="outline"
+                variant={
+                  error.reason === "backend-unreachable" ? "outline" : "default"
+                }
                 size="lg"
-                onClick={() => bugReport.open(startupDraft)}
-                className="w-full sm:w-auto sm:min-w-[10rem]"
-                data-testid="startup-report-bug"
+                onClick={onRetry}
+                className="w-full sm:w-auto sm:min-w-[11rem]"
+                data-testid="startup-retry"
               >
-                {t("bugreportmodal.ReportABug")}
+                {t("startupfailureview.RetryStartup")}
               </Button>
-            ) : null}
-            {error.reason === "backend-unreachable" ? (
-              <Button
-                variant="outline"
-                size="lg"
-                asChild
-                className="w-full sm:w-auto sm:min-w-[10rem]"
-                data-testid="startup-open-app"
-              >
-                <a href={branding.appUrl} target="_blank" rel="noreferrer">
-                  {t("startupfailureview.OpenApp")}
-                </a>
-              </Button>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+              {bugReport ? (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => bugReport.open(startupDraft)}
+                  className="w-full sm:w-auto sm:min-w-[10rem]"
+                  data-testid="startup-report-bug"
+                >
+                  {t("bugreportmodal.ReportABug")}
+                </Button>
+              ) : null}
+              {error.reason === "backend-unreachable" ? (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  asChild
+                  className="w-full sm:w-auto sm:min-w-[10rem]"
+                  data-testid="startup-open-app"
+                >
+                  <a href={branding.appUrl} target="_blank" rel="noreferrer">
+                    {t("startupfailureview.OpenApp")}
+                  </a>
+                </Button>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </Card>
   );
 }

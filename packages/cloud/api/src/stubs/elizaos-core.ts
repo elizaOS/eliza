@@ -10,12 +10,20 @@
 const NOT_AVAILABLE =
   "@elizaos/core runtime APIs are not available in the Cloudflare Workers API bundle. Route agent runtime work through the agent-server sidecar.";
 
+// Worker-safe mirror of the pure error-code literal consumed by
+// plugin-elizacloud while the Worker bundle aliases @elizaos/core to this
+// compatibility surface.
+export const ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED =
+  "ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED";
+
 // Worker-safe mirrors of the pure prompt fragments re-exported by core. The
 // cloud native-planner template interpolates them during bundle construction.
 export const groupResponsePrecedencePolicy = `response_precedence:
 - apply these rules in order; the first matching rule wins
 - a request to stop or be quiet directed at {{agentName}} -> STOP
+- a pure acknowledgement, thanks, reaction, or social closer with no new question, correction, disagreement, or task -> IGNORE, even when it names {{agentName}}
 - a direct mention, reply, or clear continuation addressed to {{agentName}} -> RESPOND, even when the sender is another assistant/bot
+- when the current message challenges, corrects, questions, expresses disagreement or doubt about, or asks to clarify the immediately preceding prior_message:agent reply, including short forms such as "why?", "really?", or "are you sure?" -> RESPOND
 - when the trusted provider context identifies the newest sender as another assistant/bot and the message is not addressed to {{agentName}} -> IGNORE
 - when a trusted bot-authored reply already answered the preceding human and {{agentName}} was not addressed -> IGNORE; one speaker is enough
 - otherwise use the conversation rules below; when unsure, default IGNORE
@@ -2003,6 +2011,7 @@ export type MediaGenerationResponse = Record<string, unknown>;
 export default {
   logger,
   elizaLogger,
+  ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
   DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,

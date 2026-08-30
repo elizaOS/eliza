@@ -65,8 +65,9 @@ export function TypingIndicator({
         aria-label={`${agentName} is typing`}
       >
         <ChatBubble
+          appearance="gameTyping"
           tone="assistant"
-          className="flex max-w-[min(85%,24rem)] items-center gap-1 rounded-sm px-4 py-3"
+          className="flex max-w-[min(85%,24rem)] items-center gap-1 px-4 py-3"
         >
           <TypingDots
             className="flex items-center gap-1"
@@ -250,7 +251,7 @@ export function TurnStatus({
     // second animated glyph or bubble.
     return (
       <Marker
-        className="min-h-[1.4375rem] w-fit text-white/80"
+        turnStatus="compact"
         data-testid="turn-status-indicator"
         data-status-kind={shown?.kind ?? "none"}
         role="status"
@@ -269,7 +270,7 @@ export function TurnStatus({
 
   return (
     <Marker
-      className="w-fit text-white/90"
+      turnStatus="default"
       data-testid="turn-status-indicator"
       data-status-kind={shown?.kind ?? "none"}
       role="status"

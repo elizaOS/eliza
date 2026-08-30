@@ -19,12 +19,16 @@
  */
 
 import {
+  FramedPageHeader,
+  FramedPageNavigation,
+} from "../../layouts/framed-page";
+import {
   navigateToSectionPath,
   normalizeSectionPath,
   type SectionTab,
   SectionTabStrip,
 } from "../shared/SectionNav";
-import { ViewHeader } from "../shared/ViewHeader";
+import { Separator } from "../ui/separator";
 
 const CHARACTER_SECTION_GROUP = "character";
 
@@ -40,7 +44,7 @@ const CHARACTER_SECTION_TABS: readonly SectionTab[] = [
     id: "relationships",
     label: "Relationships",
     path: "/apps/relationships",
-    aliases: ["/character/relationships"],
+    aliases: ["/character/relationships", "/relationships"],
   },
   { id: "character-skills", label: "Skills", path: "/character/skills" },
   { id: "experience", label: "Experience", path: "/character/experience" },
@@ -77,21 +81,25 @@ export function CharacterSectionNav({
   activePath: string;
 }): React.JSX.Element {
   return (
-    <div className="flex shrink-0 flex-col border-b border-border/45">
-      <ViewHeader title="Character" />
-      <SectionTabStrip
-        entries={CHARACTER_SECTION_TABS}
-        activeId={activeCharacterTabId(activePath)}
-        onSelect={(id) => {
-          const tab = CHARACTER_SECTION_TABS.find(
-            (candidate) => candidate.id === id,
-          );
-          if (tab) navigateToSectionPath(tab.path);
-        }}
-        testId={`section-nav-${CHARACTER_SECTION_GROUP}`}
-        ariaLabel="Character sections"
-        className="pt-0"
-      />
-    </div>
+    <>
+      <FramedPageHeader title="Character" />
+      <FramedPageNavigation className="overflow-x-auto">
+        <SectionTabStrip
+          entries={CHARACTER_SECTION_TABS}
+          activeId={activeCharacterTabId(activePath)}
+          onSelect={(id) => {
+            const tab = CHARACTER_SECTION_TABS.find(
+              (candidate) => candidate.id === id,
+            );
+            if (tab) navigateToSectionPath(tab.path);
+          }}
+          testId={`section-nav-${CHARACTER_SECTION_GROUP}`}
+          ariaLabel="Character sections"
+          className="px-0 py-0"
+          tabClassName="max-[420px]:px-2 max-[360px]:px-1"
+        />
+      </FramedPageNavigation>
+      <Separator tone="subtle45" />
+    </>
   );
 }

@@ -73,6 +73,9 @@ mock.module("@/lib/utils/logger", () => ({
 }));
 
 const { default: agentDetailRoute } = await import("./route");
+const { personalSharedAgentId } = await import(
+  "@/lib/services/shared-runtime/personal-shared-agent"
+);
 
 const app = new Hono<AppEnv>();
 app.route("/api/v1/eliza/agents/:agentId", agentDetailRoute);
@@ -115,9 +118,12 @@ function dedicatedAgent() {
   };
 }
 
-async function getDetail(canonicalAgentBaseDomain?: string) {
+async function getDetail(
+  canonicalAgentBaseDomain?: string,
+  agentId = AGENT_ID,
+) {
   return app.fetch(
-    new Request(`https://api.example.test/api/v1/eliza/agents/${AGENT_ID}`),
+    new Request(`https://api.example.test/api/v1/eliza/agents/${agentId}`),
     {
       ELIZA_CLOUD_AGENT_BASE_DOMAIN: canonicalAgentBaseDomain,
     } as AppEnv["Bindings"],
@@ -176,6 +182,45 @@ describe("owned agent detail private-address contract", () => {
       expect(body.data.webUiUrl).toBeNull();
       expect(body.data).not.toHaveProperty("bridgeUrl");
       expect(JSON.stringify(body)).not.toMatch(/100\.64|10\.0|192\.168/);
+    },
+  );
+
+  test("Personal detail is rejected before the UUID-backed repository", async () => {
+    getAgent.mockClear();
+    const personalId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+
+    const response = await getDetail(undefined, personalId);
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Agent not found",
+    });
+    expect(getAgent).not.toHaveBeenCalled();
+  });
+
+  test.each(["PATCH", "DELETE"])(
+    "%s rejects Personal identity before parsing or UUID-backed repository access",
+    async (method) => {
+      getAgent.mockClear();
+      const personalId = personalSharedAgentId({
+        userId: "user-1",
+        organizationId: "org-1",
+      });
+
+      const response = await app.request(`/api/v1/eliza/agents/${personalId}`, {
+        method,
+      });
+
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual({
+        success: false,
+        error: "Agent not found",
+      });
+      expect(getAgent).not.toHaveBeenCalled();
     },
   );
 });

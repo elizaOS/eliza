@@ -22,7 +22,6 @@ import { Radio } from "lucide-react";
 import * as React from "react";
 import { client } from "../../api/client";
 import { parseMeetingStatusEvent } from "../../api/client-meetings";
-import { ViewHeader } from "../shared/ViewHeader";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { LiveMeetingPane } from "./LiveMeetingPane";
 import { MeetingJoinBar } from "./MeetingJoinBar";
@@ -173,7 +172,6 @@ export function LiveMeetingPage(): React.JSX.Element {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <ViewHeader title="Live meeting" />
       <ShellViewAgentSurface viewId="transcripts">
         <div
           data-testid="live-meeting-page"

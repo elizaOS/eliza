@@ -11,6 +11,7 @@ import { Copy, Server } from "lucide-react";
 import { useMemo } from "react";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { buildPairingCodeCommandInfo } from "./pairing-command";
 
 export function PairingCommandHint({ remoteUrl }: { remoteUrl?: string }) {
@@ -67,11 +68,21 @@ export function PairingCommandHint({ remoteUrl }: { remoteUrl?: string }) {
   }
 
   return (
-    <div className="rounded-sm border border-border/60 bg-bg/50 p-4 text-txt ">
+    <Card
+      surface="backgroundSubtle"
+      border="subtle"
+      padding="comfortable"
+      tone="text"
+    >
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-sm border border-border/60 bg-bg/80 text-muted">
+        <Card
+          surface="backgroundStrong"
+          border="subtle"
+          tone="muted"
+          className="mt-0.5 flex size-8 shrink-0 items-center justify-center"
+        >
           <Server className="size-4" aria-hidden />
-        </div>
+        </Card>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-txt-strong">
             {t("pairingcommandhint.title", {
@@ -116,7 +127,7 @@ export function PairingCommandHint({ remoteUrl }: { remoteUrl?: string }) {
           </p>
         ) : null}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -155,9 +166,11 @@ function CommandLine({
           {copyLabel}
         </Button>
       </div>
-      <code className="block max-w-full select-all overflow-x-auto whitespace-pre rounded-sm border border-border/60 bg-bg/80 px-3 py-2 font-mono text-xs-tight leading-relaxed text-txt">
-        {command}
-      </code>
+      <Card asChild surface="backgroundStrong" border="subtle">
+        <code className="block max-w-full select-all overflow-x-auto whitespace-pre px-3 py-2 font-mono text-xs-tight leading-relaxed text-txt">
+          {command}
+        </code>
+      </Card>
     </div>
   );
 }

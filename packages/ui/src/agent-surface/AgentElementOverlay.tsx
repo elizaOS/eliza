@@ -6,29 +6,14 @@
  * it never intercepts clicks.
  */
 
-import type * as React from "react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { Badge } from "../components/ui/badge";
+import { Card } from "../components/ui/card";
 import { Z_SHELL_OVERLAY } from "../lib/floating-layers";
 import { useAgentSurface } from "./AgentSurfaceContext.hooks";
 
 const noopSubscribe = () => () => {};
-
-// Static style fragments hoisted so the per-element render only allocates the
-// dynamic geometry fields.
-const INDICATOR_LABEL_STYLE: React.CSSProperties = {
-  position: "absolute",
-  top: -16,
-  left: 0,
-  fontSize: 10,
-  lineHeight: "14px",
-  padding: "0 4px",
-  borderRadius: 4,
-  color: "var(--accent-foreground)",
-  background: "var(--accent)",
-  whiteSpace: "nowrap",
-  fontFamily: "var(--font-mono, monospace)",
-};
 
 export function AgentElementOverlay() {
   const surface = useAgentSurface();
@@ -89,24 +74,28 @@ export function AgentElementOverlay() {
         return (
           <div
             key={element.id}
-            data-agent-indicator={element.id}
             style={{
               position: "fixed",
               left: b.x,
               top: b.y,
               width: b.width,
               height: b.height,
-              border: element.focused
-                ? "2px solid var(--accent)"
-                : "1px dashed var(--accent)",
-              borderRadius: 6,
-              boxShadow: element.focused
-                ? "0 0 0 2px var(--accent-muted, rgba(255,115,0,0.35))"
-                : "none",
-              boxSizing: "border-box",
             }}
           >
-            <span style={INDICATOR_LABEL_STYLE}>{element.id}</span>
+            <Card
+              data-agent-indicator={element.id}
+              data-focused={element.focused}
+              variant={element.focused ? "transparent" : "dashed"}
+              border={element.focused ? "strong" : "default"}
+              radius="large"
+              surface="transparent"
+              shadow="none"
+              className="h-full w-full"
+            >
+              <Badge variant="visualAnchor" overlay="agentIndicatorLabel">
+                {element.id}
+              </Badge>
+            </Card>
           </div>
         );
       })}

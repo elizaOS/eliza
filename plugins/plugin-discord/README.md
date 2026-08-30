@@ -325,6 +325,12 @@ channels, permission overwrites) against the live guild:
 - `dryRun: true` returns the full plan (`would_create` / `would_update`)
   without touching Discord.
 
+Concurrent applies of the same template are serialized only within one
+`DiscordService` process. Deployments must not run multiple active service
+processes for the same Discord account and guild unless they provide their own
+distributed serialization around `apply_template`; the runtime cache is state
+storage, not a cross-process lock.
+
 Built-in vendor-neutral templates: `companion-private`, `friends-casual`,
 `project-team`, `community-public`. Deployments can add or override
 templates via `settings.discord.guildTemplates` (per-account:

@@ -1019,7 +1019,7 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(parseInteractionBlocks(texts[0] ?? "").blocks).toHaveLength(0);
     });
 
-    it("appends per-thread reply/snooze/archive chips to the triage queue for every returned thread, with entry ids in the values", async () => {
+    it("appends attributable reply/snooze/archive chips for every returned triage thread without capping the queue", async () => {
       const rows = ["e1", "e2", "e3", "e4", "e5", "e6"].map((id, index) =>
         makeTriageRow({
           id,
@@ -1068,6 +1068,7 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
         // The reply chip names the sender so each block reads attributably.
         expect(block.options[0]?.label).toBe(`Reply to Sender ${index + 1}`);
       });
+      expect(text).toContain("e6");
     });
 
     it("an archive chip value round-trips into a successful archive of that entry", async () => {

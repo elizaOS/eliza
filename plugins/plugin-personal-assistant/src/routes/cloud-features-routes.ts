@@ -24,7 +24,7 @@ import {
   type CloudAuthApiKeyService,
   normalizeCloudApiKey,
   normalizeCloudSiteUrl,
-  resolveCloudApiKey,
+  resolveCloudApiKeyWithRuntimeOverride,
   validateCloudBaseUrl,
 } from "@elizaos/plugin-elizacloud";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
@@ -69,7 +69,11 @@ function resolveProxyApiKey(state: CloudFeaturesRouteState): string | null {
     cloudAuth?.isAuthenticated() === true
       ? normalizeCloudApiKey(cloudAuth.getApiKey?.())
       : null;
-  return runtimeApiKey ?? resolveCloudApiKey(state.config, state.runtime);
+  return resolveCloudApiKeyWithRuntimeOverride(
+    runtimeApiKey,
+    state.config,
+    state.runtime,
+  );
 }
 
 function buildAuthHeaders(

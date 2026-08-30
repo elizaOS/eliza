@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../../lib/api-client";
+import { ApiError, api } from "../../lib/api-client";
 
 export type JobStatus = "pending" | "in_progress" | "completed" | "failed";
 
@@ -24,6 +24,7 @@ export interface TrackedJob {
   attempts?: number;
   maxAttempts?: number;
   estimatedCompletionAt?: string | null;
+  terminalSource?: "server" | "client_timeout" | "unavailable";
 }
 
 interface UseJobPollerOptions {
@@ -38,6 +39,44 @@ function isActiveStatus(status: JobStatus) {
   return status === "pending" || status === "in_progress";
 }
 
+function statusRank(status: JobStatus): number {
+  if (status === "pending") return 0;
+  if (status === "in_progress") return 1;
+  return 2;
+}
+
+function mergeSameJobSnapshot(
+  existing: TrackedJob,
+  incoming: TrackedJob,
+): TrackedJob | null {
+  const existingAttempts = existing.attempts ?? 0;
+  const incomingAttempts = incoming.attempts ?? existingAttempts;
+  if (incomingAttempts < existingAttempts) return null;
+
+  const generationAdvanced =
+    incomingAttempts > existingAttempts ||
+    incoming.startedAt > existing.startedAt;
+  if (
+    incomingAttempts === existingAttempts &&
+    incoming.startedAt < existing.startedAt
+  ) {
+    return null;
+  }
+
+  if (!isActiveStatus(existing.status)) {
+    if (existing.terminalSource !== "client_timeout" || !generationAdvanced) {
+      return null;
+    }
+  } else if (
+    !generationAdvanced &&
+    statusRank(incoming.status) < statusRank(existing.status)
+  ) {
+    return null;
+  }
+
+  return incoming;
+}
+
 function isJobStatus(value: unknown): value is JobStatus {
   return (
     value === "pending" ||
@@ -50,9 +89,10 @@ function isJobStatus(value: unknown): value is JobStatus {
 export function useJobPoller(options: UseJobPollerOptions = {}) {
   const {
     intervalMs = 5_000,
-    // Agent provisioning can take multiple attempts with backoff, plus cron
-    // pickup lag. Keep the default local timeout above the server retry window.
-    maxDurationMs = 10 * 60_000,
+    // A real provision can span several provider attempts, so the old ten-minute
+    // renderer deadline was too short. Keep a bounded 45-minute fail-closed
+    // ceiling so a deleted or permanently wedged job cannot poll forever.
+    maxDurationMs = 45 * 60_000,
     onComplete,
     onFailed,
     autoRefresh = true,
@@ -93,7 +133,46 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
     ) => {
       setJobMap((prev) => {
         const existing = prev.get(key);
-        if (existing?.jobId === jobId) return prev;
+        if (existing?.jobId === jobId) {
+          if (!initial) return prev;
+
+          // A server retry keeps the same job id while advancing attempts and
+          // startedAt. Rehydrate that authoritative active state instead of
+          // leaving a client-side timeout/failure sticky for the rest of the
+          // page lifetime.
+          const nextStartedAt = initial.startedAt ?? existing.startedAt;
+          const nextAttempts = initial.attempts ?? existing.attempts;
+          const nextMaxAttempts = initial.maxAttempts ?? existing.maxAttempts;
+          const nextEstimate =
+            initial.estimatedCompletionAt ?? existing.estimatedCompletionAt;
+          const nextStatus = initial.status ?? existing.status;
+          if (
+            nextStartedAt === existing.startedAt &&
+            nextAttempts === existing.attempts &&
+            nextMaxAttempts === existing.maxAttempts &&
+            nextEstimate === existing.estimatedCompletionAt &&
+            nextStatus === existing.status
+          ) {
+            return prev;
+          }
+
+          const candidate: TrackedJob = {
+            ...existing,
+            status: nextStatus,
+            error: isActiveStatus(nextStatus) ? null : existing.error,
+            startedAt: nextStartedAt,
+            attempts: nextAttempts,
+            maxAttempts: nextMaxAttempts,
+            estimatedCompletionAt: nextEstimate,
+            terminalSource: isActiveStatus(nextStatus) ? undefined : "server",
+          };
+          const merged = mergeSameJobSnapshot(existing, candidate);
+          if (!merged) return prev;
+
+          const next = new Map(prev);
+          next.set(key, merged);
+          return next;
+        }
         const next = new Map(prev);
         next.set(key, {
           key,
@@ -104,6 +183,10 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
           attempts: initial?.attempts,
           maxAttempts: initial?.maxAttempts,
           estimatedCompletionAt: initial?.estimatedCompletionAt,
+          terminalSource:
+            initial?.status && !isActiveStatus(initial.status)
+              ? "server"
+              : undefined,
         });
         return next;
       });
@@ -152,20 +235,26 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
         let needsRefresh = false;
 
         for (const job of currentActive) {
-          if (Date.now() - job.startedAt > maxDurationMs) {
+          if (
+            typeof maxDurationMs === "number" &&
+            Date.now() - job.startedAt > maxDurationMs
+          ) {
             const timedOutJob: TrackedJob = {
               ...job,
               status: "failed",
               error: "Timed out waiting for job to complete",
+              terminalSource: "client_timeout",
             };
+            const current = jobMapRef.current.get(job.key);
+            if (!current || current.jobId !== timedOutJob.jobId) continue;
+            const merged = mergeSameJobSnapshot(current, timedOutJob);
+            if (!merged) continue;
+            const next = new Map(jobMapRef.current);
+            next.set(job.key, merged);
+            jobMapRef.current = next;
+            setJobMap(next);
 
-            setJobMap((prev) => {
-              const next = new Map(prev);
-              next.set(job.key, timedOutJob);
-              return next;
-            });
-
-            callbacksRef.current.onFailed?.(timedOutJob);
+            callbacksRef.current.onFailed?.(merged);
             continue;
           }
 
@@ -212,19 +301,54 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
                   : job.estimatedCompletionAt,
             };
 
-            setJobMap((prev) => {
-              const next = new Map(prev);
-              next.set(job.key, updatedJob);
-              return next;
+            const current = jobMapRef.current.get(job.key);
+            if (!current || current.jobId !== updatedJob.jobId) continue;
+            const merged = mergeSameJobSnapshot(current, {
+              ...updatedJob,
+              terminalSource: isActiveStatus(updatedJob.status)
+                ? undefined
+                : "server",
             });
+            if (!merged) continue;
+            const next = new Map(jobMapRef.current);
+            next.set(job.key, merged);
+            jobMapRef.current = next;
+            setJobMap(next);
 
             if (nextStatus === "completed") {
-              callbacksRef.current.onComplete?.(updatedJob);
+              callbacksRef.current.onComplete?.(merged);
               needsRefresh = true;
             } else if (nextStatus === "failed") {
-              callbacksRef.current.onFailed?.(updatedJob);
+              callbacksRef.current.onFailed?.(merged);
             }
-          } catch {
+          } catch (error) {
+            if (
+              error instanceof ApiError &&
+              (error.status === 401 ||
+                error.status === 403 ||
+                error.status === 404)
+            ) {
+              const unavailableJob: TrackedJob = {
+                ...job,
+                status: "failed",
+                error:
+                  error.status === 404
+                    ? "This job is no longer available. Refresh agent status before retrying."
+                    : "This job is no longer accessible. Sign in again and refresh agent status.",
+                terminalSource: "unavailable",
+              };
+              const current = jobMapRef.current.get(job.key);
+              if (current?.jobId === job.jobId) {
+                const merged = mergeSameJobSnapshot(current, unavailableJob);
+                if (merged) {
+                  const next = new Map(jobMapRef.current);
+                  next.set(job.key, merged);
+                  jobMapRef.current = next;
+                  setJobMap(next);
+                  callbacksRef.current.onFailed?.(merged);
+                }
+              }
+            }
             // error-policy:J4 transient status-read failure preserves the
             // visible in-progress state and retries on the next poll tick.
           }
