@@ -80,7 +80,7 @@ export function verifyBlooioSignature(
   nowSeconds = Math.floor(Date.now() / 1000)
 ): boolean {
   if (!secret || !signatureHeader) return false;
-  const parts = signatureHeader.split(",");
+  const parts = signatureHeader.split(",").map((part) => part.trim());
   const timestampPart = parts.find((part) => part.startsWith("t="));
   const signaturePart = parts.find((part) => part.startsWith("v1="));
   if (!timestampPart || !signaturePart) return false;

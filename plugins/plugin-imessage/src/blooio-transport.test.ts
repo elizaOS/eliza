@@ -42,6 +42,7 @@ describe("Blooio iMessage transport", () => {
   it("accepts a fresh authentic signature and rejects tampering or replay", () => {
     const body = envelope();
     expect(verifyBlooioSignature(SECRET, sign(body), body, NOW)).toBe(true);
+    expect(verifyBlooioSignature(SECRET, sign(body).replace(",", ", "), body, NOW)).toBe(true);
     expect(verifyBlooioSignature(SECRET, sign(body), `${body} `, NOW)).toBe(false);
     expect(verifyBlooioSignature(SECRET, sign(body, NOW - 301), body, NOW)).toBe(false);
   });
