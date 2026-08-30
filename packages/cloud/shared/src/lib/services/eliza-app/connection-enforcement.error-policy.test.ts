@@ -1,6 +1,7 @@
-// Pins the fail-closed contract of the connection-enforcement gate: an internal cache/oauth
-// failure must PROPAGATE (throw), and stay distinguishable from a legitimately-negative
-// "no required connection" result. Deterministic fixtures — no live cache or oauth.
+/**
+ * Pins the fail-closed connection-enforcement contract with deterministic cache
+ * and OAuth fixtures, including the disabled nudge-generation boundary.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const cacheGet = mock();
@@ -23,17 +24,8 @@ mock.module("../oauth", () => ({
   },
 }));
 
-mock.module("../../providers/language-model", () => ({
-  getLanguageModel: mock(() => "mock-model"),
-  hasLanguageModelProviderConfigured: mock(() => true),
-}));
-
 mock.module("../../utils/logger", () => ({
   logger: { info: mock(), warn: mock(), error: mock(), debug: mock() },
-}));
-
-mock.module("ai", () => ({
-  generateText: mock(async () => ({ text: "unused in this suite" })),
 }));
 
 const { connectionEnforcementService } = await import(
