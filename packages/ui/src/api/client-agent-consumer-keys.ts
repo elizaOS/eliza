@@ -76,7 +76,10 @@ function parseCreated(value: unknown): ConsumerKeyCreated {
 
 declare module "./client-base" {
   interface ElizaClient {
-    listConsumerKeys(timeoutMs?: number): Promise<ConsumerKeySummary[]>;
+    listConsumerKeys(
+      timeoutMs?: number,
+      signal?: AbortSignal,
+    ): Promise<ConsumerKeySummary[]>;
     createConsumerKey(body: ConsumerKeyPatch): Promise<ConsumerKeyCreated>;
     updateConsumerKey(
       id: string,
@@ -89,10 +92,11 @@ declare module "./client-base" {
 ElizaClient.prototype.listConsumerKeys = async function (
   this: ElizaClient,
   timeoutMs: number = CONSUMER_KEYS_LIST_FETCH_TIMEOUT_MS,
+  signal?: AbortSignal,
 ) {
   const response = await this.fetch<unknown>(
     "/api/accounts/consumer-keys",
-    undefined,
+    { signal },
     { timeoutMs },
   );
   if (!isRecord(response) || !Array.isArray(response.keys)) {

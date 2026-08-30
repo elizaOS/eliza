@@ -17,7 +17,7 @@ import {
   RotateCw,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
   ConsumerKeyCreated,
@@ -32,7 +32,10 @@ import { Input } from "../ui/input";
 import { Skeleton } from "../ui/skeleton";
 
 export interface ConsumerKeyPanelApi {
-  listConsumerKeys(): Promise<ConsumerKeySummary[]>;
+  listConsumerKeys(
+    timeoutMs?: number,
+    signal?: AbortSignal,
+  ): Promise<ConsumerKeySummary[]>;
   createConsumerKey(body: ConsumerKeyPatch): Promise<ConsumerKeyCreated>;
   updateConsumerKey(
     id: string,
@@ -154,24 +157,49 @@ export function ConsumerKeyPanelBody({
     value: string;
   } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const activeLoadAbortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
+    activeLoadAbortRef.current?.abort();
+    const abortController = new AbortController();
+    activeLoadAbortRef.current = abortController;
     setLoading(true);
     setError(null);
     try {
-      setKeys(await api.listConsumerKeys());
+      const nextKeys = await api.listConsumerKeys(
+        undefined,
+        abortController.signal,
+      );
+      if (
+        abortController.signal.aborted ||
+        activeLoadAbortRef.current !== abortController
+      )
+        return;
+      setKeys(nextKeys);
     } catch (loadError) {
       // error-policy:J4 the list read failing renders the explicit error+retry
       // state; an empty-looking healthy panel would misreport the store.
+      if (
+        abortController.signal.aborted ||
+        activeLoadAbortRef.current !== abortController
+      )
+        return;
       setError(errorText(loadError));
       setKeys(null);
     } finally {
-      setLoading(false);
+      if (activeLoadAbortRef.current === abortController) {
+        activeLoadAbortRef.current = null;
+        setLoading(false);
+      }
     }
   }, [api]);
 
   useEffect(() => {
     void load();
+    return () => {
+      activeLoadAbortRef.current?.abort();
+      activeLoadAbortRef.current = null;
+    };
   }, [load]);
 
   const withBusy = useCallback(

@@ -16,6 +16,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ConsumerKeyCreated,
@@ -104,6 +105,47 @@ describe("list states", () => {
     });
     render(<ConsumerKeyPanelBody api={api} />);
     expect(screen.getByTestId("consumer-keys-loading")).toBeTruthy();
+  });
+
+  it("cancels the replaced StrictMode list read and renders its successor", async () => {
+    const signals: AbortSignal[] = [];
+    const list = vi.fn(
+      (_timeoutMs?: number, signal?: AbortSignal) =>
+        new Promise<ConsumerKeySummary[]>((resolve, reject) => {
+          if (!signal) throw new Error("missing cancellation signal");
+          signals.push(signal);
+          signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+          if (signals.length === 2) resolve([key()]);
+        }),
+    );
+    render(
+      <StrictMode>
+        <ConsumerKeyPanelBody api={makeApi({ listConsumerKeys: list })} />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(screen.getByText("proxy-a")).toBeTruthy());
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+    expect(screen.queryByTestId("consumer-keys-error")).toBeNull();
+  });
+
+  it("cancels the active list read when the panel unmounts", () => {
+    let signal: AbortSignal | undefined;
+    const list = vi.fn((_timeoutMs?: number, nextSignal?: AbortSignal) => {
+      signal = nextSignal;
+      return new Promise<ConsumerKeySummary[]>(() => {});
+    });
+    const view = render(
+      <ConsumerKeyPanelBody api={makeApi({ listConsumerKeys: list })} />,
+    );
+    expect(signal?.aborted).toBe(false);
+    view.unmount();
+    expect(signal?.aborted).toBe(true);
   });
 
   it("renders an explicit error state and retries into data", async () => {
