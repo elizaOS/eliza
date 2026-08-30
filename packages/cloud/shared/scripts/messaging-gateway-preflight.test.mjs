@@ -207,6 +207,15 @@ test("workflow keeps trusted checks manual and source tests reusable from develo
     workflow,
     /Trusted configuration checks must run from refs\/heads\/develop or refs\/heads\/main/,
   );
+  assert.match(
+    workflow,
+    /name: Require canonical trusted-configuration source\s+working-directory: \.\s+env:/,
+  );
+  assert.ok(
+    workflow.indexOf("name: Require canonical trusted-configuration source") <
+      workflow.indexOf("uses: actions/checkout"),
+    "the trusted-source guard must run before checkout",
+  );
   assert.doesNotMatch(workflow, /^\s+ELIZA_APP_DISCORD_APPLICATION_ID:/m);
   assert.doesNotMatch(workflow, /^\s+ELIZA_APP_DISCORD_BOT_TOKEN:/m);
   assert.doesNotMatch(workflow, /ELIZA_APP_DISCORD_CLIENT_SECRET:/);

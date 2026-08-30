@@ -35,6 +35,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Require canonical trusted-configuration source
+        working-directory: .
         env:
           SOURCE_REF: ${{ github.ref }}
         run: |
