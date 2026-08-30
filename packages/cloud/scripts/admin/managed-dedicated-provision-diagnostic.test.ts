@@ -156,6 +156,36 @@ describe("managed Dedicated provision diagnostic", () => {
     ).toBe("container_ssh_command_exit_empty");
     expect(
       classifyManagedDedicatedProvisionFailure(
+        "[docker-ssh] Command exited with code 70 on node-a: [stderr] [docker-network] daemon-unavailable",
+        "x",
+      ),
+    ).toBe("container_network_daemon_unavailable");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-ssh] Command exited with code 71 on node-a: [stderr] [docker-network] ensure-failed",
+        "x",
+      ),
+    ).toBe("container_network_ensure_failed");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-ssh] Command exited with code 1 on node-a: [stderr] mkdir: No space left on device",
+        "x",
+      ),
+    ).toBe("container_volume_disk_full");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-ssh] Command exited with code 69 on node-a: [stderr] [docker-sandbox] Steward request failed",
+        "x",
+      ),
+    ).toBe("container_steward_request_failed");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-ssh] Command exited with code 1 on node-a: [stderr] python3: command not found",
+        "x",
+      ),
+    ).toBe("container_remote_python_missing");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
         "[docker-sandbox] Failed to create container on node: Cannot connect to the Docker daemon",
         "x",
       ),

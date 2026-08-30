@@ -51,6 +51,15 @@ export type ManagedDedicatedProvisionFailureCode =
   | "container_ssh_stream_error"
   | "container_ssh_transport"
   | "container_daemon"
+  | "container_network_daemon_unavailable"
+  | "container_network_ensure_failed"
+  | "container_volume_disk_full"
+  | "container_volume_read_only"
+  | "container_volume_path_invalid"
+  | "container_steward_request_failed"
+  | "container_steward_agent_registration_failed"
+  | "container_steward_token_mint_failed"
+  | "container_remote_python_missing"
   | "container_create"
   | "container_configuration"
   | "container_identity"
@@ -246,6 +255,37 @@ export function classifyManagedDedicatedProvisionFailure(
   }
   if (/\[docker-ssh\] exec(?:stream)? error/i.test(primary)) {
     return "container_ssh_exec_error";
+  }
+  if (/\[docker-network\] daemon-unavailable/i.test(primary)) {
+    return "container_network_daemon_unavailable";
+  }
+  if (/\[docker-network\] ensure-failed/i.test(primary)) {
+    return "container_network_ensure_failed";
+  }
+  if (/no space left on device/i.test(primary)) {
+    return "container_volume_disk_full";
+  }
+  if (/read-only file system/i.test(primary)) {
+    return "container_volume_read_only";
+  }
+  if (/(?:mkdir|directory).*(?:not a directory|file exists)/i.test(primary)) {
+    return "container_volume_path_invalid";
+  }
+  if (/Steward agent registration failed with status/i.test(primary)) {
+    return "container_steward_agent_registration_failed";
+  }
+  if (/Steward token mint failed with status/i.test(primary)) {
+    return "container_steward_token_mint_failed";
+  }
+  if (/\[docker-sandbox\] Steward request failed/i.test(primary)) {
+    return "container_steward_request_failed";
+  }
+  if (
+    /(?:python3?|\/usr\/bin\/env: ['"]?python3?).*(?:not found|no such file)/i.test(
+      primary,
+    )
+  ) {
+    return "container_remote_python_missing";
   }
   if (
     /\[docker-ssh\] command exited with code \d+ on [^:]+:\s*$/i.test(primary)
