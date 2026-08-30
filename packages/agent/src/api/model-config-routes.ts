@@ -49,6 +49,7 @@ import {
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import type { RuntimeOperationManager } from "../runtime/operations/index.ts";
+import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
 import { hasCloudTextHandlerRegistered } from "./agent-model.ts";
 import {
   buildModelCatalog,
@@ -130,6 +131,24 @@ const LLM_BACKEND_TO_CHAT_PROVIDER: Record<string, string> = {
   elizacloud: "elizacloud",
   anthropic: "claude-chat",
   openai: "openai",
+};
+
+const DIRECT_CHAT_PROVIDER_READINESS: Record<
+  string,
+  { credentialKey: string; registrationProvider: string }
+> = {
+  cerebras: {
+    credentialKey: "CEREBRAS_API_KEY",
+    registrationProvider: "openai",
+  },
+  openai: {
+    credentialKey: "OPENAI_API_KEY",
+    registrationProvider: "openai",
+  },
+  "claude-chat": {
+    credentialKey: "ANTHROPIC_API_KEY",
+    registrationProvider: "anthropic",
+  },
 };
 
 interface CodingBackendSeam {
@@ -578,18 +597,49 @@ function hostOf(value: string | undefined): string | null {
   }
 }
 
-function hasOpenAiTextHandlerRegistered(runtime: AgentRuntime): boolean {
+function hasTextHandlerRegistered(
+  runtime: AgentRuntime,
+  registrationProvider: string,
+): boolean {
   try {
     return (runtime.getModelRegistrations?.() ?? []).some(
       (entry) =>
         (entry.modelType === ModelType.TEXT_SMALL ||
           entry.modelType === ModelType.TEXT_LARGE) &&
-        entry.provider === "openai",
+        entry.provider === registrationProvider,
     );
   } catch {
     // error-policy:J7 diagnostics must not kill the serving-truth resolver.
     return false;
   }
+}
+
+function hasUsableRuntimeCredential(
+  runtime: AgentRuntime,
+  credentialKey: string,
+): boolean {
+  try {
+    const value = runtime.getSetting(credentialKey);
+    const credential = typeof value === "string" ? value.trim() : "";
+    return credential !== "" && !isVaultRef(credential);
+  } catch {
+    // error-policy:J7 status diagnostics fail closed when runtime settings are
+    // unavailable; inference handling remains owned by the registered provider.
+    return false;
+  }
+}
+
+function hasDirectProviderServingEvidence(
+  runtime: AgentRuntime | null | undefined,
+  provider: string,
+): boolean {
+  const readiness = DIRECT_CHAT_PROVIDER_READINESS[provider];
+  return Boolean(
+    runtime &&
+      readiness &&
+      hasTextHandlerRegistered(runtime, readiness.registrationProvider) &&
+      hasUsableRuntimeCredential(runtime, readiness.credentialKey),
+  );
 }
 
 export function resolveActiveChat(
@@ -612,7 +662,12 @@ export function resolveActiveChat(
         ? "elizacloud"
         : undefined;
   } else if (llmText?.transport === "direct" && backend !== undefined) {
-    provider = LLM_BACKEND_TO_CHAT_PROVIDER[backend];
+    const directProvider = LLM_BACKEND_TO_CHAT_PROVIDER[backend];
+    provider =
+      directProvider &&
+      hasDirectProviderServingEvidence(runtime, directProvider)
+        ? directProvider
+        : undefined;
   } else if (routing === null) {
     // Legacy/local launches may configure plugin-openai directly from the
     // environment without persisting a serviceRouting block. ELIZA_PROVIDER is
@@ -627,8 +682,7 @@ export function resolveActiveChat(
     )?.value.toLowerCase();
     if (
       explicitProvider === "cerebras" &&
-      runtime &&
-      hasOpenAiTextHandlerRegistered(runtime)
+      hasDirectProviderServingEvidence(runtime, "cerebras")
     ) {
       provider = "cerebras";
     }

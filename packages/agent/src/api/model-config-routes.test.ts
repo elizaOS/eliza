@@ -31,7 +31,10 @@ interface HarnessOptions {
   config?: ElizaConfig;
   processEnv?: NodeJS.ProcessEnv;
   managerStart?: ReturnType<typeof vi.fn>;
-  runtime?: { getModelRegistrations: () => unknown[] } | null;
+  runtime?: {
+    getModelRegistrations: () => unknown[];
+    getSetting?: (key: string) => unknown;
+  } | null;
 }
 
 function makeHarness(
@@ -663,6 +666,29 @@ describe("GET /api/models/config activeChat", () => {
     };
   }
 
+  function runtimeWithDirectProvider(
+    provider: "anthropic" | "cerebras" | "openai",
+  ) {
+    const credentialKey =
+      provider === "cerebras"
+        ? "CEREBRAS_API_KEY"
+        : provider === "anthropic"
+          ? "ANTHROPIC_API_KEY"
+          : "OPENAI_API_KEY";
+    return {
+      getModelRegistrations: () => [
+        {
+          modelType: ModelType.TEXT_SMALL,
+          provider: provider === "anthropic" ? "anthropic" : "openai",
+          priority: 0,
+          registrationOrder: 1,
+        },
+      ],
+      getSetting: (key: string) =>
+        key === credentialKey ? `${provider}-test-key` : undefined,
+    };
+  }
+
   it("names the cloud brain + its endpoint under cloud-proxy routing", async () => {
     const { ctx, json } = makeHarness("GET", null, {
       config: cloudRoutedConfig,
@@ -708,6 +734,7 @@ describe("GET /api/models/config activeChat", () => {
         },
       } as never,
       processEnv: { OPENAI_BASE_URL: "https://api.cerebras.ai/v1" },
+      runtime: runtimeWithDirectProvider("cerebras"),
     });
     await handleModelConfigRoutes(ctx as never);
     const { body } = responseOf(json);
@@ -736,6 +763,7 @@ describe("GET /api/models/config activeChat", () => {
         },
       } as never,
       processEnv: {},
+      runtime: runtimeWithDirectProvider("cerebras"),
     });
     await handleModelConfigRoutes(ctx as never);
     expect(responseOf(json).body.activeChat).toEqual({
@@ -761,6 +789,8 @@ describe("GET /api/models/config activeChat", () => {
             registrationOrder: 1,
           },
         ],
+        getSetting: (key: string) =>
+          key === "CEREBRAS_API_KEY" ? "cerebras-test-key" : undefined,
       },
     });
     await handleModelConfigRoutes(ctx as never);
@@ -797,6 +827,7 @@ describe("GET /api/models/config activeChat", () => {
     const cerebras = makeHarness("GET", null, {
       config,
       processEnv: { CEREBRAS_BASE_URL: "https://inference.example/v1" },
+      runtime: runtimeWithDirectProvider("cerebras"),
     });
     await handleModelConfigRoutes(cerebras.ctx as never);
     expect(responseOf(cerebras.json).body.activeChat).toMatchObject({
@@ -809,6 +840,7 @@ describe("GET /api/models/config activeChat", () => {
         CEREBRAS_BASE_URL: "https://inference.example/v1",
         OPENAI_BASE_URL: "https://gateway.example/v1",
       },
+      runtime: runtimeWithDirectProvider("cerebras"),
     });
     await handleModelConfigRoutes(openAiOverride.ctx as never);
     expect(responseOf(openAiOverride.json).body.activeChat).toMatchObject({
@@ -834,6 +866,7 @@ describe("GET /api/models/config activeChat", () => {
         },
         processEnv: { OPENAI_BASE_URL: "https://process.openai.example/v1" },
         endpoint: "nested.openai.example",
+        runtime: runtimeWithDirectProvider("openai"),
       },
       {
         name: "Anthropic whitespace config falls through to process env",
@@ -856,6 +889,7 @@ describe("GET /api/models/config activeChat", () => {
           ANTHROPIC_BASE_URL: " https://process.anthropic.example/v1 ",
         },
         endpoint: "process.anthropic.example",
+        runtime: runtimeWithDirectProvider("anthropic"),
       },
       {
         name: "Cloud nested config wins when direct config is whitespace",
@@ -905,6 +939,7 @@ describe("GET /api/models/config activeChat", () => {
           CEREBRAS_BASE_URL: "https://process.cerebras.example/v1",
         },
         endpoint: "process.cerebras.example",
+        runtime: runtimeWithDirectProvider("cerebras"),
       },
     ] as const;
 
@@ -912,7 +947,7 @@ describe("GET /api/models/config activeChat", () => {
       const harness = makeHarness("GET", null, {
         config: testCase.config as never,
         processEnv: { ...testCase.processEnv },
-        runtime: "runtime" in testCase ? testCase.runtime : undefined,
+        runtime: testCase.runtime,
       });
       await handleModelConfigRoutes(harness.ctx as never);
       expect(

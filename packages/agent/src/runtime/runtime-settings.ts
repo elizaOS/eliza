@@ -80,8 +80,9 @@ export function buildRuntimeSettingsProjection(
     VALIDATION_LEVEL: "fast",
     ...(env.SECRET_SALT ? { ENCRYPTION_SALT: env.SECRET_SALT } : {}),
     ...Object.fromEntries(
-      Object.entries(collectConfigEnvVars(config)).filter(([key]) =>
-        isEnvKeyAllowedForForwarding(key),
+      Object.entries(collectConfigEnvVars(config)).filter(
+        ([key, value]) =>
+          isEnvKeyAllowedForForwarding(key) && !isVaultRef(value.trim()),
       ),
     ),
     ...(typeof env.EMBEDDING_PROVIDER === "string" &&
@@ -97,7 +98,11 @@ export function buildRuntimeSettingsProjection(
       ),
     ),
     ...(options.connectorSecretsOverlay ?? {}),
-    ...(options.providerCredentialsOverlay ?? {}),
+    ...Object.fromEntries(
+      Object.entries(options.providerCredentialsOverlay ?? {}).filter(
+        ([, value]) => !isVaultRef(value.trim()),
+      ),
+    ),
     ...(options.preferredProviderId
       ? { MODEL_PROVIDER: options.preferredProviderId }
       : {}),
