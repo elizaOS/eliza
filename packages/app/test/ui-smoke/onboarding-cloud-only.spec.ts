@@ -106,6 +106,7 @@ test.describe("cloud-only onboarding (production default)", () => {
     await seedAppStorage(page, {
       "eliza:first-run-complete": "",
       "eliza:enable-runtime-chooser": "0",
+      "elizaos:active-server": "",
     });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -131,6 +132,7 @@ test.describe("cloud-only onboarding (production default)", () => {
     await seedAppStorage(page, {
       "eliza:first-run-complete": "",
       "eliza:enable-runtime-chooser": "0",
+      "elizaos:active-server": "",
     });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -153,6 +155,7 @@ test.describe("cloud-only onboarding (production default)", () => {
     await seedAppStorage(page, {
       "eliza:first-run-complete": "",
       "eliza:enable-runtime-chooser": "0",
+      "elizaos:active-server": "",
     });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -277,6 +280,7 @@ test.describe("cloud-only onboarding (production default)", () => {
     await seedAppStorage(page, {
       "eliza:first-run-complete": "",
       "eliza:enable-runtime-chooser": "0",
+      "elizaos:active-server": "",
       steward_session_token: "ui-smoke-onboarding-cloud-token",
       steward_session_token_scope: "eliza-cloud:production",
       steward_session_active_scope: "eliza-cloud:production",
@@ -447,6 +451,7 @@ test.describe("cloud-only onboarding (production default)", () => {
     await seedAppStorage(page, {
       "eliza:first-run-complete": "",
       "eliza:enable-runtime-chooser": "0",
+      "elizaos:active-server": "",
       steward_session_token: "ui-smoke-onboarding-cloud-token",
       steward_session_token_scope: "eliza-cloud:production",
       steward_session_active_scope: "eliza-cloud:production",

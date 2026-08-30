@@ -588,6 +588,20 @@ export const CLOUD_AGENT_NAME = "Smoke Cloud Agent";
  *  the canonical steward-session store first). */
 export async function injectCloudAuthToken(page: Page): Promise<void> {
   await seedStewardSession(page, { token: CLOUD_AUTH_TOKEN });
+  await page.addInitScript(() => {
+    // The UI-smoke renderer runs on loopback, where Steward sessions are
+    // authority-scoped. Mirror the production control-plane scope so this is
+    // a genuinely readable stored session rather than an unscoped token that
+    // the client correctly quarantines.
+    window.localStorage.setItem(
+      "steward_session_token_scope",
+      "eliza-cloud:production",
+    );
+    window.localStorage.setItem(
+      "steward_session_active_scope",
+      "eliza-cloud:production",
+    );
+  });
 }
 
 export async function installCloudRoutes(
@@ -1149,6 +1163,7 @@ export async function expectCloudOnlySignInOnboarding(
 async function expectCloudOnlyCompletion(
   page: Page,
   state: OnboardingRouteState,
+  options: { observeCompletionTurn?: boolean } = {},
 ): Promise<{ surface: Locator }> {
   // Completion fires at provisioning success and returns the user to the home
   // surface. Cloud-only completion rides the SAME full→half falling-edge settle
@@ -1158,7 +1173,45 @@ async function expectCloudOnlyCompletion(
   // unlocked. The durable contract is asserted on that settle, the onboarded
   // home, the absent tutorial gate, and the exactly-once POST. The wrap-up copy
   // is covered by the conductor unit suite.
-  await expectOnboardingSettleToFull(page);
+  if (options.observeCompletionTurn !== false) {
+    await expectOnboardingSettleToFull(page);
+  } else {
+    // A usable session present before the first paint intentionally seeds no
+    // onboarding transcript turn. There is therefore no completion turn to
+    // reveal at FULL: the shell may already be at its durable post-completion
+    // non-onboarding detent by the time Home is observable. A newly created
+    // agent leaves chat ready at HALF; a pure existing-agent reuse can stay
+    // COLLAPSED because it emitted no transcript turn. Both are clean final
+    // states, unlike FULL (setup still open). Assert the durable completion,
+    // active server, and enabled composer below so COLLAPSED cannot hide a
+    // false landing.
+    await expect
+      .poll(() => page.getByTestId("chat-sheet").getAttribute("data-detent"), {
+        timeout: 30_000,
+      })
+      .toMatch(/^(?:half|collapsed)$/);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => ({
+            // Vite exercises the cloud-only UX on a dev shell while the boot
+            // branding contract can still select the packaged Cloud namespace.
+            // Either scoped key is valid durable proof; the active lifecycle
+            // gate below must agree by unlocking the real composer.
+            completion:
+              localStorage.getItem("eliza:first-run-complete") ??
+              localStorage.getItem("eliza:first-run-complete:cloud-only:v1"),
+            hasActiveServer: Boolean(
+              localStorage.getItem("elizaos:active-server"),
+            ),
+          })),
+        { timeout: 15_000 },
+      )
+      .toEqual({ completion: "1", hasActiveServer: true });
+    await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled({
+      timeout: 15_000,
+    });
+  }
   await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId(TUTORIAL_CHOICE("start"))).toHaveCount(0);
   await expect(page.getByTestId(TUTORIAL_CHOICE("skip"))).toHaveCount(0);
@@ -1221,7 +1274,9 @@ export async function completeCloudOnlySessionInjectionToHome(
   // The sign-in ask never rendered — silent entry seeds no runtime CTA.
   await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toHaveCount(0);
 
-  const result = await expectCloudOnlyCompletion(page, opts.state);
+  const result = await expectCloudOnlyCompletion(page, opts.state, {
+    observeCompletionTurn: false,
+  });
   // The picker never appeared at any point in the flow.
   await expect(
     page.getByTestId(CLOUD_AGENT_CHOICE(CLOUD_AGENT_ID)),
