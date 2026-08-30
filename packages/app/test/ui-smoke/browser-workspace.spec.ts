@@ -226,6 +226,7 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
   page,
   request,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await resetBrowserWorkspaceTabs(request);
   await openAppPath(page, "/browser");
   const browserWorkspaceView = page.getByTestId("browser-workspace-view");
@@ -292,18 +293,103 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
     expect(collapsedGeometry?.toolbarHeight).toBeLessThanOrEqual(100);
   }
 
-  const surfaceBeforeSafeArea = await pageSurface.boundingBox();
-  const surfaceBeforeSafeAreaBottom =
-    (surfaceBeforeSafeArea?.y ?? 0) + (surfaceBeforeSafeArea?.height ?? 0);
   await page.evaluate(() => {
+    document.documentElement.style.setProperty("--safe-area-top", "47px");
     document.documentElement.style.setProperty("--safe-area-bottom", "24px");
+    document.documentElement.style.setProperty(
+      "--eliza-mobile-nav-offset",
+      "60px",
+    );
+    document.documentElement.style.setProperty(
+      "--eliza-chat-clearance",
+      "96px",
+    );
   });
+
+  const readInsetGeometry = () =>
+    page.evaluate(() => {
+      const root = document.querySelector<HTMLElement>(
+        '[data-testid="browser-workspace-view"]',
+      );
+      const surface = document.querySelector<HTMLElement>(
+        '[data-testid="browser-workspace-surface-panel"]',
+      );
+      const chrome = root?.closest<HTMLElement>(
+        '[data-testid="tab-content-view"]',
+      );
+      if (!root || !surface || !chrome) return null;
+
+      const rootBox = root.getBoundingClientRect();
+      const surfaceBox = surface.getBoundingClientRect();
+      const chromeBox = chrome.getBoundingClientRect();
+      const rootStyle = getComputedStyle(root);
+      const chromeStyle = getComputedStyle(chrome);
+      const chatClearance = Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--eliza-chat-clearance",
+        ),
+      );
+      return {
+        chatClearance,
+        rootPaddingTop: Math.round(Number.parseFloat(rootStyle.paddingTop)),
+        rootPaddingBottom: Math.round(
+          Number.parseFloat(rootStyle.paddingBottom),
+        ),
+        chromePaddingBottom: Math.round(
+          Number.parseFloat(chromeStyle.paddingBottom),
+        ),
+        surfaceBottomGap: Math.round(rootBox.bottom - surfaceBox.bottom),
+        shellBottomGap: Math.round(chromeBox.bottom - rootBox.bottom),
+      };
+    });
+
+  // WebKit-backed mobile shells publish the status/home-indicator and bottom
+  // navigation insets on the shared workspace chrome. The routed view keeps
+  // only its own 16px content gutter plus the measured 96px chat footprint.
   await expect
     .poll(async () => {
-      const box = await pageSurface.boundingBox();
-      return box ? Math.round(box.y + box.height) : null;
+      const geometry = await readInsetGeometry();
+      if (!geometry) return null;
+      return {
+        rootPaddingTop: geometry.rootPaddingTop,
+        rootOwnsOnlyContentAndChat:
+          geometry.rootPaddingBottom === 16 + geometry.chatClearance &&
+          geometry.surfaceBottomGap === 16 + geometry.chatClearance,
+        chromePaddingBottom: geometry.chromePaddingBottom,
+        shellBottomGap: geometry.shellBottomGap,
+      };
     })
-    .toBe(Math.round(surfaceBeforeSafeAreaBottom - 24));
+    .toEqual({
+      rootPaddingTop: 12,
+      rootOwnsOnlyContentAndChat: true,
+      chromePaddingBottom: 84,
+      shellBottomGap: 84,
+    });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect
+    .poll(async () => {
+      const geometry = await readInsetGeometry();
+      if (!geometry) return null;
+      return {
+        rootPaddingTop: geometry.rootPaddingTop,
+        rootOwnsOnlyContentAndChat:
+          geometry.rootPaddingBottom === 24 + geometry.chatClearance &&
+          geometry.surfaceBottomGap === 24 + geometry.chatClearance,
+        chromePaddingBottom: geometry.chromePaddingBottom,
+        shellBottomGap: geometry.shellBottomGap,
+      };
+    })
+    .toEqual({
+      rootPaddingTop: 24,
+      rootOwnsOnlyContentAndChat: true,
+      chromePaddingBottom: 84,
+      shellBottomGap: 84,
+    });
+
+  const surfaceBeforeChatOpen = await pageSurface.boundingBox();
+  const surfaceBeforeChatOpenBottom =
+    (surfaceBeforeChatOpen?.y ?? 0) + (surfaceBeforeChatOpen?.height ?? 0);
 
   const composer = page.getByRole("combobox", { name: "message" });
   await composer.focus();
@@ -326,7 +412,7 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
   });
   expect(expandedGeometry).not.toBeNull();
   expect(Math.round(expandedGeometry?.surfaceBottom ?? 0)).toBe(
-    Math.round(surfaceBeforeSafeAreaBottom - 24),
+    Math.round(surfaceBeforeChatOpenBottom),
   );
   expect(expandedGeometry?.chatZ).toBeGreaterThan(
     expandedGeometry?.surfaceZ ?? 0,

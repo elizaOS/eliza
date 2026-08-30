@@ -309,7 +309,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     }
   });
 
-  it("reserves the measured resting chat footprint and safe-area stack from the page viewport", async () => {
+  it("reserves the resting chat footprint without reapplying shell-owned insets", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
 
@@ -317,9 +317,10 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     const surface = screen.getByTestId("browser-workspace-surface-panel");
     expect(root.getAttribute("data-chat-clearance-aware")).toBe("true");
     expect(root.className).toContain("--eliza-chat-clearance");
-    expect(root.className).toContain("--eliza-mobile-nav-offset");
-    expect(root.className).toContain("--safe-area-bottom");
-    expect(root.className).toContain("--android-gesture-inset-bottom");
+    expect(root.className).not.toContain("--eliza-mobile-nav-offset");
+    expect(root.className).not.toContain("--safe-area-top");
+    expect(root.className).not.toContain("--safe-area-bottom");
+    expect(root.className).not.toContain("--android-gesture-inset-bottom");
     expect(root.contains(surface)).toBe(true);
   });
 
@@ -433,6 +434,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(await screen.findByText("No page open")).not.toBeNull();
 
     const trigger = screen.getByTestId("browser-workspace-tab-fold-control");
+    expect(trigger.className).toContain("min-w-11");
     trigger.focus();
     fireEvent.click(trigger);
 
