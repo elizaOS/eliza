@@ -29,6 +29,8 @@ interface ClientConfig {
 export interface RuntimePgClient extends IdentityQueryClient {
   connect(): Promise<void>;
   end(): Promise<void>;
+  off(event: "error", listener: (error: Error) => void): void;
+  on(event: "error", listener: (error: Error) => void): void;
 }
 
 export interface DatabaseIdentityReporterDependencies {
@@ -68,6 +70,13 @@ export class DatabaseIdentityDependencyError extends Error {
   constructor(readonly dependency: DatabaseIdentityDependencyLabel) {
     super(`database_identity_dependency_${dependency}_unavailable`);
     this.name = "DatabaseIdentityDependencyError";
+  }
+}
+
+class DatabaseIdentityClientEventError extends Error {
+  constructor() {
+    super("database_identity_client_error");
+    this.name = "DatabaseIdentityClientEventError";
   }
 }
 
@@ -117,6 +126,9 @@ export function classifyDatabaseIdentityFailure(
 ): Exclude<DatabaseIdentityFailureCategory, "database_query_failed"> {
   if (error instanceof DatabaseIdentityDependencyError) {
     return "dependency_unavailable";
+  }
+  if (error instanceof DatabaseIdentityClientEventError) {
+    return "database_connection_failed";
   }
   if (typeof error === "object" && error !== null) {
     const code = Reflect.get(error, "code");
@@ -389,31 +401,73 @@ export async function runDatabaseIdentityReporter(
     );
   }
   let client: RuntimePgClient | undefined;
+  let clientErrorListenerAttached = false;
+  let clientErrorObserved = false;
+  const recordClientError = (): void => {
+    clientErrorObserved = true;
+  };
+  let failure: unknown;
+  let failed = false;
+  let result: IdentityPreflightResult | undefined;
   try {
     await probeDependencies();
     client = await createClient(databaseUrl);
+    client.on("error", recordClientError);
+    clientErrorListenerAttached = true;
     await client.connect();
-    const result = await runDatabaseIdentityPreflight(config, client);
-    await publishResult(config, result, environment);
-    return result.status === "unavailable" ? 1 : 0;
+    result = await runDatabaseIdentityPreflight(config, client);
   } catch (error) {
+    failed = true;
+    failure = error;
+  } finally {
+    if (client) {
+      try {
+        await client.end();
+      } catch {
+        // error-policy:J6 teardown failure cannot replace the primary gate result.
+        process.stderr.write(
+          "[database-identity] warning: database client close failed\n",
+        );
+      } finally {
+        if (clientErrorListenerAttached) {
+          try {
+            client.off("error", recordClientError);
+          } catch {
+            // error-policy:J6 listener cleanup is best-effort after client close.
+            process.stderr.write(
+              "[database-identity] warning: database client error listener cleanup failed\n",
+            );
+          }
+        }
+      }
+    }
+  }
+
+  if (clientErrorObserved) {
+    failed = true;
+    failure = new DatabaseIdentityClientEventError();
+  }
+  if (!failed && result) {
+    try {
+      await publishResult(config, result, environment);
+    } catch (error) {
+      failed = true;
+      failure = error;
+    }
+  }
+  if (failed) {
     // error-policy:J1 the CLI boundary emits only a generic class so provider
     // errors cannot leak connection strings, hosts, roles, or database names.
     if (config.mode === "report") {
       writeStdout(
-        `::warning::database identity report unavailable; ${databaseIdentityFailureDiagnostic(error)}\n`,
+        `::warning::database identity report unavailable; ${databaseIdentityFailureDiagnostic(failure)}\n`,
       );
       return 1;
     }
-    throw error;
-  } finally {
-    await client?.end().catch(() => {
-      // error-policy:J6 teardown failure cannot replace the primary gate result.
-      process.stderr.write(
-        "[database-identity] warning: database client close failed\n",
-      );
-    });
+    throw failure;
   }
+  if (!result) throw new Error("database identity reporter produced no result");
+  return result.status === "unavailable" ? 1 : 0;
 }
 
 async function main(): Promise<number> {

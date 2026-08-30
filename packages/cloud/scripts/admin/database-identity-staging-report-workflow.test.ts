@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { parse } from "yaml";
 
 interface Step {
+  "continue-on-error"?: boolean | string;
   env?: Record<string, string>;
   name?: string;
   run?: string;
@@ -23,6 +24,7 @@ interface Workflow {
   permissions: Record<string, string>;
   jobs: {
     admission: {
+      "continue-on-error"?: boolean | string;
       env?: Record<string, string>;
       environment?: string;
       "runs-on": string;
@@ -30,6 +32,7 @@ interface Workflow {
       "timeout-minutes": number;
     };
     report: {
+      "continue-on-error"?: boolean | string;
       concurrency: { group: string; "cancel-in-progress": boolean };
       env: Record<string, string>;
       environment: string;
@@ -56,6 +59,52 @@ function expression(body: string): string {
   return ["$", "{{ ", body, " }}"].join("");
 }
 
+const DATABASE_URL_SECRET_REFERENCE =
+  /\bsecrets\s*(?:\.\s*DATABASE_URL\b|\[\s*["']DATABASE_URL["']\s*\])/i;
+
+function sensitiveDatabaseUrlPaths(root: unknown): {
+  databaseUrlKeys: string[];
+  secretReferences: string[];
+} {
+  const databaseUrlKeys: string[] = [];
+  const secretReferences: string[] = [];
+
+  function visit(
+    value: unknown,
+    path: string,
+    ancestors: ReadonlySet<object>,
+  ): void {
+    if (
+      typeof value === "string" &&
+      DATABASE_URL_SECRET_REFERENCE.test(value)
+    ) {
+      secretReferences.push(path);
+    }
+    if (value === null || typeof value !== "object") return;
+    if (ancestors.has(value)) throw new Error(`Cyclic YAML alias at ${path}`);
+
+    const branchAncestors = new Set(ancestors);
+    branchAncestors.add(value);
+    if (Array.isArray(value)) {
+      value.forEach((child, index) => {
+        visit(child, `${path}[${index}]`, branchAncestors);
+      });
+      return;
+    }
+
+    for (const [key, child] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      const childPath = `${path}.${key}`;
+      if (key === "DATABASE_URL") databaseUrlKeys.push(childPath);
+      visit(child, childPath, branchAncestors);
+    }
+  }
+
+  visit(root, "$", new Set());
+  return { databaseUrlKeys, secretReferences };
+}
+
 function reportStep(name: string): Step {
   const value = job.steps.find((candidate) => candidate.name === name);
   if (!value) throw new Error(`Missing workflow step: ${name}`);
@@ -73,11 +122,13 @@ describe("database identity staging report workflow", () => {
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
     expect(workflow.permissions).toEqual({ contents: "read" });
     expect(Object.keys(workflow.jobs).sort()).toEqual(["admission", "report"]);
+    expect(admission["continue-on-error"]).toBeUndefined();
     expect(admission.environment).toBeUndefined();
     expect(admission.env).toBeUndefined();
     expect(admission["runs-on"]).toBe("ubuntu-24.04");
     expect(admission["timeout-minutes"]).toBe(2);
     expect(job.needs).toBe("admission");
+    expect(job["continue-on-error"]).toBeUndefined();
     expect(job.if).toBe(
       "needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'",
     );
@@ -88,6 +139,17 @@ describe("database identity staging report workflow", () => {
       group: "database-identity-staging-report",
       "cancel-in-progress": false,
     });
+    for (const [jobName, steps] of [
+      ["admission", admission.steps],
+      ["report", job.steps],
+    ] as const) {
+      for (const step of steps) {
+        expect(
+          step["continue-on-error"],
+          `${jobName} step ${step.name ?? "<unnamed>"}`,
+        ).toBeUndefined();
+      }
+    }
   });
 
   test("binds the protected URL only to the redacted reporter step", () => {
@@ -101,16 +163,106 @@ describe("database identity staging report workflow", () => {
       "DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256",
     );
 
-    const reporter = reportStep("Emit redacted staging identity receipts");
+    const reporterIndexes = job.steps.flatMap((candidate, index) =>
+      candidate.name === "Emit redacted staging identity receipts"
+        ? [index]
+        : [],
+    );
+    expect(reporterIndexes).toEqual([job.steps.length - 1]);
+    const reporterIndex = reporterIndexes[0];
+    if (reporterIndex === undefined) throw new Error("Missing reporter step");
+    const reporter = job.steps[reporterIndex];
+    if (!reporter) throw new Error("Missing reporter step");
     expect(reporter.env?.DATABASE_URL).toBe(expression("secrets.DATABASE_URL"));
-    for (const candidate of [...admission.steps, ...job.steps]) {
-      if (candidate === reporter) continue;
-      expect(candidate.env?.DATABASE_URL, candidate.name).toBeUndefined();
-    }
+    expect(reporter["continue-on-error"]).toBeUndefined();
+
+    const expectedPath = `$.jobs.report.steps[${reporterIndex}].env.DATABASE_URL`;
+    expect(sensitiveDatabaseUrlPaths(workflow)).toEqual({
+      databaseUrlKeys: [expectedPath],
+      secretReferences: [expectedPath],
+    });
+  });
+
+  test("does not collapse aliased sensitive scopes during validation", () => {
+    const aliased = parse(
+      [
+        "steps:",
+        "  - &reporter",
+        "    name: Emit redacted staging identity receipts",
+        "    env:",
+        `      DATABASE_URL: ${expression("secrets.DATABASE_URL")}`,
+        "  - *reporter",
+      ].join("\n"),
+    ) as { steps: Step[] };
+
+    expect(aliased.steps[0]).toBe(aliased.steps[1]);
+    expect(sensitiveDatabaseUrlPaths(aliased)).toEqual({
+      databaseUrlKeys: [
+        "$.steps[0].env.DATABASE_URL",
+        "$.steps[1].env.DATABASE_URL",
+      ],
+      secretReferences: [
+        "$.steps[0].env.DATABASE_URL",
+        "$.steps[1].env.DATABASE_URL",
+      ],
+    });
+  });
+
+  test("detects sensitive keys and references across every workflow scope", () => {
+    const misplaced = {
+      env: {
+        DATABASE_URL: expression("env.INDIRECT_DATABASE_URL"),
+        INDIRECT_DATABASE_URL: expression("secrets.DATABASE_URL"),
+      },
+      jobs: {
+        report: {
+          container: {
+            env: {
+              DATABASE_URL: expression("secrets.DATABASE_URL"),
+            },
+            volumes: [expression("secrets.DATABASE_URL")],
+          },
+          env: {
+            DATABASE_URL: expression("env.INDIRECT_DATABASE_URL"),
+          },
+          services: {
+            postgres: {
+              env: {
+                DATABASE_URL: expression(`secrets["DATABASE_URL"]`),
+              },
+            },
+          },
+          steps: [
+            {
+              with: {
+                connection: expression("secrets.DATABASE_URL"),
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    expect(sensitiveDatabaseUrlPaths(misplaced)).toEqual({
+      databaseUrlKeys: [
+        "$.env.DATABASE_URL",
+        "$.jobs.report.container.env.DATABASE_URL",
+        "$.jobs.report.env.DATABASE_URL",
+        "$.jobs.report.services.postgres.env.DATABASE_URL",
+      ],
+      secretReferences: [
+        "$.env.INDIRECT_DATABASE_URL",
+        "$.jobs.report.container.env.DATABASE_URL",
+        "$.jobs.report.container.volumes[0]",
+        "$.jobs.report.services.postgres.env.DATABASE_URL",
+        "$.jobs.report.steps[0].with.connection",
+      ],
+    });
   });
 
   test("rejects an untrusted ref or commit without attaching staging", () => {
     const guard = admissionStep("Reject untrusted source");
+    expect(guard["continue-on-error"]).toBeUndefined();
     expect(guard.shell).toBe("bash");
     expect(guard.env?.EXPECTED_COMMIT).toBe(
       expression("inputs.expected_cloud_commit"),

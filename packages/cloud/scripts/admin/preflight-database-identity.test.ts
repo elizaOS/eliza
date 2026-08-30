@@ -1,6 +1,7 @@
 /** Verifies the deterministic, redacted PostgreSQL identity gate with a mocked query boundary. */
 
 import { describe, expect, test } from "bun:test";
+import { EventEmitter } from "node:events";
 import {
   classifyDatabaseIdentityFailure,
   DatabaseIdentityDependencyError,
@@ -279,16 +280,25 @@ describe("standalone database identity reporter", () => {
 
   function runtimeClient(
     overrides: {
-      connect?: () => Promise<void>;
-      end?: () => Promise<void>;
-      query?: (text: string) => Promise<{ rows: (typeof row)[] }>;
+      connect?: (events: EventEmitter) => Promise<void>;
+      end?: (events: EventEmitter) => Promise<void>;
+      query?: (
+        text: string,
+        events: EventEmitter,
+      ) => Promise<{ rows: (typeof row)[] }>;
     } = {},
   ) {
-    return {
-      connect: overrides.connect ?? (async () => {}),
-      end: overrides.end ?? (async () => {}),
-      query: overrides.query ?? client.query,
-    };
+    const events = new EventEmitter();
+    return Object.assign(events, {
+      connect: async () => {
+        await overrides.connect?.(events);
+      },
+      end: async () => {
+        await overrides.end?.(events);
+      },
+      query: async (text: string) =>
+        overrides.query ? overrides.query(text, events) : client.query(text),
+    });
   }
 
   test("the manual CLI exits nonzero when DATABASE_URL is absent", () => {
@@ -404,6 +414,90 @@ describe("standalone database identity reporter", () => {
     expect(diagnostics.join("")).not.toMatch(
       /raw-(?:host|role|database)|raw-password/,
     );
+  });
+
+  test("client error events during a query fail before success publication", async () => {
+    const diagnostics: string[] = [];
+    const sentinel = "SENSITIVE_DB_EVENT_DETAIL_DURING_QUERY";
+    let listenerCountDuringConnect = -1;
+    let listenerCountDuringQuery = -1;
+    let publishCalls = 0;
+    const eventClient = runtimeClient({
+      connect: async (events) => {
+        listenerCountDuringConnect = events.listenerCount("error");
+      },
+      query: async (_text, events) => {
+        listenerCountDuringQuery = events.listenerCount("error");
+        await Promise.resolve();
+        events.emit("error", new Error(sentinel));
+        events.emit("error", new Error(`${sentinel}_SECOND`));
+        return { rows: [row] };
+      },
+    });
+    const initialListenerCount = eventClient.listenerCount("error");
+
+    const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      probeDependencies: noDependencyProbe,
+      createClient: async () => eventClient,
+      publishResult: async () => {
+        publishCalls += 1;
+      },
+      writeStdout: (message) => diagnostics.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(publishCalls).toBe(0);
+    expect(listenerCountDuringConnect).toBe(initialListenerCount + 1);
+    expect(listenerCountDuringQuery).toBe(initialListenerCount + 1);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount);
+    expect(diagnostics).toEqual([
+      "::warning::database identity report unavailable; category=database_connection_failed\n",
+    ]);
+    expect(diagnostics.join("")).not.toContain(sentinel);
+  });
+
+  test("client error events remain bounded through teardown", async () => {
+    const diagnostics: string[] = [];
+    const sentinel = "SENSITIVE_DB_EVENT_DETAIL_DURING_TEARDOWN";
+    let existingListenerCalls = 0;
+    let listenerCountAfterFirstEndEvent = -1;
+    let listenerCountDuringEnd = -1;
+    let publishCalls = 0;
+    const eventClient = runtimeClient({
+      end: async (events) => {
+        listenerCountDuringEnd = events.listenerCount("error");
+        await Promise.resolve();
+        events.emit("error", new Error(sentinel));
+        listenerCountAfterFirstEndEvent = events.listenerCount("error");
+        events.emit("error", new Error(`${sentinel}_SECOND`));
+      },
+    });
+    const existingListener = (): void => {
+      existingListenerCalls += 1;
+    };
+    eventClient.on("error", existingListener);
+    const initialListenerCount = eventClient.listenerCount("error");
+
+    const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      probeDependencies: noDependencyProbe,
+      createClient: async () => eventClient,
+      publishResult: async () => {
+        publishCalls += 1;
+      },
+      writeStdout: (message) => diagnostics.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(publishCalls).toBe(0);
+    expect(existingListenerCalls).toBe(2);
+    expect(listenerCountDuringEnd).toBe(initialListenerCount + 1);
+    expect(listenerCountAfterFirstEndEvent).toBe(initialListenerCount + 1);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount);
+    expect(diagnostics).toEqual([
+      "::warning::database identity report unavailable; category=database_connection_failed\n",
+    ]);
+    expect(diagnostics.join("")).not.toContain(sentinel);
+    eventClient.off("error", existingListener);
   });
 
   test("an unavailable query status is nonzero without leaking its cause", async () => {
