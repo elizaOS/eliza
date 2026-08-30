@@ -187,26 +187,31 @@ describe("database identity preflight", () => {
       "@elizaos/cloud-shared/db/client",
     ]);
 
-    const privateLoaderMessage =
-      "Cannot find /private/runner/packages/core/dist/edge/index.edge.js";
-    let failure: unknown;
-    try {
-      await probeDatabaseIdentityDependencies(async (specifier) => {
-        if (specifier === "@elizaos/core/edge") {
-          throw new Error(privateLoaderMessage);
-        }
-        return {};
-      });
-    } catch (error) {
-      failure = error;
+    for (const [failedSpecifier, expectedLabel] of [
+      ["pg", "pg"],
+      ["@elizaos/core/edge", "core_edge"],
+      ["@elizaos/cloud-shared/db/client", "db_client"],
+    ] as const) {
+      const privateLoaderMessage = `Cannot find /private/runner/${expectedLabel}/dist/index.js`;
+      let failure: unknown;
+      try {
+        await probeDatabaseIdentityDependencies(async (specifier) => {
+          if (specifier === failedSpecifier) {
+            throw new Error(privateLoaderMessage);
+          }
+          return {};
+        });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(DatabaseIdentityDependencyError);
+      expect(databaseIdentityFailureDiagnostic(failure)).toBe(
+        `category=dependency_unavailable; dependency=${expectedLabel}`,
+      );
+      expect(databaseIdentityFailureDiagnostic(failure)).not.toContain(
+        privateLoaderMessage,
+      );
     }
-    expect(failure).toBeInstanceOf(DatabaseIdentityDependencyError);
-    expect(databaseIdentityFailureDiagnostic(failure)).toBe(
-      "category=dependency_unavailable; dependency=core_edge",
-    );
-    expect(databaseIdentityFailureDiagnostic(failure)).not.toContain(
-      privateLoaderMessage,
-    );
   });
 
   test("enforce mode requires both authorities and fails closed on mismatch", async () => {
@@ -308,6 +313,33 @@ describe("standalone database identity reporter", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stdout.toString()).toContain(
       "database identity report unavailable: DATABASE_URL is missing",
+    );
+    expect(result.stderr.toString()).toBe("");
+  });
+
+  test("the dependency-probe CLI flag bypasses reporter configuration", () => {
+    const childEnvironment = { ...process.env };
+    delete childEnvironment.DATABASE_URL;
+    delete childEnvironment.DATABASE_IDENTITY_ENVIRONMENT;
+    delete childEnvironment.DATABASE_IDENTITY_GATE_MODE;
+    const result = Bun.spawnSync(
+      [
+        process.execPath,
+        "run",
+        `${import.meta.dir}/preflight-database-identity.ts`,
+        "--probe-dependencies",
+      ],
+      {
+        cwd: `${import.meta.dir}/../../../..`,
+        env: childEnvironment,
+        stderr: "pipe",
+        stdout: "pipe",
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toBe(
+      "[database-identity] dependency probes passed: pg,core_edge,db_client\n",
     );
     expect(result.stderr.toString()).toBe("");
   });

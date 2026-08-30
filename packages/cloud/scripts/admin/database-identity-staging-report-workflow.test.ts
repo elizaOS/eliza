@@ -114,6 +114,55 @@ describe("database identity staging report workflow", () => {
     expect(guard.run).toContain('"$EXPECTED_COMMIT" != "$CHECKED_OUT_COMMIT"');
     expect(guard.run).toContain("^[0-9a-f]{40}$");
     expect(guard.run).not.toContain("secrets.");
+
+    const trustedCommit = "a".repeat(40);
+    const cases = [
+      {
+        name: "trusted exact develop commit",
+        expectedExit: 0,
+        expectedCommit: trustedCommit,
+        checkedOutCommit: trustedCommit,
+        sourceRef: "refs/heads/develop",
+      },
+      {
+        name: "wrong source ref",
+        expectedExit: 1,
+        expectedCommit: trustedCommit,
+        checkedOutCommit: trustedCommit,
+        sourceRef: "refs/heads/feature",
+      },
+      {
+        name: "malformed expected commit",
+        expectedExit: 1,
+        expectedCommit: "deadbeef",
+        checkedOutCommit: trustedCommit,
+        sourceRef: "refs/heads/develop",
+      },
+      {
+        name: "mismatched checked-out commit",
+        expectedExit: 1,
+        expectedCommit: trustedCommit,
+        checkedOutCommit: "b".repeat(40),
+        sourceRef: "refs/heads/develop",
+      },
+    ] as const;
+
+    for (const scenario of cases) {
+      const result = Bun.spawnSync(["/bin/bash", "-c", guard.run ?? ""], {
+        env: {
+          CHECKED_OUT_COMMIT: scenario.checkedOutCommit,
+          EXPECTED_COMMIT: scenario.expectedCommit,
+          SOURCE_REF: scenario.sourceRef,
+        },
+        stderr: "pipe",
+        stdout: "pipe",
+      });
+      expect(result.exitCode, scenario.name).toBe(scenario.expectedExit);
+      expect(result.stderr.toString(), scenario.name).toBe("");
+      expect(result.stdout.toString(), scenario.name).not.toMatch(
+        /[0-9a-f]{40}/,
+      );
+    }
   });
 
   test("runs only contract checks and the read-only reporter", () => {
