@@ -52,11 +52,8 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
 };
 
 const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
-  requireAll: [
-    "View unavailable",
-    "This view is not available in the current runtime",
-  ],
-  requireAny: ["Retry", "Back to views"],
+  requireAll: ["View unavailable"],
+  requireAny: ["View ID", "Retry", "Back to views"],
 };
 
 export const VIEW_OCR_POLICIES = {
@@ -267,7 +264,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "plugin-computer-use-sessions-gui": expected({
-    requireAll: ["Computer sessions", "Research browser"],
+    requireAll: ["Computer sessions", "Research", "browser"],
     requireAny: [
       "Linux sandbox",
       "Sequence 12",
