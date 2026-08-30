@@ -64,10 +64,12 @@ describe("TwitterPostService", () => {
   it("reports and rejects getPosts provider failures", async () => {
     const providerError = new Error("twitter 429 rate limited");
     const reportError = vi.fn();
-    const getUserTweets = vi.fn().mockRejectedValue(providerError);
+    const getUserTweetsIterator = vi.fn(() => {
+      throw providerError;
+    });
     const failing = new TwitterPostService({
       runtime: { reportError },
-      twitterClient: { getUserTweets },
+      twitterClient: { getUserTweetsIterator },
     } as unknown as ClientBase);
 
     await expect(
@@ -85,10 +87,14 @@ describe("TwitterPostService", () => {
 
   it("keeps a legitimate empty provider result distinct from failure", async () => {
     const reportError = vi.fn();
-    const getUserTweets = vi.fn(async () => ({ tweets: [] }));
+    const getUserTweetsIterator = vi.fn(() =>
+      (async function* () {
+        yield* [];
+      })(),
+    );
     const empty = new TwitterPostService({
       runtime: { reportError },
-      twitterClient: { getUserTweets },
+      twitterClient: { getUserTweetsIterator },
     } as unknown as ClientBase);
 
     await expect(
@@ -282,7 +288,7 @@ describe("TwitterPostService", () => {
 
     expect(fetchSearchTweets).toHaveBeenCalledWith(
       "@current-b",
-      20,
+      100,
       expect.anything(),
       undefined,
     );

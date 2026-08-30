@@ -2112,6 +2112,7 @@
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-instagram": {
@@ -3419,7 +3420,13 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
+        "@testing-library/react": "^16.3.2",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
+        "jsdom": "^29.0.0",
+        "react": "19.2.7",
+        "react-dom": "19.2.7",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.1.10",

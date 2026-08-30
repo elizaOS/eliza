@@ -361,7 +361,7 @@ describe("XService trusted account routing", () => {
     expect(getClient).toHaveBeenCalledWith("secondary");
     expect(fetchSearchTweets).toHaveBeenCalledWith(
       "multi-account routing",
-      20,
+      100,
       expect.anything(),
       undefined,
     );

@@ -138,7 +138,11 @@ describe("CapacitorLlamaAdapter.generateStream", () => {
       timings: { predicted_ms: 50 },
     });
 
-    await expect(generation).rejects.toThrow(/partial text/);
+    await expect(generation).rejects.toMatchObject({
+      code: "MODEL_OUTPUT_INCOMPLETE",
+      message:
+        "[capacitor-llama] native generation reached maxTokens=3 before a stop condition; no partial response was returned",
+    });
   });
 
   it("ends with an error+done pair when the native call rejects", async () => {
