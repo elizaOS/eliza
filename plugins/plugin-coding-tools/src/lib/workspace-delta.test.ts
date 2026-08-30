@@ -388,7 +388,9 @@ describe("local workspace delta observation", () => {
     await fs.mkdir(embedded);
     await execFileAsync("git", ["init", "-q"], { cwd: embedded });
     await fs.writeFile(path.join(embedded, "payload.txt"), "one\n", "utf8");
-    const before = await beginLocalWorkspaceDeltaObservation(root);
+    const before = await beginLocalWorkspaceDeltaObservation(root, {
+      maxObservationMs: 10_000,
+    });
     await fs.writeFile(path.join(embedded, "payload.txt"), "two\n", "utf8");
     expect((await finishLocalWorkspaceDeltaObservation(before))?.outcome).toBe(
       "changed",
