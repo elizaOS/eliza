@@ -258,7 +258,8 @@ validation or exposing the key.
 | Canary diagnostics | cleanup failure overwrote the original provisioning failure and terminal job details collapsed to `job_failed` | Fixed in this change: preserve the primary phase and emit only an allowlisted subsystem category |
 | Staging admission | the canary identity was below the hosting-runway threshold | Cleared: run `33280890733` created one Dedicated row/job; the failure moved into provisioning |
 | Steward bootstrap | worker called a retired platform agent-registration route and received 404 before Docker create | Fixed: canonical Eliza-minted JWT/JWKS auth; protected signer reconciled to the worker |
-| Current staging provision | post-auth-fix canary `33284501109` still reached terminal failure before running/database/mesh readiness | Open: first diagnostic run `33285177540` exposed an invalid sanitizer assumption; repaired exact-suffix run `33286940453` is queued on hosted capacity. Do not infer the next subsystem from the public artifact |
+| Current staging provision | post-auth-fix canaries still fail before running/database/mesh readiness | Open: exact diagnostics now preserve the first startup cause across cleanup retries; the next clean canary will identify it after the fenced failed replacement is retired |
+| Failed replacement deletion | the API rejected every lifecycle job, including exact conditional cleanup, whenever a failed provision retained a replacement locator | Fixed: exact conditional delete owns the row, then the daemon proves that replacement absent before deleting the serving generation; ordinary lifecycle requests remain blocked |
 | Warm pool | both Worker and daemon are protected-off; no ready-count or live-claim proof exists | Intentionally disabled pending `#16961`; cold provisioning must work independently |
 | Deployment capacity | earlier production deploys queued/cancelled on unavailable runner labels | Partially cleared: run `33017962389` deployed the worker/router successfully; it predates this fix and is not a Dedicated canary |
 | Full validation | the original shared checkout contains an unrelated conflict in `eliza-sse-bridge.ts` | Isolated: this change is validated from a clean worktree rebased on `origin/develop` |
@@ -315,17 +316,37 @@ The exact database diagnostic later identified the retired Steward registration
 route as that failure. Worker deploy `33283979364` installed the JWT/JWKS fix,
 and exact cleanup run `33284176034` removed the controlled stale canary. Fresh
 canary `33284501109` still failed before running and emitted only
-`provisioning_private_diagnostic`; its public evidence correctly does not expose
+`provisioning_private_diagnostic`; its public evidence correctly did not expose
 the private job reason. It also observed staging API commit
 `b3d3e890b0e0f4f58f904bce5d56d9bfccfa49f6`, which does not contain this branch
 head. The first read-only diagnostic attempt then found a legitimate terminal
-non-retryable job whose attempt count was below `max_attempts`; the sanitizer
-incorrectly rejected that state. Source
-`eddbdb8fc41fbd780094eae1b06ce9b211599a2b` removes that invalid invariant and
-adds its regression test. Exact-suffix diagnostic run `33286940453` is waiting
-for GitHub-hosted capacity. A final acceptance run therefore requires the
-diagnosed next worker repair and a canonical API deployment that contains the
-exact tested source.
+non-retryable job whose attempt count was below `max_attempts`; source
+`eddbdb8fc41fbd780094eae1b06ce9b211599a2b` removed that invalid sanitizer
+assumption.
+
+Diagnostic run `33286940453` then proved that the job had exhausted six
+attempt-preserving retries before any counted attempt and retained no container
+locator. A later diagnostic exposed `container_replacement_cleanup_pending`.
+Source `51aba8f553c4735c2e91b38aa731eb98bf622a20` preserved the original startup
+failure alongside the cleanup error within one attempt; source
+`d28d7808a009e44de6855201cd47b62b199320e8` preserved it across later
+cleanup-only retries. Exact worker deployment `33289529464` installed that
+source with migrations, systemd reconciliation, restart, and sustained health.
+
+Fresh canary `33288807064` created exactly one row but failed after a roughly
+twelve-minute create wait. Diagnostic `33289343188` proved a durable exact
+replacement locator (node, container name, attempt id, and Docker id; no VPN
+node) with no primary locator. Cleanup-only run `33289718945` never crossed the
+destructive boundary: the API returned HTTP 409 before enqueue because its
+lifecycle admission rule rejected the very replacement fence that cleanup had
+to retire. Read-only diagnostic `33290162302` later confirmed the same fenced
+identity remained intact. Source `51286511c72c9d690d8295c12e31e154b2822cb0`
+repairs that deadlock. Its real-PostgreSQL test proves exact conditional delete
+ownership preserves the locator, and execution tests prove the main generation
+is never deleted until exact remote absence converges. A final acceptance run
+still requires a canonical API deployment containing that contract, exact
+cleanup of this fenced canary, the newly exposed primary startup repair, and a
+fresh end-to-end canary.
 
 Required acceptance evidence is: one non-cancelled exact-SHA worker deploy;
 systemd active identity and effective env-name audit; matching API/daemon DB
