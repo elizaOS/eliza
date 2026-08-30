@@ -55,9 +55,7 @@ async function openDatabase(dataDir: string, agentId: UUID) {
 
 async function migrate(adapter: PgliteDatabaseAdapter) {
   const migrations = new DatabaseMigrationService();
-  await migrations.initializeWithDatabase(
-    adapter.getDatabase() as DrizzleDatabase,
-  );
+  await migrations.initializeWithDatabase(adapter.getDatabase() as DrizzleDatabase);
   migrations.discoverAndRegisterPluginSchemas([sqlPlugin]);
   await migrations.runAllPluginMigrations();
 }
@@ -122,7 +120,7 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
       } catch (error) {
         logger.warn(
           "scenario paging test teardown close failed:",
-          error instanceof Error ? error.message : String(error),
+          error instanceof Error ? error.message : String(error)
         );
       }
     }
@@ -132,9 +130,7 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
   });
 
   it("one 192 KiB message + 10 attachments segments losslessly with exact DB row counts, ordered byte-exact pages, and caller-visible reads through the MESSAGE action", async () => {
-    const dataDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "eliza-seg-scenario-"),
-    );
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-seg-scenario-"));
     tempDirectories.push(dataDir);
     const agentId = v4() as UUID;
     const { adapter, manager } = await openDatabase(dataDir, agentId);
@@ -166,16 +162,14 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
           attachments,
         },
       } as unknown as Memory,
-      "messages",
+      "messages"
     );
     expect(memoryId).toBeTruthy();
 
     const db = adapter.getDatabase() as DrizzleDatabase;
 
     // --- Inline bounded markers, never source bytes, for every segmented field
-    const row = (
-      await db.select().from(memoryTable).where(eq(memoryTable.id, memoryId))
-    )[0];
+    const row = (await db.select().from(memoryTable).where(eq(memoryTable.id, memoryId)))[0];
     const storedContent = row.content as {
       text: string;
       attachments: Array<{ id: string; text: string }>;
@@ -198,10 +192,7 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
     const descriptorOf = (fieldKey: string) =>
       (
         row.metadata as {
-          segmentation?: Record<
-            string,
-            { revision: string; totalBytes: number }
-          >;
+          segmentation?: Record<string, { revision: string; totalBytes: number }>;
         }
       )?.segmentation?.[fieldKey];
 
@@ -226,19 +217,13 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
     for (const field of expectedFields) {
       const descriptor = descriptorOf(field.fieldKey);
       expect(descriptor, `descriptor for ${field.fieldKey}`).toBeDefined();
-      expect(descriptor!.totalBytes).toBe(
-        Buffer.byteLength(field.source, "utf8"),
-      );
+      expect(descriptor!.totalBytes).toBe(Buffer.byteLength(field.source, "utf8"));
 
       // The public revision is `seg:<generation>:<sha>`; rows key on the raw generation.
       const generation = descriptor!.revision.split(":")[1];
       const fieldRows = segmentRows.filter((r) => r.generation === generation);
-      const expectedRows = Math.ceil(
-        Buffer.byteLength(field.source, "utf8") / (128 * 1024),
-      );
-      expect(fieldRows.length, `segment rows for ${field.fieldKey}`).toBe(
-        expectedRows,
-      );
+      const expectedRows = Math.ceil(Buffer.byteLength(field.source, "utf8") / (128 * 1024));
+      expect(fieldRows.length, `segment rows for ${field.fieldKey}`).toBe(expectedRows);
       // Ordered, non-overlapping, contiguous byte ranges starting at 0, with
       // segment indices forming an exact 0..n-1 cover.
       const byStart = [...fieldRows].sort((a, b) => a.byteStart - b.byteStart);
@@ -249,9 +234,7 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
         if (i > 0) expect(byStart[i].byteStart).toBe(byStart[i - 1].byteEnd);
         expect(byStart[i].byteEnd).toBeGreaterThan(byStart[i].byteStart);
       }
-      expect(byStart[byStart.length - 1].byteEnd).toBe(
-        Buffer.byteLength(field.source, "utf8"),
-      );
+      expect(byStart[byStart.length - 1].byteEnd).toBe(Buffer.byteLength(field.source, "utf8"));
       // Each segment's bytes in the DB equal the source slice and its digest
       // matches (row-level losslessness, text included — not just the hash).
       const sourceBytes = Buffer.from(field.source, "utf8");
@@ -259,9 +242,7 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
         const slice = sourceBytes.subarray(seg.byteStart, seg.byteEnd);
         expect(Buffer.byteLength(seg.text, "utf8")).toBe(slice.length);
         expect(Buffer.compare(Buffer.from(seg.text, "utf8"), slice)).toBe(0);
-        expect(seg.segmentSha256).toBe(
-          createHash("sha256").update(slice).digest("hex"),
-        );
+        expect(seg.segmentSha256).toBe(createHash("sha256").update(slice).digest("hex"));
       }
     }
 
@@ -277,16 +258,12 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
     // --- Adapter-level caller-visible pagination across boundaries
     expect(adapter.memoryContentPageCapability).toBe(1);
     const reassemble = async (
-      field:
-        | { kind: "content.text" }
-        | { kind: "attachment.text"; attachmentId: string },
+      field: { kind: "content.text" } | { kind: "attachment.text"; attachmentId: string }
     ) => {
       const source =
         field.kind === "content.text"
           ? messageText
-          : oversized.find(
-              (a) => a.id === (field as { attachmentId: string }).attachmentId,
-            )!.text;
+          : oversized.find((a) => a.id === (field as { attachmentId: string }).attachmentId)!.text;
       const sourceBuffer = Buffer.from(source, "utf8");
       const window = 64 * 1024; // deliberately not segment-aligned
       const parts: Buffer[] = [];
@@ -309,9 +286,7 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
         expect(page!.end).toBeGreaterThan(cursor);
         expect(page!.total).toBe(sourceBuffer.length);
         expect(
-          Buffer.from(page!.text, "utf8").equals(
-            sourceBuffer.subarray(cursor, expectedEnd),
-          ),
+          Buffer.from(page!.text, "utf8").equals(sourceBuffer.subarray(cursor, expectedEnd))
         ).toBe(true);
         if (first) {
           expect(page!.completeness).toBe("partial-recoverable");
@@ -328,10 +303,8 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
       }
       expect(revision).toBe(
         descriptorOf(
-          field.kind === "content.text"
-            ? "content.text"
-            : `attachment.text:${field.attachmentId}`,
-        )!.revision,
+          field.kind === "content.text" ? "content.text" : `attachment.text:${field.attachmentId}`
+        )!.revision
       );
       expect(Buffer.concat(parts).equals(sourceBuffer)).toBe(true);
     };
@@ -375,7 +348,7 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
           },
         } as never,
         undefined,
-        undefined,
+        undefined
       );
       expect(result.success).toBe(true);
       const readView = (
@@ -391,14 +364,12 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
       ).readView;
       const expectedEnd = expectedCodePointEnd(
         Buffer.from(messageText, "utf8"),
-        actionCursor + 48 * 1024,
+        actionCursor + 48 * 1024
       );
       expect(readView.slice.range.start).toBe(actionCursor);
       expect(readView.slice.range.end).toBe(expectedEnd);
       expect(readView.slice.range.end).toBeGreaterThan(actionCursor);
-      expect(readView.slice.range.total).toBe(
-        Buffer.byteLength(messageText, "utf8"),
-      );
+      expect(readView.slice.range.total).toBe(Buffer.byteLength(messageText, "utf8"));
       if (actionFirst) {
         expect(readView.slice.completeness).toBe("partial-recoverable");
         actionFirst = false;
@@ -407,17 +378,13 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
       actionRevision = readView.slice.revision;
       actionCursor = readView.slice.range.end;
       if (readView.slice.completeness === "complete") {
-        expect(readView.slice.range.end).toBe(
-          Buffer.byteLength(messageText, "utf8"),
-        );
+        expect(readView.slice.range.end).toBe(Buffer.byteLength(messageText, "utf8"));
         break;
       }
     }
     // The action boundary delivered the caller-visible lossless page stream.
     expect(actionRevision).toBe(descriptorOf("content.text")!.revision);
-    expect(
-      Buffer.concat(actionParts).equals(Buffer.from(messageText, "utf8")),
-    ).toBe(true);
+    expect(Buffer.concat(actionParts).equals(Buffer.from(messageText, "utf8"))).toBe(true);
 
     // Stale-revision negative assertion through the action boundary: a
     // continuation with the wrong revision must be a typed failure, never a
@@ -442,7 +409,7 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
         },
       } as never,
       undefined,
-      undefined,
+      undefined
     );
     expect(staleResult).toBeDefined();
     expect(staleResult!.success).toBe(false);
@@ -460,7 +427,7 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
         agentId,
         content: { text: decoyText, source: "test" },
       } as Memory,
-      "messages",
+      "messages"
     );
     expect(decoyId).not.toBe(memoryId);
     const decoyResult = await messageAction.handler(
@@ -480,7 +447,7 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
         },
       } as never,
       undefined,
-      undefined,
+      undefined
     );
     expect(decoyResult).toBeDefined();
     expect(decoyResult!.success).toBe(true);
@@ -491,9 +458,9 @@ describe("scenario: agent memory path across boundaries (real PGlite)", () => {
       Buffer.from(decoyResult!.text ?? "", "utf8").equals(
         Buffer.from(messageText, "utf8").subarray(
           0,
-          expectedCodePointEnd(Buffer.from(messageText, "utf8"), 256 * 1024),
-        ),
-      ),
+          expectedCodePointEnd(Buffer.from(messageText, "utf8"), 256 * 1024)
+        )
+      )
     ).toBe(true);
   });
 });
