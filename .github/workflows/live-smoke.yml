@@ -803,6 +803,45 @@ jobs:
             "- total eligible fences: `" + (.totalEligibleFences | tostring) + "`"
           ' <<<"$summary" | tee -a "$GITHUB_STEP_SUMMARY"
 
+      - name: Classify control-plane replacement cleanup failure
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            line="$(
+              sudo journalctl \
+                -u eliza-provisioning-worker.service \
+                --since '5 minutes ago' \
+                --no-pager 2>/dev/null \
+                | grep -F '[agent-sandbox] Replacement cleanup remains pending' \
+                | tail -n 1 \
+                || true
+            )"
+            lower="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
+            case "$lower" in
+              '') category='missing' ;;
+              *'permission denied'*|*'publickey'*|*'authentication methods failed'*) category='ssh_auth' ;;
+              *'timed out'*|*'timeout'*) category='ssh_timeout' ;;
+              *'connection refused'*|*'econnrefused'*) category='ssh_refused' ;;
+              *'could not resolve'*|*'enotfound'*|*'getaddrinfo'*) category='ssh_dns' ;;
+              *'connection reset'*|*'econnreset'*) category='ssh_reset' ;;
+              *'replacement secret cleanup receipt was missing or malformed'*) category='secret_receipt_invalid' ;;
+              *'replacement cleanup state receipt was malformed'*) category='state_receipt_invalid' ;;
+              *'replacement candidate proof conflicts'*) category='candidate_proof_conflict' ;;
+              *'exact replacement cleanup node authority is incomplete'*) category='node_authority_invalid' ;;
+              *'exact replacement cleanup node record is no longer registered'*) category='node_authority_missing' ;;
+              *'exact replacement cleanup node authority changed'*) category='node_authority_drift' ;;
+              *'cannot prove'*'absent'*) category='absence_unproven' ;;
+              *'sandbox provider cannot prove a persisted replacement absent'*) category='provider_contract_missing' ;;
+              *) category='unclassified' ;;
+            esac
+            unset line lower
+            echo "replacement_cleanup_failure_category=$category"
+
       - name: Upload privacy-safe provision diagnostic
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
