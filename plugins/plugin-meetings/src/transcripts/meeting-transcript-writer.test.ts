@@ -336,6 +336,151 @@ describe("MeetingTranscriptWriter — throttling", () => {
   });
 });
 
+/**
+ * Regression: an in-flight throttled incremental flush (status "recording")
+ * must never clobber the finalized "ready" row when both writes are in flight
+ * and complete out of issue order on a pooled SQL adapter / PGlite. The runtime
+ * stub's `updateMemory` parks on a manually-releasable gate and applies the row
+ * mutation only when released, so the test controls write-completion order
+ * deterministically — no DB, no network, no timers. `start()` uses `createMemory`
+ * (ungated), so only the incremental + terminal writes flow through the gate.
+ */
+describe("MeetingTranscriptWriter — finalize vs in-flight flush race", () => {
+  interface GatedWrite {
+    status: unknown;
+    release: () => void;
+  }
+  function makeReleasableRuntime() {
+    const fake = makeFakeRuntime();
+    const applyWrite = fake.runtime.updateMemory.bind(fake.runtime);
+    // `history` records every gated write in issue order (kept after release);
+    // `queue` holds only writes not yet released, so the drainer can release
+    // them newest-first to model out-of-order completion.
+    const history: GatedWrite[] = [];
+    const queue: GatedWrite[] = [];
+    (
+      fake.runtime as { updateMemory: (patch: unknown) => Promise<boolean> }
+    ).updateMemory = (patch) => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const status = (patch as { metadata?: { status?: unknown } }).metadata
+        ?.status;
+      const entry: GatedWrite = { status, release };
+      history.push(entry);
+      queue.push(entry);
+      return gate.then(() =>
+        applyWrite(patch as Parameters<typeof applyWrite>[0]),
+      );
+    };
+    return { ...fake, history, queue };
+  }
+
+  const nextTick = () => new Promise((r) => setTimeout(r, 0));
+
+  /**
+   * Drive `finalize` to completion while releasing whatever writes are pending
+   * newest-issued-first (the adversarial out-of-order order). This exposes the
+   * lost update on the unfixed writer (a late "recording" write reverts the row)
+   * and proves serialization on the fixed writer (the "ready" write lands last).
+   */
+  async function drainReversed(
+    runtime: ReturnType<typeof makeReleasableRuntime>,
+    finalize: Promise<unknown>,
+  ): Promise<void> {
+    let settled = false;
+    void finalize.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    for (let guard = 0; !settled && guard < 50; guard++) {
+      // Yield first so finalize issues every write it can before we release:
+      // on the unfixed writer both the "recording" and "ready" writes park
+      // together, and releasing newest-first lands "recording" last (the bug).
+      await nextTick();
+      if (runtime.queue.length > 0) {
+        const batch = runtime.queue.splice(0).reverse();
+        for (const write of batch) write.release();
+      }
+    }
+    await finalize;
+  }
+
+  it("keeps status ready with the final segments when an in-flight recording flush completes before it", async () => {
+    const runtime = makeReleasableRuntime();
+    let clock = 1_000;
+    const writer = new MeetingTranscriptWriter(
+      runtime.runtime,
+      5_000,
+      () => clock,
+    );
+    await writer.start(START_INPUT);
+
+    // Advance past the throttle window so the next update flushes immediately,
+    // then let that fire-and-forget "recording" flush reach its parked write.
+    clock += 6_000;
+    const s1 = segment("s1", "Jill", "hello", 0, 1_000);
+    const s2 = segment("s2", "Bob", "hi jill", 1_000, 2_000);
+    writer.updateSegments([s1]);
+    await nextTick();
+    expect(runtime.queue.map((w) => w.status)).toEqual(["recording"]);
+
+    // finalize issues the terminal "ready" write; drain releasing newest-first.
+    const finalizePromise = writer.finalize({
+      segments: [s1, s2],
+      endReason: "normal_completion",
+      participants: [{ id: "p1", displayName: "Jill" }],
+      audioWav: null,
+    });
+    await drainReversed(runtime, finalizePromise);
+
+    const row = runtime.memories.get(writer.transcriptId) as Memory;
+    const persisted = transcriptsViewReader(row);
+    expect(persisted?.status).toBe("ready");
+    expect(persisted?.segments).toHaveLength(2);
+    expect(persisted?.endedAt).toBeTypeOf("number");
+    expect(row.metadata).toMatchObject({ status: "ready" });
+  });
+
+  it("suppresses a flush queued immediately before finalize — the only mutating write is status ready", async () => {
+    const runtime = makeReleasableRuntime();
+    let clock = 1_000;
+    const writer = new MeetingTranscriptWriter(
+      runtime.runtime,
+      5_000,
+      () => clock,
+    );
+    await writer.start(START_INPUT);
+
+    clock += 6_000;
+    // Dispatch a flush and call finalize in the SAME synchronous turn: finalize
+    // sets `finalized` before the queued flush's write body runs, so the
+    // "recording" write is never issued.
+    writer.updateSegments([segment("s1", "Jill", "hello", 0, 1_000)]);
+    const finalizePromise = writer.finalize({
+      segments: [
+        segment("s1", "Jill", "hello", 0, 1_000),
+        segment("s2", "Bob", "bye", 1_000, 2_000),
+      ],
+      endReason: "requested_stop",
+      participants: [],
+      audioWav: null,
+    });
+    await drainReversed(runtime, finalizePromise);
+
+    const statuses = runtime.history.map((w) => w.status);
+    expect(statuses).not.toContain("recording");
+    expect(statuses.filter((s) => s === "ready")).toHaveLength(1);
+    const row = runtime.memories.get(writer.transcriptId) as Memory;
+    expect(transcriptsViewReader(row)?.status).toBe("ready");
+  });
+});
+
 describe("persistMeetingAudioWav", () => {
   it("writes content-addressed WAV bytes under the served media dir", () => {
     const dir = mkdtempSync(join(tmpdir(), "meetings-audio-"));
