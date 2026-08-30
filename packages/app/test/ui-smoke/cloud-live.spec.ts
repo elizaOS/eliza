@@ -868,6 +868,28 @@ test.describe("real cloud login + personal identity + chat", () => {
             audit.uninspectableDedicatedCutoverResponseBodyCount,
           dedicatedAdoptionQuoteGetRequestCount:
             audit.dedicatedAdoptionQuoteGetRequestCount,
+          successfulDedicatedAdoptionQuoteGetResponseCount:
+            audit.successfulDedicatedAdoptionQuoteGetResponseCount,
+          clientErrorDedicatedAdoptionQuoteGetResponseCount:
+            audit.clientErrorDedicatedAdoptionQuoteGetResponseCount,
+          serverErrorDedicatedAdoptionQuoteGetResponseCount:
+            audit.serverErrorDedicatedAdoptionQuoteGetResponseCount,
+          otherDedicatedAdoptionQuoteGetResponseCount:
+            audit.otherDedicatedAdoptionQuoteGetResponseCount,
+          failedDedicatedAdoptionQuoteGetRequestCount:
+            audit.failedDedicatedAdoptionQuoteGetRequestCount,
+          pendingDedicatedAdoptionQuoteGetRequestCount:
+            audit.pendingDedicatedAdoptionQuoteGetRequestCount,
+          completedDedicatedAdoptionQuoteResponseBodyCount:
+            audit.completedDedicatedAdoptionQuoteResponseBodyCount,
+          parsedDedicatedAdoptionQuoteResponseBodyCount:
+            audit.parsedDedicatedAdoptionQuoteResponseBodyCount,
+          decodedAdoptableDedicatedAdoptionQuoteCount:
+            audit.decodedAdoptableDedicatedAdoptionQuoteCount,
+          decodedUnavailableDedicatedAdoptionQuoteCount:
+            audit.decodedUnavailableDedicatedAdoptionQuoteCount,
+          uninspectableDedicatedAdoptionQuoteResponseBodyCount:
+            audit.uninspectableDedicatedAdoptionQuoteResponseBodyCount,
           dedicatedAdoptionConfirmationPostRequestCount:
             audit.dedicatedAdoptionConfirmationPostRequestCount,
           ...dedicatedConsentGate.snapshot(),

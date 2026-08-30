@@ -50,6 +50,17 @@ const ZERO_DEDICATED_CONTROL_PLANE_COUNTERS = {
   decodedDedicatedCutoverFinalResponseCount: 0,
   uninspectableDedicatedCutoverResponseBodyCount: 0,
   dedicatedAdoptionQuoteGetRequestCount: 0,
+  successfulDedicatedAdoptionQuoteGetResponseCount: 0,
+  clientErrorDedicatedAdoptionQuoteGetResponseCount: 0,
+  serverErrorDedicatedAdoptionQuoteGetResponseCount: 0,
+  otherDedicatedAdoptionQuoteGetResponseCount: 0,
+  failedDedicatedAdoptionQuoteGetRequestCount: 0,
+  pendingDedicatedAdoptionQuoteGetRequestCount: 0,
+  completedDedicatedAdoptionQuoteResponseBodyCount: 0,
+  parsedDedicatedAdoptionQuoteResponseBodyCount: 0,
+  decodedAdoptableDedicatedAdoptionQuoteCount: 0,
+  decodedUnavailableDedicatedAdoptionQuoteCount: 0,
+  uninspectableDedicatedAdoptionQuoteResponseBodyCount: 0,
   dedicatedAdoptionConfirmationPostRequestCount: 0,
 } as const;
 
