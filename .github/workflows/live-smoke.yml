@@ -686,6 +686,123 @@ jobs:
             "$CANARY_DIAGNOSTIC_RAW_PATH" \
             "$CANARY_DIAGNOSTIC_EVIDENCE_PATH"
 
+      - name: Summarize replacement cleanup reconciliation eligibility
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=20000
+        run: |
+          set -euo pipefail
+          PSQL_DATABASE_URL="$(bun packages/cloud/scripts/admin/libpq-connection-url.ts)"
+          echo "::add-mask::$PSQL_DATABASE_URL"
+          summary="$({
+            psql "$PSQL_DATABASE_URL" \
+              --no-psqlrc \
+              --no-align \
+              --tuples-only \
+              --quiet \
+              --set ON_ERROR_STOP=1 \
+              --set suffix="$CANARY_DIAGNOSTIC_SUFFIX" <<'SQL'
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout = '20s';
+          WITH target AS (
+            SELECT id, organization_id, replacement_cleanup_created_at
+            FROM agent_sandboxes
+            WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
+          ),
+          eligible AS (
+            SELECT candidate.replacement_cleanup_created_at
+            FROM agent_sandboxes AS candidate
+            WHERE candidate.replacement_cleanup_sandbox_id IS NOT NULL
+              AND candidate.execution_tier IN ('dedicated', 'dedicated-always')
+              AND (
+                candidate.replacement_cleanup_attempt_id IS NULL
+                OR candidate.replacement_cleanup_created_at <= NOW() - INTERVAL '30 minutes'
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM jobs
+                WHERE jobs.organization_id = candidate.organization_id
+                  AND jobs.agent_id = candidate.id::text
+                  AND jobs.status IN ('pending', 'in_progress')
+                  AND jobs.type IN (
+                    'agent_provision',
+                    'agent_delete',
+                    'agent_suspend',
+                    'agent_resume',
+                    'agent_restart',
+                    'agent_upgrade',
+                    'agent_admin_canary_image',
+                    'agent_downgrade',
+                    'agent_sleep',
+                    'agent_wake'
+                  )
+              )
+          ),
+          facts AS (
+            SELECT
+              target.replacement_cleanup_created_at,
+              target.replacement_cleanup_created_at <= NOW() - INTERVAL '30 minutes'
+                AS grace_elapsed,
+              (
+                SELECT count(*)
+                FROM jobs
+                WHERE jobs.organization_id = target.organization_id
+                  AND jobs.agent_id = target.id::text
+                  AND jobs.status IN ('pending', 'in_progress')
+                  AND jobs.type IN (
+                    'agent_provision',
+                    'agent_delete',
+                    'agent_suspend',
+                    'agent_resume',
+                    'agent_restart',
+                    'agent_upgrade',
+                    'agent_admin_canary_image',
+                    'agent_downgrade',
+                    'agent_sleep',
+                    'agent_wake'
+                  )
+              )::integer AS active_exclusive_jobs,
+              (
+                SELECT count(*)
+                FROM eligible
+                WHERE eligible.replacement_cleanup_created_at <
+                  target.replacement_cleanup_created_at
+              )::integer AS older_eligible_fences,
+              (SELECT count(*) FROM eligible)::integer AS total_eligible_fences
+            FROM target
+          )
+          SELECT json_build_object(
+            'targetCount', (SELECT count(*) FROM target),
+            'cleanupCreatedAt', (SELECT replacement_cleanup_created_at FROM facts),
+            'graceElapsed', COALESCE((SELECT grace_elapsed FROM facts), false),
+            'activeExclusiveJobs', COALESCE((SELECT active_exclusive_jobs FROM facts), 0),
+            'olderEligibleFences', COALESCE((SELECT older_eligible_fences FROM facts), 0),
+            'totalEligibleFences', COALESCE((SELECT total_eligible_fences FROM facts), 0)
+          );
+          COMMIT;
+          SQL
+          } | sed '/^[[:space:]]*$/d' | head -n 1)"
+          jq -e '
+            keys == ["activeExclusiveJobs", "cleanupCreatedAt", "graceElapsed", "olderEligibleFences", "targetCount", "totalEligibleFences"] and
+            .targetCount == 1 and
+            (.cleanupCreatedAt | type == "string") and
+            (.cleanupCreatedAt | fromdateiso8601 | type == "number") and
+            (.graceElapsed | type == "boolean") and
+            (.activeExclusiveJobs | type == "number") and
+            (.olderEligibleFences | type == "number") and
+            (.totalEligibleFences | type == "number")
+          ' <<<"$summary" >/dev/null
+          echo "### Replacement cleanup reconciliation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '
+            "- cleanup fence created: `" + .cleanupCreatedAt + "`\n" +
+            "- grace elapsed: `" + (.graceElapsed | tostring) + "`\n" +
+            "- active exclusive jobs: `" + (.activeExclusiveJobs | tostring) + "`\n" +
+            "- older eligible fences: `" + (.olderEligibleFences | tostring) + "`\n" +
+            "- total eligible fences: `" + (.totalEligibleFences | tostring) + "`"
+          ' <<<"$summary" | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Upload privacy-safe provision diagnostic
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
