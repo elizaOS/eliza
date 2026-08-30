@@ -1094,22 +1094,30 @@ test.describe("clickIfVisible bounded click", () => {
     page,
   }, testInfo) => {
     testInfo.setTimeout(30_000);
+    // The #29534 path calls clickIfVisible(cloudRuntime, 10_000), so the
+    // effective cap is Math.min(10_000, 5_000) = 5_000ms. Drive the helper
+    // with the production argument. The fixture toggles pointer-events off
+    // on a 10ms cadence so Playwright's actionability check (which requires
+    // the element to be receiving pointer events) can never settle, forcing
+    // the click to burn the cap.
     await page.setContent(
-      '<button id="target">go</button><script>' +
+      '<button id="target" style="pointer-events:none">go</button><script>' +
         "setInterval(() => {" +
         "  const el = document.getElementById('target');" +
-        "  if (el) { const next = el.cloneNode(true); el.replaceWith(next); }" +
-        "}, 50);" +
+        "  if (el) {" +
+        "    el.style.pointerEvents = el.style.pointerEvents === 'none' ? 'auto' : 'none';" +
+        "  }" +
+        "}, 10);" +
         "</script>",
     );
     const target = page.locator("#target");
     const startedAt = Date.now();
-    const result = await clickIfVisible(target, 2_000);
+    const result = await clickIfVisible(target, 10_000);
     const elapsedMs = Date.now() - startedAt;
-    // The re-rendered control must not block: bounded click returns false
-    // promptly (well under the enclosing test deadline), and the helper
-    // does not throw.
+    // The never-settling control must trip the 5s click cap and fall
+    // through (false), with elapsed near the cap — not a fast click.
     expect(result).toBe(false);
-    expect(elapsedMs).toBeLessThan(10_000);
+    expect(elapsedMs).toBeGreaterThanOrEqual(3_000);
+    expect(elapsedMs).toBeLessThan(15_000);
   });
 });
