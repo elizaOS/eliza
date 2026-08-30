@@ -51,6 +51,14 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
   requireAny: ["ready views", "gui ready"],
 };
 
+const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
+  requireAll: [
+    "View unavailable",
+    "This view is not available in the current runtime",
+  ],
+  requireAny: ["Retry", "Back to views"],
+};
+
 export const VIEW_OCR_POLICIES = {
   "builtin-chat": expected({
     requireAny: [
@@ -61,8 +69,8 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-camera": exempt(
     "native-platform-gated",
-    "The camera is an AOSP-native surface, so the browser audit intentionally renders the launcher fallback.",
-    LAUNCHER_FALLBACK,
+    "The camera is an AOSP-native surface, so the browser audit intentionally renders the unavailable-view boundary.",
+    VIEW_UNAVAILABLE_FALLBACK,
   ),
   "builtin-tasks": expected({
     requireAll: ["Tasks"],
@@ -184,7 +192,7 @@ export const VIEW_OCR_POLICIES = {
       "Filter by type",
     ],
   }),
-  "builtin-rolodex": expected(LAUNCHER_FALLBACK),
+  "builtin-rolodex": expected(VIEW_UNAVAILABLE_FALLBACK),
   "builtin-runtime": expected({
     requireAny: ["Plugins", "Actions", "Providers"],
   }),
@@ -323,8 +331,8 @@ export const VIEW_OCR_POLICIES = {
   }),
   "plugin-cockpit-gui": exempt(
     "unregistered-remote-bundle",
-    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the launcher fallback is the only observable surface.",
-    LAUNCHER_FALLBACK,
+    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the unavailable-view boundary is the only observable surface.",
+    VIEW_UNAVAILABLE_FALLBACK,
   ),
   "plugin-trajectory-logger-gui": expected({
     requireAny: ["Back to apps", "HANDLE", "PLAN"],
