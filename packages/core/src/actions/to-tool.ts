@@ -363,6 +363,13 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 	tierAChildrenByParent?:
 		| ReadonlyMap<string, readonly string[]>
 		| Readonly<Record<string, readonly string[]>>;
+	/**
+	 * Expand registered child actions into first-class native tools. Defaults to
+	 * true. A caller may disable expansion only when it still exposes every
+	 * authorized umbrella parent and keeps explicit turn candidates direct; the
+	 * parent schema remains the lossless dispatch surface for its children.
+	 */
+	expandSubActions?: boolean;
 }
 
 /**
@@ -515,6 +522,9 @@ export function buildPlannerToolsFromTieredActions(
 
 	for (const action of actions) {
 		emit(action);
+		if (options.expandSubActions === false) {
+			continue;
+		}
 		for (const subAction of action.subActions ?? []) {
 			let child: PlannerToolActionShape | undefined;
 			let subActionName = "";

@@ -2140,6 +2140,54 @@ function renderPlannerModelInput(params: {
 	return { messages, promptSegments, cacheKeySegments };
 }
 
+/**
+ * Measure the first planner request before dispatch so the message service can
+ * choose a provider's declared lossless retrieval projection when the complete
+ * eager provider payload will not fit. Tool schemas remain complete and the
+ * planner loop's provider-rejection boundary remains the authoritative backstop
+ * for later iterations whose settled tool results grow after composition.
+ */
+export function buildInitialPlannerModelInputBudget(params: {
+	runtime: PlannerRuntime;
+	context: ContextObject;
+	config?: PlannerLoopParams["config"];
+	tools?: ToolDefinition[];
+	codingMode?: boolean;
+}) {
+	const config = mergeChainingLoopConfig(params.config);
+	const context = normalizePlannerContext(params.context);
+	const trajectory: PlannerTrajectory = {
+		context,
+		modelBaseContext: context,
+		codingMode: params.codingMode === true,
+		steps: [],
+		archivedSteps: [],
+		plannedQueue: [],
+		evaluatorOutputs: [],
+	};
+	const renderedInput = renderPlannerModelInput({
+		context,
+		trajectory,
+		template:
+			params.codingMode === true
+				? CODING_PLANNER_TEMPLATE
+				: resolveOptimizedPlannerTemplate(params.runtime),
+		codingMode: params.codingMode === true,
+		runtime: params.runtime,
+	});
+	return buildModelInputBudget({
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+		tools: params.tools,
+		modelName: config.contextWindowModelName,
+		...(config.contextWindowTokens
+			? { contextWindowTokens: config.contextWindowTokens }
+			: {}),
+		reserveTokens: compactionReserveForBudget(config),
+		estimationMode: "utf8-upper-bound",
+	});
+}
+
 function compactionReserveForBudget(
 	config: ChainingLoopConfig,
 ): number | undefined {

@@ -1,9 +1,9 @@
 /**
  * Exercises the v5 tiered action surface through `runV5MessageRuntimeStage1`:
  * Stage-1 hints promoting a parent to Tier A, sub-actions surfaced as
- * first-class planner tools, hot-parent child capping, role-gated tool omission,
- * and Tier-B sub-planner execution. Deterministic: a canned-response stub
- * runtime, no live model.
+ * first-class planner tools, lossless umbrella fallback under provider input
+ * budgets, role-gated tool omission, and sub-planner execution. Deterministic:
+ * a canned-response stub runtime, no live model.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetActionRolePolicyCacheForTests } from "../runtime/action-role-policy";
@@ -15,6 +15,7 @@ import type {
 	ActionResult,
 	HandlerCallback,
 	HandlerOptions,
+	Provider,
 } from "../types/components";
 import type { AgentContext, ContextGate, RoleGate } from "../types/contexts";
 import type { Memory } from "../types/memory";
@@ -69,6 +70,9 @@ function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
 function makeRuntime(opts: {
 	actions: Action[];
 	responses: CannedResponse[];
+	plannerState?: State;
+	plannerContextWindowTokens?: number;
+	providers?: Provider[];
 }): IAgentRuntime {
 	const queue = [...opts.responses];
 	const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
@@ -85,18 +89,29 @@ function makeRuntime(opts: {
 			bio: "I route actions.",
 		},
 		actions: opts.actions,
-		providers: [],
+		providers: opts.providers ?? [],
 		getRoom: vi.fn(async () => null),
 		// Stage 1 reads the response-bypass channel/source settings before it can
 		// classify a turn as ambient; the fixture configures none of them.
 		getSetting: vi.fn(() => undefined),
-		getModelRegistrations: vi.fn(() => []),
+		getModelRegistrations: vi.fn(() =>
+			opts.plannerContextWindowTokens
+				? [
+						{
+							modelType: ModelType.ACTION_PLANNER,
+							metadata: {
+								contextWindowTokens: opts.plannerContextWindowTokens,
+							},
+						},
+					]
+				: [],
+		),
 		reportError: vi.fn(),
 		responseHandlerFieldRegistry,
 		responseHandlerFieldEvaluators: [
 			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 		],
-		composeState: vi.fn(async () => makeState()),
+		composeState: vi.fn(async () => opts.plannerState ?? makeState()),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
 		useModel: vi.fn(
@@ -301,6 +316,127 @@ describe("v5 tiered action surface", () => {
 			process.env.ACTION_ROLE_POLICY = originalActionRolePolicy;
 		}
 		_resetActionRolePolicyCacheForTests();
+	});
+
+	it("uses a provider's lossless retrieval projection before an oversized planner dispatch", async () => {
+		const handler = vi.fn(async () => ({
+			success: true,
+			text: "Calendar event created",
+			data: { title: "Budget-safe event" },
+		}));
+		const calendar = makeAction({
+			name: "CALENDAR_CREATE_EVENT",
+			description: "Create a calendar event.",
+			contexts: ["calendar" as AgentContext],
+			handler,
+		});
+		const eagerText = `EAGER_CALENDAR_SENTINEL${"x".repeat(160_000)}`;
+		const plannerState: State = {
+			values: { providers: eagerText },
+			data: {
+				providers: {
+					CALENDAR_CONTEXT: {
+						text: eagerText,
+						overflowText:
+							"CALENDAR_RETRIEVE_SENTINEL: use the complete calendar tools for the requested range.",
+					},
+				},
+				providerOrder: ["CALENDAR_CONTEXT"],
+			},
+			text: eagerText,
+		};
+		const runtime = makeRuntime({
+			actions: [calendar],
+			plannerState,
+			providers: [
+				{
+					name: "CALENDAR_CONTEXT",
+					description: "Calendar context with a lossless retrieval form.",
+					contextGate: { anyOf: ["calendar" as AgentContext] },
+					get: async () => plannerState.data.providers?.CALENDAR_CONTEXT ?? {},
+				},
+			],
+			responses: [
+				stage1Response({
+					contexts: ["calendar"],
+					candidateActionNames: ["CALENDAR_CREATE_EVENT"],
+				}),
+				plannerToolResponse("CALENDAR_CREATE_EVENT"),
+				finishEvaluatorResponse("Calendar event created."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("create a calendar event"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const serializedPlannerRequest = JSON.stringify(plannerCall?.params);
+		expect(serializedPlannerRequest).toContain("CALENDAR_RETRIEVE_SENTINEL");
+		expect(serializedPlannerRequest).not.toContain("EAGER_CALENDAR_SENTINEL");
+		expect(plannerToolNames(runtime)).toContain("CALENDAR_CREATE_EVENT");
+		expect(handler).toHaveBeenCalledOnce();
+	});
+
+	it("uses every authorized umbrella parent when promoted child schemas exceed the planner budget", async () => {
+		const childHandler = vi.fn(async () => ({
+			success: true,
+			text: "Calendar event created",
+			data: { title: "Umbrella event" },
+		}));
+		const children = Array.from({ length: 28 }, (_, index) =>
+			makeAction({
+				name: `CALENDAR_OP_${String(index + 1).padStart(2, "0")}`,
+				description: `Promoted Calendar operation ${index + 1}. ${"schema detail ".repeat(1_200)}`,
+				contexts: ["calendar" as AgentContext],
+				...(index === 0 ? { handler: childHandler } : {}),
+			}),
+		);
+		const calendar = makeAction({
+			name: "CALENDAR",
+			description:
+				"Calendar umbrella. Route every operation through the subaction parameter.",
+			contexts: ["calendar" as AgentContext],
+			subActions: children.map((child) => child.name),
+		});
+		const runtime = makeRuntime({
+			actions: [calendar, ...children],
+			responses: [
+				stage1Response({
+					contexts: ["calendar"],
+					candidateActionNames: ["CALENDAR"],
+				}),
+				plannerToolResponse("CALENDAR"),
+				plannerToolResponse("CALENDAR_OP_01"),
+				finishEvaluatorResponse("Calendar event created."),
+				finishEvaluatorResponse("Calendar event created."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("schedule a calendar event"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const toolNames = plannerToolNames(runtime);
+		expect(toolNames).toContain("CALENDAR");
+		expect(toolNames).not.toContain("CALENDAR_OP_01");
+		expect(toolNames).not.toContain("CALENDAR_OP_28");
+		expect(childHandler).toHaveBeenCalledOnce();
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				authorizedActionCount: 29,
+				parentToolCount: 4,
+			}),
+			"[SERVICE:MESSAGE] Planner retained complete umbrella capability under the dispatch budget",
+		);
 	});
 
 	it("uses Stage 1 hints to promote a parent to Tier A and expose children", async () => {
