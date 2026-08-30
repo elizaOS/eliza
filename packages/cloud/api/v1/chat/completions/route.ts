@@ -1215,9 +1215,9 @@ export async function handleChatCompletionsPOST(
 
   try {
     // 1. Authenticate (+ moderation). API-key and Steward-session requests
-    // resolve auth + org + moderation from a combined cache decision. Cold
-    // Workers schedule authoritative hydration and return a retryable response;
-    // only non-Worker callers may join that hydration inline.
+    // resolve auth + org + moderation from a combined cache decision. On one
+    // true cold miss, Workers may consume the retained authoritative decision
+    // under a bounded deadline; its cache projection remains off-path.
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
     let moderationAlreadyChecked = false;
