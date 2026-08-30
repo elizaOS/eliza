@@ -85,6 +85,12 @@ describe("managed Dedicated provision diagnostic", () => {
         "x",
       ),
     ).toBe("capacity");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Unexpected control-plane failure\n    at DockerSandboxProvider.create (/opt/eliza/docker-sandbox-provider.ts:42:7)",
+        "x",
+      ),
+    ).toBe("unclassified");
   });
 
   test("emits only closed facts and never the raw operator error", () => {

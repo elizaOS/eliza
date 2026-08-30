@@ -157,61 +157,65 @@ export function classifyManagedDedicatedProvisionFailure(
   if (typeof value !== "string" || value.length === 0 || value.length > 8_000) {
     throw new Error(`${label} must be a bounded string or null`);
   }
+  // Job persistence appends stack frames for operator diagnosis. Classifying
+  // the whole value makes source paths such as docker-sandbox-provider.ts look
+  // like the failure itself, so only the primary error line may choose a code.
+  const primary = value.split(/\r?\n/, 1)[0] ?? "";
 
   if (
     /(?:secret|credential|decrypt|encryption|kms|master key|api[_ -]?key)/i.test(
-      value,
+      primary,
     )
   ) {
     return "secrets";
   }
   if (
     /(?:database|postgres|pglite|drizzle|\bsql\b|migration|tenant[_ -]?db|failed query)/i.test(
-      value,
+      primary,
     )
   ) {
     return "database";
   }
   if (
-    /(?:image|manifest|pull access denied|registry|ghcr|digest)/i.test(value)
+    /(?:image|manifest|pull access denied|registry|ghcr|digest)/i.test(primary)
   ) {
     return "image";
   }
   if (
     /(?:capacity|no (?:eligible|available) (?:docker )?nodes?|no (?:docker )?nodes? available|none (?:are|is) available for placement|no valid nodes parsed|insufficient|quota|resource exhausted|allocation limit|server limit|placement unavailable)/i.test(
-      value,
+      primary,
     )
   ) {
     return "capacity";
   }
   if (
     /(?:headscale|tailnet|tailscale|mesh|ingress|bridge port|proxy route)/i.test(
-      value,
+      primary,
     )
   ) {
     return "ingress";
   }
   if (
     /(?:docker|container|sandbox provider|container runtime|port allocation|ssh)/i.test(
-      value,
+      primary,
     )
   ) {
     return "container";
   }
   if (
     /(?:econnreset|econnrefused|enetdown|enetunreach|ehostunreach|getaddrinfo|socket|fetch failed|network)/i.test(
-      value,
+      primary,
     )
   ) {
     return "transport";
   }
-  if (/(?:timed out|timeout|etimedout)/i.test(value)) return "timeout";
-  if (/(?:health|readiness|heartbeat|runtime|startup|bridge)/i.test(value)) {
+  if (/(?:timed out|timeout|etimedout)/i.test(primary)) return "timeout";
+  if (/(?:health|readiness|heartbeat|runtime|startup|bridge)/i.test(primary)) {
     return "runtime";
   }
   if (
     /(?:lifecycle|identity changed|ownership changed|organization id mismatch|conflicting agent_)/i.test(
-      value,
+      primary,
     )
   ) {
     return "lifecycle";
