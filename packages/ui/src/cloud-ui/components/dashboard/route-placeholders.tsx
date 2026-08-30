@@ -42,8 +42,8 @@ export function DashboardLoadingState({ label }: { label?: string }) {
 
 export function DashboardErrorState({ message }: { message: string }) {
   return (
-    <div className="mx-auto max-w-prose space-y-3 p-12 text-sm text-red-300">
-      <h1 className="text-lg font-semibold text-red-100">
+    <div className="mx-auto max-w-prose space-y-3 p-12 text-sm text-destructive">
+      <h1 className="text-lg font-semibold text-destructive">
         Something went wrong
       </h1>
       <p>{message}</p>

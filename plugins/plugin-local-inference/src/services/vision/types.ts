@@ -59,7 +59,7 @@ export interface VisionDescribeRequest {
 	 * Defaults to `"gemma-vl"` when omitted.
 	 */
 	modelFamily?: string;
-	/** Max output tokens; defaults to 256 (description-length budget). */
+	/** Optional caller-requested output boundary; omitted means complete generation. */
 	maxTokens?: number;
 	/** 0..1, default 0.2 (descriptions should be deterministic-ish). */
 	temperature?: number;

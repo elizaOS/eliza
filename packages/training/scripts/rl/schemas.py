@@ -235,7 +235,7 @@ class LLMCallSchema:
     response: str | None = None
     reasoning: str | None = None
     temperature: float = 0.7
-    max_tokens: int = 1000
+    max_tokens: int | None = None
     latency_ms: int | None = None
     metadata: dict[str, Any] | None = None
     private_analysis: dict[str, Any] | None = None
@@ -255,7 +255,7 @@ class LLMCallSchema:
             response=data.get("response"),
             reasoning=data.get("reasoning"),
             temperature=data.get("temperature", 0.7),
-            max_tokens=data.get("maxTokens", data.get("max_tokens", 1000)),
+            max_tokens=data.get("maxTokens", data.get("max_tokens")),
             latency_ms=data.get("latencyMs", data.get("latency_ms")),
             metadata=data.get("metadata"),
             private_analysis=data.get("privateAnalysis", data.get("private_analysis")),

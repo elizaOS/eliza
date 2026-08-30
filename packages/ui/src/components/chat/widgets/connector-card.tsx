@@ -426,7 +426,8 @@ export const ConnectorCardWidget = memo(function ConnectorCardWidget({
                 <Input
                   id={inputId}
                   aria-label={field.key}
-                  className="border-border bg-bg px-2 py-1.5 text-sm"
+                  variant="secret"
+                  density="short"
                   type="password"
                   value={tokenValues[field.key] ?? ""}
                   onChange={(event) => {

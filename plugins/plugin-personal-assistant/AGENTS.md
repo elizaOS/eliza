@@ -8,7 +8,7 @@ This package is the composition root for personal-assistant workflows: briefs, p
 
 The plugin declares Google Workspace and scheduling dependencies and initializes the calendar, finances, reminders, goals, inbox, and health plugins when needed. `@elizaos/plugin-scheduling` owns the single scheduled-task runner; this package supplies LifeOps dependencies, workers, registries, policies, and default packs.
 
-All registered actions and providers are wrapped with owner-access guards. The package has no dashboard view of its own: the personal assistant is the chat surface, while domain views live with their domain plugins.
+All registered actions and providers are wrapped with owner-access guards. The personal assistant is primarily a chat surface, while domain views live with their domain plugins. Its focused `/lifeops/connections` view owns only cross-domain Gmail, Google Calendar, and Apple Calendar onboarding, sync health, recovery, and local imported-data lifecycle; it does not duplicate inbox or calendar product views.
 
 ## Runtime surface
 
@@ -96,7 +96,7 @@ src/
     oracles/                    external facts and local conditions
     messaging/ send-policy/     owner send and approval policy
   routes/                       HTTP handlers and route plugin
-  components/ widgets/ ui.ts    app-facing UI exports
+  components/ widgets/ ui.ts    app-facing UI exports, including the focused connection manager
 test/                           integration, scenario, and real-background lanes
 ```
 
@@ -132,7 +132,6 @@ Frequently used controls include:
 | `SELFCONTROL_HOSTS_FILE_PATH` / `WEBSITE_BLOCKER_HOSTS_FILE_PATH` | Override the blocker hosts file |
 | `ELIZA_BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS` | Configure browser companion token lifetime |
 | `ELIZAOS_CLOUD_API_KEY` / `ELIZAOS_CLOUD_BASE_URL` | Configure cloud-backed assistant features |
-| `ELIZA_LIFEOPS_CONTEXT_WINDOW` | Override the LifeOps provider context budget |
 
 Connector credentials and domain-specific settings belong to their owning plugin. `ELIZA_DEVICE_KIND` and `ELIZA_DEVICE_ID` control device-specific behavior.
 

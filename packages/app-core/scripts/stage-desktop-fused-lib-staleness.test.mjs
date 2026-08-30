@@ -42,9 +42,13 @@ function currentFork() {
 /** Run `--check --out <dir>`; return the process exit code (0 fresh, 2 stale). */
 function checkExitCode(outDir, extraArgs = []) {
   try {
-    execFileSync("node", [script, "--check", "--out", outDir, ...extraArgs], {
-      stdio: "ignore",
-    });
+    execFileSync(
+      process.execPath,
+      [script, "--check", "--out", outDir, ...extraArgs],
+      {
+        stdio: "ignore",
+      },
+    );
     return 0;
   } catch (err) {
     return err.status ?? 1;

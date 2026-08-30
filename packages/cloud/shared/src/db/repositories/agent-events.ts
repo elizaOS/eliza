@@ -63,8 +63,6 @@ async function prepareAgentEventPayload(data: NewAgentEvent): Promise<NewAgentEv
       field: "message",
       createdAt,
       value: data.message,
-      // Event bodies are diagnostic text; bound them when offload is off.
-      oversizeInline: "clamp",
     }),
     offloadJsonField<Record<string, unknown>>({
       namespace: ObjectNamespaces.AgentEventBodies,

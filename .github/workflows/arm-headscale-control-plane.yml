@@ -188,7 +188,39 @@ jobs:
               )
               ;;
           esac
-          "${args[@]}"
+          arm_stdout="$RUNNER_TEMP/headscale-arm.stdout"
+          arm_stderr="$RUNNER_TEMP/headscale-arm.stderr"
+          umask 077
+          cleanup_arm_output() {
+            local cleanup_paths=("$arm_stdout" "$arm_stderr")
+            if ! shred -u -- "${cleanup_paths[@]}" 2>/dev/null; then
+              rm -f -- "${cleanup_paths[@]}"
+            fi
+          }
+          trap cleanup_arm_output EXIT
+
+          set +e
+          "${args[@]}" > "$arm_stdout" 2> "$arm_stderr"
+          arm_status=$?
+          set -e
+          if [ "$arm_status" -ne 0 ]; then
+            echo "::error::Headscale remote operation failed (category=headscale-remote-failed; exit=$arm_status; raw-output=suppressed)."
+            exit "$arm_status"
+          fi
+
+          if [ "$TARGET_OPERATION" = "inspect-legacy-vhost" ]; then
+            mapfile -t reviewed_sha_lines < <(
+              grep -E '^reviewed-sha256=[0-9a-f]{64}$' "$arm_stdout" || true
+            )
+            if [ "${#reviewed_sha_lines[@]}" -ne 1 ]; then
+              echo "::error::Headscale inspection returned an invalid receipt (category=headscale-inspection-receipt-invalid; raw-output=suppressed)."
+              exit 1
+            fi
+            echo "${reviewed_sha_lines[0]}"
+            echo "Headscale inspection passed (category=headscale-inspection-passed; raw-output=suppressed)."
+          else
+            echo "Headscale control-plane converge passed (category=headscale-converge-passed; raw-output=suppressed)."
+          fi
 
       - name: Verify dual-SAN public identity and health
         if: inputs.operation != 'inspect-legacy-vhost'

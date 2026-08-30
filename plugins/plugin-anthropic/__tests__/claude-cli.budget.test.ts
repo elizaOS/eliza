@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CLAUDE_CLI_MAX_STDIO_BYTES,
   collectClaudeCliOutput,
+  generateViaCli,
   readClaudeCliStreamBudget,
   streamViaCli,
 } from "../utils/claude-cli";
@@ -72,6 +73,52 @@ afterEach(() => {
 });
 
 describe("claude CLI stdio budget", () => {
+  it("rejects a max-token buffered CLI result", async () => {
+    const proc = {
+      stdout: streamOf(
+        JSON.stringify({
+          result: "partial",
+          duration_ms: 10,
+          duration_api_ms: 8,
+          modelUsage: {},
+          stop_reason: "max_tokens",
+        })
+      ),
+      stderr: streamOf(""),
+      exited: Promise.resolve(0),
+      kill: vi.fn(() => undefined),
+    };
+    vi.stubGlobal("Bun", { spawn: vi.fn(() => proc) });
+
+    await expect(
+      generateViaCli(runtimeStub(), "hello", "claude-test", "TEXT_SMALL")
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  });
+
+  it("signals a max-token streaming CLI result after its final delta", async () => {
+    const proc = {
+      stdout: streamOf(
+        `${JSON.stringify({
+          type: "stream_event",
+          event: { delta: { type: "text_delta", text: "partial" } },
+        })}\n${JSON.stringify({ type: "result", stop_reason: "max_tokens" })}\n`
+      ),
+      stderr: streamOf(""),
+      exited: Promise.resolve(0),
+      kill: vi.fn(() => undefined),
+    };
+    vi.stubGlobal("Bun", { spawn: vi.fn(() => proc) });
+    const result = streamViaCli(runtimeStub(), "hello", "claude-test", "TEXT_SMALL");
+    const chunks: string[] = [];
+
+    await expect(async () => {
+      for await (const chunk of result.textStream) chunks.push(chunk);
+    }).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    expect(chunks).toEqual(["partial"]);
+    await expect(result.text).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    await expect(result.finishReason).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  });
+
   it("rejects a never-ending stdout stream instead of awaiting text() forever", async () => {
     const proc = hungProcess();
     const started = Date.now();
@@ -156,7 +203,7 @@ describe("claude CLI stdio budget", () => {
     };
 
     await expect(consume()).rejects.toThrow(/stderr exceeded 8388608 bytes/);
-    await expect(result.finishReason).resolves.toBe("error");
+    await expect(result.finishReason).rejects.toThrow(/stderr exceeded 8388608 bytes/);
     expect(proc.kill).toHaveBeenCalled();
   });
 });

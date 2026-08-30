@@ -126,12 +126,9 @@ export function SaveCommandModal({
               aria-labelledby={inputLabelId}
               aria-describedby={error ? inputErrorId : undefined}
               aria-invalid={error ? "true" : undefined}
-              className="flex-1 h-8 text-sm "
-              style={{
-                background: "var(--bg-hover)",
-                border: "1px solid var(--border)",
-                color: "var(--text)",
-              }}
+              variant="form"
+              density="compact"
+              className="flex-1"
             />
           </div>
           {error && (

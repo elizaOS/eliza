@@ -85,6 +85,12 @@ export interface TaskAgentFrameworkProbe {
     types?: string[],
   ) => Promise<TaskAgentPreflightResult[]>;
   getAgentMetrics?: () => Record<string, AgentMetricsSummary>;
+  /**
+   * Overrides host credential discovery for deterministic inventory checks.
+   * Production callers omit these hooks and use the real subscription probes.
+   */
+  hasClaudeSubscriptionAuth?: () => boolean;
+  hasCodexSubscriptionAuth?: () => boolean;
 }
 
 export type TaskAgentTaskKind =
@@ -762,11 +768,13 @@ async function computeTaskAgentFrameworkState(
   );
 
   const claudeSubscriptionReady =
-    claudePreflightAuth === "authenticated" || hasClaudeSubscriptionAuth();
+    claudePreflightAuth === "authenticated" ||
+    (probe?.hasClaudeSubscriptionAuth ?? hasClaudeSubscriptionAuth)();
   const claudeAuthReady =
     cloudReady || claudeSubscriptionReady || hasClaudeApiKey(runtime);
   const codexSubscriptionReady =
-    codexPreflightAuth === "authenticated" || hasCodexSubscriptionAuth();
+    codexPreflightAuth === "authenticated" ||
+    (probe?.hasCodexSubscriptionAuth ?? hasCodexSubscriptionAuth)();
   const codexAuthReady =
     cloudReady || codexSubscriptionReady || hasCodexApiKey(runtime);
   const kimiProbe = probeSubscriptionCodingAdapter("kimi", {

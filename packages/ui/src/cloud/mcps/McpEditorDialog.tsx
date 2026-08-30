@@ -17,7 +17,8 @@ import {
 } from "@elizaos/cloud-sdk/browser-contracts";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -362,6 +363,8 @@ export function McpEditorDialog({
               })}
             </Label>
             <Textarea
+              variant="config"
+              density="compact"
               id="mcp-description"
               rows={2}
               value={form.description}
@@ -462,7 +465,7 @@ export function McpEditorDialog({
             </div>
           )}
 
-          <div className="flex items-center justify-between rounded-sm border border-border bg-surface px-3 py-2">
+          <Card flow="rowBetween" variant="insetCompact">
             <Label htmlFor="mcp-x402-enabled" className="cursor-pointer">
               {t("cloud.mcps.x402EnabledLabel", {
                 defaultValue: "Enable x402 micropayments",
@@ -473,7 +476,7 @@ export function McpEditorDialog({
               checked={form.x402Enabled}
               onCheckedChange={(v) => update_("x402Enabled", v)}
             />
-          </div>
+          </Card>
 
           {!isEdit && (
             <div className="grid gap-2">
@@ -519,7 +522,6 @@ export function McpEditorDialog({
               placeholder={
                 "get_weather: Get current weather\nget_forecast: Get a forecast"
               }
-              className="font-mono text-xs"
             />
             <p className="text-xs text-muted">
               {t("cloud.mcps.toolsHint", {
@@ -545,15 +547,15 @@ export function McpEditorDialog({
         </div>
 
         <DialogFooter className="gap-2">
-          <BrandButton
+          <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={submitting}
           >
             {t("cloud.mcps.cancel", { defaultValue: "Cancel" })}
-          </BrandButton>
-          <BrandButton
-            variant="primary"
+          </Button>
+          <Button
+            variant="default"
             onClick={() => void onSubmit()}
             disabled={submitting || !valid}
           >
@@ -562,7 +564,7 @@ export function McpEditorDialog({
               : isEdit
                 ? t("cloud.mcps.saveChanges", { defaultValue: "Save changes" })
                 : t("cloud.mcps.register", { defaultValue: "Register MCP" })}
-          </BrandButton>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -21,20 +21,11 @@
  * `global.fetch` (the TTS probe) are stubbed.
  */
 
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   ElevenLabsError,
   ElevenLabsTimeoutError,
 } from "@elevenlabs/elevenlabs-js";
-import * as authActual from "@/lib/auth";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.ELEVENLABS_API_KEY ||= "test-elevenlabs-key";
@@ -54,13 +45,36 @@ let getVoiceByIdImpl: () => Promise<unknown> = async () => ({
   samples: [{}, {}],
   fineTuning: { state: { model_a: "fine_tuned" } },
 });
+const getVoiceById = mock(() => getVoiceByIdImpl());
+const requireGenerativeRouteCaller = mock(async () => ({
+  user: { id: USER, organization_id: ORG },
+  apiKeyId: "api-key-id",
+  authSource: "combined_cache" as const,
+  appScopeId: null,
+}));
+const operationContext = {
+  organizationId: ORG,
+  userId: USER,
+  apiKeyId: "api-key-id",
+  requestId: "voice-verify-request",
+  executionCtx: { waitUntil: (_promise: Promise<unknown>) => undefined },
+};
+const runFlatProviderOperation = mock(
+  async (
+    _context: unknown,
+    _operation: unknown,
+    dispatch: () => Promise<unknown>,
+  ) => dispatch(),
+);
 
-mock.module("@/lib/auth", () => ({
-  ...authActual,
-  requireAuthOrApiKeyWithOrg: async () => ({
-    user: { id: USER, organization_id: ORG },
-    apiKey: { id: "api-key-id" },
-  }),
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  asGenerativeCacheApiError: () => null,
+  getGenerativeOperationContext: () => operationContext,
+  requireGenerativeRouteCaller,
+}));
+
+mock.module("@/lib/services/generative-operation", () => ({
+  runFlatProviderOperation,
 }));
 
 mock.module("@/lib/services/voice-cloning", () => ({
@@ -71,7 +85,7 @@ mock.module("@/lib/services/voice-cloning", () => ({
 
 mock.module("@/lib/services/elevenlabs", () => ({
   getElevenLabsService: () => ({
-    getVoiceById: () => getVoiceByIdImpl(),
+    getVoiceById,
   }),
 }));
 
@@ -108,6 +122,15 @@ function stubFetch(impl: () => Promise<Response>): void {
 
 describe("#12787 elevenlabs voices/verify — fail closed on upstream failure", () => {
   beforeEach(() => {
+    getVoiceById.mockClear();
+    requireGenerativeRouteCaller.mockClear();
+    requireGenerativeRouteCaller.mockImplementation(async () => ({
+      user: { id: USER, organization_id: ORG },
+      apiKeyId: "api-key-id",
+      authSource: "combined_cache" as const,
+      appScopeId: null,
+    }));
+    runFlatProviderOperation.mockClear();
     dbVoice = {
       id: "voice-1",
       name: "My Voice",
@@ -127,8 +150,18 @@ describe("#12787 elevenlabs voices/verify — fail closed on upstream failure", 
     globalThis.fetch = realFetch;
   });
 
-  afterAll(() => {
-    mock.module("@/lib/auth", () => authActual);
+  test("standing denial makes zero ElevenLabs provider calls", async () => {
+    requireGenerativeRouteCaller.mockRejectedValueOnce(
+      new Error("account not in good standing"),
+    );
+
+    const res = await verify();
+
+    expect(res.status).toBe(500);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(runFlatProviderOperation).not.toHaveBeenCalled();
+    expect(getVoiceById).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   test("ElevenLabs 5xx surfaces a structured failure, never a fabricated 'still processing' success", async () => {
@@ -262,6 +295,15 @@ describe("#12787 elevenlabs voices/verify — fail closed on upstream failure", 
     expect(json.success).toBe(true);
     expect(json.status.canGenerateTTS).toBe(true);
     expect(json.status.isReady).toBe(true);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(runFlatProviderOperation).toHaveBeenCalledTimes(1);
+    expect(runFlatProviderOperation.mock.calls[0]?.[1]).toMatchObject({
+      provider: "elevenlabs",
+      operation: "voice_verify",
+      cost: 0,
+    });
+    expect(getVoiceById).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
   test("voice missing from DB is a 404, unaffected by the fix", async () => {

@@ -366,7 +366,7 @@ describe("installPromptOptimizations", () => {
     expect(promptOptimizationOf(payloadAt(calls, 0))).toBeUndefined();
   });
 
-  it("applies the default text-generation budget and prefers maxOutputTokens when set", async () => {
+  it("preserves an explicit maxOutputTokens request without adding another cap", async () => {
     const { runtime, calls } = installRecordingRuntime();
     await callModel(runtime, ModelType.TEXT_LARGE, {
       prompt: "budget me",
@@ -380,11 +380,11 @@ describe("installPromptOptimizations", () => {
     expect(payload.maxTokens).toBeUndefined();
     expect(promptOptimizationOf(payload)).toMatchObject({
       outputReserveTokens: 100,
-      budgetTokens: Math.max(1, Math.floor((128_000 - 100) * 0.95)),
+      budgetTokens: 128_000 - 100,
     });
   });
 
-  it("writes maxTokens when only maxTokens is requested, and clamps overflow to a 1-token prompt budget", async () => {
+  it("preserves an explicit maxTokens request so the provider can reject an impossible request", async () => {
     const { runtime, calls } = installRecordingRuntime({
       agents: { defaults: { contextTokens: 1_000 } },
     });
@@ -396,12 +396,61 @@ describe("installPromptOptimizations", () => {
       maxTokens: number;
       maxOutputTokens?: number;
     };
-    expect(payload.maxTokens).toBe(999);
+    expect(payload.maxTokens).toBe(50_000);
     expect(payload.maxOutputTokens).toBeUndefined();
     expect(promptOptimizationOf(payload)).toMatchObject({
-      outputReserveTokens: 999,
-      budgetTokens: 1,
+      outputReserveTokens: 50_000,
+      budgetTokens: 0,
     });
+  });
+
+  it("does not invent a model output cap when the caller omitted one", async () => {
+    const { runtime, calls } = installRecordingRuntime();
+    await callModel(runtime, ModelType.TEXT_LARGE, { prompt: "complete me" });
+    const payload = payloadAt(calls, 0) as {
+      maxTokens?: number;
+      maxOutputTokens?: number;
+    };
+    expect(payload.maxTokens).toBeUndefined();
+    expect(payload.maxOutputTokens).toBeUndefined();
+    expect(promptOptimizationOf(payload)).toMatchObject({
+      budgetTokens: 128_000,
+    });
+    expect(promptOptimizationOf(payload)?.outputReserveTokens).toBeUndefined();
+  });
+
+  it("does not turn model-capacity metadata into an outbound output cap", async () => {
+    const { runtime, calls } = installRecordingRuntime({
+      models: {
+        providers: {
+          test: {
+            baseUrl: "https://provider.example/v1",
+            models: [
+              {
+                id: "metadata-capped-model",
+                name: "Metadata capped model",
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 1_000_000,
+                maxTokens: 4_096,
+              },
+            ],
+          },
+        },
+      },
+    });
+    await callModel(runtime, ModelType.TEXT_LARGE, {
+      prompt: "preserve the provider's complete output",
+      model: "metadata-capped-model",
+    });
+    const payload = payloadAt(calls, 0) as {
+      maxTokens?: number;
+      maxOutputTokens?: number;
+    };
+    expect(payload.maxTokens).toBeUndefined();
+    expect(payload.maxOutputTokens).toBeUndefined();
+    expect(promptOptimizationOf(payload)?.outputReserveTokens).toBeUndefined();
   });
 
   it("injects active-view awareness into the last user message, not the first", async () => {

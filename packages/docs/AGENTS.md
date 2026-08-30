@@ -61,7 +61,7 @@ packages/docs/
 All scripts are in `packages/docs/package.json`.
 
 ```bash
-# Run the test suite (nav integrity, page existence, broken links, empty files)
+# Run the test suite (nav integrity, broken links, and deployable references)
 bun run --cwd packages/docs test
 bun run --cwd packages/docs lint:check
 bun run --cwd packages/docs format:check
@@ -78,11 +78,10 @@ cd packages/docs && bunx mintlify@latest dev  # starts at http://localhost:3000
 
 `test/docs.test.ts` runs through Bun's test runner. It validates:
 
-- `docs.json` exists, is valid JSON, and has required Mintlify fields (`name`, `colors`, `navigation`, `theme`).
 - Navigation tabs and groups have no duplicate labels.
 - No page is listed twice in the same group.
 - All pages referenced in `docs.json` navigation have a matching `.md` or `.mdx` file on disk.
-- All markdown files are non-empty and have structurally valid frontmatter.
+- Markdown frontmatter is structurally valid when present.
 - All internal links, local assets, repository source paths, and GitHub source links resolve.
 - Documented Bun scripts and elizaOS Cloud API paths exist in their source-of-truth packages.
 - Every content page is listed in navigation; hidden/internal documents do not live in this package.

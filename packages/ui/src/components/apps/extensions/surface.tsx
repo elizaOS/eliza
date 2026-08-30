@@ -1,8 +1,8 @@
 /**
- * Presentational building blocks for app detail-extension surfaces — section,
- * card, grid, badge, and empty-state components plus the shared `SurfaceTone`
- * palette. Registered detail extensions compose these so third-party app detail
- * panels render with consistent chrome without re-implementing base styling.
+ * Presentational building blocks for app detail-extension surfaces: sections,
+ * cards, grids, and empty states plus the shared `SurfaceTone` palette.
+ * Registered detail extensions compose these so third-party app detail panels
+ * render with consistent chrome without re-implementing base styling.
  */
 
 import type React from "react";
@@ -28,22 +28,6 @@ function toneClassName(tone: SurfaceTone): string {
     default:
       return "text-muted-strong";
   }
-}
-
-export function SurfaceBadge({
-  children,
-  tone = "neutral",
-}: {
-  children: React.ReactNode;
-  tone?: SurfaceTone;
-}) {
-  return (
-    <span
-      className={`inline-flex min-h-6 items-center px-1.5 py-1 text-2xs font-medium ${toneClassName(tone)}`}
-    >
-      {children}
-    </span>
-  );
 }
 
 export function SurfaceCard({

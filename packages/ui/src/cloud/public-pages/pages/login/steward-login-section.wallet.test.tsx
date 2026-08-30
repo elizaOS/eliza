@@ -20,6 +20,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -131,6 +132,17 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     const walletToggle = await screen.findByRole("button", {
       name: /Continue with a wallet/i,
     });
+    const otherMethods = screen.getByRole("group", {
+      name: "or continue with",
+    });
+    expect(
+      within(otherMethods).getByRole("button", { name: "Google" }),
+    ).toBeTruthy();
+    expect(
+      within(otherMethods).getByRole("button", {
+        name: /Continue with a wallet/i,
+      }),
+    ).toBe(walletToggle);
     expect(walletToggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();

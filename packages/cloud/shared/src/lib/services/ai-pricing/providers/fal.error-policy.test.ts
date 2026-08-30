@@ -121,4 +121,20 @@ describe("fetchFalCatalogEntries — error policy (#13415, money-path-flagged)",
       ),
     ).toThrow(/Unable to parse Veo pricing paragraph/);
   });
+
+  it("derives Seedance 2.5 per-second rows from fal's authoritative token rate", async () => {
+    const { parseFalPricingEntries } = await import("./fal");
+    const rows = parseFalPricingEntries(
+      {
+        ...FAL_VIDEO_MODEL,
+        modelId: "bytedance/seedance-2.5/text-to-video",
+        pricingParser: "seedance25",
+      } as never,
+      "Your request will cost $0.0214 per 1000 tokens for 480p and 720p video.",
+    );
+
+    expect(rows.map((row) => row.dimensions?.resolution)).toEqual(["480p", "720p"]);
+    expect(rows[1]?.unit).toBe("second");
+    expect(rows[1]?.unitPrice).toBeCloseTo(0.46224, 5);
+  });
 });

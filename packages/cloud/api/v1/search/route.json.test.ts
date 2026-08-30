@@ -1,13 +1,24 @@
 /** Verifies the hosted-search JSON boundary with deterministic auth and provider mocks. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  getGenerativeOperationContext,
+  paidBoundaryState,
+  requireGenerativeKnownIdentity,
+  requireGenerativeRouteCaller,
+  resetPaidBoundaryRouteMocks,
+} from "../../__tests__/paid-boundary-route-test-mocks";
 
-const executeHostedGoogleSearch = mock(async () => ({ results: [] }));
-const requireAuthOrApiKeyWithOrg = mock(async () => ({
-  user: { id: "user-1", organization_id: "org-1" },
-  apiKey: { id: "key-1" },
+const executeHostedGoogleSearch = mock(
+  async (
+    _request: { query: string; maxResults?: number },
+    _context: unknown,
+  ) => ({ results: [] }),
+);
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  getGenerativeOperationContext,
+  requireGenerativeKnownIdentity,
+  requireGenerativeRouteCaller,
 }));
-
-mock.module("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg }));
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STANDARD: {}, STRICT: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
@@ -24,6 +35,7 @@ const { default: app } = await import("./route");
 describe("POST /api/v1/search malformed JSON", () => {
   beforeEach(() => {
     executeHostedGoogleSearch.mockClear();
+    resetPaidBoundaryRouteMocks();
   });
 
   test("returns 400 instead of 500 and never searches", async () => {
@@ -66,5 +78,34 @@ describe("POST /api/v1/search malformed JSON", () => {
     });
     expect(response.status).toBe(200);
     expect(executeHostedGoogleSearch).toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(getGenerativeOperationContext).toHaveBeenCalledTimes(1);
+  });
+
+  test("standing denial performs one combined auth read and never dispatches search", async () => {
+    paidBoundaryState.routeError = new Error("cached standing denied");
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: "elizaos" }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(getGenerativeOperationContext).not.toHaveBeenCalled();
+    expect(executeHostedGoogleSearch).not.toHaveBeenCalled();
+  });
+
+  test("passes through an explicit result count above the former hidden cap", async () => {
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: "complete grounding", maxResults: 25 }),
+    });
+    expect(response.status).toBe(200);
+    expect(executeHostedGoogleSearch.mock.calls[0]?.[0]).toMatchObject({
+      query: "complete grounding",
+      maxResults: 25,
+    });
   });
 });

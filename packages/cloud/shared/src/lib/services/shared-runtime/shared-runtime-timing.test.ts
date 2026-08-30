@@ -212,7 +212,7 @@ describe("SharedRuntimeTimingCollector", () => {
     ).toBeUndefined();
   });
 
-  test("keeps exact aggregate counts while truncating only the first-16 call list", () => {
+  test("keeps every call in a long provider sequence", () => {
     let now = 0;
     const timing = new SharedRuntimeTimingCollector("many-provider-calls", 0, () => now++);
     for (let index = 0; index < 17; index += 1) {
@@ -231,9 +231,14 @@ describe("SharedRuntimeTimingCollector", () => {
       callCount: 17,
       fallbackCount: 1,
       selectedProvider: "mixed",
-      callsTruncated: true,
+      callsTruncated: false,
     });
-    expect(timing.receipt("success").model.calls).toHaveLength(16);
+    expect(timing.receipt("success").model.calls).toHaveLength(17);
+    expect(timing.receipt("success").model.calls.at(-1)).toEqual({
+      provider: "openrouter",
+      durationMs: 1,
+      fallback: true,
+    });
   });
 
   test("canonicalizes a valid receipt and strips undeclared transport fields", () => {
@@ -306,7 +311,7 @@ describe("SharedRuntimeTimingCollector", () => {
     ).toBeUndefined();
   });
 
-  test("accepts an internally possible first-16 truncated receipt", () => {
+  test("rejects a receipt that omits calls behind a truncation marker", () => {
     const calls = Array.from({ length: 16 }, () => ({
       provider: "cerebras",
       durationMs: 1,
@@ -323,13 +328,7 @@ describe("SharedRuntimeTimingCollector", () => {
         callsTruncated: true,
         calls,
       }),
-    ).toMatchObject({
-      callCount: 17,
-      fallbackCount: 1,
-      selectedProvider: "mixed",
-      callsTruncated: true,
-      calls,
-    });
+    ).toBeUndefined();
   });
 
   test("records content-free inference phases, provider totals, and routing", () => {
@@ -356,6 +355,15 @@ describe("SharedRuntimeTimingCollector", () => {
         contextIds: ["simple", "memory"],
       },
     });
+  });
+
+  test("preserves every valid routing context id", () => {
+    const timing = new SharedRuntimeTimingCollector("many-contexts", 0, clock([0, 1]));
+    const contextIds = Array.from({ length: 24 }, (_, index) => `context-${index}`);
+
+    timing.markRoutingDecision("respond", contextIds);
+
+    expect(timing.receipt("success").routing.contextIds).toEqual(contextIds);
   });
 
   test("isolates concurrent turns and emits partial aborted receipts", () => {

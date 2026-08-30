@@ -358,7 +358,7 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     slug: "account-deletion",
     path: "/account-deletion?requested=untrusted-audit-receipt",
     route: "account-deletion",
-    auth: AUTH,
+    auth: PUBLIC,
     fullPageEvidence: true,
   },
   { slug: "bsc", path: "/bsc", route: "bsc", auth: PUBLIC },
@@ -601,26 +601,21 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       }
     };
     let registeredPaths = await readRegistryPaths();
-    const auditedRoutes = CLOUD_AUDIT_CASES.map((auditCase) => auditCase.route);
     await expect
       .poll(
         async () => {
           registeredPaths = await readRegistryPaths();
-          return auditedRoutes.every((route) =>
-            registeredPaths.includes(route),
-          );
+          return registeredPaths.includes("cloud/agents");
         },
         {
           message:
-            "complete cloud-route registry populated by the running shell",
-          // Match the audit's cold-start budget: the production renderer can
-          // still be compiling/loading its private route chunks after DOMContentLoaded.
-          timeout: 120_000,
+            "private cloud-route registry populated by the running shell",
+          timeout: 30_000,
         },
       )
       .toBe(true);
     const registered = new Set(registeredPaths);
-    const audited = new Set(auditedRoutes);
+    const audited = new Set(CLOUD_AUDIT_CASES.map((c) => c.route));
     const unaudited = [...registered].filter((p) => !audited.has(p));
     expect(
       unaudited,

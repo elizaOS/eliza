@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "componentId": "packages/ui/src/cloud-ui/components/brand/brand-button.tsx:BrandButton",
+      "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
+      "status": "resolved-deleted",
+      "removedFile": "packages/ui/src/cloud-ui/components/brand/brand-button.tsx"
+    },
+    {
+      "componentId": "packages/ui/src/cloud-ui/components/brand/lock-on-button.tsx:LockOnButton",
+      "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
+      "status": "resolved-deleted",
+      "removedFile": "packages/ui/src/cloud-ui/components/brand/lock-on-button.tsx"
+    },
+    {
+      "componentId": "packages/ui/src/cloud-ui/components/brand/brand-card.tsx:BrandCard",
+      "canonicalOwner": "packages/ui/src/components/ui/card.tsx",
+      "status": "resolved-deleted",
+      "removedFile": "packages/ui/src/cloud-ui/components/brand/brand-card.tsx"
+    },
+    {
+      "componentId": "packages/ui/src/components/apps/extensions/surface.tsx:SurfaceBadge",
+      "canonicalOwner": "packages/ui/src/components/ui/status-badge.tsx",
+      "status": "resolved-deleted"
+    },
+    {
+      "componentId": "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:CloudTextInput",
+      "canonicalOwner": "packages/ui/src/components/ui/input.tsx",
+      "status": "resolved-deleted"
+    },
+    {
+      "componentId": "plugins/plugin-notes/src/views/viewPrimitives.tsx:AgentInput",
+      "canonicalOwner": "packages/ui/src/agent-surface/components.tsx",
+      "status": "resolved-deleted"
+    },
+    {
+      "componentId": "plugins/plugin-notes/src/views/viewPrimitives.tsx:AgentTextarea",
+      "canonicalOwner": "packages/ui/src/components/ui/textarea.tsx",
+      "status": "resolved-deleted"
+    },
+    {
+      "componentId": "packages/ui/src/components/RedactedBadge.tsx:RedactedBadge",
+      "canonicalOwner": "packages/ui/src/components/ui/badge.tsx",
+      "status": "resolved-adapter"
+    },
+    {
+      "componentId": "packages/ui/src/components/transcripts/SpeakerNameAttributionBadge.tsx:SpeakerNameAttributionBadge",
+      "canonicalOwner": "packages/ui/src/components/ui/status-badge.tsx",
+      "status": "resolved-adapter"
+    },
+    {
+      "componentId": "packages/ui/src/components/shared/ViewHeader.tsx:ViewBackButton",
+      "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
+      "status": "resolved-adapter"
+    },
+    {
+      "componentId": "packages/ui/src/components/local-inference/DownloadProgress.tsx:DownloadProgress",
+      "canonicalOwner": "packages/ui/src/components/ui/progress.tsx",
+      "status": "resolved-adapter"
+    }
+  ]
+}

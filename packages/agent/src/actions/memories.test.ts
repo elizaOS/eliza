@@ -7,7 +7,11 @@
 import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { normalizeActionIdentifier } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { memoryAction } from "./memories";
+import {
+  MAX_MEMORY_ACTION_RESULT_CHARS,
+  MAX_MEMORY_PAGE_ITEMS,
+  memoryAction,
+} from "./memories";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const USER_ID = "00000000-0000-0000-0000-0000000000bb" as UUID;
@@ -31,6 +35,7 @@ function assertUuidOrThrowLikeDrizzle(value: unknown, column: string): void {
 function makeRuntime(options?: {
   clusters?: Partial<Record<string, UUID[]>>;
   settings?: Record<string, string | boolean>;
+  embeddingResult?: number[];
 }): { runtime: IAgentRuntime; rows: StoredRow[] } {
   const rows: StoredRow[] = [];
   const runtime = {
@@ -102,6 +107,15 @@ function makeRuntime(options?: {
       assertUuidOrThrowLikeDrizzle(memoryId, "id");
       return rows.find((row) => row.memory.id === memoryId)?.memory ?? null;
     },
+    updateMemory: async (memory: Partial<Memory> & { id: UUID }) => {
+      const row = rows.find((candidate) => candidate.memory.id === memory.id);
+      if (!row) throw new Error(`memory ${memory.id} was not found`);
+      row.memory = { ...row.memory, ...memory } as Memory;
+    },
+    useModel: async () => {
+      if (options?.embeddingResult) return options.embeddingResult;
+      throw new Error("embedding capability should not be requested");
+    },
     deleteMemory: async (memoryId: UUID) => {
       assertUuidOrThrowLikeDrizzle(memoryId, "id");
       const index = rows.findIndex((row) => row.memory.id === memoryId);
@@ -162,6 +176,102 @@ async function runCreate(
 ): Promise<ActionResult> {
   return runAction(runtime, message, { action: "create", ...parameters });
 }
+
+describe("MEMORY op:update", () => {
+  it("updates a text-only memory without requiring an embedding provider", async () => {
+    const { runtime, rows } = makeRuntime();
+    const memoryId = seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      memoryId,
+      text: "the project codename is Nightjar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows[0].memory.content.text).toBe(
+      "the project codename is Nightjar",
+    );
+    expect(rows[0].memory.embedding).toBeUndefined();
+  });
+
+  it("regenerates the vector when updating an embedded memory", async () => {
+    const { runtime, rows } = makeRuntime({ embeddingResult: [0.4, 0.8] });
+    const memoryId = seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+    rows[0].memory.embedding = [0.1, 0.2];
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      memoryId,
+      text: "the project codename is Nightjar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows[0].memory.embedding).toEqual([0.4, 0.8]);
+  });
+
+  it("resolves a uniquely matching requester memory from a query", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: OTHER_USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      query: "project codename Kingfisher",
+      text: "the project codename is Nightjar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows[0].memory.content.text).toBe(
+      "the project codename is Nightjar",
+    );
+    expect(rows[1].memory.content.text).toBe(
+      "the project codename is Kingfisher",
+    );
+  });
+
+  it("refuses a query that matches distinct requester memories", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "the archived project codename is Kingfisher Two",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      query: "project codename Kingfisher",
+      text: "the project codename is Nightjar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(
+      rows.every(
+        (row) => !(row.memory.content.text ?? "").includes("Nightjar"),
+      ),
+    ).toBe(true);
+  });
+});
 
 describe("MEMORY op:create", () => {
   it("persists to the facts table scoped to the conversation room and speaker", async () => {
@@ -328,8 +438,8 @@ describe("MEMORY op:search terminal recall", () => {
     expect(result.success).toBe(true);
     expect(result.turnComplete).toBe(true);
     expect(result.verifiedUserFacing).toBe(true);
-    expect(result.userFacingText).toBe(
-      "I found 1 matching memory record(s):\n- [facts] Royce taught Shadow guitar",
+    expect(result.userFacingText).toMatch(
+      /^I found 1 matching memory record\(s\):\n- \[facts\] at \d{4}-\d{2}-\d{2}T.*Z: Royce taught Shadow guitar$/,
     );
     expect(result.userFacingText).not.toContain(memoryId);
   });
@@ -390,6 +500,7 @@ describe("MEMORY uuid validation", () => {
       (candidate) => candidate.name === "memoryId",
     );
     expect(memoryId?.schema.pattern).toBeDefined();
+    expect(memoryId?.modelOmissionSentinels).toEqual(["", "null", "undefined"]);
     const pattern = new RegExp(memoryId?.schema.pattern ?? "");
     expect(pattern.test(ROOM_ID)).toBe(true);
     expect(pattern.test("general")).toBe(false);
@@ -595,6 +706,65 @@ describe("MEMORY op:delete by query", () => {
 });
 
 describe("MEMORY op:search complete traversal", () => {
+  it("finds attachment descriptions without exposing capability URLs", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "", entityId: USER_ID });
+    rows[0].memory.content = {
+      attachments: [
+        {
+          id: "receipt-photo",
+          url: "https://private.example/receipt.png",
+          thumbnailUrl: "https://private.example/receipt-thumb.png",
+          filename: "receipt.png",
+          mimeType: "image/png",
+          description: "A receipt showing a 6:30 PM dinner reservation",
+        },
+      ],
+    };
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "facts",
+      query: "dinner reservation",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(
+      "[attachment: receipt.png; image/png; A receipt showing a 6:30 PM dinner reservation]",
+    );
+    expect(result.text).not.toContain("private.example");
+  });
+
+  it("ranks an exact all-term match ahead of newer partial decoys", async () => {
+    const { runtime, rows } = makeRuntime();
+    const targetId = seedFact(rows, {
+      text: "the archival project codename is Copper Heron 9184",
+      entityId: USER_ID,
+    });
+    rows[0].memory.createdAt = 1;
+    seedFact(rows, {
+      text: "the archival project codename is Copper Heron 8194",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "the archival project codename is Bronze Heron 9184",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "facts",
+      query: "archival project codename Copper Heron 9184",
+    });
+
+    expect(result.success).toBe(true);
+    const responseText = result.text ?? "";
+    expect(responseText.indexOf(targetId)).toBeLessThan(
+      responseText.indexOf("Copper Heron 8194"),
+    );
+    expect(responseText).toContain("1970-01-01T00:00:00.001Z");
+  });
+
   it("finds a matching fact older than the former 200-row window", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "my sister is named vega", entityId: USER_ID });
@@ -654,14 +824,280 @@ describe("MEMORY op:search complete traversal", () => {
     expect(result.values).toMatchObject({ rendered: 30, totalMatches: 30 });
   });
 
+  it("returns an explicit lossless continuation when the caller requests a page", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i < 12; i++) {
+      seedFact(rows, { text: `invoice number ${i}`, entityId: USER_ID });
+    }
+
+    const first = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: 5,
+    });
+    const snapshot = String(first.values?.snapshot);
+    const second = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: 5,
+      offset: 5,
+      snapshot,
+    });
+    const third = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: 5,
+      offset: 10,
+      snapshot,
+    });
+
+    const pageTexts = [first, second, third].flatMap((result) => {
+      const data = result.data as { memories: Array<{ text: string }> };
+      return data.memories.map((memory) => memory.text);
+    });
+    expect(new Set(pageTexts)).toEqual(
+      new Set(Array.from({ length: 12 }, (_, i) => `invoice number ${i}`)),
+    );
+    expect(first.values).toMatchObject({
+      rendered: 5,
+      totalMatches: 12,
+      offset: 0,
+      nextOffset: 5,
+      snapshot,
+    });
+    expect(first.text).toContain("continue losslessly");
+    expect(second.values).toMatchObject({ offset: 5, nextOffset: 10 });
+    expect(third.values).toMatchObject({
+      rendered: 2,
+      offset: 10,
+      nextOffset: null,
+    });
+  });
+
+  it("rejects a caller page size above the enforced maximum", async () => {
+    const { runtime } = makeRuntime();
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: MAX_MEMORY_PAGE_ITEMS + 1,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "MEMORY_PAGE_LIMIT_EXCEEDED",
+      requestedLimit: MAX_MEMORY_PAGE_ITEMS + 1,
+      maxLimit: MAX_MEMORY_PAGE_ITEMS,
+    });
+  });
+
+  it("requires pagination instead of rendering an oversized complete result", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i <= MAX_MEMORY_PAGE_ITEMS; i++) {
+      seedFact(rows, { text: `invoice number ${i}`, entityId: USER_ID });
+    }
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "MEMORY_SEARCH_REQUIRES_PAGINATION",
+      totalMatches: MAX_MEMORY_PAGE_ITEMS + 1,
+      maxLimit: MAX_MEMORY_PAGE_ITEMS,
+    });
+    expect(result.text).not.toContain("- [facts]");
+  });
+
+  it("rejects one indivisible memory that exceeds the page character budget", async () => {
+    const { runtime, rows } = makeRuntime();
+    const memoryId = seedFact(rows, {
+      text: `invoice ${"x".repeat(MAX_MEMORY_ACTION_RESULT_CHARS)}`,
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice",
+      limit: 1,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "MEMORY_RECORD_EXCEEDS_PAGE_BUDGET",
+      memoryId,
+      maxResultChars: MAX_MEMORY_ACTION_RESULT_CHARS,
+    });
+    expect(JSON.stringify(result).length).toBeLessThan(1_048_576);
+  });
+
+  it("keeps the maximum accepted page below the Codex input boundary", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i < MAX_MEMORY_PAGE_ITEMS; i++) {
+      seedFact(rows, { text: `invoice number ${i}`, entityId: USER_ID });
+    }
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: MAX_MEMORY_PAGE_ITEMS,
+    });
+
+    expect(result.success).toBe(true);
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(
+      MAX_MEMORY_ACTION_RESULT_CHARS,
+    );
+    expect(JSON.stringify(result).length).toBeLessThan(1_048_576);
+  });
+
+  it("rejects an offset without an explicit page size", async () => {
+    const { runtime } = makeRuntime();
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      offset: 5,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_INVALID_PAGE" });
+  });
+
+  it("rejects a continuation when the ordered matches changed", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i < 6; i++) {
+      seedFact(rows, { text: `invoice number ${i}`, entityId: USER_ID });
+    }
+    const first = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: 3,
+    });
+    seedFact(rows, { text: "invoice number 6", entityId: USER_ID });
+
+    const continuation = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: 3,
+      offset: 3,
+      snapshot: String(first.values?.snapshot),
+    });
+
+    expect(continuation.success).toBe(false);
+    expect(continuation.data).toMatchObject({
+      error: "MEMORY_PAGE_SNAPSHOT_CHANGED",
+    });
+  });
+
+  it("rejects a continuation when a matched record changes under the same id", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i < 6; i++) {
+      seedFact(rows, { text: `invoice number ${i}`, entityId: USER_ID });
+    }
+    const first = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: 3,
+    });
+    rows[0].memory.content.text = "invoice number corrected in place";
+
+    const continuation = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: 3,
+      offset: 3,
+      snapshot: String(first.values?.snapshot),
+    });
+
+    expect(continuation.success).toBe(false);
+    expect(continuation.data).toMatchObject({
+      error: "MEMORY_PAGE_SNAPSHOT_CHANGED",
+    });
+  });
+
+  it("does not treat one weak token as a multi-word query match", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i < 100; i++) {
+      seedFact(rows, {
+        text: `Would you like to revisit the reading list item ${i}?`,
+        entityId: USER_ID,
+      });
+    }
+    seedFact(rows, {
+      text: "The owner's newest archival project codename is Silver Falcon 2042.",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "newest archival project codename told you",
+    });
+
+    expect(result.success).toBe(true);
+    const data = result.data as { memories: Array<{ text: string }> };
+    expect(data.memories).toHaveLength(1);
+    expect(data.memories[0].text).toContain("Silver Falcon 2042");
+    expect(result.values).toMatchObject({ totalMatches: 1, scanned: 101 });
+  });
+
+  it("matches separate rows for a natural cross-topic query", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "The tomato variety that ripened first was Sungold.",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "The Kyoto booking is at Kumo Ryokan.",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "The first ten minutes of the recording were silent.",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "which tomato ripened first and where is the Kyoto booking",
+    });
+
+    expect(result.success).toBe(true);
+    const data = result.data as { memories: Array<{ text: string }> };
+    expect(data.memories.map((memory) => memory.text)).toEqual([
+      "The tomato variety that ripened first was Sungold.",
+      "The Kyoto booking is at Kumo Ryokan.",
+    ]);
+  });
+
+  it("keeps a single exact anchor for a two-term query", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "The owner is allergic to pistachios, not almonds.",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "The first ten minutes of the recording were silent.",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "nut allergic",
+    });
+
+    expect(result.success).toBe(true);
+    const data = result.data as { memories: Array<{ text: string }> };
+    expect(data.memories).toHaveLength(1);
+    expect(data.memories[0].text).toContain("pistachios");
+  });
+
   it("rejects a repeated full page instead of returning partial memories", async () => {
     const { runtime, rows } = makeRuntime();
-    for (let i = 0; i < 500; i++) {
+    for (let i = 0; i < 10_000; i++) {
       seedFact(rows, { text: `memory ${i}`, entityId: USER_ID });
     }
     const firstPage = await runtime.getMemories({
       tableName: "facts",
-      limit: 500,
+      limit: 10_000,
     });
     runtime.getMemories = async ({ tableName }) =>
       tableName === "facts" ? firstPage : [];

@@ -15,10 +15,7 @@ import { DocumentService } from "./service.ts";
 
 const AGENT_ID = "00000000-0000-4000-8000-000000019153" as UUID;
 const PDF_FIXTURE_PATH = fileURLToPath(
-	new URL(
-		"../../../../app-core/test/contracts/lib/openzeppelin-contracts/audits/2025-10-v5.5.pdf",
-		import.meta.url,
-	),
+	new URL("./__fixtures__/openzeppelin-v5.5-audit.pdf", import.meta.url),
 );
 
 type ExtractionSnapshot = {

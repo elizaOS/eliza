@@ -40,6 +40,7 @@ const telegramGroupDelivery = {
   project: "eliza-app",
   connectorAccountId: "telegram:test-bot",
   chatId: "-100123456789",
+  providerThreadId: "909",
   ownerLabel: "Nubs",
   authority: AUTHORITY,
 } as const;
@@ -97,10 +98,16 @@ describe("Shared group reminder delivery parsing", () => {
       blooioGroupDelivery,
     );
     expect(isSharedGroupReminderDelivery(telegramGroupDelivery)).toBe(true);
+    const { providerThreadId: _providerThreadId, ...telegramWithoutTopic } =
+      telegramGroupDelivery;
+    expect(parseSharedReminderDelivery(telegramWithoutTopic)).toEqual(
+      telegramWithoutTopic,
+    );
     expect(
       isSharedGroupReminderDelivery({
         platform: "telegram",
         project: "eliza-app",
+        connectorAccountId: "bot:123456789",
         chatId: "123456",
       }),
     ).toBe(false);
@@ -155,6 +162,27 @@ describe("Shared group reminder delivery parsing", () => {
         project: "bad project!",
       }),
     ).toBeUndefined();
+    for (const providerThreadId of [
+      "0",
+      "-1",
+      "0909",
+      "topic",
+      "9999999999999999",
+      "9".repeat(17),
+    ]) {
+      expect(
+        parseSharedReminderDelivery({
+          ...telegramGroupDelivery,
+          providerThreadId,
+        }),
+      ).toBeUndefined();
+    }
+    expect(
+      parseSharedReminderDelivery({
+        ...blooioGroupDelivery,
+        providerThreadId: "909",
+      }),
+    ).toBeUndefined();
   });
 
   it("rejects a group destination whose delivery authority is missing or malformed", () => {
@@ -204,14 +232,27 @@ describe("Shared group reminder delivery parsing", () => {
     ).toMatchObject({ ownerLabel: "the group owner" });
   });
 
-  it("still parses the existing private-chat destinations unchanged", () => {
+  it("requires the private Telegram connector account and preserves other private destinations", () => {
+    expect(
+      parseSharedReminderDelivery({
+        platform: "telegram",
+        project: "eliza-app",
+        connectorAccountId: "bot:123456789",
+        chatId: "123456",
+      }),
+    ).toEqual({
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "bot:123456789",
+      chatId: "123456",
+    });
     expect(
       parseSharedReminderDelivery({
         platform: "telegram",
         project: "eliza-app",
         chatId: "123456",
       }),
-    ).toEqual({ platform: "telegram", project: "eliza-app", chatId: "123456" });
+    ).toBeUndefined();
     expect(
       parseSharedReminderDelivery({
         platform: "blooio",
@@ -276,6 +317,7 @@ describe("Shared group reminder action", () => {
       sharedReminderMaxBodyLength({
         platform: "telegram",
         project: "eliza-app",
+        connectorAccountId: "bot:123456789",
         chatId: "123456",
       }),
     ).toBe(SHARED_REMINDER_MAX_TEXT_LENGTH);

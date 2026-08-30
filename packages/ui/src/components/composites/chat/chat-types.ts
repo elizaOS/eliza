@@ -5,6 +5,7 @@
  * types from so their contracts stay in sync.
  */
 
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,
@@ -138,6 +139,8 @@ export interface ChatMessageData {
   toolEvents?: NativeToolCallEvent[];
   /** Pending secret / OAuth request — read by body renderers (SensitiveRequestBlock). */
   secretRequest?: ConversationSecretRequest;
+  /** Validated personal-workspace setup receipt rendered by the chat body. */
+  capabilityHandoff?: CapabilityHandoffRequest;
 }
 
 /**

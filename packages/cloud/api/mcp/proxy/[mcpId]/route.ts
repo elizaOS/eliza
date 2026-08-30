@@ -6,10 +6,10 @@
  * POST /api/mcp/proxy/[mcpId] - Proxy MCP request
  * GET /api/mcp/proxy/[mcpId] - Get MCP info
  *
- * After the precharge succeeds, the owned hop deadline starts before endpoint
+ * After admission succeeds, the owned hop deadline starts before endpoint
  * resolution and inbound body parsing. Untrusted waits (SSRF DNS, inbound JSON
  * reads, outbound fetch, response reads) are raced against that signal so a
- * never-settling lookup or caller abort still refunds as a typed 504.
+ * never-settling lookup or caller abort still settles as a typed 504.
  */
 
 import {
@@ -21,13 +21,20 @@ import {
 } from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 
+import {
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { safeFetch } from "@/lib/security/safe-fetch";
 import { affiliatesService } from "@/lib/services/affiliates";
 import { containersService } from "@/lib/services/containers";
-import { creditsService } from "@/lib/services/credits";
+import { InsufficientCreditsError } from "@/lib/services/credits";
 import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -269,11 +276,22 @@ app.post("/", async (c) => {
     return c.json({ error: "Missing MCP id" }, 400);
   }
 
-  const user = await requireUserOrApiKeyWithOrg(c).catch(() => null);
-
-  if (!user) {
-    return c.json({ error: "Authentication required" }, 401);
+  let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
+  try {
+    caller = await requireGenerativeRouteCaller(c);
+  } catch (error) {
+    logger.warn("[MCP Proxy] Caller admission denied", {
+      mcpId,
+      error: error instanceof Error ? error.message : String(error),
+      errorName: error instanceof Error ? error.name : "unknown",
+      reason:
+        error && typeof error === "object" && "details" in error
+          ? (error as { details?: { reason?: unknown } }).details?.reason
+          : undefined,
+    });
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
+  const user = caller.user;
 
   const mcp = await userMcpsService.getById(mcpId);
 
@@ -334,81 +352,49 @@ app.post("/", async (c) => {
     platformFeePoints: platformFeeCredits,
   });
 
-  const preChargeResult = await creditsService.reserveAndDeductCredits({
-    organizationId: user.organization_id,
-    amount: chargeReceipt.totalAmountUsd,
-    description: `MCP: ${mcp.name}`,
-    metadata: {
-      mcp_id: mcp.id,
-      mcp_name: mcp.name,
-      reserved: true,
-      base_credits: creditsRequired.toFixed(4),
-      affiliate_fee: affiliateFeeCredits.toFixed(4),
-      platform_fee: platformFeeCredits.toFixed(4),
-      total_credits_charged: totalCreditsRequired.toFixed(4),
-      base_amount_usd: formatOrganizationCreditUsd(chargeReceipt.baseAmountUsd),
-      affiliate_fee_usd: formatOrganizationCreditUsd(
-        chargeReceipt.affiliateFeeUsd,
-      ),
-      platform_fee_usd: formatOrganizationCreditUsd(
-        chargeReceipt.platformFeeUsd,
-      ),
-      total_amount_usd: formatOrganizationCreditUsd(
-        chargeReceipt.totalAmountUsd,
-      ),
-      credit_unit: ORGANIZATION_CREDIT_UNIT,
-      ...(affiliateOwnerId && { affiliate_owner_id: affiliateOwnerId }),
-      ...(affiliateCodeId && { affiliate_code_id: affiliateCodeId }),
-    },
-  });
-
-  if (!preChargeResult.success) {
-    return c.json(
-      {
-        error: "Insufficient credits",
-        creditUnit: ORGANIZATION_CREDIT_UNIT,
-        requiredUsd: chargeReceipt.totalAmountUsd,
-        /** @deprecated Legacy MCP pricing points (100 points = $1). */
-        required: totalCreditsRequired,
-        balance: preChargeResult.newBalance,
-      },
-      402,
-    );
-  }
-
-  // The caller was debited upfront; ANY post-debit failure (unsafe/misconfigured
-  // endpoint, unreachable upstream, container down, non-ok status) must return
-  // the money — otherwise a momentarily-down MCP silently over-charges the org
-  // (#11637). Refund on every failure branch, not only a non-ok HTTP status.
-  let refundedPrecharge = false;
-  const refundPrecharge = async (
-    reason: string,
-    metadata: Record<string, string | number | boolean | null | undefined> = {},
+  const requestId = `mcp-proxy:${mcp.id}:${crypto.randomUUID()}`;
+  let admission:
+    | Awaited<ReturnType<typeof admitFlatGenerativeOperation>>
+    | undefined;
+  const executionCtx = getGenerativeExecutionContext(c);
+  let providerDispatchStarted = false;
+  const retainAccounting = async (
+    task: Promise<unknown>,
+    operation: string,
+    metadata: Record<string, unknown> = {},
   ): Promise<void> => {
-    if (refundedPrecharge) return;
-    refundedPrecharge = true;
-    await creditsService
-      .refundCredits({
+    const observed = task.catch((error) => {
+      // error-policy:J7 durable admission keeps the charge recoverable while
+      // operators receive the complete accounting failure context.
+      logger.error("[MCP Proxy] Background accounting failed", {
+        mcpId,
         organizationId: user.organization_id,
-        amount: chargeReceipt.totalAmountUsd,
-        description: `MCP refund: ${mcp.name} (${reason})`,
-        metadata: {
-          mcp_id: mcp.id,
-          reason,
-          ...metadata,
-        },
-      })
-      .catch((refundError: Error | string) => {
-        logger.error("[MCP Proxy] Failed to refund credits", {
-          mcpId,
-          reason,
-          error:
-            typeof refundError === "string" ? refundError : refundError.message,
-        });
+        requestId,
+        operation,
+        ...metadata,
+        error: error instanceof Error ? error.message : String(error),
+        errorName: error instanceof Error ? error.name : "unknown",
       });
+    });
+    if (executionCtx) executionCtx.waitUntil(observed);
+    else await observed;
+  };
+  const settleFailure = async (
+    reason: string,
+    metadata: Record<string, unknown> = {},
+  ): Promise<void> => {
+    const activeAdmission = admission;
+    if (!activeAdmission) return;
+    await retainAccounting(
+      providerDispatchStarted
+        ? activeAdmission.settleUnknown()
+        : activeAdmission.settle(0),
+      providerDispatchStarted ? "settle_unknown" : "release_admission",
+      { reason, ...metadata },
+    );
   };
 
-  // Own the wall-clock bound before every untrusted post-precharge wait.
+  // Own the wall-clock bound before every untrusted post-admission wait.
   // Creating the timer after endpoint DNS or inbound parsing left those
   // awaits able to retain the Worker request and the debit indefinitely.
   const hop = createMcpProxyHopDeadline(c.req.raw.signal);
@@ -417,7 +403,7 @@ app.post("/", async (c) => {
       mcpId,
       timeoutMs: hop.timeoutMs,
     });
-    await refundPrecharge("upstream_deadline_exceeded", {
+    await settleFailure("upstream_deadline_exceeded", {
       timeoutMs: hop.timeoutMs,
     });
     return c.json({ error: "MCP endpoint timed out" }, 504);
@@ -443,7 +429,7 @@ app.post("/", async (c) => {
           hop.signal,
         );
       } catch (error) {
-        // error-policy:J1 hop abort maps to a 504 refund; other failures stay 400.
+        // error-policy:J1 hop abort maps to 504 settlement; other failures stay 400.
         if (hopAborted(error)) {
           return await refundDeadline();
         }
@@ -451,7 +437,7 @@ app.post("/", async (c) => {
           mcpId,
           error: error instanceof Error ? error.message : String(error),
         });
-        await refundPrecharge("unsafe_endpoint");
+        await settleFailure("unsafe_endpoint");
         return c.json({ error: "Unsafe external MCP endpoint" }, 400);
       }
       targetUrl = parsed.toString();
@@ -464,7 +450,7 @@ app.post("/", async (c) => {
           hop.signal,
         );
       } catch (error) {
-        // error-policy:J1 hop abort maps to a 504 refund; other failures stay 502.
+        // error-policy:J1 hop abort maps to 504 settlement; other failures stay 502.
         if (hopAborted(error)) {
           return await refundDeadline();
         }
@@ -473,18 +459,18 @@ app.post("/", async (c) => {
           containerId: mcp.container_id,
           error: error instanceof Error ? error.message : String(error),
         });
-        await refundPrecharge("container_lookup_failed", {
+        await settleFailure("container_lookup_failed", {
           error: error instanceof Error ? error.message : String(error),
         });
         return c.json({ error: "MCP container not available" }, 502);
       }
       if (!container?.load_balancer_url) {
-        await refundPrecharge("container_unavailable");
+        await settleFailure("container_unavailable");
         return c.json({ error: "MCP container not available" }, 503);
       }
       targetUrl = `${container.load_balancer_url}${mcp.endpoint_path || "/mcp"}`;
     } else {
-      await refundPrecharge("endpoint_misconfigured");
+      await settleFailure("endpoint_misconfigured");
       return c.json({ error: "MCP endpoint not configured" }, 500);
     }
 
@@ -497,7 +483,7 @@ app.post("/", async (c) => {
         hop.signal,
       );
     } catch (error) {
-      // error-policy:J1 hop abort maps to a 504 refund; overflow stays 413.
+      // error-policy:J1 hop abort maps to 504 settlement; overflow stays 413.
       if (hopAborted(error)) {
         return await refundDeadline();
       }
@@ -507,7 +493,7 @@ app.post("/", async (c) => {
           bytes: error.bytes,
           maxBytes: error.maxBytes,
         });
-        await refundPrecharge("request_body_too_large", {
+        await settleFailure("request_body_too_large", {
           maxBytes: error.maxBytes,
         });
         return c.json({ error: "MCP request body is too large" }, 413);
@@ -517,7 +503,7 @@ app.post("/", async (c) => {
           mcpId,
           bytes: error.bytes,
         });
-        await refundPrecharge("request_body_malformed_utf8", {
+        await settleFailure("request_body_malformed_utf8", {
           bytes: error.bytes,
         });
         return c.json({ error: "MCP request body is not valid UTF-8" }, 400);
@@ -526,7 +512,7 @@ app.post("/", async (c) => {
         mcpId,
         error: error instanceof Error ? error.message : String(error),
       });
-      await refundPrecharge("invalid_json");
+      await settleFailure("invalid_json");
       return c.json({ error: "Invalid MCP request body" }, 400);
     }
     const toolName = toolNameFromRpcBody(proxyBody);
@@ -542,8 +528,80 @@ app.post("/", async (c) => {
       body: JSON.stringify(proxyBody),
     };
 
+    try {
+      admission = await admitFlatGenerativeOperation({
+        c,
+        context: {
+          organizationId: user.organization_id,
+          userId: user.id,
+          apiKeyId: caller.apiKeyId,
+          model: `mcp/${mcp.id}`,
+          provider: "mcp",
+          billingSource: "selfhosted",
+          requestId,
+          description: `MCP: ${mcp.name}`,
+          metadata: {
+            mcp_id: mcp.id,
+            mcp_name: mcp.name,
+            base_credits: creditsRequired.toFixed(4),
+            affiliate_fee: affiliateFeeCredits.toFixed(4),
+            platform_fee: platformFeeCredits.toFixed(4),
+            total_credits_charged: totalCreditsRequired.toFixed(4),
+            base_amount_usd: formatOrganizationCreditUsd(
+              chargeReceipt.baseAmountUsd,
+            ),
+            affiliate_fee_usd: formatOrganizationCreditUsd(
+              chargeReceipt.affiliateFeeUsd,
+            ),
+            platform_fee_usd: formatOrganizationCreditUsd(
+              chargeReceipt.platformFeeUsd,
+            ),
+            total_amount_usd: formatOrganizationCreditUsd(
+              chargeReceipt.totalAmountUsd,
+            ),
+            credit_unit: ORGANIZATION_CREDIT_UNIT,
+            ...(affiliateOwnerId && { affiliate_owner_id: affiliateOwnerId }),
+            ...(affiliateCodeId && { affiliate_code_id: affiliateCodeId }),
+          },
+        },
+        apiKeyId: caller.apiKeyId,
+        admissionSnapshot: caller.admissionSnapshot,
+        cost: {
+          baseTotalCost: chargeReceipt.baseAmountUsd,
+          platformMarkup:
+            chargeReceipt.totalAmountUsd - chargeReceipt.baseAmountUsd,
+          totalCost: chargeReceipt.totalAmountUsd,
+        },
+      });
+    } catch (error) {
+      if (error instanceof InsufficientCreditsError) {
+        return c.json(
+          {
+            error: "Insufficient credits",
+            creditUnit: ORGANIZATION_CREDIT_UNIT,
+            requiredUsd: chargeReceipt.totalAmountUsd,
+            /** @deprecated Legacy MCP pricing points (100 points = $1). */
+            required: totalCreditsRequired,
+            balance: error.available,
+          },
+          402,
+        );
+      }
+      logger.error("[MCP Proxy] Flat admission failed", {
+        mcpId,
+        organizationId: user.organization_id,
+        requestId,
+        error: error instanceof Error ? error.message : String(error),
+        errorName: error instanceof Error ? error.name : "unknown",
+      });
+      return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
+    }
+    const activeAdmission = admission;
+
     let mcpResponse: Response;
     try {
+      await activeAdmission.markProviderDispatched?.();
+      providerDispatchStarted = true;
       if (isExternalEndpoint) {
         // safeFetch validates + IP-pins the request and (redirect: "error")
         // rejects any redirect — the single SSRF guard for outbound-from-user
@@ -573,7 +631,7 @@ app.post("/", async (c) => {
         }
       }
     } catch (error) {
-      // error-policy:J1 hop abort maps to a 504 refund; other failures stay 502.
+      // error-policy:J1 hop abort maps to 504 settlement; other failures stay 502.
       if (hopAborted(error)) {
         return await refundDeadline();
       }
@@ -582,7 +640,7 @@ app.post("/", async (c) => {
         targetUrl,
         error: error instanceof Error ? error.message : String(error),
       });
-      await refundPrecharge("upstream_unreachable");
+      await settleFailure("upstream_unreachable");
       return c.json({ error: "Failed to reach MCP endpoint" }, 502);
     }
 
@@ -617,7 +675,7 @@ app.post("/", async (c) => {
             status: mcpResponse.status,
             receivedBytes: budgeted.bytes,
           });
-          await refundPrecharge("mcp_response_malformed_utf8", {
+          await settleFailure("mcp_response_malformed_utf8", {
             status: mcpResponse.status,
           });
           return c.json({ error: "MCP response is not valid UTF-8" }, 502);
@@ -628,7 +686,7 @@ app.post("/", async (c) => {
           receivedBytes: budgeted.bytes,
           maxBytes: MAX_PROXY_RESPONSE_BODY_BYTES,
         });
-        await refundPrecharge("mcp_response_too_large", {
+        await settleFailure("mcp_response_too_large", {
           status: mcpResponse.status,
           maxBytes: MAX_PROXY_RESPONSE_BODY_BYTES,
         });
@@ -636,7 +694,7 @@ app.post("/", async (c) => {
       }
       responseBody = budgeted.text;
     } catch (error) {
-      // error-policy:J1 hop abort maps to a 504 refund; other failures stay 502.
+      // error-policy:J1 hop abort maps to 504 settlement; other failures stay 502.
       if (hopAborted(error)) {
         return await refundDeadline();
       }
@@ -645,7 +703,7 @@ app.post("/", async (c) => {
         status: mcpResponse.status,
         error: error instanceof Error ? error.message : String(error),
       });
-      await refundPrecharge("mcp_response_read_failed", {
+      await settleFailure("mcp_response_read_failed", {
         status: mcpResponse.status,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -659,8 +717,21 @@ app.post("/", async (c) => {
     // layer). Refund on an explicit JSON-RPC error instead of success-shaping it.
     const rpcErrored = mcpResponse.ok && isJsonRpcErrorResponse(responseBody);
     if (mcpResponse.ok && !rpcErrored) {
-      await userMcpsService
-        .recordUsageWithoutDeduction({
+      const accountingTask = (async () => {
+        const reconciliation = await activeAdmission.settle(
+          chargeReceipt.totalAmountUsd,
+        );
+        if (reconciliation?.adjustmentType === "uncollected_overage") {
+          logger.error("[MCP Proxy] Final charge was not collected", {
+            mcpId,
+            organizationId: user.organization_id,
+            requestId,
+            reserved: reconciliation.reservedAmount,
+            actual: reconciliation.actualCost,
+          });
+          return;
+        }
+        await userMcpsService.recordUsageWithoutDeduction({
           mcpId: mcp.id,
           organizationId: user.organization_id,
           userId: user.id,
@@ -674,21 +745,19 @@ app.post("/", async (c) => {
           metadata: {
             responseTime: Date.now() - startTime,
             success: true,
-            preChargeTransactionId: preChargeResult.transaction?.id,
+            preChargeTransactionId:
+              activeAdmission.reservation?.reservationTransactionId ??
+              requestId,
             totalCreditsCharged: totalCreditsRequired,
             affiliateFeeCredits,
             platformFeeCredits,
           },
-        })
-        // error-policy:J7 usage recording is diagnostic and runs after the proxied
-        // call already succeeded and settled; a failed write is logged, not fatal.
-        .catch((usageError: Error | string) => {
-          logger.error("[MCP Proxy] Failed to record usage", {
-            mcpId,
-            error:
-              typeof usageError === "string" ? usageError : usageError.message,
-          });
         });
+      })();
+      await retainAccounting(accountingTask, "settle_and_record_usage", {
+        toolName,
+        status: mcpResponse.status,
+      });
     } else if (rpcErrored) {
       // Protocol-level failure over a 2xx transport: refund and do not bill. The
       // caller still receives the MCP's error envelope verbatim below.
@@ -700,11 +769,11 @@ app.post("/", async (c) => {
           toolName,
         },
       );
-      await refundPrecharge("mcp_jsonrpc_error", {
+      await settleFailure("mcp_jsonrpc_error", {
         status: mcpResponse.status,
       });
     } else {
-      await refundPrecharge("mcp_call_failed", { status: mcpResponse.status });
+      await settleFailure("mcp_call_failed", { status: mcpResponse.status });
     }
 
     return new Response(responseBody, {

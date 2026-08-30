@@ -50,9 +50,10 @@ import {
   type AcpToolCallUpdate,
   toolCallUpdateFromAction,
 } from "./acp-tool-ledger.js";
+import { buildAcpCodingPreamble } from "./acp-preamble.js";
 import { AcpWarmSessionClaim } from "./acp-session-claim.js";
 import { initializeAgent } from "./lib/agent.js";
-import { getAgentClient } from "./lib/agent-client.js";
+import { getAgentClient, sendPiCodingTurn } from "./lib/agent-client.js";
 import {
   ensureSessionIdentity,
   getMainRoomElizaId,
@@ -120,7 +121,7 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
     process.env.POSTGRES_URL = "";
     runtimePromise = (async () => {
       // Resolve the session identity FIRST and mark its user as the runtime OWNER
-      // — the coding tools are role-gated (FILE=ADMIN, SHELL=OWNER), so without
+      // — the coding tools are role-gated (file actions=ADMIN, SHELL=OWNER), so without
       // this the sub-agent runs as GUEST and every tool is denied ("I don't have
       // permission… role (GUEST)"). A spawned coding sub-agent IS the operator in
       // its sandbox, so it gets full rights. Must be set before initializeAgent so
@@ -135,13 +136,13 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       });
       // Mark the session user as OWNER via the RUNTIME SETTING the role resolver
       // actually reads (getConfiguredOwnerEntityIds → runtime.getSetting), not just
-      // process.env — otherwise the sender stays GUEST and FILE/SHELL are gated off.
+      // process.env — otherwise the sender stays GUEST and coding tools are gated off.
       const rt = runtime as unknown as {
         setSetting?: (k: string, v: unknown) => void;
       };
       rt.setSetting?.("ELIZA_ADMIN_ENTITY_ID", identity.userId);
       getAgentClient().setRuntime(runtime);
-      // Tool ledger: mirror each completed FILE/SHELL call onto the ACP stream
+      // Tool ledger: mirror each completed coding mutation or shell call onto ACP
       // so the orchestrator's write ledger and verifier see what actually ran
       // (see acp-tool-ledger.ts).
       runtime.registerEvent(
@@ -292,7 +293,7 @@ const _connection = new AgentSideConnection(
       // SessionCwdService otherwise defaults the conversation cwd to
       // process.cwd() — the monorepo — making `pwd`, relative-path resolution,
       // and the sandbox roots all point at the wrong directory. Set it
-      // explicitly to the build workspace so FILE/SHELL/LS operate there.
+      // explicitly to the build workspace so coding tools operate there.
       // conversationId == message.roomId == room.elizaRoomId (see agent-client).
       if (params.cwd) {
         const conversationId = String(room.elizaRoomId);
@@ -324,33 +325,9 @@ const _connection = new AgentSideConnection(
         const preamble: string[] = [];
         const manual = await readWorkspaceManual(session.cwd);
         if (manual) preamble.push(manual);
-        // Execution contract: weaker coding models (e.g. Cerebras glm-4.7) tend
-        // to NARRATE a plan ("I'll create the app...") and end the turn instead
-        // of emitting the FILE/SHELL action, especially on larger tasks — which
-        // leaves nothing on disk. Make the act-don't-describe requirement
-        // explicit so a build actually happens before the agent reports done.
-        preamble.push(
-          "Execution contract: DO the work by calling tools — use the FILE " +
-            "action to actually write/edit each file and the SHELL action to run " +
-            "commands. Do NOT reply with a description of what you are about to " +
-            'do; a turn that only says "I\'ll create..." or "Creating the app ' +
-            'now" without an accompanying FILE/SHELL tool call is a failure. For ' +
-            "a multi-file or large build, write the full content of each file " +
-            "with a FILE action first, then verify, and only then report what you " +
-            "did. Never claim a file exists unless you wrote it this session.",
-        );
-        if (session.cwd) {
-          // The coding tools (FILE/EDIT) require ABSOLUTE paths. Tell the agent
-          // its workspace root up front so it writes absolute paths directly
-          // instead of emitting a relative path, having it rejected, and
-          // round-tripping through `pwd` to rediscover the directory.
-          preamble.push(
-            `Your workspace directory is: ${session.cwd}\n` +
-              `All file paths MUST be absolute — create and edit files under ` +
-              `this directory (e.g. ${session.cwd}/<filename>) and run shell ` +
-              `commands from here.`,
-          );
-        }
+        // Make the act-don't-describe requirement explicit using only tools
+        // exposed by the selected Pi profile.
+        preamble.push(...buildAcpCodingPreamble(session.cwd));
         if (preamble.length > 0) {
           text = `${preamble.join("\n\n---\n\n")}\n\n---\n\nTask:\n${text}`;
           log("injected workspace preamble", {
@@ -381,12 +358,11 @@ const _connection = new AgentSideConnection(
       };
       try {
         const response = await activePrompts.run(promptContext, (abortSignal) =>
-          getAgentClient().sendMessage({
+          sendPiCodingTurn(getAgentClient(), {
             room,
             text,
             identity: sessionIdentity,
             source: "acp",
-            codingMode: true,
             abortSignal,
           }),
         );

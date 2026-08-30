@@ -3,7 +3,7 @@
  * `basic-capabilities/providers/group-conversation-signals`: bot-authorship
  * stamping, channel-type resolution and the multi-party gate, dialogue-window
  * loading (composed-state preference, room-scan fallback, filtering, ordering,
- * window cap, live-turn append), group conversation metrics (share,
+ * complete-history preservation, live-turn append), group conversation metrics (share,
  * participants, strict ping-pong alternation, human-gap counters), and the
  * structural human-address dampener.
  *
@@ -20,7 +20,6 @@ import type {
 } from "../../../types/index.ts";
 import {
 	computeGroupConversationMetrics,
-	GROUP_SIGNAL_WINDOW,
 	humanDirectlyAddressesAgent,
 	isBotAuthoredMessage,
 	isMultiPartyChannel,
@@ -91,8 +90,8 @@ function runtimeWithMemories(rows: Memory[] | Error): {
 	return { runtime, getMemoriesCalls };
 }
 
-describe("GROUP_SIGNAL_WINDOW", () => {
-	it("caps loadDialogueWindow at twenty turns", async () => {
+describe("loadDialogueWindow completeness", () => {
+	it("preserves every composed turn", async () => {
 		const composed = Array.from({ length: 25 }, (_, index) =>
 			turn(ALICE, index + 1),
 		);
@@ -103,8 +102,8 @@ describe("GROUP_SIGNAL_WINDOW", () => {
 			inbound,
 			stateWithRecentMessages(composed),
 		);
-		expect(window).toHaveLength(GROUP_SIGNAL_WINDOW);
-		expect(window[0]?.createdAt).toBe(25 - GROUP_SIGNAL_WINDOW + 1 + 1);
+		expect(window).toHaveLength(26);
+		expect(window[0]?.createdAt).toBe(1);
 		expect(window.at(-1)?.id).toBe(inbound.id);
 	});
 });
@@ -252,7 +251,7 @@ describe("loadDialogueWindow", () => {
 		expect(window.map((entry) => entry.id)).toEqual(["aa", "zz", "mm", "kk"]);
 	});
 
-	it("falls back to the coalesced room scan with the bounded limit", async () => {
+	it("falls back to the coalesced room scan without a hidden limit", async () => {
 		const rows = [turn(ALICE, 20), turn(AGENT, 10)];
 		const { runtime, getMemoriesCalls } = runtimeWithMemories(rows);
 		const inbound = turn(BOB, 30);
@@ -262,7 +261,6 @@ describe("loadDialogueWindow", () => {
 			{
 				tableName: "messages",
 				roomId: ROOM,
-				limit: GROUP_SIGNAL_WINDOW,
 				unique: false,
 			},
 		]);

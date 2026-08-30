@@ -25,12 +25,12 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { resolveCloudBillingUrl } from "../cloud/base-url";
 import type { CloudAuthService } from "../services/cloud-auth";
+import { getBaseURL } from "../utils/config";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
-const TOP_UP_URL = "https://cloud.eliza.app/cloud/billing";
 const TTL = 60_000;
-const MAX_AGENTS_RENDERED = 8;
 
 interface AccountSnapshot {
   balance: number;
@@ -92,15 +92,19 @@ export function scheduleAccountSnapshotRefresh(runtime: IAgentRuntime): void {
 
 const EMPTY: ProviderResult = { text: "" };
 
-function render(snapshot: AccountSnapshot, organizationId?: string): ProviderResult {
+function render(
+  snapshot: AccountSnapshot,
+  topUpUrl: string,
+  organizationId?: string,
+): ProviderResult {
   const low = snapshot.balance < 2.0;
   const critical = snapshot.balance < 0.5;
 
   const lines: string[] = [];
   const orgSuffix = organizationId ? ` (org ${organizationId})` : "";
   let creditsLine = `Eliza Cloud account${orgSuffix}: $${snapshot.balance.toFixed(2)} credits`;
-  if (critical) creditsLine += ` (CRITICAL — top up at ${TOP_UP_URL})`;
-  else if (low) creditsLine += ` (LOW — top up at ${TOP_UP_URL})`;
+  if (critical) creditsLine += ` (CRITICAL — top up at ${topUpUrl})`;
+  else if (low) creditsLine += ` (LOW — top up at ${topUpUrl})`;
   lines.push(creditsLine);
 
   if (snapshot.agents.length === 0) {
@@ -111,11 +115,8 @@ function render(snapshot: AccountSnapshot, organizationId?: string): ProviderRes
         ? "1 hosted agent:"
         : `${snapshot.agents.length} hosted agents:`,
     );
-    for (const agent of snapshot.agents.slice(0, MAX_AGENTS_RENDERED)) {
+    for (const agent of snapshot.agents) {
       lines.push(`- ${agent.agentName ?? agent.id} (${agent.status})`);
-    }
-    if (snapshot.agents.length > MAX_AGENTS_RENDERED) {
-      lines.push(`…and ${snapshot.agents.length - MAX_AGENTS_RENDERED} more`);
     }
   }
 
@@ -126,10 +127,10 @@ function render(snapshot: AccountSnapshot, organizationId?: string): ProviderRes
       cloudCreditsLow: low,
       cloudCreditsCritical: critical,
       cloudAgentCount: snapshot.agents.length,
-      cloudTopUpUrl: TOP_UP_URL,
+      cloudTopUpUrl: topUpUrl,
     },
     data: {
-      agents: snapshot.agents.slice(0, MAX_AGENTS_RENDERED).map((agent) => ({
+      agents: snapshot.agents.map((agent) => ({
         id: agent.id,
         name: agent.agentName,
         status: agent.status,
@@ -160,6 +161,7 @@ export const cloudAccountProvider: Provider = {
   ): Promise<ProviderResult> {
     const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
     if (!auth?.isAuthenticated()) return EMPTY;
+    const topUpUrl = resolveCloudBillingUrl(getBaseURL(runtime));
 
     // Stale-while-revalidate: any snapshot renders immediately; expiry only
     // schedules a background refresh instead of blocking the turn on two WAN
@@ -169,12 +171,12 @@ export const cloudAccountProvider: Provider = {
       if (Date.now() - cached.at >= TTL) {
         scheduleAccountSnapshotRefresh(runtime);
       }
-      return render(cached.value, auth.getOrganizationId());
+      return render(cached.value, topUpUrl, auth.getOrganizationId());
     }
 
     try {
       const snapshot = await fetchAccountSnapshot(runtime);
-      return render(snapshot, auth.getOrganizationId());
+      return render(snapshot, topUpUrl, auth.getOrganizationId());
     } catch (err) {
       logger.warn(
         `[CloudAccount] Failed to fetch account summary: ${

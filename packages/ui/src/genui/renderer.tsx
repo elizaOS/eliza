@@ -347,7 +347,6 @@ function renderPrimitiveComponent(
       return (
         <Input
           aria-label={stringProp(component, "label") ?? component.id}
-          className="rounded-sm border border-border bg-bg px-3 py-2"
           disabled={booleanProp(component, "disabled")}
           placeholder={stringProp(component, "placeholder")}
           readOnly
@@ -367,13 +366,13 @@ function renderPrimitiveComponent(
       return (
         <Input
           aria-label={stringProp(component, "label") ?? component.id}
+          variant="nativeRange"
           disabled={booleanProp(component, "disabled")}
           max={numberProp(component, "maxValue")}
           min={numberProp(component, "minValue")}
           readOnly
           type="range"
           value={numberProp(component, "value") ?? 0}
-          className="h-6 w-full p-0"
         />
       );
     case "DateTimeInput":
@@ -390,7 +389,7 @@ function renderPrimitiveComponent(
       return renderChoicePicker(component, context);
     case "Card":
       return (
-        <Card className="rounded-sm">
+        <Card>
           <CardContent className="p-4">
             {renderChildList(component, context, stack)}
           </CardContent>

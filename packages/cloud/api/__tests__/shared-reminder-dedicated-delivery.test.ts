@@ -15,7 +15,12 @@ const committedTask = {
   ownerVisible: true,
   contextRequest: undefined,
   metadata: {
-    delivery: { platform: "telegram", project: "main", chatId: "42" },
+    delivery: {
+      platform: "telegram",
+      project: "main",
+      connectorAccountId: "bot:123456789",
+      chatId: "42",
+    },
   },
 };
 const readCommittedSharedReminderForTarget = mock(
@@ -89,7 +94,12 @@ describe("Dedicated Shared-reminder delivery", () => {
         taskId: "shared-reminder-1",
         promptInstructions: "trusted stored reminder",
         metadata: {
-          delivery: { platform: "telegram", project: "main", chatId: "42" },
+          delivery: {
+            platform: "telegram",
+            project: "main",
+            connectorAccountId: "bot:123456789",
+            chatId: "42",
+          },
         },
       }),
     );

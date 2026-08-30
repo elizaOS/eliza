@@ -28,8 +28,12 @@ import "./web-ws-base-fix";
  * global-shortcut / chat-overlay wiring. Modules not needed for first paint are
  * deferred onto the idle path. Exports the resolved platform flags.
  */
-import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
+import { ErrorBoundary } from "@elizaos/ui";
 import "@elizaos/ui/styles";
+// Relationships owns the canonical /apps/relationships route. Its registration
+// metadata is tiny and must be available before the first route capture; the
+// page component itself remains lazy-loaded by the plugin registration.
+import "@elizaos/plugin-relationships/register";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
 // dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
@@ -64,6 +68,9 @@ import {
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
 import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
+import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
+import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
+import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";
 import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
 import {
@@ -132,6 +139,10 @@ import {
 } from "@elizaos/ui/platform/browser-launch";
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
+import {
+  dispatchRemoteControllerPairingIntent,
+  parseRemoteControllerPairingDeepLink,
+} from "@elizaos/ui/platform/remote-target-pairing-intent";
 import { startRendererServiceHost } from "@elizaos/ui/platform/renderer-services";
 import {
   clearStandaloneBottomReclaim,
@@ -226,12 +237,17 @@ import {
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
+import {
+  getMobileRemoteFallbackApiBase,
+  installMobileRemoteFallback,
+} from "./mobile-remote-fallback";
 import { installNativeTranscriptPlatformBridge } from "./native-transcript-bridge";
 import { installPackagedShellStorageTestBridge } from "./packaged-shell-storage-test-bridge";
 import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
 } from "./plugin-registrations";
+import { isRemoteControllerPairingRuntimeAllowed } from "./remote-controller-deep-link";
 import {
   PHONE_COMPANION_AGENT_VIEW_ID,
   resolveRendererShellKind,
@@ -240,7 +256,6 @@ import {
   applyRuntimeChooserOverrideFromUrl,
   removeUrlParameter,
 } from "./runtime-chooser-override";
-import { registerViewServiceWorker } from "./sw-registration";
 import {
   isElizaCloudSharedHost,
   isTrustedCloudOnlyApiBaseUrl,
@@ -251,6 +266,7 @@ declare const __ELIZA_BUILD_VARIANT__: string | undefined;
 // for Capacitor mobile builds so the entire cloud router shell + Steward/wallet
 // + public-page chunks tree-shake out of the native bundle.
 declare const __ELIZA_WEB_SHELL__: boolean | undefined;
+declare const __ELIZA_SERVICE_WORKER__: boolean | undefined;
 declare const __ELIZA_CHAT_UI_HARNESS__: boolean | undefined;
 
 declare global {
@@ -302,6 +318,13 @@ function importAppTaskCoordinatorRegister() {
   return cachedDynamicImport(
     "@elizaos/plugin-task-coordinator/register",
     () => import("@elizaos/plugin-task-coordinator/register"),
+  );
+}
+
+function importAppRelationshipsRegister() {
+  return cachedDynamicImport(
+    "@elizaos/plugin-relationships/register",
+    () => import("@elizaos/plugin-relationships/register"),
   );
 }
 
@@ -441,10 +464,15 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   // opted into cloud-only mode, which remains authoritative over a loopback base.
   cloudOnly: resolveAppCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
-    bootApiBase: getBootConfig().apiBase,
+    bootApiBase:
+      getBootConfig().apiBase ?? getMobileRemoteFallbackApiBase() ?? undefined,
     legacyInjectedApiBase:
       typeof window === "undefined" ? undefined : getLegacyInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
+    nativeRuntimeMode:
+      isAndroidCloudBuild() && !getMobileRemoteFallbackApiBase()
+        ? "cloud"
+        : undefined,
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
@@ -457,6 +485,7 @@ const isStoreBuild =
   typeof __ELIZA_BUILD_VARIANT__ === "string" &&
   __ELIZA_BUILD_VARIANT__ === "store";
 const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
+configureStoredStewardTokenScope(IOS_RUNTIME_ENV_CONFIG.cloudApiBase);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
@@ -857,6 +886,7 @@ function buildAppBootConfig(): AppBootConfig {
       (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
       undefined,
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
+    autoUpgradeSharedToDedicated: true,
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
     codingAgentTasksPanel: CodingAgentTasksPanel,
@@ -893,6 +923,10 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
     {
       key: "@elizaos/plugin-task-coordinator/register",
       load: importAppTaskCoordinatorRegister,
+    },
+    {
+      key: "@elizaos/plugin-relationships/register",
+      load: importAppRelationshipsRegister,
     },
     { key: "@elizaos/plugin-phone", load: importAppPhone },
   ];
@@ -1985,9 +2019,8 @@ function getMobileLifecycle(): MobileLifecycle {
   return mobileLifecycleInstance;
 }
 
-// Universal/App-Link hosts whose `https://<host>/<path>` links route into the
-// app (paired with the iOS associated-domains entitlement + the Android/web
-// `assetlinks.json` + `apple-app-site-association` served from eliza.app).
+// Universal/App-Link hosts whose `https://<host>/<path>` links can route inside
+// the app after a platform host associates the domain with its native build.
 const APP_LINK_HOSTS = ["eliza.app"];
 
 // Device/desktop "connect to a remote agent at a URL" first-run onboarding:
@@ -2144,7 +2177,20 @@ async function handleAuthCallbackDeepLink(
   parsed: URL,
   path: string,
   url: string,
-): Promise<void> {
+): Promise<boolean> {
+  if (isAndroid && isAndroidCloudBuild()) {
+    try {
+      await completeAndroidCloudSignIn(url);
+      return true;
+    } catch (error) {
+      console.warn(
+        `${APP_LOG_PREFIX} Android Cloud sign-in callback failed:`,
+        error instanceof Error ? error.message : error,
+      );
+      if (shouldAcknowledgeAndroidCloudCallback(error)) return true;
+      throw error;
+    }
+  }
   const outcome = rejectOsDeliveredAuthCallback();
   let activeServerBefore = "";
   try {
@@ -2166,7 +2212,7 @@ async function handleAuthCallbackDeepLink(
       code: parsed.searchParams.get("code") ?? "",
       query: Object.fromEntries(parsed.searchParams.entries()),
     });
-    return;
+    return true;
   }
 
   await recordIosAuthCallbackSmoke(
@@ -2176,6 +2222,7 @@ async function handleAuthCallbackDeepLink(
     outcome,
     activeServerBefore,
   );
+  return true;
 }
 
 /**
@@ -2186,6 +2233,34 @@ async function handleAuthCallbackDeepLink(
  * can await it instead of acking on dispatch alone.
  */
 function handleDeepLink(url: string): undefined | Promise<boolean> {
+  const remotePairing = parseRemoteControllerPairingDeepLink(
+    url,
+    APP_URL_SCHEME,
+  );
+  if (remotePairing) {
+    if (
+      !isRemoteControllerPairingRuntimeAllowed({
+        isElectrobun: isElectrobunRuntime(),
+        navigatorPlatform:
+          typeof navigator === "undefined" ? "" : navigator.platform,
+        nativePlatform: Capacitor.getPlatform(),
+        native: Capacitor.isNativePlatform(),
+        nativePluginAvailable:
+          Capacitor.isPluginAvailable?.("RemoteControllerIdentity") === true,
+      })
+    ) {
+      console.warn(
+        `${APP_LOG_PREFIX} Remote controller pairing requires the enrolled Linux desktop shell or this iPhone's secure native controller bridge`,
+      );
+      return;
+    }
+    dispatchRemoteControllerPairingIntent(remotePairing);
+    return dispatchDeepLinkNavigation({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "my-runtimes",
+    });
+  }
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
     url,
     APP_URL_SCHEME,
@@ -2209,16 +2284,15 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
   }
 
   // Accept both the custom `<scheme>://` links and `https://eliza.app/<path>`
-  // universal/App links (iOS associated-domains + Android assetlinks hand these
-  // to the installed app); both route into the same hash routes below.
+  // universal/App links when a host has configured an operating-system domain
+  // association; both route into the same hash routes below.
   const isAppLink = isTrustedAppLink(parsed, APP_LINK_HOSTS);
   if (parsed.protocol !== `${APP_URL_SCHEME}:` && !isAppLink) return;
   const path = isAppLink
     ? parsed.pathname.replace(/^\/+|\/+$/g, "")
     : getDeepLinkPath(parsed);
   if (path === "auth/callback") {
-    void handleAuthCallbackDeepLink(parsed, path, url);
-    return;
+    return handleAuthCallbackDeepLink(parsed, path, url);
   }
 
   if (path === "first-run/runtime/remote") {
@@ -3462,7 +3536,15 @@ function initVisionBridgesIfEnabled(): void {
 
 async function main(): Promise<void> {
   markStartup("main-start");
-  registerViewServiceWorker();
+  markStartup("app-modules:start");
+  await initializeAppModules();
+  markStartup("app-modules:end");
+  measureStartup("app-modules", "app-modules:start", "app-modules:end");
+
+  if (__ELIZA_SERVICE_WORKER__ === true) {
+    const { registerViewServiceWorker } = await import("./sw-registration");
+    registerViewServiceWorker();
+  }
 
   // #9947: when served at /embed inside a Telegram Mini App / Discord Activity
   // iframe, exchange the platform's signed launch payload for a scoped session
@@ -3485,10 +3567,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  markStartup("app-modules:start");
-  await initializeAppModules();
-  markStartup("app-modules:end");
-  measureStartup("app-modules", "app-modules:start", "app-modules:end");
   setupPlatformStyles();
   applyBuildTimeIosConnection();
 
@@ -3546,6 +3624,9 @@ async function main(): Promise<void> {
   // hydration lands. The voice chunk (kicked off above) downloads in parallel
   // with this wait.
   await initializeStorageBridge();
+  if (isAndroid) {
+    await installMobileRemoteFallback(undefined, client);
+  }
   if (isIOS) {
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();

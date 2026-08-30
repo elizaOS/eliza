@@ -326,7 +326,11 @@ export async function runModelGrind(
 			r.inferMs = Math.round(now() - at);
 			const wer = wordErrorRate(GRIND_PHRASE, transcript);
 			r.throughput = { kind: "wer", value: Math.round(wer * 1000) / 1000 };
-			r.detail = { reference: GRIND_PHRASE, hypothesis: transcript, wer };
+			r.detail = {
+				reference: GRIND_PHRASE,
+				hypothesis: toWellFormedUnicode(transcript),
+				wer,
+			};
 			r.ok = transcript.trim().length > 0 && wer <= 0.5; // round-trip recognizable
 			if (!r.ok)
 				r.error = `ASR round-trip WER too high (${wer.toFixed(2)}) or empty`;

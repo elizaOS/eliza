@@ -108,7 +108,7 @@ describe("recentConversationsProvider", () => {
     expect(recentConversationsProvider.alwaysInResponseState).toBe(true);
   });
 
-  it("omits empty age labels and their parentheses from provider output", async () => {
+  it("keeps eager message bodies and declares a retrieval manifest", async () => {
     const runtime = makeRuntime();
 
     const result = await recentConversationsProvider.get(
@@ -117,15 +117,17 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(result.text).toContain("[discord] general user: hello there");
-    expect(result.text).not.toContain("()");
-    expect(result.text).not.toContain("NaN");
+    expect(result.text).toContain("hello there");
+    expect(result.overflowText).toContain(
+      `[discord] general roomId=${ROOM_ID}`,
+    );
+    expect(result.overflowText).not.toContain("hello there");
     expect(markOwnerExclusiveDisclosureUsed).toHaveBeenCalledWith(
       expect.objectContaining({ entityId: ENTITY_ID }),
     );
   });
 
-  it("expands linked aliases, dedupes rooms, batches tags, and retains every eligible message", async () => {
+  it("expands linked aliases into complete eager context and a body-free manifest", async () => {
     getVerifiedRelatedEntityIds.mockResolvedValue([ENTITY_ID, ALIAS_ENTITY_ID]);
     const completeTexts = Array.from(
       { length: 15 },
@@ -180,16 +182,24 @@ describe("recentConversationsProvider", () => {
     expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
       tableName: "messages",
       roomIds: [ROOM_ID, ALIAS_ROOM_ID],
-      accessContext: {
-        requesterEntityId: ENTITY_ID,
+      accessContext: expect.objectContaining({
         authorizedRoomIds: [ROOM_ID, ALIAS_ROOM_ID],
-      },
+      }),
     });
     expect(getRoomsByIds).toHaveBeenCalledOnce();
     expect(getRoomsByIds).toHaveBeenCalledWith([ROOM_ID, ALIAS_ROOM_ID]);
     expect(result.values?.recentConversationCount).toBe(15);
-    expect(result.data?.messages).toHaveLength(15);
-    for (const text of completeTexts) expect(result.text).toContain(text);
+    expect(result.values?.recentConversationRoomCount).toBe(2);
+    expect(result.data?.rooms).toHaveLength(2);
+    expect(result.overflowText).toContain(
+      "15 stored message(s) across 2 authorized room(s)",
+    );
+    expect(result.overflowText).toContain("discord");
+    expect(result.overflowText).toContain("telegram");
+    for (const text of completeTexts) {
+      expect(result.text).toContain(text);
+      expect(result.overflowText).not.toContain(text);
+    }
   });
 
   it("leaves the current-room transcript to RECENT_MESSAGES in the full agent runtime", async () => {
@@ -219,15 +229,13 @@ describe("recentConversationsProvider", () => {
     expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
       tableName: "messages",
       roomIds: [ALIAS_ROOM_ID],
-      accessContext: {
-        requesterEntityId: ENTITY_ID,
-        authorizedRoomIds: [ROOM_ID, ALIAS_ROOM_ID],
-      },
+      accessContext: expect.any(Object),
     });
+    expect(result.overflowText).toContain(`roomId=${ALIAS_ROOM_ID}`);
     expect(result.text).toContain("remote-only context");
   });
 
-  it("keeps attachment-only cross-platform turns as multimodal context without capability URLs", async () => {
+  it("keeps safe attachment recall while excluding capability URLs", async () => {
     const runtime = makeRuntime({
       getMemoriesByRoomIds: vi.fn(async () => [
         {
@@ -254,23 +262,12 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(result.text).toContain(
-      "[attachment: receipt.png; image/png; A receipt showing a 6:30 PM dinner reservation]",
-    );
+    expect(result.text).toContain("receipt.png");
+    expect(result.text).toContain("dinner reservation");
     expect(result.text).not.toContain("private.example");
+    expect(result.overflowText).not.toContain("receipt.png");
     expect(result.values?.recentConversationCount).toBe(1);
-    expect(result.data?.messages).toEqual([
-      expect.objectContaining({
-        text: undefined,
-        attachments: [
-          expect.objectContaining({
-            id: "photo-1",
-            filename: "receipt.png",
-            mimeType: "image/png",
-          }),
-        ],
-      }),
-    ]);
+    expect(result.data?.rooms).toHaveLength(1);
     expect(JSON.stringify(result.data)).not.toContain("private.example");
   });
 

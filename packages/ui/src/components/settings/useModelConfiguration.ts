@@ -453,12 +453,20 @@ export function useModelConfiguration(
   });
 
   const disposedRef = useRef(false);
-  useEffect(
-    () => () => {
+  const lifecycleGenerationRef = useRef(0);
+  const activeLifecycleRef = useRef(0);
+  const loadGenerationRef = useRef(0);
+  useEffect(() => {
+    lifecycleGenerationRef.current += 1;
+    const lifecycleGeneration = lifecycleGenerationRef.current;
+    activeLifecycleRef.current = lifecycleGeneration;
+    disposedRef.current = false;
+    return () => {
+      if (activeLifecycleRef.current !== lifecycleGeneration) return;
+      activeLifecycleRef.current = 0;
       disposedRef.current = true;
-    },
-    [],
-  );
+    };
+  }, []);
   // The catalog the drafts were resolved against, for post-save re-resolution
   // of `configured` markers without threading it through every callback.
   const catalogRef = useRef<ModelCatalog | null>(null);
@@ -488,13 +496,25 @@ export function useModelConfiguration(
   }, []);
 
   const loadAll = useCallback(async () => {
+    const lifecycleGeneration = activeLifecycleRef.current;
+    loadGenerationRef.current += 1;
+    const loadGeneration = loadGenerationRef.current;
+    // A mounted boolean alone cannot distinguish StrictMode's replaced setup
+    // or an older retry that settles after a newer load. Both owners must match
+    // before any response, error, ref, or draft reaches the current panel.
+    const ownsLoad = () =>
+      lifecycleGeneration !== 0 &&
+      activeLifecycleRef.current === lifecycleGeneration &&
+      loadGenerationRef.current === loadGeneration &&
+      !disposedRef.current;
+    if (!ownsLoad()) return;
     setLoad({ phase: "loading" });
     try {
       const [modelsResponse, configResponse] = await Promise.all([
         client.getModelsCatalog(),
         client.getModelsConfig(),
       ]);
-      if (disposedRef.current) return;
+      if (!ownsLoad()) return;
       const data: ReadyData = {
         catalog: parseCatalogResponse(modelsResponse),
         config: parseConfigResponse(configResponse),
@@ -505,7 +525,7 @@ export function useModelConfiguration(
     } catch (err) {
       // error-policy:J4 catalog/config fetch failure renders the panel's
       // designed error state (with retry) instead of a healthy-empty panel.
-      if (disposedRef.current) return;
+      if (!ownsLoad()) return;
       setLoad({ phase: "error", message: failureMessage(err) });
     }
   }, [initializeDrafts]);

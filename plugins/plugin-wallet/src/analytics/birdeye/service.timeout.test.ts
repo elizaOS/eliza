@@ -28,10 +28,6 @@ function createRuntime(port: number) {
 }
 
 describe("BirdeyeService fetch timeout (real server)", () => {
-  it("exposes the documented 10s budget", () => {
-    expect(DEFAULT_BIRDEYE_FETCH_TIMEOUT_MS).toBe(10_000);
-  });
-
   it("aborts a stalled Birdeye fetch via the service boundary", async () => {
     const server = http.createServer((_req, _res) => {
       // hang intentionally

@@ -32,7 +32,11 @@ PYTHON_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PYTHON_ROOT))
 
 from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import require_complete_generated_tokens  # noqa: E402
+from lib.generation_integrity import (  # noqa: E402
+    model_context_tokens,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
 
 from src.training.deterministic_eval import (
     ACTION_REASON_ALIGNMENT_SAMPLES,
@@ -73,14 +77,22 @@ def generate_eval_responses(team: TeamModel, device: str) -> list[dict]:
         enc = tokenize_with_explicit_limit(
             team.tokenizer,
             prompt_text,
-            max_tokens=1024,
+            max_tokens=model_context_tokens(
+                team.model, team.tokenizer, source="diagnose_learning.evaluation"
+            ),
             return_tensors="pt",
         ).to(device)
+        max_new_tokens = remaining_model_context_tokens(
+            team.model,
+            team.tokenizer,
+            prompt_tokens=enc["input_ids"].shape[1],
+            source="diagnose_learning.evaluation",
+        )
         with torch.no_grad():
             out = team.model.generate(
                 enc["input_ids"],
                 attention_mask=enc["attention_mask"],
-                max_new_tokens=128,
+                max_new_tokens=max_new_tokens,
                 temperature=0.3,
                 top_p=0.9,
                 do_sample=True,
@@ -89,7 +101,7 @@ def generate_eval_responses(team: TeamModel, device: str) -> list[dict]:
         generated_ids = out[0, enc["input_ids"].shape[1] :]
         require_complete_generated_tokens(
             generated_ids,
-            max_new_tokens=128,
+            max_new_tokens=max_new_tokens,
             source="diagnose_learning.evaluation",
             terminal_token_ids=team.tokenizer.eos_token_id,
         )
@@ -131,13 +143,17 @@ def sft_warmup(team: TeamModel, device: str, epochs: int):
             enc = tokenize_with_explicit_limit(
                 team.tokenizer,
                 full_text,
-                max_tokens=512,
+                max_tokens=model_context_tokens(
+                    team.model, team.tokenizer, source="diagnose_learning.sft"
+                ),
                 return_tensors="pt",
             ).to(device)
             prompt_enc = tokenize_with_explicit_limit(
                 team.tokenizer,
                 prompt_text,
-                max_tokens=512,
+                max_tokens=model_context_tokens(
+                    team.model, team.tokenizer, source="diagnose_learning.sft"
+                ),
                 return_tensors="pt",
             )
             prompt_len = prompt_enc["input_ids"].shape[1]

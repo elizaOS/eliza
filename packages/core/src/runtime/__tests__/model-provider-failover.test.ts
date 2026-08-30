@@ -8,7 +8,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
+import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED } from "../../services/message/fallback-reply";
 import { type Character, ModelType } from "../../types";
 
 function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
@@ -26,6 +28,13 @@ function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
 /** The exact subscription-limit error the cli-inference SDK session throws live. */
 const CLI_INFERENCE_LIMIT_ERROR =
 	"[cli-inference:sdk] subscription rate limit reached: You've hit your session limit · resets 9:30pm (UTC)";
+
+function cloudWarmingExhausted(): ElizaError {
+	return new ElizaError("cloud gateway warming budget exhausted", {
+		code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+		severity: "ephemeral",
+	});
+}
 
 describe("AgentRuntime.useModel provider failover", () => {
 	it("tries the next registered provider when the preferred provider is exhausted", async () => {
@@ -220,6 +229,114 @@ describe("AgentRuntime.useModel provider failover", () => {
 		).resolves.toBe("direct response");
 		expect(unavailableLocalHandler).toHaveBeenCalledTimes(1);
 		expect(directHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it("spends a warming budget once and skips later registrations from that provider", async () => {
+		const runtime = makeRuntime();
+		const exhaustedCloudHandler = vi.fn(async () => {
+			throw cloudWarmingExhausted();
+		});
+		const duplicateCloudHandler = vi.fn(async () => "duplicate cloud response");
+		const distinctProviderHandler = vi.fn(async () => "distinct response");
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			exhaustedCloudHandler,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_NANO,
+			duplicateCloudHandler,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			distinctProviderHandler,
+			"openai",
+			10,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).resolves.toBe("distinct response");
+		expect(exhaustedCloudHandler).toHaveBeenCalledTimes(1);
+		expect(duplicateCloudHandler).not.toHaveBeenCalled();
+		expect(distinctProviderHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps ordinary 503 failover registration-scoped within the same provider", async () => {
+		const runtime = makeRuntime();
+		const ordinaryUnavailable = vi.fn(async () => {
+			throw Object.assign(new Error("ordinary upstream outage"), {
+				status: 503,
+			});
+		});
+		const sameProviderFallback = vi.fn(async () => "same provider recovered");
+		const distinctProviderFallback = vi.fn(async () => "distinct response");
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			ordinaryUnavailable,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_NANO,
+			sameProviderFallback,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			distinctProviderFallback,
+			"openai",
+			10,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).resolves.toBe("same provider recovered");
+		expect(ordinaryUnavailable).toHaveBeenCalledTimes(1);
+		expect(sameProviderFallback).toHaveBeenCalledTimes(1);
+		expect(distinctProviderFallback).not.toHaveBeenCalled();
+	});
+
+	it("does not turn caller abort into provider failover", async () => {
+		const runtime = makeRuntime();
+		const abortReason = new DOMException("turn cancelled", "AbortError");
+		const abortedHandler = vi.fn(async () => {
+			throw abortReason;
+		});
+		const sameProviderFallback = vi.fn(async () => "same provider response");
+		const distinctProviderFallback = vi.fn(async () => "distinct response");
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			abortedHandler,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_NANO,
+			sameProviderFallback,
+			"elizaOSCloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			distinctProviderFallback,
+			"openai",
+			10,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).rejects.toBe(abortReason);
+		expect(abortedHandler).toHaveBeenCalledTimes(1);
+		expect(sameProviderFallback).not.toHaveBeenCalled();
+		expect(distinctProviderFallback).not.toHaveBeenCalled();
 	});
 
 	it("does not switch providers when a provider is explicitly requested", async () => {

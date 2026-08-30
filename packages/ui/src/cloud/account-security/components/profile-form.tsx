@@ -23,6 +23,7 @@ import {
   SettingsStack,
 } from "../../../components/settings/settings-layout";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
+import { SemanticForm } from "../../../components/ui/semantic-form";
 import { ApiError, apiFetch } from "../../lib/api-client";
 import type { UserProfile } from "../data/user";
 
@@ -170,7 +171,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
         description="Update your profile information and manage your account settings."
       >
         {!user.email && !emailAdded ? (
-          <form
+          <SemanticForm
             onSubmit={(event) => {
               event.preventDefault();
               void submitEmail();
@@ -213,7 +214,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 )}
               </SettingsActionButton>
             </div>
-          </form>
+          </SemanticForm>
         ) : null}
 
         {user.email ? (
@@ -233,15 +234,15 @@ export function ProfileForm({ user }: ProfileFormProps) {
         ) : null}
 
         {emailAdded && !user.email ? (
-          <Alert className="rounded-sm border-status-success bg-status-success-bg">
-            <AlertDescription className="text-status-success">
+          <Alert>
+            <AlertDescription>
               Email added successfully. It will appear here after the page
               refreshes.
             </AlertDescription>
           </Alert>
         ) : null}
 
-        <form
+        <SemanticForm
           onSubmit={(event) => {
             event.preventDefault();
             submitName();
@@ -262,26 +263,19 @@ export function ProfileForm({ user }: ProfileFormProps) {
           />
 
           {error ? (
-            <Alert
-              variant="destructive"
-              className="mt-2 rounded-sm border-status-danger bg-status-danger-bg"
-              data-testid="profile-error"
-            >
-              <AlertDescription className="text-status-danger">
-                {error}
-              </AlertDescription>
-            </Alert>
+            <div className="mt-2">
+              <Alert variant="destructive" data-testid="profile-error">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            </div>
           ) : null}
 
           {success ? (
-            <Alert
-              className="mt-2 rounded-sm border-status-success bg-status-success-bg"
-              data-testid="profile-success"
-            >
-              <AlertDescription className="text-status-success">
-                {success}
-              </AlertDescription>
-            </Alert>
+            <div className="mt-2">
+              <Alert data-testid="profile-success">
+                <AlertDescription>{success}</AlertDescription>
+              </Alert>
+            </div>
           ) : null}
 
           <div className="flex items-center gap-3 pt-3">
@@ -319,7 +313,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
               Cancel
             </SettingsActionButton>
           </div>
-        </form>
+        </SemanticForm>
       </SettingsGroup>
     </SettingsStack>
   );

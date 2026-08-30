@@ -38,6 +38,7 @@ interface FixtureCase {
 }
 
 interface AggregateReport {
+  artifactsDir?: string | null;
   totals: {
     passed: number;
     failed: number;
@@ -51,10 +52,15 @@ const FAKE_BUN_SOURCE = `#!/usr/bin/env node
 import fs from "node:fs";
 
 const args = process.argv.slice(2);
-const command = args[1];
+const command = args.find((value) => value === "list" || value === "run");
 const cases = JSON.parse(process.env.ISOLATED_SCENARIO_CASES ?? "{}");
 
 if (command === "list") {
+  const requiredListArg = process.env.ISOLATED_REQUIRED_LIST_ARG;
+  if (requiredListArg && !args.includes(requiredListArg)) {
+    process.stderr.write("missing required list arg: " + requiredListArg + "\\n");
+    process.exit(2);
+  }
   process.stdout.write(Object.keys(cases).join("\\n") + "\\n");
   process.exit(0);
 }
@@ -243,6 +249,55 @@ test("zero-exit pass and fail reports retain their report semantics", () => {
     { id: "zero-passed", status: "passed", durationMs: 1 },
     { id: "zero-failed", status: "failed", durationMs: 1 },
   ]);
+});
+
+test("an exit-1 failed scenario retains its report semantics", () => {
+  const { result, report } = runFixture({
+    "exit-1-failed": { status: "failed", exitCode: 1 },
+  });
+
+  expect(result.status).toBe(1);
+  expect(report.totals).toEqual({
+    passed: 0,
+    failed: 1,
+    skipped: 0,
+    total: 1,
+  });
+  expect(report.scenarios).toEqual([
+    { id: "exit-1-failed", status: "failed", durationMs: 1 },
+  ]);
+});
+
+test("forwards file-glob selection to scenario discovery", () => {
+  const { result, report } = runFixture(
+    { selected: { status: "passed" } },
+    {
+      args: ["--file-glob", "selected/*.scenario.ts"],
+      env: { ISOLATED_REQUIRED_LIST_ARG: "selected/*.scenario.ts" },
+    },
+  );
+
+  expect(result.status).toBe(0);
+  expect(report.totals.passed).toBe(1);
+});
+
+test("retains evidence in an explicit artifacts directory", () => {
+  const artifacts = path.join(
+    tmpdir(),
+    `scenario-isolated-artifacts-${process.pid}-${Date.now()}`,
+  );
+  try {
+    const { result, report } = runFixture(
+      { retained: { status: "passed" } },
+      { args: ["--artifacts-dir", artifacts] },
+    );
+    expect(result.status).toBe(0);
+    expect(report.artifactsDir).toBe(artifacts);
+    expect(result.stderr).toContain(`retained artifacts at ${artifacts}`);
+    expect(existsSync(artifacts)).toBe(true);
+  } finally {
+    rmSync(artifacts, { recursive: true, force: true });
+  }
 });
 
 test("each child writes into a collision-free run directory", () => {

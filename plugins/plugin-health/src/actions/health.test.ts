@@ -95,6 +95,10 @@ describe("health action runner", () => {
         },
       }),
     );
+    const recentConversationTexts = vi.fn(async () => [
+      "oldest retained turn",
+      "newest retained turn",
+    ]);
     const runner = createHealthActionRunner({
       hasAccess: async () => true,
       createService: () => ({
@@ -117,7 +121,7 @@ describe("health action runner", () => {
       messageText: (m) =>
         typeof m.content.text === "string" ? m.content.text : "",
       renderReply: async ({ fallback }) => fallback,
-      recentConversationTexts: async () => [],
+      recentConversationTexts,
       runJsonModel,
     });
 
@@ -137,6 +141,11 @@ describe("health action runner", () => {
     );
 
     expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expect(recentConversationTexts).toHaveBeenCalledWith({
+      runtime: plannerRuntime,
+      message: expect.any(Object),
+      state: undefined,
+    });
     expect(runJsonModel.mock.calls[0][0]).toMatchObject({
       purpose: "health_checkin",
       actionType: "HEALTH.plan",

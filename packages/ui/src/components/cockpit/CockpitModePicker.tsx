@@ -50,18 +50,14 @@ function ModeOptionButton({
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant="choice"
+      size="row"
+      align="start"
+      data-state={isActive ? "on" : "off"}
       aria-pressed={isActive}
       disabled={disabled}
       data-testid={`cockpit-mode-${option.id}`}
       onClick={() => select(option.toConfig)}
-      className={cn(
-        "h-auto w-full justify-between gap-3 rounded-md border px-3.5 py-2.5 text-left transition-colors",
-        isActive
-          ? "border-accent bg-accent-subtle"
-          : "border-border hover:bg-bg-hover",
-        disabled && "cursor-not-allowed opacity-60",
-      )}
       {...agentProps}
     >
       <span className="flex min-w-0 flex-col">

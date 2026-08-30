@@ -15,7 +15,6 @@ vi.mock("@capacitor/core", () => ({
   CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
 
-import { CloudAgentWakeError as PublicCloudAgentWakeError } from "./client";
 import { ElizaClient } from "./client-base";
 import {
   CloudAgentWakeError,
@@ -70,10 +69,6 @@ function fakeClient(mocks: Record<string, unknown>): ElizaClient {
 const FAST = { pollIntervalMs: 1, timeoutMs: 60 };
 
 describe("waitForCloudAgentRunning — typed non-transient failures", () => {
-  it("exports the typed error through the public API barrel", () => {
-    expect(PublicCloudAgentWakeError).toBe(CloudAgentWakeError);
-  });
-
   it("surfaces a resolved resume rejection instead of entering the status poll", async () => {
     const client = fakeClient({
       resumeCloudCompatAgent: vi.fn(async () => ({

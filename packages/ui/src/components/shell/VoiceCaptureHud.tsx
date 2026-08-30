@@ -39,6 +39,8 @@ import {
   subscribeVoiceCaptureBreadcrumbs,
   type VoiceCaptureBreadcrumb,
 } from "../../utils/voice-capture-debug";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 
 const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.voiceHud.dismissed";
@@ -250,7 +252,11 @@ export function VoiceCaptureHud() {
         zIndex: Z_BUILD_BADGE,
       }}
     >
-      <div className="pointer-events-auto flex max-w-[calc(100%-0.5rem)] items-stretch gap-1 rounded-md border border-border bg-black/85 px-1.5 py-1 shadow-lg">
+      <Card
+        surface="wallpaperOverlay"
+        border="standard"
+        className="pointer-events-auto flex max-w-[calc(100%-0.5rem)] items-stretch gap-1 px-1.5 py-1"
+      >
         <div
           ref={scrollRef}
           data-testid="voice-capture-hud-lines"
@@ -271,24 +277,27 @@ export function VoiceCaptureHud() {
                 {line.step}
               </span>
               {line.token ? (
-                <span className={line.bad ? "text-red-300" : "text-white/70"}>
+                <span
+                  className={line.bad ? "text-destructive" : "text-white/70"}
+                >
                   ({line.token})
                 </span>
               ) : null}
             </div>
           ))}
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghostMuted"
           data-testid="voice-capture-hud-dismiss"
           title="Hide voice trace for this session"
           aria-label="Hide voice capture trace for this session"
           onClick={dismiss}
-          className="shrink-0 self-start text-white/50 hover:text-white"
+          className="shrink-0 self-start"
         >
           <X aria-hidden="true" className="size-2.5" />
-        </button>
-      </div>
+        </Button>
+      </Card>
     </div>
   );
 }

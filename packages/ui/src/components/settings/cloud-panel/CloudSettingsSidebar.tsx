@@ -8,6 +8,9 @@ import { Check, ChevronUp, Circle, Loader2, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../../lib/utils";
 import { useAppSelector } from "../../../state";
+import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
+import { Separator } from "../../ui/separator";
 import { CLOUD_PANEL_GROUPS } from "./cloud-panel-groups";
 import {
   type CloudPanelAccountFooterSection,
@@ -67,110 +70,127 @@ export function CloudAccountMenu({
 
   if (accountState === "disconnected") {
     return (
-      <div className="border-t border-border p-3">
-        <button
-          type="button"
-          className="keyboard-focus-surface flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-hover"
-          onClick={() => {
-            void handleInteractiveCloudLogin().catch((error: unknown) => {
-              // error-policy:J4 login failure surfaces as a visible notice.
-              setActionNotice?.(
-                error instanceof Error
-                  ? error.message
-                  : "Could not start Cloud login.",
-                "error",
-                5000,
-              );
-            });
-          }}
-        >
-          <Circle className="size-2.5 text-muted-foreground" />
-          Connect Cloud
-        </button>
-      </div>
+      <Card asChild variant="topDivider" padding="default">
+        <div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="row"
+            align="start"
+            onClick={() => {
+              void handleInteractiveCloudLogin().catch((error: unknown) => {
+                // error-policy:J4 login failure surfaces as a visible notice.
+                setActionNotice?.(
+                  error instanceof Error
+                    ? error.message
+                    : "Could not start Cloud login.",
+                  "error",
+                  5000,
+                );
+              });
+            }}
+          >
+            <Circle className="size-2.5 text-muted-foreground" />
+            Connect Cloud
+          </Button>
+        </div>
+      </Card>
     );
   }
 
   if (accountState === "signing-out") {
     return (
-      <div className="border-t border-border p-3">
-        <div
-          aria-live="polite"
-          className="flex min-h-9 items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground"
-          role="status"
-        >
-          <Loader2
-            aria-hidden="true"
-            className="size-3.5 animate-spin motion-reduce:animate-none"
-          />
-          Signing out…
+      <Card asChild variant="topDivider" padding="default">
+        <div>
+          <div
+            aria-live="polite"
+            className="flex min-h-9 items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground"
+            role="status"
+          >
+            <Loader2
+              aria-hidden="true"
+              className="size-3.5 animate-spin motion-reduce:animate-none"
+            />
+            Signing out…
+          </div>
         </div>
-      </div>
+      </Card>
     );
   }
 
   if (accountState === "sign-out-failed") {
     return (
-      <div className="space-y-2 border-t border-border p-3">
-        <p className="px-2 text-xs text-destructive" role="alert">
-          Cloud sign-out didn&apos;t finish.
-        </p>
-        <button
-          type="button"
-          className="keyboard-focus-surface flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-hover"
-          onClick={startSignOut}
-        >
-          <RotateCcw aria-hidden="true" className="size-3.5" />
-          Retry sign out
-        </button>
-      </div>
+      <Card asChild variant="topDivider" stack="compact" padding="default">
+        <div>
+          <p className="px-2 text-xs text-destructive" role="alert">
+            Cloud sign-out didn&apos;t finish.
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="row"
+            align="start"
+            onClick={startSignOut}
+          >
+            <RotateCcw aria-hidden="true" className="size-3.5" />
+            Retry sign out
+          </Button>
+        </div>
+      </Card>
     );
   }
 
   return (
-    <div className="border-t border-border px-3 py-2">
-      <button
-        type="button"
-        aria-controls="cloud-account-menu"
-        aria-expanded={open}
-        className="keyboard-focus-surface flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-bg-hover"
-        onClick={() => setOpen(!open)}
-      >
-        <span className="flex items-center gap-2 truncate">
-          <Circle className="size-2.5 shrink-0 text-ok" />
-          <span className="truncate text-muted-foreground">Connected</span>
-        </span>
-        <ChevronUp
-          className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform",
-            !open && "rotate-180",
-          )}
-        />
-      </button>
-      {open && (
-        <div
-          id="cloud-account-menu"
-          className="mt-1 space-y-0.5 rounded-md border border-border bg-card p-2"
+    <Card asChild variant="topDivider" padding="compact">
+      <div>
+        <Button
+          type="button"
+          aria-controls="cloud-account-menu"
+          aria-expanded={open}
+          variant="ghost"
+          size="row"
+          className="justify-between"
+          onClick={() => setOpen(!open)}
         >
-          {cloudPanelAccountFooterSections().map((section) => (
-            <FooterLink
-              key={section.id}
-              section={section}
-              active={section.id === activeSection}
-              onSelect={onSelect}
-            />
-          ))}
-          <div className="my-1 border-t border-border" />
-          <button
-            type="button"
-            className="keyboard-focus-surface flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
-            onClick={startSignOut}
+          <span className="flex items-center gap-2 truncate">
+            <Circle className="size-2.5 shrink-0 text-ok" />
+            <span className="truncate text-muted-foreground">Connected</span>
+          </span>
+          <ChevronUp
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground transition-transform",
+              !open && "rotate-180",
+            )}
+          />
+        </Button>
+        {open && (
+          <Card
+            id="cloud-account-menu"
+            variant="insetCompact"
+            className="mt-1 space-y-0.5 p-2"
           >
-            Sign out
-          </button>
-        </div>
-      )}
-    </div>
+            {cloudPanelAccountFooterSections().map((section) => (
+              <FooterLink
+                key={section.id}
+                section={section}
+                active={section.id === activeSection}
+                onSelect={onSelect}
+              />
+            ))}
+            <Separator className="my-1" />
+            <Button
+              type="button"
+              variant="surfaceDestructive"
+              size="row"
+              align="start"
+              onClick={startSignOut}
+            >
+              Sign out
+            </Button>
+          </Card>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -184,22 +204,27 @@ function FooterLink({
   onSelect: (id: string, options?: CloudPanelNavigationOptions) => void;
 }) {
   return (
-    <a
-      href={`#${section.id}`}
-      onClick={(event) => {
-        event.preventDefault();
-        onSelect(section.id);
-      }}
-      aria-current={active ? "page" : undefined}
+    <Button
+      asChild
+      variant="selection"
+      size="content"
+      data-state={active ? "on" : "off"}
       className={cn(
-        "keyboard-focus-surface flex w-full items-center rounded-sm px-2 py-1.5 text-sm transition-colors",
-        active
-          ? "bg-accent-subtle font-medium text-foreground"
-          : "text-muted-foreground hover:bg-bg-hover hover:text-foreground",
+        "keyboard-focus-surface flex w-full items-center px-2 py-1.5 text-sm",
+        active && "font-medium",
       )}
     >
-      {section.footerLabel}
-    </a>
+      <a
+        href={`#${section.id}`}
+        onClick={(event) => {
+          event.preventDefault();
+          onSelect(section.id);
+        }}
+        aria-current={active ? "page" : undefined}
+      >
+        {section.footerLabel}
+      </a>
+    </Button>
   );
 }
 
@@ -214,16 +239,15 @@ function SectionItem({
 }) {
   const Icon = section.icon;
   return (
-    <button
+    <Button
+      variant="selection"
+      size="compact"
+      align="start"
+      data-state={active ? "on" : "off"}
       type="button"
       onClick={() => onSelect(section.id)}
       aria-current={active ? "page" : undefined}
-      className={cn(
-        "keyboard-focus-surface flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
-        active
-          ? "bg-accent-subtle font-medium text-foreground"
-          : "text-muted-foreground hover:bg-bg-hover hover:text-foreground",
-      )}
+      className="keyboard-focus-surface w-full"
     >
       <Icon
         className={cn(
@@ -235,7 +259,7 @@ function SectionItem({
       {active && (
         <Check className="ml-auto size-3.5 shrink-0 text-foreground" />
       )}
-    </button>
+    </Button>
   );
 }
 

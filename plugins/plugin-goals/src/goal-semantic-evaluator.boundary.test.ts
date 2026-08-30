@@ -6,7 +6,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { LifeOpsGoalDefinition } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { MAX_GOAL_PROMPT_VALUE_NODES } from "./goal-prompt-value.ts";
 import { evaluateGoalProgressWithLlm } from "./goal-semantic-evaluator.ts";
 
 describe("evaluateGoalProgressWithLlm prompt boundary", () => {
@@ -19,7 +18,7 @@ describe("evaluateGoalProgressWithLlm prompt boundary", () => {
       },
     } as unknown as IAgentRuntime;
     const sparse: unknown[] = [];
-    sparse.length = MAX_GOAL_PROMPT_VALUE_NODES + 1;
+    sparse.length = 1_000_000;
 
     const result = await evaluateGoalProgressWithLlm({
       runtime,

@@ -1284,16 +1284,12 @@ function resolvePromptBudget(
     toOptionalNumber(payloadRecord.maxOutputTokens),
     toOptionalNumber(payloadRecord.maxTokens),
   ].find((value): value is number => value !== undefined && value > 0);
-  const configuredOutputTokens = requestedOutputTokens ?? metadata.maxTokens;
-  const outputReserveTokens =
-    configuredOutputTokens === undefined
-      ? undefined
-      : Math.min(
-          Math.max(1, metadata.contextWindow - 1),
-          configuredOutputTokens,
-        );
+  // Model metadata describes provider capacity; it must never become an
+  // outbound generation cap. Preserve an explicit caller request exactly so
+  // the provider can either honor it or reject it as unsupported.
+  const outputReserveTokens = requestedOutputTokens;
   const promptBudgetTokens = Math.max(
-    1,
+    0,
     Math.floor((metadata.contextWindow - (outputReserveTokens ?? 0)) * 0.95),
   );
 

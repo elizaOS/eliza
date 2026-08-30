@@ -76,7 +76,7 @@ export function createWhatsAppConnectorContribution(
     },
     async read(query: unknown) {
       const params = (query ?? {}) as { limit?: number };
-      return service.pullWhatsAppRecent(params.limit ?? 25);
+      return service.pullWhatsAppRecent(params.limit);
     },
   };
 }

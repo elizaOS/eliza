@@ -26,9 +26,11 @@ import {
   EventType,
   emitInferenceTiming,
   executePlannedToolCall,
+  getEntityRole,
   getInferenceTimer,
   getSwarmCoordinatorService,
   hasAppliedUserFacingEffectProof,
+  hasAtLeastRole,
   INFERENCE_MARKS,
   INSUFFICIENT_CREDITS_REPLY,
   InferenceTurnTimer,
@@ -45,6 +47,7 @@ import {
   type RoomHandlerLease,
   type RouteRequestContext,
   recordOwnerGrant,
+  recordRoleGrant,
   renderInteractionsAsPlainText,
   revertedEffectReceiptIds,
   runWithInferenceTiming,
@@ -56,7 +59,6 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
   trackPostDeliveryTask,
-  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -104,6 +106,7 @@ import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.ts";
+import { enrichChatUiViewMetadata } from "./chat-view-metadata.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import {
   extractAnthropicSystemAndLastUser,
@@ -454,16 +457,6 @@ function readRuntimeStringSetting(
   return typeof env === "string" && env.trim().length > 0 ? env.trim() : null;
 }
 
-function readPositiveIntegerSetting(
-  runtime: AgentRuntime,
-  key: string,
-  fallback: number,
-): number {
-  const raw = readRuntimeStringSetting(runtime, key);
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
-
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
   const optIn = readRuntimeStringSetting(
     runtime,
@@ -801,17 +794,11 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     userText,
   });
   if (!prompt) return null;
-  const maxTokens = readPositiveIntegerSetting(
-    args.runtime,
-    "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
-    128,
-  );
   const startedAt = Date.now();
   args.runtime.logger.info(
     {
       src: "eliza-api",
       promptChars: prompt.length,
-      maxTokens,
       messageId: args.message.id,
     },
     "[eliza-api] Android local direct chat fast path start",
@@ -844,7 +831,6 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   };
   const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,
-    maxTokens,
     stopSequences: ["<end_of_turn>", "<start_of_turn>"],
     temperature: 0,
     providerOptions: {
@@ -880,7 +866,6 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     mode: "api_fast_path",
     latencyMs,
     promptChars: prompt.length,
-    maxTokens,
     streamedChunks,
   } satisfies LocalInferenceChatMetadata;
   const responseContent = {
@@ -1919,32 +1904,45 @@ function walletActionMatchesIntent(
   return attributedOperations.length > 0;
 }
 
-function sanitizeActionResultValue(value: unknown, depth = 0): unknown {
+function sanitizeActionResultValue(
+  value: unknown,
+  ancestors: WeakSet<object> = new WeakSet(),
+): unknown {
   if (value === null) return null;
   if (typeof value === "boolean") return value;
   if (typeof value === "number")
     return Number.isFinite(value) ? value : undefined;
   if (typeof value === "string") {
-    const wellFormed = toWellFormedUnicode(value);
-    return wellFormed.length > 1000
-      ? `${truncateWellFormed(wellFormed, 997)}...`
-      : wellFormed;
+    return toWellFormedUnicode(value);
   }
   if (Array.isArray(value)) {
-    if (depth >= 2) return undefined;
-    return value
-      .slice(0, 20)
-      .map((entry) => sanitizeActionResultValue(entry, depth + 1))
-      .filter((entry) => entry !== undefined);
+    if (ancestors.has(value)) {
+      throw new Error("Action result contains a circular array");
+    }
+    ancestors.add(value);
+    try {
+      return value
+        .map((entry) => sanitizeActionResultValue(entry, ancestors))
+        .filter((entry) => entry !== undefined);
+    } finally {
+      ancestors.delete(value);
+    }
   }
   if (value && typeof value === "object") {
-    if (depth >= 2) return undefined;
-    const output: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value).slice(0, 20)) {
-      const safe = sanitizeActionResultValue(entry, depth + 1);
-      if (safe !== undefined) output[key] = safe;
+    if (ancestors.has(value)) {
+      throw new Error("Action result contains a circular object");
     }
-    return output;
+    ancestors.add(value);
+    try {
+      const output: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(value)) {
+        const safe = sanitizeActionResultValue(entry, ancestors);
+        if (safe !== undefined) output[key] = safe;
+      }
+      return output;
+    } finally {
+      ancestors.delete(value);
+    }
   }
   return undefined;
 }
@@ -1955,7 +1953,7 @@ function sanitizeActionResultValues(
   if (!values || typeof values !== "object" || Array.isArray(values))
     return undefined;
   const output: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(values).slice(0, 20)) {
+  for (const [key, value] of Object.entries(values)) {
     const safe = sanitizeActionResultValue(value);
     if (safe !== undefined) output[key] = safe;
   }
@@ -1997,7 +1995,7 @@ function summarizeActionResultForClient(
   };
 }
 
-function summarizeRuntimeActionResults(
+export function summarizeRuntimeActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
   turnActionResults?: unknown[],
@@ -2008,8 +2006,7 @@ function summarizeRuntimeActionResults(
       : readRuntimeActionResults(runtime, messageId);
   return actionResults
     .map(summarizeActionResultForClient)
-    .filter((entry): entry is ChatActionResultSummary => Boolean(entry))
-    .slice(-8);
+    .filter((entry): entry is ChatActionResultSummary => Boolean(entry));
 }
 
 function resolveFinalTranscriptVisibility(
@@ -3155,12 +3152,13 @@ export async function readChatRequestPayload(
     typeof body.source === "string" && body.source.trim().length > 0
       ? body.source.trim()
       : undefined;
-  const metadata =
+  const rawMetadata =
     body.metadata &&
     typeof body.metadata === "object" &&
     !Array.isArray(body.metadata)
       ? body.metadata
       : undefined;
+  const metadata = enrichChatUiViewMetadata(rawMetadata);
   const clientMessageId = normalizeClientMessageId(body.clientMessageId);
   if (body.clientMessageId !== undefined && clientMessageId === null) {
     helpers.error(
@@ -4567,7 +4565,6 @@ Title:`;
 
   const title = await runtime.useModel(modelClass, {
     prompt,
-    maxTokens: 20,
     temperature: 0.7,
     signal: options?.signal,
   });
@@ -4614,7 +4611,11 @@ export function resolveChatAdminEntityId(state: ChatRouteState): UUID {
   return resolveClientChatAdminEntityId(state);
 }
 
-async function ensureCompatChatConnection(
+/**
+ * Exported for the machine-session role-grant regression suite; runtime callers
+ * are the chat POST paths in this module.
+ */
+export async function ensureCompatChatConnection(
   state: ChatRouteState,
   runtime: AgentRuntime,
   agentName: string,
@@ -4651,6 +4652,9 @@ async function ensureCompatChatConnection(
   });
 
   if (!ownerPrincipal) {
+    if (principal.kind === "service_gateway" && principal.sessionRole) {
+      await grantSessionUserWorldRole(runtime, worldId, userId);
+    }
     return { userId, roomId, worldId };
   }
 
@@ -4684,6 +4688,51 @@ async function ensureCompatChatConnection(
   return { userId, roomId, worldId };
 }
 
+/**
+ * Grant-on-first-contact USER world membership for an authenticated
+ * machine-session (paired-device) principal's minted external entity, so its
+ * turns resolve at least the session's boundary role through
+ * `checkSenderRole`/`resolveEntityRole` (which read `world.metadata.roles`).
+ *
+ * Bounded by construction: the grant is always exactly "USER" with audit
+ * source "session", and an existing USER-or-higher grant (e.g. a manual ADMIN
+ * grant by the owner) is never overwritten or downgraded.
+ *
+ * Revocation semantics: the grant itself is durable world metadata, but acting
+ * as the granted entity requires re-entering through the HTTP session boundary
+ * on every turn — the entity id is derived from the session's auth-identity id,
+ * and `resolveTrustedApiPrincipal` only attaches `sessionRole` when the store
+ * resolves a live session. A revoked or expired session fails boundary auth
+ * (401) or classifies as a plain external principal, which mints a DIFFERENT
+ * entity that resolves GUEST; unpairing the device (deleting the identity)
+ * removes the only path to the granted entity entirely. New turns therefore
+ * never retain elevated attribution after revocation.
+ */
+async function grantSessionUserWorldRole(
+  runtime: AgentRuntime,
+  worldId: UUID,
+  entityId: UUID,
+): Promise<void> {
+  const world = await runtime.getWorld(worldId);
+  if (!world) {
+    // ensureConnection creates the world before this runs; a missing world
+    // fails closed (the entity stays GUEST) rather than failing the turn.
+    runtime.logger.warn(
+      { src: "eliza-api", worldId, entityId },
+      "[eliza-api] machine-session USER grant skipped: web-chat world missing",
+    );
+    return;
+  }
+  world.metadata ??= {};
+  const metadata = world.metadata as RolesWorldMetadata;
+  if (hasAtLeastRole(getEntityRole(metadata, entityId), "USER")) {
+    return;
+  }
+  if (recordRoleGrant(metadata, entityId, "USER", "session")) {
+    await runtime.updateWorld(world);
+  }
+}
+
 function ensureAdminEntityIdForChat(state: ChatRouteState): UUID {
   return resolveChatAdminEntityId(state);
 }
@@ -4708,12 +4757,32 @@ export function resolveTrustedApiPrincipal(
     };
   }
   if (authorization?.ok) {
+    const principalId =
+      authorization.identityId ??
+      authorization.principal ??
+      "authenticated-external-session";
+    // A DB-backed machine session (device pairing) authenticates with boundary
+    // role USER (roleForIdentityKind: "machine" -> USER). Carry that boundary
+    // role on the still-external principal so chat ingress can grant the minted
+    // entity USER world membership — clamped to the literal "USER" tier, so
+    // this seam can never mint ADMIN/OWNER attribution. Restricted to callers
+    // with an `identityId` (a revocable, store-backed session identity):
+    // principal-only token authorities and sub-USER boundary roles stay plain
+    // external principals.
+    if (
+      authorization.identityId &&
+      hasAtLeastRole(authorization.role, "USER")
+    ) {
+      return {
+        kind: "service_gateway",
+        principalId,
+        sessionRole: "USER",
+        sessionIdentityId: authorization.identityId,
+      };
+    }
     return {
       kind: "service_gateway",
-      principalId:
-        authorization.identityId ??
-        authorization.principal ??
-        "authenticated-external-session",
+      principalId,
     };
   }
   if (isAuthorized(req)) {
@@ -5584,7 +5653,10 @@ export async function handleChatRoutes(
       const messagePrincipal: TrustedApiPrincipal =
         trustedApiPrincipal.kind === "service_gateway"
           ? {
-              kind: "service_gateway",
+              // Keep sessionRole/sessionIdentityId: the per-user surrogate is
+              // still a turn of the same authenticated session, and its minted
+              // entity stays scoped under the session's principal id.
+              ...trustedApiPrincipal,
               principalId: `${trustedApiPrincipal.principalId}:${userId}`,
             }
           : trustedApiPrincipal;

@@ -5,57 +5,41 @@
 
 "use client";
 
-import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as React from "react";
 import { Button } from "../../../components/ui/button";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../../../components/ui/tabs";
 import { cn } from "../../lib/utils";
 
-const BrandTabs = TabsPrimitive.Root;
+const BrandTabs = Tabs;
 
 const BrandTabsList = React.forwardRef<
   HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
+  React.ComponentPropsWithoutRef<typeof TabsList>
 >(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    className={cn(
-      "inline-flex h-9 items-center justify-center rounded-sm border border-border bg-bg-elevated p-0",
-      className,
-    )}
-    {...props}
-  />
+  <TabsList ref={ref} variant="brand" className={className} {...props} />
 ));
-BrandTabsList.displayName = TabsPrimitive.List.displayName;
+BrandTabsList.displayName = "BrandTabsList";
 
 const BrandTabsTrigger = React.forwardRef<
   HTMLButtonElement,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+  React.ComponentPropsWithoutRef<typeof TabsTrigger>
 >(({ className, ...props }, ref) => (
-  <TabsPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      "inline-flex items-center gap-2 rounded-sm px-6 py-1.5 text-sm font-medium transition-colors whitespace-nowrap",
-      "border-b-2 border-transparent text-txt/70 hover:text-txt",
-      "data-[state=active]:border-txt data-[state=active]:bg-bg-hover data-[state=active]:text-txt",
-      "disabled:pointer-events-none disabled:opacity-50",
-      className,
-    )}
-    {...props}
-  />
+  <TabsTrigger ref={ref} variant="brand" className={className} {...props} />
 ));
-BrandTabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
+BrandTabsTrigger.displayName = "BrandTabsTrigger";
 
 const BrandTabsContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
+  React.ComponentPropsWithoutRef<typeof TabsContent>
 >(({ className, ...props }, ref) => (
-  <TabsPrimitive.Content
-    ref={ref}
-    className={cn("mt-8", className)}
-    {...props}
-  />
+  <TabsContent ref={ref} className={cn("mt-8", className)} {...props} />
 ));
-BrandTabsContent.displayName = TabsPrimitive.Content.displayName;
+BrandTabsContent.displayName = "BrandTabsContent";
 
 interface SimpleBrandTabsProps {
   tabs: string[];

@@ -77,7 +77,7 @@ export function CloudAccountMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          className="text-red-400"
+          className="text-destructive"
           onSelect={() => void signOut()}
         >
           <LogOut className="mr-2 size-3.5" aria-hidden />

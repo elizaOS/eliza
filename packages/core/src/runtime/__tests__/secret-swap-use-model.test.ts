@@ -12,7 +12,11 @@ import {
 	MAX_SECRET_SWAP_WALK_NODES,
 	SECRET_SWAP_UNBOUNDED,
 } from "../../security/secret-swap";
-import { type Character, ModelType } from "../../types";
+import {
+	type Character,
+	ModelType,
+	type TranscriptionParams,
+} from "../../types";
 
 function makeRuntime(enabled: boolean): AgentRuntime {
 	return new AgentRuntime({
@@ -70,6 +74,29 @@ describe("AgentRuntime.useModel secret swap", () => {
 
 		expect(seenPrompt).toContain("whsec_1234567890abcdef");
 		expect(seenPrompt).not.toContain("__ELIZA_SECRET_");
+	});
+
+	it("isolates nested transcription params when secret swap is enabled", async () => {
+		const runtime = makeRuntime(true);
+		const params: TranscriptionParams = {
+			audioUrl: "https://media.example.test/audio.wav",
+			billing: { billable: true, reason: "caller-owned" },
+		};
+		const handler = vi.fn(
+			async (_runtime, receivedParams: TranscriptionParams) => {
+				if (!receivedParams.billing) {
+					throw new Error("expected billing metadata");
+				}
+				receivedParams.billing.reason = "provider-mutated";
+				return "transcript";
+			},
+		);
+		runtime.registerModel(ModelType.TRANSCRIPTION, handler, "test");
+
+		await runtime.useModel(ModelType.TRANSCRIPTION, params);
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(params.billing?.reason).toBe("caller-owned");
 	});
 
 	it("rejects an unbounded sparse graph before model-provider dispatch", async () => {

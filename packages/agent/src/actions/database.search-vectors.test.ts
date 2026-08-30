@@ -71,4 +71,49 @@ describe("DATABASE search_vectors", () => {
       table: "memories",
     });
   });
+
+  it("rejects an omitted top-k instead of silently defaulting to ten", async () => {
+    const { runtime, searchMemories, useModel } = createRuntime();
+
+    const result = (await databaseAction.handler(
+      runtime,
+      {} as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "search_vectors",
+          query: "automobile purchase",
+          table: "memories",
+        },
+      },
+    )) as ActionResult;
+
+    expect(result.success).toBe(false);
+    expect(result.values).toMatchObject({ reason: "MISSING_EXPLICIT_LIMIT" });
+    expect(useModel).not.toHaveBeenCalled();
+    expect(searchMemories).not.toHaveBeenCalled();
+  });
+
+  it("preserves an explicitly requested top-k above the retired cap", async () => {
+    const { runtime, searchMemories } = createRuntime();
+
+    const result = (await databaseAction.handler(
+      runtime,
+      {} as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "search_vectors",
+          query: "automobile purchase",
+          table: "memories",
+          limit: 500,
+        },
+      },
+    )) as ActionResult;
+
+    expect(result.success).toBe(true);
+    expect(searchMemories).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 500 }),
+    );
+  });
 });

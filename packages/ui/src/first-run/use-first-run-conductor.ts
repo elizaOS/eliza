@@ -16,7 +16,8 @@
  * freely, and a second channel handler (`setFirstRunTextHandler`) answers that
  * free text with a local user turn + a deterministic assistant reply that
  * varies by flow position. Free text NEVER reaches the server pre-completion —
- * the AppContext funnel enforces that; this hook only renders the local echo.
+ * the AppContext funnel enforces that — and the complete request is restored
+ * to the real composer for review as soon as setup finishes.
  *
  * Provisioning runs exactly once and POSTs /api/first-run exactly once (the
  * finish module funnels + idempotency-guards it). The real `firstRunComplete`
@@ -68,19 +69,24 @@ import type {
   LocalAgentBackupMetadata,
 } from "../api";
 import { client } from "../api";
+import type {
+  DedicatedAdoptionConfirmationQuote,
+  DedicatedAdoptionConfirmationRequester,
+} from "../api/client-cloud";
 import {
   getCloudAuthToken,
   refreshCloudStewardSession,
 } from "../api/client-cloud";
 import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
-import { APP_RESUME_EVENT } from "../events";
+import { APP_RESUME_EVENT, dispatchChatPrefill } from "../events";
 import {
   ACCENT_PRESETS,
   useAppSelector,
   useAppSelectorShallow,
 } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
+import { consumeCloudAuthFirstScreenGreeting } from "../state/cloud-auth-first-screen";
 import {
   claimCloudLoginWindow,
   prepareDesktopCloudLoginSession,
@@ -130,6 +136,12 @@ import {
   FIRST_RUN_GREETING,
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "./first-run-greeting";
+import {
+  readPendingFirstRunText,
+  setPendingFirstRunTextReleaseHandler,
+  takePendingFirstRunText,
+  writePendingFirstRunText,
+} from "./first-run-pending-text";
 import { isRuntimeChooserEnabled } from "./first-run-runtime-flag";
 import { revertLocalRuntimeCommitment } from "./revert-local-runtime-commitment";
 
@@ -191,19 +203,16 @@ const RESTORE_GREETING =
 const FIRST_RUN_TEXT_REPLY = {
   // Before a runtime is picked / mid-choice: no agent exists yet.
   choosing:
-    "I'm not fully set up yet — pick one of the options above and I'll get your agent running. You can ask me anything the moment I'm ready.",
+    "Choose above: Cloud is easiest; local keeps things on this device. I'll pick up your request after setup.",
   // Cloud-only mode: the only pending step is the Eliza Cloud sign-in.
-  signIn:
-    "I'm not fully set up yet — sign in to Eliza Cloud above and I'll get your agent running. You can ask me anything the moment I'm ready.",
+  signIn: "Sign in above and I'll finish setup, then pick up your request.",
   // A finish/provision call is in flight.
   provisioning:
-    "Hang tight — I'm getting your agent ready right now. I'll answer as soon as I'm set up.",
+    "I'm setting up your agent now; I'll pick up your request when it's ready.",
   // Provisioning succeeded; only the accent + tutorial wrap-up remains.
-  wrapUp:
-    "Almost there — pick a tutorial option above (or skip) and I'm all yours.",
+  wrapUp: "Your agent's ready. Start the quick tour, or skip it and get going.",
   // A finish failed and the recovery choice is on screen.
-  error:
-    "Setup hit a snag. Use one of the options above to try again, choose another way to run, or open Settings — then I'll be right with you.",
+  error: "Setup hit a snag. Try again above; your request is still here.",
 } as const;
 
 function makeTurn(
@@ -226,11 +235,18 @@ function newestLocalBackup(
 ): LocalAgentBackupMetadata | null {
   return (
     backups.slice().sort((a, b) => {
-      const aTime = Date.parse(a.createdAt);
-      const bTime = Date.parse(b.createdAt);
-      const aSafe = Number.isFinite(aTime) ? aTime : 0;
-      const bSafe = Number.isFinite(bTime) ? bTime : 0;
-      return bSafe - aSafe || b.fileName.localeCompare(a.fileName);
+      const aCreatedAt = Date.parse(a.createdAt);
+      const bCreatedAt = Date.parse(b.createdAt);
+      const aHasValidDate = Number.isFinite(aCreatedAt);
+      const bHasValidDate = Number.isFinite(bCreatedAt);
+
+      if (aHasValidDate !== bHasValidDate) {
+        return aHasValidDate ? -1 : 1;
+      }
+      if (aHasValidDate && bHasValidDate && aCreatedAt !== bCreatedAt) {
+        return bCreatedAt - aCreatedAt;
+      }
+      return b.fileName.localeCompare(a.fileName);
     })[0] ?? null
   );
 }
@@ -339,6 +355,35 @@ const CLOUD_ONLY_ERROR_CHOICE = [
   `${FIRST_RUN_ACTION_PREFIX}error:settings=Configure in Settings`,
   "[/CHOICE]",
 ].join("\n");
+
+function dedicatedAdoptionConfirmationText(
+  quote: DedicatedAdoptionConfirmationQuote,
+  reason: "initial" | "quote_changed",
+): string {
+  const disposition =
+    quote.stateDisposition === "verified_backup_present"
+      ? "restore its reviewed backup"
+      : quote.stateDisposition === "fresh_boot_no_verified_backup"
+        ? "start fresh because no verified backup is available"
+        : "keep its current state without a reviewed restore";
+  const changed =
+    reason === "quote_changed"
+      ? "The agent or hosting quote changed while you were reviewing it. Please review the updated terms.\n\n"
+      : "";
+  return [
+    `${changed}Use your existing Dedicated agent?`,
+    "",
+    `Current status: ${quote.status}.`,
+    `Hosting: $${quote.hourlyRateUsd.toFixed(2)}/hour ($${quote.dailyRateUsd.toFixed(2)}/day).`,
+    `Balance: $${quote.balanceUsd.toFixed(2)}; minimum required: $${quote.minimumBalanceUsd.toFixed(2)} (${quote.minimumRunwayDays} days of runway); deficit: $${quote.deficitUsd.toFixed(2)}.`,
+    `This action ${quote.startsCompute ? "starts Dedicated compute" : "does not start new compute"} and will ${disposition}.`,
+    "",
+    "[CHOICE:first-run id=dedicated-adoption]",
+    `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:confirm=Confirm and continue`,
+    `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:cancel=Not now`,
+    "[/CHOICE]",
+  ].join("\n");
+}
 
 /**
  * Turn a raw finish error into a human sentence. The underlying message can be
@@ -496,6 +541,16 @@ export function useFirstRunConductor(): void {
   // popup/provision promise can never keep the busy latch or mutate the new
   // flow when it settles late.
   const activeCloudLoginCancelRef = React.useRef<(() => void) | null>(null);
+  const pendingDedicatedAdoptionRef = React.useRef<{
+    quote: DedicatedAdoptionConfirmationQuote;
+    resolve: (
+      confirmation: {
+        action: "adopt_existing_dedicated";
+        quoteId: string;
+      } | null,
+    ) => void;
+    dispose: () => void;
+  } | null>(null);
   // Latched by the first tutorial pick: the store flip unregisters the handler
   // only on the next commit, so a double-tap could otherwise re-fire
   // completeFirstRun/startTutorial in the gap.
@@ -512,10 +567,28 @@ export function useFirstRunConductor(): void {
   // genuinely interactive or genuinely slow must render: a REAL provisioning
   // status, the multi-agent selector, a sign-in retry ask, or an error turn.
   const silentCloudEntryRef = React.useRef(false);
+  const greetAfterCloudAuthRef = React.useRef(false);
   // Monotonic id source for typed-text turns: guarantees a unique user/reply id
   // per send even when two land in the same millisecond, so `seedTurn`'s id
   // dedup never silently swallows an acknowledged message.
   const textTurnSeqRef = React.useRef(0);
+  // Every pre-agent request is retained losslessly. Multiple turns remain
+  // distinct paragraphs when setup releases the real composer.
+  const pendingFirstRunTextRef = React.useRef<string[]>(
+    readPendingFirstRunText(),
+  );
+  const resumePendingFirstRunText = React.useCallback(() => {
+    // The ref is authoritative in-session: a later localStorage quota failure
+    // must not roll it back to an older durable prefix. On a cold mount the ref
+    // was initialized from that same durable copy.
+    const pending = pendingFirstRunTextRef.current;
+    const durable = takePendingFirstRunText();
+    if (pending.length === 0 && durable.length > 0) pending.push(...durable);
+    if (pending.length === 0) return;
+    pendingFirstRunTextRef.current = [];
+    const text = pending.join("\n\n");
+    queueMicrotask(() => dispatchChatPrefill({ text, select: true }));
+  }, []);
   // Re-offered choice turns have the same collision risk: a user can reject
   // two unavailable options before the wall clock advances.
   const choiceTurnSeqRef = React.useRef(0);
@@ -555,6 +628,42 @@ export function useFirstRunConductor(): void {
     [setConversationMessages],
   );
 
+  const requestDedicatedAdoptionConfirmation =
+    React.useCallback<DedicatedAdoptionConfirmationRequester>(
+      (quote, context) => {
+        context.signal?.throwIfAborted();
+        pendingDedicatedAdoptionRef.current?.resolve(null);
+        pendingDedicatedAdoptionRef.current?.dispose();
+        silentCloudEntryRef.current = false;
+        seedFreshChoiceTurn(
+          "first-run:dedicated-adoption",
+          dedicatedAdoptionConfirmationText(quote, context.reason),
+        );
+        return new Promise((resolve, reject) => {
+          const onAbort = () => {
+            if (pendingDedicatedAdoptionRef.current?.quote !== quote) return;
+            pendingDedicatedAdoptionRef.current = null;
+            reject(context.signal?.reason);
+          };
+          context.signal?.addEventListener("abort", onAbort, { once: true });
+          const dispose = () =>
+            context.signal?.removeEventListener("abort", onAbort);
+          pendingDedicatedAdoptionRef.current = { quote, resolve, dispose };
+        });
+      },
+      [seedFreshChoiceTurn],
+    );
+
+  React.useEffect(
+    () => () => {
+      const pending = pendingDedicatedAdoptionRef.current;
+      pendingDedicatedAdoptionRef.current = null;
+      pending?.dispose();
+      pending?.resolve(null);
+    },
+    [],
+  );
+
   const seedTutorial = React.useCallback(() => {
     provisionedRef.current = true;
     // "Make it yours" — the accent step is seeded alongside the tutorial prompt
@@ -592,11 +701,20 @@ export function useFirstRunConductor(): void {
     // already signed in and their agent already exists — land straight in chat
     // with no wrap-up turn. A create/wake path cleared the ref on its first
     // real provisioning status, so its wrap-up still renders.
-    if (!silentCloudEntryRef.current) {
+    if (greetAfterCloudAuthRef.current) {
+      greetAfterCloudAuthRef.current = false;
+      seedTurn(
+        makeTurn(
+          "first-run:cloud-welcome",
+          `${FIRST_RUN_GREETING} ${CLOUD_ONLY_DONE}`,
+        ),
+      );
+    } else if (!silentCloudEntryRef.current) {
       seedTurn(makeTurn("first-run:cloud-done", CLOUD_ONLY_DONE));
     }
     completeFirstRun("chat");
-  }, [seedTurn, completeFirstRun]);
+    resumePendingFirstRunText();
+  }, [seedTurn, completeFirstRun, resumePendingFirstRunText]);
 
   const seedBackupRestoreChoice = React.useCallback(
     (backups: LocalAgentBackupMetadata[]) => {
@@ -663,6 +781,7 @@ export function useFirstRunConductor(): void {
         }
         seedTurn(makeTurn(`first-run:status:${text}`, text));
       },
+      requestDedicatedAdoptionConfirmation,
     }),
     [
       uiLanguage,
@@ -674,6 +793,7 @@ export function useFirstRunConductor(): void {
       completeCloudOnly,
       seedTurn,
       runtimeChooserEnabled,
+      requestDedicatedAdoptionConfirmation,
     ],
   );
   const portsRef = React.useRef(ports);
@@ -711,7 +831,8 @@ export function useFirstRunConductor(): void {
     completedRef.current = true;
     setTab("settings");
     completeFirstRun("settings");
-  }, [setTab, completeFirstRun]);
+    resumePendingFirstRunText();
+  }, [setTab, completeFirstRun, resumePendingFirstRunText]);
 
   const seedCloudAgentChoice = React.useCallback(
     (agents: { id?: string; name?: string }[]) => {
@@ -877,10 +998,10 @@ export function useFirstRunConductor(): void {
         );
       });
     };
-    // Idempotent: armed up front for a visible entry, or at the moment a
-    // silent entry (#15133) degrades into interactive OAuth via the finish
-    // flow's onInteractiveLogin port — the path that previously had neither
-    // a deadline nor a waiting turn and could strand an empty transcript.
+    // Idempotent and OAuth-only: arm at the moment the finish flow actually
+    // enters interactive OAuth. An already-authenticated entry can spend up to
+    // six minutes activating Dedicated compute; applying this 90s login guard
+    // to that separate phase aborts healthy provisioning before its own bound.
     const armRecoveryDeadline = () => {
       if (loginDeadline) return;
       loginDeadline = armCloudLoginWaitDeadline({
@@ -906,15 +1027,16 @@ export function useFirstRunConductor(): void {
     };
     if (!silentCloudEntryRef.current) {
       seedWaitingTurn();
-      armRecoveryDeadline();
     }
-    // Pre-open the cloud-login popup synchronously NOW — the action handler is
-    // still inside the user gesture, but the provision flow below awaits
-    // several network round-trips before reaching the (async) interactive login
-    // entry point. User activation does not survive those awaits, so opening the
-    // window here keeps the popup path (#15143) while entry point's named
-    // `window.open` would be blocked (#17064 regression guard).
-    claimCloudLoginWindow();
+    // Pre-open only when this gesture can actually enter OAuth. A usable
+    // stored Steward token takes the silent provisioning path and may spend
+    // the full Dedicated startup budget there; retaining an about:blank popup
+    // for that entire phase is both misleading and unnecessary. Token-less
+    // entries still claim synchronously because user activation does not
+    // survive the network awaits before interactive login (#15143/#17064).
+    if (!hasUsableStoredStewardToken()) {
+      claimCloudLoginWindow();
+    }
     void listOrAutoProvisionCloudAgent(draftRef.current, {
       ...portsRef.current,
       signal: abortController.signal,
@@ -928,6 +1050,9 @@ export function useFirstRunConductor(): void {
           seedWaitingTurn();
         }
         armRecoveryDeadline();
+      },
+      onInteractiveLoginComplete: () => {
+        loginDeadline?.cancel();
       },
     })
       .then((outcome) => {
@@ -1090,6 +1215,27 @@ export function useFirstRunConductor(): void {
       if (group === "cloud-login" && id === "retry") {
         activeCloudLoginCancelRef.current?.();
         startCloudProvisionFlow();
+        return true;
+      }
+
+      // The provisioning promise is deliberately still in flight while this
+      // visible quote is on screen, so consent must be handled before the
+      // generic busy guard. Only the exact current quote resolver is released;
+      // stale confirmation widgets become harmless no-ops.
+      if (group === "dedicated-adoption") {
+        if (id !== "confirm" && id !== "cancel") return true;
+        const pending = pendingDedicatedAdoptionRef.current;
+        if (!pending) return true;
+        pendingDedicatedAdoptionRef.current = null;
+        pending.dispose();
+        pending.resolve(
+          id === "confirm"
+            ? {
+                action: "adopt_existing_dedicated",
+                quoteId: pending.quote.quoteId,
+              }
+            : null,
+        );
         return true;
       }
 
@@ -1398,6 +1544,7 @@ export function useFirstRunConductor(): void {
         // The single real completion: flip the gate (deactivates the conductor),
         // then optionally launch the interactive tutorial.
         completeFirstRun("chat");
+        resumePendingFirstRunText();
         if (id === "start") startTutorial();
         return true;
       }
@@ -1412,6 +1559,7 @@ export function useFirstRunConductor(): void {
       seedRuntimeChoice,
       replaceTurn,
       completeFirstRun,
+      resumePendingFirstRunText,
       exitToSettings,
       startCloudProvisionFlow,
       startProviderFinish,
@@ -1426,7 +1574,7 @@ export function useFirstRunConductor(): void {
   // Render their text as a local user turn, then a deterministic assistant
   // reply keyed on the live flow position. Nothing here touches the network —
   // the "no server send pre-completion" property is enforced at the AppContext
-  // funnel; this only echoes into the transcript.
+  // funnel; the complete text is queued for the real composer after setup.
   const handleFirstRunText = React.useCallback(
     (text: string): boolean => {
       const trimmed = text.trim();
@@ -1434,19 +1582,22 @@ export function useFirstRunConductor(): void {
       // A silent cloud entry counts as provisioning even before its first
       // network call lands (the bounded cookie refresh): there is no sign-in
       // ask on screen, so the signIn nudge would point at nothing.
-      const reply =
+      const waitingForProvision =
         busyRef.current ||
         bindInFlightRef.current ||
-        silentCloudEntryRef.current
-          ? FIRST_RUN_TEXT_REPLY.provisioning
-          : provisionedRef.current
-            ? FIRST_RUN_TEXT_REPLY.wrapUp
-            : erroredRef.current
-              ? FIRST_RUN_TEXT_REPLY.error
-              : runtimeChooserEnabled
-                ? FIRST_RUN_TEXT_REPLY.choosing
-                : FIRST_RUN_TEXT_REPLY.signIn;
+        silentCloudEntryRef.current;
+      const reply = waitingForProvision
+        ? FIRST_RUN_TEXT_REPLY.provisioning
+        : provisionedRef.current
+          ? FIRST_RUN_TEXT_REPLY.wrapUp
+          : erroredRef.current
+            ? FIRST_RUN_TEXT_REPLY.error
+            : runtimeChooserEnabled
+              ? FIRST_RUN_TEXT_REPLY.choosing
+              : FIRST_RUN_TEXT_REPLY.signIn;
       textTurnSeqRef.current += 1;
+      pendingFirstRunTextRef.current.push(trimmed);
+      writePendingFirstRunText(pendingFirstRunTextRef.current);
       const seq = textTurnSeqRef.current;
       seedTurn({
         id: `first-run:user:${seq}`,
@@ -1455,7 +1606,12 @@ export function useFirstRunConductor(): void {
         timestamp: Date.now(),
         source: "first_run",
       });
-      seedTurn(makeTurn(`first-run:reply:${seq}`, reply));
+      seedTurn(
+        makeTurn(
+          `first-run:reply:${waitingForProvision ? "wait" : "choice"}:${seq}`,
+          reply,
+        ),
+      );
       return true;
     },
     [runtimeChooserEnabled, seedTurn],
@@ -1468,6 +1624,7 @@ export function useFirstRunConductor(): void {
     if (!active) {
       setFirstRunActionHandler(null);
       setFirstRunTextHandler(null);
+      setPendingFirstRunTextReleaseHandler(null);
       // Onboarding just completed: the overlay stops filtering the transcript to
       // the current first-run card (`selectFirstRunDisplayMessages`) and renders
       // the raw store, so every synthetic `first-run:*` turn the conductor
@@ -1494,6 +1651,7 @@ export function useFirstRunConductor(): void {
     silentCloudEntryRef.current = false;
     setFirstRunActionHandler((value) => handleActionRef.current(value));
     setFirstRunTextHandler((value) => handleTextRef.current(value));
+    setPendingFirstRunTextReleaseHandler(resumePendingFirstRunText);
     // Cloud-only onboarding (#13377): sign in to Eliza Cloud is the single
     // path. An already-usable session (hosted web where the user is logged in
     // to Eliza Cloud, a durable token from a previous login, a completed
@@ -1572,6 +1730,7 @@ export function useFirstRunConductor(): void {
       document.addEventListener(APP_RESUME_EVENT, onNativeResume);
       document.addEventListener("visibilitychange", onVisibilityChange);
       if (elizaCloudConnectedRef.current || hasUsableStoredStewardToken()) {
+        greetAfterCloudAuthRef.current = consumeCloudAuthFirstScreenGreeting();
         silentCloudEntryRef.current = true;
         runCloudResumeRef.current("cloud");
       } else if (typeof window !== "undefined" && hasStewardAuthedCookie()) {
@@ -1624,6 +1783,8 @@ export function useFirstRunConductor(): void {
               // error-policy:J6 best-effort nudge — consumers re-read the
               // stored token on their next tick regardless.
             }
+            greetAfterCloudAuthRef.current =
+              consumeCloudAuthFirstScreenGreeting();
             runCloudResumeRef.current("cloud");
             return;
           }
@@ -1640,6 +1801,7 @@ export function useFirstRunConductor(): void {
         document.removeEventListener("visibilitychange", onVisibilityChange);
         setFirstRunActionHandler(null);
         setFirstRunTextHandler(null);
+        setPendingFirstRunTextReleaseHandler(null);
       };
     }
     // Cloud-login resume: if the app was cold-launched mid cloud OAuth (the
@@ -1694,6 +1856,7 @@ export function useFirstRunConductor(): void {
       cancelled = true;
       setFirstRunActionHandler(null);
       setFirstRunTextHandler(null);
+      setPendingFirstRunTextReleaseHandler(null);
     };
   }, [
     active,
@@ -1702,6 +1865,7 @@ export function useFirstRunConductor(): void {
     seedTurn,
     setConversationMessages,
     runtimeChooserEnabled,
+    resumePendingFirstRunText,
   ]);
 }
 

@@ -85,6 +85,7 @@ describe("isParallelSafeTask", () => {
       true,
     );
     expect(serialPackages().has("@elizaos/plugin-sql")).toBe(true);
+    expect(serialPackages().has("@elizaos/plugin-coding-tools")).toBe(true);
   });
 });
 

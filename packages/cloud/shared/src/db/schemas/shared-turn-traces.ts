@@ -22,12 +22,34 @@ export type SharedTurnTraceStage = {
   tool?: string;
 };
 
+/** Content-free history identity supplied to one model turn. */
+export type SharedTurnTraceHistoryMessage = {
+  id: string | null;
+  role: "system" | "user" | "assistant";
+  createdAt: number | null;
+  interrupted: boolean;
+};
+
+/**
+ * Complete provenance for the history supplied to a turn. Message content is
+ * deliberately excluded; stable ids and transport metadata are sufficient to
+ * diagnose cross-channel or synthetic-test contamination.
+ */
+export type SharedTurnTraceHistoryProvenance = {
+  channelId: string;
+  channelType: string | null;
+  channelSource: string | null;
+  messages: SharedTurnTraceHistoryMessage[];
+};
+
 /** The `stages` jsonb payload: ordered stage list plus the turn's finish reason. */
 export type SharedTurnTraceStages = {
   finishReason: SharedTurnTraceFinishReason;
   stages: SharedTurnTraceStage[];
   /** Content-free terminal runtime receipt captured by the same sampled row. */
   terminalTiming?: SharedRuntimeTimingReceipt;
+  /** Content-free, complete model-history provenance for retained voice traces. */
+  historyProvenance?: SharedTurnTraceHistoryProvenance;
 };
 
 /** Token counts mirrored from `SharedAgentTurnUsage` (numbers only, no text). */

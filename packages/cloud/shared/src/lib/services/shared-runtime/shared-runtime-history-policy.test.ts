@@ -39,7 +39,6 @@ describe("shared runtime history merge policy", () => {
       mergeSharedRuntimeHistoryMessages(
         [complete],
         [{ ...complete, content: "complete", interrupted: true }],
-        40,
       ),
     ).toEqual([complete]);
   });
@@ -55,8 +54,8 @@ describe("shared runtime history merge policy", () => {
     const longer = { ...partial, content: "partial response" };
     const complete = { ...partial, content: "done", interrupted: false };
 
-    expect(mergeSharedRuntimeHistoryMessages([partial], [longer], 40)).toEqual([longer]);
-    expect(mergeSharedRuntimeHistoryMessages([longer], [complete], 40)).toEqual([complete]);
+    expect(mergeSharedRuntimeHistoryMessages([partial], [longer])).toEqual([longer]);
+    expect(mergeSharedRuntimeHistoryMessages([longer], [complete])).toEqual([complete]);
   });
 
   test("a stale same-message snapshot cannot erase validated grounding", () => {
@@ -77,7 +76,7 @@ describe("shared runtime history merge policy", () => {
     };
 
     expect(
-      mergeSharedRuntimeHistoryMessages([grounded], [{ ...grounded, grounding: undefined }], 40),
+      mergeSharedRuntimeHistoryMessages([grounded], [{ ...grounded, grounding: undefined }]),
     ).toEqual([grounded]);
   });
 
@@ -92,7 +91,7 @@ describe("shared runtime history merge policy", () => {
       { id: "invalid", role: "assistant" as const, content: "   ", createdAt: 4 },
     ];
 
-    expect(mergeSharedRuntimeHistoryMessages(current, incoming, 2)).toEqual([
+    expect(mergeSharedRuntimeHistoryMessages(current, incoming)).toEqual([
       current[0],
       current[1],
       incoming[1],
@@ -107,7 +106,7 @@ describe("shared runtime history merge policy", () => {
       createdAt: 100,
     };
 
-    expect(mergeSharedRuntimeHistoryMessages([event], [event], 40)).toEqual([event]);
+    expect(mergeSharedRuntimeHistoryMessages([event], [event])).toEqual([event]);
   });
 });
 
@@ -1011,7 +1010,7 @@ describe("shared runtime history safe sort (NaN + tiebreak)", () => {
       { id: "m-1", role: "user", content: "one", createdAt: 1000 } as any,
       { id: "m-2", role: "user", content: "two", createdAt: 1000 } as any,
     ];
-    const merged = mergeSharedRuntimeHistoryMessages([], messages, 10);
+    const merged = mergeSharedRuntimeHistoryMessages([], messages);
     // NaN -> 0 should be first, then tiebreak by id for equal 1000
     expect(merged.map((m) => m.id)).toEqual(["m-nan", "m-1", "m-2"]);
   });

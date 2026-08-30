@@ -1,25 +1,27 @@
 /**
  * FILE `glob` handler: expands a glob pattern to matching file paths, rooted at an
  * explicit path or the conversation's SessionCwdService cwd, with SandboxService
- * validation on the search root.
+ * validation on the search root and every returned candidate.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import {
-  type ActionResult,
-  logger as coreLogger,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
+import { logger as coreLogger } from "@elizaos/core";
+import { minimatch } from "minimatch";
 
 import {
   failureToActionResult,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
@@ -36,21 +38,22 @@ const EXCLUDED_DIR_NAMES = new Set([
   ".cache",
 ]);
 
-interface NodeFsGlobModule {
-  glob: (
-    pattern: string | string[],
-    options?: { cwd?: string; exclude?: (path: string) => boolean },
-  ) => AsyncIterable<string>;
+function unsafeGlobPattern(pattern: string): string | undefined {
+  if (pattern.includes("\0")) return "glob pattern must not contain NUL";
+  if (
+    path.isAbsolute(pattern) ||
+    pattern.startsWith("\\") ||
+    /^[A-Za-z]:[\\/]/.test(pattern)
+  ) {
+    return "glob pattern must be relative to the validated search root";
+  }
+  if (/(?:^|[\\/,{])\.\.(?=$|[\\/,}])/.test(pattern)) {
+    return "glob pattern must not traverse above the validated search root";
+  }
+  return undefined;
 }
 
-function getNodeFsGlob(): NodeFsGlobModule["glob"] | undefined {
-  const candidate = (fs as Partial<NodeFsGlobModule>).glob;
-  return typeof candidate === "function" ? candidate : undefined;
-}
-
-/** Exported for tests: the fallback matcher used when `fs.glob` is absent
- *  (Node < 22) — its branch behavior must match the native glob it stands in
- *  for. */
+/** Exported for focused compatibility tests of the minimal legacy matcher. */
 export function globToRegExp(pattern: string): RegExp {
   let regex = "";
   let i = 0;
@@ -87,60 +90,64 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${regex}$`);
 }
 
-async function walkFallback(root: string, pattern: string): Promise<string[]> {
-  const matcher = globToRegExp(pattern);
+/** Runtime-independent glob matching with Node/fs.glob dot-segment semantics. */
+export function matchesGlobPattern(
+  candidate: string,
+  pattern: string,
+): boolean {
+  return minimatch(candidate, pattern, {
+    dot: false,
+    nocomment: true,
+    nonegate: true,
+  });
+}
+
+type ReadDirectory = (
+  directory: string,
+) => Promise<Array<import("node:fs").Dirent>>;
+
+const readDirectoryWithTypes: ReadDirectory = (directory) =>
+  fs.readdir(directory, { withFileTypes: true });
+
+/**
+ * Discover only entries physically reachable beneath `root`, without following
+ * directory symlinks, then apply glob syntax to root-relative candidate names.
+ * Pattern text never reaches a filesystem traversal API.
+ */
+export async function walkContainedGlob(
+  root: string,
+  pattern: string,
+  readDirectory: ReadDirectory = readDirectoryWithTypes,
+): Promise<string[]> {
   const results: string[] = [];
+  const canMatchDescendants = /[\\/]/.test(pattern);
 
   async function walk(dir: string): Promise<void> {
-    let names: string[];
+    let entries: Array<import("node:fs").Dirent>;
     try {
-      names = await fs.readdir(dir);
+      entries = await readDirectory(dir);
     } catch {
       // error-policy:J6 best-effort walk; a directory that became unreadable
       // (permissions, race) is skipped so the remaining tree is still globbed.
       return;
     }
-    for (const name of names) {
-      if (EXCLUDED_DIR_NAMES.has(name)) continue;
-      const abs = path.join(dir, name);
-      try {
-        const st = await fs.lstat(abs);
-        if (st.isDirectory()) {
-          await walk(abs);
-        } else if (st.isFile()) {
-          const rel = path.relative(root, abs).split(path.sep).join("/");
-          if (matcher.test(rel)) {
-            results.push(abs);
-          }
-        }
-      } catch {
-        // error-policy:J6 best-effort per-entry lstat; an entry that vanished
-        // or is unreadable is skipped rather than aborting the whole walk.
+    for (const entry of entries) {
+      if (EXCLUDED_DIR_NAMES.has(entry.name)) continue;
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (canMatchDescendants) await walk(abs);
+        continue;
+      }
+      if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+      const rel = path.relative(root, abs).split(path.sep).join("/");
+      if (matchesGlobPattern(rel, pattern)) {
+        results.push(abs);
       }
     }
   }
 
   await walk(root);
   return results;
-}
-
-async function nodeGlob(
-  glob: NodeFsGlobModule["glob"],
-  root: string,
-  pattern: string,
-): Promise<string[]> {
-  const out: string[] = [];
-  const iter = glob(pattern, {
-    cwd: root,
-    exclude: (p: string) => {
-      const segments = p.split(/[\\/]/);
-      return segments.some((seg) => EXCLUDED_DIR_NAMES.has(seg));
-    },
-  });
-  for await (const entry of iter) {
-    out.push(path.isAbsolute(entry) ? entry : path.join(root, entry));
-  }
-  return out;
 }
 
 export async function globHandler(
@@ -172,6 +179,13 @@ export async function globHandler(
       message: "pattern is required",
     });
   }
+  const patternFailure = unsafeGlobPattern(pattern);
+  if (patternFailure) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message: patternFailure,
+    });
+  }
 
   const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
     typeof SandboxService
@@ -187,8 +201,14 @@ export async function globHandler(
   }
 
   const requestedPath = readStringParam(options, "path");
-  const targetPath =
-    requestedPath ?? (await session.getExistingCwd(conversationId)).cwd;
+  let targetPath: string;
+  if (requestedPath === undefined) {
+    targetPath = (await session.getExistingCwd(conversationId)).cwd;
+  } else {
+    const input = resolveInputPath(runtime, conversationId, requestedPath);
+    if (!input.ok) return failureToActionResult(input.failure);
+    targetPath = input.value;
+  }
 
   const validation = await sandbox.validatePath(conversationId, targetPath);
   if (validation.ok === false) {
@@ -199,26 +219,36 @@ export async function globHandler(
   const root = validation.resolved;
 
   let candidates: string[];
-  const builtinGlob = getNodeFsGlob();
-  if (builtinGlob) {
-    try {
-      candidates = await nodeGlob(builtinGlob, root, pattern);
-    } catch (err) {
-      // error-policy:J4 designed degrade; the native `node:fs.glob` and the
-      // manual walker compute the same match set, so a native-glob failure
-      // falls back to the walker with a warning rather than failing the action.
-      const msg = err instanceof Error ? err.message : String(err);
-      coreLogger.warn(
-        `${CODING_TOOLS_LOG_PREFIX} GLOB node:fs.glob failed (${msg}); falling back to walker`,
-      );
-      candidates = await walkFallback(root, pattern);
+  try {
+    candidates = await walkContainedGlob(root, pattern);
+  } catch (error) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message: `invalid glob pattern: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+
+  const validatedCandidates: string[] = [];
+  for (const filePath of candidates) {
+    const candidateValidation = await sandbox.validatePath(
+      conversationId,
+      filePath,
+    );
+    if (candidateValidation.ok === false) {
+      const reason =
+        candidateValidation.reason === "blocked"
+          ? "path_blocked"
+          : "invalid_param";
+      return failureToActionResult({
+        reason,
+        message: `glob candidate rejected: ${candidateValidation.message}`,
+      });
     }
-  } else {
-    candidates = await walkFallback(root, pattern);
+    validatedCandidates.push(filePath);
   }
 
   const stats = await Promise.all(
-    candidates.map(async (filePath) => {
+    validatedCandidates.map(async (filePath) => {
       try {
         const stat = await fs.stat(filePath);
         if (!stat.isFile()) return undefined;

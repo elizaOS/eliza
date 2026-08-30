@@ -8,11 +8,18 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertRendererOnlyDevCloudTargetSupported,
+  configureDevCloudEnvironment,
+} from "../../app-core/scripts/lib/dev-cloud-target.mjs";
 import { resolveViteCommand } from "../../app-core/scripts/lib/dev-ui-vite.mjs";
 import {
+  createDevServerCloudProfileFingerprint,
   defaultRegistryPath,
   normalizeWorktreePath,
   reservePortsForWorktree,
+  resolveDevServerCloudCredentialIdentity,
+  resolveDevServerCloudPolicyIdentity,
   updateRegistryEntry,
 } from "./dev-server-registry.mjs";
 
@@ -20,12 +27,29 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(here, "..");
 const worktree = normalizeWorktreePath(path.resolve(appDir, "../.."));
 const registryPath = defaultRegistryPath();
+const devCloud = configureDevCloudEnvironment(
+  process.argv.slice(2),
+  process.env,
+);
+assertRendererOnlyDevCloudTargetSupported(devCloud, "packages/app dev:shared");
+const cloudProfileFingerprint = createDevServerCloudProfileFingerprint({
+  effectiveTarget: devCloud.effectiveTarget,
+  authorityMode: devCloud.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY,
+  credentialIdentity: resolveDevServerCloudCredentialIdentity(devCloud.env),
+  policyIdentity: resolveDevServerCloudPolicyIdentity(devCloud.env),
+  serverApiBase: devCloud.env.ELIZAOS_CLOUD_BASE_URL,
+  rendererCloudBase: devCloud.env.VITE_ELIZA_CLOUD_BASE,
+  stewardApiUrl: devCloud.env.VITE_STEWARD_API_URL,
+  stewardTenantId: devCloud.env.VITE_STEWARD_TENANT_ID,
+  runtimeMode: devCloud.env.VITE_ELIZA_DESKTOP_RUNTIME_MODE,
+});
 
 const { entry, reused } = await reservePortsForWorktree(worktree, {
   registryPath,
+  cloudProfileFingerprint,
 });
 const env = {
-  ...process.env,
+  ...devCloud.env,
   ELIZA_UI_PORT: String(entry.uiPort),
   ELIZA_API_PORT: String(entry.apiPort),
   VITE_ELIZA_DEV_SHARED: "1",
@@ -34,13 +58,17 @@ const env = {
 console.log(
   `[dev:shared] worktree=${worktree}\n` +
     `[dev:shared] ui=http://127.0.0.1:${entry.uiPort} api=http://127.0.0.1:${entry.apiPort}\n` +
+    `[dev:shared] Cloud target=${devCloud.effectiveTarget} (${devCloud.source})\n` +
     `[dev:shared] registry=${registryPath}`,
 );
 
 if (reused) {
   console.log("[dev:shared] reusing existing server; Vite was not started");
 } else {
-  const viteCommand = resolveViteCommand({ appDir });
+  const viteCommand = resolveViteCommand({
+    appDir,
+    viteArgs: devCloud.passthroughArgs,
+  });
   const child = spawn(viteCommand.command, viteCommand.args, {
     cwd: appDir,
     env,

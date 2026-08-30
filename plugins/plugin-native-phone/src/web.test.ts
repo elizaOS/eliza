@@ -35,16 +35,24 @@ describe("PhoneWeb fallback", () => {
     );
   });
 
-  it.each([0, -1, 501, Number.POSITIVE_INFINITY, Number.NaN])(
+  it.each([0, -1, 1.5, Number.POSITIVE_INFINITY, Number.NaN])(
     "rejects malformed recent-call limit %s",
     async (limit) => {
       const phone = new PhoneWeb();
 
       await expect(phone.listRecentCalls({ limit })).rejects.toThrow(
-        "limit must be between 1 and 500",
+        "limit must be a positive safe integer",
       );
     },
   );
+
+  it("accepts explicit limits above the former arbitrary ceiling", async () => {
+    const phone = new PhoneWeb();
+
+    await expect(phone.listRecentCalls({ limit: 5_000 })).resolves.toEqual({
+      calls: [],
+    });
+  });
 
   it("rejects non-object recent-call options without poisoning later calls", async () => {
     const phone = new PhoneWeb();
