@@ -117,6 +117,16 @@ describe("managed Dedicated provision diagnostic", () => {
     expect(canonical).not.toContain(SUFFIX);
   });
 
+  test("accepts a terminal non-retryable failure before max attempts", () => {
+    const raw = rawDiagnostic("invalid non-retryable provisioning input");
+    raw.provisionJob.attempts = 1;
+
+    const diagnostic = sanitizeManagedDedicatedProvisionDiagnostic(raw, SUFFIX);
+    expect(diagnostic.provisionJob.status).toBe("failed");
+    expect(diagnostic.provisionJob.attempts).toBe(1);
+    expect(diagnostic.provisionJob.maxAttempts).toBe(3);
+  });
+
   test("distinguishes safe container-control subcategories", () => {
     expect(
       classifyManagedDedicatedProvisionFailure(

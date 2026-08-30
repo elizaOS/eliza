@@ -516,9 +516,6 @@ export function sanitizeManagedDedicatedProvisionDiagnostic(
   if (Date.parse(scheduledFor) < Date.parse(createdAt)) {
     throw new Error("provisionJob schedule predates creation");
   }
-  if (provisionJob.status === "failed" && attempts !== maxAttempts) {
-    throw new Error("failed provisionJob has not exhausted attempts");
-  }
   if (provisionJob.status === "completed" && provisionJob.error !== null) {
     throw new Error("completed provisionJob retains an error");
   }

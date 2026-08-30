@@ -203,6 +203,36 @@ paths. Regression tests prove every Dedicated lifecycle state is refused by the
 Shared resolver and that pending agents expose neither Shared chat nor character
 data.
 
+The first live staging failure was earlier than Docker. An exact-suffix,
+read-only query against the authoritative staging database showed a ready
+database connection, an exhausted three-attempt `agent_provision` job, no
+primary or replacement container locator, and the allowlisted category
+`container_steward_agent_registration_not_found`. The provisioning worker was
+calling Steward's retired
+`/platform/tenants/{tenantId}/agents` registration route; the deployed Steward
+OpenAPI no longer publishes that route and returned HTTP 404. This ruled out
+node selection, volume setup, image pull, Docker create, Headscale, container
+health, and warm-pool claim as the cause of that specific failure.
+
+Dedicated provisioning now uses the same canonical authentication contract as
+the cloud API: the worker mints an RS256 agent JWT with the protected Eliza
+signing key, and Steward verifies it through the public cloud JWKS. The legacy
+Steward registration/token command remains only as a local-development fallback
+when no signer exists; staging and production deployment both require the
+signer and therefore cannot enter that retired path. Cleanup also attempts
+legacy Steward deregistration only when a legacy registration was actually
+created.
+
+The provisioning deploy did not previously reconcile the agent-token signing
+key to the systemd worker. The workflow now requires the protected environment
+secret, masks and base64-encodes it for the GitHub-to-SSH boundary, validates
+the decoded PKCS8 envelope on the host, and writes the existing single-line
+escaped-PEM representation through the root-owned atomic EnvironmentFile
+serializer. No key bytes enter argv or diagnostics. Exact staging deployment
+run `33283979364` completed migrations, host reconciliation, daemon restart,
+and sustained health for worker source
+`3921aa7d65d5ccd57735b20899442b3787b27958`.
+
 The worker deploy workflow had another configuration deadlock. It required
 `HEADSCALE_PUBLIC_URL` and `HEADSCALE_API_KEY` to exist in GitHub before SSH,
 while its own host reconciliation contract says an absent unrecoverable API key
@@ -227,7 +257,8 @@ validation or exposing the key.
 | Live acceptance | the Dedicated canary's workflow contract omitted the newer `group-chat` suite, so its preflight failed before executing the canary | Fixed: the contract now matches the dispatch inventory; failed run `33018915061` created no agent |
 | Canary diagnostics | cleanup failure overwrote the original provisioning failure and terminal job details collapsed to `job_failed` | Fixed in this change: preserve the primary phase and emit only an allowlisted subsystem category |
 | Staging admission | the canary identity was below the hosting-runway threshold | Cleared: run `33280890733` created one Dedicated row/job; the failure moved into provisioning |
-| Current staging provision | real `dedicated-always` job reached terminal failure before container/database/mesh readiness | Open: rerun the diagnostic canary, repair the classified subsystem, and clean the exact stale canary |
+| Steward bootstrap | worker called a retired platform agent-registration route and received 404 before Docker create | Fixed: canonical Eliza-minted JWT/JWKS auth; protected signer reconciled to the worker |
+| Current staging provision | post-auth-fix canary `33284501109` still reached terminal failure before running/database/mesh readiness | Open: exact-suffix read-only diagnostic `33285177540` is queued; do not infer the next subsystem from the public artifact |
 | Warm pool | both Worker and daemon are protected-off; no ready-count or live-claim proof exists | Intentionally disabled pending `#16961`; cold provisioning must work independently |
 | Deployment capacity | earlier production deploys queued/cancelled on unavailable runner labels | Partially cleared: run `33017962389` deployed the worker/router successfully; it predates this fix and is not a Dedicated canary |
 | Full validation | the original shared checkout contains an unrelated conflict in `eliza-sse-bridge.ts` | Isolated: this change is validated from a clean worktree rebased on `origin/develop` |
@@ -279,6 +310,16 @@ Headscale ingress, or runtime startup. The old canary retained only
 the original provisioning phase and maps the owner-safe job error into a fixed
 privacy-safe subsystem category. The next branch canary is therefore the
 decision point for the remaining repair.
+
+The exact database diagnostic later identified the retired Steward registration
+route as that failure. Worker deploy `33283979364` installed the JWT/JWKS fix,
+and exact cleanup run `33284176034` removed the controlled stale canary. Fresh
+canary `33284501109` still failed before running and emitted only
+`provisioning_private_diagnostic`; its public evidence correctly does not expose
+the private job reason. It also observed staging API commit
+`b3d3e890b0e0f4f58f904bce5d56d9bfccfa49f6`, which does not contain this branch
+head. A final acceptance run therefore requires both the diagnosed next worker
+repair and an API deployment that contains the exact tested source.
 
 Required acceptance evidence is: one non-cancelled exact-SHA worker deploy;
 systemd active identity and effective env-name audit; matching API/daemon DB
