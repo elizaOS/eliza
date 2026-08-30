@@ -688,34 +688,66 @@ function staticOptionCalls(node) {
     const value = unwrapExpression(argument);
     if (!ts.isObjectLiteralExpression(value)) continue;
     for (const property of value.properties) {
-      if (
-        ts.isShorthandPropertyAssignment(property) &&
-        property.name.text === "only"
-      ) {
-        options.push({ modifier: "only", documented: false });
+      if (ts.isSpreadAssignment(property)) {
+        options.push(
+          { modifier: "only", documented: false },
+          { modifier: "skip", documented: false },
+        );
+        continue;
+      }
+      const propertyName =
+        ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name)
+          ? property.name.text
+          : ts.isComputedPropertyName(property.name) &&
+              ts.isStringLiteralLike(unwrapExpression(property.name.expression))
+            ? unwrapExpression(property.name.expression).text
+            : undefined;
+      if (!propertyName || !["only", "skip", "todo"].includes(propertyName)) {
         continue;
       }
       if (
-        !ts.isPropertyAssignment(property) ||
-        !(
-          ts.isIdentifier(property.name) ||
-          ts.isStringLiteralLike(property.name)
-        )
+        ts.isShorthandPropertyAssignment(property) ||
+        !ts.isPropertyAssignment(property)
       ) {
+        options.push({ modifier: propertyName, documented: false });
         continue;
       }
-      if (!["only", "skip", "todo"].includes(property.name.text)) continue;
       const truthy = staticTruthiness(property.initializer);
       if (
-        (property.name.text === "only" && truthy !== false) ||
-        (property.name.text !== "only" && truthy === true)
+        (propertyName === "only" && truthy !== false) ||
+        (propertyName !== "only" && truthy === true)
       ) {
         const reason = unwrapExpression(property.initializer);
         options.push({
-          modifier: property.name.text,
+          modifier: propertyName,
           documented:
             ts.isStringLiteralLike(reason) && reason.text.trim().length >= 8,
         });
+      }
+    }
+  }
+  return options;
+}
+
+function conditionalOptionCalls(node) {
+  const options = [];
+  for (const argument of node.arguments) {
+    const value = unwrapExpression(argument);
+    if (!ts.isObjectLiteralExpression(value)) continue;
+    for (const property of value.properties) {
+      if (!ts.isPropertyAssignment(property)) continue;
+      const propertyName =
+        ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name)
+          ? property.name.text
+          : ts.isComputedPropertyName(property.name) &&
+              ts.isStringLiteralLike(unwrapExpression(property.name.expression))
+            ? unwrapExpression(property.name.expression).text
+            : undefined;
+      if (
+        (propertyName === "skip" || propertyName === "todo") &&
+        staticTruthiness(property.initializer) === undefined
+      ) {
+        options.push({ node: property, modifier: propertyName });
       }
     }
   }
@@ -1035,6 +1067,14 @@ export function findConditionalSkipSites(filePath, content) {
           staticTruthiness(firstValue) === undefined
         ) {
           record(node, `conditional-${modifier}`);
+        }
+      } else if (
+        chain &&
+        RUNNER_ROOTS.has(chain[0]) &&
+        RUNNER_ROOTS.has(chain.at(-1))
+      ) {
+        for (const option of conditionalOptionCalls(node)) {
+          record(option.node, `conditional-option-${option.modifier}`);
         }
       }
     }

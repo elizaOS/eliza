@@ -301,11 +301,31 @@ describe("anti-larp test discovery", () => {
     expect(forms('describe.skipIf(!hasBackend)("store", () => {});')).toEqual([
       "skipIf",
     ]);
+    expect(
+      forms(`
+        test("Windows cleanup", {
+          skip: process.platform !== "win32" ? "Windows cleanup contract" : false,
+        }, () => {});
+        test("optional contract", { todo: !featureEnabled }, () => {});
+      `),
+    ).toEqual(["conditional-option-skip", "conditional-option-todo"]);
     // Documented-but-unconditional skips pass the gate yet never bless a file.
     expect(
       forms('it.skip("[live] requires OPENAI_API_KEY", () => {});'),
     ).toEqual([]);
     expect(forms('describe.skipIf(true)("off", () => {}); // #1234')).toEqual(
+      [],
+    );
+    expect(
+      forms(`
+        const skip = process.platform !== "win32";
+        test("shorthand", { skip }, () => {});
+      `),
+    ).toEqual([]);
+    expect(
+      forms('test("getter", { get skip() { return condition; } }, () => {});'),
+    ).toEqual([]);
+    expect(forms('test("spread", { ...runtimeOptions }, () => {});')).toEqual(
       [],
     );
     // A file with any gate violation yields zero sites.
@@ -317,6 +337,26 @@ describe("anti-larp test discovery", () => {
     expect(() => findConditionalSkipSites("broken.test.ts", "test(")).toThrow(
       /could not be parsed/,
     );
+  });
+
+  test("fails closed on option forms that can hide focused or skipped tests", () => {
+    const kinds = (source: string) =>
+      findViolations("fixture.test.ts", source).map(({ kind }) => kind);
+    expect(
+      kinds(`
+        const skip = process.platform !== "win32";
+        test("shorthand", { skip }, () => {});
+      `),
+    ).toEqual(["orphaned-skip"]);
+    expect(
+      kinds('test("getter", { get skip() { return condition; } }, () => {});'),
+    ).toEqual(["orphaned-skip"]);
+    expect(kinds('test("spread", { ...runtimeOptions }, () => {});')).toEqual([
+      "focused",
+    ]);
+    expect(kinds('test("computed", { ["skip"]: true }, () => {});')).toEqual([
+      "orphaned-skip",
+    ]);
   });
 
   test("returns the conditional-skip-bearing subset and fails closed on bad sources", () => {
