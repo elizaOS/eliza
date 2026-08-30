@@ -10,6 +10,7 @@
  * rather than silently succeeding.
  */
 
+import { ElizaError } from "./errors";
 import type {
 	AccessContext,
 	Agent,
@@ -20,6 +21,7 @@ import type {
 	ConnectorAccountRecord,
 	ConsumeOAuthFlowStateParams,
 	CreateOAuthFlowStateParams,
+	DeleteConnectorAccountCredentialRefsParams,
 	DeleteConnectorAccountParams,
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
@@ -62,6 +64,8 @@ import type {
 	UpsertConnectorAccountParams,
 	UUID,
 	World,
+	WorldMetadataCompareAndSwapParams,
+	WorldMetadataMutationResult,
 } from "./types";
 
 /** Enforces the shared pagination contract for entity-query boundaries. */
@@ -166,6 +170,26 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract updateDocumentDirectGrants(
 		params: DocumentDirectGrantUpdateParams,
 	): Promise<DocumentMutationResult>;
+
+	/**
+	 * Optional world-metadata CAS capability. This concrete fail-closed default
+	 * preserves compatibility for existing third-party subclasses while role
+	 * writes refuse to fall back to an unsafe whole-world overwrite.
+	 */
+	compareAndSwapWorldMetadata(
+		params: WorldMetadataCompareAndSwapParams,
+	): Promise<WorldMetadataMutationResult> {
+		throw new ElizaError(
+			"Database adapter does not support atomic world-metadata role writes",
+			{
+				code: "WORLD_METADATA_CAS_CAPABILITY_REQUIRED",
+				context: {
+					adapter: this.constructor.name,
+					worldId: params.worldId,
+				},
+			},
+		);
+	}
 
 	abstract replaceDocumentRevision(
 		params: DocumentRevisionReplaceParams,
@@ -338,6 +362,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	 */
 	abstract getMemories(params: {
 		entityId?: UUID;
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		limit?: number;
 		count?: number;
@@ -348,6 +373,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		start?: number;
 		end?: number;
 		roomId?: UUID;
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		textContains?: string;
@@ -767,6 +793,12 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	listConnectorAccountCredentialRefs(
 		_params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
+	deleteConnectorAccountCredentialRefs(
+		_params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number> {
 		this.unsupportedConnectorAccountStorage();
 	}
 

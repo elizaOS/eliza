@@ -3,22 +3,19 @@
  * mobile retains its hub-style navigation.
  */
 
+import { Check } from "lucide-react";
 import { useCallback, useRef } from "react";
 
-import { cn } from "../../lib/utils";
-import { Sidebar } from "../composites/sidebar";
 import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
-import {
-  type GroupedSettingsSections,
-  SECTION_HUE_MEDALLION_CLASS,
-} from "./settings-sections";
+import type { GroupedSettingsSections } from "./settings-sections";
 
 interface DesktopSettingsNavigationProps {
   grouped: GroupedSettingsSections;
   activeId: string | null;
   onSelect: (id: string) => void;
-  onBack: () => void;
+  /** Omit when Settings owns a detached window with no launcher history. */
+  onBack?: () => void;
   settingsLabel: string;
   label: (labelKey: string, fallback: string) => string;
 }
@@ -58,36 +55,38 @@ export function DesktopSettingsNavigation({
   };
 
   return (
-    <Sidebar
-      testId="desktop-settings-fixed-pane"
-      collapsible={false}
-      className="!m-0 !h-full !w-60 !min-w-60 !rounded-none !border-0 !bg-transparent !shadow-none"
-      bodyClassName="overflow-y-auto"
+    <nav
+      aria-label={settingsLabel}
+      data-testid="desktop-settings-navigation"
+      className="flex h-full min-h-0 w-60 min-w-60 max-w-60 shrink-0 flex-col overflow-hidden border-r border-border/60 bg-[var(--settings-panel)]"
     >
-      <nav
-        aria-label="Settings sections"
-        data-testid="desktop-settings-navigation"
-        className="flex min-h-full w-60 shrink-0 flex-col gap-6 border-r border-border/60 px-3 py-6"
-      >
-        <div className="flex items-start gap-1 px-1">
+      <div className="grid h-12 shrink-0 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center border-b border-border/50 px-2">
+        {onBack ? (
           <ViewBackButton
             onBack={onBack}
             label="Back to launcher"
-            className="mt-0.5 shrink-0"
+            className="shrink-0 text-muted hover:!bg-[var(--settings-fill)] hover:text-txt-strong focus-visible:!bg-[var(--settings-fill)] focus-visible:!ring-2 focus-visible:!ring-inset focus-visible:!ring-[var(--settings-ring)]"
           />
-          <div className="min-w-0 pt-1">
-            <p className="text-sm font-semibold tracking-tight text-txt-strong">
-              {settingsLabel}
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-muted">
-              Agent, app, and privacy controls
-            </p>
-          </div>
-        </div>
+        ) : (
+          <span aria-hidden />
+        )}
+        <span className="truncate text-center text-sm font-semibold text-txt-strong">
+          {settingsLabel}
+        </span>
+        <span aria-hidden />
+      </div>
 
+      <div
+        data-scroll-cert-scroller
+        className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-3 py-4"
+      >
         {grouped.map(({ group, label: groupLabel, items }) => (
-          <section key={group} data-testid={`desktop-settings-group-${group}`}>
-            <h2 className="mb-1 px-2 text-2xs font-medium uppercase tracking-wide text-muted">
+          <section
+            key={group}
+            data-testid={`desktop-settings-group-${group}`}
+            className="flex flex-col gap-1"
+          >
+            <h2 className="px-3 text-2xs font-medium uppercase tracking-[0.12em] text-muted/70">
               {groupLabel}
             </h2>
             <div className="flex flex-col gap-0.5">
@@ -98,7 +97,7 @@ export function DesktopSettingsNavigation({
 
                 return (
                   <Button
-                    variant="selection"
+                    variant="settingsRow"
                     size="touch"
                     align="start"
                     data-state={isActive ? "on" : "off"}
@@ -115,30 +114,19 @@ export function DesktopSettingsNavigation({
                       } else if (event.key === "ArrowUp") {
                         event.preventDefault();
                         focusRelativeItem(section.id, -1);
-                      } else if (event.key === "Enter") {
-                        event.preventDefault();
-                        onSelect(section.id);
                       }
                     }}
-                    className="group w-full"
+                    className="settings-nav-item group w-full min-w-0"
                   >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "flex size-6 shrink-0 items-center justify-center rounded-md",
-                        SECTION_HUE_MEDALLION_CLASS[section.hue],
-                        !isActive && "opacity-80 group-hover:opacity-100",
-                      )}
-                    >
-                      <Icon className="size-3.5" />
-                    </span>
+                    <Icon aria-hidden className="size-4 shrink-0 opacity-70" />
                     <span className="min-w-0 flex-1 truncate">
                       {sectionLabel}
                     </span>
                     {isActive ? (
-                      <span
+                      <Check
                         aria-hidden
-                        className="size-1.5 shrink-0 rounded-full bg-accent"
+                        data-testid={`desktop-settings-check-${section.id}`}
+                        className="size-4 shrink-0 opacity-70"
                       />
                     ) : null}
                   </Button>
@@ -147,7 +135,7 @@ export function DesktopSettingsNavigation({
             </div>
           </section>
         ))}
-      </nav>
-    </Sidebar>
+      </div>
+    </nav>
   );
 }

@@ -22,6 +22,7 @@ import type { SshHostInspection } from "../../platform/ssh-runtime";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
 
 export type RuntimeTargetStatus = "connected" | "offline" | "error" | "pairing";
@@ -47,6 +48,22 @@ export interface DevicePairingView {
   code: string;
   expiresAt: string;
   qrPayload: string;
+  capabilities: string[];
+  status: "pending" | "claimed";
+  controller?: {
+    deviceId: string;
+    keyId: string;
+    displayName: string;
+    platform: string;
+  };
+}
+
+export interface ControllerPairingClaimView {
+  sessionId: string;
+  hostLabel: string;
+  hostPlatform: string;
+  hostKeyId: string;
+  capabilities: string[];
 }
 
 export interface SshConnectInput {
@@ -65,11 +82,13 @@ export interface LinuxRemoteTargetView {
   running: boolean;
   activeSessions: number;
   lastErrorCode: string | null;
+  platform: "macos" | "windows" | "linux";
 }
 
 export interface DevicesRuntimesSectionProps {
   targets: DeviceRuntimeTarget[];
   pairing?: DevicePairingView | null;
+  controllerClaim?: ControllerPairingClaimView | null;
   sshInspection?: SshHostInspection | null;
   linuxTarget?: LinuxRemoteTargetView | null;
   busy?: boolean;
@@ -78,7 +97,7 @@ export interface DevicesRuntimesSectionProps {
   onRefresh: () => void | Promise<void>;
   onSelect: (id: string) => void | Promise<void>;
   onRetry: (id: string) => void | Promise<void>;
-  onPair: (id: string) => void | Promise<void>;
+  onPair: (id: string, code: string) => void | Promise<void>;
   onRevoke: (id: string) => void | Promise<void>;
   onRemove: (id: string) => void | Promise<void>;
   onInspectSsh: (input: {
@@ -86,44 +105,49 @@ export interface DevicesRuntimesSectionProps {
     sshPort: number;
   }) => void | Promise<void>;
   onConnectSsh: (input: SshConnectInput) => void | Promise<void>;
-  onEnrollLinuxTarget?: () => void | Promise<void>;
-  onActivateLinuxTarget?: (input: {
-    sessionId: string;
-    code: string;
-  }) => void | Promise<void>;
+  onEnrollLinuxTarget?: (managedNetwork: boolean) => void | Promise<void>;
+  onCreateTargetPairing?: () => void | Promise<void>;
+  onConfirmTargetPairing?: (sessionId: string) => void | Promise<void>;
+  onDenyTargetPairing?: (sessionId: string) => void | Promise<void>;
   onSetLinuxTargetRunning?: (running: boolean) => void | Promise<void>;
   onRevokeLinuxTarget?: () => void | Promise<void>;
   className?: string;
 }
 
-function LinuxTargetPanel({
+function DesktopTargetPanel({
   target,
   pairing,
   busy,
   onEnroll,
-  onActivate,
+  onCreatePairing,
+  onConfirmPairing,
+  onDenyPairing,
   onSetRunning,
   onRevoke,
 }: {
   target: LinuxRemoteTargetView;
   pairing?: DevicePairingView | null;
   busy: boolean;
-  onEnroll?: () => void | Promise<void>;
-  onActivate?: (input: {
-    sessionId: string;
-    code: string;
-  }) => void | Promise<void>;
+  onEnroll?: (managedNetwork: boolean) => void | Promise<void>;
+  onCreatePairing?: () => void | Promise<void>;
+  onConfirmPairing?: (sessionId: string) => void | Promise<void>;
+  onDenyPairing?: (sessionId: string) => void | Promise<void>;
   onSetRunning?: (running: boolean) => void | Promise<void>;
   onRevoke?: () => void | Promise<void>;
 }) {
-  const [sessionId, setSessionId] = useState("");
-  const [code, setCode] = useState("");
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
+  const [managedNetwork, setManagedNetwork] = useState(false);
   const localPairing = pairing?.hostId === target.hostId ? pairing : null;
+  const platformLabel =
+    target.platform === "macos"
+      ? "Mac"
+      : target.platform === "windows"
+        ? "Windows PC"
+        : "Linux computer";
   return (
     <SettingsGroup
-      title="Share this Linux runtime"
-      description="Enroll this computer as an encrypted remote target, then approve a one-use pairing code shown on your controller device."
+      title={`Share this ${platformLabel}`}
+      description="This computer creates the one-use challenge. A signed-in phone claims it, then this computer shows the exact controller identity for confirmation."
       footer="The host token and target private keys stay in the native OS credential store."
       bare
     >
@@ -131,7 +155,7 @@ function LinuxTargetPanel({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-txt-strong">
-              This Linux computer
+              This {platformLabel}
             </p>
             <p className="mt-1 text-xs text-muted">
               {target.enrolled
@@ -144,7 +168,7 @@ function LinuxTargetPanel({
               type="button"
               size="touch"
               disabled={busy || !onEnroll}
-              onClick={() => void onEnroll?.()}
+              onClick={() => void onEnroll?.(managedNetwork)}
             >
               Enroll this computer
             </Button>
@@ -159,6 +183,16 @@ function LinuxTargetPanel({
               >
                 {target.running ? "Stop relay" : "Start relay"}
               </Button>
+              {!localPairing ? (
+                <Button
+                  type="button"
+                  size="touch"
+                  disabled={busy || !onCreatePairing}
+                  onClick={() => void onCreatePairing?.()}
+                >
+                  <Link2 className="mr-1.5 size-4" aria-hidden /> Pair an iPhone
+                </Button>
+              ) : null}
               {!confirmingRevoke ? (
                 <Button
                   type="button"
@@ -173,6 +207,28 @@ function LinuxTargetPanel({
             </div>
           )}
         </div>
+        {!target.enrolled && target.platform === "linux" ? (
+          <div className="mt-4 flex min-h-11 items-start gap-3 rounded-lg border border-border bg-surface p-3 text-sm text-txt-strong">
+            <Switch
+              checked={managedNetwork}
+              onCheckedChange={setManagedNetwork}
+              disabled={busy}
+              aria-labelledby="managed-network-enrollment-label"
+            />
+            <span>
+              <span
+                id="managed-network-enrollment-label"
+                className="block font-medium"
+              >
+                Use Eliza managed private network
+              </span>
+              <span className="mt-1 block text-xs leading-relaxed text-muted">
+                Advanced. Requires a running Tailscale client. Eliza uses a
+                one-use key and never resets an existing tailnet automatically.
+              </span>
+            </span>
+          </div>
+        ) : null}
         {confirmingRevoke ? (
           <div
             role="alert"
@@ -210,88 +266,60 @@ function LinuxTargetPanel({
             inspect desktop logs.
           </p>
         ) : null}
-        {target.enrolled && onActivate ? (
-          <div className="mt-4 grid gap-4 border-t border-border pt-4">
-            {localPairing ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-accent/50 bg-accent/5 p-3">
+        {localPairing ? (
+          <div className="mt-4 grid gap-3 border-t border-border pt-4">
+            {localPairing.status === "claimed" && localPairing.controller ? (
+              <div className="grid gap-3 border-l-2 border-accent/50 bg-accent/5 p-3">
                 <div>
                   <p className="text-sm font-medium text-txt-strong">
-                    Pair {localPairing.hostLabel} on this computer
+                    Confirm {localPairing.controller.displayName}
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    Uses this in-memory session and its one-use code.
+                    {localPairing.controller.platform} controller · device{" "}
+                    <code className="break-all">
+                      {localPairing.controller.deviceId}
+                    </code>
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    Key{" "}
+                    <code className="break-all">
+                      {localPairing.controller.keyId}
+                    </code>
+                  </p>
+                  <p className="mt-2 text-xs text-muted">
+                    Requested capabilities:{" "}
+                    {localPairing.capabilities.join(", ")}
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  size="touch"
-                  disabled={busy}
-                  onClick={() =>
-                    void onActivate({
-                      sessionId: localPairing.sessionId,
-                      code: localPairing.code,
-                    })
-                  }
-                >
-                  Approve this pairing on this Linux computer
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="touch"
+                    disabled={busy || !onConfirmPairing}
+                    onClick={() =>
+                      void onConfirmPairing?.(localPairing.sessionId)
+                    }
+                  >
+                    Confirm controller on this {platformLabel}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="touch"
+                    disabled={busy || !onDenyPairing}
+                    onClick={() => void onDenyPairing?.(localPairing.sessionId)}
+                  >
+                    Deny
+                  </Button>
+                </div>
               </div>
-            ) : null}
-            <p className="text-xs leading-relaxed text-muted">
-              Manual cross-device pairing requires both the session ID and the
-              6-digit code. Code-only session discovery is not available.
-            </p>
-            <form
-              className="grid gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void (async () => {
-                  await onActivate({ sessionId: sessionId.trim(), code });
-                  setCode("");
-                })();
-              }}
-            >
-              <label
-                htmlFor="linux-target-session"
-                className="grid gap-1.5 text-xs text-muted"
-              >
-                Pairing session ID
-                <Input
-                  id="linux-target-session"
-                  required
-                  density="relaxed"
-                  value={sessionId}
-                  onChange={(event) => setSessionId(event.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </label>
-              <label
-                htmlFor="linux-target-code"
-                className="grid gap-1.5 text-xs text-muted"
-              >
-                6-digit code
-                <Input
-                  id="linux-target-code"
-                  required
-                  density="relaxed"
-                  value={code}
-                  onChange={(event) =>
-                    setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
-                  inputMode="numeric"
-                  pattern="[0-9]{6}"
-                  autoComplete="one-time-code"
-                />
-              </label>
-              <Button
-                type="submit"
-                size="touch"
-                disabled={busy || !sessionId.trim() || code.length !== 6}
-              >
-                Approve pairing
-              </Button>
-            </form>
+            ) : (
+              <p className="text-xs leading-relaxed text-muted" role="status">
+                Waiting for a signed-in iPhone to scan or enter this Mac's
+                one-use code. No controller has authority until this computer
+                confirms its exact identity.
+              </p>
+            )}
           </div>
         ) : null}
       </div>
@@ -365,14 +393,15 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
       <div className="min-w-0">
         <div className="flex items-center gap-2 text-sm font-semibold text-txt-strong">
           <ShieldCheck className="size-4 text-accent" aria-hidden />
-          Pair {pairing.hostLabel}
+          Pair an iPhone with {pairing.hostLabel}
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted">
-          Scan the QR code, or enter the session ID and code together on the
-          target. The code is valid once for five minutes and cannot be reused.
+          On the signed-in iPhone, scan this QR or select this Mac and enter the
+          six-digit code. The code works once for five minutes. This Mac must
+          confirm the exact controller identity before access becomes active.
         </p>
         <output
-          className="mt-4 font-[var(--mono)] text-3xl font-semibold tracking-[0.28em] text-txt-strong"
+          className="mt-4 font-[var(--mono)] text-2xl font-semibold tracking-[0.15em] text-txt-strong sm:text-3xl sm:tracking-[0.28em]"
           aria-label={`Pairing code ${pairing.code.split("").join(" ")}`}
           data-testid="pairing-code"
         >
@@ -403,8 +432,40 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
             ? `Expires in ${minutes}:${seconds}`
             : "Code expired. Request a new code."}
         </p>
+        <p className="mt-2 text-xs text-muted">
+          Requested capabilities: {pairing.capabilities.join(", ")}
+        </p>
       </div>
       <PairingQr payload={pairing.qrPayload} />
+    </div>
+  );
+}
+
+function ControllerClaimPanel({
+  claim,
+}: {
+  claim: ControllerPairingClaimView;
+}) {
+  return (
+    <div
+      className="rounded-xl border border-accent/35 bg-accent/5 p-4"
+      role="status"
+    >
+      <div className="flex items-center gap-2 text-sm font-semibold text-txt-strong">
+        <ShieldCheck className="size-4 text-accent" aria-hidden />
+        Waiting for confirmation on {claim.hostLabel}
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-muted">
+        Exact target: {claim.hostPlatform} · key{" "}
+        <code className="break-all">{claim.hostKeyId}</code>
+      </p>
+      <p className="mt-2 text-xs text-muted">
+        Requested capabilities: {claim.capabilities.join(", ")}
+      </p>
+      <p className="mt-2 text-xs text-muted">
+        Check this identity on the Mac, then choose Confirm there. Scanning the
+        code alone does not grant control.
+      </p>
     </div>
   );
 }
@@ -422,7 +483,7 @@ function RuntimeCard({
   busy: boolean;
   onSelect: () => void;
   onRetry: () => void;
-  onPair: () => void;
+  onPair: (code: string) => void;
   onRevoke: () => void;
   onRemove: () => void;
 }) {
@@ -431,6 +492,7 @@ function RuntimeCard({
   const [confirming, setConfirming] = useState<"revoke" | "remove" | null>(
     null,
   );
+  const [pairCode, setPairCode] = useState("");
   return (
     <article
       className={cn(
@@ -446,7 +508,7 @@ function RuntimeCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h4 className="truncate text-sm font-semibold text-txt-strong">
+            <h4 className="break-words text-sm font-semibold text-txt-strong">
               {target.label}
             </h4>
             {target.selected ? (
@@ -458,7 +520,7 @@ function RuntimeCard({
           <p className="mt-1 break-words text-xs leading-relaxed text-muted">
             {target.detail}
           </p>
-          <div className="mt-2 flex items-center gap-2 text-xs">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             <span className={cn("font-medium", status.className)}>
               {status.label}
             </span>
@@ -491,9 +553,38 @@ function RuntimeCard({
           </Button>
         ) : null}
         {target.canPair ? (
-          <Button type="button" size="touch" disabled={busy} onClick={onPair}>
-            <Link2 className="mr-1.5 size-4" aria-hidden /> Pair device
-          </Button>
+          <form
+            className="flex w-full flex-wrap items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onPair(pairCode);
+            }}
+          >
+            <label
+              className="grid gap-1 text-xs text-muted"
+              htmlFor={`pair-code-${target.id}`}
+            >
+              Mac's 6-digit code
+              <Input
+                id={`pair-code-${target.id}`}
+                value={pairCode}
+                onChange={(event) =>
+                  setPairCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                }
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                autoComplete="one-time-code"
+                className="w-36"
+              />
+            </label>
+            <Button
+              type="submit"
+              size="touch"
+              disabled={busy || pairCode.length !== 6}
+            >
+              <Link2 className="mr-1.5 size-4" aria-hidden /> Claim pairing
+            </Button>
+          </form>
         ) : null}
         {target.status === "offline" || target.status === "error" ? (
           <Button
@@ -780,6 +871,7 @@ function AdvancedSsh({
 export function DevicesRuntimesSection({
   targets,
   pairing,
+  controllerClaim,
   sshInspection,
   linuxTarget,
   busy = false,
@@ -794,14 +886,19 @@ export function DevicesRuntimesSection({
   onInspectSsh,
   onConnectSsh,
   onEnrollLinuxTarget,
-  onActivateLinuxTarget,
+  onCreateTargetPairing,
+  onConfirmTargetPairing,
+  onDenyTargetPairing,
   onSetLinuxTargetRunning,
   onRevokeLinuxTarget,
   className,
 }: DevicesRuntimesSectionProps) {
   const { t } = useTranslation();
   return (
-    <SettingsStack className={className} data-testid="devices-runtimes">
+    <SettingsStack
+      className={cn("devices-runtimes-accessible", className)}
+      data-testid="devices-runtimes"
+    >
       {error ? (
         <div
           role="alert"
@@ -829,6 +926,9 @@ export function DevicesRuntimesSection({
         </div>
       ) : null}
       {pairing ? <PairingPanel pairing={pairing} /> : null}
+      {controllerClaim ? (
+        <ControllerClaimPanel claim={controllerClaim} />
+      ) : null}
       <SettingsGroup
         title="Devices & Runtimes"
         description="Choose where Eliza runs and securely connect another computer or server."
@@ -846,7 +946,11 @@ export function DevicesRuntimesSection({
         }
         bare
       >
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-busy={busy}>
+        <div
+          className="grid grid-cols-1 gap-3 lg:grid-cols-2"
+          aria-busy={busy}
+          data-testid="runtime-target-grid"
+        >
           {cloudState !== "loading" && targets.length === 0 ? (
             <div className="text-sm text-muted-foreground">
               {t("settings.devicesRuntimes.empty", {
@@ -861,7 +965,7 @@ export function DevicesRuntimesSection({
               busy={busy}
               onSelect={() => void onSelect(target.id)}
               onRetry={() => void onRetry(target.id)}
-              onPair={() => void onPair(target.id)}
+              onPair={(code) => void onPair(target.id, code)}
               onRevoke={() => void onRevoke(target.id)}
               onRemove={() => void onRemove(target.id)}
             />
@@ -869,12 +973,14 @@ export function DevicesRuntimesSection({
         </div>
       </SettingsGroup>
       {linuxTarget ? (
-        <LinuxTargetPanel
+        <DesktopTargetPanel
           target={linuxTarget}
           pairing={pairing}
           busy={busy}
           onEnroll={onEnrollLinuxTarget}
-          onActivate={onActivateLinuxTarget}
+          onCreatePairing={onCreateTargetPairing}
+          onConfirmPairing={onConfirmTargetPairing}
+          onDenyPairing={onDenyTargetPairing}
           onSetRunning={onSetLinuxTargetRunning}
           onRevoke={onRevokeLinuxTarget}
         />

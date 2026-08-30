@@ -81,6 +81,30 @@ describe("classifier self-registration regression", () => {
   });
 });
 
+describe("synthetic-world hosted test routing", () => {
+  it("routes package changes to the server lane that runs its transaction suite", () => {
+    writeFileSync(tmpFile, "packages/synthetic-world/src/command-journal.ts\n");
+    try {
+      const result = evaluate(CONFIGS.test, {
+        eventName: "pull_request",
+        labels: "",
+        changedFilesPath: tmpFile,
+      });
+      expect(
+        result.matchesByLane
+          .get("server")
+          .some(
+            (match) =>
+              match.kind === "path" &&
+              match.path === "packages/synthetic-world/src/command-journal.ts",
+          ),
+      ).toBe(true);
+    } finally {
+      unlinkSync(tmpFile);
+    }
+  });
+});
+
 describe("parseGitNameStatus", () => {
   it("returns an empty inventory for an empty diff", () => {
     expect(parseGitNameStatus("")).toEqual([]);

@@ -50,7 +50,6 @@ vi.mock("@stwd/react", () => ({
     verifyEmailCallback: async () => ({ token: "" }),
   }),
 }));
-vi.mock("@stwd/react/styles.css", () => ({}));
 vi.mock("@stwd/sdk", () => ({
   StewardClient: class {},
 }));

@@ -1,6 +1,6 @@
 /**
- * Proves the runtime chooser's default through the real `bun run dev` Vite
- * transform and renderer, with deterministic first-run HTTP boundaries.
+ * Proves the runtime chooser remains available through the explicit
+ * `bun run dev:local` escape hatch, with deterministic first-run boundaries.
  */
 
 import { mkdir } from "node:fs/promises";
@@ -11,6 +11,11 @@ import {
   installRenderTelemetryGuard,
   seedAppStorage,
 } from "../ui-smoke/helpers";
+
+test.skip(
+  process.env.ELIZA_DEV_SMOKE_OFFLINE !== "1",
+  "runs only through test:dev-smoke:local",
+);
 
 async function fulfillJson(
   route: Route,
@@ -43,7 +48,7 @@ async function routeFreshFirstRun(page: Page): Promise<void> {
   });
 }
 
-test("Vite development offers cloud, local, and remote without an override", async ({
+test("explicit local development offers cloud, local, and remote", async ({
   page,
 }, testInfo) => {
   await installRenderTelemetryGuard(page);

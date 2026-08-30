@@ -33,6 +33,9 @@ type MacEffectsSymbols = {
   elizaOnboardingNotificationDismiss(): void;
   checkNotificationPermission(): number;
   requestNotificationPermission(): number;
+  elizaCalendarStoreChangesStart(): boolean;
+  elizaCalendarStoreChangesPoll(): number;
+  elizaCalendarStoreChangesStop(): void;
   elizaFnMonitorStart(): number;
   elizaFnMonitorStop(): void;
   elizaFnMonitorPoll(): number;
@@ -123,6 +126,9 @@ function loadLib(): MacEffectsLib {
       },
       checkNotificationPermission: { args: [], returns: FFIType.i32 },
       requestNotificationPermission: { args: [], returns: FFIType.i32 },
+      elizaCalendarStoreChangesStart: { args: [], returns: FFIType.bool },
+      elizaCalendarStoreChangesPoll: { args: [], returns: FFIType.i32 },
+      elizaCalendarStoreChangesStop: { args: [], returns: FFIType.void },
       elizaFnMonitorStart: { args: [], returns: FFIType.i32 },
       elizaFnMonitorStop: { args: [], returns: FFIType.void },
       elizaFnMonitorPoll: { args: [], returns: FFIType.i32 },

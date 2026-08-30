@@ -6,6 +6,7 @@
  */
 import * as React from "react";
 import { Button } from "./button";
+import { Card } from "./card";
 
 export interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -42,7 +43,11 @@ export function ErrorBoundaryFallback({
   onRetry,
 }: ErrorBoundaryFallbackProps) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 p-6 text-center border border-destructive/30 bg-destructive/5 rounded-sm">
+    <Card
+      surface="destructiveSubtle"
+      border="destructive"
+      className="flex flex-col items-center justify-center gap-3 p-6 text-center"
+    >
       <p className="text-sm font-semibold text-destructive">
         {errorLabel ?? "Something went wrong"}
       </p>
@@ -50,7 +55,7 @@ export function ErrorBoundaryFallback({
       <Button type="button" variant="outline" size="compact" onClick={onRetry}>
         {retryLabel ?? "Try Again"}
       </Button>
-    </div>
+    </Card>
   );
 }
 

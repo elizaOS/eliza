@@ -215,25 +215,22 @@ function TutorialActiveEffects({
   const controller = useShellControllerContext();
   const {
     tab,
-    activeConversationId,
     uiLanguage,
     elizaCloudConnected,
     elizaCloudVoiceProxyAvailable,
   } = useAppSelectorShallow((s) => ({
     tab: s.tab,
-    activeConversationId: s.activeConversationId,
     uiLanguage: s.uiLanguage,
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
   }));
 
   // Per-step baselines, captured when the step mounts: detections fire on a
-  // CHANGE from here (a message sent after, a tab reached after, a different
-  // conversation than the one the step began on) — never on pre-existing state.
+  // CHANGE from here (a message sent after or a tab reached after) — never on
+  // pre-existing state.
   const baselineRef = React.useRef({
     at: Date.now(),
     tab,
-    conversationId: activeConversationId,
   });
 
   // Keep the current step's turn IN the transcript, not just seed it once:
@@ -280,19 +277,6 @@ function TutorialActiveEffects({
       advanceTutorial(step.id);
     }
   }, [complete, tab, step.id]);
-
-  // The active conversation changed (new chat or a swipe to another one).
-  React.useEffect(() => {
-    if (complete !== "new-conversation") return;
-    const base = baselineRef.current.conversationId;
-    if (
-      base != null &&
-      activeConversationId != null &&
-      activeConversationId !== base
-    ) {
-      advanceTutorial(step.id);
-    }
-  }, [complete, activeConversationId, step.id]);
 
   // ── Narration through the app's REAL voice pipeline (cloud/local TTS with
   // the browser voice as fallback) — the same engine that voices assistant

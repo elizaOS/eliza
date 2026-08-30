@@ -32,6 +32,7 @@ interface RequestRecord {
 
 interface HarnessOptions {
   asyncDelete?: boolean;
+  creditBalance?: number | "invalid";
   bridgeReply?:
     | "valid"
     | "invalid"
@@ -121,6 +122,15 @@ function makeHarness(options: HarnessOptions = {}) {
         status: "ok",
         region: "test",
         commit: DEPLOY_COMMIT,
+      });
+    }
+
+    if (parsedUrl.pathname === "/api/v1/credits/balance" && method === "GET") {
+      return Response.json({
+        balance:
+          options.creditBalance === "invalid"
+            ? null
+            : (options.creditBalance ?? 100),
       });
     }
 
@@ -530,6 +540,32 @@ describe("shared staging onboarding smoke", () => {
     expect(
       harness.requests.some((request) => request.method === "DELETE"),
     ).toBe(false);
+  });
+
+  test("requires a funded credential before creating anything", async () => {
+    const harness = makeHarness({ creditBalance: 0 });
+    const evidence = await runSharedStagingOnboardingSmoke(harness.options);
+
+    expect(evidence.failure).toEqual({
+      phase: "preflight",
+      code: "insufficient_credits",
+    });
+    expect(evidence.path.credentialPreflight).toBe(false);
+    expect(evidence.capacity.createdAgents).toBe(0);
+    expect(harness.requests.some((request) => request.method === "POST")).toBe(
+      false,
+    );
+  });
+
+  test("fails closed when the credential balance response is malformed", async () => {
+    const harness = makeHarness({ creditBalance: "invalid" });
+    const evidence = await runSharedStagingOnboardingSmoke(harness.options);
+
+    expect(evidence.failure).toEqual({
+      phase: "preflight",
+      code: "invalid_credit_balance",
+    });
+    expect(evidence.capacity.createdAgents).toBe(0);
   });
 
   test("does not delete an idempotently reused agent after a concurrent race", async () => {

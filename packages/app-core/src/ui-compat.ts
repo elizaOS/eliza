@@ -26,7 +26,6 @@ export type {
 export { client } from "@elizaos/ui/api";
 export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
 export {
-  SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
@@ -43,6 +42,7 @@ export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 export { Button } from "@elizaos/ui/components/ui/button";
 export { Input } from "@elizaos/ui/components/ui/input";
 export { Spinner } from "@elizaos/ui/components/ui/spinner";
+export { StatusBadge } from "@elizaos/ui/components/ui/status-badge";
 // app-store only pulls React + an erased type (same weight as useApp), so it
 // stays light enough for the Node API process — re-export the selector hooks so
 // app plugins can subscribe to AppContext slices instead of the whole value.

@@ -35,6 +35,5 @@ export const WALLPAPER_GLASS = {
   // glass — no per-message fill and no hairline box; row alignment + the float
   // shadow carry the user/assistant distinction (#13560 de-slop).
   messageBubble: "text-white",
-  iconPlate: "bg-white/10 text-white hover:bg-white/20",
   floatingControl: "bg-black/55 text-white hover:bg-black/70",
 } as const;

@@ -18,7 +18,10 @@ import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Input } from "../ui/input";
+import { SemanticForm } from "../ui/semantic-form";
+import { StatusDot } from "../ui/status-badge";
 
 export interface MeetingJoinBarProps {
   activeMeetings: MeetingSession[];
@@ -93,7 +96,7 @@ export function MeetingJoinBar({
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <form
+      <SemanticForm
         data-testid="meeting-join-form"
         onSubmit={submit}
         className="flex flex-wrap items-center gap-2"
@@ -140,7 +143,7 @@ export function MeetingJoinBar({
         >
           {joining ? "Joining…" : "Join meeting"}
         </Button>
-      </form>
+      </SemanticForm>
       {showInvalid ? (
         <p data-testid="meeting-url-invalid" className="text-xs text-muted">
           Not a recognizable Meet, Teams, or Zoom meeting link.
@@ -155,36 +158,36 @@ export function MeetingJoinBar({
       {activeMeetings.length > 0 ? (
         <div data-testid="active-meetings" className="flex flex-col gap-1">
           {activeMeetings.map((m) => (
-            <div
-              key={m.id}
-              data-testid={`active-meeting-${m.id}`}
-              className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-txt"
-            >
-              <span
-                aria-hidden
-                className={cn(
-                  "size-1.5 shrink-0 rounded-full",
-                  m.status === "active" ? "bg-accent" : "bg-muted",
-                )}
-              />
-              <span className="truncate">
-                {MEETING_PLATFORM_LABELS[m.platform]}
-                {m.botName ? ` · ${m.botName}` : ""}
-              </span>
-              <span className="text-xs text-muted">
-                {SESSION_STATUS_LABEL[m.status]}
-              </span>
-              <Button
-                type="button"
-                data-testid={`stop-meeting-${m.id}`}
-                onClick={() => onStop(m.id)}
-                variant="ghostMuted"
-                size="micro"
-                className="ml-auto"
+            <Card asChild variant="transparent" key={m.id}>
+              <div
+                data-testid={`active-meeting-${m.id}`}
+                className="flex items-center gap-2 px-2 py-1.5 text-sm text-txt"
               >
-                Stop
-              </Button>
-            </div>
+                <StatusDot
+                  aria-hidden
+                  size="compact"
+                  tone={m.status === "active" ? "accent" : "muted"}
+                  className="shrink-0"
+                />
+                <span className="truncate">
+                  {MEETING_PLATFORM_LABELS[m.platform]}
+                  {m.botName ? ` · ${m.botName}` : ""}
+                </span>
+                <span className="text-xs text-muted">
+                  {SESSION_STATUS_LABEL[m.status]}
+                </span>
+                <Button
+                  type="button"
+                  data-testid={`stop-meeting-${m.id}`}
+                  onClick={() => onStop(m.id)}
+                  variant="ghostMuted"
+                  size="micro"
+                  className="ml-auto"
+                >
+                  Stop
+                </Button>
+              </div>
+            </Card>
           ))}
         </div>
       ) : null}

@@ -2228,6 +2228,65 @@ describe("scenario executor action turns", () => {
     });
   });
 
+  it("preserves complete planner, action argument, and action result failure evidence", async () => {
+    const distinguishingTail = "scenario-evidence-tail";
+    const longValue = `${"x".repeat(800)}${distinguishingTail}`;
+    const runtime = createRuntime([
+      {
+        name: "VIEWS",
+        description: "test action",
+        validate: vi.fn(async () => true),
+        handler: vi.fn(async () => ({
+          success: false,
+          text: longValue,
+          data: { reason: longValue },
+        })),
+      } as Action,
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "complete-scenario-failure-evidence",
+        title: "Complete scenario failure evidence",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "open view",
+            actionName: "VIEWS",
+            options: { action: "pin", context: longValue },
+            plannerIncludesAll: ["missing-planner-token"],
+          },
+        ],
+        finalChecks: [
+          {
+            type: "selectedActionArguments",
+            actionName: "VIEWS",
+            includesAll: ["missing-argument-token"],
+          },
+          { type: "actionCalled", actionName: "VIEWS", status: "success" },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.turns[0]?.failedAssertions[0]).toContain(distinguishingTail);
+    const selectedArguments = report.failedAssertions.find(
+      (failure) => failure.label === "selectedActionArguments",
+    );
+    const actionCalled = report.failedAssertions.find(
+      (failure) => failure.label === "actionCalled",
+    );
+    expect(selectedArguments?.detail).toContain(distinguishingTail);
+    expect(actionCalled?.detail).toContain(distinguishingTail);
+  });
+
   it("reports expected and actual action names when selectedActionArguments matches no action", async () => {
     const report = await runScenario(
       {

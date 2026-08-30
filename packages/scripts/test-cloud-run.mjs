@@ -61,11 +61,11 @@ export const DEFAULT_BATCH_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_BATCH_KILL_GRACE_MS = 2000;
 export const MAX_CLASSIFICATION_OUTPUT_CHARS = 1024 * 1024;
 const MAX_TIMER_MS = 2_147_483_647;
-// A cold Windows PowerShell process can take several seconds to initialize on
-// the hosted windows-2025 image. Keep the identity query bounded, but allow the
-// universal powershell.exe path enough time to return the immutable StartTime
-// ticks before any PID-targeted teardown is considered.
+// Prefer the already-provisioned PowerShell 7 host on CI: the legacy Windows
+// PowerShell process can exceed the entire cold-start allowance on windows-2025.
+// Keep the universal powershell.exe path as a bounded local-machine fallback.
 const WINDOWS_PROCESS_IDENTITY_QUERY_TIMEOUT_MS = 10_000;
+const WINDOWS_POWERSHELL_IDENTITY_COMMANDS = ["pwsh.exe", "powershell.exe"];
 const POSIX_PROCESS_GROUP_SUPERVISOR = `
 terminating=0
 trap 'terminating=1' TERM INT
@@ -298,27 +298,31 @@ function readWindowsProcessIdentity(pid, spawnSyncFn) {
     "if ($null -eq $process) { exit 3 }",
     "[Console]::Write($process.StartTime.ToUniversalTime().Ticks)",
   ].join("; ");
-  let result;
-  try {
-    result = spawnSyncFn(
-      "powershell.exe",
-      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
-      {
-        encoding: "utf8",
-        windowsHide: true,
-        timeout: WINDOWS_PROCESS_IDENTITY_QUERY_TIMEOUT_MS,
-        maxBuffer: 4096,
-      },
-    );
-  } catch {
-    // error-policy:J3 An unavailable identity is explicit and makes teardown fail closed.
-    return undefined;
+  for (const executable of WINDOWS_POWERSHELL_IDENTITY_COMMANDS) {
+    let result;
+    try {
+      result = spawnSyncFn(
+        executable,
+        ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: WINDOWS_PROCESS_IDENTITY_QUERY_TIMEOUT_MS,
+          maxBuffer: 4096,
+        },
+      );
+    } catch {
+      // error-policy:J3 Try the universal Windows PowerShell fallback before failing closed.
+      continue;
+    }
+    if (result?.status === 3) return undefined;
+    if (result?.error || result?.status !== 0) continue;
+    const creationTicks = result.stdout?.trim();
+    if (/^\d+$/.test(creationTicks ?? "")) {
+      return `win-creation:${creationTicks}`;
+    }
   }
-  if (result?.error || result?.status !== 0) return undefined;
-  const creationTicks = result.stdout?.trim();
-  return /^\d+$/.test(creationTicks ?? "")
-    ? `win-creation:${creationTicks}`
-    : undefined;
+  return undefined;
 }
 
 export function readProcessIdentity(
@@ -727,7 +731,7 @@ export function runCommandWithWatchdog(
           platform,
           graceMs: terminationGraceMs,
           expectedIdentity: childIdentity,
-          identityCaptured: true,
+          identityCaptured: childIdentity !== undefined,
           identityFn,
         })
           .catch((error) => {

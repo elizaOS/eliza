@@ -4,7 +4,7 @@
  */
 import { Check, Copy } from "lucide-react";
 import * as React from "react";
-import { cn } from "../../lib/utils";
+import { Button } from "./button";
 
 export interface CopyButtonProps
   extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> {
@@ -70,14 +70,13 @@ export const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
     }, [value, feedbackDuration]);
 
     return (
-      <button
+      <Button
         ref={ref}
         type="button"
+        variant="ghostMuted"
+        size="inlineIcon"
         onClick={handleCopy}
-        className={cn(
-          "inline-flex items-center gap-1 rounded-sm p-1.5 text-muted transition-colors hover:bg-bg-hover hover:text-txt",
-          className,
-        )}
+        className={className}
         aria-label={copied ? copiedLabel : copyLabel}
         {...props}
       >
@@ -87,7 +86,7 @@ export const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
           <Copy className="size-3.5" />
         )}
         {children}
-      </button>
+      </Button>
     );
   },
 );

@@ -85,6 +85,7 @@ const activePersonalTargetLookups: Array<{
 mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
   findActivePersonalDedicatedTarget: async (
     organizationId: string,
+    _userId: string,
     sourceAgentId: string,
   ) => {
     activePersonalTargetLookups.push({ organizationId, sourceAgentId });

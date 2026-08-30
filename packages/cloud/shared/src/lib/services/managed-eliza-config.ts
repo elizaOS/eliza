@@ -245,10 +245,10 @@ export function applyManagedAgentInferenceEnvDefaults(
     EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? embeddingDimension,
     ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS:
       existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? embeddingDimension,
-    ELIZAOS_CLOUD_SMALL_MODEL:
-      existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
-    ELIZAOS_CLOUD_LARGE_MODEL:
-      existingEnv.ELIZAOS_CLOUD_LARGE_MODEL ?? CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+    // These are managed control-plane pins, not user overrides. Replacing
+    // stored values also heals previously provisioned agents during upgrade.
+    ELIZAOS_CLOUD_SMALL_MODEL: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    ELIZAOS_CLOUD_LARGE_MODEL: CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
   };
 }
 
@@ -329,8 +329,8 @@ export async function prepareManagedElizaBaseEnvironment(
       // resolves a tier to the `:nitro` default. For the explicit
       // ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1 rollout lane, the helper yields the
       // cloud embedding slot and uses 384-dim hints so local gte-small,
-      // ensureEmbeddingDimension, and storage agree. Each value still honors an
-      // explicit per-agent override in existingEnv.
+      // ensureEmbeddingDimension, and storage agree. Embedding controls honor
+      // explicit per-agent overrides; managed small/large model pins do not.
       ...applyManagedAgentInferenceEnvDefaults(existingEnv),
       // New managed agents keep agent-state in a LOCAL in-container DB (PGlite on
       // the persistent /root/.eliza volume) instead of the shared cloud Postgres;

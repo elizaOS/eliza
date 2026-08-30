@@ -225,7 +225,8 @@ export {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
 } from "./config/plugin-widgets.ts";
-// `contracts/awareness.js` adds the local-only (non-shared) contract surface.
+// `contracts/awareness.js` preserves the agent-owned import surface by
+// re-exporting the canonical awareness contracts from `@elizaos/shared`.
 // Config media/custom-action contract types are exported from `./config/index.js`
 // (via `@elizaos/shared`); do not re-export `./contracts/config.js` here or
 // `tsc` reports duplicate symbol errors (TS2308).

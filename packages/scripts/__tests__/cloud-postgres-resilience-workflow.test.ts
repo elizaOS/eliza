@@ -7,8 +7,21 @@ const workflow = readFileSync(
   "utf8",
 );
 const parsed = Bun.YAML.parse(workflow) as {
-  jobs?: { "migrate-db"?: { env?: Record<string, string> } };
+  jobs?: {
+    "migrate-db"?: {
+      env?: Record<string, string>;
+      steps?: Array<{ name?: string; run?: string }>;
+    };
+  };
 };
+
+function migrateStep(name: string): { name?: string; run?: string } {
+  const found = parsed.jobs?.["migrate-db"]?.steps?.find(
+    (candidate) => candidate.name === name,
+  );
+  if (!found) throw new Error(`Missing migrate-db step: ${name}`);
+  return found;
+}
 
 describe("Cloud PostgreSQL resilience release gate", () => {
   test("is off by default and performs no Railway query in off mode", () => {
@@ -25,6 +38,8 @@ describe("Cloud PostgreSQL resilience release gate", () => {
   });
 
   test("uses only protected setting names and exact Railway target arguments", () => {
+    const evidence =
+      migrateStep("Capture read-only Railway PostgreSQL evidence").run ?? "";
     for (const name of [
       "RAILWAY_PROJECT_ID",
       "RAILWAY_ENVIRONMENT_ID",
@@ -36,11 +51,11 @@ describe("Cloud PostgreSQL resilience release gate", () => {
       "HAS_RAILWAY_TOKEN: $" + "{{ secrets.RAILWAY_TOKEN != '' }}",
     );
     expect(workflow).toContain('missing+=("RAILWAY_TOKEN")');
-    expect(workflow).toContain('--project "$RAILWAY_PROJECT_ID"');
-    expect(workflow).toContain('--environment "$RAILWAY_ENVIRONMENT_ID"');
-    expect(workflow).toContain('--service "$RAILWAY_POSTGRES_SERVICE_ID"');
+    expect(evidence).toContain('--project "$RAILWAY_PROJECT_ID"');
+    expect(evidence).toContain('--environment "$RAILWAY_ENVIRONMENT_ID"');
+    expect(evidence).toContain('--service "$RAILWAY_POSTGRES_SERVICE_ID"');
     expect(workflow).not.toContain('echo "$RAILWAY_TOKEN"');
-    expect(workflow).not.toContain("railway variable list");
+    expect(evidence).not.toContain("railway variable list");
     expect(parsed.jobs?.["migrate-db"]?.env?.RAILWAY_TOKEN).toBeUndefined();
   });
 
@@ -53,6 +68,8 @@ describe("Cloud PostgreSQL resilience release gate", () => {
   });
 
   test("captures only read-only status, service, PITR, schedule, and backup lists", () => {
+    const evidence =
+      migrateStep("Capture read-only Railway PostgreSQL evidence").run ?? "";
     for (const command of [
       "railway status",
       "railway service list",
@@ -61,7 +78,7 @@ describe("Cloud PostgreSQL resilience release gate", () => {
       "railway postgres pitr schedule list",
       "railway postgres pitr backup list",
     ]) {
-      expect(workflow).toContain(command);
+      expect(evidence).toContain(command);
     }
     for (const mutation of [
       "railway postgres pitr enable",

@@ -35,6 +35,7 @@ export const KNOWN_ROUTE_SHARD_KEYS: readonly string[] = [
   "oidc",
   "openapi.json",
   "organizations",
+  "public",
   "quotas",
   "sessions",
   "set-anonymous-session",

@@ -75,6 +75,21 @@ function server(
   };
 }
 
+function action(
+  id: number,
+  command: string,
+  resourceId: number,
+): Record<string, unknown> {
+  return {
+    id,
+    command,
+    status: "success",
+    progress: 100,
+    resources: [{ id: resourceId, type: "server" }],
+    error: null,
+  };
+}
+
 function serverListResponse(servers: Array<Record<string, unknown>>): Response {
   return Response.json({
     servers,
@@ -140,9 +155,22 @@ describe("Hetzner E2E provision HTTP boundary", () => {
         }),
       ]),
       new Response(null, { status: 204 }),
+      Response.json(
+        { error: { code: "not_found", message: "server missing" } },
+        { status: 404 },
+      ),
+      Response.json({
+        server: server({
+          id: 99,
+          status: "initializing",
+          created: new Date().toISOString(),
+        }),
+        action: action(99, "create_server", 99),
+        next_actions: [],
+        root_password: null,
+      }),
       Response.json({
         server: server({ id: 99, created: new Date().toISOString() }),
-        root_password: null,
       }),
     );
 
@@ -173,8 +201,17 @@ describe("Hetzner E2E provision HTTP boundary", () => {
         server({ id: 45, created: null, name: "invalid-created" }),
       ]),
       Response.json({
-        server: server({ id: 99, created: new Date().toISOString() }),
+        server: server({
+          id: 99,
+          status: "initializing",
+          created: new Date().toISOString(),
+        }),
+        action: action(99, "create_server", 99),
+        next_actions: [],
         root_password: null,
+      }),
+      Response.json({
+        server: server({ id: 99, created: new Date().toISOString() }),
       }),
     );
 

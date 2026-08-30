@@ -57,6 +57,18 @@ describe("computer-use MCP tool catalog", () => {
     }
   });
 
+  it("exposes exact-window opt-in only on app click and scroll", () => {
+    expect(
+      findComputerUseMcpTool("computer_app_click")?.properties,
+    ).toHaveProperty("allowExperimentalExactWindow");
+    expect(
+      findComputerUseMcpTool("computer_app_scroll")?.properties,
+    ).toHaveProperty("allowExperimentalExactWindow");
+    expect(
+      findComputerUseMcpTool("computer_app_key")?.properties,
+    ).not.toHaveProperty("allowExperimentalExactWindow");
+  });
+
   it("read-only tools are non-destructive; input tools are destructive", () => {
     expect(findComputerUseMcpTool("computer_screenshot")?.destructive).toBe(
       false,

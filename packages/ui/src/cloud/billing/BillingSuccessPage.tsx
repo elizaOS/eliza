@@ -70,9 +70,14 @@ function PaymentIssue({
     <div className="flex items-center justify-center min-h-[80vh]">
       <Card className="max-w-md w-full" role="alert" aria-live="assertive">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-destructive-subtle">
+          <Card
+            surface="destructiveSubtle"
+            radius="full"
+            padding="comfortable"
+            className="mx-auto mb-4 flex size-16 items-center justify-center"
+          >
             <XCircle className="size-10 text-destructive" />
-          </div>
+          </Card>
           <CardTitle className="text-2xl">
             {t("cloud.billingSuccess.paymentIssue", {
               defaultValue: "Payment Issue",
@@ -90,12 +95,14 @@ function PaymentIssue({
                     "If you believe this is an error, please contact support with your session ID.",
                 })}
               </p>
-              <p className="text-xs text-muted-foreground bg-muted p-2 rounded-sm">
-                {t("cloud.billingSuccess.sessionLabel", {
-                  sessionId: `${sessionId.substring(0, 20)}...`,
-                  defaultValue: "Session: {{sessionId}}",
-                })}
-              </p>
+              <Card surface="raised" padding="compact" tone="muted">
+                <span className="text-xs">
+                  {t("cloud.billingSuccess.sessionLabel", {
+                    sessionId: `${sessionId.substring(0, 20)}...`,
+                    defaultValue: "Session: {{sessionId}}",
+                  })}
+                </span>
+              </Card>
             </>
           ) : null}
         </CardContent>

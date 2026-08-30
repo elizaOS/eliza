@@ -109,7 +109,7 @@ describe("currentTimeProvider", () => {
 				userTimeZone: null,
 				timeZoneOrigin: "agent-setting",
 			});
-			if (String(invalid).length > 0) {
+			if (typeof invalid === "string" && invalid.length > 0) {
 				expect(result.text).not.toContain(String(invalid));
 			}
 		},

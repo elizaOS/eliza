@@ -21,7 +21,11 @@ const appMock = vi.hoisted(() => ({
   value: {} as {
     handlePluginToggle: ReturnType<typeof vi.fn>;
     handlePluginConfigSave: ReturnType<typeof vi.fn>;
+    isLoadingPlugins: boolean;
+    loadPlugins: ReturnType<typeof vi.fn>;
     plugins: PluginInfo[];
+    pluginsLoaded: boolean;
+    pluginsLoadError: string | null;
     elizaCloudConnected: boolean;
     pluginSaving: Set<string>;
     pluginSaveSuccess: Set<string>;
@@ -143,7 +147,11 @@ describe("ConnectorsSection", () => {
     appMock.value = {
       handlePluginToggle: vi.fn(async () => {}),
       handlePluginConfigSave: vi.fn(async () => {}),
+      isLoadingPlugins: false,
+      loadPlugins: vi.fn(async () => {}),
       plugins: [],
+      pluginsLoaded: true,
+      pluginsLoadError: null,
       elizaCloudConnected: false,
       pluginSaving: new Set<string>(),
       pluginSaveSuccess: new Set<string>(),
@@ -156,6 +164,60 @@ describe("ConnectorsSection", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
+  });
+
+  it("renders a connector-shaped loading state before the runtime catalog resolves", () => {
+    appMock.value.pluginsLoaded = false;
+    appMock.value.isLoadingPlugins = true;
+
+    render(<ConnectorsSection />);
+
+    expect(screen.getByTestId("connectors-loading")).toBeTruthy();
+    expect(screen.queryByTestId("connectors-empty")).toBeNull();
+  });
+
+  it("surfaces a failed runtime catalog with a working retry", () => {
+    appMock.value.pluginsLoaded = false;
+    appMock.value.pluginsLoadError = "Runtime catalog is unavailable";
+
+    render(<ConnectorsSection />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Runtime catalog is unavailable",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(appMock.value.loadPlugins).toHaveBeenCalledOnce();
+  });
+
+  it("retries once after the app-core plugin registry cold-load window", async () => {
+    vi.useFakeTimers();
+    appMock.value.pluginsLoaded = false;
+    appMock.value.pluginsLoadError = "Plugin registry is still loading";
+
+    render(<ConnectorsSection />);
+    expect(appMock.value.loadPlugins).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(appMock.value.loadPlugins).toHaveBeenCalledOnce();
+  });
+
+  it("labels a resolved empty runtime separately from loading and failure", () => {
+    render(<ConnectorsSection />);
+
+    expect(screen.getByTestId("connectors-empty")).toBeTruthy();
+    expect(screen.getByText("No connectors reported")).toBeTruthy();
+    expect(screen.queryByTestId("connectors-loading")).toBeNull();
+  });
+
+  it("keeps managed providers reachable from the canonical Connectors surface", () => {
+    render(<ConnectorsSection />);
+
+    fireEvent.click(screen.getByTestId("managed-cloud-connections"));
+
+    expect(window.location.hash).toBe("#cloud-connectors");
   });
 
   it("falls back to icon components instead of raw emoji icon metadata", () => {

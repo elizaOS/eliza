@@ -7,6 +7,11 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  getGenerativeOperationContext,
+  requireGenerativeKnownIdentity,
+} from "@/api-app/lib/generative-route-auth";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import { provisioningAgentChat } from "@/lib/services/provisioning-agent-chat";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
@@ -53,12 +58,14 @@ app.post("/", async (c) => {
   }
 
   try {
-    const result = await provisioningAgentChat(
-      session.userId,
-      session.organizationId,
-      parsed.data.message,
-      parsed.data.agentId,
-    );
+    const caller = await requireGenerativeKnownIdentity(c, session);
+    const result = await provisioningAgentChat({
+      userId: session.userId,
+      organizationId: session.organizationId,
+      userMessage: parsed.data.message,
+      agentId: parsed.data.agentId,
+      operationContext: getGenerativeOperationContext(c, caller),
+    });
 
     const bridgeUrl = result.bridgeUrl ?? undefined;
 
@@ -73,7 +80,7 @@ app.post("/", async (c) => {
     });
   } catch (err) {
     logger.error("[eliza-app provisioning-agent/chat] Error", { error: err });
-    return c.json({ success: false, error: "Chat failed" }, 500);
+    return failureResponse(c, err);
   }
 });
 

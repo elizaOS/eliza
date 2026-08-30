@@ -1,4 +1,4 @@
-/** Visual-state contract tests for the read-only active compute card. */
+/** Visual-state contract tests for active compute observations and controls. */
 
 // @vitest-environment jsdom
 
@@ -7,8 +7,10 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../shell/CloudI18nProvider", () => ({
@@ -71,6 +73,16 @@ function computeResource(
     lastBilledAt: "2026-08-21T09:00:00.000Z",
     nextBillingAt: "2026-08-22T09:00:00.000Z",
     estimatedNextBillingAt: "2026-08-21T11:00:00.000Z",
+    cancellationControl: {
+      displayAction: "stop",
+      method: "POST",
+      mode: "stop",
+      endpoint:
+        "/api/v1/billing/resources/container-1234567890/cancel?resourceType=container",
+      expectedLifecycleRevision: 7,
+      eligible: true,
+      blockers: [],
+    },
     ratePerHour: available(exact("0.123456", "usd_per_hour")),
     estimatedRecurringComputeCostPerDay: available(
       exact("2.962944", "usd_per_day"),
@@ -474,5 +486,418 @@ describe("ActiveComputeCardView", () => {
     );
     expect(screen.getByRole("status").textContent).toBe("");
     expect(screen.getByText("API container")).toBeTruthy();
+  });
+
+  it("requires explicit confirmation and warns that billing continues", async () => {
+    const onRequestCancellation = vi.fn();
+    const resource = computeResource();
+    render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        onRetry={vi.fn()}
+        onRequestCancellation={onRequestCancellation}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Stop" });
+    expect(trigger.className).toMatch(/min-h-11/);
+    expect(trigger.className).toMatch(/keyboard-focus-surface/);
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog.textContent).toContain("Stop this container?");
+    expect(dialog.textContent).toContain(
+      "Billing continues until the provider confirms the stop.",
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Keep running" }),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(onRequestCancellation).not.toHaveBeenCalled();
+
+    fireEvent.click(trigger);
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Stop",
+      }),
+    );
+    expect(onRequestCancellation).toHaveBeenCalledWith(resource);
+  });
+
+  it("moves focus to the durable status when confirmation removes its trigger", async () => {
+    const resource = computeResource();
+    const identity = "container:container-1234567890:7";
+
+    function FocusRecoveryHarness() {
+      const [submitted, setSubmitted] = useState(false);
+      return (
+        <ActiveComputeCardView
+          state={ready(snapshot({ resources: available([resource]) }))}
+          onRetry={vi.fn()}
+          onRequestCancellation={() => setSubmitted(true)}
+          cancellationStates={
+            submitted ? { [identity]: { kind: "submitting" } } : {}
+          }
+        />
+      );
+    }
+
+    render(<FocusRecoveryHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Stop",
+      }),
+    );
+
+    const detail = await screen.findByText(
+      "Submitting the durable request. Billing is still active.",
+    );
+    const status = detail.closest('[role="status"]');
+    expect(status).toBeInstanceOf(HTMLElement);
+    await waitFor(() => expect(document.activeElement).toBe(status));
+  });
+
+  it("closes an open confirmation and focuses its durable accepted status", async () => {
+    const resource = computeResource();
+    const identity = "container:container-1234567890:7";
+    const onRequestCancellation = vi.fn();
+    const readyState = ready(snapshot({ resources: available([resource]) }));
+    const { rerender } = render(
+      <ActiveComputeCardView
+        state={readyState}
+        onRetry={vi.fn()}
+        onRequestCancellation={onRequestCancellation}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    const staleAction = within(screen.getByRole("alertdialog")).getByRole(
+      "button",
+      { name: "Stop" },
+    );
+
+    rerender(
+      <ActiveComputeCardView
+        state={readyState}
+        onRetry={vi.fn()}
+        onRequestCancellation={onRequestCancellation}
+        cancellationStates={{
+          [identity]: {
+            kind: "accepted",
+            receiptId: "22222222-2222-4222-8222-222222222222",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    expect(staleAction.isConnected).toBe(false);
+    fireEvent.click(staleAction);
+    expect(onRequestCancellation).not.toHaveBeenCalled();
+
+    const detail = screen.getByText(
+      "Request accepted. Billing remains active until provider confirmation.",
+    );
+    const status = detail.closest('[role="status"]');
+    expect(status).toBeInstanceOf(HTMLElement);
+    await waitFor(() => expect(document.activeElement).toBe(status));
+  });
+
+  it("discards an open confirmation when the lifecycle revision rotates", async () => {
+    const onRequestCancellation = vi.fn();
+    const revisionSeven = computeResource();
+    const revisionEight = {
+      ...revisionSeven,
+      cancellationControl: {
+        ...revisionSeven.cancellationControl,
+        expectedLifecycleRevision: 8,
+      },
+    };
+    const { rerender } = render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([revisionSeven]) }))}
+        cancellationAuthorityKey="org-a:user-a"
+        onRetry={vi.fn()}
+        onRequestCancellation={onRequestCancellation}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+
+    rerender(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([revisionEight]) }))}
+        cancellationAuthorityKey="org-a:user-a"
+        onRetry={vi.fn()}
+        onRequestCancellation={onRequestCancellation}
+      />,
+    );
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    const currentTrigger = screen.getByRole("button", { name: "Stop" });
+    await waitFor(() => expect(document.activeElement).toBe(currentTrigger));
+    expect(onRequestCancellation).not.toHaveBeenCalled();
+  });
+
+  it("discards an open confirmation when the authenticated principal rotates", async () => {
+    const onRequestCancellation = vi.fn();
+    const resource = computeResource();
+    const renderView = (authority: string) => (
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        cancellationAuthorityKey={authority}
+        onRetry={vi.fn()}
+        onRequestCancellation={onRequestCancellation}
+      />
+    );
+    const { rerender } = render(renderView("org-a:user-a"));
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+
+    rerender(renderView("org-a:user-b"));
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    const currentTrigger = screen.getByRole("button", { name: "Stop" });
+    await waitFor(() => expect(document.activeElement).toBe(currentTrigger));
+    expect(onRequestCancellation).not.toHaveBeenCalled();
+  });
+
+  it("focuses the authoritative blocker when eligibility changes mid-confirmation", async () => {
+    const onRequestCancellation = vi.fn();
+    const eligible = computeResource();
+    const blocked = computeResource({
+      cancellationControl: {
+        ...eligible.cancellationControl,
+        eligible: false,
+        blockers: ["owner_or_admin_role_required"],
+      },
+    });
+    const { rerender } = render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([eligible]) }))}
+        cancellationAuthorityKey="org-a:user-a"
+        onRetry={vi.fn()}
+        onRequestCancellation={onRequestCancellation}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+
+    rerender(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([blocked]) }))}
+        cancellationAuthorityKey="org-a:user-a"
+        onRetry={vi.fn()}
+        onRequestCancellation={onRequestCancellation}
+      />,
+    );
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    const blocker = screen
+      .getByText(
+        "Only organization owners and admins can manage billing for this resource.",
+      )
+      .closest('[role="status"]');
+    expect(blocker).toBeInstanceOf(HTMLElement);
+    await waitFor(() => expect(document.activeElement).toBe(blocker));
+    expect(onRequestCancellation).not.toHaveBeenCalled();
+  });
+
+  it("offers a safe retry after a rejected request", () => {
+    const resource = computeResource();
+    render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        onRetry={vi.fn()}
+        onRequestCancellation={vi.fn()}
+        cancellationStates={{
+          "container:container-1234567890:7": { kind: "rejected" },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Retry request" })).toBeTruthy();
+  });
+
+  it("renders the server blocker instead of an active control", () => {
+    const resource = computeResource({
+      cancellationControl: {
+        displayAction: "stop",
+        method: "POST",
+        mode: "stop",
+        endpoint:
+          "/api/v1/billing/resources/container-1234567890/cancel?resourceType=container",
+        expectedLifecycleRevision: 7,
+        eligible: false,
+        blockers: ["owner_or_admin_role_required"],
+      },
+    });
+    render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        onRetry={vi.fn()}
+        onRequestCancellation={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Only organization owners and admins can manage billing for this resource.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+  });
+
+  it("explains an account eligibility blocker without exposing an action", () => {
+    const resource = computeResource({
+      cancellationControl: {
+        displayAction: "stop",
+        method: "POST",
+        mode: "stop",
+        endpoint:
+          "/api/v1/billing/resources/container-1234567890/cancel?resourceType=container",
+        expectedLifecycleRevision: 7,
+        eligible: false,
+        blockers: ["billing_account_ineligible"],
+      },
+    });
+    render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        onRetry={vi.fn()}
+        onRequestCancellation={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "This account or organization is not eligible to manage billing for this resource.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+  });
+
+  it("keeps the resource visible after acceptance and exposes the receipt", () => {
+    const resource = computeResource();
+    render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        onRetry={vi.fn()}
+        onRequestCancellation={vi.fn()}
+        cancellationStates={{
+          "container:container-1234567890:7": {
+            kind: "accepted",
+            receiptId: "22222222-2222-4222-8222-222222222222",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("API container")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Request accepted. Billing remains active until provider confirmation.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Receipt: 22222222-2222-4222-8222-222222222222"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+  });
+
+  it("distinguishes provider confirmation from terminal attention", () => {
+    const resource = computeResource();
+    const identity = "container:container-1234567890:7";
+    const { rerender } = render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        onRetry={vi.fn()}
+        onRequestCancellation={vi.fn()}
+        cancellationStates={{
+          [identity]: {
+            kind: "provider_confirmed",
+            receiptId: "22222222-2222-4222-8222-222222222222",
+            computeStopped: true,
+            providerStopped: true,
+            retainedBackupBilling: {
+              status: "not_applicable",
+              ratePerHour: null,
+            },
+          },
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Provider confirmed compute stopped. No retained backup billing remains for this resource.",
+      ),
+    ).toBeTruthy();
+
+    rerender(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        onRetry={vi.fn()}
+        onRequestCancellation={vi.fn()}
+        cancellationStates={{
+          [identity]: {
+            kind: "terminal_attention",
+            receiptId: "22222222-2222-4222-8222-222222222222",
+          },
+        }}
+      />,
+    );
+    const attentionAlert = screen.getByRole("alert");
+    expect(attentionAlert.textContent).toMatch(/operator attention/i);
+    expect(attentionAlert.textContent).toMatch(/provider.*not confirmed/i);
+    expect(attentionAlert.textContent).toMatch(/billing continues/i);
+    expect(attentionAlert.textContent).not.toMatch(
+      /provider confirmed compute stopped/i,
+    );
+  });
+
+  it("keeps retained agent-backup billing explicit after compute stops", () => {
+    const resource = computeResource({
+      resourceType: "agent_sandbox",
+      resourceId: "agent-1234567890",
+      name: "Research agent",
+      cancellationControl: {
+        displayAction: "stop_compute",
+        method: "POST",
+        mode: "stop",
+        endpoint:
+          "/api/v1/billing/resources/agent-1234567890/cancel?resourceType=agent_sandbox",
+        expectedLifecycleRevision: 7,
+        eligible: true,
+        blockers: [],
+      },
+    });
+
+    render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        onRetry={vi.fn()}
+        onRequestCancellation={vi.fn()}
+        cancellationStates={{
+          "agent_sandbox:agent-1234567890:7": {
+            kind: "provider_confirmed",
+            receiptId: "22222222-2222-4222-8222-222222222222",
+            computeStopped: true,
+            providerStopped: true,
+            retainedBackupBilling: {
+              status: "billable",
+              ratePerHour: 0.0025,
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Provider confirmed compute stopped. The retained backup remains billable at $0.0025/hour until it is deleted.",
+      ),
+    ).toBeTruthy();
   });
 });

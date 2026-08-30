@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   type ChatPanelLayoutInput,
   isShortLandscapeViewport,
+  resolveChatKeyboardHiddenViewportBaseline,
+  resolveChatNativeKeyboardLift,
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
   SHEET_GRABBER_TOP_CLEARANCE,
@@ -30,6 +32,102 @@ const SCREEN_H = 852; // iPhone 15 logical height
 const NOTCH = 59; // safe-area-inset-top on a Dynamic-Island device
 const KEYBOARD = 336; // iOS soft-keyboard height incl. accessory bar
 const BOTTOM_PAD = 34; // home-indicator safe area at rest
+
+describe("resolveChatNativeKeyboardLift", () => {
+  it("never double-lifts Android when adjustResize wins the event race", () => {
+    // Exact Pixel 11 Pro failure: the WebView had already shrunk 919→520, then
+    // keyboardWillShow delivered 398px. Because the resize arrived first, the
+    // component briefly observed 520 before the native event. The stable
+    // keyboard-hidden baseline still proves that adjustResize consumed all of
+    // the native inset, so the fixed overlay stays at bottom: 0.
+    expect(
+      resolveChatNativeKeyboardLift({
+        platformNeedsNativeLift: true,
+        nativeKeyboardHeight: 398,
+        keyboardHiddenInnerHeight: 919,
+        currentInnerHeight: 520,
+      }),
+    ).toBe(0);
+  });
+
+  it("lifts above the Light Phone III keyboard when its WebView does not resize", () => {
+    // Physical LP3 evidence: its native keyboard bridge reported 223 CSS px
+    // while innerHeight and visualViewport.height both remained 414 CSS px.
+    expect(
+      resolveChatNativeKeyboardLift({
+        platformNeedsNativeLift: true,
+        nativeKeyboardHeight: 223,
+        keyboardHiddenInnerHeight: 414,
+        currentInnerHeight: 414,
+      }),
+    ).toBe(223);
+  });
+
+  it("keeps web surfaces independent from native keyboard bridge values", () => {
+    expect(
+      resolveChatNativeKeyboardLift({
+        platformNeedsNativeLift: false,
+        nativeKeyboardHeight: 200,
+        keyboardHiddenInnerHeight: 414,
+        currentInnerHeight: 414,
+      }),
+    ).toBe(0);
+  });
+
+  it("keeps only the unabsorbed native lift on iOS", () => {
+    expect(
+      resolveChatNativeKeyboardLift({
+        platformNeedsNativeLift: true,
+        nativeKeyboardHeight: 336,
+        keyboardHiddenInnerHeight: 852,
+        currentInnerHeight: 852,
+      }),
+    ).toBe(336);
+    expect(
+      resolveChatNativeKeyboardLift({
+        platformNeedsNativeLift: true,
+        nativeKeyboardHeight: 336,
+        keyboardHiddenInnerHeight: 852,
+        currentInnerHeight: 700,
+      }),
+    ).toBe(184);
+  });
+});
+
+describe("resolveChatKeyboardHiddenViewportBaseline", () => {
+  it("does not let Pixel's resize-before-event race overwrite the resting height", () => {
+    expect(
+      resolveChatKeyboardHiddenViewportBaseline({
+        previous: { innerHeight: 919, innerWidth: 412 },
+        currentInnerHeight: 520,
+        currentInnerWidth: 412,
+        nativeKeyboardVisible: false,
+      }),
+    ).toEqual({ innerHeight: 919, innerWidth: 412 });
+  });
+
+  it("resets the baseline across a real orientation or window-class change", () => {
+    expect(
+      resolveChatKeyboardHiddenViewportBaseline({
+        previous: { innerHeight: 919, innerWidth: 412 },
+        currentInnerHeight: 412,
+        currentInnerWidth: 919,
+        nativeKeyboardVisible: false,
+      }),
+    ).toEqual({ innerHeight: 412, innerWidth: 919 });
+  });
+
+  it("holds the baseline while a native keyboard is visible", () => {
+    expect(
+      resolveChatKeyboardHiddenViewportBaseline({
+        previous: { innerHeight: 414, innerWidth: 360 },
+        currentInnerHeight: 414,
+        currentInnerWidth: 360,
+        nativeKeyboardVisible: true,
+      }),
+    ).toEqual({ innerHeight: 414, innerWidth: 360 });
+  });
+});
 
 describe("resolveChatPanelLayout", () => {
   it("reserves the fixed top margin on web/desktop (no keyboard, no notch)", () => {
@@ -213,9 +311,9 @@ describe("resolveChatPanelLayout", () => {
     );
   });
 
-  it("keeps the complete grab target visible above LP3 Gboard", () => {
+  it("keeps the complete grab target visible above the LP3 keyboard", () => {
     // Physical LP3 capture: the WebView kept its 414px layout viewport while
-    // Gboard reported a 223px native lift. The keyboard gap is 12px. A 22px
+    // the native keyboard reported a 223px lift. The keyboard gap is 12px. A 22px
     // reserve seats the grabber's 44px hit zone fully on-screen even though the
     // preferred 200px panel no longer fits above the keyboard.
     const input: ChatPanelLayoutInput = {
@@ -303,9 +401,9 @@ describe("resolveChatPanelLayout", () => {
 });
 
 describe("resolveChatPanelHalfDetentHeight", () => {
-  it("clamps the LP3 half detent to the Gboard-constrained panel ceiling", () => {
+  it("clamps the LP3 half detent to the keyboard-constrained panel ceiling", () => {
     // 46% of the unchanged 414px WebView is 190px, but physical LP3 proof
-    // leaves only a 157px panel above Gboard once its full grab target is
+    // leaves only a 157px panel above the keyboard once its full grab target is
     // reserved. The resting motion target must not expand past that ceiling.
     expect(resolveChatPanelHalfDetentHeight(414, 157)).toBe(157);
   });
