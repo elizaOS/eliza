@@ -4460,7 +4460,7 @@ export class ElizaSandboxService {
             success: false,
             retryable: true,
             sandboxRecord: await agentSandboxesRepository.findById(rec.id),
-            error: `Replacement cleanup is still pending: ${
+            error: `${msg}; replacement cleanup remains pending: ${
               stopErr instanceof Error ? stopErr.message : String(stopErr)
             }`,
           };

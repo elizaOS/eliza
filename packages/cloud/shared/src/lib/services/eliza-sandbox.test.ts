@@ -7658,6 +7658,63 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     }
   });
 
+  test("post-create cleanup failure preserves the original readiness failure", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row = provisioningReadyRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => ({ ...row, ...data }),
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const create = mock(async () => providerHandle());
+    const stopForReplacement = mock(async () => {
+      throw new Error("remote absence remains unresolved");
+    });
+    const svc = new ElizaSandboxService();
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({
+      create,
+      stopForReplacement,
+      checkHealth: async () => false,
+    } as SandboxProvider);
+
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      expect(res).toEqual(
+        expect.objectContaining({
+          success: false,
+          retryable: true,
+          error:
+            "Sandbox health check timed out; replacement cleanup remains pending: remote absence remains unresolved",
+        }),
+      );
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(stopForReplacement).toHaveBeenCalledWith("sandbox-blue-1");
+    } finally {
+      findSpy.mockRestore();
+      findByIdSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+
   test("(5) UNIQUE on every attempt → exhaustion → 'Provisioning failed after 3 attempts'", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const row = provisioningReadyRow();
