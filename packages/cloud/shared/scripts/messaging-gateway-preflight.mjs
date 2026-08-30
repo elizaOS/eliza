@@ -37,14 +37,20 @@ function checkTelegram() {
   addCheck(
     "telegram",
     "bot token",
-    hasAny(["ELIZA_APP_TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN"]),
+    hasConfiguredValue(
+      ["ELIZA_APP_TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN"],
+      "HAS_ELIZA_APP_TELEGRAM_BOT_TOKEN",
+    ),
     "Telegram bot token is configured",
     "Create a bot with BotFather and set ELIZA_APP_TELEGRAM_BOT_TOKEN.",
   );
   addCheck(
     "telegram",
     "webhook secret",
-    hasAny(["TELEGRAM_WEBHOOK_SECRET", "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"]),
+    hasConfiguredValue(
+      ["TELEGRAM_WEBHOOK_SECRET", "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"],
+      "HAS_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+    ),
     "Telegram webhook secret is configured",
     "Set a per-environment secret and configure it as x-telegram-bot-api-secret-token.",
   );
@@ -138,14 +144,17 @@ function checkShared() {
   addCheck(
     "shared",
     "cloud API base",
-    hasAny(["ELIZACLOUD_API_URL", "ELIZA_CLOUD_API_URL", "ELIZA_CLOUD_URL", "PUBLIC_API_BASE_URL"]),
+    hasConfiguredValue(
+      ["ELIZACLOUD_API_URL", "ELIZA_CLOUD_API_URL", "ELIZA_CLOUD_URL", "PUBLIC_API_BASE_URL"],
+      "HAS_ELIZACLOUD_API_URL",
+    ),
     "Cloud API base URL is configured",
     "Set the production Cloud API base URL used by gateway services.",
   );
   addCheck(
     "shared",
     "Cerebras onboarding model",
-    hasAny(["CEREBRAS_API_KEY"]),
+    hasConfiguredValue(["CEREBRAS_API_KEY"], "HAS_CEREBRAS_API_KEY"),
     "Cerebras API key is configured",
     "Set CEREBRAS_API_KEY for the stateless onboarding worker.",
   );
@@ -158,21 +167,27 @@ function checkShared() {
   addCheck(
     "shared",
     "webhook gateway URL",
-    hasAny(["ELIZA_APP_WEBHOOK_GATEWAY_URL", "WEBHOOK_GATEWAY_URL", "GATEWAY_WEBHOOK_URL"]),
+    hasConfiguredValue(
+      ["ELIZA_APP_WEBHOOK_GATEWAY_URL", "WEBHOOK_GATEWAY_URL", "GATEWAY_WEBHOOK_URL"],
+      "HAS_ELIZA_APP_WEBHOOK_GATEWAY_URL",
+    ),
     "Webhook gateway upstream URL is configured",
     "Set ELIZA_APP_WEBHOOK_GATEWAY_URL (or WEBHOOK_GATEWAY_URL / GATEWAY_WEBHOOK_URL) to the gateway-webhook service URL.",
   );
   addCheck(
     "shared",
     "webhook gateway forwarder secret",
-    hasAny(["ELIZA_APP_WEBHOOK_GATEWAY_SECRET"]),
+    hasConfiguredValue(
+      ["ELIZA_APP_WEBHOOK_GATEWAY_SECRET"],
+      "HAS_ELIZA_APP_WEBHOOK_GATEWAY_SECRET",
+    ),
     "Webhook gateway forwarder secret is configured",
     "Set ELIZA_APP_WEBHOOK_GATEWAY_SECRET to the shared BFF→gateway trust secret.",
   );
   addCheck(
     "shared",
     "internal delivery secret",
-    hasAny(["GATEWAY_INTERNAL_SECRET"]),
+    hasConfiguredValue(["GATEWAY_INTERNAL_SECRET"], "HAS_GATEWAY_INTERNAL_SECRET"),
     "Internal reminder delivery secret is configured",
     "Set GATEWAY_INTERNAL_SECRET consistently on the Cloud Worker and messaging gateways.",
   );

@@ -9,6 +9,7 @@ name: Cloud Gateway Discord
 
 on:
   workflow_call:
+  workflow_dispatch:
 
 concurrency:
   group: cloud-gateway-discord-${{ github.ref }}
@@ -28,7 +29,9 @@ permissions:
 jobs:
   trusted-config:
     name: Trusted configuration
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    # Until develop and the staging Environment have enforced admission policy,
+    # never attach staging configuration to the automatic reusable caller.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
     environment: staging
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -45,13 +48,13 @@ jobs:
       - name: Enforce trusted messaging gateway configuration
         run: bun run preflight:messaging-gateways:strict -- --channels=shared,telegram,discord
         env:
-          ELIZACLOUD_API_URL: ${{ secrets.ELIZACLOUD_API_URL }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
-          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
-          GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
-          ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
-          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          HAS_ELIZACLOUD_API_URL: ${{ secrets.ELIZACLOUD_API_URL != '' }}
+          HAS_CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY != '' }}
+          HAS_ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL != '' }}
+          HAS_ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET != '' }}
+          HAS_GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET != '' }}
+          HAS_ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN != '' }}
+          HAS_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET != '' }}
           HAS_ELIZA_APP_DISCORD_APPLICATION_ID: ${{ secrets.ELIZA_APP_DISCORD_APPLICATION_ID != '' }}
           ELIZA_APP_DISCORD_BOT_ENABLED: ${{ vars.ELIZA_APP_DISCORD_BOT_ENABLED }}
           HAS_ELIZA_APP_DISCORD_BOT_TOKEN: ${{ secrets.ELIZA_APP_DISCORD_BOT_TOKEN != '' }}

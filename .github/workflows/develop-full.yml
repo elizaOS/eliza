@@ -179,7 +179,6 @@ jobs:
     needs: plan
     if: needs.plan.outputs.run_cloud_gateway_discord == 'true'
     uses: ./.github/workflows/cloud-gateway-discord.yml
-    secrets: inherit
 
   cloud:
     needs: plan

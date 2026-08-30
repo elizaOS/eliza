@@ -29,6 +29,19 @@ const SHARED_ENV = {
   GATEWAY_INTERNAL_SECRET: "contract-value",
 };
 
+const SHARED_PRESENCE_ENV = {
+  HAS_ELIZACLOUD_API_URL: "true",
+  HAS_CEREBRAS_API_KEY: "true",
+  HAS_ELIZA_APP_WEBHOOK_GATEWAY_URL: "true",
+  HAS_ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "true",
+  HAS_GATEWAY_INTERNAL_SECRET: "true",
+};
+
+const TELEGRAM_PRESENCE_ENV = {
+  HAS_ELIZA_APP_TELEGRAM_BOT_TOKEN: "true",
+  HAS_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "true",
+};
+
 const DISCORD_ENV = {
   ELIZA_APP_DISCORD_APPLICATION_ID: "contract-value",
   ELIZA_APP_DISCORD_BOT_ENABLED: "true",
@@ -75,6 +88,26 @@ test("accepts every maintained webhook gateway URL alias", () => {
 
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.match(result.stdout, /All gateway preflight checks passed/);
+  }
+});
+
+test("shared and Telegram checks accept exact names-only presence sentinels", () => {
+  for (const [channel, env] of [
+    ["shared", SHARED_PRESENCE_ENV],
+    ["telegram", TELEGRAM_PRESENCE_ENV],
+  ]) {
+    const result = runStrict(channel, env);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /All gateway preflight checks passed/);
+  }
+
+  for (const invalid of ["false", "TRUE", "1", " true "]) {
+    const result = runStrict("shared", {
+      ...SHARED_PRESENCE_ENV,
+      HAS_CEREBRAS_API_KEY: invalid,
+    });
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /\[fail\] shared: Cerebras onboarding model/);
   }
 });
 
@@ -195,7 +228,7 @@ test("WhatsApp strict preflight wires complete and split authorities without lea
   assert.doesNotMatch(splitOutput, /whatsapp-contract-value-never-print/);
 });
 
-test("workflow limits trusted configuration to the develop push caller", () => {
+test("workflow keeps trusted configuration behind exact-develop manual dispatch", () => {
   const workflow = readFileSync(WORKFLOW, "utf8");
   const developWorkflow = readFileSync(DEVELOP_WORKFLOW, "utf8");
   const trustedConfigStart = workflow.indexOf("  trusted-config:");
@@ -207,17 +240,20 @@ test("workflow limits trusted configuration to the develop push caller", () => {
   const trustedConfig = workflow.slice(trustedConfigStart, testJobStart);
   const testJob = workflow.slice(testJobStart);
 
-  assert.match(workflow, /on:\s+workflow_call:\s+concurrency:/);
-  assert.doesNotMatch(workflow, /workflow_dispatch|manual/i);
+  assert.match(workflow, /on:\s+workflow_call:\s+workflow_dispatch:\s+concurrency:/);
   assert.doesNotMatch(workflow, /pull_request/);
   assert.match(developWorkflow, /on:\s+push:\s+branches: \[develop\]/);
   assert.match(
+    developWorkflow,
+    /cloud-gateway-discord:\s+[\s\S]*?uses: \.\/\.github\/workflows\/cloud-gateway-discord\.yml/,
+  );
+  assert.doesNotMatch(
     developWorkflow,
     /cloud-gateway-discord:\s+[\s\S]*?uses: \.\/\.github\/workflows\/cloud-gateway-discord\.yml\s+secrets: inherit/,
   );
   assert.match(
     trustedConfig,
-    /if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/develop'/,
+    /if: github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/develop'/,
   );
   assert.match(trustedConfig, /environment: staging/);
   assert.doesNotMatch(trustedConfig, /production/);
@@ -230,15 +266,31 @@ test("workflow limits trusted configuration to the develop push caller", () => {
   );
   assert.doesNotMatch(trustedConfig, /Require canonical trusted-configuration source|SOURCE_REF/);
   assert.doesNotMatch(testJob, /^\s{4}if:/m);
-  assert.match(
-    workflow,
-    /ELIZA_APP_WEBHOOK_GATEWAY_URL: \$\{\{ vars\.ELIZA_APP_WEBHOOK_GATEWAY_URL \}\}/,
-  );
-  assert.doesNotMatch(
-    workflow,
-    /ELIZA_APP_WEBHOOK_GATEWAY_URL: \$\{\{ secrets\.ELIZA_APP_WEBHOOK_GATEWAY_URL \}\}/,
-  );
-  assert.match(workflow, /GATEWAY_INTERNAL_SECRET: \$\{\{ secrets\.GATEWAY_INTERNAL_SECRET \}\}/);
+  for (const [sentinel, source] of [
+    ["HAS_ELIZACLOUD_API_URL", "secrets.ELIZACLOUD_API_URL"],
+    ["HAS_CEREBRAS_API_KEY", "secrets.CEREBRAS_API_KEY"],
+    ["HAS_ELIZA_APP_WEBHOOK_GATEWAY_URL", "vars.ELIZA_APP_WEBHOOK_GATEWAY_URL"],
+    ["HAS_ELIZA_APP_WEBHOOK_GATEWAY_SECRET", "secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET"],
+    ["HAS_GATEWAY_INTERNAL_SECRET", "secrets.GATEWAY_INTERNAL_SECRET"],
+    ["HAS_ELIZA_APP_TELEGRAM_BOT_TOKEN", "secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN"],
+    ["HAS_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET", "secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"],
+  ]) {
+    assert.match(
+      workflow,
+      new RegExp(`${sentinel}: \\$\\{\\{ ${source.replaceAll(".", "\\.")} != '' \\}\\}`),
+    );
+  }
+  for (const rawName of [
+    "ELIZACLOUD_API_URL",
+    "CEREBRAS_API_KEY",
+    "ELIZA_APP_WEBHOOK_GATEWAY_URL",
+    "ELIZA_APP_WEBHOOK_GATEWAY_SECRET",
+    "GATEWAY_INTERNAL_SECRET",
+    "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+    "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+  ]) {
+    assert.doesNotMatch(workflow, new RegExp(`^\\s+${rawName}:`, "m"));
+  }
   assert.match(
     workflow,
     /ELIZA_APP_DISCORD_BOT_ENABLED: \$\{\{ vars\.ELIZA_APP_DISCORD_BOT_ENABLED \}\}/,
