@@ -143,4 +143,40 @@ describe("usePairingState", () => {
     await act(async () => submission);
     expect(mocks.client.setToken).toHaveBeenCalledWith("paired-token");
   });
+
+  it("retries persistence without consuming the pairing code again", async () => {
+    mocks.client.pair.mockResolvedValue({ token: "paired-token" });
+    mocks.persistActiveServerCredential
+      .mockRejectedValueOnce(new Error("storage unavailable"))
+      .mockResolvedValueOnce(undefined);
+    const { result } = renderHook(() => usePairingState());
+    setPairingCode(result, "PAIR-1234");
+
+    await act(async () => result.current.handlePairingSubmit());
+
+    expect(result.current.state.pairingError).toBe(
+      "Pairing succeeded, but this device could not save the connection. Keep this window open and submit again to retry saving.",
+    );
+    expect(result.current.state.pairingError).not.toBe(
+      "Pairing failed. Check the code and try again.",
+    );
+    expect(mocks.client.pair).toHaveBeenCalledTimes(1);
+    expect(mocks.persistActiveServerCredential).toHaveBeenCalledTimes(1);
+    expect(mocks.persistActiveServerCredential).toHaveBeenLastCalledWith(
+      "paired-token",
+      "https://runtime.example.test",
+    );
+    expect(mocks.client.setToken).not.toHaveBeenCalled();
+
+    await act(async () => result.current.handlePairingSubmit());
+
+    expect(mocks.client.pair).toHaveBeenCalledTimes(1);
+    expect(mocks.persistActiveServerCredential).toHaveBeenCalledTimes(2);
+    expect(mocks.persistActiveServerCredential).toHaveBeenLastCalledWith(
+      "paired-token",
+      "https://runtime.example.test",
+    );
+    expect(mocks.client.setToken).toHaveBeenCalledOnce();
+    expect(mocks.client.setToken).toHaveBeenCalledWith("paired-token");
+  });
 });
