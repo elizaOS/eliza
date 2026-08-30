@@ -9,6 +9,7 @@ import {
   parseAuthTrace,
   probeAuthGuardSample,
   probeAuthSample,
+  runAuthProbes,
   sanitizeInferenceAuthTail,
   sanitizeInferenceAuthTelemetry,
   summarizeAuthSamples,
@@ -77,6 +78,75 @@ test("parseArgs requires exact HTTPS deployment provenance and sample counts", (
       ]),
     /HTTPS/,
   );
+  const withoutSuspended = parseArgs([
+    "--base-url",
+    "https://preview.example",
+    "--api-key-env",
+    "AUTH_KEY",
+    "--probe-token-env",
+    "PROBE_TOKEN",
+    "--deploy-sha",
+    SHA,
+  ]);
+  assert.equal(withoutSuspended.suspendedApiKeyEnv, "");
+});
+
+test("auth probe omits suspended credentials and records not_requested explicitly", async () => {
+  const emitted = [];
+  const fetchImpl = async (url, init) => {
+    if (url.endsWith("/api/health")) {
+      return Response.json({ commit: SHA, environment: "staging" });
+    }
+    const key = init.headers["X-API-Key"];
+    const traceId = init.headers["X-Eliza-Trace-Id"];
+    const probe = init.headers["X-Eliza-Auth-Probe"];
+    const invalid = key !== "eliza_valid";
+    const forcedMiss =
+      typeof probe === "string" && !probe.startsWith("invalid-control:");
+    const auth = invalid
+      ? "v=1;credential=x_api_key;probe=off;available=available;backend=cloudflare_kv;read=miss;authoritative=rejected;write=not_run;result=rejected"
+      : forcedMiss
+        ? authHeader("miss")
+        : authHeader("hit");
+    const timings = invalid
+      ? "auth_extract;dur=0.1, auth_cache_available;dur=0.1, auth_cache_read;dur=1, auth_key_lookup;dur=3, auth_resolve;dur=5"
+      : timingHeader(forcedMiss ? "miss" : "hit");
+    return new Response(null, {
+      status: invalid ? 401 : 400,
+      headers: {
+        "X-Eliza-Trace-Id": traceId,
+        "X-Eliza-Auth-Trace": auth,
+        "Server-Timing": timings,
+      },
+    });
+  };
+
+  const result = await runAuthProbes(
+    {
+      baseUrl: "https://preview.example",
+      apiKeyEnv: "AUTH_KEY",
+      suspendedApiKeyEnv: "",
+      probeTokenEnv: "PROBE_TOKEN",
+      deploySha: SHA,
+      hitCount: 1,
+      missCount: 1,
+      timeoutMs: 1_000,
+      intervalMs: 0,
+    },
+    {
+      env: { AUTH_KEY: "eliza_valid", PROBE_TOKEN: "private-probe" },
+      fetchImpl,
+      emit: (record) => emitted.push(record),
+      sleep: async () => {},
+    },
+  );
+
+  assert.deepEqual(
+    result.guards.map((record) => record.guard),
+    ["invalid_key", "forged_probe"],
+  );
+  assert.equal(result.summary.suspendedGuard, "not_requested");
+  assert.equal(JSON.stringify(emitted).includes("private-probe"), false);
 });
 
 test("auth parsers accept only bounded enums and finite auth durations", () => {
@@ -503,6 +573,7 @@ test("summary reports sample volume and latency distributions without thresholds
   ];
   const summary = summarizeAuthSamples(passing, SHA);
   assert.deepEqual(summary.counts, { hit: 30, miss: 10 });
+  assert.equal(summary.suspendedGuard, "not_requested");
   assert.deepEqual(summary.hitAuthResolveMs, {
     p50: 10,
     p90: 10,

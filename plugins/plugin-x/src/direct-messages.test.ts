@@ -9,7 +9,8 @@
  * PairingService, real core `checkPairingAllowed`).
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";
 import type { AuthenticatedTwitterSession } from "./client/auth";
 import { isGroupDmEvent, TwitterDirectMessageClient } from "./direct-messages";
@@ -45,9 +46,50 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+const DEV_CLOUD_ENV_KEYS = [
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZA_DEV_CLOUD_TARGET",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZAOS_CLOUD_API_KEY",
+] as const;
+const ORIGINAL_DEV_CLOUD_ENV = Object.fromEntries(
+  DEV_CLOUD_ENV_KEYS.map((key) => [key, process.env[key]]),
+) as Record<(typeof DEV_CLOUD_ENV_KEYS)[number], string | undefined>;
+
+const PERSONAL_DM_PARAMS = {
+  recipientTwitterUserId: "222",
+  senderTwitterUserId: "111",
+  senderUsername: "alice",
+  displayName: "Alice",
+  dmEventId: "501",
+  message: "private question",
+};
+
+function routePersonalDmForTest(
+  client: TwitterDirectMessageClient,
+): Promise<string> {
+  return (
+    client as unknown as {
+      routePersonalDm(params: typeof PERSONAL_DM_PARAMS): Promise<string>;
+    }
+  ).routePersonalDm(PERSONAL_DM_PARAMS);
+}
+
+beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
+  for (const key of DEV_CLOUD_ENV_KEYS) delete process.env[key];
+});
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  for (const key of DEV_CLOUD_ENV_KEYS) {
+    const original = ORIGINAL_DEV_CLOUD_ENV[key];
+    if (original === undefined) delete process.env[key];
+    else process.env[key] = original;
+  }
+  resetDevCloudEnvAuthorityForTests();
 });
 
 describe("X DM conversation classification", () => {
@@ -69,6 +111,105 @@ describe("X DM conversation classification", () => {
 });
 
 describe("TwitterDirectMessageClient", () => {
+  it("never sends a Cloud API key to an arbitrary personal-DM router", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZAOS_CLOUD_API_KEY" ? "privileged-cloud-key" : undefined,
+      ),
+    } as unknown as IAgentRuntime;
+    const dmClient = new TwitterDirectMessageClient({} as ClientBase, runtime, {
+      TWITTER_PERSONAL_DM_ROUTER_URL: "https://router.example/personal-message",
+    } as TwitterClientState);
+
+    await expect(routePersonalDmForTest(dmClient)).rejects.toThrow(
+      "explicit TWITTER_BROKER_TOKEN",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves the no-authority Cloud-key fallback for an Eliza-owned router", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ success: true, data: { reply: "personal reply" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZAOS_CLOUD_API_KEY" ? "legacy-cloud-key" : undefined,
+      ),
+    } as unknown as IAgentRuntime;
+    const dmClient = new TwitterDirectMessageClient({} as ClientBase, runtime, {
+      TWITTER_PERSONAL_DM_ROUTER_URL:
+        "https://cloud.eliza.app/api/v1/twitter/personal-message",
+    } as TwitterClientState);
+
+    await expect(routePersonalDmForTest(dmClient)).resolves.toBe(
+      "personal reply",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://cloud.eliza.app/api/v1/twitter/personal-message",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: "Bearer legacy-cloud-key",
+        }),
+      }),
+    );
+  });
+
+  it("does not cross a frozen staging authority into the production personal-DM router", async () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+    process.env.ELIZA_DEV_CLOUD_TARGET = "staging";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+    process.env.ELIZAOS_CLOUD_API_KEY = "frozen-staging-key";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZAOS_CLOUD_API_KEY" ? "mutable-runtime-key" : undefined,
+      ),
+    } as unknown as IAgentRuntime;
+    const dmClient = new TwitterDirectMessageClient({} as ClientBase, runtime, {
+      TWITTER_PERSONAL_DM_ROUTER_URL:
+        "https://api.eliza.app/api/v1/twitter/personal-message",
+    } as TwitterClientState);
+
+    await expect(routePersonalDmForTest(dmClient)).rejects.toThrow(
+      "explicit TWITTER_BROKER_TOKEN",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows an arbitrary personal-DM router with an explicit broker token", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ success: true, data: { reply: "personal reply" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const runtime = {
+      getSetting: vi.fn((key: string) => {
+        if (key === "TWITTER_BROKER_TOKEN") return "explicit-broker-token";
+        if (key === "ELIZAOS_CLOUD_API_KEY") return "privileged-cloud-key";
+        return undefined;
+      }),
+    } as unknown as IAgentRuntime;
+    const dmClient = new TwitterDirectMessageClient({} as ClientBase, runtime, {
+      TWITTER_PERSONAL_DM_ROUTER_URL: "https://router.example/personal-message",
+    } as TwitterClientState);
+
+    await expect(routePersonalDmForTest(dmClient)).resolves.toBe(
+      "personal reply",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://router.example/personal-message",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: "Bearer explicit-broker-token",
+        }),
+      }),
+    );
+  });
+
   it("does not prefix-parse a partial DM polling interval", async () => {
     vi.useFakeTimers();
     const listDmEvents = vi.fn(async () => ({ events: [] }));

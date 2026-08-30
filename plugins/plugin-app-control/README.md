@@ -4,7 +4,8 @@ An elizaOS plugin that lets an Eliza agent launch, close, list, scaffold, and ve
 
 ## What it does
 
-Loading this plugin gives an Eliza agent three new actions:
+Loading this plugin gives an Eliza agent semantic actions for app, view,
+background, settings, model, agent-profile, and runtime management.
 
 **APP** — Unified app lifecycle control. The agent can:
 - Launch a registered app by name (`"launch shopify"`)
@@ -18,6 +19,12 @@ Loading this plugin gives an Eliza agent three new actions:
 
 **BACKGROUND** — Unified background control. The agent can set a named color or hex color, use an uploaded image, generate a background image from a prompt, undo the previous background, redo an undone change, or reset to default. It broadcasts a `background:apply` view event that the always-mounted app background applies to the shared `BackgroundConfig` store.
 
+**RUNTIMES** — Owner-gated Devices & Runtimes lifecycle. It lists saved
+runtimes, manages confirmed pairing/revoke/relay operations, and performs
+read-only SSH host-key inspection before a confirmed fingerprint-pinned
+connection. Passwords, private keys, and bearer/access tokens are never action
+parameters; secret entry stays in the local UI and native credential store.
+
 ## Capabilities added to the agent
 
 | Action | Contexts gated | Role gate |
@@ -26,6 +33,7 @@ Loading this plugin gives an Eliza agent three new actions:
 | `VIEWS` (read modes) | `general`, `automation`, `settings`, `code` | User |
 | `VIEWS` (create/edit/delete) | `general`, `automation`, `settings`, `code` | Owner |
 | `BACKGROUND` | `general`, `settings` | User |
+| `RUNTIMES` | `general`, `settings`, `admin`, `system` | Owner |
 
 The `available_apps` provider injects installed + running app data into the agent's planning context when operating in the `settings` or `automation` context, so the agent can pick a target without an extra round-trip.
 

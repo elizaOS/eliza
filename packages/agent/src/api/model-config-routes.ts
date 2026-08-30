@@ -44,6 +44,10 @@ import {
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+import {
+  isDevCloudEnvOwnedKey,
+  resolveDevCloudEnvAuthority,
+} from "../config/dev-cloud-env-authority.ts";
 import type { RuntimeOperationManager } from "../runtime/operations/index.ts";
 import { hasCloudTextHandlerRegistered } from "./agent-model.ts";
 import {
@@ -728,6 +732,10 @@ export async function handleModelConfigRoutes(
   const { req, res, method, pathname, state, json, readJsonBody } = ctx;
   if (pathname !== "/api/models/config") return false;
   const processEnv = ctx.processEnv ?? process.env;
+  // Capture launcher ownership before reading the request. The model route may
+  // edit non-Cloud providers during local development, but Cloud-prefixed
+  // model selections belong to the immutable launch tuple.
+  const devCloudAuthority = resolveDevCloudEnvAuthority();
 
   if (method === "GET") {
     const activeChat = resolveActiveChat(
@@ -783,6 +791,20 @@ export async function handleModelConfigRoutes(
       body,
       resolveActiveChat(state.config, processEnv, state.runtime)?.provider,
     );
+    if (
+      devCloudAuthority &&
+      writes.some((write) => isDevCloudEnvOwnedKey(write.key))
+    ) {
+      json(
+        res,
+        {
+          error:
+            "Cloud model selection is owned by the immutable local dev launch target; restart with the intended Cloud model configuration.",
+        },
+        409,
+      );
+      return true;
+    }
     const conflicts: string[] = [];
     const outcome = await ctx.runtimeOperationManager.start({
       intent: {

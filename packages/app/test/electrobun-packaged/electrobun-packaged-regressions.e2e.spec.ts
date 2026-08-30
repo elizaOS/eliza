@@ -751,13 +751,39 @@ async function seedReturningInstallState(
 async function readReturningInstallStorageSnapshot(
   harness: PackagedDesktopHarness,
 ): Promise<ReturningInstallStorageSnapshot> {
-  return await harness.eval<ReturningInstallStorageSnapshot>(`({
-    origin: window.location.origin || null,
-    firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
-    setupStep: localStorage.getItem("eliza:setup:step"),
-    uiShellMode: localStorage.getItem("eliza:ui-shell-mode"),
-    activeServer: localStorage.getItem("elizaos:active-server"),
-  })`);
+  const result = await waitForEval<EvalResult<ReturningInstallStorageSnapshot>>(
+    harness,
+    `(async () => {
+    const bridge = window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__;
+    if (!bridge || typeof bridge.readReturningInstallState !== "function") {
+      return {
+        ok: false,
+        error: "Packaged shell storage read bridge is unavailable: " +
+          JSON.stringify({
+            marker: window.__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__ ?? null,
+            bridgeType: typeof bridge,
+            bridgeKeys: bridge ? Object.keys(bridge) : [],
+          }),
+      };
+    }
+    const state = await bridge.readReturningInstallState();
+    return {
+      ok: true,
+      origin: window.location.origin || null,
+      firstRunComplete: state.firstRunComplete,
+      setupStep: state.setupStep,
+      uiShellMode: state.uiShellMode,
+      activeServer: state.activeServer ?? null,
+    };
+  })()`,
+    (current) => current.ok,
+    {
+      timeout: 30_000,
+      message: "Timed out waiting for packaged storage bridge readiness.",
+    },
+  );
+  expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+  return result;
 }
 
 async function readMainWindowEffects(harness: PackagedDesktopHarness): Promise<{
@@ -948,11 +974,22 @@ async function withPackagedHarness(
       );
     }
   } finally {
+    await harness
+      ?.eval(`(async () => {
+        const bridge = window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__;
+        if (bridge?.clearProtectedTestState) {
+          await bridge.clearProtectedTestState();
+        }
+        return true;
+      })()`)
+      .catch(() => undefined);
     await harness?.stop().catch(() => undefined);
     await api?.close().catch(() => undefined);
-    await fs
-      .rm(tempRoot, { recursive: true, force: true })
-      .catch(() => undefined);
+    if (process.env.ELIZA_TEST_KEEP_PACKAGED_TEMP !== "1") {
+      await fs
+        .rm(tempRoot, { recursive: true, force: true })
+        .catch(() => undefined);
+    }
   }
 }
 
@@ -1141,7 +1178,12 @@ test("packaged desktop notification store reaches native OS notifications", asyn
       body: "The hidden normal notification should reach the OS bridge.",
       priority: "normal",
     });
-    expect(backgroundFocus.hasFocus).toBe(false);
+    // As above, CEF under GTK/Xvfb can retain document.hasFocus() after the
+    // native host has hidden the window. The waitForState assertion is the
+    // authoritative Linux background signal; interactive hosts should agree.
+    if (process.platform !== "linux") {
+      expect(backgroundFocus.hasFocus).toBe(false);
+    }
 
     expect(
       await waitForNativeNotification(

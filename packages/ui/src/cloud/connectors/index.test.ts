@@ -64,6 +64,7 @@ describe("registerCloudConnectorsSettingsSection", () => {
     expect(section.group).toBe("agent");
     expect(section.titleKey).toBe("settings.sections.cloudConnectors.title");
     expect(section.defaultTitle).toBe("Cloud Connectors");
+    expect(section.prominence).toBe("secondary");
     expect(section.viewKind).toBe("release");
     expect(section.cloudOnly).toBe(true);
     expect(section.Component).toBe(CloudConnectorsSettingsSection);

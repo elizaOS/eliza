@@ -910,8 +910,14 @@ function policyMatches(
 function urlsEquivalent(left: string | null, right: string): boolean {
   if (left === null) return false;
   if (left === right) return true;
-  if (!URL.canParse(left) || !URL.canParse(right)) return false;
-  return new URL(left).href === new URL(right).href;
+  try {
+    // Android WebView 113 (LP3) predates URL.canParse(). Constructing the URLs
+    // supplies the same validation + normalization without requiring a newer
+    // JavaScript runtime.
+    return new URL(left).href === new URL(right).href;
+  } catch {
+    return false;
+  }
 }
 
 function retryCommand(invoke: () => Promise<void>): Promise<void> {

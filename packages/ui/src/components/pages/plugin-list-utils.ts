@@ -902,7 +902,7 @@ export function buildPluginListState(options: {
       // Honor the registry's `render.visible: false` for every kind (not just
       // connectors). OS-level system entries (contacts/phone/wifi) set
       // visible:false so they stay out of the app/web Features + Connectors
-      // views and surface only in OS mode (ElizaOsAppsView).
+      // views and surface only in OS mode (the native communication plugins).
       plugin.visible !== false &&
       (!isConnectorLikeMode || plugin.category === "connector") &&
       (mode !== "streaming" || plugin.category === "streaming"),

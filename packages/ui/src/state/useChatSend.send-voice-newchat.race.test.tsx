@@ -176,6 +176,12 @@ function makeHarness(seed: {
     loadConversationMessages: vi.fn(
       async (): Promise<LoadConversationMessagesResult> => ({ ok: true }),
     ),
+    claimConversationMessagesOwnership: vi.fn(() => 0),
+    isConversationMessagesOwnershipCurrent: vi.fn(() => true),
+    conversationHydrationEpochRef: { current: 0 },
+    registerConversationMessageOverlay: vi.fn(),
+    applyConversationMessageOverlayModification: vi.fn(),
+    discardConversationMessageState: vi.fn(),
     elizaCloudEnabled: false,
     elizaCloudConnected: false,
     pollCloudCredits: vi.fn(async () => true),

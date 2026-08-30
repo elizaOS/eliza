@@ -131,6 +131,46 @@ vi.mock("@elizaos/ui/components", async () => {
       ref: ForwardedRef<HTMLInputElement>,
     ) => <input ref={ref} {...props} />,
   );
+  const Card = React.forwardRef(
+    (
+      {
+        asChild,
+        border: _border,
+        children,
+        padding: _padding,
+        radius: _radius,
+        surface: _surface,
+        variant: _variant,
+        ...props
+      }: React.HTMLAttributes<HTMLDivElement> & {
+        asChild?: boolean;
+        border?: string;
+        padding?: string;
+        radius?: string;
+        surface?: string;
+        variant?: string;
+      },
+      ref: ForwardedRef<HTMLDivElement>,
+    ) => {
+      if (asChild && React.isValidElement(children)) {
+        return React.cloneElement(
+          children as React.ReactElement<React.HTMLAttributes<HTMLElement>>,
+          { ...props, ref } as React.HTMLAttributes<HTMLElement>,
+        );
+      }
+      return (
+        <div ref={ref} {...props}>
+          {children}
+        </div>
+      );
+    },
+  );
+  const SemanticForm = React.forwardRef(
+    (
+      props: React.FormHTMLAttributes<HTMLFormElement>,
+      ref: ForwardedRef<HTMLFormElement>,
+    ) => <form ref={ref} {...props} />,
+  );
   const ConfirmDialog = ({
     open,
     message,
@@ -155,7 +195,7 @@ vi.mock("@elizaos/ui/components", async () => {
         </button>
       </div>
     ) : null;
-  return { Button, Switch, Input, ConfirmDialog };
+  return { Button, Card, Switch, Input, SemanticForm, ConfirmDialog };
 });
 
 import { CalendarSourceManager } from "./CalendarSourceManager.js";
@@ -329,6 +369,38 @@ describe("CalendarSourceManager", () => {
     expect(screen.getAllByRole("switch")).toHaveLength(2);
     expect(container.innerHTML).not.toContain("grant-retired");
     expect(container.innerHTML).not.toContain("account-retired");
+  });
+
+  it("promotes degraded source health through the existing collapsed disclosure", () => {
+    render(
+      <CalendarSourceManager
+        sourceHealth={mixedHealth}
+        sourceNotice={{
+          label: "Some calendars are delayed",
+          tone: "warning",
+        }}
+      />,
+    );
+
+    const manager = screen.getByTestId("calendar-source-manager");
+    const manage = screen.getByRole("button", {
+      name: "Manage calendar sources",
+    });
+    expect(manager.dataset.noticeTone).toBe("warning");
+    expect(manager.dataset.state).toBe("closed");
+    expect(
+      screen.getByRole("status", { name: "Some calendars are delayed" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Some calendars are delayed")).toBeTruthy();
+    expect(screen.getByText("Review")).toBeTruthy();
+    expect(manage.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen.queryByText(/New calendars are included automatically/),
+    ).toBeNull();
+
+    fireEvent.click(manage);
+    expect(manager.dataset.state).toBe("open");
+    expect(manage.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("sends the exact calendar identity and refreshes feed truth after success", async () => {
@@ -538,6 +610,16 @@ describe("CalendarSourceManager", () => {
     await waitFor(() =>
       expect(screen.getByText("No calendar subscriptions yet.")).toBeTruthy(),
     );
+
+    expect(screen.getByLabelText("Subscription name").className).toContain(
+      "w-full sm:w-40",
+    );
+    expect(screen.getByLabelText("Subscription URL").className).toContain(
+      "w-full sm:min-w-0 sm:flex-1",
+    );
+    expect(
+      screen.getByRole("button", { name: "Subscribe" }).className,
+    ).toContain("w-full sm:w-auto");
 
     fireEvent.change(screen.getByLabelText("Subscription name"), {
       target: { value: "  Race calendar  " },

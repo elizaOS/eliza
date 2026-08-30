@@ -45,6 +45,28 @@ describe("google oauth callback contract", () => {
     expect(assessment.issues[0]?.code).toBe("missing");
   });
 
+  it("reports the exact served callback when the redirect URI is missing", () => {
+    const assessment = assessGoogleOAuthCallbackConfig(runtimeWithRedirect(), {
+      servedOrigin: "http://127.0.0.1:43232/api/lifeops/connectors/google/start",
+    });
+    expect(assessment.issues[0]?.message).toContain(
+      "http://127.0.0.1:43232/api/connectors/google/oauth/callback"
+    );
+    expect(assessment.issues[0]?.message).not.toContain(":31437");
+  });
+
+  it("reports the exact served callback for a portless loopback setting", () => {
+    const assessment = assessGoogleOAuthCallbackConfig(
+      runtimeWithRedirect("http://127.0.0.1/api/connectors/google/oauth/callback"),
+      {
+        servedOrigin: "http://127.0.0.1:43232/api/lifeops/connectors/google/start",
+      }
+    );
+    const issue = assessment.issues.find((candidate) => candidate.code === "portless_loopback");
+    expect(issue?.message).toContain("http://127.0.0.1:43232/api/connectors/google/oauth/callback");
+    expect(issue?.message).not.toContain(":31437");
+  });
+
   it("rejects a callback on the wrong path", () => {
     const assessment = assessGoogleOAuthCallbackConfig(
       runtimeWithRedirect("http://127.0.0.1:31437/oauth/google/callback")

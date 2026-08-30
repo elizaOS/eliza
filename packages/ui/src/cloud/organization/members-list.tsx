@@ -29,7 +29,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../cloud-ui";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   canManageOrg,
@@ -59,14 +61,14 @@ export function MembersList({
   const t = useCloudT();
   if (members.length === 0) {
     return (
-      <div className="bg-surface border border-brand-surface p-8 text-center">
+      <Card variant="insetPadded" className="p-8 text-center">
         <User className="size-12 mx-auto text-muted mb-4" />
         <p className="text-sm font-mono text-muted">
           {t("cloud.membersList.noMembers", {
             defaultValue: "No members found",
           })}
         </p>
-      </div>
+      </Card>
     );
   }
 
@@ -126,17 +128,18 @@ export function MembersList({
   return (
     <div className="space-y-3">
       {members.map((member) => (
-        <div
-          key={member.id}
-          className="bg-surface border border-brand-surface p-3 md:p-4"
-        >
+        <Card key={member.id} variant="insetPadded" className="md:p-4">
           <div className="flex flex-col sm:flex-row items-start gap-4">
             {/* Avatar */}
-            <div className="flex items-center justify-center bg-muted size-10 md:size-12 shrink-0">
+            <Card
+              variant="sidebarIcon"
+              flow="row"
+              className="size-10 shrink-0 justify-center md:size-12"
+            >
               <span className="text-txt-strong text-sm md:text-base font-mono font-medium">
                 {getInitials(member)}
               </span>
-            </div>
+            </Card>
 
             {/* Member Info */}
             <div className="flex-1 min-w-0 w-full">
@@ -147,9 +150,13 @@ export function MembersList({
                       {getDisplayName(member)}
                     </h4>
                     {member.id === currentUserId && (
-                      <span className="px-2 py-0.5 border border-border-strong text-xs font-mono text-muted">
+                      <Badge
+                        variant="metaDefault"
+                        size="metaCompact"
+                        className="font-mono"
+                      >
                         {t("cloud.membersList.you", { defaultValue: "You" })}
-                      </span>
+                      </Badge>
                     )}
                   </div>
 
@@ -170,9 +177,13 @@ export function MembersList({
                           )}
                         </span>
                         {member.wallet_chain_type && (
-                          <span className="px-2 py-0.5 border border-border-strong text-xs font-mono text-muted">
+                          <Badge
+                            variant="metaDefault"
+                            size="metaCompact"
+                            className="font-mono"
+                          >
                             {member.wallet_chain_type}
-                          </span>
+                          </Badge>
                         )}
                       </p>
                     )}
@@ -195,7 +206,7 @@ export function MembersList({
                       value={member.role}
                       onValueChange={(role) => onUpdateRole(member.id, role)}
                     >
-                      <SelectTrigger className="w-full sm:w-32 bg-transparent border-border text-txt-strong">
+                      <SelectTrigger variant="form" className="w-full sm:w-32">
                         <SelectValue>
                           <div className="flex items-center gap-1.5">
                             {getRoleIcon(member.role)}
@@ -205,7 +216,7 @@ export function MembersList({
                           </div>
                         </SelectValue>
                       </SelectTrigger>
-                      <SelectContent className="bg-bg border-border">
+                      <SelectContent variant="form">
                         <SelectItem value="admin">
                           <div className="flex items-center gap-1.5">
                             <Shield className="size-4" />
@@ -229,12 +240,16 @@ export function MembersList({
                       </SelectContent>
                     </Select>
                   ) : (
-                    <span
-                      className={`px-2 py-1 border text-xs font-mono uppercase flex items-center gap-1.5 ${member.role === "owner" ? "bg-muted text-txt-strong border-border-strong" : member.role === "admin" ? "bg-surface text-txt-strong border-border-strong" : "bg-surface text-muted border-border"}`}
+                    <Badge
+                      variant={
+                        member.role === "owner" ? "metaStrong" : "metaDefault"
+                      }
+                      size="metaCompact"
+                      className="gap-1.5 font-mono uppercase"
                     >
                       {getRoleIcon(member.role)}
                       <span className="capitalize">{member.role}</span>
-                    </span>
+                    </Badge>
                   )}
 
                   {canRemove(member) && (
@@ -251,7 +266,7 @@ export function MembersList({
                           <UserMinus className="size-4 text-danger" />
                         </Button>
                       </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-bg border border-brand-surface">
+                      <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle className="text-txt-strong font-mono">
                             {t("cloud.membersList.removeMember", {
@@ -267,19 +282,20 @@ export function MembersList({
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel className="bg-transparent border-border text-txt-strong hover:bg-surface">
+                          <AlertDialogCancel>
                             {t("cloud.membersList.cancel", {
                               defaultValue: "Cancel",
                             })}
                           </AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => onRemove(member.id)}
-                            className="bg-danger hover:bg-danger/90 text-danger-fg"
-                          >
-                            {t("cloud.membersList.remove", {
-                              defaultValue: "Remove",
-                            })}
-                          </AlertDialogAction>
+                          <Button asChild variant="destructive">
+                            <AlertDialogAction
+                              onClick={() => onRemove(member.id)}
+                            >
+                              {t("cloud.membersList.remove", {
+                                defaultValue: "Remove",
+                              })}
+                            </AlertDialogAction>
+                          </Button>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
@@ -288,7 +304,7 @@ export function MembersList({
               </div>
             </div>
           </div>
-        </div>
+        </Card>
       ))}
     </div>
   );

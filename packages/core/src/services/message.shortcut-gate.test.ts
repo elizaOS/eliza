@@ -431,6 +431,45 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(useModel).not.toHaveBeenCalled();
 	});
 
+	it("settles a role-gated shortcut denial with the canonical gate reason (parity with planner/deterministic execution)", async () => {
+		const handler = vi.fn(async () => ({ success: true, text: "secret" }));
+		const { runtime } = makeRuntime({
+			actions: [ownerGatedEcho(handler)],
+		});
+		const settlements: unknown[] = [];
+		const result = await runWithStreamingContext(
+			{
+				messageId: "00000000-0000-0000-0000-0000000000f3" as UUID,
+				onToolResult: (payload: unknown) => {
+					settlements.push(payload);
+				},
+			} as never,
+			() =>
+				runShortcutGate({
+					// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+					runtime: runtime as any,
+					message: msg("/echo hi"),
+					state: {} as State,
+					responseId,
+					senderRole: "USER",
+				}),
+		);
+		// The shortcut enters the same executor as planner-selected and
+		// deterministic tool calls, so the denial settles through the same
+		// emitToolResult boundary carrying the one canonical action-gate
+		// reason — the string all three surfaces must share.
+		expect(result).toBeNull();
+		expect(handler).not.toHaveBeenCalled();
+		expect(settlements).toHaveLength(1);
+		expect(settlements[0]).toMatchObject({
+			status: "failed",
+			result: expect.objectContaining({
+				success: false,
+				error: "Action ECHO_COMMAND is not allowed for the current role",
+			}),
+		});
+	});
+
 	// #16230: a shortcut action's internal model call must not stream into the turn's visible
 	// reply. runShortcutGate runs the handler inside runWithSuppressedModelStream,
 	// so intermediate model output never reaches the chat SSE sink; the designed
@@ -509,6 +548,64 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 				data: { actionName: "PROBE" },
 			},
 		]);
+	});
+
+	it("announces the shortcut's tool call on the streaming hook before execution (SSE running_tool parity)", async () => {
+		const order: string[] = [];
+		const { runtime } = makeRuntime({
+			actions: [
+				echoAction({
+					onOptions: () => {
+						order.push("handler");
+					},
+				}),
+			],
+		});
+		const onToolCall = vi.fn((_payload: unknown) => {
+			order.push("onToolCall");
+		});
+		const onToolResult = vi.fn((_payload: unknown) => {
+			order.push("onToolResult");
+		});
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "00000000-0000-0000-0000-0000000000f2" as UUID,
+				onToolCall,
+				onToolResult,
+			} as never,
+			() =>
+				runShortcutGate({
+					// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+					runtime: runtime as any,
+					message: msg("/echo hi"),
+					state: {} as State,
+					responseId,
+					senderRole: "OWNER",
+				}),
+		);
+
+		expect(result?.kind).toBe("direct_reply");
+		// The running_tool announcement precedes execution so the chat SSE
+		// surface shows activity while the action runs, not only its result.
+		expect(order).toEqual(["onToolCall", "handler", "onToolResult"]);
+		expect(onToolCall).toHaveBeenCalledTimes(1);
+		const announced = onToolCall.mock.calls[0]?.[0] as {
+			toolCall?: { id?: string };
+		};
+		const settled = onToolResult.mock.calls[0]?.[0] as {
+			toolCallId?: string;
+		};
+		expect(announced).toMatchObject({
+			toolCall: {
+				id: "shortcut:ECHOCOMMAND",
+				name: "ECHO_COMMAND",
+				status: "pending",
+			},
+			metadata: { deterministic: true },
+		});
+		expect(onToolResult).toHaveBeenCalledTimes(1);
+		expect(settled.toolCallId).toBe(announced.toolCall?.id);
 	});
 
 	it("allows an OWNER to trigger the same OWNER-gated shortcut action", async () => {

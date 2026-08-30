@@ -1,0 +1,128 @@
+name: Personal Dedicated selection review
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Preview first; execute only with its approval digest
+        required: true
+        type: choice
+        options:
+          - preview
+          - execute
+      expected_cloud_commit:
+        description: Exact 40-character commit currently served by staging
+        required: true
+        type: string
+      expected_cluster_sha256:
+        description: Reviewed staging PostgreSQL cluster receipt
+        required: true
+        type: string
+      expected_authority_sha256:
+        description: Reviewed staging PostgreSQL authority receipt
+        required: true
+        type: string
+      approval_digest:
+        description: Identifier-free digest emitted by the prior preview run
+        required: false
+        type: string
+      reviewed_reason:
+        description: Exact reviewed reason emitted by the selected operation runbook
+        required: false
+        type: string
+      confirmation:
+        description: Exact non-compute confirmation emitted by the selected operation runbook
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rereview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: staging
+    concurrency:
+      group: personal-dedicated-rereview-staging
+      cancel-in-progress: false
+    env:
+      ELIZA_PERSONAL_DEDICATED_REREVIEW_STAGING: "1"
+      ELIZA_PERSONAL_DEDICATED_REREVIEW_MODE: ${{ inputs.mode }}
+      ELIZA_PERSONAL_DEDICATED_REREVIEW_EXPECTED_CLOUD_COMMIT: ${{ inputs.expected_cloud_commit }}
+      ELIZA_PERSONAL_DEDICATED_REREVIEW_APPROVAL_DIGEST: ${{ inputs.approval_digest }}
+      ELIZA_PERSONAL_DEDICATED_REREVIEW_REVIEWED_REASON: ${{ inputs.reviewed_reason }}
+      ELIZA_PERSONAL_DEDICATED_REREVIEW_CONFIRMATION: ${{ inputs.confirmation }}
+      DATABASE_IDENTITY_GATE_MODE: enforce
+      DATABASE_IDENTITY_ENVIRONMENT: staging
+      DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ inputs.expected_cluster_sha256 }}
+      DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ inputs.expected_authority_sha256 }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+
+    steps:
+      - name: Checkout exact workflow commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: 1.3.14
+          setup-python: "false"
+          install-protoc: "false"
+          install-native-deps: "false"
+          run-postinstall: "false"
+
+      - name: Require exact develop deployment authority
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_cloud_commit }}
+          CHECKED_OUT_COMMIT: ${{ github.sha }}
+          REF_NAME: ${{ github.ref }}
+          MODE: ${{ inputs.mode }}
+          APPROVAL_DIGEST: ${{ inputs.approval_digest }}
+          REVIEWED_REASON: ${{ inputs.reviewed_reason }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          bun -e '
+            const expected = process.env.EXPECTED_COMMIT ?? "";
+            if (process.env.REF_NAME !== "refs/heads/develop") process.exit(1);
+            if (!/^[0-9a-f]{40}$/.test(expected) || expected !== process.env.CHECKED_OUT_COMMIT) process.exit(1);
+            if (process.env.MODE === "execute") {
+              if (!/^[0-9a-f]{64}$/.test(process.env.APPROVAL_DIGEST ?? "")) process.exit(1);
+              const rereview = process.env.REVIEWED_REASON === "retain_current_receipt_target_after_duplicate_inventory_review" && process.env.CONFIRMATION === "REREVIEW_STALE_SELECTION_WITHOUT_COMPUTE_MUTATION";
+              const bootstrap = process.env.REVIEWED_REASON === "select_unique_verified_backup_after_duplicate_inventory_review" && process.env.CONFIRMATION === "SELECT_UNIQUE_VERIFIED_BACKUP_WITHOUT_COMPUTE_MUTATION";
+              if (!rereview && !bootstrap) process.exit(1);
+            }
+          '
+
+      - name: Require protected staging authorities
+        run: |
+          bun -e '
+            const required = ["DATABASE_URL", "ELIZAOS_CLOUD_API_KEY", "DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256", "DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256"];
+            if (required.some((name) => !(process.env[name] ?? "").trim())) process.exit(1);
+          '
+
+      - name: Build required linked runtime
+        run: |
+          bun run --cwd packages/prompts build:package
+          bun run --cwd packages/shared build
+          bun run --cwd packages/core build
+
+      - name: Probe fixed runtime dependencies
+        run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies
+
+      - name: Validate operator contracts
+        run: >-
+          bun test
+          packages/cloud/scripts/admin/preflight-database-identity.test.ts
+          packages/cloud/scripts/admin/personal-dedicated-rereview-staging.test.ts
+          packages/cloud/scripts/admin/personal-dedicated-rereview-staging-workflow.test.ts
+
+      - name: Verify protected staging database identity
+        run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts
+
+      - name: Preview or execute exact re-review
+        run: bun run packages/cloud/scripts/admin/personal-dedicated-rereview-staging.ts

@@ -82,6 +82,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 
+      - name: Build prompts package
+        run: bun run --cwd packages/prompts build:package
+
       - name: Build core
         run: bun run build:core
 

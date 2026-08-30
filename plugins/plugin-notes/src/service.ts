@@ -64,6 +64,28 @@ function titleAppearsAsNamedPhrase(text: string, title: string): boolean {
   ).test(normalizedText);
 }
 
+function queryMatches(
+  notes: readonly StickyNote[],
+  value: string,
+): Array<{ index: number; note: StickyNote }> {
+  const target = normalizedLookup(value);
+  if (!target) return [];
+  const indexed = notes.map((note, index) => ({ index, note }));
+  const exactTitle = indexed.filter(
+    ({ note }) => normalizedLookup(note.title) === target,
+  );
+  if (exactTitle.length > 0) return exactTitle;
+  const contained = indexed.filter(({ note }) =>
+    normalizedLookup(`${note.title} ${note.body} ${note.color}`).includes(
+      target,
+    ),
+  );
+  if (contained.length > 0) return contained;
+  return indexed.filter(({ note }) =>
+    titleAppearsAsNamedPhrase(value, note.title),
+  );
+}
+
 function lookupError(
   code:
     | "NOTES_NOT_FOUND"
@@ -122,16 +144,7 @@ function resolveNoteIndex(
   const exact = notes
     .map((note, index) => ({ index, note }))
     .filter(({ note }) => normalizedLookup(note.title) === target);
-  const candidates =
-    selector === "title" || exact.length > 0
-      ? exact
-      : notes
-          .map((note, index) => ({ index, note }))
-          .filter(({ note }) =>
-            normalizedLookup(
-              `${note.title} ${note.body} ${note.color}`,
-            ).includes(target),
-          );
+  const candidates = selector === "title" ? exact : queryMatches(notes, value);
   if (candidates.length === 0) {
     throw lookupError("NOTES_NOT_FOUND", selector, value, []);
   }
@@ -260,6 +273,11 @@ export class NotesService extends Service {
       });
     }
     return note;
+  }
+
+  findNotesByQuery(value: string): StickyNote[] {
+    const notes = this.snapshot().notes;
+    return queryMatches(notes, value).map(({ note }) => note);
   }
 
   async createNoteWithCommit(inputValue: unknown): Promise<{

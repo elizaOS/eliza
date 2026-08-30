@@ -10,6 +10,7 @@ import { CheckCircle2, Puzzle, XCircle } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo, PluginParamDef } from "../../api";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -410,12 +411,14 @@ export function PluginGameModal({
             {(selectedPlugin.tags?.length ?? 0) > 0 && (
               <div className="flex flex-wrap gap-1.5 px-3 pb-3">
                 {selectedPlugin.tags?.map((tag) => (
-                  <span
+                  <Badge
                     key={`${selectedPlugin.id}:${tag}`}
-                    className="text-2xs px-1.5 py-px border border-border bg-black/10 text-muted lowercase tracking-wide whitespace-nowrap"
+                    variant="metaDefault"
+                    size="micro"
+                    className="lowercase whitespace-nowrap"
                   >
                     {tag}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             )}

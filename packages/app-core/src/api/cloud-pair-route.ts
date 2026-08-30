@@ -22,6 +22,9 @@ import { logger } from "@elizaos/core";
 import {
   isLoopbackRemoteAddress,
   isRemoteAddressInCidrList,
+  resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
 import {
   type CloudPairRelaySession,
@@ -39,11 +42,9 @@ const RELAY_TIMEOUT_MS = 15_000;
 const pairingRelayLimiter = getSensitiveLimiter("cloud.pair.relay");
 
 function resolveCloudApiBaseUrl(): string {
-  const raw =
-    process.env.ELIZAOS_CLOUD_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "https://api.eliza.app/api/v1";
-  return raw.replace(/\/+$/, "");
+  return resolveCanonicalCloudApiBaseUrl(
+    process.env.NEXT_PUBLIC_API_URL,
+  ).replace(/\/+$/, "");
 }
 
 function resolveCloudAuthRoot(): string {
@@ -66,8 +67,35 @@ function resolveDirectRequestOrigin(req: http.IncomingMessage): string {
   return host ? `${proto}://${host}` : "";
 }
 
-function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
-  if (process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY !== "1") return false;
+interface CloudPairRelayPolicy {
+  readonly directRelayEnabled: boolean;
+  readonly allowedPeerCidrs: string | undefined;
+  readonly agentEnv: Readonly<Record<string, string | undefined>>;
+}
+
+function resolveCloudPairRelayPolicy(): CloudPairRelayPolicy {
+  const authority = resolveDevCloudEnvAuthority();
+  const read = (key: string): string | undefined =>
+    authority ? resolveDevCloudAuthorityEnvValue(key) : process.env[key];
+  const activationBlocked =
+    authority === "staging-default" || authority === "offline";
+
+  return Object.freeze({
+    directRelayEnabled:
+      !activationBlocked && read("ELIZA_CLOUD_PAIR_DIRECT_RELAY") === "1",
+    allowedPeerCidrs: read("ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS"),
+    agentEnv: Object.freeze({
+      ELIZA_CLOUD_AGENT_ID: read("ELIZA_CLOUD_AGENT_ID"),
+      WAIFU_ELIZA_CLOUD_AGENT_ID: read("WAIFU_ELIZA_CLOUD_AGENT_ID"),
+    }),
+  });
+}
+
+function canUseManagedDirectRelay(
+  req: http.IncomingMessage,
+  policy: CloudPairRelayPolicy,
+): boolean {
+  if (!policy.directRelayEnabled) return false;
   // The local-only gate must key on the TCP peer, never on request headers:
   // Host and X-Forwarded-Host are client-controlled, so a remote caller
   // could previously spoof a loopback origin and redeem a held pairing token
@@ -77,10 +105,7 @@ function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
   const peer = req.socket?.remoteAddress;
   return (
     isLoopbackRemoteAddress(peer) ||
-    isRemoteAddressInCidrList(
-      peer,
-      process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS,
-    )
+    isRemoteAddressInCidrList(peer, policy.allowedPeerCidrs)
   );
 }
 
@@ -189,7 +214,10 @@ export async function handleCloudPairRoute(
     return false;
   }
 
-  if (!canUseManagedDirectRelay(req)) {
+  // Capture every authority-owned relay input once per request. Later env
+  // writes cannot enable a blocked relay or redirect an admitted exchange.
+  const relayPolicy = resolveCloudPairRelayPolicy();
+  if (!canUseManagedDirectRelay(req, relayPolicy)) {
     sendHtml(
       res,
       421,
@@ -240,7 +268,7 @@ export async function handleCloudPairRoute(
     return true;
   }
 
-  const agentId = resolveCloudPairAgentIdFromEnv(process.env);
+  const agentId = resolveCloudPairAgentIdFromEnv(relayPolicy.agentEnv);
   if (!agentId) {
     sendHtml(
       res,

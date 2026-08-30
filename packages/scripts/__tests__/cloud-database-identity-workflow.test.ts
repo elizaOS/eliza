@@ -44,6 +44,34 @@ function expectSameSessionGate(
 }
 
 describe("Cloud database identity workflow", () => {
+  test("requires protected identity enforcement before production migrations", () => {
+    const guard = canonicalSource.indexOf(
+      "- name: Validate database identity gate configuration",
+    );
+    const migration = canonicalSource.indexOf("- name: Run migrations");
+    expect(guard).toBeGreaterThan(0);
+    expect(guard).toBeLessThan(migration);
+    const block = canonicalSource.slice(guard, migration);
+    expect(block).toContain('if [ "$TARGET_ENVIRONMENT" != "production" ]');
+    expect(block).toContain(
+      'if [ "$DATABASE_IDENTITY_GATE_MODE" != "enforce" ]',
+    );
+    expect(block).toContain(
+      "DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: $" +
+        "{{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}",
+    );
+    expect(block).toContain(
+      "DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: $" +
+        "{{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}",
+    );
+    expect(block).not.toContain(
+      'echo "$DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256"',
+    );
+    expect(block).not.toContain(
+      'echo "$DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256"',
+    );
+  });
+
   test("delegates canonical release enforcement to its migration session", () => {
     expectSameSessionGate(
       canonicalSource,

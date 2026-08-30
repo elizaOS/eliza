@@ -6,6 +6,7 @@ import type * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 
 type ActionListRowDensity = "compact" | "default";
 type ActionListRowAlignment = "center" | "start";
@@ -62,15 +63,13 @@ export type ActionListRowProps =
 function rowClassName({
   alignment = "center",
   density = "default",
-  selected = false,
-}: Pick<ActionListRowContentProps, "alignment" | "density" | "selected">) {
+}: Pick<ActionListRowContentProps, "alignment" | "density">) {
   return cn(
-    "group flex h-auto w-full min-w-0 justify-start whitespace-normal rounded-sm text-left font-normal",
+    "group flex h-auto w-full min-w-0 justify-start whitespace-normal text-left font-normal",
     alignment === "start" ? "items-start" : "items-center",
     density === "compact"
       ? "min-h-11 gap-2 px-2 py-2"
       : "min-h-12 gap-3 px-3 py-2.5",
-    selected && "bg-accent-subtle text-txt-strong",
   );
 }
 
@@ -138,7 +137,7 @@ export function ActionListRow(props: ActionListRowProps) {
         variant="selection"
         size="rowContent"
         data-state={selected ? "on" : "off"}
-        className={rowClassName({ alignment, density, selected })}
+        className={rowClassName({ alignment, density })}
       >
         <a
           ref={linkRef}
@@ -146,7 +145,7 @@ export function ActionListRow(props: ActionListRowProps) {
           href={disabled ? undefined : href}
           aria-disabled={disabled || undefined}
           tabIndex={disabled ? -1 : tabIndex}
-          onClick={(event) => {
+          onClick={(event: React.MouseEvent<HTMLAnchorElement>) => {
             if (disabled) {
               event.preventDefault();
               return;
@@ -181,20 +180,22 @@ export function ActionListRow(props: ActionListRowProps) {
       ...divProps
     } = props;
     return (
-      <div
-        ref={staticRef}
-        data-state={selected ? "on" : "off"}
-        className={rowClassName({ alignment, density, selected })}
-        {...divProps}
-      >
-        <ActionListRowContent
-          leading={leading}
-          title={title}
-          description={description}
-          metadata={metadata}
-          trailing={trailing}
-        />
-      </div>
+      <Card asChild variant={selected ? "sidebarItemActive" : "transparent"}>
+        <div
+          ref={staticRef}
+          data-state={selected ? "on" : "off"}
+          className={rowClassName({ alignment, density })}
+          {...divProps}
+        >
+          <ActionListRowContent
+            leading={leading}
+            title={title}
+            description={description}
+            metadata={metadata}
+            trailing={trailing}
+          />
+        </div>
+      </Card>
     );
   }
 
@@ -220,7 +221,7 @@ export function ActionListRow(props: ActionListRowProps) {
       align="start"
       data-state={selected ? "on" : "off"}
       disabled={disabled}
-      className={rowClassName({ alignment, density, selected })}
+      className={rowClassName({ alignment, density })}
       {...buttonProps}
     >
       <ActionListRowContent

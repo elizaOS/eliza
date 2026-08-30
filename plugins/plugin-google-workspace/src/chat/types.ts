@@ -2,10 +2,13 @@
  * Type definitions for the Google Chat plugin.
  */
 
-import { type Service, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { type Service, toWellFormedUnicode } from "@elizaos/core";
 
-/** Maximum message length for Google Chat */
-export const MAX_GOOGLE_CHAT_MESSAGE_LENGTH = 4000;
+/** Google Chat's maximum message size, measured as UTF-8 bytes. */
+export const MAX_GOOGLE_CHAT_MESSAGE_BYTES = 32_000;
+
+/** @deprecated Use {@link MAX_GOOGLE_CHAT_MESSAGE_BYTES}; this value is a byte budget. */
+export const MAX_GOOGLE_CHAT_MESSAGE_LENGTH = MAX_GOOGLE_CHAT_MESSAGE_BYTES;
 
 /** Google Chat service name */
 export const GOOGLE_CHAT_SERVICE_NAME = "google-chat";
@@ -311,20 +314,20 @@ export function isDirectMessage(space: GoogleChatSpace): boolean {
 }
 
 /**
- * Returns provider-sized, well-formed Unicode chunks for Google Chat.
- * Budgets below two UTF-16 code units cannot hold an astral character and are
- * rejected so every iteration has a valid, non-empty prefix.
+ * Returns lossless, provider-sized, well-formed Unicode chunks for Google Chat.
+ * Google Chat measures the message boundary in UTF-8 bytes, not JavaScript
+ * UTF-16 code units.
  */
 export function splitMessageForGoogleChat(
   text: string,
-  maxLength: number = MAX_GOOGLE_CHAT_MESSAGE_LENGTH
+  maxBytes: number = MAX_GOOGLE_CHAT_MESSAGE_BYTES
 ): string[] {
-  if (!Number.isInteger(maxLength) || maxLength < 2) {
-    throw new RangeError("Google Chat message maxLength must be an integer of at least 2");
+  if (!Number.isInteger(maxBytes) || maxBytes < 4) {
+    throw new RangeError("Google Chat message maxBytes must be an integer of at least 4");
   }
 
   const wellFormedText = toWellFormedUnicode(text);
-  if (wellFormedText.length <= maxLength) {
+  if (wellFormedText.length === 0) {
     return [wellFormedText];
   }
 
@@ -332,26 +335,48 @@ export function splitMessageForGoogleChat(
   let remaining = wellFormedText;
 
   while (remaining.length > 0) {
-    if (remaining.length <= maxLength) {
+    let prefixLength = 0;
+    let prefixBytes = 0;
+    for (const character of remaining) {
+      const codePoint = character.codePointAt(0);
+      const characterBytes =
+        codePoint === undefined
+          ? 0
+          : codePoint <= 0x7f
+            ? 1
+            : codePoint <= 0x7ff
+              ? 2
+              : codePoint <= 0xffff
+                ? 3
+                : 4;
+      if (prefixBytes + characterBytes > maxBytes) {
+        break;
+      }
+      prefixBytes += characterBytes;
+      prefixLength += character.length;
+    }
+    if (prefixLength === 0) {
+      throw new RangeError("Google Chat message maxBytes cannot fit the next Unicode scalar");
+    }
+    if (prefixLength === remaining.length) {
       chunks.push(remaining);
       break;
     }
 
-    // Find a good break point
-    let breakPoint = maxLength;
-    const newlineIndex = remaining.lastIndexOf("\n", maxLength - 1);
-    if (newlineIndex > maxLength * 0.5) {
+    const prefix = remaining.slice(0, prefixLength);
+    let breakPoint = prefixLength;
+    const newlineIndex = prefix.lastIndexOf("\n");
+    if (newlineIndex > prefixLength * 0.5) {
       breakPoint = newlineIndex + 1;
     } else {
-      const spaceIndex = remaining.lastIndexOf(" ", maxLength - 1);
-      if (spaceIndex > maxLength * 0.5) {
+      const spaceIndex = prefix.lastIndexOf(" ");
+      if (spaceIndex > prefixLength * 0.5) {
         breakPoint = spaceIndex + 1;
       }
     }
 
-    const head = truncateWellFormed(remaining, breakPoint);
-    chunks.push(head.trimEnd());
-    remaining = remaining.slice(head.length).trimStart();
+    chunks.push(remaining.slice(0, breakPoint));
+    remaining = remaining.slice(breakPoint);
   }
 
   return chunks;

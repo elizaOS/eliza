@@ -365,7 +365,11 @@ async function createHarness(
   let bindingAccountId = ACCOUNT_ID;
   const runtime = {
     agentId: AGENT_ID,
-    adapter: { db },
+    adapter: {
+      db,
+      listConnectorAccountCredentialRefs: async () => [],
+      deleteConnectorAccountCredentialRefs: async () => 0,
+    },
     db,
     initPromise: Promise.resolve(),
     getSetting: (key: string) => {
@@ -975,7 +979,20 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
       throw new Error("Google connector provider has no delete hook.");
     }
 
-    await provider.deleteAccount(ACCOUNT_ID, {} as ConnectorAccountManager);
+    const manager = {
+      getAccount: async () => ({
+        id: ACCOUNT_ID,
+        provider: "google",
+        role: "OWNER",
+        purpose: ["calendar"],
+        accessGate: "open",
+        status: "pending",
+        metadata: {},
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }),
+    } as unknown as ConnectorAccountManager;
+    await provider.deleteAccount(ACCOUNT_ID, manager);
 
     const rows = await watchRows(harness.pg);
     expect(rows[0]?.state).toBe("revoked");

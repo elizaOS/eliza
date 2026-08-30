@@ -21,6 +21,7 @@ import {
   DashboardErrorState,
   DashboardLoadingState,
 } from "@elizaos/ui/cloud-ui";
+import { Alert } from "../../components/ui/alert";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { BillingTab } from "./components/billing-tab";
 import { useBillingUser } from "./data/billing-data";
@@ -86,11 +87,11 @@ export function BillingSectionBody() {
   return (
     <ConditionalWalletProviders>
       {wasCheckoutCanceled() ? (
-        <div className="mb-4 border border-destructive/40 bg-destructive-subtle px-4 py-3 text-sm text-destructive">
+        <Alert variant="dashboardError" className="mb-4">
           {t("cloud.billing.paymentCanceled", {
             defaultValue: "Payment canceled. No charges were made.",
           })}
-        </div>
+        </Alert>
       ) : null}
       <BillingTab user={user} />
     </ConditionalWalletProviders>

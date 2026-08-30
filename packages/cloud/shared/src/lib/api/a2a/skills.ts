@@ -227,6 +227,7 @@ export async function executeSkillWebSearch(
       organizationId: ctx.user.organization_id,
       userId: ctx.user.id,
       apiKeyId: ctx.apiKeyId,
+      requestId: `legacy-a2a-search:${ctx.agentIdentifier}:${crypto.randomUUID()}`,
       requestSource: "a2a",
     },
   );

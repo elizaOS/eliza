@@ -1,5 +1,14 @@
-/** Exports the durable command journal and production-derived SW-2 controller composition. */
+/** Exports the storage-neutral journal and production-derived controller composition. */
 
+export { LeaseFencedSyntheticCommandJournal } from "./command-journal";
+export type {
+  SyntheticCommandJournalExpected,
+  SyntheticCommandJournalIdentity,
+  SyntheticCommandJournalMaybePromise,
+  SyntheticCommandJournalPatch,
+  SyntheticCommandJournalRepository,
+  SyntheticCommandJournalRow,
+} from "./journal-repository";
 export type {
   ProductionSyntheticWorldBootInput,
   ProductionSyntheticWorldBootResult,
