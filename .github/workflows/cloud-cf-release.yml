@@ -1106,6 +1106,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          INFERENCE_AUTH_PROBE_TOKEN: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.INFERENCE_AUTH_PROBE_TOKEN || '' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
           # fal key under its alternate name: the video provider registry reads
@@ -1595,6 +1596,13 @@ jobs:
           for name in "${managed_worker_provisioning_secrets[@]}"; do
             queue_secret "$name" || exit 1
           done
+
+          # Controlled cache-miss certification exists only on staging. A blank
+          # protected value preserves the current binding; the opt-in live
+          # certification workflow independently fails closed when requested.
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            queue_secret INFERENCE_AUTH_PROBE_TOKEN || exit 1
+          fi
 
           for name in \
             ELIZA_APP_BLOOIO_API_KEY \
