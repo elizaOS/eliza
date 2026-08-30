@@ -1,11 +1,16 @@
 /** Semantic action coverage for owner-gated Devices & Runtimes operations. */
 
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+	RUNTIME_MANAGEMENT_OPERATIONS,
+	RUNTIME_MANAGEMENT_OWNER_APPROVAL_EXEMPT_OPERATIONS,
+} from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createRuntimeManagementAction,
 	parseRuntimeManagementRequest,
 	type RuntimeManagementFn,
+	runtimeManagementActionInternals,
 } from "./runtime-management.ts";
 
 const runtime = {} as IAgentRuntime;
@@ -16,6 +21,15 @@ function callback(): HandlerCallback {
 }
 
 describe("RUNTIMES action", () => {
+	it("requires confirmation for the exact complement of exempt operations", () => {
+		expect([...runtimeManagementActionInternals.confirmationRequired]).toEqual(
+			RUNTIME_MANAGEMENT_OPERATIONS.filter(
+				(operation) =>
+					!RUNTIME_MANAGEMENT_OWNER_APPROVAL_EXEMPT_OPERATIONS.has(operation),
+			),
+		);
+	});
+
 	it("is owner-gated and exposes no secret parameter", () => {
 		const action = createRuntimeManagementAction();
 		expect(action.roleGate).toEqual({ minRole: "OWNER" });
