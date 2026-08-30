@@ -44,7 +44,11 @@ import { isCloudProvisioned } from "./server-first-run-helpers";
 // Pairing state & helpers
 // ---------------------------------------------------------------------------
 
-const PAIRING_TTL_MS = 10 * 60 * 1000;
+// Remote operators often retrieve the code from a service journal before
+// switching devices to the public dashboard. Ten minutes made an otherwise
+// valid code rotate during that handoff; the 12-character code remains
+// one-time and is still protected by the five-attempt rate limit.
+const PAIRING_TTL_MS = 60 * 60 * 1000;
 const PAIRING_WINDOW_MS = 10 * 60 * 1000;
 const PAIRING_MAX_ATTEMPTS = 5;
 const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -103,7 +107,7 @@ function ensurePairingCode(): string | null {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
     logger.warn(
-      `[api] Pairing code for remote devices: ${pairingCode} (valid for 10 minutes)`,
+      `[api] Pairing code for remote devices: ${pairingCode} (valid for 60 minutes)`,
     );
   }
 

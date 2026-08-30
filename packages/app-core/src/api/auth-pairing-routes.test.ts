@@ -291,6 +291,7 @@ describe("auth pairing pair-code route", () => {
 
   it("returns the current pair code to loopback callers", async () => {
     vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    const issuedAfter = Date.now();
 
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(
@@ -305,10 +306,18 @@ describe("auth pairing pair-code route", () => {
     );
 
     expect(res.status()).toBe(200);
-    expect(res.body()).toMatchObject({
+    const body = res.body() as { code: string; expiresAt: number };
+    expect(body).toMatchObject({
       code: "AAAA-AAAA-AAAA",
       expiresAt: expect.any(Number),
     });
+    expect(body.expiresAt - issuedAfter).toBeGreaterThan(59 * 60 * 1000);
+    expect(body.expiresAt - issuedAfter).toBeLessThanOrEqual(
+      60 * 60 * 1000 + 1_000,
+    );
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      expect.stringContaining("valid for 60 minutes"),
+    );
   });
 
   it("blocks remote and proxied remote callers", async () => {
