@@ -225,7 +225,8 @@ export function ViewUnavailableState({
     >
       <span>
         {t("dynamicviewloader.unavailable.body", {
-          defaultValue: "This view is not available in the current runtime.",
+          defaultValue:
+            "This view is not available in the current runtime. Install or enable its app, then try again.",
         })}
       </span>
       <span className="mt-1 block">
