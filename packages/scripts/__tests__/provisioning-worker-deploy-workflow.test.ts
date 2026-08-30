@@ -154,7 +154,7 @@ describe("provisioning worker deployment contract", () => {
     );
     const clean = workflow.indexOf("git clean -ffdx -q", verify);
     const cleanVerdict = workflow.indexOf(
-      '[ -z "$(git status --porcelain)" ] || {',
+      '[ -z "$(git status --porcelain',
       verify,
     );
     expect(reset).toBeGreaterThan(exactSourceCheck);
