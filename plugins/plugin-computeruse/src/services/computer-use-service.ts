@@ -19,6 +19,7 @@ import {
   WindowRegionCapture,
 } from "../app-control/defaults.js";
 import { MacosAxAdapter } from "../app-control/macos-ax-adapter.js";
+import { MacosExperimentalExactWindowDispatcher } from "../app-control/macos-exact-window-dispatcher.js";
 import type {
   AppActionOutcome,
   AppActionRequest,
@@ -369,6 +370,8 @@ export class ComputerUseService extends Service {
     capture: new WindowRegionCapture(),
     grounder: new RegisteredVisualGrounder(),
     pointer: guardedPhysicalPointer,
+    pointerObserver: { position: () => driverGetCursorPosition() },
+    exactWindowPointer: new MacosExperimentalExactWindowDispatcher(),
   });
   private displayIdDeprecationWarned = false;
   private sceneBuilder: SceneBuilder = new SceneBuilder({
@@ -646,6 +649,9 @@ export class ComputerUseService extends Service {
         : {}),
       ...(parameters.allowPhysicalFallback === true
         ? { allowPhysicalFallback: true }
+        : {}),
+      ...(parameters.allowExperimentalExactWindow === true
+        ? { allowExperimentalExactWindow: true }
         : {}),
     };
     try {

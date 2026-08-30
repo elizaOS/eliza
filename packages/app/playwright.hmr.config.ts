@@ -64,6 +64,10 @@ export default defineConfig({
       ELIZA_DEV_NO_WATCH: "1",
       ELIZA_DEV_QUIET_LOGS: "1",
       ELIZA_NO_VISION_DEPS: "1",
+      // This lane edits main.tsx and its eager workspace dependencies. Force
+      // the full chat harness so the hosted root cannot select the lightweight
+      // marketing/public entry and leave those modules outside the client graph.
+      ELIZA_CHAT_UI_HARNESS: "1",
       // Vite cold-start of the full raw-source module graph exceeds dev-ui's
       // default 60s health-check window on shared CI runners; widen it so the
       // watchdog doesn't SIGTERM Vite before it can serve the HMR client.

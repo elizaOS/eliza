@@ -62,6 +62,9 @@
 .items-start {
   align-items: flex-start;
 }
+.items-end {
+  align-items: flex-end;
+}
 .justify-between {
   justify-content: space-between;
 }
@@ -120,6 +123,12 @@
 .w-64 {
   width: 16rem;
 }
+.w-40 {
+  width: 10rem;
+}
+.max-w-2xl {
+  max-width: 42rem;
+}
 
 /* gaps */
 .gap-px {
@@ -140,11 +149,20 @@
 .gap-4 {
   gap: 1rem;
 }
+.gap-x-2 {
+  column-gap: 0.5rem;
+}
+.gap-y-1 {
+  row-gap: 0.25rem;
+}
 .space-y-3 > * + * {
   margin-top: 0.75rem;
 }
 .divide-y > * + * {
   border-top: 1px solid var(--border);
+}
+.divide-border\/12 > * + * {
+  border-top-color: rgba(255, 255, 255, 0.14);
 }
 
 /* sizing helpers */
@@ -177,6 +195,10 @@
 }
 .w-3\.5 {
   width: 0.875rem;
+}
+.size-3\.5 {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 .h-4 {
   height: 1rem;
@@ -247,6 +269,10 @@
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
 }
+.py-2\.5 {
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+}
 .py-3 {
   padding-top: 0.75rem;
   padding-bottom: 0.75rem;
@@ -255,11 +281,29 @@
   padding-top: 3rem;
   padding-bottom: 3rem;
 }
+.pb-3 {
+  padding-bottom: 0.75rem;
+}
+.pt-1 {
+  padding-top: 0.25rem;
+}
+.pt-3 {
+  padding-top: 0.75rem;
+}
 .mt-0\.5 {
   margin-top: 0.125rem;
 }
 .mt-1 {
   margin-top: 0.25rem;
+}
+.mt-2 {
+  margin-top: 0.5rem;
+}
+.mt-3 {
+  margin-top: 0.75rem;
+}
+.mt-4 {
+  margin-top: 1rem;
 }
 .mx-1 {
   margin-left: 0.25rem;
@@ -281,6 +325,14 @@
   border-top-width: 1px;
   border-top-style: solid;
   border-top-color: var(--border);
+}
+.border-y {
+  border-top-width: 1px;
+  border-bottom-width: 1px;
+  border-top-style: solid;
+  border-bottom-style: solid;
+  border-top-color: var(--border);
+  border-bottom-color: var(--border);
 }
 .rounded-sm {
   border-radius: 0.25rem;
@@ -357,11 +409,26 @@
 .text-muted {
   color: var(--muted);
 }
+.text-muted-strong {
+  color: #d4d4d8;
+}
+.text-danger {
+  color: #f87171;
+}
+.text-warning {
+  color: #fbbf24;
+}
+.text-success {
+  color: #4ade80;
+}
 .text-muted\/70 {
   color: rgba(161, 161, 170, 0.7);
 }
 .font-medium {
   font-weight: 500;
+}
+.font-normal {
+  font-weight: 400;
 }
 .font-semibold {
   font-weight: 600;
@@ -377,6 +444,24 @@
 }
 .leading-tight {
   line-height: 1.25;
+}
+.leading-5 {
+  line-height: 1.25rem;
+}
+.transition-transform {
+  transition-property: transform;
+  transition-duration: 150ms;
+}
+.rotate-180 {
+  transform: rotate(180deg);
+}
+@keyframes harness-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.animate-spin {
+  animation: harness-spin 1s linear infinite;
 }
 .truncate {
   overflow: hidden;
@@ -406,4 +491,25 @@
 
 body {
   font-family: system-ui, sans-serif;
+}
+
+[data-testid="calendar-source-manager"] ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 640px) {
+  .sm\:w-40 {
+    width: 10rem;
+  }
+  .sm\:w-auto {
+    width: auto;
+  }
+  .sm\:min-w-0 {
+    min-width: 0;
+  }
+  .sm\:flex-1 {
+    flex: 1 1 0%;
+  }
 }

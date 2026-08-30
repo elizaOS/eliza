@@ -259,7 +259,11 @@ export function SecretsView({
           {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
           <div className="px-4 py-8 text-center">
             <div className="mb-2 text-sm text-danger">{error}</div>
-            <Button variant="outline" size="short" onClick={() => void load()}>
+            <Button
+              variant="outline"
+              size="regularCompact"
+              onClick={() => void load()}
+            >
               {t("common.retry")}
             </Button>
           </div>

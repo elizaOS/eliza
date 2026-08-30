@@ -23,18 +23,21 @@ import { cn } from "../../lib/utils";
 import { emitViewInteraction } from "../../view-telemetry";
 import {
   WALLPAPER_FLOAT_SHADOW,
-  WALLPAPER_GLASS,
   WALLPAPER_TEXT,
 } from "../shell/wallpaper-idiom";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { ViewTileImage } from "../views/ViewTileImage";
+import { Skeleton } from "../ui/skeleton";
+import {
+  LauncherAppIcon,
+  LauncherAppIconSkeleton,
+} from "../views/LauncherAppIcon";
 
 const LAUNCHER_RESPONSIVE_CSS = `
 [data-testid="launcher"] { container-type: inline-size; }
 [data-testid="launcher"] [data-launcher-icon] {
   width: clamp(3.5rem, 16cqi, 4.5rem);
   height: clamp(3.5rem, 16cqi, 4.5rem);
-  border-radius: clamp(1rem, 4cqi, 1.25rem);
 }
 [data-testid="launcher"] [data-launcher-label] {
   font-size: clamp(.75rem, calc(.68rem + .25cqi), .875rem);
@@ -51,6 +54,8 @@ const LAUNCHER_RESPONSIVE_CSS = `
 export interface LauncherProps {
   entries: ViewEntry[];
   loading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
   onLaunch: (entry: ViewEntry) => void;
   className?: string;
   /** Render at natural height inside Home's app scroll region. */
@@ -120,37 +125,19 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
         className="group relative w-full max-w-[5.5rem] select-none"
       >
         <div className="relative">
-          <div
-            data-launcher-icon=""
-            className={cn(
-              // ViewTileImage renders this surface as an app icon, not as a
-              // cropped catalog preview. The tile stays a generous hit target,
-              // compacting only on short landscape screens so its label clears
-              // chat; the inner visual owns color/glyph. Flat — no border; a
-              // subtle glass wash is the icon plate (neutral resting →
-              // neutral-with-opacity hover).
-              "size-16 overflow-hidden rounded-2xl transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:h-14 [@media(orientation:landscape)_and_(max-height:520px)]:w-14",
-              WALLPAPER_GLASS.iconPlate,
-              // Hovering the label highlights the same icon plate.
-              "group-hover:bg-white/20",
-            )}
-          >
-            <ViewTileImage
-              entry={entry}
-              source="launcher"
-              containerClassName="grid h-full w-full place-items-center"
-              glyphClassName="size-[clamp(1.5rem,7cqi,2rem)]"
-              imageTestId={`launcher-image-${entry.id}`}
-            />
-          </div>
+          <LauncherAppIcon
+            entry={entry}
+            className="size-16 [@media(orientation:landscape)_and_(max-height:520px)]:h-14 [@media(orientation:landscape)_and_(max-height:520px)]:w-14"
+          />
           {badge ? (
-            <span
-              data-testid={`launcher-kind-${entry.id}`}
-              title={badge.title}
-              className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-2xs font-semibold uppercase leading-none text-neutral-900"
-            >
-              {badge.label}
-            </span>
+            <Badge asChild variant="outline" presentation="launcherKind">
+              <span
+                data-testid={`launcher-kind-${entry.id}`}
+                title={badge.title}
+              >
+                {badge.label}
+              </span>
+            </Badge>
           ) : null}
         </div>
         {/* 5.5rem, not the icon's 4rem: the narrowest grid cell (4 cols on a
@@ -176,6 +163,8 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
 export function Launcher({
   entries,
   loading = false,
+  error = null,
+  onRetry,
   onLaunch,
   className,
   embedded = false,
@@ -193,6 +182,10 @@ export function Launcher({
   );
 
   const showSkeleton = loading && entries.length === 0;
+  const showError = !showSkeleton && error !== null && entries.length === 0;
+  const showSourceStatus =
+    !showSkeleton && error !== null && entries.length > 0;
+  const showEmpty = !showSkeleton && !showError && entries.length === 0;
 
   return (
     <div
@@ -229,22 +222,84 @@ export function Launcher({
                     key={id}
                     className="flex flex-col items-center gap-1.5 opacity-60"
                   >
-                    <div
-                      data-launcher-icon=""
-                      className="size-16 rounded-2xl bg-white/15"
-                    />
-                    <div className="h-2.5 w-12 rounded-full bg-white/25" />
+                    <LauncherAppIconSkeleton className="size-16" />
+                    <Skeleton className="h-2.5 w-12" />
                   </div>
                 ))}
+              </div>
+            ) : showError ? (
+              <div
+                role="alert"
+                data-testid="launcher-error"
+                className="mx-auto flex min-h-48 max-w-sm flex-col items-center justify-center gap-3 px-5 text-center"
+              >
+                <div
+                  className={cn("text-sm font-semibold", WALLPAPER_TEXT.base)}
+                >
+                  Couldn&apos;t load apps
+                </div>
+                <p className={cn("text-xs", WALLPAPER_TEXT.muted)}>
+                  Check the connection and try again.
+                </p>
+                {onRetry ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="overlayEdge"
+                    onClick={onRetry}
+                  >
+                    Retry
+                  </Button>
+                ) : null}
+              </div>
+            ) : showEmpty ? (
+              <div
+                role="status"
+                data-testid="launcher-empty"
+                className="mx-auto flex min-h-48 max-w-sm flex-col items-center justify-center gap-2 px-5 text-center"
+              >
+                <div
+                  className={cn("text-sm font-semibold", WALLPAPER_TEXT.base)}
+                >
+                  No apps available
+                </div>
+                <p className={cn("text-xs", WALLPAPER_TEXT.muted)}>
+                  Available apps and views will appear here.
+                </p>
               </div>
             ) : (
-              <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 max-sm:portrait:gap-y-8 sm:grid-cols-5">
-                {entries.map((entry) => (
-                  <div key={entry.id} className="flex justify-center">
-                    <IconTile entry={entry} onLaunch={handleLaunch} />
+              <>
+                <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 max-sm:portrait:gap-y-8 sm:grid-cols-5">
+                  {entries.map((entry) => (
+                    <div key={entry.id} className="flex justify-center">
+                      <IconTile entry={entry} onLaunch={handleLaunch} />
+                    </div>
+                  ))}
+                </div>
+                {showSourceStatus ? (
+                  <div
+                    role="status"
+                    data-testid="launcher-source-status"
+                    className={cn(
+                      "mx-auto flex min-h-11 items-center gap-2 text-xs",
+                      WALLPAPER_TEXT.muted,
+                    )}
+                  >
+                    <span>More apps unavailable</span>
+                    {onRetry ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="overlayEdge"
+                        className="min-h-9"
+                        onClick={onRetry}
+                      >
+                        Retry
+                      </Button>
+                    ) : null}
                   </div>
-                ))}
-              </div>
+                ) : null}
+              </>
             )}
           </div>
         </div>

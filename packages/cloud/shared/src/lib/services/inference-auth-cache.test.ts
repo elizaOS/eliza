@@ -89,7 +89,14 @@ describe("session decision validators", () => {
       60,
     );
 
-    await expect(readInferenceSessionAuthDecision(STEWARD_USER_ID)).resolves.toBeNull();
+    const cleanup: Promise<unknown>[] = [];
+    await expect(
+      readInferenceSessionAuthDecision(STEWARD_USER_ID, {
+        waitUntil: (promise) => cleanup.push(promise),
+      }),
+    ).resolves.toBeNull();
+    expect(cleanup).toHaveLength(1);
+    await Promise.all(cleanup);
     // The malformed entry was evicted, not left behind for a later read.
     await expect(cache.get(key)).resolves.toBeNull();
   });
@@ -137,9 +144,14 @@ describe("api-key IAC validators", () => {
       60,
     );
 
-    await expect(readInferenceAuthContextWithOutcome(KEY_HASH)).resolves.toMatchObject({
-      kind: "invalid",
-    });
+    const cleanup: Promise<unknown>[] = [];
+    await expect(
+      readInferenceAuthContextWithOutcome(KEY_HASH, undefined, {
+        waitUntil: (promise) => cleanup.push(promise),
+      }),
+    ).resolves.toMatchObject({ kind: "invalid" });
+    expect(cleanup).toHaveLength(1);
+    await Promise.all(cleanup);
     await expect(cache.get(key)).resolves.toBeNull();
   });
 });

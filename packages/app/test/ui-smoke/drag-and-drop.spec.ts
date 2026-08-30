@@ -769,7 +769,7 @@ const DROPPED_NOTE_TEXT =
 // upload") is UNMOUNTED in the shipped app — the only live documents surface
 // (CharacterHubView → /character/documents) passes showSelectorRail={false},
 // and the companion-overlay editor variant that mounts it is itself mounted
-// nowhere. The root-level drop intake on DocumentsView (added with this
+// nowhere. The root-level drop intake on KnowledgeDocumentsView (added with this
 // harness) is what makes drag-drop knowledge upload reachable again; these
 // tests drive that shipped path.
 test.describe("knowledge view — real DataTransfer file drop", () => {

@@ -161,12 +161,13 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
     expect(rail.className).toContain("invisible");
     expect(rail.className).toContain("opacity-0");
     expect(content?.className).toContain("pb-0");
-    expect(content?.className).not.toContain("pb-9");
+    expect(content?.className).not.toContain("pointer-coarse:pb-11");
     fireEvent.click(bubble);
     expect(rail.getAttribute("aria-hidden")).toBe("false");
     expect(rail.className).toContain("visible");
     expect(rail.className).not.toContain("invisible");
-    expect(content?.className).toContain("pb-9");
+    expect(content?.className).toContain("pb-6");
+    expect(content?.className).toContain("pointer-coarse:pb-11");
     expect(content?.className).not.toContain("pb-0");
 
     fireEvent.click(bubble);
@@ -174,7 +175,7 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
     expect(rail.className).toContain("invisible");
     expect(rail.className).toContain("opacity-0");
     expect(content?.className).toContain("pb-0");
-    expect(content?.className).not.toContain("pb-9");
+    expect(content?.className).not.toContain("pointer-coarse:pb-11");
   });
 
   it("returns the glass action space after an outside touch", () => {
@@ -194,12 +195,13 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
 
     fireEvent.click(bubble);
     expect(rail.getAttribute("aria-hidden")).toBe("false");
-    expect(content?.className).toContain("pb-9");
+    expect(content?.className).toContain("pb-6");
+    expect(content?.className).toContain("pointer-coarse:pb-11");
 
     fireEvent.pointerDown(document.body);
     expect(rail.getAttribute("aria-hidden")).toBe("true");
     expect(content?.className).toContain("pb-0");
-    expect(content?.className).not.toContain("pb-9");
+    expect(content?.className).not.toContain("pointer-coarse:pb-11");
   });
 
   it("a scroll-like touch (travel past the slop) does NOT toggle the rail", () => {

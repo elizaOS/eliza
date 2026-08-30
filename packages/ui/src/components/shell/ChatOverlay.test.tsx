@@ -15,6 +15,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { motionValue } from "motion/react";
 import {
   afterEach,
   beforeAll,
@@ -90,6 +91,8 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
+import type { SlashCommandCatalogItem } from "../../chat/slash-menu";
+import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
   CHAT_PREFILL_EVENT,
   ELIZA_BACK_INTENT_EVENT,
@@ -112,6 +115,7 @@ import {
 import { __setAppValueForTests } from "../../state/app-store";
 import {
   getShellSurface,
+  goLauncher,
   resetShellSurfaceForTests,
 } from "../../state/shell-surface-store";
 import {
@@ -120,7 +124,7 @@ import {
 } from "../../state/useStreamingText";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
-import { ChatOverlay } from "./ChatOverlay";
+import { ChatOverlay, PillHandle } from "./ChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
   buildConversationNav,
@@ -421,6 +425,60 @@ describe("ChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
+  it("opens an exact view immediately while preserving the model-authored turn", () => {
+    const controller = makeController();
+    const navigateView = vi.fn();
+    const command: SlashCommandCatalogItem = {
+      key: "views",
+      nativeName: "views",
+      description: "Open views",
+      textAliases: ["/views"],
+      scope: "both",
+      acceptsArgs: true,
+      args: [
+        {
+          name: "view",
+          description: "view",
+          dynamicChoices: "views",
+        },
+      ],
+      requiresAuth: false,
+      requiresElevated: false,
+      target: { kind: "navigate", tab: "views", path: "/views" },
+      source: "builtin",
+    };
+    const slash: SlashCommandController = {
+      commands: [command],
+      loading: false,
+      error: false,
+      // Ordinary prose stays model-owned; exact view navigation has a narrow
+      // optimistic path that must remain available independently.
+      naturalShortcutsEnabled: false,
+      resolveChoices: () => ["notes", "calendar"],
+      describeChoice: () => "",
+      resolveSection: () => undefined,
+      isAuthorized: true,
+      isElevated: false,
+      navigateTab: vi.fn(),
+      navigateSettings: vi.fn(),
+      navigateView,
+      clearChat: vi.fn(),
+      openCommandPalette: vi.fn(),
+    };
+
+    render(<ChatOverlay controller={controller} slash={slash} />);
+    const input = screen.getByLabelText("message") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "open notes" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(navigateView).toHaveBeenCalledWith({
+      viewId: "notes",
+      viewPath: undefined,
+    });
+    expect(controller.send).toHaveBeenCalledWith("open notes");
+    expect(input.value).toBe("");
+  });
+
   it("does NOT send on the Enter that commits an IME composition (CJK), only a real Enter", () => {
     const controller = makeController();
     render(<ChatOverlay controller={controller} />);
@@ -550,8 +608,10 @@ describe("ChatOverlay", () => {
     // The native material remains attached below the WebView, but the open
     // conversation owns an opaque DOM fill. Underlying launcher/view controls
     // must never remain visible through the chat surface on iPad.
-    expect(surface.style.backgroundColor).toBe("var(--bg)");
-    expect(surface.style.backdropFilter).toBe("");
+    expect(surface.style.getPropertyValue("--chat-sheet-background")).toBe(
+      "var(--bg)",
+    );
+    expect(surface.style.getPropertyValue("--chat-sheet-backdrop")).toBe("");
     expect(screen.getByTestId("chat-overlay").className).toContain("isolate");
     expect(screen.getByTestId("chat-glass-tier-probe").textContent).toContain(
       "chat-glass-tier:native",
@@ -648,7 +708,7 @@ describe("ChatOverlay", () => {
         x: 0,
         y: 0,
         top: 0,
-        right: 208,
+        right: 360,
         bottom: 72,
         left: 0,
         toJSON: () => ({}),
@@ -676,12 +736,15 @@ describe("ChatOverlay", () => {
         document.documentElement.style.getPropertyValue(
           "--eliza-chat-side-clearance",
         ),
-      ).toBe("384px");
+      ).toBe("0px");
+      expect(
+        screen.getByTestId("chat-sheet").parentElement?.style.maxWidth,
+      ).toBe("360px");
       expect(
         document.documentElement.style.getPropertyValue(
           "--eliza-chat-clearance",
         ),
-      ).toBe("0px");
+      ).toBe("80px");
 
       fireEvent.focus(screen.getByLabelText("message"));
 
@@ -875,6 +938,35 @@ describe("ChatOverlay", () => {
     expect(document.activeElement).not.toBe(composer);
   });
 
+  it("collapses an open thread sheet and returns the launcher rail home for agent Home navigation", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const composer = screen.getByLabelText("message") as HTMLTextAreaElement;
+    const sheet = screen.getByTestId("chat-sheet");
+    act(() => {
+      goLauncher();
+      composer.focus();
+      fireEvent.focus(composer);
+    });
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(getShellSurface().page).toBe("launcher");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(NAVIGATE_VIEW_EVENT, {
+          detail: {
+            viewId: "chat",
+            viewPath: "/chat",
+            source: "agent",
+          },
+        }),
+      );
+    });
+
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(document.activeElement).not.toBe(composer);
+    expect(getShellSurface().page).toBe("home");
+  });
+
   it("keeps composer focus when the active view stays on chat (no spurious blur)", () => {
     const { rerender } = render(
       <ChatOverlay
@@ -1006,10 +1098,9 @@ describe("ChatOverlay", () => {
         screen.getByTestId("chat-pill").querySelector("span");
       const barOf = () => spanOf()?.className ?? "";
       expect(barOf()).not.toContain("eliza-chat-handle-breathe");
-      // Resting bar color is an explicit white inline style (not the
-      // `bg-muted-strong` token, which resolved dark/black on the grabber that
-      // renders outside the panel theme) — kept identical to the grabber bar.
-      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
+      // The canonical handle surface owns explicit wallpaper-white paint rather
+      // than inheriting an ambient muted token outside the panel theme.
+      expect(barOf()).toContain("chat-handle-bar-surface");
       rerender(
         <ChatOverlay
           controller={makeController({ phase: "listening", recording: true })}
@@ -1025,7 +1116,7 @@ describe("ChatOverlay", () => {
       expect(barOf()).not.toContain("background-clip");
       expect(barOf()).not.toContain("bg-accent");
       expect(barOf()).not.toContain("animate-pulse");
-      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
+      expect(barOf()).toContain("chat-handle-bar-surface");
     });
   });
 
@@ -3196,6 +3287,62 @@ describe("ChatOverlay", () => {
     expect(pill.getAttribute("tabindex")).toBeNull();
   });
 
+  it("shows the live turn phase while a response runs behind the collapsed pill", () => {
+    const { rerender } = render(<ChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          phase: "responding",
+          responding: true,
+          turnStatus: {
+            kind: "running_action",
+            actionName: "VIEWS",
+          },
+        })}
+      />,
+    );
+
+    const status = screen.getByTestId("chat-pill-turn-status");
+    expect(status.className).toContain("pointer-events-none");
+    expect(screen.getByTestId("turn-status-label").textContent).toBe(
+      "Running Views",
+    );
+  });
+
+  it("keeps the collapsed pill quiet when no response is active", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+
+    expect(screen.queryByTestId("chat-pill-turn-status")).toBeNull();
+  });
+
+  it("centers 64x12 resting material in a 64x44 detached desktop hit target", () => {
+    render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+
+    const pill = screen.getByTestId("chat-pill");
+    const mark = screen.getByTestId("chat-pill-mark");
+    expect(pill.style.width).toBe("64px");
+    expect(pill.style.height).toBe("44px");
+    expect(pill.className).not.toContain("pt-10");
+    expect(pill.className).not.toContain("px-8");
+    expect(mark.className).toContain("chat-handle-bar-surface");
+    expect(mark.className).toContain("h-3");
+  });
+
   it("steps a pill tap to the INPUT bar — never the thread detent, never the keyboard", () => {
     // A pill tap is ONE step up the continuum: it forms the bare input bar.
     // Even with a conversation to show it must NOT jump to half (the grabber
@@ -3257,6 +3404,33 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("pill");
     fireEvent.keyDown(screen.getByTestId("chat-pill"), { key: "Enter" });
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+  });
+
+  it("opens exactly once when native keyboard activation emits a compatibility click", () => {
+    const onOpen = vi.fn();
+    const handler = vi.fn();
+    render(
+      <PillHandle
+        binding={{
+          onPointerDown: handler,
+          onPointerMove: handler,
+          onPointerUp: handler,
+          onPointerCancel: handler,
+          onLostPointerCapture: handler,
+        }}
+        counterScale={motionValue(1)}
+        onOpen={onOpen}
+        breathing={false}
+        pilled
+        desktopOverlayHost
+      />,
+    );
+
+    const pill = screen.getByRole("button", { name: "open chat" });
+    fireEvent.keyDown(pill, { key: "Enter" });
+    fireEvent.click(pill, { detail: 0 });
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("flicks UP from the pill to recover the input", () => {
@@ -4249,7 +4423,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(viewport.className.split(/\s+/)).not.toContain("scroll-fade-b");
     expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
     expect(screen.queryByTestId("chat-sheet-top-sheen")).toBeNull();
-    expect(surface.style.backgroundImage).toBe("none");
+    expect(surface.style.getPropertyValue("--chat-sheet-image")).toBe("none");
   });
 
   it("snaps to full-screen at 90% while held and reverses below the same line", async () => {

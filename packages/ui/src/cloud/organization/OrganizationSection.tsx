@@ -12,6 +12,7 @@
  */
 
 import { Loader2 } from "lucide-react";
+import { Card } from "../../components/ui/card";
 import { ApiError } from "../lib/api-client";
 import { useOrganizationUser } from "./data/use-organization";
 import { OrganizationTab } from "./organization-tab";
@@ -33,9 +34,9 @@ export function OrganizationSection() {
         ? "Sign in to Eliza Cloud to manage your organization."
         : "Unable to load your organization.";
     return (
-      <div className="bg-surface border border-brand-surface p-8 text-center">
+      <Card variant="insetPadded" className="p-8 text-center">
         <p className="text-sm font-mono text-muted">{message}</p>
-      </div>
+      </Card>
     );
   }
 

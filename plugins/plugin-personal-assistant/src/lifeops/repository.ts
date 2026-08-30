@@ -1856,6 +1856,9 @@ interface LifeOpsGmailSyncState {
   mailbox: string;
   grantId: string;
   maxResults: number;
+  historyId: string | null;
+  cursorStatus: "seeded" | "incremental" | "resynced";
+  fullResyncReason: string | null;
   syncedAt: string;
   updatedAt: string;
 }
@@ -1871,9 +1874,132 @@ function parseGmailSyncState(
     mailbox: toText(row.mailbox),
     grantId: toText(row.grant_id),
     maxResults: toNumber(row.max_results, 0),
+    historyId: row.history_id ? toText(row.history_id) : null,
+    cursorStatus: parseGmailCursorStatus(row.cursor_status),
+    fullResyncReason: row.full_resync_reason
+      ? toText(row.full_resync_reason)
+      : null,
     syncedAt: toText(row.synced_at),
     updatedAt: toText(row.updated_at),
   };
+}
+
+function parseGmailCursorStatus(
+  value: unknown,
+): LifeOpsGmailSyncState["cursorStatus"] {
+  const status = toText(value, "seeded");
+  if (
+    status === "seeded" ||
+    status === "incremental" ||
+    status === "resynced"
+  ) {
+    return status;
+  }
+  throw new ElizaError("[LifeOpsRepository] Invalid Gmail cursor status", {
+    code: "LIFEOPS_GMAIL_CURSOR_STATUS_INVALID",
+    context: { status },
+  });
+}
+
+function gmailMessageUpsertStatement(
+  message: LifeOpsGmailMessageSummary,
+  side: LifeOpsConnectorSide,
+): string {
+  const grantId = requireScopedGmailGrantId(message.grantId);
+  const connectorAccountId =
+    message.connectorAccountId ??
+    deriveConnectorAccountId({
+      provider: message.provider,
+      side,
+      identityEmail: message.accountEmail,
+      grantId,
+    });
+  return `INSERT INTO app_lifeops.life_gmail_messages (
+      id, agent_id, provider, side, external_message_id,
+      connector_account_id, grant_id, thread_id, subject, from_display,
+      from_email, reply_to, to_json, cc_json, snippet, received_at,
+      is_unread, is_important, likely_reply_needed, triage_score,
+      triage_reason, label_ids_json, html_link, metadata_json, synced_at,
+      updated_at
+    ) VALUES (
+      ${sqlQuote(message.id)},
+      ${sqlQuote(message.agentId)},
+      ${sqlQuote(message.provider)},
+      ${sqlQuote(side)},
+      ${sqlQuote(message.externalId)},
+      ${sqlText(connectorAccountId)},
+      ${sqlQuote(grantId)},
+      ${sqlQuote(message.threadId)},
+      ${sqlQuote(message.subject)},
+      ${sqlQuote(message.from)},
+      ${sqlText(message.fromEmail)},
+      ${sqlText(message.replyTo)},
+      ${sqlJson(message.to)},
+      ${sqlJson(message.cc)},
+      ${sqlQuote(message.snippet)},
+      ${sqlQuote(message.receivedAt)},
+      ${sqlBoolean(message.isUnread)},
+      ${sqlBoolean(message.isImportant)},
+      ${sqlBoolean(message.likelyReplyNeeded)},
+      ${sqlInteger(message.triageScore)},
+      ${sqlQuote(message.triageReason)},
+      ${sqlJson(message.labels)},
+      ${sqlText(message.htmlLink)},
+      ${sqlJson(message.metadata)},
+      ${sqlQuote(message.syncedAt)},
+      ${sqlQuote(message.updatedAt)}
+    )
+    ON CONFLICT(agent_id, provider, side, grant_id, external_message_id) DO UPDATE SET
+      id = excluded.id,
+      connector_account_id = COALESCE(excluded.connector_account_id, app_lifeops.life_gmail_messages.connector_account_id),
+      thread_id = excluded.thread_id,
+      subject = excluded.subject,
+      from_display = excluded.from_display,
+      from_email = excluded.from_email,
+      reply_to = excluded.reply_to,
+      to_json = excluded.to_json,
+      cc_json = excluded.cc_json,
+      snippet = excluded.snippet,
+      received_at = excluded.received_at,
+      is_unread = excluded.is_unread,
+      is_important = excluded.is_important,
+      likely_reply_needed = excluded.likely_reply_needed,
+      triage_score = excluded.triage_score,
+      triage_reason = excluded.triage_reason,
+      label_ids_json = excluded.label_ids_json,
+      html_link = excluded.html_link,
+      metadata_json = excluded.metadata_json,
+      synced_at = excluded.synced_at,
+      updated_at = excluded.updated_at`;
+}
+
+function gmailSyncStateUpsertStatement(state: LifeOpsGmailSyncState): string {
+  const grantId = requireScopedGmailGrantId(state.grantId);
+  return `INSERT INTO app_lifeops.life_gmail_sync_states (
+      id, agent_id, provider, side, mailbox, grant_id, max_results, history_id,
+      cursor_status, full_resync_reason, synced_at, updated_at
+    ) VALUES (
+      ${sqlQuote(state.id)},
+      ${sqlQuote(state.agentId)},
+      ${sqlQuote(state.provider)},
+      ${sqlQuote(state.side)},
+      ${sqlQuote(state.mailbox)},
+      ${sqlQuote(grantId)},
+      ${sqlInteger(state.maxResults)},
+      ${sqlText(state.historyId)},
+      ${sqlQuote(state.cursorStatus)},
+      ${sqlText(state.fullResyncReason)},
+      ${sqlQuote(state.syncedAt)},
+      ${sqlQuote(state.updatedAt)}
+    )
+    ON CONFLICT(agent_id, provider, side, grant_id, mailbox) DO UPDATE SET
+      id = excluded.id,
+      max_results = excluded.max_results,
+      history_id = excluded.history_id,
+      cursor_status = excluded.cursor_status,
+      full_resync_reason = excluded.full_resync_reason,
+      synced_at = excluded.synced_at,
+      updated_at = excluded.updated_at`;
 }
 
 // ---------------------------------------------------------------------------
@@ -2777,6 +2903,7 @@ export class LifeOpsRepository {
     await LifeOpsRepository.ensureReminderReviewColumns(runtime);
     await LifeOpsRepository.ensureBrowserBridgeCompanionTokenColumns(runtime);
     await LifeOpsRepository.ensureConnectorAccountColumns(runtime);
+    await LifeOpsRepository.ensureGmailSyncColumns(runtime);
     await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
     await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
   }
@@ -3172,6 +3299,19 @@ export class LifeOpsRepository {
       for (const statement of repair.statements) {
         await executeRawSql(runtime, statement);
       }
+    }
+  }
+
+  static async ensureGmailSyncColumns(runtime: IAgentRuntime): Promise<void> {
+    if (!(await tableExists(runtime, "app_lifeops.life_gmail_sync_states"))) {
+      return;
+    }
+    for (const statement of [
+      "ALTER TABLE app_lifeops.life_gmail_sync_states ADD COLUMN IF NOT EXISTS history_id TEXT",
+      "ALTER TABLE app_lifeops.life_gmail_sync_states ADD COLUMN IF NOT EXISTS cursor_status TEXT NOT NULL DEFAULT 'seeded'",
+      "ALTER TABLE app_lifeops.life_gmail_sync_states ADD COLUMN IF NOT EXISTS full_resync_reason TEXT",
+    ]) {
+      await executeRawSql(runtime, statement);
     }
   }
 
@@ -6219,75 +6359,51 @@ export class LifeOpsRepository {
     message: LifeOpsGmailMessageSummary,
     side: LifeOpsConnectorSide = message.side,
   ): Promise<void> {
-    const grantId = requireScopedGmailGrantId(message.grantId);
-    const connectorAccountId =
-      message.connectorAccountId ??
-      deriveConnectorAccountId({
-        provider: message.provider,
-        side,
-        identityEmail: message.accountEmail,
-        grantId,
-      });
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_gmail_messages (
-        id, agent_id, provider, side, external_message_id,
-        connector_account_id, grant_id, thread_id, subject, from_display,
-        from_email, reply_to, to_json, cc_json, snippet, received_at,
-        is_unread, is_important, likely_reply_needed, triage_score,
-        triage_reason, label_ids_json, html_link, metadata_json, synced_at,
-        updated_at
-      ) VALUES (
-        ${sqlQuote(message.id)},
-        ${sqlQuote(message.agentId)},
-        ${sqlQuote(message.provider)},
-        ${sqlQuote(side)},
-        ${sqlQuote(message.externalId)},
-        ${sqlText(connectorAccountId)},
-        ${sqlQuote(grantId)},
-        ${sqlQuote(message.threadId)},
-        ${sqlQuote(message.subject)},
-        ${sqlQuote(message.from)},
-        ${sqlText(message.fromEmail)},
-        ${sqlText(message.replyTo)},
-        ${sqlJson(message.to)},
-        ${sqlJson(message.cc)},
-        ${sqlQuote(message.snippet)},
-        ${sqlQuote(message.receivedAt)},
-        ${sqlBoolean(message.isUnread)},
-        ${sqlBoolean(message.isImportant)},
-        ${sqlBoolean(message.likelyReplyNeeded)},
-        ${sqlInteger(message.triageScore)},
-        ${sqlQuote(message.triageReason)},
-        ${sqlJson(message.labels)},
-        ${sqlText(message.htmlLink)},
-        ${sqlJson(message.metadata)},
-        ${sqlQuote(message.syncedAt)},
-        ${sqlQuote(message.updatedAt)}
-      )
-      ON CONFLICT(agent_id, provider, side, grant_id, external_message_id) DO UPDATE SET
-        id = excluded.id,
-        connector_account_id = COALESCE(excluded.connector_account_id, app_lifeops.life_gmail_messages.connector_account_id),
-        thread_id = excluded.thread_id,
-        subject = excluded.subject,
-        from_display = excluded.from_display,
-        from_email = excluded.from_email,
-        reply_to = excluded.reply_to,
-        to_json = excluded.to_json,
-        cc_json = excluded.cc_json,
-        snippet = excluded.snippet,
-        received_at = excluded.received_at,
-        is_unread = excluded.is_unread,
-        is_important = excluded.is_important,
-        likely_reply_needed = excluded.likely_reply_needed,
-        triage_score = excluded.triage_score,
-        triage_reason = excluded.triage_reason,
-        label_ids_json = excluded.label_ids_json,
-        html_link = excluded.html_link,
-        metadata_json = excluded.metadata_json,
-        synced_at = excluded.synced_at,
-        updated_at = excluded.updated_at`,
+      gmailMessageUpsertStatement(message, side),
     );
+  }
+
+  /**
+   * Atomically replaces one grant's imported Gmail projection with a complete
+   * provider range and publishes its History cursor in the same transaction.
+   * Pagination/provider failures occur before this boundary, while a database
+   * failure rolls back both rows and cursor instead of exposing a partial seed.
+   */
+  async publishGmailSeed(
+    messages: readonly LifeOpsGmailMessageSummary[],
+    state: LifeOpsGmailSyncState,
+  ): Promise<void> {
+    const grantId = requireScopedGmailGrantId(state.grantId);
+    await withTransaction(this.runtime, async (tx) => {
+      await executeRawSqlTx(
+        tx,
+        `DELETE FROM app_lifeops.life_gmail_messages
+          WHERE agent_id = ${sqlQuote(state.agentId)}
+            AND provider = ${sqlQuote(state.provider)}
+            AND side = ${sqlQuote(state.side)}
+            AND grant_id = ${sqlQuote(grantId)}`,
+      );
+      for (const message of messages) {
+        const messageGrantId = requireScopedGmailGrantId(message.grantId);
+        if (
+          message.agentId !== state.agentId ||
+          message.provider !== state.provider ||
+          message.side !== state.side ||
+          messageGrantId !== grantId
+        ) {
+          throw new Error(
+            "Gmail seed message scope does not match its published sync state.",
+          );
+        }
+        await executeRawSqlTx(
+          tx,
+          gmailMessageUpsertStatement(message, state.side),
+        );
+      }
+      await executeRawSqlTx(tx, gmailSyncStateUpsertStatement(state));
+    });
   }
 
   async pruneGmailMessages(
@@ -6359,6 +6475,24 @@ export class LifeOpsRepository {
     return rows.map(parseGmailMessageSummary);
   }
 
+  async countGmailMessages(
+    agentId: string,
+    provider: LifeOpsConnectorGrant["provider"],
+    side: LifeOpsConnectorSide,
+    grantId: string,
+  ): Promise<number> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT COUNT(*) AS message_count
+         FROM app_lifeops.life_gmail_messages
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = ${sqlQuote(provider)}
+          AND side = ${sqlQuote(side)}
+          AND grant_id = ${sqlQuote(grantId)}`,
+    );
+    return toNumber(rows[0]?.message_count, 0);
+  }
+
   async getGmailMessage(
     agentId: string,
     provider: LifeOpsConnectorGrant["provider"],
@@ -6422,6 +6556,18 @@ export class LifeOpsRepository {
                 })
               : null))
           : null);
+      const gmailAccountId = message.gmailAccountId?.trim() || null;
+      const gmailStoragePrefix =
+        channel === "gmail" && gmailAccountId
+          ? `gmail:${encodeURIComponent(gmailAccountId)}:`
+          : null;
+      const storageId = gmailStoragePrefix
+        ? `${gmailStoragePrefix}${encodeURIComponent(sourceRef.externalId)}`
+        : message.id;
+      const storageExternalId =
+        gmailStoragePrefix && gmailAccountId
+          ? `${encodeURIComponent(gmailAccountId)}:${encodeURIComponent(sourceRef.externalId)}`
+          : sourceRef.externalId;
       await executeRawSql(
         this.runtime,
         `INSERT INTO app_lifeops.life_inbox_messages (
@@ -6431,10 +6577,10 @@ export class LifeOpsRepository {
           gmail_account_id, gmail_account_email, last_seen_at, replied_at, priority_score,
           priority_category, priority_flags_json, connector_account_id, cached_at, updated_at
         ) VALUES (
-          ${sqlQuote(message.id)},
+          ${sqlQuote(storageId)},
           ${sqlQuote(agentId)},
           ${sqlQuote(channel)},
-          ${sqlQuote(sourceRef.externalId)},
+          ${sqlQuote(storageExternalId)},
           ${sqlText(message.threadId)},
           ${sqlQuote(message.sender.id)},
           ${sqlQuote(message.sender.displayName)},
@@ -6447,7 +6593,7 @@ export class LifeOpsRepository {
           ${sqlJson(sourceRef)},
           ${sqlQuote(chatType)},
           ${sqlInteger(message.participantCount)},
-          ${sqlText(message.gmailAccountId)},
+          ${sqlText(gmailAccountId)},
           ${sqlText(message.gmailAccountEmail)},
           ${sqlText(message.lastSeenAt)},
           ${sqlText(message.repliedAt)},
@@ -6483,6 +6629,20 @@ export class LifeOpsRepository {
           cached_at = excluded.cached_at,
           updated_at = excluded.updated_at`,
       );
+      if (gmailStoragePrefix && gmailAccountId) {
+        // The pre-account-scoped cache key can coexist with the new key. Only
+        // remove an exact same-account legacy row after the replacement is
+        // durable, so a crash cannot discard the cached message.
+        await executeRawSql(
+          this.runtime,
+          `DELETE FROM app_lifeops.life_inbox_messages
+            WHERE agent_id = ${sqlQuote(agentId)}
+              AND channel = ${sqlQuote("gmail")}
+              AND gmail_account_id = ${sqlQuote(gmailAccountId)}
+              AND external_id = ${sqlQuote(sourceRef.externalId)}
+              AND id <> ${sqlQuote(storageId)}`,
+        );
+      }
     }
   }
 
@@ -6573,6 +6733,37 @@ export class LifeOpsRepository {
     );
   }
 
+  /**
+   * Deletes cached Gmail rows by provider message id within one exact grant.
+   * History tombstones arrive as provider ids, and rows written before the
+   * account-scoped projection id format still carry the legacy `id`, so
+   * matching on `external_message_id` is the only way to tombstone both.
+   */
+  async deleteGmailMessagesByExternalId(
+    agentId: string,
+    provider: LifeOpsConnectorGrant["provider"],
+    externalMessageIds: readonly string[],
+    side: LifeOpsConnectorSide,
+    grantId: string,
+  ): Promise<number> {
+    if (externalMessageIds.length === 0) {
+      return 0;
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_gmail_messages
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = ${sqlQuote(provider)}
+          AND side = ${sqlQuote(side)}
+          AND grant_id = ${sqlQuote(grantId)}
+          AND external_message_id IN (${externalMessageIds
+            .map((externalMessageId) => sqlQuote(externalMessageId))
+            .join(", ")})
+        RETURNING id`,
+    );
+    return rows.length;
+  }
+
   async deleteGmailMessagesForProvider(
     agentId: string,
     provider: LifeOpsConnectorGrant["provider"],
@@ -6592,29 +6783,7 @@ export class LifeOpsRepository {
   }
 
   async upsertGmailSyncState(state: LifeOpsGmailSyncState): Promise<void> {
-    const grantId = requireScopedGmailGrantId(state.grantId);
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_gmail_sync_states (
-        id, agent_id, provider, side, mailbox, grant_id, max_results, synced_at,
-        updated_at
-      ) VALUES (
-        ${sqlQuote(state.id)},
-        ${sqlQuote(state.agentId)},
-        ${sqlQuote(state.provider)},
-        ${sqlQuote(state.side)},
-        ${sqlQuote(state.mailbox)},
-        ${sqlQuote(grantId)},
-        ${sqlInteger(state.maxResults)},
-        ${sqlQuote(state.syncedAt)},
-        ${sqlQuote(state.updatedAt)}
-      )
-      ON CONFLICT(agent_id, provider, side, grant_id, mailbox) DO UPDATE SET
-        id = excluded.id,
-        max_results = excluded.max_results,
-        synced_at = excluded.synced_at,
-        updated_at = excluded.updated_at`,
-    );
+    await executeRawSql(this.runtime, gmailSyncStateUpsertStatement(state));
   }
 
   async getGmailSyncState(
@@ -6745,6 +6914,24 @@ export class LifeOpsRepository {
         ${limitClause}`,
     );
     return rows.map(parseGmailSpamReviewItem);
+  }
+
+  async countGmailSpamReviewItems(
+    agentId: string,
+    provider: LifeOpsConnectorGrant["provider"],
+    side: LifeOpsConnectorSide,
+    grantId: string,
+  ): Promise<number> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT COUNT(*) AS item_count
+         FROM app_lifeops.life_gmail_spam_review_items
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = ${sqlQuote(provider)}
+          AND side = ${sqlQuote(side)}
+          AND grant_id = ${sqlQuote(grantId)}`,
+    );
+    return toNumber(rows[0]?.item_count, 0);
   }
 
   async getGmailSpamReviewItem(
@@ -10569,9 +10756,21 @@ export function createLifeOpsCalendarSyncState(
 }
 
 export function createLifeOpsGmailSyncState(
-  params: Omit<LifeOpsGmailSyncState, "id" | "updatedAt">,
+  params: Omit<
+    LifeOpsGmailSyncState,
+    "id" | "updatedAt" | "historyId" | "cursorStatus" | "fullResyncReason"
+  > &
+    Partial<
+      Pick<
+        LifeOpsGmailSyncState,
+        "historyId" | "cursorStatus" | "fullResyncReason"
+      >
+    >,
 ): LifeOpsGmailSyncState {
   return {
+    historyId: null,
+    cursorStatus: "seeded",
+    fullResyncReason: null,
     ...params,
     id: crypto.randomUUID(),
     updatedAt: isoNow(),

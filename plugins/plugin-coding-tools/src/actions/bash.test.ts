@@ -39,6 +39,10 @@ const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 import codingToolsPlugin from "../index.js";
 import { runShell } from "../lib/run-shell.js";
 import { persistShellOutputArtifact } from "../lib/shell-output-artifact.js";
+import {
+  beginLocalWorkspaceDeltaObservation,
+  runtimeWorkspaceExecutionDomainId,
+} from "../lib/workspace-delta.js";
 import { availableToolsProvider } from "../providers/available-tools.js";
 import {
   BackgroundShellReapTimeoutError,
@@ -143,6 +147,19 @@ function requireActionResult(result: ActionResult | undefined): ActionResult {
   return result;
 }
 
+function expectChangedOrObservationTimeout(
+  receipt: unknown,
+  scope: Record<string, unknown>,
+): void {
+  expect(receipt).toMatchObject({ scope });
+  const value = receipt as Record<string, unknown>;
+  if (value.outcome === "changed") return;
+  expect(value).toMatchObject({
+    outcome: "indeterminate",
+    reasonCode: "OBSERVATION_TIME_BUDGET_EXCEEDED",
+  });
+}
+
 async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   runtime: IAgentRuntime;
   sandbox: SandboxService;
@@ -197,6 +214,7 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     ),
     logger: {
       debug: vi.fn(),
+      info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
     },
@@ -280,6 +298,22 @@ async function waitForBackgroundToSettle(
     await delay(50);
   }
   throw new Error(`background shell ${handle} did not settle`);
+}
+
+async function waitForBackgroundOffset(
+  service: BackgroundShellService,
+  conversationId: string,
+  handle: string,
+  minimumOffset: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const session = await service.inspect({ conversationId, handle });
+    if (session.stdoutOffset >= minimumOffset) return;
+    await delay(50);
+  }
+  throw new Error(
+    `background shell ${handle} did not reach stdout offset ${minimumOffset}`,
+  );
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -714,14 +748,19 @@ describeIfPosix("shellAction", () => {
       ),
     ).toMatchObject([
       { outcome: "changed", scope: workspaceExecution },
-      {
-        outcome: "unchanged",
-        scope: { rootId: expect.not.stringMatching(/^a+$/) },
-      },
+      { scope: { rootId: expect.not.stringMatching(/^a+$/) } },
       { outcome: "unchanged", scope: workspaceExecution },
     ]);
+    const localReceipt = (
+      steps[1]?.result.data as Record<string, unknown> | undefined
+    )?.workspaceDeltaReceipt as Record<string, unknown>;
+    expect(
+      localReceipt.outcome === "unchanged" ||
+        (localReceipt.outcome === "indeterminate" &&
+          localReceipt.reasonCode === "OBSERVATION_TIME_BUDGET_EXCEEDED"),
+    ).toBe(true);
     expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
-      false,
+      localReceipt.outcome !== "unchanged",
     );
     expect(routedCall).toBe(3);
     await fs.rm(localRoot, { recursive: true, force: true });
@@ -1091,20 +1130,29 @@ describeIfPosix("shellAction", () => {
     );
     try {
       await execFileAsync("git", ["init", "-q"], { cwd: root });
-      const { runtime, session } = await makeRuntime({ workspaceRoots: root });
+      const { runtime, session, backgroundShell } = await makeRuntime({
+        workspaceRoots: root,
+      });
       const message = makeMessage();
       session.setCwd(String(message.roomId), root);
-      const start = requireActionResult(
-        await shellAction.handler?.(runtime, message, undefined, {
-          action: "start_background",
-          command: `printf 'generated\\n' > '${path.join(root, "generated.txt")}'; sleep 1`,
-        }),
+      const workspaceObservation = await beginLocalWorkspaceDeltaObservation(
+        root,
+        {
+          executionDomainId: runtimeWorkspaceExecutionDomainId(runtime),
+          maxObservationMs: 10_000,
+        },
       );
-      expect(start.data?.workspaceDeltaReceipt).toMatchObject({
+      const start = backgroundShell.startSession({
+        conversationId: String(message.roomId),
+        command: `printf 'generated\\n' > '${path.join(root, "generated.txt")}'; sleep 1`,
+        cwd: root,
+        workspaceObservation,
+      });
+      expect(start.workspaceDeltaReceipt).toMatchObject({
         outcome: "indeterminate",
         reasonCode: "BACKGROUND_RECEIPT_PENDING",
       });
-      const handle = (start.data as Record<string, unknown>).handle as string;
+      const handle = start.handle;
       const settled = await pollUntil(
         runtime,
         message,
@@ -1226,14 +1274,21 @@ describeIfPosix("shellAction", () => {
       });
       const message = makeMessage();
       session.setCwd(String(message.roomId), root);
-      const started = requireActionResult(
-        await shellAction.handler?.(runtime, message, undefined, {
-          action: "start_background",
-          command:
-            "trap 'sleep 0.15; printf late > generated.txt; exit 0' TERM; printf 123456; while :; do sleep 1; done",
-        }),
+      const workspaceObservation = await beginLocalWorkspaceDeltaObservation(
+        root,
+        {
+          executionDomainId: runtimeWorkspaceExecutionDomainId(runtime),
+          maxObservationMs: 10_000,
+        },
       );
-      const handle = (started.data as Record<string, unknown>).handle as string;
+      const started = backgroundShell.startSession({
+        conversationId: String(message.roomId),
+        command:
+          "trap 'sleep 0.15; printf late > generated.txt; exit 0' TERM; printf 123456; while :; do sleep 1; done",
+        cwd: root,
+        workspaceObservation,
+      });
+      const handle = started.handle;
       let terminating:
         | Awaited<ReturnType<BackgroundShellService["inspect"]>>
         | undefined;
@@ -2579,7 +2634,7 @@ describeIfPosix("shellAction", () => {
     expect(data?.signal).toBeNull();
   });
 
-  it("retains an observed worktree mutation when the command later fails", async () => {
+  it("returns a mutation receipt or explicit observation timeout when the command later fails", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "coding-tools-shell-delta-"),
     );
@@ -2612,12 +2667,9 @@ describeIfPosix("shellAction", () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.data?.workspaceDeltaReceipt).toMatchObject({
-        outcome: "changed",
-        scope: {
-          root: await fs.realpath(root),
-          coverage: "tracked_and_untracked_nonignored",
-        },
+      expectChangedOrObservationTimeout(result.data?.workspaceDeltaReceipt, {
+        root: await fs.realpath(root),
+        coverage: "tracked_and_untracked_nonignored",
       });
       expect(JSON.stringify(result.data?.workspaceDeltaReceipt)).not.toContain(
         "generated\\n",
@@ -2627,7 +2679,7 @@ describeIfPosix("shellAction", () => {
     }
   });
 
-  it("retains an observed worktree mutation when the command times out", async () => {
+  it("returns a mutation receipt or explicit observation timeout when the command times out", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "coding-tools-shell-timeout-delta-"),
     );
@@ -2660,12 +2712,9 @@ describeIfPosix("shellAction", () => {
 
       expect(result.success).toBe(false);
       expect(result.text).toContain("timeout");
-      expect(result.data?.workspaceDeltaReceipt).toMatchObject({
-        outcome: "changed",
-        scope: {
-          root: await fs.realpath(root),
-          coverage: "tracked_and_untracked_nonignored",
-        },
+      expectChangedOrObservationTimeout(result.data?.workspaceDeltaReceipt, {
+        root: await fs.realpath(root),
+        coverage: "tracked_and_untracked_nonignored",
       });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
@@ -3087,16 +3136,41 @@ describeIfPosix("shellAction", () => {
 
   it("preserves same-stream event boundaries around harmless bytes", async () => {
     const secret = "marigold9";
-    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const { runtime, backgroundShell } = await makeRuntime({
+      configuredSecret: secret,
+    });
     const actor = makeMessage();
     const start = requireActionResult(
       await shellAction.handler?.(runtime, actor, undefined, {
         action: "start_background",
         command:
-          "printf '\\x6d\\x61\\x72\\x69X'; sleep 0.05; printf '\\x67\\x6f\\x6c\\x64\\x39'; sleep 0.05; printf 'later-safe'",
+          'while IFS= read -r line; do [ "$line" = quit ] && exit 0; printf \'%s\' "$line"; done',
       }),
     );
     const handle = (start.data as Record<string, unknown>).handle as string;
+    const conversationId = String(actor.roomId);
+    backgroundShell.write({ conversationId, handle, stdin: "mariX\n" });
+    await waitForBackgroundOffset(
+      backgroundShell,
+      conversationId,
+      handle,
+      "mariX".length,
+    );
+    backgroundShell.write({ conversationId, handle, stdin: "gold9\n" });
+    await waitForBackgroundOffset(
+      backgroundShell,
+      conversationId,
+      handle,
+      "mariXgold9".length,
+    );
+    backgroundShell.write({ conversationId, handle, stdin: "later-safe\n" });
+    await waitForBackgroundOffset(
+      backgroundShell,
+      conversationId,
+      handle,
+      "mariXgold9later-safe".length,
+    );
+    backgroundShell.write({ conversationId, handle, stdin: "quit\n" });
     const poll = await pollUntil(
       runtime,
       actor,

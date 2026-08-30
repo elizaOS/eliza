@@ -89,7 +89,11 @@ export function isA11yAvailable(): boolean {
     return true;
   }
   if (os === "linux") {
-    return commandExists("python3") || commandExists("gdbus");
+    // The extractor below has a single executable implementation: Python
+    // AT-SPI. `gdbus` may be present on a host without providing any tree
+    // extraction path, so advertising it here would create a false-positive
+    // capability and a guaranteed null scene.
+    return commandExists("python3");
   }
   if (os === "win32") {
     // PowerShell UIAutomation always available on modern Windows

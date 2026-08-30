@@ -43,6 +43,7 @@ beforeEach(() => {
   vi.mocked(runIosFullBunSmokeIfRequested).mockResolvedValue(true);
   vi.stubGlobal("__ELIZA_BUILD_VARIANT__", "local");
   vi.stubGlobal("__ELIZA_WEB_SHELL__", false);
+  vi.stubGlobal("__ELIZA_SERVICE_WORKER__", false);
   vi.stubGlobal("__ELIZA_CHAT_UI_HARNESS__", false);
 });
 

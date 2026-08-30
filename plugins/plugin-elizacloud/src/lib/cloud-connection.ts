@@ -4,7 +4,14 @@ import {
   migrateLegacyRuntimeConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/core";
-import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
+import {
+  resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
+  resolveCloudBillingUrl,
+} from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -226,6 +233,11 @@ export function resolveCloudApiKey(
     getSetting?: (key: string) => unknown;
   } | null,
 ): string | undefined {
+  if (resolveDevCloudEnvAuthority()) {
+    return normalizeEnvValue(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
+    );
+  }
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   // 1. Config file (disk)
   const configApiKey = normalizeEnvValue(
@@ -267,6 +279,7 @@ export function resolveCloudConnectionSnapshot(
   config: Partial<ElizaConfig>,
   runtime: AgentRuntime | null,
 ): CloudConnectionSnapshot {
+  const devCloudAuthority = resolveDevCloudEnvAuthority();
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   const _cloudRecord =
     config.cloud && typeof config.cloud === "object"
@@ -276,10 +289,16 @@ export function resolveCloudConnectionSnapshot(
     config as Record<string, unknown>,
   );
   const apiKey = resolveCloudApiKey(config, runtime);
-  const cloudAuth = getCloudAuth(runtime);
+  // Runtime auth may hold a client and identity from a durable production
+  // session. A local launcher authority owns the operational connection, so
+  // never let that mutable service reactivate blocked modes or outrank the
+  // frozen explicit staging/self-hosted tuple.
+  const cloudAuth = devCloudAuthority ? null : getCloudAuth(runtime);
   const authConnected = Boolean(cloudAuth?.isAuthenticated?.());
   const hasApiKey = Boolean(apiKey);
-  const persistedIdentity = resolvePersistedCloudIdentity(runtime);
+  const persistedIdentity = devCloudAuthority
+    ? { organizationId: undefined, userId: undefined }
+    : resolvePersistedCloudIdentity(runtime);
   const shouldExposeIdentity = authConnected || hasApiKey;
 
   return {
@@ -382,13 +401,16 @@ const CREDIT_CRITICAL_THRESHOLD = Number(
   process.env.ELIZA_CREDIT_CRITICAL_THRESHOLD ?? "0.5",
 );
 
-function withCreditFlags(balance: number): CloudCreditsResponse {
+function withCreditFlags(
+  balance: number,
+  topUpUrl: string,
+): CloudCreditsResponse {
   return {
     connected: true,
     balance,
     low: balance < CREDIT_LOW_THRESHOLD,
     critical: balance < CREDIT_CRITICAL_THRESHOLD,
-    topUpUrl: CLOUD_BILLING_URL,
+    topUpUrl,
   };
 }
 
@@ -397,6 +419,7 @@ export async function fetchCloudCredits(
   runtime: AgentRuntime | null,
 ): Promise<CloudCreditsResponse> {
   const snapshot = resolveCloudConnectionSnapshot(config, runtime);
+  const topUpUrl = resolveCloudBillingUrl(config.cloud?.baseUrl);
   let authenticatedFailure: string | null = null;
   let authenticatedUnexpectedResponse = false;
 
@@ -416,7 +439,7 @@ export async function fetchCloudCredits(
         coerceCloudBalance(creditResponse?.data?.balance);
 
       if (typeof rawBalance === "number") {
-        return withCreditFlags(rawBalance);
+        return withCreditFlags(rawBalance, topUpUrl);
       }
 
       authenticatedUnexpectedResponse = true;
@@ -468,7 +491,7 @@ export async function fetchCloudCredits(
       };
     }
 
-    return withCreditFlags(balance);
+    return withCreditFlags(balance, topUpUrl);
   } catch (err) {
     if (err instanceof CloudCreditsAuthRejectedError) {
       logger.debug(`[cloud/credits] API key rejected: ${err.message}`);
@@ -477,7 +500,7 @@ export async function fetchCloudCredits(
         connected: true,
         authRejected: true,
         error: err.message,
-        topUpUrl: CLOUD_BILLING_URL,
+        topUpUrl,
       };
     }
     const msg = err instanceof Error ? err.message : "cloud API unreachable";

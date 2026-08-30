@@ -77,6 +77,9 @@ export {
   useCalendarSources,
 } from "./hooks/useCalendarSources.js";
 export {
+  type CalendarIssue,
+  type CalendarIssueKind,
+  type CalendarSurfaceStatus,
   type CalendarViewMode,
   type UseCalendarWeekOptions,
   type UseCalendarWeekResult,

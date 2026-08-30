@@ -20,6 +20,8 @@ const textareaVariants = cva(
           "border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60    ",
         codeEditor:
           "resize-none rounded-xl border-0 bg-bg p-4 font-mono text-txt placeholder:text-muted",
+        adminCodeEditor:
+          "h-full resize-none border-0 bg-bg-hover p-5 font-mono text-sm leading-relaxed text-txt",
         document:
           "rounded-sm border-border/55 bg-bg/72 px-3 py-2 text-xs shadow-none placeholder:text-muted",
         documentEditor:

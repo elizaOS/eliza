@@ -6,8 +6,9 @@
 import { CheckCircle, Circle, Clock3, XCircle } from "lucide-react";
 import type * as React from "react";
 
-import { PagePanel } from "../page-panel";
-
+import { Badge } from "../../ui/badge";
+import { Card } from "../../ui/card";
+import { Separator } from "../../ui/separator";
 export type TrajectoryTimelineStatus =
   | "queued"
   | "running"
@@ -55,55 +56,67 @@ export function TrajectoryEventTimeline({
   heading,
 }: TrajectoryEventTimelineProps) {
   return (
-    <PagePanel variant="section" className="px-5 py-4">
-      <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
+    <section>
+      <div className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
         {heading}
       </div>
       {events.length === 0 ? (
-        <div className="rounded-sm border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
-          {emptyLabel}
+        <div>
+          <Separator tone="subtle40" />
+          <div className="py-6 text-center text-sm text-[color:var(--settings-muted)]">
+            {emptyLabel}
+          </div>
+          <Separator tone="subtle40" />
         </div>
       ) : (
-        <ol className="space-y-2">
-          {events.map((event) => (
-            <li
-              key={event.id}
-              className="grid grid-cols-[1.5rem_1fr] gap-3 rounded-sm border border-border/40 bg-bg/40 p-3"
-            >
-              <div className="mt-0.5 flex justify-center">
-                {statusIcon(event.status)}
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="truncate text-sm font-semibold text-txt">
-                    {event.label}
-                  </span>
-                  {event.stage ? (
-                    <span className="rounded-sm border border-border/50 px-1.5 py-0.5 text-xs-tight uppercase tracking-[0.12em] text-muted">
-                      {event.stage}
-                    </span>
-                  ) : null}
-                  {event.timestampLabel ? (
-                    <span className="text-xs-tight text-muted">
-                      {event.timestampLabel}
-                    </span>
-                  ) : null}
-                </div>
-                {event.description ? (
-                  <div className="mt-1 line-clamp-2 text-xs-tight text-muted">
-                    {event.description}
+        <div>
+          <Separator tone="subtle40" />
+          <ol>
+            {events.map((event) => (
+              <Card
+                asChild
+                key={event.id}
+                variant="configRow"
+                className="grid min-h-14 grid-cols-[1.25rem_minmax(0,1fr)] gap-3 py-3"
+              >
+                <li>
+                  <div className="mt-0.5 flex justify-center">
+                    {statusIcon(event.status)}
                   </div>
-                ) : null}
-                {event.meta ? (
-                  <div className="mt-2 text-xs-tight text-muted">
-                    {event.meta}
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="truncate text-sm font-medium text-[color:var(--settings-foreground)]">
+                        {event.label}
+                      </span>
+                      {event.stage ? (
+                        <Badge asChild variant="trajectoryStage" size="compact">
+                          <span>{event.stage}</span>
+                        </Badge>
+                      ) : null}
+                      {event.timestampLabel ? (
+                        <span className="ml-auto text-xs text-[color:var(--settings-muted)]">
+                          {event.timestampLabel}
+                        </span>
+                      ) : null}
+                    </div>
+                    {event.description ? (
+                      <div className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--settings-muted)]">
+                        {event.description}
+                      </div>
+                    ) : null}
+                    {event.meta ? (
+                      <div className="mt-1 text-xs text-[color:var(--settings-muted)]">
+                        {event.meta}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ol>
+                </li>
+              </Card>
+            ))}
+          </ol>
+          <Separator tone="subtle40" />
+        </div>
       )}
-    </PagePanel>
+    </section>
   );
 }

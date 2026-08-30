@@ -33,6 +33,7 @@ import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
+import { VoicePresetSettingsContent } from "./IdentitySettingsSection";
 import {
   type VadAutoStopPrefs,
   VoiceSection,
@@ -238,6 +239,7 @@ export function VoiceSectionMount(): React.ReactElement {
         showModelsPanel={cloudOnly !== true}
         wakeWordEnabled={wakeWordEnabled}
         onWakeWordToggle={handleWakeWordToggle}
+        leadingContent={<VoicePresetSettingsContent />}
       />
     </>
   );

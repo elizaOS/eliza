@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   seed: vi.fn(async () => undefined),
   setTab: vi.fn(),
   goHome: vi.fn(),
+  loggerError: vi.fn(),
 }));
 const appState = vi.hoisted(() => ({ setTab: mocks.setTab }));
 
@@ -25,6 +26,9 @@ vi.mock("../../state", () => ({
     selector(appState),
 }));
 vi.mock("../../state/shell-surface-store", () => ({ goHome: mocks.goHome }));
+vi.mock("@elizaos/logger", () => ({
+  logger: { error: mocks.loggerError, warn: vi.fn() },
+}));
 vi.mock("../../bridge/native-notifications", () => ({
   initLocalNotificationTapRouting: mocks.localTap,
 }));
@@ -57,6 +61,7 @@ afterEach(() => {
   vi.clearAllMocks();
   appState.setTab = mocks.setTab;
   mocks.localTap.mockResolvedValue(undefined);
+  mocks.push.mockResolvedValue(undefined);
 });
 
 mocks.onBaseUrlChange.mockReturnValue(mocks.unsubscribeBase);
@@ -135,6 +140,20 @@ describe("notification boot boundaries", () => {
     expect(mocks.setTab).toHaveBeenCalledWith("chat");
     expect(mocks.goHome.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.setTab.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
+  it("contains a native push provider failure at the shell boundary", async () => {
+    const error = new Error("push-unavailable: Firebase is not configured");
+    mocks.push.mockRejectedValueOnce(error);
+
+    render(<NotificationsShellBoot />);
+
+    await waitFor(() =>
+      expect(mocks.loggerError).toHaveBeenCalledWith(
+        { src: "push-registration", error },
+        "[push-registration] native registration unavailable",
+      ),
     );
   });
 

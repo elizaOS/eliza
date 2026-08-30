@@ -55,6 +55,12 @@ const enqueueAgentSuspendOnce = mock(async () => ({
   job: { id: "stop-job" },
   created: true,
 }));
+const listRecoverableAgentComputeStopIntents = mock(async () => []);
+const rearmRecoverableAgentComputeStopIntentOnce = mock(async () => ({
+  id: "recovered-stop-job",
+  rearmed: true,
+}));
+const triggerImmediate = mock(async () => undefined);
 const sendContainerShutdownWarningEmail = mock(async () => true);
 const webhookFetch = mock(
   async (_url: string | URL | Request, _init?: RequestInit) =>
@@ -264,7 +270,9 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
 }));
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
-  provisioningJobService: { enqueueAgentSuspendOnce },
+  listRecoverableAgentComputeStopIntents,
+  rearmRecoverableAgentComputeStopIntentOnce,
+  provisioningJobService: { enqueueAgentSuspendOnce, triggerImmediate },
 }));
 
 mock.module("@/lib/security/safe-fetch", () => ({
@@ -293,6 +301,15 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     suspendSandboxForInsufficientCredits.mockClear();
     shutdownSandbox.mockClear();
     enqueueAgentSuspendOnce.mockClear();
+    listRecoverableAgentComputeStopIntents.mockReset();
+    listRecoverableAgentComputeStopIntents.mockImplementation(async () => []);
+    rearmRecoverableAgentComputeStopIntentOnce.mockReset();
+    rearmRecoverableAgentComputeStopIntentOnce.mockImplementation(async () => ({
+      id: "recovered-stop-job",
+      rearmed: true,
+    }));
+    triggerImmediate.mockReset();
+    triggerImmediate.mockImplementation(async () => undefined);
     sendContainerShutdownWarningEmail.mockClear();
     sendContainerShutdownWarningEmail.mockImplementation(async () => true);
     webhookFetch.mockClear();
@@ -590,6 +607,157 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
         invocationKey: expect.stringMatching(/^manual:agent-billing:/),
       },
     );
+  });
+
+  test("rearms due agent stops and nudges the worker even when no sandbox is billable", async () => {
+    const intent = {
+      id: "00000000-0000-4000-8000-000000000091",
+      agent_id: "00000000-0000-4000-8000-000000000092",
+      organization_id: "00000000-0000-4000-8000-000000000093",
+      lifecycle_revision: 7,
+    };
+    listRecoverableAgentComputeStopIntents.mockImplementationOnce(async () => [
+      intent as never,
+    ]);
+    listBillableSandboxes.mockImplementationOnce(async () => ({
+      runningSandboxes: [],
+      stoppedWithBackups: [],
+    }));
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: { "x-cron-secret": "cron-secret" },
+      }),
+      { CRON_SECRET: "cron-secret" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(rearmRecoverableAgentComputeStopIntentOnce).toHaveBeenCalledWith({
+      intentId: intent.id,
+      agentId: intent.agent_id,
+      organizationId: intent.organization_id,
+      lifecycleRevision: 7,
+      now: expect.any(Date),
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns a structured degraded response when the recovery scan fails", async () => {
+    listRecoverableAgentComputeStopIntents.mockRejectedValueOnce(
+      new Error("scan secret must not escape"),
+    );
+    listBillableSandboxes.mockResolvedValueOnce({
+      runningSandboxes: [],
+      stoppedWithBackups: [],
+    });
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: { "x-cron-secret": "cron-secret" },
+      }),
+      { CRON_SECRET: "cron-secret" },
+    );
+    const bodyText = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(bodyText).not.toContain("scan secret must not escape");
+    expect(JSON.parse(bodyText)).toMatchObject({
+      success: false,
+      code: "agent_stop_recovery_degraded",
+      data: {
+        status: "empty",
+        stopRecovery: {
+          status: "degraded",
+          scanned: 0,
+          rearmed: 0,
+          failures: 1,
+        },
+      },
+    });
+  });
+
+  test("rescans recovery before replaying a completed degraded invocation", async () => {
+    listRecoverableAgentComputeStopIntents.mockRejectedValueOnce(
+      new Error("transient recovery scan failure"),
+    );
+    listBillableSandboxes.mockResolvedValue({
+      runningSandboxes: [],
+      stoppedWithBackups: [],
+    });
+    const request = () =>
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: { "x-cron-secret": "cron-secret" },
+      });
+
+    const first = await app.fetch(request(), { CRON_SECRET: "cron-secret" });
+    expect(first.status).toBe(500);
+    const firstBody = (await first.json()) as { runId: string };
+    const completed = startedRuns.get(firstBody.runId);
+    if (!completed) throw new Error("Expected completed billing run fixture");
+    startOrLoadBillingRun.mockResolvedValueOnce({
+      run: completed as never,
+      claimed: false,
+      recovered: false,
+      leaseToken: crypto.randomUUID(),
+    });
+
+    const replay = await app.fetch(request(), { CRON_SECRET: "cron-secret" });
+
+    expect(replay.status).toBe(200);
+    expect(listRecoverableAgentComputeStopIntents).toHaveBeenCalledTimes(2);
+    await expect(replay.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        replayed: true,
+        stopRecovery: { status: "succeeded", failures: 0 },
+      },
+    });
+  });
+
+  test("returns a structured degraded response when one recovery rearm fails", async () => {
+    listRecoverableAgentComputeStopIntents.mockResolvedValueOnce([
+      {
+        id: "00000000-0000-4000-8000-000000000094",
+        agent_id: "00000000-0000-4000-8000-000000000095",
+        organization_id: "00000000-0000-4000-8000-000000000096",
+        lifecycle_revision: 8,
+      } as never,
+    ]);
+    rearmRecoverableAgentComputeStopIntentOnce.mockRejectedValueOnce(
+      new Error("poison detail must not escape"),
+    );
+    listBillableSandboxes.mockResolvedValueOnce({
+      runningSandboxes: [],
+      stoppedWithBackups: [],
+    });
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: { "x-cron-secret": "cron-secret" },
+      }),
+      { CRON_SECRET: "cron-secret" },
+    );
+    const bodyText = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(bodyText).not.toContain("poison detail must not escape");
+    expect(JSON.parse(bodyText)).toMatchObject({
+      success: false,
+      code: "agent_stop_recovery_degraded",
+      data: {
+        status: "empty",
+        stopRecovery: {
+          status: "degraded",
+          scanned: 1,
+          rearmed: 0,
+          failures: 1,
+        },
+      },
+    });
   });
 
   test("finalizes a failed receipt when selection throws and never leaks the raw error", async () => {

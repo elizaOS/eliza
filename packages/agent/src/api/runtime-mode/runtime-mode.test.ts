@@ -72,3 +72,18 @@ describe("isLocalRuntime", () => {
     expect(isLocalRuntime("remote")).toBe(false);
   });
 });
+
+describe("runtime-mode snapshot cache", () => {
+  it("does not reload config on every call within the stat interval", async () => {
+    const { __resetRuntimeModeSnapshotCacheForTests, getRuntimeModeSnapshot } =
+      await import("./runtime-mode.ts");
+    __resetRuntimeModeSnapshotCacheForTests();
+    const first = getRuntimeModeSnapshot();
+    // Same object identity proves the cached snapshot was returned rather
+    // than a fresh four-file config load per call (the pre-dispatch guard
+    // calls this on EVERY request; per-call loads pinned the API under a
+    // client request storm).
+    expect(getRuntimeModeSnapshot()).toBe(first);
+    expect(getRuntimeModeSnapshot()).toBe(first);
+  });
+});

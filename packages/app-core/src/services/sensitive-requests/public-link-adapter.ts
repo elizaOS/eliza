@@ -16,7 +16,10 @@ import {
   type SensitiveRequestWithPaymentContext,
   toRuntimeSettings,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  readAliasedEnv,
+} from "@elizaos/shared";
 
 /**
  * Cloud API base used when neither a runtime setting nor an env override
@@ -54,6 +57,14 @@ function nonEmpty(value: unknown): string | undefined {
 }
 
 function resolveCloudBaseUrl(runtime: unknown): string {
+  const authoritySnapshot = captureDevCloudEnvAuthoritySnapshot();
+  if (authoritySnapshot) {
+    const fromAuthority = nonEmpty(
+      authoritySnapshot.values.ELIZAOS_CLOUD_BASE_URL,
+    );
+    return stripTrailingSlashes(fromAuthority ?? CLOUD_BASE_FALLBACK);
+  }
+
   if (isCloudBaseRuntime(runtime)) {
     const settings = toRuntimeSettings(runtime);
     const fromSetting = settings.getSetting("ELIZAOS_CLOUD_BASE_URL");

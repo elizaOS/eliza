@@ -13,8 +13,10 @@ import {
   type InferInsertModel,
   type InferSelectModel,
   inArray,
+  isNotNull,
   ne,
   notInArray,
+  or,
   sql,
 } from "drizzle-orm";
 import {
@@ -33,7 +35,10 @@ import { organizations } from "../schemas/organizations";
 import { redeemableEarnings } from "../schemas/redeemable-earnings";
 import { users } from "../schemas/users";
 import { settleComputeRateSegments } from "./compute-billing-segments";
-import { containerBillingRepository } from "./container-billing";
+import {
+  containerBillingRepository,
+  unreconciledContainerStopProviderEffectExistsSql,
+} from "./container-billing";
 import { parseOrganizationCreditBalance } from "./organizations-credit-balance-numeric";
 
 export type Container = InferSelectModel<typeof containers>;
@@ -506,6 +511,18 @@ export class ContainersRepository {
         .for("update")
         .limit(1);
       if (!container) throw new Error("Container not found");
+      if (
+        container.metadata &&
+        typeof container.metadata === "object" &&
+        !Array.isArray(container.metadata) &&
+        Object.hasOwn(container.metadata, "slotReleasedAt")
+      ) {
+        // Legacy provider stops predate durable stop intents, but their
+        // one-way capacity marker is just as authoritative: the current
+        // restart path neither recreates Docker nor reserves a replacement
+        // slot. Refuse before taking funding locks or writing a debit.
+        throw new Error("Container runtime slot was released; redeploy is required");
+      }
       const [organization] = await tx
         .select({
           credit_balance: organizations.credit_balance,
@@ -545,6 +562,57 @@ export class ContainersRepository {
       }
       if (!earningsAvailable.isFinite()) {
         throw new Error("Container restart earnings funding is not a finite numeric value");
+      }
+      const [providerEffectAdmission] = await tx
+        .select({
+          exists: unreconciledContainerStopProviderEffectExistsSql(organizationId, id),
+        })
+        .from(containers)
+        .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)))
+        .limit(1);
+      if (providerEffectAdmission?.exists) {
+        // The provider call may already have succeeded even though the outer
+        // intent/proof transaction rolled back. A restart must not supersede
+        // that active intent or debit a lifecycle whose runtime may be absent.
+        throw new Error(
+          "Container restart is blocked until admitted provider stop reconciliation completes",
+        );
+      }
+      // Provider removal is a one-way capacity fact. No current restart path
+      // recreates the runtime or re-reserves its released slot, so any proof
+      // for this tenant/container remains authoritative across later row-only
+      // lifecycle/status writes.
+      const stopProofs = await tx
+        .select({
+          id: containerComputeStopIntents.id,
+          status: containerComputeStopIntents.status,
+          providerConfirmedAt: containerComputeStopIntents.provider_confirmed_at,
+          slotReleasedAt: containerComputeStopIntents.slot_released_at,
+        })
+        .from(containerComputeStopIntents)
+        .where(
+          and(
+            eq(containerComputeStopIntents.organization_id, organizationId),
+            eq(containerComputeStopIntents.container_id, id),
+            or(
+              isNotNull(containerComputeStopIntents.provider_confirmed_at),
+              eq(containerComputeStopIntents.status, "provider_confirmed"),
+            ),
+          ),
+        )
+        .for("update");
+      const unsettledStopProof = stopProofs.find(
+        (proof) =>
+          proof.providerConfirmedAt &&
+          ["pending", "dispatching", "retry", "terminal_attention"].includes(proof.status),
+      );
+      if (unsettledStopProof) {
+        throw new Error(
+          "Container restart is blocked until provider-confirmed stop settlement completes",
+        );
+      }
+      if (stopProofs.length > 0) {
+        throw new Error("Container runtime was removed; redeploy is required");
       }
       const debt = await settleComputeRateSegments(tx, {
         organizationId,

@@ -29,8 +29,10 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { EmptyState } from "../../../components/ui/empty-state";
 import { Input } from "../../../components/ui/input";
+import { TextLink } from "../../../components/ui/text-link";
 import { ApiError } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import {
@@ -223,13 +225,16 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
 
   if (loadError) {
     return (
-      <div className="flex flex-col items-center gap-3 border border-dashed border-border p-8 text-center">
+      <Card
+        className="flex flex-col items-center gap-3 p-8 text-center"
+        variant="dashed"
+      >
         <p className="text-sm text-muted">{loadError}</p>
         <Button variant="outline" size="sm" onClick={fetchDeployments}>
           <RefreshCw className="mr-2  size-4" />
           {t("cloud.appHosting.retry", { defaultValue: "Retry" })}
         </Button>
-      </div>
+      </Card>
     );
   }
 
@@ -363,115 +368,117 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
             })}
           />
         ) : (
-          <ul className="divide-y divide-border border border-border">
-            {deployments.map((deployment) => {
-              const isActive = deployment.id === activeId;
-              const isBusy = busyDeploymentId === deployment.id;
-              const canActivate =
-                !isActive &&
-                (deployment.status === "ready" ||
-                  deployment.status === "superseded");
-              const isRollback =
-                canActivate &&
-                activeVersion !== null &&
-                deployment.version < activeVersion;
-              return (
-                <li
-                  key={deployment.id}
-                  data-testid={`hosting-deployment-${deployment.version}`}
-                  className="flex flex-wrap items-center gap-3 px-3 py-2.5"
-                >
-                  <span className="font-mono text-sm text-txt">
-                    v{deployment.version}
-                  </span>
-                  <Badge variant={statusBadgeVariant(deployment.status)}>
-                    {deployment.status === "active"
-                      ? t("cloud.appHosting.statusLive", {
-                          defaultValue: "live",
-                        })
-                      : deployment.status}
-                  </Badge>
-                  <span className="text-xs text-muted">
-                    {t("cloud.appHosting.deploymentMeta", {
-                      defaultValue: "{{count}} files · {{size}}",
-                      count: deployment.file_count,
-                      size: formatBytes(deployment.total_bytes),
-                    })}
-                    {" · "}
-                    {formatDistanceToNow(new Date(deployment.created_at), {
-                      addSuffix: true,
-                    })}
-                    {deployment.build_meta?.note
-                      ? ` · ${deployment.build_meta.note}`
-                      : ""}
-                  </span>
-                  {deployment.status === "failed" && deployment.error && (
-                    <span className="text-xs text-destructive">
-                      {deployment.error}
+          <Card asChild variant="codeFrame">
+            <ul className="divide-y divide-border">
+              {deployments.map((deployment) => {
+                const isActive = deployment.id === activeId;
+                const isBusy = busyDeploymentId === deployment.id;
+                const canActivate =
+                  !isActive &&
+                  (deployment.status === "ready" ||
+                    deployment.status === "superseded");
+                const isRollback =
+                  canActivate &&
+                  activeVersion !== null &&
+                  deployment.version < activeVersion;
+                return (
+                  <li
+                    key={deployment.id}
+                    data-testid={`hosting-deployment-${deployment.version}`}
+                    className="flex flex-wrap items-center gap-3 px-3 py-2.5"
+                  >
+                    <span className="font-mono text-sm text-txt">
+                      v{deployment.version}
                     </span>
-                  )}
-                  <span className="ml-auto flex items-center gap-1">
-                    {showPreviewLinks &&
-                      (isActive ||
-                        deployment.status === "ready" ||
-                        deployment.status === "superseded") && (
-                        <a
-                          href={frontendPreviewPath(
-                            appId,
-                            isActive ? undefined : deployment.id,
-                          )}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-txt"
-                          aria-label={t("cloud.appHosting.preview", {
-                            defaultValue: "Preview",
-                          })}
-                        >
-                          <ExternalLink className="size-3.5" />
-                          {t("cloud.appHosting.preview", {
-                            defaultValue: "Preview",
-                          })}
-                        </a>
-                      )}
-                    {canActivate && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isBusy}
-                        onClick={() => setConfirmActivate(deployment)}
-                        data-testid={`hosting-activate-${deployment.version}`}
-                      >
-                        {isBusy && (
-                          <Loader2 className="mr-2 size-3.5 animate-spin" />
-                        )}
-                        {isRollback
-                          ? t("cloud.appHosting.rollback", {
-                              defaultValue: "Roll back",
-                            })
-                          : t("cloud.appHosting.activate", {
-                              defaultValue: "Activate",
+                    <Badge variant={statusBadgeVariant(deployment.status)}>
+                      {deployment.status === "active"
+                        ? t("cloud.appHosting.statusLive", {
+                            defaultValue: "live",
+                          })
+                        : deployment.status}
+                    </Badge>
+                    <span className="text-xs text-muted">
+                      {t("cloud.appHosting.deploymentMeta", {
+                        defaultValue: "{{count}} files · {{size}}",
+                        count: deployment.file_count,
+                        size: formatBytes(deployment.total_bytes),
+                      })}
+                      {" · "}
+                      {formatDistanceToNow(new Date(deployment.created_at), {
+                        addSuffix: true,
+                      })}
+                      {deployment.build_meta?.note
+                        ? ` · ${deployment.build_meta.note}`
+                        : ""}
+                    </span>
+                    {deployment.status === "failed" && deployment.error && (
+                      <span className="text-xs text-destructive">
+                        {deployment.error}
+                      </span>
+                    )}
+                    <span className="ml-auto flex items-center gap-1">
+                      {showPreviewLinks &&
+                        (isActive ||
+                          deployment.status === "ready" ||
+                          deployment.status === "superseded") && (
+                          <TextLink
+                            href={frontendPreviewPath(
+                              appId,
+                              isActive ? undefined : deployment.id,
+                            )}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-normal text-muted no-underline hover:text-txt"
+                            aria-label={t("cloud.appHosting.preview", {
+                              defaultValue: "Preview",
                             })}
-                      </Button>
-                    )}
-                    {!isActive && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={isBusy}
-                        onClick={() => setConfirmDelete(deployment)}
-                        aria-label={t("cloud.appHosting.delete", {
-                          defaultValue: "Delete",
-                        })}
-                        data-testid={`hosting-delete-${deployment.version}`}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    )}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+                          >
+                            <ExternalLink className="size-3.5" />
+                            {t("cloud.appHosting.preview", {
+                              defaultValue: "Preview",
+                            })}
+                          </TextLink>
+                        )}
+                      {canActivate && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isBusy}
+                          onClick={() => setConfirmActivate(deployment)}
+                          data-testid={`hosting-activate-${deployment.version}`}
+                        >
+                          {isBusy && (
+                            <Loader2 className="mr-2 size-3.5 animate-spin" />
+                          )}
+                          {isRollback
+                            ? t("cloud.appHosting.rollback", {
+                                defaultValue: "Roll back",
+                              })
+                            : t("cloud.appHosting.activate", {
+                                defaultValue: "Activate",
+                              })}
+                        </Button>
+                      )}
+                      {!isActive && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={isBusy}
+                          onClick={() => setConfirmDelete(deployment)}
+                          aria-label={t("cloud.appHosting.delete", {
+                            defaultValue: "Delete",
+                          })}
+                          data-testid={`hosting-delete-${deployment.version}`}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
         )}
       </section>
 
