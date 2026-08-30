@@ -21,13 +21,13 @@ function isSynthesizedReply(action: CapturedAction): boolean {
   return toRecord(action.result?.data)?.source === "synthesized-reply";
 }
 
-/** Compact call summary for failure details. */
+/** Complete call summary for failure details. */
 export function describeCalls(ctx: ScenarioContext): string {
   return (
     ctx.actionsCalled
       .map(
         (a) =>
-          `${a.actionName}(success=${String(a.result?.success)}, data=${JSON.stringify(a.result?.data ?? null)?.slice(0, 200)})`,
+          `${a.actionName}(success=${String(a.result?.success)}, data=${JSON.stringify(a.result?.data ?? null)})`,
       )
       .join(" | ") || "(no actions called)"
   );

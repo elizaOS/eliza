@@ -1,9 +1,9 @@
 // Handles v1 cloud API v1 apps id twitter automation post route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
+import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -18,10 +18,11 @@ const PostTweetSchema = z.object({
 async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
+  caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
 ): Promise<Response> {
-  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+  const { user } = caller;
   const { id } = await params;
-  if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+  if (caller.appScopeId && caller.appScopeId !== id) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
@@ -83,9 +84,18 @@ async function __hono_POST(
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
-);
+__hono_app.post("/", async (c) => {
+  try {
+    const caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+    });
+    return await __hono_POST(
+      c.req.raw,
+      { params: Promise.resolve({ id: c.req.param("id")! }) },
+      caller,
+    );
+  } catch (error) {
+    return failureResponse(c, error);
+  }
+});
 export default __hono_app;

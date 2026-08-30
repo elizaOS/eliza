@@ -1,6 +1,8 @@
 // Handles v1 cloud API v1 apps id promote assets route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
+import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
@@ -32,15 +34,16 @@ const GenerateAssetsSchema = z.object({
 async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
+  caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
 ) {
-  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+  const { user } = caller;
   const { id } = await params;
 
   const app = await appsService.getById(id);
   if (!app || app.organization_id !== user.organization_id) {
     return Response.json({ error: "App not found" }, { status: 404 });
   }
-  if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+  if (caller.appScopeId && caller.appScopeId !== id) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
@@ -229,9 +232,18 @@ __hono_app.get("/", async (c) =>
     params: Promise.resolve({ id: c.req.param("id")! }),
   }),
 );
-__hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
-);
+__hono_app.post("/", async (c) => {
+  try {
+    const caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+    });
+    return await __hono_POST(
+      c.req.raw,
+      { params: Promise.resolve({ id: c.req.param("id")! }) },
+      caller,
+    );
+  } catch (error) {
+    return failureResponse(c, error);
+  }
+});
 export default __hono_app;

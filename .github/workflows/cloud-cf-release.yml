@@ -1733,6 +1733,9 @@ jobs:
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          STEWARD_API_URL: ${{ secrets.STEWARD_API_URL }}
+          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          STEWARD_TENANT_ID: elizacloud-staging
         run: |
           set -euo pipefail
           legacy_onboarding_secret_removed=false
@@ -1797,6 +1800,9 @@ jobs:
             delete_legacy_onboarding_secret ELIZA_APP_ONBOARDING_LOGIN_APP_URL
           fi
           recheck_canonical_source
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            ENVIRONMENT=staging bun run --cwd "$CHECKOUT_DIR" cloud:reconcile-steward-email-callback
+          fi
           bunx wrangler deploy "${args[@]}"
           trap - ERR
 
