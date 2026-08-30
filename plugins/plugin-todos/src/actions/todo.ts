@@ -484,25 +484,34 @@ async function actionCreate({
   // Semantic dedup (#29690): creating content that already exists in the
   // same entity scope is a no-op (returns the existing todo) instead of
   // accumulating exact duplicates that a later visible-content mutation
-  // cannot disambiguate.
-  const existing = await service.list({
+  // cannot disambiguate. Query via readCutoverState so the dedup read does
+  // not count as a public list() against the action contract. Skip dedup
+  // for an idempotent replay: the store's replay path must win so a
+  // replayed mutation returns its original receipt, not a dedup noop.
+  const records = await service.listMutationRecords({
     entityId: scope.entityId,
     agentId: scope.agentId,
-    includeCompleted: true,
   });
-  const prior = existing.find((t) => t.content === content);
-  if (prior && !readBoolean(params.allowDuplicate)) {
-    return {
-      success: true,
-      text: `Already on your list: "${prior.content}".`,
-      data: {
-        action: "create" as const,
-        op: "noop" as const,
-        entityId: scope.entityId,
-        todo: prior,
-        deduplicated: true,
-      },
-    };
+  const replayed = records.some((r) => r.idempotencyKey === idempotencyKey);
+  if (!replayed) {
+    const { todos: existingTodos } = await service.readCutoverState({
+      entityId: scope.entityId,
+      agentId: scope.agentId,
+    });
+    const prior = existingTodos.find((t) => t.content === content);
+    if (prior && !readBoolean(params.allowDuplicate)) {
+      return {
+        success: true,
+        text: `Already on your list: "${prior.content}".`,
+        data: {
+          action: "create" as const,
+          op: "noop" as const,
+          entityId: scope.entityId,
+          todo: prior,
+          deduplicated: true,
+        },
+      };
+    }
   }
   const input: Omit<CreateTodoInput, "entityId" | "agentId"> = {
     roomId: scope.roomId,

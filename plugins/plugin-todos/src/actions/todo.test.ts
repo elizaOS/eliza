@@ -336,8 +336,13 @@ class FakeTodosService {
     return execution;
   }
 
-  async listMutationRecords(): Promise<[]> {
-    return [];
+  async listMutationRecords(
+    _scope: { entityId: string; agentId: string },
+  ): Promise<Array<{ idempotencyKey: string; applied: boolean }>> {
+    return [...this.mutationLedger.values()].map((entry) => ({
+      idempotencyKey: entry.execution.idempotencyKey,
+      applied: true,
+    }));
   }
 
   async readCutoverState(): Promise<{ todos: StoredTodo[]; mutations: [] }> {
@@ -1185,7 +1190,7 @@ describe("TODO action", () => {
     it("removes all todos for the user in this room", async () => {
       await invoke(runtime, { action: "create", content: "a" });
       await invoke(runtime, { action: "create", content: "b" });
-      const result = await invoke(runtime, { action: "clear" });
+      const result = await invoke(runtime, { action: "clear", confirm: true });
       expect(result.success).toBe(true);
       expect(service.rows.length).toBe(0);
     });
