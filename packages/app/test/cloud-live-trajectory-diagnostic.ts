@@ -6,7 +6,7 @@ import { dirname } from "node:path";
 export const CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS = 35 * 60 * 1_000;
 export const CLOUD_LIVE_NAVIGATION_TIMEOUT_MS = 2 * 60 * 1_000;
 export const CLOUD_LIVE_TRAJECTORY_DIAGNOSTIC_SCHEMA =
-  "elizaos.cloud.trajectory-progress/v1";
+  "elizaos.cloud.trajectory-progress/v2";
 
 export const CLOUD_LIVE_TRAJECTORY_PHASES = [
   "protected-cloud-boot",
@@ -77,6 +77,8 @@ export interface CloudLivePreIdentityDiagnostic {
   parsedDedicatedActivationResponseBodyCount: number;
   decodedDedicatedActivationReceiptCount: number;
   uninspectableDedicatedActivationResponseBodyCount: number;
+  dedicatedActivationResponseStatus: number | null;
+  dedicatedActivationResponseCode: string | null;
   dedicatedCutoverPostRequestCount: number;
   successfulDedicatedCutoverPostResponseCount: number;
   clientErrorDedicatedCutoverPostResponseCount: number;
@@ -191,6 +193,25 @@ export function createCloudLiveTrajectoryDiagnostic(
       }
       closedCounters[key] = value;
     }
+    const responseStatus = preIdentity.dedicatedActivationResponseStatus;
+    if (
+      responseStatus !== null &&
+      (!Number.isSafeInteger(responseStatus) ||
+        responseStatus < 100 ||
+        responseStatus > 599)
+    ) {
+      throw new Error(
+        "[cloud-live] Dedicated activation response status must be an HTTP status or null",
+      );
+    }
+    const responseCode = preIdentity.dedicatedActivationResponseCode;
+    if (responseCode !== null && !/^[a-z][a-z0-9_]{0,79}$/.test(responseCode)) {
+      throw new Error(
+        "[cloud-live] Dedicated activation response code must be a bounded machine code or null",
+      );
+    }
+    closedCounters.dedicatedActivationResponseStatus = responseStatus;
+    closedCounters.dedicatedActivationResponseCode = responseCode;
     diagnostic.preIdentity = closedCounters;
   }
   return diagnostic;

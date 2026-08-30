@@ -95,6 +95,8 @@ export interface CloudLiveNetworkAuditSnapshot {
   parsedDedicatedActivationResponseBodyCount: number;
   decodedDedicatedActivationReceiptCount: number;
   uninspectableDedicatedActivationResponseBodyCount: number;
+  dedicatedActivationResponseStatus: number | null;
+  dedicatedActivationResponseCode: string | null;
   dedicatedCutoverPostRequestCount: number;
   successfulDedicatedCutoverPostResponseCount: number;
   clientErrorDedicatedCutoverPostResponseCount: number;
@@ -694,6 +696,12 @@ interface DedicatedControlPlaneResponseInspection {
   code: string | null;
 }
 
+function boundedDedicatedResponseCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const code = value.trim();
+  return /^[a-z][a-z0-9_]{0,79}$/.test(code) ? code : null;
+}
+
 async function inspectDedicatedControlPlaneResponse(
   phase: DedicatedControlPlaneRequest,
   status: number,
@@ -732,8 +740,7 @@ async function inspectDedicatedControlPlaneResponse(
       };
     }
     const root = parsed as Record<string, unknown>;
-    const code =
-      typeof root.code === "string" ? root.code.trim() || null : null;
+    const code = boundedDedicatedResponseCode(root.code);
     const data = root.data;
     const dataRecord =
       data && typeof data === "object" && !Array.isArray(data)
@@ -1455,6 +1462,13 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
     },
     snapshot: async () => {
       await drainResponseHandlers();
+      const latestDedicatedActivationResponse = dedicatedLifecycleRequests
+        .slice()
+        .reverse()
+        .find(
+          (request) =>
+            request.phase === "activation" && request.responseStatus !== null,
+        );
       const approvedTargetId =
         dedicatedApprovalBinding?.dedicatedAgentId ??
         (dedicatedApprovalBinding?.confirmationKind === "activation"
@@ -1581,6 +1595,10 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
           dedicatedControlPlane.activation.decoded,
         uninspectableDedicatedActivationResponseBodyCount:
           dedicatedControlPlane.activation.uninspectableBody,
+        dedicatedActivationResponseStatus:
+          latestDedicatedActivationResponse?.responseStatus ?? null,
+        dedicatedActivationResponseCode:
+          latestDedicatedActivationResponse?.responseCode ?? null,
         dedicatedCutoverPostRequestCount: dedicatedControlPlane.cutover.request,
         successfulDedicatedCutoverPostResponseCount:
           dedicatedControlPlane.cutover.success,

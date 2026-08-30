@@ -250,6 +250,8 @@ describe("forbidden Cloud agent mutations", () => {
       parsedDedicatedActivationResponseBodyCount: 0,
       decodedDedicatedActivationReceiptCount: 0,
       uninspectableDedicatedActivationResponseBodyCount: 0,
+      dedicatedActivationResponseStatus: null,
+      dedicatedActivationResponseCode: null,
       dedicatedCutoverPostRequestCount: 0,
       successfulDedicatedCutoverPostResponseCount: 0,
       clientErrorDedicatedCutoverPostResponseCount: 0,
@@ -388,6 +390,8 @@ describe("forbidden Cloud agent mutations", () => {
       parsedDedicatedActivationResponseBodyCount: 1,
       decodedDedicatedActivationReceiptCount: 1,
       uninspectableDedicatedActivationResponseBodyCount: 0,
+      dedicatedActivationResponseStatus: 202,
+      dedicatedActivationResponseCode: null,
       dedicatedCutoverPostRequestCount: 2,
       successfulDedicatedCutoverPostResponseCount: 1,
       clientErrorDedicatedCutoverPostResponseCount: 1,
@@ -406,6 +410,34 @@ describe("forbidden Cloud agent mutations", () => {
       dedicatedLifecycleBindingMismatchCount: 4,
     });
     expect(JSON.stringify(snapshot)).not.toMatch(/api\.test|private|timeout/);
+  });
+
+  it("retains only the bounded Dedicated activation status and error code", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const upgrade =
+      "https://api.test/api/v1/eliza/agents/private-target/upgrade-tier";
+    audit.observeRequest(
+      "POST",
+      upgrade,
+      JSON.stringify({ quoteId: "private-quote" }),
+    );
+    audit.observeResponse(
+      "POST",
+      upgrade,
+      409,
+      boundedJsonBody({
+        success: false,
+        code: "dedicated_quote_changed",
+        message: "private user detail",
+      }).responseBody,
+    );
+
+    const snapshot = await audit.snapshot();
+    expect(snapshot.dedicatedActivationResponseStatus).toBe(409);
+    expect(snapshot.dedicatedActivationResponseCode).toBe(
+      "dedicated_quote_changed",
+    );
+    expect(JSON.stringify(snapshot)).not.toMatch(/private user detail|quoteId/);
   });
 
   it("fails closed when an approved quote is followed by another agent target", async () => {
