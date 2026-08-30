@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   report:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: staging

@@ -25,6 +25,7 @@ interface Workflow {
       concurrency: { group: string; "cancel-in-progress": boolean };
       env: Record<string, string>;
       environment: string;
+      if: string;
       "runs-on": string;
       steps: Step[];
       "timeout-minutes": number;
@@ -52,9 +53,12 @@ function step(name: string): Step {
 }
 
 describe("database identity staging report workflow", () => {
-  test("is manual, staging-bound, serialized, and read-only to GitHub", () => {
+  test("admits only manual develop runs before attaching staging", () => {
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
     expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(job.if).toBe(
+      "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'",
+    );
     expect(job.environment).toBe("staging");
     expect(job["runs-on"]).toBe("ubuntu-24.04");
     expect(job["timeout-minutes"]).toBe(10);
