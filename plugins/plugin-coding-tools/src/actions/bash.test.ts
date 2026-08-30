@@ -197,6 +197,7 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     ),
     logger: {
       debug: vi.fn(),
+      info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
     },
