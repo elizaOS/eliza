@@ -860,8 +860,28 @@ jobs:
               *'sandbox provider cannot prove a persisted replacement absent'*) category='provider_contract_missing' ;;
               *) category='unclassified' ;;
             esac
+            signals=''
+            for signal in \
+              replacement_cleanup_unresolved docker_sandbox docker_ssh secret receipt \
+              inspect identity attempt container headscale vpn node authority mismatch \
+              missing malformed unavailable invalid not_registered cannot_prove failed \
+              exit succeeded disappeared release allocation; do
+              case "$signal:$lower" in
+                replacement_cleanup_unresolved:*'replacement cleanup is unresolved'*) matched=true ;;
+                docker_sandbox:*'docker-sandbox'*) matched=true ;;
+                docker_ssh:*'docker-ssh'*) matched=true ;;
+                not_registered:*'not registered'*) matched=true ;;
+                cannot_prove:*'cannot prove'*) matched=true ;;
+                *:*"${signal//_/-}"*) matched=true ;;
+                *) matched=false ;;
+              esac
+              if [ "$matched" = true ]; then
+                signals="${signals:+$signals,}$signal"
+              fi
+            done
             unset line lower
             echo "replacement_cleanup_failure_category=$category"
+            echo "replacement_cleanup_failure_signals=${signals:-none}"
 
       - name: Upload privacy-safe provision diagnostic
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
