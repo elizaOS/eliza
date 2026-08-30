@@ -5,7 +5,6 @@
  */
 
 import { appendFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import {
   type DatabaseIdentityReceipt,
   type IdentityQueryClient,
@@ -32,9 +31,6 @@ interface RuntimePgClient extends IdentityQueryClient {
   end(): Promise<void>;
 }
 
-const { Client } = createRequire(import.meta.url)("pg") as {
-  Client: new (config: ClientConfig) => RuntimePgClient;
-};
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 export type DatabaseIdentityGateMode = "off" | "report" | "enforce";
@@ -60,6 +56,39 @@ export type DatabaseIdentityFailureCategory =
   | "database_query_failed"
   | "operator_setup_failed";
 
+export type DatabaseIdentityDependencyLabel = "pg" | "core_edge" | "db_client";
+
+export class DatabaseIdentityDependencyError extends Error {
+  constructor(readonly dependency: DatabaseIdentityDependencyLabel) {
+    super(`database_identity_dependency_${dependency}_unavailable`);
+    this.name = "DatabaseIdentityDependencyError";
+  }
+}
+
+const DEPENDENCY_PROBES = [
+  ["pg", "pg"],
+  ["core_edge", "@elizaos/core/edge"],
+  ["db_client", "@elizaos/cloud-shared/db/client"],
+] as const satisfies ReadonlyArray<
+  readonly [DatabaseIdentityDependencyLabel, string]
+>;
+
+/** Probes the fixed runtime chain in order and discards every import exception. */
+export async function probeDatabaseIdentityDependencies(
+  importer: (specifier: string) => Promise<unknown> = (specifier) =>
+    import(specifier),
+): Promise<void> {
+  for (const [label, specifier] of DEPENDENCY_PROBES) {
+    try {
+      await importer(specifier);
+    } catch {
+      // error-policy:J1 only the fixed probe label crosses the CLI boundary;
+      // loader messages and paths are deliberately discarded.
+      throw new DatabaseIdentityDependencyError(label);
+    }
+  }
+}
+
 const DEPENDENCY_ERROR_CODES = new Set([
   "MODULE_NOT_FOUND",
   "ERR_MODULE_NOT_FOUND",
@@ -80,6 +109,9 @@ const CONNECTION_ERROR_CODES = new Set([
 export function classifyDatabaseIdentityFailure(
   error: unknown,
 ): Exclude<DatabaseIdentityFailureCategory, "database_query_failed"> {
+  if (error instanceof DatabaseIdentityDependencyError) {
+    return "dependency_unavailable";
+  }
   if (typeof error === "object" && error !== null) {
     const code = Reflect.get(error, "code");
     if (typeof code === "string") {
@@ -88,6 +120,16 @@ export function classifyDatabaseIdentityFailure(
     }
   }
   return "operator_setup_failed";
+}
+
+/** Formats only bounded diagnostics suitable for public workflow logs. */
+export function databaseIdentityFailureDiagnostic(error: unknown): string {
+  const category = classifyDatabaseIdentityFailure(error);
+  const dependency =
+    error instanceof DatabaseIdentityDependencyError
+      ? `; dependency=${error.dependency}`
+      : "";
+  return `category=${category}${dependency}`;
 }
 
 function readMode(value: string | undefined): DatabaseIdentityGateMode {
@@ -250,6 +292,13 @@ async function clientConfig(databaseUrl: string): Promise<ClientConfig> {
   };
 }
 
+async function createRuntimePgClient(
+  databaseUrl: string,
+): Promise<RuntimePgClient> {
+  const { Client } = await import("pg");
+  return new Client(await clientConfig(databaseUrl));
+}
+
 /** Formats a redacted receipt for operator logs and GitHub step summaries. */
 function formatDatabaseIdentitySummary(
   result: IdentityPreflightResult,
@@ -302,6 +351,13 @@ export async function publishDatabaseIdentityResult(
 }
 
 async function main(): Promise<void> {
+  if (process.argv.includes("--probe-dependencies")) {
+    await probeDatabaseIdentityDependencies();
+    process.stdout.write(
+      "[database-identity] dependency probes passed: pg,core_edge,db_client\n",
+    );
+    return;
+  }
   const environment: Readonly<Record<string, string | undefined>> = process.env;
   const config = readDatabaseIdentityConfig(environment);
   if (config.mode === "off") {
@@ -324,7 +380,8 @@ async function main(): Promise<void> {
   }
   let client: RuntimePgClient | undefined;
   try {
-    client = new Client(await clientConfig(databaseUrl));
+    await probeDatabaseIdentityDependencies();
+    client = await createRuntimePgClient(databaseUrl);
     await client.connect();
     const result = await runDatabaseIdentityPreflight(config, client);
     await publishDatabaseIdentityResult(config, result, environment);
@@ -332,9 +389,8 @@ async function main(): Promise<void> {
     // error-policy:J1 the CLI boundary emits only a generic class so provider
     // errors cannot leak connection strings, hosts, roles, or database names.
     if (config.mode === "report") {
-      const failureCategory = classifyDatabaseIdentityFailure(error);
       process.stdout.write(
-        `::warning::database identity report unavailable; category=${failureCategory}\n`,
+        `::warning::database identity report unavailable; ${databaseIdentityFailureDiagnostic(error)}\n`,
       );
       return;
     }
@@ -350,9 +406,9 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-  main().catch(() => {
+  main().catch((error) => {
     process.stderr.write(
-      "[database-identity] fatal: identity enforcement failed\n",
+      `[database-identity] fatal: ${databaseIdentityFailureDiagnostic(error)}\n`,
     );
     process.exit(1);
   });

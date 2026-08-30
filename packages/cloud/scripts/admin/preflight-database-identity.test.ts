@@ -3,6 +3,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   classifyDatabaseIdentityFailure,
+  DatabaseIdentityDependencyError,
+  databaseIdentityFailureDiagnostic,
+  probeDatabaseIdentityDependencies,
   readDatabaseIdentityConfig,
   readDatabaseIdentityReceipt,
   runDatabaseIdentityPreflight,
@@ -169,6 +172,40 @@ describe("database identity preflight", () => {
         classifyDatabaseIdentityFailure(new Error("secret")),
       ]),
     ).not.toContain("secret");
+  });
+
+  test("probes fixed dependencies in order and reports only the failed label", async () => {
+    const observed: string[] = [];
+    await probeDatabaseIdentityDependencies(async (specifier) => {
+      observed.push(specifier);
+      return {};
+    });
+    expect(observed).toEqual([
+      "pg",
+      "@elizaos/core/edge",
+      "@elizaos/cloud-shared/db/client",
+    ]);
+
+    const privateLoaderMessage =
+      "Cannot find /private/runner/packages/core/dist/edge/index.edge.js";
+    let failure: unknown;
+    try {
+      await probeDatabaseIdentityDependencies(async (specifier) => {
+        if (specifier === "@elizaos/core/edge") {
+          throw new Error(privateLoaderMessage);
+        }
+        return {};
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(DatabaseIdentityDependencyError);
+    expect(databaseIdentityFailureDiagnostic(failure)).toBe(
+      "category=dependency_unavailable; dependency=core_edge",
+    );
+    expect(databaseIdentityFailureDiagnostic(failure)).not.toContain(
+      privateLoaderMessage,
+    );
   });
 
   test("enforce mode requires both authorities and fails closed on mismatch", async () => {
