@@ -105,21 +105,16 @@ export function chunkByBudget(
   maxArgsChars,
   isolatedFiles = new Set(),
 ) {
-  const batches = [];
+  const budgetBatches = [];
   let current = [];
   let chars = 0;
   const flush = () => {
     if (current.length === 0) return;
-    batches.push(current);
+    budgetBatches.push(current);
     current = [];
     chars = 0;
   };
   for (const file of files) {
-    if (isolatedFiles.has(file)) {
-      flush();
-      batches.push([file]);
-      continue;
-    }
     const cost = file.length + 1;
     if (
       current.length > 0 &&
@@ -131,6 +126,21 @@ export function chunkByBudget(
     chars += cost;
   }
   flush();
+
+  const batches = [];
+  for (const budgetBatch of budgetBatches) {
+    let sharedBatch = [];
+    for (const file of budgetBatch) {
+      if (isolatedFiles.has(file)) {
+        if (sharedBatch.length > 0) batches.push(sharedBatch);
+        batches.push([file]);
+        sharedBatch = [];
+      } else {
+        sharedBatch.push(file);
+      }
+    }
+    if (sharedBatch.length > 0) batches.push(sharedBatch);
+  }
   return batches;
 }
 
