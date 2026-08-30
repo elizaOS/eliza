@@ -332,7 +332,10 @@ export class HetznerCloudClient implements ComputeProvider {
       "GET",
       `/servers/${serverId}`,
     ).catch((error) => {
-      if (error instanceof HetznerCloudError && error.status === 404) {
+      // Prove absence by the error CODE, not raw status: a non-JSON 404
+      // body maps to server_error (status 404) and must not be treated as
+      // proven absence (review on #30069).
+      if (error instanceof HetznerCloudError && error.code === "not_found") {
         return null;
       }
       throw error;
