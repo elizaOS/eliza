@@ -787,7 +787,7 @@ jobs:
             keys == ["activeExclusiveJobs", "cleanupCreatedAt", "graceElapsed", "olderEligibleFences", "targetCount", "totalEligibleFences"] and
             .targetCount == 1 and
             (.cleanupCreatedAt | type == "string") and
-            (.cleanupCreatedAt | fromdateiso8601 | type == "number") and
+            (.cleanupCreatedAt | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})$")) and
             (.graceElapsed | type == "boolean") and
             (.activeExclusiveJobs | type == "number") and
             (.olderEligibleFences | type == "number") and
