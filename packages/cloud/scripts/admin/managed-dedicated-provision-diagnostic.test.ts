@@ -180,6 +180,24 @@ describe("managed Dedicated provision diagnostic", () => {
     ).toBe("container_steward_request_failed");
     expect(
       classifyManagedDedicatedProvisionFailure(
+        "[docker-ssh] Command exited with code 1 on node-a: [stderr] Steward agent registration failed with status 401",
+        "x",
+      ),
+    ).toBe("container_steward_agent_registration_unauthorized");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-ssh] Command exited with code 1 on node-a: [stderr] Steward agent registration failed with status 422",
+        "x",
+      ),
+    ).toBe("container_steward_agent_registration_client_error");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-ssh] Command exited with code 1 on node-a: [stderr] Steward agent registration failed with status 503",
+        "x",
+      ),
+    ).toBe("container_steward_agent_registration_server_error");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
         "[docker-ssh] Command exited with code 1 on node-a: [stderr] python3: command not found",
         "x",
       ),

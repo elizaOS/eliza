@@ -57,6 +57,12 @@ export type ManagedDedicatedProvisionFailureCode =
   | "container_volume_read_only"
   | "container_volume_path_invalid"
   | "container_steward_request_failed"
+  | "container_steward_agent_registration_unauthorized"
+  | "container_steward_agent_registration_forbidden"
+  | "container_steward_agent_registration_not_found"
+  | "container_steward_agent_registration_rate_limited"
+  | "container_steward_agent_registration_client_error"
+  | "container_steward_agent_registration_server_error"
   | "container_steward_agent_registration_failed"
   | "container_steward_token_mint_failed"
   | "container_remote_python_missing"
@@ -271,7 +277,22 @@ export function classifyManagedDedicatedProvisionFailure(
   if (/(?:mkdir|directory).*(?:not a directory|file exists)/i.test(primary)) {
     return "container_volume_path_invalid";
   }
-  if (/Steward agent registration failed with status/i.test(primary)) {
+  const stewardRegistrationStatus =
+    /Steward agent registration failed with status (\d{3})/i.exec(primary);
+  if (stewardRegistrationStatus) {
+    const status = Number(stewardRegistrationStatus[1]);
+    if (status === 401)
+      return "container_steward_agent_registration_unauthorized";
+    if (status === 403) return "container_steward_agent_registration_forbidden";
+    if (status === 404) return "container_steward_agent_registration_not_found";
+    if (status === 429)
+      return "container_steward_agent_registration_rate_limited";
+    if (status >= 400 && status < 500) {
+      return "container_steward_agent_registration_client_error";
+    }
+    if (status >= 500 && status < 600) {
+      return "container_steward_agent_registration_server_error";
+    }
     return "container_steward_agent_registration_failed";
   }
   if (/Steward token mint failed with status/i.test(primary)) {
