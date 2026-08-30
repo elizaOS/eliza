@@ -19,6 +19,7 @@
 import { Capacitor } from "@capacitor/core";
 import {
   buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
+  clearStoredStewardToken,
   generateStewardOAuthState,
   hasStewardAuthedCookie,
   peekStewardOAuthState,
@@ -65,6 +66,7 @@ import {
   SelectTrigger,
 } from "../../../../components/ui/select";
 import { openExternalUrl } from "../../../../utils/openExternalUrl";
+import { hasHydratableStewardToken } from "../../../lib/steward-session";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
@@ -1022,7 +1024,16 @@ export default function StewardLoginSection() {
 
     const tryRecoverSession = async () => {
       try {
-        const storedToken = readStoredStewardToken();
+        let storedToken = readStoredStewardToken();
+        if (storedToken && !hasHydratableStewardToken()) {
+          // Expired, malformed, and identity-less local proofs cannot restore
+          // a session. Clear them before any network call so an unusable token
+          // cannot hide fresh sign-in controls behind session sync. A valid
+          // HttpOnly cookie is independent and still recovers below.
+          await clearStoredStewardToken();
+          storedToken = null;
+          window.dispatchEvent(new CustomEvent("steward-token-sync"));
+        }
         if (storedToken) {
           try {
             // Session recovery establishes auth only. A pending Telegram claim
