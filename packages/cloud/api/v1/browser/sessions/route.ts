@@ -5,8 +5,12 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -33,23 +37,26 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const caller = await requireGenerativeRouteCaller(c);
+    const { user } = caller;
     const sessions = await listHostedBrowserSessions({
       apiKeyId: null,
       organizationId: user.organization_id,
       requestSource: "api",
       userId: user.id,
+      operationContext: getGenerativeOperationContext(c, caller),
     });
     return c.json({ sessions });
   } catch (error) {
     logHostedBrowserFailure("browser_list", error);
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const caller = await requireGenerativeRouteCaller(c);
+    const { user } = caller;
     const decodedBody = await decodeRequestJson(c.req);
     if (!decodedBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
@@ -68,15 +75,16 @@ app.post("/", async (c) => {
     }
 
     const session = await createHostedBrowserSession(bodyResult.data, {
-      apiKeyId: null,
+      apiKeyId: caller.apiKeyId,
       organizationId: user.organization_id,
       requestSource: "api",
       userId: user.id,
+      operationContext: getGenerativeOperationContext(c, caller),
     });
     return c.json({ session });
   } catch (error) {
     logHostedBrowserFailure("browser_create", error);
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 

@@ -1616,6 +1616,7 @@ app.post("/", async (c) => {
         organizationId: account.organizationId,
         userId: account.userId,
         mediaUrls: parsed.data.mediaUrls,
+        executionCtx: worker.executionCtx,
       });
       if (enrichment.kind === "described") {
         deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${enrichment.description}\n\n[Attached image URL]\n${parsed.data.mediaUrls.join("\n")}`;
