@@ -1,7 +1,8 @@
 /**
  * Smoke tests for the LIFE action -- verifies the full handler chain
  * with a real PGLite-backed LifeOps service and real runtime, exercising
- * the handler path with and without explicit action parameters.
+ * the handler path with and without explicit action parameters. Grounded
+ * reply generation uses the production canonical fallback deterministically.
  *
  * These simulate what happens when the LLM selects the LIFE action
  * with various parameter combinations:

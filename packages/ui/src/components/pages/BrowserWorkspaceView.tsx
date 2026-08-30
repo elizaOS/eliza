@@ -2619,7 +2619,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="hidden size-11 shrink-0 md:inline-flex"
+        className="max-md:hidden size-11 shrink-0"
         aria-label={newTabLabel}
         disabled={busyAction !== null || browserWorkspaceUnavailable}
         onClick={() =>
@@ -2646,7 +2646,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="hidden size-11 md:inline-flex"
+        className="max-md:hidden size-11"
         aria-label={t("common.refresh", { defaultValue: "Refresh" })}
         disabled={!selectedTab || busyAction !== null}
         onClick={() =>

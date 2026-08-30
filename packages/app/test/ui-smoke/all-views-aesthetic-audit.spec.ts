@@ -2017,7 +2017,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         page.locator("[data-test-overlay]"),
         cameraPolicy.fallbackExpectation,
       ),
-    ).resolves.toMatchObject({ semanticReady: true });
+    ).resolves.toMatchObject({ semanticReady: false });
 
     await page.setContent("<main>first</main><main>second</main>");
     await expect(

@@ -11,6 +11,10 @@ const source = readFileSync(
   new URL(".github/workflows/cloud-latency-certification.yml", repoRoot),
   "utf8",
 );
+const orchestratorSource = readFileSync(
+  new URL("packages/cloud/scripts/cloud-latency-certification.mjs", repoRoot),
+  "utf8",
+);
 
 interface Step {
   name?: string;
@@ -135,6 +139,31 @@ describe("Cloud latency certification workflow", () => {
     expect(run).toContain("args+=(--auth)");
     expect(run).toContain("args+=(--suspended)");
     expect(run).not.toContain("wrangler tail");
+  });
+
+  test("installs only pinned Bun for the pinned Wrangler Tail client", () => {
+    expect(job?.env?.BUN_VERSION).toBe("1.3.14");
+    const setupBun = step("Setup Bun for pinned Wrangler");
+    expect(setupBun.uses).toBe(
+      "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+    );
+    expect(setupBun.with).toEqual({
+      "bun-version": `\${{ env.BUN_VERSION }}`,
+    });
+    expect(source).not.toContain("setup-bun-workspace");
+    expect(source).not.toContain("bun install");
+    expect(orchestratorSource).toContain('"wrangler@4.116.0"');
+
+    const importSpecifiers = [
+      ...orchestratorSource.matchAll(/from\s+["']([^"']+)["']/g),
+    ].map((match) => match[1]);
+    expect(importSpecifiers.length).toBeGreaterThan(0);
+    expect(
+      importSpecifiers.every(
+        (specifier) =>
+          specifier?.startsWith("node:") || specifier?.startsWith("./"),
+      ),
+    ).toBe(true);
   });
 
   test("uploads only explicitly sanitized evidence and never raw Tail material", () => {

@@ -319,9 +319,9 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     }
   }
 
-  const kindFilter = page.locator(
-    '[data-agent-id="relationships-kind-filter"]',
-  );
+  const kindFilter = page.getByRole("button", {
+    name: /^Filter relationship type/,
+  });
   await expectTopmostAtCenter(kindFilter, "Relationships kind filter");
   await kindFilter.click();
   await page
@@ -342,6 +342,7 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
   // #11144 guard: the kind control occupies the filter surface that used to
   // sit under the removed global corner back button. Drive the restore path
   // through the same topmost-checked control, then assert every kind is visible.
+  await expectTopmostAtCenter(kindFilter, "Relationships kind filter");
   await kindFilter.click();
   await page.getByRole("menuitemradio", { name: "All", exact: true }).click();
   await expect(kindFilter).toHaveAttribute(

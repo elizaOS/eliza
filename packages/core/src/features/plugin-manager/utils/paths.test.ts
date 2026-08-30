@@ -1,4 +1,6 @@
-import { homedir } from "node:os";
+/** Tests config-path overrides against host-native absolute and home paths. */
+
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfigPath } from "./paths.ts";
@@ -39,7 +41,7 @@ describe("resolveConfigPath", () => {
 			stateDir,
 		);
 		expect(path.isAbsolute(out)).toBe(true);
-		expect(out).toBe(path.join(homedir(), "eliza.json"));
+		expect(out).toBe(path.join(os.homedir(), "eliza.json"));
 	});
 
 	it("resolves a relative override against cwd", () => {
