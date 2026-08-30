@@ -2,6 +2,7 @@
 
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
+import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
 import { agentBackupAdmissionWork } from "../schemas/agent-backup-admission";
 import { agentNodeIncarnationHistories } from "../schemas/agent-node-incarnation-histories";
@@ -358,6 +359,54 @@ async function assertSettledReservationPayloadDigestMatches(params: {
   }
 }
 
+async function assertReservationLanesRemainAvailable(params: {
+  tx: DbTransaction;
+  backupId: string;
+  claim: AgentBackupAdmissionClaim;
+  source: Awaited<ReturnType<typeof readSourceOccurrence>>;
+}): Promise<void> {
+  const { tx, backupId, claim, source } = params;
+  const [lanes] = await sqlRows<{
+    organization_conflict: boolean;
+    node_conflict: boolean;
+  }>(
+    tx,
+    sql`SELECT EXISTS (
+      SELECT 1
+      FROM ${agentSandboxBackups} AS active_backup
+      WHERE active_backup.id <> ${backupId}::uuid
+        AND active_backup.catalog_organization_id = ${claim.organizationId}::uuid
+        AND active_backup.catalog_state IN (
+          'scheduled', 'capturing', 'captured', 'uploading', 'primary_uploaded',
+          'primary_verified', 'secondary_pending', 'failed_retryable'
+        )
+    ) AS organization_conflict,
+    EXISTS (
+      SELECT 1
+      FROM ${agentSandboxBackups} AS active_backup
+      WHERE active_backup.id <> ${backupId}::uuid
+        AND (
+          active_backup.source_node_history_id = ${claim.nodeHistoryId}::uuid
+          OR (
+            active_backup.source_node_history_id IS NULL
+            AND active_backup.source_node_record_id = ${source.nodeRecordId}::uuid
+            AND active_backup.source_node_incarnation = ${source.nodeIncarnation}::uuid
+          )
+        )
+        AND (
+          active_backup.catalog_state IN ('scheduled', 'capturing')
+          OR (
+            active_backup.catalog_state = 'failed_retryable'
+            AND active_backup.catalog_resume_state IN ('scheduled', 'capturing')
+          )
+        )
+    ) AS node_conflict`,
+  );
+  if (!lanes || lanes.organization_conflict || lanes.node_conflict) {
+    conflict("Backup admission fair-lane authority was superseded before settlement");
+  }
+}
+
 /**
  * Reserve `operationId = workId` and consume the exact admission fence in one
  * primary-database transaction. Scheduled admission has one canonical
@@ -470,6 +519,19 @@ export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
     // Fail before settlement so the tentative catalogue insert/revision rolls
     // back together with this old claim.
     assertPersistedReservationMatches({ backup, claim, source });
+
+    // Claim-time fair-lane checks are only a snapshot. The catalogue helper
+    // now holds the sandbox and current-node-occurrence locks, while the
+    // organization lock acquired above is still held. Recheck both catalogue
+    // lanes after the tentative reservation so a legacy scheduler reservation
+    // committed after claim cannot coexist; any conflict rolls this insert and
+    // its catalogue revision back with the unsettled work.
+    await assertReservationLanesRemainAvailable({
+      tx,
+      backupId: backup.id,
+      claim,
+      source,
+    });
 
     const [settled] = await tx
       .update(agentBackupAdmissionWork)
