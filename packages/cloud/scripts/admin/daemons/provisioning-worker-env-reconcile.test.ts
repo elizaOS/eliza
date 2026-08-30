@@ -35,6 +35,7 @@ const ENV_KEY = "SANDBOX_REGISTRY_REDIS_URL";
 const FIELD_ENCRYPTION_KEY = "SECRETS_MASTER_KEY";
 const BRIDGE_FALLBACK_KEY = "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK";
 const AGENT_BASE_DOMAIN_KEY = "ELIZA_CLOUD_AGENT_BASE_DOMAIN";
+const VPN_REGISTRATION_TIMEOUT_KEY = "VPN_REGISTRATION_TIMEOUT_MS";
 const CONTAINERS_SSH_KEY = "CONTAINERS_SSH_KEY";
 const STEWARD_API_URL = "STEWARD_API_URL";
 const STEWARD_PLATFORM_KEYS = "STEWARD_PLATFORM_KEYS";
@@ -600,6 +601,21 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
     expect(workflow).toContain('"$ENV_FILE" ELIZA_CLOUD_AGENT_BASE_DOMAIN');
     expect(workflow).toContain(
       "Agent router base-domain drift. Values were not printed.",
+    );
+  });
+
+  it("owns and verifies a VPN observation budget longer than the container join budget", () => {
+    const forwarded = workflowEnvs();
+    expect(workflow).toContain(`${VPN_REGISTRATION_TIMEOUT_KEY}: "180000"`);
+    expect(forwarded).toContain(VPN_REGISTRATION_TIMEOUT_KEY);
+    expect(workflow).toContain(
+      `"${VPN_REGISTRATION_TIMEOUT_KEY}=$${VPN_REGISTRATION_TIMEOUT_KEY}"`,
+    );
+    expect(workflow).toContain(
+      `"$ENV_FILE" ${VPN_REGISTRATION_TIMEOUT_KEY}`,
+    );
+    expect(workflow).toContain(
+      "Provisioning host VPN registration timeout drift. Values were not printed.",
     );
   });
 });
