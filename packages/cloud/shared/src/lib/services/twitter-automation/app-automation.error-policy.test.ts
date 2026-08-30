@@ -66,15 +66,6 @@ mock.module("twitter-api-v2", () => ({
   },
 }));
 
-// Import-safety: these are pulled in at module top but unused on the
-// tweetText-provided path (no generation). Mock to keep the import cheap.
-mock.module("../credits", () => ({
-  creditsService: {
-    deductCredits: async () => ({ success: true, newBalance: 100, transaction: null }),
-    refundCredits: async () => ({ transaction: {}, newBalance: 100 }),
-  },
-}));
-
 const { twitterAppAutomationService } = await import("./app-automation");
 
 const realFetch = globalThis.fetch;

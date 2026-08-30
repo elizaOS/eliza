@@ -16,11 +16,12 @@ Clock + weather (`DefaultHomeWidgets`). Never ranked, never sunset; the calm
 backdrop a brand-new account still sees.
 
 ### Tier 2 - Live agent work (ongoing, self-hiding)
-Setup-progress cards such as `model-download.status` and
-`agent-provisioning.status` live here. Actions that need the user's response
-remain in the pinned notification center instead of duplicating the same item
-as a resident Home card. Continuous activity streams, app-run lists, and
-running workflow lists stay in the launcher/sidebar/routed views.
+Only active setup work belongs here, such as `model-download.status` and
+`agent-provisioning.status`. Requests that need the user's response remain in
+the pinned notification center, where they can be grouped, opened, read, and
+dismissed without duplicating the same item as a resident card. Continuous
+activity streams, app-run lists, and running workflow lists stay in the
+launcher/sidebar/routed views.
 
 ### Tier 3 - Data attention (urgency from the widget's own data)
 Calendar and Today (todo.items). Each fetches its own data, self-publishes a

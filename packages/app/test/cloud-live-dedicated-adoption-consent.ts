@@ -14,6 +14,9 @@ type DedicatedAdoptionStateDisposition =
   | "unreviewed_existing_target";
 
 interface VisibleDedicatedAdoptionQuote {
+  sourceAgentId: string;
+  quoteId: string;
+  dedicatedAgentId: string;
   status: string;
   startsCompute: boolean;
   hourlyRateUsd: number;
@@ -26,8 +29,16 @@ interface VisibleDedicatedAdoptionQuote {
 }
 
 export interface DedicatedAdoptionConsentProof {
-  confirmVisibleConsent(confirm: Locator): Promise<void>;
+  confirmVisibleConsent(
+    confirm: Locator,
+  ): Promise<DedicatedAdoptionApprovalBinding>;
   dispose(): void;
+}
+
+export interface DedicatedAdoptionApprovalBinding {
+  sourceAgentId: string;
+  quoteId: string;
+  dedicatedAgentId: string;
 }
 
 class CloudLiveDedicatedAdoptionConsentProofError extends Error {
@@ -51,10 +62,17 @@ function finiteNumber(value: unknown): number | null {
 
 function projectVisibleQuote(
   value: unknown,
+  sourceAgentId: string,
 ): VisibleDedicatedAdoptionQuote | null {
   const root = recordOrNull(value);
   const quote = recordOrNull(root?.data);
   const status = typeof quote?.status === "string" ? quote.status.trim() : "";
+  const quoteId =
+    typeof quote?.quoteId === "string" ? quote.quoteId.trim() : "";
+  const dedicatedAgentId =
+    typeof quote?.dedicatedAgentId === "string"
+      ? quote.dedicatedAgentId.trim()
+      : "";
   const hourlyRateUsd = finiteNumber(quote?.hourlyRateUsd);
   const dailyRateUsd = finiteNumber(quote?.dailyRateUsd);
   const minimumBalanceUsd = finiteNumber(quote?.minimumBalanceUsd);
@@ -64,6 +82,9 @@ function projectVisibleQuote(
   const stateDisposition = quote?.stateDisposition;
   if (
     root?.success !== true ||
+    !sourceAgentId ||
+    !quoteId ||
+    !dedicatedAgentId ||
     !status ||
     typeof quote?.startsCompute !== "boolean" ||
     hourlyRateUsd === null ||
@@ -81,6 +102,9 @@ function projectVisibleQuote(
     return null;
   }
   return {
+    sourceAgentId,
+    quoteId,
+    dedicatedAgentId,
     status,
     startsCompute: quote.startsCompute,
     hourlyRateUsd,
@@ -111,16 +135,19 @@ function exactVisibleConsentLines(
   ];
 }
 
-function isDedicatedAdoptionQuoteResponse(response: Response): boolean {
+function dedicatedAdoptionQuoteSourceAgentId(response: Response): string {
   if (response.request().method() !== "GET" || response.status() !== 200) {
-    return false;
+    return "";
   }
   try {
-    return new URL(response.url()).pathname.endsWith(
-      "/upgrade-tier/adopt-existing",
+    const match = new URL(response.url()).pathname.match(
+      /^\/api\/(?:cloud\/)?v1\/eliza\/agents\/([^/]+)\/upgrade-tier\/adopt-existing$/,
     );
+    return match?.[1] ? decodeURIComponent(match[1]) : "";
   } catch {
-    return false;
+    // error-policy:J3 malformed response URLs cannot establish the source
+    // identity for a billable approval and remain ineligible for confirmation.
+    return "";
   }
 }
 
@@ -135,10 +162,11 @@ export function installDedicatedAdoptionConsentProof(
     null;
   let confirmationInFlight = false;
   const observeResponse = (response: Response): void => {
-    if (!isDedicatedAdoptionQuoteResponse(response)) return;
+    const sourceAgentId = dedicatedAdoptionQuoteSourceAgentId(response);
+    if (!sourceAgentId) return;
     latestQuoteAttempt = response
       .json()
-      .then(projectVisibleQuote)
+      .then((value) => projectVisibleQuote(value, sourceAgentId))
       .catch(() => null);
   };
   page.on("response", observeResponse);
@@ -165,15 +193,17 @@ export function installDedicatedAdoptionConsentProof(
         }
         const copyMatches = await consentTurn.evaluate(
           (element, expectedLines) => {
-            const normalize = (line: string) =>
-              line.replace(/\s+/g, " ").trim();
-            const visibleLines = (element as HTMLElement).innerText
-              .split("\n")
-              .map(normalize)
-              .filter(Boolean);
-            return expectedLines
-              .map(normalize)
-              .every((line) => visibleLines.includes(line));
+            const normalize = (text: string) =>
+              text.replace(/\s+/g, " ").trim();
+            const visibleCopy = normalize((element as HTMLElement).innerText);
+            let cursor = 0;
+            for (const expectedLine of expectedLines) {
+              const expected = normalize(expectedLine);
+              const index = visibleCopy.indexOf(expected, cursor);
+              if (index < 0) return false;
+              cursor = index + expected.length;
+            }
+            return true;
           },
           exactVisibleConsentLines(quote),
         );
@@ -193,6 +223,11 @@ export function installDedicatedAdoptionConsentProof(
         } catch {
           throw new CloudLiveDedicatedAdoptionConsentProofError("control");
         }
+        return {
+          sourceAgentId: quote.sourceAgentId,
+          quoteId: quote.quoteId,
+          dedicatedAgentId: quote.dedicatedAgentId,
+        };
       } finally {
         confirmationInFlight = false;
       }

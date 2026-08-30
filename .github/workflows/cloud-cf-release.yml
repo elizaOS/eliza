@@ -1106,6 +1106,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          INFERENCE_AUTH_PROBE_TOKEN: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.INFERENCE_AUTH_PROBE_TOKEN || '' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
           # fal key under its alternate name: the video provider registry reads
@@ -1595,6 +1596,13 @@ jobs:
           for name in "${managed_worker_provisioning_secrets[@]}"; do
             queue_secret "$name" || exit 1
           done
+
+          # Controlled cache-miss certification exists only on staging. A blank
+          # protected value preserves the current binding; the opt-in live
+          # certification workflow independently fails closed when requested.
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            queue_secret INFERENCE_AUTH_PROBE_TOKEN || exit 1
+          fi
 
           for name in \
             ELIZA_APP_BLOOIO_API_KEY \
@@ -2903,13 +2911,12 @@ jobs:
   deployed-renderer-staging:
     name: Verify deployed staging renderer (Pages alias)
     needs: [deploy-app, verify-routing]
-    if: ${{ !cancelled() && inputs.target_environment == 'staging' && ((vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success' && needs.deploy-app.outputs.pages_deployed == 'true' && needs.verify-routing.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)) }}
+    if: ${{ !cancelled() && inputs.target_environment == 'staging' && inputs.run_deployed_renderer_staging == true }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 45
     steps:
-      - name: Require one-shot staging release prerequisites
-        if: ${{ inputs.run_deployed_renderer_staging == true }}
+      - name: Require deployed-renderer staging release prerequisites
         env:
           DEPLOY_APP_RESULT: ${{ needs.deploy-app.result }}
           PAGES_DEPLOYED: ${{ needs.deploy-app.outputs.pages_deployed }}

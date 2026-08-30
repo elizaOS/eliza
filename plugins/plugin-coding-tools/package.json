@@ -48,7 +48,8 @@
       ]
     },
     "scripts": {
-      "coreBuild": true
+      "coreBuild": true,
+      "testSerial": true
     }
   },
   "keywords": [

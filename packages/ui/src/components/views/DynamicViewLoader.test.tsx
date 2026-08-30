@@ -20,10 +20,15 @@ import {
   __resetDynamicViewLoaderCacheForTests,
   DynamicViewLoader,
   hostImport,
+  importAuthenticatedViewBundle,
   isSameOriginBundleUrl,
 } from "./DynamicViewLoader";
 
 describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
+  beforeEach(() => {
+    activeApiBase.value = "";
+  });
+
   it("accepts same-origin and root-relative /api/views bundle URLs", () => {
     expect(isSameOriginBundleUrl("/api/views/x/bundle.js")).toBe(true);
     expect(
@@ -38,6 +43,21 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
     expect(isSameOriginBundleUrl("http://evil.example/x.js")).toBe(false);
     // A protocol-relative URL resolves to a different origin → rejected.
     expect(isSameOriginBundleUrl("//evil.example/x.js")).toBe(false);
+  });
+
+  it("accepts the active authenticated API origin used by paired previews", () => {
+    activeApiBase.value = "http://127.0.0.1:12488";
+
+    expect(
+      isSameOriginBundleUrl(
+        "http://127.0.0.1:12488/api/views/calendar/bundle.js",
+      ),
+    ).toBe(true);
+    expect(
+      isSameOriginBundleUrl(
+        "http://127.0.0.1:12489/api/views/calendar/bundle.js",
+      ),
+    ).toBe(false);
   });
 
   it("erases the test import hook from production builds before the origin gate", async () => {
@@ -144,13 +164,268 @@ describe("host-external importer resolution (factory hostImport)", () => {
   });
 });
 
-const { sendWsMessage } = vi.hoisted(() => ({
-  sendWsMessage: vi.fn(),
-}));
+const { activeApiBase, activeCredential, rawRequest, sendWsMessage } =
+  vi.hoisted(() => ({
+    activeApiBase: { value: "" },
+    activeCredential: "credential-must-never-enter-a-url",
+    rawRequest: vi.fn(),
+    sendWsMessage: vi.fn(),
+  }));
 
 vi.mock("../../api", () => ({
-  client: { sendWsMessage },
+  client: {
+    get baseUrl() {
+      return activeApiBase.value;
+    },
+    apiToken: activeCredential,
+    rawRequest,
+    sendWsMessage,
+  },
 }));
+
+describe("authenticated protected view bundle loading", () => {
+  const secret = activeCredential;
+
+  beforeEach(() => {
+    activeApiBase.value = "";
+    rawRequest.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("fails closed on 401 without importing the response body", async () => {
+    rawRequest.mockResolvedValue(
+      new Response('{"error":"unauthorized"}', {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const moduleImporter = vi.fn();
+
+    await expect(
+      importAuthenticatedViewBundle(
+        "/api/views/calendar/bundle.js?hostExternalRuntime=1",
+        moduleImporter,
+      ),
+    ).rejects.toThrow("HTTP 401");
+
+    expect(moduleImporter).not.toHaveBeenCalled();
+  });
+
+  it("imports a valid JavaScript response from a temporary URL and always revokes it", async () => {
+    rawRequest.mockResolvedValue(
+      new Response("export default () => null", {
+        status: 200,
+        headers: { "content-type": "application/javascript; charset=utf-8" },
+      }),
+    );
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:http://localhost/view-bundle");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
+    const loaded = { default: () => null };
+    const moduleImporter = vi.fn(async () => loaded);
+
+    await expect(
+      importAuthenticatedViewBundle(
+        "/api/views/calendar/bundle.js?hostExternalRuntime=1",
+        moduleImporter,
+      ),
+    ).resolves.toBe(loaded);
+
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(moduleImporter).toHaveBeenCalledWith(
+      "blob:http://localhost/view-bundle",
+    );
+    expect(revokeObjectURL).toHaveBeenCalledWith(
+      "blob:http://localhost/view-bundle",
+    );
+  });
+
+  it("allows a slow authenticated bundle download beyond the generic read timeout", async () => {
+    vi.useFakeTimers();
+    rawRequest.mockImplementation(
+      async (
+        _path: string,
+        _init: RequestInit,
+        options: { timeoutMs?: number },
+      ) =>
+        new Promise<Response>((resolve, reject) => {
+          let timeoutId: ReturnType<typeof setTimeout>;
+          const responseId = setTimeout(() => {
+            clearTimeout(timeoutId);
+            resolve(
+              new Response("export default () => null", {
+                status: 200,
+                headers: { "content-type": "application/javascript" },
+              }),
+            );
+          }, 11_000);
+          timeoutId = setTimeout(() => {
+            clearTimeout(responseId);
+            reject(new Error("bundle download timed out"));
+          }, options.timeoutMs ?? 10_000);
+        }),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue(
+      "blob:http://localhost/slow-view-bundle",
+    );
+    vi.spyOn(URL, "revokeObjectURL");
+    const loaded = { default: () => null };
+    const moduleImporter = vi.fn(async () => loaded);
+
+    const importPromise = importAuthenticatedViewBundle(
+      "/api/views/calendar/bundle.js?hostExternalRuntime=1",
+      moduleImporter,
+    );
+    await vi.advanceTimersByTimeAsync(11_000);
+
+    await expect(importPromise).resolves.toBe(loaded);
+  });
+
+  it.each([
+    ["HTML", { "content-type": "text/html; charset=utf-8" }],
+    ["a missing content type", {}],
+  ])(
+    "rejects a successful %s response before module evaluation",
+    async (_, headers) => {
+      rawRequest.mockResolvedValue(
+        new Response("export default () => null", { status: 200, headers }),
+      );
+      const moduleImporter = vi.fn();
+
+      await expect(
+        importAuthenticatedViewBundle(
+          "/api/views/calendar/bundle.js?hostExternalRuntime=1",
+          moduleImporter,
+        ),
+      ).rejects.toThrow("response was not JavaScript");
+
+      expect(moduleImporter).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refuses an unrelated absolute origin before the API client sees it", async () => {
+    activeApiBase.value = "http://127.0.0.1:12488";
+    const moduleImporter = vi.fn();
+
+    await expect(
+      importAuthenticatedViewBundle(
+        "https://untrusted.example/api/views/calendar/bundle.js",
+        moduleImporter,
+      ),
+    ).rejects.toThrow("cross-origin view bundle");
+
+    expect(rawRequest).not.toHaveBeenCalled();
+    expect(moduleImporter).not.toHaveBeenCalled();
+  });
+
+  it("routes an active API-origin URL through the authenticated path transport", async () => {
+    activeApiBase.value = "http://127.0.0.1:12488";
+    rawRequest.mockResolvedValue(
+      new Response("export default () => null", {
+        status: 200,
+        headers: { "content-type": "application/javascript" },
+      }),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue(
+      "blob:http://localhost/paired-view-bundle",
+    );
+    vi.spyOn(URL, "revokeObjectURL");
+    const moduleImporter = vi.fn(async () => ({ default: () => null }));
+
+    await importAuthenticatedViewBundle(
+      "http://127.0.0.1:12488/api/views/notes/bundle.js?v=paired",
+      moduleImporter,
+    );
+
+    expect(rawRequest).toHaveBeenCalledWith(
+      "/api/views/notes/bundle.js?v=paired",
+      { headers: { Accept: "application/javascript" } },
+      expect.objectContaining({ allowNonOk: true }),
+    );
+  });
+
+  it("revokes the temporary URL when module evaluation fails", async () => {
+    rawRequest.mockResolvedValue(
+      new Response("throw new Error('invalid bundle')", {
+        status: 200,
+        headers: { "content-type": "application/javascript" },
+      }),
+    );
+    vi.spyOn(URL, "createObjectURL").mockReturnValue(
+      "blob:http://localhost/invalid-view-bundle",
+    );
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
+    const moduleImporter = vi.fn(async () => {
+      throw new Error("module evaluation failed");
+    });
+
+    await expect(
+      importAuthenticatedViewBundle(
+        "/api/views/calendar/bundle.js?hostExternalRuntime=1",
+        moduleImporter,
+      ),
+    ).rejects.toThrow("module evaluation failed");
+
+    expect(revokeObjectURL).toHaveBeenCalledWith(
+      "blob:http://localhost/invalid-view-bundle",
+    );
+  });
+
+  it("re-fetches on reload without putting the active credential in any URL", async () => {
+    rawRequest.mockImplementation(
+      async () =>
+        new Response("export default () => null", {
+          status: 200,
+          headers: { "content-type": "text/javascript" },
+        }),
+    );
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:http://localhost/view-bundle-1")
+      .mockReturnValueOnce("blob:http://localhost/view-bundle-2");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
+    const moduleImporter = vi.fn(async () => ({ default: () => null }));
+    const bundleUrl = "/api/views/notes/bundle.js?v=known-content";
+
+    await importAuthenticatedViewBundle(bundleUrl, moduleImporter);
+    await importAuthenticatedViewBundle(bundleUrl, moduleImporter);
+
+    expect(rawRequest).toHaveBeenCalledTimes(2);
+    expect(rawRequest).toHaveBeenNthCalledWith(
+      1,
+      bundleUrl,
+      { headers: { Accept: "application/javascript" } },
+      expect.objectContaining({ allowNonOk: true }),
+    );
+    const serializedCalls = JSON.stringify([
+      rawRequest.mock.calls,
+      createObjectURL.mock.calls,
+      moduleImporter.mock.calls,
+    ]);
+    expect(serializedCalls).not.toContain(secret);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects credential-bearing query parameters before the API client sees them", async () => {
+    const moduleImporter = vi.fn();
+
+    await expect(
+      importAuthenticatedViewBundle(
+        `/api/views/notes/bundle.js?access_token=${secret}`,
+        moduleImporter,
+      ),
+    ).rejects.toThrow("embedded credentials");
+
+    expect(rawRequest).not.toHaveBeenCalled();
+    expect(moduleImporter).not.toHaveBeenCalled();
+  });
+});
 
 const AGENT_SURFACE_MANIFEST = { capabilities: ["agent-surface"] } as const;
 
@@ -173,6 +448,7 @@ describe("DynamicViewLoader", () => {
   afterEach(() => {
     delete window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__;
     sendWsMessage.mockClear();
+    rawRequest.mockReset();
     cleanup();
     __resetDynamicViewLoaderCacheForTests();
     vi.restoreAllMocks();
@@ -779,7 +1055,7 @@ describe("DynamicViewLoader", () => {
       });
     }
 
-    const bundleUrl = "https://capability.example.test/assets/hmr.js";
+    const bundleUrl = `${window.location.origin}/assets/hmr.js`;
     const cleanupVersion1 = vi.fn();
     const interactVersion1 = vi.fn(async () => ({ version: 1 }));
     const interactVersion2 = vi.fn(async () => ({ version: 2 }));
@@ -795,15 +1071,15 @@ describe("DynamicViewLoader", () => {
         cleanup: version === 1 ? cleanupVersion1 : undefined,
       };
     });
-    const fetchHead = vi
-      .fn()
+    rawRequest
       .mockResolvedValueOnce({
+        ok: true,
         headers: { get: (name: string) => (name === "etag" ? "v1" : null) },
       })
       .mockResolvedValueOnce({
+        ok: true,
         headers: { get: (name: string) => (name === "etag" ? "v2" : null) },
       });
-    vi.stubGlobal("fetch", fetchHead);
 
     const rendered = render(
       <DynamicViewLoader
@@ -820,7 +1096,11 @@ describe("DynamicViewLoader", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(fetchHead).toHaveBeenCalledWith(bundleUrl, { method: "HEAD" });
+    expect(rawRequest).toHaveBeenCalledWith(
+      "/assets/hmr.js",
+      { method: "HEAD" },
+      { allowNonOk: true },
+    );
     expect(screen.getByText("HMR version 1")).toBeTruthy();
 
     await act(async () => {
@@ -857,13 +1137,13 @@ describe("DynamicViewLoader", () => {
       result: { version: 2 },
     });
 
-    fetchHead.mockClear();
+    rawRequest.mockClear();
     rendered.unmount();
     await act(async () => {
       vi.advanceTimersByTime(6000);
       await Promise.resolve();
     });
-    expect(fetchHead).not.toHaveBeenCalled();
+    expect(rawRequest).not.toHaveBeenCalled();
   });
 
   it("unregisters the previous interact handler when the loaded view is replaced", async () => {

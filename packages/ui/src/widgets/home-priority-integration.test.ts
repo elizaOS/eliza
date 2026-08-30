@@ -70,6 +70,7 @@ describe("home priority - real declarations + ranker scenario (#9143)", () => {
       "finances/finances.alerts",
       "relationships/relationships.attention",
       "inbox/inbox.unread",
+      "needs-attention/needs-attention.pending",
     ]) {
       expect(byKey.has(key), `${key} should not resolve on home`).toBe(false);
     }
@@ -96,8 +97,8 @@ describe("home priority - real declarations + ranker scenario (#9143)", () => {
     const top3 = order.slice(0, 3);
 
     // The Today card rides its merged goal's self-published escalation signal.
-    // Notifications remain in the pinned notification center and do not spawn
-    // a second resident card in the ranked home grid.
+    // Approval notifications stay in the pinned notification center instead
+    // of producing a second ranked Home card.
     expect(top3).toContain("todo/todo.items");
     expect(order).not.toContain("needs-attention/needs-attention.pending");
 
@@ -151,7 +152,7 @@ describe("home priority - real declarations + ranker scenario (#9143)", () => {
     );
   });
 
-  it("with no live signals, ranks purely by base order (quiet home)", () => {
+  it("with no live signals, omits the duplicate needs-response resident", () => {
     const order = rankedKeys([]);
     expect(order).not.toContain("needs-attention/needs-attention.pending");
     expect(order).toContain("calendar/calendar.upcoming");
