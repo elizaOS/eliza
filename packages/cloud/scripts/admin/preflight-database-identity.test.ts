@@ -318,8 +318,11 @@ describe("standalone database identity reporter", () => {
       createClient: async () =>
         runtimeClient({
           connect: async () => {
-            throw new Error(
-              "connection to raw-host as raw-role for raw-database failed",
+            throw Object.assign(
+              new Error(
+                "connection to raw-host as raw-role for raw-database failed",
+              ),
+              { code: "ECONNREFUSED" },
             );
           },
           end: async () => {
@@ -335,7 +338,7 @@ describe("standalone database identity reporter", () => {
     expect(exitCode).toBe(1);
     expect(ended).toBe(true);
     expect(diagnostics.join("")).toContain(
-      "database identity report unavailable; inspect protected operator logs",
+      "database identity report unavailable; category=database_connection_failed",
     );
     expect(diagnostics.join("")).not.toMatch(
       /raw-(?:host|role|database)|raw-password/,
@@ -365,7 +368,11 @@ describe("standalone database identity reporter", () => {
     expect(exitCode).toBe(1);
     expect(ended).toBe(true);
     expect(publishedStatus).toBe(
-      JSON.stringify({ status: "unavailable", mismatches: [] }),
+      JSON.stringify({
+        status: "unavailable",
+        mismatches: [],
+        failureCategory: "database_query_failed",
+      }),
     );
     expect(publishedStatus).not.toContain("raw-");
   });
@@ -391,7 +398,7 @@ describe("standalone database identity reporter", () => {
     expect(exitCode).toBe(1);
     expect(ended).toBe(true);
     expect(diagnostics.join("")).toContain(
-      "database identity report unavailable; inspect protected operator logs",
+      "database identity report unavailable; category=operator_setup_failed",
     );
     expect(diagnostics.join("")).not.toMatch(
       /raw-(?:host|role|database)|raw-password/,
