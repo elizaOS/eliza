@@ -37,7 +37,10 @@ import {
   type RouteRequestMeta,
 } from "@elizaos/core";
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
-import { resolveOpenAIBaseURL } from "@elizaos/plugin-openai/endpoint-config";
+import {
+  isCerebrasMode,
+  resolveOpenAIBaseURL,
+} from "@elizaos/plugin-openai/endpoint-config";
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
@@ -621,6 +624,33 @@ function isUsableProviderCredential(value: unknown): boolean {
   );
 }
 
+function isConfiguredCerebrasMode(
+  runtime: AgentRuntime,
+  processEnv: NodeJS.ProcessEnv,
+): boolean {
+  try {
+    const settingsRuntime = new Proxy(runtime, {
+      get(target, property, receiver) {
+        if (property !== "getSetting") {
+          return Reflect.get(target, property, receiver);
+        }
+
+        return (key: string) => {
+          const runtimeValue = runtime.getSetting(key);
+          if (runtimeValue !== null && runtimeValue !== undefined) {
+            return runtimeValue;
+          }
+          return processEnv[key] ?? "";
+        };
+      },
+    });
+    return isCerebrasMode(settingsRuntime);
+  } catch {
+    // error-policy:J7 diagnostics must not kill the serving-truth resolver.
+    return false;
+  }
+}
+
 function hasDirectProviderServingEvidence(
   provider: string,
   processEnv: NodeJS.ProcessEnv,
@@ -629,7 +659,8 @@ function hasDirectProviderServingEvidence(
   const requirement = DIRECT_CHAT_SERVING_REQUIREMENTS[provider];
   if (
     !requirement ||
-    !hasTextHandlerRegistered(runtime, requirement.runtimeProvider)
+    !hasTextHandlerRegistered(runtime, requirement.runtimeProvider) ||
+    (provider === "cerebras" && !isConfiguredCerebrasMode(runtime, processEnv))
   ) {
     return false;
   }

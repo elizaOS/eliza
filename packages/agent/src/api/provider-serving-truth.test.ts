@@ -30,6 +30,8 @@ function cerebrasConfig(credential?: string): ElizaConfig {
 function runtimeWith(options: {
   credential?: string | null;
   openAiCredential?: string | null;
+  baseUrl?: string | null;
+  explicitProvider?: string | null;
   provider?: string;
   throwOnSetting?: string;
 }): AgentRuntime {
@@ -38,6 +40,8 @@ function runtimeWith(options: {
       if (key === options.throwOnSetting) throw new Error("lookup unavailable");
       if (key === "CEREBRAS_API_KEY") return options.credential ?? null;
       if (key === "OPENAI_API_KEY") return options.openAiCredential ?? null;
+      if (key === "OPENAI_BASE_URL") return options.baseUrl ?? null;
+      if (key === "ELIZA_PROVIDER") return options.explicitProvider ?? null;
       return null;
     },
     getModelRegistrations: () => [
@@ -104,9 +108,26 @@ describe("provider serving truth", () => {
       resolveActiveChat(
         cerebrasConfig(),
         {},
-        runtimeWith({ openAiCredential: "deterministic-fallback-credential" }),
+        runtimeWith({
+          openAiCredential: "deterministic-fallback-credential",
+          explicitProvider: "cerebras",
+        }),
       ),
     ).toMatchObject({ provider: "cerebras", family: "OPENAI" });
+  });
+
+  it("does not report Cerebras when plugin-openai resolves a non-Cerebras endpoint", () => {
+    expect(
+      resolveActiveChat(
+        cerebrasConfig(),
+        {},
+        runtimeWith({
+          credential: "deterministic-cerebras-credential",
+          openAiCredential: "deterministic-openai-credential",
+          baseUrl: "https://gateway.example/v1",
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("fails closed when runtime credential lookup throws despite an env key", () => {

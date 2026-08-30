@@ -799,7 +799,7 @@ describe("GET /api/models/config activeChat", () => {
     expect(responseOf(json).body).not.toHaveProperty("activeChat");
   });
 
-  it("uses Cerebras base URL unless the shared OpenAI override is configured", async () => {
+  it("uses the Cerebras base URL and fails closed for a non-Cerebras OpenAI override", async () => {
     const config = {
       serviceRouting: {
         llmText: {
@@ -832,9 +832,9 @@ describe("GET /api/models/config activeChat", () => {
       runtime: runtimeWithDirectHandler("openai"),
     });
     await handleModelConfigRoutes(openAiOverride.ctx as never);
-    expect(responseOf(openAiOverride.json).body.activeChat).toMatchObject({
-      endpoint: "gateway.example",
-    });
+    expect(responseOf(openAiOverride.json).body).not.toHaveProperty(
+      "activeChat",
+    );
   });
 
   it("matches provider endpoint precedence across config and process env", async () => {
