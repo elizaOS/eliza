@@ -18,8 +18,6 @@ import { readPostLockDatabaseNow } from "./primary-database-clock";
 export const DEFAULT_AGENT_BACKUP_ADMISSION_RETENTION_MS = 7 * 24 * 60 * 60_000;
 export const AGENT_BACKUP_ADMISSION_RESERVED_REASON = "CAPTURE_RESERVED" as const;
 
-const MIN_RETENTION_MS = 24 * 60 * 60_000;
-const MAX_RETENTION_MS = 365 * 24 * 60 * 60_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export interface AgentBackupAdmissionReservation {
@@ -53,15 +51,6 @@ function requireDate(value: Date, field: string): void {
   if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
     throw new Error(`${field} must be a valid Date`);
   }
-}
-
-function requireRetentionMs(value: number): number {
-  if (!Number.isSafeInteger(value) || value < MIN_RETENTION_MS || value > MAX_RETENTION_MS) {
-    throw new Error(
-      `retentionMs must be a safe integer between ${MIN_RETENTION_MS} and ${MAX_RETENTION_MS}`,
-    );
-  }
-  return value;
 }
 
 function validateClaim(claim: AgentBackupAdmissionClaim): void {
@@ -371,18 +360,16 @@ async function assertSettledReservationPayloadDigestMatches(params: {
 
 /**
  * Reserve `operationId = workId` and consume the exact admission fence in one
- * primary-database transaction. This repository performs no remote effect,
- * node-capacity mutation, provider discovery, or autoscaling.
+ * primary-database transaction. Scheduled admission has one canonical
+ * seven-day retention policy because no caller-selected policy is persisted in
+ * durable work. This repository performs no remote effect, node-capacity
+ * mutation, provider discovery, or autoscaling.
  */
 export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
   claim: AgentBackupAdmissionClaim;
-  retentionMs?: number;
 }): Promise<AgentBackupAdmissionReservation> {
   const claim = params.claim;
   validateClaim(claim);
-  const retentionMs = requireRetentionMs(
-    params.retentionMs ?? DEFAULT_AGENT_BACKUP_ADMISSION_RETENTION_MS,
-  );
 
   return dbWrite.transaction(async (tx) => {
     // This must remain the first lock: catalog capture paths lock an existing
@@ -455,7 +442,7 @@ export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
     }
     const retentionUntil = existingBackup?.retention_until
       ? existingBackup.retention_until
-      : new Date(databaseNow.getTime() + retentionMs);
+      : new Date(databaseNow.getTime() + DEFAULT_AGENT_BACKUP_ADMISSION_RETENTION_MS);
     const backup = await reserveAgentBackupOperationInTransaction(tx, {
       organizationId: claim.organizationId,
       agentId: claim.sandboxId,
