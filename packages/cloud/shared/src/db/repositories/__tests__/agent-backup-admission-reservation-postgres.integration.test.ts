@@ -1219,6 +1219,65 @@ describe("backup admission reservation on real PostgreSQL", () => {
   );
 
   realPostgresTest(
+    "fails closed when settled replay catalogue version, digest, or retention is altered",
+    async () => {
+      if (!reservationRepository || !control) {
+        throw new Error("real PostgreSQL reservation harness was not initialized");
+      }
+      const claim = await claimOne(60_000);
+      const first = await reservationRepository.reserveAndSettleAgentBackupAdmissionClaim({
+        claim,
+      });
+      const original = await control.query<{
+        catalog_payload_digest: string;
+        retention_until: Date;
+      }>(
+        `SELECT catalog_payload_digest, retention_until
+         FROM agent_sandbox_backups WHERE id = $1::uuid`,
+        [first.backupId],
+      );
+      const authority = original.rows[0];
+      if (!authority?.catalog_payload_digest || !(authority.retention_until instanceof Date)) {
+        throw new Error("Seeded reservation is missing its canonical payload authority");
+      }
+
+      await control.query(
+        `UPDATE agent_sandbox_backups SET catalog_payload_digest = $2 WHERE id = $1::uuid`,
+        [first.backupId, "f".repeat(64)],
+      );
+      await expect(
+        reservationRepository.reserveAndSettleAgentBackupAdmissionClaim({ claim }),
+      ).rejects.toThrow(/already reserved with a different payload/i);
+
+      await control.query(
+        `UPDATE agent_sandbox_backups
+         SET catalog_payload_digest = $2, retention_until = $3::timestamptz
+         WHERE id = $1::uuid`,
+        [
+          first.backupId,
+          authority.catalog_payload_digest,
+          new Date(authority.retention_until.getTime() + 1_000),
+        ],
+      );
+      await expect(
+        reservationRepository.reserveAndSettleAgentBackupAdmissionClaim({ claim }),
+      ).rejects.toThrow(/already reserved with a different payload/i);
+
+      await control.query(
+        `UPDATE agent_sandbox_backups
+         SET catalog_version = 1, catalog_state = 'legacy_unmigrated',
+             retention_until = $2::timestamptz
+         WHERE id = $1::uuid`,
+        [first.backupId, authority.retention_until],
+      );
+      await expect(
+        reservationRepository.reserveAndSettleAgentBackupAdmissionClaim({ claim }),
+      ).rejects.toThrow(/already reserved with a different payload/i);
+    },
+    TEST_TIMEOUT,
+  );
+
+  realPostgresTest(
     "serializes two callers without deadlock and commits one reservation",
     async () => {
       if (!reservationRepository || !control || !isolatedDsn) {

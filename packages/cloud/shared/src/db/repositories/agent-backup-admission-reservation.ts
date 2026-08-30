@@ -275,14 +275,15 @@ async function readSourceOccurrence(tx: DbTransaction, claim: AgentBackupAdmissi
   return source;
 }
 
-function assertPersistedReservationMatches(params: {
+async function assertPersistedReservationMatches(params: {
   backup: typeof agentSandboxBackups.$inferSelect;
   claim: AgentBackupAdmissionClaim;
   source: Awaited<ReturnType<typeof readSourceOccurrence>>;
-}): void {
+}): Promise<void> {
   const { backup, claim, source } = params;
   const sourceProvider = source.fleetKind === "robot" ? "operator-onboarded" : "hetzner-cloud";
   if (
+    backup.catalog_version !== 2 ||
     backup.backup_operation_id !== claim.workId ||
     backup.catalog_organization_id !== claim.organizationId ||
     backup.catalog_agent_id !== claim.sandboxId ||
@@ -307,6 +308,42 @@ function assertPersistedReservationMatches(params: {
     backup.catalog_state === null ||
     backup.catalog_revision <= 0n
   ) {
+    conflict("Backup admission operation was already reserved with a different payload");
+  }
+
+  // This mirrors agent-backup-catalog's canonical reservation projection. The
+  // catalogue helper is intentionally private today, but settled admission
+  // replay must still authenticate every immutable field, including the
+  // original database-owned retention timestamp, instead of trusting a merely
+  // present digest.
+  const canonicalPayload = JSON.stringify({
+    organizationId: claim.organizationId.toLowerCase(),
+    agentId: claim.sandboxId.toLowerCase(),
+    sandboxRecordId: claim.sandboxId.toLowerCase(),
+    operationId: claim.workId.toLowerCase(),
+    activationGeneration: claim.sourceActivationGeneration.toLowerCase(),
+    lifecycleRevision: claim.sourceLifecycleRevision,
+    snapshotType: "auto",
+    backupKind: "full",
+    parentBackupId: null,
+    baseBackupId: null,
+    sourceProvider,
+    sourceNodeRecordId: source.nodeRecordId.toLowerCase(),
+    sourceNodeId: source.nodeId,
+    sourceNodeIncarnation: source.nodeIncarnation,
+    sourceNodeHistoryId: source.nodeHistoryId,
+    sourceProviderServerId: source.providerServerId,
+    sourceProviderHandle: claim.sourceProviderHandle,
+    sourceContainerId: claim.sourceContainerId,
+    retentionReason: "schedule",
+    retentionUntil: backup.retention_until.toISOString(),
+  });
+  const canonicalBytes = new TextEncoder().encode(canonicalPayload);
+  const stableBytes = new Uint8Array(new ArrayBuffer(canonicalBytes.byteLength));
+  stableBytes.set(canonicalBytes);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", stableBytes));
+  const expectedDigest = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  if (backup.catalog_payload_digest !== expectedDigest) {
     conflict("Backup admission operation was already reserved with a different payload");
   }
 }
@@ -359,7 +396,7 @@ export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
       if (!existingBackup) {
         conflict("Settled backup admission work has no catalogue reservation");
       }
-      assertPersistedReservationMatches({ backup: existingBackup, claim, source });
+      await assertPersistedReservationMatches({ backup: existingBackup, claim, source });
       return {
         workId: claim.workId,
         operationId: claim.workId,
@@ -420,7 +457,7 @@ export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
     // reuse the same node incarnation while advancing current_node_history_id.
     // Fail before settlement so the tentative catalogue insert/revision rolls
     // back together with this old claim.
-    assertPersistedReservationMatches({ backup, claim, source });
+    await assertPersistedReservationMatches({ backup, claim, source });
 
     const [settled] = await tx
       .update(agentBackupAdmissionWork)
