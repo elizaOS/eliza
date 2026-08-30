@@ -356,8 +356,8 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
           signal: new AbortController().signal,
           deadlineEpochMs: Date.now() + 250,
         };
-        const deadlineFailure = await execution
-          .stageRecord(
+        const deadlineFailure = await Promise.resolve(
+          execution.stageRecord(
             session,
             {
               componentIndex: 0,
@@ -368,11 +368,11 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
               payload: new TextEncoder().encode("must-not-land-after-deadline"),
             },
             deadlineControl,
-          )
-          .then(
-            () => null,
-            (cause: unknown) => cause,
-          );
+          ),
+        ).then(
+          () => null,
+          (cause: unknown) => cause,
+        );
         expect(deadlineFailure).toBeInstanceOf(DOMException);
         expect((deadlineFailure as DOMException).name).toBe("AbortError");
         await locker.query("COMMIT");
@@ -396,7 +396,8 @@ describe("restore-v3 candidate repository on real PostgreSQL", () => {
         };
         const recoveredFinish = await withLostNextCommitAcknowledgment({
           sqlState: "57P01",
-          run: () => execution.finishComponent(session, finishReceipt, operationControl),
+          run: () =>
+            Promise.resolve(execution.finishComponent(session, finishReceipt, operationControl)),
         });
         expect(recoveredFinish).toEqual(finishReceipt);
         await expect(
