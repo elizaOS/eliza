@@ -864,6 +864,10 @@ jobs:
               *'cannot clean invalid headscale node id'*) category='vpn_node_id_invalid' ;;
               *"cannot prove headscale node "*" absent after cleanup"*) category='vpn_absence_unproven' ;;
               *'vpn registration window remains open'*) category='vpn_registration_window_open' ;;
+              *'cannot recover vpn identity'*'without a node name'*) category='vpn_node_name_missing' ;;
+              *'cannot recover vpn identity'*'without a registration start time'*) category='vpn_registration_start_missing' ;;
+              *'cannot recover vpn identity'*'invalid registration start time'*) category='vpn_registration_start_invalid' ;;
+              *'cannot recover vpn identity'*'matching registrations'*) category='vpn_multiple_registrations' ;;
               *'cannot recover vpn identity'*) category='vpn_identity_invalid' ;;
               *"headscale api "*" failed: 401"*|*"headscale api "*" failed: 403"*) category='headscale_api_auth' ;;
               *"headscale api "*" failed:"*) category='headscale_api_failure' ;;
@@ -876,6 +880,7 @@ jobs:
               replacement_cleanup_unresolved replacement docker_sandbox docker_ssh secret receipt \
               inspect identity attempt container headscale vpn node authority mismatch \
               missing malformed unavailable invalid not_registered cannot_prove failed \
+              without registration matching \
               exit succeeded disappeared release allocation; do
               case "$signal:$lower" in
                 replacement_cleanup_unresolved:*'replacement cleanup is unresolved'*) matched=true ;;
