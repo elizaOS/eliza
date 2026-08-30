@@ -10,10 +10,10 @@ import { EndpointCard } from "./endpoint-card";
 const noop = () => {};
 
 const methodColors: Record<string, string> = {
-  GET: "bg-emerald-500/20 text-emerald-300",
+  GET: "bg-status-success-bg text-status-success",
   POST: "bg-accent/20 text-accent",
-  PUT: "bg-amber-500/20 text-amber-300",
-  DELETE: "bg-red-500/20 text-red-300",
+  PUT: "bg-status-warning-bg text-status-warning",
+  DELETE: "bg-destructive-subtle text-destructive",
 };
 
 const categoryIcons: Record<string, ReactNode> = {

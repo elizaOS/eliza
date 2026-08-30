@@ -27,12 +27,14 @@ function detectFor(
   availableCommands: string[],
   browserAvailable = true,
   driverName: "legacy" | "nutjs" = "legacy",
+  wayland = false,
 ) {
   const commands = new Set(availableCommands);
   return detectPlatformCapabilities({
     osName,
     commandExists: (command) => commands.has(command),
     driverName,
+    isWaylandSession: () => wayland,
     isBrowserAvailable: () => browserAvailable,
     shell: "/bin/zsh",
   });
@@ -84,6 +86,19 @@ describe("cross-platform computer-use capabilities", () => {
     });
   });
 
+  it("reports grim as the Wayland screenshot provider", () => {
+    const caps = detectFor("linux", ["grim"], true, "legacy", true);
+    expect(caps.screenshot).toEqual({
+      available: true,
+      tool: "grim (Wayland)",
+    });
+  });
+
+  it("does not report grim as an X11 provider", () => {
+    const caps = detectFor("linux", ["grim"], true, "legacy", false);
+    expect(caps.screenshot.available).toBe(false);
+  });
+
   it("reports no screenshot tool when none of import/scrot/gnome/ffmpeg exist", () => {
     const caps = detectFor("linux", []);
     expect(caps.screenshot.available).toBe(false);
@@ -117,7 +132,7 @@ describe("cross-platform computer-use capabilities", () => {
 
     expect(caps.screenshot).toMatchObject({
       available: false,
-      tool: "none (install ImageMagick, scrot, gnome-screenshot, or ffmpeg)",
+      tool: "none (install grim, ImageMagick, scrot, gnome-screenshot, or ffmpeg)",
     });
     expect(caps.computerUse).toMatchObject({
       available: false,

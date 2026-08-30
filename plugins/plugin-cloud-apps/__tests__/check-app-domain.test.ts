@@ -105,7 +105,7 @@ describe("CHECK_APP_DOMAIN", () => {
     expect(result?.userFacingText).toContain("not available");
   });
 
-  it("checks several domains in one ask, capped at three with an honest note", async () => {
+  it("checks every domain named in one ask", async () => {
     const runtime = keyedRuntime();
     const { calls } = trackChecks();
     const result = await checkAppDomainAction.handler?.(
@@ -115,8 +115,14 @@ describe("CHECK_APP_DOMAIN", () => {
       undefined,
       undefined,
     );
-    expect(calls.length).toBe(3);
-    expect(result?.userFacingText).toContain("I checked the first 3");
+    expect(calls.length).toBe(4);
+    expect(calls.map((call) => call.input.domain)).toEqual([
+      "a-one.com",
+      "b-two.com",
+      "c-three.com",
+      "d-four.com",
+    ]);
+    expect(result?.userFacingText).toContain("d-four.com is available");
   });
 
   it("falls back to any app for the quote when no reference matches (app-agnostic)", async () => {

@@ -131,31 +131,49 @@ jobs:
         run: |
           set -euo pipefail
           status_path="$RUNNER_TEMP/railway-status.json"
+          provider_stderr="$RUNNER_TEMP/railway-status.stderr"
+          transform_stderr="$RUNNER_TEMP/railway-status-transform.stderr"
+          umask 077
+          cleanup_target_query() {
+            local cleanup_paths=("$status_path" "$provider_stderr" "$transform_stderr")
+            if ! shred -u -- "${cleanup_paths[@]}" 2>/dev/null; then
+              rm -f -- "${cleanup_paths[@]}"
+            fi
+          }
+          trap cleanup_target_query EXIT
+
+          set +e
           railway status \
             --project "$RAILWAY_PROJECT_ID" \
             --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --json > "$status_path"
+            --json > "$status_path" 2> "$provider_stderr"
+          railway_status=$?
+          set -e
+          if [ "$railway_status" -ne 0 ]; then
+            echo "::error::Railway target query failed (category=railway-target-query-failed; exit=$railway_status; provider-output=suppressed)."
+            exit "$railway_status"
+          fi
 
-          jq -e --arg id "$RAILWAY_PROJECT_ID" '.id == $id' "$status_path" >/dev/null || {
-            echo "::error::RAILWAY_PROJECT_ID did not resolve to the selected project"
+          jq -e --arg id "$RAILWAY_PROJECT_ID" '.id == $id' "$status_path" >/dev/null 2>> "$transform_stderr" || {
+            echo "::error::Railway target contract failed (category=railway-target-project-mismatch; provider-output=suppressed)."
             exit 1
           }
           jq -e \
             --arg id "$RAILWAY_ENVIRONMENT_ID" \
             --arg name "$TARGET_ENVIRONMENT" \
             'any(.environments.edges[]; .node.id == $id and .node.name == $name)' \
-            "$status_path" >/dev/null || {
-            echo "::error::RAILWAY_ENVIRONMENT_ID is not the canonical $TARGET_ENVIRONMENT Railway environment"
+            "$status_path" >/dev/null 2>> "$transform_stderr" || {
+            echo "::error::Railway target contract failed (category=railway-target-environment-mismatch; provider-output=suppressed)."
             exit 1
           }
           jq -e \
             --arg id "$RAILWAY_SERVICE_ID" \
             'any(.services.edges[]; .node.id == $id and .node.name == "tunnel-proxy")' \
-            "$status_path" >/dev/null || {
-            echo "::error::RAILWAY_SERVICE_ID is not the tunnel-proxy service"
+            "$status_path" >/dev/null 2>> "$transform_stderr" || {
+            echo "::error::Railway target contract failed (category=railway-target-service-mismatch; provider-output=suppressed)."
             exit 1
           }
-          echo "Railway project, environment, and tunnel-proxy service identities match."
+          echo "Railway target verified (category=railway-target-verified; provider-output=suppressed)."
 
       - name: Install control-plane SSH identity
         id: ssh
@@ -183,6 +201,18 @@ jobs:
           TUNNEL_HOSTNAME_SIGNING_SECRET: ${{ secrets.TUNNEL_HOSTNAME_SIGNING_SECRET }}
         run: |
           set -euo pipefail
+          provider_stdout="$RUNNER_TEMP/railway-variables.stdout"
+          provider_stderr="$RUNNER_TEMP/railway-variables.stderr"
+          umask 077
+          cleanup_variable_output() {
+            local cleanup_paths=("$provider_stdout" "$provider_stderr")
+            if ! shred -u -- "${cleanup_paths[@]}" 2>/dev/null; then
+              rm -f -- "${cleanup_paths[@]}"
+            fi
+          }
+          trap cleanup_variable_output EXIT
+
+          set +e
           railway variable set \
             "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
             "TUNNEL_PROXY_HOST=$TUNNEL_PROXY_HOST" \
@@ -194,7 +224,15 @@ jobs:
             --environment "$RAILWAY_ENVIRONMENT_ID" \
             --service "$RAILWAY_SERVICE_ID" \
             --skip-deploys \
-            --json >/dev/null
+            --json > "$provider_stdout" 2> "$provider_stderr"
+          railway_status=$?
+          set -e
+          if [ "$railway_status" -ne 0 ]; then
+            echo "::error::Railway variable publish failed (category=railway-variables-config-failed; exit=$railway_status; provider-output=suppressed)."
+            exit "$railway_status"
+          fi
+
+          set +e
           printf '%s' "$TUNNEL_HOSTNAME_SIGNING_SECRET" | railway variable set \
             TUNNEL_HOSTNAME_SIGNING_SECRET \
             --stdin \
@@ -202,8 +240,14 @@ jobs:
             --environment "$RAILWAY_ENVIRONMENT_ID" \
             --service "$RAILWAY_SERVICE_ID" \
             --skip-deploys \
-            --json >/dev/null
-          echo "Canonical non-secret variables and the protected signing secret were published without printing values."
+            --json > "$provider_stdout" 2> "$provider_stderr"
+          railway_status=$?
+          set -e
+          if [ "$railway_status" -ne 0 ]; then
+            echo "::error::Railway variable publish failed (category=railway-variables-secret-failed; exit=$railway_status; provider-output=suppressed)."
+            exit "$railway_status"
+          fi
+          echo "Railway variables published (category=railway-variables-published; values=suppressed; provider-output=suppressed)."
 
       - name: Converge persistent tsnet volume
         shell: bash
@@ -215,40 +259,80 @@ jobs:
             --service "$RAILWAY_SERVICE_ID"
           )
           volumes_path="$RUNNER_TEMP/railway-volumes.json"
+          mutation_stdout="$RUNNER_TEMP/railway-volume-mutation.stdout"
+          provider_stderr="$RUNNER_TEMP/railway-volume.stderr"
+          transform_stderr="$RUNNER_TEMP/railway-volume-transform.stderr"
           target_mount="/var/lib/tunnel-proxy"
+          umask 077
+          cleanup_volume_output() {
+            local cleanup_paths=(
+              "$volumes_path"
+              "$mutation_stdout"
+              "$provider_stderr"
+              "$transform_stderr"
+            )
+            if ! shred -u -- "${cleanup_paths[@]}" 2>/dev/null; then
+              rm -f -- "${cleanup_paths[@]}"
+            fi
+          }
+          trap cleanup_volume_output EXIT
 
-          railway volume "${volume_args[@]}" list --json > "$volumes_path"
-          service_volume_count=$(jq \
-            '[.volumes[] | select(.deletedAt == null and .serviceName == "tunnel-proxy")] | length' \
-            "$volumes_path")
-          target_mount_count=$(jq --arg mount "$target_mount" \
-            '[.volumes[] | select(.deletedAt == null and .mountPath == $mount)] | length' \
-            "$volumes_path")
+          run_volume_list() {
+            set +e
+            railway volume "${volume_args[@]}" list --json \
+              > "$volumes_path" 2> "$provider_stderr"
+            railway_status=$?
+            set -e
+            if [ "$railway_status" -ne 0 ]; then
+              echo "::error::Railway volume query failed (category=railway-volume-query-failed; exit=$railway_status; provider-output=suppressed)."
+              exit "$railway_status"
+            fi
+          }
+
+          project_volume_counts() {
+            service_volume_count=$(jq \
+              '[.volumes[] | select(.deletedAt == null and .serviceName == "tunnel-proxy")] | length' \
+              "$volumes_path" 2>> "$transform_stderr") || {
+              echo "::error::Railway volume projection failed (category=railway-volume-projection-failed; provider-output=suppressed)."
+              exit 1
+            }
+            target_mount_count=$(jq --arg mount "$target_mount" \
+              '[.volumes[] | select(.deletedAt == null and .mountPath == $mount)] | length' \
+              "$volumes_path" 2>> "$transform_stderr") || {
+              echo "::error::Railway volume projection failed (category=railway-volume-projection-failed; provider-output=suppressed)."
+              exit 1
+            }
+          }
+
+          run_volume_list
+          project_volume_counts
 
           if [ "$service_volume_count" -gt 1 ] || [ "$target_mount_count" -gt 1 ]; then
-            echo "::error::tunnel-proxy must have exactly one persistent Railway volume"
+            echo "::error::Railway volume contract failed (category=railway-volume-duplicate; values=suppressed)."
             exit 1
           fi
           if [ "$service_volume_count" = "1" ] && [ "$target_mount_count" = "0" ]; then
-            echo "::error::the existing tunnel-proxy volume is mounted at the wrong path"
+            echo "::error::Railway volume contract failed (category=railway-volume-mount-mismatch; values=suppressed)."
             exit 1
           fi
           if [ "$service_volume_count" = "0" ] && [ "$target_mount_count" = "0" ]; then
+            set +e
             railway volume "${volume_args[@]}" add \
               --mount-path "$target_mount" \
-              --json >/dev/null
+              --json > "$mutation_stdout" 2> "$provider_stderr"
+            railway_status=$?
+            set -e
+            if [ "$railway_status" -ne 0 ]; then
+              echo "::error::Railway volume mutation failed (category=railway-volume-create-failed; exit=$railway_status; provider-output=suppressed)."
+              exit "$railway_status"
+            fi
           fi
 
           for attempt in $(seq 1 30); do
-            railway volume "${volume_args[@]}" list --json > "$volumes_path"
-            service_volume_count=$(jq \
-              '[.volumes[] | select(.deletedAt == null and .serviceName == "tunnel-proxy")] | length' \
-              "$volumes_path")
-            target_mount_count=$(jq --arg mount "$target_mount" \
-              '[.volumes[] | select(.deletedAt == null and .mountPath == $mount)] | length' \
-              "$volumes_path")
+            run_volume_list
+            project_volume_counts
             if [ "$service_volume_count" -gt 1 ] || [ "$target_mount_count" -gt 1 ]; then
-              echo "::error::tunnel-proxy volume convergence produced duplicate volumes"
+              echo "::error::Railway volume contract failed (category=railway-volume-duplicate; values=suppressed)."
               exit 1
             fi
             if jq -e --arg mount "$target_mount" \
@@ -257,12 +341,12 @@ jobs:
                 .serviceName == "tunnel-proxy" and
                 .mountPath == $mount and
                 .status == "Ready"
-              )] | length == 1' "$volumes_path" >/dev/null; then
-              echo "Persistent tsnet state volume is mounted at $target_mount."
+              )] | length == 1' "$volumes_path" >/dev/null 2>> "$transform_stderr"; then
+              echo "Railway volume ready (category=railway-volume-ready; attempt=$attempt; provider-output=suppressed)."
               break
             fi
             if [ "$attempt" = "30" ]; then
-              echo "::error::tunnel-proxy volume did not become ready at $target_mount"
+              echo "::error::Railway volume did not become ready (category=railway-volume-timeout; attempts=30; provider-output=suppressed)."
               exit 1
             fi
             sleep 2
@@ -277,6 +361,8 @@ jobs:
         run: |
           set -euo pipefail
           payload_path="$RUNNER_TEMP/tunnel-proxy-headscale-key.json"
+          railway_stdout="$RUNNER_TEMP/railway-proxy-key.stdout"
+          railway_stderr="$RUNNER_TEMP/railway-proxy-key.stderr"
           umask 077
           published=false
           new_id=""
@@ -292,10 +378,12 @@ jobs:
                 -o ConnectTimeout=15 \
                 "deploy@$DEPLOY_HOST" \
                 "sudo headscale preauthkeys expire --id $new_id -o json >/dev/null" \
+                >/dev/null 2>&1 \
                 || echo "::warning::Could not expire the unpublished replacement Headscale key"
             fi
-            if [ -f "$payload_path" ]; then
-              shred -u "$payload_path"
+            local cleanup_paths=("$payload_path" "$railway_stdout" "$railway_stderr")
+            if ! shred -u -- "${cleanup_paths[@]}" 2>/dev/null; then
+              rm -f -- "${cleanup_paths[@]}"
             fi
             exit "$status"
           }
@@ -344,6 +432,7 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$new_key"
+          set +e
           printf '%s' "$new_key" | railway variable set \
             TUNNEL_PROXY_TS_AUTHKEY \
             --stdin \
@@ -351,24 +440,56 @@ jobs:
             --environment "$RAILWAY_ENVIRONMENT_ID" \
             --service "$RAILWAY_SERVICE_ID" \
             --skip-deploys \
-            --json >/dev/null
+            --json > "$railway_stdout" 2> "$railway_stderr"
+          railway_status=$?
+          set -e
+          if [ "$railway_status" -ne 0 ]; then
+            echo "::error::Railway proxy credential publish failed (category=railway-proxy-key-publish-failed; exit=$railway_status; provider-output=suppressed)."
+            exit "$railway_status"
+          fi
           published=true
           unset new_key
           echo "old_ids=$old_ids" >> "$GITHUB_OUTPUT"
-          echo "A reusable tag:eliza-proxy key was minted and published without printing its value."
+          echo "Proxy credential published (category=railway-proxy-key-published; value=suppressed; provider-output=suppressed)."
 
       - name: Deploy tunnel-proxy source to Railway
         working-directory: packages/cloud/services/tunnel-proxy
         shell: bash
         run: |
           set -euo pipefail
+          railway_stdout="$RUNNER_TEMP/railway-up.stdout"
+          railway_stderr="$RUNNER_TEMP/railway-up.stderr"
+          umask 077
+          cleanup_railway_output() {
+            local cleanup_paths=("$railway_stdout" "$railway_stderr")
+            if ! shred -u -- "${cleanup_paths[@]}" 2>/dev/null; then
+              rm -f -- "${cleanup_paths[@]}"
+            fi
+          }
+          trap cleanup_railway_output EXIT
+
+          set +e
           railway up \
             --project "$RAILWAY_PROJECT_ID" \
             --environment "$RAILWAY_ENVIRONMENT_ID" \
             --service "$RAILWAY_SERVICE_ID" \
             --ci \
             --json \
-            --message "tunnel-proxy $GITHUB_SHA ($TARGET_ENVIRONMENT)"
+            --message "tunnel-proxy $GITHUB_SHA ($TARGET_ENVIRONMENT)" \
+            > "$railway_stdout" 2> "$railway_stderr"
+          railway_status=$?
+          set -e
+          if [ "$railway_status" -ne 0 ]; then
+            echo "::error::Railway tunnel-proxy deploy failed (category=railway-deploy-failed; exit=$railway_status; provider-output=suppressed)."
+            exit "$railway_status"
+          fi
+          {
+            echo "### Tunnel proxy deployment receipt"
+            echo
+            echo "- Railway deploy: passed"
+            echo "- Provider output: suppressed"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Railway tunnel-proxy deploy passed (category=railway-deploy-passed; provider-output=suppressed)."
 
       - name: Converge exact Railway custom domains
         id: domains
@@ -381,20 +502,61 @@ jobs:
             --service "$RAILWAY_SERVICE_ID"
           )
           domains_path="$RUNNER_TEMP/railway-domains.json"
+          created_path="$RUNNER_TEMP/railway-domain-created.json"
+          provider_stderr="$RUNNER_TEMP/railway-domain-converge.stderr"
+          transform_stderr="$RUNNER_TEMP/railway-domain-converge-transform.stderr"
+          umask 077
+          cleanup_domain_converge() {
+            local cleanup_paths=(
+              "$domains_path"
+              "$created_path"
+              "$provider_stderr"
+              "$transform_stderr"
+            )
+            if ! shred -u -- "${cleanup_paths[@]}" 2>/dev/null; then
+              rm -f -- "${cleanup_paths[@]}"
+            fi
+          }
+          trap cleanup_domain_converge EXIT
           created=false
-          for domain in "$TUNNEL_PROXY_HOST" "*.$TUNNEL_PROXY_HOST"; do
-            railway domain list "${domain_args[@]}" --json > "$domains_path"
-            if jq -e --arg domain "$domain" \
+          for domain_role in apex wildcard; do
+            case "$domain_role" in
+              apex) requested_domain="$TUNNEL_PROXY_HOST" ;;
+              wildcard) requested_domain="*.$TUNNEL_PROXY_HOST" ;;
+            esac
+            set +e
+            railway domain list "${domain_args[@]}" --json \
+              > "$domains_path" 2> "$provider_stderr"
+            railway_status=$?
+            set -e
+            if [ "$railway_status" -ne 0 ]; then
+              echo "::error::Railway domain inventory failed (category=railway-domain-list-failed; role=$domain_role; exit=$railway_status; provider-output=suppressed)."
+              exit "$railway_status"
+            fi
+            if ! jq -e '.domains | type == "array"' \
+              "$domains_path" >/dev/null 2>> "$transform_stderr"; then
+              echo "::error::Railway domain inventory is invalid (category=railway-domain-list-invalid; role=$domain_role; provider-output=suppressed)."
+              exit 1
+            fi
+            if jq -e --arg domain "$requested_domain" \
               'any(.domains[]; .domain == $domain and .type == "custom" and .targetPort == 8080)' \
-              "$domains_path" >/dev/null; then
+              "$domains_path" >/dev/null 2>> "$transform_stderr"; then
+              echo "Railway custom domain already attached (category=railway-domain-present; role=$domain_role; provider-output=suppressed)."
               continue
             fi
-            railway domain "$domain" \
+            set +e
+            railway domain "$requested_domain" \
               --port 8080 \
               "${domain_args[@]}" \
-              --json > "$RUNNER_TEMP/railway-domain-created.json"
+              --json > "$created_path" 2> "$provider_stderr"
+            railway_status=$?
+            set -e
+            if [ "$railway_status" -ne 0 ]; then
+              echo "::error::Railway custom-domain mutation failed (category=railway-domain-create-failed; role=$domain_role; exit=$railway_status; provider-output=suppressed)."
+              exit "$railway_status"
+            fi
             created=true
-            echo "Attached Railway custom domain $domain; external DNS verification is still required."
+            echo "Railway custom domain attached (category=railway-domain-created; role=$domain_role; provider-output=suppressed)."
           done
           echo "created=$created" >> "$GITHUB_OUTPUT"
 
@@ -413,13 +575,47 @@ jobs:
           configured="$RUNNER_TEMP/configured-railway-tunnel-dns-records.json"
           normalized_inventory="$RUNNER_TEMP/normalized-railway-tunnel-dns-records.json"
           normalized_configured="$RUNNER_TEMP/normalized-configured-railway-tunnel-dns-records.json"
+          provider_stderr="$RUNNER_TEMP/railway-tunnel-domain-status.stderr"
+          transform_stderr="$RUNNER_TEMP/railway-tunnel-dns-transform.stderr"
+          umask 077
+          cleanup_dns_handoff() {
+            local cleanup_paths=(
+              "$apex_status" \
+              "$wildcard_status" \
+              "$inventory" \
+              "$configured" \
+              "$normalized_inventory" \
+              "$normalized_configured" \
+              "$provider_stderr" \
+              "$transform_stderr"
+            )
+            if ! shred -u -- "${cleanup_paths[@]}" 2>/dev/null; then
+              rm -f -- "${cleanup_paths[@]}"
+            fi
+          }
+          trap cleanup_dns_handoff EXIT
 
-          railway domain status "$TUNNEL_PROXY_HOST" \
-            "${domain_args[@]}" --json > "$apex_status"
-          railway domain status "*.$TUNNEL_PROXY_HOST" \
-            "${domain_args[@]}" --json > "$wildcard_status"
+          run_domain_status() {
+            local domain_role="$1"
+            local requested_domain="$2"
+            local output_path="$3"
+            set +e
+            railway domain status "$requested_domain" \
+              "${domain_args[@]}" --json \
+              > "$output_path" 2>> "$provider_stderr"
+            railway_status=$?
+            set -e
+            if [ "$railway_status" -ne 0 ]; then
+              echo "::error::Railway domain status failed (category=railway-domain-status-failed; role=$domain_role; exit=$railway_status; provider-output=suppressed)."
+              exit "$railway_status"
+            fi
+            echo "Railway domain status received (category=railway-domain-status-received; role=$domain_role; provider-output=suppressed)."
+          }
 
-          jq -e -n \
+          run_domain_status apex "$TUNNEL_PROXY_HOST" "$apex_status"
+          run_domain_status wildcard "*.$TUNNEL_PROXY_HOST" "$wildcard_status"
+
+          if ! jq -e -n \
             --slurpfile apex "$apex_status" \
             --slurpfile wildcard "$wildcard_status" \
             --arg host "$TUNNEL_PROXY_HOST" '
@@ -517,33 +713,42 @@ jobs:
                     }
                 )
               | from_entries
-            ' > "$inventory"
+            ' > "$inventory" 2> "$transform_stderr"; then
+            echo "::error::Railway DNS inventory projection failed (category=dns-inventory-projection-failed; provider-output=suppressed)."
+            exit 1
+          fi
 
+          record_count=$(jq -er 'length' "$inventory" 2>> "$transform_stderr") || {
+            echo "::error::Railway DNS inventory count failed (category=dns-inventory-count-failed; provider-output=suppressed)."
+            exit 1
+          }
+          if [[ ! "$record_count" =~ ^[0-9]+$ ]] || [ "$record_count" -lt 1 ]; then
+            echo "::error::Railway DNS inventory count is invalid (category=dns-inventory-count-invalid; provider-output=suppressed)."
+            exit 1
+          fi
           {
-            echo "### Reviewed Railway tunnel DNS inventory"
+            echo "### Railway tunnel DNS handoff receipt"
             echo
-            echo "These are public DNS requirements, not runtime secrets. Copy the exact object to the protected \`RAILWAY_TUNNEL_DNS_RECORDS_JSON\` variable."
-            echo
-            echo '```json'
-            jq . "$inventory"
-            echo '```'
+            echo "- Inventory contract: generated"
+            echo "- Record count: $record_count"
+            echo "- Provider values: suppressed"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ -z "${RAILWAY_TUNNEL_DNS_RECORDS_JSON//[[:space:]]/}" ]; then
-            echo "::error::RAILWAY_TUNNEL_DNS_RECORDS_JSON is not configured on the protected $TARGET_ENVIRONMENT environment; copy the exact inventory from this run summary, apply pages-domains Terraform, and rerun."
+            echo "::error::Protected Railway DNS inventory is not configured (category=dns-inventory-unconfigured; values=suppressed). Review provider values through an authorized channel, apply pages-domains Terraform, and rerun."
             exit 1
           fi
           printf '%s' "$RAILWAY_TUNNEL_DNS_RECORDS_JSON" > "$configured"
-          jq -S -e . "$inventory" > "$normalized_inventory"
-          jq -S -e . "$configured" > "$normalized_configured" || {
-            echo "::error::RAILWAY_TUNNEL_DNS_RECORDS_JSON is not valid JSON"
+          jq -S -e . "$inventory" > "$normalized_inventory" 2>> "$transform_stderr"
+          jq -S -e . "$configured" > "$normalized_configured" 2>> "$transform_stderr" || {
+            echo "::error::Protected Railway DNS inventory is invalid (category=dns-inventory-invalid; values=suppressed)."
             exit 1
           }
           if ! cmp -s "$normalized_inventory" "$normalized_configured"; then
-            echo "::error::RAILWAY_TUNNEL_DNS_RECORDS_JSON does not exactly match Railway's current provider-owned DNS inventory; review the run summary, update the protected variable, apply pages-domains Terraform, and rerun."
+            echo "::error::Protected Railway DNS inventory does not match the provider projection (category=dns-inventory-mismatch; values=suppressed). Review provider values through an authorized channel, apply pages-domains Terraform, and rerun."
             exit 1
           fi
-          echo "Protected Railway tunnel DNS inventory exactly matches the provider response."
+          echo "Railway DNS inventory ready (category=dns-inventory-ready; records=$record_count; values=suppressed)."
 
       - name: Verify Railway domain ownership and certificates
         shell: bash
@@ -554,30 +759,60 @@ jobs:
             --environment "$RAILWAY_ENVIRONMENT_ID"
             --service "$RAILWAY_SERVICE_ID"
           )
-          for domain in "$TUNNEL_PROXY_HOST" "*.$TUNNEL_PROXY_HOST"; do
-            status_path="$RUNNER_TEMP/railway-domain-status.json"
+          status_path="$RUNNER_TEMP/railway-domain-verification.json"
+          provider_stderr="$RUNNER_TEMP/railway-domain-verification.stderr"
+          transform_stderr="$RUNNER_TEMP/railway-domain-verification-transform.stderr"
+          umask 077
+          cleanup_domain_verification() {
+            local cleanup_paths=("$status_path" "$provider_stderr" "$transform_stderr")
+            if ! shred -u -- "${cleanup_paths[@]}" 2>/dev/null; then
+              rm -f -- "${cleanup_paths[@]}"
+            fi
+          }
+          trap cleanup_domain_verification EXIT
+
+          for domain_role in apex wildcard; do
+            case "$domain_role" in
+              apex) requested_domain="$TUNNEL_PROXY_HOST" ;;
+              wildcard) requested_domain="*.$TUNNEL_PROXY_HOST" ;;
+            esac
             ready=false
-            for _ in $(seq 1 30); do
-              railway domain status "$domain" "${domain_args[@]}" --json > "$status_path"
-              if jq -e --arg domain "$domain" \
+            for attempt in $(seq 1 30); do
+              set +e
+              railway domain status "$requested_domain" \
+                "${domain_args[@]}" --json \
+                > "$status_path" 2> "$provider_stderr"
+              railway_status=$?
+              set -e
+              if [ "$railway_status" -ne 0 ]; then
+                echo "::error::Railway domain verification query failed (category=railway-domain-verification-query-failed; role=$domain_role; exit=$railway_status; provider-output=suppressed)."
+                exit "$railway_status"
+              fi
+              if ! jq -e '.domain | type == "object"' \
+                "$status_path" >/dev/null 2>> "$transform_stderr"; then
+                echo "::error::Railway domain verification response is invalid (category=railway-domain-verification-invalid; role=$domain_role; provider-output=suppressed)."
+                exit 1
+              fi
+              if jq -e --arg domain "$requested_domain" \
                 '.domain.domain == $domain
                   and .domain.type == "custom"
                   and .domain.targetPort == 8080
                   and .domain.syncStatus == "ACTIVE"
                   and .domain.verification.verified == true
                   and .domain.certificate.status == "CERTIFICATE_STATUS_TYPE_VALID"' \
-                "$status_path" >/dev/null; then
+                "$status_path" >/dev/null 2>> "$transform_stderr"; then
                 ready=true
+                echo "Railway domain verified (category=railway-domain-verified; role=$domain_role; attempt=$attempt; provider-output=suppressed)."
                 break
               fi
               sleep 10
             done
             if [ "$ready" != "true" ]; then
-              echo "::error::Railway domain $domain is not DNS-verified with an issued certificate. Copy its exact CNAME/TXT inventory to the protected RAILWAY_TUNNEL_DNS_RECORDS_JSON variable, apply the pages-domains Terraform plan, then rerun."
+              echo "::error::Railway domain verification timed out (category=railway-domain-verification-timeout; role=$domain_role; attempts=30; provider-output=suppressed)."
               exit 1
             fi
           done
-          echo "Both canonical Railway custom domains are verified with issued certificates."
+          echo "Railway custom domains verified (category=railway-domains-verified; provider-output=suppressed)."
 
       - name: Verify canonical health and unsigned-host rejection
         shell: bash

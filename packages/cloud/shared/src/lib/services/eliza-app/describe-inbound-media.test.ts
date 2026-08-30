@@ -167,7 +167,7 @@ describe("describeInboundImageMedia — enrichment path", () => {
 
     expect(description).toBe("a cat on a keyboard");
     expect(safeFetch.mock.calls.map((call) => call[0])).toEqual([URL_A, URL_B]);
-    expect(getLanguageModel).toHaveBeenCalledWith("openai/gpt-5.4-mini");
+    expect(getLanguageModel).toHaveBeenCalledWith("gemma-4-31b");
     const options = generateText.mock.calls[0]?.[0] as {
       messages: Array<{
         role: string;

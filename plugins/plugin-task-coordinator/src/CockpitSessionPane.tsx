@@ -23,6 +23,7 @@
  * taskId and passes `onBack` to return to the deck.
  */
 
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
@@ -31,7 +32,6 @@ import {
   ELIZA_CLOUD_TIER_MODEL,
   type ElizaCloudTier,
 } from "@elizaos/ui/components";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { useRegisterViewChatBinding } from "@elizaos/ui/state";
 import {
   ArrowLeft,
@@ -90,17 +90,15 @@ function CockpitDetailsButton({
   return (
     <Button
       ref={ref}
-      unstyled
+      variant="selection"
+      size="icon-sm"
+      data-state={open ? "on" : "off"}
       type="button"
       onClick={onToggle}
       aria-pressed={open}
       data-testid="cockpit-session-details-toggle"
       title={label}
-      className={`inline-flex size-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-        open
-          ? "bg-accent/15 text-accent"
-          : "text-muted hover:bg-bg-hover/40 hover:text-txt"
-      }`}
+      className="shrink-0"
       {...agentProps}
     >
       <PanelRight className="size-4" aria-hidden />
@@ -333,10 +331,11 @@ export function CockpitSessionPane({
       <header className="flex shrink-0 items-center gap-2 border-border/40 border-b px-3 py-2">
         <Button
           ref={backRef}
-          unstyled
+          variant="ghostMuted"
+          size="icon-sm"
           type="button"
           onClick={onBack}
-          className="-ml-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover/40 hover:text-txt"
+          className="-ml-1 shrink-0"
           aria-label={t("cockpit.session.back", {
             defaultValue: "Back to all rooms",
           })}
@@ -365,7 +364,9 @@ export function CockpitSessionPane({
         >
           <Button
             ref={transcriptRef}
-            unstyled
+            variant="selection"
+            size="icon-sm"
+            data-state={view === "transcript" ? "on" : "off"}
             type="button"
             onClick={() => setView("transcript")}
             aria-pressed={view === "transcript"}
@@ -374,17 +375,14 @@ export function CockpitSessionPane({
             title={t("cockpit.session.transcript", {
               defaultValue: "Transcript",
             })}
-            className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
-              view === "transcript"
-                ? "bg-accent/15 text-accent"
-                : "text-muted hover:bg-bg-hover/40 hover:text-txt"
-            }`}
           >
             <ScrollText className="size-4" aria-hidden />
           </Button>
           <Button
             ref={terminalRef}
-            unstyled
+            variant="selection"
+            size="icon-sm"
+            data-state={view === "terminal" ? "on" : "off"}
             type="button"
             onClick={() => setView("terminal")}
             aria-pressed={view === "terminal"}
@@ -393,11 +391,6 @@ export function CockpitSessionPane({
             title={t("cockpit.session.watch", {
               defaultValue: "Watch (terminal output)",
             })}
-            className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
-              view === "terminal"
-                ? "bg-accent/15 text-accent"
-                : "text-muted hover:bg-bg-hover/40 hover:text-txt"
-            }`}
           >
             <SquareTerminal className="size-4" aria-hidden />
           </Button>

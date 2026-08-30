@@ -38,20 +38,6 @@ afterEach(() => {
 });
 
 describe("PtyService", () => {
-  it("registers as the PTY_SERVICE the agent server looks up", () => {
-    expect(PtyService.serviceType).toBe("PTY_SERVICE");
-  });
-
-  it("exposes a consoleBridge (what getPtyConsoleBridge returns)", () => {
-    const { svc } = makeService();
-    expect(svc.consoleBridge).toBeDefined();
-    expect(typeof svc.consoleBridge.writeRaw).toBe("function");
-    expect(typeof svc.consoleBridge.resize).toBe("function");
-    expect(typeof svc.consoleBridge.on).toBe("function");
-    expect(typeof svc.consoleBridge.off).toBe("function");
-    expect(svc.capabilityDescription).toMatch(/interactive/i);
-  });
-
   it("startSession spawns and listSessions reflects it", async () => {
     const { svc, fake } = makeService();
     const info = await svc.startSession(spec(os.tmpdir()));

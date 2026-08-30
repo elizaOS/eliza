@@ -239,6 +239,10 @@ SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "0.1"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
+# PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED is deliberately absent from
+# the root and production vars blocks. Staging commits the temporary exact-true
+# bridge below so its Worker deploy cannot race the legacy Gateway's headerless
+# handoff or epoch-1 reconciliation. Production remains protected and closed.
 # PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED and
 # PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED are deliberately
 # absent from every [vars] block. The protected activation workflows own them
@@ -247,6 +251,9 @@ PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
+# Native Android PKCE is a committed product capability. The endpoint fails
+# closed unless this public environment flag is exactly "true" or "false".
+ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud.eliza.app"
 ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # Internal Worker-to-agent calls must target the control-plane origin directly;
@@ -526,6 +533,10 @@ binding = "BROWSER"
 
 [env.staging.vars]
 NODE_ENV = "production"
+# Signed Twilio callbacks and media-stream URLs must use the externally routed
+# HTTPS origin, never a request-derived host. Keep this committed so any
+# Wrangler deployment preserves inbound voice instead of failing closed.
+TWILIO_PUBLIC_URL = "https://api-staging.eliza.app"
 # Capture every staging turn while validating voice and cross-channel routing.
 # Rows remain compact and exclude prompt/response text.
 SHARED_TURN_TRACES_ENABLED = "true"
@@ -534,6 +545,11 @@ SHARED_TURN_TRACES_SAMPLE = "1"
 # identity/lifecycle writer participates in the durable mutation-fence protocol.
 # The bound Durable Object remains available for exact-head isolated proof.
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
+# Temporary Worker-first compatibility fence: this must deploy atomically with
+# delivery epoch 2 before the legacy staging Gateway is replaced. Remove it only
+# after the epoch-2 Gateway is live, legacy warnings are zero, and the drain and
+# reconciliation checks in the PR rollout evidence have passed.
+PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED = "true"
 # The protected staging cutover owns PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED
 # as a secret binding. It uses a fresh name because keep_vars preserved the old
 # staging plaintext binding; either binding must be exactly true to opt in.
@@ -612,6 +628,10 @@ ELIZA_ONBOARDING_APP_URL = "https://cloud-staging.eliza.app"
 # bindings immediately before deployment and restores their staging value if
 # that deployment fails. The committed var is the steady-state authority.
 ELIZA_ONBOARDING_LOGIN_APP_URL = "https://staging.eliza.app"
+# Mobile app auth is gated explicitly and bound to a fixed registered app
+# identity. The protected deployment workflow verifies both before publishing.
+ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
+ELIZA_MOBILE_APP_AUTH_APP_ID = "689a1597-85e7-43ca-b000-8c6392d79465"
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
@@ -670,8 +690,11 @@ INFERENCE_HOT_PATH_CACHES = "true"
 # One combined auth+org+moderation read; authoritative refresh runs only under
 # waitUntil and the 60s physical TTL bounds lost invalidation.
 INFERENCE_AUTH_CACHE_ENABLED = "true"
-# Default authoritative until the Durable Object revocation lane is soaked.
-INFERENCE_STRONG_REVOCATION_ENABLED = "false"
+# Staging soak: every positive auth-cache hit crosses the strongly consistent
+# organization Durable Object before provider dispatch. Production remains on
+# authoritative authorization until this lane passes the release latency and
+# revocation probes.
+INFERENCE_STRONG_REVOCATION_ENABLED = "true"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -827,6 +850,10 @@ binding = "BROWSER"
 
 [env.production.vars]
 NODE_ENV = "production"
+# Signed Twilio callbacks and media-stream URLs must use the externally routed
+# HTTPS origin, never a request-derived host. Keep this committed so any
+# Wrangler deployment preserves inbound voice instead of failing closed.
+TWILIO_PUBLIC_URL = "https://api.eliza.app"
 SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "0.1"
 # Keep production on the indexed canonical resolver. The Durable Object cannot
@@ -859,6 +886,7 @@ APPS_DEPLOY_ALLOWED_ORG_IDS = "*"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
+ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud.eliza.app"
 ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # OpenID Connect provider — see the staging block for why these are vars, not
@@ -984,7 +1012,7 @@ bucket_name = "eliza-cloud-blob"
 # WebSocket driver in client.ts, which bypasses this binding).
 [[env.production.hyperdrive]]
 binding = "HYPERDRIVE"
-id = "9f59e4ec65f048f7b87e29e7b9c5d728"
+id = "486bdc36737a4ad1b526fc3c08627658"
 
 # KV is the Worker's cache backend (CacheClient). Workers can't reliably open raw
 # TCP to an external Redis (Railway's public proxy hangs under load), so the Worker

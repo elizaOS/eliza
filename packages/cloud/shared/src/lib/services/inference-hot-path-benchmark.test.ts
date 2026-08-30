@@ -97,9 +97,8 @@ mock.module("./api-keys", () => ({
   isMobileApiKeySecret: () => false,
 }));
 const { resolveInferenceAuthContext } = await import("./inference-auth-context");
-const { hashApiKey, invalidateInferenceAuthContextByKeyHash } = await import(
-  "./inference-auth-cache"
-);
+const { hashApiKey, invalidateInferenceAuthContextByKeyHash, writeInferenceApiKeyAuthRejection } =
+  await import("./inference-auth-cache");
 const { cache } = await import("../cache/client");
 
 const KEY = "eliza_bench_key";
@@ -140,14 +139,17 @@ afterAll(() => {
 });
 
 describe("inference hot-path benchmark", () => {
-  test("cold miss pays the authoritative chain exactly once, then caches", async () => {
+  test("cold miss performs one combined cache read before authoritative hydration", async () => {
+    const getSpy = spyOn(cache, "getWithOutcome");
     const cold = await resolveInferenceAuthContext(req());
     expect(cold.kind).toBe("authorized");
+    expect(getSpy).toHaveBeenCalledTimes(1);
     expect(authChainCalls).toBe(1); // one auth chain
     expect(moderationCalls).toBe(1); // one moderation read
     expect(admissionLoadCalls).toBe(1); // one admission projection load (IAC v2)
     expect(appScopeCalls).toBe(1); // one app-key scope load (IAC v2)
     expect(revocationBoundaryCalls).toBe(1);
+    getSpy.mockRestore();
   });
 
   test("WARM hit = exactly 1 cache read, 0 writes, 0 auth, 0 moderation", async () => {
@@ -203,5 +205,30 @@ describe("inference hot-path benchmark", () => {
     expect(revocationBoundaryCalls).toBe(N);
 
     getSpy.mockRestore();
+  });
+
+  test("bad standing is explained from the same single cache read", async () => {
+    const keyHash = hashApiKey(KEY);
+    await writeInferenceApiKeyAuthRejection(keyHash, "rejected", 403, "organization_inactive");
+
+    const getSpy = spyOn(cache, "getWithOutcome");
+    const setSpy = spyOn(cache, "setWithOutcome");
+    authChainCalls = 0;
+    moderationCalls = 0;
+    revocationBoundaryCalls = 0;
+
+    expect(await resolveInferenceAuthContext(req())).toEqual({
+      kind: "rejected",
+      status: 403,
+      reason: "organization_inactive",
+    });
+    expect(getSpy).toHaveBeenCalledTimes(1);
+    expect(setSpy).toHaveBeenCalledTimes(0);
+    expect(authChainCalls).toBe(0);
+    expect(moderationCalls).toBe(0);
+    expect(revocationBoundaryCalls).toBe(0);
+
+    getSpy.mockRestore();
+    setSpy.mockRestore();
   });
 });

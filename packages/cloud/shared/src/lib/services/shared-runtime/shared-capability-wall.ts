@@ -1,6 +1,7 @@
 /** Keeps Shared honest and returns a resumable setup handoff for unavailable work. */
 
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
+import { ElizaError } from "@elizaos/core/edge";
+import { type CapabilityHandoffRequest, capabilityHandoffTargetAgentId } from "@elizaos/shared";
 
 export type SharedDedicatedCapability =
   | "calendar"
@@ -241,13 +242,25 @@ export function resolveSharedCapabilityIntent(
 export function capabilityWallActionResult(
   wall: SharedCapabilityWall,
   context: {
-    agentId?: string;
+    agentId: string;
     originalIntent?: string;
     clientMessageId?: string;
-  } = {},
+  },
 ) {
   const originalIntent = context.originalIntent?.trim() || undefined;
-  const clientMessageId = context.clientMessageId?.trim() || undefined;
+  const normalizedClientMessageId = context.clientMessageId?.trim();
+  const clientMessageId =
+    normalizedClientMessageId && normalizedClientMessageId.length <= 128
+      ? normalizedClientMessageId
+      : undefined;
+  const href = `/cloud/agents/${encodeURIComponent(context.agentId)}`;
+  if (capabilityHandoffTargetAgentId(href) !== context.agentId) {
+    throw new ElizaError("Shared capability wall received an invalid agent id", {
+      code: "SHARED_CAPABILITY_HANDOFF_INVALID_AGENT_ID",
+      context: { agentId: context.agentId },
+      severity: "fatal",
+    });
+  }
   const handoff: CapabilityHandoffRequest = {
     version: 1,
     kind: "capability_handoff",
@@ -263,9 +276,7 @@ export function capabilityWallActionResult(
     requiresConfirmation: true,
     cta: {
       label: "Set up personal workspace",
-      href: context.agentId
-        ? `/cloud/agents/${encodeURIComponent(context.agentId)}`
-        : "/cloud/agents",
+      href,
     },
     ...(originalIntent || clientMessageId
       ? {

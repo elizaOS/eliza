@@ -20,6 +20,7 @@ import {
   requireRegisteredAgentSurface,
 } from "../../app-shell-registry";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
+import { Card } from "../ui/card";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { getOverlayAppLazyComponent } from "./AppWindowRenderer.helpers";
 import { getAppSlug } from "./helpers";
@@ -77,7 +78,10 @@ function getLazyComponentForApp(
 
 function AppFallback(): React.ReactElement {
   return (
-    <div className="flex h-full items-center justify-center bg-background text-sm text-muted-foreground" />
+    <Card
+      variant="appFallback"
+      className="flex h-full items-center justify-center text-sm"
+    />
   );
 }
 
@@ -130,9 +134,12 @@ export function OverlayAppSurface({
     content = <app.Component {...context} />;
   } else {
     content = (
-      <div className="flex h-full items-center justify-center bg-background text-sm text-muted-foreground">
+      <Card
+        variant="appFallback"
+        className="flex h-full items-center justify-center text-sm"
+      >
         App has no component: {descriptor.viewId}
-      </div>
+      </Card>
     );
   }
 

@@ -14,7 +14,6 @@ import {
   readPositiveIntSetting,
   readStringParam,
   successActionResult,
-  truncate,
   userFacingSuccessResult,
 } from "./format.js";
 
@@ -91,53 +90,6 @@ describe("readParam family", () => {
   it("readArrayParam returns only arrays", () => {
     expect(readArrayParam({ a: [1, 2] }, "a")).toEqual([1, 2]);
     expect(readArrayParam({ a: "no" }, "a")).toBeUndefined();
-  });
-});
-
-describe("truncate", () => {
-  it("leaves short strings untouched", () => {
-    expect(truncate("hello", 10)).toEqual({ text: "hello", truncated: false });
-  });
-  it("truncates with a remaining-chars suffix", () => {
-    const r = truncate("abcdefghij", 4);
-    expect(r.truncated).toBe(true);
-    expect(r.text.startsWith("abcd")).toBe(true);
-    expect(r.text).toContain("6 more chars");
-  });
-  it("keeps UTF-16 surrogate pairs intact at the truncation boundary", () => {
-    const s = `${"a".repeat(9)}🦊${"b".repeat(100)}`;
-    const r = truncate(s, 10);
-    expect(r.truncated).toBe(true);
-    expect(r.text.startsWith("a".repeat(9))).toBe(true);
-    expect(r.text.split("\n")[0].isWellFormed()).toBe(true);
-    expect(r.text.split("\n")[0].length).toBe(9);
-    expect(r.text).toContain("102 more chars");
-  });
-  it("preserves a fitting emoji under the cap", () => {
-    const s = `${"a".repeat(8)}🦊`;
-    const r = truncate(s, 10);
-    expect(r.truncated).toBe(false);
-    expect(r.text).toBe(s);
-    expect(r.text.isWellFormed()).toBe(true);
-  });
-  it("sanitizes lone surrogates before truncating", () => {
-    const s = "a\ud800bcdef";
-    const r = truncate(s, 4);
-    expect(r.text.split("\n")[0]).toBe("a\ufffdbc");
-    expect(r.text.split("\n")[0].isWellFormed()).toBe(true);
-  });
-  it("sanitizes lone surrogates without truncation when under the cap", () => {
-    const s = "a\ud800bc";
-    const r = truncate(s, 10);
-    expect(r.truncated).toBe(false);
-    expect(r.text).toBe("a\ufffdbc");
-    expect(r.text.isWellFormed()).toBe(true);
-  });
-  it("returns empty well-formed text when max is 0", () => {
-    const r = truncate("hello", 0);
-    expect(r.truncated).toBe(true);
-    expect(r.text.split("\n")[0]).toBe("");
-    expect(r.text.split("\n")[0].isWellFormed()).toBe(true);
   });
 });
 

@@ -113,6 +113,7 @@ All vars are read by `utils/config.ts` via `runtime.getSetting(key)` first, then
 - **`AI_SDK_LOG_WARNINGS`** is set to `false` at module load to suppress Vercel AI SDK noise in tight loops / desktop shells. Unset it in dev if you need SDK diagnostics.
 - **Browser build:** `package.json` exports a `browser` entry (`dist/browser/index.browser.js`). Keep `auto-enable.ts` free of Node-only imports.
 - **Structured output + tools conflict:** When both `responseSchema` and `tools` are present, tools win — schema is dropped. This matches the v5 Stage 1 contract.
+- **Output integrity:** Text calls omit `maxOutputTokens` / `num_predict` unless the caller explicitly supplies `maxTokens`. Both stock Ollama and native zerollama reject length-finished or unterminated output instead of returning a partial response as complete.
 - See root `AGENTS.md` for repo-wide architecture rules, naming, logger usage, and git workflow.
 
 ## Live evidence

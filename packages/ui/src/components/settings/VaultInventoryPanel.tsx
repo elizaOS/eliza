@@ -51,9 +51,12 @@ import { useAgentElement } from "../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../api/client";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
 import { SettingsSelectTrigger } from "../ui/settings-controls";
 import type {
@@ -261,11 +264,14 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
   }, [entries]);
 
   return (
-    <section data-testid="vault-inventory-panel" className="space-y-2 pt-1">
+    <section data-testid="vault-inventory-panel" className="space-y-4">
       {findingsAvailable ? null : (
-        <div
+        <Card
           data-testid="vault-security-findings-unavailable"
-          className="space-y-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs"
+          variant="warningNotice"
+          padding="compact"
+          stack="compact"
+          className="text-xs"
         >
           <div className="flex items-center gap-2 font-medium text-warning">
             Connector credential scan unavailable
@@ -274,12 +280,15 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
             The scan did not run, so this is not a clean result. Reload to try
             again.
           </p>
-        </div>
+        </Card>
       )}
       {findingsAvailable && securityFindings.length > 0 ? (
-        <div
+        <Card
           data-testid="vault-security-findings"
-          className="space-y-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs"
+          variant="warningNotice"
+          padding="compact"
+          stack="compact"
+          className="text-xs"
         >
           <div className="flex items-center gap-2 font-medium text-warning">
             <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
@@ -290,8 +299,9 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           <ul className="space-y-1.5 text-muted">
             {securityFindings.map((finding) => (
               <li key={finding.id} className="flex items-start gap-2">
-                <span
-                  className="mt-1  size-1.5 shrink-0 rounded-full bg-warning"
+                <Badge
+                  variant="vaultStatusWarningDot"
+                  className="mt-1 shrink-0"
                   aria-hidden
                 />
                 <span>
@@ -302,20 +312,25 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
               </li>
             ))}
           </ul>
-        </div>
+        </Card>
       ) : null}
-      <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 text-sm font-medium text-txt">
-          {t("vaultinventory.storedSecrets", {
-            defaultValue: "Stored secrets",
-          })}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
+          <h2 className="text-sm font-semibold text-txt">
+            {t("vaultinventory.storedSecrets", {
+              defaultValue: "Stored secrets",
+            })}
+          </h2>
+          <p className="text-xs text-muted">
+            Manage secret values without exposing their contents.
+          </p>
+        </div>
         <Button
           ref={addSecretRef}
           {...addSecretAgentProps}
           variant="outline"
           size="sm"
-          className="h-8 shrink-0 gap-1 rounded-sm px-2"
+          className="self-start"
           onClick={() => setShowAdd((v) => !v)}
           aria-label={t("vaultinventory.addSecret", {
             defaultValue: "Add secret",
@@ -327,13 +342,13 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
       </div>
 
       {error && (
-        <div
+        <Card
           aria-live="polite"
           data-testid="vault-inventory-error"
-          className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
+          variant="vaultError"
         >
           {error}
-        </div>
+        </Card>
       )}
 
       {showAdd && (
@@ -351,12 +366,15 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           <Loader2 className="size-3.5 animate-spin" aria-hidden /> Loading…
         </div>
       ) : entries.length === 0 ? (
-        <p
+        <div
           data-testid="vault-inventory-empty"
-          className="p-3 text-center text-xs text-muted"
+          className="flex min-h-40 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
         >
-          No secrets yet.
-        </p>
+          <p className="max-w-sm">
+            No secrets yet. Add one when this agent needs a credential or secure
+            reference.
+          </p>
+        </div>
       ) : (
         <div className="space-y-3">
           {CATEGORY_ORDER.map((cat) => {
@@ -596,16 +614,16 @@ const EntryRow = memo(function EntryRow({
   const profileCount = entry.profiles?.length ?? 0;
 
   return (
-    <div
+    <Card
       ref={rowRef}
       data-testid={`vault-entry-row-${entry.key}`}
-      className="rounded-sm px-2 py-1.5 hover:bg-bg-muted/30"
+      variant="vaultListRow"
     >
       <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
         <Button
           variant="ghost"
-          size="sm"
-          className="size-6 shrink-0 rounded-sm p-0 text-muted"
+          size="icon-sm"
+          className="shrink-0"
           onClick={() => setExpanded((v) => !v)}
           aria-label={expanded ? "Collapse" : "Expand"}
         >
@@ -620,12 +638,13 @@ const EntryRow = memo(function EntryRow({
           <p className="truncate font-mono text-2xs text-muted">{entry.key}</p>
         </div>
         {profileCount > 0 && (
-          <span
+          <Badge
             data-testid={`profile-badge-${entry.key}`}
-            className="shrink-0 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent"
+            variant="vaultAccent"
+            className="shrink-0"
           >
             {profileCount} profile{profileCount === 1 ? "" : "s"}
-          </span>
+          </Badge>
         )}
         {!revealed ? (
           <Button
@@ -633,7 +652,7 @@ const EntryRow = memo(function EntryRow({
             {...revealAgentProps}
             variant="ghost"
             size="sm"
-            className="h-7 shrink-0 gap-1 rounded-sm px-2 text-xs text-muted"
+            className="shrink-0"
             onClick={() => void reveal()}
             disabled={revealing}
             aria-label={`Reveal ${entry.label}`}
@@ -651,7 +670,7 @@ const EntryRow = memo(function EntryRow({
             {...revealAgentProps}
             variant="ghost"
             size="sm"
-            className="h-7 shrink-0 gap-1 rounded-sm px-2 text-xs text-muted"
+            className="shrink-0"
             onClick={hide}
             aria-label={`Hide ${entry.label}`}
           >
@@ -662,9 +681,9 @@ const EntryRow = memo(function EntryRow({
         <Button
           ref={deleteRef}
           {...deleteAgentProps}
-          variant="ghost"
-          size="sm"
-          className="size-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+          variant="destructive"
+          size="icon-sm"
+          className="shrink-0"
           onClick={() => {
             setRevealed(null);
             setRevealError(null);
@@ -682,11 +701,12 @@ const EntryRow = memo(function EntryRow({
       </div>
 
       {confirmingDelete && (
-        <div
+        <Card
           role="alertdialog"
           aria-labelledby={`vault-delete-title-${entry.key}`}
           aria-describedby={`vault-delete-description-${entry.key}`}
-          className="mt-1.5 rounded-sm border border-danger/40 bg-danger/5 p-2"
+          variant="vaultConfirm"
+          className="mt-1.5"
         >
           <p
             id={`vault-delete-title-${entry.key}`}
@@ -706,7 +726,6 @@ const EntryRow = memo(function EntryRow({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => setConfirmingDelete(false)}
               disabled={deleting}
               aria-label={`Cancel deleting ${entry.label}`}
@@ -717,7 +736,6 @@ const EntryRow = memo(function EntryRow({
               type="button"
               variant="destructive"
               size="sm"
-              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => void onDelete()}
               disabled={deleting}
               aria-label={`Permanently delete ${entry.label}`}
@@ -732,37 +750,45 @@ const EntryRow = memo(function EntryRow({
               )}
             </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {revealed && (
-        <fieldset
-          data-testid={`vault-revealed-${entry.key}`}
-          aria-label={`Temporarily revealed value for ${entry.label}`}
-          className="mt-1.5 flex items-center gap-2 rounded-sm border border-border/50 bg-bg/40 p-2"
+        <Card
+          asChild
+          variant="transparent"
+          surface="backgroundSubtle"
+          border="subtle"
+          padding="compact"
         >
-          <code className="flex-1 truncate font-mono text-2xs text-txt">
-            {revealed.value}
-          </code>
-          {revealed.source === "profile" && revealed.profileId && (
-            <span className="shrink-0 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs text-accent">
-              {revealed.profileId}
-            </span>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 shrink-0 gap-1 rounded-sm px-2 text-2xs"
-            onClick={() => void copy()}
-            aria-label={t("vaultinventory.copy", { defaultValue: "Copy" })}
+          <fieldset
+            data-testid={`vault-revealed-${entry.key}`}
+            aria-label={`Temporarily revealed value for ${entry.label}`}
+            className="mt-1.5 flex items-center gap-2"
           >
-            <Copy className="size-3" aria-hidden />{" "}
-            {t("vaultinventory.copy", { defaultValue: "Copy" })}
-          </Button>
-          <span className="sr-only">
-            This value hides after ten seconds or when the app loses focus.
-          </span>
-        </fieldset>
+            <code className="flex-1 truncate font-mono text-2xs text-txt">
+              {revealed.value}
+            </code>
+            {revealed.source === "profile" && revealed.profileId && (
+              <Badge variant="vaultAccent" className="shrink-0 font-normal">
+                {revealed.profileId}
+              </Badge>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              onClick={() => void copy()}
+              aria-label={t("vaultinventory.copy", { defaultValue: "Copy" })}
+            >
+              <Copy className="size-3" aria-hidden />{" "}
+              {t("vaultinventory.copy", { defaultValue: "Copy" })}
+            </Button>
+            <span className="sr-only">
+              This value hides after ten seconds or when the app loses focus.
+            </span>
+          </fieldset>
+        </Card>
       )}
 
       {revealError && (
@@ -779,7 +805,7 @@ const EntryRow = memo(function EntryRow({
           highlightProfileId={focusKey === entry.key ? focusProfileId : null}
         />
       )}
-    </div>
+    </Card>
   );
 });
 
@@ -986,9 +1012,15 @@ function ProfilesPanel({
   }, [entry.key, onChanged]);
 
   return (
-    <div
+    <Card
       data-testid={`profiles-panel-${entry.key}`}
-      className="mt-2 space-y-2 border-l-2 border-border/40 pl-3"
+      variant="transparentSquare"
+      className="mt-2 pl-3"
+      visualStyle={{
+        borderLeft:
+          "2px solid color-mix(in srgb, var(--border) 40%, transparent)",
+      }}
+      stack="compact"
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-2xs font-semibold text-muted">
@@ -1001,7 +1033,6 @@ function ProfilesPanel({
               {...jumpRoutingAgentProps}
               variant="ghost"
               size="sm"
-              className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => onJumpToRouting(entry.key)}
               aria-label={t("vaultinventory.profiles.routingRulesFor", {
                 label: entry.label,
@@ -1020,7 +1051,6 @@ function ProfilesPanel({
               {...profileAddAgentProps}
               variant="ghost"
               size="sm"
-              className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => setShowAdd((v) => !v)}
               aria-label={t("vaultinventory.profiles.addProfile", {
                 defaultValue: "Add profile",
@@ -1037,7 +1067,6 @@ function ProfilesPanel({
               {...profileAddAgentProps}
               variant="outline"
               size="sm"
-              className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => void onMigrate()}
               disabled={migrating}
               aria-label={t("vaultinventory.profiles.enableForKey", {
@@ -1064,126 +1093,141 @@ function ProfilesPanel({
       )}
 
       {hasProfiles && (
-        <ul className="space-y-1">
-          {profiles.map((p) => (
-            <ProfileRow
-              key={p.id}
-              entryKey={entry.key}
-              profileId={p.id}
-              profileLabel={p.label}
-              active={entry.activeProfile === p.id}
-              highlight={highlightProfileId === p.id}
-              confirmingDelete={pendingProfileDelete === p.id}
-              deleting={deletingProfile === p.id}
-              onActivate={() => void onActivate(p.id)}
-              onRequestDelete={() => {
-                setErr(null);
-                setPendingProfileDelete(p.id);
-              }}
-              onCancelDelete={() => setPendingProfileDelete(null)}
-              onConfirmDelete={() => void onDelete(p.id)}
-            />
-          ))}
-        </ul>
+        <RadioGroup
+          value={entry.activeProfile ?? undefined}
+          onValueChange={(id) => void onActivate(id)}
+          asChild
+        >
+          <ul className="space-y-1">
+            {profiles.map((p) => (
+              <ProfileRow
+                key={p.id}
+                entryKey={entry.key}
+                profileId={p.id}
+                profileLabel={p.label}
+                active={entry.activeProfile === p.id}
+                highlight={highlightProfileId === p.id}
+                confirmingDelete={pendingProfileDelete === p.id}
+                deleting={deletingProfile === p.id}
+                onActivate={() => void onActivate(p.id)}
+                onRequestDelete={() => {
+                  setErr(null);
+                  setPendingProfileDelete(p.id);
+                }}
+                onCancelDelete={() => setPendingProfileDelete(null)}
+                onConfirmDelete={() => void onDelete(p.id)}
+              />
+            ))}
+          </ul>
+        </RadioGroup>
       )}
 
       {showAdd && (
-        <form
-          onSubmit={onAdd}
-          data-testid={`add-profile-form-${entry.key}`}
-          className="space-y-1.5 border-l-2 border-border/40 pl-3"
+        <Card
+          asChild
+          variant="transparentSquare"
+          className="pl-3"
+          visualStyle={{
+            borderLeft:
+              "2px solid color-mix(in srgb, var(--border) 40%, transparent)",
+          }}
         >
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          <form
+            onSubmit={onAdd}
+            data-testid={`add-profile-form-${entry.key}`}
+            className="space-y-1.5"
+          >
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              <div>
+                <Label className="text-2xs text-muted">
+                  {t("vaultinventory.profiles.idLabel", {
+                    defaultValue: "Profile id",
+                  })}
+                </Label>
+                <Input
+                  ref={newIdRef}
+                  {...newIdAgentProps}
+                  density="compact"
+                  value={newId}
+                  onChange={(e) => setNewId(e.target.value)}
+                  placeholder={t("vaultinventory.profiles.idPlaceholder", {
+                    defaultValue: "work",
+                  })}
+                  pattern="[A-Za-z0-9_-]+"
+                  required
+                />
+              </div>
+              <div>
+                <Label className="text-2xs text-muted">
+                  {t("vaultinventory.profiles.labelLabel", {
+                    defaultValue: "Display label",
+                  })}
+                </Label>
+                <Input
+                  ref={newLabelRef}
+                  {...newLabelAgentProps}
+                  density="compact"
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  placeholder={t("vaultinventory.profiles.labelPlaceholder", {
+                    defaultValue: "Work",
+                  })}
+                />
+              </div>
+            </div>
             <div>
               <Label className="text-2xs text-muted">
-                {t("vaultinventory.profiles.idLabel", {
-                  defaultValue: "Profile id",
+                {t("vaultinventory.profiles.valueLabel", {
+                  defaultValue: "Value",
                 })}
               </Label>
               <Input
-                ref={newIdRef}
-                {...newIdAgentProps}
-                value={newId}
-                onChange={(e) => setNewId(e.target.value)}
-                placeholder={t("vaultinventory.profiles.idPlaceholder", {
-                  defaultValue: "work",
-                })}
-                className="h-7 text-xs"
-                pattern="[A-Za-z0-9_-]+"
+                ref={newValueRef}
+                {...newValueAgentProps}
+                type="password"
+                variant="config"
+                density="compact"
+                autoComplete="off"
+                value={newValue}
+                onChange={(e) => setNewValue(e.target.value)}
                 required
               />
             </div>
-            <div>
-              <Label className="text-2xs text-muted">
-                {t("vaultinventory.profiles.labelLabel", {
-                  defaultValue: "Display label",
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                ref={profileCancelRef}
+                {...profileCancelAgentProps}
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdd(false)}
+                disabled={submitting}
+              >
+                {t("vaultinventory.profiles.cancel", {
+                  defaultValue: "Cancel",
                 })}
-              </Label>
-              <Input
-                ref={newLabelRef}
-                {...newLabelAgentProps}
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                placeholder={t("vaultinventory.profiles.labelPlaceholder", {
-                  defaultValue: "Work",
-                })}
-                className="h-7 text-xs"
-              />
+              </Button>
+              <Button
+                ref={profileSaveRef}
+                {...profileSaveAgentProps}
+                type="submit"
+                variant="default"
+                size="sm"
+                disabled={submitting || !newId || !newValue}
+              >
+                {submitting
+                  ? t("vaultinventory.profiles.saving", {
+                      defaultValue: "Saving…",
+                    })
+                  : t("vaultinventory.profiles.saveProfile", {
+                      defaultValue: "Save profile",
+                    })}
+              </Button>
             </div>
-          </div>
-          <div>
-            <Label className="text-2xs text-muted">
-              {t("vaultinventory.profiles.valueLabel", {
-                defaultValue: "Value",
-              })}
-            </Label>
-            <Input
-              ref={newValueRef}
-              {...newValueAgentProps}
-              type="password"
-              autoComplete="off"
-              value={newValue}
-              onChange={(e) => setNewValue(e.target.value)}
-              className="h-7 font-mono text-xs"
-              required
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              ref={profileCancelRef}
-              {...profileCancelAgentProps}
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-6 rounded-sm px-2 text-2xs"
-              onClick={() => setShowAdd(false)}
-              disabled={submitting}
-            >
-              {t("vaultinventory.profiles.cancel", {
-                defaultValue: "Cancel",
-              })}
-            </Button>
-            <Button
-              ref={profileSaveRef}
-              {...profileSaveAgentProps}
-              type="submit"
-              variant="default"
-              size="sm"
-              className="h-6 rounded-sm px-2 text-2xs"
-              disabled={submitting || !newId || !newValue}
-            >
-              {submitting
-                ? t("vaultinventory.profiles.saving", {
-                    defaultValue: "Saving…",
-                  })
-                : t("vaultinventory.profiles.saveProfile", {
-                    defaultValue: "Save profile",
-                  })}
-            </Button>
-          </div>
-        </form>
+          </form>
+        </Card>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -1219,7 +1263,7 @@ const ProfileRow = memo(
   }: ProfileRowProps) {
     const { t } = useTranslation();
     const { ref: activateRef, agentProps: activateAgentProps } =
-      useAgentElement<HTMLInputElement>({
+      useAgentElement<HTMLButtonElement>({
         id: `vault-profile-activate-${entryKey}-${profileId}`,
         role: "toggle",
         label: `Make ${profileLabel} the active profile`,
@@ -1236,90 +1280,93 @@ const ProfileRow = memo(
         onActivate: onRequestDelete,
       });
     return (
-      <li className={`rounded-sm px-1.5 py-1 text-xs ${highlight ? " " : ""}`}>
-        <div className="flex items-center gap-2">
-          <Input
-            ref={activateRef}
-            {...activateAgentProps}
-            type="radio"
-            name={`active-${entryKey}`}
-            checked={active}
-            onChange={onActivate}
-            className="size-3 cursor-pointer border-border p-0 accent-accent"
-            aria-current={active ? "true" : undefined}
-            aria-label={t("vaultinventory.profiles.makeActive", {
-              label: profileLabel,
-              defaultValue: "Make {{label}} active",
-            })}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-medium text-txt">{profileLabel}</p>
-            <p className="truncate font-mono text-2xs text-muted">
-              {profileId}
-            </p>
-          </div>
-          {active && (
-            <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-              <CheckCircle2 className="size-3" aria-hidden />{" "}
-              {t("vaultinventory.profiles.active", {
-                defaultValue: "Active",
+      <Card
+        asChild
+        variant="transparent"
+        surface="transparent"
+        border={highlight ? "accent" : "none"}
+        className="px-1.5 py-1 text-xs"
+      >
+        <li>
+          <div className="flex items-center gap-2">
+            <RadioGroupItem
+              ref={activateRef}
+              {...activateAgentProps}
+              value={profileId}
+              aria-current={active ? "true" : undefined}
+              aria-label={t("vaultinventory.profiles.makeActive", {
+                label: profileLabel,
+                defaultValue: "Make {{label}} active",
               })}
-            </span>
-          )}
-          <Button
-            ref={deleteRef}
-            {...deleteAgentProps}
-            variant="ghost"
-            size="sm"
-            className="size-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-            aria-label={t("vaultinventory.profiles.deleteProfile", {
-              label: profileLabel,
-              defaultValue: "Delete profile {{label}}",
-            })}
-            onClick={onRequestDelete}
-            disabled={deleting}
-          >
-            {deleting ? (
-              <Loader2 className="size-3 animate-spin" aria-hidden />
-            ) : (
-              <Trash2 className="size-3" aria-hidden />
-            )}
-          </Button>
-        </div>
-        {confirmingDelete && (
-          <div
-            role="alertdialog"
-            aria-label={`Delete profile ${profileLabel}?`}
-            className="mt-1.5 rounded-sm border border-danger/40 bg-danger/5 p-2"
-          >
-            <p className="text-2xs text-muted">
-              Permanently delete this profile and its stored value?
-            </p>
-            <div className="mt-2 flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-6 rounded-sm px-2 text-2xs"
-                onClick={onCancelDelete}
-                disabled={deleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="h-6 rounded-sm px-2 text-2xs"
-                onClick={onConfirmDelete}
-                disabled={deleting}
-              >
-                Delete permanently
-              </Button>
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium text-txt">{profileLabel}</p>
+              <p className="truncate font-mono text-2xs text-muted">
+                {profileId}
+              </p>
             </div>
+            {active && (
+              <Badge variant="vaultAccent" className="shrink-0 gap-0.5">
+                <CheckCircle2 className="size-3" aria-hidden />{" "}
+                {t("vaultinventory.profiles.active", {
+                  defaultValue: "Active",
+                })}
+              </Badge>
+            )}
+            <Button
+              ref={deleteRef}
+              {...deleteAgentProps}
+              variant="destructive"
+              size="icon-sm"
+              className="shrink-0"
+              aria-label={t("vaultinventory.profiles.deleteProfile", {
+                label: profileLabel,
+                defaultValue: "Delete profile {{label}}",
+              })}
+              onClick={onRequestDelete}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <Loader2 className="size-3 animate-spin" aria-hidden />
+              ) : (
+                <Trash2 className="size-3" aria-hidden />
+              )}
+            </Button>
           </div>
-        )}
-      </li>
+          {confirmingDelete && (
+            <Card
+              role="alertdialog"
+              aria-label={`Delete profile ${profileLabel}?`}
+              variant="vaultConfirm"
+              className="mt-1.5"
+            >
+              <p className="text-2xs text-muted">
+                Permanently delete this profile and its stored value?
+              </p>
+              <div className="mt-2 flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onCancelDelete}
+                  disabled={deleting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={onConfirmDelete}
+                  disabled={deleting}
+                >
+                  Delete permanently
+                </Button>
+              </div>
+            </Card>
+          )}
+        </li>
+      </Card>
     );
   },
   // onActivate/onDelete are allocated inline per row but always act on this
@@ -1460,141 +1507,152 @@ function AddSecretForm({
   );
 
   return (
-    <form
-      onSubmit={onSubmit}
-      data-testid="vault-add-secret-form"
-      className="space-y-2 border-l-2 border-border/50 pl-3"
+    <Card
+      asChild
+      variant="transparent"
+      surface="transparent"
+      border="subtle"
+      radius="none"
+      padding="compact"
     >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <form
+        onSubmit={onSubmit}
+        data-testid="vault-add-secret-form"
+        className="space-y-2"
+      >
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div>
+            <Label className="text-2xs text-muted">
+              {t("vaultinventory.addForm.key.label", { defaultValue: "Key" })}
+            </Label>
+            <Input
+              ref={keyRef}
+              {...keyAgentProps}
+              variant="config"
+              density="compact"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="OPENROUTER_API_KEY"
+              autoComplete="off"
+              required
+            />
+          </div>
+          <div>
+            <Label className="text-2xs text-muted">
+              {t("vaultinventory.addForm.displayLabel.label", {
+                defaultValue: "Display label",
+              })}
+            </Label>
+            <Input
+              ref={labelRef}
+              {...labelAgentProps}
+              density="compact"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="OpenRouter"
+              autoComplete="off"
+            />
+          </div>
+        </div>
         <div>
           <Label className="text-2xs text-muted">
-            {t("vaultinventory.addForm.key.label", { defaultValue: "Key" })}
+            {t("vaultinventory.addForm.value.label", { defaultValue: "Value" })}
           </Label>
           <Input
-            ref={keyRef}
-            {...keyAgentProps}
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            placeholder="OPENROUTER_API_KEY"
-            className="h-8 font-mono text-xs"
-            autoComplete="off"
+            ref={valueRef}
+            {...valueAgentProps}
+            type="password"
+            variant="config"
+            density="compact"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoComplete="new-password"
             required
           />
         </div>
-        <div>
-          <Label className="text-2xs text-muted">
-            {t("vaultinventory.addForm.displayLabel.label", {
-              defaultValue: "Display label",
-            })}
-          </Label>
-          <Input
-            ref={labelRef}
-            {...labelAgentProps}
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="OpenRouter"
-            className="h-8 text-xs"
-            autoComplete="off"
-          />
-        </div>
-      </div>
-      <div>
-        <Label className="text-2xs text-muted">
-          {t("vaultinventory.addForm.value.label", { defaultValue: "Value" })}
-        </Label>
-        <Input
-          ref={valueRef}
-          {...valueAgentProps}
-          type="password"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="h-8 font-mono text-xs"
-          autoComplete="new-password"
-          required
-        />
-      </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <div>
-          <Label className="text-2xs text-muted">
-            {t("vaultinventory.addForm.category.label", {
-              defaultValue: "Category",
-            })}
-          </Label>
-          <Select
-            value={category}
-            onValueChange={(value) => setCategory(value as VaultEntryCategory)}
-          >
-            <SettingsSelectTrigger
-              ref={categoryRef}
-              variant="soft"
-              className="block w-full"
-              aria-label="Secret category"
-              {...categoryAgentProps}
-            >
-              <SelectValue />
-            </SettingsSelectTrigger>
-            <SelectContent>
-              {CATEGORY_INPUT_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {t(opt.labelKey, { defaultValue: opt.defaultLabel })}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label className="text-2xs text-muted">
-            {t("vaultinventory.addForm.providerId.label", {
-              defaultValue: "Provider id (optional)",
-            })}
-          </Label>
-          <Input
-            ref={providerRef}
-            {...providerAgentProps}
-            value={providerId}
-            onChange={(e) => setProviderId(e.target.value)}
-            placeholder="openrouter"
-            className="h-8 text-xs"
-            autoComplete="off"
-          />
-        </div>
-      </div>
-
-      {err && (
-        <p className="text-2xs text-danger" aria-live="polite">
-          {err}
-        </p>
-      )}
-
-      <div className="flex justify-end gap-2 pt-1">
-        <Button
-          ref={cancelRef}
-          {...cancelAgentProps}
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 rounded-sm px-3 text-xs"
-          onClick={onClose}
-          disabled={submitting}
-        >
-          {t("vaultinventory.addForm.cancel", { defaultValue: "Cancel" })}
-        </Button>
-        <Button
-          ref={saveRef}
-          {...saveAgentProps}
-          type="submit"
-          variant="default"
-          size="sm"
-          className="h-7 rounded-sm px-3 text-xs"
-          disabled={submitting || !key.trim() || !value}
-        >
-          {submitting
-            ? t("vaultinventory.addForm.saving", { defaultValue: "Saving…" })
-            : t("vaultinventory.addForm.save", {
-                defaultValue: "Save secret",
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div>
+            <Label className="text-2xs text-muted">
+              {t("vaultinventory.addForm.category.label", {
+                defaultValue: "Category",
               })}
-        </Button>
-      </div>
-    </form>
+            </Label>
+            <Select
+              value={category}
+              onValueChange={(value) =>
+                setCategory(value as VaultEntryCategory)
+              }
+            >
+              <SettingsSelectTrigger
+                ref={categoryRef}
+                variant="soft"
+                className="block w-full"
+                aria-label="Secret category"
+                {...categoryAgentProps}
+              >
+                <SelectValue />
+              </SettingsSelectTrigger>
+              <SelectContent>
+                {CATEGORY_INPUT_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {t(opt.labelKey, { defaultValue: opt.defaultLabel })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-2xs text-muted">
+              {t("vaultinventory.addForm.providerId.label", {
+                defaultValue: "Provider id (optional)",
+              })}
+            </Label>
+            <Input
+              ref={providerRef}
+              {...providerAgentProps}
+              density="compact"
+              value={providerId}
+              onChange={(e) => setProviderId(e.target.value)}
+              placeholder="openrouter"
+              autoComplete="off"
+            />
+          </div>
+        </div>
+
+        {err && (
+          <p className="text-2xs text-danger" aria-live="polite">
+            {err}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button
+            ref={cancelRef}
+            {...cancelAgentProps}
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            disabled={submitting}
+          >
+            {t("vaultinventory.addForm.cancel", { defaultValue: "Cancel" })}
+          </Button>
+          <Button
+            ref={saveRef}
+            {...saveAgentProps}
+            type="submit"
+            variant="default"
+            size="sm"
+            disabled={submitting || !key.trim() || !value}
+          >
+            {submitting
+              ? t("vaultinventory.addForm.saving", { defaultValue: "Saving…" })
+              : t("vaultinventory.addForm.save", {
+                  defaultValue: "Save secret",
+                })}
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }

@@ -17,7 +17,7 @@ import {
 } from "../../lib/services/provisioning-job-types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
-  clampInlineDiagnosticText,
+  assertInlinePayloadFits,
   hydrateJsonField,
   hydrateTextField,
   offloadJsonField,
@@ -451,10 +451,17 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
     data.error === undefined
       ? Promise.resolve(null)
       : forceInlineError
-        ? Promise.resolve({
-            value: data.error === null ? null : clampInlineDiagnosticText(data.error),
-            storage: "inline" as const,
-            key: null,
+        ? Promise.resolve().then(() => {
+            const errorValue = data.error;
+            if (errorValue === undefined) {
+              throw new Error("Forced-inline job error is missing");
+            }
+            if (errorValue !== null) assertInlinePayloadFits("error", errorValue);
+            return {
+              value: errorValue,
+              storage: "inline" as const,
+              key: null,
+            };
           })
         : offloadTextField({
             namespace: ObjectNamespaces.JobPayloads,
@@ -463,9 +470,6 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
             field: "error",
             createdAt,
             value: data.error,
-            // A failure reason is a diagnostic string: bound it rather than let
-            // a full dump land in the text column when offload is unavailable.
-            oversizeInline: "clamp",
           }),
   ]);
 

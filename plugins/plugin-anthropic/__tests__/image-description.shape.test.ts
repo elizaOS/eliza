@@ -48,7 +48,7 @@ describe("Anthropic image description plumbing", () => {
     });
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        maxOutputTokens: 1024,
+        maxOutputTokens: 64_000,
         messages: [
           {
             role: "user",

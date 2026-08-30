@@ -26,6 +26,36 @@ function runtimeWithService(
 }
 
 describe("COMPUTER_USE action approvals", () => {
+  it("returns a stable error code when the service is unavailable", async () => {
+    const handler = useComputerAction.handler;
+    if (!handler) throw new Error("COMPUTER_USE handler missing");
+
+    const result = await handler(
+      runtimeWithService(null as unknown as Partial<ComputerUseService>),
+      message({ action: "launch", app: "Telegram" }),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: { errorCode: "COMPUTER_USE_SERVICE_UNAVAILABLE" },
+    });
+  });
+
+  it("returns a stable error code for an unknown action", async () => {
+    const handler = useComputerAction.handler;
+    if (!handler) throw new Error("COMPUTER_USE handler missing");
+
+    const result = await handler(
+      runtimeWithService({}),
+      message({ action: "teleport" }),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: { errorCode: "COMPUTER_USE_UNKNOWN_ACTION" },
+    });
+  });
+
   it("relays pending approval requests as chat choice buttons", async () => {
     const pending: PendingApproval = {
       id: "approval_123_abc",
@@ -180,5 +210,8 @@ describe("COMPUTER_USE action approvals", () => {
     expect(service.resolveApproval).not.toHaveBeenCalled();
     expect(result?.success).toBe(false);
     expect(result?.error).toContain("does not belong to this user");
+    expect(result?.data).toMatchObject({
+      errorCode: "COMPUTER_USE_APPROVAL_OWNER_MISMATCH",
+    });
   });
 });

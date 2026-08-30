@@ -49,6 +49,7 @@ describe("AnthropicBackend.buildRequest", () => {
 
     const body = JSON.parse(request.body);
     expect(body.model).toBe(DEFAULT_ANTHROPIC_MODEL);
+    expect(body.max_tokens).toBe(128_000);
     expect(body.system).toBe(SYSTEM_RUBRIC);
     expect(body.messages).toHaveLength(1);
     expect(body.messages[0].role).toBe("user");
@@ -108,6 +109,7 @@ describe("OpenAiCompatibleBackend.buildRequest", () => {
 
     const body = JSON.parse(request.body);
     expect(body.model).toBe("gpt-5.5");
+    expect(body.max_tokens).toBeUndefined();
     expect(body.response_format).toEqual({ type: "json_object" });
     expect(body.messages[0]).toEqual({
       role: "system",

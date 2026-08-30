@@ -51,6 +51,11 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
   requireAny: ["ready views", "gui ready"],
 };
 
+const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
+  requireAll: ["View unavailable"],
+  requireAny: ["View ID", "Retry", "Back to views"],
+};
+
 export const VIEW_OCR_POLICIES = {
   "builtin-chat": expected({
     requireAny: [
@@ -59,19 +64,10 @@ export const VIEW_OCR_POLICIES = {
       "Submit the quarterly report",
     ],
   }),
-  "builtin-phone": expected({
-    requireAny: ["call-blocked", "dialer", "recent"],
-  }),
-  "builtin-messages": expected({
-    requireAny: ["Set default SMS", "bridge-only", "compose"],
-  }),
-  "builtin-contacts": expected({
-    requireAny: ["address book", "phone, or email", "search"],
-  }),
   "builtin-camera": exempt(
     "native-platform-gated",
-    "The camera is an AOSP-native surface, so the browser audit intentionally renders the launcher fallback.",
-    LAUNCHER_FALLBACK,
+    "The camera is an AOSP-native surface, so the browser audit intentionally renders the unavailable-view boundary.",
+    VIEW_UNAVAILABLE_FALLBACK,
   ),
   "builtin-tasks": expected({
     requireAll: ["Tasks"],
@@ -168,7 +164,7 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-trajectories": expected({
     requireAll: ["Trajectories"],
-    requireAny: ["No trajectories yet", "Browse"],
+    requireAny: ["No trajectories yet", "No recorded activity yet", "Browse"],
   }),
   "builtin-transcripts": expected({
     requireAll: ["Live meeting"],
@@ -182,17 +178,6 @@ export const VIEW_OCR_POLICIES = {
       "recordings",
     ],
   }),
-  "builtin-relationships": expected({
-    requireAny: [
-      "Relationships",
-      "Personality",
-      "Skills",
-      "Experience",
-      "No relationships yet",
-      "Search people",
-      "Connect your platforms",
-    ],
-  }),
   "builtin-memories": expected({
     requireAny: [
       "No memories yet",
@@ -204,7 +189,7 @@ export const VIEW_OCR_POLICIES = {
       "Filter by type",
     ],
   }),
-  "builtin-rolodex": expected(LAUNCHER_FALLBACK),
+  "builtin-rolodex": expected(VIEW_UNAVAILABLE_FALLBACK),
   "builtin-runtime": expected({
     requireAny: ["Plugins", "Actions", "Providers"],
   }),
@@ -240,11 +225,14 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Misty Forest", "Desert Dusk"],
     requireAny: ["Ocean Deep", "Alpine Dawn", "Ember Night"],
   }),
-  // The hermetic audit serves the production plugin bundle with a disconnected
-  // Cloud status, so the designed signed-out state is the stable semantic
-  // contract. The real /cloud management route is intentionally bypassed.
   "plugin-cloud-gui": expected({
     requireAll: ["Eliza Cloud"],
+    requireAny: ["Credits", "Hosted agents", "API keys", "Connected"],
+  }),
+  // Preserve the disconnected state as a separate production-bundle capture;
+  // connected account fixtures must not erase sign-in recovery coverage.
+  "plugin-cloud-signed-out-gui": expected({
+    requireAll: ["Eliza Cloud", "Connect in Settings"],
     requireAny: [
       "credits",
       "hosted agents",
@@ -276,7 +264,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "plugin-computer-use-sessions-gui": expected({
-    requireAll: ["Computer sessions", "Research browser"],
+    requireAll: ["Computer sessions", "Research", "browser"],
     requireAny: [
       "Linux sandbox",
       "Sequence 12",
@@ -340,8 +328,8 @@ export const VIEW_OCR_POLICIES = {
   }),
   "plugin-cockpit-gui": exempt(
     "unregistered-remote-bundle",
-    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the launcher fallback is the only observable surface.",
-    LAUNCHER_FALLBACK,
+    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the unavailable-view boundary is the only observable surface.",
+    VIEW_UNAVAILABLE_FALLBACK,
   ),
   "plugin-trajectory-logger-gui": expected({
     requireAny: ["Back to apps", "HANDLE", "PLAN"],

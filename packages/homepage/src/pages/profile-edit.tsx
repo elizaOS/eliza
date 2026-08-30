@@ -4,6 +4,9 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+import { Button } from "@elizaos/ui/button";
+import { Input } from "@elizaos/ui/input";
+import { Textarea } from "@elizaos/ui/textarea";
 import { Check, Copy, Loader2, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -114,7 +117,7 @@ export default function ProfileEditPage() {
 
         <form className="profile-edit-card" onSubmit={handleGenerate}>
           <label htmlFor="ethereum-address">Ethereum / EVM address</label>
-          <input
+          <Input
             id="ethereum-address"
             value={ethereum}
             onChange={(event) => setEthereum(event.target.value)}
@@ -128,7 +131,7 @@ export default function ProfileEditPage() {
           </div>
 
           <label htmlFor="solana-address">Solana address</label>
-          <input
+          <Input
             id="solana-address"
             value={solana}
             onChange={(event) => setSolana(event.target.value)}
@@ -143,9 +146,9 @@ export default function ProfileEditPage() {
             </p>
           )}
 
-          <button type="submit" className="profile-edit-primary">
+          <Button type="submit" className="profile-edit-primary">
             Generate README marker
-          </button>
+          </Button>
 
           {comment && (
             <section className="profile-edit-result" aria-live="polite">
@@ -156,13 +159,13 @@ export default function ProfileEditPage() {
                   README.md. It stays hidden on the rendered profile.
                 </p>
               </div>
-              <textarea
+              <Textarea
                 aria-label="Generated wallet linking comment"
                 value={comment}
                 readOnly
                 rows={11}
               />
-              <button
+              <Button
                 type="button"
                 className="profile-edit-copy"
                 onClick={handleCopy}
@@ -173,7 +176,7 @@ export default function ProfileEditPage() {
                   <Copy aria-hidden="true" />
                 )}
                 {copied ? "Copied" : "Copy hidden comment"}
-              </button>
+              </Button>
             </section>
           )}
         </form>

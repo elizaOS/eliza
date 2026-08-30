@@ -98,7 +98,7 @@ export class ReplyDispatcher {
       }
       const cutPoint = chunkCandidate.length;
       chunks.push(remaining.slice(0, cutPoint));
-      remaining = remaining.slice(cutPoint).trimStart();
+      remaining = remaining.slice(cutPoint);
     }
 
     return chunks;

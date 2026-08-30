@@ -17,14 +17,13 @@ aliases and native/host stubs) — no parallel bundler config to drift.
 | Story tagged `play-fn` has no runtime `playFunction` | Storybook story store | yes |
 | Uncaught `pageerror` | Playwright | yes |
 | Blank / one-color render | `sharp` (downscaled distinct-color count) | yes |
-| **New** console error (vs baseline) | Playwright `console` | yes |
-| **New** serious/critical a11y violation (vs baseline) | injected `axe-core` | yes |
+| Actionable console error after static-harness filters | Playwright `console` | yes |
+| Serious/critical a11y violation | injected `axe-core` | yes |
 | Screenshot | Playwright | captured always |
 
-Console errors and a11y violations are tracked against committed **baselines**
-(`baseline/console-baseline.json`, `baseline/a11y-baseline.json`) using the
-eslint-baseline pattern: the pre-existing backlog is recorded so it is visible
-and burn-down-able, while any *new* regression fails the build immediately.
+The gate has no per-story allowlist or baseline. It filters the static catalog's
+generic missing-public-asset error and the missing-`AppProvider` harness wrapper;
+every remaining console error and every serious or critical axe violation fails.
 
 ## Determinism
 
@@ -64,9 +63,8 @@ node test/story-gate/merge-story-gate.mjs \
   --shards 8
 ```
 
-Useful flags: `--concurrency N`, `--limit N`, `--no-screenshots`, `--no-a11y`,
-`--update-baseline` (regenerate the console + a11y baselines after an
-intentional change).
+Useful flags: `--concurrency N`, `--limit N`, `--no-screenshots`, and
+`--no-a11y`.
 
 ## Outputs (`test/story-gate/output/`)
 

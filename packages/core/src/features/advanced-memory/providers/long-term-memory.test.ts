@@ -150,7 +150,7 @@ describe("longTermMemoryProvider", () => {
 			data: {
 				memoryCount: 3,
 				categories: "semantic: 2, episodic: 1",
-				truncated: false,
+				complete: true,
 			},
 			values: {
 				longTermMemories: expectedText,

@@ -87,7 +87,7 @@ export async function judgeTextWithLlm(args: {
     transcript: args.transcript,
   });
   const judge = new CerebrasJudge();
-  const response = await judge.judge(prompt, { maxTokens: 1024 });
+  const response = await judge.judge(prompt);
   const parsed = parseJudgeResult(response.json);
   if (!parsed) {
     throw new Error(

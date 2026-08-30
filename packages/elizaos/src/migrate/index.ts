@@ -48,8 +48,6 @@ export interface MigratePlan {
     hasSecretsDir: boolean;
     /** Cross-tier duplicate memories dropped during tiering. */
     duplicatesDropped: number;
-    /** Memory bodies clipped at maxChunkLen (content truncated). */
-    clipped: number;
     /** sqlite memory stores detected in the source home. */
     sqliteStores: number;
     /** True if sqlite memory was detected but NOT ingested (node:sqlite missing). */
@@ -78,7 +76,7 @@ export function buildMigrationPlan(opts: MigrateOptions): MigratePlan {
   const entityId = randomUUID() as UUID;
   const roomId = randomUUID() as UUID;
 
-  const { memories, counts, duplicatesDropped, clipped } = tierMemories(src, {
+  const { memories, counts, duplicatesDropped } = tierMemories(src, {
     memoryDays: opts.memoryDays ?? 14,
     roomId,
     entityId,
@@ -101,7 +99,6 @@ export function buildMigrationPlan(opts: MigrateOptions): MigratePlan {
       firewalled: firewall,
       hasSecretsDir: src.hasSecretsDir,
       duplicatesDropped,
-      clipped,
       sqliteStores: src.sqliteStores.length,
       sqliteUningested: src.sqliteUningested,
       warnings: src.warnings,

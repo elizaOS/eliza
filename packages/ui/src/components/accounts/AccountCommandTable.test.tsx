@@ -199,7 +199,9 @@ describe("AccountCommandTable", () => {
     const okRow = screen.getByTestId("account-row-ok");
     const reRow = screen.getByTestId("account-row-re");
     expect(within(okRow).queryByText("Reauth")).toBeNull();
-    expect(within(reRow).getByText("Reauth").className).toContain("text-bg");
+    expect(within(reRow).getByText("Reauth").className).toContain(
+      "text-accent-fg",
+    );
   });
 
   it("invokes onReauthenticate with the account via the existing repair flow", () => {

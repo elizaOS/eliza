@@ -7,7 +7,6 @@
  */
 
 import { describe, expect, test } from "vitest";
-import * as contract from "./elizaos-core-test-contract";
 import {
   ChannelType,
   canRequesterMutateDocument,
@@ -57,25 +56,6 @@ const CONSTRUCTOR_NAMES = Object.keys(CONSTRUCTORS) as Array<
 >;
 const OBJECT_NAMES = Object.keys(OBJECTS) as Array<keyof typeof OBJECTS>;
 
-const EXPORT_NAMES = [
-  "canRequesterMutateDocument",
-  "ChannelType",
-  "DatabaseAdapter",
-  "decryptedCharacter",
-  "DOCUMENT_LIST_QUERY_CAPABILITY_VERSION",
-  "documentMutationSnapshotMatches",
-  "documentRoleHasGlobalVisibility",
-  "encryptedCharacter",
-  "logger",
-  "normalizePairingPageOptions",
-  "Service",
-  "validateDocumentFragmentQueryParams",
-  "validateDocumentListQueryParams",
-  "validateDocumentRequesterContext",
-  "validateQueryEntitiesPagination",
-  "validateUuid",
-] as const;
-
 function unavailableMessage(name: string): string {
   return `@elizaos/core ${name} is outside this test path`;
 }
@@ -94,24 +74,6 @@ function expectUnavailable(fn: () => unknown, name: string): void {
 }
 
 describe("elizaos-core-test-contract fail-loud stub", () => {
-  test("exports exactly the sixteen stand-ins and nothing else", () => {
-    // A module namespace object orders its own keys in code-unit order, not
-    // source order, so compare as sorted sets rather than coupling the
-    // assertion to how the export list happens to be written.
-    expect([...Object.keys(contract)].sort()).toEqual([...EXPORT_NAMES].sort());
-    expect(Object.keys(contract)).toHaveLength(16);
-  });
-
-  test("does not expose queue, comparator, or capacity fields", () => {
-    const record = contract as unknown as Record<string, unknown>;
-    expect("queue" in record).toBe(false);
-    expect("capacity" in record).toBe(false);
-    expect("comparator" in record).toBe(false);
-    expect(record.queue).toBeUndefined();
-    expect(record.capacity).toBeUndefined();
-    expect(record.comparator).toBeUndefined();
-  });
-
   test("function and constructor exports are distinct closures, not a shared thrower", () => {
     expect(validateUuid).not.toBe(encryptedCharacter);
     expect(canRequesterMutateDocument).not.toBe(

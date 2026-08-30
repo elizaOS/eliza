@@ -68,10 +68,10 @@ export function SystemWarningBanner() {
         >
           <span className="truncate">{message}</span>
           <Button
-            variant="ghost"
-            size="sm"
+            variant="ghostMuted"
+            size="micro"
             onClick={() => dismissSystemWarning(message)}
-            className="shrink-0 rounded-sm px-2 py-0.5 text-xs text-[color:var(--brand-black)]/80 hover:bg-black/10"
+            className="shrink-0"
           >
             x
           </Button>

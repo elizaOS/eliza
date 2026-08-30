@@ -30,13 +30,16 @@ describe("repository ruleset contract", () => {
     expect(admission.jobs["static-smoke"].name).toBe("All Tests Passed");
     expect(Object.keys(admission.jobs)).toEqual([
       "source-smoke",
+      "billing-payment-replay-e2e",
       "browser-bridge-windows-security",
       "static-smoke",
     ]);
     expect(admission.jobs["static-smoke"].needs).toEqual([
       "source-smoke",
       "browser-bridge-windows-security",
+      "billing-payment-replay-e2e",
     ]);
+    expect(admission.jobs["billing-payment-replay-e2e"].needs).toBeUndefined();
     expect(admission.jobs["browser-bridge-windows-security"].uses).toBe(
       "./.github/workflows/browser-bridge-windows-security.yml",
     );

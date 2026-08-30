@@ -3,7 +3,27 @@
 /**
  * Badge linking to the llms.txt for the current docs page.
  */
+import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
+import { Badge } from "../../../components/ui/badge";
+
+function DocsBadgeLink({
+  href,
+  children,
+  title,
+}: {
+  href: string;
+  children: ReactNode;
+  title: string;
+}) {
+  return (
+    <Badge asChild variant="outline">
+      <a href={href} title={title} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    </Badge>
+  );
+}
 
 export function LlmsTxtBadge() {
   const indexPath = "/.well-known/llms.txt";
@@ -17,38 +37,29 @@ export function LlmsTxtBadge() {
   const isDocsLanding = pathname === "/docs" || pathname === "/docs/";
   if (isDocsLanding) {
     return (
-      <a
+      <DocsBadgeLink
         href={indexPath}
-        className="text-xs text-white/70 hover:text-white transition-colors px-2 py-1 border border-white/10 bg-white/5"
         title="LLM context index for Cursor / ChatGPT (llms.txt)"
-        target="_blank"
-        rel="noopener noreferrer"
       >
         llms.txt
-      </a>
+      </DocsBadgeLink>
     );
   }
 
   return (
     <div className="flex items-center gap-2">
-      <a
+      <DocsBadgeLink
         href={indexPath}
-        className="text-xs text-white/70 hover:text-white transition-colors px-2 py-1 border border-white/10 bg-white/5"
         title="LLM context index for Cursor / ChatGPT (llms.txt)"
-        target="_blank"
-        rel="noopener noreferrer"
       >
         llms.txt
-      </a>
-      <a
+      </DocsBadgeLink>
+      <DocsBadgeLink
         href={fullPath}
-        className="text-xs text-white/70 hover:text-white transition-colors px-2 py-1 border border-white/10 bg-white/5"
         title="Full docs pack for Cursor / ChatGPT (llms-full.txt)"
-        target="_blank"
-        rel="noopener noreferrer"
       >
         llms-full
-      </a>
+      </DocsBadgeLink>
     </div>
   );
 }

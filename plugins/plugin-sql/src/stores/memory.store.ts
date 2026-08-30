@@ -256,7 +256,7 @@ export class MemoryStore implements Store {
       if (params.entityId) conditions.push(eq(memoryTable.entityId, params.entityId));
       if (params.match_threshold) conditions.push(gte(similarity, params.match_threshold));
 
-      const results = await this.db
+      const orderedQuery = this.db
         .select({
           memory: memoryTable,
           similarity,
@@ -265,8 +265,10 @@ export class MemoryStore implements Store {
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
         .where(and(...conditions))
-        .orderBy(desc(similarity))
-        .limit(params.count ?? 10);
+        .orderBy(desc(similarity));
+      const results = await (params.count === undefined
+        ? orderedQuery
+        : orderedQuery.limit(params.count));
 
       return results.map((row) => ({
         id: row.memory.id as UUID,

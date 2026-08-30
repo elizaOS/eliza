@@ -10,8 +10,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc --noEmit -p tsconfig.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.cloud-integration.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.cloud-integration.json",
     "test": "bun --conditions=eliza-source test",
     "lint:check": "bunx @biomejs/biome check package.json src test",
     "format": "bunx @biomejs/biome format --write package.json src test",
@@ -23,9 +23,12 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
+    "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/cloud-test-mocks": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "bun-types": "*"
+    "bun-types": "*",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "0.45.2"
   },
   "elizaos": {
     "scripts": {

@@ -2,7 +2,8 @@
  * GET /api/coding-agents/:id/output untrusted `lines` query contract.
  *
  * Stock parseInt prefix-coerces 1e2→1 and 12px→12, so getSessionOutput
- * returns the wrong page of ACP output. Non-numeric tokens fail open to 100.
+ * returns the wrong page of ACP output. Omission returns complete output, while
+ * a supplied positive safe integer requests explicit suffix pagination.
  */
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -79,7 +80,7 @@ async function getOutput(url: string, getSessionOutput = vi.fn()) {
 }
 
 describe("GET /api/coding-agents/:id/output lines query", () => {
-  it("omitted lines uses the documented default 100", async () => {
+  it("omitted lines returns the complete retained output", async () => {
     const getSessionOutput = vi.fn().mockResolvedValue("ok");
     const result = await getOutput(
       "/api/coding-agents/sess-1/output",
@@ -89,7 +90,7 @@ describe("GET /api/coding-agents/:id/output lines query", () => {
     expect(result.handled).toBe(true);
     expect(result.status).toBe(200);
     expect(result.body).toEqual({ sessionId: "sess-1", output: "ok" });
-    expect(getSessionOutput).toHaveBeenCalledWith("sess-1", 100);
+    expect(getSessionOutput).toHaveBeenCalledWith("sess-1", undefined);
   });
 
   it("canonical lines=50 reaches getSessionOutput", async () => {
@@ -112,8 +113,7 @@ describe("GET /api/coding-agents/:id/output lines query", () => {
     "0x10",
     "abc",
     "50abc",
-    "2001",
-    "9007199254740991",
+    "9007199254740992",
   ])(
     "rejects prefix-coerced or junk lines=%s with 400 before getSessionOutput",
     async (token) => {
@@ -126,20 +126,20 @@ describe("GET /api/coding-agents/:id/output lines query", () => {
       expect(result.handled).toBe(true);
       expect(result.status).toBe(400);
       expect(result.body).toEqual({
-        error: "lines must be an integer from 1 to 2000",
+        error: "lines must be a positive safe integer",
       });
       expect(getSessionOutput).not.toHaveBeenCalled();
     },
   );
 
-  it("accepts the full retained 2000-line buffer", async () => {
+  it("allows explicit pagination beyond the former 2000-line ceiling", async () => {
     const getSessionOutput = vi.fn().mockResolvedValue("full buffer");
     const result = await getOutput(
-      "/api/coding-agents/sess-1/output?lines=2000",
+      "/api/coding-agents/sess-1/output?lines=2001",
       getSessionOutput,
     );
 
     expect(result.status).toBe(200);
-    expect(getSessionOutput).toHaveBeenCalledWith("sess-1", 2_000);
+    expect(getSessionOutput).toHaveBeenCalledWith("sess-1", 2_001);
   });
 });

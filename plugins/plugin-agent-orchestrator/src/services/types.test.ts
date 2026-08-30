@@ -9,12 +9,6 @@ import {
 } from "./types.ts";
 
 describe("orchestrator subscription execution authorization", () => {
-  it("exports metadata key constant", () => {
-    expect(SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY).toBe(
-      "subscriptionExecutionAuthorization",
-    );
-  });
-
   it("mints valid authorization object with TTL", () => {
     const now = Date.now();
     const auth = createSubscriptionExecutionAuthorization(

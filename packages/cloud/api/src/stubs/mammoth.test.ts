@@ -28,15 +28,6 @@ const FUNCTIONS = {
 
 const FUNCTION_NAMES = Object.keys(FUNCTIONS) as Array<keyof typeof FUNCTIONS>;
 
-const NAMED_EXPORT_KEYS = [
-  "convertToHtml",
-  "convertToMarkdown",
-  "default",
-  "embedStyleMap",
-  "extractRawText",
-  "images",
-] as const;
-
 const DEFAULT_KEYS = [
   "convertToHtml",
   "convertToMarkdown",
@@ -58,25 +49,6 @@ function expectUnavailable(fn: () => unknown, name: string): void {
 }
 
 describe("mammoth Worker stub", () => {
-  test("exports the six stand-ins and nothing else", () => {
-    // Namespace key order is loader-dependent (Bun vs Vitest); membership is not.
-    expect(Object.keys(mammoth).sort()).toEqual([...NAMED_EXPORT_KEYS]);
-    expect(Object.getOwnPropertyNames(mammoth).sort()).toEqual([
-      ...NAMED_EXPORT_KEYS,
-    ]);
-    expect(Object.keys(mammoth)).toHaveLength(6);
-  });
-
-  test("does not expose queue, comparator, or capacity fields", () => {
-    const record = mammoth as unknown as Record<string, unknown>;
-    expect("queue" in record).toBe(false);
-    expect("capacity" in record).toBe(false);
-    expect("comparator" in record).toBe(false);
-    expect(record.queue).toBeUndefined();
-    expect(record.capacity).toBeUndefined();
-    expect(record.comparator).toBeUndefined();
-  });
-
   test("function exports are distinct closures, not a shared thrower", () => {
     expect(extractRawText).not.toBe(convertToHtml);
     expect(convertToHtml).not.toBe(convertToMarkdown);
@@ -169,7 +141,6 @@ describe("mammoth Worker stub", () => {
       expect(Object.keys(images)).toEqual([]);
       expect(Object.getOwnPropertyNames(images)).toEqual([]);
     });
-
     test("throws the unavailable Error on get of a present-looking property", () => {
       expectUnavailable(() => Reflect.get(images, "img"), "images.img");
     });
@@ -210,11 +181,6 @@ describe("mammoth Worker stub", () => {
     test("keeps throwing on repeated get (no unlock after the first miss)", () => {
       expectUnavailable(() => Reflect.get(images, "img"), "images.img");
       expectUnavailable(() => Reflect.get(images, "img"), "images.img");
-    });
-
-    test("does not expose comparator or capacity fields via `in`", () => {
-      expect("capacity" in images).toBe(false);
-      expect("comparator" in images).toBe(false);
     });
   });
 

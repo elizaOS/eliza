@@ -640,7 +640,7 @@ describe("TASKS:spawn_agent durable restart owner", () => {
     });
   });
 
-  it("degrades loudly but keeps the spawn when persistence fails", async () => {
+  it("stops the spawned session when durable persistence fails", async () => {
     const svc = serviceMock();
     const tasks = {
       createTask: vi.fn(async () => {
@@ -656,11 +656,15 @@ describe("TASKS:spawn_agent durable restart owner", () => {
       spawnOptions,
       callback(),
     );
-    expect(result?.success).toBe(true);
+    expect(result?.success).toBe(false);
     expect(result?.data).not.toMatchObject({
       durableTaskId: expect.anything(),
     });
     expect(runtime.reportError).toHaveBeenCalled();
     expect(tasks.attachSession).not.toHaveBeenCalled();
+    expect(svc.stopSession).toHaveBeenCalledWith("abcdef123456", true);
+    expect(result?.data).toMatchObject({
+      errorCode: "DURABLE_TASK_ATTACH_FAILED",
+    });
   });
 });

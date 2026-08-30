@@ -25,10 +25,9 @@ RUBRIC:
 CANDIDATE RESPONSE:
 {candidate}
 
-Respond with ONLY a compact JSON object on one line, no markdown, no prose, no code fences. Keep "reason" under 20 words so the output fits in 120 tokens:
-{"score": <0.0-1.0 float>, "reason": "<≤20 word justification>"}`;
+Respond with ONLY a JSON object on one line, no markdown, no prose, no code fences:
+{"score": <0.0-1.0 float>, "reason": "<justification>"}`;
 
-const MAX_JUDGE_TOKENS = 512;
 const MAX_RETRIES = 2;
 
 type LifeOpsEvalModelModule = {
@@ -97,12 +96,8 @@ function parseJudgeJson(raw: string): JudgeResult | null {
 export class JudgeParseError extends Error {
   readonly raw: string;
   constructor(attempts: number, raw: string) {
-    const preview =
-      raw.length <= 300
-        ? raw
-        : `${raw.slice(0, 150)} … ${raw.slice(-100)} (${raw.length} chars)`;
     super(
-      `[scenario-judge] model did not return a parseable JSON object after ${attempts} attempt(s). Raw: ${preview}`,
+      `[scenario-judge] model did not return a parseable JSON object after ${attempts} attempt(s). Raw: ${raw}`,
     );
     this.name = "JudgeParseError";
     this.raw = raw;
@@ -132,7 +127,6 @@ export async function judgeTextWithLlm(
     let result: JudgeResult | null;
     if (cerebrasJudge) {
       const response = await cerebrasJudge.judge(prompt, {
-        maxTokens: MAX_JUDGE_TOKENS,
         temperature: 0,
       });
       lastRaw = response.raw;
@@ -140,7 +134,6 @@ export async function judgeTextWithLlm(
     } else {
       const output = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
-        maxTokens: MAX_JUDGE_TOKENS,
         temperature: 0,
       });
       const raw = typeof output === "string" ? output : JSON.stringify(output);

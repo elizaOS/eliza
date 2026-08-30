@@ -59,12 +59,11 @@ export function WidgetSection({
       <div className="flex items-center justify-between gap-2 pr-1">
         {onTitleClick ? (
           <Button
-            variant="ghost"
-            size="sm"
+            variant={isHome ? "weatherPrompt" : "transparent"}
+            size="content"
+            align="start"
             onClick={onTitleClick}
-            className={`h-auto min-w-0 flex-1 justify-start gap-1.5 rounded-sm bg-transparent px-0.5 py-1 text-left transition-colors hover:bg-transparent ${
-              isHome ? "text-white/75 hover:text-white" : "hover:text-txt"
-            }`}
+            className="min-w-0 flex-1"
           >
             {titleContent}
           </Button>

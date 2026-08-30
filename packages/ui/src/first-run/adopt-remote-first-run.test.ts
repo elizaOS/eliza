@@ -2,12 +2,16 @@
  * Unit coverage for adopting a remote agent's first-run state (URL
  * normalization, config probe). Client injected, no live agent.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   adoptRemoteAgentFirstRun,
+  completeRemoteAgentFirstRun,
   normalizeRemoteAgentUrl,
   type RemoteFirstRunClient,
 } from "./adopt-remote-first-run";
+import { setPendingFirstRunTextReleaseHandler } from "./first-run-pending-text";
+
+afterEach(() => setPendingFirstRunTextReleaseHandler(null));
 
 describe("normalizeRemoteAgentUrl", () => {
   it("keeps a valid http URL and strips the trailing slash", () => {
@@ -129,5 +133,44 @@ describe("adoptRemoteAgentFirstRun", () => {
       deploymentTarget?: { remoteAccessToken?: string };
     };
     expect(payload.deploymentTarget?.remoteAccessToken).toBe("secret-key");
+  });
+});
+
+describe("completeRemoteAgentFirstRun", () => {
+  it("releases typed onboarding intent only after successful remote adoption", async () => {
+    const order: string[] = [];
+    const { client } = makeClient({
+      submitFirstRun: vi.fn(async () => void order.push("adopt")),
+    });
+    setPendingFirstRunTextReleaseHandler(() => void order.push("release"));
+
+    await completeRemoteAgentFirstRun(
+      client,
+      { apiBase: "https://agent.example.com" },
+      () => void order.push("complete"),
+    );
+
+    expect(order).toEqual(["adopt", "complete", "release"]);
+  });
+
+  it("does not complete or release when remote adoption fails", async () => {
+    const complete = vi.fn();
+    const release = vi.fn();
+    const { client } = makeClient({
+      submitFirstRun: vi.fn(async () => {
+        throw new Error("remote unreachable");
+      }),
+    });
+    setPendingFirstRunTextReleaseHandler(release);
+
+    await expect(
+      completeRemoteAgentFirstRun(
+        client,
+        { apiBase: "https://agent.example.com" },
+        complete,
+      ),
+    ).rejects.toThrow(/remote unreachable/);
+    expect(complete).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
   });
 });

@@ -17,7 +17,7 @@ export function VoiceEmptyState({ onCreateClick }: VoiceEmptyStateProps) {
       icon={<Mic className="size-7 text-muted" />}
       title="Create a Voice Clone"
       action={
-        <Button onClick={onCreateClick} size="lg" className="h-12 px-8">
+        <Button onClick={onCreateClick} size="lg">
           <Mic className="mr-2  size-5" />
           Get Started
         </Button>

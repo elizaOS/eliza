@@ -124,6 +124,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 		const id = recorder.startTrajectory({
 			agentId: "agent-test",
 			roomId: "room-1",
+			codingActionProfile: { kind: "pi", includeWorktree: true },
 			rootMessage: { id: "msg-1", text: "hello", sender: "user-1" },
 		});
 
@@ -229,6 +230,10 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(parsed.trajectoryId).toBe(id);
 		expect(parsed.agentId).toBe("agent-test");
 		expect(parsed.roomId).toBe("room-1");
+		expect(parsed.codingActionProfile).toEqual({
+			kind: "pi",
+			includeWorktree: true,
+		});
 		expect(parsed.rootMessage).toEqual({
 			id: "msg-1",
 			text: "hello",

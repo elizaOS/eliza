@@ -259,7 +259,7 @@ function SecurityStatusBadge({
     <SharedStatusBadge
       label={children}
       variant={variant}
-      className="w-fit shrink-0 rounded-full px-2.5 py-1 text-xs font-medium normal-case"
+      className="w-fit shrink-0"
     />
   );
 }
@@ -531,7 +531,6 @@ function AccessModeSection({
           variant="ghost"
           size="sm"
           onClick={() => void onRefresh()}
-          className="h-7 gap-1.5 px-1 text-xs text-muted transition-colors hover:bg-transparent hover:text-txt-strong"
         >
           <RefreshCw className="size-3" />
           {t("security.refresh", { defaultValue: "Refresh" })}
@@ -662,7 +661,6 @@ function SessionsSection() {
               variant="ghost"
               size="sm"
               onClick={load}
-              className="h-7 gap-1.5 px-1 text-xs text-muted transition-colors hover:bg-transparent hover:text-txt-strong"
             >
               <RefreshCw className="size-3" />
               {t("security.refresh", { defaultValue: "Refresh" })}
@@ -672,10 +670,9 @@ function SessionsSection() {
               <Button
                 ref={revokeOthersRef}
                 {...revokeOthersAgentProps}
-                variant="outline"
+                variant="surfaceDestructive"
                 size="sm"
                 onClick={handleRevokeOthers}
-                className="border-danger/40 text-xs text-danger hover:bg-danger/10"
               >
                 {t("security.sessions.signOutEverywhere", {
                   defaultValue: "Sign out everywhere else",
@@ -751,11 +748,11 @@ const SessionRow = memo(function SessionRow({
           <Button
             ref={revokeRef}
             {...revokeAgentProps}
-            variant="ghost"
+            variant="surfaceDestructive"
             size="sm"
             disabled={revoking}
             onClick={() => onRevoke(session.id)}
-            className="shrink-0 text-xs text-danger hover:bg-danger/10 hover:text-danger"
+            className="shrink-0"
             aria-label={t("security.sessions.revoke", {
               defaultValue: "Revoke this session",
             })}

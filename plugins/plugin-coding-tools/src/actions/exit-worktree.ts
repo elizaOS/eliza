@@ -106,12 +106,9 @@ export async function exitWorktreeHandler(
     `${CODING_TOOLS_LOG_PREFIX} WORKTREE action=exit from ${popped.entered} -> ${popped.previousCwd} cleaned=${cleaned}`,
   );
 
-  const maxActionResultBytes = 2000;
-  const text = (
-    cleaned
-      ? `Exited and removed worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
-      : `Exited worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
-  ).slice(0, maxActionResultBytes);
+  const text = cleaned
+    ? `Exited and removed worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
+    : `Exited worktree ${popped.entered}; cwd -> ${popped.previousCwd}`;
   // No visible callback: the exit confirmation is intermediate coding-flow
   // detail; the evaluator's in-voice reply is the user's single answer.
   return successActionResult(text, {

@@ -7,7 +7,7 @@
  * host chat surface, not here.
  */
 
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui";
 import { Link2, MonitorUp, QrCode, Radio } from "lucide-react";
 import type React from "react";
 import { useEffect } from "react";
@@ -66,7 +66,8 @@ export function Chat({
 
         <div style={styles.actions}>
           <Button
-            unstyled
+            variant={paired ? "outline" : "default"}
+            size="lg"
             type="button"
             onClick={onOpenPairing}
             style={paired ? styles.secondaryAction : styles.primaryAction}
@@ -76,7 +77,8 @@ export function Chat({
           </Button>
 
           <Button
-            unstyled
+            variant="default"
+            size="lg"
             type="button"
             onClick={onOpenRemoteSession}
             disabled={!remoteSessionAvailable}

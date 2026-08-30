@@ -1,12 +1,11 @@
 """Failure-driven adaptive synth (closes M6).
 
-Builds on the W1-S1 multi-turn project simulator. The one-shot synth
-(``together_synth.py``, ``drive_eliza.py``) and the W1-S1 simulator both
+Builds on the W1-S1 multi-turn project simulator. The one-shot
+``together_synth.py`` path and the W1-S1 simulator both
 generate trajectories from generic seeds. This module closes the loop:
 
-  1. read recent benchmark failures (from the W0-X5 ``ResultsStore``
-     SQLite DB at ``~/.eliza/benchmarks/results.db``, OR from JSON
-     artifacts written by older benchmark adapters),
+  1. read recent benchmark failures from JSON artifacts written by benchmark
+     adapters,
   2. for each failure, ask an LLM "author" to produce N variation
      prompts that exercise the same failure mode,
   3. drive each variation through ``project_simulator.ProjectSimulator``
@@ -25,9 +24,8 @@ Architecture
 Strict layering, no business logic in the CLI:
 
   - :class:`FailureSource` (Protocol) — yields :class:`BenchmarkFailure`
-    rows. Two concrete implementations ship here:
+    rows. One concrete implementation ships here:
 
-    * :class:`ResultsStoreFailureSource` reads the W0-X5 SQLite DB.
     * :class:`JsonArtifactFailureSource` reads JSON / JSONL files.
 
   - :class:`VariationAuthor` (Protocol) — given a :class:`BenchmarkFailure`,
@@ -56,6 +54,7 @@ CLI
 ::
 
     python -m synth.adaptive_synth \\
+        --artifacts-dir reports/benchmark-runs \\
         --since 2025-05-01 \\
         --variations 3 \\
         --output-dir data/synthesized/adaptive/
@@ -116,59 +115,12 @@ SYNTH_KIND = "failure_derived"
 log = logging.getLogger("synth.adaptive_synth")
 
 
-_RESULTS_STORE_MODULE_NAME = "_adaptive_synth_results_store"
-
-
-def _load_results_store() -> tuple[type, "Callable[[], Path]"]:
-    """Load the W0-X5 ``ResultsStore`` lazily from its absolute path.
-
-    The repo layout puts the canonical ResultsStore at
-    ``packages/benchmarks/lib/results_store.py``. ``packages/training``
-    also has a (different) ``benchmarks/`` directory (eliza1_gates),
-    so we cannot safely add the parent ``packages`` dir to ``sys.path``
-    — the training-local ``benchmarks`` package would shadow the
-    sibling one. We load by absolute file path via ``importlib.util``
-    instead and register the loaded module in ``sys.modules`` so
-    dataclasses referenced by string annotations resolve cleanly.
-    Raises ImportError on failure (no silent fallback).
-    """
-    import importlib.util
-
-    cached = sys.modules.get(_RESULTS_STORE_MODULE_NAME)
-    if cached is not None:
-        return cached.ResultsStore, cached.default_db_path
-
-    repo_root = SCRIPTS_ROOT.parent.parent  # .../packages/
-    target = repo_root / "benchmarks" / "lib" / "results_store.py"
-    if not target.is_file():
-        raise ImportError(
-            f"ResultsStoreFailureSource: could not find {target}"
-        )
-    spec = importlib.util.spec_from_file_location(
-        _RESULTS_STORE_MODULE_NAME, target
-    )
-    if spec is None or spec.loader is None:
-        raise ImportError(
-            f"ResultsStoreFailureSource: importlib could not build a spec "
-            f"for {target}"
-        )
-    module = importlib.util.module_from_spec(spec)
-    # Register before exec so dataclass(slots / __module__ lookups succeed.
-    sys.modules[_RESULTS_STORE_MODULE_NAME] = module
-    try:
-        spec.loader.exec_module(module)
-    except Exception:
-        sys.modules.pop(_RESULTS_STORE_MODULE_NAME, None)
-        raise
-    return module.ResultsStore, module.default_db_path
-
-
 # ─────────────────────────── domain types ────────────────────────────
 
 
 @dataclass(frozen=True)
 class BenchmarkFailure:
-    """A single failed benchmark run pulled from the W0-X5 store or JSON.
+    """A single failed benchmark run pulled from a JSON benchmark artifact.
 
     ``run_id`` is the unique identifier used to populate
     ``derived_from`` on every generated trajectory. ``failed_tasks`` is
@@ -255,86 +207,6 @@ def _extract_failed_tasks(raw: Mapping[str, Any]) -> tuple[Mapping[str, Any], ..
             return tuple(out2)
 
     return ()
-
-
-class ResultsStoreFailureSource:
-    """Pull failures from the W0-X5 SQLite ResultsStore.
-
-    Failures are runs whose aggregate score is strictly below the
-    ``threshold`` passed to :meth:`list_failures`, recorded at or after
-    ``since_ts_ms``. The store is opened read-side only; this module
-    never writes back.
-    """
-
-    def __init__(self, db_path: str | Path | None = None):
-        # Load lazily so test environments without ``benchmarks.lib``
-        # on sys.path still load this module. Load directly from the
-        # sibling-package path to avoid colliding with
-        # ``packages/training/benchmarks/`` (eliza1_gates), which
-        # shadows the top-level ``benchmarks`` package name.
-        ResultsStore, default_db_path = _load_results_store()
-        self._ResultsStore = ResultsStore
-        self._db_path = Path(db_path) if db_path is not None else default_db_path()
-
-    def list_failures(
-        self,
-        *,
-        since_ts_ms: int,
-        threshold: float,
-    ) -> list[BenchmarkFailure]:
-        if since_ts_ms < 0:
-            raise ValueError("since_ts_ms must be non-negative")
-        if not 0.0 <= threshold <= 1.0:
-            raise ValueError("threshold must be in [0.0, 1.0]")
-
-        store = self._ResultsStore(db_path=self._db_path)
-        try:
-            conn = store._connect()  # noqa: SLF001 — readonly query, store owns conn
-            rows = conn.execute(
-                """
-                SELECT id, model_id, benchmark, score, ts,
-                       dataset_version, code_commit, raw_json
-                  FROM benchmark_runs
-                 WHERE score < ? AND ts >= ?
-                 ORDER BY ts DESC, id DESC
-                """,
-                (float(threshold), int(since_ts_ms)),
-            ).fetchall()
-        finally:
-            store.close()
-
-        out: list[BenchmarkFailure] = []
-        for r in rows:
-            try:
-                raw = json.loads(r["raw_json"])
-            except (TypeError, json.JSONDecodeError) as exc:
-                log.warning(
-                    "ResultsStoreFailureSource: skipping run id=%s with "
-                    "malformed raw_json: %r",
-                    r["id"],
-                    exc,
-                )
-                continue
-            if not isinstance(raw, dict):
-                log.warning(
-                    "ResultsStoreFailureSource: run id=%s raw_json is not "
-                    "an object (got %s); using empty context",
-                    r["id"],
-                    type(raw).__name__,
-                )
-                raw = {}
-            out.append(
-                BenchmarkFailure(
-                    run_id=f"run-{int(r['id'])}",
-                    model_id=str(r["model_id"]),
-                    benchmark=str(r["benchmark"]),
-                    score=float(r["score"]),
-                    ts=int(r["ts"]),
-                    failed_tasks=_extract_failed_tasks(raw),
-                    raw=raw,
-                )
-            )
-        return out
 
 
 class JsonArtifactFailureSource:
@@ -757,9 +629,7 @@ class AdaptiveSynth:
                 report.variations_authored += len(projects)
 
                 for project in projects:
-                    variation_index = int(
-                        project.metadata.get("variation_index", 0)
-                    )
+                    variation_index = int(project.metadata.get("variation_index", 0))
                     try:
                         records = simulator.run(project)
                     except Exception as exc:
@@ -884,28 +754,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Directory to write adaptive_synth.jsonl + the report.",
     )
     ap.add_argument(
-        "--source",
-        choices=["results-db", "json"],
-        default="results-db",
-        help=(
-            "Failure source: 'results-db' (W0-X5 ResultsStore SQLite) or "
-            "'json' (a directory of JSON/JSONL artifacts)."
-        ),
-    )
-    ap.add_argument(
-        "--db-path",
-        type=Path,
-        default=None,
-        help=(
-            "Override the ResultsStore DB path. Defaults to the path "
-            "resolved by benchmarks.lib.results_store.default_db_path()."
-        ),
-    )
-    ap.add_argument(
         "--artifacts-dir",
         type=Path,
-        default=None,
-        help="Root directory for --source json. Required when source=json.",
+        required=True,
+        help="Root directory containing benchmark JSON/JSONL artifacts.",
     )
     ap.add_argument(
         "--seed",
@@ -917,15 +769,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _build_failure_source(args: argparse.Namespace) -> FailureSource:
-    if args.source == "results-db":
-        return ResultsStoreFailureSource(db_path=args.db_path)
-    if args.source == "json":
-        if args.artifacts_dir is None:
-            raise SystemExit(
-                "--artifacts-dir is required when --source=json"
-            )
-        return JsonArtifactFailureSource(root=args.artifacts_dir)
-    raise SystemExit(f"unknown source: {args.source}")
+    return JsonArtifactFailureSource(root=args.artifacts_dir)
 
 
 def _default_author() -> VariationAuthor:

@@ -196,7 +196,6 @@ describe("ToolsWebSearchSchema, ToolsWebFetchSchema, ToolsWebSchema, ToolsCacheS
       perplexity: { apiKey: "k", baseUrl: "https://x", model: "pplx" },
     });
     expectOk(ToolsWebFetchSchema, {
-      maxChars: 1,
       maxRedirects: 0,
       cacheTtlMinutes: 0,
     });
@@ -215,7 +214,7 @@ describe("ToolsWebSearchSchema, ToolsWebFetchSchema, ToolsWebSchema, ToolsCacheS
     expectFail(ToolsWebSearchSchema, { provider: "google" });
     expectFail(ToolsWebSearchSchema, { maxResults: 0 });
     expectFail(ToolsWebSearchSchema, { perplexity: { extra: true } });
-    expectFail(ToolsWebFetchSchema, { maxChars: 0 });
+    expectFail(ToolsWebFetchSchema, { maxChars: 1 });
     expectFail(ToolsWebFetchSchema, { maxRedirects: -1 });
     expectFail(ToolsWebSchema, { extra: true });
     expectFail(ToolsCacheSchema, { memoryCapacity: 0 });
@@ -574,22 +573,6 @@ describe("AgentDefaultsSchema", () => {
       subagents: { maxConcurrent: 1, archiveAfterMinutes: 1, model: "gpt-4o" },
       sandbox: { mode: "all", workspaceAccess: "rw", scope: "shared" },
       inboxTriage: { enabled: false },
-      contextPruning: {
-        mode: "cache-ttl",
-        softTrimRatio: 0,
-        hardClearRatio: 1,
-        keepLastAssistants: 0,
-        minPrunableToolChars: 0,
-        tools: { allow: ["exec"] },
-        softTrim: { maxChars: 0, headChars: 0, tailChars: 0 },
-        hardClear: { enabled: true, placeholder: "[cleared]" },
-      },
-      compaction: {
-        mode: "safeguard",
-        reserveTokensFloor: 0,
-        maxHistoryShare: 0.1,
-        memoryFlush: { enabled: true, softThresholdTokens: 0 },
-      },
     });
   });
 
@@ -603,11 +586,8 @@ describe("AgentDefaultsSchema", () => {
     expectFail(AgentDefaultsSchema, { verboseDefault: "debug" });
     expectFail(AgentDefaultsSchema, { elevatedDefault: "always" });
     expectFail(AgentDefaultsSchema, { typingMode: "always" });
-    expectFail(AgentDefaultsSchema, { compaction: { maxHistoryShare: 0.09 } });
-    expectFail(AgentDefaultsSchema, { compaction: { maxHistoryShare: 0.91 } });
-    expectFail(AgentDefaultsSchema, {
-      contextPruning: { softTrimRatio: -0.1 },
-    });
+    expectFail(AgentDefaultsSchema, { compaction: {} });
+    expectFail(AgentDefaultsSchema, { contextPruning: {} });
     expectFail(AgentDefaultsSchema, { extra: true });
     expectFail(AgentDefaultsSchema, { sandbox: { mode: "always" } });
   });

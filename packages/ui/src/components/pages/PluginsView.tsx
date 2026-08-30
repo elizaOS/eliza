@@ -31,6 +31,8 @@ import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { openExternalUrl } from "../../utils";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
+import { Avatar, AvatarImage } from "../ui/avatar";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { PluginCard } from "./PluginCard";
 import {
@@ -377,27 +379,22 @@ function PluginListView({
       return (
         <Button
           key={tag.id}
-          variant={isActive ? "default" : "surface"}
-          size="sm"
-          className={`min-h-11 gap-1.5 rounded-full px-3 text-xs-tight font-bold tracking-wide transition-all ${
-            isActive
-              ? "border-transparent bg-accent text-accent-fg hover:bg-accent-muted"
-              : "bg-card/50 text-muted hover:bg-card/80 hover:text-txt"
-          }`}
+          variant="selection"
+          size="touch"
+          shape="circle"
+          data-state={isActive ? "on" : "off"}
           aria-pressed={isActive}
           onClick={() => setSubgroupFilter(tag.id)}
         >
           <Icon className="size-3.5 shrink-0" />
           {tag.label}
-          <span
-            className={`ml-0.5 rounded-full px-1.5 py-0.5 text-3xs font-mono leading-none ${
-              isActive
-                ? "bg-accent-fg/20 text-accent-fg"
-                : "bg-bg-accent/80 text-muted-strong"
-            }`}
+          <Badge
+            variant={isActive ? "metaAccent" : "metaDefault"}
+            size="micro"
+            className="ml-0.5"
           >
             {tag.count}
-          </span>
+          </Badge>
         </Button>
       );
     },
@@ -927,6 +924,7 @@ function PluginListView({
       options?: {
         className?: string;
         emojiClassName?: string;
+        imageSize?: number;
       },
     ) => {
       const icon = resolveIcon(plugin);
@@ -936,14 +934,16 @@ function PluginListView({
       if (typeof icon === "string") {
         const imageSrc = iconImageSource(icon);
         return imageSrc ? (
-          <img
-            src={imageSrc}
-            alt=""
-            className={options?.className ?? "size-5 rounded-sm object-contain"}
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
+          <Avatar shape="square" size={options?.imageSize ?? 20}>
+            <AvatarImage
+              src={imageSrc}
+              alt=""
+              className="object-contain"
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+              }}
+            />
+          </Avatar>
         ) : (
           <Puzzle className={options?.className ?? "size-5"} />
         );
@@ -1242,7 +1242,7 @@ function PluginListView({
         {visiblePlugins.length === 0 ? (
           <PagePanel.Empty
             variant="surface"
-            className="min-h-[18rem] rounded-sm px-5 py-10"
+            className="min-h-[18rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
             description={
               hasActivePluginFilters
                 ? `Try a different search or category filter for ${resultLabel}.`
@@ -1302,7 +1302,7 @@ function PluginListView({
     return (
       <main
         ref={connectorContentRef}
-        className="chat-native-scrollbar relative flex flex-1 min-w-0 flex-col overflow-x-hidden overflow-y-auto bg-transparent px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-7 lg:pb-7 lg:pt-4"
+        className="chat-native-scrollbar relative flex flex-1 min-w-0 flex-col overflow-x-hidden overflow-y-auto px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-7 lg:pb-7 lg:pt-4"
       >
         {contentHeader ? (
           <PageLayoutHeader>{contentHeader}</PageLayoutHeader>
@@ -1387,8 +1387,8 @@ function PluginListView({
                     <Button
                       ref={resetOrderRef}
                       variant="outline"
-                      size="sm"
-                      className="ml-1 min-h-11 rounded-full px-3 text-2xs font-bold tracking-wide text-muted hover:text-txt"
+                      size="badge"
+                      className="ml-1"
                       onClick={handleResetOrder}
                       title={t("pluginsview.ResetToDefaultSor")}
                       {...resetOrderAgentProps}
@@ -1409,7 +1409,7 @@ function PluginListView({
             {sorted.length === 0 && isLoadingPlugins ? (
               <PagePanel.Loading
                 variant="surface"
-                className="min-h-[18rem] rounded-lg px-5 py-10"
+                className="min-h-[18rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                 heading={t("pluginsview.LoadingTitle", {
                   defaultValue: "Loading {{label}}…",
                   label: label.toLowerCase(),
@@ -1418,7 +1418,7 @@ function PluginListView({
             ) : sorted.length === 0 && pluginsLoadError ? (
               <PagePanel.Empty
                 variant="surface"
-                className="min-h-[18rem] rounded-lg px-5 py-10"
+                className="min-h-[18rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                 description={t("pluginsview.LoadFailedDesc", {
                   defaultValue:
                     "Couldn't load {{label}}: {{error}}. Check your connection and try again.",
@@ -1444,7 +1444,7 @@ function PluginListView({
             ) : sorted.length === 0 && pluginsLoaded ? (
               <PagePanel.Empty
                 variant="surface"
-                className="min-h-[18rem] rounded-lg px-5 py-10"
+                className="min-h-[18rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                 description={t("pluginsview.NoneAvailableDesc", {
                   defaultValue: "No {{label}} are available right now.",
                   label: resultLabel,
@@ -1457,7 +1457,7 @@ function PluginListView({
             ) : sorted.length === 0 ? (
               <PagePanel.Loading
                 variant="surface"
-                className="min-h-[18rem] rounded-lg px-5 py-10"
+                className="min-h-[18rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                 heading={t("pluginsview.LoadingTitle", {
                   defaultValue: "Loading {{label}}…",
                   label: label.toLowerCase(),
@@ -1466,7 +1466,7 @@ function PluginListView({
             ) : visiblePlugins.length === 0 ? (
               <PagePanel.Empty
                 variant="surface"
-                className="min-h-[16rem] rounded-lg px-5 py-10"
+                className="min-h-[16rem] px-5 py-10 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                 description={
                   showSubgroupFilters
                     ? t("pluginsview.NoPluginsMatchCategory", {

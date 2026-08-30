@@ -19,6 +19,7 @@ import { withRetry } from "../rate-limit";
 const GRAPH_API_BASE = "https://graph.facebook.com/v19.0";
 
 const META_REQUEST_TIMEOUT_MS = 30_000;
+const INSTAGRAM_MAX_CAROUSEL_ITEMS = 10;
 
 /**
  * Bound every Meta Graph API hop so a hung API cannot pin the publishing worker
@@ -241,6 +242,14 @@ async function createInstagramPost(
     };
   }
 
+  if (content.media.length > INSTAGRAM_MAX_CAROUSEL_ITEMS) {
+    return {
+      platform: "instagram",
+      success: false,
+      error: `Instagram carousels support at most ${INSTAGRAM_MAX_CAROUSEL_ITEMS} items; nothing was posted`,
+    };
+  }
+
   try {
     logger.info("[Instagram] Creating post", {
       accountId,
@@ -294,7 +303,7 @@ async function createInstagramPost(
     const containerIds: string[] = [];
 
     // Create container for each image
-    for (const media of content.media.slice(0, 10)) {
+    for (const media of content.media) {
       const containerParams = new URLSearchParams({
         access_token: credentials.accessToken,
         is_carousel_item: "true",

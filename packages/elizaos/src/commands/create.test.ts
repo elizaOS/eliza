@@ -66,6 +66,7 @@ vi.mock("../scaffold.js", () => ({
 
 describe("create command", () => {
   afterEach(() => {
+    vi.clearAllMocks();
     vi.restoreAllMocks();
   });
 
@@ -109,5 +110,26 @@ describe("create command", () => {
     expect(buildPluginTemplateValues).toHaveBeenCalledWith(
       expect.objectContaining({ elizaVersion: "test-version" }),
     );
+  });
+
+  it("rejects unsupported explicit language options for single-language templates", async () => {
+    const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`exit:${code}`);
+    });
+
+    await expect(
+      create("proof", {
+        language: "python",
+        skipUpstream: true,
+        template: "project",
+        yes: true,
+      }),
+    ).rejects.toThrow("exit:1");
+
+    expect(clack.cancel).toHaveBeenCalledWith(
+      "Template 'Project' does not support language 'python'.",
+    );
+    expect(renderTemplateTree).not.toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledWith(1);
   });
 });

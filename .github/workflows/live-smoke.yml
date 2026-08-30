@@ -13,9 +13,9 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, app, scenarios, live-information, cloud, voice, dedicated]
+        options: [all, app, scenarios, group-chat, live-information, cloud, voice, dedicated]
       planner_provider:
-        description: Planner backend for the focused live-information suite
+        description: Acting model provider for focused live-information or group-chat suites
         required: true
         default: openai
         type: choice
@@ -63,8 +63,8 @@ jobs:
         with:
           submodules: false
 
-      - name: Require exact live information credentials
-        if: inputs.suite == 'live-information'
+      - name: Require exact independently judged scenario credentials
+        if: inputs.suite == 'live-information' || inputs.suite == 'group-chat'
         shell: bash
         env:
           PLANNER_PROVIDER: ${{ inputs.planner_provider }}
@@ -74,13 +74,13 @@ jobs:
             openai) planner_key="${OPENAI_API_KEY:-}" ;;
             anthropic) planner_key="${ANTHROPIC_API_KEY:-}" ;;
             openrouter) planner_key="${OPENROUTER_API_KEY:-}" ;;
-            *) echo "::error::Unsupported live-information planner provider."; exit 1 ;;
+            *) echo "::error::Unsupported acting model provider."; exit 1 ;;
           esac
           planner_key_without_whitespace="${planner_key//[[:space:]]/}"
           judge_key="${EVAL_CEREBRAS_API_KEY:-${CEREBRAS_API_KEY:-}}"
           judge_key_without_whitespace="${judge_key//[[:space:]]/}"
           if [[ -z "$planner_key_without_whitespace" ]]; then
-            echo "::error::The selected live-information planner credential is missing or blank; compatible provider keys cannot substitute for it."
+            echo "::error::The selected acting model credential is missing or blank; compatible provider keys cannot substitute for it."
             exit 1
           fi
           if [[ -z "$judge_key_without_whitespace" ]]; then
@@ -109,12 +109,47 @@ jobs:
       # @elizaos/core/edge export. The lean install above skips lifecycle
       # scripts, so build that contract before either consumer starts.
       - name: Build core runtime contract
-        if: inputs.suite == 'all' || inputs.suite == 'scenarios' || inputs.suite == 'live-information' || inputs.suite == 'cloud'
+        if: inputs.suite == 'all' || inputs.suite == 'scenarios' || inputs.suite == 'group-chat' || inputs.suite == 'live-information' || inputs.suite == 'cloud'
         run: bun run build:core
 
       - name: Live scenarios
         if: inputs.suite == 'all' || inputs.suite == 'scenarios'
         run: bun run --cwd packages/scenario-runner test:live:e2e
+
+      - name: Group-chat evaluation
+        if: inputs.suite == 'group-chat'
+        id: group-chat-evaluation
+        continue-on-error: true
+        env:
+          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
+          SCENARIO_TURN_TIMEOUT_MS: "300000"
+        run: >-
+          bun packages/scripts/run-scenarios-isolated.mjs
+          packages/test/scenarios/group-chat
+          --lane live-only
+          --provider ${{ inputs.planner_provider }}
+          --workers 4
+          --timeout-ms 900000
+          --report reports/group-chat-evaluation/aggregate.json
+          --artifacts-dir reports/group-chat-evaluation/scenarios
+
+      - name: Validate complete independently judged group-chat evidence
+        if: inputs.suite == 'group-chat'
+        run: >-
+          bun packages/scripts/validate-group-chat-eval-report.ts
+          --report reports/group-chat-evaluation/aggregate.json
+          --artifacts-dir reports/group-chat-evaluation/scenarios
+          --scenario-dir packages/test/scenarios/group-chat
+          --provider ${{ inputs.planner_provider }}
+
+      - name: Upload group-chat evaluation evidence
+        if: always() && inputs.suite == 'group-chat'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: group-chat-${{ inputs.planner_provider }}-${{ github.run_id }}
+          path: reports/group-chat-evaluation
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Live information routing
         if: inputs.suite == 'live-information'

@@ -229,6 +229,10 @@ export interface PlannerStep {
 
 export interface PlannerTrajectory {
 	context: ContextObject;
+	/** Immutable turn context used as the byte-stable model prefix. */
+	modelBaseContext?: ContextObject;
+	/** Complete append-only assistant/tool/feedback suffix sent to the model. */
+	modelHistory?: ChatMessage[];
 	/** Internal execution-mode provenance for mode-specific terminal handling. */
 	codingMode?: boolean;
 	steps: PlannerStep[];
@@ -240,6 +244,7 @@ export interface PlannerTrajectory {
 export interface PlannerTerminalFailure {
 	kind:
 		| "coding_mutation_unverified"
+		| "coding_verification_failed"
 		| "coding_tool_failure"
 		| ActionFailureKind;
 	transient: boolean;
@@ -382,6 +387,8 @@ export interface PlannerLoopParams {
 	 */
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
+	/** Stable room/session identity used only for provider prompt-cache affinity. */
+	cacheConversationId?: string;
 	parentStageId?: string;
 	providerAttributionState?: State;
 }
@@ -395,6 +402,8 @@ export interface RunEvaluatorParams {
 	provider?: string;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
+	/** Stable room/session identity used only for provider prompt-cache affinity. */
+	cacheConversationId?: string;
 	parentStageId?: string;
 	iteration?: number;
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;

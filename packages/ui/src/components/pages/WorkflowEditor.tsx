@@ -33,8 +33,17 @@ import type {
 import { dispatchChatPrefill } from "../../events";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import { Textarea } from "../ui/textarea";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 import { WorkflowTriggerPanel } from "./WorkflowTriggerPanel";
@@ -209,34 +218,34 @@ function WorkflowWidget({
             </span>
           </div>
         ) : widget.component === "data-table" && columns.length > 0 ? (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
+          <Table>
+            <TableHeader>
+              <TableRow>
                 {columns.map((column) => (
-                  <th
+                  <TableHead
                     key={column}
                     className="border-b px-2 py-1 text-left font-medium text-muted-foreground"
                   >
                     {column}
-                  </th>
+                  </TableHead>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((row, index) => (
-                <tr key={String(row.id ?? index)}>
+                <TableRow key={String(row.id ?? index)}>
                   {columns.map((column) => (
-                    <td
+                    <TableCell
                       key={column}
                       className="border-b border-border/40 px-2 py-1.5"
                     >
                       {String(row[column] ?? "")}
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         ) : widget.component === "chart" && chartValues.length > 0 ? (
           <div className="space-y-2">
             {chartValues.map((item) => (
@@ -503,7 +512,9 @@ export function WorkflowEditor({
               name: event.target.value,
             }))
           }
-          className="h-8 min-w-20 flex-1 border-0 bg-transparent px-0 text-sm font-semibold shadow-none sm:text-base"
+          variant="embeddedName"
+          density="denseResponsive"
+          className="min-w-20 flex-1"
           aria-label="Workflow name"
           title={workflow.description || undefined}
         />
@@ -512,24 +523,28 @@ export function WorkflowEditor({
           aria-label="Workflow views"
         >
           {STUDIO_TABS.map(([value, label, Icon]) => (
-            <button
+            <Button
               key={value}
               type="button"
               onClick={() => setTab(value)}
-              className={`grid size-8 place-items-center rounded-md transition ${tab === value ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+              variant="selection"
+              size="icon-sm"
+              data-state={tab === value ? "on" : "off"}
               aria-label={label}
               aria-current={tab === value ? "page" : undefined}
               title={label}
             >
               <Icon className="size-4" />
-            </button>
+            </Button>
           ))}
         </nav>
         {workflow.id ? (
-          <button
+          <Button
             type="button"
             onClick={() => void toggleActive()}
-            className="grid size-8 place-items-center rounded-md hover:bg-muted/60"
+            variant="selection"
+            size="icon-sm"
+            data-state={workflow.active ? "on" : "off"}
             aria-label={
               workflow.active ? "Disable workflow" : "Enable workflow"
             }
@@ -538,7 +553,7 @@ export function WorkflowEditor({
             <span
               className={`size-2.5 rounded-full ${workflow.active ? "bg-status-success" : "bg-muted-foreground/40"}`}
             />
-          </button>
+          </Button>
         ) : null}
         {dirty ? (
           <span
@@ -574,7 +589,6 @@ export function WorkflowEditor({
           )}
         </Button>
         <Button
-          className="hover:bg-accent/85"
           size="icon-sm"
           onClick={requestRun}
           disabled={running}
@@ -647,7 +661,9 @@ export function WorkflowEditor({
             }
             spellCheck={false}
             aria-label="Smithers workflow source"
-            className="min-h-[420px] flex-1 resize-none rounded-xl border-0 bg-zinc-950 p-4 font-mono text-xs leading-5 text-zinc-100"
+            variant="codeEditor"
+            density="editor"
+            className="flex-1"
           />
         </section>
       ) : null}
@@ -656,23 +672,27 @@ export function WorkflowEditor({
         <div className="grid min-h-0 flex-1 lg:grid-cols-[220px_minmax(0,1fr)]">
           <aside className="min-h-0 overflow-auto border-b border-border/70 p-2 lg:border-b-0 lg:border-r">
             <div className="flex justify-end">
-              <button
+              <Button
                 type="button"
-                className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                variant="ghostMuted"
+                size="icon-sm"
                 onClick={() => void refreshRuns()}
                 aria-label="Refresh runs"
                 title="Refresh"
               >
                 <RefreshCw className="size-3.5" />
-              </button>
+              </Button>
             </div>
             <div className="space-y-1">
               {executions.map((execution) => (
-                <button
+                <Button
                   type="button"
                   key={execution.id}
                   onClick={() => setSelectedRunId(execution.id)}
-                  className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition ${selectedRun?.id === execution.id ? "border-primary/40 bg-primary/5" : "border-transparent hover:bg-muted/50"}`}
+                  variant="choice"
+                  size="row"
+                  align="start"
+                  data-state={selectedRun?.id === execution.id ? "on" : "off"}
                   title={`${execution.status} · ${execution.id}`}
                 >
                   <span
@@ -689,7 +709,7 @@ export function WorkflowEditor({
                       minute: "2-digit",
                     })}
                   </span>
-                </button>
+                </Button>
               ))}
               {executions.length === 0 ? (
                 <div
@@ -795,9 +815,12 @@ export function WorkflowEditor({
                           </span>
                           <div className="min-w-0">
                             {inspectable ? (
-                              <button
+                              <Button
                                 type="button"
-                                className="flex min-h-11 w-full items-start gap-1 text-left"
+                                variant="selection"
+                                size="eventRow"
+                                align="start"
+                                data-state={selected ? "on" : "off"}
                                 aria-label={`Inspect ${event.type} event`}
                                 aria-expanded={selected}
                                 onClick={() =>
@@ -817,7 +840,7 @@ export function WorkflowEditor({
                                 <ChevronRight
                                   className={`mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform ${selected ? "rotate-90" : ""}`}
                                 />
-                              </button>
+                              </Button>
                             ) : (
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate font-medium">
@@ -845,9 +868,9 @@ export function WorkflowEditor({
                   </div>
                 </div>
                 {selectedRun.status === "waiting-approval" ? (
-                  <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
+                  <div className="rounded-xl border border-warning/25 bg-warning/5 p-4">
                     <div className="flex items-center gap-2">
-                      <span className="size-2.5 rounded-full bg-amber-500" />
+                      <span className="size-2.5 rounded-full bg-warning" />
                       <p className="text-sm font-semibold">Approval required</p>
                     </div>
                     {pendingApproval?.prompt ? (
@@ -1051,14 +1074,13 @@ export function WorkflowEditor({
                   {field.type === "boolean" ? (
                     <span className="flex items-center justify-between rounded-lg bg-muted/35 px-3 py-2 text-sm">
                       {field.title}
-                      <input
+                      <Checkbox
                         id={`workflow-input-${field.key}`}
-                        type="checkbox"
                         checked={Boolean(runInput[field.key])}
-                        onChange={(event) =>
+                        onCheckedChange={(checked) =>
                           setRunInput((current) => ({
                             ...current,
-                            [field.key]: event.target.checked,
+                            [field.key]: checked === true,
                           }))
                         }
                       />

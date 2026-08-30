@@ -36,6 +36,7 @@ export const mapsPlugin: Plugin = {
         "Explore places, compare route alternatives, and hand off map actions to Eliza.",
       icon: "Map",
       path: "/maps",
+      responseContext: { primaryContext: "world" },
       order: 925,
       viewKind: "release",
       modalities: ["gui"],

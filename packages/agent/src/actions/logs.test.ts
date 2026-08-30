@@ -1,5 +1,5 @@
 /**
- * Covers logsAction: op dispatch, search query construction / limit clamp /
+ * Covers logsAction: op dispatch, search query construction / explicit paging /
  * tag intersection, delete clearing, and set_level overrides. HTTP is the
  * action's real boundary (the log buffer lives on the server), so fetch is
  * stubbed to capture the outbound request and return a canned buffer; the
@@ -205,7 +205,9 @@ describe("logsAction search", () => {
     expect(captured[0]?.headers).toEqual(createSelfApiRequestHeaders());
     expect(String(result.text)).toContain("No log entries match.");
     expect(String(result.text)).toContain("Filters applied: none");
-    expect(String(result.text)).toContain("at most 200");
+    expect(String(result.text)).toContain(
+      "complete current in-memory log buffer",
+    );
     expect(result.values).toMatchObject({ count: 0, shown: 0 });
   });
 
@@ -335,7 +337,7 @@ describe("logsAction search", () => {
       body: { entries, sources: ["agent"], tags: ["http"] },
     });
     const result = await run({ action: "search" });
-    expect(String(result.text)).toContain("Showing 1 of 1 matching entry");
+    expect(String(result.text)).toContain("Showing all 1 matching entry");
     expect(String(result.text)).toContain("newest last");
     expect(String(result.text)).toContain(
       `${new Date(TS).toISOString()} INFO  agent [http]: only-one`,
@@ -347,7 +349,7 @@ describe("logsAction search", () => {
     });
   });
 
-  it("clamps limit into [1, 200] and takes the newest tail", async () => {
+  it("returns all entries by default and pages only on an explicit valid limit", async () => {
     stubFetch({
       ok: true,
       body: {
@@ -359,21 +361,28 @@ describe("logsAction search", () => {
 
     const def = await run({ action: "search" });
     expect((def.data as { entries: StubEntry[] }).entries).toHaveLength(5);
-    expect(String(def.text)).toContain("limit=50");
+    expect(String(def.text)).toContain("Showing all 5 matching entries");
+    expect(String(def.text)).not.toContain("limit=");
 
     const zero = await run({ action: "search", limit: 0 });
-    expect((zero.data as { entries: StubEntry[] }).entries).toHaveLength(1);
-    expect(String(zero.text)).toContain("limit=1");
-    expect(String(zero.text)).toContain("Showing 1 of 5 matching entries");
+    expect(zero.success).toBe(false);
+    expect(zero.values).toEqual({ error: "LOGS_INVALID_LIMIT" });
 
     const overflow = await run({ action: "search", limit: 500 });
-    expect(String(overflow.text)).toContain("limit=200");
+    expect((overflow.data as { entries: StubEntry[] }).entries).toHaveLength(5);
+    expect(String(overflow.text)).toContain("limit=500");
 
     const newestTwo = await run({ action: "search", limit: 2.9 });
-    const shown = (newestTwo.data as { entries: StubEntry[] }).entries;
+    expect(newestTwo.success).toBe(false);
+    expect(newestTwo.values).toEqual({ error: "LOGS_INVALID_LIMIT" });
+
+    const newestTwoValid = await run({ action: "search", limit: 2 });
+    const shown = (newestTwoValid.data as { entries: StubEntry[] }).entries;
     expect(shown.map((entry) => entry.message)).toEqual(["entry-3", "entry-4"]);
-    expect(String(newestTwo.text)).toContain("limit=2");
-    expect(String(newestTwo.text)).toContain("Showing 2 of 5 matching entries");
+    expect(String(newestTwoValid.text)).toContain("limit=2");
+    expect(String(newestTwoValid.text)).toContain(
+      "Showing 2 of 5 matching entries",
+    );
   });
 
   it("returns LOGS_SEARCH_FAILED on HTTP error", async () => {

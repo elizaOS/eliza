@@ -9,7 +9,10 @@ const meta = {
   component: Textarea,
   tags: ["autodocs"],
   argTypes: {
-    variant: { control: "select", options: ["default", "form", "config"] },
+    variant: {
+      control: "select",
+      options: ["default", "form", "config", "configDialog", "mobileComposer"],
+    },
     density: {
       control: "select",
       options: ["default", "compact", "relaxed"],
@@ -42,4 +45,19 @@ export const ErrorState: Story = {
 };
 export const Disabled: Story = {
   args: { disabled: true, defaultValue: "Cannot edit this" },
+};
+export const ConfigDialog: Story = {
+  args: {
+    variant: "configDialog",
+    density: "dialogEditor",
+    defaultValue: '{\n  "provider": "openai"\n}',
+  },
+};
+export const MobileComposer: Story = {
+  args: {
+    variant: "mobileComposer",
+    density: "singleLine",
+    placeholder: "Message Eliza",
+    rows: 1,
+  },
 };

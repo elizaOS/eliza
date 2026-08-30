@@ -23,6 +23,7 @@ import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 import { validateJwtLifetime } from "./jwt-lifetime";
+import { hashSessionToken } from "./session-user-cache";
 import {
   readStagingSessionSigningConfig,
   STAGING_SESSION_EXCHANGE_VERSION,
@@ -747,7 +748,7 @@ export async function invalidateStewardTokenCache(token: string): Promise<void> 
 
   await Promise.all([
     cache.del(CacheKeys.session.steward(tokenHash)),
-    cache.del(CacheKeys.session.user(tokenHash)),
+    cache.del(CacheKeys.session.user(hashSessionToken(token))),
   ]);
 
   logger.debug("[StewardClient] ✓ Invalidated token cache (in-memory + Redis)", {

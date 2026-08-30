@@ -116,8 +116,8 @@ function ReconnectProgressLine({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="h-6 shrink-0 gap-1 px-1.5 text-2xs"
+            size="micro"
+            className="shrink-0"
             onClick={onRetry}
           >
             <RefreshCw className="size-3" />
@@ -230,8 +230,8 @@ export function AccountRequiredCard({
                 <div className="flex min-w-0 items-center gap-2">
                   <UserRound className="size-3.5 shrink-0 text-muted" />
                   <Button
-                    variant="ghost"
-                    className="h-auto min-w-0 flex-1 justify-start whitespace-normal p-0 text-left font-normal disabled:cursor-default"
+                    variant="publicRow"
+                    size="content"
                     disabled={!onSelectAccount}
                     onClick={() => onSelectAccount?.(account.id)}
                   >
@@ -239,11 +239,7 @@ export function AccountRequiredCard({
                       {connectorAccountDisplayName(account)}
                     </span>
                     <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                      <StatusBadge
-                        label={status.label}
-                        tone={status.tone}
-                        className="px-1.5 py-0 text-3xs"
-                      />
+                      <StatusBadge label={status.label} tone={status.tone} />
                       {account.handle || account.externalId ? (
                         <span className="truncate text-2xs text-muted">
                           {account.handle ?? account.externalId}
@@ -255,8 +251,8 @@ export function AccountRequiredCard({
                     <Button
                       type="button"
                       variant="outline"
-                      size="sm"
-                      className="h-7 shrink-0 gap-1 px-2 text-2xs"
+                      size="tiny"
+                      className="shrink-0"
                       disabled={reconnectBusy}
                       onClick={() => handleReconnect(account.id)}
                     >
@@ -291,8 +287,7 @@ export function AccountRequiredCard({
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-8 px-2.5 text-xs"
+            size="dense"
             disabled={connectBusy}
             onClick={onConnectAccount}
           >
@@ -304,8 +299,7 @@ export function AccountRequiredCard({
           <Button
             type="button"
             variant="default"
-            size="sm"
-            className="h-8 px-2.5 text-xs"
+            size="dense"
             disabled={confirmBusy || !selectedAccount}
             onClick={onConfirm}
           >

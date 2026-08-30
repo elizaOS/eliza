@@ -13,22 +13,27 @@ const repoRoot = path.resolve(
   "../../../..",
 );
 
-// Always-in-the-module-graph source files by dependency depth. The point of the
+// Always-in-the-full-app-module-graph source files by dependency depth. The point of the
 // suite is to prove an edit made at each depth — the app itself, workspace UI,
 // shared code, and every visual-matrix plugin GUI view package — propagates to
 // the running dev client over Vite's HMR channel. That exercises the dev
 // architecture's reliance on `src/` (not `dist/`) resolution plus
 // workspace-source watching.
 const LEVELS = [
-  { name: "app (packages/app)", file: "packages/app/src/main.tsx" },
-  // The app imports @elizaos/ui via subpaths (not the root barrel), so target
-  // the root App component that main.tsx renders — guaranteed in the live graph.
-  { name: "@elizaos/ui", file: "packages/ui/src/App.tsx" },
-  // shared/brand is only reachable via ElizaLogo, which is not eager on the app
-  // "/" route, so Vite never transforms it and an edit emits no HMR event. Target
-  // character-presets instead: main.tsx calls getStylePresets() at module scope,
-  // so this source file is guaranteed in the live graph.
-  { name: "@elizaos/shared", file: "packages/shared/src/character-presets.ts" },
+  { name: "app (packages/app)", file: "packages/app/src/entry.ts" },
+  // The chat harness deliberately skips the full App component. Target an
+  // eager UI provider imported directly by main.tsx so this level is guaranteed
+  // in both harness and normal full-app graphs.
+  {
+    name: "@elizaos/ui",
+    file: "packages/ui/src/components/ShellModalityProvider.tsx",
+  },
+  // entry.ts reaches this shared hostname contract synchronously through
+  // web-entry-policy.ts, so it is present before any renderer branch is chosen.
+  {
+    name: "@elizaos/shared",
+    file: "packages/shared/src/elizacloud/domain-contract.ts",
+  },
   {
     name: "plugin view contacts",
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
@@ -151,10 +156,10 @@ async function waitForViteClient(page: Page): Promise<void> {
 }
 
 // Most plugin GUI views are NOT reachable in the dev client's module graph from
-// the "/" route: they are served as standalone agent-built bundles loaded by
+// the "/chat" route: they are served as standalone agent-built bundles loaded by
 // DynamicViewLoader (a separate module graph the app's Vite dev server never
 // transforms), or lazy()-split out of an eagerly-loaded register.ts. Vite never
-// transforms their source from "/", so an edit emits no HMR event — the same
+// transforms their source from "/chat", so an edit emits no HMR event — the same
 // limitation the @elizaos/shared note above describes. Eager-loading every view
 // at dev boot to fold them in would regress startup (the app-load-perf work
 // deliberately defers them); they are HMR-validated when the view is actually
@@ -193,26 +198,46 @@ test.describe("HMR propagation across package dependency levels", () => {
         const marker = `HMR_PROBE_${level.name.replace(/[^a-z0-9]/gi, "_")}_${Date.now()}`;
 
         const events = collectViteEvents(page);
-        await page.goto("/");
+        // The hosted root can select the lightweight marketing entry, which
+        // intentionally excludes main.tsx and @elizaos/ui. Use a full-app route
+        // so every asserted dependency is present in the live client graph.
+        await page.goto("/chat");
         await waitForViteClient(page);
 
-        // Sentinel survives an HMR module swap but is wiped by a full reload —
-        // recorded for diagnostics, not asserted (barrels legitimately reload).
+        // Clear the execution marker before editing. The changed module sets it
+        // again when Vite propagates either an HMR update or a full reload.
         await page.evaluate((m) => {
-          (window as unknown as Record<string, unknown>).__hmrSentinel = m;
-        }, marker);
+          (window as unknown as Record<string, unknown>).__elizaHmrProbe = m;
+        }, null);
 
         events.length = 0;
         try {
-          // Appending a comment is always syntactically valid and still forces
-          // Vite to re-process the module and push an update to the client.
-          fs.writeFileSync(abs, `${original}\n// ${marker}\n`);
+          // The probe must survive transformation and execute in the browser.
+          // A comment-only edit can compile to identical output, so observing a
+          // console log would test Vite's diagnostics rather than propagation.
+          fs.writeFileSync(
+            abs,
+            `${original}\n(globalThis as typeof globalThis & { __elizaHmrProbe?: string }).__elizaHmrProbe = ${JSON.stringify(marker)};\n`,
+          );
           await expect
-            .poll(() => events.length, {
-              timeout: 30_000,
-              message: `Expected a Vite HMR/reload event in the browser after editing ${level.file}. Captured: ${JSON.stringify(events)}`,
-            })
-            .toBeGreaterThan(0);
+            .poll(
+              () =>
+                page
+                  .evaluate(
+                    () =>
+                      (
+                        globalThis as typeof globalThis & {
+                          __elizaHmrProbe?: string;
+                        }
+                      ).__elizaHmrProbe,
+                  )
+                  .catch(() => undefined),
+              {
+                timeout: 30_000,
+                message: `Expected the edited module ${level.file} to execute in the browser. Captured Vite events: ${JSON.stringify(events)}`,
+              },
+            )
+            .toBe(marker);
         } finally {
           fs.writeFileSync(abs, original);
         }

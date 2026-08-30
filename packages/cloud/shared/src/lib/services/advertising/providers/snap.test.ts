@@ -327,6 +327,32 @@ describe("snapAdsProvider", () => {
     });
   });
 
+  test("rejects oversized creative text before dispatch instead of slicing it", async () => {
+    const result = await snapAdsProvider.createCreative(
+      credentials,
+      "act-1",
+      "act-1/campaign-1/squad-1",
+      {
+        name: "creative",
+        type: "image",
+        headline: "x".repeat(35),
+        description: "brand",
+        destinationUrl: "https://example.com",
+        media: [
+          {
+            type: "image",
+            url: "https://example.com/image.png",
+            providerAssetId: "media-1",
+          },
+        ],
+      } as never,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("nothing was created");
+    expect(fetchMock()).not.toHaveBeenCalled();
+  });
+
   test("maps lifetime stats from microcurrency to campaign metrics", async () => {
     fetchMock().mockResolvedValueOnce(
       success({

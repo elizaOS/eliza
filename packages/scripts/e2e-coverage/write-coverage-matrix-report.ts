@@ -2,8 +2,8 @@
 /**
  * E2E coverage matrix report CLI (issue #8802).
  *
- * Builds the canonical coverage matrix (slash commands, #8791 shortcuts, plugin
- * routes, views) from real source, writes `reports/coverage/e2e-matrix.json` +
+ * Builds the canonical coverage matrix (slash commands, #8791 shortcuts, and
+ * plugin routes) from real source, writes `reports/coverage/e2e-matrix.json` +
  * a self-contained HTML contact sheet + a markdown summary, prints a one-line
  * status, and exits non-zero on a blocking gap when enforcement is on.
  *
@@ -126,7 +126,6 @@ function renderViewerHtml(): string {
     ['commands', (s.commands||{}).covered + '/' + (s.commands||{}).total],
     ['plugin routes', (s.pluginRoutes||{}).covered + '/' + (s.pluginRoutes||{}).total + ' (+' + (s.pluginRoutes||{}).exempt + ' exempt)'],
     ['shortcuts', (s.shortcuts||{}).gated ? 'gated on #8791' : ((s.shortcuts||{}).covered + '/' + (s.shortcuts||{}).total)],
-    ['view gates', (s.views||{}).gates],
     ['blocking gaps', s.blockingGaps],
     ['advisory gaps', s.advisoryGaps],
   ];
@@ -169,7 +168,6 @@ function renderMarkdown(matrix: CoverageMatrix): string {
   lines.push(
     `- Shortcuts: ${s.shortcuts.gated ? "gated on #8791 (advisory)" : `${s.shortcuts.covered}/${s.shortcuts.total}`}`,
   );
-  lines.push(`- View gates: ${s.views.gates}`);
   lines.push(
     `- Blocking gaps: ${s.blockingGaps} · Advisory gaps: ${s.advisoryGaps}`,
   );

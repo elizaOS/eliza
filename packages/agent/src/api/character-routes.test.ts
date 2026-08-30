@@ -34,9 +34,9 @@ beforeEach(() => {
 });
 
 describe("parseCharacterHistoryLimit", () => {
-  it("keeps the default and accepts complete safe decimals", () => {
-    expect(parseCharacterHistoryLimit(null)).toBe(20);
-    expect(parseCharacterHistoryLimit("0")).toBe(0);
+  it("leaves an omitted page unbounded and accepts complete safe decimals", () => {
+    expect(parseCharacterHistoryLimit(null)).toBeUndefined();
+    expect(parseCharacterHistoryLimit("0")).toBeNull();
     expect(parseCharacterHistoryLimit("0007")).toBe(7);
     expect(parseCharacterHistoryLimit(String(Number.MAX_SAFE_INTEGER))).toBe(
       Number.MAX_SAFE_INTEGER,

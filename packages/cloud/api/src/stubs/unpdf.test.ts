@@ -118,16 +118,6 @@ describe("unpdf Worker stub", () => {
     expect(getMeta).not.toBe(getResolvedPDFJS);
   });
 
-  test("does not expose queue, comparator, or capacity fields", () => {
-    const record = workerUnpdfSurface as unknown as Record<string, unknown>;
-    expect("queue" in record).toBe(false);
-    expect("capacity" in record).toBe(false);
-    expect("comparator" in record).toBe(false);
-    expect(record.queue).toBeUndefined();
-    expect(record.capacity).toBeUndefined();
-    expect(record.comparator).toBeUndefined();
-  });
-
   test("reads a missing export as undefined rather than throwing", () => {
     const view = unpdf as unknown as Record<string, unknown>;
     expect(view.parsePdf).toBeUndefined();

@@ -5,7 +5,7 @@
 
 "use client";
 
-import { BrandCard, CornerBrackets } from "@elizaos/ui/cloud-ui";
+import { Card, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { ArrowLeft, Download, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -68,7 +68,6 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
           variant="ghost"
           type="button"
           onClick={() => navigate("/settings#cloud-billing")}
-          className="group flex min-h-touch items-center gap-2 font-mono text-sm text-muted hover:text-txt-strong transition-colors"
         >
           <div className="flex items-center justify-center size-8 rounded-sm bg-bg-elevated group-hover:bg-bg-hover transition-colors">
             <ArrowLeft className="size-4" />
@@ -82,7 +81,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
       </div>
 
       {/* Invoice Header Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
 
         <div className="relative z-10 space-y-6">
@@ -103,7 +102,6 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   onClick={() =>
                     invoice.invoice_pdf && openInvoiceUrl(invoice.invoice_pdf)
                   }
-                  className="flex min-h-touch items-center gap-2 text-base font-mono text-txt-strong underline hover:text-accent transition-colors"
                 >
                   <Download className="size-4" />
                   {t("cloud.invoiceDetail.downloadPdf", {
@@ -119,7 +117,6 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                     invoice.hosted_invoice_url &&
                     openInvoiceUrl(invoice.hosted_invoice_url)
                   }
-                  className="flex min-h-touch items-center gap-2 text-base font-mono text-txt-strong underline hover:text-accent transition-colors"
                 >
                   <ExternalLink className="size-4" />
                   {t("cloud.invoiceDetail.viewInStripe", {
@@ -160,10 +157,10 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             </div>
           </div>
         </div>
-      </BrandCard>
+      </Card>
 
       {/* Transaction Summary Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
 
         <div className="relative z-10 space-y-6">
@@ -250,10 +247,10 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             )}
           </div>
         </div>
-      </BrandCard>
+      </Card>
 
       {/* Payment Information Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
 
         <div className="relative z-10 space-y-6">
@@ -330,7 +327,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             </div>
           )}
         </div>
-      </BrandCard>
+      </Card>
     </div>
   );
 }

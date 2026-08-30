@@ -306,6 +306,30 @@ describe("LIQUIDITY write gates", () => {
     expect(confirmationKeys(cache)).toHaveLength(0);
   });
 
+  it("renders every returned pool beyond the former ten-pool boundary", async () => {
+    const { runtime, lp } = lpRuntime();
+    const pools = Array.from({ length: 12 }, (_, index) => ({
+      id: `pool-${index}`,
+      displayName: `Pool ${index}`,
+      dex: "test-dex",
+      chain: "evm",
+      tokenA: { symbol: "AAA", address: `0xa${index}` },
+      tokenB: { symbol: "BBB", address: `0xb${index}` },
+    }));
+    lp.listPools.mockResolvedValue(pools as never[]);
+
+    const result = await liquidityAction.handler(
+      runtime,
+      message("show pools"),
+      undefined,
+      { action: "list_pools" },
+    );
+
+    expect(result?.text).toContain("Pool 11");
+    expect(result?.text).not.toContain("Showing 10 of");
+    expect(result?.data?.pools as unknown[]).toHaveLength(12);
+  });
+
   it("gates the umbrella at ADMIN like the WALLET action", () => {
     expect(liquidityAction.roleGate?.minRole).toBe("ADMIN");
   });

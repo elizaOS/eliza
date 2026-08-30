@@ -24,6 +24,8 @@ export type ComputeStopIntentStatus =
   | "provider_confirmed"
   | "superseded";
 
+export type ComputeStopIntentAuthorization = "billing_request" | "user_request";
+
 export const containerComputeStopIntents = pgTable(
   "container_compute_stop_intents",
   {
@@ -33,6 +35,10 @@ export const containerComputeStopIntents = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     container_id: uuid("container_id").notNull(),
     lifecycle_revision: bigint("lifecycle_revision", { mode: "number" }).notNull(),
+    authorization: text("authorization")
+      .$type<ComputeStopIntentAuthorization>()
+      .notNull()
+      .default("billing_request"),
     status: text("status").$type<ComputeStopIntentStatus>().notNull().default("pending"),
     job_id: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
     attempts: integer("attempts").notNull().default(0),
@@ -50,12 +56,19 @@ export const containerComputeStopIntents = pgTable(
     active_unique: uniqueIndex("container_compute_stop_intents_active_unique")
       .on(table.organization_id, table.container_id)
       .where(sql`${table.status} IN ('pending', 'dispatching', 'retry', 'terminal_attention')`),
+    user_generation_unique: uniqueIndex("container_compute_stop_intents_user_generation_unique")
+      .on(table.organization_id, table.container_id, table.lifecycle_revision)
+      .where(sql`${table.authorization} = 'user_request'`),
     recovery_idx: index("container_compute_stop_intents_recovery_idx")
       .on(table.status, table.next_attempt_at)
       .where(sql`${table.status} IN ('pending', 'retry', 'terminal_attention')`),
     status_check: check(
       "container_compute_stop_intents_status_check",
       sql`${table.status} IN ('pending', 'dispatching', 'retry', 'terminal_attention', 'provider_confirmed', 'superseded')`,
+    ),
+    authorization_check: check(
+      "container_compute_stop_intents_authorization_check",
+      sql`${table.authorization} IN ('billing_request', 'user_request')`,
     ),
     attempts_check: check(
       "container_compute_stop_intents_attempts_check",

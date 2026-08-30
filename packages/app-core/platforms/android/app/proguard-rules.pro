@@ -6,6 +6,10 @@
 -keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
 -keep class com.getcapacitor.community.** { *; }
 
+# Background Runner's bundled JS engine resolves this namespace from native
+# code, so R8 cannot discover the references from Java bytecode.
+-keep class io.ionic.android_js_engine.** { *; }
+
 # elizaOS custom Capacitor plugins.
 #
 # Two package roots are in play and BOTH must be kept:

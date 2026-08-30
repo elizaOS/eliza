@@ -58,10 +58,10 @@ describe("ChatTurnStatus contract", () => {
 });
 
 describe("ChatFailureKind contract", () => {
-  it("covers exactly the twelve turn-failure discriminators", () => {
+  it("covers exactly the thirteen turn-failure discriminators", () => {
     const kinds: ChatFailureKind[] = [...CHAT_FAILURE_KINDS];
     expect(new Set(kinds).size).toBe(kinds.length);
-    expect(kinds).toHaveLength(12);
+    expect(kinds).toHaveLength(13);
     expect(kinds).toEqual([
       "insufficient_credits",
       "missing_capability",
@@ -74,6 +74,7 @@ describe("ChatFailureKind contract", () => {
       "persistence_error",
       "local_inference",
       "coding_mutation_unverified",
+      "coding_verification_failed",
       "coding_tool_failure",
     ]);
   });
@@ -108,22 +109,25 @@ describe("ChatFailureKind contract", () => {
     expect(isRetryableChatFailureKind("coding_mutation_unverified")).toBe(
       false,
     );
+    expect(isRetryableChatFailureKind("coding_verification_failed")).toBe(
+      false,
+    );
     expect(isRetryableChatFailureKind("coding_tool_failure")).toBe(false);
   });
 
   it("validates complete terminal failures without inventing missing fields", () => {
     expect(
       parseChatTerminalFailure({
-        kind: "coding_tool_failure",
-        message: "Shell execution failed.",
-        transient: true,
-        code: "SHELL_UNAVAILABLE",
+        kind: "coding_verification_failed",
+        message: "Typecheck still fails.",
+        transient: false,
+        code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
       }),
     ).toEqual({
-      kind: "coding_tool_failure",
-      message: "Shell execution failed.",
-      transient: true,
-      code: "SHELL_UNAVAILABLE",
+      kind: "coding_verification_failed",
+      message: "Typecheck still fails.",
+      transient: false,
+      code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
     });
     expect(
       parseChatTerminalFailure({

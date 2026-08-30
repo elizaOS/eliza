@@ -319,12 +319,14 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * from `@elizaos/core`'s prompt builder; the Shared runtime receives the
  * already-projected edge character, so this is the renderer on this side.
  */
+type RequiredSharedAction = "REMINDERS" | "TODO" | "GENERATE_MEDIA";
+
 function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
   capabilities: SharedCapabilityFlags,
   recallContext?: string,
   blockedCapabilities: SharedCapabilityWall[] = [],
-  requiredAction?: "REMINDERS" | "TODO",
+  requiredAction?: RequiredSharedAction,
   realtimeGrounding?: SharedRuntimePublicGrounding,
 ): string {
   const parts: string[] = [];
@@ -348,10 +350,20 @@ function buildSharedRuntimeSystem(
     );
   }
   if (requiredAction) {
+    const requestLabel =
+      requiredAction === "REMINDERS"
+        ? "reminder"
+        : requiredAction === "TODO"
+          ? "todo"
+          : "image or video generation";
+    const ungroundedClaim =
+      requiredAction === "GENERATE_MEDIA"
+        ? "A plain-text claim that generation was attempted, unavailable, or failed is not an execution result."
+        : 'A plain-text acknowledgement such as "done", "saved", or "scheduled" is not an execution result.';
     parts.push(
       "Current-turn execution requirement:\n" +
-        `- The user's current message is an executable ${requiredAction === "REMINDERS" ? "reminder" : "todo"} request, and ${requiredAction} is available for this verified account.\n` +
-        `- Call ${requiredAction} before any terminal answer. A plain-text acknowledgement such as "done", "saved", or "scheduled" is not an execution result.\n` +
+        `- The user's current message is an executable ${requestLabel} request, and ${requiredAction} is available for this verified account.\n` +
+        `- Call ${requiredAction} before any terminal answer. ${ungroundedClaim}\n` +
         `- If the request is incomplete or cannot be applied, call ${requiredAction} anyway and use its grounded clarification or failure result; never invent success.`,
     );
   }
@@ -362,16 +374,50 @@ function buildSharedRuntimeSystem(
 
 function requiredActionForResolution(
   resolution: SharedCapabilityResolution | null,
-): "REMINDERS" | "TODO" | undefined {
+): Exclude<RequiredSharedAction, "GENERATE_MEDIA"> | undefined {
   if (resolution?.kind !== "enabled-primary") return undefined;
   if (resolution.primary.capability === "reminders") return "REMINDERS";
   if (resolution.primary.capability === "todos") return "TODO";
   return undefined;
 }
 
+function isExplicitSharedMediaGenerationRequest(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+  if (!normalized) return false;
+  const mediaNoun =
+    "(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip)";
+  return (
+    new RegExp(
+      `\\b(?:generate|make|draw|create|render|paint|produce|design|animate)\\b[^.!?]{0,160}\\b${mediaNoun}s?\\b`,
+      "iu",
+    ).test(normalized) ||
+    /\b(?:turn|convert|transform)\b[^.!?]{0,160}\b(?:image|picture|photo|attachment)\b[^.!?]{0,80}\b(?:into|to)\b[^.!?]{0,40}\b(?:video|animation|clip)\b/iu.test(
+      normalized,
+    )
+  );
+}
+
+function requiredActionForTurn(
+  input: RunSharedAgentTurnInput,
+  resolution: SharedCapabilityResolution | null,
+  actionsEnabled: boolean,
+): RequiredSharedAction | undefined {
+  const capabilityAction = requiredActionForResolution(resolution);
+  if (capabilityAction) return capabilityAction;
+  const intentText = input.capabilityText ?? input.message;
+  if (
+    actionsEnabled &&
+    input.execution?.media &&
+    isExplicitSharedMediaGenerationRequest(intentText)
+  ) {
+    return "GENERATE_MEDIA";
+  }
+  return undefined;
+}
+
 function hasRequiredActionResult(
   turn: RunSharedAgentTurnResult,
-  actionName: "REMINDERS" | "TODO",
+  actionName: RequiredSharedAction,
 ): boolean {
   return Boolean(turn.actionResults?.some((result) => result.data?.actionName === actionName));
 }
@@ -531,7 +577,7 @@ export async function runSharedAgentTurn(
     todos: todosEnabled,
   };
   const resolution = capabilityResolution(input, capabilities);
-  const requiredAction = requiredActionForResolution(resolution);
+  const requiredAction = requiredActionForTurn(input, resolution, actionsEnabled);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
@@ -602,7 +648,10 @@ export async function runSharedAgentTurn(
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
-              transport: sharedCapabilityTransportForSource(execution.channel.source),
+              transport: sharedCapabilityTransportForSource(
+                execution.channel.source,
+                execution.channel.type,
+              ),
             },
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,
@@ -718,7 +767,7 @@ export async function runSharedAgentTurnStream(
     todos: todosEnabled,
   };
   const resolution = capabilityResolution(input, capabilities);
-  const requiredAction = requiredActionForResolution(resolution);
+  const requiredAction = requiredActionForTurn(input, resolution, actionsEnabled);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
@@ -737,9 +786,10 @@ export async function runSharedAgentTurnStream(
   // Current-data answers are buffered until their complete grounded reply has
   // passed validation; streaming an unverified numeric claim cannot be undone.
   if (
-    actionsEnabled &&
-    ((publicSearchText && hasSharedRealtimeIntent(publicSearchText, input.history)) ||
-      (!publicSearchText && hasSharedRealtimeIntent(message, input.history)))
+    requiredAction === "GENERATE_MEDIA" ||
+    (actionsEnabled &&
+      ((publicSearchText && hasSharedRealtimeIntent(publicSearchText, input.history)) ||
+        (!publicSearchText && hasSharedRealtimeIntent(message, input.history))))
   ) {
     const turn = await runSharedAgentTurn(input);
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
@@ -781,7 +831,10 @@ export async function runSharedAgentTurnStream(
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
-              transport: sharedCapabilityTransportForSource(execution.channel.source),
+              transport: sharedCapabilityTransportForSource(
+                execution.channel.source,
+                execution.channel.type,
+              ),
             },
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,

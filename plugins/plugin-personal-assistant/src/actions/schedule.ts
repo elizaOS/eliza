@@ -105,7 +105,7 @@ function formatScheduleInspection(
   );
   if (inspection.sleepEpisodes.length > 0) {
     lines.push("Sleep episodes:");
-    for (const episode of inspection.sleepEpisodes.slice(-3)) {
+    for (const episode of inspection.sleepEpisodes) {
       lines.push(
         `- ${episode.source} ${episode.startAt} → ${episode.endAt ?? "now"} (${episode.durationMinutes}m, ${Math.round(episode.confidence * 100)}%)`,
       );

@@ -2,6 +2,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react";
 import { assert } from "../../storybook/home-widget-decorator";
+import { Button } from "../ui/button";
 import { AssistantOverlay } from "./AssistantOverlay";
 
 let closeCount = 0;
@@ -21,7 +22,7 @@ const meta = {
         <p className="text-sm text-muted">
           The active chat surface is hosted inside this modal shell.
         </p>
-        <button type="button">Focusable conversation control</button>
+        <Button type="button">Focusable conversation control</Button>
       </div>
     ),
   },

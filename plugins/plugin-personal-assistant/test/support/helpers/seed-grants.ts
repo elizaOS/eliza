@@ -191,15 +191,15 @@ export async function seedGoogleConnectorGrant(
   );
   const email = opts?.email ?? "owner@example.test";
   const grantedScopes = googleCapabilitiesToScopes(capabilities);
+  const id = opts?.grantId ?? crypto.randomUUID();
   const tokenRef = writeMockGoogleToken({
     agentId: runtime.agentId,
     side,
     grantedScopes,
     email,
-    grantId: opts?.grantId,
+    grantId: id,
   });
   const now = new Date().toISOString();
-  const id = opts?.grantId ?? crypto.randomUUID();
   const accessToken = buildMockGoogleAccessToken(id);
   const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
   const vaultRef = buildMockGoogleVaultRef(runtime.agentId, id);

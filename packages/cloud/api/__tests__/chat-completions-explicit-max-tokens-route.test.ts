@@ -121,8 +121,6 @@ const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
 const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
 const MODEL = "z-ai/glm-5.1";
-const MIN_RESPONSE_TOKENS = 4096;
-
 const generateTextCalls: Array<Record<string, unknown>> = [];
 const streamTextCalls: Array<Record<string, unknown>> = [];
 let catalogSupportedParameters: string[] | undefined = [
@@ -538,14 +536,14 @@ describe("chat/completions explicit max_tokens route behavior", () => {
     expect(body.usage.completion_tokens).toBe(7);
   });
 
-  test("non-streaming applies the reasoning floor only when max_tokens is omitted", async () => {
+  test("non-streaming does not invent max_tokens when omitted", async () => {
     const response = await handleChatCompletionsPOST(makeRequest({}), {
       skipOrgRateLimit: true,
     });
 
     expect(response.status).toBe(200);
     expect(generateTextCalls).toHaveLength(1);
-    expect(generateTextCalls[0].maxOutputTokens).toBe(MIN_RESPONSE_TOKENS);
+    expect(generateTextCalls[0].maxOutputTokens).toBeUndefined();
   });
 
   test("non-streaming maps provider tool calls back to OpenAI tool_calls", async () => {
