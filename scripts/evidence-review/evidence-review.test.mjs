@@ -255,7 +255,9 @@ test("zero-argument bundle resolution selects the newest finalized run", async (
   }
 });
 
-test("bundle review never silently truncates a verified manifest", async () => {
+test("bundle review never silently truncates a verified manifest", {
+  timeout: 30_000,
+}, async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-complete-"));
   try {
     const bundleDir = path.join(tmpDir, "bundle");
