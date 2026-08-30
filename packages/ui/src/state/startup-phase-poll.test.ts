@@ -1767,6 +1767,29 @@ describe("shouldFallBackToLocalOrigin", () => {
       }),
     ).toBe(false);
   });
+
+  it("does NOT abandon a managed Shared agent base for the renderer origin", () => {
+    expect(
+      shouldFallBackToLocalOrigin({
+        ...eligible,
+        clientBaseUrl:
+          "https://api-staging.eliza.app/api/v1/eliza/agents/personal%3A6296260d-6060-5d75-87cc-dabcd298e66b",
+        pageOrigin: "https://cloud-staging.eliza.app",
+        pageProtocol: "https:",
+      }),
+    ).toBe(false);
+  });
+
+  it("does NOT abandon the Cloud control plane for the renderer origin", () => {
+    expect(
+      shouldFallBackToLocalOrigin({
+        ...eligible,
+        clientBaseUrl: "https://api-staging.eliza.app",
+        pageOrigin: "https://cloud-staging.eliza.app",
+        pageProtocol: "https:",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("runPollingBackend cancellation during options fetch", () => {

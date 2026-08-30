@@ -136,7 +136,19 @@ vi.mock("./hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => false,
   subscribeAuthStatus: () => () => undefined,
   useAuthStatus: () => ({
-    state: { phase: appState.authPhase },
+    state:
+      appState.authPhase === "authenticated"
+        ? {
+            phase: "authenticated",
+            identity: {
+              id: "first-run-test-user",
+              displayName: "First-run test owner",
+              kind: "owner",
+            },
+            session: { id: "first-run-test-session" },
+            access: {},
+          }
+        : { phase: appState.authPhase },
     refetch: vi.fn(),
   }),
 }));
@@ -615,6 +627,33 @@ describe("App chat-overlay first-run composition", () => {
 
     expect(overlayMock.handledReleases).toBe(1);
     shell.rerender(<App />);
+    expect(overlayMock.handledReleases).toBe(1);
+  });
+
+  it("keeps a mounted chooser transcript pinned after startup becomes ready but before the tutorial pick", () => {
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    appState.authPhase = "authenticated";
+    shellControllerMock.current = {};
+
+    const shell = render(<App />);
+    expect(shell.getByTestId("chat-overlay").dataset.firstRunOpen).toBe("true");
+
+    // Cloud binding can advance startup to ready before the user answers the
+    // final tutorial-or-skip choice. The committed transcript remains the
+    // first-run authority, so this intermediate phase must not collapse it.
+    appState.startupPhase = "ready";
+    shell.rerender(<App />);
+    expect(appState.firstRunComplete).toBe(false);
+    expect(shell.getByTestId("chat-overlay").dataset.firstRunOpen).toBe("true");
+    expect(overlayMock.handledReleases).toBe(0);
+
+    // Only the actual tutorial pick releases onboarding into normal chat.
+    appState.firstRunComplete = true;
+    shell.rerender(<App />);
+    expect(shell.getByTestId("chat-overlay").dataset.firstRunOpen).toBe(
+      "false",
+    );
     expect(overlayMock.handledReleases).toBe(1);
   });
 

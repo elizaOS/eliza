@@ -343,11 +343,13 @@ function useShellMode(): AppShellMode {
  */
 function ChatOverlayShell({
   releaseFirstRunToFull,
+  retainMountedFirstRunOpen,
   onFirstRunReleaseHandled,
   onFirstRunChatMounted,
   firstRunMountEpoch,
 }: {
   releaseFirstRunToFull: boolean;
+  retainMountedFirstRunOpen: boolean;
   onFirstRunReleaseHandled: () => void;
   onFirstRunChatMounted: (epoch: number) => void;
   firstRunMountEpoch: number | null;
@@ -385,6 +387,7 @@ function ChatOverlayShell({
         <ShellFoundationMount
           useWebChatPanel
           releaseFirstRunToFull={releaseFirstRunToFull}
+          retainMountedFirstRunOpen={retainMountedFirstRunOpen}
           onFirstRunReleaseHandled={onFirstRunReleaseHandled}
           onFirstRunChatMounted={onFirstRunChatMounted}
           firstRunMountEpoch={firstRunMountEpoch}
@@ -2075,6 +2078,7 @@ function SecretsManagerModalMount(): ReactNode {
 function ShellFoundationMount({
   useWebChatPanel = false,
   releaseFirstRunToFull = false,
+  retainMountedFirstRunOpen = false,
   onFirstRunReleaseHandled = () => {},
   onFirstRunChatMounted,
   firstRunMountEpoch = null,
@@ -2082,6 +2086,8 @@ function ShellFoundationMount({
   /** Desktop opens the same draggable chat surface as web, not a separate drawer. */
   useWebChatPanel?: boolean;
   releaseFirstRunToFull?: boolean;
+  /** Keep an already-mounted authoritative onboarding transcript pinned while startup advances. */
+  retainMountedFirstRunOpen?: boolean;
   onFirstRunReleaseHandled?: () => void;
   onFirstRunChatMounted?: (epoch: number) => void;
   firstRunMountEpoch?: number | null;
@@ -2094,10 +2100,9 @@ function ShellFoundationMount({
     firstRunComplete: state.firstRunComplete,
     startupPhase: state.startupCoordinator.phase,
   }));
-  const firstRunPinnedOpen = isAuthoritativeFirstRunOpen(
-    firstRunComplete,
-    startupPhase,
-  );
+  const firstRunPinnedOpen =
+    isAuthoritativeFirstRunOpen(firstRunComplete, startupPhase) ||
+    (firstRunComplete === false && retainMountedFirstRunOpen);
   // Completion updates the store before the half-height overlay can release
   // its first-run pin. Keep that mounted instance through the edge so its
   // shared transcript stays visible until the user deliberately folds to the
@@ -2312,6 +2317,7 @@ function ShellFoundationMount({
         initialMode="input"
         fillHostAtHalf
         releaseFirstRunToFull={releaseFirstRunToFull}
+        retainMountedFirstRunOpen={retainMountedFirstRunOpen}
         onFirstRunReleaseHandled={onFirstRunReleaseHandled}
         onFirstRunChatMounted={onFirstRunChatMounted}
         firstRunMountEpoch={firstRunMountEpoch}
@@ -2394,6 +2400,7 @@ function ChatOverlayMount({
   initialMode,
   fillHostAtHalf = false,
   releaseFirstRunToFull,
+  retainMountedFirstRunOpen = false,
   onFirstRunReleaseHandled,
   onFirstRunChatMounted,
   firstRunMountEpoch = null,
@@ -2404,6 +2411,7 @@ function ChatOverlayMount({
   initialMode?: "input" | "half";
   fillHostAtHalf?: boolean;
   releaseFirstRunToFull: boolean;
+  retainMountedFirstRunOpen?: boolean;
   onFirstRunReleaseHandled: () => void;
   onFirstRunChatMounted?: (epoch: number) => void;
   firstRunMountEpoch?: number | null;
@@ -2419,10 +2427,9 @@ function ChatOverlayMount({
       firstRunComplete: s.firstRunComplete,
       startupPhase: s.startupCoordinator.phase,
     }));
-  const firstRunOpen = isAuthoritativeFirstRunOpen(
-    firstRunComplete,
-    startupPhase,
-  );
+  const firstRunOpen =
+    isAuthoritativeFirstRunOpen(firstRunComplete, startupPhase) ||
+    (firstRunComplete === false && retainMountedFirstRunOpen);
   // #12087 Item 20: derive the slash-command authority from the authoritative
   // role instead of the fail-open defaults. Elevated (owner-only) commands
   // require OWNER; authenticated commands require rank ≥ USER. A remote
@@ -3449,6 +3456,7 @@ function AppContent() {
         <ShellControllerProvider>
           <ChatOverlayShell
             releaseFirstRunToFull={firstRunChatRelease.releasePending}
+            retainMountedFirstRunOpen={firstRunChatRelease.mountedOnboarding}
             onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
             onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
             firstRunMountEpoch={firstRunChatRelease.mountEpoch}
@@ -3769,6 +3777,7 @@ function AppContent() {
           <>
             <ChatOverlayMount
               releaseFirstRunToFull={firstRunChatRelease.releasePending}
+              retainMountedFirstRunOpen={firstRunChatRelease.mountedOnboarding}
               onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
               onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
               firstRunMountEpoch={firstRunChatRelease.mountEpoch}

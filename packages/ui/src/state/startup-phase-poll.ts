@@ -176,14 +176,21 @@ export function shouldFallBackToLocalOrigin(args: {
 }): boolean {
   // A structured HTTP status means the server responded — not a wedge.
   if (typeof asApiLikeError(args.error)?.status === "number") return false;
-  // NEVER abandon a dedicated cloud agent base (<id>.cloud.eliza.app) for the
-  // page origin. A connection-level failure there means the agent is still
-  // starting / transiently unreachable — the correct move is to keep polling
-  // IT, not repoint at cloud.eliza.app, which serves no backend. That
-  // repoint is the actual trigger of the "Backend Unreachable / Backend API
-  // routes are unavailable on this origin (404)" crash card: once the base is
-  // the app origin, the next /api/first-run/status 404s and dead-ends startup.
-  if (isDedicatedCloudAgentBase(args.clientBaseUrl)) return false;
+  // NEVER abandon an Eliza Cloud managed base for the page origin. A
+  // connection-level failure there means the Shared adapter, Dedicated agent,
+  // or control plane is transiently unreachable — the correct move is to keep
+  // polling IT, not repoint at cloud.eliza.app, which serves renderer assets
+  // but no same-origin agent backend. That repoint is the actual trigger of
+  // the "Backend Unreachable / Backend API routes are unavailable on this
+  // origin (404)" crash card: once the base is the app origin, the next
+  // /api/status probe 404s and dead-ends startup.
+  if (
+    isDedicatedCloudAgentBase(args.clientBaseUrl) ||
+    isManagedCloudSharedAgentBase(args.clientBaseUrl) ||
+    isElizaCloudControlPlaneAgentlessBase(args.clientBaseUrl)
+  ) {
+    return false;
+  }
   return isRecoverableRemoteBase(args);
 }
 
