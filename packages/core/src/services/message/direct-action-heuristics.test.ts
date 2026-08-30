@@ -991,6 +991,20 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		}
 	});
 
+	it("does not treat declarative or conditional view statements as inspection", () => {
+		for (const message of [
+			"the window is open",
+			"this screen remains active",
+			"the current view stays open",
+			"if the window is open, close it",
+			"the view is open and I can see it",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).not.toEqual({ names: [], kind: null });
+		}
+	});
+
 	it.each([
 		[
 			"create / and / inspection-first",
