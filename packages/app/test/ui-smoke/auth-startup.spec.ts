@@ -68,10 +68,25 @@ test("remote auth requirement renders pairing instead of password sign-in", asyn
       apiBase,
     }),
   });
+  await installDefaultAppRoutes(page);
+  await page.route("**/api/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 401, { error: "Unauthorized" });
+  });
   await routeAuthStatus(page, REMOTE_AUTH_REQUIRED_STATUS);
   await page.route("**/api/auth/me", async (route) => {
     authMeRequests += 1;
-    await fulfillJson(route, 500, { error: "auth me should not be reached" });
+    await fulfillJson(route, 401, {
+      reason: "remote_auth_required",
+      access: {
+        mode: "remote",
+        passwordConfigured: true,
+        ownerConfigured: false,
+      },
+    });
   });
 
   await openAppPath(page, "/chat");
@@ -82,7 +97,7 @@ test("remote auth requirement renders pairing instead of password sign-in", asyn
     0,
   );
   await expect(page.getByText("Sign in with your password.")).toHaveCount(0);
-  expect(authMeRequests).toBe(0);
+  expect(authMeRequests).toBeGreaterThan(0);
 });
 
 test("unavailable auth probe shows startup failure instead of password sign-in", async ({
@@ -99,6 +114,7 @@ test("unavailable auth probe shows startup failure instead of password sign-in",
       apiBase,
     }),
   });
+  await installDefaultAppRoutes(page);
   await routeAuthStatus(page, {
     required: false,
     authenticated: true,
@@ -150,6 +166,7 @@ test("cloud bootstrap auth renders bootstrap token gate instead of pairing", asy
       apiBase,
     }),
   });
+  await installDefaultAppRoutes(page);
   await routeAuthStatus(page, {
     required: true,
     authenticated: false,

@@ -1004,8 +1004,16 @@ export default function StewardLoginSection() {
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
     if (searchParams.get("switchAccount") === "1") return;
-    if (searchParams.get("code") || searchParams.get("error")) {
+    if (searchParams.get("code")) {
       setSessionRecoveryComplete(true);
+      return;
+    }
+    if (searchParams.get("error")) {
+      // The callback-cleanup effect removes the error query before this hook
+      // starts passive session recovery. Keep the provider controls gated
+      // across that navigation edge so a stale stored session cannot race a
+      // newly-started OTP flow during the intervening render.
+      setSessionRecoveryComplete(false);
       return;
     }
 

@@ -53,21 +53,28 @@ const returnToSpies = vi.hoisted(() => ({
   resolve: vi.fn(),
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
-  hasStewardAuthedCookie: () => false,
-  readStoredStewardToken: () => sessionSpies.storedToken,
-  writeStoredStewardToken: (token: string) => {
-    sessionSpies.storedToken = token;
-    sessionSpies.write(token);
-  },
-  StewardSessionError: class StewardSessionError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-      super(message);
-      this.status = status;
-    }
-  },
-}));
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@elizaos/shared/steward-session-client")
+    >();
+  return {
+    ...actual,
+    hasStewardAuthedCookie: () => false,
+    readStoredStewardToken: () => sessionSpies.storedToken,
+    writeStoredStewardToken: (token: string) => {
+      sessionSpies.storedToken = token;
+      sessionSpies.write(token);
+    },
+    StewardSessionError: class StewardSessionError extends Error {
+      status: number;
+      constructor(message: string, status: number) {
+        super(message);
+        this.status = status;
+      }
+    },
+  };
+});
 
 vi.mock("@stwd/sdk", () => ({
   StewardAuth: class {
