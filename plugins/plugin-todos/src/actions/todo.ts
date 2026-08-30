@@ -912,6 +912,7 @@ async function actionClear({
       success: true,
       text,
       data: {
+        actionName: "TODO" as const,
         action: "clear" as const,
         op: "preview" as const,
         entityId: scope.entityId,
