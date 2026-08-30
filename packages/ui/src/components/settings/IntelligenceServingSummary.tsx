@@ -8,7 +8,11 @@
 
 import { Cloud, Cpu, Server } from "lucide-react";
 import type { ComponentType } from "react";
-import type { ServingAxes, ServingRuntime } from "./resolveServingAxes";
+import {
+  type ServingAxes,
+  type ServingRuntime,
+  servingProviderLabel,
+} from "./resolveServingAxes";
 import { SettingsRow } from "./settings-layout";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
@@ -68,7 +72,7 @@ function inferenceValue(axes: ServingAxes, t: Translate): string {
     case "external":
       // Name the provider the server reported; never claim "This device".
       return (
-        axes.activeChatProvider ??
+        servingProviderLabel(axes.activeChatProvider) ??
         t("providerswitcher.servingInferenceExternal", {
           defaultValue: "External provider",
         })

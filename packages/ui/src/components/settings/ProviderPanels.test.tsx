@@ -198,7 +198,7 @@ describe("ProviderPanels", () => {
 
     expect(
       screen.getByText(
-        "Eliza Cloud isn't signed in. Chat replies are using cerebras.",
+        "Eliza Cloud isn't signed in. Chat replies are using Cerebras.",
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/replies are using Local/)).toBeNull();
@@ -209,7 +209,7 @@ describe("ProviderPanels", () => {
         "tile",
       ),
     ).toBe(
-      "Sign in to use managed models. Chat replies keep using cerebras until then.",
+      "Sign in to use managed models. Chat replies keep using Cerebras until then.",
     );
   });
 

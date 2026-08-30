@@ -340,7 +340,7 @@ describe("ProviderSwitcher", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("serving-inference-value").textContent).toBe(
-        "cerebras",
+        "Cerebras",
       );
     });
     expect(screen.getByText("tile:external:cerebras")).toBeTruthy();

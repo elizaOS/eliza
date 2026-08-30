@@ -82,6 +82,20 @@ export interface ServingAxes {
   activeChatEndpoint: string | null;
 }
 
+const SERVING_PROVIDER_LABELS: Readonly<Record<string, string>> = {
+  cerebras: "Cerebras",
+  "claude-chat": "Claude",
+  elizacloud: "Eliza Cloud",
+  openai: "OpenAI",
+};
+
+/** Human-facing label for the provider ids returned by the serving API. */
+export function servingProviderLabel(provider: string | null): string | null {
+  const value = provider?.trim();
+  if (!value) return null;
+  return SERVING_PROVIDER_LABELS[value.toLowerCase()] ?? value;
+}
+
 function isHybridRuntime(
   mobileRuntimeMode: MobileRuntimeMode | null,
   firstRunRuntimeTarget: FirstRunRuntimeTarget | "" | null,
@@ -203,10 +217,10 @@ export function servingAxesHeadline(axes: ServingAxes): string {
       return "Cloud runtime and inference";
     case "remote":
       return "Remote runtime";
-    case "external-inference":
-      return axes.activeChatProvider
-        ? `Inference on ${axes.activeChatProvider}`
-        : "External inference";
+    case "external-inference": {
+      const provider = servingProviderLabel(axes.activeChatProvider);
+      return provider ? `Inference on ${provider}` : "External inference";
+    }
     case "inference-unknown":
       return "Checking what answers chat";
   }
@@ -229,10 +243,12 @@ export function servingAxesDescription(axes: ServingAxes): string {
       return axes.inference === "cloud"
         ? "The agent runs on a remote host. Models use Eliza Cloud."
         : `The agent runs on a remote host. Models run with that host.${fallback}`;
-    case "external-inference":
-      return axes.activeChatProvider
-        ? `The agent runs on this device. Chat replies are computed by ${axes.activeChatProvider}.`
+    case "external-inference": {
+      const provider = servingProviderLabel(axes.activeChatProvider);
+      return provider
+        ? `The agent runs on this device. Chat replies are computed by ${provider}.`
         : "The agent runs on this device. Chat replies are computed by an external provider.";
+    }
     case "inference-unknown":
       return "Waiting for the agent to report which provider is answering chat.";
   }

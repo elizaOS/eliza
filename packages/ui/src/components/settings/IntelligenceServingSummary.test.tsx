@@ -132,7 +132,7 @@ describe("IntelligenceServingSummary", () => {
     expect(runtimeValue()).toBe("This device");
     // The review's P1: this row previously read "This device" for a direct
     // Cerebras/OpenAI/Anthropic route.
-    expect(inferenceValue()).toBe("cerebras");
+    expect(inferenceValue()).toBe("Cerebras");
     expect(inferenceValue()).not.toBe("This device");
     expect(
       screen.getByText(/external provider at api\.cerebras\.ai/),

@@ -18,7 +18,7 @@ import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
-import type { ServingAxes } from "./resolveServingAxes";
+import { type ServingAxes, servingProviderLabel } from "./resolveServingAxes";
 import { SettingsActionButton } from "./settings-agent-rows";
 import type { PluginInfo } from "./useProviderEntries";
 
@@ -38,7 +38,8 @@ export function describeUnsignedCloudChat(
   surface: "panel" | "tile",
 ): string {
   if (axes.inference === "external") {
-    const provider = axes.activeChatProvider?.trim() || "an external provider";
+    const provider =
+      servingProviderLabel(axes.activeChatProvider) || "an external provider";
     return surface === "tile"
       ? t("providerswitcher.cloudTileUnsignedExternalDescription", {
           defaultValue: `Sign in to use managed models. Chat replies keep using ${provider} until then.`,
