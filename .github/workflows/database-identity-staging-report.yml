@@ -43,7 +43,6 @@ jobs:
       group: database-identity-staging-report
       cancel-in-progress: false
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DATABASE_IDENTITY_GATE_MODE: report
       DATABASE_IDENTITY_ENVIRONMENT: staging
 
@@ -77,4 +76,6 @@ jobs:
         run: bun test packages/cloud/scripts/admin/preflight-database-identity.test.ts packages/cloud/scripts/admin/database-identity-staging-report-workflow.test.ts
 
       - name: Emit redacted staging identity receipts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts

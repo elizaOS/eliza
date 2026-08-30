@@ -90,8 +90,8 @@ describe("database identity staging report workflow", () => {
     });
   });
 
-  test("binds the protected URL only to report mode for staging", () => {
-    expect(job.env.DATABASE_URL).toBe(expression("secrets.DATABASE_URL"));
+  test("binds the protected URL only to the redacted reporter step", () => {
+    expect(job.env).not.toHaveProperty("DATABASE_URL");
     expect(job.env.DATABASE_IDENTITY_GATE_MODE).toBe("report");
     expect(job.env.DATABASE_IDENTITY_ENVIRONMENT).toBe("staging");
     expect(job.env).not.toHaveProperty(
@@ -100,6 +100,13 @@ describe("database identity staging report workflow", () => {
     expect(job.env).not.toHaveProperty(
       "DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256",
     );
+
+    const reporter = reportStep("Emit redacted staging identity receipts");
+    expect(reporter.env?.DATABASE_URL).toBe(expression("secrets.DATABASE_URL"));
+    for (const candidate of [...admission.steps, ...job.steps]) {
+      if (candidate === reporter) continue;
+      expect(candidate.env?.DATABASE_URL, candidate.name).toBeUndefined();
+    }
   });
 
   test("rejects an untrusted ref or commit without attaching staging", () => {
