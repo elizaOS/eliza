@@ -109,4 +109,17 @@ describe("ConnectionEnforcementService.hasRequiredConnection — fail-closed con
     );
     expect(getConnectedPlatforms).not.toHaveBeenCalled();
   });
+
+  test("rejects dormant nudge generation before any LLM dispatch", async () => {
+    await expect(
+      connectionEnforcementService.generateNudgeResponse({
+        userMessage: "hello",
+        platform: "web",
+        organizationId: ORG,
+        userId: USER,
+      }),
+    ).rejects.toMatchObject({
+      code: "CONNECTION_ENFORCEMENT_LLM_DISABLED",
+    });
+  });
 });
