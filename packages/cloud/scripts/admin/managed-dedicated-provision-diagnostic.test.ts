@@ -126,6 +126,18 @@ describe("managed Dedicated provision diagnostic", () => {
     ).toBe("container_ssh_auth");
     expect(
       classifyManagedDedicatedProvisionFailure(
+        "[docker-sandbox] Failed to create container: [docker-ssh] Connection timed out after 10000ms",
+        "x",
+      ),
+    ).toBe("container_ssh_timeout");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "[docker-sandbox] Failed to create container: [docker-ssh] ECONNREFUSED",
+        "x",
+      ),
+    ).toBe("container_ssh_refused");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
         "[docker-sandbox] Failed to create container on node: Cannot connect to the Docker daemon",
         "x",
       ),

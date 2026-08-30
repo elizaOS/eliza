@@ -40,6 +40,10 @@ export type ManagedDedicatedProvisionFailureCode =
   | "database"
   | "ingress"
   | "container_ssh_auth"
+  | "container_ssh_timeout"
+  | "container_ssh_refused"
+  | "container_ssh_dns"
+  | "container_ssh_reset"
   | "container_ssh_transport"
   | "container_daemon"
   | "container_create"
@@ -216,6 +220,21 @@ export function classifyManagedDedicatedProvisionFailure(
     )
   ) {
     return "container_ssh_auth";
+  }
+  if (
+    /(?:timed out|timeout|etimedout)/i.test(primary) &&
+    /(?:ssh|\[docker-ssh\])/i.test(primary)
+  ) {
+    return "container_ssh_timeout";
+  }
+  if (/(?:connection refused|econnrefused)/i.test(primary)) {
+    return "container_ssh_refused";
+  }
+  if (/(?:getaddrinfo|enotfound|eai_again)/i.test(primary)) {
+    return "container_ssh_dns";
+  }
+  if (/(?:econnreset|connection reset|connection closed)/i.test(primary)) {
+    return "container_ssh_reset";
   }
   if (/(?:\[docker-ssh\]|ssh|handshake)/i.test(primary)) {
     return "container_ssh_transport";
