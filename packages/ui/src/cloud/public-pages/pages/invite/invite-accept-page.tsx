@@ -77,7 +77,7 @@ export default function InviteAcceptPage() {
   const t = useCloudT();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { authenticated } = useSessionAuth();
+  const { authenticated, ready } = useSessionAuth();
   const token = searchParams.get("token");
   const connectIntent = searchParams.get("connect") === "1";
 
@@ -139,6 +139,7 @@ export default function InviteAcceptPage() {
   }, [token, t]);
 
   const handleAcceptInvite = async () => {
+    if (!ready) return;
     if (!authenticated) {
       const currentUrl = `/invite/accept?token=${encodeURIComponent(token ?? "")}${connectIntent ? "&connect=1" : ""}`;
       navigate(`/login?returnTo=${encodeURIComponent(currentUrl)}`);
@@ -347,20 +348,24 @@ export default function InviteAcceptPage() {
           <div className="space-y-3">
             <Button
               onClick={handleAcceptInvite}
-              disabled={isAccepting}
+              disabled={isAccepting || !ready}
               className="w-full"
               size="lg"
             >
-              {isAccepting ? (
+              {isAccepting || !ready ? (
                 <>
                   <Loader2 className="size-4 mr-2 animate-spin" />
-                  {authenticated
-                    ? t("cloud.invite.accepting", {
-                        defaultValue: "Accepting...",
+                  {!ready
+                    ? t("cloud.invite.checkingSignIn", {
+                        defaultValue: "Checking sign-in…",
                       })
-                    : t("cloud.invite.redirectingToLogin", {
-                        defaultValue: "Redirecting to Login...",
-                      })}
+                    : authenticated
+                      ? t("cloud.invite.accepting", {
+                          defaultValue: "Accepting...",
+                        })
+                      : t("cloud.invite.redirectingToLogin", {
+                          defaultValue: "Redirecting to Login...",
+                        })}
                 </>
               ) : (
                 <>
