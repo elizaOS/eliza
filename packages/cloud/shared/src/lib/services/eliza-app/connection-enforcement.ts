@@ -6,10 +6,8 @@
  * steer the user toward connecting Google, Microsoft, or X.
  */
 
-import { assertModelOutputComplete } from "@elizaos/core";
-import { generateText } from "ai";
+import { ElizaError } from "@elizaos/core";
 import { cache } from "../../cache/client";
-import { getLanguageModel } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
 import { oauthService } from "../oauth";
 
@@ -387,85 +385,17 @@ class ConnectionEnforcementService {
   }
 
   async generateNudgeResponse(params: NudgeParams): Promise<string> {
-    const { userMessage, platform, organizationId, userId } = params;
-    const state = await loadConversationState(organizationId, userId);
-    const conversationHistory = formatConversationHistory(state.messages);
-    const detectedProvider = detectProviderFromMessage(userMessage);
-    const isFirstInteraction = state.messageCount === 0;
-    const mustNudge =
-      Boolean(detectedProvider) ||
-      isClaimingConnected(userMessage) ||
-      shouldNudge(state.messageCount);
-
-    let response: string;
-    let responseForHistory: string;
-    if (mustNudge) {
-      const llmResponse = await this.generateLLMResponse(
-        userMessage,
-        platform,
-        "nudge",
-        conversationHistory,
-        isFirstInteraction,
-      );
-      responseForHistory = llmResponse;
-      const links = await generateOAuthLinks(organizationId, userId, platform, detectedProvider);
-      response =
-        links.length > 0 ? `${llmResponse}\n\n${formatLinks(links, platform)}` : llmResponse;
-    } else {
-      response = await this.generateLLMResponse(
-        userMessage,
-        platform,
-        "chat",
-        conversationHistory,
-        false,
-      );
-      responseForHistory = response;
-    }
-
-    state.messages.push({ role: "user", content: userMessage });
-    state.messages.push({ role: "assistant", content: responseForHistory });
-    state.messageCount += 1;
-    await saveConversationState(organizationId, userId, state);
-
-    return response;
-  }
-
-  private async generateLLMResponse(
-    userMessage: string,
-    platform: MessagingPlatform,
-    mode: "nudge" | "chat",
-    conversationHistory: string,
-    isFirstInteraction: boolean,
-  ): Promise<string> {
-    try {
-      const system =
-        mode === "nudge"
-          ? buildNudgePrompt(platform, conversationHistory, isFirstInteraction)
-          : buildChatPrompt(platform, conversationHistory);
-      const result = await generateText({
-        model: getLanguageModel(NUDGE_MODEL),
-        system,
-        prompt: userMessage || "hey",
-        temperature: mode === "nudge" ? 0.7 : 0.9,
-      });
-      assertModelOutputComplete({
-        finishReason: result.finishReason,
-        provider: "openai",
-        model: NUDGE_MODEL,
-      });
-
-      return result.text;
-    } catch (error) {
-      // error-policy:J4 designed user-facing degrade — on model failure, reply with a canned
-      // in-character nudge that still steers the user to connect a data source. This is a
-      // designed fallback response, not fabricated pipeline data; the failure is logged.
-      logger.error("[ConnectionEnforcement] LLM generation failed", {
-        platform,
-        mode,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return getFallbackResponse(userMessage);
-    }
+    throw new ElizaError(
+      "Connection-enforcement replies are disabled until they use the admitted generative-operation boundary",
+      {
+        code: "CONNECTION_ENFORCEMENT_LLM_DISABLED",
+        context: {
+          organizationId: params.organizationId,
+          platform: params.platform,
+          userId: params.userId,
+        },
+      },
+    );
   }
 }
 
