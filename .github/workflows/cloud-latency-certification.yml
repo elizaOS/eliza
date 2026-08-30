@@ -98,14 +98,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
+      - name: Setup Bun for pinned Wrangler
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
 
       - name: Run exact-SHA privacy-safe latency certification
         shell: bash

@@ -79,6 +79,8 @@ export type PersonalDedicatedSelectionRereviewInput = PersonalDedicatedSelection
 export interface PersonalDedicatedSelectionRereviewExecuteInput
   extends PersonalDedicatedSelectionRereviewInput {
   expectedReceiptFingerprint: string;
+  expectedReceiptUpdatedAt: string;
+  expectedPreviousRetainedAgentId: string;
   expectedInventoryFingerprint: string;
   expectedStateDisposition: PersonalDedicatedStateDisposition;
 }
@@ -86,6 +88,7 @@ export interface PersonalDedicatedSelectionRereviewExecuteInput
 export interface PersonalDedicatedSelectionRereviewPreview
   extends PersonalDedicatedSelectionPreview {
   receiptFingerprint: string;
+  receiptUpdatedAt: string;
   previousRetainedAgentId: string;
   replacesTarget: boolean;
 }
@@ -721,6 +724,7 @@ function rereviewPreviewFromCurrent(params: {
   return {
     inventoryFingerprint: params.inventoryFingerprint,
     receiptFingerprint: params.receipt.inventory_fingerprint,
+    receiptUpdatedAt: params.receipt.updated_at.toISOString(),
     previousRetainedAgentId: params.receipt.dedicated_agent_id,
     retainedAgentId: params.retained.id,
     retainedStatus: params.retained.status,
@@ -884,7 +888,11 @@ export async function executePersonalDedicatedSelectionRereview(
       );
     }
     assertReceiptCanBeRereviewed(params, receipt);
-    if (receipt.inventory_fingerprint !== params.expectedReceiptFingerprint) {
+    if (
+      receipt.inventory_fingerprint !== params.expectedReceiptFingerprint ||
+      receipt.updated_at.toISOString() !== params.expectedReceiptUpdatedAt ||
+      receipt.dedicated_agent_id !== params.expectedPreviousRetainedAgentId
+    ) {
       throw selectionError(
         "PERSONAL_DEDICATED_SELECTION_INVENTORY_CHANGED",
         "The stale Dedicated receipt changed after preview",

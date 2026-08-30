@@ -19,7 +19,10 @@ const resolved = {
   operation: "rereview" as const,
 };
 const preview = {
+  operation: "rereview" as const,
   receiptFingerprint: "a".repeat(64),
+  receiptUpdatedAt: "2026-08-30T12:00:00.000Z",
+  previousRetainedAgentId: resolved.retainedAgentId,
   inventoryFingerprint: "b".repeat(64),
   stateDisposition: "fresh_boot_no_verified_backup" as const,
   candidateCount: 2,
@@ -93,7 +96,7 @@ describe("personal Dedicated staging re-review operator", () => {
         })),
         (candidate) => candidate.authority,
       ),
-    ).toThrow("selection_bootstrap_decision_required");
+    ).toThrow("selection_bootstrap_no_restore_authority");
     expect(() =>
       resolveBootstrapCandidate(
         candidates.map((candidate) => ({
@@ -102,13 +105,25 @@ describe("personal Dedicated staging re-review operator", () => {
         })),
         (candidate) => candidate.authority,
       ),
-    ).toThrow("selection_bootstrap_decision_required");
+    ).toThrow("selection_bootstrap_multiple_restore_authorities");
     expect(() =>
       resolveBootstrapCandidate(
         [candidates[1]],
         (candidate) => candidate.authority,
       ),
-    ).toThrow("selection_bootstrap_decision_required");
+    ).toThrow("selection_bootstrap_single_candidate");
+    expect(() => resolveBootstrapCandidate([], () => "fresh-boot")).toThrow(
+      "selection_bootstrap_zero_candidates",
+    );
+    expect(() =>
+      resolveBootstrapCandidate(
+        Array.from({ length: 101 }, (_, index) => ({
+          id: String(index),
+          authority: index === 0 ? "from-legacy-backup" : "fresh-boot",
+        })),
+        (candidate) => candidate.authority,
+      ),
+    ).toThrow("selection_bootstrap_inventory_over_limit");
   });
 
   test("returns identifier-free preview evidence and does not execute", async () => {
@@ -126,8 +141,9 @@ describe("personal Dedicated staging re-review operator", () => {
       computeMutation: false,
       executed: false,
     });
+    expect(result.approvalDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(result.approvalDigest).toBe(
-      "86e1e6cfcbf44c955692befd07da569116c9dc04b69703f067aca3c65a36eedd",
+      "682dad005890516a420f15f8ebbf693d997ca588192cd073003dab78c112ccc6",
     );
     expect(deps.executeCalls()).toBe(0);
     for (const privateValue of [
@@ -160,6 +176,8 @@ describe("personal Dedicated staging re-review operator", () => {
     expect(deps.executedInput()).toMatchObject({
       operation: "rereview",
       expectedReceiptFingerprint: preview.receiptFingerprint,
+      expectedReceiptUpdatedAt: preview.receiptUpdatedAt,
+      expectedPreviousRetainedAgentId: preview.previousRetainedAgentId,
     });
 
     await expect(
@@ -174,11 +192,23 @@ describe("personal Dedicated staging re-review operator", () => {
         deps.value,
       ),
     ).rejects.toMatchObject({ code: "exact_confirmation_required" });
+    await expect(
+      runRereviewOperator(
+        { ...executeConfig, reviewedReason: "retain_something_else" },
+        deps.value,
+      ),
+    ).rejects.toMatchObject({ code: "reviewed_reason_required" });
   });
 
   test("uses a distinct digest-bound confirmation for missing-receipt bootstrap", async () => {
     const bootstrapResolved = { ...resolved, operation: "bootstrap" as const };
-    const bootstrapPreview = { ...preview, receiptFingerprint: null };
+    const bootstrapPreview = {
+      ...preview,
+      operation: "bootstrap" as const,
+      receiptFingerprint: null,
+      receiptUpdatedAt: null,
+      previousRetainedAgentId: null,
+    };
     const deps = dependencies({
       resolveSelection: async () => bootstrapResolved,
       preview: async () => bootstrapPreview,
@@ -191,6 +221,9 @@ describe("personal Dedicated staging re-review operator", () => {
       requiredConfirmation:
         "SELECT_UNIQUE_VERIFIED_BACKUP_WITHOUT_COMPUTE_MUTATION",
     });
+    expect(prior.approvalDigest).toBe(
+      "fe92cc0a9931097bdbc5a9ea486dc2b779dd63c91978ae077cd958208796fe17",
+    );
 
     const result = await runRereviewOperator(
       {
@@ -207,6 +240,8 @@ describe("personal Dedicated staging re-review operator", () => {
     expect(deps.executedInput()).toMatchObject({
       operation: "bootstrap",
       expectedReceiptFingerprint: null,
+      expectedReceiptUpdatedAt: null,
+      expectedPreviousRetainedAgentId: null,
       expectedInventoryFingerprint: preview.inventoryFingerprint,
       expectedStateDisposition: preview.stateDisposition,
     });
@@ -223,6 +258,73 @@ describe("personal Dedicated staging re-review operator", () => {
         deps.value,
       ),
     ).rejects.toMatchObject({ code: "exact_confirmation_required" });
+  });
+
+  test("binds every resolved selector and replacement decision into approval", async () => {
+    const baseline = await runRereviewOperator(
+      config("preview"),
+      dependencies().value,
+    );
+    const changedDependencies = [
+      dependencies({
+        resolveSelection: async () => ({
+          ...resolved,
+          organizationId: "10000000-0000-4000-8000-000000000009",
+        }),
+      }),
+      dependencies({
+        resolveSelection: async () => ({
+          ...resolved,
+          userId: "20000000-0000-4000-8000-000000000009",
+        }),
+      }),
+      dependencies({
+        resolveSelection: async () => ({
+          ...resolved,
+          sourceAgentId: "personal-shared-other-source",
+        }),
+      }),
+      dependencies({
+        resolveSelection: async () => ({
+          ...resolved,
+          retainedAgentId: "30000000-0000-4000-8000-000000000009",
+        }),
+      }),
+      dependencies({
+        preview: async () => ({ ...preview, replacesTarget: true }),
+      }),
+    ];
+
+    for (const changed of changedDependencies) {
+      const result = await runRereviewOperator(
+        config("preview"),
+        changed.value,
+      );
+      expect(result.approvalDigest).not.toBe(baseline.approvalDigest);
+    }
+  });
+
+  test("rejects a preview for a different operation before snapshot or execute", async () => {
+    let snapshots = 0;
+    await expect(
+      runRereviewOperator(
+        config("preview"),
+        dependencies({
+          preview: async () => ({
+            ...preview,
+            operation: "bootstrap",
+            receiptFingerprint: null,
+            receiptUpdatedAt: null,
+            previousRetainedAgentId: null,
+          }),
+          snapshot: async () => {
+            snapshots += 1;
+            return snapshot;
+          },
+        }).value,
+      ),
+    ).rejects.toMatchObject({ code: "selection_operation_changed" });
+    expect(snapshots).toBe(0);
   });
 
   test("binds approval to current inventory and refuses compute or job drift", async () => {
