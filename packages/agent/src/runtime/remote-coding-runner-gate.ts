@@ -1,8 +1,9 @@
 /**
  * Boot-time gate deciding whether the remote coding runner (cloud/home sandbox
- * executor) plugin should load. Returns true when a runner-mode setting or any
- * remote-runner base URL is configured, reading each key from runtime settings
- * first and falling back to the process env.
+ * executor) plugin should load. Returns true only for an allow-listed runner
+ * mode or a validated HTTP(S) runner URL, false for explicit disablement or
+ * absent configuration, and throws for malformed configuration. Runtime
+ * settings take precedence over the process environment.
  */
 import { ElizaError } from "@elizaos/core";
 

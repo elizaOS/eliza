@@ -155,6 +155,23 @@ describe("shouldLoadRemoteCodingRunnerForBoot additional branches", () => {
     }
   });
 
+  it("parses supported and disabled runner modes case-insensitively", () => {
+    for (const value of ["ELIZA-CLOUD", "Home", "Eliza-Cloud"]) {
+      expect(
+        shouldLoadRemoteCodingRunnerForBoot(
+          runtimeWith({ ELIZA_REMOTE_RUNNER: value }),
+          {},
+        ),
+      ).toBe(true);
+    }
+    expect(
+      shouldLoadRemoteCodingRunnerForBoot(
+        runtimeWith({ ELIZA_REMOTE_RUNNER: "FALSE" }),
+        {},
+      ),
+    ).toBe(false);
+  });
+
   it("rejects unsupported runner modes instead of authorizing module load", () => {
     expect(() =>
       shouldLoadRemoteCodingRunnerForBoot(
