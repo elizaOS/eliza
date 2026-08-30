@@ -14,6 +14,7 @@
  * must leave no positive identities behind in KV.
  */
 
+import { usersRepository } from "../../db/repositories/users";
 import { AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
 import { loadVerifiedStagingSessionUser } from "../auth/staging-session-binding";
 import { verifyStewardTokenCached } from "../auth/steward-client";
@@ -35,7 +36,6 @@ import {
   assertInferenceCredentialActive,
   InferenceCredentialRevokedError,
 } from "./inference-credential-revocation";
-import { usersService } from "./users";
 
 const sessionHydrations = new Map<string, Promise<InferenceSessionAuthDecision>>();
 const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
@@ -46,18 +46,22 @@ export interface ResolveInferenceSessionAuthOptions {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
-export type InferenceSessionAuthResolution =
-  | { kind: "not_session" }
+export type InferenceSessionContinuationResolution =
   | {
       kind: "authorized";
       ctx: InferenceSessionAuthContext;
       source: "cache" | "origin";
     }
   | { kind: "suspended"; userId?: string; reason?: InferenceAuthRejectionReason }
-  | { kind: "rejected"; status: 401 | 403; reason?: InferenceAuthRejectionReason }
+  | { kind: "rejected"; status: 401 | 403; reason?: InferenceAuthRejectionReason };
+
+export type InferenceSessionAuthResolution =
+  | { kind: "not_session" }
+  | InferenceSessionContinuationResolution
   | {
       kind: "warming";
       hydration?: Promise<InferenceSessionAuthDecision | undefined>;
+      continuation?: Promise<InferenceSessionContinuationResolution | undefined>;
     };
 
 function looksLikeJwt(token: string): boolean {
@@ -99,7 +103,7 @@ async function hydrateAuthoritativeDecision(params: {
   walletAddress?: string;
   walletChain?: "ethereum" | "solana";
 }): Promise<InferenceSessionAuthDecision> {
-  let user = await usersService.getByStewardId(params.stewardUserId);
+  let user = await usersRepository.findByStewardIdWithOrganizationForWrite(params.stewardUserId);
   if (!user) {
     const { syncUserFromSteward } = await import("../steward-sync");
     user = await syncUserFromSteward({
@@ -140,7 +144,7 @@ async function hydrateAuthoritativeDecision(params: {
 function toResolution(
   decision: InferenceSessionAuthDecision,
   source: "cache" | "origin",
-): InferenceSessionAuthResolution {
+): InferenceSessionContinuationResolution {
   if ("apiKeyId" in decision) {
     return { kind: "authorized", ctx: decision, source };
   }
@@ -155,7 +159,7 @@ async function enforceStrongSessionBoundary(
   stewardUserId: string,
   issuedAt: number,
   source: "cache" | "origin",
-): Promise<InferenceSessionAuthResolution> {
+): Promise<InferenceSessionContinuationResolution> {
   const resolved = toResolution(decision, source);
   if (resolved.kind !== "authorized") return resolved;
   try {
@@ -296,7 +300,10 @@ export async function resolveInferenceSessionAuthContext(
   }
 
   if (options.useAuthCache && cache.isAvailable()) {
-    const cached = await readInferenceSessionAuthDecision(claims.userId).catch((error) => {
+    const cached = await readInferenceSessionAuthDecision(
+      claims.userId,
+      options.executionCtx,
+    ).catch((error) => {
       // error-policy:J4 inference remains explicitly unavailable on a cache
       // failure; never fall through to an inline database authorization.
       logger.warn("[InferenceSessionAuth] Cache read failed", {
@@ -358,6 +365,18 @@ export async function resolveInferenceSessionAuthContext(
             // error-policy:J7 a failed hydration stays a retryable warming
             // outcome for cache-only callers instead of becoming an opaque 500.
             logger.warn("[InferenceSessionAuth] Inline hydration await failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return undefined;
+          },
+        ),
+        continuation: hydrationDecision.then(
+          (decision) =>
+            enforceStrongSessionBoundary(decision, claims.userId, claims.issuedAt, "origin"),
+          (error) => {
+            // error-policy:J7 the retained hydration above owns failure logging;
+            // a voice continuation keeps the original warming outcome.
+            logger.warn("[InferenceSessionAuth] Continuation hydration failed", {
               error: error instanceof Error ? error.message : String(error),
             });
             return undefined;

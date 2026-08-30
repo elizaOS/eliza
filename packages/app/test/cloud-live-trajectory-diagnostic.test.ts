@@ -35,6 +35,8 @@ const ZERO_DEDICATED_CONTROL_PLANE_COUNTERS = {
   parsedDedicatedActivationResponseBodyCount: 0,
   decodedDedicatedActivationReceiptCount: 0,
   uninspectableDedicatedActivationResponseBodyCount: 0,
+  dedicatedActivationResponseStatus: null,
+  dedicatedActivationResponseCode: null,
   dedicatedCutoverPostRequestCount: 0,
   successfulDedicatedCutoverPostResponseCount: 0,
   clientErrorDedicatedCutoverPostResponseCount: 0,
@@ -47,11 +49,28 @@ const ZERO_DEDICATED_CONTROL_PLANE_COUNTERS = {
   decodedDedicatedCutoverPendingResponseCount: 0,
   decodedDedicatedCutoverFinalResponseCount: 0,
   uninspectableDedicatedCutoverResponseBodyCount: 0,
+  dedicatedAdoptionQuoteGetRequestCount: 0,
+  successfulDedicatedAdoptionQuoteGetResponseCount: 0,
+  clientErrorDedicatedAdoptionQuoteGetResponseCount: 0,
+  serverErrorDedicatedAdoptionQuoteGetResponseCount: 0,
+  otherDedicatedAdoptionQuoteGetResponseCount: 0,
+  failedDedicatedAdoptionQuoteGetRequestCount: 0,
+  pendingDedicatedAdoptionQuoteGetRequestCount: 0,
+  completedDedicatedAdoptionQuoteResponseBodyCount: 0,
+  parsedDedicatedAdoptionQuoteResponseBodyCount: 0,
+  decodedAdoptableDedicatedAdoptionQuoteCount: 0,
+  decodedUnavailableDedicatedAdoptionQuoteCount: 0,
+  uninspectableDedicatedAdoptionQuoteResponseBodyCount: 0,
+  dedicatedAdoptionConfirmationPostRequestCount: 0,
 } as const;
 
 const ZERO_PERSONAL_BODY_AND_RECOVERY_COUNTERS = {
   runtimeCloudRecoveryVisibleCount: 0,
   personalIdentityRetryVisibleCount: 0,
+  approvalGrantedCount: 0,
+  confirmationOfferCount: 0,
+  confirmationClickCount: 0,
+  cancellationCount: 0,
   completedPersonalIdentityResponseBodyCount: 0,
   parsedPersonalIdentityResponseBodyCount: 0,
   decodedSharedPersonalIdentityResponseCount: 0,
@@ -91,7 +110,7 @@ describe("Cloud live trajectory diagnostic", () => {
 
   it("records only closed pre-identity action and request counters", () => {
     const diagnostic = createCloudLiveTrajectoryDiagnostic(
-      "pre-identity-runtime-choice",
+      "dedicated-confirmation-required",
       456,
       {
         runtimeCloudActionAttemptCount: 1,
@@ -113,7 +132,7 @@ describe("Cloud live trajectory diagnostic", () => {
 
     expect(diagnostic).toEqual({
       schema: CLOUD_LIVE_TRAJECTORY_DIAGNOSTIC_SCHEMA,
-      phase: "pre-identity-runtime-choice",
+      phase: "dedicated-confirmation-required",
       elapsedMs: 456,
       preIdentity: {
         runtimeCloudActionAttemptCount: 1,
@@ -171,6 +190,41 @@ describe("Cloud live trajectory diagnostic", () => {
         counters,
       ),
     ).toThrow("pre-identity counters must be non-negative integers");
+  });
+
+  it("retains only a bounded Dedicated activation status and machine code", () => {
+    const counters = {
+      runtimeCloudActionAttemptCount: 1,
+      runtimeCloudActionSuccessCount: 0,
+      runtimeCloudActionTimeoutCount: 0,
+      ...ZERO_PERSONAL_BODY_AND_RECOVERY_COUNTERS,
+      personalIdentityGetRequestCount: 1,
+      successfulPersonalIdentityGetResponseCount: 1,
+      clientErrorPersonalIdentityGetResponseCount: 0,
+      serverErrorPersonalIdentityGetResponseCount: 0,
+      otherPersonalIdentityGetResponseCount: 0,
+      failedPersonalIdentityGetRequestCount: 0,
+      pendingPersonalIdentityGetRequestCount: 0,
+      ...ZERO_DEDICATED_CONTROL_PLANE_COUNTERS,
+      dedicatedActivationResponseStatus: 409,
+      dedicatedActivationResponseCode: "dedicated_quote_changed",
+    };
+
+    const diagnostic = createCloudLiveTrajectoryDiagnostic(
+      "personal-identity",
+      456,
+      counters,
+    );
+    expect(diagnostic.preIdentity).toMatchObject({
+      dedicatedActivationResponseStatus: 409,
+      dedicatedActivationResponseCode: "dedicated_quote_changed",
+    });
+    expect(() =>
+      createCloudLiveTrajectoryDiagnostic("personal-identity", 456, {
+        ...counters,
+        dedicatedActivationResponseCode: "private message: user@example.com",
+      }),
+    ).toThrow("bounded machine code");
   });
 
   it("overwrites one private receipt with restrictive permissions", async () => {

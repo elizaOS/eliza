@@ -702,7 +702,7 @@ export function ComputerUseSessionsView({
                         type="button"
                       >
                         <div className="min-w-0">
-                          <h2 className="truncate text-sm font-semibold">
+                          <h2 className="break-words text-left text-sm font-semibold leading-tight">
                             {session.label}
                           </h2>
                           <p className="truncate text-xs text-muted-foreground">

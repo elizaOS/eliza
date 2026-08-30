@@ -34,7 +34,7 @@ test("spool absence is proven before backup catalogue rows can be erased", () =>
   );
 });
 
-test("one restrictive-grant inventory covers billing receipts and retained user grants", () => {
+test("one restrictive-grant inventory covers provider-owned retained grants", () => {
   const inventory = ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY.map(
     (entry) => `${entry.table}.${entry.column}`,
   );
@@ -56,18 +56,35 @@ test("one restrictive-grant inventory covers billing receipts and retained user 
     "org_storage_read_operations.organization_id",
     "org_storage_read_operations.user_id",
   ]);
-  const expected = listAccountDeletionForeignKeys()
+  const terminalFinalizerOwnedRestrictiveGrants = new Set([
+    "billing_cancel_command_keys.organization_id",
+    "billing_cancel_command_keys.requested_by_user_id",
+    "billing_cancel_commands.organization_id",
+    "billing_cancel_commands.requested_by_user_id",
+  ]);
+  const restrictiveAnonymizedGrants = listAccountDeletionForeignKeys()
     .filter(
       (descriptor) =>
         (descriptor.onDelete === "restrict" || descriptor.onDelete === "no action") &&
-        classifyAccountDeletionForeignKey(descriptor) === "anonymize_retained_record" &&
-        !externallyReconciledRestrictiveGrants.has(
-          `${descriptor.sourceTable}.${descriptor.sourceColumns}`,
-        ),
+        classifyAccountDeletionForeignKey(descriptor) === "anonymize_retained_record",
     )
-    .map((descriptor) => `${descriptor.sourceTable}.${descriptor.sourceColumns}`)
+    .map((descriptor) => `${descriptor.sourceTable}.${descriptor.sourceColumns}`);
+  const expected = restrictiveAnonymizedGrants
+    .filter(
+      (grant) =>
+        !externallyReconciledRestrictiveGrants.has(grant) &&
+        !terminalFinalizerOwnedRestrictiveGrants.has(grant),
+    )
     .sort();
   expect([...inventory].sort()).toEqual(expected);
+  expect(
+    restrictiveAnonymizedGrants
+      .filter((grant) => terminalFinalizerOwnedRestrictiveGrants.has(grant))
+      .sort(),
+  ).toEqual([...terminalFinalizerOwnedRestrictiveGrants].sort());
+  expect(ACCOUNT_DELETION_PHASES.indexOf("other_grants")).toBeLessThan(
+    ACCOUNT_DELETION_PHASES.indexOf("database_erasure"),
+  );
 });
 
 function spoolAuthority(input: {

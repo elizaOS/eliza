@@ -17,7 +17,6 @@ import { Auth } from "googleapis";
 
 const { OAuth2Client } = Auth;
 const TEST_OIDC_NONCE = "test-oidc-nonce";
-const GOOGLE_OAUTH_REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import googlePlugin, {
@@ -794,7 +793,9 @@ describe("google plugin", () => {
             { status: 200, headers: { "content-type": "application/json" } }
           );
         }
-        if (href === GOOGLE_OAUTH_REVOKE_ENDPOINT) return new Response(null, { status: 200 });
+        if (href.includes("oauth2.googleapis.com/revoke")) {
+          return new Response(null, { status: 200 });
+        }
         throw new Error(`Unexpected fetch ${href}`);
       })
     );
@@ -825,23 +826,20 @@ describe("google plugin", () => {
     expect(account.role).toBe("AGENT");
     expect(JSON.stringify(metadata)).not.toContain("google-access-token");
     expect(JSON.stringify(metadata)).not.toContain("google-refresh-token");
-    const credentialRefs = metadata.credentialRefs as Array<{
+    const [credentialRef] = metadata.credentialRefs as Array<{
       credentialType: string;
       vaultRef: string;
     }>;
-    expect(credentialRefs).toEqual([
-      expect.objectContaining({
-        credentialType: "oauth.tokens",
-        vaultRef: expect.stringMatching(/^connector\.agent-1\.google\.[^.]+\.oauth_tokens$/u),
-      }),
-    ]);
-    const oauthVaultRef = credentialRefs[0].vaultRef;
-    expect(vault.get(oauthVaultRef)).toContain("google-access-token");
+    expect(credentialRef).toMatchObject({ credentialType: "oauth.tokens" });
+    expect(credentialRef?.vaultRef).toMatch(
+      new RegExp(`^connector\\.agent-1\\.google\\.${account.id}-[a-f0-9]+\\.oauth_tokens$`, "u")
+    );
+    expect(vault.get(credentialRef?.vaultRef ?? "")).toContain("google-access-token");
     expect(setCredentialRef).toHaveBeenCalledWith(
       expect.objectContaining({
         accountId: account.id,
         credentialType: "oauth.tokens",
-        vaultRef: oauthVaultRef,
+        vaultRef: credentialRef?.vaultRef,
       })
     );
   });
@@ -902,7 +900,9 @@ describe("google plugin", () => {
             { status: 200, headers: { "content-type": "application/json" } }
           );
         }
-        if (href === GOOGLE_OAUTH_REVOKE_ENDPOINT) return new Response(null, { status: 200 });
+        if (href.includes("oauth2.googleapis.com/revoke")) {
+          return new Response(null, { status: 200 });
+        }
         throw new Error(`Unexpected fetch ${href}`);
       })
     );
@@ -936,8 +936,14 @@ describe("google plugin", () => {
     expect(account.purpose).toEqual(["messaging"]);
     expect(metadata.grantedCapabilities).toEqual(["gmail.read"]);
     expect(metadata.grantedScopes).toEqual(returnedScopes);
-    const [credentialRef] = metadata.credentialRefs as Array<{ vaultRef: string }>;
-    expect(vault.get(credentialRef.vaultRef)).toContain(providerAddedScope);
+    const [credentialRef] = metadata.credentialRefs as Array<{
+      credentialType: string;
+      vaultRef: string;
+    }>;
+    expect(credentialRef?.vaultRef).toMatch(
+      new RegExp(`^connector\\.agent-1\\.google\\.${account.id}-[a-f0-9]+\\.oauth_tokens$`, "u")
+    );
+    expect(vault.get(credentialRef?.vaultRef ?? "")).toContain(providerAddedScope);
   });
 
   it("does not record or re-request a compound capability from a partial provider grant", async () => {
@@ -995,7 +1001,9 @@ describe("google plugin", () => {
             { status: 200, headers: { "content-type": "application/json" } }
           );
         }
-        if (href === GOOGLE_OAUTH_REVOKE_ENDPOINT) return new Response(null, { status: 200 });
+        if (href.includes("oauth2.googleapis.com/revoke")) {
+          return new Response(null, { status: 200 });
+        }
         throw new Error(`Unexpected fetch ${href}`);
       })
     );
@@ -1093,7 +1101,9 @@ describe("google plugin", () => {
             { status: 200, headers: { "content-type": "application/json" } }
           );
         }
-        if (href === GOOGLE_OAUTH_REVOKE_ENDPOINT) return new Response(null, { status: 200 });
+        if (href.includes("oauth2.googleapis.com/revoke")) {
+          return new Response(null, { status: 200 });
+        }
         throw new Error(`Unexpected fetch ${href}`);
       })
     );
@@ -1148,7 +1158,6 @@ describe("google plugin", () => {
   ])("$label", async ({ tokenFields, metadata, expectedMessage }) => {
     const runtime = {
       agentId: "agent-1",
-      adapter: createOAuthCompensationAdapter(),
       getSetting: (key: string) =>
         ({
           GOOGLE_CLIENT_ID: "google-client",
@@ -1156,6 +1165,10 @@ describe("google plugin", () => {
           GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
         })[key],
       getService: () => null,
+      adapter: {
+        deleteConnectorAccountCredentialRefs: vi.fn(async () => 0),
+        setConnectorAccountCredentialRef: vi.fn(async () => undefined),
+      },
     } as never;
     const manager = createOAuthCallbackManager(
       "google",
@@ -1177,7 +1190,9 @@ describe("google plugin", () => {
             { status: 200, headers: { "content-type": "application/json" } }
           );
         }
-        if (href === GOOGLE_OAUTH_REVOKE_ENDPOINT) return new Response(null, { status: 200 });
+        if (href.includes("oauth2.googleapis.com/revoke")) {
+          return new Response(null, { status: 200 });
+        }
         throw new Error(`Unexpected fetch ${href}`);
       })
     );
@@ -1244,7 +1259,9 @@ describe("google plugin", () => {
             { status: 200, headers: { "content-type": "application/json" } }
           );
         }
-        if (href === GOOGLE_OAUTH_REVOKE_ENDPOINT) return new Response(null, { status: 200 });
+        if (href.includes("oauth2.googleapis.com/revoke")) {
+          return new Response(null, { status: 200 });
+        }
         throw new Error(`Unexpected fetch ${href}`);
       })
     );
@@ -1484,7 +1501,7 @@ describe("google plugin", () => {
     });
   });
 
-  it("rejects hostile Gmail limits before listing messages", async () => {
+  it("rejects hostile Gmail result limits before listing messages", async () => {
     const fakeGmail = {
       users: {
         messages: {
@@ -1504,14 +1521,14 @@ describe("google plugin", () => {
         query: "in:inbox",
         maxResults: Number.POSITIVE_INFINITY,
       })
-    ).rejects.toThrow("Gmail maxResults must be a positive integer.");
+    ).rejects.toMatchObject({ code: "GOOGLE_GMAIL_LIMIT_INVALID" });
     await expect(
       client.listGmailUnrespondedThreads({
         accountId: "acct_google_1",
         olderThanDays: -4,
         maxResults: Number.NaN,
       })
-    ).rejects.toThrow("Gmail maxResults must be a positive integer.");
+    ).rejects.toMatchObject({ code: "GOOGLE_GMAIL_LIMIT_INVALID" });
     expect(fakeGmail.users.messages.list).not.toHaveBeenCalled();
   });
 
@@ -2073,15 +2090,13 @@ function createOAuthCallbackManager(
   durableAccountId: string,
   setCredentialRef: ReturnType<typeof vi.fn>
 ) {
+  const upsertStoredAccount = vi.fn(async (account: ConnectorAccount) => account);
+  const deleteStoredAccount = vi.fn(async () => false);
   return {
     getStorage: () => ({
       setConnectorAccountCredentialRef: setCredentialRef,
-      async upsertAccount(account: ConnectorAccount) {
-        return account;
-      },
-      async deleteAccount() {
-        return false;
-      },
+      upsertAccount: upsertStoredAccount,
+      deleteAccount: deleteStoredAccount,
     }),
     upsertAccount: vi.fn(
       async (

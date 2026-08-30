@@ -246,10 +246,12 @@ export function SlashCommandMenu({
           surface="wallpaperOverlay"
           border="standard"
           radius="xlarge"
-          tone="inverse"
           visualStyle={{
-            borderColor:
-              "color-mix(in srgb, var(--inverse-foreground) 12%, transparent)",
+            borderColor: "var(--border-wallpaper-overlay)",
+            // Fixed white-ladder text owned by the atom's paint channel:
+            // wallpaper chrome renders tone="inverse" black-on-black, and a
+            // painted text-* class would violate the Card visual contract.
+            color: "var(--txt-wallpaper-overlay)",
           }}
           className={cn(
             "absolute bottom-full left-0 right-0 z-10 mb-2 px-4 py-3 text-xs",
@@ -297,8 +299,7 @@ export function SlashCommandMenu({
       radius="xlarge"
       data-testid="slash-command-menu"
       visualStyle={{
-        borderColor:
-          "color-mix(in srgb, var(--inverse-foreground) 12%, transparent)",
+        borderColor: "var(--border-wallpaper-overlay)",
       }}
       className={cn(
         "absolute bottom-full left-0 right-0 z-10 mb-2 max-h-[min(46vh,22rem)] overflow-y-auto py-1.5",

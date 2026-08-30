@@ -445,6 +445,7 @@ import {
   buildPluginDiagnosticEntry,
   resolveWalletDiagnosticStatus,
 } from "./plugin-diagnostic.ts";
+import { maybeCapRequestStorm } from "./request-storm-cap.ts";
 import { handleRuntimeManagementRoutes } from "./runtime-management-routes.ts";
 import {
   handleRuntimeModePreDispatch,
@@ -1863,6 +1864,14 @@ async function handleRequest(
     method !== "OPTIONS" &&
     (await handleRuntimeModePreDispatch(req, res, state.runtime))
   ) {
+    return;
+  }
+
+  // ── Per-session request-storm cap ───────────────────────────────────────
+  // Before auth resolution and route handlers: a bearer session sustaining
+  // more than its polling budget gets 429 + Retry-After (see
+  // request-storm-cap.ts for the live incident this guards against).
+  if (maybeCapRequestStorm(req, res, pathname)) {
     return;
   }
 

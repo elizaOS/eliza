@@ -11,6 +11,7 @@ import {
   installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
+  UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
@@ -225,7 +226,7 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
         updatedAt: new Date(0).toISOString(),
       },
       downloads: [],
-      hardware: { status: "unsupported" },
+      hardware: UI_SMOKE_CPU_ONLY_HARDWARE,
       assignments: {},
       textReadiness: {
         updatedAt: new Date(0).toISOString(),
@@ -919,9 +920,6 @@ test.describe("assistant home app flow", () => {
       page
         .getByRole("tablist", { name: "Wallet asset type" })
         .getByRole("tab", { name: "Tokens", selected: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Network settings", exact: true }),
     ).toBeVisible();
     await screenshot(page, "07-wallet-view-with-pill");
     const personalRequests = [

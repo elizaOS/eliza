@@ -31,6 +31,10 @@ registerAppShellPage({
   tabAffinity: "inventory",
   group: "wallet",
   order: 50,
+  surface: {
+    background: "shared",
+    capabilities: ["wallpaper"],
+  },
   loader: () =>
     import("./InventoryView.tsx").then((module) => ({
       default: module.InventoryView,

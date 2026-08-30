@@ -45,7 +45,7 @@ test("chat, apps, and settings routes render through the real shell", async ({
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByText("Install, create, and run")).toBeVisible();
+  await expect(page.getByText("No apps installed yet")).toBeVisible();
 
   await openAppPath(page, "/settings");
   await expect(page).toHaveURL(/\/settings$/);
