@@ -491,6 +491,33 @@ function agentProvisionJobResultToRecord(result: AgentProvisionJobResult): Recor
   return { ...result };
 }
 
+const REPLACEMENT_CLEANUP_ONLY_PREFIX = "Replacement cleanup is still pending: ";
+const REPLACEMENT_CLEANUP_CAUSE_SEPARATOR = "; replacement cleanup remains pending: ";
+
+/** Keep the first startup failure when later free retries only re-attempt cleanup. */
+function preserveProvisionFailureAcrossCleanupRetry(
+  priorResult: unknown,
+  currentError: string,
+): string {
+  if (!currentError.startsWith(REPLACEMENT_CLEANUP_ONLY_PREFIX)) return currentError;
+  if (!priorResult || typeof priorResult !== "object" || Array.isArray(priorResult)) {
+    return currentError;
+  }
+  const priorError = (priorResult as { error?: unknown }).error;
+  if (
+    typeof priorError !== "string" ||
+    priorError.length === 0 ||
+    priorError.startsWith(REPLACEMENT_CLEANUP_ONLY_PREFIX)
+  ) {
+    return currentError;
+  }
+  const separatorIndex = priorError.indexOf(REPLACEMENT_CLEANUP_CAUSE_SEPARATOR);
+  const primaryError = separatorIndex >= 0 ? priorError.slice(0, separatorIndex) : priorError;
+  return `${primaryError}${REPLACEMENT_CLEANUP_CAUSE_SEPARATOR}${currentError.slice(
+    REPLACEMENT_CLEANUP_ONLY_PREFIX.length,
+  )}`;
+}
+
 function agentDeleteJobDataToRecord(data: AgentDeleteJobData): Record<string, unknown> {
   return { ...data };
 }
@@ -6491,21 +6518,25 @@ export class ProvisioningJobService {
     if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;
 
     if (!provResult.success) {
+      const provisionError = preserveProvisionFailureAcrossCleanupRetry(
+        job.result,
+        provResult.error,
+      );
       const retrySnapshot = await this.updateClaimedExecution(job, {
         result: agentProvisionJobResultToRecord({
           cloudAgentId: data.agentId,
           status: provResult.sandboxRecord?.status ?? "error",
-          error: provResult.error,
+          error: provisionError,
         }),
       });
       if (provResult.retryable) {
         throw new RetryableProvisionTransportError(
-          provResult.error,
+          provisionError,
           retrySnapshot,
           PROVISION_TRANSPORT_MAX_FREE_RETRIES,
         );
       }
-      throw new Error(provResult.error);
+      throw new Error(provisionError);
     }
 
     const jobResult: AgentProvisionJobResult = {

@@ -1037,6 +1037,46 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_provision cleanup-only retry preserves the first startup failure", async () => {
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => {},
+    });
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_PROVISION, {}, {
+        result: {
+          cloudAgentId: AGENT,
+          status: "provisioning",
+          error:
+            "Sandbox health check timed out; replacement cleanup remains pending: first cleanup failure",
+        },
+      }),
+      service,
+    );
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "Replacement cleanup is still pending: second cleanup failure",
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION, service);
+      expect(res).toMatchObject({ retried: 1, failed: 0 });
+      const preserved =
+        "Sandbox health check timed out; replacement cleanup remains pending: second cleanup failure";
+      expect(ctx.updateSpy.mock.calls[0]?.[1]?.result).toMatchObject({ error: preserved });
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toContain(preserved);
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("agent_provision retryable transport settles when the database bound is exhausted", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION, {}, { retryable_requeues: 5 }));
     ctx.retryLaterSpy.mockImplementation(async (retrySnapshot) => ({
