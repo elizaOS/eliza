@@ -114,6 +114,10 @@ mock.module("../../db/repositories", () => ({
       usageCreateCalls.push(row);
       return { id: "usage-1" };
     },
+    async createWithStats(row: Record<string, unknown>) {
+      usageCreateCalls.push(row);
+      return { usage: { id: "usage-1" }, created: true };
+    },
   },
 }));
 
@@ -121,11 +125,11 @@ mock.module("./credits", () => ({
   creditsService: {
     async deductCredits(params: { amount: number }) {
       deductCalls.push({ amount: params.amount });
-      return { success: true };
+      return { success: true, transaction: { id: "deduct-tx-1" } };
     },
     async addCredits(params: { amount: number }) {
       addCreditsCalls.push({ amount: params.amount });
-      return { success: true };
+      return { success: true, transaction: { id: `creator-credit-${addCreditsCalls.length}` } };
     },
   },
 }));
@@ -143,6 +147,63 @@ mock.module("./affiliates", () => ({
   affiliatesService: {
     async getReferrer() {
       return referrer;
+    },
+  },
+}));
+
+const settlementRows: Map<string, Record<string, unknown>> = new Map();
+const settlementClaims = new Set<string>();
+
+mock.module("../../db/repositories/mcp-settlements", () => ({
+  mcpSettlementsRepository: {
+    async claim(values: Record<string, unknown>) {
+      const key = `${values.payment_type}:${values.payment_event_id}`;
+      const existing = settlementRows.get(key);
+      if (existing) {
+        return { settlement: existing, created: false };
+      }
+      const row = { id: `settlement-${settlementRows.size + 1}`, status: "settling", ...values };
+      settlementRows.set(key, row);
+      return { settlement: row, created: true };
+    },
+    async recordLeg(id: string, leg: Record<string, unknown>) {
+      for (const row of settlementRows.values()) {
+        if (row.id === id) Object.assign(row, leg);
+      }
+      return null;
+    },
+    async markSettled(id: string) {
+      for (const row of settlementRows.values()) {
+        if (row.id === id) {
+          row.status = "settled";
+          return row;
+        }
+      }
+      return null;
+    },
+    // Mirrors the real repository contract (#22961 round-4): the live claim
+    // wins once per debit id (first call), later calls are replays; the sweep
+    // marker reads false because this suite never simulates a sweep refund.
+    async claimPrechargeForSettlement(debitId: string) {
+      const key = `claim:${debitId}`;
+      if (settlementClaims.has(key)) return false;
+      settlementClaims.add(key);
+      return true;
+    },
+    async prechargeSweptByRefund() {
+      return false;
+    },
+    // Payment-event type guard (#27992 rebase): mirrors the real repository —
+    // this suite's mock credits layer hands out "deduct-tx-N" (direct charge)
+    // and "prepaid-tx-N" (precharge) ids, and both ARE debit rows in the real
+    // ledger (reserveAndDeductCredits/deductCredits write type='debit'). A
+    // non-debit id would fail closed in production (refusing unkeyed payout
+    // legs); nothing in this suite exercises that refusal path.
+    async isDebitTransaction(transactionId: string) {
+      return (
+        typeof transactionId === "string" &&
+        (transactionId.startsWith("deduct-tx-") || transactionId.startsWith("prepaid-tx-"))
+      );
     },
   },
 }));
@@ -174,9 +235,12 @@ mock.module("../utils/logger", () => ({
   logger: { info() {}, warn() {}, error() {}, debug() {} },
 }));
 
-const { userMcpsService, CorruptMcpBillingNumberError } = await import("./user-mcps");
+const { userMcpsService, CorruptMcpBillingNumberError, UnsettleableMcpRowError } = await import(
+  "./user-mcps"
+);
 
 function resetSpies(): void {
+  settlementRows.clear();
   deductCalls.length = 0;
   addCreditsCalls.length = 0;
   addEarningsCalls.length = 0;
@@ -235,6 +299,7 @@ describe("recordUsage, NUMERIC money reads fail closed (#13415)", () => {
         organizationId: CONSUMER_ORG,
         toolName: "get_weather",
         paymentType: "credits",
+        metadata: { preChargeTransactionId: "explicit-zero-tx" },
       });
       throw new Error("expected recordUsage to throw");
     } catch (error) {
@@ -299,6 +364,66 @@ describe("recordUsage, NUMERIC money reads fail closed (#13415)", () => {
       }),
     ).rejects.toBeInstanceOf(CorruptMcpBillingNumberError);
     expect(usageCreateCalls).toHaveLength(0);
+  });
+
+  // #27992 F2: a zero x402 price is a VALID stored value (nullable column,
+  // fallback 0) but an INVALID x402 receipt — the migration's
+  // mcp_settlements_x402_check demands x402_amount_usd > 0 on that rail.
+  // Before the gate this reached claim() and died as a raw Postgres CHECK
+  // violation AFTER the tool call had already delivered.
+  test("REGRESSION: ZERO x402_price_usd THROWS on the x402 path before delivery", async () => {
+    mcpRow = makeRow({ x402_price_usd: "0.000000" });
+
+    const rejection = await userMcpsService
+      .recordUsage({
+        mcpId: "mcp-1",
+        organizationId: CONSUMER_ORG,
+        toolName: "get_weather",
+        paymentType: "x402",
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(rejection).toBeInstanceOf(UnsettleableMcpRowError);
+    const typed = rejection as UnsettleableMcpRowError;
+    expect(typed.code).toBe("MCP_ROW_UNSETTLEABLE");
+    expect(typed.context).toMatchObject({ field: "x402_price_usd", rail: "x402" });
+
+    // Refused pre-flight: no usage row, no settlement legs, no payouts.
+    expect(usageCreateCalls).toHaveLength(0);
+    expect(addCreditsCalls).toHaveLength(0);
+    expect(addEarningsCalls).toHaveLength(0);
+  });
+
+  test("REGRESSION: ABSENT (null) x402_price_usd THROWS on the x402 path", async () => {
+    mcpRow = makeRow({ x402_price_usd: null });
+
+    await expect(
+      userMcpsService.recordUsage({
+        mcpId: "mcp-1",
+        organizationId: CONSUMER_ORG,
+        toolName: "get_weather",
+        paymentType: "x402",
+      }),
+    ).rejects.toBeInstanceOf(UnsettleableMcpRowError);
+    expect(usageCreateCalls).toHaveLength(0);
+  });
+
+  test("zero x402_price_usd stays LEGAL on the credits rail (x402 check is rail-scoped)", async () => {
+    mcpRow = makeRow({ x402_price_usd: "0.000000" });
+
+    const result = await userMcpsService.recordUsage({
+      mcpId: "mcp-1",
+      organizationId: CONSUMER_ORG,
+      toolName: "get_weather",
+      paymentType: "credits",
+    });
+
+    // Free-tier credits call: zero total skips the rails and records usage only.
+    expect(result.success).toBe(true);
+    expect(result.x402AmountUsd).toBe(0);
+    expect(usageCreateCalls).toHaveLength(1);
   });
 
   test("REGRESSION: corrupt creator_share_percentage THROWS (was NaN earnings in ledger)", async () => {
@@ -419,6 +544,7 @@ describe("recordUsageWithoutDeduction, share reads fail closed (#13415)", () => 
       organizationId: CONSUMER_ORG,
       toolName: "get_weather",
       creditsCharged: 1,
+      metadata: { preChargeTransactionId: "prepaid-tx-1" },
     });
 
     expect(result.success).toBe(true);
@@ -445,6 +571,7 @@ describe("recordUsageWithoutDeduction, share reads fail closed (#13415)", () => 
         organizationId: CONSUMER_ORG,
         toolName: "get_weather",
         creditsCharged: 1,
+        metadata: { preChargeTransactionId: "prepaid-tx-1" },
       }),
     ).rejects.toBeInstanceOf(CorruptMcpBillingNumberError);
     expect(addCreditsCalls).toHaveLength(0);

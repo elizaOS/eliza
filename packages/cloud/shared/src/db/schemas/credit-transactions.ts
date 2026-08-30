@@ -52,6 +52,28 @@ export const creditTransactions = pgTable(
       .where(
         sql`${table.type} = 'debit' AND ${table.metadata}->>'appUsageProjectionVersion' = '1'`,
       ),
+    // Sweep-support partial index (#22961 round-4): the every-minute orphan
+    // sweep filters debit rows by the mcp_precharge marker; declared here so
+    // test databases pushed via drizzle-kit carry the same index the migration
+    // creates in deployed environments (pg_indexes parity, #27992).
+    mcp_precharge_idx: index("credit_transactions_mcp_precharge_idx")
+      .on(table.created_at)
+      .where(sql`${table.type} = 'debit' AND ${table.metadata}->>'mcp_precharge' = 'v1'`),
+    // Refund-linkage partial indexes (#27992 r2 F3): the sweep's correlated
+    // refund sums aggregate refund rows by either linkage arm; without an
+    // expression index each sum scans the full refund population per examined
+    // candidate on the every-minute recovery cron. Both arms are partial on
+    // type='refund' so only the refund subset is indexed.
+    mcp_precharge_refund_link_idx: index("credit_transactions_mcp_precharge_refund_link_idx")
+      .on(sql`(${table.metadata}->>'mcp_precharge_refund_for')`)
+      .where(
+        sql`${table.type} = 'refund' AND ${table.metadata}->>'mcp_precharge_refund_for' IS NOT NULL`,
+      ),
+    reservation_refund_link_idx: index("credit_transactions_reservation_refund_link_idx")
+      .on(sql`(${table.metadata}->>'reservation_transaction_id')`)
+      .where(
+        sql`${table.type} = 'refund' AND ${table.metadata}->>'reservation_transaction_id' IS NOT NULL`,
+      ),
     stripe_payment_intent_idx: uniqueIndex("credit_transactions_stripe_payment_intent_idx").on(
       table.stripe_payment_intent_id,
     ),
