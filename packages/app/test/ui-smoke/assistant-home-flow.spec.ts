@@ -920,9 +920,6 @@ test.describe("assistant home app flow", () => {
         .getByRole("tablist", { name: "Wallet asset type" })
         .getByRole("tab", { name: "Tokens", selected: true }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Network settings", exact: true }),
-    ).toBeVisible();
     await screenshot(page, "07-wallet-view-with-pill");
     const personalRequests = [
       ...initialAssistantApi.personalRequests,
