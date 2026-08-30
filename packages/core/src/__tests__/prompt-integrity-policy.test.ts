@@ -81,8 +81,6 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/telegram-automation/app-automation.ts":
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
-	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts":
-		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/app-promotion-assets.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
 	],
@@ -95,9 +93,6 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 	"packages/cloud/shared/src/lib/services/provisioning-agent-chat.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
 	],
-	"packages/cloud/shared/src/lib/services/room-title.ts": [
-		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
-	],
 	"packages/cloud/shared/src/lib/services/seo.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
 	],
@@ -105,13 +100,40 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-eliza-runtime.ts":
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
-	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
-		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/eliza-app/describe-inbound-media.ts":
 		[/isModelOutputLimitFinishReason\(completion\.finishReason\)/],
 	"plugins/plugin-anthropic/models/image.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}response\.finishReason/,
 	],
+};
+
+const directModelDispatchPatterns = [
+	/from\s+["']ai["']|import\(["']ai["']\)/,
+	/from\s+["'][^"']*providers\/language-model["']|import\(["'][^"']*providers\/language-model["']\)/,
+	/\bgenerateText\s*\(/,
+	/\bstreamText\s*\(/,
+] as const;
+
+const nonDirectModelDispatchBoundaries: Record<
+	string,
+	{
+		readonly requiredPatterns: readonly RegExp[];
+	}
+> = {
+	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts":
+		{
+			requiredPatterns: [/code:\s*"CONNECTION_ENFORCEMENT_LLM_DISABLED"/],
+		},
+	"packages/cloud/shared/src/lib/services/room-title.ts": {
+		requiredPatterns: [/const title = generateFallbackTitle\(text\)/],
+	},
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
+		{
+			requiredPatterns: [
+				/await runSharedAgentTurn\(\{/,
+				/runSharedAgentTurnStream\(\{/,
+			],
+		},
 };
 
 const guardedSources: Record<string, readonly RegExp[]> = {
@@ -1291,6 +1313,27 @@ describe("prompt integrity policy", () => {
 			);
 			for (const pattern of requiredPatterns) {
 				expect(source, `${relativePath} must match ${pattern}`).toMatch(
+					pattern,
+				);
+			}
+		}
+	});
+
+	it("keeps disabled, deterministic, and delegated paths free of direct model dispatches", () => {
+		for (const [relativePath, policy] of Object.entries(
+			nonDirectModelDispatchBoundaries,
+		)) {
+			const source = readFileSync(
+				resolve(repositoryRoot, relativePath),
+				"utf8",
+			);
+			for (const pattern of policy.requiredPatterns) {
+				expect(source, `${relativePath} must match ${pattern}`).toMatch(
+					pattern,
+				);
+			}
+			for (const pattern of directModelDispatchPatterns) {
+				expect(source, `${relativePath} must not match ${pattern}`).not.toMatch(
 					pattern,
 				);
 			}

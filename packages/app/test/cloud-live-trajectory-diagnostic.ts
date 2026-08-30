@@ -92,6 +92,17 @@ export interface CloudLivePreIdentityDiagnostic {
   decodedDedicatedCutoverFinalResponseCount: number;
   uninspectableDedicatedCutoverResponseBodyCount: number;
   dedicatedAdoptionQuoteGetRequestCount: number;
+  successfulDedicatedAdoptionQuoteGetResponseCount: number;
+  clientErrorDedicatedAdoptionQuoteGetResponseCount: number;
+  serverErrorDedicatedAdoptionQuoteGetResponseCount: number;
+  otherDedicatedAdoptionQuoteGetResponseCount: number;
+  failedDedicatedAdoptionQuoteGetRequestCount: number;
+  pendingDedicatedAdoptionQuoteGetRequestCount: number;
+  completedDedicatedAdoptionQuoteResponseBodyCount: number;
+  parsedDedicatedAdoptionQuoteResponseBodyCount: number;
+  decodedAdoptableDedicatedAdoptionQuoteCount: number;
+  decodedUnavailableDedicatedAdoptionQuoteCount: number;
+  uninspectableDedicatedAdoptionQuoteResponseBodyCount: number;
   dedicatedAdoptionConfirmationPostRequestCount: number;
 }
 
@@ -152,6 +163,17 @@ const CLOUD_LIVE_PRE_IDENTITY_DIAGNOSTIC_KEYS = [
   "decodedDedicatedCutoverFinalResponseCount",
   "uninspectableDedicatedCutoverResponseBodyCount",
   "dedicatedAdoptionQuoteGetRequestCount",
+  "successfulDedicatedAdoptionQuoteGetResponseCount",
+  "clientErrorDedicatedAdoptionQuoteGetResponseCount",
+  "serverErrorDedicatedAdoptionQuoteGetResponseCount",
+  "otherDedicatedAdoptionQuoteGetResponseCount",
+  "failedDedicatedAdoptionQuoteGetRequestCount",
+  "pendingDedicatedAdoptionQuoteGetRequestCount",
+  "completedDedicatedAdoptionQuoteResponseBodyCount",
+  "parsedDedicatedAdoptionQuoteResponseBodyCount",
+  "decodedAdoptableDedicatedAdoptionQuoteCount",
+  "decodedUnavailableDedicatedAdoptionQuoteCount",
+  "uninspectableDedicatedAdoptionQuoteResponseBodyCount",
   "dedicatedAdoptionConfirmationPostRequestCount",
 ] as const satisfies readonly (keyof CloudLivePreIdentityDiagnostic)[];
 

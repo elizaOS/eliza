@@ -1,9 +1,17 @@
 // Handles v1 cloud API v1 apps id twitter automation post route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
+import {
+  type GenerativeOperationContext,
+  isGenerativeOperationAdmissionError,
+} from "@/lib/services/generative-operation";
 import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -19,6 +27,7 @@ async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
   caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
+  operationContext: GenerativeOperationContext,
 ): Promise<Response> {
   const { user } = caller;
   const { id } = await params;
@@ -47,6 +56,7 @@ async function __hono_POST(
       user.organization_id,
       id,
       parsed.data.text,
+      operationContext,
     );
 
     if (!result.success) {
@@ -63,14 +73,9 @@ async function __hono_POST(
       tweetUrl: result.tweetUrl,
     });
   } catch (error) {
+    if (isGenerativeOperationAdmissionError(error)) throw error;
     if (error instanceof Error && error.message === "App not found") {
       return Response.json({ error: "App not found" }, { status: 404 });
-    }
-    if (
-      error instanceof Error &&
-      error.message.includes("Insufficient credits")
-    ) {
-      return Response.json({ error: error.message }, { status: 402 });
     }
     logger.error("[Twitter Automation API] Failed to post tweet", {
       appId: id,
@@ -93,9 +98,10 @@ __hono_app.post("/", async (c) => {
       c.req.raw,
       { params: Promise.resolve({ id: c.req.param("id")! }) },
       caller,
+      getGenerativeOperationContext(c, caller),
     );
   } catch (error) {
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 export default __hono_app;

@@ -193,15 +193,17 @@ export function installDedicatedAdoptionConsentProof(
         }
         const copyMatches = await consentTurn.evaluate(
           (element, expectedLines) => {
-            const normalize = (line: string) =>
-              line.replace(/\s+/g, " ").trim();
-            const visibleLines = (element as HTMLElement).innerText
-              .split("\n")
-              .map(normalize)
-              .filter(Boolean);
-            return expectedLines
-              .map(normalize)
-              .every((line) => visibleLines.includes(line));
+            const normalize = (text: string) =>
+              text.replace(/\s+/g, " ").trim();
+            const visibleCopy = normalize((element as HTMLElement).innerText);
+            let cursor = 0;
+            for (const expectedLine of expectedLines) {
+              const expected = normalize(expectedLine);
+              const index = visibleCopy.indexOf(expected, cursor);
+              if (index < 0) return false;
+              cursor = index + expected.length;
+            }
+            return true;
           },
           exactVisibleConsentLines(quote),
         );
