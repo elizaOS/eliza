@@ -387,6 +387,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "source_node_record_id" uuid,
   "source_node_id" text,
   "source_node_incarnation" uuid,
+  "source_node_history_id" uuid,
   "source_provider_server_id" text,
   "source_provider_handle" text,
   "source_container_id" text,
