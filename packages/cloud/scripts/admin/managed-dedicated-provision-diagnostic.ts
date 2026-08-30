@@ -69,6 +69,11 @@ export type ManagedDedicatedProvisionFailureCode =
   | "container_create"
   | "container_configuration"
   | "container_identity"
+  | "container_replacement_cleanup_absence_unproven"
+  | "container_replacement_cleanup_locator_invalid"
+  | "container_replacement_cleanup_authority_changed"
+  | "container_replacement_cleanup_capacity"
+  | "container_replacement_cleanup_pending"
   | "container_replacement"
   | "container"
   | "transport"
@@ -343,6 +348,37 @@ export function classifyManagedDedicatedProvisionFailure(
   }
   if (/(?=.*(?:docker|container))(?=.*identity)/i.test(primary)) {
     return "container_identity";
+  }
+  if (
+    /replacement cleanup is still pending:.*(?:locator (?:is incomplete|contains unowned identity fields)|VPN correlation is incomplete|timestamp is (?:missing|invalid)|incomplete VPN correlation metadata|no durable attempt identity|no capacity ownership marker)/i.test(
+      primary,
+    )
+  ) {
+    return "container_replacement_cleanup_locator_invalid";
+  }
+  if (
+    /replacement cleanup is still pending:.*(?:ownership|generation|fence).*(?:changed|failed|escaped|missing|before|after)/i.test(
+      primary,
+    )
+  ) {
+    return "container_replacement_cleanup_authority_changed";
+  }
+  if (
+    /replacement cleanup is still pending:.*(?:cannot prove (?:a persisted replacement|workload) absent|absence proof)/i.test(
+      primary,
+    )
+  ) {
+    return "container_replacement_cleanup_absence_unproven";
+  }
+  if (
+    /replacement cleanup is still pending:.*(?:no reservable capacity|disappeared before release)/i.test(
+      primary,
+    )
+  ) {
+    return "container_replacement_cleanup_capacity";
+  }
+  if (/replacement cleanup is still pending:/i.test(primary)) {
+    return "container_replacement_cleanup_pending";
   }
   if (/replacement/i.test(primary)) return "container_replacement";
   if (

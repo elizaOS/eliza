@@ -224,6 +224,36 @@ describe("managed Dedicated provision diagnostic", () => {
         "x",
       ),
     ).toBe("container_identity");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Replacement cleanup is still pending: Sandbox provider cannot prove a persisted replacement absent",
+        "x",
+      ),
+    ).toBe("container_replacement_cleanup_absence_unproven");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Replacement cleanup is still pending: Replacement cleanup locator is incomplete",
+        "x",
+      ),
+    ).toBe("container_replacement_cleanup_locator_invalid");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Replacement cleanup is still pending: Replacement cleanup fence changed after remote absence proof",
+        "x",
+      ),
+    ).toBe("container_replacement_cleanup_authority_changed");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Replacement cleanup is still pending: Replacement cleanup node node-a disappeared before release",
+        "x",
+      ),
+    ).toBe("container_replacement_cleanup_capacity");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Replacement cleanup is still pending: unexpected fixed-shape cleanup failure",
+        "x",
+      ),
+    ).toBe("container_replacement_cleanup_pending");
   });
 
   test("fails closed on the wrong tier, ambiguous target, or extra raw fields", () => {

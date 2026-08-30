@@ -258,7 +258,7 @@ validation or exposing the key.
 | Canary diagnostics | cleanup failure overwrote the original provisioning failure and terminal job details collapsed to `job_failed` | Fixed in this change: preserve the primary phase and emit only an allowlisted subsystem category |
 | Staging admission | the canary identity was below the hosting-runway threshold | Cleared: run `33280890733` created one Dedicated row/job; the failure moved into provisioning |
 | Steward bootstrap | worker called a retired platform agent-registration route and received 404 before Docker create | Fixed: canonical Eliza-minted JWT/JWKS auth; protected signer reconciled to the worker |
-| Current staging provision | post-auth-fix canary `33284501109` still reached terminal failure before running/database/mesh readiness | Open: exact-suffix read-only diagnostic `33285177540` is queued; do not infer the next subsystem from the public artifact |
+| Current staging provision | post-auth-fix canary `33284501109` still reached terminal failure before running/database/mesh readiness | Open: first diagnostic run `33285177540` exposed an invalid sanitizer assumption; repaired exact-suffix run `33286940453` is queued on hosted capacity. Do not infer the next subsystem from the public artifact |
 | Warm pool | both Worker and daemon are protected-off; no ready-count or live-claim proof exists | Intentionally disabled pending `#16961`; cold provisioning must work independently |
 | Deployment capacity | earlier production deploys queued/cancelled on unavailable runner labels | Partially cleared: run `33017962389` deployed the worker/router successfully; it predates this fix and is not a Dedicated canary |
 | Full validation | the original shared checkout contains an unrelated conflict in `eliza-sse-bridge.ts` | Isolated: this change is validated from a clean worktree rebased on `origin/develop` |
@@ -318,8 +318,14 @@ canary `33284501109` still failed before running and emitted only
 `provisioning_private_diagnostic`; its public evidence correctly does not expose
 the private job reason. It also observed staging API commit
 `b3d3e890b0e0f4f58f904bce5d56d9bfccfa49f6`, which does not contain this branch
-head. A final acceptance run therefore requires both the diagnosed next worker
-repair and an API deployment that contains the exact tested source.
+head. The first read-only diagnostic attempt then found a legitimate terminal
+non-retryable job whose attempt count was below `max_attempts`; the sanitizer
+incorrectly rejected that state. Source
+`eddbdb8fc41fbd780094eae1b06ce9b211599a2b` removes that invalid invariant and
+adds its regression test. Exact-suffix diagnostic run `33286940453` is waiting
+for GitHub-hosted capacity. A final acceptance run therefore requires the
+diagnosed next worker repair and a canonical API deployment that contains the
+exact tested source.
 
 Required acceptance evidence is: one non-cancelled exact-SHA worker deploy;
 systemd active identity and effective env-name audit; matching API/daemon DB
