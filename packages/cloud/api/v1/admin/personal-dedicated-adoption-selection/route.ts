@@ -59,6 +59,8 @@ const rereviewExecuteRequestSchema = z
     action: z.literal("rereview_existing_personal_dedicated"),
     dryRun: z.literal(false),
     receiptFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    receiptUpdatedAt: z.string().datetime({ offset: true }),
+    previousRetainedAgentId: z.string().uuid(),
     inventoryFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
     stateDisposition: z.enum([
       "verified_backup_present",
@@ -172,6 +174,8 @@ export function createAdminPersonalDedicatedSelectionRoute(
           : await dependencies.selectionService.executeRereview({
               ...common,
               expectedReceiptFingerprint: input.receiptFingerprint,
+              expectedReceiptUpdatedAt: input.receiptUpdatedAt,
+              expectedPreviousRetainedAgentId: input.previousRetainedAgentId,
               expectedInventoryFingerprint: input.inventoryFingerprint,
               expectedStateDisposition: input.stateDisposition,
             })

@@ -107,7 +107,7 @@ describe("personal Dedicated staging re-review workflow", () => {
     );
   });
 
-  test("uses primary database authority for identity and mutation proofs", () => {
+  test("uses primary database authority for identity and mutation observations", () => {
     const command = readFileSync(
       resolve(
         repoRoot,
