@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  classifyDatabaseIdentityFailure,
   readDatabaseIdentityConfig,
   readDatabaseIdentityReceipt,
   runDatabaseIdentityPreflight,
@@ -137,8 +138,37 @@ describe("database identity preflight", () => {
         );
       },
     });
-    expect(result).toEqual({ status: "unavailable", mismatches: [] });
+    expect(result).toEqual({
+      status: "unavailable",
+      mismatches: [],
+      failureCategory: "database_query_failed",
+    });
     expect(JSON.stringify(result)).not.toContain("raw-");
+  });
+
+  test("classifies setup failures with a bounded non-sensitive category", () => {
+    expect(
+      classifyDatabaseIdentityFailure({
+        code: "ERR_MODULE_NOT_FOUND",
+        message: "missing /private/worktree/packages/prompts/dist/index.js",
+      }),
+    ).toBe("dependency_unavailable");
+    expect(
+      classifyDatabaseIdentityFailure({
+        code: "ECONNREFUSED",
+        message: "connect raw-host as raw-role",
+      }),
+    ).toBe("database_connection_failed");
+    expect(
+      classifyDatabaseIdentityFailure(new Error("DATABASE_URL=secret")),
+    ).toBe("operator_setup_failed");
+    expect(
+      JSON.stringify([
+        classifyDatabaseIdentityFailure({ code: "ERR_MODULE_NOT_FOUND" }),
+        classifyDatabaseIdentityFailure({ code: "ECONNREFUSED" }),
+        classifyDatabaseIdentityFailure(new Error("secret")),
+      ]),
+    ).not.toContain("secret");
   });
 
   test("enforce mode requires both authorities and fails closed on mismatch", async () => {
