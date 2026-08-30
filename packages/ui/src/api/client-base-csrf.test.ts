@@ -23,9 +23,17 @@ describe("ElizaClient browser-session request auth", () => {
     globalThis,
     "document",
   );
+  const originalLocation = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "location",
+  );
 
   beforeEach(() => {
     setBootConfig({ branding: {} });
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: { href: "https://agent.example/" },
+    });
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: { cookie: "eliza_csrf=csrf-token" },
@@ -37,6 +45,11 @@ describe("ElizaClient browser-session request auth", () => {
       Object.defineProperty(globalThis, "document", originalDocument);
     } else {
       Reflect.deleteProperty(globalThis, "document");
+    }
+    if (originalLocation) {
+      Object.defineProperty(globalThis, "location", originalLocation);
+    } else {
+      Reflect.deleteProperty(globalThis, "location");
     }
     vi.clearAllMocks();
   });

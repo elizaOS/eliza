@@ -12,6 +12,7 @@ import * as React from "react";
 import { useAgentElement } from "../../../agent-surface";
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import {
   Dialog,
   DialogContent,
@@ -19,9 +20,11 @@ import {
   DialogTitle,
 } from "../../ui/dialog";
 import { FormSelect, FormSelectItem } from "../../ui/form-select";
+import { Input } from "../../ui/input";
 import { SegmentedControl } from "../../ui/segmented-control";
 import { Slider } from "../../ui/slider";
-import { Switch } from "../../ui/switch";
+import { SettingsSwitchRow } from "../settings-agent-rows";
+import { SettingsRow } from "../settings-layout";
 
 interface SettingsGroupProps {
   children: React.ReactNode;
@@ -44,11 +47,11 @@ export function SettingsGroup({
           {title}
         </h2>
       ) : null}
-      <div className="rounded-2xl border border-border bg-card px-5 py-1">
+      <Card variant="accountConnect" className="px-5 py-1">
         <div className="[&>:not([hidden])+:not([hidden])]:border-t [&>:not([hidden])+:not([hidden])]:border-border">
           {children}
         </div>
-      </div>
+      </Card>
       {footer ? (
         <p className="mt-2 px-1 text-pretty text-xs leading-5 text-muted-foreground">
           {footer}
@@ -62,7 +65,12 @@ export function SettingsStack({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col gap-10", className)} {...props} />;
+  return (
+    <div
+      className={cn("flex flex-col gap-7 min-[700px]:gap-10", className)}
+      {...props}
+    />
+  );
 }
 
 /**
@@ -77,13 +85,9 @@ export function DestructiveSecondaryButton({
 }: React.ComponentProps<typeof Button>) {
   return (
     <Button
-      variant="secondary"
+      variant="surfaceDestructive"
       size="sm"
-      className={cn(
-        "text-danger",
-        "hover:bg-destructive-subtle active:bg-destructive-subtle/80",
-        className,
-      )}
+      className={className}
       {...props}
     />
   );
@@ -91,31 +95,6 @@ export function DestructiveSecondaryButton({
 
 function labelToString(label: React.ReactNode, fallback: string): string {
   return typeof label === "string" ? label : fallback;
-}
-
-/** Shared macOS-style row layout: title + description left, control right. */
-function SettingRowShell({
-  title,
-  description,
-  control,
-}: {
-  title: string;
-  description?: string;
-  control?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-6 py-3.5">
-      <div className="min-w-0">
-        <p className="text-sm font-medium leading-6 text-foreground">{title}</p>
-        {description ? (
-          <p className="mt-0.5 text-pretty text-sm-tight leading-5 text-muted-foreground">
-            {description}
-          </p>
-        ) : null}
-      </div>
-      {control ? <div className="shrink-0">{control}</div> : null}
-    </div>
-  );
 }
 
 // ── Switch row ──────────────────────────────────────────────────────────
@@ -149,37 +128,23 @@ export function CloudSwitchRow({
   className,
   testId,
 }: CloudSwitchRowProps) {
-  const resolvedLabel = agentLabel ?? labelToString(label, agentId);
-  const { ref, agentProps } = useAgentElement<HTMLDivElement>({
-    id: agentId,
-    role: "toggle",
-    label: resolvedLabel,
-    group,
-    description: typeof description === "string" ? description : undefined,
-    status: agentStatus ?? (checked ? "on" : "off"),
-    getValue: () => checked,
-    onActivate: disabled ? undefined : () => onCheckedChange(!checked),
-  });
-  const { "aria-label": _ignored, ...toggleAgentProps } = agentProps;
-
+  const resolvedLabel =
+    agentLabel ?? (typeof label === "string" ? label : agentId);
   return (
-    <div className={className}>
-      <SettingRowShell
-        title={labelToString(label, agentId)}
-        description={typeof description === "string" ? description : undefined}
-        control={
-          <div ref={ref} {...toggleAgentProps} data-testid={testId}>
-            <Switch
-              id={agentId}
-              checked={checked}
-              onCheckedChange={onCheckedChange}
-              disabled={disabled}
-              aria-label={resolvedLabel}
-            />
-          </div>
-        }
-      />
-    </div>
+    <SettingsSwitchRow
+      agentId={agentId}
+      label={label}
+      agentLabel={agentLabel}
+      controlAriaLabel={resolvedLabel}
+      description={description}
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      disabled={disabled}
+      group={group}
+      agentStatus={agentStatus}
+      className={className}
+      testId={testId}
+    />
   );
 }
 
@@ -233,29 +198,28 @@ export function CloudSelectRow({
   const { "aria-label": _ignored, ...selectAgentProps } = agentProps;
 
   return (
-    <div className={className}>
-      <SettingRowShell
-        title={labelToString(label, agentId)}
-        description={typeof description === "string" ? description : undefined}
-        control={
-          <div ref={ref} {...selectAgentProps} data-testid={testId}>
-            <FormSelect
-              value={value}
-              onValueChange={onValueChange}
-              disabled={disabled}
-              triggerClassName="h-9 w-auto min-w-32 rounded-sm px-3 text-sm"
-              aria-label={resolvedLabel}
-            >
-              {options.map((option) => (
-                <FormSelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </FormSelectItem>
-              ))}
-            </FormSelect>
-          </div>
-        }
-      />
-    </div>
+    <SettingsRow
+      label={label}
+      description={description}
+      className={className}
+      control={
+        <div ref={ref} {...selectAgentProps} data-testid={testId}>
+          <FormSelect
+            value={value}
+            onValueChange={onValueChange}
+            disabled={disabled}
+            triggerClassName="h-9 w-auto min-w-32 rounded-sm px-3 text-sm"
+            aria-label={resolvedLabel}
+          >
+            {options.map((option) => (
+              <FormSelectItem key={option.value} value={option.value}>
+                {option.label}
+              </FormSelectItem>
+            ))}
+          </FormSelect>
+        </div>
+      }
+    />
   );
 }
 
@@ -287,6 +251,7 @@ export function CloudSegmentedRow({
   onValueChange,
   options,
   group = "settings",
+  className,
 }: CloudSegmentedRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLDivElement>({
@@ -301,9 +266,10 @@ export function CloudSegmentedRow({
   });
 
   return (
-    <SettingRowShell
-      title={labelToString(label, agentId)}
-      description={typeof description === "string" ? description : undefined}
+    <SettingsRow
+      label={label}
+      description={description}
+      className={className}
       control={
         <div ref={ref} {...agentProps}>
           <SegmentedControl
@@ -354,8 +320,10 @@ export function CloudSliderRow({
   unit,
   disabled = false,
   group = "settings",
+  className,
 }: CloudSliderRowProps) {
-  const resolvedLabel = agentLabel ?? labelToString(label, agentId);
+  const resolvedLabel =
+    agentLabel ?? (typeof label === "string" ? label : agentId);
   const { ref, agentProps } = useAgentElement<HTMLDivElement>({
     id: agentId,
     role: "slider",
@@ -368,9 +336,10 @@ export function CloudSliderRow({
   });
 
   return (
-    <SettingRowShell
-      title={labelToString(label, agentId)}
-      description={typeof description === "string" ? description : undefined}
+    <SettingsRow
+      label={label}
+      description={description}
+      className={className}
       control={
         <div ref={ref} {...agentProps} className="flex w-44 items-center gap-3">
           <Slider
@@ -424,6 +393,7 @@ export function CloudInputRow({
   disabled = false,
   type = "text",
   group = "settings",
+  className,
 }: CloudInputRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLInputElement>({
@@ -439,24 +409,23 @@ export function CloudInputRow({
   const { "aria-label": _ignored, ...inputAgentProps } = agentProps;
 
   return (
-    <SettingRowShell
-      title={labelToString(label, agentId)}
-      description={typeof description === "string" ? description : undefined}
+    <SettingsRow
+      label={label}
+      description={description}
+      className={className}
+      htmlFor={agentId}
       control={
-        <input
+        <Input
           ref={ref as React.Ref<HTMLInputElement>}
           id={agentId}
           type={type}
           value={value}
-          onChange={(e) => onValueChange(e.target.value)}
+          onChange={(event) => onValueChange(event.target.value)}
           placeholder={placeholder}
           disabled={disabled}
-          className={cn(
-            "w-48 rounded-md border border-border bg-bg px-3 py-1.5",
-            "text-sm leading-5 text-foreground placeholder:text-muted-foreground/60",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-            "transition-colors",
-          )}
+          variant="form"
+          density="compact"
+          className="w-48"
           {...(inputAgentProps as Record<string, unknown>)}
         />
       }
@@ -504,6 +473,7 @@ export function CloudActionButton({
   variant = "secondary",
   size = "sm",
   group = "settings",
+  className,
 }: CloudActionButtonProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
@@ -515,12 +485,13 @@ export function CloudActionButton({
     status: disabled ? "disabled" : "enabled",
     onActivate: disabled ? undefined : onActivate,
   });
-  const { "aria-label": _ignored, ...btnAgentProps } = agentProps;
+  const { "aria-label": _ignored, ...buttonAgentProps } = agentProps;
 
   return (
-    <SettingRowShell
-      title={labelToString(label, agentId)}
-      description={typeof description === "string" ? description : undefined}
+    <SettingsRow
+      label={label}
+      description={description}
+      className={className}
       control={
         <Button
           ref={ref}
@@ -528,7 +499,7 @@ export function CloudActionButton({
           size={ACTION_BUTTON_SIZE[size]}
           onClick={onActivate}
           disabled={disabled}
-          {...(btnAgentProps as Record<string, unknown>)}
+          {...(buttonAgentProps as Record<string, unknown>)}
         >
           {buttonLabel}
         </Button>
@@ -561,23 +532,15 @@ export function CloudRow({
   const effectiveControl = children ?? control ?? null;
 
   return (
-    <div className={cn("py-4", className)} data-testid={rest["data-testid"]}>
-      <div className="flex items-center justify-between gap-6">
-        <div className="min-w-0">
-          <p className="text-sm font-medium leading-6 text-foreground">
-            {label}
-          </p>
-          {description ? (
-            <div className="mt-0.5 text-pretty text-sm-tight leading-5 text-muted-foreground">
-              {description}
-            </div>
-          ) : null}
-        </div>
-        {effectiveControl ? (
-          <div className="shrink-0">{effectiveControl}</div>
-        ) : null}
-      </div>
-      {below}
+    <div data-testid={rest["data-testid"]}>
+      <SettingsRow
+        label={label}
+        description={description}
+        control={effectiveControl}
+        className={cn("py-4", className)}
+      >
+        {below}
+      </SettingsRow>
     </div>
   );
 }
@@ -623,47 +586,58 @@ export function CloudModal({
         if (!nextOpen) onClose();
       }}
     >
-      <DialogContent
-        showCloseButton={false}
-        overlayClassName="bg-black/40"
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          returnFocusRef.current?.focus();
-          returnFocusRef.current = null;
-        }}
+      <Card
+        asChild
+        variant="panel"
         className={cn(
-          "block w-[min(calc(100vw_-_2rem),28rem)] gap-0 overflow-y-auto rounded-sm border-border bg-card p-0 sm:p-0 text-foreground shadow-lg",
+          "block w-[min(calc(100vw_-_2rem),28rem)] gap-0 overflow-y-auto p-0 sm:p-0 text-foreground",
           maxWidth,
           "max-h-[85vh]",
         )}
       >
-        <div className="border-b border-border px-4 py-2.5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <DialogTitle className="text-sm font-semibold leading-6 text-foreground">
-                {title}
-              </DialogTitle>
-              {description ? (
-                <DialogDescription className="mt-1 text-sm-tight leading-5 text-muted-foreground">
-                  {description}
-                </DialogDescription>
-              ) : null}
+        <DialogContent
+          showCloseButton={false}
+          overlayClassName="bg-black/40"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            returnFocusRef.current?.focus();
+            returnFocusRef.current = null;
+          }}
+        >
+          <Card asChild variant="bottomDivider" className="px-4 py-2.5">
+            <div>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <DialogTitle className="text-sm font-semibold leading-6 text-foreground">
+                    {title}
+                  </DialogTitle>
+                  {description ? (
+                    <DialogDescription className="mt-1 text-sm-tight leading-5 text-muted-foreground">
+                      {description}
+                    </DialogDescription>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onClose}
+                  className="shrink-0"
+                  aria-label="Close dialog"
+                >
+                  <X aria-hidden className="size-4" />
+                </Button>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-bg-hover hover:text-foreground"
-              aria-label="Close dialog"
-            >
-              <X aria-hidden className="size-4" />
-            </button>
-          </div>
-        </div>
-        <div className="px-4 py-3">{children}</div>
-        {footer ? (
-          <div className="border-t border-border px-4 py-2.5">{footer}</div>
-        ) : null}
-      </DialogContent>
+          </Card>
+          <div className="px-4 py-3">{children}</div>
+          {footer ? (
+            <Card asChild variant="topDivider" className="px-4 py-2.5">
+              <div>{footer}</div>
+            </Card>
+          ) : null}
+        </DialogContent>
+      </Card>
     </Dialog>
   );
 }
@@ -746,42 +720,5 @@ export function CloudFormField({
       ) : null}
       {children}
     </div>
-  );
-}
-
-/** A text input styled to match the settings panel. */
-export function CloudTextInput({
-  id,
-  type = "text",
-  value,
-  onChange,
-  placeholder,
-  disabled,
-  autoComplete,
-}: {
-  id?: string;
-  type?: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  autoComplete?: string;
-}) {
-  return (
-    <input
-      id={id}
-      type={type}
-      value={value}
-      disabled={disabled}
-      placeholder={placeholder}
-      autoComplete={autoComplete}
-      onChange={(e) => onChange(e.target.value)}
-      className={cn(
-        "w-full rounded-md border border-border bg-bg px-3 py-2",
-        "text-sm leading-5 text-foreground placeholder:text-muted-foreground/60",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        "transition-colors",
-      )}
-    />
   );
 }

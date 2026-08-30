@@ -321,7 +321,7 @@ export type TweetQuery =
 
 export async function fetchTweets(
   userId: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   cursor: string | undefined,
   auth: TwitterAuth,
 ): Promise<QueryTweetsResponse> {
@@ -329,7 +329,7 @@ export async function fetchTweets(
 
   try {
     const response = await client.v2.userTimeline(userId, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxTweets === undefined ? 100 : Math.min(maxTweets, 100),
       exclude: ["retweets", "replies"],
       "tweet.fields": [
         "id",
@@ -356,7 +356,7 @@ export async function fetchTweets(
     // Use the paginator's built-in methods to access data
     for await (const tweet of response) {
       convertedTweets.push(parseTweetV2ToV1(tweet, response.includes));
-      if (convertedTweets.length >= maxTweets) break;
+      if (maxTweets !== undefined && convertedTweets.length >= maxTweets) break;
     }
 
     return {
@@ -370,7 +370,7 @@ export async function fetchTweets(
 
 export async function fetchTweetsAndReplies(
   userId: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   cursor: string | undefined,
   auth: TwitterAuth,
 ): Promise<QueryTweetsResponse> {
@@ -378,7 +378,7 @@ export async function fetchTweetsAndReplies(
 
   try {
     const response = await client.v2.userTimeline(userId, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxTweets === undefined ? 100 : Math.min(maxTweets, 100),
       "tweet.fields": [
         "id",
         "text",
@@ -404,7 +404,7 @@ export async function fetchTweetsAndReplies(
     // Use the paginator's built-in methods to access data
     for await (const tweet of response) {
       convertedTweets.push(parseTweetV2ToV1(tweet, response.includes));
-      if (convertedTweets.length >= maxTweets) break;
+      if (maxTweets !== undefined && convertedTweets.length >= maxTweets) break;
     }
 
     return {
@@ -751,7 +751,7 @@ export function nextTimelinePageCursor(
 
 export async function* getTweets(
   user: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
   const userIdRes = await getEntityIdByScreenName(user, auth);
@@ -767,11 +767,11 @@ export async function* getTweets(
   let pageCount = 0;
   const seenCursors = new Set<string>();
 
-  while (totalFetched < maxTweets) {
+  while (maxTweets === undefined || totalFetched < maxTweets) {
     pageCount += 1;
     const response = await fetchTweets(
       userId,
-      maxTweets - totalFetched,
+      maxTweets === undefined ? undefined : maxTweets - totalFetched,
       cursor,
       auth,
     );
@@ -779,10 +779,10 @@ export async function* getTweets(
     for (const tweet of response.tweets) {
       yield tweet;
       totalFetched++;
-      if (totalFetched >= maxTweets) break;
+      if (maxTweets !== undefined && totalFetched >= maxTweets) break;
     }
 
-    if (totalFetched >= maxTweets) break;
+    if (maxTweets !== undefined && totalFetched >= maxTweets) break;
 
     cursor = nextTimelinePageCursor(
       "getTweets",
@@ -796,7 +796,7 @@ export async function* getTweets(
 
 export async function* getTweetsByUserId(
   userId: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
   let cursor: string | undefined;
@@ -804,11 +804,11 @@ export async function* getTweetsByUserId(
   let pageCount = 0;
   const seenCursors = new Set<string>();
 
-  while (totalFetched < maxTweets) {
+  while (maxTweets === undefined || totalFetched < maxTweets) {
     pageCount += 1;
     const response = await fetchTweets(
       userId,
-      maxTweets - totalFetched,
+      maxTweets === undefined ? undefined : maxTweets - totalFetched,
       cursor,
       auth,
     );
@@ -816,10 +816,10 @@ export async function* getTweetsByUserId(
     for (const tweet of response.tweets) {
       yield tweet;
       totalFetched++;
-      if (totalFetched >= maxTweets) break;
+      if (maxTweets !== undefined && totalFetched >= maxTweets) break;
     }
 
-    if (totalFetched >= maxTweets) break;
+    if (maxTweets !== undefined && totalFetched >= maxTweets) break;
 
     cursor = nextTimelinePageCursor(
       "getTweetsByUserId",
@@ -833,7 +833,7 @@ export async function* getTweetsByUserId(
 
 export async function* getTweetsAndReplies(
   user: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
   const userIdRes = await getEntityIdByScreenName(user, auth);
@@ -849,11 +849,11 @@ export async function* getTweetsAndReplies(
   let pageCount = 0;
   const seenCursors = new Set<string>();
 
-  while (totalFetched < maxTweets) {
+  while (maxTweets === undefined || totalFetched < maxTweets) {
     pageCount += 1;
     const response = await fetchTweetsAndReplies(
       userId,
-      maxTweets - totalFetched,
+      maxTweets === undefined ? undefined : maxTweets - totalFetched,
       cursor,
       auth,
     );
@@ -861,10 +861,10 @@ export async function* getTweetsAndReplies(
     for (const tweet of response.tweets) {
       yield tweet;
       totalFetched++;
-      if (totalFetched >= maxTweets) break;
+      if (maxTweets !== undefined && totalFetched >= maxTweets) break;
     }
 
-    if (totalFetched >= maxTweets) break;
+    if (maxTweets !== undefined && totalFetched >= maxTweets) break;
 
     cursor = nextTimelinePageCursor(
       "getTweetsAndReplies",
@@ -878,7 +878,7 @@ export async function* getTweetsAndReplies(
 
 export async function* getTweetsAndRepliesByUserId(
   userId: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
   let cursor: string | undefined;
@@ -886,11 +886,11 @@ export async function* getTweetsAndRepliesByUserId(
   let pageCount = 0;
   const seenCursors = new Set<string>();
 
-  while (totalFetched < maxTweets) {
+  while (maxTweets === undefined || totalFetched < maxTweets) {
     pageCount += 1;
     const response = await fetchTweetsAndReplies(
       userId,
-      maxTweets - totalFetched,
+      maxTweets === undefined ? undefined : maxTweets - totalFetched,
       cursor,
       auth,
     );
@@ -898,10 +898,10 @@ export async function* getTweetsAndRepliesByUserId(
     for (const tweet of response.tweets) {
       yield tweet;
       totalFetched++;
-      if (totalFetched >= maxTweets) break;
+      if (maxTweets !== undefined && totalFetched >= maxTweets) break;
     }
 
-    if (totalFetched >= maxTweets) break;
+    if (maxTweets !== undefined && totalFetched >= maxTweets) break;
 
     cursor = nextTimelinePageCursor(
       "getTweetsAndRepliesByUserId",

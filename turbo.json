@@ -100,6 +100,7 @@
     "@elizaos/prompts#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": [
+        "dist/**",
         "specs/actions/plugins.generated.json",
         "$TURBO_ROOT$/packages/core/src/generated/action-docs.ts"
       ],
@@ -195,6 +196,20 @@
       "outputs": ["dist/**"]
     },
     "lint": {
+      "outputs": []
+    },
+    "@elizaos/ui#lint:check": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/**/*.ts",
+        "$TURBO_ROOT$/packages/**/*.tsx",
+        "$TURBO_ROOT$/packages/**/*.js",
+        "$TURBO_ROOT$/packages/**/*.jsx",
+        "$TURBO_ROOT$/plugins/**/*.ts",
+        "$TURBO_ROOT$/plugins/**/*.tsx",
+        "$TURBO_ROOT$/plugins/**/*.js",
+        "$TURBO_ROOT$/plugins/**/*.jsx"
+      ],
       "outputs": []
     },
     "lint:check": {

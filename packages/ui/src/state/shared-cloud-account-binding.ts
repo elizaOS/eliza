@@ -5,8 +5,13 @@
 
 import { client } from "../api";
 import { clearElizaApiBase } from "../utils/eliza-globals";
-import { removeManagedSharedCloudAgentProfiles } from "./agent-profiles";
 import {
+  removeManagedCloudAgentProfilesDurably,
+  removeManagedSharedCloudAgentProfiles,
+} from "./agent-profiles";
+import { isManagedCloudAgentServer } from "./agent-session-recovery";
+import {
+  clearPersistedActiveServerDurably,
   clearPersistedSharedCloudActiveServer,
   loadPersistedActiveServer,
 } from "./persistence";
@@ -37,4 +42,28 @@ export function clearSharedCloudAccountBinding(): boolean {
     }
   }
   return true;
+}
+
+/**
+ * Releases every browser mirror whose authority comes from the ending Eliza
+ * Cloud account while preserving unrelated local and self-hosted profiles.
+ */
+export async function clearManagedCloudAccountBinding(): Promise<void> {
+  const activeServer = loadPersistedActiveServer();
+  if (isManagedCloudAgentServer(activeServer)) {
+    await clearPersistedActiveServerDurably();
+    client.setToken(null);
+    client.setBaseUrl(null);
+    clearElizaApiBase();
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(STORED_API_BASE_KEY);
+        window.sessionStorage.removeItem(STORED_API_BASE_KEY);
+      } catch {
+        // error-policy:J6 account sign-out already cleared canonical managed
+        // selection state; inaccessible compatibility mirrors cannot be reused.
+      }
+    }
+  }
+  await removeManagedCloudAgentProfilesDurably();
 }

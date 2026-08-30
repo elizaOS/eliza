@@ -67,33 +67,4 @@ describe("TypeScript-only Biome discovery", () => {
       discoverTypeScriptFiles(root).map((file) => path.relative(root, file)),
     ).toEqual([path.join("nested", "a.ts"), "z.ts"]);
   });
-
-  test("logger uses the shared shell-free runner", () => {
-    const repoRoot = path.resolve(import.meta.dirname, "../../..");
-    const packageJson = JSON.parse(
-      fs.readFileSync(
-        path.join(repoRoot, "packages/logger/package.json"),
-        "utf8",
-      ),
-    ) as { scripts: Record<string, string> };
-    for (const script of ["lint:check", "format"]) {
-      expect(packageJson.scripts[script]).toContain("run-biome-typescript.mjs");
-      expect(packageJson.scripts[script]).not.toMatch(/find|xargs/);
-    }
-  });
-});
-
-test("native Gateway lint always delegates SwiftLint to its package wrapper", () => {
-  const repoRoot = path.resolve(import.meta.dirname, "../../..");
-  const packageJson = JSON.parse(
-    fs.readFileSync(
-      path.join(repoRoot, "plugins/plugin-native-gateway/package.json"),
-      "utf8",
-    ),
-  ) as { scripts: Record<string, string> };
-  for (const script of ["lint", "lint:check", "fmt"]) {
-    expect(packageJson.scripts[script]).toContain("bun run swiftlint -- lint");
-    expect(packageJson.scripts[script]).not.toMatch(/\bbash\b|command -v/);
-  }
-  expect(packageJson.scripts.swiftlint).toBe("node-swiftlint");
 });

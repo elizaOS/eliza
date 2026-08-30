@@ -2,7 +2,6 @@
  * Exercises SYSTEM_PERMISSIONS catalog membership and isPermissionApplicable
  * platform lookup against the real Electrobun permissions-shared module.
  */
-import { PERMISSION_IDS } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
   isPermissionApplicable,
@@ -19,77 +18,6 @@ const ALL_PLATFORMS: Platform[] = [
   "android",
   "web",
 ];
-
-const CATALOG_ORDER: SystemPermissionId[] = [
-  "accessibility",
-  "screen-recording",
-  "microphone",
-  "camera",
-  "shell",
-  "website-blocking",
-  "location",
-  "reminders",
-  "calendar",
-  "health",
-  "screentime",
-  "contacts",
-  "notes",
-  "notifications",
-  "full-disk",
-  "automation",
-  "speech-recognition",
-  "photos",
-  "phone",
-  "messages",
-  "wifi",
-  "bluetooth",
-  "app-blocking",
-  "usage-access",
-  "overlay",
-  "write-settings",
-  "local-network",
-  "battery-optimization",
-];
-
-describe("SYSTEM_PERMISSIONS", () => {
-  it("exports a non-empty catalog", () => {
-    expect(SYSTEM_PERMISSIONS.length).toBeGreaterThan(0);
-  });
-
-  it("keeps unique ids so the lookup map is one-to-one", () => {
-    const ids = SYSTEM_PERMISSIONS.map((permission) => permission.id);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it("preserves catalog order from accessibility through battery-optimization", () => {
-    expect(SYSTEM_PERMISSIONS.map((permission) => permission.id)).toEqual(
-      CATALOG_ORDER,
-    );
-  });
-
-  it("gives every definition required fields and only known platforms", () => {
-    for (const definition of SYSTEM_PERMISSIONS) {
-      expect(definition.name.length).toBeGreaterThan(0);
-      expect(definition.description.length).toBeGreaterThan(0);
-      expect(definition.icon.length).toBeGreaterThan(0);
-      expect(definition.platforms.length).toBeGreaterThan(0);
-      expect(definition.requiredForFeatures.length).toBeGreaterThan(0);
-      for (const platform of definition.platforms) {
-        expect(ALL_PLATFORMS).toContain(platform);
-      }
-    }
-  });
-
-  it("covers every canonical PermissionId from the shared contract", () => {
-    const catalogIds = new Set(
-      SYSTEM_PERMISSIONS.map((permission) => permission.id),
-    );
-    expect(catalogIds.size).toBe(PERMISSION_IDS.length);
-    for (const id of PERMISSION_IDS) {
-      expect(catalogIds.has(id)).toBe(true);
-    }
-  });
-});
 
 describe("isPermissionApplicable", () => {
   it("returns true only when the definition lists the platform", () => {

@@ -46,7 +46,11 @@ import type {
   TwitterRetweetReceivedPayload,
 } from "./types";
 import { TwitterEventTypes } from "./types";
-import { parseActionResponseFromText, sendTweet } from "./utils";
+import {
+  parseActionResponseFromText,
+  sendChunkedTweet,
+  sendTextAsTweetThread,
+} from "./utils";
 import { describeTweetPhotos } from "./utils/image-descriptions";
 import {
   buildTwitterMessageMetadata,
@@ -55,6 +59,7 @@ import {
   isTweetProcessed,
   reconcileTwitterWorld,
 } from "./utils/memory";
+import { extractXWriteReceiptId } from "./utils/provider-receipt";
 import { getSetting } from "./utils/settings";
 import { getEpochMs } from "./utils/time";
 
@@ -744,10 +749,26 @@ ${tweet.text}`;
         return true;
       }
 
-      this.assertCurrentSession(session);
-      await this.client.requestQueue.add(
-        () => this.client.twitterClient.sendQuoteTweet(post, tweet.id),
-        NO_REQUEST_RETRY,
+      await sendTextAsTweetThread(
+        post,
+        async (chunk, previousTweetId, index) => {
+          this.assertCurrentSession(session);
+          const result = await this.client.requestQueue.add(
+            () =>
+              index === 0
+                ? this.client.twitterClient.sendQuoteTweet(chunk, tweet.id)
+                : this.client.twitterClient.sendTweet(chunk, previousTweetId),
+            NO_REQUEST_RETRY,
+          );
+          const id = await extractXWriteReceiptId(result);
+          if (!id) {
+            throw new ElizaError("X returned no usable quote-thread receipt", {
+              code: "X_POST_RECEIPT_INDETERMINATE",
+              context: { providerAccepted: true, retrySafe: false },
+            });
+          }
+          return { id };
+        },
       );
       logger.info(`Quoted tweet ${tweet.id}`);
       return true;
@@ -971,7 +992,6 @@ ${tweet.text}`;
         const existingReplies = await this.runtime.getMemories({
           tableName: "messages",
           roomId: conversationRoomId,
-          count: 10, // Check recent messages in this room
         });
 
         // Check if any of the found memories is a reply to this specific tweet
@@ -1368,12 +1388,13 @@ ${tweet.text}`;
         deliveryError = error;
         throw error;
       }
-      let tweetResult: Awaited<ReturnType<typeof sendTweet>>;
+      let responseMemories: Memory[];
       try {
-        tweetResult = await sendTweet(
+        responseMemories = await sendChunkedTweet(
           this.client,
-          response.text,
-          [],
+          response,
+          message.roomId,
+          normalizedTweet.username,
           tweetToReplyTo,
         );
       } catch (error) {
@@ -1381,44 +1402,58 @@ ${tweet.text}`;
         throw error;
       }
 
-      if (!tweetResult) {
-        throw new Error("Failed to get tweet result from response");
+      if (responseMemories.length === 0) {
+        throw new Error("Failed to get X thread receipts from response");
       }
-      const responseId = createUniqueUuid(this.runtime, tweetResult.id);
-      const responseMemory: Memory = {
-        id: responseId,
-        entityId: this.runtime.agentId,
-        agentId: this.runtime.agentId,
-        roomId: message.roomId,
-        content: {
-          ...response,
-          source: "twitter",
-          inReplyTo: message.id,
-        },
-        metadata: {
-          type: "message",
-          source: "twitter",
-          accountId: this.client.accountId,
-          provider: "twitter",
-          fromBot: true,
-          messageIdFull: tweetResult.id,
-          twitter: {
-            accountId: this.client.accountId,
-            tweetId: tweetResult.id,
-            inReplyTo: tweetToReplyTo,
+      responseMemories = responseMemories.map((memory, index) => {
+        const tweetId =
+          typeof memory.metadata === "object"
+            ? (memory.metadata as { messageIdFull?: string }).messageIdFull
+            : undefined;
+        if (!tweetId) {
+          throw new Error("X thread memory is missing its provider receipt");
+        }
+        return {
+          ...memory,
+          content: {
+            ...response,
+            text: memory.content.text,
+            source: "twitter",
+            inReplyTo: responseMemories[index - 1]?.id ?? message.id,
           },
-        } satisfies Memory["metadata"],
-        createdAt: Date.now(),
-      };
+          metadata: {
+            type: "message",
+            source: "twitter",
+            accountId: this.client.accountId,
+            provider: "twitter",
+            fromBot: true,
+            messageIdFull: tweetId,
+            twitter: {
+              accountId: this.client.accountId,
+              tweetId,
+              inReplyTo:
+                index === 0
+                  ? tweetToReplyTo
+                  : (
+                      responseMemories[index - 1]?.metadata as
+                        | { messageIdFull?: string }
+                        | undefined
+                    )?.messageIdFull,
+            },
+          } satisfies Memory["metadata"],
+        } satisfies Memory;
+      });
 
       try {
-        await createMemorySafe(this.runtime, responseMemory, "messages");
+        for (const responseMemory of responseMemories) {
+          await createMemorySafe(this.runtime, responseMemory, "messages");
+        }
       } catch (error) {
         // error-policy:J7 X accepted the reply already, so persistence failure
         // is reported without retrying the external side effect.
         this.runtime.reportError("XInteractions.replyCallback", error);
       }
-      return [responseMemory];
+      return responseMemories;
     };
 
     const twitterUserId = normalizedTweet.userId;

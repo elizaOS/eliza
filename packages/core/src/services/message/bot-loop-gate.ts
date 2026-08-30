@@ -36,15 +36,14 @@
  * gates are the model-independent floor. Both use connector metadata rather
  * than names or user-written speaker labels.
  *
- * Cost: one room messages-scan bounded to the signal window, issued only for
- * bot-authored group turns — exactly the query shape the runtime's
+ * Cost: one complete room messages-scan, issued only for bot-authored group
+ * turns — exactly the query shape the runtime's
  * turn-scoped single-flight memo coalesces with the compose fan-out, so no
  * new query load on the hot path. No model calls, no embeddings.
  */
 
 import {
 	computeGroupConversationMetrics,
-	GROUP_SIGNAL_WINDOW,
 	isBotAuthoredMessage,
 	isMultiPartyChannel,
 	resolveChannelType,
@@ -131,8 +130,8 @@ export function botLoopMaxAgentTurns(runtime: IAgentRuntime): number {
 }
 
 /**
- * Run the deterministic gate. Pure decision logic over the bounded room
- * window; every uncertain path fails OPEN (`ignored: false`).
+ * Run the deterministic gate. Pure decision logic over the complete room
+ * history; every uncertain path fails OPEN (`ignored: false`).
  */
 export async function runBotLoopGate(args: {
 	runtime: IAgentRuntime;
@@ -169,7 +168,6 @@ export async function runBotLoopGate(args: {
 		window = await runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			limit: GROUP_SIGNAL_WINDOW,
 			unique: false,
 		});
 	} catch (error) {
@@ -191,8 +189,7 @@ export async function runBotLoopGate(args: {
 			const bSafe = Number.isFinite(b.createdAt ?? 0) ? (b.createdAt ?? 0) : 0;
 			if (aSafe !== bSafe) return aSafe - bSafe;
 			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
-		})
-		.slice(-GROUP_SIGNAL_WINDOW);
+		});
 	const metrics = computeGroupConversationMetrics(dialogue, runtime.agentId);
 	const maxAgentTurns = botLoopMaxAgentTurns(runtime);
 	// The agent must ALREADY be a participant in the human-free tail: at least

@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../components/ui/button";
-import { cn } from "../../../lib/utils";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
 import { AppAnalytics } from "./app-analytics";
@@ -120,16 +119,13 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
           const Icon = tab.icon;
           return (
             <Button
-              variant="ghost"
+              variant="selection"
+              size="compact"
+              data-state={activeTab === tab.value ? "on" : "off"}
               type="button"
               key={tab.value}
               onClick={() => handleTabChange(tab.value)}
-              className={cn(
-                "flex min-w-0 items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium transition-colors sm:text-sm",
-                activeTab === tab.value
-                  ? "bg-card text-txt"
-                  : "text-muted hover:bg-bg-hover hover:text-txt",
-              )}
+              className="min-w-0"
             >
               <Icon className="size-4 hidden sm:block" />
               <span className="truncate">{tab.label}</span>

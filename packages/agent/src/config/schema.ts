@@ -241,7 +241,6 @@ const FIELD_LABELS: Record<string, string> = {
   "gateway.auth.password": "Gateway Password",
   "tools.media.image.enabled": "Enable Image Understanding",
   "tools.media.image.maxBytes": "Image Understanding Max Bytes",
-  "tools.media.image.maxChars": "Image Understanding Max Chars",
   "tools.media.image.prompt": "Image Understanding Prompt",
   "tools.media.image.timeoutSeconds": "Image Understanding Timeout (sec)",
   "tools.media.image.attachments": "Image Understanding Attachment Policy",
@@ -251,7 +250,6 @@ const FIELD_LABELS: Record<string, string> = {
   "tools.media.concurrency": "Media Understanding Concurrency",
   "tools.media.audio.enabled": "Enable Audio Understanding",
   "tools.media.audio.maxBytes": "Audio Understanding Max Bytes",
-  "tools.media.audio.maxChars": "Audio Understanding Max Chars",
   "tools.media.audio.prompt": "Audio Understanding Prompt",
   "tools.media.audio.timeoutSeconds": "Audio Understanding Timeout (sec)",
   "tools.media.audio.language": "Audio Understanding Language",
@@ -260,7 +258,6 @@ const FIELD_LABELS: Record<string, string> = {
   "tools.media.audio.scope": "Audio Understanding Scope",
   "tools.media.video.enabled": "Enable Video Understanding",
   "tools.media.video.maxBytes": "Video Understanding Max Bytes",
-  "tools.media.video.maxChars": "Video Understanding Max Chars",
   "tools.media.video.prompt": "Video Understanding Prompt",
   "tools.media.video.timeoutSeconds": "Video Understanding Timeout (sec)",
   "tools.media.video.attachments": "Video Understanding Attachment Policy",
@@ -303,7 +300,6 @@ const FIELD_LABELS: Record<string, string> = {
   "tools.web.search.timeoutSeconds": "Web Search Timeout (sec)",
   "tools.web.search.cacheTtlMinutes": "Web Search Cache TTL (min)",
   "tools.web.fetch.enabled": "Enable Web Fetch Tool",
-  "tools.web.fetch.maxChars": "Web Fetch Max Chars",
   "tools.web.fetch.timeoutSeconds": "Web Fetch Timeout (sec)",
   "tools.web.fetch.cacheTtlMinutes": "Web Fetch Cache TTL (min)",
   "tools.cache.enabled": "Enable Tool-Call Cache",
@@ -402,9 +398,6 @@ const FIELD_LABELS: Record<string, string> = {
   "memory.qmd.update.debounceMs": "QMD Update Debounce (ms)",
   "memory.qmd.update.onBoot": "QMD Update on Startup",
   "memory.qmd.update.embedInterval": "QMD Embed Interval",
-  "memory.qmd.limits.maxResults": "QMD Max Results",
-  "memory.qmd.limits.maxSnippetChars": "QMD Max Snippet Chars",
-  "memory.qmd.limits.maxInjectedChars": "QMD Max Injected Chars",
   "memory.qmd.limits.timeoutMs": "QMD Search Timeout (ms)",
   "memory.qmd.scope": "QMD Surface Scope",
   "auth.profiles": "Auth Profiles",
@@ -628,10 +621,6 @@ const FIELD_HELP: Record<string, string> = {
     'Perplexity model override (default: "perplexity/sonar-pro").',
   "tools.web.fetch.enabled":
     "Enable the web_fetch tool (lightweight HTTP fetch).",
-  "tools.web.fetch.maxChars":
-    "Max characters returned by web_fetch (truncated).",
-  "tools.web.fetch.maxCharsCap":
-    "Hard cap for web_fetch maxChars (applies to config and tool calls).",
   "tools.web.fetch.timeoutSeconds":
     "Timeout in seconds for web_fetch requests.",
   "tools.web.fetch.cacheTtlMinutes":
@@ -785,12 +774,6 @@ const FIELD_HELP: Record<string, string> = {
     "Run QMD update once on gateway startup (default: true).",
   "memory.qmd.update.embedInterval":
     "How often QMD embeddings are refreshed (duration string, default: 60m). Set to 0 to disable periodic embed.",
-  "memory.qmd.limits.maxResults":
-    "Max QMD results returned to the agent loop (default: 6).",
-  "memory.qmd.limits.maxSnippetChars":
-    "Max characters per snippet pulled from QMD (default: 700).",
-  "memory.qmd.limits.maxInjectedChars":
-    "Max total characters injected from QMD hits per turn.",
   "memory.qmd.limits.timeoutMs":
     "Per-query timeout for QMD searches (default: 4000).",
   "memory.qmd.scope":

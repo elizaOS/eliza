@@ -56,11 +56,15 @@ import {
   UiRenderer,
 } from "../config-ui/ui-renderer";
 import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { CodeBlock } from "../ui/code-block";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input";
+import { SemanticForm } from "../ui/semantic-form";
 import { AccountConnectBlock } from "./AccountConnectBlock";
+import { CapabilityHandoffBlock } from "./CapabilityHandoffBlock";
 import {
   connectorWidgetModes,
   defaultConnectorWidgetModeId,
@@ -568,24 +572,22 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           {modes.map((mode) => {
             const active = mode.id === selectedModeId;
             return (
-              <button
+              <Button
                 key={mode.id}
                 type="button"
                 aria-pressed={active}
                 title={mode.description}
                 data-testid={`inline-plugin-config-mode-${mode.id}`}
+                variant="selection"
+                size="tiny"
+                data-state={active ? "on" : "off"}
                 onClick={() => {
                   setModeChoice(mode.id);
                   setError(null);
                 }}
-                className={`px-3 py-1 h-7 text-2xs font-medium border transition-colors ${
-                  active
-                    ? "border-accent text-accent bg-accent/10"
-                    : "border-border text-muted hover:text-txt hover:border-txt/40"
-                }`}
               >
                 {mode.label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -597,8 +599,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
         <div className="py-1.5" data-testid="inline-plugin-config-oauth">
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-8 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="denseWide"
             onClick={() => void handleOAuthSignIn()}
             disabled={signingIn}
             data-testid="inline-plugin-config-oauth-btn"
@@ -613,19 +614,21 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
                 })}
           </Button>
           {apiKeyModeId && (
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setModeChoice(apiKeyModeId);
                 setError(null);
               }}
               data-testid="inline-plugin-config-use-apikey"
-              className="mt-2 block text-2xs text-muted underline hover:text-txt"
+              variant="mutedLink"
+              size="content"
+              className="mt-2 block"
             >
               {t("messagecontent.OAuthUseApiKey", {
                 defaultValue: "Use an API key / local setup instead",
               })}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -641,8 +644,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           )}
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-8 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="denseWide"
             onClick={() => void handleLocalSignIn()}
             disabled={signingIn}
             data-testid="inline-plugin-config-local-btn"
@@ -692,8 +694,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
         {showConfigForm && (
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="tinyWide"
             onClick={handleSave}
             disabled={saving || enabling || Object.keys(values).length === 0}
           >
@@ -707,9 +708,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
 
         {!isEnabled ? (
           <Button
-            variant="outline"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs border-ok/50 text-ok bg-ok/5 hover:bg-ok/10 hover:text-ok disabled:opacity-40"
+            variant="outlineAccent"
+            size="tinyWide"
             onClick={() => void handleToggle(true)}
             disabled={enabling || saving}
           >
@@ -723,9 +723,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           </Button>
         ) : (
           <Button
-            variant="outline"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs text-muted hover:border-danger hover:text-danger disabled:opacity-40"
+            variant="dangerOutline"
+            size="tinyWide"
             onClick={() => void handleToggle(false)}
             disabled={enabling || saving}
           >
@@ -858,9 +857,8 @@ export function MessageUiSpecBlock({
           {t("messagecontent.InteractiveUI")}
         </span>
         <Button
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-2xs text-txt hover:underline decoration-accent/50 underline-offset-2"
+          variant="mutedLink"
+          size="content"
           onClick={() => setShowRaw((v) => !v)}
         >
           {showRaw
@@ -875,11 +873,14 @@ export function MessageUiSpecBlock({
       {showRaw && (
         // The raw JSON pane keeps a code-block fill: it is code, and the fill
         // separates it from the rendered widget below.
-        <div className="px-3 py-2 bg-card overflow-x-auto overscroll-x-contain">
+        <Card
+          variant="codePane"
+          className="overflow-x-auto overscroll-x-contain"
+        >
           <pre className="text-2xs text-muted font-mono whitespace-pre-wrap break-words m-0">
             {raw}
           </pre>
-        </div>
+        </Card>
       )}
       <div className="py-1.5">
         {/*
@@ -892,18 +893,24 @@ export function MessageUiSpecBlock({
         */}
         <ErrorBoundary
           fallback={() => (
-            <div className="rounded-sm border border-destructive/30 bg-destructive/5 p-3 text-xs text-muted">
+            <Card
+              surface="destructiveSubtle"
+              border="destructive"
+              padding="default"
+              tone="muted"
+              className="text-xs"
+            >
               <span className="font-semibold text-destructive">
                 Couldn't render this widget.
               </span>{" "}
-              <button
+              <Button
                 type="button"
                 className="underline underline-offset-2"
                 onClick={() => setShowRaw((v) => !v)}
               >
                 {showRaw ? "Hide JSON" : "View JSON"}
-              </button>
-            </div>
+              </Button>
+            </Card>
           )}
         >
           <UiRenderer spec={spec} onAction={handleAction} />
@@ -1037,9 +1044,11 @@ export function SensitiveRequestBlock({
   );
 
   return (
-    <div
+    <Card
+      variant="insetPadded"
+      stack="compact"
       data-testid="sensitive-request"
-      className="my-2 rounded-sm border border-border/50 bg-card/40 px-3 py-2.5 text-sm space-y-3"
+      className="my-2"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -1068,7 +1077,7 @@ export function SensitiveRequestBlock({
         <div className="text-xs text-muted">{request.delivery.instruction}</div>
       )}
       {canCollectSecret && (
-        <form className="space-y-3" onSubmit={handleSubmit}>
+        <SemanticForm className="space-y-3" onSubmit={handleSubmit}>
           {fields.map((field) => {
             const label = field.label ?? field.name;
             const inputId = `sensitive-request-${field.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -1092,7 +1101,8 @@ export function SensitiveRequestBlock({
                     id={inputId}
                     aria-label={label}
                     data-testid={`sensitive-request-file-${field.name}`}
-                    className="border-border bg-bg px-2 py-1.5 text-sm"
+                    variant="secret"
+                    density="short"
                     type="file"
                     accept={accept}
                     // Mobile: prefer the rear camera for image capture (2FA QR/seed).
@@ -1145,7 +1155,8 @@ export function SensitiveRequestBlock({
                 <Input
                   id={inputId}
                   aria-label={label}
-                  className="border-border bg-bg px-2 py-1.5 text-sm"
+                  variant="secret"
+                  density="short"
                   type={field.input === "secret" ? "password" : "text"}
                   value={values[field.name] ?? ""}
                   onChange={(event) => {
@@ -1182,7 +1193,7 @@ export function SensitiveRequestBlock({
                 : "Sent directly to the agent. Never posted to chat."}
             </div>
           )}
-        </form>
+        </SemanticForm>
       )}
       {canStartOAuth && request.form?.kind === "oauth" && (
         <OAuthRequestPanel
@@ -1252,7 +1263,7 @@ export function SensitiveRequestBlock({
         />
       )}
       {error && <div className="text-xs text-danger">{error}</div>}
-    </div>
+    </Card>
   );
 }
 
@@ -1417,6 +1428,17 @@ export function MessageContent({
     return <AccountConnectBlock request={message.accountConnect} />;
   }
 
+  if (message.capabilityHandoff) {
+    return (
+      <div className="space-y-2">
+        {message.text.trim() ? (
+          <MessageTextBody text={message.text} boldSlashCommand={false} />
+        ) : null}
+        <CapabilityHandoffBlock request={message.capabilityHandoff} />
+      </div>
+    );
+  }
+
   if (
     message.localInference &&
     message.localInference.status !== "ready" &&
@@ -1426,40 +1448,40 @@ export function MessageContent({
     const downloading = status === "downloading" || status === "loading";
     const canStartDownload = Boolean(message.localInference.modelId);
     return (
-      <div className="rounded-sm border border-warn/30 bg-warn/5 p-3 text-sm">
-        <div className="mb-1 font-medium">
+      <Alert variant="warning">
+        <AlertTitle>
           {downloading
             ? "Local model download in progress"
             : "Local model required"}
-        </div>
-        <div className="mb-2 whitespace-pre-wrap text-muted">
-          {message.text}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            onClick={handleDownloadDefaultLocalModel}
-            disabled={downloading || localDownloadState === "busy"}
-          >
-            {downloading
-              ? "Downloading"
-              : localDownloadState === "busy"
-                ? "Starting…"
-                : localDownloadState === "queued"
-                  ? "Download queued"
-                  : "Download default model"}
-          </Button>
-          {!canStartDownload ? (
-            <Button type="button" size="sm" onClick={handleOpenSettings}>
-              Open Local Models
+        </AlertTitle>
+        <AlertDescription className="gap-2">
+          <div className="whitespace-pre-wrap">{message.text}</div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleDownloadDefaultLocalModel}
+              disabled={downloading || localDownloadState === "busy"}
+            >
+              {downloading
+                ? "Downloading"
+                : localDownloadState === "busy"
+                  ? "Starting…"
+                  : localDownloadState === "queued"
+                    ? "Download queued"
+                    : "Download default model"}
             </Button>
+            {!canStartDownload ? (
+              <Button type="button" size="sm" onClick={handleOpenSettings}>
+                Open Local Models
+              </Button>
+            ) : null}
+          </div>
+          {localDownloadError ? (
+            <div className="text-xs text-danger">{localDownloadError}</div>
           ) : null}
-        </div>
-        {localDownloadError ? (
-          <div className="mt-2 text-xs text-danger">{localDownloadError}</div>
-        ) : null}
-      </div>
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -1470,15 +1492,15 @@ export function MessageContent({
   // ProviderSwitcher lives.
   if (message.failureKind === "no_provider") {
     return (
-      <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
-        <div className="font-medium mb-1">Connect a provider to chat</div>
-        <div className="text-muted whitespace-pre-wrap mb-2">
-          {message.text}
-        </div>
-        <Button type="button" size="sm" onClick={handleOpenSettings}>
-          Open Settings
-        </Button>
-      </div>
+      <Alert variant="warning">
+        <AlertTitle>Connect a provider to chat</AlertTitle>
+        <AlertDescription>
+          <div className="whitespace-pre-wrap">{message.text}</div>
+          <Button type="button" size="sm" onClick={handleOpenSettings}>
+            Open Settings
+          </Button>
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -1488,15 +1510,15 @@ export function MessageContent({
   // Cloud top-up/redeem flow lives — there is no separate billing tab.
   if (message.failureKind === "insufficient_credits") {
     return (
-      <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
-        <div className="font-medium mb-1">Out of credits</div>
-        <div className="text-muted whitespace-pre-wrap mb-2">
-          {message.text}
-        </div>
-        <Button type="button" size="sm" onClick={handleOpenSettings}>
-          Add credits
-        </Button>
-      </div>
+      <Alert variant="warning">
+        <AlertTitle>Out of credits</AlertTitle>
+        <AlertDescription>
+          <div className="whitespace-pre-wrap">{message.text}</div>
+          <Button type="button" size="sm" onClick={handleOpenSettings}>
+            Add credits
+          </Button>
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -1511,20 +1533,20 @@ export function MessageContent({
       : isRetryableChatFailureKind(message.failureKind))
   ) {
     return (
-      <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
-        <div className="text-muted whitespace-pre-wrap mb-2">
-          {message.text}
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => {
-            if (message.id) handleChatRetry(message.id);
-          }}
-        >
-          Retry
-        </Button>
-      </div>
+      <Alert variant="warning">
+        <AlertDescription>
+          <div className="whitespace-pre-wrap">{message.text}</div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              if (message.id) handleChatRetry(message.id);
+            }}
+          >
+            Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -1610,17 +1632,19 @@ export function MessageContent({
               );
             case "analysis-xml":
               return (
-                <div
+                <Card
                   key={segmentKey}
-                  className="my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden"
+                  variant="insetPadded"
+                  stack="compact"
+                  className="my-2"
                 >
-                  <div className="bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">
+                  <div className="text-xs font-semibold text-accent">
                     &lt;{seg.tag}&gt;
                   </div>
-                  <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-muted m-0 overflow-x-auto overscroll-x-contain">
+                  <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs text-muted overscroll-x-contain">
                     {seg.content.trim()}
                   </pre>
-                </div>
+                </Card>
               );
             case "config":
               if (!isSafeNormalizedPluginId(normalizePluginId(seg.pluginId))) {
@@ -1656,23 +1680,21 @@ export function MessageContent({
         <MessageAttachments attachments={message.attachments} />
       ) : null}
       {analysisMode && message.actionName && (
-        <div className="my-2 overflow-hidden rounded-sm border border-accent/20 bg-accent/5">
-          <div className="bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">
-            Action taken
-          </div>
-          <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
+        <Card variant="insetPadded" stack="compact" className="my-2">
+          <div className="text-xs font-semibold text-accent">Action taken</div>
+          <div className="space-y-1 font-mono text-xs text-muted">
             {message.actionName}
           </div>
-        </div>
+        </Card>
       )}
       {analysisMode &&
         message.actionCallbackHistory &&
         message.actionCallbackHistory.length > 0 && (
-          <div className="my-2 overflow-hidden rounded-sm border border-border/60 bg-surface/70">
-            <div className="bg-bg-accent px-3 py-2 text-xs font-semibold text-muted-strong">
+          <Card variant="insetPadded" stack="compact" className="my-2">
+            <div className="text-xs font-semibold text-muted-strong">
               Action callback history
             </div>
-            <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
+            <div className="space-y-1 font-mono text-xs text-muted">
               {(() => {
                 const occurrence = new Map<string, number>();
                 return message.actionCallbackHistory.map((log) => {
@@ -1681,7 +1703,7 @@ export function MessageContent({
                   return (
                     <div
                       key={`${message.id}:action-callback:${n}:${log}`}
-                      className="break-words border-b border-border/40 pb-1 last:border-0 last:pb-0"
+                      className="break-words"
                     >
                       {log}
                     </div>
@@ -1689,7 +1711,7 @@ export function MessageContent({
                 });
               })()}
             </div>
-          </div>
+          </Card>
         )}
     </div>
   );

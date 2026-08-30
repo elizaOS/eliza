@@ -6,6 +6,7 @@
  */
 import * as React from "react";
 import { Button } from "./button";
+import { Card } from "./card";
 
 export interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -25,6 +26,37 @@ export interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   error: Error | null;
+}
+
+export interface ErrorBoundaryFallbackProps {
+  error: Error;
+  errorLabel?: string;
+  retryLabel?: string;
+  onRetry: () => void;
+}
+
+/** The boundary's visible failure state, exported for deterministic visual tests. */
+export function ErrorBoundaryFallback({
+  error,
+  errorLabel,
+  retryLabel,
+  onRetry,
+}: ErrorBoundaryFallbackProps) {
+  return (
+    <Card
+      surface="destructiveSubtle"
+      border="destructive"
+      className="flex flex-col items-center justify-center gap-3 p-6 text-center"
+    >
+      <p className="text-sm font-semibold text-destructive">
+        {errorLabel ?? "Something went wrong"}
+      </p>
+      <p className="text-xs text-muted max-w-sm">{error.message}</p>
+      <Button type="button" variant="outline" size="compact" onClick={onRetry}>
+        {retryLabel ?? "Try Again"}
+      </Button>
+    </Card>
+  );
 }
 
 export class ErrorBoundary extends React.Component<
@@ -60,23 +92,12 @@ export class ErrorBoundary extends React.Component<
         return this.props.fallback(this.state.error, this.resetErrorBoundary);
       }
       return (
-        <div className="flex flex-col items-center justify-center gap-3 p-6 text-center border border-destructive/30 bg-destructive/5 rounded-sm">
-          <p className="text-sm font-semibold text-destructive">
-            {this.props.errorLabel ?? "Something went wrong"}
-          </p>
-          <p className="text-xs text-muted max-w-sm">
-            {this.state.error.message}
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="rounded-sm text-xs"
-            onClick={this.resetErrorBoundary}
-          >
-            {this.props.retryLabel ?? "Try Again"}
-          </Button>
-        </div>
+        <ErrorBoundaryFallback
+          error={this.state.error}
+          errorLabel={this.props.errorLabel}
+          retryLabel={this.props.retryLabel}
+          onRetry={this.resetErrorBoundary}
+        />
       );
     }
 

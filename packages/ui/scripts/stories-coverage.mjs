@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 /**
- * Story-coverage report: for every .tsx in packages/ui/src/components/ that
- * defines a React component, checks whether a sibling *.stories.tsx exists.
- * Emits a markdown report + JSON.
+ * Story-coverage report for React components under packages/ui/src/components.
+ * A component is covered by a sibling story or an import from any story file.
+ * The script prints a summary and can write Markdown and JSON reports.
  *
- * Usage: bun run scripts/stories-coverage.mjs [--all]
- *   --all   include non-/components/ files (chat, apps, etc.)
+ * Usage: node scripts/stories-coverage.mjs [--all] [--check] [--write-report]
+ *   --all          include components outside src/components
+ *   --check        fail on count, ratio, or newly missing-story regressions
+ *   --write-report write the JSON and Markdown reports under scripts
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { compareCoverage } from "./stories-coverage-gate.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
@@ -19,6 +22,7 @@ const componentsRoot = path.resolve(pkgRoot, "src/components");
 const args = process.argv.slice(2);
 const onlyComponents = !args.includes("--all");
 const writeReport = args.includes("--write-report");
+const checkCoverage = args.includes("--check");
 
 function extractLocalStoryImports(source) {
   const imports = [];
@@ -155,6 +159,24 @@ const report = {
   missing,
   present,
 };
+
+if (checkCoverage) {
+  const baselinePath = path.join(here, "stories-coverage-baseline.json");
+  let baseline;
+  try {
+    baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read story coverage baseline: ${baselinePath}`, {
+      cause: error,
+    });
+  }
+  const comparison = compareCoverage(report, baseline);
+  if (comparison.failures.length > 0) {
+    throw new Error(
+      `Story coverage regression:\n${comparison.failures.join("\n")}`,
+    );
+  }
+}
 
 // Group missing by top-level directory
 const byDir = new Map();

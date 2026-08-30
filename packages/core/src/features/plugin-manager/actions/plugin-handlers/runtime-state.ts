@@ -230,7 +230,7 @@ export async function runPluginDetails({
 		if (registry.gitRepo)
 			lines.push(`Repository: https://github.com/${registry.gitRepo}`);
 		if (registry.topics.length > 0) {
-			lines.push(`Tags: ${registry.topics.slice(0, 8).join(", ")}`);
+			lines.push(`Tags: ${registry.topics.join(", ")}`);
 		}
 	}
 	if (state) {

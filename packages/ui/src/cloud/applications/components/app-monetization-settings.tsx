@@ -34,6 +34,7 @@ import {
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Slider } from "../../../components/ui/slider";
 import { Switch } from "../../../components/ui/switch";
 import {
@@ -298,13 +299,13 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               <div
                 className={cn(
                   "mt-0.5 rounded-sm p-2",
-                  reviewApproved ? "bg-green-500/10" : "bg-surface",
+                  reviewApproved ? "bg-status-success-bg" : "bg-surface",
                 )}
               >
                 <ShieldCheck
                   className={cn(
                     "size-5",
-                    reviewApproved ? "text-green-400" : "text-muted",
+                    reviewApproved ? "text-status-success" : "text-muted",
                   )}
                 />
               </div>
@@ -335,7 +336,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 type="button"
                 onClick={submitForReview}
                 disabled={isSubmittingReview}
-                className="shrink-0 bg-txt text-bg hover:bg-txt/90"
+                className="shrink-0"
               >
                 {isSubmittingReview ? (
                   <Loader2 className="mr-2  size-4 animate-spin" />
@@ -355,7 +356,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
           className={cn(
             "rounded-sm p-4 border transition-colors",
             settings.monetizationEnabled
-              ? "bg-green-500/5 border-green-500/20"
+              ? "bg-status-success-bg/50 border-status-success/20"
               : "bg-card border-border",
           )}
         >
@@ -363,14 +364,16 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
             <div
               className={cn(
                 "p-2 rounded-sm mt-0.5",
-                settings.monetizationEnabled ? "bg-green-500/10" : "bg-surface",
+                settings.monetizationEnabled
+                  ? "bg-status-success-bg"
+                  : "bg-surface",
               )}
             >
               <DollarSign
                 className={cn(
                   "size-5",
                   settings.monetizationEnabled
-                    ? "text-green-400"
+                    ? "text-status-success"
                     : "text-muted",
                 )}
               />
@@ -426,7 +429,6 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                   variant="ghost"
                   type="button"
                   onClick={() => navigate(`/cloud/apps/${appId}?tab=earnings`)}
-                  className="mt-2 text-xs text-muted hover:text-txt transition-colors flex items-center gap-1"
                 >
                   {t("cloud.monetization.earned", {
                     amount: settings.totalCreatorEarnings.toFixed(2),
@@ -442,7 +444,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
         {/* Settings Grid */}
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Markup Controls */}
-          <div className="bg-card rounded-sm p-4 space-y-4">
+          <Card stack="default" variant="flatPadded">
             <h3 className="text-sm font-medium text-txt">
               {t("cloud.monetization.revenueSettings", {
                 defaultValue: "Revenue Settings",
@@ -490,15 +492,15 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               <div className="flex gap-1.5 flex-wrap">
                 {[0, 25, 50, 100, 200].map((preset) => (
                   <Button
-                    variant="ghost"
+                    variant="selection"
+                    size="sm"
                     type="button"
                     key={preset}
-                    className={cn(
-                      "px-2.5 py-1 text-xs rounded-sm transition-colors",
+                    data-state={
                       settings.inferenceMarkupPercentage === preset
-                        ? "bg-accent/20 text-accent border border-accent/30"
-                        : "bg-surface text-neutral-400 hover:bg-bg-hover border border-transparent",
-                    )}
+                        ? "on"
+                        : "off"
+                    }
                     onClick={() =>
                       updateSetting("inferenceMarkupPercentage", preset)
                     }
@@ -552,15 +554,13 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               <div className="flex gap-1.5 flex-wrap">
                 {[0, 10, 20, 30, 50].map((preset) => (
                   <Button
-                    variant="ghost"
+                    variant="selection"
+                    size="sm"
                     type="button"
                     key={preset}
-                    className={cn(
-                      "px-2.5 py-1 text-xs rounded-sm transition-colors",
-                      settings.purchaseSharePercentage === preset
-                        ? "bg-muted text-txt border border-border"
-                        : "bg-surface text-neutral-400 hover:bg-bg-hover border border-transparent",
-                    )}
+                    data-state={
+                      settings.purchaseSharePercentage === preset ? "on" : "off"
+                    }
                     onClick={() =>
                       updateSetting("purchaseSharePercentage", preset)
                     }
@@ -576,7 +576,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               <Button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className="w-full bg-txt text-bg hover:bg-txt/90 disabled:bg-surface disabled:text-muted"
+                className="w-full"
               >
                 {isSaving ? (
                   <Loader2 className="size-4 animate-spin mr-2" />
@@ -588,7 +588,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 })}
               </Button>
             </div>
-          </div>
+          </Card>
 
           {/* Revenue Flow Diagram */}
           <RevenueFlowDiagram

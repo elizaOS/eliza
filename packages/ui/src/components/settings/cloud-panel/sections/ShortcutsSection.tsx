@@ -1,5 +1,5 @@
 /**
- * Shortcuts section for the cloud-only desktop settings panel. Surfaces global
+ * Native Shortcuts module for the canonical Settings registry. Surfaces global
  * hotkeys (with an in-place keystroke recorder and conflict detection), mouse
  * shortcut configuration, and the long-recording cancel confirmation threshold.
  *
@@ -14,7 +14,6 @@ import { AlertTriangle, Keyboard, Mouse, RotateCcw } from "lucide-react";
 import * as React from "react";
 import { invokeDesktopBridgeRequest } from "../../../../bridge";
 import { cn } from "../../../../lib/utils";
-import { isDesktopPlatform } from "../../../../platform";
 import {
   DEFAULT_PUSH_TO_TALK_ACCELERATOR,
   getPushToTalkAccelerator,
@@ -129,7 +128,6 @@ function acceleratorToCombo(accelerator: string): Combo {
 
 /** Replace a shortcut through the desktop bridge's transactional registration boundary. */
 async function syncShortcut(id: string, combo: Combo): Promise<void> {
-  if (!isDesktopPlatform()) return;
   const accelerator = comboToAccelerator(combo);
   const result = await invokeDesktopBridgeRequest<{ success: boolean }>({
     rpcMethod: "desktopRegisterShortcut",

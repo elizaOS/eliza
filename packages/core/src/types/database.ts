@@ -102,22 +102,23 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
 	documentId: UUID;
 }
 
-/** Exact unit used by an authorized bounded document read. */
+/** Exact unit used by an authorized document read. */
 export type DocumentRangeUnit = "line" | "fragment";
 
 /**
- * Authorized bounded document read. Offsets and limits count exact retained
- * line or paragraph-like fragment units, never JavaScript string code units.
+ * Authorized document read. Offsets and caller-requested limits count exact
+ * retained line or paragraph-like fragment units, never JavaScript string code
+ * units. Omitting `limit` returns the complete remainder of the source.
  */
 export interface DocumentRangeReadParams extends DocumentRequesterContext {
 	documentId: UUID;
 	unit: DocumentRangeUnit;
 	offset: number;
-	limit: number;
+	limit?: number;
 }
 
 /**
- * Bounded source projection returned by a native adapter. The source
+ * Source projection returned by a native adapter. The source
  * fingerprint is an adapter-internal change detector and must be wrapped in an
  * opaque public revision before it leaves DocumentService.
  */
@@ -193,6 +194,56 @@ export interface DocumentDeleteParams extends DocumentRequesterContext {
 	documentId: UUID;
 	expected: DocumentMutationSnapshot;
 }
+
+/**
+ * Durable audit row committed in the SAME adapter transaction as an
+ * authorization-role write (#23100). A committed role change must never be
+ * separable from its audit record, so the audit insert rides the CAS
+ * transaction rather than a follow-up `createLogs` call.
+ */
+export interface RoleWriteAuditRecord {
+	/** Originating actor whose authority produced the write. */
+	actorEntityId: UUID;
+	/** Entity whose world role changed. */
+	targetEntityId: UUID;
+	/** Role held by the target immediately before the write. */
+	previousRole: string;
+	/** Role after the write (same as previousRole when nothing changed). */
+	newRole: string;
+	/** Grant provenance recorded alongside the role. */
+	source: string;
+	/** Real room the mutation request originated from — audit scope. */
+	roomId: UUID;
+}
+
+/**
+ * Compare-and-swap replacement of a world's whole `metadata` JSON under the
+ * exact prior snapshot (#23100 role-write atomicity). Mirrors the document
+ * mutation contract: the adapter compares `expectedMetadata` against the
+ * stored value in the same transaction that writes `replacementMetadata`,
+ * commits the audit row only on success, and reports a typed conflict so a
+ * concurrent writer can never be silently overwritten.
+ */
+export interface WorldMetadataCompareAndSwapParams {
+	worldId: UUID;
+	/** Exact prior metadata snapshot the caller read and authorized against. */
+	expectedMetadata: Metadata;
+	/** Whole replacement metadata; role grants are embedded within. */
+	replacementMetadata: Metadata;
+	/** Committed atomically with the metadata replacement. */
+	audit?: RoleWriteAuditRecord;
+}
+
+export type WorldMetadataMutationResult =
+	| { status: "updated" }
+	| { status: "not_found" | "conflict" };
+
+/**
+ * Canonical `logs.type` tag for durable role-write audit rows committed by
+ * {@link IDatabaseAdapter.compareAndSwapWorldMetadata}. Queried as
+ * `getLogs({ type: "role_audit" })`.
+ */
+export const ROLE_WRITE_AUDIT_LOG_TYPE = "role_audit";
 
 export type DocumentMutationResult =
 	| { status: "updated"; document: Memory }
@@ -551,6 +602,10 @@ export interface GetConnectorAccountCredentialRefParams {
 }
 
 export interface ListConnectorAccountCredentialRefsParams {
+	accountId: UUID;
+}
+
+export interface DeleteConnectorAccountCredentialRefsParams {
 	accountId: UUID;
 }
 
@@ -1110,6 +1165,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 */
 	getMemories(params: {
 		entityId?: UUID;
+		/** Restrict returned rows by author while `entityId` remains the RLS principal. */
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		limit?: number;
 		count?: number;
@@ -1120,6 +1177,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		start?: number;
 		end?: number;
 		roomId?: UUID;
+		/** Exclude internal rooms before ordering and LIMIT are applied. */
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		/**
@@ -1162,7 +1221,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * authorization, counts, or pagination guarantees.
 	 */
 	readonly documentListQueryCapability: 4;
-	/** Native bounded source projection; absent adapters must fail explicitly. */
+	/** Native source projection with optional caller-requested pagination. */
 	readonly documentRangeReadCapability?: 1;
 	queryDocuments(
 		params: DocumentListQueryParams,
@@ -1186,6 +1245,17 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	deleteDocumentWithSnapshot(
 		params: DocumentDeleteParams,
 	): Promise<DocumentMutationResult>;
+
+	/**
+	 * Atomic compare-and-swap replacement of a world's whole metadata under the
+	 * exact prior snapshot, committing the audit row in the same transaction
+	 * (#23100 role-write atomicity). Authorization role writes MUST go through
+	 * this operation and fail closed when an adapter omits the optional
+	 * capability; they never fall back to a blind `updateWorlds` overwrite.
+	 */
+	compareAndSwapWorldMetadata?(
+		params: WorldMetadataCompareAndSwapParams,
+	): Promise<WorldMetadataMutationResult>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
 
@@ -1727,6 +1797,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	listConnectorAccountCredentialRefs(
 		params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]>;
+	deleteConnectorAccountCredentialRefs(
+		params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number>;
 	/**
 	 * Append a connector account audit event. Implementations must redact
 	 * credential-like metadata values before persistence.

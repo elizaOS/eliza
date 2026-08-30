@@ -185,9 +185,9 @@ def _to_chat_msg(row: dict, slug: str) -> dict | None:
     if not speaker:
         speaker = "user"
     return {
-        "speaker": str(speaker)[:40],
-        "content": content[:2000],
-        "channel": str(channel)[:40] or slug,
+        "speaker": str(speaker),
+        "content": content,
+        "channel": str(channel) or slug,
         "ts": row.get("timestamp") or row.get("ts") or row.get("date"),
     }
 
@@ -241,7 +241,7 @@ def synthesize_one(
     rng.shuffle(pool)
     chosen = None
     clue = "none"
-    for cand in pool[:200]:
+    for cand in pool:
         text = cand["content"]
         if target_action == ACTION_RESPOND:
             if has_explicit_ping(text):
@@ -288,11 +288,10 @@ def synthesize_one(
         "channel": chosen.get("channel") or "public",
     }
 
-    # Build memoryEntries: a few interleaved threads from `recent` to simulate
-    # multiple concurrent conversations. We tag with each speaker so the agent
-    # can see who's talking to whom.
+    # Preserve the complete supplied conversation. A recency window silently
+    # changes routing supervision when the decisive address is older.
     memory: list[dict[str, Any]] = []
-    for m in recent[-12:]:
+    for m in recent:
         memory.append({
             "role": "user",
             "speaker": m["speaker"],
@@ -324,7 +323,7 @@ def synthesize_one(
     payload = encoder.encode(target)
 
     return build(
-        roomName=stable_id("dialogue_routing", agent, current["content"][:120], target_action),
+        roomName=stable_id("dialogue_routing", agent, current["content"], target_action),
         agentId=agent.lower(),
         memoryEntries=memory,
         currentMessage=current,

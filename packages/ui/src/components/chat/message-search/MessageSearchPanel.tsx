@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConversationMessageSearchResult } from "../../../api/client-types-chat";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Input } from "../../ui/input";
 
 const MIN_QUERY_LENGTH = 2;
@@ -130,14 +131,11 @@ export function MessageSearchPanel({
       placeholder="Search messages…"
       aria-label="Search messages"
       data-testid="message-search-input"
+      variant={keyboardAnchored ? "surface" : "default"}
       // In the keyboard-anchored layout the input is the flex item pinned at
       // the panel bottom (right above the soft keyboard); it must never shrink
       // away when the results list above it is long.
-      className={
-        keyboardAnchored
-          ? "shrink-0 rounded-xl border-white/20 bg-[rgba(12,16,18,0.86)] text-white shadow-[0_12px_32px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.08)] placeholder:text-white/45"
-          : undefined
-      }
+      className={keyboardAnchored ? "shrink-0" : undefined}
     />
   );
 
@@ -193,12 +191,10 @@ export function MessageSearchPanel({
             <Button
               data-testid="message-search-result"
               onClick={() => handleJump(result)}
-              variant="ghost"
-              className={
-                keyboardAnchored
-                  ? "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-xl border border-white/10 bg-[rgba(12,16,18,0.86)] px-3 py-2 text-left font-normal shadow-[0_10px_28px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-white/20 hover:bg-[rgba(18,22,24,0.92)]"
-                  : "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-md px-2 py-1.5 text-left font-normal hover:bg-muted/60"
-              }
+              variant={keyboardAnchored ? "surface" : "ghostMuted"}
+              size="card"
+              align="start"
+              className="w-full"
             >
               <span className="text-xs-tight uppercase tracking-wider text-muted-foreground">
                 {result.role === "assistant" ? "Agent" : "You"} ·{" "}
@@ -220,13 +216,16 @@ export function MessageSearchPanel({
     // raised keyboard instead of pushing the input off-screen; the container
     // (in the overlay) is a bottom-anchored flex column bounded by panelMaxH.
     return (
-      <div
+      <Card
+        variant="transparent"
+        flow="column"
+        gap="compact"
         data-testid="message-search-panel"
         data-layout="keyboard-anchored"
         role="dialog"
         aria-label="Search messages"
         onKeyDown={onKeyDown}
-        className="flex min-h-0 flex-1 flex-col gap-2"
+        className="min-h-0 flex-1"
       >
         <div
           data-testid="message-search-scroll"
@@ -239,23 +238,25 @@ export function MessageSearchPanel({
           {statusEl}
           {inputEl}
         </div>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div
+    <Card
+      variant="transparent"
+      flow="column"
+      gap="compact"
       data-testid="message-search-panel"
       data-layout="stacked"
       role="dialog"
       aria-label="Search messages"
       onKeyDown={onKeyDown}
-      className="flex flex-col gap-2"
     >
       {inputEl}
       {statusEl}
       {resultsListEl}
-    </div>
+    </Card>
   );
 }
 

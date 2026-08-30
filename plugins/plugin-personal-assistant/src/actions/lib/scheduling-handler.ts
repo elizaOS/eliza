@@ -1104,7 +1104,6 @@ async function resolveSchedulingPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 8,
     })
   ).join("\n");
   const currentMessage =
@@ -1612,7 +1611,7 @@ export async function runSchedulingNegotiationHandler(
     }
 
     // list_active
-    const active = await service.listActiveNegotiations({ limit: 20 });
+    const active = await service.listActiveNegotiations();
     const fallback = active.length
       ? `Active negotiations:\n${active.map(formatNegotiationSummary).join("\n")}`
       : "No active scheduling negotiations.";

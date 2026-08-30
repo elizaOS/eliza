@@ -1,6 +1,6 @@
 /**
- * Connector action param helpers coerce loose agent input. limitParam clamps to
- * 1..100 (DoS-bounding a query), isUuidLike gates id-shaped inputs, and the
+ * Connector action param helpers coerce loose agent input. limitParam preserves
+ * an explicit caller page size without injecting a default or maximum,
  * scalar readers reject non-coercible values rather than passing them through.
  */
 import { describe, expect, it } from "vitest";
@@ -48,13 +48,12 @@ describe("numberParam / limitParam", () => {
 		expect(numberParam("x", 10)).toBe(10);
 	});
 
-	it("limitParam clamps to 1..100 and floors, with a default", () => {
+	it("limitParam preserves an explicit page size and has no hidden default", () => {
 		expect(limitParam({ limit: 50 })).toBe(50);
-		expect(limitParam({ limit: 200 })).toBe(100);
+		expect(limitParam({ limit: 200 })).toBe(200);
 		expect(limitParam({ limit: 0 })).toBe(1);
 		expect(limitParam({ limit: "5.9" })).toBe(5);
-		expect(limitParam({})).toBe(20);
-		expect(limitParam({}, 10)).toBe(10);
+		expect(limitParam({})).toBeUndefined();
 	});
 });
 

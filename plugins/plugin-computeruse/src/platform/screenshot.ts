@@ -22,6 +22,7 @@ import {
 } from "./permissions.js";
 import { psHostAvailable, runPsHost } from "./ps-host.js";
 import { tagScreenshotError } from "./screenshot-errors.js";
+import { tryCaptureWaylandGrim } from "./wayland-grim.js";
 import {
   canUseWaylandScreenshotPortal,
   captureWaylandPortalScreenshot,
@@ -125,7 +126,12 @@ function captureDarwin(tmpFile: string, region?: ScreenRegion): void {
 // ── Linux ───────────────────────────────────────────────────────────────────
 
 function captureLinux(tmpFile: string, region?: ScreenRegion): void {
-  if (!region && tryCaptureWaylandPortal(tmpFile)) return;
+  if (isWaylandSession()) {
+    // wlroots portals expose ScreenCast but not the Screenshot interface used
+    // by the portal sidecar. Prefer grim when present, including for regions.
+    if (tryCaptureWaylandGrim(tmpFile, region)) return;
+    if (!region && tryCaptureWaylandPortal(tmpFile)) return;
+  }
 
   // Try tools in preference order
   if (commandExists("import")) {
@@ -177,7 +183,7 @@ function captureLinux(tmpFile: string, region?: ScreenRegion): void {
   } else {
     throw new Error(
       isWaylandSession()
-        ? "No screenshot tool available. Install xdg-desktop-portal with gdbus/python3 for Wayland, or ImageMagick (import), scrot, gnome-screenshot, or ffmpeg for X11 fallback."
+        ? "No screenshot tool available. Install grim or xdg-desktop-portal with gdbus/python3 for Wayland, or ImageMagick (import), scrot, gnome-screenshot, or ffmpeg for X11 fallback."
         : "No screenshot tool available. Install ImageMagick (import), scrot, gnome-screenshot, or ffmpeg.",
     );
   }

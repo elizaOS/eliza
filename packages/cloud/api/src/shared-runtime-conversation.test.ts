@@ -42,6 +42,7 @@ let markRuntimePrewarmEntered = () => {};
 let rehydrateCalls = 0;
 let bridgeFunding: unknown;
 let recoveredCutoverTargetId: string | null = null;
+let cutoverRecoveryOverride: "conflict" | "absent" | null = null;
 let lastBridgeAgent: unknown;
 let lastStreamOptions: Record<string, unknown> | undefined;
 let apnsOutcome: { outcome: string; reason?: string; status?: number } = {
@@ -81,6 +82,19 @@ mock.module("@/lib/runtime/cloud-bindings", () => ({
 mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
   findActivePersonalDedicatedTarget: async () =>
     recoveredCutoverTargetId ? { id: recoveredCutoverTargetId } : null,
+  resolvePersonalDedicatedCutoverRecovery: async (params: {
+    userId?: string;
+    dedicatedAgentId: string;
+  }) =>
+    cutoverRecoveryOverride
+      ? { state: cutoverRecoveryOverride }
+      : recoveredCutoverTargetId === params.dedicatedAgentId
+        ? {
+            state: "committed",
+            agent: { id: recoveredCutoverTargetId },
+            userId: params.userId ?? "user-recovery",
+          }
+        : { state: "absent" },
 }));
 mock.module("@/lib/services/shared-runtime/cached-agent-dates", () => ({
   rehydrateCachedAgentDates: (agent: unknown) => {
@@ -214,6 +228,11 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         trustedMessageRole?: "system";
         trustedHistoryCutoffAt?: number;
         historyStore: {
+          stagePending?(
+            agentId: string,
+            channelId: string,
+            messages: unknown[],
+          ): void;
           merge(
             agentId: string,
             channelId: string,
@@ -233,8 +252,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         },
         cancel: async () => {
           canceled = true;
-          if (streamMergeGate) await streamMergeGate;
-          await options.historyStore.merge(agent.id, channelId, [
+          const interrupted = [
             {
               id: `user-${rpc.id}`,
               role: "user",
@@ -248,7 +266,10 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
               createdAt: 11,
               interrupted: true,
             },
-          ]);
+          ];
+          options.historyStore.stagePending?.(agent.id, channelId, interrupted);
+          if (streamMergeGate) await streamMergeGate;
+          await options.historyStore.merge(agent.id, channelId, interrupted);
         },
       });
       return new Response(body, {
@@ -307,6 +328,7 @@ beforeEach(() => {
   rehydrateCalls = 0;
   bridgeFunding = undefined;
   recoveredCutoverTargetId = null;
+  cutoverRecoveryOverride = null;
   lastBridgeAgent = undefined;
   lastStreamOptions = undefined;
   apnsOutcome = { outcome: "accepted" };
@@ -411,6 +433,43 @@ function makeInvoke(object: { fetch(request: Request): Promise<Response> }) {
     return await response.json();
   };
 }
+
+test("buffered bridge releases the room before its response body is consumed", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  const object = new SharedRuntimeConversation(
+    makeState(new Map<string, unknown>(), []) as never,
+    {} as never,
+  );
+
+  const firstResponse = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "bridge",
+        agent: AGENT_FIXTURE,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "buffered-first",
+          method: "message.send",
+          params: { text: "hi", roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+
+  const second = makeInvoke(object)("buffered-second");
+  await expect(
+    Promise.race([
+      second,
+      new Promise<"queue-blocked">((resolve) =>
+        setTimeout(() => resolve("queue-blocked"), 100),
+      ),
+    ]),
+  ).resolves.not.toBe("queue-blocked");
+  await firstResponse.arrayBuffer();
+});
 
 async function pushOperation(
   object: { fetch(request: Request): Promise<Response> },
@@ -1191,6 +1250,7 @@ test("a cutover seal snapshots history and blocks new Shared turns until release
     token: "cutover-1",
     leaseMs: 60_000,
     organizationId: personalAgent.organization_id,
+    userId: personalAgent.user_id,
     dedicatedAgentId: "dedicated-agent-1",
   });
   expect(sealed.status).toBe(200);
@@ -1221,6 +1281,7 @@ test("a cutover seal snapshots history and blocks new Shared turns until release
     token: "cutover-2",
     leaseMs: 60_000,
     organizationId: personalAgent.organization_id,
+    userId: personalAgent.user_id,
     dedicatedAgentId: "dedicated-agent-1",
   }).then((response) => response.json());
   const committedSeal = await request({
@@ -1269,6 +1330,7 @@ test("an expired pending seal recovers the authoritative Dedicated marker", asyn
         expiresAt: 0,
         committed: false,
         organizationId: personalAgent.organization_id,
+        userId: personalAgent.user_id,
         sourceAgentId: personalAgent.id,
         dedicatedAgentId: recoveredCutoverTargetId,
       },
@@ -1307,6 +1369,116 @@ test("an expired pending seal recovers the authoritative Dedicated marker", asyn
   });
 });
 
+test("an expired legacy seal derives exact user authority and remains archived", async () => {
+  recoveredCutoverTargetId = "dedicated-agent-legacy";
+  const data = new Map<string, unknown>([
+    [
+      "personal-cutover-seal",
+      {
+        token: "cutover-legacy",
+        expiresAt: 0,
+        committed: false,
+        organizationId: "org-legacy",
+        sourceAgentId: "personal-agent-legacy",
+        dedicatedAgentId: recoveredCutoverTargetId,
+      },
+    ],
+  ]);
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "personal-bridge",
+        agent: {
+          id: "personal-agent-legacy",
+          organization_id: "org-legacy",
+          user_id: "user-recovery",
+          agent_name: "Eliza",
+          agent_config: {},
+          execution_tier: "shared",
+        },
+        rpc: {
+          jsonrpc: "2.0",
+          id: "legacy-turn",
+          method: "message.send",
+          params: { text: "stay archived", roomId: "personal-agent-legacy" },
+        },
+      }),
+    }),
+  );
+  expect(response.status).toBe(409);
+  expect(data.get("personal-cutover-seal")).toMatchObject({
+    committed: true,
+    userId: "user-recovery",
+    dedicatedAgentId: recoveredCutoverTargetId,
+  });
+});
+
+test("wrong-user or ambiguous legacy recovery stays blocked and cannot commit", async () => {
+  cutoverRecoveryOverride = "conflict";
+  const data = new Map<string, unknown>([
+    [
+      "personal-cutover-seal",
+      {
+        token: "cutover-conflict",
+        expiresAt: 0,
+        committed: false,
+        organizationId: "org-conflict",
+        userId: "wrong-user",
+        sourceAgentId: "personal-agent-conflict",
+        dedicatedAgentId: "dedicated-agent-conflict",
+      },
+    ],
+  ]);
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+  const turn = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "personal-bridge",
+        agent: {
+          id: "personal-agent-conflict",
+          organization_id: "org-conflict",
+          user_id: "actual-user",
+          agent_name: "Eliza",
+          agent_config: {},
+          execution_tier: "shared",
+        },
+        rpc: {
+          jsonrpc: "2.0",
+          id: "conflict-turn",
+          method: "message.send",
+          params: { text: "do not reopen", roomId: "personal-agent-conflict" },
+        },
+      }),
+    }),
+  );
+  expect(turn.status).toBe(423);
+  await turn.json();
+  expect(data.get("personal-cutover-seal")).toMatchObject({
+    recoveryBlocked: true,
+  });
+
+  const commit = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "cutover-commit",
+        token: "cutover-conflict",
+      }),
+    }),
+  );
+  expect(commit.status).toBe(409);
+  expect(data.get("personal-cutover-seal")).toMatchObject({ committed: false });
+});
+
 test("an expired pending seal releases Shared when no Dedicated marker exists", async () => {
   const personalAgent = {
     id: "personal-agent-release",
@@ -1325,6 +1497,7 @@ test("an expired pending seal releases Shared when no Dedicated marker exists", 
         expiresAt: 0,
         committed: false,
         organizationId: personalAgent.organization_id,
+        userId: personalAgent.user_id,
         sourceAgentId: personalAgent.id,
         dedicatedAgentId: "dedicated-agent-missing",
       },
@@ -1372,6 +1545,7 @@ test("target convergence reservation and Dedicated cutover serialize onto one wi
     token: "personal-cutover:target:dedicated",
     leaseMs: 60_000,
     organizationId: "00000000-0000-4000-8000-000000000001",
+    userId: "00000000-0000-4000-8000-000000000003",
     dedicatedAgentId: "00000000-0000-4000-8000-000000000002",
   };
   const race = async (
@@ -1987,7 +2161,7 @@ test("forwards the server-authenticated history cutoff across the Durable Object
   });
 });
 
-test("stream body cancellation persists before the room queue releases", async () => {
+test("stream cancellation releases after a durable interrupted-context checkpoint", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
   repositoryRow = [];
@@ -2039,12 +2213,19 @@ test("stream body cancellation persists before the room queue releases", async (
     return result;
   });
   await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(secondCompleted).toBe(false);
+  expect(secondCompleted).toBe(true);
 
-  resolveStreamMergeGate();
   await cancel;
   const secondResult = await second;
-  expect(secondResult).toMatchObject({ result: { historyLength: 3 } });
+  expect(secondResult).toMatchObject({
+    result: {
+      historyLength: 3,
+      historyIds: ["user-cancelled", "assistant-cancelled"],
+    },
+  });
+
+  resolveStreamMergeGate();
+  await Promise.all(background.splice(0));
 
   const stored = (
     data.get("conversation") as {
@@ -2057,10 +2238,9 @@ test("stream body cancellation persists before the room queue releases", async (
     "turn-after-cancel",
   ]);
   expect(stored[1]?.interrupted).toBe(true);
-  await Promise.all(background.splice(0));
 });
 
-test("failed durable cancellation write is retryable on a later finalize", async () => {
+test("a restarted object recovers interrupted context after finalization fails", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
   const data = new Map<string, unknown>([
@@ -2076,20 +2256,20 @@ test("failed durable cancellation write is retryable on a later finalize", async
     ],
   ]);
   const background: Promise<unknown>[] = [];
-  let failNextPut = true;
+  let failNextConversationPut = true;
   const state = makeState(data, background);
   const originalPut = state.storage.put;
   state.storage.put = async (key: string, value: unknown) => {
-    if (failNextPut) {
-      failNextPut = false;
-      throw new Error("storage unavailable");
+    if (key === "conversation" && failNextConversationPut) {
+      failNextConversationPut = false;
+      throw new Error("final conversation write unavailable");
     }
     await originalPut(key, value);
   };
   const object = new SharedRuntimeConversation(state as never, {} as never);
 
-  const fetchStream = async () => {
-    const response = await object.fetch(
+  const fetchStream = async (target: SharedRuntimeConversationInstance) => {
+    const response = await target.fetch(
       new Request("https://shared-runtime.internal/stream", {
         method: "POST",
         body: JSON.stringify({
@@ -2109,12 +2289,41 @@ test("failed durable cancellation write is retryable on a later finalize", async
     return reader.cancel("client disconnected");
   };
 
-  await expect(fetchStream()).rejects.toThrow("storage unavailable");
+  await expect(fetchStream(object)).resolves.toBeUndefined();
+  await Promise.all(background.splice(0));
   expect(
     (data.get("conversation") as { history: unknown[] }).history,
   ).toHaveLength(0);
 
-  await fetchStream();
+  // Workerd resets an object after a failed storage output gate. Construct a
+  // new instance over the surviving durable state to model that eviction
+  // boundary; no same-instance Map is available to satisfy this read.
+  const restartedBackground: Promise<unknown>[] = [];
+  const restarted = new SharedRuntimeConversation(
+    makeState(data, restartedBackground) as never,
+    {} as never,
+  );
+  const pendingResponse = await restarted.fetch(
+    new Request("https://shared-runtime.internal/history", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "history",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  const pending = (await pendingResponse.json()) as {
+    history: Array<{ id?: string; interrupted?: boolean }>;
+  };
+  expect(pending.history).toMatchObject([
+    { id: "user-retryable" },
+    { id: "assistant-retryable", interrupted: true },
+  ]);
+
+  const recoveredTurn = await makeInvoke(restarted)("after-restart");
+  expect(recoveredTurn).toMatchObject({ result: { historyLength: 3 } });
+  await Promise.all(restartedBackground.splice(0));
   const stored = (
     data.get("conversation") as {
       history: Array<{ content: string; interrupted?: boolean }>;
@@ -2123,6 +2332,7 @@ test("failed durable cancellation write is retryable on a later finalize", async
   expect(stored.map((message) => message.content)).toEqual([
     "stream-user-retryable",
     "partial",
+    "turn-after-restart",
   ]);
   expect(stored[1]?.interrupted).toBe(true);
 });

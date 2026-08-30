@@ -15,12 +15,16 @@ import {
 import {
   type AccessTokenOutcome,
   applySubscriptionCredentials,
+  deleteCredentials,
   deleteProviderCredentials as deleteProviderCredentialsWithPolicy,
   type GetAccessTokenOptions,
   type GetAccessTokenOutcomeOptions,
   getAccessToken as getAccessTokenWithPolicy,
   getSubscriptionStatus,
+  hasValidCredentials,
   listProviderAccounts,
+  loadCredentials,
+  preflightProviderCredentialDeletion,
   saveCredentials as saveCredentialsWithPolicy,
 } from "./credentials";
 import { refreshCodexToken } from "./openai-codex";
@@ -607,5 +611,95 @@ describe("saveCredentials id_token preservation across refresh", () => {
     expect(
       (await loadAccount("openai-codex", "acct"))?.credentials.idToken,
     ).toBe("id-new");
+  });
+});
+
+describe("credentials lifecycle, validity checks, and deletion preflight", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    for (const dir of tempHomes.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("checks hasValidCredentials for active vs expired vs missing credentials", () => {
+    useTempElizaHome();
+    const policy = storagePolicy();
+
+    expect(hasValidCredentials("openai-codex", "default", policy)).toBe(false);
+
+    saveCredentialsWithPolicy(
+      "openai-codex",
+      {
+        access: "active-access",
+        refresh: "active-refresh",
+        expires: Date.now() + 3600_000,
+      },
+      "default",
+      policy,
+    );
+    expect(hasValidCredentials("openai-codex", "default", policy)).toBe(true);
+
+    saveCredentialsWithPolicy(
+      "openai-codex",
+      {
+        access: "expired-access",
+        refresh: "expired-refresh",
+        expires: Date.now() - 1000,
+      },
+      "expired-acct",
+      policy,
+    );
+    expect(hasValidCredentials("openai-codex", "expired-acct", policy)).toBe(
+      false,
+    );
+  });
+
+  it("deletes single account credentials via deleteCredentials", () => {
+    useTempElizaHome();
+    const policy = storagePolicy();
+
+    saveCredentialsWithPolicy(
+      "openai-codex",
+      {
+        access: "test-access",
+        refresh: "test-refresh",
+        expires: Date.now() + 3600_000,
+      },
+      "to-delete",
+      policy,
+    );
+
+    expect(loadCredentials("openai-codex", "to-delete", policy)).not.toBeNull();
+    deleteCredentials("openai-codex", "to-delete", policy);
+    expect(loadCredentials("openai-codex", "to-delete", policy)).toBeNull();
+  });
+
+  it("preflights every provider account without deleting credentials", () => {
+    useTempElizaHome();
+    const policy = storagePolicy();
+
+    saveCredentialsWithPolicy(
+      "openai-codex",
+      { access: "a1", refresh: "r1", expires: Date.now() + 3600_000 },
+      "acct-1",
+      policy,
+    );
+    saveCredentialsWithPolicy(
+      "openai-codex",
+      { access: "a2", refresh: "r2", expires: Date.now() + 3600_000 },
+      "acct-2",
+      policy,
+    );
+
+    const plan = preflightProviderCredentialDeletion(["openai-codex"], policy);
+    expect(plan.targets).toHaveLength(2);
+    expect(plan.targets.map((t) => t.accountId).sort()).toEqual([
+      "acct-1",
+      "acct-2",
+    ]);
+    expect(loadCredentials("openai-codex", "acct-1", policy)).not.toBeNull();
+    expect(loadCredentials("openai-codex", "acct-2", policy)).not.toBeNull();
   });
 });

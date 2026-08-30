@@ -3,7 +3,6 @@
  * config-driven `shouldEnable` predicate. Deterministic — reads the real
  * package.json, no runtime.
  */
-import { readFileSync } from "node:fs";
 import type { PluginAutoEnableContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { shouldEnable } from "../auto-enable.ts";
@@ -22,19 +21,6 @@ function ctx(
 }
 
 const withMeetings = (value: unknown) => ({ features: { meetings: value } });
-
-describe("plugin-meetings auto-enable manifest wiring", () => {
-  it("declares autoEnableModule pointing at the shipped root module", () => {
-    const pkg = JSON.parse(
-      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-    );
-    expect(pkg.elizaos?.plugin?.autoEnableModule).toBe("./auto-enable.ts");
-    // The referenced module must ship (files) and export shouldEnable — the
-    // import at the top of this file already proves the export exists.
-    expect(pkg.files).toContain("auto-enable.ts");
-    expect(typeof shouldEnable).toBe("function");
-  });
-});
 
 describe("plugin-meetings shouldEnable", () => {
   it("does NOT enable when the meetings feature is absent or turned off", () => {

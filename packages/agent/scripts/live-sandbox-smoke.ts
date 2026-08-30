@@ -189,7 +189,7 @@ class JsonRpcClient {
     const lines = createInterface({ input: server.stdout });
     lines.on("line", (line) => this.onLine(line));
     server.stderr.on("data", (chunk: Buffer) => {
-      this.stderr = `${this.stderr}${chunk.toString("utf8")}`.slice(-4000);
+      this.stderr += chunk.toString("utf8");
     });
     server.once("error", (error) => {
       for (const pending of this.pending.values()) pending.reject(error);

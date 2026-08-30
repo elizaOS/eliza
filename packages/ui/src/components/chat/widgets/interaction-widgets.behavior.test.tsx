@@ -342,13 +342,13 @@ describe("ChoiceWidget — pick an option", () => {
     expect(screen.queryByText("1 options")).toBeNull();
     expect(screen.queryByLabelText("Collapse")).toBeNull();
 
-    // Neutral dark button, full width within its compact wrapper — the one
-    // obvious CTA without turning the first chat message into a promotional
-    // card.
+    // Neutral canonical surface, full width within its compact wrapper. This
+    // keeps one obvious CTA without adding one-off color literals.
     const signIn = screen.getByTestId("choice-__first_run__:runtime:cloud");
-    expect(signIn.className.split(/\s+/)).toContain("bg-[#2c2f3a]");
-    expect(signIn.className.split(/\s+/)).toContain("text-[#f0f2f7]");
-    expect(signIn.className.split(/\s+/)).toContain("w-full");
+    expect(signIn.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["bg-card", "text-txt-strong", "min-h-11"]),
+    );
+    expect(signIn.className).not.toMatch(/#[0-9a-f]{3,8}/i);
     expect(signIn.parentElement?.className.split(/\s+/)).toContain(
       "max-w-[13.5rem]",
     );
@@ -363,7 +363,7 @@ describe("ChoiceWidget — pick an option", () => {
     // After the tap: locked but NOT washed out, with no redundant status line.
     fireEvent.click(signIn);
     expect((signIn as HTMLButtonElement).disabled).toBe(true);
-    expect(signIn.className).toContain("disabled:opacity-100");
+    expect(signIn.className).not.toMatch(/disabled:opacity-/);
     expect(signIn.getAttribute("aria-pressed")).toBe("true");
     expect(screen.queryByRole("status")).toBeNull();
     // Locked = one decision per prompt; a second tap is a no-op.
@@ -396,28 +396,31 @@ describe("ChoiceWidget — pick an option", () => {
 
     const cloudBeforePick = screen.getByTestId("choice-cloud");
     const localBeforePick = screen.getByTestId("choice-local");
-    const recommendedClasses = cloudBeforePick.className.split(/\s+/);
-    expect(recommendedClasses).toContain("bg-accent");
-    expect(recommendedClasses).toContain("text-accent-fg");
-    expect(recommendedClasses).not.toContain("bg-card");
-    expect(recommendedClasses).not.toContain("text-txt-strong");
+    expect(cloudBeforePick.getAttribute("data-state")).toBe("on");
+    expect(cloudBeforePick.className).toContain("data-[state=on]:bg-accent");
+    expect(cloudBeforePick.className).toContain(
+      "data-[state=on]:disabled:opacity-100",
+    );
 
-    const neutralClasses = localBeforePick.className.split(/\s+/);
-    expect(neutralClasses).toContain("bg-card");
-    expect(neutralClasses).toContain("text-txt-strong");
-    expect(neutralClasses).toContain("border-border-strong");
-    expect(neutralClasses).not.toContain("bg-bg-accent");
+    expect(localBeforePick.getAttribute("data-state")).toBe("off");
+    expect(localBeforePick.className.split(/\s+/)).toEqual(
+      expect.arrayContaining([
+        "bg-card",
+        "text-txt-strong",
+        "border-border-strong",
+        "disabled:opacity-40",
+      ]),
+    );
 
     fireEvent.click(screen.getByTestId("choice-cloud"));
 
     const picked = screen.getByTestId("choice-cloud");
     const other = screen.getByTestId("choice-local");
-    // The pick is promoted to the primary tokens at full opacity… (exact
-    // class match — the secondary token "bg-bg-accent" contains "bg-accent")
-    expect(picked.className.split(/\s+/)).toContain("bg-accent");
-    expect(picked.className).toContain("disabled:opacity-100");
-    expect(picked.className).not.toContain("disabled:opacity-40");
-    // …while the rows the user did NOT pick fade behind it.
+    expect(picked.getAttribute("data-state")).toBe("on");
+    expect(other.getAttribute("data-state")).toBe("off");
+    expect(picked.getAttribute("aria-pressed")).toBe("true");
+    expect(other.getAttribute("aria-pressed")).toBe("false");
+    expect(picked.className).toContain("data-[state=on]:disabled:opacity-100");
     expect(other.className).toContain("disabled:opacity-40");
     expect(onChoose).toHaveBeenCalledWith("cloud");
   });
@@ -440,11 +443,12 @@ describe("ChoiceWidget — pick an option", () => {
 
     const recommended = screen.getByTestId("choice-cloud");
     const picked = screen.getByTestId("choice-local");
-    expect(picked.className.split(/\s+/)).toContain("bg-accent");
-    expect(picked.className).toContain("disabled:opacity-100");
-    expect(recommended.className.split(/\s+/)).toContain("bg-card");
+    expect(picked.getAttribute("data-state")).toBe("on");
+    expect(picked.getAttribute("aria-pressed")).toBe("true");
+    expect(recommended.getAttribute("data-state")).toBe("off");
+    expect(recommended.getAttribute("aria-pressed")).toBe("false");
+    expect(picked.className).toContain("data-[state=on]:disabled:opacity-100");
     expect(recommended.className).toContain("disabled:opacity-40");
-    expect(recommended.className).not.toContain("disabled:opacity-100");
     expect(onChoose).toHaveBeenCalledWith("local");
   });
 });

@@ -992,8 +992,6 @@ function promptSlug(
   return `#${String(counter).padStart(4, "0")}/${agentName}/${modelType}`;
 }
 
-const MAX_PROMPT_LOG_CHARS = 100_000;
-
 function writeToPromptLog(
   slug: string,
   kind: "PROMPT" | "RESPONSE",
@@ -1013,15 +1011,7 @@ function writeToPromptLog(
     }
     header += `${sep}\n`;
     fs.writeSync(_promptLogFd, header);
-    if (body.length > MAX_PROMPT_LOG_CHARS) {
-      fs.writeSync(_promptLogFd, body.substring(0, MAX_PROMPT_LOG_CHARS));
-      fs.writeSync(
-        _promptLogFd,
-        `\n... [TRUNCATED - ${body.length - MAX_PROMPT_LOG_CHARS} more chars]\n`,
-      );
-    } else {
-      fs.writeSync(_promptLogFd, body);
-    }
+    fs.writeSync(_promptLogFd, body);
     fs.writeSync(_promptLogFd, `\n${sep}\n\n`);
   } catch {
     // Silent fail

@@ -286,7 +286,7 @@ async function initializeRuntime(
       msg.includes("Failed to create agent") ||
       msg.includes("Failed to create room");
     if (!isDuplicate) throw e;
-    elizaLogger.warn(`[RuntimeFactory] Init error: ${msg.substring(0, 50)}...`);
+    elizaLogger.warn(`[RuntimeFactory] Init error: ${msg}`);
     resolveInitPromise(runtime);
   }
 

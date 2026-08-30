@@ -10,7 +10,10 @@ import {
   registerScheduledTaskChannelDispatcher,
   SHARED_CUTOVER_GATEWAY_CHANNEL,
 } from "@elizaos/plugin-scheduling";
-import { resolveCloudApiBaseUrl } from "@elizaos/shared";
+import {
+  resolveCloudApiBaseUrl,
+  resolveDevCloudAuthorityEnvValue,
+} from "@elizaos/shared";
 
 const DISPATCH_FAILURE_REASONS = new Set<DispatchFailureReason>([
   "disconnected",
@@ -33,8 +36,14 @@ export function registerSharedCutoverReminderDispatcher(
   runtime: IAgentRuntime,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const apiKey = env.ELIZAOS_CLOUD_API_KEY?.trim();
-  const targetAgentId = env.ELIZA_CLOUD_AGENT_ID?.trim();
+  const apiKey = resolveDevCloudAuthorityEnvValue(
+    "ELIZAOS_CLOUD_API_KEY",
+    env,
+  )?.trim();
+  const targetAgentId = resolveDevCloudAuthorityEnvValue(
+    "ELIZA_CLOUD_AGENT_ID",
+    env,
+  )?.trim();
   if (!apiKey || !targetAgentId) return false;
   const baseUrl = resolveCloudApiBaseUrl(env.ELIZAOS_CLOUD_BASE_URL);
 

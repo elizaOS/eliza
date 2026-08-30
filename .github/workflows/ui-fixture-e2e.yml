@@ -64,6 +64,12 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
+      # Fixture bundlers consume @elizaos/core through its package exports. A
+      # clean install does not guarantee that dist exists, so build the core
+      # contract before esbuild traverses those exports in browser mode.
+      - name: Build core contract
+        run: bun run build:core
+
       # Settings page sections and persisted local state.
       - name: Settings page e2e
         run: bun run --cwd packages/ui test:settings-e2e

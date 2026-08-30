@@ -10,7 +10,8 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
-let findMessagesImpl: () => Promise<unknown[]> = async () => [];
+let findMessagesImpl: (...args: unknown[]) => Promise<unknown[]> = async () => [];
+let findMessagesArgs: unknown[] = [];
 let getEntityIdsImpl: () => Promise<string[]> = async () => [];
 let _setRoomContextCalls = 0;
 
@@ -18,7 +19,10 @@ let _setRoomContextCalls = 0;
 // re-export resolves to these — the idiom used by characters.test.ts.
 mock.module("../../../db/repositories/agents/memories", () => ({
   memoriesRepository: {
-    findMessages: () => findMessagesImpl(),
+    findMessages: (...args: unknown[]) => {
+      findMessagesArgs = args;
+      return findMessagesImpl(...args);
+    },
   },
 }));
 
@@ -55,6 +59,7 @@ const ROOM_ID = "44444444-4444-4444-8444-444444444444";
 describe("AgentsService.getRoomContext — fail-closed on DB read failure", () => {
   beforeEach(() => {
     findMessagesImpl = async () => [];
+    findMessagesArgs = [];
     getEntityIdsImpl = async () => [];
     _setRoomContextCalls = 0;
   });
@@ -71,6 +76,7 @@ describe("AgentsService.getRoomContext — fail-closed on DB read failure", () =
     expect(context.roomId).toBe(ROOM_ID);
     expect(context.messages).toEqual([]);
     expect(context.participants).toEqual([]);
+    expect(findMessagesArgs).toEqual([ROOM_ID]);
   });
 
   test("findMessages DB failure PROPAGATES — never swallowed into an empty context", async () => {

@@ -989,7 +989,7 @@ export async function failAgentBackupRestoreOperation(params: {
         claim_expires_at: null,
         next_attempt_at: new Date(databaseNow.getTime() + params.retryDelayMs),
         last_error_code: params.errorCode,
-        last_error: params.error.slice(0, 2_000),
+        last_error: params.error,
         last_failure_generation: claimGeneration,
         last_failure_digest: params.failureDigest,
       })

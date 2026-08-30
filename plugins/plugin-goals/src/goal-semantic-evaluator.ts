@@ -6,8 +6,8 @@
  *
  * PA re-exports this for back-compat. Model output is untrusted — unknown enum
  * values are rejected rather than passed through. Goal and evidence graphs are
- * depth-, work-, and cycle-bounded before they are interpolated into the
- * prompt so a hostile nest cannot RangeError the review job.
+ * depth- and cycle-checked before they are interpolated into the prompt so a
+ * hostile nest cannot RangeError the review job without imposing a size cap.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
@@ -31,9 +31,7 @@ import { formatPromptValue } from "./goal-prompt-value.ts";
 export {
   formatPromptValue,
   GOAL_PROMPT_VALUE_UNBOUNDED,
-  MAX_GOAL_PROMPT_VALUE_CODE_UNITS,
   MAX_GOAL_PROMPT_VALUE_DEPTH,
-  MAX_GOAL_PROMPT_VALUE_NODES,
 } from "./goal-prompt-value.ts";
 
 const VALID_REVIEW_STATES = new Set<LifeOpsGoalReviewState>([

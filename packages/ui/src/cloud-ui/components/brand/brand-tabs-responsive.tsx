@@ -21,7 +21,6 @@
 
 "use client";
 
-import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as React from "react";
 import {
   Select,
@@ -30,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "../../../components/ui/tabs";
 import { cn } from "../../lib/utils";
 
 export interface TabItem {
@@ -72,7 +72,7 @@ export function BrandTabsResponsive({
   }
 
   return (
-    <TabsPrimitive.Root
+    <Tabs
       id={id}
       value={value}
       defaultValue={defaultValue}
@@ -123,7 +123,8 @@ export function BrandTabsResponsive({
       </div>
 
       {/* Desktop Tabs - Hidden on mobile */}
-      <TabsPrimitive.List
+      <TabsList
+        variant="brand"
         className={cn(
           "hidden",
           breakpoint === "sm" && "sm:inline-flex",
@@ -133,7 +134,8 @@ export function BrandTabsResponsive({
         )}
       >
         {tabs.map((tab) => (
-          <TabsPrimitive.Trigger
+          <TabsTrigger
+            variant="brand"
             key={tab.value}
             value={tab.value}
             disabled={tab.disabled}
@@ -149,12 +151,12 @@ export function BrandTabsResponsive({
               {tab.icon}
             </span>
             <span className="hidden lg:inline">{tab.label}</span>
-          </TabsPrimitive.Trigger>
+          </TabsTrigger>
         ))}
-      </TabsPrimitive.List>
+      </TabsList>
 
       {/* Content */}
       {children}
-    </TabsPrimitive.Root>
+    </Tabs>
   );
 }

@@ -4,12 +4,23 @@ $secretHelper = Join-Path $PSScriptRoot "browser-bridge-secret.ps1"
 $pipeHelper = Join-Path $PSScriptRoot "browser-bridge-pipe-host.ps1"
 $tempRoot = Join-Path $env:TEMP ("eliza-browser-bridge-" + [Guid]::NewGuid().ToString("N"))
 $secretPath = Join-Path $tempRoot "state\browser-bridge\broker-secret"
-function Read-Exact([System.IO.Stream]$Stream, [int]$Count) {
+function Read-Exact(
+  [System.IO.Stream]$Stream,
+  [int]$Count,
+  [System.Diagnostics.Process]$ChildProcess = $null
+) {
   $buffer = [byte[]]::new($Count)
   $offset = 0
   while ($offset -lt $Count) {
     $read = $Stream.Read($buffer, $offset, $Count - $offset)
-    if ($read -eq 0) { throw "probe stream closed" }
+    if ($read -eq 0) {
+      if ($null -ne $ChildProcess) {
+        [void]$ChildProcess.WaitForExit(1000)
+        $childError = $ChildProcess.StandardError.ReadToEnd().Trim()
+        throw "probe stream closed (helper exit $($ChildProcess.ExitCode)): $childError"
+      }
+      throw "probe stream closed"
+    }
     $offset += $read
   }
   return ,$buffer
@@ -56,9 +67,9 @@ function Invoke-SecurePipeRoundTrip {
     $client.Write($requestHeader, 0, 4)
     $client.Write($request, 0, $request.Length)
     $client.Flush()
-    $forwardedHeader = Read-Exact $process.StandardOutput.BaseStream 4
+    $forwardedHeader = Read-Exact $process.StandardOutput.BaseStream 4 $process
     $forwardedLength = [BitConverter]::ToUInt32($forwardedHeader, 0)
-    $forwarded = Read-Exact $process.StandardOutput.BaseStream $forwardedLength
+    $forwarded = Read-Exact $process.StandardOutput.BaseStream $forwardedLength $process
     if ([Text.Encoding]::UTF8.GetString($forwarded) -ne '{"probe":"request"}') {
       throw "secure pipe request forwarding mismatch"
     }

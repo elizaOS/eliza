@@ -9,7 +9,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
-const { redirectToSsoBridge } = vi.hoisted(() => ({
+const { prepareSsoAccountSwitch, redirectToSsoBridge } = vi.hoisted(() => ({
+  prepareSsoAccountSwitch: vi.fn(() => Promise.resolve()),
   redirectToSsoBridge: vi.fn(() => Promise.resolve(true)),
 }));
 
@@ -90,22 +91,43 @@ vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
 // the same local page an app host renders, and every assertion below would
 // hold no matter which branch ran. Forcing it true makes the two outcomes
 // distinguishable, so these tests fail when an app host is misrouted.
-vi.mock("../../../sso-bridge/sso-bridge", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../sso-bridge/sso-bridge")>();
-  return { ...actual, redirectToSsoBridge, shouldAutoBridgeToSso: () => true };
-});
+vi.mock("../../../sso-bridge/sso-bridge", () => ({
+  prepareSsoAccountSwitch,
+  redirectToSsoBridge,
+  shouldAutoBridgeToSso: () => true,
+}));
 
 import LoginPage from "./login-page";
-import "./steward-login-section";
+import StewardLoginSection from "./steward-login-section";
 
 afterEach(() => {
   cleanup();
+  prepareSsoAccountSwitch.mockReset();
+  prepareSsoAccountSwitch.mockResolvedValue(undefined);
   redirectToSsoBridge.mockClear();
   Object.defineProperty(window, "location", {
     configurable: true,
     value: realLocation,
   });
+});
+
+it("blocks every sign-in control when account-switch teardown fails", async () => {
+  prepareSsoAccountSwitch.mockRejectedValueOnce(
+    new Error("Previous session teardown unavailable"),
+  );
+
+  render(
+    <MemoryRouter initialEntries={["/login?switchAccount=1&returnTo=%2Fchat"]}>
+      <StewardLoginSection />
+    </MemoryRouter>,
+  );
+
+  expect(
+    await screen.findByText("Previous session teardown unavailable"),
+  ).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Magic Link/i })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Google/i })).toBeNull();
 });
 
 it("keeps canonical app-host login on the current origin", async () => {

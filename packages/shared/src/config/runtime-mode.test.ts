@@ -62,6 +62,9 @@ describe("deployment target and config resolution", () => {
     expect(runtimeExecutionModeForDeploymentTarget(undefined)).toBe(
       "local-safe",
     );
+    expect(runtimeExecutionModeForDeploymentTarget({ runtime: "remote" })).toBe(
+      "local-safe",
+    );
   });
 
   it("reads explicit executionMode from config or falls back to deploymentTarget", () => {
@@ -84,6 +87,7 @@ describe("deployment target and config resolution", () => {
     ).toBe("cloud");
 
     expect(readRuntimeExecutionModeConfig(null)).toBe("local-safe");
+    expect(readRuntimeExecutionModeConfig({})).toBe("local-safe");
   });
 });
 

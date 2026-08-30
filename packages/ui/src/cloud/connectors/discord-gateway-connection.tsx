@@ -30,8 +30,10 @@ import {
   ConnectionInstructions,
 } from "../../cloud-ui/components/connection-card";
 import { DiscordIcon } from "../../cloud-ui/components/icons";
+import { Avatar, AvatarFallback } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -46,6 +48,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import { StatusBadge } from "../../components/ui/status-badge";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError, api, apiFetch } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 
@@ -156,40 +160,48 @@ function getStatusBadge(status: DiscordGatewayConnection["status"], t: TFn) {
   switch (status) {
     case "connected":
       return (
-        <Badge variant="default" className="bg-green-500">
-          <CheckCircle className="size-3 mr-1" />
-          {t("cloud.discord.statusConnected", { defaultValue: "Connected" })}
-        </Badge>
+        <StatusBadge
+          status="success"
+          icon={<CheckCircle />}
+          label={t("cloud.discord.statusConnected", {
+            defaultValue: "Connected",
+          })}
+        />
       );
     case "connecting":
       return (
-        <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600">
-  <Loader2 className="size-3 mr-1 animate-spin"/>
-          {t("cloud.discord.statusConnecting", { defaultValue: "Connecting" })}
-        </Badge>
+        <StatusBadge
+          status="processing"
+          label={t("cloud.discord.statusConnecting", {
+            defaultValue: "Connecting",
+          })}
+        />
       );
     case "pending":
       return (
-        <Badge variant="secondary" className="bg-surface text-txt">
-          <Clock className="size-3 mr-1" />
-          {t("cloud.discord.statusPending", { defaultValue: "Pending" })}
-        </Badge>
+        <StatusBadge
+          status="muted"
+          icon={<Clock />}
+          label={t("cloud.discord.statusPending", { defaultValue: "Pending" })}
+        />
       );
     case "disconnected":
       return (
-        <Badge variant="secondary" className="bg-gray-500/20 text-gray-500">
-          <XCircle className="size-3 mr-1" />
-          {t("cloud.discord.statusDisconnected", {
+        <StatusBadge
+          status="muted"
+          icon={<XCircle />}
+          label={t("cloud.discord.statusDisconnected", {
             defaultValue: "Disconnected",
           })}
-        </Badge>
+        />
       );
     case "error":
       return (
-        <Badge variant="destructive">
-          <AlertCircle className="size-3 mr-1" />
-          {t("cloud.discord.statusError", { defaultValue: "Error" })}
-        </Badge>
+        <StatusBadge
+          status="danger"
+          icon={<AlertCircle />}
+          label={t("cloud.discord.statusError", { defaultValue: "Error" })}
+        />
       );
   }
 }
@@ -199,6 +211,8 @@ export function DiscordGatewayConnection() {
   const [connections, setConnections] = useState<DiscordGatewayConnection[]>(
     [],
   );
+  const [connectionsUnavailable, setConnectionsUnavailable] = useState(false);
+  const [charactersUnavailable, setCharactersUnavailable] = useState(false);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingCharacters, setIsLoadingCharacters] = useState(false);
@@ -245,18 +259,17 @@ export function DiscordGatewayConnection() {
         );
         if (!signal?.aborted) {
           setConnections(data.connections || []);
+          setConnectionsUnavailable(false);
         }
       } catch {
         if (!signal?.aborted) {
-          toast.error(
-            t("cloud.discord.fetchConnectionsFailed", {
-              defaultValue: "Failed to fetch Discord connections",
-            }),
-          );
+          // error-policy:J4 Keep the provider row quiet and let the section
+          // own the single degraded-state notice and recovery action.
+          setConnectionsUnavailable(true);
         }
       }
     },
-    [t],
+    [],
   );
 
   const fetchCharacters = useCallback(
@@ -274,6 +287,7 @@ export function DiscordGatewayConnection() {
               : await fetchRuntimeCharacters(signal);
           if (!signal?.aborted) {
             setCharacters(fallbackCharacters);
+            setCharactersUnavailable(false);
             setCharacterId(
               (current) => current || fallbackCharacters[0]?.id || "",
             );
@@ -285,16 +299,15 @@ export function DiscordGatewayConnection() {
             const fallbackCharacters = await fetchRuntimeCharacters(signal);
             if (!signal?.aborted) {
               setCharacters(fallbackCharacters);
+              setCharactersUnavailable(false);
               setCharacterId(
                 (current) => current || fallbackCharacters[0]?.id || "",
               );
             }
           } catch {
-            toast.error(
-              t("cloud.discord.fetchCharactersFailed", {
-                defaultValue: "Failed to fetch characters",
-              }),
-            );
+            // error-policy:J4 Character discovery is required for setup. Fold
+            // this background failure into the section-level degraded state.
+            if (!signal?.aborted) setCharactersUnavailable(true);
           }
         }
       } finally {
@@ -303,7 +316,7 @@ export function DiscordGatewayConnection() {
         }
       }
     },
-    [t],
+    [],
   );
 
   const fetchData = useCallback(
@@ -615,7 +628,17 @@ export function DiscordGatewayConnection() {
       description={t("cloud.discord.cardDescription", {
         defaultValue: "Connect Discord gateway bots for AI-powered automation",
       })}
-      status={connections.length > 0 ? "connected" : "disconnected"}
+      status={
+        connectionsUnavailable || charactersUnavailable
+          ? "error"
+          : connections.length > 0
+            ? "connected"
+            : "disconnected"
+      }
+      errorMessage={t("cloud.discord.fetchConnectionsFailed", {
+        defaultValue: "Failed to fetch Discord connections",
+      })}
+      onRetry={() => void fetchData()}
       statusBadge={
         connections.length > 0 ? (
           <Badge variant="outline">
@@ -648,12 +671,19 @@ export function DiscordGatewayConnection() {
                     if (open) initEditState(conn);
                   }}
                 >
-                  <div className="border rounded-sm">
+                  <Card variant="connectorPanel">
                     <CollapsibleTrigger asChild>
-                      <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                        <div className="size-12 rounded-full bg-accent flex items-center justify-center shrink-0">
-                          <Bot className="size-6 text-txt-strong" />
-                        </div>
+                      <Button
+                        variant="surface"
+                        size="row"
+                        align="start"
+                        className="gap-4"
+                      >
+                        <Avatar className="size-12">
+                          <AvatarFallback>
+                            <Bot className="size-6 text-txt-strong" />
+                          </AvatarFallback>
+                        </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold truncate">
@@ -671,7 +701,7 @@ export function DiscordGatewayConnection() {
                                 defaultValue: "Character: {{name}}",
                               })
                             ) : (
-                              <span className="text-yellow-600">
+                              <span className="text-status-warning">
                                 {t("cloud.discord.noCharacterLinked", {
                                   defaultValue: "No character linked",
                                 })}
@@ -710,7 +740,7 @@ export function DiscordGatewayConnection() {
                             </span>
                           </div>
                           {conn.errorMessage && (
-                            <div className="text-sm text-red-500 mt-1">
+                            <div className="text-sm text-destructive mt-1">
                               {conn.errorMessage}
                             </div>
                           )}
@@ -736,11 +766,15 @@ export function DiscordGatewayConnection() {
                             className={`size-4 transition-transform ${isExpanded ? "rotate-90" : ""}`}
                           />
                         </div>
-                      </div>
+                      </Button>
                     </CollapsibleTrigger>
 
                     <CollapsibleContent>
-                      <div className="border-t p-4 space-y-4 bg-muted/30">
+                  <Card
+                    variant="topDivider"
+                    stack="default"
+                    padding="comfortable"
+                  >
                         {edit && (
                           <>
                             {/* Character Selection */}
@@ -1031,9 +1065,9 @@ export function DiscordGatewayConnection() {
                             </div>
                           </>
                         )}
-                      </div>
+                      </Card>
                     </CollapsibleContent>
-                  </div>
+                  </Card>
                 </Collapsible>
               );
             })}
@@ -1055,7 +1089,7 @@ export function DiscordGatewayConnection() {
 
           {/* Create Form (collapsible) */}
           {showForm && (
-            <div className="border rounded-sm p-4 space-y-4">
+            <Card variant="outlinedPadded" stack="default">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium">
                   {t("cloud.discord.addNewBot", {
@@ -1084,16 +1118,15 @@ export function DiscordGatewayConnection() {
                 <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
                   <li>
                     {t("cloud.discord.stepGoTo", { defaultValue: "Go to the" })}{" "}
-                    <a
+                    <TextLink
                       href="https://discord.com/developers/applications"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-accent hover:underline"
                     >
                       {t("cloud.discord.devPortal", {
                         defaultValue: "Discord Developer Portal",
                       })}
-                    </a>
+                    </TextLink>
                   </li>
                   <li>
                     {t("cloud.discord.stepNewApp", {
@@ -1161,7 +1194,7 @@ export function DiscordGatewayConnection() {
               </ConnectionInstructions>
 
               {renderForm()}
-            </div>
+            </Card>
           )}
         </div>
       }
@@ -1178,16 +1211,15 @@ export function DiscordGatewayConnection() {
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
                 {t("cloud.discord.stepGoTo", { defaultValue: "Go to the" })}{" "}
-                <a
+                <TextLink
                   href="https://discord.com/developers/applications"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-accent hover:underline"
                 >
                   {t("cloud.discord.devPortal", {
                     defaultValue: "Discord Developer Portal",
                   })}
-                </a>
+                </TextLink>
               </li>
               <li>
                 {t("cloud.discord.stepNewApp", {
@@ -1515,7 +1547,7 @@ export function DiscordGatewayConnection() {
         </Button>
 
         {characters.length === 0 && (
-          <p className="text-sm text-center text-yellow-600">
+          <p className="text-sm text-center text-status-warning">
             {t("cloud.discord.needCharacterFirst", {
               defaultValue:
                 "You need to create a character first before connecting a Discord bot.",

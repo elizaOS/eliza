@@ -3,10 +3,16 @@
  * the compound `PagePanel` (Root + Header/Frame/ContentArea/Empty/Loading/…)
  * that view pages use as their standard content chrome.
  */
+
+import { ContentState } from "./content-state";
 import { PagePanelCollapsibleSection } from "./page-panel-collapsible-section";
 import { PageEmptyState } from "./page-panel-empty";
 import { PagePanelFeatureEmpty } from "./page-panel-feature-empty";
-import { PagePanelContentArea, PagePanelFrame } from "./page-panel-frame";
+import {
+  PagePanelContentArea,
+  PagePanelContentRail,
+  PagePanelFrame,
+} from "./page-panel-frame";
 import {
   MetaPill,
   PageActionRail,
@@ -18,6 +24,7 @@ import { PageLoadingState } from "./page-panel-loading";
 import { PagePanelRoot } from "./page-panel-root";
 import { PagePanelToolbar } from "./page-panel-toolbar";
 
+export * from "./content-state";
 export * from "./page-panel-collapsible-section";
 export * from "./page-panel-empty";
 export * from "./page-panel-feature-empty";
@@ -30,7 +37,9 @@ export * from "./page-panel-types";
 
 export const PagePanel = Object.assign(PagePanelRoot, {
   CollapsibleSection: PagePanelCollapsibleSection,
+  ContentState,
   ContentArea: PagePanelContentArea,
+  ContentRail: PagePanelContentRail,
   Header: PanelHeader,
   Frame: PagePanelFrame,
   Meta: MetaPill,

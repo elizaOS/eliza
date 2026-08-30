@@ -46,11 +46,10 @@ function validateRecentCallsOptions(options?: ListRecentCallsOptions): void {
   if (options.limit !== undefined) {
     if (
       typeof options.limit !== "number" ||
-      !Number.isFinite(options.limit) ||
-      options.limit < 1 ||
-      options.limit > 500
+      !Number.isSafeInteger(options.limit) ||
+      options.limit < 1
     ) {
-      throw new Error("limit must be between 1 and 500");
+      throw new Error("limit must be a positive safe integer");
     }
   }
   if (options.number !== undefined && !nonEmptyString(options.number)) {

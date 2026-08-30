@@ -317,7 +317,6 @@ type BrowserSignalProbe = {
   detail: string | null;
 };
 
-const MAX_AUDIT_MESSAGES = 80;
 const DEFAULT_AUDIT_WINDOW_DAYS = 180;
 
 function normalizeSubscriptionLookup(value: string): string {
@@ -810,7 +809,6 @@ export class SubscriptionsService {
     try {
       const found = await this.gmail.searchSubscriptionMessages({
         windowDays: queryWindowDays,
-        maxResults: MAX_AUDIT_MESSAGES,
       });
       const sinceMs = Date.now() - queryWindowDays * 86_400_000;
       messages = found.filter((message) => {

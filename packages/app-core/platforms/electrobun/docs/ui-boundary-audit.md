@@ -108,7 +108,7 @@ The key limit is that these modules should receive data, clients, and event stre
 | Tool event renderer | `packages/ui/src/components/tool-events/ToolCallEventLog.tsx` | Promote as reusable trace/dynamic-view renderer. |
 | Local model renderers | `packages/ui/src/components/local-inference` | Keep UI renderers; data/control comes from app-core or runtime APIs. |
 | Browser workspace render pieces | `packages/ui/src/components/pages/BrowserWorkspaceView.tsx` | Extract renderer pieces before any ownership move. |
-| Documents render pieces | `packages/ui/src/components/pages/DocumentsView.tsx` | Extract document recall/RAG inspection components later. |
+| Documents render pieces | `plugins/plugin-documents/src/components/documents/KnowledgeDocumentsView.tsx` | Plugin-owned Knowledge surface; keep document meaning and route composition in `plugin-documents`. |
 | Workflow graph render pieces | `packages/ui/src/components/pages/WorkflowGraphViewer.tsx` | Good future task/workflow dynamic view foundation. |
 | App/plugin surface renderers | `packages/ui/src/components/apps` | Keep rendering here; plugin meaning stays plugin-owned. |
 

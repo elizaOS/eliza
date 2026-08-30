@@ -440,10 +440,11 @@ export default function PaymentRequestPage() {
           <div className="mt-8">
             <Button
               variant="surfaceAccent"
+              size="touch"
               type="button"
               disabled={!canPay || isPaying}
               onClick={beginCheckout}
-              className="flex w-full items-center justify-center gap-3 p-4 transition disabled:pointer-events-none disabled:opacity-30"
+              className="w-full"
             >
               {isPaying ? (
                 <Loader2 className="size-5 animate-spin" />

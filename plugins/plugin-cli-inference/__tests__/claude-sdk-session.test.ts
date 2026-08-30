@@ -204,6 +204,21 @@ describe("ClaudeSdkSession — TEXT mode", () => {
     await session.dispose();
   });
 
+  it("throws a typed auth error instead of returning Claude's prefixed 401 text", async () => {
+    const { session } = makeSession([
+      {
+        text: "Failed to authenticate. API Error: 401 Invalid bearer token",
+        subtype: "success",
+      },
+    ]);
+    await expect(session.send("hi")).rejects.toMatchObject({
+      name: "ProviderApiError",
+      statusCode: 401,
+      retryable: false,
+    });
+    await session.dispose();
+  });
+
   it("bounds a hung SDK turn below connector timeouts", async () => {
     const { session } = makeSession([{ hang: true }], { turnTimeoutMs: 5 });
     const started = Date.now();

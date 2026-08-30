@@ -59,7 +59,7 @@ function configOf(
 
 describe("model-metadata defaults", () => {
   it("exposes only the documented input-context fallback", () => {
-    expect(DEFAULT_MODEL_CONTEXT_WINDOW).toBe(128_000);
+    expect(DEFAULT_MODEL_CONTEXT_WINDOW).toBe(1_000_000);
   });
 });
 

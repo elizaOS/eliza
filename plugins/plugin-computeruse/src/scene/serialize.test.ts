@@ -166,4 +166,41 @@ describe("serializeSceneForPrompt", () => {
     expect(kept[0]?.text).toBe("line 2");
     expect(kept[1]?.text).toBe("line 1");
   });
+
+  it("structurally redacts OCR and labels inside secure accessibility fields", () => {
+    const parsed = parseFenced(
+      serializeSceneForPrompt(
+        baseScene({
+          ocr: [
+            {
+              ...ocrBox(1, 0.99),
+              text: "owner-secret-value",
+              bbox: [100, 100, 80, 30],
+            },
+            { ...ocrBox(2, 0.98), text: "Safe label", bbox: [0, 0, 20, 20] },
+          ],
+          ax: [
+            {
+              id: "secure-1",
+              role: "AXSecureTextField",
+              label: "owner-secret-value",
+              bbox: [90, 90, 120, 50],
+              actions: ["setValue"],
+              displayId: 0,
+            },
+          ],
+        }),
+      ),
+    );
+    expect(JSON.stringify(parsed)).not.toContain("owner-secret-value");
+    expect(parsed.ocr).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: "[REDACTED_SECURE_FIELD]" }),
+        expect.objectContaining({ text: "Safe label" }),
+      ]),
+    );
+    expect(parsed.redactions).toEqual([
+      expect.objectContaining({ kind: "secure_field", displayId: 0 }),
+    ]);
+  });
 });

@@ -21,7 +21,9 @@ import { useAgentElement } from "../../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
+import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import {
@@ -31,7 +33,14 @@ import {
   SelectValue,
 } from "../../ui/select";
 import { SettingsSelectTrigger } from "../../ui/settings-controls";
-import { SettingsSelectRow } from "../settings-agent-rows";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../ui/table";
 import type {
   AgentSummary,
   InstalledApp,
@@ -69,6 +78,7 @@ export function RoutingTab(props: RoutingTabProps) {
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [keyPattern, setKeyPattern] = useState("");
   const [scopeKind, setScopeKind] = useState<RoutingScopeKind>("agent");
@@ -218,6 +228,7 @@ export function RoutingTab(props: RoutingTabProps) {
   const saveConfig = useCallback(
     async (next: RoutingConfig) => {
       setSaving(true);
+      setSaveStatus("");
       setError(null);
       try {
         const body = await client.fetch<{ config: RoutingConfig }>(
@@ -229,6 +240,7 @@ export function RoutingTab(props: RoutingTabProps) {
           },
         );
         onConfigChange(body.config);
+        setSaveStatus("Routing preferences saved.");
       } catch (err) {
         setError(
           err instanceof Error
@@ -304,6 +316,17 @@ export function RoutingTab(props: RoutingTabProps) {
     [config, saveConfig],
   );
 
+  const { ref: defaultProfileRef, agentProps: defaultProfileAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "routing-default-profile",
+      role: "select",
+      label: "Default routing profile",
+      group: "routing",
+      options: allProfileIds,
+      getValue: () => config.defaultProfile ?? "default",
+      onFill: (value) => void onDefaultProfileChange(value),
+    });
+
   const visibleRules = useMemo(() => {
     if (!rulesFilter.trim()) return config.rules;
     const needle = rulesFilter.trim().toLowerCase();
@@ -317,33 +340,61 @@ export function RoutingTab(props: RoutingTabProps) {
   }, [config.rules, rulesFilter]);
 
   return (
-    <div data-testid="routing-tab" className="space-y-4">
-      <SettingsSelectRow
-        agentId="routing-default-profile"
-        agentLabel="Default routing profile"
-        group="routing"
-        label={t("routing.defaultProfile.title", {
-          defaultValue: "Default profile",
-        })}
-        description={t("routing.defaultProfile.description", {
-          defaultValue:
-            'Applied when no rule matches. Falls back to "default".',
-        })}
-        value={config.defaultProfile ?? "default"}
-        onValueChange={(value) => void onDefaultProfileChange(value)}
-        disabled={saving}
-        testId="routing-default-profile"
-        options={allProfileIds.map((id) => ({ value: id, label: id }))}
-      />
+    <div data-testid="routing-tab" className="w-full space-y-6">
+      <p
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {saveStatus}
+      </p>
+      <section className="space-y-3">
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold text-txt">
+            {t("routing.defaultProfile.title", {
+              defaultValue: "Default profile",
+            })}
+          </h2>
+          <p className="text-xs text-muted">
+            {t("routing.defaultProfile.description", {
+              defaultValue:
+                'Applied when no rule matches. Falls back to "default".',
+            })}
+          </p>
+        </div>
+        <Select
+          value={config.defaultProfile ?? "default"}
+          onValueChange={(value) => void onDefaultProfileChange(value)}
+          disabled={saving}
+        >
+          <SettingsSelectTrigger
+            ref={defaultProfileRef}
+            {...defaultProfileAgentProps}
+            variant="touch"
+            className="w-full"
+            data-testid="routing-default-profile"
+          >
+            <SelectValue />
+          </SettingsSelectTrigger>
+          <SelectContent>
+            {allProfileIds.map((id) => (
+              <SelectItem key={id} value={id}>
+                {id}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </section>
 
       {/* Rules table */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-txt">
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
+            <h2 className="text-sm font-semibold text-txt">
               {t("routing.rules.title", { defaultValue: "Routing rules" })}
-            </p>
-            <p className="text-2xs text-muted">
+            </h2>
+            <p className="text-xs text-muted">
               {t("routing.rules.description", {
                 defaultValue:
                   "Per-context overrides. Match keys exactly (e.g. OPENROUTER_API_KEY) or use wildcards (e.g. OPENROUTER_*).",
@@ -355,7 +406,7 @@ export function RoutingTab(props: RoutingTabProps) {
             {...addRuleToggleAgentProps}
             variant="outline"
             size="sm"
-            className="h-8 shrink-0 gap-1 rounded-sm px-2"
+            className="self-start"
             onClick={() => setShowAdd((v) => !v)}
             disabled={saving}
             aria-label={t("routing.addRule", {
@@ -368,285 +419,295 @@ export function RoutingTab(props: RoutingTabProps) {
         </div>
 
         {error && (
-          <p
-            className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
+          <Card
+            variant="vaultError"
             aria-live="polite"
             data-testid="routing-tab-error"
           >
             {error}
-          </p>
+          </Card>
         )}
 
         {config.rules.length > 0 && (
           <Input
             ref={filterRef}
             {...filterAgentProps}
+            density="compact"
             value={rulesFilter}
             onChange={(e) => setRulesFilter(e.target.value)}
             placeholder={t("routing.filterPlaceholder", {
               defaultValue: "Filter rules by key, scope, or profile",
             })}
-            className="h-8 text-xs"
             autoComplete="off"
             data-testid="routing-rules-filter"
           />
         )}
 
         {showAdd && (
-          <form
-            onSubmit={onAddRule}
-            data-testid="routing-add-rule-form"
-            className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-3"
-          >
-            <div>
-              <Label className="text-2xs text-muted">
-                {t("routing.field.keyPattern", {
-                  defaultValue: "Key pattern",
-                })}
-              </Label>
-              <Input
-                ref={keyPatternRef}
-                {...keyPatternAgentProps}
-                value={keyPattern}
-                onChange={(e) => setKeyPattern(e.target.value)}
-                placeholder="OPENROUTER_API_KEY or OPENROUTER_*"
-                className="h-8 font-mono text-xs"
-                autoComplete="off"
-                list="routing-key-suggestions"
-                required
-              />
-              <datalist id="routing-key-suggestions">
-                {allKeys.map((k) => (
-                  <option key={k} value={k} />
-                ))}
-              </datalist>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Card asChild variant="vaultForm">
+            <form
+              onSubmit={onAddRule}
+              data-testid="routing-add-rule-form"
+              className="space-y-2"
+            >
               <div>
                 <Label className="text-2xs text-muted">
-                  {t("routing.field.scope", { defaultValue: "Scope" })}
+                  {t("routing.field.keyPattern", {
+                    defaultValue: "Key pattern",
+                  })}
                 </Label>
-                <Select
-                  value={scopeKind}
-                  onValueChange={(value) =>
-                    setScopeKind(value as RoutingScopeKind)
-                  }
-                >
-                  <SettingsSelectTrigger
-                    ref={scopeKindRef}
-                    {...scopeKindAgentProps}
-                    variant="touch"
-                    className="w-full"
-                  >
-                    <SelectValue />
-                  </SettingsSelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="agent">
-                      {t("routing.scope.agent", { defaultValue: "Agent" })}
-                    </SelectItem>
-                    <SelectItem value="app">
-                      {t("routing.scope.app", { defaultValue: "App" })}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <Input
+                  ref={keyPatternRef}
+                  {...keyPatternAgentProps}
+                  variant="config"
+                  density="compact"
+                  value={keyPattern}
+                  onChange={(e) => setKeyPattern(e.target.value)}
+                  placeholder="OPENROUTER_API_KEY or OPENROUTER_*"
+                  autoComplete="off"
+                  list="routing-key-suggestions"
+                  required
+                />
+                <datalist id="routing-key-suggestions">
+                  {allKeys.map((k) => (
+                    <option key={k} value={k} />
+                  ))}
+                </datalist>
               </div>
-              <div>
-                <Label className="text-2xs text-muted">
-                  {scopeKind === "agent"
-                    ? t("routing.scope.agent", { defaultValue: "Agent" })
-                    : t("routing.scope.app", { defaultValue: "App" })}
-                </Label>
-                {scopeKind === "agent" ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div>
+                  <Label className="text-2xs text-muted">
+                    {t("routing.field.scope", { defaultValue: "Scope" })}
+                  </Label>
                   <Select
-                    value={scopeAgentId || undefined}
-                    onValueChange={(value) => setScopeAgentId(value)}
+                    value={scopeKind}
+                    onValueChange={(value) =>
+                      setScopeKind(value as RoutingScopeKind)
+                    }
                   >
                     <SettingsSelectTrigger
-                      ref={scopeAgentRef}
-                      {...scopeAgentAgentProps}
+                      ref={scopeKindRef}
+                      {...scopeKindAgentProps}
                       variant="touch"
                       className="w-full"
                     >
-                      <SelectValue
-                        placeholder={t("routing.selectAgent", {
-                          defaultValue: "Select agent…",
-                        })}
-                      />
+                      <SelectValue />
                     </SettingsSelectTrigger>
                     <SelectContent>
-                      {agents.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Select
-                    value={scopeAppName || undefined}
-                    onValueChange={(value) => setScopeAppName(value)}
-                  >
-                    <SettingsSelectTrigger
-                      ref={scopeAppRef}
-                      {...scopeAppAgentProps}
-                      variant="touch"
-                      className="w-full"
-                    >
-                      <SelectValue
-                        placeholder={t("routing.selectApp", {
-                          defaultValue: "Select app…",
-                        })}
-                      />
-                    </SettingsSelectTrigger>
-                    <SelectContent>
-                      {apps.map((a) => (
-                        <SelectItem key={a.name} value={a.name}>
-                          {a.displayName ?? a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-              <div>
-                <Label className="text-2xs text-muted">
-                  {t("routing.field.profile", { defaultValue: "Profile" })}
-                </Label>
-                <Select
-                  value={profileId || undefined}
-                  onValueChange={(value) => setProfileId(value)}
-                >
-                  <SettingsSelectTrigger
-                    ref={ruleProfileRef}
-                    {...ruleProfileAgentProps}
-                    variant="touch"
-                    className="w-full"
-                  >
-                    <SelectValue
-                      placeholder={t("routing.selectProfile", {
-                        defaultValue: "Select profile…",
-                      })}
-                    />
-                  </SettingsSelectTrigger>
-                  <SelectContent>
-                    {profilesForNewRule.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
+                      <SelectItem value="agent">
+                        {t("routing.scope.agent", { defaultValue: "Agent" })}
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      <SelectItem value="app">
+                        {t("routing.scope.app", { defaultValue: "App" })}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-2xs text-muted">
+                    {scopeKind === "agent"
+                      ? t("routing.scope.agent", { defaultValue: "Agent" })
+                      : t("routing.scope.app", { defaultValue: "App" })}
+                  </Label>
+                  {scopeKind === "agent" ? (
+                    <Select
+                      value={scopeAgentId || undefined}
+                      onValueChange={(value) => setScopeAgentId(value)}
+                    >
+                      <SettingsSelectTrigger
+                        ref={scopeAgentRef}
+                        {...scopeAgentAgentProps}
+                        variant="touch"
+                        className="w-full"
+                      >
+                        <SelectValue
+                          placeholder={t("routing.selectAgent", {
+                            defaultValue: "Select agent…",
+                          })}
+                        />
+                      </SettingsSelectTrigger>
+                      <SelectContent>
+                        {agents.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select
+                      value={scopeAppName || undefined}
+                      onValueChange={(value) => setScopeAppName(value)}
+                    >
+                      <SettingsSelectTrigger
+                        ref={scopeAppRef}
+                        {...scopeAppAgentProps}
+                        variant="touch"
+                        className="w-full"
+                      >
+                        <SelectValue
+                          placeholder={t("routing.selectApp", {
+                            defaultValue: "Select app…",
+                          })}
+                        />
+                      </SettingsSelectTrigger>
+                      <SelectContent>
+                        {apps.map((a) => (
+                          <SelectItem key={a.name} value={a.name}>
+                            {a.displayName ?? a.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-2xs text-muted">
+                    {t("routing.field.profile", { defaultValue: "Profile" })}
+                  </Label>
+                  <Select
+                    value={profileId || undefined}
+                    onValueChange={(value) => setProfileId(value)}
+                  >
+                    <SettingsSelectTrigger
+                      ref={ruleProfileRef}
+                      {...ruleProfileAgentProps}
+                      variant="touch"
+                      className="w-full"
+                    >
+                      <SelectValue
+                        placeholder={t("routing.selectProfile", {
+                          defaultValue: "Select profile…",
+                        })}
+                      />
+                    </SettingsSelectTrigger>
+                    <SelectContent>
+                      {profilesForNewRule.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button
-                ref={ruleCancelRef}
-                {...ruleCancelAgentProps}
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 rounded-sm px-3 text-xs"
-                onClick={() => setShowAdd(false)}
-                disabled={saving}
-              >
-                {t("routing.cancel", { defaultValue: "Cancel" })}
-              </Button>
-              <Button
-                ref={ruleSaveRef}
-                {...ruleSaveAgentProps}
-                type="submit"
-                variant="default"
-                size="sm"
-                className="h-7 rounded-sm px-3 text-xs"
-                disabled={saving || !keyPattern.trim() || !profileId}
-              >
-                {saving
-                  ? t("routing.saving", { defaultValue: "Saving…" })
-                  : t("routing.saveRule", { defaultValue: "Save rule" })}
-              </Button>
-            </div>
-          </form>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  ref={ruleCancelRef}
+                  {...ruleCancelAgentProps}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAdd(false)}
+                  disabled={saving}
+                >
+                  {t("routing.cancel", { defaultValue: "Cancel" })}
+                </Button>
+                <Button
+                  ref={ruleSaveRef}
+                  {...ruleSaveAgentProps}
+                  type="submit"
+                  variant="default"
+                  size="sm"
+                  disabled={saving || !keyPattern.trim() || !profileId}
+                >
+                  {saving
+                    ? t("routing.saving", { defaultValue: "Saving…" })
+                    : t("routing.saveRule", { defaultValue: "Save rule" })}
+                </Button>
+              </div>
+            </form>
+          </Card>
         )}
 
         {config.rules.length === 0 ? (
           <div
             data-testid="routing-rules-empty"
-            className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
+            className="flex min-h-32 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
           >
-            {t("routing.empty", {
-              defaultValue:
-                "No routing rules. The default profile applies for every caller.",
-            })}
+            <p className="max-w-md">
+              {t("routing.empty", {
+                defaultValue:
+                  "No routing rules. The default profile applies for every caller.",
+              })}
+            </p>
           </div>
         ) : visibleRules.length === 0 ? (
           <div
             data-testid="routing-rules-no-match"
-            className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
+            className="flex min-h-32 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
           >
-            {t("routing.noMatch", {
-              filter: rulesFilter,
-              defaultValue: 'No rules match "{{filter}}".',
-            })}
+            <p className="max-w-md">
+              {t("routing.noMatch", {
+                filter: rulesFilter,
+                defaultValue: 'No rules match "{{filter}}".',
+              })}
+            </p>
           </div>
         ) : (
-          <table
-            data-testid="routing-rules-table"
-            className="w-full table-fixed border-collapse rounded-sm border border-border/40 bg-card/30 text-xs"
-          >
-            <thead>
-              <tr className="text-left text-muted">
-                <th className="px-2 py-1 font-medium">
-                  {t("routing.table.key", { defaultValue: "Key" })}
-                </th>
-                <th className="px-2 py-1 font-medium">
-                  {t("routing.table.scope", { defaultValue: "Scope" })}
-                </th>
-                <th className="px-2 py-1 font-medium">
-                  {t("routing.table.profile", { defaultValue: "Profile" })}
-                </th>
-                <th className="w-16 px-2 py-1 font-medium text-right">
-                  {t("routing.table.actions", { defaultValue: "Actions" })}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRules.map((rule, idx) => {
-                const targetId =
-                  rule.scope.agentId ??
-                  rule.scope.appName ??
-                  rule.scope.skillId ??
-                  "—";
-                const targetLabel =
-                  rule.scope.kind === "agent"
-                    ? (agentNameById.get(rule.scope.agentId ?? "") ?? targetId)
-                    : rule.scope.kind === "app"
-                      ? (appLabelByName.get(rule.scope.appName ?? "") ??
+          <div className="overflow-x-auto rounded-lg border border-line-subtle">
+            <Table
+              data-testid="routing-rules-table"
+              density="compact"
+              layout="fixed"
+              className="min-w-[36rem]"
+            >
+              <TableHeader>
+                <TableRow className="text-left text-muted">
+                  <TableHead className="px-2 py-1 font-medium">
+                    {t("routing.table.key", { defaultValue: "Key" })}
+                  </TableHead>
+                  <TableHead className="px-2 py-1 font-medium">
+                    {t("routing.table.scope", { defaultValue: "Scope" })}
+                  </TableHead>
+                  <TableHead className="px-2 py-1 font-medium">
+                    {t("routing.table.profile", { defaultValue: "Profile" })}
+                  </TableHead>
+                  <TableHead className="w-16 px-2 py-1 font-medium text-right">
+                    {t("routing.table.actions", { defaultValue: "Actions" })}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleRules.map((rule, idx) => {
+                  const targetId =
+                    rule.scope.agentId ??
+                    rule.scope.appName ??
+                    rule.scope.skillId ??
+                    "—";
+                  const targetLabel =
+                    rule.scope.kind === "agent"
+                      ? (agentNameById.get(rule.scope.agentId ?? "") ??
                         targetId)
-                      : targetId;
-                const ruleKey = `${rule.keyPattern}:${rule.scope.kind}:${targetId}:${rule.profileId}:${idx}`;
-                const keyExists = allKeys.includes(rule.keyPattern);
-                return (
-                  <RoutingRuleRow
-                    key={ruleKey}
-                    ruleKey={ruleKey}
-                    keyPattern={rule.keyPattern}
-                    scopeKind={rule.scope.kind}
-                    targetLabel={targetLabel}
-                    profileId={rule.profileId}
-                    keyExists={keyExists}
-                    onOpenInSecrets={() =>
-                      navigate({
-                        tab: "secrets",
-                        focusKey: rule.keyPattern,
-                        focusProfileId: rule.profileId,
-                      })
-                    }
-                    onDelete={() => void onDeleteRule(rule)}
-                  />
-                );
-              })}
-            </tbody>
-          </table>
+                      : rule.scope.kind === "app"
+                        ? (appLabelByName.get(rule.scope.appName ?? "") ??
+                          targetId)
+                        : targetId;
+                  const ruleKey = `${rule.keyPattern}:${rule.scope.kind}:${targetId}:${rule.profileId}:${idx}`;
+                  const keyExists = allKeys.includes(rule.keyPattern);
+                  return (
+                    <RoutingRuleRow
+                      key={ruleKey}
+                      ruleKey={ruleKey}
+                      keyPattern={rule.keyPattern}
+                      scopeKind={rule.scope.kind}
+                      targetLabel={targetLabel}
+                      profileId={rule.profileId}
+                      keyExists={keyExists}
+                      onOpenInSecrets={() =>
+                        navigate({
+                          tab: "secrets",
+                          focusKey: rule.keyPattern,
+                          focusProfileId: rule.profileId,
+                        })
+                      }
+                      onDelete={() => void onDeleteRule(rule)}
+                    />
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         )}
 
         {saving && (
@@ -702,20 +763,19 @@ const RoutingRuleRow = memo(
         onActivate: onDelete,
       });
     return (
-      <tr
+      <TableRow
         data-testid={`routing-rule-row-${ruleKey}`}
-        className="border-t border-border/30"
+        variant="topDivider"
       >
-        <td className="px-2 py-1.5 align-top">
+        <TableCell className="px-2 py-1.5 align-top">
           {keyExists ? (
             <Button
               ref={chipRef}
               {...chipAgentProps}
               onClick={onOpenInSecrets}
               data-testid={`routing-key-chip-${ruleKey}`}
-              variant="ghost"
-              size="sm"
-              className="h-auto gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
+              variant="selection"
+              size="content"
               aria-label={t("routing.openInSecrets", {
                 keyPattern,
                 defaultValue: "Open {{keyPattern}} in Secrets tab",
@@ -727,25 +787,22 @@ const RoutingRuleRow = memo(
           ) : (
             <span className="font-mono text-2xs text-muted">{keyPattern}</span>
           )}
-        </td>
-        <td className="px-2 py-1.5 align-top">
-          <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
+        </TableCell>
+        <TableCell className="px-2 py-1.5 align-top">
+          <Badge variant="vaultStatusMuted" className="font-normal">
             {scopeKind}
-          </span>
+          </Badge>
           <span className="ml-1.5 text-2xs text-txt">{targetLabel}</span>
-        </td>
-        <td className="px-2 py-1.5 align-top">
-          <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-            {profileId}
-          </span>
-        </td>
-        <td className="px-2 py-1.5 align-top text-right">
+        </TableCell>
+        <TableCell className="px-2 py-1.5 align-top">
+          <Badge variant="vaultAccent">{profileId}</Badge>
+        </TableCell>
+        <TableCell className="px-2 py-1.5 align-top text-right">
           <Button
             ref={deleteRef}
             {...deleteAgentProps}
-            variant="ghost"
-            size="sm"
-            className="size-6 rounded-sm p-0 text-muted hover:text-danger"
+            variant="destructive"
+            size="icon-sm"
             onClick={onDelete}
             aria-label={t("routing.deleteRule", {
               keyPattern,
@@ -754,8 +811,8 @@ const RoutingRuleRow = memo(
           >
             <Trash2 className="size-3.5" aria-hidden />
           </Button>
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
     );
   },
   // Include handlers in the memo check so rows pick up changed navigation or

@@ -357,7 +357,7 @@ describe("SubAgentRouter — rate-limit failover resume", () => {
     });
     await new Promise((r) => setTimeout(r, 300));
 
-    expect(acp.service.getSessionOutput).toHaveBeenCalledWith(SESSION_ID, 120);
+    expect(acp.service.getSessionOutput).toHaveBeenCalledWith(SESSION_ID);
     const arg = acp.spawnSession.mock.calls[0]?.[0] as {
       initialTask?: string;
       metadata?: Record<string, unknown>;

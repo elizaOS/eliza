@@ -282,6 +282,12 @@ type MemorySeed = {
   content?: unknown;
 };
 
+type AgentMessageMemorySeed = {
+  text?: unknown;
+  occurredAt?: unknown;
+  messageId?: unknown;
+};
+
 type GmailInboxSeed = {
   type: "gmailInbox";
   account?: unknown;
@@ -2056,8 +2062,14 @@ function inboundMessageSenderEntityId(
   ctx: ScenarioContext,
   seed: InboundMessageMemorySeed,
 ): UUID {
+  const platformUserId = readNonEmptyString(seed.platformUserId);
+  const platform = readNonEmptyString(seed.platform) ?? "scenario";
+  if (platformUserId) {
+    return stringToUuid(
+      `scenario-turn-sender:${ctx.scenarioId ?? "unknown"}:${platform}:${platformUserId}`,
+    ) as UUID;
+  }
   const explicitIdentity =
-    readNonEmptyString(seed.platformUserId) ??
     readNonEmptyString(seed.handle) ??
     readNonEmptyString(seed.from) ??
     readNonEmptyString(seed.id);
@@ -2065,7 +2077,6 @@ function inboundMessageSenderEntityId(
     const roomEntityId = readNonEmptyString(ctx.primaryUserId);
     if (roomEntityId) return roomEntityId as UUID;
   }
-  const platform = readNonEmptyString(seed.platform) ?? "scenario";
   const identity = explicitIdentity ?? inboundMessageSenderName(seed);
   return stringToUuid(
     `scenario-inbound-message-sender:${ctx.scenarioId ?? "unknown"}:${platform}:${identity}`,
@@ -2169,6 +2180,48 @@ async function seedInboundMessageMemory(
     ...(platform === "telegram" && platformUserId
       ? { telegram: { userId: platformUserId, id: platformUserId, messageId } }
       : {}),
+  };
+  await runtime.createMemory(memory, "messages");
+  return undefined;
+}
+
+async function seedAgentMessageMemory(
+  ctx: ScenarioContext,
+  seed: AgentMessageMemorySeed,
+): Promise<string | undefined> {
+  const text = readNonEmptyString(seed.text);
+  if (!text) return "agent-message memory seed requires non-empty text";
+  const runtime = requireRuntime(ctx);
+  const roomId = readNonEmptyString(ctx.primaryRoomId);
+  if (!roomId) {
+    return "agent-message memory seed requires ctx.primaryRoomId (set by the executor before seeds run)";
+  }
+  const timestamp = inboundMessageTimestamp(ctx, seed);
+  const messageId =
+    readNonEmptyString(seed.messageId) ??
+    `${ctx.scenarioId ?? "scenario"}:${roomId}:${runtime.agentId}:${timestamp}`;
+  const memory = createMessageMemory({
+    id: stringToUuid(`scenario-agent-message:${messageId}`),
+    entityId: runtime.agentId,
+    agentId: runtime.agentId,
+    roomId: roomId as UUID,
+    content: {
+      text,
+      source: "scenario",
+      displayName: runtime.character.name,
+      senderName: runtime.character.name,
+    },
+  });
+  memory.createdAt = timestamp;
+  memory.metadata = {
+    ...memory.metadata,
+    type: MemoryType.MESSAGE,
+    source: "scenario-seed",
+    sourceId: messageId,
+    timestamp,
+    scenarioId: ctx.scenarioId,
+    kind: "agent-message",
+    entityName: runtime.character.name,
   };
   await runtime.createMemory(memory, "messages");
   return undefined;
@@ -2315,6 +2368,12 @@ async function seedMemory(
   if (memoryType === "user-state") {
     return seedUserStateMemory(scopedContext, content as UserStateMemorySeed);
   }
+  if (memoryType === "agent-message") {
+    return seedAgentMessageMemory(
+      scopedContext,
+      content as AgentMessageMemorySeed,
+    );
+  }
   if (memoryType === "focus-window-active") {
     const userStateSeed = focusWindowToUserStateSeed(
       scopedContext,
@@ -2411,7 +2470,7 @@ async function seedMemory(
     // A seed the runner cannot land must fail the scenario, never no-op:
     // a silently dropped seed fabricates the premise the checks grade
     // against (#14631 — the "seeded VIP fact" the model never received).
-    return `unsupported memory seed kind "${memoryType}" — supported: contact/rolodex-entity/merged-entity/calendar-event/appointment/inbound-message/user-state/focus-window-active/queued-push/device-intent/push-delivery-attempt/outbound-push-attempt/voice-call-attempt/ladder-state/scheduled-push-ladder/browser-task-state/follow-up state kinds, travel profile/trip/booking/upgrade-offer/calendar-focus-window, or plain { text } for a durable owner fact`;
+    return `unsupported memory seed kind "${memoryType}" — supported: contact/rolodex-entity/merged-entity/calendar-event/appointment/inbound-message/agent-message/user-state/focus-window-active/queued-push/device-intent/push-delivery-attempt/outbound-push-attempt/voice-call-attempt/ladder-state/scheduled-push-ladder/browser-task-state/follow-up state kinds, travel profile/trip/booking/upgrade-offer/calendar-focus-window, or plain { text } for a durable owner fact`;
   }
   const text = readNonEmptyString((content as { text?: unknown }).text);
   if (!text) {

@@ -29,10 +29,13 @@ import {
   createMessageMemory,
   createUniqueUuid,
   ElizaError,
+  getEntityRole,
+  hasAtLeastRole,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
+  type RoleGrantSource,
   type RolesWorldMetadata,
   type RoomHandlerLease,
   RoomHandlerQueueClosedError,
@@ -839,12 +842,28 @@ function ensureAdminEntityId(state: ConversationRouteState): UUID {
   return ensureAdminEntityIdForRuntime(state, state.runtime);
 }
 
-function resolveConversationCaller(
+/**
+ * The identity a conversation turn acts as: the minted/mapped entity, the
+ * boundary role its world grant records, the display name, and the audit
+ * source that non-owner grant is written with.
+ */
+export interface ConversationCaller {
+  entityId: UUID;
+  role: WaifuChatWorldRole;
+  userName: string;
+  grantSource: RoleGrantSource;
+}
+
+/**
+ * Exported for the machine-session conversation-attribution regression suite;
+ * runtime callers are the conversation route handlers in this module.
+ */
+export function resolveConversationCaller(
   req: http.IncomingMessage,
   state: ConversationRouteState,
   principal: TrustedApiPrincipal,
   runtime: AgentRuntime | null = state.runtime,
-): { entityId: UUID; role: WaifuChatWorldRole; userName: string } {
+): ConversationCaller {
   const access = resolveWaifuChatAccess(req);
   if (access) {
     return {
@@ -853,6 +872,7 @@ function resolveConversationCaller(
       ),
       role: waifuChatRoleToWorldRole(access.role),
       userName: access.walletAddress,
+      grantSource: "connector_admin",
     };
   }
 
@@ -864,6 +884,21 @@ function resolveConversationCaller(
       entityId: ensureAdminEntityIdForRuntime(state, runtime),
       role: "OWNER",
       userName: resolveAppUserName(state.config),
+      grantSource: "owner",
+    };
+  }
+
+  if (principal.kind === "service_gateway" && principal.sessionRole) {
+    // A paired device's machine session authenticates at boundary role USER.
+    // Mirror the compat chat ingress grant (grantSessionUserWorldRole in
+    // chat-routes.ts) on the conversation surface so checkSenderRole resolves
+    // the session's boundary role here too: sessionRole is the literal "USER"
+    // by construction and the grant is recorded with audit source "session".
+    return {
+      entityId: stringToUuid(`conversation-external:${principal.principalId}`),
+      role: principal.sessionRole,
+      userName: "External API caller",
+      grantSource: "session",
     };
   }
 
@@ -871,6 +906,7 @@ function resolveConversationCaller(
     entityId: stringToUuid(`conversation-external:${principal.principalId}`),
     role: "GUEST",
     userName: "External API caller",
+    grantSource: "connector_admin",
   };
 }
 
@@ -933,6 +969,7 @@ async function ensureWorldOwnershipAndRoles(
   ownerId: UUID,
   callerId: UUID,
   callerRole: WaifuChatWorldRole,
+  callerGrantSource: RoleGrantSource,
   assertCurrent?: () => void,
 ): Promise<void> {
   const world = await runtime.getWorld(worldId);
@@ -975,11 +1012,23 @@ async function ensureWorldOwnershipAndRoles(
   if (recordOwnerGrant(metadata, ownerId)) {
     needsUpdate = true;
   }
-  if (
-    callerId !== ownerId &&
-    recordRoleGrant(metadata, callerId, callerRole, "connector_admin")
-  ) {
-    needsUpdate = true;
+  if (callerId !== ownerId) {
+    if (callerGrantSource === "session") {
+      // Session-sourced grants mirror grantSessionUserWorldRole in
+      // chat-routes.ts: clamped to the session's boundary role and never
+      // downgrading an existing USER-or-higher grant (e.g. a manual ADMIN
+      // grant by the owner).
+      if (
+        !hasAtLeastRole(getEntityRole(metadata, callerId), callerRole) &&
+        recordRoleGrant(metadata, callerId, callerRole, "session")
+      ) {
+        needsUpdate = true;
+      }
+    } else if (
+      recordRoleGrant(metadata, callerId, callerRole, callerGrantSource)
+    ) {
+      needsUpdate = true;
+    }
   }
   if (needsUpdate) {
     assertCurrent?.();
@@ -1182,11 +1231,7 @@ function captureConversationConnection(
   state: ConversationRouteState,
   runtime: AgentRuntime,
   conv: ConversationMeta,
-  caller: {
-    entityId: UUID;
-    role: WaifuChatWorldRole;
-    userName: string;
-  },
+  caller: ConversationCaller,
   requestFence?: () => void,
 ): ConversationConnectionDescriptor {
   const agentName = runtime.character.name ?? "Eliza";
@@ -1204,6 +1249,7 @@ function captureConversationConnection(
     ownerId,
     callerEntityId: caller.entityId,
     callerRole: caller.role,
+    callerGrantSource: caller.grantSource,
     callerUserName: caller.userName,
     requestFence,
   });
@@ -1233,16 +1279,21 @@ async function establishConversationConnection(
     descriptor.ownerId,
     descriptor.callerEntityId,
     descriptor.callerRole,
+    descriptor.callerGrantSource,
     descriptor.requestFence,
   );
   descriptor.requestFence?.();
 }
 
-async function ensureConversationRoom(
+/**
+ * Exported for the machine-session conversation-attribution regression suite;
+ * runtime callers are the conversation route handlers in this module.
+ */
+export async function ensureConversationRoom(
   state: ConversationRouteState,
   runtime: AgentRuntime,
   conv: ConversationMeta,
-  caller: { entityId: UUID; role: WaifuChatWorldRole; userName: string },
+  caller: ConversationCaller,
 ): Promise<ConversationConnectionDescriptor> {
   const descriptor = captureConversationConnection(
     state,
@@ -1802,7 +1853,6 @@ async function recoverDurableConversationChatOutcome(
     roomId,
     tableName: "messages",
     start: userMemory.createdAt,
-    limit: 1_000,
     orderBy: "createdAt",
     orderDirection: "asc",
   });
@@ -2200,7 +2250,6 @@ export async function persistRecentAssistantActionCallbackHistory(
       : await runtime.getMemories({
           roomId,
           tableName: "messages",
-          limit: 12,
         });
     assertCurrent?.();
 
@@ -2568,7 +2617,6 @@ async function ensureConversationGreetingStoredUnlocked(
     memories = await runtime.getMemories({
       roomId: conv.roomId,
       tableName: "messages",
-      limit: 12,
     });
   } catch (error) {
     // error-policy:J2 greeting setup retains the storage cause for the route
@@ -5804,7 +5852,6 @@ export async function handleConversationRoutes(
       const memories = await state.runtime.getMemories({
         roomId: conv.roomId,
         tableName: "messages",
-        limit: 5,
       });
       const lastUserMemory = memories.find(
         (m) => m.entityId !== state.runtime?.agentId,
@@ -5928,7 +5975,6 @@ export async function handleConversationRoutes(
         const memories = await runtime.getMemories({
           roomId: conv.roomId,
           tableName: "messages",
-          limit: 10,
         });
         const hasUserMessage = memories.some((m) => m.entityId !== agentId);
         if (hasUserMessage) continue;
@@ -6011,7 +6057,6 @@ export async function handleConversationRoutes(
           const memories = await runtime.getMemories({
             roomId: conv.roomId,
             tableName: "messages",
-            limit: 1000,
           });
           const memoryIds = memories
             .map((memory) => memory.id)

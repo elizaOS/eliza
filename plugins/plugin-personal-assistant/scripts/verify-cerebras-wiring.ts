@@ -1,9 +1,8 @@
-// Smoke test for the Cerebras eval/training helper.
-// Run: bun run plugins/plugin-personal-assistant/scripts/verify-cerebras-wiring.ts
-//
-// Confirms that getEvalModelClient and getTrainingModelClient can both
-// reach the Cerebras eval model (default gemma-4-31b) and that the response
-// shape is parsed.
+/**
+ * Live smoke test for the shared Cerebras evaluation and training client.
+ * It confirms both roles reach the configured model and return parseable,
+ * complete responses through the production helper.
+ */
 
 import {
   getEvalModelClient,
@@ -27,7 +26,6 @@ async function main(): Promise<void> {
   const evalClient = getEvalModelClient();
   const evalResult = await evalClient({
     prompt: 'Reply with the JSON {"ok": true} and nothing else.',
-    maxTokens: 256,
     temperature: 0,
   });
   console.log("[verify-cerebras] eval text:", evalResult.text);
@@ -43,7 +41,6 @@ async function main(): Promise<void> {
     prompt:
       "Generate one short user message asking for tomorrow's weather. Reply with only the user message.",
     systemPrompt: "You produce realistic synthetic training utterances.",
-    maxTokens: 256,
     temperature: 0.9,
   });
   console.log("[verify-cerebras] train text:", trainResult.text);
@@ -54,7 +51,6 @@ async function main(): Promise<void> {
 
   const judged = await judgeWithCerebras(
     "Score this on a scale of 1-10: 'The cat sat on the mat.' Reply with just the integer.",
-    { maxTokens: 128 },
   );
   console.log("[verify-cerebras] judge text:", judged);
 

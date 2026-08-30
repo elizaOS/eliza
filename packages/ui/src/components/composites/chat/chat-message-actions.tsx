@@ -10,11 +10,9 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
-import {
-  LIQUID_GLASS_EDGE_SHADOW,
-  LIQUID_GLASS_SHEEN,
-} from "../../shell/liquid-glass";
+import { LIQUID_GLASS_SHEEN } from "../../shell/liquid-glass";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import type { ChatMessageLabels } from "./chat-types";
 
 export interface ChatMessageActionsProps {
@@ -47,12 +45,15 @@ export function ChatMessageActionSurface({
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & { bare?: boolean }) {
   return (
-    <div
+    <Card
+      variant={bare ? "transparent" : "panel"}
+      elevation={bare ? undefined : "liquidGlass"}
+      flow="row"
       className={cn(
         "inline-flex items-center text-white",
         bare
-          ? "gap-0"
-          : "gap-0.5 rounded-xl border border-white/25 bg-black/55 p-0.5 transition-colors duration-150",
+          ? "gap-0.5 leading-none"
+          : "gap-0.5 p-0.5 transition-colors duration-150",
         className,
       )}
       style={
@@ -60,7 +61,6 @@ export function ChatMessageActionSurface({
           ? style
           : {
               backgroundImage: LIQUID_GLASS_SHEEN,
-              boxShadow: LIQUID_GLASS_EDGE_SHADOW,
               ...style,
             }
       }
@@ -90,8 +90,8 @@ function MessageActionButton({
 }) {
   return (
     <Button
-      variant="ghost"
-      size="icon-sm"
+      variant={active ? "surfaceAccent" : "ghostMuted"}
+      size={bare ? "disclosure" : "icon-sm"}
       aria-label={label}
       title={label}
       data-testid={testId}
@@ -99,14 +99,6 @@ function MessageActionButton({
         e.stopPropagation();
         onClick();
       }}
-      className={cn(
-        "keyboard-focus-emphasis bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 max-md:h-8 max-md:w-8 pointer-coarse:h-8 pointer-coarse:w-8",
-        bare
-          ? "h-5 w-5 rounded-none hover:bg-transparent active:bg-transparent"
-          : "h-6 w-6 rounded-lg transition-[background-color,color,transform] hover:bg-white/10 active:bg-white/10",
-        active &&
-          (bare ? "text-white" : "bg-white/10 text-white hover:bg-white/15"),
-      )}
     >
       {icon}
     </Button>
@@ -239,7 +231,7 @@ export function ChatMessageActions({
       {trailingAccessory ? (
         <div
           data-testid="thread-line-action-accessory"
-          className="ml-0.5 min-w-0 shrink-0"
+          className="ml-1.5 flex min-w-0 shrink-0 items-center leading-none"
         >
           {trailingAccessory}
         </div>

@@ -1,10 +1,10 @@
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ApiError, client } from "@elizaos/ui/api";
 import type {
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
 } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
 import {
@@ -850,7 +850,7 @@ export function CodingAgentTasksPanel({
   if (selectedThreadId && selectedThreadSummary) {
     return (
       <div
-        className="flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto bg-bg px-4 pb-28 pt-4 text-txt"
+        className="flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto px-4 pb-28 pe-[var(--eliza-chat-side-clearance,0px)] pt-4 text-txt"
         data-testid="task-coordinator-panel"
       >
         {detailError ? (
@@ -881,7 +881,7 @@ export function CodingAgentTasksPanel({
 
   return (
     <div
-      className="relative flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto bg-bg px-4 pb-28 pt-4 text-txt"
+      className="relative flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto px-4 pb-28 pe-[var(--eliza-chat-side-clearance,0px)] pt-4 text-txt"
       data-testid="task-coordinator-panel"
     >
       {fullPage ? (
@@ -952,17 +952,14 @@ export function CodingAgentTasksPanel({
             agentProps={searchAgentProps}
           />
           <Button
-            unstyled
+            variant="choice"
+            size="compact"
+            data-state={showArchived ? "on" : "off"}
             ref={archivedRef}
             type="button"
             onClick={() => setShowArchived((value) => !value)}
             aria-pressed={showArchived}
             data-testid="task-show-archived"
-            className={`inline-flex h-9 min-h-11 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
-              showArchived
-                ? "border-accent/40 bg-accent-subtle text-accent"
-                : "border-border/50 bg-bg-accent/30 text-muted hover:text-txt"
-            }`}
             {...archivedAgentProps}
           >
             <Archive className="size-3.5" />
@@ -985,7 +982,7 @@ export function CodingAgentTasksPanel({
 
       {threads.length > 0 ? (
         <>
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col">
             {threads.map((thread) => (
               <TaskCard
                 key={thread.id}

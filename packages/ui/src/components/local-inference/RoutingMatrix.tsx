@@ -245,7 +245,7 @@ export function RoutingMatrix() {
         </h3>
       </header>
       {error ? (
-        <div className="rounded-sm border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
+        <div className="rounded-sm border border-danger/40 bg-danger/10 p-3 text-xs text-danger">
           {error}
         </div>
       ) : null}

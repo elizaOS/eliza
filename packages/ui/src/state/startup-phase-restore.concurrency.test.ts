@@ -10,6 +10,10 @@
 // Real restore module under test; only the network / desktop-bridge
 // boundaries are stubbed.
 
+import {
+  readStoredStewardToken,
+  STEWARD_ACTIVE_SCOPE_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_BOOT_CONFIG,
@@ -184,6 +188,8 @@ describe("cloud restore routes the client without waiting on the Steward refresh
   it("preserves a shared adapter with account authority regardless of the create default", async () => {
     const stewardToken = makeJwt(3600);
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken);
+    expect(localStorage.getItem(STEWARD_ACTIVE_SCOPE_KEY)).toBeNull();
+    expect(readStoredStewardToken()).toBe(stewardToken);
     const sharedApiBase = `https://api.eliza.app/api/v1/eliza/agents/${SHARED_AGENT_ID}`;
     const restored: PersistedActiveServer = {
       id: `cloud:${SHARED_AGENT_ID}`,
@@ -218,6 +224,8 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     });
     const stewardToken = makeJwt(3600);
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken);
+    expect(localStorage.getItem(STEWARD_ACTIVE_SCOPE_KEY)).toBeNull();
+    expect(readStoredStewardToken()).toBe(stewardToken);
     const restored: PersistedActiveServer = {
       id: `cloud:${STAGING_AGENT_ID}`,
       kind: "cloud",

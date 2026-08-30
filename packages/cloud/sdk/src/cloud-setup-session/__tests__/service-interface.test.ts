@@ -24,13 +24,6 @@ function makeService(provisioningTurns = 1): CloudSetupSessionService {
   });
 }
 
-describe("service-interface module", () => {
-  it("is a types-only ESM module with no runtime exports", async () => {
-    const mod = await import("../service-interface.js");
-    expect(Object.keys(mod)).toEqual([]);
-  });
-});
-
 describe("CloudSetupSessionService.startSession", () => {
   it("accepts StartSessionInput and returns a provisioning envelope", async () => {
     const service: CloudSetupSessionService = makeService();

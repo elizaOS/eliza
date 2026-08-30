@@ -1,13 +1,40 @@
-/** Resolves the Cloud schedule-sync configuration from the persisted Eliza config for the sync client. */
-import { loadElizaConfig } from "@elizaos/agent";
+/** Resolves the Cloud schedule-sync configuration from the effective operational Eliza config for the sync client. */
+import { loadEffectiveElizaConfig } from "@elizaos/agent";
 import {
+  normalizeLifeOpsScheduleSyncSecret,
   type ResolvedLifeOpsScheduleSyncConfig,
   resolveLifeOpsScheduleSyncConfig,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-client";
+import {
+  resolveCloudApiBaseUrl,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 
 export function resolveLifeOpsScheduleSyncConfigFromElizaConfig(): ResolvedLifeOpsScheduleSyncConfig {
+  if (resolveDevCloudEnvAuthority()) {
+    const apiKey = normalizeLifeOpsScheduleSyncSecret(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
+    );
+    const agentId = normalizeLifeOpsScheduleSyncSecret(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_AGENT_ID"),
+    );
+    if (!apiKey || !agentId) {
+      return { configured: false, mode: "none" };
+    }
+    return {
+      configured: true,
+      mode: "cloud",
+      apiBaseUrl: resolveCloudApiBaseUrl(
+        resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL"),
+      ),
+      apiKey,
+      agentId,
+    };
+  }
+
   try {
-    const config = loadElizaConfig();
+    const config = loadEffectiveElizaConfig();
     const cloud =
       config.cloud && typeof config.cloud === "object"
         ? (config.cloud as Record<string, unknown>)

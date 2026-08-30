@@ -1,23 +1,25 @@
 /** Exercises relationship identifier decoding through the shared LifeOps route context. */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
-const get = mock(async (id: string) => ({
-  relationshipId: id,
-  fromEntityId: "from-1",
-  toEntityId: "to-1",
-  type: "friend",
+const { get, retire, upsert, list, observe } = vi.hoisted(() => ({
+  get: vi.fn(async (id: string) => ({
+    relationshipId: id,
+    fromEntityId: "from-1",
+    toEntityId: "to-1",
+    type: "friend",
+  })),
+  retire: vi.fn(async () => undefined),
+  upsert: vi.fn(async (row: unknown) => row),
+  list: vi.fn(async () => []),
+  observe: vi.fn(async (row: unknown) => row),
 }));
-const retire = mock(async () => undefined);
-const upsert = mock(async (row: unknown) => row);
-const list = mock(async () => []);
-const observe = mock(async (row: unknown) => row);
 
-mock.module("@elizaos/agent", () => ({
+vi.mock("@elizaos/agent", () => ({
   resolveKnowledgeGraphService: () => ({
     getRelationshipStore: () => ({ get, retire, upsert, list, observe }),
   }),

@@ -700,8 +700,18 @@ function createEphemeralReplyMessageService(
 }
 
 function createCallbackTerminalFailureMessageService(
-  failureKind: "coding_mutation_unverified" | "coding_tool_failure",
+  failureKind:
+    | "coding_mutation_unverified"
+    | "coding_verification_failed"
+    | "coding_tool_failure",
 ): NonNullable<AgentRuntime["messageService"]> {
+  const verificationFailed = failureKind === "coding_verification_failed";
+  const message = verificationFailed
+    ? "Typecheck still fails after repair."
+    : "Shell execution failed.";
+  const code = verificationFailed
+    ? "CODING_VERIFICATION_REPAIR_EXHAUSTED"
+    : "SHELL_UNAVAILABLE";
   return {
     async handleMessage(_runtime, _message, callback) {
       await callback?.({ text: "Done." });
@@ -711,9 +721,9 @@ function createCallbackTerminalFailureMessageService(
         responseMessages: [],
         terminalFailure: {
           kind: failureKind,
-          transient: true,
-          message: "Shell execution failed.",
-          code: "SHELL_UNAVAILABLE",
+          transient: !verificationFailed,
+          message,
+          code,
         },
         mode: "actions" as const,
       };
@@ -993,6 +1003,43 @@ function createSerialVoiceTurnMessageService({
       shouldRespond: true,
       skipEvaluation: true,
       reason: "voice-turn-serialization-regression",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  };
+}
+
+/**
+ * Records the `content.metadata` each runtime turn is handed, so a test can
+ * assert what the route stamped onto the message BEFORE generation. This is
+ * the observation point for the originating-renderer routing identity: the
+ * VIEWS action reads `content.metadata.viewClientId` to target its navigate
+ * frame at the caller's own WebSocket instead of broadcasting globally.
+ */
+function createMetadataCaptureMessageService(
+  captured: Array<Record<string, unknown> | undefined>,
+): NonNullable<AgentRuntime["messageService"]> {
+  return {
+    async handleMessage(_runtime, message) {
+      const content = (message as Memory).content as
+        | { metadata?: unknown }
+        | undefined;
+      const metadata = content?.metadata;
+      captured.push(
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>)
+          : undefined,
+      );
+      return {
+        didRespond: true,
+        responseContent: { text: FINAL_TEXT, thought: THOUGHT },
+        responseMessages: [],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "view-client-stamping-regression",
     }),
     deleteMessage: async () => undefined,
     clearChannel: async () => undefined,
@@ -2562,7 +2609,11 @@ describe("conversation stream SSE contract (#10712)", () => {
     },
   );
 
-  it.each(["coding_mutation_unverified", "coding_tool_failure"] as const)(
+  it.each([
+    "coding_mutation_unverified",
+    "coding_verification_failed",
+    "coding_tool_failure",
+  ] as const)(
     "makes typed %s authoritative when callback prose disagrees",
     async (failureKind) => {
       const { ctx, record, state } = createCtx(
@@ -2577,15 +2628,22 @@ describe("conversation stream SSE contract (#10712)", () => {
       const done = parseSsePayloads(record.writes).find(
         (payload) => payload.type === "done",
       );
+      const verificationFailed = failureKind === "coding_verification_failed";
+      const message = verificationFailed
+        ? "Typecheck still fails after repair."
+        : "Shell execution failed.";
+      const code = verificationFailed
+        ? "CODING_VERIFICATION_REPAIR_EXHAUSTED"
+        : "SHELL_UNAVAILABLE";
       expect(done).toMatchObject({
         type: "done",
-        fullText: "Shell execution failed.",
+        fullText: message,
         failureKind,
         terminalFailure: {
           kind: failureKind,
-          message: "Shell execution failed.",
-          transient: true,
-          code: "SHELL_UNAVAILABLE",
+          message,
+          transient: !verificationFailed,
+          code,
         },
       });
       const messageSentCall = emitEvent.mock.calls.find(
@@ -2594,13 +2652,13 @@ describe("conversation stream SSE contract (#10712)", () => {
       expect(messageSentCall?.[1]).toMatchObject({
         message: {
           content: {
-            text: "Shell execution failed.",
+            text: message,
             failureKind,
             terminalFailure: {
               kind: failureKind,
-              message: "Shell execution failed.",
-              transient: true,
-              code: "SHELL_UNAVAILABLE",
+              message,
+              transient: !verificationFailed,
+              code,
             },
           },
         },
@@ -2744,5 +2802,64 @@ describe("conversation stream SSE contract (#10712)", () => {
       { type: "token", text: "Hello wrld", fullText: "Hello wrld" },
       { type: "token", text: "Hello world", fullText: "Hello world" },
     ]);
+  });
+
+  // ── Originating-renderer routing identity ────────────────────────────────
+  // A chat turn's targeted view navigation depends on one stamping seam: the
+  // stream route copies the caller's `X-ElizaOS-Client-Id` header onto the
+  // runtime message as `content.metadata.viewClientId`. The VIEWS action reads
+  // it to request `delivery: "completed-action"` scoped to that client id, and
+  // /api/views/:id/navigate targets the caller's own WebSocket with the
+  // `shell:navigate:view` frame instead of broadcasting to every device. If
+  // this stamp regresses, agent navigation silently degrades to a global
+  // broadcast that navigates unrelated browsers and devices.
+  describe("originating-renderer client id stamping (targeted VIEWS delivery)", () => {
+    it("stamps the caller's X-ElizaOS-Client-Id onto the turn's content metadata", async () => {
+      const captured: Array<Record<string, unknown> | undefined> = [];
+      const { ctx, record } = createCtx(
+        createMetadataCaptureMessageService(captured),
+      );
+      ctx.req.headers["x-elizaos-client-id"] = "ui-originating-renderer";
+
+      await handleConversationRoutes(ctx);
+
+      const payloads = parseSsePayloads(record.writes);
+      expect(payloads.at(-1)?.type).toBe("done");
+      expect(captured).toHaveLength(1);
+      expect(captured[0]?.viewClientId).toBe("ui-originating-renderer");
+    });
+
+    it("accepts the X-Eliza-Client-Id alias header", async () => {
+      const captured: Array<Record<string, unknown> | undefined> = [];
+      const { ctx } = createCtx(createMetadataCaptureMessageService(captured));
+      ctx.req.headers["x-eliza-client-id"] = "ui-alias-renderer";
+
+      await handleConversationRoutes(ctx);
+
+      expect(captured).toHaveLength(1);
+      expect(captured[0]?.viewClientId).toBe("ui-alias-renderer");
+    });
+
+    it("keeps the turn unstamped when the header is absent or unsafe", async () => {
+      const unsafeHeaders: Array<string | undefined> = [
+        undefined,
+        "spaces are not a client id",
+        "x".repeat(129),
+      ];
+      for (const header of unsafeHeaders) {
+        const captured: Array<Record<string, unknown> | undefined> = [];
+        const { ctx } = createCtx(
+          createMetadataCaptureMessageService(captured),
+        );
+        if (header !== undefined) {
+          ctx.req.headers["x-elizaos-client-id"] = header;
+        }
+
+        await handleConversationRoutes(ctx);
+
+        expect(captured).toHaveLength(1);
+        expect(captured[0]?.viewClientId).toBeUndefined();
+      }
+    });
   });
 });

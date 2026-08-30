@@ -1,7 +1,8 @@
-// Pins the fail-closed error policy of the eliza-app config: the required JWT
-// secret and enabled-but-unconfigured channels must THROW (internal
-// misconfiguration surfaces), while a genuinely-optional, unconfigured channel
-// stays a distinguishable designed-empty value rather than a thrown failure.
+/**
+ * Pins the fail-closed error policy of the eliza-app config: the required JWT
+ * secret and enabled-but-unconfigured channels must throw, while a genuinely
+ * optional, unconfigured channel stays a distinguishable designed-empty value.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
 const TOUCHED_ENV = [
@@ -15,6 +16,19 @@ const TOUCHED_ENV = [
   "ELIZA_APP_DISCORD_CLIENT_SECRET",
   "ELIZA_APP_BLOOIO_ENABLED",
   "ELIZA_APP_BLOOIO_API_KEY",
+  "ELIZA_APP_WHATSAPP_ENABLED",
+  "ELIZA_APP_WHATSAPP_ACCESS_TOKEN",
+  "ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID",
+  "ELIZA_APP_WHATSAPP_APP_SECRET",
+  "ELIZA_APP_WHATSAPP_VERIFY_TOKEN",
+  "ELIZA_APP_WHATSAPP_PHONE_NUMBER",
+] as const;
+
+const WHATSAPP_REQUIRED_ENV = [
+  "ELIZA_APP_WHATSAPP_ACCESS_TOKEN",
+  "ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID",
+  "ELIZA_APP_WHATSAPP_APP_SECRET",
+  "ELIZA_APP_WHATSAPP_VERIFY_TOKEN",
 ] as const;
 
 let saved: Record<string, string | undefined>;
@@ -94,5 +108,36 @@ describe("eliza-app config fail-closed policy", () => {
     // required secret -> thrown error. A caller can tell them apart.
     expect(elizaAppConfig.telegram.botToken).toBe("");
     expect(() => elizaAppConfig.jwt.secret).toThrow();
+  });
+
+  it("requires the complete WhatsApp 4-of-4 runtime contract", async () => {
+    const { validateElizaAppConfig } = await loadConfig();
+    process.env.ELIZA_APP_JWT_SECRET = "s3cr3t-value";
+
+    const combinations = 1 << WHATSAPP_REQUIRED_ENV.length;
+    for (let mask = 0; mask < combinations; mask += 1) {
+      for (const name of WHATSAPP_REQUIRED_ENV) delete process.env[name];
+      delete process.env.ELIZA_APP_WHATSAPP_ENABLED;
+      for (const [index, name] of WHATSAPP_REQUIRED_ENV.entries()) {
+        if ((mask & (1 << index)) !== 0) process.env[name] = "configured-contract-value";
+      }
+
+      const supplied = WHATSAPP_REQUIRED_ENV.filter(
+        (_, index) => (mask & (1 << index)) !== 0,
+      ).length;
+      if (supplied === 0 || supplied === WHATSAPP_REQUIRED_ENV.length) {
+        expect(() => validateElizaAppConfig()).not.toThrow();
+      } else {
+        expect(() => validateElizaAppConfig()).toThrow(/WhatsApp is enabled/);
+      }
+    }
+
+    for (const name of WHATSAPP_REQUIRED_ENV) delete process.env[name];
+    process.env.ELIZA_APP_WHATSAPP_ENABLED = "true";
+    expect(() => validateElizaAppConfig()).toThrow(/WhatsApp is enabled/);
+
+    delete process.env.ELIZA_APP_WHATSAPP_ENABLED;
+    process.env.ELIZA_APP_WHATSAPP_PHONE_NUMBER = "+15551234567";
+    expect(() => validateElizaAppConfig()).not.toThrow();
   });
 });

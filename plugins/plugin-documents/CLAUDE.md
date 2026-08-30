@@ -4,7 +4,7 @@ HTTP API surface and reusable presentation components for the elizaOS document s
 
 ## Purpose / role
 
-Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It does not register a view: the app shell's built-in Knowledge view owns the first-party document UI and consumes these routes. It also does not register owner actions; `OWNER_DOCUMENTS` is host-adapted by `@elizaos/plugin-personal-assistant`, which owns approval queue gating, scheduled-task deadline tracking, and document-request orchestration. This plugin has no providers, evaluators, or event handlers.
+Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It also registers the Knowledge document views through `src/register.ts`, so the app shell discovers and lazy-loads the UI from this plugin without importing feature views from `@elizaos/ui`. It also does not register owner actions; `OWNER_DOCUMENTS` is host-adapted by `@elizaos/plugin-personal-assistant`, which owns approval queue gating, scheduled-task deadline tracking, and document-request orchestration. This plugin has no providers, evaluators, or event handlers.
 
 Loading: added explicitly to the agent plugin list or via character config. It is not unconditionally enabled by default; the runtime must resolve it by name (`@elizaos/plugin-documents`).
 
@@ -33,7 +33,9 @@ Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflo
 `@elizaos/plugin-personal-assistant` and delegates to this package's document
 routes/store where appropriate.
 
-No views, providers, services, evaluators, or event handlers are registered.
+No providers, services, evaluators, or event handlers are registered. The
+Knowledge route and its document-management views are app-shell registrations
+owned by this plugin.
 
 ## Layout
 
@@ -48,8 +50,13 @@ src/
                          @elizaos/agent/api/documents-service-loader
   components/
     documents/
-      DocumentsView.tsx          React view for documents UI
-      DocumentsView.test.tsx     Component tests
+      DocumentsView.tsx                  React document browser view
+      DocumentsSpatialView.tsx            Spatial document browser view
+      KnowledgeView.tsx                   Knowledge route shell
+      KnowledgeDocumentsView.tsx          Multimedia Knowledge document view
+      documents-detail.tsx                Document detail surface
+      documents-upload.tsx                Upload surface
+  register.ts                              Manifest-driven app-shell registration
 test/
   documents-api.live.e2e.test.ts   Live API e2e tests
   documents-live.e2e.test.ts       Live document ingestion e2e tests
@@ -61,9 +68,11 @@ test/
 Scripts that exist in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-documents build               # build:js + build:types
+bun run --cwd plugins/plugin-documents build               # build:js + build:views + build:types
 bun run --cwd plugins/plugin-documents build:js            # tsup bundling
+bun run --cwd plugins/plugin-documents build:views         # Vite Knowledge view bundle
 bun run --cwd plugins/plugin-documents build:types         # tsc --noCheck type emit
+bun run --cwd plugins/plugin-documents typecheck           # source TypeScript check
 bun run --cwd plugins/plugin-documents clean               # rm -rf dist
 bun run --cwd plugins/plugin-documents test                # vitest run (unit tests)
 bun run --cwd plugins/plugin-documents test:e2e:manual     # vitest run live e2e tests

@@ -88,6 +88,28 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     expect(activity).toContain("unregisterOnSharedPreferenceChangeListener");
   });
 
+  it("starts the gateway before foreground-service eligibility is lost", () => {
+    const activity = source("MainActivity.java");
+    const gateway = source("GatewayConnectionService.java");
+    const onPauseBody = activity.match(
+      /public void onPause\(\) \{([\s\S]*?)\n {4}\}/,
+    )?.[1];
+    const onStopBody = activity.match(
+      /public void onStop\(\) \{([\s\S]*?)\n {4}\}/,
+    )?.[1];
+
+    expect(onPauseBody).toBeDefined();
+    expect(onPauseBody).toContain("GatewayConnectionService.start(this)");
+    expect(
+      onPauseBody.indexOf("GatewayConnectionService.start(this)"),
+    ).toBeLessThan(onPauseBody.indexOf("super.onPause()"));
+    expect(onStopBody).toBeUndefined();
+    expect(gateway).toContain("context.startForegroundService(intent)");
+    expect(gateway).not.toContain(
+      "context.startService(intent);\n            return;",
+    );
+  });
+
   it("reconciles native token provisioning and removal", () => {
     const service = source("ElizaAgentService.java");
     const scheduler = source("ElizaWorkScheduler.java");

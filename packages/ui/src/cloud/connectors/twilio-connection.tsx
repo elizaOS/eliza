@@ -21,8 +21,10 @@ import {
 } from "../../cloud-ui/components/connection-card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
@@ -171,7 +173,7 @@ export function TwilioConnection() {
         name={t("cloud.twilio.cardName", {
           defaultValue: "Twilio SMS & Voice",
         })}
-        icon={<Phone className="text-red-500" />}
+        icon={<Phone className="text-accent" />}
         description={t("cloud.twilio.cardDescription", {
           defaultValue:
             "Connect Twilio for SMS, MMS, and voice call automation",
@@ -184,7 +186,7 @@ export function TwilioConnection() {
   return (
     <ConnectionCard
       name={t("cloud.twilio.cardName", { defaultValue: "Twilio SMS & Voice" })}
-      icon={<Phone className="text-red-500" />}
+      icon={<Phone className="text-accent" />}
       description={t("cloud.twilio.cardDescription", {
         defaultValue: "Connect Twilio for SMS, MMS, and voice call automation",
       })}
@@ -206,19 +208,21 @@ export function TwilioConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Phone className="size-6 text-red-600" />}
-            iconClassName="bg-red-100"
+            icon={<Phone className="size-6 text-accent" />}
+            iconClassName="bg-accent-subtle"
             title={status?.phoneNumber}
             subtitle={t("cloud.twilio.connectedSubtitle", {
               defaultValue: "Twilio Number Connected",
             })}
           >
             {status?.webhookConfigured && (
-              <Badge variant="outline" className="mt-1 text-xs">
-                {t("cloud.twilio.webhookActive", {
-                  defaultValue: "Webhook Active",
-                })}
-              </Badge>
+              <div className="mt-1">
+                <Badge variant="outline">
+                  {t("cloud.twilio.webhookActive", {
+                    defaultValue: "Webhook Active",
+                  })}
+                </Badge>
+              </div>
             )}
           </ConnectionIdentityPanel>
 
@@ -275,17 +279,17 @@ export function TwilioConnection() {
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
                 {t("cloud.twilio.instructGoTo", { defaultValue: "Go to" })}{" "}
-                <a
+                <TextLink
                   href="https://console.twilio.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-red-600 hover:underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1"
                 >
                   {t("cloud.twilio.console", {
                     defaultValue: "Twilio Console",
                   })}
                   <ExternalLink className="size-3" />
-                </a>
+                </TextLink>
               </li>
               <li>
                 {t("cloud.twilio.instructSignIn", {
@@ -368,7 +372,7 @@ export function TwilioConnection() {
             </div>
           </div>
 
-          <div className="p-4 bg-muted rounded-sm">
+          <Card variant="flatPadded">
             <h4 className="font-medium mb-2">
               {t("cloud.twilio.whatYouCanDo", {
                 defaultValue: "What you can do with Twilio:",
@@ -396,7 +400,7 @@ export function TwilioConnection() {
                 })}
               </li>
             </ul>
-          </div>
+          </Card>
 
           <Button
             onClick={handleConnect}
@@ -406,7 +410,7 @@ export function TwilioConnection() {
               !authToken.trim() ||
               !phoneNumber.trim()
             }
-            className="w-full bg-red-600 hover:bg-red-700"
+            className="w-full"
           >
             {isConnecting ? (
               <>

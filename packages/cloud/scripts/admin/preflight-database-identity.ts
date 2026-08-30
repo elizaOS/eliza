@@ -4,9 +4,18 @@
  * is read-only; authoritative release enforcement happens inside the migrator.
  */
 
-import { createHash } from "node:crypto";
 import { appendFile } from "node:fs/promises";
-import { createRequire } from "node:module";
+import {
+  type DatabaseIdentityReceipt,
+  type IdentityQueryClient,
+  readDatabaseIdentityReceipt,
+} from "./database-identity-receipt";
+
+export type {
+  DatabaseIdentityReceipt,
+  IdentityQueryClient,
+} from "./database-identity-receipt";
+export { readDatabaseIdentityReceipt } from "./database-identity-receipt";
 
 interface ClientConfig {
   application_name?: string;
@@ -22,18 +31,7 @@ interface RuntimePgClient extends IdentityQueryClient {
   end(): Promise<void>;
 }
 
-const { Client } = createRequire(import.meta.url)("pg") as {
-  Client: new (config: ClientConfig) => RuntimePgClient;
-};
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
-const IDENTITY_QUERY = `
-SELECT
-  control.system_identifier::text AS system_identifier,
-  pg_catalog.current_database()::text AS database_name,
-  current_user::text AS role_name,
-  pg_catalog.current_setting('server_version_num')::text AS server_version_num
-FROM pg_catalog.pg_control_system() AS control
-`;
 
 export type DatabaseIdentityGateMode = "off" | "report" | "enforce";
 
@@ -45,29 +43,93 @@ export interface DatabaseIdentityConfig {
   mode: DatabaseIdentityGateMode;
 }
 
-interface DatabaseIdentityRow {
-  database_name: string;
-  role_name: string;
-  server_version_num: string;
-  system_identifier: string;
-}
-
-export interface DatabaseIdentityReceipt {
-  authoritySha256: string;
-  clusterSha256: string;
-  environment: "staging" | "production";
-  postgresMajor: number;
-  version: 1;
-}
-
-export interface IdentityQueryClient {
-  query(text: string): Promise<{ rows: unknown[] }>;
-}
-
 export interface IdentityPreflightResult {
   mismatches: Array<"cluster" | "authority">;
+  failureCategory?: DatabaseIdentityFailureCategory;
   receipt?: DatabaseIdentityReceipt;
   status: "disabled" | "match" | "mismatch" | "reported" | "unavailable";
+}
+
+export type DatabaseIdentityFailureCategory =
+  | "dependency_unavailable"
+  | "database_connection_failed"
+  | "database_query_failed"
+  | "operator_setup_failed";
+
+export type DatabaseIdentityDependencyLabel = "pg" | "core_edge" | "db_client";
+
+export class DatabaseIdentityDependencyError extends Error {
+  constructor(readonly dependency: DatabaseIdentityDependencyLabel) {
+    super(`database_identity_dependency_${dependency}_unavailable`);
+    this.name = "DatabaseIdentityDependencyError";
+  }
+}
+
+const DEPENDENCY_PROBES = [
+  ["pg", "pg"],
+  ["core_edge", "@elizaos/core/edge"],
+  ["db_client", "@elizaos/cloud-shared/db/client"],
+] as const satisfies ReadonlyArray<
+  readonly [DatabaseIdentityDependencyLabel, string]
+>;
+
+/** Probes the fixed runtime chain in order and discards every import exception. */
+export async function probeDatabaseIdentityDependencies(
+  importer: (specifier: string) => Promise<unknown> = (specifier) =>
+    import(specifier),
+): Promise<void> {
+  for (const [label, specifier] of DEPENDENCY_PROBES) {
+    try {
+      await importer(specifier);
+    } catch {
+      // error-policy:J1 only the fixed probe label crosses the CLI boundary;
+      // loader messages and paths are deliberately discarded.
+      throw new DatabaseIdentityDependencyError(label);
+    }
+  }
+}
+
+const DEPENDENCY_ERROR_CODES = new Set([
+  "MODULE_NOT_FOUND",
+  "ERR_MODULE_NOT_FOUND",
+]);
+const CONNECTION_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETDOWN",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+  "28P01",
+  "3D000",
+]);
+
+/** Maps failures to a fixed non-sensitive class without retaining provider text. */
+export function classifyDatabaseIdentityFailure(
+  error: unknown,
+): Exclude<DatabaseIdentityFailureCategory, "database_query_failed"> {
+  if (error instanceof DatabaseIdentityDependencyError) {
+    return "dependency_unavailable";
+  }
+  if (typeof error === "object" && error !== null) {
+    const code = Reflect.get(error, "code");
+    if (typeof code === "string") {
+      if (DEPENDENCY_ERROR_CODES.has(code)) return "dependency_unavailable";
+      if (CONNECTION_ERROR_CODES.has(code)) return "database_connection_failed";
+    }
+  }
+  return "operator_setup_failed";
+}
+
+/** Formats only bounded diagnostics suitable for public workflow logs. */
+export function databaseIdentityFailureDiagnostic(error: unknown): string {
+  const category = classifyDatabaseIdentityFailure(error);
+  const dependency =
+    error instanceof DatabaseIdentityDependencyError
+      ? `; dependency=${error.dependency}`
+      : "";
+  return `category=${category}${dependency}`;
 }
 
 function readMode(value: string | undefined): DatabaseIdentityGateMode {
@@ -160,65 +222,6 @@ export function readDatabaseIdentityConfig(
   return config;
 }
 
-function isIdentityRow(value: unknown): value is DatabaseIdentityRow {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    "system_identifier" in value &&
-    typeof value.system_identifier === "string" &&
-    /^\d+$/.test(value.system_identifier) &&
-    "database_name" in value &&
-    typeof value.database_name === "string" &&
-    value.database_name.length > 0 &&
-    "role_name" in value &&
-    typeof value.role_name === "string" &&
-    value.role_name.length > 0 &&
-    "server_version_num" in value &&
-    typeof value.server_version_num === "string" &&
-    /^\d+$/.test(value.server_version_num)
-  );
-}
-
-function digest(parts: readonly string[]): string {
-  const hash = createHash("sha256");
-  for (const part of parts) {
-    hash.update(part, "utf8");
-    hash.update("\0", "utf8");
-  }
-  return hash.digest("hex");
-}
-
-/** Queries only stable, nonsecret PostgreSQL identity fields and hashes raw names. */
-export async function readDatabaseIdentityReceipt(
-  client: IdentityQueryClient,
-  environment: "staging" | "production",
-): Promise<DatabaseIdentityReceipt> {
-  const result = await client.query(IDENTITY_QUERY);
-  if (result.rows.length !== 1 || !isIdentityRow(result.rows[0])) {
-    throw new Error("database identity query returned an invalid row");
-  }
-  const row = result.rows[0];
-  const postgresMajor = Math.floor(Number(row.server_version_num) / 10_000);
-  if (!Number.isSafeInteger(postgresMajor) || postgresMajor < 10) {
-    throw new Error(
-      "database identity query returned an invalid PostgreSQL version",
-    );
-  }
-  return {
-    version: 1,
-    environment,
-    postgresMajor,
-    clusterSha256: digest(["eliza-postgres-cluster-v1", row.system_identifier]),
-    authoritySha256: digest([
-      "eliza-postgres-authority-v1",
-      environment,
-      row.system_identifier,
-      row.role_name,
-      row.database_name,
-    ]),
-  };
-}
-
 /** Evaluates the receipt without exposing the underlying server, role, or database names. */
 export async function runDatabaseIdentityPreflight(
   config: DatabaseIdentityConfig,
@@ -234,7 +237,11 @@ export async function runDatabaseIdentityPreflight(
     receipt = await readDatabaseIdentityReceipt(client, config.environment);
   } catch (error) {
     if (config.mode === "report") {
-      return { status: "unavailable", mismatches: [] };
+      return {
+        status: "unavailable",
+        mismatches: [],
+        failureCategory: "database_query_failed",
+      };
     }
     throw error;
   }
@@ -285,6 +292,13 @@ async function clientConfig(databaseUrl: string): Promise<ClientConfig> {
   };
 }
 
+async function createRuntimePgClient(
+  databaseUrl: string,
+): Promise<RuntimePgClient> {
+  const { Client } = await import("pg");
+  return new Client(await clientConfig(databaseUrl));
+}
+
 /** Formats a redacted receipt for operator logs and GitHub step summaries. */
 function formatDatabaseIdentitySummary(
   result: IdentityPreflightResult,
@@ -326,7 +340,7 @@ export async function publishDatabaseIdentityResult(
   }
   if (result.status === "unavailable") {
     process.stdout.write(
-      "::warning::database identity report unavailable; inspect protected operator logs\n",
+      `::warning::database identity report unavailable; category=${result.failureCategory ?? "operator_setup_failed"}\n`,
     );
   }
   if (config.ignoredExpectedDigests?.length) {
@@ -337,6 +351,13 @@ export async function publishDatabaseIdentityResult(
 }
 
 async function main(): Promise<void> {
+  if (process.argv.includes("--probe-dependencies")) {
+    await probeDatabaseIdentityDependencies();
+    process.stdout.write(
+      "[database-identity] dependency probes passed: pg,core_edge,db_client\n",
+    );
+    return;
+  }
   const environment: Readonly<Record<string, string | undefined>> = process.env;
   const config = readDatabaseIdentityConfig(environment);
   if (config.mode === "off") {
@@ -359,7 +380,8 @@ async function main(): Promise<void> {
   }
   let client: RuntimePgClient | undefined;
   try {
-    client = new Client(await clientConfig(databaseUrl));
+    await probeDatabaseIdentityDependencies();
+    client = await createRuntimePgClient(databaseUrl);
     await client.connect();
     const result = await runDatabaseIdentityPreflight(config, client);
     await publishDatabaseIdentityResult(config, result, environment);
@@ -368,7 +390,7 @@ async function main(): Promise<void> {
     // errors cannot leak connection strings, hosts, roles, or database names.
     if (config.mode === "report") {
       process.stdout.write(
-        "::warning::database identity report unavailable; inspect protected operator logs\n",
+        `::warning::database identity report unavailable; ${databaseIdentityFailureDiagnostic(error)}\n`,
       );
       return;
     }
@@ -384,9 +406,9 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-  main().catch(() => {
+  main().catch((error) => {
     process.stderr.write(
-      "[database-identity] fatal: identity enforcement failed\n",
+      `[database-identity] fatal: ${databaseIdentityFailureDiagnostic(error)}\n`,
     );
     process.exit(1);
   });

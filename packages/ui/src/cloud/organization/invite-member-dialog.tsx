@@ -22,7 +22,6 @@ import { AlertCircle, Copy, Link2, Loader2, Mail, UserCog } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  BrandButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -37,7 +36,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../cloud-ui";
+import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { SemanticForm } from "../../components/ui/semantic-form";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import type { InviteRole } from "./data/cloud-org-types";
 import {
@@ -119,7 +121,7 @@ export function InviteMemberDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="bg-bg border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
+      <DialogContent className="p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
         {inviteLink ? (
           <>
             <DialogHeader>
@@ -140,34 +142,35 @@ export function InviteMemberDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="bg-surface border border-brand-surface p-3 flex items-center gap-2">
+            <Card variant="insetPadded" flow="row" gap="compact">
               <code className="flex-1 text-xs font-mono text-txt-strong break-all">
                 {inviteLink}
               </code>
               <Button
-                variant="ghost"
+                variant="outlineMuted"
+                size="icon-sm"
                 type="button"
                 onClick={handleCopyLink}
                 aria-label="Copy invite link"
-                className="p-2 hover:bg-surface transition-colors border border-border shrink-0"
+                className="shrink-0"
               >
                 <Copy className="size-4 text-muted" />
               </Button>
-            </div>
+            </Card>
             <p className="text-xs font-mono text-muted">
               The link contains no secrets. Joining still requires signing in
               with the invited email.
             </p>
 
             <DialogFooter>
-              <BrandButton
+              <Button
                 type="button"
-                variant="primary"
+                variant="default"
                 onClick={handleClose}
                 className="font-mono text-sm"
               >
                 Done
-              </BrandButton>
+              </Button>
             </DialogFooter>
           </>
         ) : (
@@ -188,14 +191,14 @@ export function InviteMemberDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <SemanticForm onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="bg-danger/10 border border-danger/40 p-3 flex items-start gap-2">
+                <Alert variant="dashboardError" className="flex p-3">
                   <AlertCircle className="size-4 text-danger shrink-0 mt-0.5" />
                   <p className="text-xs md:text-sm font-mono text-danger">
                     {error}
                   </p>
-                </div>
+                </Alert>
               )}
 
               <div className="space-y-2">
@@ -214,7 +217,7 @@ export function InviteMemberDialog({
                   disabled={isSubmitting}
                   required
                   autoFocus
-                  className="bg-transparent border-border text-txt-strong"
+                  variant="form"
                 />
                 <p className="text-xs font-mono text-muted">
                   They&apos;ll need to sign up with this email address
@@ -234,13 +237,10 @@ export function InviteMemberDialog({
                   onValueChange={(value) => setRole(value as InviteRole)}
                   disabled={isSubmitting}
                 >
-                  <SelectTrigger
-                    id="role"
-                    className="bg-transparent border-border text-txt-strong"
-                  >
+                  <SelectTrigger id="role" variant="form">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-bg border-border">
+                  <SelectContent variant="form">
                     <SelectItem value="member">
                       <div className="flex flex-col items-start">
                         <span className="font-mono font-medium text-txt-strong">
@@ -267,17 +267,17 @@ export function InviteMemberDialog({
 
               <DialogFooter className="gap-2 sm:gap-0 flex flex-col sm:flex-row">
                 <Button
-                  variant="ghost"
+                  variant="ghostMuted"
                   type="button"
                   onClick={handleClose}
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-txt-strong hover:bg-surface transition-colors disabled:opacity-50 order-2 sm:order-1"
+                  className="order-2 sm:order-1"
                 >
                   Cancel
                 </Button>
-                <BrandButton
+                <Button
                   type="submit"
-                  variant="primary"
+                  variant="default"
                   disabled={isSubmitting}
                   className="font-mono text-sm order-1 sm:order-2"
                 >
@@ -292,9 +292,9 @@ export function InviteMemberDialog({
                       Send Invitation
                     </>
                   )}
-                </BrandButton>
+                </Button>
               </DialogFooter>
-            </form>
+            </SemanticForm>
           </>
         )}
       </DialogContent>
