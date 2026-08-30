@@ -829,6 +829,9 @@ jobs:
               *'connection refused'*|*'econnrefused'*) category='ssh_refused' ;;
               *'could not resolve'*|*'enotfound'*|*'getaddrinfo'*) category='ssh_dns' ;;
               *'connection reset'*|*'econnreset'*) category='ssh_reset' ;;
+              *'command exited with code'*) category='ssh_command_exit' ;;
+              *'connection error for'*) category='ssh_connect_error' ;;
+              *'stream error'*) category='ssh_stream_error' ;;
               *'replacement secret cleanup receipt was missing or malformed'*) category='secret_receipt_invalid' ;;
               *'replacement cleanup state receipt was malformed'*) category='state_receipt_invalid' ;;
               *'replacement candidate observation receipt was missing or malformed'*) category='candidate_observation_receipt_invalid' ;;
