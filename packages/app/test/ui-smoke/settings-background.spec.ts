@@ -12,6 +12,7 @@ import {
   installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
+  UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
@@ -213,7 +214,7 @@ async function installSettingsBackgroundRoutes(page: Page): Promise<void> {
         updatedAt: new Date(0).toISOString(),
       },
       downloads: [],
-      hardware: { status: "unsupported" },
+      hardware: UI_SMOKE_CPU_ONLY_HARDWARE,
       assignments: {},
       textReadiness: {
         updatedAt: new Date(0).toISOString(),
