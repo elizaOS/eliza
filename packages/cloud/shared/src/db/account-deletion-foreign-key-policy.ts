@@ -23,9 +23,9 @@ export interface AccountDeletionForeignKeyDescriptor {
   targetColumns: string;
   onDelete: string;
 }
-/** SHA-256 of the 230 sorted direct user/organization FK descriptors. */
+/** SHA-256 of the 235 sorted direct user/organization FK descriptors. */
 export const ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256 =
-  "14ebcce0c95663b676ae19b0eaad8d20d5ef26417a2ea0a135e47f57e114644c";
+  "e9ee0f05eaeb75b5d38f1f42120cd7004872add007c5395cee54f128ce1e98fe";
 
 function serializeDescriptor(descriptor: AccountDeletionForeignKeyDescriptor): string {
   return [
@@ -155,6 +155,8 @@ const RETAINED_AUDIT_TABLES = new Set([
   "app_reservation_settlements",
   "app_reviews",
   "app_secret_requirements",
+  "billing_cancel_command_keys",
+  "billing_cancel_commands",
   "cloud_files",
   "compute_billing_rate_segments",
   "container_billing_legacy_ledger_bindings",
