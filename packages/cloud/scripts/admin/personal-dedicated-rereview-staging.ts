@@ -264,7 +264,7 @@ async function defaultResolveSelection(
 ): Promise<ResolvedSelection> {
   const [
     { and, eq, isNull },
-    { dbRead },
+    { dbWrite },
     { apiKeys },
     { users },
     selectionSchema,
@@ -284,7 +284,9 @@ async function defaultResolveSelection(
   const { personalDedicatedAdoptionSelections } = selectionSchema;
   const { personalSharedAgentId } = shared;
   const keyHash = createHash("sha256").update(apiKey).digest("hex");
-  const keyRows = await dbRead
+  // Identity and receipt resolution are execution authority. A replica can
+  // lag key revocation or receipt replacement, so every read uses primary.
+  const keyRows = await dbWrite
     .select()
     .from(apiKeys)
     .where(
@@ -301,7 +303,7 @@ async function defaultResolveSelection(
   if (key.expires_at && key.expires_at <= new Date()) {
     throw new PersonalDedicatedRereviewOperatorError("smoke_key_expired");
   }
-  const ownerRows = await dbRead
+  const ownerRows = await dbWrite
     .select({ id: users.id, organizationId: users.organization_id })
     .from(users)
     .where(
@@ -324,7 +326,7 @@ async function defaultResolveSelection(
     organizationId: owner.organizationId,
     userId: owner.id,
   });
-  const receipts = await dbRead
+  const receipts = await dbWrite
     .select({
       retainedAgentId: personalDedicatedAdoptionSelections.dedicated_agent_id,
     })
@@ -357,7 +359,7 @@ async function defaultResolveSelection(
 async function defaultSnapshot(
   input: ResolvedSelection,
 ): Promise<MutationSnapshot> {
-  const [{ and, eq }, { dbRead }, sandboxSchema, jobsSchema] =
+  const [{ and, eq }, { dbWrite }, sandboxSchema, jobsSchema] =
     await Promise.all([
       import("drizzle-orm"),
       import("@elizaos/cloud-shared/db/client"),
@@ -366,7 +368,9 @@ async function defaultSnapshot(
     ]);
   const { agentSandboxes } = sandboxSchema;
   const { jobs } = jobsSchema;
-  const agentRows = await dbRead
+  // These digests claim exact pre/post mutation proof, so replica freshness is
+  // not an acceptable authority even though both queries are read-only.
+  const agentRows = await dbWrite
     .select()
     .from(agentSandboxes)
     .where(
@@ -376,7 +380,7 @@ async function defaultSnapshot(
       ),
     )
     .orderBy(agentSandboxes.id);
-  const jobRows = await dbRead
+  const jobRows = await dbWrite
     .select()
     .from(jobs)
     .where(

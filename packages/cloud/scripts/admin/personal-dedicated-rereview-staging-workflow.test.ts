@@ -79,4 +79,16 @@ describe("personal Dedicated staging re-review workflow", () => {
       job.steps.some((candidate) => candidate.run?.includes("upload-artifact")),
     ).toBe(false);
   });
+
+  test("uses primary database authority for identity and mutation proofs", () => {
+    const command = readFileSync(
+      resolve(
+        repoRoot,
+        "packages/cloud/scripts/admin/personal-dedicated-rereview-staging.ts",
+      ),
+      "utf8",
+    );
+    expect(command).not.toContain("dbRead");
+    expect(command.match(/dbWrite/g)?.length).toBeGreaterThanOrEqual(7);
+  });
 });
