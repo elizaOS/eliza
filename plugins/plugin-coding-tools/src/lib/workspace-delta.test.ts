@@ -25,6 +25,7 @@ function beginLocalWorkspaceDeltaObservation(
 ) {
   return beginObservation(cwd, {
     executionDomainId: TEST_EXECUTION_DOMAIN_ID,
+    maxObservationMs: 10_000,
     ...dependencies,
   });
 }
