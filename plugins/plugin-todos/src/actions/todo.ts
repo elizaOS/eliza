@@ -594,7 +594,10 @@ async function resolveTodoIdByVisibleContent(
   service: TodoStore,
   scope: { entityId: string; agentId: string },
   params: Record<string, unknown>,
-): Promise<{ ok: true; id: string | null } | { ok: false; failure: ActionResult }> {
+): Promise<
+  | { ok: true; id: string | null }
+  | { ok: false; failure: ActionResult }
+> {
   // targetContent (when present) is the exact locator; content alone also
   // locates when id is absent, but for update the caller may pass
   // targetContent to locate while content carries the replacement text.
