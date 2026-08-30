@@ -54,9 +54,17 @@ const markProviderDispatched = mock(async () => undefined);
 
 const getById = mock();
 const recordUsageWithoutDeduction = mock(async () => {});
+const recordZeroCostUsage = mock(async () => {});
+// The route's fail-closed numeric gate (#22961) runs before admission. The
+// real gate's behavior is pinned at the service boundary
+// (user-mcps-recordusage-numeric.test.ts); here it is a boundary spy like
+// every other mocked collaborator, available for ordering/call assertions.
+const assertSettleableMcpRow = mock(() => undefined);
 mock.module("@/lib/services/user-mcps", () => ({
+  assertSettleableMcpRow,
   userMcpsService: {
     getById,
+    recordZeroCostUsage,
     recordUsageWithoutDeduction,
   },
 }));
@@ -118,6 +126,8 @@ beforeEach(() => {
   getReferrer.mockReset();
   getReferrer.mockResolvedValue(null);
   recordUsageWithoutDeduction.mockClear();
+  recordZeroCostUsage.mockReset();
+  recordZeroCostUsage.mockResolvedValue(undefined);
   assertSafeOutboundUrl.mockResolvedValue(
     new URL("https://mcp.example.test/rpc"),
   );
@@ -455,6 +465,96 @@ test("successful call settles exact cost and records usage", async () => {
   expect(settle).toHaveBeenCalledWith(0.05);
   expect(settleUnknown).not.toHaveBeenCalled();
   expect(recordUsageWithoutDeduction).toHaveBeenCalledTimes(1);
+});
+
+test("settlement receipt is keyed on the admission rail's durable charge row (#22961 rebase)", async () => {
+  // Durable-admission mode: settle() commits the deferred debit and reports
+  // its id through settlementTransactionIds — the settlement receipt's
+  // payment event must be THAT uuid, never the requestId fallback that
+  // claimPrechargeForSettlement cannot cast.
+  const durableId = "5f2c0a34-9b1e-4c8d-a6f7-2e8d1b3c4d5e";
+  settle.mockImplementationOnce(
+    async () =>
+      ({
+        reservedAmount: 0.05,
+        actualCost: 0.05,
+        settlementTransactionIds: [durableId],
+        adjustmentType: "none",
+      }) as unknown as null,
+  );
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  expect(res.status).toBe(200);
+  expect(settle).toHaveBeenCalledWith(0.05);
+  expect(recordUsageWithoutDeduction).toHaveBeenCalledTimes(1);
+  expect(
+    (
+      recordUsageWithoutDeduction.mock.calls[0] as unknown as [
+        { metadata?: { preChargeTransactionId?: string } },
+      ]
+    )[0]?.metadata,
+  ).toMatchObject({
+    preChargeTransactionId: durableId,
+  });
+});
+
+test("free-tier MCP call skips the admission rail and records zero-cost usage (#22961 rebase)", async () => {
+  // credits_per_request 0 => totalAmountUsd <= 0 => the flat cost contract
+  // rejects it; admission must never be consulted and usage is recorded via
+  // the zero-cost path with no settlement claim.
+  getById.mockResolvedValueOnce({
+    ...EXTERNAL_MCP,
+    credits_per_request: "0",
+  });
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  expect(res.status).toBe(200);
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
+  expect(settleUnknown).not.toHaveBeenCalled();
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+  expect(recordZeroCostUsage).toHaveBeenCalledTimes(1);
+  expect(
+    (
+      recordZeroCostUsage.mock.calls[0] as unknown as [
+        { toolName?: string; metadata?: Record<string, unknown> },
+      ]
+    )[0],
+  ).toMatchObject({
+    // post() dispatches params.name "t"; the route forwards the real parsed
+    // tool name (toolNameFromRpcBody), not the malformed-body "unknown" path.
+    toolName: "t",
+    metadata: { success: true },
+  });
+});
+
+test("free-tier price change mid-flight cannot bill the buyer (#22961 rebase)", async () => {
+  // The route snapshot says free (credits_per_request 0), so admission is
+  // skipped; the MCP row flips to paid (5) BEFORE usage recording. The
+  // zero-cost API must record 0 anyway — it never re-reads the price row,
+  // so a mid-flight price change cannot produce a post-delivery charge.
+  getById.mockResolvedValueOnce({
+    ...EXTERNAL_MCP,
+    credits_per_request: "0",
+  });
+  recordZeroCostUsage.mockImplementationOnce(async () => {
+    // Simulate the price flip landing before the usage write.
+    getById.mockResolvedValue({ ...EXTERNAL_MCP });
+  });
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const res = await post();
+  expect(res.status).toBe(200);
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+  expect(settle).not.toHaveBeenCalled();
+  expect(settleUnknown).not.toHaveBeenCalled();
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+  expect(recordZeroCostUsage).toHaveBeenCalledTimes(1);
 });
 
 test("stalled endpoint prevalidation returns 504 before admission", async () => {

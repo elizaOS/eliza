@@ -36,7 +36,10 @@ import { affiliatesService } from "@/lib/services/affiliates";
 import { containersService } from "@/lib/services/containers";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { userMcpsService } from "@/lib/services/user-mcps";
+import {
+  assertSettleableMcpRow,
+  userMcpsService,
+} from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
@@ -329,6 +332,15 @@ app.post("/", async (c) => {
     let affiliateOwnerId: string | undefined;
     let affiliateCodeId: string | undefined;
 
+    // Fail-closed precharge gate (#22961): validate every NUMERIC the
+    // settlement math will read BEFORE the buyer is debited below. A corrupt
+    // share/price row must refuse the call here, not debit-then-throw mid
+    // settlement with no settlement row to key the debit's recovery. The rail
+    // is passed explicitly (#27992): this proxy settles on credits (the x402
+    // rail's wiring is owned by #22327), and a future x402 call site must not
+    // be able to reach delivery without the rail-shape refusal firing here.
+    assertSettleableMcpRow(mcp, { paymentType: "credits" });
+
     const referrerPromise = affiliatesService
       .getReferrer(user.id)
       .catch((error: Error | string) => {
@@ -359,6 +371,15 @@ app.post("/", async (c) => {
       affiliateFeePoints: affiliateFeeCredits,
       platformFeePoints: platformFeeCredits,
     });
+
+    // Free tier (#22961): a zero-total call is not an economic event. The flat
+    // admission rail's cost contract requires a positive finite total
+    // (`reserveFlatUsageCredits` rejects cost <= 0), and the settlement
+    // authority has no payment event to key on without a debit — so a free MCP
+    // skips admission entirely. Usage is recorded after the proxied call
+    // resolves (toolName is parsed from the RPC body below), without claiming a
+    // payment event; settleFailure is a no-op while `admission` stays unset.
+    const isFreeTierCall = chargeReceipt.totalAmountUsd <= 0;
 
     const requestId = `mcp-proxy:${mcp.id}:${crypto.randomUUID()}`;
     let admission:
@@ -542,51 +563,67 @@ app.post("/", async (c) => {
       };
 
       try {
-        admission = await admitFlatGenerativeOperation({
-          c,
-          context: {
-            organizationId: user.organization_id,
-            userId: user.id,
-            apiKeyId: caller.apiKeyId,
-            model: `mcp/${mcp.id}`,
-            provider: "mcp",
-            billingSource: "selfhosted",
-            requestId,
-            description: `MCP: ${mcp.name}`,
-            metadata: {
-              mcp_id: mcp.id,
-              mcp_name: mcp.name,
-              base_credits: creditsRequired.toFixed(4),
-              affiliate_fee: affiliateFeeCredits.toFixed(4),
-              platform_fee: platformFeeCredits.toFixed(4),
-              total_credits_charged: totalCreditsRequired.toFixed(4),
-              base_amount_usd: formatOrganizationCreditUsd(
-                chargeReceipt.baseAmountUsd,
-              ),
-              affiliate_fee_usd: formatOrganizationCreditUsd(
-                chargeReceipt.affiliateFeeUsd,
-              ),
-              platform_fee_usd: formatOrganizationCreditUsd(
-                chargeReceipt.platformFeeUsd,
-              ),
-              total_amount_usd: formatOrganizationCreditUsd(
-                chargeReceipt.totalAmountUsd,
-              ),
-              credit_unit: ORGANIZATION_CREDIT_UNIT,
-              ...(affiliateOwnerId && { affiliate_owner_id: affiliateOwnerId }),
-              ...(affiliateCodeId && { affiliate_code_id: affiliateCodeId }),
-            },
-          },
-          apiKeyId: caller.apiKeyId,
-          admissionSnapshot: caller.admissionSnapshot,
-          credential: credentialGuard.credentialForAdmission(),
-          cost: {
-            baseTotalCost: chargeReceipt.baseAmountUsd,
-            platformMarkup:
-              chargeReceipt.totalAmountUsd - chargeReceipt.baseAmountUsd,
-            totalCost: chargeReceipt.totalAmountUsd,
-          },
-        });
+        // Free-tier calls never enter the admission rail: its cost contract
+        // rejects a non-positive total (`reserveFlatUsageCredits` throws on
+        // cost <= 0), which would 500 a legitimately free MCP (#22961).
+        admission = isFreeTierCall
+          ? undefined
+          : await admitFlatGenerativeOperation({
+              c,
+              context: {
+                organizationId: user.organization_id,
+                userId: user.id,
+                apiKeyId: caller.apiKeyId,
+                model: `mcp/${mcp.id}`,
+                provider: "mcp",
+                billingSource: "selfhosted",
+                requestId,
+                description: `MCP: ${mcp.name}`,
+                metadata: {
+                  // Rail-debit recovery tag (#22961 rebase): in
+                  // synchronous_reservation mode this metadata lands verbatim on
+                  // the reservation debit row, making an MCP buyer debit
+                  // findable by the orphan sweep when the Worker dies between
+                  // the rail debit and the settlement receipt. Deferred/ledger
+                  // modes tag their debits with the requestId below instead.
+                  mcp_precharge: "v1",
+                  mcp_id: mcp.id,
+                  mcp_name: mcp.name,
+                  base_credits: creditsRequired.toFixed(4),
+                  affiliate_fee: affiliateFeeCredits.toFixed(4),
+                  platform_fee: platformFeeCredits.toFixed(4),
+                  total_credits_charged: totalCreditsRequired.toFixed(4),
+                  base_amount_usd: formatOrganizationCreditUsd(
+                    chargeReceipt.baseAmountUsd,
+                  ),
+                  affiliate_fee_usd: formatOrganizationCreditUsd(
+                    chargeReceipt.affiliateFeeUsd,
+                  ),
+                  platform_fee_usd: formatOrganizationCreditUsd(
+                    chargeReceipt.platformFeeUsd,
+                  ),
+                  total_amount_usd: formatOrganizationCreditUsd(
+                    chargeReceipt.totalAmountUsd,
+                  ),
+                  credit_unit: ORGANIZATION_CREDIT_UNIT,
+                  ...(affiliateOwnerId && {
+                    affiliate_owner_id: affiliateOwnerId,
+                  }),
+                  ...(affiliateCodeId && {
+                    affiliate_code_id: affiliateCodeId,
+                  }),
+                },
+              },
+              apiKeyId: caller.apiKeyId,
+              admissionSnapshot: caller.admissionSnapshot,
+              credential: credentialGuard.credentialForAdmission(),
+              cost: {
+                baseTotalCost: chargeReceipt.baseAmountUsd,
+                platformMarkup:
+                  chargeReceipt.totalAmountUsd - chargeReceipt.baseAmountUsd,
+                totalCost: chargeReceipt.totalAmountUsd,
+              },
+            });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return c.json(
@@ -610,11 +647,14 @@ app.post("/", async (c) => {
         });
         return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
       }
+      // Free-tier deliveries carry no admission (it stays undefined); the
+      // optional-call sites below no-op and the success path's isFreeTierCall
+      // branch records usage without one.
       const activeAdmission = admission;
 
       let mcpResponse: Response;
       try {
-        await activeAdmission.markProviderDispatched?.();
+        await activeAdmission?.markProviderDispatched?.();
         providerDispatchStarted = true;
         if (isExternalEndpoint) {
           // safeFetch validates + IP-pins the request and (redirect: "error")
@@ -737,47 +777,110 @@ app.post("/", async (c) => {
       // layer). Refund on an explicit JSON-RPC error instead of success-shaping it.
       const rpcErrored = mcpResponse.ok && isJsonRpcErrorResponse(responseBody);
       if (mcpResponse.ok && !rpcErrored) {
-        const accountingTask = (async () => {
-          const reconciliation = await activeAdmission.settle(
-            chargeReceipt.totalAmountUsd,
-          );
-          if (reconciliation?.adjustmentType === "uncollected_overage") {
-            logger.error("[MCP Proxy] Final charge was not collected", {
-              mcpId,
+        if (isFreeTierCall) {
+          // Free tier (#22961): no admission ran, so there is no payment event
+          // to key a settlement on. recordZeroCostUsage is structurally
+          // incapable of debiting or claiming a settlement — it does not
+          // re-read the mutable price row, so a price change landing mid-call
+          // cannot turn a free call into a post-delivery charge.
+          await userMcpsService
+            .recordZeroCostUsage({
+              mcpId: mcp.id,
               organizationId: user.organization_id,
-              requestId,
-              reserved: reconciliation.reservedAmount,
-              actual: reconciliation.actualCost,
+              userId: user.id,
+              toolName,
+              metadata: {
+                responseTime: Date.now() - startTime,
+                success: true,
+              },
+            })
+            // error-policy:J7 usage recording is diagnostic and runs after the
+            // free proxied call already succeeded; a failed write is logged, not fatal.
+            .catch((usageError: Error | string) => {
+              logger.error("[MCP Proxy] Failed to record free-tier usage", {
+                mcpId,
+                error:
+                  typeof usageError === "string"
+                    ? usageError
+                    : usageError.message,
+              });
             });
-            return;
-          }
-          await userMcpsService.recordUsageWithoutDeduction({
-            mcpId: mcp.id,
-            organizationId: user.organization_id,
-            userId: user.id,
-            toolName,
-            creditsCharged: creditsRequired,
-            affiliateFeeCredits,
-            platformFeeCredits,
-            chargeReceipt,
-            affiliateOwnerId,
-            affiliateCodeId,
-            metadata: {
-              responseTime: Date.now() - startTime,
-              success: true,
-              preChargeTransactionId:
-                activeAdmission.reservation?.reservationTransactionId ??
+        } else if (admission) {
+          const accountingTask = (async () => {
+            const reconciliation = await admission.settle(
+              chargeReceipt.totalAmountUsd,
+            );
+            if (reconciliation?.adjustmentType === "uncollected_overage") {
+              logger.error("[MCP Proxy] Final charge was not collected", {
+                mcpId,
+                organizationId: user.organization_id,
                 requestId,
-              totalCreditsCharged: totalCreditsRequired,
+                reserved: reconciliation.reservedAmount,
+                actual: reconciliation.actualCost,
+              });
+              return;
+            }
+            // Settlement authority (#22961, re-keyed onto the admission rail).
+            // The canonical payment event is selected BY ADMISSION MODE because
+            // reconciliation's settlementTransactionIds mean different things
+            // per mode:
+            //  - synchronous_reservation: [0] may be a reconciliation REFUND row
+            //    (type='refund', when the reservation exceeded actual cost) or
+            //    an OVERAGE debit (one component of the charge) — the canonical
+            //    buyer debit is reservationTransactionId, always returned by
+            //    that mode's reconcile.
+            //  - deferred/ledger modes: [0] is the settled buyer debit itself
+            //    (debitInferenceCost/settleLedgerCharge commit it at settle()).
+            // A wrong key either fails the claim (refund rows don't match
+            // type='debit') or severs the receipt from the real debit — so the
+            // repository re-validates the row is a debit before claiming.
+            const chargeTransactionId =
+              admission.mode === "synchronous_reservation"
+                ? (reconciliation?.reservationTransactionId ??
+                  admission.reservation?.reservationTransactionId ??
+                  null)
+                : (reconciliation?.settlementTransactionIds[0] ??
+                  admission.reservation?.reservationTransactionId ??
+                  null);
+            if (!chargeTransactionId) {
+              logger.error(
+                "[MCP Proxy] Settlement skipped: no durable charge transaction id",
+                {
+                  mcpId,
+                  organizationId: user.organization_id,
+                  requestId,
+                  reserved: reconciliation?.reservedAmount,
+                  actual: reconciliation?.actualCost,
+                },
+              );
+              return;
+            }
+            await userMcpsService.recordUsageWithoutDeduction({
+              mcpId: mcp.id,
+              organizationId: user.organization_id,
+              userId: user.id,
+              toolName,
+              creditsCharged: creditsRequired,
               affiliateFeeCredits,
               platformFeeCredits,
-            },
+              chargeReceipt,
+              affiliateOwnerId,
+              affiliateCodeId,
+              metadata: {
+                responseTime: Date.now() - startTime,
+                success: true,
+                preChargeTransactionId: chargeTransactionId,
+                totalCreditsCharged: totalCreditsRequired,
+                affiliateFeeCredits,
+                platformFeeCredits,
+              },
+            });
+          })();
+          await retainAccounting(accountingTask, "settle_and_record_usage", {
+            toolName,
+            status: mcpResponse.status,
           });
-        })();
-        await retainAccounting(accountingTask, "settle_and_record_usage", {
-          toolName,
-          status: mcpResponse.status,
-        });
+        }
       } else if (rpcErrored) {
         // Protocol-level failure over a 2xx transport: refund and do not bill. The
         // caller still receives the MCP's error envelope verbatim below.
