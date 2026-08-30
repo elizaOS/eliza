@@ -17,14 +17,23 @@ import {
 import type { AgentSandbox } from "../../db/schemas/agent-sandboxes";
 import { cache } from "../cache/client";
 import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../models";
+import { calculateCost, estimateRequestCost } from "../pricing";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { selectElizaAppProvisioningTarget } from "./eliza-app/provisioning";
+import {
+  type GenerativeOperationContext,
+  isGenerativeOperationAdmissionError,
+  retainGenerativeTask,
+  runMeteredProviderOperation,
+} from "./generative-operation";
+import { usageService } from "./usage";
 
 const HISTORY_CACHE_KEY = (userId: string) => `prov-chat:${userId}`;
 const HISTORY_TTL_SECONDS = 604800; // 7 days
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
 const CEREBRAS_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
+const CEREBRAS_BILLING_MODEL = `cerebras/${CEREBRAS_MODEL}`;
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -37,6 +46,14 @@ export interface ProvisioningChatResult {
   bridgeUrl: string | null;
   agentId: string | null;
   history: ChatMessage[];
+}
+
+export interface ProvisioningAgentChatParams {
+  userId: string;
+  organizationId: string;
+  userMessage: string;
+  agentId?: string;
+  operationContext: GenerativeOperationContext;
 }
 
 export type ProvisioningChatContainerStatus = AgentSandboxStatus | "none" | "unknown";
@@ -183,11 +200,9 @@ async function saveHistory(userId: string, history: ChatMessage[]): Promise<void
 }
 
 export async function provisioningAgentChat(
-  userId: string,
-  organizationId: string,
-  userMessage: string,
-  agentId?: string,
+  params: ProvisioningAgentChatParams,
 ): Promise<ProvisioningChatResult> {
+  const { userId, organizationId, userMessage, agentId, operationContext } = params;
   // Resolve container status
   let containerStatus: ProvisioningChatContainerStatus = "none";
   let bridgeUrl: string | null = null;
@@ -220,22 +235,69 @@ export async function provisioningAgentChat(
   try {
     const cerebras = getCerebrasClient();
     const generationInput = buildProvisioningChatGenerationInput(containerStatus, updatedHistory);
-
-    const result = await generateText({
-      model: cerebras.chat(CEREBRAS_MODEL),
-      ...generationInput,
-    });
-    assertModelOutputComplete({
-      finishReason: result.finishReason,
+    const estimatedCost = await estimateRequestCost(CEREBRAS_BILLING_MODEL, [
+      { role: "system", content: generationInput.system },
+      ...updatedHistory,
+    ]);
+    const operation = {
       provider: "cerebras",
-      model: CEREBRAS_MODEL,
+      billingSource: "cerebras" as const,
+      model: CEREBRAS_BILLING_MODEL,
+      operation: "provisioning_agent_chat",
+      estimatedCost,
+      metadata: { historyTurns: updatedHistory.length },
+    };
+    const metered = await runMeteredProviderOperation(operationContext, operation, async () => {
+      const result = await generateText({
+        model: cerebras.chat(CEREBRAS_MODEL),
+        ...generationInput,
+      });
+      assertModelOutputComplete({
+        finishReason: result.finishReason,
+        provider: "cerebras",
+        model: CEREBRAS_MODEL,
+      });
+      if (!result.text.trim()) throw new Error("Cerebras returned an empty provisioning reply");
+      const inputTokens = result.usage.inputTokens ?? 0;
+      const outputTokens = result.usage.outputTokens ?? 0;
+      const cost = await calculateCost(
+        CEREBRAS_BILLING_MODEL,
+        "cerebras",
+        inputTokens,
+        outputTokens,
+        "cerebras",
+      );
+      return {
+        actualCost: cost.totalCost,
+        value: { reply: result.text, inputTokens, outputTokens, cost },
+      };
     });
-
-    reply = result.text;
+    reply = metered.reply;
+    await retainGenerativeTask(
+      operationContext,
+      operation,
+      usageService.create({
+        organization_id: organizationId,
+        user_id: userId,
+        api_key_id: operationContext.apiKeyId,
+        type: "chat",
+        model: CEREBRAS_BILLING_MODEL,
+        provider: "cerebras",
+        input_tokens: metered.inputTokens,
+        output_tokens: metered.outputTokens,
+        input_cost: String(metered.cost.inputCost),
+        output_cost: String(metered.cost.outputCost),
+        is_successful: true,
+        metadata: { request_source: "provisioning_agent_chat" },
+      }),
+    );
   } catch (err) {
+    if (isGenerativeOperationAdmissionError(err)) throw err;
     // error-policy:J4 the chat returns a visible retry response when inference is unavailable.
     logger.error("[ProvisioningAgentChat] generateText failed", {
       userId,
+      organizationId,
+      requestId: operationContext.requestId,
       error: err instanceof Error ? err.message : String(err),
     });
     reply = PROVISIONING_CHAT_INFERENCE_FAILURE_REPLY;

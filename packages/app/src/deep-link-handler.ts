@@ -36,8 +36,9 @@ export interface DeepLinkHandlerContext {
   /**
    * Universal/App-Link hosts (e.g. `eliza.app`) whose `https://<host>/<path>`
    * links route into the same hash routes as the custom `<scheme>://` links.
-   * iOS associated-domains + Android `assetlinks.json` make the OS hand these
-   * to the installed app; this is the in-app routing half. Subdomains match.
+   * A host may associate these domains with its installed app; this is the
+   * in-app routing half once the operating system delivers a link. Subdomains
+   * match.
    */
   appLinkHosts?: string[];
   /**

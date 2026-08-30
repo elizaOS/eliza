@@ -17,6 +17,7 @@ import {
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { SemanticForm } from "../ui/semantic-form";
 
 export interface EditableAccountLabelProps {
   value: string;
@@ -75,7 +76,7 @@ export function EditableAccountLabel({
 
   if (editing) {
     return (
-      <form onSubmit={submit} className="min-w-0 flex-1">
+      <SemanticForm onSubmit={submit} className="min-w-0 flex-1">
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -87,7 +88,7 @@ export function EditableAccountLabel({
           className={cn("max-w-[240px]", inputClassName)}
           aria-label={inputAriaLabel}
         />
-      </form>
+      </SemanticForm>
     );
   }
 

@@ -105,24 +105,17 @@ describe("MODEL_PRICES_USD_PER_M_TOKENS", () => {
 		});
 	});
 
-	it("prices both routed Cerebras defaults from the authoritative snapshot", () => {
+	it("prices the pinned Cerebras default from the authoritative snapshot", () => {
 		expect(DEFAULT_ELIZA_CLOUD_TEXT_MODEL).toBe("gemma-4-31b");
-		expect(DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL).toBe("zai-glm-4.7");
+		expect(DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL).toBe(
+			DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+		);
 		expect(
 			MODEL_PRICES_USD_PER_M_TOKENS[DEFAULT_ELIZA_CLOUD_TEXT_MODEL],
 		).toEqual({
 			provider: "cerebras",
 			input: 0.99,
 			output: 1.49,
-			cacheRead: 0,
-			cacheWrite: 0,
-		});
-		expect(
-			MODEL_PRICES_USD_PER_M_TOKENS[DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL],
-		).toEqual({
-			provider: "cerebras",
-			input: 2.25,
-			output: 2.75,
 			cacheRead: 0,
 			cacheWrite: 0,
 		});

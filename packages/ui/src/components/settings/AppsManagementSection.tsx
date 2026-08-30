@@ -3,8 +3,16 @@
  * "Create new app" and "Load from directory" entry points.
  */
 
-import { Loader2, Play, RotateCw, Square } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Boxes, Loader2, MoreHorizontal, Play, Plus } from "lucide-react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
@@ -15,13 +23,11 @@ import type {
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../ui/table";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import {
@@ -82,6 +88,62 @@ function AppRowActionButton({
   );
 }
 
+function AppRowActions({
+  app,
+  busy,
+  running,
+  onLaunch,
+  onRelaunch,
+  onEdit,
+  onStop,
+}: {
+  app: InstalledAppInfo;
+  busy: boolean;
+  running: boolean;
+  onLaunch: () => void;
+  onRelaunch: () => void;
+  onEdit: () => void;
+  onStop: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <AppRowActionButton
+        agentId={`apps-launch-${app.name}`}
+        label={`Launch ${app.displayName}`}
+        group="apps-list"
+        disabled={busy}
+        onClick={onLaunch}
+        className="size-10"
+      >
+        <Play className="size-4" aria-hidden />
+      </AppRowActionButton>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghostMuted"
+            size="icon"
+            className="size-10"
+            disabled={busy}
+            aria-label={`More actions for ${app.displayName}`}
+          >
+            <MoreHorizontal className="size-4" aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44">
+          <DropdownMenuItem onClick={onRelaunch}>Relaunch</DropdownMenuItem>
+          <DropdownMenuItem onClick={onEdit}>Edit</DropdownMenuItem>
+          {running ? (
+            <DropdownMenuItem className="text-danger" onClick={onStop}>
+              Stop
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 interface CreateAppResponse {
   ok?: boolean;
   status?: string;
@@ -107,10 +169,113 @@ type AsyncStatus =
   | { state: "loading"; message?: string }
   | { state: "error"; message: string };
 
-const HEAD_CELL_CLASS = "px-3 py-2 text-xs font-medium text-muted";
-const BODY_CELL_CLASS = "px-3 py-2.5 align-middle text-sm";
+interface AppsManagementActionsProps {
+  showCreate: boolean;
+  showLoad: boolean;
+  setShowCreate: Dispatch<SetStateAction<boolean>>;
+  setShowLoad: Dispatch<SetStateAction<boolean>>;
+}
 
-export function AppsManagementSection() {
+export function AppsManagementActions({
+  showCreate,
+  showLoad,
+  setShowCreate,
+  setShowLoad,
+}: AppsManagementActionsProps) {
+  const t = useAppSelector((s) => s.t);
+  const { ref: createToggleRef, agentProps: createToggleAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "apps-create-toggle",
+      role: "button",
+      label: t("settings.sections.apps.createNew", {
+        defaultValue: "Create new app",
+      }),
+      group: "apps-management",
+      status: showCreate ? "active" : "inactive",
+      onActivate: () => {
+        setShowCreate((value) => !value);
+        setShowLoad(false);
+      },
+    });
+  const { ref: loadToggleRef, agentProps: loadToggleAgentProps } =
+    useAgentElement<HTMLDivElement>({
+      id: "apps-load-toggle",
+      role: "button",
+      label: "Import from directory",
+      group: "apps-management",
+      status: showLoad ? "active" : "inactive",
+      onActivate: () => {
+        setShowLoad((value) => !value);
+        setShowCreate(false);
+      },
+    });
+
+  return (
+    <section
+      className="flex items-center justify-end gap-1"
+      aria-label="App actions"
+    >
+      <Button
+        ref={createToggleRef}
+        type="button"
+        variant="default"
+        size="icon"
+        className="size-10"
+        aria-label="Create new app"
+        title="Create new app"
+        onClick={() => {
+          setShowCreate((value) => !value);
+          setShowLoad(false);
+        }}
+        {...createToggleAgentProps}
+      >
+        <Plus className="size-4" aria-hidden />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghostMuted"
+            size="icon"
+            className="size-10"
+            aria-label="More app actions"
+            title="More app actions"
+          >
+            <MoreHorizontal className="size-4" aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44">
+          <DropdownMenuItem
+            ref={loadToggleRef}
+            onSelect={() => {
+              setShowLoad((value) => !value);
+              setShowCreate(false);
+            }}
+            {...loadToggleAgentProps}
+          >
+            Import from directory
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </section>
+  );
+}
+
+interface AppsManagementSectionProps {
+  showCreate?: boolean;
+  showLoad?: boolean;
+  setShowCreate?: Dispatch<SetStateAction<boolean>>;
+  setShowLoad?: Dispatch<SetStateAction<boolean>>;
+  hideActions?: boolean;
+}
+
+export function AppsManagementSection({
+  showCreate: controlledShowCreate,
+  showLoad: controlledShowLoad,
+  setShowCreate: controlledSetShowCreate,
+  setShowLoad: controlledSetShowLoad,
+  hideActions = false,
+}: AppsManagementSectionProps = {}) {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const t = useAppSelector((s) => s.t);
   const advancedEnabled = useAdvancedSettingsEnabled();
@@ -122,14 +287,18 @@ export function AppsManagementSection() {
   });
   const [busyApp, setBusyApp] = useState<string | null>(null);
 
-  const [showCreate, setShowCreate] = useState(false);
+  const [internalShowCreate, setInternalShowCreate] = useState(false);
   const [createIntent, setCreateIntent] = useState("");
   const [createEditTarget, setCreateEditTarget] = useState("");
   const [createStatus, setCreateStatus] = useState<AsyncStatus>({
     state: "idle",
   });
 
-  const [showLoad, setShowLoad] = useState(false);
+  const [internalShowLoad, setInternalShowLoad] = useState(false);
+  const showCreate = controlledShowCreate ?? internalShowCreate;
+  const showLoad = controlledShowLoad ?? internalShowLoad;
+  const setShowCreate = controlledSetShowCreate ?? setInternalShowCreate;
+  const setShowLoad = controlledSetShowLoad ?? setInternalShowLoad;
   const [loadDirectory, setLoadDirectory] = useState("");
   const [loadStatus, setLoadStatus] = useState<AsyncStatus>({ state: "idle" });
 
@@ -337,7 +506,7 @@ export function AppsManagementSection() {
         });
       }
     },
-    [createEditTarget, createIntent, refresh, setActionNotice],
+    [createEditTarget, createIntent, refresh, setActionNotice, setShowCreate],
   );
 
   const handleLoadSubmit = useCallback(
@@ -381,40 +550,12 @@ export function AppsManagementSection() {
         });
       }
     },
-    [loadDirectory, refresh, setActionNotice],
+    [loadDirectory, refresh, setActionNotice, setShowLoad],
   );
 
   const isCreating = createStatus.state === "loading";
   const isLoading = loadStatus.state === "loading";
 
-  const { ref: createToggleRef, agentProps: createToggleAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "apps-create-toggle",
-      role: "button",
-      label: t("settings.sections.apps.createNew", {
-        defaultValue: "Create new app",
-      }),
-      group: "apps-management",
-      status: showCreate ? "active" : "inactive",
-      onActivate: () => {
-        setShowCreate((v) => !v);
-        setShowLoad(false);
-      },
-    });
-  const { ref: loadToggleRef, agentProps: loadToggleAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "apps-load-toggle",
-      role: "button",
-      label: t("settings.sections.apps.loadFromDirectory", {
-        defaultValue: "Load from directory",
-      }),
-      group: "apps-management",
-      status: showLoad ? "active" : "inactive",
-      onActivate: () => {
-        setShowLoad((v) => !v);
-        setShowCreate(false);
-      },
-    });
   const { ref: createSubmitRef, agentProps: createSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "apps-create-submit",
@@ -469,62 +610,23 @@ export function AppsManagementSection() {
 
   return (
     <SettingsStack>
-      <SettingsGroup
-        title={t("settings.sections.apps.groupTitle", { defaultValue: "Apps" })}
-        action={<AdvancedToggle label="Advanced" />}
-      >
-        <div className="flex flex-wrap items-center gap-2 pb-1">
-          <Button
-            ref={createToggleRef}
-            type="button"
-            variant="default"
-            size="touch"
-            onClick={() => {
-              setShowCreate((v) => !v);
-              setShowLoad(false);
-            }}
-            {...createToggleAgentProps}
-          >
-            {t("settings.sections.apps.createNew", {
-              defaultValue: "Create new app",
-            })}
-          </Button>
-          <Button
-            ref={loadToggleRef}
-            type="button"
-            variant="outline"
-            size="touch"
-            onClick={() => {
-              setShowLoad((v) => !v);
-              setShowCreate(false);
-            }}
-            {...loadToggleAgentProps}
-          >
-            {t("settings.sections.apps.loadFromDirectory", {
-              defaultValue: "Load from directory",
-            })}
-          </Button>
-        </div>
-        {advancedEnabled ? (
-          <SettingsSwitchRow
-            agentId="apps-verify-on-relaunch"
-            group="apps-management"
-            label={t("settings.sections.apps.verifyOnRelaunch", {
-              defaultValue: "Verify on relaunch",
-            })}
-            checked={verifyOnRelaunch}
-            agentStatus={verifyOnRelaunch ? "active" : "inactive"}
-            onCheckedChange={setVerifyOnRelaunch}
-          />
-        ) : null}
-      </SettingsGroup>
+      {!hideActions ? (
+        <AppsManagementActions
+          showCreate={showCreate}
+          showLoad={showLoad}
+          setShowCreate={setShowCreate}
+          setShowLoad={setShowLoad}
+        />
+      ) : null}
 
       {showCreate ? (
         <form onSubmit={handleCreateSubmit}>
           <SettingsGroup
+            bare
             title={t("settings.sections.apps.createNew", {
               defaultValue: "Create new app",
             })}
+            action={<AdvancedToggle label="Advanced" />}
             footer={
               createStatus.state === "error" ? (
                 <span role="alert" className="text-danger">
@@ -627,6 +729,7 @@ export function AppsManagementSection() {
       {showLoad ? (
         <form onSubmit={handleLoadSubmit}>
           <SettingsGroup
+            bare
             title={t("settings.sections.apps.loadFromDirectory", {
               defaultValue: "Load from directory",
             })}
@@ -734,11 +837,18 @@ export function AppsManagementSection() {
         </SettingsGroup>
       ) : installed.length === 0 ? (
         <SettingsGroup bare>
-          <p className="py-4 text-center text-sm text-muted">
-            {t("settings.sections.apps.empty", {
-              defaultValue: "No apps installed yet.",
-            })}
-          </p>
+          <div
+            role="status"
+            className="mx-auto flex min-h-44 max-w-sm flex-col items-center justify-center gap-2 text-center [@media(orientation:landscape)_and_(max-height:520px)]:min-h-24"
+          >
+            <Boxes className="size-8 text-accent" aria-hidden />
+            <p className="text-sm font-semibold text-txt-strong">
+              No apps installed yet
+            </p>
+            <p className="text-xs leading-relaxed text-muted">
+              Create an app or load one from a directory to get started.
+            </p>
+          </div>
         </SettingsGroup>
       ) : (
         <SettingsGroup
@@ -747,123 +857,64 @@ export function AppsManagementSection() {
             defaultValue: "Installed apps",
           })}
         >
-          <div className="overflow-x-auto">
-            <Table className="min-w-[34rem]">
-              <TableHeader>
-                <TableRow className="border-b border-border/50">
-                  <TableHead className={HEAD_CELL_CLASS}>
-                    {t("settings.sections.apps.col.name", {
-                      defaultValue: "App",
-                    })}
-                  </TableHead>
-                  <TableHead className={HEAD_CELL_CLASS}>
-                    {t("settings.sections.apps.col.id", {
-                      defaultValue: "ID",
-                    })}
-                  </TableHead>
-                  <TableHead className={HEAD_CELL_CLASS}>
-                    {t("settings.sections.apps.col.version", {
-                      defaultValue: "Version",
-                    })}
-                  </TableHead>
-                  <TableHead className={HEAD_CELL_CLASS}>
-                    {t("settings.sections.apps.col.runs", {
-                      defaultValue: "Runs",
-                    })}
-                  </TableHead>
-                  <TableHead className={`${HEAD_CELL_CLASS} text-right`}>
-                    {t("settings.sections.apps.col.actions", {
-                      defaultValue: "Actions",
-                    })}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {installed.map((app) => {
-                  const appRuns = runsByName.get(app.name) ?? [];
-                  const running = appRuns.length > 0;
-                  const busy = busyApp === app.name;
-                  return (
-                    <TableRow
-                      key={app.name}
-                      className="border-t border-border/60 hover:bg-bg-hover/40"
-                      data-testid={`apps-mgmt-row-${app.name}`}
-                    >
-                      <TableCell
-                        className={`${BODY_CELL_CLASS} font-medium text-txt`}
-                      >
-                        {app.displayName}
-                      </TableCell>
-                      <TableCell
-                        className={`${BODY_CELL_CLASS} font-mono text-xs text-muted`}
-                      >
-                        {app.name}
-                      </TableCell>
-                      <TableCell
-                        className={`${BODY_CELL_CLASS} text-xs text-muted`}
-                      >
-                        {app.version || "—"}
-                      </TableCell>
-                      <TableCell className={BODY_CELL_CLASS}>
-                        {running ? (
-                          <span className="inline-flex items-center rounded-full bg-ok/10 px-2 py-0.5 text-xs font-medium text-ok">
-                            {appRuns.length}{" "}
-                            {appRuns.length === 1 ? "run" : "runs"}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className={`${BODY_CELL_CLASS} text-right`}>
-                        <div className="inline-flex items-center gap-1">
-                          <AppRowActionButton
-                            agentId={`apps-launch-${app.name}`}
-                            label={`Launch ${app.displayName}`}
-                            group="apps-list"
-                            disabled={busy}
-                            onClick={() => void handleLaunch(app)}
-                          >
-                            <Play className="size-3.5" aria-hidden />
-                          </AppRowActionButton>
-                          <AppRowActionButton
-                            agentId={`apps-relaunch-${app.name}`}
-                            label={`Relaunch ${app.displayName}`}
-                            group="apps-list"
-                            disabled={busy}
-                            onClick={() => void handleRelaunch(app)}
-                          >
-                            <RotateCw className="size-3.5" aria-hidden />
-                          </AppRowActionButton>
-                          <AppRowActionButton
-                            agentId={`apps-edit-${app.name}`}
-                            label={`Edit ${app.displayName}`}
-                            group="apps-list"
-                            disabled={busy}
-                            onClick={() => void handleEdit(app)}
-                          >
-                            {t("settings.sections.apps.edit", {
-                              defaultValue: "Edit",
-                            })}
-                          </AppRowActionButton>
-                          {running ? (
-                            <AppRowActionButton
-                              agentId={`apps-stop-${app.name}`}
-                              label={`Stop ${app.displayName}`}
-                              group="apps-list"
-                              className="h-7 px-2 text-xs text-danger hover:text-danger"
-                              disabled={busy}
-                              onClick={() => void handleStop(app)}
-                            >
-                              <Square className="size-3.5" aria-hidden />
-                            </AppRowActionButton>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
+          {advancedEnabled ? (
+            <div className="border-y border-border/50 py-2">
+              <SettingsSwitchRow
+                agentId="apps-verify-on-relaunch"
+                group="apps-management"
+                label={t("settings.sections.apps.verifyOnRelaunch", {
+                  defaultValue: "Verify on relaunch",
                 })}
-              </TableBody>
-            </Table>
+                checked={verifyOnRelaunch}
+                agentStatus={verifyOnRelaunch ? "active" : "inactive"}
+                onCheckedChange={setVerifyOnRelaunch}
+              />
+            </div>
+          ) : null}
+          <div className="divide-y divide-border/60 border-y border-border/60">
+            {installed.map((app) => {
+              const appRuns = runsByName.get(app.name) ?? [];
+              const running = appRuns.length > 0;
+              const busy = busyApp === app.name;
+              return (
+                <div
+                  key={app.name}
+                  className="flex min-w-0 items-center gap-3 py-3 transition-colors hover:bg-bg-hover/20"
+                  data-testid={`apps-mgmt-row-${app.name}`}
+                >
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface text-sm font-semibold text-muted-strong">
+                    {app.displayName.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-sm font-semibold text-txt-strong">
+                      {app.displayName}
+                    </span>
+                    <span className="truncate text-xs text-muted">
+                      {app.name}
+                      {app.version ? ` · v${app.version}` : ""}
+                    </span>
+                  </span>
+                  <span className="hidden shrink-0 sm:inline-flex">
+                    {running ? (
+                      <span className="inline-flex items-center rounded-full bg-ok/10 px-2 py-0.5 text-xs font-medium text-ok">
+                        {appRuns.length} {appRuns.length === 1 ? "run" : "runs"}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted">—</span>
+                    )}
+                  </span>
+                  <AppRowActions
+                    app={app}
+                    busy={busy}
+                    running={running}
+                    onLaunch={() => void handleLaunch(app)}
+                    onRelaunch={() => void handleRelaunch(app)}
+                    onEdit={() => void handleEdit(app)}
+                    onStop={() => void handleStop(app)}
+                  />
+                </div>
+              );
+            })}
           </div>
         </SettingsGroup>
       )}

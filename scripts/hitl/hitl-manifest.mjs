@@ -12,7 +12,7 @@
  *   device — needs a real device capability; NOT covered headless
  *   auto   — machine-decidable; listed for completeness, no human needed
  *
- * See docs/testing/hitl-inventory.md for the full rationale per row.
+ * See docs/testing/hitl-probes.md for the connector-path rationale.
  */
 
 /** @typedef {"frame"|"device"|"auto"} HitlMark */
@@ -179,11 +179,10 @@ export const HITL_DECISION_POINTS = [
   {
     id: "lifeops-live-connector-suites",
     group: "lifeops-live",
-    label: "Live connector suites (creds present → live; absent → clean skip)",
-    mark: "auto",
-    why: "machine-decided; each suite describeIf-gates on its own credentials",
+    label: "Supervised live connector acceptance and provider receipts",
+    mark: "frame",
+    why: "OAuth, native permission, and provider effects require action-time human gates; deterministic fixtures are reviewed separately",
     suites: [],
-    scripts: ["scripts/lifeops/run-11632-live-lanes.mjs"],
     issues: [11632],
   },
   {

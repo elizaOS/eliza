@@ -41,6 +41,7 @@ const PERSISTED_SCHEMA_VERSION = 1;
 const SOCKET_CONNECT_TIMEOUT_MS = 5_000;
 const HTTP_REQUEST_TIMEOUT_MS = 10_000;
 const SECRET_BYTES = 32;
+const DB_UNAVAILABLE_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 1_500] as const;
 /** Refuse to reuse an existing session if it expires within this window. */
 const EXPIRY_SAFETY_MARGIN_MS = 60_000;
 
@@ -70,6 +71,18 @@ export interface DesktopBootstrapDeps {
   fetchImpl?: FetchLike;
   /** Override clock for tests. */
   now?: () => number;
+  /**
+   * Reuse a structurally valid persisted session. The packaged renderer sets
+   * this false at each embedded-agent generation so a restarted backend cannot
+   * inherit an authority row that only existed in the previous process.
+   */
+  reusePersistedSession?: boolean;
+  /** Override bounded handshake timing for deterministic tests. */
+  timing?: {
+    httpRequestTimeoutMs: number;
+    socketConnectTimeoutMs: number;
+    dbUnavailableRetryDelaysMs: readonly number[];
+  };
 }
 
 interface DesktopBootstrapResponseBody {
@@ -262,8 +275,12 @@ export function clearPersistedSession(
 
 interface BootstrapSocket {
   socketPath: string;
+  /** Resolves only after bind succeeds and the socket inode is owner-only. */
+  ready: Promise<void>;
   /** Resolves once a peer has connected, read the secret, and disconnected. */
   consumed: Promise<void>;
+  /** True as soon as the one permitted peer has connected. */
+  wasConnected: () => boolean;
   close: () => void;
 }
 
@@ -316,7 +333,28 @@ function openBootstrapSocket(
     rejectConsumed = rej;
   });
 
+  let resolveReady: () => void = () => {};
+  let rejectReady: (err: Error) => void = () => {};
+  const ready = new Promise<void>((res, rej) => {
+    resolveReady = res;
+    rejectReady = rej;
+  });
+  let readySettled = false;
+  const settleReady = (err?: Error) => {
+    if (readySettled) return;
+    readySettled = true;
+    if (err) rejectReady(err);
+    else resolveReady();
+  };
+
+  let connectionAccepted = false;
   const server = net.createServer((conn) => {
+    if (connectionAccepted) {
+      conn.destroy();
+      return;
+    }
+    connectionAccepted = true;
+    server.close();
     // Hand the secret over and tear down. The peer (the API process) is
     // expected to read the bytes and close. We close on our side after a
     // single connection regardless.
@@ -327,27 +365,38 @@ function openBootstrapSocket(
     conn.once("error", (err) => rejectConsumed(err));
   });
 
-  server.on("error", (err) => rejectConsumed(err));
-  server.listen(socketPath);
-
-  // chmod the socket inode itself so only the owner can connect. On Linux this
-  // is enforced; on macOS UDS permissions are advisory but still useful.
-  try {
-    fs.chmodSync(socketPath, 0o600);
-  } catch (err) {
-    warnAuthBridge("Failed to chmod desktop auth socket", {
-      socketPath,
-      mode: "0600",
-      error: errorMessage(err),
-    });
-  }
+  server.on("error", (err) => {
+    settleReady(err);
+    rejectConsumed(err);
+  });
+  server.listen(socketPath, () => {
+    // The API must not receive the pathname until bind has completed and the
+    // socket inode is owner-only. Posting earlier races the backend's connect
+    // and turns a healthy same-user proof into a spurious 403.
+    try {
+      fs.chmodSync(socketPath, 0o600);
+      settleReady();
+    } catch (err) {
+      const failure = err instanceof Error ? err : new Error(String(err));
+      warnAuthBridge("Failed to chmod desktop auth socket", {
+        socketPath,
+        mode: "0600",
+        error: errorMessage(err),
+      });
+      settleReady(failure);
+      rejectConsumed(failure);
+      server.close();
+    }
+  });
 
   return {
     socketPath,
+    ready,
     consumed,
+    wasConnected: () => connectionAccepted,
     close: () => {
       try {
-        server.close();
+        if (server.listening) server.close();
       } catch (err) {
         warnAuthBridge("Failed to close desktop auth socket server", {
           socketPath,
@@ -371,6 +420,75 @@ function openBootstrapSocket(
 function buildBootstrapUrl(apiBase: string): string {
   const trimmed = apiBase.replace(/\/+$/, "");
   return `${trimmed}${DESKTOP_BOOTSTRAP_ENDPOINT}`;
+}
+
+async function readBootstrapErrorCode(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as unknown;
+    if (!body || typeof body !== "object") return "";
+    const error = (body as Record<string, unknown>).error;
+    return typeof error === "string" ? error : "";
+  } catch {
+    // error-policy:J3 malformed error bodies are explicit non-retryable input.
+    return "";
+  }
+}
+
+function waitForBootstrapRetry(
+  delayMs: number,
+  requestSignal: AbortSignal,
+): Promise<void> {
+  if (requestSignal.aborted) {
+    return Promise.reject(
+      requestSignal.reason instanceof Error
+        ? requestSignal.reason
+        : new Error(String(requestSignal.reason)),
+    );
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(
+        requestSignal.reason instanceof Error
+          ? requestSignal.reason
+          : new Error(String(requestSignal.reason)),
+      );
+    };
+    const timer = setTimeout(() => {
+      requestSignal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    requestSignal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function waitForSocketConsumption(
+  consumed: Promise<void>,
+  timeoutMs: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
+    const timeout = setTimeout(
+      () =>
+        finish(new Error("socket consume timed out before backend connected")),
+      timeoutMs,
+    );
+    consumed.then(
+      () => finish(),
+      (err: unknown) =>
+        finish(err instanceof Error ? err : new Error(String(err))),
+    );
+  });
 }
 
 function isLoopbackBase(apiBase: string): boolean {
@@ -405,6 +523,13 @@ export async function bootstrapDesktopSession(
   const now = deps.now ?? Date.now;
   const generateSecret =
     deps.generateSecret ?? (() => crypto.randomBytes(SECRET_BYTES));
+  const timing =
+    deps.timing ??
+    ({
+      httpRequestTimeoutMs: HTTP_REQUEST_TIMEOUT_MS,
+      socketConnectTimeoutMs: SOCKET_CONNECT_TIMEOUT_MS,
+      dbUnavailableRetryDelaysMs: DB_UNAVAILABLE_RETRY_DELAYS_MS,
+    } as const);
 
   if (process.platform === "win32") {
     // UDS path is POSIX-only for this bridge. Win32 falls through to the
@@ -433,26 +558,10 @@ export async function bootstrapDesktopSession(
   }
 
   const url = buildBootstrapUrl(deps.apiBase);
-  const requestSignal = AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS);
-  const consumeSignal = AbortSignal.timeout(SOCKET_CONNECT_TIMEOUT_MS);
-
-  // Wrap consumed in a race so a hung backend doesn't keep the socket open.
-  const consumedOrTimeout = new Promise<void>((resolve, reject) => {
-    const onAbort = () =>
-      reject(new Error("socket consume timed out before backend connected"));
-    consumeSignal.addEventListener("abort", onAbort, { once: true });
-    socketHandle.consumed
-      .then(() => resolve())
-      .catch((err: unknown) =>
-        reject(err instanceof Error ? err : new Error(String(err))),
-      );
-  });
-  // The early bail-outs below (fetch throw, !response.ok) return without
-  // awaiting this promise, but the consume-timeout still fires ~5s later.
-  // Swallow that orphaned rejection so it can't surface as an unhandled
-  // rejection and crash the Electrobun worker; the awaited path on line ~388
-  // still re-throws normally because `.catch()` returns a separate chain.
-  consumedOrTimeout.catch((err: unknown) => {
+  const observedConsumption = socketHandle.consumed;
+  // error-policy:J5 a socket-server rejection is awaited after a 2xx response;
+  // this observer covers early HTTP exits without changing that result.
+  observedConsumption.catch((err: unknown) => {
     logger.debug("[DesktopAuthBridge] Bootstrap socket was not consumed", {
       error: errorMessage(err),
     });
@@ -460,19 +569,35 @@ export async function bootstrapDesktopSession(
 
   let body: DesktopBootstrapResponseBody | null = null;
   try {
-    const response = await fetchImpl(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ socketPath: socketHandle.socketPath }),
-      signal: requestSignal,
-    });
+    await socketHandle.ready;
+    const requestSignal = AbortSignal.timeout(timing.httpRequestTimeoutMs);
+    let response: Response | null = null;
+    for (let attempt = 0; ; attempt += 1) {
+      response = await fetchImpl(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ socketPath: socketHandle.socketPath }),
+        signal: requestSignal,
+      });
 
-    if (!response.ok) {
-      // 404 means the backend doesn't implement the endpoint yet — flag in
-      // logs but stay silent in the UX so the renderer can still log in.
+      if (response.ok) break;
+      const retryDelay = timing.dbUnavailableRetryDelaysMs[attempt];
+      const errorCode = await readBootstrapErrorCode(response);
+      if (
+        response.status === 503 &&
+        errorCode === "db_unavailable" &&
+        !socketHandle.wasConnected() &&
+        retryDelay !== undefined
+      ) {
+        await waitForBootstrapRetry(retryDelay, requestSignal);
+        continue;
+      }
+
+      // Authentication/proof failures are never retried. Only transient
+      // startup database unavailability can reuse this still-unconsumed socket.
       warnAuthBridge("Desktop auth bootstrap endpoint failed", {
         url,
         status: response.status,
@@ -490,11 +615,14 @@ export async function bootstrapDesktopSession(
       return null;
     }
 
-    // Wait for the API to actually connect to the socket before we tear it
-    // down. If the API never connects we still got an HTTP response, but the
-    // session it minted was based on something other than filesystem proof —
-    // refuse it.
-    await consumedOrTimeout;
+    // Begin the proof deadline only after the retry ladder has produced a 2xx.
+    // A 503 is returned before the backend touches the one-shot socket, so its
+    // bounded retries must not spend the separate proof-consumption budget.
+    // If a backend returns success without consuming the socket, fail closed.
+    await waitForSocketConsumption(
+      observedConsumption,
+      timing.socketConnectTimeoutMs,
+    );
   } catch (err) {
     warnAuthBridge("Desktop auth bootstrap failed", {
       url,
@@ -532,8 +660,10 @@ export async function loadOrCreateDesktopSession(
   const env = deps.env ?? process.env;
   const now = deps.now ?? Date.now;
 
-  const existing = loadPersistedSession(env, now);
-  if (existing) return existing;
+  if (deps.reusePersistedSession !== false) {
+    const existing = loadPersistedSession(env, now);
+    if (existing) return existing;
+  }
 
   const fresh = await bootstrapDesktopSession(deps);
   if (!fresh) return null;
@@ -611,7 +741,7 @@ export function installDesktopSessionCookies(
     seen.add(key);
     const secure = parsed.protocol === "https:";
     const url = parsed.origin;
-    installer.set({
+    const sessionInstalled = installer.set({
       name: SESSION_COOKIE_NAME,
       value: session.sessionId,
       domain: parsed.hostname,
@@ -624,7 +754,7 @@ export function installDesktopSessionCookies(
       // `domain` keeps it compatible with both implementations.
       ...({ url } as Record<string, unknown>),
     });
-    installer.set({
+    const csrfInstalled = installer.set({
       name: CSRF_COOKIE_NAME,
       value: session.csrfToken,
       domain: parsed.hostname,
@@ -635,6 +765,11 @@ export function installDesktopSessionCookies(
       expirationDate,
       ...({ url } as Record<string, unknown>),
     });
+    if (!sessionInstalled || !csrfInstalled) {
+      throw new Error(
+        `[DesktopAuthBridge] cookie jar rejected desktop authority for ${key}`,
+      );
+    }
     touched.push(key);
   };
 

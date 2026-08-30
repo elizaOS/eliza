@@ -12,7 +12,7 @@ import {
   Service,
   type UUID,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
+import { isCloudProvisionedContainer } from "@elizaos/shared";
 import type {
   GatewayRelayRequest,
   GatewayRelayRequestEnvelope,
@@ -58,13 +58,6 @@ function resolveChannelType(value: unknown): ChannelType {
   return candidate && candidate in ChannelType
     ? ChannelType[candidate as keyof typeof ChannelType]
     : ChannelType.DM;
-}
-
-function isCloudProvisionedRuntime(): boolean {
-  if (typeof process === "undefined") {
-    return false;
-  }
-  return readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
 }
 
 function isNodeHost(): boolean {
@@ -256,7 +249,7 @@ export class CloudManagedGatewayRelayService extends Service {
       return;
     }
 
-    if (isCloudProvisionedRuntime()) {
+    if (isCloudProvisionedContainer()) {
       logger.debug(
         "[CloudManagedGatewayRelay] Skipping local relay inside provisioned cloud runtime"
       );

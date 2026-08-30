@@ -67,8 +67,21 @@ beforeAll(async () => {
   ({ personalSharedGroupsRepository: repository } = await import("./personal-shared-groups"));
   const database = getPgliteClientForTests();
   await database.exec(`
-    CREATE TABLE organizations (id uuid PRIMARY KEY);
-    CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE organizations (
+      id uuid PRIMARY KEY,
+      is_active boolean NOT NULL DEFAULT true
+    );
+    CREATE TABLE users (
+      id uuid PRIMARY KEY,
+      organization_id uuid REFERENCES organizations(id),
+      steward_user_id text,
+      telegram_id text,
+      phone_number text,
+      phone_verified boolean,
+      is_anonymous boolean,
+      is_active boolean,
+      deleted_at timestamptz
+    );
   `);
   // The repository reads authority_version and delivery_lease_* columns, so
   // the schema must include the authority (0303) and lease (0304) migrations
@@ -77,6 +90,8 @@ beforeAll(async () => {
     "0297_personal_shared_group_bindings.sql",
     "0303_personal_shared_group_authority_version.sql",
     "0304_personal_shared_group_delivery_lease.sql",
+    "0311_personal_shared_group_participants.sql",
+    "0320_personal_shared_multi_principal_consent.sql",
   ]) {
     const migration = await Bun.file(new URL(`../migrations/${file}`, import.meta.url)).text();
     await database.exec(migration);
@@ -91,7 +106,7 @@ beforeEach(async () => {
       users,
       organizations CASCADE;
     INSERT INTO organizations (id) VALUES ('${ORG_A}');
-    INSERT INTO users (id) VALUES ('${USER_A}');
+    INSERT INTO users (id, organization_id) VALUES ('${USER_A}', '${ORG_A}');
   `);
 });
 

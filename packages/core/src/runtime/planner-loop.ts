@@ -58,7 +58,9 @@ import {
 } from "../types/workspace-delta";
 import {
 	isModelProviderError,
+	isProviderContextOverflowError,
 	modelProviderErrorDetail,
+	PROVIDER_CONTEXT_OVERFLOW,
 } from "../utils/model-errors";
 import {
 	hasReasoningResidue,
@@ -610,6 +612,27 @@ async function runPlannerLoopIterations(
 		lastMissAnswerText = candidate;
 		return accepted;
 	};
+	// One-pass clarifying-question termination, shared by both required-tool
+	// miss branches. A user-directed terminal reply that is a user-safe
+	// CLARIFYING QUESTION is a terminal outcome by construction: the planner
+	// is asking the user for input it needs before any tool can act, so a
+	// corrective re-prompt cannot progress the turn — it only re-drafts the
+	// same question against the same context (observed live: "create a mew
+	// event for today" burned four planner passes, ~13.7s, each drafting the
+	// identical "What's the event for?" REPLY before the miss-budget hatch
+	// shipped it, tj-28a877e591e5f3). Deliver the question on the pass that
+	// produced it — the same request-for-input contract as the widget escape
+	// (#15230), one pass earlier because a prose question carries no widget
+	// identity worth a re-emission check. Coding builds keep the full
+	// corrective budget: their gate exists to convert narration into
+	// FILE/SHELL work, so a premature question there is still re-prompted.
+	// Callers must feed only user-directed sources (explicit messageToUser,
+	// REPLY tool-call text) — never the native free-text fallback, which can
+	// be a pre-tool thought.
+	const clarifyingQuestionTermination = (
+		candidate: string | undefined,
+	): string | undefined =>
+		codingMode ? undefined : userSafeClarificationReplyCandidate(candidate);
 
 	// Coding/full-surface mode (selected explicitly for this turn):
 	// when the model emits a batch of tool calls in a single response, execute
@@ -695,6 +718,16 @@ async function runPlannerLoopIterations(
 					onUsage: observePlannerUsage,
 				});
 			} catch (err) {
+				// A context overflow is a terminal integrity boundary even after a
+				// successful action. Relaying the action-owned fallback would hide that
+				// the planner never saw the complete result and could not verify a final
+				// answer from it.
+				if (
+					err instanceof ElizaError &&
+					err.code === PROVIDER_CONTEXT_OVERFLOW
+				) {
+					throw err;
+				}
 				// error-policy:J4 the sole tool already committed; an expected model
 				// provider outage degrades to its vetted action-owned fallback without replay.
 				if (!synthesizingRequiredModelReply || !isModelProviderError(err)) {
@@ -956,6 +989,22 @@ async function runPlannerLoopIterations(
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
 					if (captured) lastTerminalRefusalText = captured;
+					// A clarifying question ends the turn NOW (see
+					// clarifyingQuestionTermination). Explicit messageToUser only —
+					// the native free-text fallback can be a pre-tool thought. A
+					// widget-bearing reply keeps its own re-emission identity check.
+					const clarifyingQuestion =
+						widgetCandidate === undefined
+							? clarifyingQuestionTermination(lastPlannerExplicitMessageToUser)
+							: undefined;
+					if (clarifyingQuestion !== undefined) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: clarifyingQuestion,
+						});
+					}
 					// Only the EXPLICIT messageToUser is a safe answer source in
 					// this branch — the native free-text fallback can be a pre-tool
 					// thought (#9874 item 3), so it is never captured as an answer.
@@ -1221,6 +1270,25 @@ async function runPlannerLoopIterations(
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
 					if (captured) lastTerminalRefusalText = captured;
+					// A clarifying question ends the turn NOW (see
+					// clarifyingQuestionTermination). Source is the REPLY call's OWN
+					// params text — user-directed by construction — with no
+					// messageToUser fallback (same discipline as the answer capture
+					// below). A widget-bearing reply keeps its own identity check.
+					const clarifyingQuestion =
+						widgetCandidate === undefined
+							? clarifyingQuestionTermination(
+									terminalMessageFromToolCalls(plannerOutput.toolCalls),
+								)
+							: undefined;
+					if (clarifyingQuestion !== undefined) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: clarifyingQuestion,
+						});
+					}
 					// A REPLY tool call's OWN params text is user-directed by
 					// construction; a STOP/IGNORE-only terminal's free text is scratch
 					// reasoning (see the hasReplyCall comment below) and is never
@@ -2528,7 +2596,7 @@ function appendMissingJsonObjectClosers(text: string): string {
 	return `${text}${"}".repeat(depth)}`;
 }
 
-async function callPlanner(params: {
+async function dispatchPlannerModelCall(params: {
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
@@ -2762,6 +2830,69 @@ async function callPlanner(params: {
 	});
 
 	return parsed;
+}
+
+/** Typed terminal error for an unrecoverable provider context overflow. */
+function providerContextOverflowFailure(
+	cause: unknown,
+	context: Record<string, unknown>,
+): ElizaError {
+	return new ElizaError(
+		"Planner model input exceeded the provider's context limit and could not " +
+			"be recovered losslessly.",
+		{
+			code: PROVIDER_CONTEXT_OVERFLOW,
+			cause,
+			context: {
+				...context,
+				...(modelProviderErrorDetail(cause) ?? {}),
+			},
+		},
+	);
+}
+
+/**
+ * Planner model call with the context-overflow boundary applied. A hard
+ * provider length rejection (live: Cerebras 400 "Please reduce the length of
+ * the messages or completion. Current length is 202427 while limit is
+ * 131072") TERMINATES the turn with the typed PROVIDER_CONTEXT_OVERFLOW
+ * ElizaError with every completed result and model-facing projection byte-
+ * intact. A nested ReadView is only a content locator; it neither proves the
+ * complete ActionResult can be reconstructed nor names an invocable resolver.
+ * Continuing from such a locator allowed the planner to skip retrieval and
+ * falsely FINISH after source data and action metadata had been removed. Until
+ * a whole-result recovery protocol can execute and verify a resolver before
+ * any completion path, overflow is terminal. The typed error lets the message
+ * boundary answer honestly ("that needed more context — want a smaller
+ * range?") instead of surfacing a raw provider 400 or falsifying history.
+ *
+ * COMPOSITION with the pre-emptive input budget (model-input-budget.ts +
+ * `ProviderResult.overflowText` in services/message.ts): that mechanism is
+ * estimation-driven and runs BEFORE dispatch — when the utf8-upper-bound
+ * estimate crosses the dispatch threshold, Stage-1 composition swaps provider
+ * blocks for their explicitly declared lossless `overflowText` retrieval
+ * forms, and `buildModelInputBudget` stamps diagnostics into providerOptions.
+ * It never rewrites tool results. This boundary is rejection-driven and runs
+ * AT dispatch: the provider's actual length rejection is ground truth for
+ * what the estimator missed (tool results land after provider composition and
+ * estimation is heuristic). It preserves every projection and terminates the
+ * turn with a typed error. Ordered stages: the estimator lowers the odds of
+ * hitting this boundary; this boundary is the integrity-preserving backstop.
+ */
+async function callPlanner(
+	params: Parameters<typeof dispatchPlannerModelCall>[0],
+): ReturnType<typeof dispatchPlannerModelCall> {
+	try {
+		return await dispatchPlannerModelCall(params);
+	} catch (error) {
+		// error-policy:J2 only a structurally classified provider length rejection
+		// is translated; every other failure propagates intact.
+		if (!isProviderContextOverflowError(error)) throw error;
+		throw providerContextOverflowFailure(error, {
+			iteration: params.iteration,
+			recovery: "typed_boundary_terminal",
+		});
+	}
 }
 
 /** Record a gated evaluator outcome without making another model call. */
@@ -4739,6 +4870,27 @@ function handleRequiredToolPlannerMiss(params: {
 		},
 		"Planner returned terminal output before satisfying a required tool call; retrying",
 	);
+	// Identity of the rejected draft, id-insensitive (providers re-mint tool
+	// call ids across re-emissions of the same call). Duplicate identical
+	// drafts must never stack into the planner transcript: the corrective
+	// instruction content is constant, so re-appending it for a verbatim
+	// re-draft adds prompt tokens (+~100/pass observed live,
+	// tj-28a877e591e5f3) but zero information. When the immediately previous
+	// context event is a required-tool-retry carrying this same draft, count
+	// the miss (caller) and log (above) but leave the transcript unchanged.
+	const draftIdentity = [
+		params.plannerOutput.messageToUser ?? "",
+		...params.plannerOutput.toolCalls.map(toolCallIdentity),
+	].join("\n");
+	const events = params.trajectory.context.events ?? [];
+	const previousEvent = events[events.length - 1];
+	if (
+		typeof previousEvent?.id === "string" &&
+		previousEvent.id.startsWith("required-tool-retry:") &&
+		previousEvent.metadata?.draftIdentity === draftIdentity
+	) {
+		return;
+	}
 	appendPlannerModelFeedbackEvent(params.trajectory, {
 		id: `required-tool-retry:${params.iteration}:${params.reason}`,
 		type: "instruction",
@@ -4754,6 +4906,10 @@ function handleRequiredToolPlannerMiss(params: {
 			reason: params.reason,
 			messageToUser: params.plannerOutput.messageToUser,
 			toolCalls: stringifyForModel(params.plannerOutput.toolCalls),
+			// Diagnostic-only (instruction events render `content`, never
+			// metadata): the id-insensitive draft identity the dedup guard
+			// above compares against.
+			draftIdentity,
 		},
 	});
 }

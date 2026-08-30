@@ -150,6 +150,8 @@ export interface VoiceSectionProps {
   wakeWordEnabled?: boolean;
   /** Toggle wake-word listening on/off (persisted + read by the shell). */
   onWakeWordToggle?: (next: boolean) => void;
+  /** Shared controls that should lead the canonical Voice stack. */
+  leadingContent?: React.ReactNode;
   className?: string;
 }
 
@@ -163,6 +165,7 @@ export function VoiceSection({
   showModelsPanel = true,
   wakeWordEnabled = false,
   onWakeWordToggle,
+  leadingContent,
   className,
 }: VoiceSectionProps): React.ReactElement {
   const { t } = useTranslation();
@@ -190,6 +193,7 @@ export function VoiceSection({
   return (
     <section data-testid="voice-section" className={cn(className)}>
       <SettingsStack>
+        {leadingContent}
         <SettingsGroup bare>
           <VoiceTierBanner
             tier={tier ?? "GOOD"}

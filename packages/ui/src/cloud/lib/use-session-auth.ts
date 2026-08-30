@@ -15,7 +15,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { getElizaApiToken } from "@elizaos/shared";
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
@@ -130,7 +130,7 @@ function decodeStewardToken(token: string): {
 function readStewardSessionFromStorage(): StewardSessionUser {
   if (typeof window === "undefined") return null;
   try {
-    const token = localStorage.getItem(STEWARD_TOKEN_KEY);
+    const token = readStoredStewardToken();
     if (!token) return null;
     const decoded = decodeStewardToken(token);
     if (!decoded?.id) return null;

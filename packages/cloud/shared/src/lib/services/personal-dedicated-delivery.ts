@@ -38,7 +38,8 @@ export type PersonalDedicatedDeliveryPreparation =
         | "dedicated_state_unavailable"
         | "PROVISIONING_WORKER_NOT_CONFIGURED"
         | "PROVISIONING_WORKER_UNHEALTHY"
-        | "PROVISIONING_WORKER_UNREACHABLE";
+        | "PROVISIONING_WORKER_UNREACHABLE"
+        | "PROVISIONING_WORKER_CAPABILITY_REQUIRED";
       error: string;
       retryable: boolean;
       status: 502 | 503;

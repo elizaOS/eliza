@@ -54,12 +54,10 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
   });
 
   it("keeps always-visible core widgets on an empty snapshot but honors explicit disable", () => {
-    // Needs-attention is backed by the core ApprovalService, not a loadable
-    // plugin - the canonical `always` core surface with no snapshot entry.
     const emptyResolved = resolveWidgetsForSlot("home", []);
     expect(
       emptyResolved.find((r) => r.declaration.id === "needs-attention.pending"),
-    ).toBeTruthy();
+    ).toBeUndefined();
 
     // Calendar is `always` but IS backed by a real loadable plugin, so an
     // explicit present+disabled snapshot entry still hides it.
@@ -74,6 +72,39 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
     ]);
     expect(
       disabled.find((r) => r.declaration.pluginId === "calendar"),
+    ).toBeUndefined();
+  });
+
+  it("does not resurrect the retired response resident from a server declaration", () => {
+    const resolved = resolveWidgetsForSlot(
+      "home",
+      [{ id: "needs-attention", enabled: true, isActive: true }],
+      [
+        {
+          id: "needs-attention.pending",
+          pluginId: "needs-attention",
+          slot: "home",
+          label: "Needs response",
+          uiSpec: {
+            root: "root",
+            state: {},
+            elements: {
+              root: {
+                type: "Text",
+                props: { text: "Needs response" },
+                children: [],
+              },
+            },
+          },
+        },
+      ],
+    );
+    expect(
+      resolved.find(
+        ({ declaration }) =>
+          declaration.pluginId === "needs-attention" &&
+          declaration.id === "needs-attention.pending",
+      ),
     ).toBeUndefined();
   });
 

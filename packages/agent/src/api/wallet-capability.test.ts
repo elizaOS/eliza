@@ -12,6 +12,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import type { EvmSigningCapability } from "../services/evm-signing-capability.ts";
 import {
+  beginAgentWalletAddressCacheSession,
+  cacheAgentWalletAddresses,
+} from "./wallet.ts";
+import {
   EVM_PLUGIN_PACKAGE,
   isPluginLoadedByName,
   resolvePluginEvmLoaded,
@@ -42,8 +46,18 @@ for (const key of ENV_KEYS) {
 }
 
 const EVM_ADDR = "0x1111111111111111111111111111111111111111";
+const SECOND_EVM_ADDR = "0x2222222222222222222222222222222222222222";
 const SOL_ADDR = "So11111111111111111111111111111111111111112";
 const BSC_RPC = "https://bsc.example.test/";
+const AGENT_A = "00000000-0000-0000-0000-0000000000aa";
+const AGENT_B = "00000000-0000-0000-0000-0000000000bb";
+let agentASession: ReturnType<typeof beginAgentWalletAddressCacheSession>;
+let agentBSession: ReturnType<typeof beginAgentWalletAddressCacheSession>;
+
+function clearAgentAddressCache(): void {
+  agentASession = beginAgentWalletAddressCacheSession(AGENT_A);
+  agentBSession = beginAgentWalletAddressCacheSession(AGENT_B);
+}
 
 function restoreEnv(): void {
   for (const key of ENV_KEYS) {
@@ -99,9 +113,11 @@ function resolveStatus(input: {
 
 beforeEach(() => {
   clearWalletEnv();
+  clearAgentAddressCache();
 });
 
 afterEach(() => {
+  clearAgentAddressCache();
   restoreEnv();
 });
 
@@ -517,5 +533,30 @@ describe("resolveWalletCapabilityStatus", () => {
     expect(status.evmSigningCapability).toBe("local");
     expect(status.evmSigningReason).toBe("env: EVM_PRIVATE_KEY");
     expect(status.walletSource).toBe("local");
+  });
+
+  it("resolves the public-address cache for the current runtime agent only", () => {
+    cacheAgentWalletAddresses(agentASession, {
+      evmAddress: EVM_ADDR,
+      solanaAddress: null,
+    });
+    cacheAgentWalletAddresses(agentBSession, {
+      evmAddress: SECOND_EVM_ADDR,
+      solanaAddress: null,
+    });
+
+    const forAgentA = resolveWalletCapabilityStatus({
+      config: {} as ElizaConfig,
+      runtime: fakeRuntime({ agentId: AGENT_A, plugins: [] }),
+      resolveEvmSigningCapability: noneSigning,
+    });
+    const forAgentB = resolveWalletCapabilityStatus({
+      config: {} as ElizaConfig,
+      runtime: fakeRuntime({ agentId: AGENT_B, plugins: [] }),
+      resolveEvmSigningCapability: noneSigning,
+    });
+
+    expect(forAgentA.evmAddress).toBe(EVM_ADDR);
+    expect(forAgentB.evmAddress).toBe(SECOND_EVM_ADDR);
   });
 });

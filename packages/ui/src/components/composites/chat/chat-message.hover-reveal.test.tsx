@@ -273,23 +273,22 @@ describe("ChatMessage desktop hover chrome", () => {
     // reply / copy / play are meaningless on it and the hover rail read
     // as a bug during first-run. Even with every action handler wired, a
     // `first_run` source turn must render no rail.
+    const message = makeMessage({ source: "first_run" });
     render(
       <ChatMessage
-        message={makeMessage({ source: "first_run" })}
+        message={message}
         appearance="glass"
         onCopy={vi.fn()}
         onReply={vi.fn()}
         onSpeak={vi.fn()}
       />,
     );
-    const bubble = Array.from(
-      document.querySelectorAll<HTMLElement>("div"),
-    ).find((element) => element.classList.contains("backdrop-blur-md"));
+    const bubble = document.querySelector<HTMLElement>(
+      '[data-chat-source="first_run"]',
+    );
     expect(bubble).toBeTruthy();
-    expect(bubble?.classList.contains("border")).toBe(true);
-    expect(bubble?.classList.contains("rounded-2xl")).toBe(true);
-    expect(bubble?.classList.contains("rounded-bl-md")).toBe(true);
-    expect(bubble?.classList.contains("bg-black/35")).toBe(true);
+    expect(bubble?.getAttribute("role")).toBeNull();
+    expect(bubble?.textContent).toContain(message.text);
     expect(screen.queryByTestId("chat-message-action-rail")).toBeNull();
     expect(
       screen.queryByRole("button", { name: /delete/i, hidden: true }),

@@ -1,5 +1,6 @@
 {
   "app": [
+    "packages/app/public/THIRD_PARTY_NOTICES.txt",
     "packages/app/public/_headers",
     "packages/app/public/_redirects",
     "packages/app/public/bg-sunset.webp",

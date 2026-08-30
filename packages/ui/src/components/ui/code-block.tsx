@@ -14,6 +14,9 @@ export interface CodeBlockProps
   children?: React.ReactNode;
   /** Block (default) renders a <pre>; inline renders a <code> span. */
   variant?: "block" | "inline";
+  presentation?: "default" | "attachment" | "compactResult";
+  size?: "default" | "prose";
+  tone?: "default" | "muted" | "strong" | "destructive";
   /** Wrap long lines instead of scrolling horizontally (block only). */
   wrap?: boolean;
   /** Show a top-right copy button. Requires a string value to copy. */
@@ -38,6 +41,9 @@ export const CodeBlock = React.forwardRef<HTMLElement, CodeBlockProps>(
       value,
       children,
       variant = "block",
+      presentation = "default",
+      size = "default",
+      tone = "default",
       wrap = false,
       copyable = false,
       className,
@@ -47,12 +53,27 @@ export const CodeBlock = React.forwardRef<HTMLElement, CodeBlockProps>(
   ) {
     const content = children ?? value ?? "";
     const copyValue = copyable ? resolveCopyValue(value, children) : null;
+    const sizeClassName = size === "prose" ? "text-[0.95em]" : undefined;
+    const toneClassName =
+      tone === "muted"
+        ? "text-muted"
+        : tone === "strong"
+          ? "text-txt-strong"
+          : tone === "destructive"
+            ? "text-destructive"
+            : undefined;
 
     if (variant === "inline") {
       return (
         <code
           ref={ref as React.Ref<HTMLElement>}
-          className={cn(baseClassName, "px-1.5 py-0.5", className)}
+          className={cn(
+            baseClassName,
+            "px-1.5 py-0.5",
+            sizeClassName,
+            toneClassName,
+            className,
+          )}
           {...props}
         >
           {content}
@@ -69,6 +90,11 @@ export const CodeBlock = React.forwardRef<HTMLElement, CodeBlockProps>(
             "m-0 overflow-auto p-3 text-txt",
             wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
             copyValue !== null ? "pr-10" : undefined,
+            presentation === "attachment" &&
+              "max-h-[24rem] rounded-none border-0 bg-transparent",
+            presentation === "compactResult" && "p-2 text-xs-tight",
+            sizeClassName,
+            toneClassName,
             className,
           )}
           {...(props as React.HTMLAttributes<HTMLPreElement>)}

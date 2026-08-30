@@ -21,13 +21,57 @@ describe("resolveChatViewRouting", () => {
     });
   });
 
-  it("derives a dynamic view name from its normalized route", () => {
+  it("routes Calendar from a normalized fullscreen plugin route", () => {
     expect(
       resolveChatViewRouting("views", "calendar/?day=today"),
     ).toMatchObject({
       view: "calendar",
-      primaryContext: "apps",
-      capabilities: ["view-actions", "inspect-view", "navigate-view"],
+      primaryContext: "calendar",
+      capabilities: [],
+    });
+  });
+
+  it("routes fullscreen Notes chat and voice turns to the focused Notes domain", () => {
+    expect(resolveChatViewRouting("views", "/notes")).toEqual({
+      view: "notes",
+      primaryContext: "notes",
+      secondaryContexts: [],
+      capabilities: [],
+    });
+  });
+
+  it("does not invent capabilities for plugin routes without declarations", () => {
+    expect(resolveChatViewRouting("views", "/weather-map")).toMatchObject({
+      view: "weather-map",
+      capabilities: [],
+    });
+  });
+
+  it("does not invent Wallet capabilities before the registry declares them", () => {
+    expect(resolveChatViewRouting("views", "/wallet")).toEqual({
+      view: "wallet",
+      primaryContext: "wallet",
+      secondaryContexts: [],
+      capabilities: [],
+    });
+    expect(resolveChatViewRouting("inventory", "/")).toEqual({
+      view: "wallet",
+      primaryContext: "wallet",
+      secondaryContexts: [],
+      capabilities: [],
+    });
+  });
+
+  it("routes Projects and Memories by rendered route rather than generic tabs", () => {
+    expect(resolveChatViewRouting("apps", "/apps/tasks")).toMatchObject({
+      view: "projects",
+      primaryContext: "code",
+    });
+    expect(resolveChatViewRouting("views", "/apps/memories/item-1")).toEqual({
+      view: "memories",
+      primaryContext: "memory",
+      secondaryContexts: [],
+      capabilities: [],
     });
   });
 

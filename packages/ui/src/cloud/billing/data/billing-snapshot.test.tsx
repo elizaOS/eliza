@@ -63,6 +63,15 @@ function resource(
     status: "running",
     billingStatus: "active",
     ...authority,
+    cancellationControl: {
+      displayAction: type === "container" ? "stop" : "stop_compute",
+      method: "POST",
+      mode: "stop",
+      endpoint: `/api/v1/billing/resources/${resourceId}/cancel?resourceType=${type}`,
+      expectedLifecycleRevision: 7,
+      eligible: true,
+      blockers: [],
+    },
     ratePerHour: available(exact("0.123456", "usd_per_hour"), "rates"),
     estimatedRecurringComputeCostPerDay: available(
       exact("2.962944", "usd_per_day"),
@@ -205,6 +214,25 @@ describe("parseBillingSnapshotV2Envelope", () => {
       lastBilledAt: "2026-08-20T08:07:06.000Z",
       nextBillingAt: null,
       estimatedNextBillingAt: "2026-08-23T12:34:56.000Z",
+    });
+  });
+
+  it("preserves the server-owned account eligibility blocker", () => {
+    const envelope = readyEnvelope();
+    const resources = availableValue(activeOf(envelope).resources) as unknown[];
+    const control = record(record(resources[0]).cancellationControl);
+    control.eligible = false;
+    control.blockers = ["billing_account_ineligible"];
+
+    const parsed = parseBillingSnapshotV2Envelope(envelope);
+    if (parsed.activeCompute.resources.status !== "available") {
+      throw new Error("fixture");
+    }
+    expect(
+      parsed.activeCompute.resources.value[0]?.cancellationControl,
+    ).toMatchObject({
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
     });
   });
 
@@ -356,6 +384,48 @@ describe("parseBillingSnapshotV2Envelope", () => {
           activeOf(envelope).resources,
         ) as unknown[];
         record(resources[0]).nextBillingAt = "2026-08-22";
+      },
+    ],
+    [
+      "client-invented cancellation endpoint",
+      (envelope) => {
+        const resources = availableValue(
+          activeOf(envelope).resources,
+        ) as unknown[];
+        record(record(resources[0]).cancellationControl).endpoint =
+          "/api/v1/billing/resources/another-resource/cancel";
+      },
+    ],
+    [
+      "resource-inconsistent cancellation action",
+      (envelope) => {
+        const resources = availableValue(
+          activeOf(envelope).resources,
+        ) as unknown[];
+        record(record(resources[0]).cancellationControl).displayAction =
+          "stop_compute";
+      },
+    ],
+    [
+      "eligible control with blockers",
+      (envelope) => {
+        const resources = availableValue(
+          activeOf(envelope).resources,
+        ) as unknown[];
+        record(record(resources[0]).cancellationControl).blockers = [
+          "interactive_session_required",
+        ];
+      },
+    ],
+    [
+      "unsafe lifecycle revision",
+      (envelope) => {
+        const resources = availableValue(
+          activeOf(envelope).resources,
+        ) as unknown[];
+        record(
+          record(resources[0]).cancellationControl,
+        ).expectedLifecycleRevision = Number.MAX_SAFE_INTEGER + 1;
       },
     ],
   ];

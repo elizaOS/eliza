@@ -94,7 +94,9 @@ export async function generateFalImageWithFetch(
   fetchImpl: typeof fetch,
   generationTimeoutMs = FAL_IMAGE_GENERATION_TIMEOUT_MS,
 ): Promise<GeneratedImage> {
-  const apiKey = request.apiKeys.FAL_KEY ?? request.apiKeys.FAL_API_KEY;
+  // FAL_API_KEY is the canonical deployment secret; retain FAL_KEY only as a
+  // backwards-compatible fallback for older local environments.
+  const apiKey = request.apiKeys.FAL_API_KEY ?? request.apiKeys.FAL_KEY;
   if (!apiKey) {
     throw new Error(getAiProviderConfigurationError());
   }

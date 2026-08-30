@@ -19,6 +19,7 @@
 import {
   isRemoteControllerPublicIdentity,
   REMOTE_CONTROL_PROTOCOL_VERSION,
+  REMOTE_TARGET_PAIRING_CAPABILITIES,
 } from "@elizaos/shared/contracts/remote-control";
 import { Hono } from "hono";
 import {
@@ -54,6 +55,8 @@ interface PairRequestBody {
   hostId?: unknown;
   grantTtlSeconds?: unknown;
   controller?: unknown;
+  sessionId?: unknown;
+  code?: unknown;
 }
 
 const app = new Hono<AppEnv>();
@@ -100,6 +103,89 @@ app.post("/", async (c) => {
     const body = parsed as PairRequestBody;
     const agentId = typeof body.agentId === "string" ? body.agentId.trim() : "";
     const hostId = typeof body.hostId === "string" ? body.hostId.trim() : "";
+    const claimSessionId =
+      typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+    const claimCode = typeof body.code === "string" ? body.code.trim() : "";
+    if (claimCode || claimSessionId) {
+      if (
+        Boolean(claimSessionId) === Boolean(hostId) ||
+        agentId ||
+        !isRemotePairingUuid(claimSessionId || hostId) ||
+        !/^\d{6}$/.test(claimCode) ||
+        typeof body.controller !== "object" ||
+        body.controller === null ||
+        Array.isArray(body.controller)
+      ) {
+        return c.json(
+          { success: false, error: "Pairing claim is invalid" },
+          400,
+        );
+      }
+      const controller = body.controller as Record<string, unknown>;
+      const controllerIdentity = {
+        version: REMOTE_CONTROL_PROTOCOL_VERSION,
+        role: "controller" as const,
+        ownerId: user.id,
+        deviceId: controller.deviceId,
+        keyId: controller.keyId,
+        displayName: controller.displayName,
+        platform: controller.platform,
+        signingPublicKeyJwk: controller.signingPublicKeyJwk,
+        encryptionPublicKeyJwk: controller.encryptionPublicKeyJwk,
+        createdAt: Date.now(),
+      };
+      if (!isRemoteControllerPublicIdentity(controllerIdentity)) {
+        return c.json(
+          { success: false, error: "Controller identity is invalid" },
+          400,
+        );
+      }
+      const claim = await remoteSessionsRepository.claimPendingHostForOwner({
+        organizationId: user.organization_id,
+        userId: user.id,
+        ...(claimSessionId ? { sessionId: claimSessionId } : { hostId }),
+        code: claimCode,
+        pairingSecret,
+        controllerDeviceId: controllerIdentity.deviceId,
+        controllerKeyId: controllerIdentity.keyId,
+        controllerDisplayName: controllerIdentity.displayName,
+        controllerPlatform: controllerIdentity.platform,
+        controllerSigningPublicJwk: controllerIdentity.signingPublicKeyJwk,
+        controllerEncryptionPublicJwk:
+          controllerIdentity.encryptionPublicKeyJwk,
+      });
+      if (claim.kind === "not_found") {
+        return c.json({ success: false, error: "Remote host not found" }, 404);
+      }
+      if (claim.kind !== "claimed") {
+        return c.json(
+          { success: false, error: "Pairing session not found or invalid" },
+          404,
+        );
+      }
+      c.header("Cache-Control", "no-store");
+      return c.json({
+        success: true,
+        data: {
+          sessionId: claim.session.id,
+          ownerId: claim.session.user_id,
+          status: claim.session.status,
+          expiresAt: claim.session.expires_at,
+          grantExpiresAt: claim.session.grant_expires_at,
+          capabilities: REMOTE_TARGET_PAIRING_CAPABILITIES,
+          host: {
+            id: claim.host.id,
+            deviceId: claim.host.device_id,
+            displayName: claim.host.display_name,
+            platform: claim.host.platform,
+            runtimeKeyId: claim.host.runtime_key_id,
+            signingPublicKeyJwk: claim.host.signing_public_jwk,
+            encryptionPublicKeyJwk: claim.host.encryption_public_jwk,
+            createdAt: claim.host.created_at,
+          },
+        },
+      });
+    }
     if (Boolean(agentId) === Boolean(hostId)) {
       return c.json(
         {

@@ -15,9 +15,16 @@ import type {
 } from "@elizaos/shared";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
-import { Button, ConfirmDialog, Input, Switch } from "@elizaos/ui/components";
+import {
+  Button,
+  Card,
+  ConfirmDialog,
+  Input,
+  SemanticForm,
+  Switch,
+} from "@elizaos/ui/components";
 import { useAppSelector } from "@elizaos/ui/state";
-import { ChevronDown, RefreshCw, Settings2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, RefreshCw, Settings2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -42,6 +49,11 @@ export interface CalendarSourceManagerProps {
   sourceHealth: readonly LifeOpsCalendarSourceHealth[];
   onSelectionChanged?: () => void;
   defaultOpen?: boolean;
+  /** Promote source health into this existing disclosure instead of stacking a second notice. */
+  sourceNotice?: {
+    label: string;
+    tone: "warning" | "danger";
+  };
 }
 
 interface SourceToggleProps {
@@ -92,6 +104,7 @@ export function CalendarSourceManager({
   sourceHealth,
   onSelectionChanged,
   defaultOpen = false,
+  sourceNotice,
 }: CalendarSourceManagerProps) {
   const t = useAppSelector((s) => s.t);
   const state = useCalendarSources();
@@ -262,430 +275,488 @@ export function CalendarSourceManager({
     icsName.trim().length > 0 && icsUrl.trim().length > 0 && !icsSubmitting;
 
   return (
-    <section
-      className="border-b border-border/12 py-1"
-      aria-label={t("calendarSources.manage", {
-        defaultValue: "Manage calendar sources",
-      })}
-      data-testid="calendar-source-manager"
-    >
-      <Button
-        ref={manageRef}
-        variant="sectionToggle"
-        size="content"
-        align="start"
-        aria-controls={contentId}
-        aria-expanded={open}
+    <Card asChild surface="card" radius="large">
+      <section
+        className="px-2 py-1"
         aria-label={t("calendarSources.manage", {
           defaultValue: "Manage calendar sources",
         })}
-        onClick={() => setOpen((current) => !current)}
-        {...manageAgentProps}
+        data-testid="calendar-source-manager"
+        data-notice-tone={sourceNotice?.tone}
+        data-state={open ? "open" : "closed"}
       >
-        <Settings2 className="size-3.5 shrink-0" aria-hidden />
-        <span className="flex-1">
-          {t("calendarSources.manage", {
+        {sourceNotice ? (
+          <span
+            className="sr-only"
+            role="status"
+            aria-label={sourceNotice.label}
+            aria-live="polite"
+          />
+        ) : null}
+        <Button
+          ref={manageRef}
+          variant="sectionToggle"
+          size="touch"
+          align="start"
+          aria-controls={contentId}
+          aria-expanded={open}
+          aria-label={t("calendarSources.manage", {
             defaultValue: "Manage calendar sources",
           })}
-        </span>
-        {state.status === "ready" || state.status === "empty" ? (
-          <span className="font-normal text-muted">
-            {t("calendarSources.includedCount", {
-              defaultValue: "{{count}} included",
-              count: includedCount,
-            })}
-          </span>
-        ) : null}
-        <ChevronDown
-          className={`size-3.5 shrink-0 transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-          aria-hidden
-        />
-      </Button>
-
-      {open ? (
-        <div id={contentId} className="px-1 pb-3 pt-1">
-          <p className="max-w-2xl text-xs leading-5 text-muted">
-            {t("calendarSources.autoIncludeHint", {
-              defaultValue:
-                "New calendars are included automatically. Turn one off to remove it from the combined calendar.",
-            })}
-          </p>
-
-          {state.status === "loading" ? (
-            <p
-              className="mt-3 text-xs text-muted"
-              role="status"
-              aria-live="polite"
-              aria-busy="true"
-            >
-              {t("calendarSources.loading", {
-                defaultValue: "Loading calendar sources…",
-              })}
-            </p>
-          ) : null}
-
-          {state.error ? (
-            <div
-              className="mt-3 flex flex-wrap items-center gap-2 text-xs text-danger"
-              role="alert"
-            >
-              <span>{state.error}</span>
-              <Button variant="mutedLink" onClick={() => void state.refresh()}>
-                {t("common.retry", { defaultValue: "Retry" })}
-              </Button>
-            </div>
-          ) : null}
-
-          {state.refreshError ? (
-            <p className="mt-3 text-xs text-warning" role="alert">
-              {state.refreshError}
-            </p>
-          ) : null}
-
-          {state.status === "empty" && model.rows.length === 0 ? (
-            <div className="mt-3 text-xs text-muted">
-              <p>
-                {t("calendarSources.noneFound", {
-                  defaultValue: "No calendar sources were found.",
-                })}
-              </p>
-              <Button
-                variant="mutedLink"
-                className="mt-1"
-                onClick={() => openCalendarConnectorSettings()}
-              >
-                {t("calendarSources.openConnectorSettings", {
-                  defaultValue: "Open connector settings",
-                })}
-              </Button>
-            </div>
-          ) : null}
-
-          {model.rows.length > 0 ? (
-            <ul className="mt-3 divide-y divide-border/12 border-y border-border/12">
-              {model.rows.map((row) => {
-                const calendar = model.calendarsByActionId.get(row.actionId);
-                const identityKey = calendar
-                  ? calendarSourceIdentityKey(calendar)
-                  : null;
-                const pending = identityKey
-                  ? state.pendingKeys.has(identityKey)
-                  : false;
-                const mutationError = identityKey
-                  ? state.mutationErrors[identityKey]
-                  : null;
-                return (
-                  <li
-                    key={row.actionId}
-                    className="py-3"
-                    data-testid={`calendar-source-row-${row.actionId}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className="truncate text-sm font-semibold text-txt">
-                            {row.calendarLabel}
-                          </span>
-                          {row.primary &&
-                          row.calendarLabel.trim().toLowerCase() !==
-                            "primary" ? (
-                            <span className="text-[11px] font-medium uppercase tracking-wide text-muted">
-                              {t("calendarSources.primary", {
-                                defaultValue: "Primary",
-                              })}
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-0.5 truncate text-xs text-muted">
-                          {row.providerLabel} · {row.accountLabel}
-                        </p>
-                        <p className="mt-1 text-xs leading-5 text-muted">
-                          {row.accessLabel} · {row.visibilityLabel} ·{" "}
-                          <span
-                            className={
-                              row.tone === "danger"
-                                ? "text-danger"
-                                : row.tone === "warning"
-                                  ? "text-warning"
-                                  : row.tone === "success"
-                                    ? "text-success"
-                                    : undefined
-                            }
-                          >
-                            {row.statusLabel}
-                          </span>{" "}
-                          · {row.freshnessLabel}
-                        </p>
-                      </div>
-
-                      {row.toggleAvailable ? (
-                        <div className="flex shrink-0 flex-col items-end gap-1">
-                          <SourceToggle
-                            row={row}
-                            label={t("calendarSources.includeToggle", {
-                              defaultValue:
-                                "Include {{calendar}} ({{provider}}, {{account}}) in the combined calendar",
-                              calendar: row.calendarLabel,
-                              provider: row.providerLabel,
-                              account: row.accountLabel,
-                            })}
-                            pending={pending}
-                            onCheckedChange={(checked) =>
-                              void handleToggle(row.actionId, checked)
-                            }
-                          />
-                          <span
-                            className="text-[11px] text-muted"
-                            role={pending ? "status" : undefined}
-                            aria-live="polite"
-                          >
-                            {pending
-                              ? row.included
-                                ? t("calendarSources.excluding", {
-                                    defaultValue: "Excluding…",
-                                  })
-                                : t("calendarSources.including", {
-                                    defaultValue: "Including…",
-                                  })
-                              : row.included
-                                ? t("calendarSources.included", {
-                                    defaultValue: "Included",
-                                  })
-                                : t("calendarSources.excluded", {
-                                    defaultValue: "Excluded",
-                                  })}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="shrink-0 text-[11px] text-muted">
-                          {t("calendarSources.inclusionUnavailable", {
-                            defaultValue: "Inclusion unavailable",
-                          })}
-                        </span>
-                      )}
-                    </div>
-
-                    {mutationError ? (
-                      <p className="mt-2 text-xs text-danger" role="alert">
-                        {mutationError}
-                      </p>
-                    ) : null}
-
-                    {row.reconnectConnectorId ? (
-                      <Button
-                        variant="mutedLink"
-                        className="mt-2"
-                        onClick={() =>
-                          openCalendarConnectorSettings(
-                            row.reconnectConnectorId ?? undefined,
-                          )
-                        }
-                      >
-                        {t("calendarSources.reconnectGoogle", {
-                          defaultValue: "Reconnect Google Calendar",
-                        })}
-                      </Button>
-                    ) : row.reconnectUnavailable ? (
-                      <p className="mt-2 text-xs text-muted">
-                        {t("calendarSources.reconnectUnavailable", {
-                          defaultValue: "Reconnect unavailable here.",
-                        })}
-                      </p>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-
-          {model.rows.length > 0 ? (
-            <Button
-              variant="ghostMuted"
-              size="compact"
-              className="mt-2"
-              disabled={state.refreshing}
-              onClick={() => void state.refresh()}
-            >
-              <RefreshCw
-                className={`size-3.5 ${state.refreshing ? "animate-spin" : ""}`}
-                aria-hidden
-              />
-              {state.refreshing
-                ? t("calendarSources.refreshingSources", {
-                    defaultValue: "Refreshing sources…",
-                  })
-                : t("calendarSources.refreshSources", {
-                    defaultValue: "Refresh sources",
-                  })}
-            </Button>
-          ) : null}
-
-          <div
-            className="mt-4 border-t border-border/12 pt-3"
-            data-testid="calendar-ics-sources"
+          onClick={() => setOpen((current) => !current)}
+          {...manageAgentProps}
+        >
+          {sourceNotice ? (
+            <AlertTriangle
+              className={
+                sourceNotice.tone === "danger"
+                  ? "size-3.5 shrink-0 text-danger"
+                  : "size-3.5 shrink-0 text-warning"
+              }
+              aria-hidden
+            />
+          ) : (
+            <Settings2 className="size-3.5 shrink-0" aria-hidden />
+          )}
+          <span
+            className={`flex-1 ${
+              sourceNotice?.tone === "danger"
+                ? "text-danger"
+                : sourceNotice
+                  ? "text-warning"
+                  : ""
+            }`}
+            aria-hidden={sourceNotice ? true : undefined}
           >
-            <h3 className="text-xs font-medium text-muted-strong">
-              {t("calendarSources.icsHeading", {
-                defaultValue: "Calendar subscriptions (ICS)",
+            {sourceNotice?.label ??
+              t("calendarSources.manage", {
+                defaultValue: "Manage calendar sources",
               })}
-            </h3>
+          </span>
+          {sourceNotice ? (
+            <span className="font-normal text-muted" aria-hidden>
+              {t("calendarSources.review", { defaultValue: "Review" })}
+            </span>
+          ) : state.status === "ready" || state.status === "empty" ? (
+            <span className="font-normal text-muted">
+              {t("calendarSources.includedCount", {
+                defaultValue: "{{count}} included",
+                count: includedCount,
+              })}
+            </span>
+          ) : null}
+          <ChevronDown
+            className={`size-3.5 shrink-0 transition-transform ${
+              open ? "rotate-180" : ""
+            }`}
+            aria-hidden
+          />
+        </Button>
 
-            {icsStatus === "loading" ? (
+        {open ? (
+          <div id={contentId} className="px-1 pb-3 pt-1">
+            <p className="max-w-2xl text-xs leading-5 text-muted">
+              {t("calendarSources.autoIncludeHint", {
+                defaultValue:
+                  "New calendars are included automatically. Turn one off to remove it from the combined calendar.",
+              })}
+            </p>
+
+            {state.status === "loading" ? (
               <p
-                className="mt-2 text-xs text-muted"
+                className="mt-3 text-xs text-muted"
                 role="status"
                 aria-live="polite"
                 aria-busy="true"
               >
-                {t("calendarSources.icsLoading", {
-                  defaultValue: "Loading subscriptions…",
+                {t("calendarSources.loading", {
+                  defaultValue: "Loading calendar sources…",
                 })}
               </p>
             ) : null}
 
-            {icsStatus === "error" && icsError ? (
+            {state.error ? (
               <div
-                className="mt-2 flex flex-wrap items-center gap-2 text-xs text-danger"
+                className="mt-3 flex flex-wrap items-center gap-2 text-xs text-danger"
                 role="alert"
               >
-                <span>{icsError}</span>
+                <span>{state.error}</span>
                 <Button
                   variant="mutedLink"
-                  onClick={() => void loadIcsSources()}
+                  onClick={() => void state.refresh()}
                 >
                   {t("common.retry", { defaultValue: "Retry" })}
                 </Button>
               </div>
             ) : null}
 
-            {icsStatus === "ready" && icsSources.length === 0 ? (
-              <p className="mt-2 text-xs text-muted">
-                {t("calendarSources.icsEmpty", {
-                  defaultValue: "No calendar subscriptions yet.",
-                })}
+            {state.refreshError ? (
+              <p className="mt-3 text-xs text-warning" role="alert">
+                {state.refreshError}
               </p>
             ) : null}
 
-            {icsSources.length > 0 ? (
-              <ul className="mt-2 divide-y divide-border/12 border-y border-border/12">
-                {icsSources.map((source) => (
-                  <li
-                    key={source.id}
-                    className="flex items-start gap-3 py-2.5"
-                    data-testid={`calendar-ics-source-${source.id}`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-txt">
-                        {source.name}
-                      </span>
-                      <p className="mt-0.5 truncate text-xs text-muted">
-                        {source.origin} ·{" "}
-                        <span
-                          className={
-                            source.syncStatus === "error"
-                              ? "text-danger"
-                              : source.syncStatus === "partial"
-                                ? "text-warning"
-                                : undefined
-                          }
-                        >
-                          {icsStatusLine(source)}
-                        </span>
-                      </p>
-                    </div>
-                    <Button
-                      variant="dangerGhost"
-                      size="content"
-                      className="shrink-0"
-                      disabled={icsRemovingId === source.id}
-                      aria-label={t("calendarSources.icsRemoveAria", {
-                        defaultValue: "Remove subscription {{name}}",
-                        name: source.name,
-                      })}
-                      onClick={() => setIcsRemoveTarget(source)}
+            {state.status === "empty" && model.rows.length === 0 ? (
+              <div className="mt-3 text-xs text-muted">
+                <p>
+                  {t("calendarSources.noneFound", {
+                    defaultValue: "No calendar sources were found.",
+                  })}
+                </p>
+                <Button
+                  variant="mutedLink"
+                  className="mt-1"
+                  onClick={() => openCalendarConnectorSettings()}
+                >
+                  {t("calendarSources.openConnectorSettings", {
+                    defaultValue: "Open connector settings",
+                  })}
+                </Button>
+              </div>
+            ) : null}
+
+            {model.rows.length > 0 ? (
+              <ul className="mt-3">
+                {model.rows.map((row, index) => {
+                  const calendar = model.calendarsByActionId.get(row.actionId);
+                  const identityKey = calendar
+                    ? calendarSourceIdentityKey(calendar)
+                    : null;
+                  const pending = identityKey
+                    ? state.pendingKeys.has(identityKey)
+                    : false;
+                  const mutationError = identityKey
+                    ? state.mutationErrors[identityKey]
+                    : null;
+                  return (
+                    <Card
+                      asChild
+                      key={row.actionId}
+                      variant={index > 0 ? "topDivider" : "transparentSquare"}
                     >
-                      {icsRemovingId === source.id
-                        ? t("calendarSources.icsRemoving", {
-                            defaultValue: "Removing…",
-                          })
-                        : t("common.remove", { defaultValue: "Remove" })}
-                    </Button>
-                  </li>
-                ))}
+                      <li
+                        className="py-3"
+                        data-testid={`calendar-source-row-${row.actionId}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="truncate text-sm font-semibold text-txt">
+                                {row.calendarLabel}
+                              </span>
+                              {row.primary &&
+                              row.calendarLabel.trim().toLowerCase() !==
+                                "primary" ? (
+                                <span className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                                  {t("calendarSources.primary", {
+                                    defaultValue: "Primary",
+                                  })}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-0.5 truncate text-xs text-muted">
+                              {row.providerLabel} · {row.accountLabel}
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-muted">
+                              {row.accessLabel} · {row.visibilityLabel} ·{" "}
+                              <span
+                                className={
+                                  row.tone === "danger"
+                                    ? "text-danger"
+                                    : row.tone === "warning"
+                                      ? "text-warning"
+                                      : row.tone === "success"
+                                        ? "text-success"
+                                        : undefined
+                                }
+                              >
+                                {row.statusLabel}
+                              </span>{" "}
+                              · {row.freshnessLabel}
+                            </p>
+                          </div>
+
+                          {row.toggleAvailable ? (
+                            <div className="flex shrink-0 flex-col items-end gap-1">
+                              <SourceToggle
+                                row={row}
+                                label={t("calendarSources.includeToggle", {
+                                  defaultValue:
+                                    "Include {{calendar}} ({{provider}}, {{account}}) in the combined calendar",
+                                  calendar: row.calendarLabel,
+                                  provider: row.providerLabel,
+                                  account: row.accountLabel,
+                                })}
+                                pending={pending}
+                                onCheckedChange={(checked) =>
+                                  void handleToggle(row.actionId, checked)
+                                }
+                              />
+                              <span
+                                className="text-[11px] text-muted"
+                                role={pending ? "status" : undefined}
+                                aria-live="polite"
+                              >
+                                {pending
+                                  ? row.included
+                                    ? t("calendarSources.excluding", {
+                                        defaultValue: "Excluding…",
+                                      })
+                                    : t("calendarSources.including", {
+                                        defaultValue: "Including…",
+                                      })
+                                  : row.included
+                                    ? t("calendarSources.included", {
+                                        defaultValue: "Included",
+                                      })
+                                    : t("calendarSources.excluded", {
+                                        defaultValue: "Excluded",
+                                      })}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="shrink-0 text-[11px] text-muted">
+                              {t("calendarSources.inclusionUnavailable", {
+                                defaultValue: "Inclusion unavailable",
+                              })}
+                            </span>
+                          )}
+                        </div>
+
+                        {mutationError ? (
+                          <p className="mt-2 text-xs text-danger" role="alert">
+                            {mutationError}
+                          </p>
+                        ) : null}
+
+                        {row.reconnectConnectorId ? (
+                          <Button
+                            variant="mutedLink"
+                            className="mt-2"
+                            onClick={() =>
+                              openCalendarConnectorSettings(
+                                row.reconnectConnectorId ?? undefined,
+                              )
+                            }
+                          >
+                            {t("calendarSources.reconnectGoogle", {
+                              defaultValue: "Reconnect Google Calendar",
+                            })}
+                          </Button>
+                        ) : row.reconnectUnavailable ? (
+                          <p className="mt-2 text-xs text-muted">
+                            {t("calendarSources.reconnectUnavailable", {
+                              defaultValue: "Reconnect unavailable here.",
+                            })}
+                          </p>
+                        ) : null}
+                      </li>
+                    </Card>
+                  );
+                })}
               </ul>
             ) : null}
 
-            {icsMutationError ? (
-              <p className="mt-2 text-xs text-danger" role="alert">
-                {icsMutationError}
-              </p>
-            ) : null}
-
-            <form
-              className="mt-3 flex flex-wrap items-center gap-2"
-              onSubmit={(submitEvent) => {
-                submitEvent.preventDefault();
-                void handleIcsSubscribe();
-              }}
-            >
-              <Input
-                density="denseResponsive"
-                value={icsName}
-                onChange={(changeEvent) => setIcsName(changeEvent.target.value)}
-                placeholder={t("calendarSources.icsNamePlaceholder", {
-                  defaultValue: "Subscription name",
-                })}
-                aria-label={t("calendarSources.icsNameAria", {
-                  defaultValue: "Subscription name",
-                })}
-                disabled={icsSubmitting}
-                className="w-40"
-              />
-              <Input
-                density="denseResponsive"
-                value={icsUrl}
-                onChange={(changeEvent) => setIcsUrl(changeEvent.target.value)}
-                placeholder={t("calendarSources.icsUrlPlaceholder", {
-                  defaultValue: "https:// or webcal:// feed URL",
-                })}
-                aria-label={t("calendarSources.icsUrlAria", {
-                  defaultValue: "Subscription URL",
-                })}
-                disabled={icsSubmitting}
-                className="min-w-0 flex-1"
-              />
-              <Button type="submit" size="dense" disabled={!icsSubscribeReady}>
-                {icsSubmitting
-                  ? t("calendarSources.icsSubscribing", {
-                      defaultValue: "Subscribing…",
+            {model.rows.length > 0 ? (
+              <Button
+                variant="ghostMuted"
+                size="compact"
+                className="mt-2"
+                disabled={state.refreshing}
+                onClick={() => void state.refresh()}
+              >
+                <RefreshCw
+                  className={`size-3.5 ${state.refreshing ? "animate-spin" : ""}`}
+                  aria-hidden
+                />
+                {state.refreshing
+                  ? t("calendarSources.refreshingSources", {
+                      defaultValue: "Refreshing sources…",
                     })
-                  : t("calendarSources.icsSubscribe", {
-                      defaultValue: "Subscribe",
+                  : t("calendarSources.refreshSources", {
+                      defaultValue: "Refresh sources",
                     })}
               </Button>
-            </form>
-          </div>
-        </div>
-      ) : null}
+            ) : null}
 
-      <ConfirmDialog
-        open={icsRemoveTarget !== null}
-        title={t("calendarSources.icsRemoveTitle", {
-          defaultValue: "Remove subscription?",
-        })}
-        message={t("calendarSources.icsRemoveMessage", {
-          defaultValue:
-            "Events from “{{name}}” will disappear from the combined calendar. The feed itself is not affected.",
-          name: icsRemoveTarget?.name ?? "",
-        })}
-        confirmLabel={t("common.remove", { defaultValue: "Remove" })}
-        cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
-        variant="danger"
-        onConfirm={() => void handleIcsRemove()}
-        onCancel={() => setIcsRemoveTarget(null)}
-      />
-    </section>
+            <Card asChild variant="topDivider">
+              <div className="mt-4 pt-3" data-testid="calendar-ics-sources">
+                <h3 className="text-xs font-medium text-muted-strong">
+                  {t("calendarSources.icsHeading", {
+                    defaultValue: "Calendar subscriptions (ICS)",
+                  })}
+                </h3>
+
+                {icsStatus === "loading" ? (
+                  <p
+                    className="mt-2 text-xs text-muted"
+                    role="status"
+                    aria-live="polite"
+                    aria-busy="true"
+                  >
+                    {t("calendarSources.icsLoading", {
+                      defaultValue: "Loading subscriptions…",
+                    })}
+                  </p>
+                ) : null}
+
+                {icsStatus === "error" && icsError ? (
+                  <div
+                    className="mt-2 flex flex-wrap items-center gap-2 text-xs text-danger"
+                    role="alert"
+                  >
+                    <span>{icsError}</span>
+                    <Button
+                      variant="mutedLink"
+                      onClick={() => void loadIcsSources()}
+                    >
+                      {t("common.retry", { defaultValue: "Retry" })}
+                    </Button>
+                  </div>
+                ) : null}
+
+                {icsStatus === "ready" && icsSources.length === 0 ? (
+                  <p className="mt-2 text-xs text-muted">
+                    {t("calendarSources.icsEmpty", {
+                      defaultValue: "No calendar subscriptions yet.",
+                    })}
+                  </p>
+                ) : null}
+
+                {icsSources.length > 0 ? (
+                  <ul className="mt-2">
+                    {icsSources.map((source, index) => (
+                      <Card
+                        asChild
+                        key={source.id}
+                        variant={index > 0 ? "topDivider" : "transparentSquare"}
+                      >
+                        <li
+                          className="flex items-start gap-3 py-2.5"
+                          data-testid={`calendar-ics-source-${source.id}`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-txt">
+                              {source.name}
+                            </span>
+                            <p className="mt-0.5 truncate text-xs text-muted">
+                              {source.origin} ·{" "}
+                              <span
+                                className={
+                                  source.syncStatus === "error"
+                                    ? "text-danger"
+                                    : source.syncStatus === "partial"
+                                      ? "text-warning"
+                                      : undefined
+                                }
+                              >
+                                {icsStatusLine(source)}
+                              </span>
+                            </p>
+                          </div>
+                          <Button
+                            variant="dangerGhost"
+                            size="content"
+                            className="shrink-0"
+                            disabled={icsRemovingId === source.id}
+                            aria-label={t("calendarSources.icsRemoveAria", {
+                              defaultValue: "Remove subscription {{name}}",
+                              name: source.name,
+                            })}
+                            onClick={() => setIcsRemoveTarget(source)}
+                          >
+                            {icsRemovingId === source.id
+                              ? t("calendarSources.icsRemoving", {
+                                  defaultValue: "Removing…",
+                                })
+                              : t("common.remove", { defaultValue: "Remove" })}
+                          </Button>
+                        </li>
+                      </Card>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {icsMutationError ? (
+                  <p className="mt-2 text-xs text-danger" role="alert">
+                    {icsMutationError}
+                  </p>
+                ) : null}
+
+                <SemanticForm
+                  className="mt-3 flex flex-wrap items-center gap-2"
+                  onSubmit={(submitEvent) => {
+                    submitEvent.preventDefault();
+                    void handleIcsSubscribe();
+                  }}
+                >
+                  <Input
+                    density="denseResponsive"
+                    value={icsName}
+                    onChange={(changeEvent) =>
+                      setIcsName(changeEvent.target.value)
+                    }
+                    placeholder={t("calendarSources.icsNamePlaceholder", {
+                      defaultValue: "Subscription name",
+                    })}
+                    aria-label={t("calendarSources.icsNameAria", {
+                      defaultValue: "Subscription name",
+                    })}
+                    disabled={icsSubmitting}
+                    className="w-full sm:w-40"
+                  />
+                  <Input
+                    density="denseResponsive"
+                    value={icsUrl}
+                    onChange={(changeEvent) =>
+                      setIcsUrl(changeEvent.target.value)
+                    }
+                    placeholder={t("calendarSources.icsUrlPlaceholder", {
+                      defaultValue: "https:// or webcal:// feed URL",
+                    })}
+                    aria-label={t("calendarSources.icsUrlAria", {
+                      defaultValue: "Subscription URL",
+                    })}
+                    disabled={icsSubmitting}
+                    className="w-full sm:min-w-0 sm:flex-1"
+                  />
+                  <Button
+                    type="submit"
+                    size="dense"
+                    className="w-full sm:w-auto"
+                    disabled={!icsSubscribeReady}
+                  >
+                    {icsSubmitting
+                      ? t("calendarSources.icsSubscribing", {
+                          defaultValue: "Subscribing…",
+                        })
+                      : t("calendarSources.icsSubscribe", {
+                          defaultValue: "Subscribe",
+                        })}
+                  </Button>
+                </SemanticForm>
+              </div>
+            </Card>
+          </div>
+        ) : null}
+
+        <ConfirmDialog
+          open={icsRemoveTarget !== null}
+          title={t("calendarSources.icsRemoveTitle", {
+            defaultValue: "Remove subscription?",
+          })}
+          message={t("calendarSources.icsRemoveMessage", {
+            defaultValue:
+              "Events from “{{name}}” will disappear from the combined calendar. The feed itself is not affected.",
+            name: icsRemoveTarget?.name ?? "",
+          })}
+          confirmLabel={t("common.remove", { defaultValue: "Remove" })}
+          cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
+          variant="danger"
+          onConfirm={() => void handleIcsRemove()}
+          onCancel={() => setIcsRemoveTarget(null)}
+        />
+      </section>
+    </Card>
   );
 }

@@ -278,10 +278,11 @@ Staging and production inference require:
 - `INFERENCE_HOT_PATH_CACHES="true"`.
 
 `INFERENCE_AUTH_CACHE_ENABLED="true"` is inert unless
-`INFERENCE_STRONG_REVOCATION_ENABLED="true"`. The strong flag remains false in
-checked-in staging and production configuration until rollout evidence is
-approved, so authoritative authorization remains the default. The thin entry
-has its own `THIN_INFERENCE_ENTRY_ENABLED` rollout control.
+`INFERENCE_STRONG_REVOCATION_ENABLED="true"`. Staging enables the strong flag
+to soak the revocation-fenced positive cache; production keeps it false until
+the staged latency and revocation evidence is approved, so authoritative
+authorization remains the production default. The thin entry has its own
+`THIN_INFERENCE_ENTRY_ENABLED` rollout control.
 The thin entry lazily evaluates only the matched generative route module rather
 than the monolithic API router. Either flag remains an independent rollback
 control.

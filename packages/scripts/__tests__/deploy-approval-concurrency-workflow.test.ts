@@ -3,9 +3,15 @@
  * waiting on a protected `environment` approval must never own a shared
  * workflow-level concurrency group, or the wait head-of-line blocks every
  * newer canonical run at `pending` with zero jobs. Admission is therefore
- * per-run (or per-PR) at the workflow level, and mutation is serialized by
- * job-level groups with `cancel-in-progress: false` and `queue: max`.
- * Deterministic static checks against the checked-in workflow YAML.
+ * per-run (or per-PR) at the workflow level. For workflows that rely on
+ * GitHub job-level locking (cloud-cf-deploy, deploy-aasa) that lock must be a
+ * shared serial queue (`cancel-in-progress: false`, `queue: max`) and must
+ * never carry per-run ids. The provisioning-worker deploy is the deliberate
+ * exception (#29337): its job concurrency key is run-unique queue-lease
+ * isolation so a canceled run cannot hold a stale pending slot, because the
+ * deploy's real cross-run mutation serializer is the remote-host `flock` in
+ * `/tmp`, which protects `/opt/eliza` mutations. Deterministic static checks
+ * against the checked-in workflow YAML.
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -22,6 +28,10 @@ interface ConcurrencyBlock {
 interface WorkflowJob {
   concurrency?: ConcurrencyBlock;
   environment?: string;
+  steps?: Array<{
+    name?: string;
+    with?: { command_timeout?: string; envs?: string; script?: string };
+  }>;
 }
 
 interface Workflow {
@@ -109,10 +119,61 @@ describe("provisioning-worker approval/concurrency topology (#18092)", () => {
     expect(provisioning.concurrency?.["cancel-in-progress"]).toBe(false);
   });
 
-  it("keeps the deploy mutation lock at job level as a serial queue", () => {
-    expectSerialMutationLock(provisioning.jobs?.deploy);
-    expect(provisioning.jobs?.deploy?.environment).toContain(
+  it("uses a run-unique deploy lease while the host flock serializes mutation (#29337)", () => {
+    const deploy = provisioning.jobs?.deploy;
+    const lock = deploy?.concurrency;
+    // #29337 deliberately makes the job queue key run-unique so a canceled
+    // zero-step run cannot hold a stale GitHub pending slot; serialization is
+    // owned by the remote host flock, not this group. Keep the non-eviction
+    // guarantees the queue is supposed to provide when it does contend.
+    expect(lock?.group).toBeDefined();
+    expect(lock?.group).toContain("format('run-{0}', github.run_id)");
+    expect(lock?.["cancel-in-progress"]).toBe(false);
+    expect(lock?.queue).toBe("max");
+    expect(deploy?.environment).toContain(
       "needs.determine-env.outputs.environment",
+    );
+
+    // The real cross-run mutation serializer: the deploy SSH step must
+    // acquire the host lock on the shared checkout before mutating it.
+    const hostStep = deploy?.steps?.find(
+      (step) => step.name === "Deploy and restart worker",
+    );
+    expect(hostStep?.with?.script).toContain(
+      "/tmp/eliza-provisioning-worker-deploy.lock",
+    );
+    expect(hostStep?.with?.script).toContain("flock -w 1200 9");
+  });
+
+  it("serializes deployment identity through health or fails as superseded", () => {
+    const steps = provisioning.jobs?.deploy?.steps ?? [];
+    const deployStep = steps.find(
+      (step) => step.name === "Deploy and restart worker",
+    );
+    const healthStep = steps.find((step) => step.name === "Health check");
+    const deployScript = deployStep?.with?.script ?? "";
+    const healthScript = healthStep?.with?.script ?? "";
+    const lockPath = "/tmp/eliza-provisioning-worker-deploy.lock";
+
+    expect(deployScript).toContain(`exec 9>${lockPath}`);
+    expect(healthScript).toContain(`exec 9>${lockPath}`);
+    expect(healthStep?.with?.command_timeout).toBe("25m");
+    expect(healthStep?.with?.envs?.split(",")).toContain("DEPLOY_SHA");
+
+    const healthLockIndex = healthScript.indexOf("flock -w 1200 9");
+    const checkoutReadIndex = healthScript.indexOf(
+      "ACTUAL_DEPLOY_SHA=$(git rev-parse HEAD)",
+    );
+    const identityCheckIndex = healthScript.indexOf(
+      'if [ "$ACTUAL_DEPLOY_SHA" != "$DEPLOY_SHA" ]',
+    );
+    const healthLoopIndex = healthScript.indexOf("for attempt in $(seq 1 18)");
+    expect(healthLockIndex).toBeGreaterThanOrEqual(0);
+    expect(checkoutReadIndex).toBeGreaterThan(healthLockIndex);
+    expect(identityCheckIndex).toBeGreaterThan(checkoutReadIndex);
+    expect(healthLoopIndex).toBeGreaterThan(identityCheckIndex);
+    expect(healthScript).toContain(
+      "Provisioning deployment was superseded before health verification",
     );
   });
 });

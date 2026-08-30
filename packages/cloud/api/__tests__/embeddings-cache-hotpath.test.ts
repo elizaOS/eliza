@@ -329,6 +329,55 @@ describe("POST /api/v1/embeddings Worker cache hot path", () => {
     await scheduled[0];
   });
 
+  test("preserves a cached standing 503 before admission or provider dispatch", async () => {
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "rejected",
+      status: 503,
+    });
+    const { ctx, scheduled } = makeExecutionCtx();
+
+    const response = await post(ctx);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("1");
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        type: "service_unavailable",
+        code: "service_unavailable",
+        details: { reason: "authorization_unavailable" },
+      },
+    });
+    expect(enforceOrgRateLimit).not.toHaveBeenCalled();
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    expect(embedMany).not.toHaveBeenCalled();
+    await Promise.all(scheduled);
+  });
+
+  test("returns a typed cached standing reason before provider dispatch", async () => {
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "rejected",
+      status: 403,
+      reason: "membership_missing",
+    });
+    const { ctx, scheduled } = makeExecutionCtx();
+
+    const response = await post(ctx);
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        message: "Account is not associated with an active organization",
+        code: "access_denied",
+        details: { reason: "membership_missing" },
+      },
+    });
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    expect(embedMany).not.toHaveBeenCalled();
+    await Promise.all(scheduled);
+  });
+
   test("cold org-rate policy is an explicit retryable 503 before admission", async () => {
     enforceOrgRateLimit.mockRejectedValueOnce(
       new rateLimitActual.OrgRateLimitCacheNotReadyError("warming", "miss"),

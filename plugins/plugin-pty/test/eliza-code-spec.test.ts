@@ -5,14 +5,41 @@
  * predicate — no real PTY or process spawn.
  */
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildElizaCodeCerebrasSpec,
   ELIZA_CLOUD_DEFAULT_BASE_URL,
   ELIZA_CLOUD_FAST_MODEL,
   ELIZA_CLOUD_SMART_MODEL,
   resolveElizaCodeBin,
+  resolveElizaCodeCloudTuple,
 } from "../lib/eliza-code-spec";
+
+const AUTHORITY_ENV_KEYS = [
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZA_DEV_CLOUD_TARGET",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+] as const;
+const savedAuthorityEnv = Object.fromEntries(
+  AUTHORITY_ENV_KEYS.map((key) => [key, process.env[key]]),
+) as Record<(typeof AUTHORITY_ENV_KEYS)[number], string | undefined>;
+
+beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
+  for (const key of AUTHORITY_ENV_KEYS) delete process.env[key];
+});
+
+afterEach(() => {
+  for (const key of AUTHORITY_ENV_KEYS) {
+    const value = savedAuthorityEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  resetDevCloudEnvAuthorityForTests();
+});
 
 describe("buildElizaCodeCerebrasSpec", () => {
   const base = {
@@ -84,6 +111,85 @@ describe("buildElizaCodeCerebrasSpec", () => {
     expect(() => buildElizaCodeCerebrasSpec({ ...base, binPath: "" })).toThrow(
       /binPath/i,
     );
+  });
+
+  it.each(["staging-default", "offline"] as const)(
+    "disables the Cloud child lane under %s authority despite caller overrides",
+    (authority) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_API_KEY = "inherited-production-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+
+      expect(resolveElizaCodeCloudTuple()).toEqual({
+        authority,
+        enabled: false,
+      });
+      expect(() =>
+        buildElizaCodeCerebrasSpec({
+          ...base,
+          apiKey: "body-key",
+          baseUrl: "https://attacker.example/v1",
+          extraEnv: {
+            OPENAI_API_KEY: "extra-key",
+            OPENAI_BASE_URL: "https://extra.example/v1",
+          },
+        }),
+      ).toThrow(/disabled/i);
+    },
+  );
+
+  it("projects the frozen explicit staging tuple after late process and child-env overrides", () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+    process.env.ELIZAOS_CLOUD_API_KEY = "staging-launch-key";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+
+    expect(resolveElizaCodeCloudTuple()).toMatchObject({
+      authority: "staging-explicit",
+      enabled: true,
+      apiKey: "staging-launch-key",
+      baseUrl: "https://api-staging.eliza.app/v1",
+    });
+
+    process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+    const spec = buildElizaCodeCerebrasSpec({
+      ...base,
+      apiKey: "body-key",
+      baseUrl: "https://attacker.example/v1",
+      extraEnv: {
+        OPENAI_API_KEY: "extra-key",
+        OPENAI_BASE_URL: "https://extra.example/v1",
+        ELIZAOS_CLOUD_API_KEY: "alternate-cloud-key",
+        PTY_ELIZA_CLOUD_API_KEY: "alternate-pty-key",
+      },
+    });
+
+    expect(spec.env?.OPENAI_API_KEY).toBe("staging-launch-key");
+    expect(spec.env?.OPENAI_BASE_URL).toBe("https://api-staging.eliza.app/v1");
+    expect(spec.env?.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    expect(spec.env?.PTY_ELIZA_CLOUD_API_KEY).toBeUndefined();
+  });
+
+  it("keeps a self-hosted launch tuple after the live env is cleared", () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "self-hosted";
+    process.env.ELIZAOS_CLOUD_API_KEY = "selfhost-launch-key";
+    process.env.ELIZAOS_CLOUD_BASE_URL =
+      "https://cloud.internal.example/api/v1";
+    expect(resolveElizaCodeCloudTuple().enabled).toBe(true);
+
+    delete process.env.ELIZAOS_CLOUD_API_KEY;
+    delete process.env.ELIZAOS_CLOUD_BASE_URL;
+    const spec = buildElizaCodeCerebrasSpec({
+      ...base,
+      apiKey: "late-body-key",
+      baseUrl: "https://api.eliza.app/v1",
+    });
+
+    expect(spec.env?.OPENAI_API_KEY).toBe("selfhost-launch-key");
+    expect(spec.env?.OPENAI_BASE_URL).toBe("https://cloud.internal.example/v1");
   });
 });
 

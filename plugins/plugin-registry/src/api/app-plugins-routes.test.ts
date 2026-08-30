@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  devCloudAuthority: null as string | null,
   ensureRouteAuthorized: vi.fn(),
   loadElizaConfig: vi.fn(),
   loadRegistry: vi.fn(),
@@ -68,6 +69,17 @@ vi.mock("@elizaos/core", () => ({
 }));
 
 vi.mock("@elizaos/shared", () => ({
+  DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS: [
+    "STEWARD_API_URL",
+    "STEWARD_TENANT_ID",
+    "STEWARD_AGENT_ID",
+    "ELIZA_STEWARD_AGENT_ID",
+    "STEWARD_API_KEY",
+    "STEWARD_AGENT_TOKEN",
+    "STEWARD_TRADE_SESSION_ID",
+    "STEWARD_HYPERLIQUID_TRADE_SESSION_ID",
+    "STEWARD_POLYMARKET_TRADE_SESSION_ID",
+  ],
   asRecord: (value: unknown) =>
     value && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
@@ -75,6 +87,7 @@ vi.mock("@elizaos/shared", () => ({
   CONNECTOR_PLUGINS: {
     discord: "@elizaos/plugin-discord",
   },
+  resolveDevCloudEnvAuthority: vi.fn(() => mocks.devCloudAuthority),
 }));
 
 vi.mock("@elizaos/vault", () => ({
@@ -122,11 +135,53 @@ function makePlugin(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeStewardWalletPlugin() {
+  return makePlugin({
+    id: "wallet",
+    name: "Wallet",
+    envKey: "STEWARD_AGENT_TOKEN",
+    configKeys: [
+      "STEWARD_API_URL",
+      "STEWARD_AGENT_ID",
+      "STEWARD_AGENT_TOKEN",
+      "STEWARD_TENANT_ID",
+    ],
+    parameters: [
+      {
+        key: "STEWARD_API_URL",
+        required: false,
+        sensitive: false,
+        type: "string",
+      },
+      {
+        key: "STEWARD_AGENT_ID",
+        required: false,
+        sensitive: false,
+        type: "string",
+      },
+      {
+        key: "STEWARD_AGENT_TOKEN",
+        required: false,
+        sensitive: true,
+        type: "string",
+      },
+      {
+        key: "STEWARD_TENANT_ID",
+        required: false,
+        sensitive: false,
+        type: "string",
+      },
+    ],
+    npmName: "@elizaos/plugin-wallet",
+  });
+}
+
 describe("app plugin compatibility routes", () => {
   let currentConfig: Record<string, unknown>;
   let savedConfig: Record<string, unknown> | undefined;
 
   beforeEach(() => {
+    mocks.devCloudAuthority = null;
     process.env = { ...originalEnv };
     delete process.env.DISCORD_API_TOKEN;
     currentConfig = {
@@ -136,6 +191,7 @@ describe("app plugin compatibility routes", () => {
       },
     };
     savedConfig = undefined;
+    mocks.saveElizaConfig.mockClear();
     mocks.loadElizaConfig.mockImplementation(() => currentConfig);
     mocks.loadRegistry.mockReturnValue({ all: [], byId: new Map() });
     mocks.loadRegistry.mockClear();
@@ -181,6 +237,192 @@ describe("app plugin compatibility routes", () => {
       },
     });
     expect(process.env.DISCORD_API_TOKEN).toBe("abc123");
+  });
+
+  it.each([
+    "staging-default",
+    "staging-explicit",
+    "production",
+    "offline",
+    "self-hosted",
+  ])(
+    "rejects Cloud plugin config without mutating compat state under %s authority",
+    (authority) => {
+      mocks.devCloudAuthority = authority;
+      process.env.ELIZAOS_CLOUD_API_KEY = "launch-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://launch.example/api/v1";
+      currentConfig = {
+        env: {
+          ELIZAOS_CLOUD_API_KEY: "launch-key",
+          ELIZAOS_CLOUD_BASE_URL: "https://launch.example/api/v1",
+        },
+        plugins: {
+          entries: {
+            "cloud-apps": {
+              enabled: true,
+              config: { ELIZAOS_CLOUD_API_KEY: "launch-key" },
+            },
+          },
+        },
+      };
+      const configBefore = JSON.stringify(currentConfig);
+      const envBefore = JSON.stringify(Object.entries(process.env).sort());
+      const cloudPlugin = makePlugin({
+        id: "cloud-apps",
+        name: "Cloud Apps",
+        envKey: "ELIZAOS_CLOUD_API_KEY",
+        configKeys: ["ELIZAOS_CLOUD_API_KEY", "ELIZAOS_CLOUD_BASE_URL"],
+        parameters: [
+          {
+            key: "ELIZAOS_CLOUD_API_KEY",
+            required: false,
+            sensitive: true,
+            type: "string",
+          },
+          {
+            key: "ELIZAOS_CLOUD_BASE_URL",
+            required: false,
+            sensitive: false,
+            type: "string",
+          },
+        ],
+        npmName: "@elizaos/plugin-cloud-apps",
+      });
+
+      const result = persistCompatPluginMutation(
+        "cloud-apps",
+        {
+          config: {
+            ELIZAOS_CLOUD_API_KEY: "hostile-key",
+            ELIZAOS_CLOUD_BASE_URL: "https://hostile.example/api/v1",
+          },
+        },
+        cloudPlugin,
+      );
+
+      expect(result.status).toBe(409);
+      expect(result.payload.error).toEqual(
+        expect.stringContaining("launcher-owned Cloud parameters"),
+      );
+      expect(JSON.stringify(currentConfig)).toBe(configBefore);
+      expect(JSON.stringify(Object.entries(process.env).sort())).toBe(
+        envBefore,
+      );
+      expect(mocks.saveElizaConfig).not.toHaveBeenCalled();
+      expect(savedConfig).toBeUndefined();
+    },
+  );
+
+  it.each([
+    "staging-default",
+    "staging-explicit",
+    "production",
+    "offline",
+    "self-hosted",
+  ])(
+    "rejects Steward plugin config without mutating compat state under %s authority",
+    (authority) => {
+      mocks.devCloudAuthority = authority;
+      process.env.STEWARD_API_URL = "https://launch.example/steward";
+      process.env.STEWARD_AGENT_ID = "launch-agent";
+      process.env.STEWARD_AGENT_TOKEN = "launch-token";
+      process.env.STEWARD_TENANT_ID = "launch-tenant";
+      currentConfig = {
+        env: {
+          STEWARD_API_URL: "https://launch.example/steward",
+          STEWARD_AGENT_ID: "launch-agent",
+          STEWARD_AGENT_TOKEN: "launch-token",
+          STEWARD_TENANT_ID: "launch-tenant",
+        },
+        plugins: {
+          entries: {
+            wallet: {
+              enabled: true,
+              config: {
+                STEWARD_API_URL: "https://launch.example/steward",
+                STEWARD_AGENT_ID: "launch-agent",
+                STEWARD_AGENT_TOKEN: "launch-token",
+                STEWARD_TENANT_ID: "launch-tenant",
+              },
+            },
+          },
+        },
+      };
+      const configBefore = JSON.stringify(currentConfig);
+      const envBefore = JSON.stringify(Object.entries(process.env).sort());
+
+      const result = persistCompatPluginMutation(
+        "wallet",
+        {
+          config: {
+            STEWARD_API_URL: "https://hostile.example/steward",
+            STEWARD_AGENT_ID: "hostile-agent",
+            STEWARD_AGENT_TOKEN: "hostile-token",
+            STEWARD_TENANT_ID: "hostile-tenant",
+          },
+        },
+        makeStewardWalletPlugin(),
+      );
+
+      expect(result.status).toBe(409);
+      expect(result.payload.error).toEqual(
+        expect.stringContaining("launcher-owned Cloud parameters"),
+      );
+      expect(JSON.stringify(currentConfig)).toBe(configBefore);
+      expect(JSON.stringify(Object.entries(process.env).sort())).toBe(
+        envBefore,
+      );
+      expect(mocks.saveElizaConfig).not.toHaveBeenCalled();
+      expect(savedConfig).toBeUndefined();
+    },
+  );
+
+  it("rejects Cloud plugin enablement before compat runtime restoration", () => {
+    mocks.devCloudAuthority = "self-hosted";
+    const result = persistCompatPluginMutation(
+      "cloud-apps",
+      { enabled: true },
+      makePlugin({
+        id: "cloud-apps",
+        parameters: [
+          {
+            key: "ELIZAOS_CLOUD_API_KEY",
+            required: false,
+            sensitive: true,
+            type: "string",
+          },
+        ],
+        npmName: "@elizaos/plugin-cloud-apps",
+      }),
+    );
+
+    expect(result.status).toBe(409);
+    expect(mocks.saveElizaConfig).not.toHaveBeenCalled();
+  });
+
+  it("preserves compat Cloud plugin configuration without launcher authority", () => {
+    const result = persistCompatPluginMutation(
+      "cloud-apps",
+      { config: { ELIZAOS_CLOUD_API_KEY: "ordinary-key" } },
+      makePlugin({
+        id: "cloud-apps",
+        envKey: "ELIZAOS_CLOUD_API_KEY",
+        configKeys: ["ELIZAOS_CLOUD_API_KEY"],
+        parameters: [
+          {
+            key: "ELIZAOS_CLOUD_API_KEY",
+            required: false,
+            sensitive: true,
+            type: "string",
+          },
+        ],
+        npmName: "@elizaos/plugin-cloud-apps",
+      }),
+    );
+
+    expect(result.status).toBe(200);
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("ordinary-key");
+    expect(mocks.saveElizaConfig).toHaveBeenCalled();
   });
 
   it("removes optional blank values from persisted and process env", () => {
