@@ -4,12 +4,17 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  __requestStormCapBucketCountForTests,
   __resetRequestStormCapForTests,
   maybeCapRequestStorm,
 } from "../request-storm-cap.ts";
 
-function mockReq(headers: Record<string, string>, method = "GET") {
-  return { method, headers } as never;
+function mockReq(
+  headers: Record<string, string>,
+  method = "GET",
+  remoteAddress = "203.0.113.10",
+) {
+  return { method, headers, socket: { remoteAddress } } as never;
 }
 function mockRes() {
   const state = { status: 0, ended: false };
@@ -74,15 +79,60 @@ describe("request storm cap", () => {
     }
   });
 
+  it("does not exempt unrelated paths that merely contain an exempt marker", () => {
+    for (const pathname of ["/api/newsletter/ws-status", "/api/voiceover"]) {
+      const req = mockReq({ authorization: `Bearer ${pathname}` });
+      for (let i = 0; i < 30; i++) {
+        expect(maybeCapRequestStorm(req, mockRes(), pathname)).toBe(false);
+      }
+      expect(maybeCapRequestStorm(req, mockRes(), pathname)).toBe(true);
+    }
+  });
+
   it("never caps the runtime's own self-API credential", () => {
     process.env.ELIZA_API_TOKEN = "internal-self-token";
     __resetRequestStormCapForTests();
-    const req = mockReq({ authorization: "Bearer internal-self-token" });
+    const req = mockReq(
+      { authorization: "Bearer internal-self-token" },
+      "GET",
+      "127.0.0.1",
+    );
     for (let i = 0; i < 200; i++) {
       expect(maybeCapRequestStorm(req, mockRes(), "/api/views")).toBe(false);
     }
     delete process.env.ELIZA_API_TOKEN;
     __resetRequestStormCapForTests();
+  });
+
+  it("does cap the self credential when it arrives from a remote peer", () => {
+    process.env.ELIZA_API_TOKEN = "internal-self-token";
+    __resetRequestStormCapForTests();
+    const req = mockReq({ authorization: "Bearer internal-self-token" });
+    for (let i = 0; i < 30; i++) {
+      expect(maybeCapRequestStorm(req, mockRes(), "/api/views")).toBe(false);
+    }
+    expect(maybeCapRequestStorm(req, mockRes(), "/api/views")).toBe(true);
+    delete process.env.ELIZA_API_TOKEN;
+    __resetRequestStormCapForTests();
+  });
+
+  it("amortizes idle eviction after the session map becomes large", () => {
+    for (let i = 0; i < 512; i++) {
+      maybeCapRequestStorm(
+        mockReq({ authorization: `Bearer session-${i}` }),
+        mockRes(),
+        "/api/status",
+      );
+    }
+    expect(__requestStormCapBucketCountForTests()).toBe(512);
+
+    vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+    maybeCapRequestStorm(
+      mockReq({ authorization: "Bearer fresh-session" }),
+      mockRes(),
+      "/api/status",
+    );
+    expect(__requestStormCapBucketCountForTests()).toBe(1);
   });
 
   it("isolates budgets per session", () => {
