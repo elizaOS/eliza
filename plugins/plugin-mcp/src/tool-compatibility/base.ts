@@ -122,8 +122,15 @@ export abstract class McpToolCompatibility {
     // `type` array is preserved on the output. "null" and "boolean" carry no
     // strippable validation keywords. processGenericSchema runs last to keep
     // combinator (oneOf/anyOf/allOf) handling identical to the scalar path.
+    //
+    // JSON Schema `type` arrays are unordered sets, so sort the members before
+    // folding: two servers describing the same field with `["integer","string"]`
+    // vs `["string","integer"]` must yield byte-identical tool descriptions.
+    // `type` on the output stays the original array — the per-type processors
+    // never touch it, so sorting only fixes the fold order, not the emitted
+    // nullable shape.
     let current: JSONSchema7 = schema;
-    for (const member of types) {
+    for (const member of [...types].sort()) {
       switch (member) {
         case "string":
           current = this.processStringSchema(current);

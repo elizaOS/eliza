@@ -255,6 +255,42 @@ describe("MCP tool compatibility", () => {
       expect(scalarEmail.format).toBeUndefined();
       expect(unionEmail.description).toEqual(scalarEmail.description);
     });
+
+    it("still runs combinator handling under a nullable node (cleans anyOf children)", () => {
+      // The nullable branch ends in processGenericSchema so oneOf/anyOf/allOf
+      // members carried alongside an array `type` are still recursed and
+      // cleaned. Without that final call the child keywords leak to strict
+      // providers exactly as they did for the top-level nullable node.
+      const out = google.transformToolSchema({
+        type: "object",
+        properties: {
+          child: {
+            type: ["object", "null"],
+            anyOf: [{ type: "string", format: "email", pattern: "^x$", description: "child" }],
+          },
+        },
+      } as never);
+      const child = out.properties?.child as Record<string, unknown>;
+      const anyOf = child.anyOf as Array<Record<string, unknown>>;
+      expect(anyOf[0].format).toBeUndefined();
+      expect(anyOf[0].pattern).toBeUndefined();
+      expect(String(anyOf[0].description)).toContain("valid email");
+    });
+
+    it("folds a multi-concrete union canonically regardless of member order", () => {
+      // JSON Schema `type` arrays are unordered sets, so semantically identical
+      // schemas that differ only in member order must transform identically.
+      const build = (types: string[]) =>
+        google.transformToolSchema({
+          type: "object",
+          properties: {
+            id: { type: types, pattern: "^a+$", minimum: 3, maximum: 9 },
+          },
+        } as never);
+      const forward = build(["string", "integer"]).properties?.id as Record<string, unknown>;
+      const reversed = build(["integer", "string"]).properties?.id as Record<string, unknown>;
+      expect(reversed.description).toEqual(forward.description);
+    });
   });
 
   it("throws MCP_TOOL_SCHEMA_UNBOUNDED on a cyclic items graph, not RangeError", () => {
