@@ -20,6 +20,8 @@ import {
 export interface PricingCacheReadOptions {
   cacheOnly?: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  /** Internal deterministic-test override for the normal cold-miss join. */
+  coldHydrationDeadlineMs?: number;
 }
 
 export class AiPricingCacheWarmingError extends Error {
@@ -159,6 +161,7 @@ const TEXT_PRICING_HARD_TTL_SECONDS = 15 * 60;
 const TEXT_PRICING_HARD_TTL_MS = TEXT_PRICING_HARD_TTL_SECONDS * 1000;
 const TEXT_PRICING_FAILURE_TTL_MS = 15 * 1000;
 const TEXT_PRICING_CACHE_VERSION = 1;
+const DEFAULT_COLD_HYDRATION_DEADLINE_MS = 5_000;
 
 interface CachedTextPricingRates {
   v: typeof TEXT_PRICING_CACHE_VERSION;
@@ -178,8 +181,58 @@ interface CachedFlatPricingEntry {
 }
 
 const flatPricingCache = new Map<string, CachedFlatPricingEntry>();
+const flatPricingInFlight = new Map<string, Promise<PreparedPricingEntry>>();
 const flatPricingPersistenceInFlight = new Map<string, Promise<PreparedPricingEntry>>();
 const flatPricingFailures = new Map<string, number>();
+
+type PricingHydrationKind = "token" | "flat";
+
+function coldHydrationDeadlineMs(options: PricingCacheReadOptions): number {
+  const configured = options.coldHydrationDeadlineMs;
+  return configured !== undefined && Number.isSafeInteger(configured) && configured > 0
+    ? configured
+    : DEFAULT_COLD_HYDRATION_DEADLINE_MS;
+}
+
+async function awaitColdHydration<T>(
+  pricingKind: PricingHydrationKind,
+  hydration: Promise<T>,
+  options: PricingCacheReadOptions,
+): Promise<T> {
+  const startedAt = Date.now();
+  const deadlineMs = coldHydrationDeadlineMs(options);
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const outcome = await Promise.race([
+    hydration.then(
+      (value) => ({ kind: "ready" as const, value }),
+      () => ({ kind: "rejected" as const }),
+    ),
+    new Promise<{ kind: "timeout" }>((resolve) => {
+      deadline = setTimeout(() => resolve({ kind: "timeout" }), deadlineMs);
+      if (typeof deadline.unref === "function") deadline.unref();
+    }),
+  ]);
+  if (deadline !== undefined) clearTimeout(deadline);
+
+  const durationMs = Date.now() - startedAt;
+  if (outcome.kind === "ready") {
+    logger.info("[AI Pricing] cold authoritative hydration completed", {
+      pricingKind,
+      result: "ready",
+      durationMs,
+      deadlineMs,
+    });
+    return outcome.value;
+  }
+
+  logger.warn("[AI Pricing] cold authoritative hydration unavailable", {
+    pricingKind,
+    result: outcome.kind,
+    durationMs,
+    deadlineMs,
+  });
+  throw new AiPricingCacheUnavailableError();
+}
 
 function durableTextPricingKey(cacheKey: string): string {
   return `iac:pricing:${cacheKey}:v1`;
@@ -314,21 +367,23 @@ function scheduleTextPricingHydration(
   required: { input: boolean; output: boolean },
   loader: () => Promise<TokenPricingRates>,
   executionCtx: { waitUntil(promise: Promise<unknown>): void },
-): void {
+): Promise<TokenPricingRates> {
   const hydration = persistTextPricingRates(cacheKey, required, loader);
+  const authoritative = loadTextPricingRates(cacheKey, required, loader);
   const observed = hydration.then(
     () => undefined,
-    (error) => {
+    () => {
       textPricingFailures.set(cacheKey, Date.now() + TEXT_PRICING_FAILURE_TTL_MS);
       // error-policy:J7 pricing hydration is intentionally outside model
       // dispatch; retain a typed unavailable state and surface the failure.
       logger.warn("[AI Pricing] canonical rate cache hydration failed", {
-        cacheKey,
-        error: error instanceof Error ? error.message : String(error),
+        pricingKind: "token",
+        result: "rejected",
       });
     },
   );
   executionCtx.waitUntil(observed);
+  return authoritative;
 }
 
 function readLocalTextPricingRates(
@@ -349,10 +404,10 @@ function readLocalTextPricingRates(
 }
 
 /**
- * Resolve canonical token rates without allowing authoritative I/O to leak
- * into a Worker request. A cold cache returns a typed retryable state after
- * registering hydration; a stale-but-bounded rate serves immediately and
- * refreshes in the background.
+ * Resolve canonical token rates while keeping durable persistence off the
+ * Worker response. A normal cold miss may consume the coalesced authoritative
+ * load under a bounded deadline; stale-but-bounded rates still refresh in the
+ * background.
  */
 export async function getCachedTextPricingRates(
   cacheKey: string,
@@ -394,10 +449,16 @@ export async function getCachedTextPricingRates(
     throw new AiPricingCacheUnavailableError();
   }
   textPricingFailures.delete(cacheKey);
-  scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx);
   if (outcome.kind === "miss") {
-    throw new AiPricingCacheWarmingError();
+    const hydration = scheduleTextPricingHydration(
+      cacheKey,
+      required,
+      loader,
+      options.executionCtx,
+    );
+    return await awaitColdHydration("token", hydration, options);
   }
+  scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx);
   throw new AiPricingCacheUnavailableError();
 }
 
@@ -414,9 +475,40 @@ function isCachedFlatPricingEntry(value: unknown): value is CachedFlatPricingEnt
     typeof entry.productFamily === "string" &&
     typeof entry.chargeType === "string" &&
     typeof entry.unit === "string" &&
-    typeof entry.unitPrice === "number" &&
-    Number.isFinite(entry.unitPrice)
+    isPositiveRate(entry.unitPrice)
   );
+}
+
+function assertLoadedFlatPricingEntry(entry: PreparedPricingEntry): void {
+  const record: CachedFlatPricingEntry = { v: 1, cachedAt: Date.now(), entry };
+  if (!isCachedFlatPricingEntry(record)) {
+    throw new Error("AI pricing loader returned an invalid flat-rate entry");
+  }
+}
+
+function loadFlatPricingEntry(
+  cacheKey: string,
+  loader: () => Promise<PreparedPricingEntry>,
+): Promise<PreparedPricingEntry> {
+  const existing = flatPricingInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const started = Promise.resolve()
+    .then(loader)
+    .then((entry) => {
+      assertLoadedFlatPricingEntry(entry);
+      flatPricingCache.set(cacheKey, { v: 1, cachedAt: Date.now(), entry });
+      flatPricingFailures.delete(cacheKey);
+      return entry;
+    });
+  flatPricingInFlight.set(cacheKey, started);
+  const cleanup = () => {
+    if (flatPricingInFlight.get(cacheKey) === started) {
+      flatPricingInFlight.delete(cacheKey);
+    }
+  };
+  started.then(cleanup, cleanup);
+  return started;
 }
 
 function persistFlatPricingEntry(
@@ -426,13 +518,11 @@ function persistFlatPricingEntry(
   const existing = flatPricingPersistenceInFlight.get(cacheKey);
   if (existing) return existing;
 
-  const persistence = loader().then(async (entry) => {
-    const record: CachedFlatPricingEntry = {
-      v: 1,
-      cachedAt: Date.now(),
-      entry,
-    };
-    flatPricingCache.set(cacheKey, record);
+  const persistence = loadFlatPricingEntry(cacheKey, loader).then(async (entry) => {
+    const record = flatPricingCache.get(cacheKey);
+    if (!record) {
+      throw new Error("AI flat-rate pricing hydration completed without a cache record");
+    }
     const outcome = await cache.setWithOutcome(
       durableFlatPricingKey(cacheKey),
       record,
@@ -454,41 +544,34 @@ function persistFlatPricingEntry(
   return persistence;
 }
 
-async function loadFlatPricingEntry(
-  cacheKey: string,
-  loader: () => Promise<PreparedPricingEntry>,
-): Promise<PreparedPricingEntry> {
-  const entry = await loader();
-  flatPricingCache.set(cacheKey, { v: 1, cachedAt: Date.now(), entry });
-  flatPricingFailures.delete(cacheKey);
-  return entry;
-}
-
 function scheduleFlatPricingHydration(
   cacheKey: string,
   loader: () => Promise<PreparedPricingEntry>,
   executionCtx: { waitUntil(promise: Promise<unknown>): void },
-): void {
+): Promise<PreparedPricingEntry> {
+  const hydration = persistFlatPricingEntry(cacheKey, loader);
+  const authoritative = loadFlatPricingEntry(cacheKey, loader);
   executionCtx.waitUntil(
-    persistFlatPricingEntry(cacheKey, loader).then(
+    hydration.then(
       () => undefined,
-      (error) => {
+      () => {
         flatPricingFailures.set(cacheKey, Date.now() + TEXT_PRICING_FAILURE_TTL_MS);
         // error-policy:J7 flat-rate hydration is intentionally outside model
         // dispatch; retain a typed unavailable state and surface the failure.
         logger.warn("[AI Pricing] flat-rate cache hydration failed", {
-          cacheKey,
-          error: error instanceof Error ? error.message : String(error),
+          pricingKind: "flat",
+          result: "rejected",
         });
       },
     ),
   );
+  return authoritative;
 }
 
 /**
- * Resolve a fixed-operation pricing entry without authoritative I/O in a
- * Worker request. Bounded stale values serve immediately while refresh runs
- * under `waitUntil`; a cold miss returns a retryable warming state.
+ * Resolve a fixed-operation pricing entry while keeping durable persistence
+ * off the Worker response. Bounded stale values serve immediately; a normal
+ * cold miss may consume the coalesced authoritative load under a deadline.
  */
 export async function getCachedFlatPricingEntry(
   cacheKey: string,
@@ -525,8 +608,11 @@ export async function getCachedFlatPricingEntry(
     throw new AiPricingCacheUnavailableError();
   }
   flatPricingFailures.delete(cacheKey);
+  if (outcome.kind === "miss") {
+    const hydration = scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx);
+    return await awaitColdHydration("flat", hydration, options);
+  }
   scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx);
-  if (outcome.kind === "miss") throw new AiPricingCacheWarmingError();
   throw new AiPricingCacheUnavailableError();
 }
 
@@ -539,6 +625,7 @@ export function __clearPersistedPricingCache(): void {
   textPricingPersistenceInFlight.clear();
   textPricingFailures.clear();
   flatPricingCache.clear();
+  flatPricingInFlight.clear();
   flatPricingPersistenceInFlight.clear();
   flatPricingFailures.clear();
 }

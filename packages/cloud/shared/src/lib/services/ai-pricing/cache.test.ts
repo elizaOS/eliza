@@ -1,11 +1,13 @@
 /**
- * getCachedExternalEntries negative-caching: a failing external-catalog fetch
- * (e.g. Cerebras retiring its public catalog → permanent 404) must NOT be
- * re-run on every hot-path pricing lookup. Regression guard for the prod
- * latency issue where the failing fetch ran 2x per chat request.
+ * Pricing cache tests drive real coalescing, validation, and Worker cold-miss
+ * behavior behind injected authoritative loaders and durable-cache spies.
+ * They prove that dependency failures remain distinct from empty results and
+ * that admission never waits for or reads back a background persistence write.
  */
-import { expect, mock, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import type { AiPricingEntry } from "../../../db/schemas/ai-pricing";
+import { cache } from "../../cache/client";
+import { logger } from "../../utils/logger";
 import {
   __clearPersistedPricingCache,
   AiPricingCacheUnavailableError,
@@ -15,6 +17,48 @@ import {
   getCachedTextPricingRates,
 } from "./cache";
 import type { PreparedPricingEntry } from "./types";
+
+const TOKEN_RATES = {
+  inputUnitPrice: 0.000001,
+  outputUnitPrice: 0.000004,
+};
+
+const FLAT_ENTRY = {
+  billingSource: "fal",
+  provider: "fal",
+  model: "fal-ai/test",
+  productFamily: "image",
+  chargeType: "generation",
+  unit: "image",
+  unitPrice: 0.01,
+} as PreparedPricingEntry;
+
+function workerOptions(background: Promise<unknown>[], coldHydrationDeadlineMs = 1_000) {
+  return {
+    cacheOnly: true,
+    coldHydrationDeadlineMs,
+    executionCtx: {
+      waitUntil: (promise: Promise<unknown>) => background.push(promise),
+    },
+  };
+}
+
+function stubColdDurableCache() {
+  const read = spyOn(cache, "getWithOutcome").mockResolvedValue({
+    kind: "miss",
+    backend: "memory",
+  });
+  const write = spyOn(cache, "setWithOutcome").mockResolvedValue({
+    kind: "written",
+    backend: "memory",
+  });
+  return { read, write };
+}
+
+afterEach(() => {
+  __clearPersistedPricingCache();
+  mock.restore();
+});
 
 test("negative-caches a failing loader — subsequent lookups skip the re-fetch", async () => {
   let calls = 0;
@@ -172,47 +216,213 @@ test("cache-only token pricing without a Worker lifetime is explicitly unavailab
   expect(loader).not.toHaveBeenCalled();
 });
 
-test("cold flat pricing warms outside the Worker request and serves the retry", async () => {
-  const previousBackend = process.env.CACHE_BACKEND;
-  const previousEnabled = process.env.CACHE_ENABLED;
-  process.env.CACHE_BACKEND = "memory";
-  process.env.CACHE_ENABLED = "true";
-  try {
-    __clearPersistedPricingCache();
-    const entry = {
-      billingSource: "fal",
-      provider: "fal",
-      model: "fal-ai/test",
-      productFamily: "image",
-      chargeType: "generation",
-      unit: "image",
-      unitPrice: 0.01,
-    } as PreparedPricingEntry;
-    const loader = mock(async () => entry);
-    const background: Promise<unknown>[] = [];
-    const options = {
-      cacheOnly: true,
-      executionCtx: {
-        waitUntil: (promise: Promise<unknown>) => background.push(promise),
+test("cold token pricing consumes one authoritative hydration while KV persistence stays background", async () => {
+  __clearPersistedPricingCache();
+  const { read, write } = stubColdDurableCache();
+  const writeGate = Promise.withResolvers<{
+    kind: "written";
+    backend: "memory";
+  }>();
+  write.mockImplementation(() => writeGate.promise);
+  const loader = mock(async () => TOKEN_RATES);
+  const background: Promise<unknown>[] = [];
+
+  await expect(
+    getCachedTextPricingRates(
+      "token-cold-success",
+      { input: true, output: true },
+      loader,
+      workerOptions(background),
+    ),
+  ).resolves.toEqual(TOKEN_RATES);
+  expect(background).toHaveLength(1);
+  expect(write).toHaveBeenCalledTimes(1);
+  writeGate.resolve({ kind: "written", backend: "memory" });
+  await Promise.all(background);
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(loader).toHaveBeenCalledTimes(1);
+  expect(write).toHaveBeenCalledTimes(1);
+});
+
+test("concurrent token cold misses share one authoritative load and one background write", async () => {
+  __clearPersistedPricingCache();
+  const { read, write } = stubColdDurableCache();
+  const gate = Promise.withResolvers<typeof TOKEN_RATES>();
+  const loader = mock(() => gate.promise);
+  const background: Promise<unknown>[] = [];
+  const options = workerOptions(background);
+
+  const first = getCachedTextPricingRates(
+    "token-cold-concurrent",
+    { input: true, output: true },
+    loader,
+    options,
+  );
+  const second = getCachedTextPricingRates(
+    "token-cold-concurrent",
+    { input: true, output: true },
+    loader,
+    options,
+  );
+  gate.resolve(TOKEN_RATES);
+
+  await expect(Promise.all([first, second])).resolves.toEqual([TOKEN_RATES, TOKEN_RATES]);
+  await Promise.all(background);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(loader).toHaveBeenCalledTimes(1);
+  expect(write).toHaveBeenCalledTimes(1);
+});
+
+test("rejected token hydration fails closed with sanitized telemetry", async () => {
+  __clearPersistedPricingCache();
+  const { write } = stubColdDurableCache();
+  const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
+  const loader = mock(async () => {
+    throw new Error("secret-account-123 database rejected");
+  });
+  const background: Promise<unknown>[] = [];
+
+  await expect(
+    getCachedTextPricingRates(
+      "secret-model-key",
+      { input: true, output: true },
+      loader,
+      workerOptions(background),
+    ),
+  ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
+  await Promise.all(background);
+  expect(write).not.toHaveBeenCalled();
+  const telemetry = JSON.stringify(warn.mock.calls);
+  expect(telemetry).not.toContain("secret-account-123");
+  expect(telemetry).not.toContain("secret-model-key");
+});
+
+test("invalid token hydration fails closed without a durable write", async () => {
+  __clearPersistedPricingCache();
+  const { write } = stubColdDurableCache();
+  const background: Promise<unknown>[] = [];
+
+  await expect(
+    getCachedTextPricingRates(
+      "token-cold-invalid",
+      { input: true, output: true },
+      async () => ({ inputUnitPrice: TOKEN_RATES.inputUnitPrice, outputUnitPrice: null }),
+      workerOptions(background),
+    ),
+  ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
+  await Promise.all(background);
+  expect(write).not.toHaveBeenCalled();
+});
+
+test("timed-out token hydration fails closed, then finishes its background write without readback", async () => {
+  __clearPersistedPricingCache();
+  const { read, write } = stubColdDurableCache();
+  const gate = Promise.withResolvers<typeof TOKEN_RATES>();
+  const loader = mock(() => gate.promise);
+  const background: Promise<unknown>[] = [];
+  const options = workerOptions(background, 5);
+
+  await expect(
+    getCachedTextPricingRates("token-cold-timeout", { input: true, output: true }, loader, options),
+  ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
+  expect(read).toHaveBeenCalledTimes(1);
+  gate.resolve(TOKEN_RATES);
+  await Promise.all(background);
+  expect(write).toHaveBeenCalledTimes(1);
+  await expect(
+    getCachedTextPricingRates("token-cold-timeout", { input: true, output: true }, loader, options),
+  ).resolves.toEqual(TOKEN_RATES);
+  expect(read).toHaveBeenCalledTimes(1);
+});
+
+test("cold flat pricing consumes one authoritative hydration while KV persistence stays background", async () => {
+  __clearPersistedPricingCache();
+  const { read, write } = stubColdDurableCache();
+  const writeGate = Promise.withResolvers<{
+    kind: "written";
+    backend: "memory";
+  }>();
+  write.mockImplementation(() => writeGate.promise);
+  const loader = mock(async () => FLAT_ENTRY);
+  const background: Promise<unknown>[] = [];
+
+  await expect(
+    getCachedFlatPricingEntry("flat-cold-success", loader, workerOptions(background)),
+  ).resolves.toEqual(FLAT_ENTRY);
+  expect(write).toHaveBeenCalledTimes(1);
+  writeGate.resolve({ kind: "written", backend: "memory" });
+  await Promise.all(background);
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(loader).toHaveBeenCalledTimes(1);
+  expect(write).toHaveBeenCalledTimes(1);
+});
+
+test("concurrent flat cold misses share one authoritative load and one background write", async () => {
+  __clearPersistedPricingCache();
+  const { read, write } = stubColdDurableCache();
+  const gate = Promise.withResolvers<PreparedPricingEntry>();
+  const loader = mock(() => gate.promise);
+  const background: Promise<unknown>[] = [];
+  const options = workerOptions(background);
+
+  const first = getCachedFlatPricingEntry("flat-cold-concurrent", loader, options);
+  const second = getCachedFlatPricingEntry("flat-cold-concurrent", loader, options);
+  gate.resolve(FLAT_ENTRY);
+
+  await expect(Promise.all([first, second])).resolves.toEqual([FLAT_ENTRY, FLAT_ENTRY]);
+  await Promise.all(background);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(loader).toHaveBeenCalledTimes(1);
+  expect(write).toHaveBeenCalledTimes(1);
+});
+
+test("rejected or invalid flat hydration fails closed without a durable write", async () => {
+  __clearPersistedPricingCache();
+  const { write } = stubColdDurableCache();
+  const rejectedBackground: Promise<unknown>[] = [];
+  await expect(
+    getCachedFlatPricingEntry(
+      "flat-cold-rejected",
+      async () => {
+        throw new Error("catalog dependency rejected");
       },
-    };
+      workerOptions(rejectedBackground),
+    ),
+  ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
+  await Promise.all(rejectedBackground);
 
-    await expect(getCachedFlatPricingEntry("flat-worker-warm", loader, options)).rejects.toThrow(
-      "warming",
-    );
-    expect(background).toHaveLength(1);
-    await background[0];
+  __clearPersistedPricingCache();
+  const invalidBackground: Promise<unknown>[] = [];
+  await expect(
+    getCachedFlatPricingEntry(
+      "flat-cold-invalid",
+      async () => ({ ...FLAT_ENTRY, unitPrice: -1 }),
+      workerOptions(invalidBackground),
+    ),
+  ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
+  await Promise.all(invalidBackground);
+  expect(write).not.toHaveBeenCalled();
+});
 
-    await expect(getCachedFlatPricingEntry("flat-worker-warm", loader, options)).resolves.toEqual(
-      entry,
-    );
-    expect(loader).toHaveBeenCalledTimes(1);
-  } finally {
-    if (previousBackend === undefined) delete process.env.CACHE_BACKEND;
-    else process.env.CACHE_BACKEND = previousBackend;
-    if (previousEnabled === undefined) delete process.env.CACHE_ENABLED;
-    else process.env.CACHE_ENABLED = previousEnabled;
-  }
+test("timed-out flat hydration fails closed, then finishes its background write without readback", async () => {
+  __clearPersistedPricingCache();
+  const { read, write } = stubColdDurableCache();
+  const gate = Promise.withResolvers<PreparedPricingEntry>();
+  const loader = mock(() => gate.promise);
+  const background: Promise<unknown>[] = [];
+  const options = workerOptions(background, 5);
+
+  await expect(
+    getCachedFlatPricingEntry("flat-cold-timeout", loader, options),
+  ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
+  expect(read).toHaveBeenCalledTimes(1);
+  gate.resolve(FLAT_ENTRY);
+  await Promise.all(background);
+  expect(write).toHaveBeenCalledTimes(1);
+  await expect(getCachedFlatPricingEntry("flat-cold-timeout", loader, options)).resolves.toEqual(
+    FLAT_ENTRY,
+  );
+  expect(read).toHaveBeenCalledTimes(1);
 });
 
 test("cache-only flat pricing without a Worker lifetime is explicitly unavailable", async () => {
