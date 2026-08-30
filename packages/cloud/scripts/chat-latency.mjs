@@ -628,12 +628,16 @@ export async function probeDedicated({
           Accept: "text/event-stream",
           "X-Eliza-Trace-Id": traceId,
           "X-Eliza-Telemetry": "full",
+          "X-ElizaOS-Turn-Correlation": randomUUID(),
           "User-Agent": "eliza-chat-latency/1.0",
         },
         body: JSON.stringify({
           text: prompt,
           channelType: "DM",
           clientMessageId: randomUUID(),
+          // Match the first-party frontend wire contract so the measured
+          // path exercises the same negotiated protocol and framing (#30024).
+          streamProtocol: "delta-v2",
         }),
         signal: requestSignal(timeoutMs),
       },
