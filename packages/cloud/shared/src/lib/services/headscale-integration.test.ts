@@ -106,6 +106,8 @@ describe("Headscale container credentials", () => {
       ephemeral: false,
       aclTags: ["tag:agent"],
     });
+    expect(request).not.toHaveProperty("user");
+    expect(request).not.toHaveProperty("ensureUser");
     expect(prepared.preAuthKey).toBe("test-preauth-key");
   });
 

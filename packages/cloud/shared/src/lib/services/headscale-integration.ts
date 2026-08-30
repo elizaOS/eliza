@@ -157,6 +157,12 @@ export class HeadscaleIntegration {
    * leaving the agent in a permanent restart loop. Explicit sandbox teardown
    * already calls cleanupContainerVPN(), so persistent nodes are still removed.
    *
+   * The key is a v0.28 tag identity, not a user identity: `tag:agent` is
+   * attached directly to the pre-auth key and the request intentionally omits
+   * `user`. Headscale rejects a tagged key that is also user-bound during
+   * registration, which previously left fresh containers asking for
+   * interactive auth even though key creation had succeeded.
+   *
    * The key is REUSABLE (was single-use) so a reboot that de-authorizes the
    * persisted node identity can re-`up` with the SAME baked key instead of
    * hitting `authkey already used` and crash-looping (the prod-2 hard-reset
@@ -230,8 +236,6 @@ export class HeadscaleIntegration {
         reusable: true,
         ephemeral: false,
         aclTags: ["tag:agent"],
-        user: inferHeadscaleUser(input),
-        ensureUser: true,
       });
 
       const envVars: Record<string, string> = {
