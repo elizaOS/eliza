@@ -8,7 +8,7 @@
  * state. Harness mocks the cloud API client.
  */
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -88,9 +88,13 @@ import AuthSuccessPage, {
 } from "./auth-success-page";
 
 function setPageOrigin(origin: string): void {
+  setPageUrl(`${origin}/auth/success`);
+}
+
+function setPageUrl(url: string): void {
   Object.defineProperty(window, "location", {
     configurable: true,
-    value: new URL(`${origin}/auth/success`),
+    value: new URL(url),
   });
 }
 
@@ -450,6 +454,31 @@ describe("verifyAuthSuccessCandidate", () => {
 });
 
 describe("AuthSuccessPage", () => {
+  it("removes the one-time proof from browser history before verification finishes", async () => {
+    searchParamsRef.current = new URLSearchParams(
+      "platform=github&connection_id=conn-1&proof=one-time.sig&utm_source=oauth",
+    );
+    setPageUrl(
+      "https://app.elizacloud.ai/auth/success?platform=github&connection_id=conn-1&proof=one-time.sig&utm_source=oauth#return",
+    );
+    apiMock.mockReturnValueOnce(new Promise(() => {}));
+    const replaceStateSpy = vi
+      .spyOn(window.history, "replaceState")
+      .mockImplementation(() => {});
+
+    render(<AuthSuccessPage />);
+
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
+    expect(replaceStateSpy).toHaveBeenCalledWith(
+      window.history.state,
+      "",
+      "/auth/success?platform=github&connection_id=conn-1&utm_source=oauth#return",
+    );
+    expect(replaceStateSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      apiMock.mock.invocationCallOrder[0],
+    );
+  });
+
   it("renders unverified recovery UI for a naked anonymous URL", async () => {
     searchParamsRef.current = new URLSearchParams();
     render(<AuthSuccessPage />);
