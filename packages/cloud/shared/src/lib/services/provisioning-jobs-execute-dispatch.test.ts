@@ -1043,14 +1043,18 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       releaseProviderAdmission: async () => {},
     });
     const ctx = harness(
-      makeJob(JOB_TYPES.AGENT_PROVISION, {}, {
-        result: {
-          cloudAgentId: AGENT,
-          status: "provisioning",
-          error:
-            "Sandbox health check timed out; replacement cleanup remains pending: first cleanup failure",
+      makeJob(
+        JOB_TYPES.AGENT_PROVISION,
+        {},
+        {
+          result: {
+            cloudAgentId: AGENT,
+            status: "provisioning",
+            error:
+              "Sandbox health check timed out; replacement cleanup remains pending: first cleanup failure",
+          },
         },
-      }),
+      ),
       service,
     );
     stub("provision", {

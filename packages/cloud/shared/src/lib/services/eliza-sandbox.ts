@@ -3598,6 +3598,25 @@ export class ElizaSandboxService {
     error?: string;
     retryable?: true;
   }> {
+    const cleanupSource = await this.getAgentForWrite(agentId, orgId);
+    if (cleanupSource && this.getReplacementCleanupLocator(cleanupSource)) {
+      try {
+        await this.retirePersistedReplacementCleanup(agentId, orgId);
+      } catch (error) {
+        // error-policy:J1 deletion execution boundary — the exact replacement
+        // locator remains durable and the queue retries without deleting the
+        // serving generation until remote absence is proven.
+        return {
+          success: false,
+          containerStopped: false,
+          rowDeleted: false,
+          retryable: true,
+          error: `Replacement cleanup is still pending: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        };
+      }
+    }
     const result = await this.deleteAgent(agentId, orgId, {
       authorization,
       stateLossAcknowledged,

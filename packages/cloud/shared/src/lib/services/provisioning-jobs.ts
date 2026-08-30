@@ -1234,6 +1234,13 @@ interface LifecycleJobOptions<TData extends object> {
   resolveReplay?: (tx: DbTransaction, sandbox: LifecycleSandboxRow) => Promise<Job | undefined>;
   deleteAuthorization?: DeleteAuthorization;
   /**
+   * Permit an exact conditional delete to own a row whose failed replacement
+   * still has a durable cleanup locator. The daemon converges that locator
+   * before deleting the serving generation; ordinary lifecycle jobs remain
+   * blocked by the unresolved fence.
+   */
+  allowReplacementCleanup?: boolean;
+  /**
    * Called with the hydrated existing job when an active pending/in_progress
    * job of the same type would be reused instead of inserting a new row.
    * Throw to refuse the enqueue — reuse silently DROPS the caller's job data,
@@ -1849,7 +1856,8 @@ export class ProvisioningJobService {
 
     if (
       EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(opts.jobType) &&
-      sandbox.replacement_cleanup_sandbox_id
+      sandbox.replacement_cleanup_sandbox_id &&
+      !opts.allowReplacementCleanup
     ) {
       throw new ApiError(
         409,
@@ -2151,6 +2159,7 @@ export class ProvisioningJobService {
       userId: params.userId,
       webhookUrl: params.webhookUrl,
       deleteAuthorization: params.authorization,
+      allowReplacementCleanup: expectedIdentity !== undefined,
       maxAttempts: 3,
       // SSH stop is fast (~10s graceful + ~5s force kill), DB cascade is
       // sub-second. 30s matches the Docker deletion-stop command timeout.
@@ -2315,7 +2324,6 @@ export class ProvisioningJobService {
                 AND ${agentSandboxes.created_at} < ${new Date(expectedCreatedAt.getTime() + 1)}`,
                 eq(agentSandboxes.execution_tier, expectedIdentity.executionTier),
                 isNull(agentSandboxes.deleted_at),
-                isNull(agentSandboxes.replacement_cleanup_sandbox_id),
                 sql`COALESCE(${agentSandboxes.warm_claim_credential_state}, '')
                 NOT IN ('pending', 'attested')`,
               ]

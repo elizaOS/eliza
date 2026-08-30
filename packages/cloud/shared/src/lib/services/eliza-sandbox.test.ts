@@ -5898,20 +5898,86 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     commitAgentRowDelete(agentId: string, orgId: string, ownership?: unknown): Promise<unknown>;
     commitAgentReconciliationPending(agentId: string, orgId: string): Promise<unknown>;
     runBoundedSandboxStop(sandboxId: string): Promise<unknown>;
+    retirePersistedReplacementCleanup(agentId: string, orgId: string): Promise<string>;
   };
 
-  async function makeSvc(): Promise<Svc> {
+  async function makeSvc(cleanupSource?: AgentSandbox): Promise<Svc> {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const svc = new ElizaSandboxService();
     // Phase 0 of deleteAgent (#18517) consults the live row before stamping
     // deletion intent; these tests exercise the later teardown phases, so the
     // capture sees no row and skips. Instance-scoped, so no cross-test leak.
     spyOn(
-      svc as unknown as { getAgentForWrite: () => Promise<undefined> },
+      svc as unknown as { getAgentForWrite: () => Promise<AgentSandbox | undefined> },
       "getAgentForWrite",
-    ).mockResolvedValue(undefined);
+    ).mockResolvedValue(cleanupSource);
     return svc as unknown as Svc;
   }
+
+  test("executeDeletion retries without deleting while exact replacement cleanup is unresolved", async () => {
+    const cleanupSource = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      replacement_cleanup_sandbox_id: "replacement-sandbox",
+      replacement_cleanup_node_id: "replacement-node",
+      replacement_cleanup_container_name: "replacement-container",
+      replacement_cleanup_attempt_id: "88888888-8888-4888-8888-888888888888",
+      replacement_cleanup_allocation_counted: true,
+      replacement_cleanup_created_at: new Date("2026-08-29T14:00:00.000Z"),
+    };
+    const svc = await makeSvc(cleanupSource);
+    const retire = spyOn(svc, "retirePersistedReplacementCleanup").mockRejectedValue(
+      new Error("exact Docker absence is not proven"),
+    );
+    const deleteAgent = spyOn(svc, "deleteAgent");
+
+    await expect(svc.executeDeletion(AGENT, ORG, "user_request")).resolves.toEqual({
+      success: false,
+      containerStopped: false,
+      rowDeleted: false,
+      retryable: true,
+      error: "Replacement cleanup is still pending: exact Docker absence is not proven",
+    });
+    expect(retire).toHaveBeenCalledWith(AGENT, ORG);
+    expect(deleteAgent).not.toHaveBeenCalled();
+  });
+
+  test("executeDeletion removes the serving generation only after replacement cleanup converges", async () => {
+    const cleanupSource = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      character_id: null,
+      replacement_cleanup_sandbox_id: "replacement-sandbox",
+      replacement_cleanup_node_id: "replacement-node",
+      replacement_cleanup_container_name: "replacement-container",
+      replacement_cleanup_attempt_id: "88888888-8888-4888-8888-888888888888",
+      replacement_cleanup_allocation_counted: true,
+      replacement_cleanup_created_at: new Date("2026-08-29T14:00:00.000Z"),
+    };
+    const svc = await makeSvc(cleanupSource);
+    const retire = spyOn(svc, "retirePersistedReplacementCleanup").mockResolvedValue("retired");
+    const deleteAgent = spyOn(svc, "deleteAgent").mockResolvedValue({
+      success: true,
+      rowDeleted: true,
+      deletedSandbox: cleanupSource,
+    });
+
+    await expect(svc.executeDeletion(AGENT, ORG, "user_request")).resolves.toEqual({
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+    expect(retire).toHaveBeenCalledWith(AGENT, ORG);
+    expect(deleteAgent).toHaveBeenCalledWith(AGENT, ORG, {
+      authorization: "user_request",
+      stateLossAcknowledged: undefined,
+    });
+    expect(retire.mock.invocationCallOrder[0]).toBeLessThan(
+      deleteAgent.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
 
   test("prepareAgentDelete refuses an unauthorized running agent before deletion intent", async () => {
     const svc = await makeSvc();
