@@ -193,6 +193,7 @@ describe("provisioning worker deployment contract", () => {
       "CONTAINERS_SSH_KEY",
       "SANDBOX_REGISTRY_REDIS_URL",
       "DATABASE_URL",
+      "AGENT_TOKEN_PRIVATE_KEY_PEM",
       "SECRETS_MASTER_KEY",
       "AGENT_BACKUP_R2_ACCESS_KEY_ID",
       "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
@@ -250,6 +251,7 @@ describe("provisioning worker deployment contract", () => {
       "DEPLOY_SSH_KEY",
       "HEADSCALE_API_KEY",
       "DATABASE_URL",
+      "AGENT_TOKEN_PRIVATE_KEY_PEM",
     ]) {
       expect(validate.env?.[name]).toContain("secrets.");
     }
@@ -266,6 +268,10 @@ describe("provisioning worker deployment contract", () => {
     ]) {
       expect(remoteDeploy.env?.[name]).toContain("secrets.");
     }
+    expect(remoteDeploy.env?.AGENT_TOKEN_PRIVATE_KEY_PEM).toBeUndefined();
+    expect(remoteDeploy.env?.AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64).toContain(
+      "env.AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64",
+    );
     const deletionAuthoritySecrets = [
       "AGENT_BACKUP_R2_ACCESS_KEY_ID",
       "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
@@ -273,6 +279,8 @@ describe("provisioning worker deployment contract", () => {
       "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY",
     ];
     const forwardedNames = (remoteDeploy.with?.envs ?? "").split(",");
+    expect(forwardedNames).toContain("AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64");
+    expect(forwardedNames).not.toContain("AGENT_TOKEN_PRIVATE_KEY_PEM");
     for (const name of deletionAuthoritySecrets) {
       expect(remoteDeploy.env?.[name]).toContain("secrets.");
       expect(forwardedNames).toContain(name);

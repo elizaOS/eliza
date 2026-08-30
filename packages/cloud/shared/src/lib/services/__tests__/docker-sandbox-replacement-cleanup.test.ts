@@ -3,6 +3,7 @@
  * windows, exact attempt identity, VPN recovery, and capacity-neutral cleanup.
  */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { generateKeyPairSync } from "node:crypto";
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../../db/schemas/docker-nodes";
 import * as nodeAutoscaler from "../containers/node-autoscaler";
@@ -1489,7 +1490,6 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     )) {
       delete process.env[key];
     }
-
     const pullFailure = new Error("docker pull response became ambiguous");
     spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
     spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
@@ -1782,6 +1782,11 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     )) {
       delete process.env[key];
     }
+    process.env.AGENT_TOKEN_PRIVATE_KEY_PEM = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    }).privateKey as string;
 
     spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
     spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
@@ -1852,6 +1857,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       expect(dockerCreateCommand).toContain(getReplacementControlSecretEnvPath(ATTEMPT_ID));
       expect(dockerCreateCommand).toContain(getReplacementControlVaultPassphrasePath(ATTEMPT_ID));
       expect(dockerCreateCommand).not.toContain(`${VOLUME_PATH}/.container-env-${ATTEMPT_ID}`);
+      expect(commands.some((command) => command.includes("steward-agent-register"))).toBe(false);
       expect(
         commands.some((command) =>
           command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4"),

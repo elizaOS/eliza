@@ -38,6 +38,12 @@ const AGENT_BASE_DOMAIN_KEY = "ELIZA_CLOUD_AGENT_BASE_DOMAIN";
 const CONTAINERS_SSH_KEY = "CONTAINERS_SSH_KEY";
 const STEWARD_API_URL = "STEWARD_API_URL";
 const STEWARD_PLATFORM_KEYS = "STEWARD_PLATFORM_KEYS";
+const AGENT_TOKEN_PRIVATE_KEY_PEM = "AGENT_TOKEN_PRIVATE_KEY_PEM";
+const AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64 =
+  "AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64";
+const AGENT_TOKEN_PRIVATE_KEY_TRANSPORT_FIXTURE = Buffer.from(
+  "-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----\n",
+).toString("base64");
 const DELETION_AUTHORITY_SECRET_NAMES = [
   "AGENT_BACKUP_R2_ACCESS_KEY_ID",
   "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
@@ -278,10 +284,17 @@ function runAtomicReconcile(options: {
   const assignmentNames = new Set([
     ...loopEnvironmentNames,
     ...Object.keys(DELETION_AUTHORITY_DEFAULTS),
+    AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64,
   ]);
   const assignments = [...assignmentNames].map(
     (name) =>
-      `${name}=${shellLiteral(values[name] ?? DELETION_AUTHORITY_DEFAULTS[name] ?? "")}`,
+      `${name}=${shellLiteral(
+        values[name] ??
+          DELETION_AUTHORITY_DEFAULTS[name] ??
+          (name === AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64
+            ? AGENT_TOKEN_PRIVATE_KEY_TRANSPORT_FIXTURE
+            : ""),
+      )}`,
   );
   const script = [
     "set -euo pipefail",
@@ -380,6 +393,10 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
       expect(forwarded).toContain(name);
       expect(workflow).toContain(`"${name}=$${name}"`);
     }
+    expect(forwarded).toContain(AGENT_TOKEN_PRIVATE_KEY_PEM_BASE64);
+    expect(workflow).toContain(
+      `"${AGENT_TOKEN_PRIVATE_KEY_PEM}=$${AGENT_TOKEN_PRIVATE_KEY_PEM}"`,
+    );
   });
 
   it("uses empty inherited environments and closed root checks", () => {
@@ -597,6 +614,11 @@ describe("atomic workflow block (executed verbatim)", () => {
     expect(lookupSystemdEnvironmentValue(result.host, ENV_KEY)).toBe(value);
     expect(result.host.match(new RegExp(`^${ENV_KEY}=`, "gm"))).toHaveLength(1);
     expect(result.host).toContain("UNRELATED=preserved\n");
+    expect(
+      lookupSystemdEnvironmentValue(result.host, AGENT_TOKEN_PRIVATE_KEY_PEM),
+    ).toBe(
+      "-----BEGIN PRIVATE KEY-----\\nfixture\\n-----END PRIVATE KEY-----",
+    );
   });
 
   it("preserves an existing value when GitHub supplies an empty setting", () => {

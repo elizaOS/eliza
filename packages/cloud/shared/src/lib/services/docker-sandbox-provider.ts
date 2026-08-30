@@ -3287,6 +3287,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       ssh_user: sshUser,
       host_key_fingerprint: hostKeyFingerprint ?? null,
     };
+    let stewardRegistrationCreated = false;
 
     try {
       // Ensure volume directory exists
@@ -3315,16 +3316,32 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
 
-      logger.info(
-        `[docker-sandbox] Registering ${agentId} with Steward tenant ${stewardTenant.tenantId} on ${nodeId}`,
-      );
-      const stewardAgentToken = await registerAgentWithSteward(
-        ssh,
-        agentId,
-        agentName,
-        stewardTenant.tenantId,
-        stewardTenant.apiKey,
-      );
+      // Steward's current control plane verifies Eliza-minted agent JWTs from
+      // the public cloud JWKS. Its retired platform agent-registration/token
+      // routes now return 404, so a configured signer is the canonical path
+      // and must not be preceded by legacy remote registration.
+      const stewardJwt = isAgentTokenSigningConfigured()
+        ? (await mintAgentToken(agentId, 900)).token
+        : "";
+      let stewardAgentToken = "";
+      if (stewardJwt) {
+        logger.info(`[docker-sandbox] Using Eliza-minted Steward agent JWT for ${agentId}`);
+      } else {
+        logger.warn(
+          "[docker-sandbox] AGENT_TOKEN_PRIVATE_KEY_PEM is not configured — falling back to legacy Steward agent registration",
+        );
+        logger.info(
+          `[docker-sandbox] Registering ${agentId} with Steward tenant ${stewardTenant.tenantId} on ${nodeId}`,
+        );
+        stewardAgentToken = await registerAgentWithSteward(
+          ssh,
+          agentId,
+          agentName,
+          stewardTenant.tenantId,
+          stewardTenant.apiKey,
+        );
+        stewardRegistrationCreated = true;
+      }
 
       // Pass a registry backend through to the sandbox so it can self-register
       // `agent:<id>:server` + `server:<name>:url` keys that gateway-discord /
@@ -3351,15 +3368,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         logger.warn(`[docker-sandbox] ${schemeWarning}`);
       }
 
-      const stewardJwt = isAgentTokenSigningConfigured()
-        ? (await mintAgentToken(agentId, 900)).token
-        : "";
       const stewardRefreshServiceToken = resolveStewardRefreshServiceToken();
-      if (!stewardJwt) {
-        logger.warn(
-          "[docker-sandbox] AGENT_TOKEN_PRIVATE_KEY_PEM not configured — skipping STEWARD_JWT injection for Steward agent JWT auth",
-        );
-      }
 
       const keylessOpenAIEnv = buildKeylessOpenAIContainerEnv({
         stewardApiUrl: stewardContainerUrl,
@@ -3368,7 +3377,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 
       const allEnv: Record<string, string> = applyRemoteDockerRuntimeMode({
         ...baseEnv,
-        STEWARD_AGENT_TOKEN: stewardAgentToken,
+        ...(stewardAgentToken ? { STEWARD_AGENT_TOKEN: stewardAgentToken } : {}),
         ...(stewardJwt
           ? {
               STEWARD_JWT: stewardJwt,
@@ -3681,13 +3690,17 @@ export class DockerSandboxProvider implements SandboxProvider {
       notePlacementCommandFailure(nodeId, err);
       // Best-effort Steward deregistration — the agent was registered but the
       // container failed to start, so the Steward record is deleted here.
-      try {
-        await deregisterAgentWithSteward(ssh, agentId, stewardTenant);
-        logger.info(`[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`);
-      } catch (cleanupErr) {
-        logger.warn(
-          `[docker-sandbox] Failed to cleanup Steward agent ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-        );
+      if (stewardRegistrationCreated) {
+        try {
+          await deregisterAgentWithSteward(ssh, agentId, stewardTenant);
+          logger.info(
+            `[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`,
+          );
+        } catch (cleanupErr) {
+          logger.warn(
+            `[docker-sandbox] Failed to cleanup Steward agent ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
+        }
       }
 
       if (err instanceof SandboxReplacementCleanupUnresolvedError) {
@@ -3944,17 +3957,19 @@ export class DockerSandboxProvider implements SandboxProvider {
         containerName,
         nodeId,
       });
-      await deregisterAgentWithSteward(ssh, agentId, stewardTenant)
-        .then(() => {
-          logger.info(
-            `[docker-sandbox] Cleaned up Steward agent ${agentId} after missing Headscale registration`,
-          );
-        })
-        .catch((cleanupErr) => {
-          logger.warn(
-            `[docker-sandbox] Failed to cleanup Steward agent ${agentId} after missing Headscale registration: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-          );
-        });
+      if (stewardRegistrationCreated) {
+        await deregisterAgentWithSteward(ssh, agentId, stewardTenant)
+          .then(() => {
+            logger.info(
+              `[docker-sandbox] Cleaned up Steward agent ${agentId} after missing Headscale registration`,
+            );
+          })
+          .catch((cleanupErr) => {
+            logger.warn(
+              `[docker-sandbox] Failed to cleanup Steward agent ${agentId} after missing Headscale registration: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+            );
+          });
+      }
       if (replacementIntentPersisted) {
         throw new SandboxReplacementCleanupUnresolvedError(
           currentCleanupLocator(),
