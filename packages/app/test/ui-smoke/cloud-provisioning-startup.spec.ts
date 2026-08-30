@@ -140,8 +140,14 @@ async function clickIfVisible(
   const target = locator.first();
   // Bound both the visibility wait and the click action independently so a
   // continuously re-rendered optional control cannot inherit and exhaust
-  // the enclosing test's overall deadline (#29534). A control that never
-  // settles is treated as absent (typed fail-closed for optional onboarding).
+  // the enclosing test's overall deadline (#29534). Measured failure:
+  // canonical staging run 33049523461 exhausted its 2,100-second budget
+  // before any Personal identity request because the Cloud runtime choice
+  // stayed detached/re-rendered and `clickIfVisible` inherited the full
+  // test deadline. The 5s click bound preserves the slow supported path
+  // (normal first-run paint is < 2s) with ample headroom while treating a
+  // never-settling control as absent (typed fail-closed for optional
+  // onboarding).
   await target.waitFor({ state: "visible", timeout: timeoutMs }).catch(() => {
     /* absent in this first-run variant */
   });
