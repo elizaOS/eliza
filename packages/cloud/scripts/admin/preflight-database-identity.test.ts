@@ -500,6 +500,117 @@ describe("standalone database identity reporter", () => {
     eventClient.off("error", existingListener);
   });
 
+  test("a client close rejection fails report mode before publication", async () => {
+    const diagnostics: string[] = [];
+    const sentinel = "SENSITIVE_DB_CLIENT_CLOSE_DETAIL";
+    let publishCalls = 0;
+    const eventClient = runtimeClient({
+      end: async () => {
+        throw new Error(sentinel);
+      },
+    });
+    const initialListenerCount = eventClient.listenerCount("error");
+
+    const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      probeDependencies: noDependencyProbe,
+      createClient: async () => eventClient,
+      publishResult: async () => {
+        publishCalls += 1;
+      },
+      writeStdout: (message) => diagnostics.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(publishCalls).toBe(0);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount);
+    expect(diagnostics).toEqual([
+      "::warning::database identity report unavailable; category=database_connection_failed\n",
+    ]);
+    expect(diagnostics.join("")).not.toContain(sentinel);
+  });
+
+  test("a client close rejection fails enforcement with a bounded error", async () => {
+    const sentinel = "SENSITIVE_DB_CLIENT_CLOSE_ENFORCE_DETAIL";
+    const expectedReceipt = await readDatabaseIdentityReceipt(
+      client,
+      "staging",
+    );
+    let publishCalls = 0;
+    const eventClient = runtimeClient({
+      end: async () => {
+        throw new Error(sentinel);
+      },
+    });
+    const initialListenerCount = eventClient.listenerCount("error");
+    let failure: unknown;
+
+    try {
+      await runDatabaseIdentityReporter(
+        {
+          ...reportEnvironment,
+          DATABASE_IDENTITY_GATE_MODE: "enforce",
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256:
+            expectedReceipt.clusterSha256,
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256:
+            expectedReceipt.authoritySha256,
+        },
+        {
+          probeDependencies: noDependencyProbe,
+          createClient: async () => eventClient,
+          publishResult: async () => {
+            publishCalls += 1;
+          },
+        },
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe("database_identity_client_error");
+    expect((failure as Error).message).not.toContain(sentinel);
+    expect(publishCalls).toBe(0);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount);
+  });
+
+  test("a client close rejection preserves an earlier query failure", async () => {
+    const querySentinel = "SENSITIVE_DB_QUERY_PRIMARY_FAILURE";
+    const closeSentinel = "SENSITIVE_DB_CLIENT_CLOSE_AFTER_PRIMARY_FAILURE";
+    const diagnostics: string[] = [];
+    let publishedStatus = "";
+    const eventClient = runtimeClient({
+      query: async () => {
+        throw new Error(querySentinel);
+      },
+      end: async () => {
+        throw new Error(closeSentinel);
+      },
+    });
+    const initialListenerCount = eventClient.listenerCount("error");
+
+    const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      probeDependencies: noDependencyProbe,
+      createClient: async () => eventClient,
+      publishResult: async (_config, result) => {
+        publishedStatus = JSON.stringify(result);
+      },
+      writeStdout: (message) => diagnostics.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(publishedStatus).toBe(
+      JSON.stringify({
+        status: "unavailable",
+        mismatches: [],
+        failureCategory: "database_query_failed",
+      }),
+    );
+    expect(publishedStatus).not.toContain(querySentinel);
+    expect(publishedStatus).not.toContain(closeSentinel);
+    expect(diagnostics).toEqual([]);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount);
+  });
+
   test("an unavailable query status is nonzero without leaking its cause", async () => {
     let publishedStatus = "";
     let ended = false;

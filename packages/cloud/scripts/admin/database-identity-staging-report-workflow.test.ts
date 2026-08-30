@@ -8,6 +8,7 @@ import { parse } from "yaml";
 interface Step {
   "continue-on-error"?: boolean | string;
   env?: Record<string, string>;
+  if?: boolean | string;
   name?: string;
   run?: string;
   shell?: string;
@@ -59,8 +60,7 @@ function expression(body: string): string {
   return ["$", "{{ ", body, " }}"].join("");
 }
 
-const DATABASE_URL_SECRET_REFERENCE =
-  /\bsecrets\s*(?:\.\s*DATABASE_URL\b|\[\s*["']DATABASE_URL["']\s*\])/i;
+const SECRETS_CONTEXT_REFERENCE = /\bsecrets\b/i;
 
 function sensitiveDatabaseUrlPaths(root: unknown): {
   databaseUrlKeys: string[];
@@ -74,10 +74,7 @@ function sensitiveDatabaseUrlPaths(root: unknown): {
     path: string,
     ancestors: ReadonlySet<object>,
   ): void {
-    if (
-      typeof value === "string" &&
-      DATABASE_URL_SECRET_REFERENCE.test(value)
-    ) {
+    if (typeof value === "string" && SECRETS_CONTEXT_REFERENCE.test(value)) {
       secretReferences.push(path);
     }
     if (value === null || typeof value !== "object") return;
@@ -103,6 +100,46 @@ function sensitiveDatabaseUrlPaths(root: unknown): {
 
   visit(root, "$", new Set());
   return { databaseUrlKeys, secretReferences };
+}
+
+function assertExclusiveReporterSecretBinding(candidate: Workflow): void {
+  const candidateJob = candidate.jobs.report;
+  const reporterIndexes = candidateJob.steps.flatMap((step, index) =>
+    step.name === "Emit redacted staging identity receipts" ? [index] : [],
+  );
+  if (
+    reporterIndexes.length !== 1 ||
+    reporterIndexes[0] !== candidateJob.steps.length - 1
+  ) {
+    throw new Error(
+      "The database identity reporter must be the unique final step",
+    );
+  }
+
+  const reporterIndex = reporterIndexes[0];
+  if (reporterIndex === undefined) throw new Error("Missing reporter step");
+  const reporter = candidateJob.steps[reporterIndex];
+  if (!reporter) throw new Error("Missing reporter step");
+  if (
+    reporter.env?.DATABASE_URL !== expression("secrets.DATABASE_URL") ||
+    reporter["continue-on-error"] !== undefined ||
+    reporter.if !== undefined
+  ) {
+    throw new Error("The final reporter step does not fail closed");
+  }
+
+  const expectedPath = `$.jobs.report.steps[${reporterIndex}].env.DATABASE_URL`;
+  const observedPaths = sensitiveDatabaseUrlPaths(candidate);
+  if (
+    JSON.stringify(observedPaths.databaseUrlKeys) !==
+      JSON.stringify([expectedPath]) ||
+    JSON.stringify(observedPaths.secretReferences) !==
+      JSON.stringify([expectedPath])
+  ) {
+    throw new Error(
+      "Only the final reporter DATABASE_URL may reference the secrets context",
+    );
+  }
 }
 
 function reportStep(name: string): Step {
@@ -175,12 +212,14 @@ describe("database identity staging report workflow", () => {
     if (!reporter) throw new Error("Missing reporter step");
     expect(reporter.env?.DATABASE_URL).toBe(expression("secrets.DATABASE_URL"));
     expect(reporter["continue-on-error"]).toBeUndefined();
+    expect(reporter.if).toBeUndefined();
 
     const expectedPath = `$.jobs.report.steps[${reporterIndex}].env.DATABASE_URL`;
     expect(sensitiveDatabaseUrlPaths(workflow)).toEqual({
       databaseUrlKeys: [expectedPath],
       secretReferences: [expectedPath],
     });
+    expect(() => assertExclusiveReporterSecretBinding(workflow)).not.toThrow();
   });
 
   test("does not collapse aliased sensitive scopes during validation", () => {
@@ -258,6 +297,80 @@ describe("database identity staging report workflow", () => {
         "$.jobs.report.steps[0].with.connection",
       ],
     });
+  });
+
+  test("rejects dynamic, whole-context, and aliased secret references", () => {
+    const mutations: Array<{
+      mutate: (candidate: Workflow) => void;
+      name: string;
+    }> = [
+      {
+        name: "dynamic env-name index",
+        mutate: (candidate) => {
+          candidate.jobs.admission.env = {
+            INDIRECT_SECRET: expression("secrets[env.SECRET_NAME]"),
+          };
+        },
+      },
+      {
+        name: "formatted dynamic index",
+        mutate: (candidate) => {
+          candidate.jobs.report.env.INDIRECT_SECRET = expression(
+            "secrets[format('{0}', env.SECRET_NAME)]",
+          );
+        },
+      },
+      {
+        name: "whole secrets context",
+        mutate: (candidate) => {
+          const checkout = candidate.jobs.report.steps[0];
+          if (!checkout) throw new Error("Missing checkout step");
+          checkout.with = {
+            ...checkout.with,
+            "secret-context": expression("toJSON(secrets)"),
+          };
+        },
+      },
+      {
+        name: "aliased alternate step path",
+        mutate: (candidate) => {
+          const alias: Step = {
+            name: "Aliased secret consumer",
+            env: {
+              INDIRECT_SECRET: expression("secrets[env.SECRET_NAME]"),
+            },
+          };
+          candidate.jobs.report.steps.splice(1, 0, alias, alias);
+        },
+      },
+    ];
+
+    for (const mutation of mutations) {
+      const candidate = structuredClone(workflow);
+      mutation.mutate(candidate);
+      expect(
+        () => assertExclusiveReporterSecretBinding(candidate),
+        mutation.name,
+      ).toThrow(
+        "Only the final reporter DATABASE_URL may reference the secrets context",
+      );
+    }
+  });
+
+  test("rejects reporter conditions that can bypass earlier step failures", () => {
+    for (const condition of ["always()", "failure()", "cancelled()"] as const) {
+      const candidate = structuredClone(workflow);
+      const reporter = candidate.jobs.report.steps.find(
+        (step) => step.name === "Emit redacted staging identity receipts",
+      );
+      if (!reporter) throw new Error("Missing reporter step");
+      reporter.if = expression(condition);
+
+      expect(
+        () => assertExclusiveReporterSecretBinding(candidate),
+        condition,
+      ).toThrow("The final reporter step does not fail closed");
+    }
   });
 
   test("rejects an untrusted ref or commit without attaching staging", () => {

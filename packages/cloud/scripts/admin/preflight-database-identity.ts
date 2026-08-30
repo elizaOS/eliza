@@ -424,10 +424,15 @@ export async function runDatabaseIdentityReporter(
       try {
         await client.end();
       } catch {
-        // error-policy:J6 teardown failure cannot replace the primary gate result.
+        // error-policy:J1 a sole close failure becomes a fixed boundary
+        // category; an earlier gate failure remains authoritative.
         process.stderr.write(
           "[database-identity] warning: database client close failed\n",
         );
+        if (!failed && result?.status !== "unavailable") {
+          failed = true;
+          failure = new DatabaseIdentityClientEventError();
+        }
       } finally {
         if (clientErrorListenerAttached) {
           try {
