@@ -4,6 +4,7 @@
  * Covers:
  * - Token shape (rhost_v1_<43 base64url chars>, 256 bits of entropy, uniqueness).
  * - Digest shape + determinism (sha256:<64 lowercase hex chars>, repeatable).
+ * - Known-answer vector pinning full prefixed token hashing.
  * - Fail-closed rejection of malformed tokens (invalid length, non-base64url, wrong prefix, empty).
  */
 import { describe, expect, test } from "bun:test";
@@ -17,7 +18,7 @@ describe("generateRemoteHostToken", () => {
     expect(token.length).toBe(52); // "rhost_v1_".length (9) + 43
   });
 
-  test("produces unique tokens across calls (entropy verification)", () => {
+  test("produces unique tokens across calls (smoke collision check)", () => {
     const tokens = new Set<string>();
     for (let i = 0; i < 50; i++) {
       tokens.add(generateRemoteHostToken());
@@ -41,6 +42,13 @@ describe("hashRemoteHostToken", () => {
     expect(digest1).toBe(digest2);
   });
 
+  test("hashes the full prefixed token (known-answer vector)", async () => {
+    const token = `rhost_v1_${"A".repeat(43)}`;
+    await expect(hashRemoteHostToken(token)).resolves.toBe(
+      "sha256:72542723dd2d38b0dd3552523d0faf14ae59064641747859a8f62229522554b4",
+    );
+  });
+
   test("different tokens yield different digests", async () => {
     const token1 = generateRemoteHostToken();
     const token2 = generateRemoteHostToken();
@@ -49,25 +57,22 @@ describe("hashRemoteHostToken", () => {
     expect(digest1).not.toBe(digest2);
   });
 
-  test("rejects malformed tokens fail-closed with TypeError", async () => {
-    // Missing prefix
-    const rawEntropy = "A".repeat(43);
-    expect(hashRemoteHostToken(rawEntropy)).rejects.toThrow(TypeError);
+  describe("rejects malformed tokens fail-closed with TypeError", () => {
+    const malformedCases: [string, string][] = [
+      ["missing prefix", "A".repeat(43)],
+      ["wrong prefix version", `rhost_v2_${"A".repeat(43)}`],
+      ["uppercase prefix", `RHOST_v1_${"A".repeat(43)}`],
+      ["short length", "rhost_v1_abc"],
+      ["long length (44 chars)", `rhost_v1_${"A".repeat(44)}`],
+      ["base64 padding '=' leaked", `rhost_v1_${"A".repeat(42)}=`],
+      ["invalid punctuation '!'", `rhost_v1_${"A".repeat(42)}!`],
+      ["standard base64 '+' char", `rhost_v1_${"A".repeat(42)}+`],
+      ["standard base64 '/' char", `rhost_v1_${"A".repeat(42)}/`],
+      ["empty string", ""],
+    ];
 
-    // Wrong prefix version
-    expect(hashRemoteHostToken(`rhost_v2_${rawEntropy}`)).rejects.toThrow(TypeError);
-
-    // Invalid length (short)
-    expect(hashRemoteHostToken("rhost_v1_abc")).rejects.toThrow(TypeError);
-
-    // Invalid length (long - 44 chars)
-    expect(hashRemoteHostToken(`rhost_v1_${"A".repeat(44)}`)).rejects.toThrow(TypeError);
-
-    // Invalid characters (padding leaked or invalid symbols)
-    expect(hashRemoteHostToken(`rhost_v1_${"A".repeat(42)}=`)).rejects.toThrow(TypeError);
-    expect(hashRemoteHostToken(`rhost_v1_${"A".repeat(42)}!`)).rejects.toThrow(TypeError);
-
-    // Empty string
-    expect(hashRemoteHostToken("")).rejects.toThrow(TypeError);
+    test.each(malformedCases)("%s", async (_, input) => {
+      await expect(hashRemoteHostToken(input)).rejects.toThrow(TypeError);
+    });
   });
 });
