@@ -137,17 +137,32 @@ export function resolveBootstrapCandidate<T>(
   candidates: readonly T[],
   activationKind: (candidate: T) => "fresh-boot" | string,
 ): T {
-  if (candidates.length < 2 || candidates.length > 100) {
+  if (candidates.length === 0) {
     throw new PersonalDedicatedRereviewOperatorError(
-      "selection_bootstrap_decision_required",
+      "selection_bootstrap_zero_candidates",
+    );
+  }
+  if (candidates.length === 1) {
+    throw new PersonalDedicatedRereviewOperatorError(
+      "selection_bootstrap_single_candidate",
+    );
+  }
+  if (candidates.length > 100) {
+    throw new PersonalDedicatedRereviewOperatorError(
+      "selection_bootstrap_inventory_over_limit",
     );
   }
   const restorable = candidates.filter(
     (candidate) => activationKind(candidate) !== "fresh-boot",
   );
-  if (restorable.length !== 1) {
+  if (restorable.length === 0) {
     throw new PersonalDedicatedRereviewOperatorError(
-      "selection_bootstrap_decision_required",
+      "selection_bootstrap_no_restore_authority",
+    );
+  }
+  if (restorable.length > 1) {
+    throw new PersonalDedicatedRereviewOperatorError(
+      "selection_bootstrap_multiple_restore_authorities",
     );
   }
   return restorable[0];
@@ -486,11 +501,6 @@ async function defaultResolveSelection(
       )
       .orderBy(asc(agentSandboxes.id))
       .limit(101);
-    if (candidates.length < 2 || candidates.length > 100) {
-      throw new PersonalDedicatedRereviewOperatorError(
-        "selection_bootstrap_decision_required",
-      );
-    }
     const storedBackups = await dbWrite
       .select()
       .from(agentSandboxBackups)
