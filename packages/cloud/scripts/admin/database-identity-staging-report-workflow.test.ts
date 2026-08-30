@@ -60,7 +60,59 @@ function expression(body: string): string {
   return ["$", "{{ ", body, " }}"].join("");
 }
 
-const SECRETS_CONTEXT_REFERENCE = /\bsecrets\b/i;
+function expressionBodyReferencesSecretsContext(body: string): boolean {
+  let quote: "'" | '"' | undefined;
+  for (let index = 0; index < body.length; ) {
+    const character = body[index];
+    if (quote) {
+      if (character === quote) {
+        if (quote === "'" && body[index + 1] === "'") {
+          index += 2;
+          continue;
+        }
+        quote = undefined;
+      }
+      index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      index += 1;
+      continue;
+    }
+    if (!character || !/[A-Za-z_]/.test(character)) {
+      index += 1;
+      continue;
+    }
+
+    let identifierEnd = index + 1;
+    while (
+      identifierEnd < body.length &&
+      /[A-Za-z0-9_]/.test(body[identifierEnd] ?? "")
+    ) {
+      identifierEnd += 1;
+    }
+    let previousIndex = index - 1;
+    while (previousIndex >= 0 && /\s/.test(body[previousIndex] ?? "")) {
+      previousIndex -= 1;
+    }
+    if (
+      body.slice(index, identifierEnd).toLowerCase() === "secrets" &&
+      body[previousIndex] !== "."
+    ) {
+      return true;
+    }
+    index = identifierEnd;
+  }
+  return false;
+}
+
+function referencesSecretsContext(value: string): boolean {
+  for (const match of value.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
+    if (expressionBodyReferencesSecretsContext(match[1] ?? "")) return true;
+  }
+  return false;
+}
 
 function sensitiveDatabaseUrlPaths(root: unknown): {
   databaseUrlKeys: string[];
@@ -74,7 +126,7 @@ function sensitiveDatabaseUrlPaths(root: unknown): {
     path: string,
     ancestors: ReadonlySet<object>,
   ): void {
-    if (typeof value === "string" && SECRETS_CONTEXT_REFERENCE.test(value)) {
+    if (typeof value === "string" && referencesSecretsContext(value)) {
       secretReferences.push(path);
     }
     if (value === null || typeof value !== "object") return;
@@ -121,9 +173,12 @@ function assertExclusiveReporterSecretBinding(candidate: Workflow): void {
   const reporter = candidateJob.steps[reporterIndex];
   if (!reporter) throw new Error("Missing reporter step");
   if (
+    !reporter.env ||
+    Object.keys(reporter.env).length !== 1 ||
     reporter.env?.DATABASE_URL !== expression("secrets.DATABASE_URL") ||
     reporter["continue-on-error"] !== undefined ||
-    reporter.if !== undefined
+    reporter.if !== undefined ||
+    reporter.shell !== undefined
   ) {
     throw new Error("The final reporter step does not fail closed");
   }
@@ -210,9 +265,12 @@ describe("database identity staging report workflow", () => {
     if (reporterIndex === undefined) throw new Error("Missing reporter step");
     const reporter = job.steps[reporterIndex];
     if (!reporter) throw new Error("Missing reporter step");
-    expect(reporter.env?.DATABASE_URL).toBe(expression("secrets.DATABASE_URL"));
+    expect(reporter.env).toEqual({
+      DATABASE_URL: expression("secrets.DATABASE_URL"),
+    });
     expect(reporter["continue-on-error"]).toBeUndefined();
     expect(reporter.if).toBeUndefined();
+    expect(reporter.shell).toBeUndefined();
 
     const expectedPath = `$.jobs.report.steps[${reporterIndex}].env.DATABASE_URL`;
     expect(sensitiveDatabaseUrlPaths(workflow)).toEqual({
@@ -299,6 +357,21 @@ describe("database identity staging report workflow", () => {
     });
   });
 
+  test("ignores benign secrets prose outside a context reference", () => {
+    const benign = {
+      env: {
+        DESCRIPTION: "no secrets are accessed",
+        QUOTED_EXPRESSION: expression("'no secrets are accessed'"),
+      },
+      run: "echo no secrets are accessed",
+    };
+
+    expect(sensitiveDatabaseUrlPaths(benign)).toEqual({
+      databaseUrlKeys: [],
+      secretReferences: [],
+    });
+  });
+
   test("rejects dynamic, whole-context, and aliased secret references", () => {
     const mutations: Array<{
       mutate: (candidate: Workflow) => void;
@@ -369,6 +442,48 @@ describe("database identity staging report workflow", () => {
       expect(
         () => assertExclusiveReporterSecretBinding(candidate),
         condition,
+      ).toThrow("The final reporter step does not fail closed");
+    }
+  });
+
+  test("rejects reporter environment and shell overrides", () => {
+    const mutations: Array<{
+      mutate: (reporter: Step) => void;
+      name: string;
+    }> = [
+      {
+        name: "gate mode off",
+        mutate: (reporter) => {
+          if (!reporter.env) throw new Error("Missing reporter environment");
+          reporter.env.DATABASE_IDENTITY_GATE_MODE = "off";
+        },
+      },
+      {
+        name: "identity environment override",
+        mutate: (reporter) => {
+          if (!reporter.env) throw new Error("Missing reporter environment");
+          reporter.env.DATABASE_IDENTITY_ENVIRONMENT = "production";
+        },
+      },
+      {
+        name: "shell override",
+        mutate: (reporter) => {
+          reporter.shell = "bash";
+        },
+      },
+    ];
+
+    for (const mutation of mutations) {
+      const candidate = structuredClone(workflow);
+      const reporter = candidate.jobs.report.steps.find(
+        (step) => step.name === "Emit redacted staging identity receipts",
+      );
+      if (!reporter) throw new Error("Missing reporter step");
+      mutation.mutate(reporter);
+
+      expect(
+        () => assertExclusiveReporterSecretBinding(candidate),
+        mutation.name,
       ).toThrow("The final reporter step does not fail closed");
     }
   });
