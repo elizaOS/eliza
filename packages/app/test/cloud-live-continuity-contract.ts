@@ -110,6 +110,17 @@ export interface CloudLiveNetworkAuditSnapshot {
   decodedDedicatedCutoverFinalResponseCount: number;
   uninspectableDedicatedCutoverResponseBodyCount: number;
   dedicatedAdoptionQuoteGetRequestCount: number;
+  successfulDedicatedAdoptionQuoteGetResponseCount: number;
+  clientErrorDedicatedAdoptionQuoteGetResponseCount: number;
+  serverErrorDedicatedAdoptionQuoteGetResponseCount: number;
+  otherDedicatedAdoptionQuoteGetResponseCount: number;
+  failedDedicatedAdoptionQuoteGetRequestCount: number;
+  pendingDedicatedAdoptionQuoteGetRequestCount: number;
+  completedDedicatedAdoptionQuoteResponseBodyCount: number;
+  parsedDedicatedAdoptionQuoteResponseBodyCount: number;
+  decodedDedicatedAdoptionQuoteResponseCount: number;
+  decodedDedicatedAdoptionUnavailableResponseCount: number;
+  uninspectableDedicatedAdoptionQuoteResponseBodyCount: number;
   dedicatedAdoptionConfirmationPostRequestCount: number;
   dedicatedApprovalBindingPresent: boolean;
   dedicatedLifecycleBindingMismatchCount: number;
@@ -831,6 +842,78 @@ async function inspectDedicatedControlPlaneResponse(
   }
 }
 
+interface DedicatedAdoptionQuoteResponseInspection {
+  bodyCompleted: boolean;
+  parsed: boolean;
+  quoteDecoded: boolean;
+  unavailableDecoded: boolean;
+}
+
+async function inspectDedicatedAdoptionQuoteResponse(
+  status: number,
+  responseBody: CloudLiveBoundedResponseBody,
+): Promise<DedicatedAdoptionQuoteResponseInspection> {
+  const unavailable = {
+    bodyCompleted: false,
+    parsed: false,
+    quoteDecoded: false,
+    unavailableDecoded: false,
+  } as const;
+  if (!isJsonContentType(responseBody.contentType)) return unavailable;
+  const bytes = await readCloudLiveBoundedResponseBody(
+    responseBody,
+    MAX_PERSONAL_IDENTITY_RESPONSE_BYTES,
+  );
+  if (!bytes) return unavailable;
+  try {
+    const parsed = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    ) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {
+        bodyCompleted: true,
+        parsed: true,
+        quoteDecoded: false,
+        unavailableDecoded: false,
+      };
+    }
+    const root = parsed as Record<string, unknown>;
+    const data = root.data;
+    const quote =
+      data && typeof data === "object" && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : null;
+    return {
+      bodyCompleted: true,
+      parsed: true,
+      quoteDecoded:
+        status >= 200 &&
+        status < 300 &&
+        root.success === true &&
+        typeof quote?.quoteId === "string" &&
+        typeof quote?.dedicatedAgentId === "string" &&
+        typeof quote?.status === "string" &&
+        typeof quote?.startsCompute === "boolean" &&
+        typeof quote?.canAdopt === "boolean" &&
+        quote?.requiresConfirmation === true &&
+        quote?.action === "adopt_existing_dedicated",
+      unavailableDecoded:
+        status === 404 &&
+        root.success === false &&
+        root.code === "dedicated_adoption_unavailable",
+    };
+  } catch {
+    // error-policy:J3 malformed, non-UTF-8, oversized, or unreadable quote
+    // bodies provide no owner-consent proof; only closed counters are retained.
+    return {
+      bodyCompleted: true,
+      parsed: false,
+      quoteDecoded: false,
+      unavailableDecoded: false,
+    };
+  }
+}
+
 interface HistoryAnchorInspection {
   inspected: boolean;
   anchorUserPresent: boolean;
@@ -1130,7 +1213,19 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
   let decodedSharedPersonalIdentityResponseCount = 0;
   let decodedDedicatedPersonalIdentityResponseCount = 0;
   let uninspectablePersonalIdentityResponseBodyCount = 0;
-  let dedicatedAdoptionQuoteGetRequestCount = 0;
+  const dedicatedAdoptionQuote = {
+    request: 0,
+    success: 0,
+    clientError: 0,
+    serverError: 0,
+    other: 0,
+    failed: 0,
+    bodyCompleted: 0,
+    parsed: 0,
+    quoteDecoded: 0,
+    unavailableDecoded: 0,
+    uninspectableBody: 0,
+  };
   let dedicatedAdoptionConfirmationPostRequestCount = 0;
   let dedicatedApprovalBinding: CloudLiveDedicatedApprovalBinding | null = null;
   let latestActivationQuoteBinding: CloudLiveDedicatedApprovalBinding | null =
@@ -1261,7 +1356,7 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
         dedicatedControlPlane[dedicatedRequest].request += 1;
       const adoptionRequest = dedicatedAdoptionRequest(method, rawUrl);
       if (adoptionRequest === "quote") {
-        dedicatedAdoptionQuoteGetRequestCount += 1;
+        dedicatedAdoptionQuote.request += 1;
       } else if (adoptionRequest === "confirmation") {
         dedicatedAdoptionConfirmationPostRequestCount += 1;
       }
@@ -1415,6 +1510,34 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
           });
         } else counters.uninspectableBody += 1;
       }
+      const adoptionRequest = dedicatedAdoptionRequest(method, rawUrl);
+      if (adoptionRequest === "quote") {
+        if (status >= 200 && status < 300) dedicatedAdoptionQuote.success += 1;
+        else if (status >= 400 && status < 500)
+          dedicatedAdoptionQuote.clientError += 1;
+        else if (status >= 500 && status < 600)
+          dedicatedAdoptionQuote.serverError += 1;
+        else dedicatedAdoptionQuote.other += 1;
+        if (responseBody) {
+          trackResponseHandler(async () => {
+            const inspection = await inspectDedicatedAdoptionQuoteResponse(
+              status,
+              responseBody,
+            );
+            if (!inspection.bodyCompleted) {
+              dedicatedAdoptionQuote.uninspectableBody += 1;
+              return;
+            }
+            dedicatedAdoptionQuote.bodyCompleted += 1;
+            if (!inspection.parsed) return;
+            dedicatedAdoptionQuote.parsed += 1;
+            if (inspection.quoteDecoded)
+              dedicatedAdoptionQuote.quoteDecoded += 1;
+            if (inspection.unavailableDecoded)
+              dedicatedAdoptionQuote.unavailableDecoded += 1;
+          });
+        } else dedicatedAdoptionQuote.uninspectableBody += 1;
+      }
     },
     observeRequestFailure(method, rawUrl, errorText = "") {
       if (isPersonalIdentityGet(method, rawUrl)) {
@@ -1422,6 +1545,9 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
       }
       const dedicatedRequest = dedicatedControlPlaneRequest(method, rawUrl);
       if (dedicatedRequest) dedicatedControlPlane[dedicatedRequest].failed += 1;
+      if (dedicatedAdoptionRequest(method, rawUrl) === "quote") {
+        dedicatedAdoptionQuote.failed += 1;
+      }
       if (!isHistoryGet(method, rawUrl)) return;
       failedHistoryGetRequestCount += 1;
       if (/tim(?:e|ed)[ _-]?out/i.test(errorText)) {
@@ -1622,7 +1748,36 @@ export function createCloudLiveNetworkAudit(): CloudLiveNetworkAudit {
           dedicatedControlPlane.cutover.finalDecoded,
         uninspectableDedicatedCutoverResponseBodyCount:
           dedicatedControlPlane.cutover.uninspectableBody,
-        dedicatedAdoptionQuoteGetRequestCount,
+        dedicatedAdoptionQuoteGetRequestCount: dedicatedAdoptionQuote.request,
+        successfulDedicatedAdoptionQuoteGetResponseCount:
+          dedicatedAdoptionQuote.success,
+        clientErrorDedicatedAdoptionQuoteGetResponseCount:
+          dedicatedAdoptionQuote.clientError,
+        serverErrorDedicatedAdoptionQuoteGetResponseCount:
+          dedicatedAdoptionQuote.serverError,
+        otherDedicatedAdoptionQuoteGetResponseCount:
+          dedicatedAdoptionQuote.other,
+        failedDedicatedAdoptionQuoteGetRequestCount:
+          dedicatedAdoptionQuote.failed,
+        pendingDedicatedAdoptionQuoteGetRequestCount: Math.max(
+          0,
+          dedicatedAdoptionQuote.request -
+            dedicatedAdoptionQuote.success -
+            dedicatedAdoptionQuote.clientError -
+            dedicatedAdoptionQuote.serverError -
+            dedicatedAdoptionQuote.other -
+            dedicatedAdoptionQuote.failed,
+        ),
+        completedDedicatedAdoptionQuoteResponseBodyCount:
+          dedicatedAdoptionQuote.bodyCompleted,
+        parsedDedicatedAdoptionQuoteResponseBodyCount:
+          dedicatedAdoptionQuote.parsed,
+        decodedDedicatedAdoptionQuoteResponseCount:
+          dedicatedAdoptionQuote.quoteDecoded,
+        decodedDedicatedAdoptionUnavailableResponseCount:
+          dedicatedAdoptionQuote.unavailableDecoded,
+        uninspectableDedicatedAdoptionQuoteResponseBodyCount:
+          dedicatedAdoptionQuote.uninspectableBody,
         dedicatedAdoptionConfirmationPostRequestCount,
         dedicatedApprovalBindingPresent: dedicatedApprovalBinding !== null,
         dedicatedLifecycleBindingMismatchCount,
