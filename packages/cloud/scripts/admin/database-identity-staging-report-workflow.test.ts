@@ -14,12 +14,17 @@ interface Step {
   shell?: string;
   uses?: string;
   with?: Record<string, string | number | boolean>;
+  "working-directory"?: string;
 }
 
 interface Workflow {
+  name: string;
   on: {
     workflow_dispatch: {
-      inputs: Record<string, { required: boolean; type: string }>;
+      inputs: Record<
+        string,
+        { description: string; required: boolean; type: string }
+      >;
     };
   };
   permissions: Record<string, string>;
@@ -59,6 +64,112 @@ const job = workflow.jobs.report;
 function expression(body: string): string {
   return ["$", "{{ ", body, " }}"].join("");
 }
+
+const EXPECTED_WORKFLOW: Workflow = {
+  name: "Database identity staging report",
+  on: {
+    workflow_dispatch: {
+      inputs: {
+        expected_cloud_commit: {
+          description: "Exact 40-character develop commit to inspect",
+          required: true,
+          type: "string",
+        },
+      },
+    },
+  },
+  permissions: { contents: "read" },
+  jobs: {
+    admission: {
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 2,
+      steps: [
+        {
+          name: "Reject untrusted source",
+          env: {
+            EXPECTED_COMMIT: expression("inputs.expected_cloud_commit"),
+            CHECKED_OUT_COMMIT: expression("github.sha"),
+            SOURCE_REF: expression("github.ref"),
+          },
+          shell: "bash",
+          run: [
+            "set -euo pipefail",
+            'if [[ "$SOURCE_REF" != "refs/heads/develop" ]]; then',
+            '  echo "::error::database identity report requires the trusted develop source"',
+            "  exit 1",
+            "fi",
+            'if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]] || [[ "$EXPECTED_COMMIT" != "$CHECKED_OUT_COMMIT" ]]; then',
+            '  echo "::error::database identity report requires the exact checked-out commit"',
+            "  exit 1",
+            "fi",
+            "",
+          ].join("\n"),
+        },
+      ],
+    },
+    report: {
+      needs: "admission",
+      if: "needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 10,
+      environment: "staging",
+      concurrency: {
+        group: "database-identity-staging-report",
+        "cancel-in-progress": false,
+      },
+      env: {
+        DATABASE_IDENTITY_GATE_MODE: "report",
+        DATABASE_IDENTITY_ENVIRONMENT: "staging",
+      },
+      steps: [
+        {
+          name: "Checkout exact workflow commit",
+          uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          with: {
+            "fetch-depth": 1,
+            submodules: false,
+            "persist-credentials": false,
+          },
+        },
+        {
+          name: "Setup Bun workspace",
+          uses: "./.github/actions/setup-bun-workspace",
+          with: {
+            "bun-version": "1.3.14",
+            "setup-python": "false",
+            "install-protoc": "false",
+            "install-native-deps": "false",
+            "run-postinstall": "false",
+          },
+        },
+        {
+          name: "Build required linked runtime",
+          run: [
+            "bun run --cwd packages/prompts build:package",
+            "bun run --cwd packages/shared build",
+            "bun run --cwd packages/core build",
+            "",
+          ].join("\n"),
+        },
+        {
+          name: "Probe fixed runtime dependencies",
+          run: "bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies",
+        },
+        {
+          name: "Validate identity reporter contracts",
+          run: "bun test packages/cloud/scripts/admin/preflight-database-identity.test.ts packages/cloud/scripts/admin/database-identity-staging-report-workflow.test.ts",
+        },
+        {
+          name: "Emit redacted staging identity receipts",
+          env: {
+            DATABASE_URL: expression("secrets.DATABASE_URL"),
+          },
+          run: "bun run packages/cloud/scripts/admin/preflight-database-identity.ts",
+        },
+      ],
+    },
+  },
+};
 
 function expressionBodyReferencesSecretsContext(body: string): boolean {
   let quote: "'" | '"' | undefined;
@@ -108,10 +219,48 @@ function expressionBodyReferencesSecretsContext(body: string): boolean {
 }
 
 function referencesSecretsContext(value: string): boolean {
-  for (const match of value.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
-    if (expressionBodyReferencesSecretsContext(match[1] ?? "")) return true;
+  let searchFrom = 0;
+  while (searchFrom < value.length) {
+    const expressionStart = value.indexOf("${{", searchFrom);
+    if (expressionStart === -1) return false;
+
+    const bodyStart = expressionStart + 3;
+    let quote: "'" | '"' | undefined;
+    let expressionEnd = bodyStart;
+    for (; expressionEnd < value.length; expressionEnd += 1) {
+      const character = value[expressionEnd];
+      if (quote) {
+        if (character === quote) {
+          if (quote === "'" && value[expressionEnd + 1] === "'") {
+            expressionEnd += 1;
+            continue;
+          }
+          quote = undefined;
+        }
+        continue;
+      }
+      if (character === "'" || character === '"') {
+        quote = character;
+        continue;
+      }
+      if (character === "}" && value[expressionEnd + 1] === "}") break;
+    }
+
+    if (expressionEnd >= value.length) return false;
+    if (
+      expressionBodyReferencesSecretsContext(
+        value.slice(bodyStart, expressionEnd),
+      )
+    ) {
+      return true;
+    }
+    searchFrom = expressionEnd + 2;
   }
   return false;
+}
+
+function assertExactWorkflowContract(candidate: Workflow): void {
+  expect(candidate).toStrictEqual(EXPECTED_WORKFLOW);
 }
 
 function sensitiveDatabaseUrlPaths(root: unknown): {
@@ -210,6 +359,147 @@ function admissionStep(name: string): Step {
 }
 
 describe("database identity staging report workflow", () => {
+  test("pins the complete parsed workflow execution envelope", () => {
+    expect(() => assertExactWorkflowContract(workflow)).not.toThrow();
+  });
+
+  test("rejects inherited and local execution-envelope overrides", () => {
+    const prerequisite = (candidate: Workflow): Step => {
+      const step = candidate.jobs.report.steps.find(
+        (value) => value.name === "Build required linked runtime",
+      );
+      if (!step) throw new Error("Missing prerequisite step");
+      return step;
+    };
+    const reporter = (candidate: Workflow): Step => {
+      const step = candidate.jobs.report.steps.find(
+        (value) => value.name === "Emit redacted staging identity receipts",
+      );
+      if (!step) throw new Error("Missing reporter step");
+      return step;
+    };
+    const mutations: Array<{
+      mutate: (candidate: Workflow) => void;
+      name: string;
+    }> = [
+      {
+        name: "workflow environment",
+        mutate: (candidate) => {
+          (candidate as unknown as Record<string, unknown>).env = {
+            BASH_ENV: "/tmp/untrusted-profile",
+          };
+        },
+      },
+      {
+        name: "workflow run defaults",
+        mutate: (candidate) => {
+          (candidate as unknown as Record<string, unknown>).defaults = {
+            run: { shell: "bash", "working-directory": "/tmp" },
+          };
+        },
+      },
+      {
+        name: "report job run defaults",
+        mutate: (candidate) => {
+          (
+            candidate.jobs.report as unknown as Record<string, unknown>
+          ).defaults = {
+            run: { shell: "bash", "working-directory": "/tmp" },
+          };
+        },
+      },
+      {
+        name: "report job container",
+        mutate: (candidate) => {
+          (
+            candidate.jobs.report as unknown as Record<string, unknown>
+          ).container = "ubuntu:latest";
+        },
+      },
+      {
+        name: "report job services",
+        mutate: (candidate) => {
+          (
+            candidate.jobs.report as unknown as Record<string, unknown>
+          ).services = { postgres: { image: "postgres:latest" } };
+        },
+      },
+      {
+        name: "report job strategy matrix",
+        mutate: (candidate) => {
+          (
+            candidate.jobs.report as unknown as Record<string, unknown>
+          ).strategy = { matrix: { shard: [1, 2] } };
+        },
+      },
+      {
+        name: "report job PATH override",
+        mutate: (candidate) => {
+          candidate.jobs.report.env.PATH = "/tmp/bin";
+        },
+      },
+      {
+        name: "report job expected digest override",
+        mutate: (candidate) => {
+          candidate.jobs.report.env.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 =
+            "0".repeat(64);
+        },
+      },
+      {
+        name: "reporter working directory",
+        mutate: (candidate) => {
+          reporter(candidate)["working-directory"] = "/tmp";
+        },
+      },
+      {
+        name: "prerequisite condition",
+        mutate: (candidate) => {
+          prerequisite(candidate).if = expression("always()");
+        },
+      },
+      {
+        name: "prerequisite shell",
+        mutate: (candidate) => {
+          prerequisite(candidate).shell = "bash";
+        },
+      },
+      {
+        name: "prerequisite working directory",
+        mutate: (candidate) => {
+          prerequisite(candidate)["working-directory"] = "/tmp";
+        },
+      },
+      {
+        name: "prerequisite environment",
+        mutate: (candidate) => {
+          prerequisite(candidate).env = { BASH_ENV: "/tmp/profile" };
+        },
+      },
+      {
+        name: "prerequisite continue-on-error",
+        mutate: (candidate) => {
+          prerequisite(candidate)["continue-on-error"] = true;
+        },
+      },
+      {
+        name: "commented prerequisite command",
+        mutate: (candidate) => {
+          const step = prerequisite(candidate);
+          step.run = `${step.run ?? ""}# no-op\n`;
+        },
+      },
+    ];
+
+    for (const mutation of mutations) {
+      const candidate = structuredClone(workflow);
+      mutation.mutate(candidate);
+      expect(
+        () => assertExactWorkflowContract(candidate),
+        mutation.name,
+      ).toThrow();
+    }
+  });
+
   test("admits only manual develop runs before attaching staging", () => {
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
     expect(workflow.permissions).toEqual({ contents: "read" });
@@ -362,6 +652,7 @@ describe("database identity staging report workflow", () => {
       env: {
         DESCRIPTION: "no secrets are accessed",
         QUOTED_EXPRESSION: expression("'no secrets are accessed'"),
+        QUOTED_DELIMITERS: expression("'no secrets }} are accessed'"),
       },
       run: "echo no secrets are accessed",
     };
@@ -401,6 +692,16 @@ describe("database identity staging report workflow", () => {
           checkout.with = {
             ...checkout.with,
             "secret-context": expression("toJSON(secrets)"),
+          };
+        },
+      },
+      {
+        name: "quoted closing delimiters before a secrets reference",
+        mutate: (candidate) => {
+          candidate.jobs.admission.env = {
+            INDIRECT_SECRET: expression(
+              "contains('}}', '}}') && secrets.DATABASE_URL",
+            ),
           };
         },
       },
