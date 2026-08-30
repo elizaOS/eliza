@@ -1275,7 +1275,14 @@ export class MatrixService extends Service implements IMatrixService {
     const isDirectRoom = room.getJoinedMemberCount() <= 2;
     if (state.settings.requireMention && !isDirectRoom) {
       const localpart = getMatrixLocalpart(state.settings.userId);
-      const mentionPattern = new RegExp(`@?${escapeRegExp(localpart)}`, "i");
+      // Word-boundary anchored so a bare substring cannot satisfy the gate:
+      // localpart "ai" must not match "again"/"email", "bot" must not match
+      // "robots" (#29976). Optional leading @ still matches an explicit
+      // mention form.
+      const mentionPattern = new RegExp(
+        `(?:^|[^\\p{L}\\p{N}])@?${escapeRegExp(localpart)}(?=$|[^\\p{L}\\p{N}])`,
+        "iu",
+      );
       if (!mentionPattern.test(message.content)) {
         return;
       }
