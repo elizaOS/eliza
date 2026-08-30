@@ -356,9 +356,12 @@ describe("assertSchemaAnnotationsSerializable", () => {
 		expect(() => assertSchemaAnnotationsSerializable(true)).not.toThrow();
 	});
 
-	it("fails closed on accessor properties inside annotations", () => {
-		const annotation = { text: "clean" };
-		Object.defineProperty(annotation, "bad", {
+	it("fails closed on accessor properties inside annotation subtrees", () => {
+		const annotation = {
+			default: { text: "clean" },
+		};
+		// Accessor inside an annotation subtree (default) should fail
+		Object.defineProperty(annotation.default, "bad", {
 			get: () => "bad\uD83Dvalue",
 			enumerable: true,
 			configurable: true,
@@ -366,6 +369,19 @@ describe("assertSchemaAnnotationsSerializable", () => {
 		expect(() =>
 			assertSchemaAnnotationsSerializable(annotation),
 		).toThrow(ElizaError);
+	});
+
+	it("skips accessor properties outside annotation subtrees", () => {
+		const annotation = { text: "clean" };
+		// Top-level accessor is NOT in an annotation subtree, so it's skipped
+		Object.defineProperty(annotation, "bad", {
+			get: () => "bad\uD83Dvalue",
+			enumerable: true,
+			configurable: true,
+		});
+		expect(() =>
+			assertSchemaAnnotationsSerializable(annotation),
+		).not.toThrow();
 	});
 
 	it("fails closed on nesting exceeding maxDepth", () => {
@@ -423,13 +439,13 @@ describe("assertSchemaAnnotationsSerializable", () => {
 		).not.toThrow();
 	});
 
-	it("fails closed on accessor in nested annotation object", () => {
+	it("fails closed on accessor in nested annotation subtree", () => {
 		const annotation = {
 			outer: {
-				inner: { value: "clean" },
+				default: { value: "clean" },
 			},
 		};
-		Object.defineProperty(annotation.outer.inner, "bad", {
+		Object.defineProperty(annotation.outer.default, "bad", {
 			get: () => "bad\uD83Dvalue",
 			enumerable: true,
 			configurable: true,
