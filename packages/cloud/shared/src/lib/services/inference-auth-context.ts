@@ -166,7 +166,7 @@ interface MutableInferenceAuthTrace {
 
 type InferenceStandingDecisionSource = "authoritative" | "cache" | "session_resolution";
 
-const apiKeyHydrations = new Map<string, Promise<void>>();
+const apiKeyHydrations = new Map<string, Promise<InferenceAuthResolution | undefined>>();
 const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
 const DEFAULT_HYDRATION_DEADLINE_MS = 10_000;
 const MAX_HYDRATION_DEADLINE_MS = 2_147_483_647;
@@ -268,7 +268,12 @@ export type InferenceAuthResolution =
     }
   | { kind: "suspended"; userId?: string; reason?: InferenceAuthRejectionReason }
   | { kind: "rejected"; status: 401 | 403; reason?: InferenceAuthRejectionReason }
-  | { kind: "warming"; hydration?: Promise<unknown> }
+  | {
+      kind: "warming";
+      hydration?: Promise<unknown>;
+      /** One-shot cold-auth result for bounded voice warming without a second cache read. */
+      continuation?: Promise<InferenceAuthResolution | undefined>;
+    }
   | { kind: "slow_path"; reason: "mobile_api_key" | "non_api_key" };
 
 /**
@@ -369,7 +374,7 @@ function getOrCreateApiKeyHydration(
   req: Request,
   keyHash: string,
   traceId: string | undefined,
-): Promise<void> {
+): Promise<InferenceAuthResolution | undefined> {
   const existing = apiKeyHydrations.get(keyHash);
   if (existing) return existing;
 
@@ -386,7 +391,7 @@ function getOrCreateApiKeyHydration(
       authoritativeRejectionReason = reason;
     },
   })
-    .then(async (result) => {
+    .then(async (result): Promise<InferenceAuthResolution> => {
       if (result.kind === "suspended") {
         const write = await writeInferenceApiKeyAuthRejection(
           keyHash,
@@ -399,8 +404,9 @@ function getOrCreateApiKeyHydration(
         }
       }
       apiKeyHydrationFailures.delete(keyHash);
+      return result;
     })
-    .catch(async (error) => {
+    .catch(async (error): Promise<InferenceAuthResolution | undefined> => {
       const status = getErrorStatusCode(error);
       if (status === 401 || status === 403) {
         const reason = authoritativeRejectionReason ?? "credential_invalid";
@@ -415,6 +421,7 @@ function getOrCreateApiKeyHydration(
         // A definitive rejection is a successful decision, not a failed
         // hydration — the cache now answers; no escape pressure needed.
         apiKeyHydrationFailures.delete(keyHash);
+        return { kind: "rejected", status, reason };
       } else {
         noteHydrationFailure(keyHash);
       }
@@ -425,6 +432,7 @@ function getOrCreateApiKeyHydration(
         failureCount: apiKeyHydrationFailures.get(keyHash) ?? 0,
         error: error instanceof Error ? error.message : String(error),
       });
+      return undefined;
     });
   // Deadline: a never-settling attempt must not hold the single-flight slot.
   // The timed-out promise resolves (never rejects), counts as a failure, and
@@ -432,7 +440,7 @@ function getOrCreateApiKeyHydration(
   let deadline: ReturnType<typeof setTimeout> | undefined;
   const hydration = Promise.race([
     attempt,
-    new Promise<void>((resolve) => {
+    new Promise<undefined>((resolve) => {
       deadline = setTimeout(() => {
         noteHydrationFailure(keyHash);
         logger.warn("[InferenceAuth] background hydration exceeded deadline", {
@@ -440,7 +448,7 @@ function getOrCreateApiKeyHydration(
           deadlineMs: HYDRATION_DEADLINE_MS,
           failureCount: apiKeyHydrationFailures.get(keyHash) ?? 0,
         });
-        resolve();
+        resolve(undefined);
       }, HYDRATION_DEADLINE_MS);
       if (typeof deadline.unref === "function") deadline.unref();
     }),
@@ -464,6 +472,29 @@ export function __clearInferenceApiKeyHydrationFailures(): void {
 /** Test hook for isolating coalesced API-key hydration state. */
 export function __clearInferenceApiKeyHydrations(): void {
   apiKeyHydrations.clear();
+}
+
+/** Retain accepted API-key usage telemetry when a cold-auth continuation is consumed. */
+export function observeInferenceApiKeyUsage(
+  resolution: InferenceAuthResolution,
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void },
+): void {
+  if (resolution.kind !== "authorized" || resolution.ctx.apiKeyId === null) return;
+  const usageUpdate = apiKeysService
+    .incrementUsageDebounced(resolution.ctx.apiKeyId)
+    .catch((error) => {
+      // error-policy:J7 usage telemetry must not add latency or reject an
+      // otherwise authorized inference continuation.
+      logger.warn("[InferenceAuth] API-key usage update failed", {
+        apiKeyId: resolution.ctx.apiKeyId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  if (executionCtx) {
+    executionCtx.waitUntil(usageUpdate);
+  } else {
+    void usageUpdate;
+  }
 }
 
 export async function resolveInferenceAuthContext(
@@ -581,6 +612,7 @@ export async function resolveInferenceAuthContext(
       const cached = await readInferenceAuthContextWithOutcome(
         keyHash,
         probeDiscriminator ?? undefined,
+        options.executionCtx,
       );
       trace.timings.cacheReadMs = durationSince(cacheReadStartedAt);
       trace.cacheRead = cached.kind;
@@ -607,25 +639,16 @@ export async function resolveInferenceAuthContext(
           }
           throw error;
         }
-        const usageUpdate = apiKeysService
-          .incrementUsageDebounced(cached.ctx.apiKeyId)
-          .catch((error) => {
-            // error-policy:J7 usage telemetry must not add latency or create an
-            // unhandled rejection on an otherwise authorized inference.
-            logger.warn("[InferenceAuth] API-key usage update failed", {
-              apiKeyId: cached.ctx.apiKeyId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
+        observeInferenceApiKeyUsage(
+          { kind: "authorized", ctx: cached.ctx, source: "cache" },
+          options.executionCtx,
+        );
         if (options.executionCtx) {
-          options.executionCtx.waitUntil(usageUpdate);
           if (Date.now() - cached.ctx.cachedAt >= AUTH_CONTEXT_REFRESH_AFTER_MS) {
             options.executionCtx.waitUntil(
               getOrCreateApiKeyHydration(req, keyHash, options.traceId),
             );
           }
-        } else {
-          void usageUpdate;
         }
         trace.result = "authorized_cache";
         return { kind: "authorized", ctx: cached.ctx, source: "cache" };
@@ -651,7 +674,7 @@ export async function resolveInferenceAuthContext(
       if (cacheAvailable && options.executionCtx) {
         const hydration = getOrCreateApiKeyHydration(req, keyHash, options.traceId);
         options.executionCtx.waitUntil(hydration);
-        return { kind: "warming", hydration };
+        return { kind: "warming", hydration, continuation: hydration };
       }
       return { kind: "warming" };
     }

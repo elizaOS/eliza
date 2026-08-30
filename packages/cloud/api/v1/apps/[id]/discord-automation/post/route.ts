@@ -11,8 +11,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
+import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { discordAppAutomationService } from "@/lib/services/discord-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 
@@ -23,10 +23,11 @@ const postSchema = z.object({
 async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
+  caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
 ): Promise<Response> {
-  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+  const { user } = caller;
   const { id: appId } = await params;
-  if (await isAppKeyOutOfScope(apiKey?.id, appId)) {
+  if (caller.appScopeId && caller.appScopeId !== appId) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
@@ -82,9 +83,18 @@ async function __hono_POST(
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
-);
+__hono_app.post("/", async (c) => {
+  try {
+    const caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+    });
+    return await __hono_POST(
+      c.req.raw,
+      { params: Promise.resolve({ id: c.req.param("id")! }) },
+      caller,
+    );
+  } catch (error) {
+    return failureResponse(c, error);
+  }
+});
 export default __hono_app;
