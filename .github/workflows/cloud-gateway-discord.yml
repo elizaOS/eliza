@@ -1,15 +1,14 @@
 name: Cloud Gateway Discord
 
 # CI for the gateway-discord service. The current Railway services are uploaded
-# explicitly and have no connected repository source, so this workflow validates
-# source and protected configuration but does not claim or perform a deployment.
+# explicitly and have no connected repository source. This reusable workflow
+# validates source only; it never attaches an Environment or reads configuration.
 #
 # AWS EKS / Terraform / Helm deploy jobs were removed as part of the AWS
 # retirement (see packages/cloud/infra/cloud/AWS_RETIREMENT.md).
 
 on:
   workflow_call:
-  workflow_dispatch:
 
 concurrency:
   group: cloud-gateway-discord-${{ github.ref }}
@@ -27,58 +26,8 @@ permissions:
   contents: read
 
 jobs:
-  dispatch-admission:
-    name: Admit exact develop dispatch
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
-    steps:
-      - name: Reject non-develop manual runs
-        working-directory: .
-        env:
-          SOURCE_REF: ${{ github.ref }}
-        run: |
-          if [[ "$SOURCE_REF" != "refs/heads/develop" ]]; then
-            echo "::error::Trusted staging configuration may be checked only from refs/heads/develop."
-            exit 1
-          fi
-
-  trusted-config:
-    name: Trusted configuration
-    needs: dispatch-admission
-    # Until develop and the staging Environment have enforced admission policy,
-    # never attach staging configuration to the automatic reusable caller.
-    if: needs.dispatch-admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
-    environment: staging
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install root dependencies
-        run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
-
-      - name: Enforce trusted messaging gateway configuration
-        run: bun run preflight:messaging-gateways:strict -- --channels=shared,telegram,discord
-        env:
-          HAS_ELIZACLOUD_API_URL: ${{ secrets.ELIZACLOUD_API_URL != '' }}
-          HAS_CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY != '' }}
-          HAS_ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL != '' }}
-          HAS_ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET != '' }}
-          HAS_GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET != '' }}
-          HAS_ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN != '' }}
-          HAS_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET != '' }}
-          HAS_ELIZA_APP_DISCORD_APPLICATION_ID: ${{ secrets.ELIZA_APP_DISCORD_APPLICATION_ID != '' }}
-          ELIZA_APP_DISCORD_BOT_ENABLED: ${{ vars.ELIZA_APP_DISCORD_BOT_ENABLED }}
-          HAS_ELIZA_APP_DISCORD_BOT_TOKEN: ${{ secrets.ELIZA_APP_DISCORD_BOT_TOKEN != '' }}
-
   test:
     name: Test
-    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/develop'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:

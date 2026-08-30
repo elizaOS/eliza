@@ -228,24 +228,20 @@ test("WhatsApp strict preflight wires complete and split authorities without lea
   assert.doesNotMatch(splitOutput, /whatsapp-contract-value-never-print/);
 });
 
-test("workflow keeps trusted configuration behind exact-develop manual dispatch", () => {
+test("reusable workflow keeps the develop caller source-test-only", () => {
   const workflow = readFileSync(WORKFLOW, "utf8");
   const developWorkflow = readFileSync(DEVELOP_WORKFLOW, "utf8");
-  const dispatchAdmissionStart = workflow.indexOf("  dispatch-admission:");
-  const trustedConfigStart = workflow.indexOf("  trusted-config:");
   const testJobStart = workflow.indexOf("\n  test:");
 
-  assert.notEqual(dispatchAdmissionStart, -1);
-  assert.notEqual(trustedConfigStart, -1);
-  assert.ok(trustedConfigStart > dispatchAdmissionStart);
-  assert.ok(testJobStart > trustedConfigStart);
+  assert.notEqual(testJobStart, -1);
 
-  const dispatchAdmission = workflow.slice(dispatchAdmissionStart, trustedConfigStart);
-  const trustedConfig = workflow.slice(trustedConfigStart, testJobStart);
   const testJob = workflow.slice(testJobStart);
 
-  assert.match(workflow, /on:\s+workflow_call:\s+workflow_dispatch:\s+concurrency:/);
-  assert.doesNotMatch(workflow, /pull_request/);
+  assert.match(workflow, /on:\s+workflow_call:\s+concurrency:/);
+  assert.doesNotMatch(
+    workflow,
+    /workflow_dispatch|pull_request|dispatch-admission|trusted-config|environment:\s+staging|secrets\./,
+  );
   assert.match(developWorkflow, /on:\s+push:\s+branches: \[develop\]/);
   assert.match(
     developWorkflow,
@@ -255,71 +251,7 @@ test("workflow keeps trusted configuration behind exact-develop manual dispatch"
     developWorkflow,
     /cloud-gateway-discord:\s+[\s\S]*?uses: \.\/\.github\/workflows\/cloud-gateway-discord\.yml\s+secrets: inherit/,
   );
-  assert.match(dispatchAdmission, /if: github\.event_name == 'workflow_dispatch'/);
-  assert.match(dispatchAdmission, /SOURCE_REF: \$\{\{ github\.ref \}\}/);
-  assert.match(dispatchAdmission, /working-directory: \./);
-  assert.match(dispatchAdmission, /\[\[ "\$SOURCE_REF" != "refs\/heads\/develop" \]\]/);
-  assert.match(dispatchAdmission, /exit 1/);
-  assert.doesNotMatch(dispatchAdmission, /environment:|secrets\.|actions\/checkout/);
-  assert.match(trustedConfig, /needs: dispatch-admission/);
-  assert.match(
-    trustedConfig,
-    /if: needs\.dispatch-admission\.result == 'success' && github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/develop'/,
-  );
-  assert.match(trustedConfig, /environment: staging/);
-  assert.doesNotMatch(trustedConfig, /production/);
-  assert.match(trustedConfig, /uses: actions\/checkout@/);
-  assert.match(trustedConfig, /Enforce trusted messaging gateway configuration/);
-  assert.ok(
-    trustedConfig.indexOf("uses: actions/checkout") <
-      trustedConfig.indexOf("name: Enforce trusted messaging gateway configuration"),
-    "trusted configuration must inspect the checked-out develop source",
-  );
-  assert.doesNotMatch(trustedConfig, /Require canonical trusted-configuration source|SOURCE_REF/);
-  assert.match(
-    testJob,
-    /if: github\.event_name != 'workflow_dispatch' \|\| github\.ref == 'refs\/heads\/develop'/,
-  );
-  for (const [sentinel, source] of [
-    ["HAS_ELIZACLOUD_API_URL", "secrets.ELIZACLOUD_API_URL"],
-    ["HAS_CEREBRAS_API_KEY", "secrets.CEREBRAS_API_KEY"],
-    ["HAS_ELIZA_APP_WEBHOOK_GATEWAY_URL", "vars.ELIZA_APP_WEBHOOK_GATEWAY_URL"],
-    ["HAS_ELIZA_APP_WEBHOOK_GATEWAY_SECRET", "secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET"],
-    ["HAS_GATEWAY_INTERNAL_SECRET", "secrets.GATEWAY_INTERNAL_SECRET"],
-    ["HAS_ELIZA_APP_TELEGRAM_BOT_TOKEN", "secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN"],
-    ["HAS_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET", "secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"],
-  ]) {
-    assert.match(
-      workflow,
-      new RegExp(`${sentinel}: \\$\\{\\{ ${source.replaceAll(".", "\\.")} != '' \\}\\}`),
-    );
-  }
-  for (const rawName of [
-    "ELIZACLOUD_API_URL",
-    "CEREBRAS_API_KEY",
-    "ELIZA_APP_WEBHOOK_GATEWAY_URL",
-    "ELIZA_APP_WEBHOOK_GATEWAY_SECRET",
-    "GATEWAY_INTERNAL_SECRET",
-    "ELIZA_APP_TELEGRAM_BOT_TOKEN",
-    "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
-  ]) {
-    assert.doesNotMatch(workflow, new RegExp(`^\\s+${rawName}:`, "m"));
-  }
-  assert.match(
-    workflow,
-    /ELIZA_APP_DISCORD_BOT_ENABLED: \$\{\{ vars\.ELIZA_APP_DISCORD_BOT_ENABLED \}\}/,
-  );
-  assert.match(
-    workflow,
-    /HAS_ELIZA_APP_DISCORD_APPLICATION_ID: \$\{\{ secrets\.ELIZA_APP_DISCORD_APPLICATION_ID != '' \}\}/,
-  );
-  assert.match(
-    workflow,
-    /HAS_ELIZA_APP_DISCORD_BOT_TOKEN: \$\{\{ secrets\.ELIZA_APP_DISCORD_BOT_TOKEN != '' \}\}/,
-  );
-  assert.doesNotMatch(workflow, /^\s+ELIZA_APP_DISCORD_APPLICATION_ID:/m);
-  assert.doesNotMatch(workflow, /^\s+ELIZA_APP_DISCORD_BOT_TOKEN:/m);
-  assert.doesNotMatch(workflow, /ELIZA_APP_DISCORD_CLIENT_SECRET:/);
+  assert.doesNotMatch(testJob, /^\s{4}if:/m);
   assert.match(
     workflow,
     /name: Generate source keyword modules\s+working-directory: \.\s+run: bun run --cwd packages\/shared build:i18n/,
