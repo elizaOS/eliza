@@ -166,4 +166,24 @@ describe("AppChargePaymentPage checkout navigation guard", () => {
     ).toBeTruthy();
     expect(assign).not.toHaveBeenCalled();
   });
+
+  it("fails closed when the charge expiration is malformed", async () => {
+    const details = appChargeDetails();
+    details.charge.expiresAt = "not-a-date";
+    apiMock.mockResolvedValue(details);
+
+    render(<AppChargePaymentPage />);
+
+    expect(await screen.findByText("Unavailable")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: /pay with card/i })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: /pay with crypto/i })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
 });
