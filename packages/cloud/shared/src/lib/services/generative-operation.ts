@@ -26,6 +26,18 @@ export interface FlatProviderOperation {
   metadata?: Record<string, unknown>;
 }
 
+export interface MeteredProviderOperation extends Omit<FlatProviderOperation, "cost"> {
+  estimatedCost: number;
+}
+
+export interface MeteredProviderResult<T> {
+  value: T;
+  actualCost: number;
+}
+
+type ProviderOperationLogContext = Pick<FlatProviderOperation, "provider" | "model" | "operation"> &
+  Partial<Pick<FlatProviderOperation, "billingSource" | "cost" | "metadata">>;
+
 const admissionErrors = new WeakSet<object>();
 
 export function isGenerativeOperationAdmissionError(error: unknown): boolean {
@@ -35,7 +47,7 @@ export function isGenerativeOperationAdmissionError(error: unknown): boolean {
 function observeBackgroundTask(
   task: Promise<unknown>,
   context: GenerativeOperationContext,
-  operation: FlatProviderOperation,
+  operation: ProviderOperationLogContext,
 ): Promise<void> {
   return task.then(
     () => undefined,
@@ -54,7 +66,7 @@ function observeBackgroundTask(
 
 export async function retainGenerativeTask(
   context: GenerativeOperationContext,
-  operation: FlatProviderOperation,
+  operation: ProviderOperationLogContext,
   task: Promise<unknown>,
 ): Promise<void> {
   const observed = observeBackgroundTask(task, context, operation);
@@ -65,15 +77,13 @@ export async function retainGenerativeTask(
   await observed;
 }
 
-/** Admits one priced operation and marks its lease immediately before dispatch. */
-export async function runFlatProviderOperation<T>(
+async function admitFlatCost(
   context: GenerativeOperationContext,
-  operation: FlatProviderOperation,
-  dispatch: () => Promise<T>,
-): Promise<T> {
-  let admission;
+  operation: Omit<FlatProviderOperation, "cost">,
+  cost: number,
+) {
   try {
-    admission = await admitOrganizationInference({
+    return await admitOrganizationInference({
       context: {
         organizationId: context.organizationId,
         userId: context.userId,
@@ -89,8 +99,8 @@ export async function runFlatProviderOperation<T>(
       estimatedInputTokens: 0,
       estimatedOutputTokens: 0,
       flatCost: {
-        totalCost: operation.cost,
-        baseTotalCost: operation.cost,
+        totalCost: cost,
+        baseTotalCost: cost,
         platformMarkup: 0,
       },
       admissionSnapshot: context.admissionSnapshot,
@@ -100,6 +110,15 @@ export async function runFlatProviderOperation<T>(
     if (typeof error === "object" && error !== null) admissionErrors.add(error);
     throw error;
   }
+}
+
+/** Admits one priced operation and marks its lease immediately before dispatch. */
+export async function runFlatProviderOperation<T>(
+  context: GenerativeOperationContext,
+  operation: FlatProviderOperation,
+  dispatch: () => Promise<T>,
+): Promise<T> {
+  const admission = await admitFlatCost(context, operation, operation.cost);
 
   let marked = false;
   try {
@@ -111,8 +130,43 @@ export async function runFlatProviderOperation<T>(
   } catch (error) {
     if (marked) {
       await retainGenerativeTask(context, operation, admission.settleUnknown());
+    } else {
+      await retainGenerativeTask(context, operation, admission.settle(0));
     }
     logger.error("[GenerativeOperation] provider operation failed", {
+      organizationId: context.organizationId,
+      requestId: context.requestId,
+      provider: operation.provider,
+      model: operation.model,
+      operation: operation.operation,
+      providerDispatched: marked,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+/** Admits an estimate, then settles the exact cost returned by provider parsing. */
+export async function runMeteredProviderOperation<T>(
+  context: GenerativeOperationContext,
+  operation: MeteredProviderOperation,
+  dispatch: () => Promise<MeteredProviderResult<T>>,
+): Promise<T> {
+  const admission = await admitFlatCost(context, operation, operation.estimatedCost);
+  let marked = false;
+  try {
+    await admission.markProviderDispatched?.();
+    marked = true;
+    const result = await dispatch();
+    await retainGenerativeTask(context, operation, admission.settle(result.actualCost));
+    return result.value;
+  } catch (error) {
+    if (marked) {
+      await retainGenerativeTask(context, operation, admission.settleUnknown());
+    } else {
+      await retainGenerativeTask(context, operation, admission.settle(0));
+    }
+    logger.error("[GenerativeOperation] metered provider operation failed", {
       organizationId: context.organizationId,
       requestId: context.requestId,
       provider: operation.provider,

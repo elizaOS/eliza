@@ -168,6 +168,70 @@ export function getGenerativePricingCacheOptions(
   return { cacheOnly: Boolean(executionCtx), executionCtx };
 }
 
+/** Revalidates a signed non-Steward session before paid provider admission. */
+export async function requireGenerativeKnownIdentity(
+  c: AppContext,
+  identity: { userId: string; organizationId: string },
+): Promise<GenerativeRouteCaller> {
+  const [{ usersRepository }, { adminService }] = await Promise.all([
+    import("@/db/repositories/users"),
+    import("@/lib/services/admin"),
+  ]);
+  const user = await usersRepository.findWithOrganization(identity.userId);
+  const reason = !user
+    ? "account_inactive"
+    : user.organization_id !== identity.organizationId || !user.organization
+      ? "membership_missing"
+      : !user.is_active
+        ? "account_inactive"
+        : !user.organization.is_active
+          ? "organization_inactive"
+          : (await adminService.shouldBlockUser(user.id))
+            ? "moderation_blocked"
+            : null;
+  if (reason) {
+    logger.warn(
+      "[InferenceAuth] blocked known identity before provider dispatch",
+      {
+        traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+        route: "eliza-app/provisioning-agent/chat",
+        reason,
+        status: 403,
+      },
+    );
+    throw new ApiError(
+      403,
+      "access_denied",
+      "Account is not eligible for generative work",
+      {
+        reason,
+      },
+    );
+  }
+
+  const executionCtx = getGenerativeExecutionContext(c);
+  const admissionSnapshot = executionCtx
+    ? await import("@/lib/services/inference-admission-snapshot").then(
+        (module) =>
+          module.getInferenceAdmissionSnapshotCacheOnly(
+            identity.organizationId,
+            executionCtx,
+          ),
+      )
+    : await import("@/lib/services/inference-admission-snapshot").then(
+        (module) =>
+          module.loadInferenceAdmissionSnapshot(identity.organizationId),
+      );
+
+  return {
+    user: { id: identity.userId, organization_id: identity.organizationId },
+    apiKeyId: null,
+    authSource: "compatibility",
+    admissionSnapshot,
+    appScopeId: null,
+  };
+}
+
 export function asGenerativeCacheApiError(error: unknown): ApiError | null {
   if (
     error instanceof AiPricingCacheWarmingError ||
