@@ -55,6 +55,19 @@ describe("ElizaClient.getModelsConfig", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/models/config");
     expect(result.targets).toBeDefined();
   });
+
+  it("forwards a caller's abort signal to the transport", async () => {
+    const { client, fetchMock } = clientWithBody({
+      targets: { small: {}, large: {}, coding: {} },
+    });
+    const controller = new AbortController();
+
+    await client.getModelsConfig({ signal: controller.signal });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/models/config", {
+      signal: controller.signal,
+    });
+  });
 });
 
 describe("ElizaClient.updateModelsConfig", () => {

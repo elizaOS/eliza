@@ -456,6 +456,7 @@ export function useModelConfiguration(
   const lifecycleGenerationRef = useRef(0);
   const activeLifecycleRef = useRef(0);
   const loadGenerationRef = useRef(0);
+  const activeLoadAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
     lifecycleGenerationRef.current += 1;
     const lifecycleGeneration = lifecycleGenerationRef.current;
@@ -497,6 +498,10 @@ export function useModelConfiguration(
 
   const loadAll = useCallback(async () => {
     const lifecycleGeneration = activeLifecycleRef.current;
+    if (lifecycleGeneration === 0 || disposedRef.current) return;
+    activeLoadAbortRef.current?.abort();
+    const abortController = new AbortController();
+    activeLoadAbortRef.current = abortController;
     loadGenerationRef.current += 1;
     const loadGeneration = loadGenerationRef.current;
     // A mounted boolean alone cannot distinguish StrictMode's replaced setup
@@ -506,13 +511,15 @@ export function useModelConfiguration(
       lifecycleGeneration !== 0 &&
       activeLifecycleRef.current === lifecycleGeneration &&
       loadGenerationRef.current === loadGeneration &&
+      activeLoadAbortRef.current === abortController &&
+      !abortController.signal.aborted &&
       !disposedRef.current;
     if (!ownsLoad()) return;
     setLoad({ phase: "loading" });
     try {
       const [modelsResponse, configResponse] = await Promise.all([
-        client.getModelsCatalog(),
-        client.getModelsConfig(),
+        client.getModelsCatalog({ signal: abortController.signal }),
+        client.getModelsConfig({ signal: abortController.signal }),
       ]);
       if (!ownsLoad()) return;
       const data: ReadyData = {
@@ -527,11 +534,19 @@ export function useModelConfiguration(
       // designed error state (with retry) instead of a healthy-empty panel.
       if (!ownsLoad()) return;
       setLoad({ phase: "error", message: failureMessage(err) });
+    } finally {
+      if (activeLoadAbortRef.current === abortController) {
+        activeLoadAbortRef.current = null;
+      }
     }
   }, [initializeDrafts]);
 
   useEffect(() => {
     void loadAll();
+    return () => {
+      activeLoadAbortRef.current?.abort();
+      activeLoadAbortRef.current = null;
+    };
   }, [loadAll]);
 
   /**

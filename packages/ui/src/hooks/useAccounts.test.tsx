@@ -12,6 +12,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const client = vi.hoisted(() => ({
@@ -43,6 +44,19 @@ vi.mock("./useDocumentVisibility", () => ({
 import type { AccountsListResponse } from "../api/client-agent";
 import { AccountCard } from "../components/accounts/AccountCard";
 import { useAccounts } from "./useAccounts";
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 const initial: AccountsListResponse = {
   providers: [
@@ -96,6 +110,34 @@ beforeEach(() => {
 });
 
 describe("useAccounts", () => {
+  it("aborts the replaced StrictMode inventory request and keeps the current load", async () => {
+    const first = deferred<AccountsListResponse>();
+    const current = deferred<AccountsListResponse>();
+    client.listAccounts
+      .mockReset()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(current.promise);
+
+    const { result } = renderHook(() => useAccounts({ pollMs: 0 }), {
+      wrapper: StrictMode,
+    });
+    await waitFor(() => expect(client.listAccounts).toHaveBeenCalledTimes(2));
+
+    const firstSignal = client.listAccounts.mock.calls[0]?.[0]?.signal as
+      | AbortSignal
+      | undefined;
+    const currentSignal = client.listAccounts.mock.calls[1]?.[0]?.signal as
+      | AbortSignal
+      | undefined;
+    expect(firstSignal?.aborted).toBe(true);
+    expect(currentSignal?.aborted).toBe(false);
+
+    await act(async () => current.resolve(initial));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.data).toEqual(initial);
+    expect(result.current.error).toBeNull();
+  });
+
   it("adopts a dialog-created account before the inventory refresh settles", async () => {
     let resolveRefresh: ((value: AccountsListResponse) => void) | undefined;
     const pendingRefresh = new Promise<AccountsListResponse>((resolve) => {
