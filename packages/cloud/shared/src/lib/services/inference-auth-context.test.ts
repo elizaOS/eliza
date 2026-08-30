@@ -106,6 +106,7 @@ mock.module("./inference-credential-revocation", () => ({
 
 const {
   __clearInferenceApiKeyHydrations,
+  observeInferenceApiKeyUsage,
   resolveInferenceAuthContext,
   extractApiKeyCredential,
   resolveInferenceAuthHydrationDeadlineMs,
@@ -309,22 +310,26 @@ describe("resolveInferenceAuthContext", () => {
       };
     };
     const waited: Promise<unknown>[] = [];
+    const cacheRead = spyOn(cache, "getWithOutcome");
     const result = await resolveInferenceAuthContext(reqWithApiKey(), {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
     expect(result).toMatchObject({ kind: "warming" });
     expect(result.kind === "warming" && result.hydration).toBeTruthy();
+    expect(result.kind === "warming" && result.continuation).toBeTruthy();
     expect(waited.length).toBeGreaterThan(0);
-    await waited[0];
+    if (result.kind !== "warming" || !result.continuation) throw new Error("unreachable");
+    const continued = await result.continuation;
     await Promise.all(waited);
     expect(chainCalls).toBe(1);
-
-    const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
-      cacheOnly: true,
-    });
-    expect(retry.kind).toBe("authorized");
-    if (retry.kind === "authorized") expect(retry.source).toBe("cache");
+    expect(continued).toMatchObject({ kind: "authorized", source: "origin" });
+    expect(cacheRead).toHaveBeenCalledTimes(1);
+    expect(incrementUsageCalls).toEqual([]);
+    if (continued) observeInferenceApiKeyUsage(continued, { waitUntil: (p) => waited.push(p) });
+    await Promise.all(waited);
+    expect(incrementUsageCalls).toEqual(["key-1"]);
+    cacheRead.mockRestore();
   });
 
   test("concurrent cache-only misses share one authoritative hydration", async () => {

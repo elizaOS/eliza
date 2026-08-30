@@ -15,9 +15,13 @@ import {
   AiPricingCacheUnavailableError,
   AiPricingCacheWarmingError,
 } from "@/lib/services/ai-pricing/cache";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+import type {
+  InferenceAdmissionSnapshot,
+  InferenceAuthRejectionReason,
+} from "@/lib/services/inference-auth-cache";
 import type { EndpointType } from "@/lib/services/org-rate-limits";
 import type { OrganizationInferenceAdmission } from "@/lib/services/organization-inference-admission";
+import { logger } from "@/lib/utils/logger";
 import type { AppContext } from "@/types/cloud-worker-env";
 
 export interface GenerativeRouteCaller {
@@ -29,6 +33,104 @@ export interface GenerativeRouteCaller {
   authSource: "combined_cache" | "compatibility";
   admissionSnapshot?: InferenceAdmissionSnapshot;
   appScopeId: string | null;
+}
+
+export interface InferenceAuthStandingDenial {
+  status: 401 | 403 | 503;
+  type: "authentication_error" | "permission_error" | "service_unavailable";
+  code: "authentication_required" | "access_denied" | "service_unavailable";
+  message: string;
+  reason:
+    | InferenceAuthRejectionReason
+    | "account_suspended"
+    | "authentication_rejected"
+    | "authorization_unavailable";
+  retryAfterSeconds?: number;
+}
+
+type InferenceAuthStandingResolution =
+  | { kind: "suspended"; reason?: InferenceAuthRejectionReason }
+  | {
+      kind: "rejected";
+      status: 401 | 403 | 503;
+      reason?: InferenceAuthRejectionReason;
+    };
+
+function standingMessage(
+  reason: InferenceAuthRejectionReason | undefined,
+  fallback: string,
+): string {
+  switch (reason) {
+    case "moderation_blocked":
+      return "Account access is blocked by policy moderation";
+    case "organization_inactive":
+      return "Organization is inactive";
+    case "account_inactive":
+      return "Account is inactive";
+    case "credential_inactive":
+      return "API key is inactive";
+    case "membership_missing":
+      return "Account is not associated with an active organization";
+    case "credential_invalid":
+      return "Authentication required";
+    default:
+      return fallback;
+  }
+}
+
+/**
+ * Maps cache and authoritative standing decisions to one bounded API contract.
+ * Routes retain their native response envelope, but status, reason, code, and
+ * retry semantics must come from this mapping without another identity read.
+ */
+export function resolveInferenceAuthStandingDenial(
+  resolution: InferenceAuthStandingResolution,
+  logContext?: { route: string; traceId?: string },
+): InferenceAuthStandingDenial {
+  let denial: InferenceAuthStandingDenial;
+  if (resolution.kind === "suspended") {
+    denial = {
+      status: 403,
+      type: "permission_error",
+      code: "access_denied",
+      message: standingMessage(resolution.reason, "Account suspended"),
+      reason: resolution.reason ?? "account_suspended",
+    };
+  } else if (resolution.status === 503) {
+    denial = {
+      status: 503,
+      type: "service_unavailable",
+      code: "service_unavailable",
+      message: "Authorization service is unavailable. Retry shortly.",
+      reason: resolution.reason ?? "authorization_unavailable",
+      retryAfterSeconds: 1,
+    };
+  } else {
+    denial = {
+      status: resolution.status,
+      type:
+        resolution.status === 403 ? "permission_error" : "authentication_error",
+      code:
+        resolution.status === 403 ? "access_denied" : "authentication_required",
+      message: standingMessage(
+        resolution.reason,
+        resolution.status === 403 ? "Forbidden" : "Authentication required",
+      ),
+      reason: resolution.reason ?? "authentication_rejected",
+    };
+  }
+
+  if (logContext) {
+    logger.warn("[InferenceAuth] blocked provider dispatch at route boundary", {
+      route: logContext.route,
+      traceId: logContext.traceId ?? "unavailable",
+      decision: resolution.kind,
+      status: denial.status,
+      reason: denial.reason,
+      retryable: denial.status === 503,
+    });
+  }
+  return denial;
 }
 
 export function getGenerativeExecutionContext(
@@ -188,9 +290,8 @@ export async function requireGenerativeRouteCaller(
       appScopeId: null,
     };
   }
-  const { resolveInferenceAuthContext } = await import(
-    "@/lib/services/inference-auth-context"
-  );
+  const { observeInferenceApiKeyUsage, resolveInferenceAuthContext } =
+    await import("@/lib/services/inference-auth-context");
   const resolveCallerAuth = () =>
     resolveInferenceAuthContext(c.req.raw, {
       traceId: c.get("traceId") ?? c.get("requestId"),
@@ -203,20 +304,29 @@ export async function requireGenerativeRouteCaller(
     resolution.kind === "warming" &&
     typeof options.awaitWarmingMs === "number" &&
     options.awaitWarmingMs > 0 &&
-    resolution.hydration
+    resolution.continuation
   ) {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = Symbol("inference-auth-continuation-timeout");
     try {
-      await Promise.race([
-        resolution.hydration,
-        new Promise<void>((resolve) => {
-          timeoutId = setTimeout(resolve, options.awaitWarmingMs);
+      const continued = await Promise.race([
+        resolution.continuation,
+        new Promise<typeof timedOut>((resolve) => {
+          timeoutId = setTimeout(
+            () => resolve(timedOut),
+            options.awaitWarmingMs,
+          );
         }),
       ]);
+      if (continued !== timedOut && continued) {
+        if (continued.kind === "authorized") {
+          observeInferenceApiKeyUsage(continued, executionCtx);
+        }
+        resolution = continued;
+      }
     } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
-    resolution = await resolveCallerAuth();
   }
 
   if (resolution.kind === "authorized") {
@@ -282,37 +392,25 @@ export async function requireGenerativeRouteCaller(
     );
   }
   if (resolution.kind === "suspended") {
-    const reason = resolution.reason;
-    const message =
-      reason === "moderation_blocked"
-        ? "Account access is blocked by policy moderation"
-        : reason === "organization_inactive"
-          ? "Organization is inactive"
-          : reason === "account_inactive"
-            ? "Account is inactive"
-            : "Account suspended";
-    throw new ApiError(403, "access_denied", message, {
-      reason: reason ?? "account_suspended",
+    const denial = resolveInferenceAuthStandingDenial(resolution, {
+      route: "generative",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    });
+    throw new ApiError(denial.status, denial.code, denial.message, {
+      reason: denial.reason,
     });
   }
   if (resolution.kind === "rejected") {
-    const reason = resolution.reason;
-    throw new ApiError(
-      resolution.status,
-      resolution.status === 403 ? "access_denied" : "authentication_required",
-      reason === "organization_inactive"
-        ? "Organization is inactive"
-        : reason === "account_inactive"
-          ? "Account is inactive"
-          : reason === "credential_inactive"
-            ? "API key is inactive"
-            : reason === "membership_missing"
-              ? "Account is not associated with an active organization"
-              : resolution.status === 403
-                ? "Forbidden"
-                : "Authentication required",
-      { reason: reason ?? "authentication_rejected" },
-    );
+    const denial = resolveInferenceAuthStandingDenial(resolution, {
+      route: "generative",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    });
+    throw new ApiError(denial.status, denial.code, denial.message, {
+      reason: denial.reason,
+      ...(denial.retryAfterSeconds
+        ? { retryAfterSeconds: denial.retryAfterSeconds, retryable: true }
+        : {}),
+    });
   }
 
   // Wallet signatures are timestamped and replay-protected, so they retain the
