@@ -437,6 +437,7 @@ Return ONLY valid JSON, no markdown.`;
         organizationId,
         app,
         config.twitterAutomation,
+        operationContext,
       );
       if (!result.channels.twitterAutomation.success) {
         result.errors.push(`Twitter automation failed: ${result.channels.twitterAutomation.error}`);
@@ -453,6 +454,7 @@ Return ONLY valid JSON, no markdown.`;
         organizationId,
         app,
         config.telegramAutomation,
+        operationContext,
       );
       if (!result.channels.telegramAutomation.success) {
         result.errors.push(
@@ -471,6 +473,7 @@ Return ONLY valid JSON, no markdown.`;
         organizationId,
         app,
         config.discordAutomation,
+        operationContext,
       );
       if (!result.channels.discordAutomation.success) {
         result.errors.push(`Discord automation failed: ${result.channels.discordAutomation.error}`);
@@ -654,6 +657,7 @@ Return ONLY valid JSON, no markdown.`;
     organizationId: string,
     app: App,
     config: NonNullable<PromotionConfig["twitterAutomation"]>,
+    operationContext?: GenerativeOperationContext,
   ): Promise<NonNullable<PromotionResult["channels"]["twitterAutomation"]>> {
     try {
       // Enable automation with the provided config
@@ -675,7 +679,12 @@ Return ONLY valid JSON, no markdown.`;
       let initialTweetUrl: string | undefined;
 
       if (config.autoPost) {
-        const tweetResult = await twitterAppAutomationService.postAppTweet(organizationId, app.id);
+        const tweetResult = await twitterAppAutomationService.postAppTweet(
+          organizationId,
+          app.id,
+          undefined,
+          operationContext,
+        );
 
         if (tweetResult.success) {
           initialTweetId = tweetResult.tweetId;
@@ -696,6 +705,7 @@ Return ONLY valid JSON, no markdown.`;
         initialTweetUrl,
       };
     } catch (error) {
+      if (isGenerativeOperationAdmissionError(error)) throw error;
       logger.error("[AppPromotion] Twitter automation failed", {
         appId: app.id,
         error: extractErrorMessage(error),
@@ -717,6 +727,7 @@ Return ONLY valid JSON, no markdown.`;
     organizationId: string,
     app: App,
     config: NonNullable<PromotionConfig["telegramAutomation"]>,
+    operationContext?: GenerativeOperationContext,
   ): Promise<NonNullable<PromotionResult["channels"]["telegramAutomation"]>> {
     try {
       // If useExisting is true, just post using existing automation config
@@ -729,6 +740,9 @@ Return ONLY valid JSON, no markdown.`;
         const postResult = await telegramAppAutomationService.postAnnouncement(
           organizationId,
           app.id,
+          undefined,
+          undefined,
+          operationContext,
         );
 
         return {
@@ -771,6 +785,9 @@ Return ONLY valid JSON, no markdown.`;
         const postResult = await telegramAppAutomationService.postAnnouncement(
           organizationId,
           app.id,
+          undefined,
+          undefined,
+          operationContext,
         );
 
         if (postResult.success && postResult.messageId) {
@@ -792,6 +809,7 @@ Return ONLY valid JSON, no markdown.`;
         initialMessageId,
       };
     } catch (error) {
+      if (isGenerativeOperationAdmissionError(error)) throw error;
       logger.error("[AppPromotion] Telegram automation failed", {
         appId: app.id,
         error: extractErrorMessage(error),
@@ -813,6 +831,7 @@ Return ONLY valid JSON, no markdown.`;
     organizationId: string,
     app: App,
     config: NonNullable<PromotionConfig["discordAutomation"]>,
+    operationContext?: GenerativeOperationContext,
   ): Promise<NonNullable<PromotionResult["channels"]["discordAutomation"]>> {
     try {
       // If useExisting is true, just post using existing automation config
@@ -825,6 +844,8 @@ Return ONLY valid JSON, no markdown.`;
         const postResult = await discordAppAutomationService.postAnnouncement(
           organizationId,
           app.id,
+          undefined,
+          operationContext,
         );
 
         return {
@@ -865,6 +886,8 @@ Return ONLY valid JSON, no markdown.`;
         const postResult = await discordAppAutomationService.postAnnouncement(
           organizationId,
           app.id,
+          undefined,
+          operationContext,
         );
 
         if (postResult.success) {
@@ -888,6 +911,7 @@ Return ONLY valid JSON, no markdown.`;
         channelId,
       };
     } catch (error) {
+      if (isGenerativeOperationAdmissionError(error)) throw error;
       logger.error("[AppPromotion] Discord automation failed", {
         appId: app.id,
         error: extractErrorMessage(error),
