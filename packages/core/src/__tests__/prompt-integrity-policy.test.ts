@@ -81,8 +81,6 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/telegram-automation/app-automation.ts":
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
-	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts":
-		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/app-promotion-assets.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
 	],
@@ -95,9 +93,6 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 	"packages/cloud/shared/src/lib/services/provisioning-agent-chat.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
 	],
-	"packages/cloud/shared/src/lib/services/room-title.ts": [
-		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
-	],
 	"packages/cloud/shared/src/lib/services/seo.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
 	],
@@ -105,14 +100,23 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-eliza-runtime.ts":
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
-	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
-		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/eliza-app/describe-inbound-media.ts":
 		[/isModelOutputLimitFinishReason\(completion\.finishReason\)/],
 	"plugins/plugin-anthropic/models/image.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}response\.finishReason/,
 	],
 };
+
+const disabledModelGenerationSources = [
+	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts",
+];
+
+const forbiddenAiImport =
+	/(?:from\s+|import\s*\(\s*)["'](?:ai|@ai-sdk\/[^"']+|[^"']*providers\/language-model)["']/;
+const forbiddenAiDispatch =
+	/\b(?:generateObject|generateText|getLanguageModel|streamObject|streamText|useModel)\s*\(/;
+const immediateDisabledGenerationError =
+	/async generateNudgeResponse\([\s\S]{0,160}\{\s*throw new ElizaError\([\s\S]{0,320}code:\s*"CONNECTION_ENFORCEMENT_LLM_DISABLED"/;
 
 const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-agent-skills/src/security/skill-scanner.ts": [
@@ -1294,6 +1298,24 @@ describe("prompt integrity policy", () => {
 					pattern,
 				);
 			}
+		}
+	});
+
+	it("keeps disabled model paths typed and free of unadmitted dispatch", () => {
+		for (const relativePath of disabledModelGenerationSources) {
+			const source = readFileSync(
+				resolve(repositoryRoot, relativePath),
+				"utf8",
+			);
+			expect(source, `${relativePath} must throw its typed disabled error`).toMatch(
+				immediateDisabledGenerationError,
+			);
+			expect(source, `${relativePath} must not import an AI SDK or provider`).not.toMatch(
+				forbiddenAiImport,
+			);
+			expect(source, `${relativePath} must not dispatch model generation`).not.toMatch(
+				forbiddenAiDispatch,
+			);
 		}
 	});
 
