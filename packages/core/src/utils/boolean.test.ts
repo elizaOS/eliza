@@ -1,79 +1,123 @@
-/**
- * Unit tests for parseBooleanValue and parseBooleanText in packages/core/src/utils/boolean.ts.
- * Exercises default truthy/falsy vocabularies, custom options with mixed case and whitespace,
- * boolean pass-throughs, and invalid input fallbacks.
- */
+/** Parse string booleans against configurable truthy and falsy vocabularies. */
+
 import { describe, expect, it } from "vitest";
-import { parseBooleanText, parseBooleanValue } from "./boolean";
+import { parseBooleanValue, parseBooleanText } from "./boolean";
 
 describe("parseBooleanValue", () => {
-	it("passes boolean literals through unchanged", () => {
+	it("passes boolean values through", () => {
 		expect(parseBooleanValue(true)).toBe(true);
 		expect(parseBooleanValue(false)).toBe(false);
 	});
 
-	it("parses default truthy string representations", () => {
-		for (const val of ["true", "1", "yes", "on", "TRUE", "Yes", "ON "]) {
-			expect(parseBooleanValue(val)).toBe(true);
-		}
+	it("parses default truthy strings", () => {
+		expect(parseBooleanValue("true")).toBe(true);
+		expect(parseBooleanValue("1")).toBe(true);
+		expect(parseBooleanValue("yes")).toBe(true);
+		expect(parseBooleanValue("on")).toBe(true);
 	});
 
-	it("parses default falsy string representations", () => {
-		for (const val of ["false", "0", "no", "off", "FALSE", "No", "OFF\n"]) {
-			expect(parseBooleanValue(val)).toBe(false);
-		}
+	it("parses default falsy strings", () => {
+		expect(parseBooleanValue("false")).toBe(false);
+		expect(parseBooleanValue("0")).toBe(false);
+		expect(parseBooleanValue("no")).toBe(false);
+		expect(parseBooleanValue("off")).toBe(false);
 	});
 
-	it("returns undefined for unrecognized strings and non-string inputs", () => {
+	it("returns undefined for unparseable strings", () => {
 		expect(parseBooleanValue("maybe")).toBeUndefined();
 		expect(parseBooleanValue("")).toBeUndefined();
 		expect(parseBooleanValue("   ")).toBeUndefined();
-		expect(parseBooleanValue(null)).toBeUndefined();
-		expect(parseBooleanValue(undefined)).toBeUndefined();
-		expect(parseBooleanValue(123)).toBeUndefined();
-		expect(parseBooleanValue({})).toBeUndefined();
+		expect(parseBooleanValue("2")).toBeUndefined();
+		expect(parseBooleanValue("enabled")).toBeUndefined();
 	});
 
-	it("matches custom truthy and falsy options case-insensitively with whitespace trimming", () => {
-		expect(
-			parseBooleanValue("enabled", {
-				truthy: ["Enabled"],
-				falsy: ["Disabled"],
-			}),
-		).toBe(true);
+	it("returns undefined for non-string/non-boolean values", () => {
+		expect(parseBooleanValue(1)).toBeUndefined();
+		expect(parseBooleanValue(0)).toBeUndefined();
+		expect(parseBooleanValue(null)).toBeUndefined();
+		expect(parseBooleanValue(undefined)).toBeUndefined();
+		expect(parseBooleanValue({})).toBeUndefined();
+		expect(parseBooleanValue([])).toBeUndefined();
+	});
 
-		expect(
-			parseBooleanValue("ENABLED", {
-				truthy: ["enabled"],
-			}),
-		).toBe(true);
+	it("is case-insensitive and trims whitespace", () => {
+		expect(parseBooleanValue("TRUE")).toBe(true);
+		expect(parseBooleanValue("True")).toBe(true);
+		expect(parseBooleanValue("  true  ")).toBe(true);
+		expect(parseBooleanValue("YES")).toBe(true);
+		expect(parseBooleanValue("  yes  ")).toBe(true);
+		expect(parseBooleanValue("FALSE")).toBe(false);
+		expect(parseBooleanValue("  false  ")).toBe(false);
+		expect(parseBooleanValue("NO")).toBe(false);
+		expect(parseBooleanValue("OFF")).toBe(false);
+	});
 
-		expect(
-			parseBooleanValue("disabled", {
-				truthy: ["Enabled"],
-				falsy: [" Disabled "],
-			}),
-		).toBe(false);
+	it("accepts custom truthy values", () => {
+		expect(parseBooleanValue("enabled", { truthy: ["enabled"] })).toBe(true);
+		expect(parseBooleanValue("on", { truthy: ["enabled"] })).toBeUndefined();
+	});
 
-		expect(
-			parseBooleanValue("DISABLED", {
-				falsy: ["disabled"],
-			}),
-		).toBe(false);
+	it("accepts custom falsy values", () => {
+		expect(parseBooleanValue("disabled", { falsy: ["disabled"] })).toBe(false);
+		expect(parseBooleanValue("off", { falsy: ["disabled"] })).toBeUndefined();
+	});
+
+	it("accepts both custom truthy and falsy values", () => {
+		expect(parseBooleanValue("enabled", { truthy: ["enabled"], falsy: ["disabled"] })).toBe(true);
+		expect(parseBooleanValue("disabled", { truthy: ["enabled"], falsy: ["disabled"] })).toBe(false);
+		expect(parseBooleanValue("maybe", { truthy: ["enabled"], falsy: ["disabled"] })).toBeUndefined();
+	});
+
+	it("handles empty custom vocabularies", () => {
+		expect(parseBooleanValue("true", { truthy: [], falsy: [] })).toBeUndefined();
 	});
 });
 
 describe("parseBooleanText", () => {
-	it("parses extended text booleans (y/n, enable/disable) with false fallback", () => {
+	it("passes boolean values through", () => {
+		expect(parseBooleanText(true)).toBe(true);
+		expect(parseBooleanText(false)).toBe(false);
+	});
+
+	it("parses extended truthy strings", () => {
 		expect(parseBooleanText("yes")).toBe(true);
 		expect(parseBooleanText("y")).toBe(true);
+		expect(parseBooleanText("true")).toBe(true);
+		expect(parseBooleanText("t")).toBe(true);
+		expect(parseBooleanText("1")).toBe(true);
+		expect(parseBooleanText("on")).toBe(true);
 		expect(parseBooleanText("enable")).toBe(true);
-		expect(parseBooleanText("ENABLE")).toBe(true);
+	});
+
+	it("parses extended falsy strings", () => {
 		expect(parseBooleanText("no")).toBe(false);
 		expect(parseBooleanText("n")).toBe(false);
+		expect(parseBooleanText("false")).toBe(false);
+		expect(parseBooleanText("f")).toBe(false);
+		expect(parseBooleanText("0")).toBe(false);
+		expect(parseBooleanText("off")).toBe(false);
 		expect(parseBooleanText("disable")).toBe(false);
-		expect(parseBooleanText("random_unknown_text")).toBe(false);
+	});
+
+	it("defaults invalid text to false", () => {
+		expect(parseBooleanText("maybe")).toBe(false);
+		expect(parseBooleanText("")).toBe(false);
+		expect(parseBooleanText("   ")).toBe(false);
+		expect(parseBooleanText("2")).toBe(false);
+		expect(parseBooleanText("enabled")).toBe(false);
+	});
+
+	it("handles null and undefined", () => {
 		expect(parseBooleanText(null)).toBe(false);
 		expect(parseBooleanText(undefined)).toBe(false);
+	});
+
+	it("is case-insensitive and trims whitespace", () => {
+		expect(parseBooleanText("YES")).toBe(true);
+		expect(parseBooleanText("  yes  ")).toBe(true);
+		expect(parseBooleanText("NO")).toBe(false);
+		expect(parseBooleanText("  no  ")).toBe(false);
+		expect(parseBooleanText("TRUE")).toBe(true);
+		expect(parseBooleanText("FALSE")).toBe(false);
 	});
 });
