@@ -13,9 +13,9 @@ describe("ViewUnavailableState", () => {
 
     expect(
       screen.getByText(
-        "This view is not available in the current runtime. Install or enable its app, then try again.",
+        "This app is unavailable here. Install or enable it, then try again.",
       ),
     ).toBeTruthy();
-    expect(screen.getByText("View ID: camera")).toBeTruthy();
+    expect(screen.getByText("App: camera")).toBeTruthy();
   });
 });

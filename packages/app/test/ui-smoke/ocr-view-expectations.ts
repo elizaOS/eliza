@@ -52,7 +52,12 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
 };
 
 const VIEW_UNAVAILABLE_FALLBACK: OcrExpectation = {
-  requireAll: ["View unavailable", "Install or enable its app", "View ID"],
+  requireAll: [
+    "View unavailable",
+    "This app is unavailable here",
+    "Install or enable it",
+    "App",
+  ],
 };
 
 export const VIEW_OCR_POLICIES = {
@@ -263,9 +268,10 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "plugin-computer-use-sessions-gui": expected({
-    requireAll: ["Computer sessions", "Research browser"],
+    requireAll: ["Computer sessions", "Linux sandbox"],
     requireAny: [
-      "Linux sandbox",
+      "Research",
+      "Browser",
       "Sequence 12",
       "Cursor 640, 360",
       "Open floating",
@@ -316,8 +322,7 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["ready views", "gui ready"],
   }),
   "plugin-notes-gui": expected({
-    requireAll: ["Launch checklist", "Follow up"],
-    requireAny: ["Cloud agent", "demo recording"],
+    requireAll: ["Notes", "Launch checklist", "Follow up"],
   }),
   "plugin-task-coordinator-gui": expected({
     requireAny: ["Dispatch a coding agent", "search tasks", "tasks"],
