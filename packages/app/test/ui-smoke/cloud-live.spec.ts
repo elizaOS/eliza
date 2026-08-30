@@ -838,6 +838,10 @@ test.describe("real cloud login + personal identity + chat", () => {
             audit.decodedDedicatedActivationReceiptCount,
           uninspectableDedicatedActivationResponseBodyCount:
             audit.uninspectableDedicatedActivationResponseBodyCount,
+          dedicatedActivationResponseStatus:
+            audit.dedicatedActivationResponseStatus,
+          dedicatedActivationResponseCode:
+            audit.dedicatedActivationResponseCode,
           dedicatedCutoverPostRequestCount:
             audit.dedicatedCutoverPostRequestCount,
           successfulDedicatedCutoverPostResponseCount:
