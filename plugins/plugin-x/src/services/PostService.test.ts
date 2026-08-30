@@ -34,6 +34,18 @@ function withSession(
   };
 }
 
+function asyncIterable<T>(
+  values: readonly T[],
+  error?: Error,
+): AsyncIterable<T> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      if (error) throw error;
+      yield* values;
+    },
+  };
+}
+
 describe("TwitterPostService", () => {
   const unlikeTweet = vi.fn();
   const unretweet = vi.fn();
@@ -65,9 +77,7 @@ describe("TwitterPostService", () => {
   it("reports and rejects getPosts provider failures", async () => {
     const providerError = new Error("twitter 429 rate limited");
     const reportError = vi.fn();
-    const getUserTweetsIterator = vi.fn(async function* () {
-      throw providerError;
-    });
+    const getUserTweetsIterator = vi.fn(() => asyncIterable([], providerError));
     const failing = new TwitterPostService({
       runtime: { reportError },
       twitterClient: { getUserTweetsIterator },
@@ -88,7 +98,7 @@ describe("TwitterPostService", () => {
 
   it("keeps a legitimate empty provider result distinct from failure", async () => {
     const reportError = vi.fn();
-    const getUserTweetsIterator = vi.fn(async function* () {});
+    const getUserTweetsIterator = vi.fn(() => asyncIterable([]));
     const empty = new TwitterPostService({
       runtime: { reportError },
       twitterClient: { getUserTweetsIterator },
