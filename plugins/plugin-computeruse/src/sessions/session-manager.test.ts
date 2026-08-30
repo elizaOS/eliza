@@ -502,6 +502,7 @@ describe("ComputerUseSessionManager", () => {
             afterStateId: "fixture.app:after",
             executionMode: "semantic_ax",
             completedAt: "2026-08-23T00:00:01.000Z",
+            effectStatus: "confirmed",
             changed: true,
             physicalPointerMoved: false,
             element_index: 3,

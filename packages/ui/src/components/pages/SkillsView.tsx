@@ -10,7 +10,8 @@ import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { WorkspaceLayout } from "../../layouts/workspace-layout";
 import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { PagePanel } from "../composites/page-panel";
@@ -57,7 +58,7 @@ function SkillFilterTab({
       size="badge"
       data-state={isActive ? "on" : "off"}
       type="button"
-      aria-current={isActive ? "true" : undefined}
+      aria-pressed={isActive}
       onClick={onSelect}
       {...agentProps}
     >
@@ -142,6 +143,10 @@ function SkillsFullViewContent({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
+  const isWideSkillsWorkspace = useMediaQuery(
+    "(min-width: 820px) and (min-height: 600px)",
+  );
+  const isShortViewport = useMediaQuery("(max-height: 480px)");
   const {
     skills,
     skillCreateFormOpen,
@@ -374,7 +379,111 @@ function SkillsFullViewContent({
     },
   });
 
-  const skillsSidebar = (
+  const skillsCollectionContent = (
+    <>
+      {isWideSkillsWorkspace || skills.length > 0 ? (
+        <SidebarContent.Toolbar className="mb-3">
+          <SidebarContent.ToolbarPrimary
+            className={isWideSkillsWorkspace ? "flex-none" : undefined}
+          >
+            <Button
+              ref={newSkillButton.ref}
+              variant={skillCreateFormOpen ? "outlineMuted" : "default"}
+              size="pill"
+              type="button"
+              className={isWideSkillsWorkspace ? undefined : "w-full"}
+              onClick={() => {
+                setState("skillCreateFormOpen", !skillCreateFormOpen);
+                if (skillCreateFormOpen) handleCancelCreate();
+              }}
+              {...newSkillButton.agentProps}
+            >
+              {skillCreateFormOpen
+                ? t("common.cancel")
+                : `+ ${t("skillsview.NewSkill", { defaultValue: "New Skill" })}`}
+            </Button>
+          </SidebarContent.ToolbarPrimary>
+          <SidebarContent.ToolbarActions>
+            <Button
+              ref={installButton.ref}
+              variant="outline"
+              size="pill"
+              type="button"
+              onClick={() => setInstallModalOpen(true)}
+              {...installButton.agentProps}
+            >
+              {t("common.install", { defaultValue: "Install" })}
+            </Button>
+          </SidebarContent.ToolbarActions>
+        </SidebarContent.Toolbar>
+      ) : null}
+
+      {skills.length > 0 ? (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {filterTabs.map((tab) => (
+            <SkillFilterTab
+              key={tab.key}
+              tabKey={tab.key}
+              label={tab.label}
+              isActive={filterTab === tab.key}
+              onSelect={() => setFilterTab(tab.key)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {filteredSkills.length === 0 &&
+      isWideSkillsWorkspace &&
+      skills.length === 0 ? null : filteredSkills.length === 0 ? (
+        <SidebarContent.EmptyState>
+          {skills.length === 0
+            ? t("skillsview.noSkillsInstalled", {
+                defaultValue: "No Skills Installed",
+              })
+            : t("skillsview.noSkillsMatchFilter", {
+                defaultValue: 'No skills match "{{filter}}"',
+                filter: filterText,
+              })}
+        </SidebarContent.EmptyState>
+      ) : (
+        <div className="space-y-1.5">
+          {filteredSkills.map((skill) => {
+            const needsAttention =
+              skill.scanStatus === "warning" ||
+              skill.scanStatus === "critical" ||
+              skill.scanStatus === "blocked";
+            const selected = selectedSkillId === skill.id;
+
+            return (
+              <SkillRowButton
+                key={skill.id}
+                skill={skill}
+                active={selected}
+                enabled={skill.enabled}
+                icon={skill.name.charAt(0).toUpperCase()}
+                description={skill.description || t("skillsview.noDescription")}
+                onLabel={t("common.on")}
+                offLabel={t("common.off")}
+                onSelect={() => {
+                  setSelectedId(skill.id);
+                  setState("skillCreateFormOpen", false);
+                }}
+                attentionLabel={
+                  needsAttention
+                    ? skill.scanStatus === "blocked"
+                      ? t("skillsview.statusBlocked")
+                      : t("skillsview.statusWarning")
+                    : undefined
+                }
+              />
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+
+  const skillsSidebar = !isWideSkillsWorkspace ? (
     <AppPageSidebar
       testId="skills-sidebar"
       collapsible
@@ -402,136 +511,75 @@ function SkillsFullViewContent({
       })}
     >
       <SidebarScrollRegion>
-        <SidebarPanel>
-          <SidebarContent.Toolbar className="mb-3">
-            <SidebarContent.ToolbarPrimary>
-              <Button
-                ref={newSkillButton.ref}
-                variant={skillCreateFormOpen ? "outlineMuted" : "default"}
-                size="pill"
-                type="button"
-                className="w-full"
-                onClick={() => {
-                  setState("skillCreateFormOpen", !skillCreateFormOpen);
-                  if (skillCreateFormOpen) {
-                    handleCancelCreate();
-                  }
-                }}
-                {...newSkillButton.agentProps}
-              >
-                {skillCreateFormOpen
-                  ? t("common.cancel")
-                  : `+ ${t("skillsview.NewSkill", { defaultValue: "New Skill" })}`}
-              </Button>
-            </SidebarContent.ToolbarPrimary>
-            <SidebarContent.ToolbarActions>
-              <Button
-                ref={installButton.ref}
-                variant="outline"
-                size="pill"
-                type="button"
-                onClick={() => setInstallModalOpen(true)}
-                {...installButton.agentProps}
-              >
-                {t("common.install", { defaultValue: "Install" })}
-              </Button>
-            </SidebarContent.ToolbarActions>
-          </SidebarContent.Toolbar>
-
-          <div className="mb-3 flex flex-wrap gap-2">
-            {filterTabs.map((tab) => (
-              <SkillFilterTab
-                key={tab.key}
-                tabKey={tab.key}
-                label={tab.label}
-                isActive={filterTab === tab.key}
-                onSelect={() => setFilterTab(tab.key)}
-              />
-            ))}
-          </div>
-
-          {filteredSkills.length === 0 ? (
-            <SidebarContent.EmptyState>
-              {skills.length === 0
-                ? t("skillsview.noSkillsInstalled", {
-                    defaultValue: "No Skills Installed",
-                  })
-                : t("skillsview.noSkillsMatchFilter", {
-                    defaultValue: 'No skills match "{{filter}}"',
-                    filter: filterText,
-                  })}
-            </SidebarContent.EmptyState>
-          ) : (
-            <div className="space-y-1.5">
-              {filteredSkills.map((skill) => {
-                const needsAttention =
-                  skill.scanStatus === "warning" ||
-                  skill.scanStatus === "critical" ||
-                  skill.scanStatus === "blocked";
-                const selected = selectedSkillId === skill.id;
-
-                return (
-                  <SkillRowButton
-                    key={skill.id}
-                    skill={skill}
-                    active={selected}
-                    enabled={skill.enabled}
-                    icon={skill.name.charAt(0).toUpperCase()}
-                    description={
-                      skill.description || t("skillsview.noDescription")
-                    }
-                    onLabel={t("common.on")}
-                    offLabel={t("common.off")}
-                    onSelect={() => {
-                      setSelectedId(skill.id);
-                      setState("skillCreateFormOpen", false);
-                    }}
-                    attentionLabel={
-                      needsAttention
-                        ? skill.scanStatus === "blocked"
-                          ? t("skillsview.statusBlocked")
-                          : t("skillsview.statusWarning")
-                        : undefined
-                    }
-                  />
-                );
-              })}
-            </div>
-          )}
-        </SidebarPanel>
+        <SidebarPanel>{skillsCollectionContent}</SidebarPanel>
       </SidebarScrollRegion>
     </AppPageSidebar>
-  );
+  ) : undefined;
 
   return (
     <>
-      <PageLayout
+      <WorkspaceLayout
         data-testid="skills-shell"
         sidebar={skillsSidebar}
         contentHeader={contentHeader}
-        contentInnerClassName="mx-auto w-full max-w-[76rem]"
+        contentInnerClassName="mx-auto w-full max-w-4xl"
+        headerPlacement="outside"
       >
+        {isWideSkillsWorkspace ? (
+          <PagePanel variant="section" className="mb-4 p-4 sm:px-5">
+            {skillsCollectionContent}
+          </PagePanel>
+        ) : null}
         <div data-testid="skills-detail">
           <PagePanel variant="section">
             <div className="p-4 sm:px-5">
               {skills.length === 0 && !skillCreateFormOpen ? (
                 <div
                   data-testid="skills-empty-state"
-                  className="flex min-h-[20rem]"
+                  className={`flex ${isShortViewport ? "min-h-[7rem]" : "min-h-[20rem]"}`}
                 >
                   <PagePanel.Empty
-                    className="flex-1"
+                    className={`flex-1 ${isShortViewport ? "min-h-[7rem] gap-2 p-2" : ""}`}
                     icon={<Brain className="size-6" aria-hidden />}
                     title={t("skillsview.noSkillsInstalled", {
                       defaultValue: "No Skills Installed",
                     })}
+                    action={
+                      !isWideSkillsWorkspace ? (
+                        <div className="flex flex-wrap justify-center gap-2">
+                          <Button
+                            ref={newSkillButton.ref}
+                            variant="default"
+                            size="pill"
+                            type="button"
+                            onClick={() =>
+                              setState("skillCreateFormOpen", true)
+                            }
+                            {...newSkillButton.agentProps}
+                          >
+                            {t("skillsview.NewSkill", {
+                              defaultValue: "New Skill",
+                            })}
+                          </Button>
+                          <Button
+                            ref={installButton.ref}
+                            variant="outline"
+                            size="pill"
+                            type="button"
+                            onClick={() => setInstallModalOpen(true)}
+                            {...installButton.agentProps}
+                          >
+                            {t("common.install", { defaultValue: "Install" })}
+                          </Button>
+                        </div>
+                      ) : undefined
+                    }
                   />
                 </div>
               ) : filteredSkills.length === 0 && !skillCreateFormOpen ? (
                 <PagePanel.Empty
                   data-testid="skills-filter-empty"
-                  variant="surface"
-                  className="min-h-[16rem] rounded-sm px-6 py-12"
+                  className="min-h-[16rem] px-6 py-12 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
                   title={t("skillsview.noMatchingSkills", {
                     defaultValue: "No matching skills",
                   })}
@@ -794,22 +842,12 @@ function SkillsFullViewContent({
                       <PagePanel.Notice tone="accent">
                         {t("skillsview.LoadingScanReport")}
                       </PagePanel.Notice>
-                    ) : (
-                      <PagePanel variant="inset" className="p-4 sm:p-5">
-                        <div className="text-sm leading-relaxed text-muted">
-                          {t("skillsview.SkillSourceEditorDescription", {
-                            defaultValue:
-                              "Open the skill source editor to inspect or modify `SKILL.md`, or review findings here when a skill needs attention.",
-                          })}
-                        </div>
-                      </PagePanel>
-                    )}
+                    ) : null}
                   </div>
                 </PagePanel>
               ) : (
                 <PagePanel.Empty
-                  variant="surface"
-                  className="min-h-[16rem] rounded-sm px-6 py-12"
+                  className="min-h-[16rem] px-6 py-12"
                   title={t("skillsview.SelectATalentToConf", {
                     defaultValue: "Select a talent to configure",
                   })}
@@ -818,7 +856,7 @@ function SkillsFullViewContent({
             </div>
           </PagePanel>
         </div>
-      </PageLayout>
+      </WorkspaceLayout>
       {editingSkill && (
         <EditSkillModal
           skillId={editingSkill.id}

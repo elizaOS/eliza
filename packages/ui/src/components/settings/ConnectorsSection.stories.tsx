@@ -49,7 +49,15 @@ const meta = {
   title: "Settings/ConnectorsSection",
   component: ConnectorsSection,
   tags: ["autodocs"],
-  decorators: [mockApp({ plugins: populatedPlugins })],
+  decorators: [
+    mockApp({
+      plugins: populatedPlugins,
+      pluginsLoaded: true,
+      isLoadingPlugins: false,
+      pluginsLoadError: null,
+      loadPlugins: async () => {},
+    }),
+  ],
   parameters: { layout: "padded" },
 } satisfies Meta<typeof ConnectorsSection>;
 
@@ -67,6 +75,7 @@ export const Default: Story = {};
 export const SingleConnector: Story = {
   decorators: [
     mockApp({
+      pluginsLoaded: true,
       plugins: [
         connector({
           id: "telegram",
@@ -83,6 +92,7 @@ export const SingleConnector: Story = {
 export const AllDisabled: Story = {
   decorators: [
     mockApp({
+      pluginsLoaded: true,
       plugins: populatedPlugins.map((p) =>
         p.category === "connector" ? { ...p, enabled: false } : p,
       ),
@@ -94,6 +104,7 @@ export const AllDisabled: Story = {
 export const WithValidationError: Story = {
   decorators: [
     mockApp({
+      pluginsLoaded: true,
       plugins: [
         connector({
           id: "telegram",
@@ -111,5 +122,29 @@ export const WithValidationError: Story = {
 
 /** No connector plugins available — renders the empty-state copy. */
 export const Empty: Story = {
-  decorators: [mockApp({ plugins: [] })],
+  decorators: [mockApp({ plugins: [], pluginsLoaded: true })],
+};
+
+/** Runtime catalog request in flight. */
+export const Loading: Story = {
+  decorators: [
+    mockApp({
+      plugins: [],
+      pluginsLoaded: false,
+      isLoadingPlugins: true,
+      pluginsLoadError: null,
+    }),
+  ],
+};
+
+/** Runtime catalog failure with a retry action. */
+export const LoadError: Story = {
+  decorators: [
+    mockApp({
+      plugins: [],
+      pluginsLoaded: false,
+      isLoadingPlugins: false,
+      pluginsLoadError: "The connector catalog could not be reached.",
+    }),
+  ],
 };

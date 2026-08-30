@@ -7,11 +7,9 @@
  * renderer URL so the React app renders the chat-overlay shell only (not the
  * full `<App>`), and the bar's screen geometry.
  *
- * Default ON (#10350): the chromeless bottom bar is the resting desktop surface,
- * satisfying #9953 acceptance criterion #1. The opt-out kill switch is
- * `ELIZA_DESKTOP_BOTTOM_BAR=0` (or `false`/`no`/`off`), which restores the legacy
- * full-window dashboard. Excludes kiosk shell mode (kiosk wants a fullscreen
- * view-manager surface), which always wins.
+ * Default ON (#10350): the chromeless bottom bar is the resting desktop surface.
+ * The explicit opt-out restores the full-window dashboard, and kiosk mode
+ * always wins because it owns a fullscreen view-manager surface.
  */
 
 import { appendShellModeParam, isKioskShellMode } from "./kiosk-mode";
@@ -30,7 +28,7 @@ function parseFalsy(value: string | undefined): boolean {
 
 /**
  * Whether the desktop should launch as a chromeless bottom chat bar instead of
- * the full-window dashboard. Default ON (#10350); opt out with
+ * the full-window dashboard. Default ON; opt out with
  * `ELIZA_DESKTOP_BOTTOM_BAR=0`; never in kiosk mode.
  */
 export function shouldStartBottomBar(
@@ -40,10 +38,7 @@ export function shouldStartBottomBar(
   if (isKioskShellMode(env, argv)) {
     return false;
   }
-  if (parseFalsy(env.ELIZA_DESKTOP_BOTTOM_BAR)) {
-    return false;
-  }
-  return true;
+  return !parseFalsy(env.ELIZA_DESKTOP_BOTTOM_BAR);
 }
 
 /**
@@ -146,9 +141,11 @@ export function resolveDesktopShellWindowPresentation(
   };
 }
 
-/** Resting native hit area exactly matching the painted 64×44 pill. */
+/** Resting native hit area around the centered painted 64×12 white bar. */
 export const DEFAULT_BOTTOM_BAR_WIDTH = 64;
 export const DEFAULT_BOTTOM_BAR_HEIGHT = 44;
+/** Keep the resting bar visibly above the work-area edge without a hot halo. */
+export const BOTTOM_BAR_BOTTOM_INSET = 14;
 
 /** Hit area around the cloud-only "Sign in with Eliza Cloud" action. */
 export const AUTH_GATE_BOTTOM_BAR_WIDTH = 336;
@@ -232,7 +229,11 @@ export function computeBottomBarFrame(
   const x =
     Math.round(workArea.x) + margin + Math.round((availableWidth - width) / 2);
   const y =
-    Math.round(workArea.y) + Math.round(workArea.height) - height - margin;
+    Math.round(workArea.y) +
+    Math.round(workArea.height) -
+    height -
+    margin -
+    BOTTOM_BAR_BOTTOM_INSET;
   return { x, y, width, height };
 }
 
@@ -279,7 +280,9 @@ export function computeBottomBarSurfaceFrame(
   );
   return {
     x: Math.round(workArea.x + (workArea.width - width) / 2),
-    y: Math.round(workArea.y + workArea.height - height),
+    y: Math.round(
+      workArea.y + workArea.height - height - BOTTOM_BAR_BOTTOM_INSET,
+    ),
     width,
     height,
   };

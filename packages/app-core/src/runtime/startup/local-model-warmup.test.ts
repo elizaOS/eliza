@@ -26,7 +26,7 @@ const CONFIG = { character: { name: "Eliza" } };
 
 const mocks = vi.hoisted(() => ({
   configureLocalEmbeddingPlugin: vi.fn(),
-  loadElizaConfig: vi.fn(),
+  loadEffectiveElizaConfig: vi.fn(),
   shouldWarmupLocalEmbeddingModel: vi.fn(),
   detectEmbeddingPreset: vi.fn(),
   isEmbeddingWarmupReuseDisabled: vi.fn(),
@@ -37,7 +37,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@elizaos/agent", () => ({
   configureLocalEmbeddingPlugin: mocks.configureLocalEmbeddingPlugin,
-  loadElizaConfig: mocks.loadElizaConfig,
+  loadEffectiveElizaConfig: mocks.loadEffectiveElizaConfig,
 }));
 
 vi.mock("@elizaos/plugin-local-inference/runtime", () => ({
@@ -105,7 +105,7 @@ beforeEach(() => {
   infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
   warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
   mocks.configureLocalEmbeddingPlugin.mockReset();
-  mocks.loadElizaConfig.mockReset();
+  mocks.loadEffectiveElizaConfig.mockReset();
   mocks.shouldWarmupLocalEmbeddingModel.mockReset();
   mocks.detectEmbeddingPreset.mockReset();
   mocks.isEmbeddingWarmupReuseDisabled.mockReset();
@@ -113,7 +113,7 @@ beforeEach(() => {
   mocks.findExistingEmbeddingModelForWarmupReuse.mockReset();
   mocks.ensureModel.mockReset();
   mocks.configureLocalEmbeddingPlugin.mockResolvedValue(undefined);
-  mocks.loadElizaConfig.mockReturnValue(CONFIG);
+  mocks.loadEffectiveElizaConfig.mockReturnValue(CONFIG);
   mocks.shouldWarmupLocalEmbeddingModel.mockReturnValue(true);
   mocks.detectEmbeddingPreset.mockReturnValue(PRESET);
   mocks.isEmbeddingWarmupReuseDisabled.mockReturnValue(false);
@@ -230,7 +230,7 @@ describe("embedding warmup skip paths", () => {
         "[eliza] Skipping local embedding (GGUF) warmup — not needed for this configuration (e.g. Eliza Cloud embeddings, or local embeddings disabled).",
       );
     });
-    expect(mocks.loadElizaConfig).not.toHaveBeenCalled();
+    expect(mocks.loadEffectiveElizaConfig).not.toHaveBeenCalled();
     expect(mocks.ensureModel).not.toHaveBeenCalled();
   });
 });
@@ -244,7 +244,7 @@ describe("embedding warmup model selection", () => {
     await vi.waitFor(() => {
       expect(mocks.ensureModel).toHaveBeenCalledOnce();
     });
-    expect(mocks.loadElizaConfig).toHaveBeenCalledOnce();
+    expect(mocks.loadEffectiveElizaConfig).toHaveBeenCalledOnce();
     expect(mocks.configureLocalEmbeddingPlugin).toHaveBeenCalledWith(
       {},
       CONFIG,

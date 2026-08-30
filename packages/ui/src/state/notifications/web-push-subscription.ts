@@ -19,6 +19,11 @@
 
 import { getBootConfig } from "../../config/boot-config";
 
+declare const __ELIZA_WEB_PUSH__: boolean | undefined;
+
+const WEB_PUSH_COMPILED =
+  typeof __ELIZA_WEB_PUSH__ === "undefined" || __ELIZA_WEB_PUSH__ === true;
+
 /** Coarse subscription state surfaced to the settings UI. */
 export type WebPushState =
   | "unsupported" // no PushManager / SW / Notification, or not standalone
@@ -62,8 +67,11 @@ function defaultIsStandalone(): boolean {
 
 export const defaultWebPushDeps: WebPushDeps = {
   getNotification: () =>
-    typeof Notification !== "undefined" ? Notification : undefined,
+    WEB_PUSH_COMPILED && typeof Notification !== "undefined"
+      ? Notification
+      : undefined,
   getRegistration: async () => {
+    if (!WEB_PUSH_COMPILED) return null;
     if (
       typeof navigator === "undefined" ||
       !("serviceWorker" in navigator) ||
@@ -85,6 +93,7 @@ export const defaultWebPushDeps: WebPushDeps = {
 export function isWebPushSupported(
   deps: WebPushDeps = defaultWebPushDeps,
 ): boolean {
+  if (!WEB_PUSH_COMPILED) return false;
   if (typeof window === "undefined") return false;
   if (!("serviceWorker" in navigator)) return false;
   if (typeof PushManager === "undefined") return false;

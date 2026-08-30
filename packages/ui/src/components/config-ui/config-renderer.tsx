@@ -30,7 +30,13 @@ import {
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import type { ConfigUiHint, PluginUiTheme } from "../../types";
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Badge } from "../ui/badge";
+import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
+import { Card, type CardProps } from "../ui/card";
+import { Progress } from "../ui/progress";
+import { Separator } from "../ui/separator";
 import { ConfigField, type ConfigFieldLayout } from "./config-field";
 
 // ── Props ──────────────────────────────────────────────────────────────
@@ -210,40 +216,39 @@ function ValidationSummary({
   };
 
   return (
-    <div
-      className="mb-4 border border-destructive bg-[color-mix(in_srgb,var(--destructive)_6%,transparent)] px-4 py-3 rounded-sm"
-      role="alert"
-    >
-      <div className="text-sm font-semibold text-destructive mb-2">
+    <Alert variant="destructive" className="mb-4">
+      <AlertTitle>
         {totalErrors} {totalErrors === 1 ? "field needs" : "fields need"}{" "}
         {t("config-renderer.attention", { defaultValue: "attention" })}
-      </div>
-      <ul className="list-none m-0 p-0 flex flex-col gap-1">
-        {errorEntries.map(([key]) => (
-          <li key={key}>
-            <Button
-              type="button"
-              variant="surfaceDestructive"
-              size="content"
-              align="start"
-              onClick={() => handleFieldClick(key)}
-            >
-              <span className="opacity-60">
-                {t("config-renderer.Rarr", { defaultValue: "→" })}
-              </span>
-              <span>{fieldLabels.get(key) ?? key}</span>
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </div>
+      </AlertTitle>
+      <AlertDescription>
+        <ul className="flex list-none flex-col gap-1 p-0">
+          {errorEntries.map(([key]) => (
+            <li key={key}>
+              <Button
+                type="button"
+                variant="surfaceDestructive"
+                size="content"
+                align="start"
+                onClick={() => handleFieldClick(key)}
+              >
+                <span className="opacity-60">
+                  {t("config-renderer.Rarr", { defaultValue: "→" })}
+                </span>
+                <span>{fieldLabels.get(key) ?? key}</span>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </AlertDescription>
+    </Alert>
   );
 }
 
 // ── Theme mapping ──────────────────────────────────────────────────────
 
 /** Maps PluginUiTheme keys to CSS variable names. */
-const THEME_TO_CSS: Record<keyof PluginUiTheme, string> = {
+const THEME_TO_CSS = {
   fieldGap: "--plugin-field-gap",
   groupGap: "--plugin-group-gap",
   sectionPadding: "--plugin-section-padding",
@@ -257,7 +262,7 @@ const THEME_TO_CSS: Record<keyof PluginUiTheme, string> = {
   focusRing: "--plugin-focus-ring",
   inputHeight: "--plugin-input-height",
   maxFieldWidth: "--plugin-max-field-width",
-};
+} satisfies Record<keyof PluginUiTheme, `--${string}`>;
 
 // ── Component ──────────────────────────────────────────────────────────
 
@@ -559,7 +564,7 @@ export const ConfigRenderer = forwardRef<
 
   const themeStyle = useMemo(() => {
     if (!theme) return undefined;
-    const style: Record<string, string> = {};
+    const style: NonNullable<CardProps["tokenStyle"]> = {};
     for (const [key, value] of Object.entries(theme)) {
       const cssVar = THEME_TO_CSS[key as keyof typeof THEME_TO_CSS];
       if (cssVar && value) {
@@ -585,22 +590,23 @@ export const ConfigRenderer = forwardRef<
   // ── Render ───────────────────────────────────────────────────────────
 
   return (
-    <div style={themeStyle}>
+    <Card variant="transparentSquare" tokenStyle={themeStyle}>
       {/* Progress indicator */}
       {configProgress &&
         configProgress.requiredTotal > 0 &&
         configProgress.requiredSet < configProgress.requiredTotal && (
-          <div className="mb-4 px-3.5 py-2.5 border border-[var(--warning,#f39c12)] bg-[color-mix(in_srgb,var(--warning,#f39c12)_6%,transparent)] rounded-sm">
-            <ConfigProgressText configProgress={configProgress} />
-            <div className="w-full h-1.5 bg-border rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[var(--warning,#f39c12)] rounded-full transition-all duration-300"
-                style={{
-                  width: `${(configProgress.requiredSet / configProgress.requiredTotal) * 100}%`,
-                }}
+          <Banner variant="warning" className="mb-4">
+            <div className="flex-1">
+              <ConfigProgressText configProgress={configProgress} />
+              <Progress
+                aria-label="Required configuration progress"
+                value={
+                  (configProgress.requiredSet / configProgress.requiredTotal) *
+                  100
+                }
               />
             </div>
-          </div>
+          </Banner>
         )}
 
       {showValidationSummary && fieldErrors.size > 0 ? (
@@ -624,18 +630,18 @@ export const ConfigRenderer = forwardRef<
               <span className="text-xs font-bold uppercase tracking-wider text-txt opacity-70">
                 {group}
               </span>
-              <span className="ml-1 h-px flex-1 bg-border" />
+              <Separator className="ml-1 flex-1" />
             </div>
           )}
-          <div
-            className={
-              layout === "rows"
-                ? "overflow-hidden rounded-lg border border-border/60 bg-card/30"
-                : "grid grid-cols-6 gap-x-5 gap-y-0"
-            }
-          >
-            {fields.map((f) => renderField(f))}
-          </div>
+          {layout === "rows" ? (
+            <Card variant="panel" className="overflow-hidden">
+              {fields.map((f) => renderField(f))}
+            </Card>
+          ) : (
+            <div className="grid grid-cols-6 gap-x-5 gap-y-0">
+              {fields.map((f) => renderField(f))}
+            </div>
+          )}
         </div>
       ))}
 
@@ -646,20 +652,22 @@ export const ConfigRenderer = forwardRef<
             advancedOpen={advancedOpen}
             setAdvancedOpen={setAdvancedOpen}
           />
-          {advancedOpen && (
-            <div
-              className={
-                layout === "rows"
-                  ? "mt-1 overflow-hidden rounded-lg border border-border/60 bg-card/30 animate-[cr-slide_var(--duration-normal,200ms)_ease]"
-                  : "grid grid-cols-6 gap-x-5 gap-y-0 pt-1 animate-[cr-slide_var(--duration-normal,200ms)_ease]"
-              }
-            >
-              {advanced.map((f) => renderField(f))}
-            </div>
-          )}
+          {advancedOpen &&
+            (layout === "rows" ? (
+              <Card
+                variant="panel"
+                className="mt-1 overflow-hidden animate-[cr-slide_var(--duration-normal,200ms)_ease]"
+              >
+                {advanced.map((f) => renderField(f))}
+              </Card>
+            ) : (
+              <div className="grid grid-cols-6 gap-x-5 gap-y-0 pt-1 animate-[cr-slide_var(--duration-normal,200ms)_ease]">
+                {advanced.map((f) => renderField(f))}
+              </div>
+            ))}
         </div>
       )}
-    </div>
+    </Card>
   );
 });
 
@@ -717,10 +725,10 @@ function AdvancedSectionToggle({
       <span className="text-xs font-bold uppercase tracking-wider text-muted group-hover:text-txt transition-colors">
         {t("nav.advanced", { defaultValue: "Advanced" })}
       </span>
-      <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-2xs font-bold bg-[var(--accent-subtle,rgba(255,255,255,0.05))] text-accent border border-border rounded-sm">
+      <Badge variant="outline" size="microBold" tone="accent">
         {advanced.length}
-      </span>
-      <span className="flex-1 h-px bg-border opacity-50 ml-1" />
+      </Badge>
+      <Separator className="ml-1 flex-1 opacity-50" />
     </Button>
   );
 }

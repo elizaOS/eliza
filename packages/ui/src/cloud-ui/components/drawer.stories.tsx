@@ -52,7 +52,7 @@ export const BottomSheet: Story = {
           migrated to the new build.
         </DrawerBody>
         <DrawerFooter>
-          <Button type="button" size="labeledSm">
+          <Button type="button" size="sm">
             Deploy now
           </Button>
           <DrawerClose className={secondaryButtonClass}>Cancel</DrawerClose>
@@ -99,7 +99,7 @@ export const RightSide: Story = {
           </label>
         </div>
         <DrawerFooter>
-          <Button type="button" size="labeledSm">
+          <Button type="button" size="sm">
             Save changes
           </Button>
           <DrawerClose className={secondaryButtonClass}>Close</DrawerClose>

@@ -1,3 +1,5 @@
+import { isContainerBackedExecutionTier } from "../sandbox-provider-types";
+
 /**
  * The first-provision "bootstrap window" of a DEDICATED agent.
  *
@@ -25,7 +27,7 @@ export function isDedicatedBootstrapWindow(agent: {
   status: string;
   bridge_url: string | null;
 }): boolean {
-  if (agent.execution_tier === "shared") return false;
+  if (!isContainerBackedExecutionTier(agent.execution_tier)) return false;
   if (agent.bridge_url) return false;
   return agent.status === "pending" || agent.status === "provisioning";
 }

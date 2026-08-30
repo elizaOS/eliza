@@ -5,7 +5,7 @@
  * `/api/v1/affiliates` (markup), GET `/api/v1/referrals` (via
  * {@link useDashboardReferralMe}). Copyable links preserve the dashboard-card
  * layout while exposing wrapping URLs, precise copy controls, and live status.
- * Markup is a SettingsInputRow; the surrounding BrandCard chrome and save
+ * Markup is a SettingsInputRow; the surrounding canonical Card chrome and save
  * button stay.
  */
 
@@ -25,10 +25,12 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 // Deep primitive/brand imports per the packages/ui extension rules — the
 // root cloud-ui barrel would drag the entire kit into this chunk graph.
-import { BrandCard } from "../../../cloud-ui/components/brand/brand-card";
 import { Button, Skeleton } from "../../../cloud-ui/components/primitives";
 import { SettingsInputRow } from "../../../components/settings/settings-agent-rows";
 import { SettingsRow } from "../../../components/settings/settings-layout";
+import { Alert } from "../../../components/ui/alert";
+import { Card } from "../../../components/ui/card";
+import { TextLink } from "../../../components/ui/text-link";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import {
@@ -215,9 +217,9 @@ export function AffiliatesPageClient() {
   if (loading) {
     return (
       <div className="flex flex-col gap-6 max-w-4xl mx-auto">
-        <Skeleton className="h-44 rounded-sm" />
-        <Skeleton className="h-36 rounded-sm" />
-        <Skeleton className="h-44 rounded-sm" />
+        <Skeleton className="h-44" />
+        <Skeleton className="h-36" />
+        <Skeleton className="h-44" />
       </div>
     );
   }
@@ -257,7 +259,7 @@ export function AffiliatesPageClient() {
         {copyStatus}
       </p>
       {/* Introduction Banner */}
-      <BrandCard className="relative" corners={false}>
+      <Card variant="brand" className="relative">
         <div className="flex items-start gap-3">
           <UserCog className="size-5 text-accent mt-0.5 shrink-0" />
           <div>
@@ -292,12 +294,12 @@ export function AffiliatesPageClient() {
             </p>
           </div>
         </div>
-      </BrandCard>
+      </Card>
 
       {/* Referral invite: uses GET /api/v1/referrals (parallel to affiliate
           fetch, own loading state). Different URL (?ref= vs ?affiliate=),
           economics, and copy from the affiliate card below. */}
-      <BrandCard corners={false} className="border border-accent/40">
+      <Card variant="brand">
         <div className="flex items-start gap-3 mb-4">
           <Users className="size-5 text-accent mt-0.5 shrink-0" />
           <div className="min-w-0 flex-1">
@@ -316,7 +318,7 @@ export function AffiliatesPageClient() {
         </div>
 
         {loadingReferral ? (
-          <Skeleton className="h-14 rounded-sm" />
+          <Skeleton className="h-14" />
         ) : referralFetchFailed || !referralMe ? (
           <div className="flex items-center gap-3">
             <p className="text-sm text-muted">
@@ -334,7 +336,7 @@ export function AffiliatesPageClient() {
             </Button>
           </div>
         ) : !referralMe.is_active ? (
-          <div className="rounded-sm border border-status-warning/30 bg-status-warning-bg p-3 text-sm text-status-warning">
+          <Alert variant="dashboardWarning">
             <p className="font-medium text-status-warning">
               {t("cloud.affiliates.inviteInactive", {
                 defaultValue: "Invite link inactive",
@@ -345,20 +347,21 @@ export function AffiliatesPageClient() {
                 defaultValue:
                   "Your referral code is turned off for new signups. Only an Eliza Cloud administrator can re-enable it. If you believe this is a mistake,",
               })}{" "}
-              <a
+              <TextLink
+                variant="accent"
                 href="mailto:support@eliza.cloud?subject=Referral%20code%20inactive"
-                className="text-txt-strong underline hover:opacity-75"
+                className="text-txt-strong hover:opacity-75"
               >
                 {t("cloud.affiliates.emailSupport", {
                   defaultValue: "email support@eliza.cloud",
                 })}
-              </a>
+              </TextLink>
               .
             </p>
             <p className="mt-2 font-mono text-xs text-muted break-all">
               {buildReferralInviteLoginUrl(pageOrigin, referralMe.code)}
             </p>
-          </div>
+          </Alert>
         ) : (
           <>
             <p className="text-xs text-muted mb-3">
@@ -413,10 +416,10 @@ export function AffiliatesPageClient() {
             />
           </>
         )}
-      </BrandCard>
+      </Card>
 
       {/* Affiliate Link */}
-      <BrandCard corners={false}>
+      <Card variant="brand">
         <h3 className="text-lg font-semibold text-txt-strong mb-1">
           {t("cloud.affiliates.yourAffiliateLink", {
             defaultValue: "Your Affiliate Link",
@@ -462,10 +465,10 @@ export function AffiliatesPageClient() {
             </Button>
           }
         />
-      </BrandCard>
+      </Card>
 
       {/* Markup Configuration */}
-      <BrandCard corners={false}>
+      <Card variant="brand">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-txt-strong mb-1">
@@ -481,7 +484,12 @@ export function AffiliatesPageClient() {
             </p>
           </div>
 
-          <div className="p-3 bg-bg-hover border border-border rounded-sm text-center min-w-[120px]">
+          <Card
+            surface="raised"
+            border="standard"
+            padding="default"
+            className="min-w-[120px] text-center"
+          >
             <span className="block text-xs text-muted mb-1">
               {t("cloud.affiliates.currentMarkup", {
                 defaultValue: "Current Markup",
@@ -490,7 +498,7 @@ export function AffiliatesPageClient() {
             <span className="block text-xl font-bold text-accent">
               {affiliateData?.markup_percent}%
             </span>
-          </div>
+          </Card>
         </div>
 
         <div className="mt-6 max-w-md space-y-3">
@@ -535,7 +543,7 @@ export function AffiliatesPageClient() {
           </div>
         </div>
 
-        <div className="mt-4 p-4 rounded-sm bg-status-warning-bg border border-status-warning/20 flex gap-3 text-sm">
+        <Alert variant="dashboardWarning" className="mt-4 flex gap-3">
           <AlertTriangle className="size-5 text-status-warning shrink-0" />
           <div className="text-status-warning">
             <strong>
@@ -548,11 +556,11 @@ export function AffiliatesPageClient() {
                 "If an API normally costs 10 credits and you set a 20% markup, your user pays 12 credits. You will earn exactly 2 credits which drops instantly into your redeemable token balance.",
             })}
           </div>
-        </div>
-      </BrandCard>
+        </Alert>
+      </Card>
 
       {/* API Integration Snippet */}
-      <BrandCard corners={false}>
+      <Card variant="brand">
         <h3 className="text-lg font-semibold text-txt-strong mb-1">
           {t("cloud.affiliates.devApiTitle", {
             defaultValue: "Developer API Integration (SKUs)",
@@ -565,8 +573,11 @@ export function AffiliatesPageClient() {
           })}
         </p>
 
-        <div className="bg-card rounded-sm border border-border overflow-hidden relative group">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-muted">
+        <Card variant="codeFrame" className="group relative overflow-hidden">
+          <Card
+            variant="codeHeader"
+            className="flex items-center justify-between px-4 py-2"
+          >
             <span className="text-xs font-mono text-muted">
               {t("cloud.affiliates.curlExample", {
                 defaultValue: "cURL Example",
@@ -604,7 +615,7 @@ export function AffiliatesPageClient() {
             >
               <Copy className="size-3" />
             </Button>
-          </div>
+          </Card>
           <pre className="p-4 overflow-x-auto text-sm font-mono text-txt leading-relaxed">
             <span className="text-status-success">curl</span> -X POST
             https://api.eliza.app/v1/chat/completions \<br />
@@ -634,8 +645,8 @@ export function AffiliatesPageClient() {
               {"  }"}'
             </span>
           </pre>
-        </div>
-      </BrandCard>
+        </Card>
+      </Card>
     </div>
   );
 }

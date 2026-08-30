@@ -45,6 +45,11 @@ function makeDeps(): HydratingDeps {
     setStartupError: vi.fn(),
     setFirstRunLoading: vi.fn(),
     hydrateInitialConversationState: vi.fn(async () => null),
+    activeConversationIdRef: { current: null },
+    loadedConversationIdRef: { current: null },
+    loadConversationMessages: vi.fn(async (_conversationId: string) => ({
+      ok: true as const,
+    })),
     requestGreetingWhenRunningRef: { current: vi.fn(async () => undefined) },
     loadWorkbench: vi.fn(async () => {}),
     loadPlugins: vi.fn(async () => {}),
@@ -93,6 +98,151 @@ describe("runHydrating — non-blocking first-load (F2)", () => {
     expect(deps.hydrateInitialConversationState).toHaveBeenCalledTimes(1);
     expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
     expect(events).toContainEqual({ type: "HYDRATION_COMPLETE" });
+  });
+
+  it("refetches the retained direct-Cloud conversation when initial message hydration was incomplete", async () => {
+    clientMock.getBaseUrl.mockReturnValueOnce(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+    );
+    const deps = makeDeps();
+    deps.hydrateInitialConversationState = vi.fn(async () => {
+      deps.activeConversationIdRef.current = "conversation-1";
+      return null;
+    });
+    deps.loadConversationMessages = vi.fn(async (conversationId) => {
+      deps.loadedConversationIdRef.current = conversationId;
+      return { ok: true as const };
+    });
+
+    await runHydrating(deps, vi.fn(), { current: false });
+
+    await vi.waitFor(() => {
+      expect(deps.loadConversationMessages).toHaveBeenCalledTimes(1);
+    });
+    expect(deps.loadConversationMessages).toHaveBeenCalledWith(
+      "conversation-1",
+    );
+  });
+
+  it("retries the whole direct-Cloud hydrate once when a persisted conversation list cannot load", async () => {
+    vi.useFakeTimers();
+    clientMock.getBaseUrl.mockReturnValueOnce(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+    );
+    window.localStorage.setItem(
+      "eliza:chat:activeConversationId",
+      "conversation-1",
+    );
+    const deps = makeDeps();
+    deps.hydrateInitialConversationState = vi
+      .fn<() => Promise<string | null>>()
+      .mockRejectedValueOnce(new Error("conversation list unavailable"))
+      .mockImplementationOnce(async () => {
+        deps.activeConversationIdRef.current = "conversation-1";
+        deps.loadedConversationIdRef.current = "conversation-1";
+        return null;
+      });
+
+    await runHydrating(deps, vi.fn(), { current: false });
+    await Promise.resolve();
+    expect(deps.hydrateInitialConversationState).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(deps.hydrateInitialConversationState).toHaveBeenCalledTimes(2);
+    expect(deps.loadConversationMessages).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("does not duplicate a successful direct-Cloud history load", async () => {
+    clientMock.getBaseUrl.mockReturnValueOnce(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+    );
+    const deps = makeDeps();
+    deps.hydrateInitialConversationState = vi.fn(async () => {
+      deps.activeConversationIdRef.current = "conversation-1";
+      deps.loadedConversationIdRef.current = "conversation-1";
+      return null;
+    });
+
+    await runHydrating(deps, vi.fn(), { current: false });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(deps.loadConversationMessages).not.toHaveBeenCalled();
+  });
+
+  it("retries one incomplete direct-Cloud message load once", async () => {
+    vi.useFakeTimers();
+    clientMock.getBaseUrl.mockReturnValueOnce(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+    );
+    const deps = makeDeps();
+    deps.hydrateInitialConversationState = vi.fn(async () => {
+      deps.activeConversationIdRef.current = "conversation-1";
+      return null;
+    });
+    deps.loadConversationMessages = vi
+      .fn<
+        (
+          conversationId: string,
+        ) => Promise<{ ok: true } | { ok: false; message: string }>
+      >()
+      .mockResolvedValueOnce({ ok: false, message: "offline" })
+      .mockImplementationOnce(async (conversationId) => {
+        deps.loadedConversationIdRef.current = conversationId;
+        return { ok: true };
+      });
+
+    await runHydrating(deps, vi.fn(), { current: false });
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(deps.loadConversationMessages).toHaveBeenNthCalledWith(
+      1,
+      "conversation-1",
+    );
+    expect(deps.loadConversationMessages).toHaveBeenNthCalledWith(
+      2,
+      "conversation-1",
+    );
+    vi.useRealTimers();
+  });
+
+  it("does not repaint a stale conversation after the active target changes", async () => {
+    vi.useFakeTimers();
+    clientMock.getBaseUrl.mockReturnValueOnce(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+    );
+    const deps = makeDeps();
+    deps.hydrateInitialConversationState = vi.fn(async () => {
+      deps.activeConversationIdRef.current = "conversation-1";
+      return null;
+    });
+    deps.loadConversationMessages = vi
+      .fn<
+        (
+          conversationId: string,
+        ) => Promise<{ ok: true } | { ok: false; message: string }>
+      >()
+      .mockImplementationOnce(async () => {
+        deps.activeConversationIdRef.current = "conversation-2";
+        return { ok: false, message: "offline" };
+      })
+      .mockImplementationOnce(async (conversationId) => {
+        deps.loadedConversationIdRef.current = conversationId;
+        return { ok: true };
+      });
+
+    await runHydrating(deps, vi.fn(), { current: false });
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(deps.loadConversationMessages).toHaveBeenNthCalledWith(
+      1,
+      "conversation-1",
+    );
+    expect(deps.loadConversationMessages).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it("dispatches HYDRATION_COMPLETE even when wallet, config, stream settings, and autonomy replay all hang forever", async () => {

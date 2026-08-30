@@ -27,6 +27,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { resetKmsClientForTests } from "../../db/crypto/kms-client";
+import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { agentBackupObjects } from "../../db/schemas/agent-backup-catalog";
 import {
@@ -92,6 +93,7 @@ async function seedSandbox(status: "sleeping" | "running" = "sleeping"): Promise
       user_id: user.id,
       agent_name: uniq("agent"),
       status,
+      execution_tier: "dedicated-lazy",
     })
     .returning();
   return { sandboxId: sandbox.id, orgId: org.id };
@@ -594,6 +596,9 @@ describe("executeWake with the restore-integrity gate", () => {
   } {
     const svc = new ElizaSandboxService();
     const provisionCalls: Array<ProvisionRestoreOverride | undefined> = [];
+    spyOn(agentBillingRepository, "settleAccruedBillingBeforeLifecycle").mockResolvedValue({
+      status: "already_billed_recently",
+    });
     spyOn(svc, "provision").mockImplementation(
       async (_agentId: string, _orgId: string, restoreOverride?: ProvisionRestoreOverride) => {
         provisionCalls.push(restoreOverride);

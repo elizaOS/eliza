@@ -53,7 +53,7 @@ function makeAcp(session: SessionInfo) {
 
 function makeRuntime(
   acpService: unknown,
-  setting: Record<string, string> = {},
+  setting: Record<string, string | boolean> = {},
 ) {
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
@@ -145,6 +145,34 @@ describe("SubAgentRouter.isActive (#11634 ownership gate)", () => {
       // start() returns before binding, so the router never posts — the
       // coordinator must NOT cede ownership to it.
       expect(router.isActive()).toBe(false);
+    } finally {
+      await router.stop();
+    }
+  });
+
+  it("is false when getSetting returns boolean true for the disable flag", async () => {
+    // AgentRuntime.getSetting normalizes the string "true" to a boolean, so a
+    // config of ACPX_SUB_AGENT_ROUTER_DISABLED="true" reaches the router as
+    // `true`. The router must honor the boolean form or the flag is silently
+    // dropped (PR #28480 review).
+    const acp = makeAcp(makeSession());
+    const router = await SubAgentRouter.start(
+      makeRuntime(acp.service, { ACPX_SUB_AGENT_ROUTER_DISABLED: true }),
+    );
+    try {
+      expect(router.isActive()).toBe(false);
+    } finally {
+      await router.stop();
+    }
+  });
+
+  it("stays active when getSetting returns boolean false for the disable flag", async () => {
+    const acp = makeAcp(makeSession());
+    const router = await SubAgentRouter.start(
+      makeRuntime(acp.service, { ACPX_SUB_AGENT_ROUTER_DISABLED: false }),
+    );
+    try {
+      expect(router.isActive()).toBe(true);
     } finally {
       await router.stop();
     }

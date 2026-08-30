@@ -27,7 +27,7 @@ function validateBlob(
 ): ScenarioCheckResult {
   for (const pattern of expectation.includesAll ?? []) {
     if (!matchesPattern(blob, pattern)) {
-      return `Expected ${expectation.description}: missing ${String(pattern)}. Payload: ${blob.slice(0, 600)}`;
+      return `Expected ${expectation.description}: missing ${String(pattern)}. Payload: ${blob}`;
     }
   }
 
@@ -36,7 +36,7 @@ function validateBlob(
       matchesPattern(blob, pattern),
     );
     if (!matched) {
-      return `Expected ${expectation.description}: missing any of [${expectation.includesAny.map(String).join(", ")}]. Payload: ${blob.slice(0, 600)}`;
+      return `Expected ${expectation.description}: missing any of [${expectation.includesAny.map(String).join(", ")}]. Payload: ${blob}`;
     }
   }
 

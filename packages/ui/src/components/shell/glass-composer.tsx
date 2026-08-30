@@ -80,7 +80,7 @@ export function GlassIconButton({
       onPointerCancel={onPointerCancel}
       onPointerLeave={onPointerLeave}
       onMouseDown={handleMouseDown}
-      className="grid shrink-0 place-items-center bg-transparent text-muted-strong hover:bg-transparent hover:text-txt data-[state=on]:text-accent"
+      className="grid shrink-0 place-items-center text-muted-strong hover:text-txt data-[state=on]:text-accent"
     >
       <Icon className="size-[26px]" aria-hidden={true} />
     </Button>

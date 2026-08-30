@@ -16,17 +16,20 @@ import {
 import { createRouteHandler } from "@fal-ai/server-proxy/hono";
 import type { Context, Handler } from "hono";
 import { Hono } from "hono";
+import {
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import type { BillingContext } from "@/lib/services/ai-billing";
 import {
   calculateVideoGenerationCostFromCatalog,
   getDefaultVideoBillingDimensions,
 } from "@/lib/services/ai-pricing";
 import { getSupportedVideoModelDefinition } from "@/lib/services/ai-pricing-definitions";
-import {
-  creditsService,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
+import { InsufficientCreditsError } from "@/lib/services/credits";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -168,26 +171,40 @@ async function priceFalMutation(c: Context<AppEnv>): Promise<{
 
 const handle: Handler<AppEnv> = async (c) => {
   const isMutation = c.req.method === "POST" || c.req.method === "PUT";
-  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
-    null;
+  let admission: Awaited<
+    ReturnType<typeof admitFlatGenerativeOperation>
+  > | null = null;
   let pricedMutation: Awaited<ReturnType<typeof priceFalMutation>> | null =
     null;
-  let user: Awaited<ReturnType<typeof requireUserOrApiKeyWithOrg>>;
+  let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
 
   try {
-    user = await requireUserOrApiKeyWithOrg(c);
+    caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+    });
   } catch (error) {
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 
   if (isMutation && c.req.header(TARGET_URL_HEADER)) {
     try {
       pricedMutation = await priceFalMutation(c);
-      reservation = await creditsService.reserve({
-        organizationId: user.organization_id,
-        userId: user.id,
-        amount: pricedMutation.cost.totalCost,
+      const billingContext: BillingContext = {
+        organizationId: caller.user.organization_id,
+        userId: caller.user.id,
+        apiKeyId: caller.apiKeyId,
+        model: pricedMutation.model,
+        provider: "fal",
+        billingSource: "fal",
+        requestId: `fal-proxy:${crypto.randomUUID()}`,
         description: `fal.ai ${pricedMutation.model}`,
+      };
+      admission = await admitFlatGenerativeOperation({
+        c,
+        context: billingContext,
+        apiKeyId: caller.apiKeyId,
+        cost: pricedMutation.cost,
+        admissionSnapshot: caller.admissionSnapshot,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
@@ -218,24 +235,42 @@ const handle: Handler<AppEnv> = async (c) => {
   }
 
   try {
+    await admission?.markProviderDispatched?.();
     const response = await invokeFalProxy(c);
 
-    if (reservation && pricedMutation) {
-      if (response.ok) {
-        await reservation.reconcile(pricedMutation.cost.totalCost);
-      } else {
-        await reservation.reconcile(0);
-      }
+    if (admission && pricedMutation) {
+      await retainFalSettlement(
+        c,
+        admission.settle(response.ok ? pricedMutation.cost.totalCost : 0),
+        response.ok ? "settle" : "release",
+      );
     }
 
     return response;
   } catch (error) {
-    if (reservation) {
-      await reservation.reconcile(0);
+    if (admission) {
+      await retainFalSettlement(c, admission.settle(0), "release");
     }
     throw error;
   }
 };
+
+async function retainFalSettlement(
+  c: Context<AppEnv>,
+  settlement: Promise<unknown>,
+  operation: "settle" | "release",
+): Promise<void> {
+  const observed = settlement.catch((error) => {
+    // error-policy:J7 settlement diagnostics must not replace the provider
+    // response; the durable reservation sweep remains the recovery boundary.
+    logger.error(`[fal proxy] Failed to ${operation} inference admission`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  const executionCtx = getGenerativeExecutionContext(c);
+  if (executionCtx) executionCtx.waitUntil(observed);
+  else await observed;
+}
 
 app.get("/", handle);
 app.post("/", handle);

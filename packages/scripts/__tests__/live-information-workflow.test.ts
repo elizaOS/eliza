@@ -1,4 +1,4 @@
-/** Verifies the manual live-information workflow fails before setup when exact planner or independent-judge credentials are absent. */
+/** Verifies independently judged scenario workflows fail before setup when exact acting-model or judge credentials are absent. */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
@@ -23,10 +23,13 @@ function credentialStep() {
   const steps = workflow.jobs?.smoke?.steps ?? [];
   const step = steps.find(
     (candidate) =>
-      candidate.name === "Require exact live information credentials",
+      candidate.name ===
+      "Require exact independently judged scenario credentials",
   );
   if (!step?.run)
-    throw new Error("Missing live-information credential preflight");
+    throw new Error(
+      "Missing independently judged scenario credential preflight",
+    );
   return { step, steps };
 }
 
@@ -49,7 +52,7 @@ function runPreflight(
   });
 }
 
-describe("Live Smoke live-information credential boundary", () => {
+describe("Live Smoke independently judged scenario credential boundary", () => {
   test("runs before workspace setup", () => {
     const { step, steps } = credentialStep();
     const preflightIndex = steps.indexOf(step);
@@ -75,7 +78,7 @@ describe("Live Smoke live-information credential boundary", () => {
         const rejected = runPreflight(provider, { [key]: value });
         expect(rejected.status).toBe(1);
         expect(rejected.stdout).toContain(
-          "selected live-information planner credential is missing or blank",
+          "selected acting model credential is missing or blank",
         );
       }
 

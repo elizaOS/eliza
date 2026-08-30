@@ -87,6 +87,53 @@ describe("canonical deploy source decision", () => {
     });
   });
 
+  it("allows only monotonic staging progress during canonical head churn", () => {
+    const served = "cccccccccccccccccccccccccccccccccccccccc";
+    expect(
+      decideCanonicalDeploySource({
+        runSha: RUN,
+        canonicalRef: "refs/heads/develop",
+        canonicalHead: HEAD,
+        runShaIsAncestorOfHead: true,
+        allowMonotonicForwardProgress: true,
+        servedCommit: served,
+        servedCommitIsAncestorOfRun: true,
+      }),
+    ).toMatchObject({
+      allowed: true,
+      reason: "monotonic_forward_progress",
+      servedCommit: served,
+    });
+
+    for (const rejected of [
+      { servedCommit: null, servedCommitIsAncestorOfRun: null },
+      { servedCommit: served, servedCommitIsAncestorOfRun: false },
+    ]) {
+      expect(
+        decideCanonicalDeploySource({
+          runSha: RUN,
+          canonicalRef: "refs/heads/develop",
+          canonicalHead: HEAD,
+          runShaIsAncestorOfHead: true,
+          allowMonotonicForwardProgress: true,
+          ...rejected,
+        }).allowed,
+      ).toBe(false);
+    }
+
+    expect(
+      decideCanonicalDeploySource({
+        runSha: RUN,
+        canonicalRef: "refs/heads/main",
+        canonicalHead: HEAD,
+        runShaIsAncestorOfHead: true,
+        allowMonotonicForwardProgress: true,
+        servedCommit: served,
+        servedCommitIsAncestorOfRun: true,
+      }).allowed,
+    ).toBe(false);
+  });
+
   it("requires an exact active successor release run", () => {
     const eligible = {
       id: 200,
@@ -378,4 +425,28 @@ describe("canonical deploy source CLI", () => {
       rmSync(root, { recursive: true, force: true });
     }
   }, 20_000);
+
+  it("wires monotonic proof into every Cloudflare mutation recheck", () => {
+    const workflow = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        "../../../../.github/workflows/cloud-cf-release.yml",
+      ),
+      "utf8",
+    );
+    const sourceRechecks = workflow
+      .split("\n")
+      .map((line, index, lines) =>
+        line.includes('source_args=(--run-sha "$GITHUB_SHA"')
+          ? lines.slice(index, index + 12).join("\n")
+          : null,
+      )
+      .filter((block): block is string => block !== null);
+
+    expect(sourceRechecks).toHaveLength(6);
+    for (const block of sourceRechecks) {
+      expect(block).toContain("--allow-monotonic-forward-progress");
+      expect(block).toContain("--served-path /api/health");
+    }
+  });
 });

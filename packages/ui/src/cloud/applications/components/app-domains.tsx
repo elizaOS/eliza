@@ -36,6 +36,7 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
 import { StatusBadge } from "../../../components/ui/status-badge";
@@ -344,7 +345,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
     <TooltipProvider>
       <div className="space-y-4">
         {/* Main Domains Card */}
-        <div className="bg-card rounded-sm p-4">
+        <Card variant="flatPadded">
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
@@ -544,7 +545,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
               )}
             </div>
           )}
-        </div>
+        </Card>
 
         {/* Buy a domain through Cloudflare (#10246) */}
         {primaryDomain && !hasCustomDomain && !isLoading && (
@@ -575,7 +576,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
         </AnimatePresence>
 
         {/* Quick Reference */}
-        <div className="bg-card rounded-sm p-4">
+        <Card variant="flatPadded">
           <h3 className="text-sm font-medium text-txt-strong mb-4">
             {t("cloud.appDomains.quickDnsReference", {
               defaultValue: "Quick DNS Reference",
@@ -623,7 +624,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 "DNS changes typically propagate within 5 minutes to 48 hours",
             })}
           </p>
-        </div>
+        </Card>
       </div>
     </TooltipProvider>
   );
@@ -906,7 +907,7 @@ function DnsConfigPanel({
     domainStatus?.records?.filter((r) => r.type === "TXT") || [];
 
   return (
-    <div className="bg-card rounded-sm p-4 space-y-4">
+    <Card stack="default" variant="flatPadded">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -1056,7 +1057,7 @@ function DnsConfigPanel({
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 

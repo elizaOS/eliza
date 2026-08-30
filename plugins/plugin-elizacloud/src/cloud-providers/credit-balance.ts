@@ -2,11 +2,12 @@
 
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { resolveCloudBillingUrl } from "../cloud/base-url";
 import type { CloudAuthService } from "../services/cloud-auth";
 import type { CreditBalanceResponse } from "../types/cloud";
+import { getBaseURL } from "../utils/config";
 import { getCachedAccountSnapshot } from "./cloud-account";
 
-const TOP_UP_URL = "https://cloud.eliza.app/cloud/billing";
 const creditCaches = new WeakMap<IAgentRuntime, { value: number; at: number }>();
 const TTL = 60_000;
 
@@ -25,19 +26,20 @@ export const creditBalanceProvider: Provider = {
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
     const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
     if (!auth?.isAuthenticated()) return { text: "" };
+    const topUpUrl = resolveCloudBillingUrl(getBaseURL(runtime));
 
     // CLOUD_ACCOUNT shares this contextGate and fetches the same balance in
     // the same compose; reuse its snapshot so the billing endpoint is hit
     // once per cache window instead of once per provider.
     const shared = getCachedAccountSnapshot(runtime);
     if (shared) {
-      const result = format(shared.balance);
+      const result = format(shared.balance, topUpUrl);
       return result;
     }
 
     const cached = creditCaches.get(runtime);
     if (cached && Date.now() - cached.at < TTL) {
-      const result = format(cached.value);
+      const result = format(cached.value, topUpUrl);
       return result;
     }
 
@@ -50,7 +52,7 @@ export const creditBalanceProvider: Provider = {
         `[CloudCredits] Failed to fetch balance: ${err instanceof Error ? err.message : err}`
       );
       if (cached) {
-        const result = format(cached.value);
+        const result = format(cached.value, topUpUrl);
         return result;
       }
       return { text: "", values: { cloudCreditsUnavailable: true }, data: {} };
@@ -58,24 +60,24 @@ export const creditBalanceProvider: Provider = {
     creditCaches.set(runtime, { value: balance, at: Date.now() });
 
     if (balance < 1.0) logger.warn(`[CloudCredits] Low balance: $${balance.toFixed(2)}`);
-    const result = format(balance);
+    const result = format(balance, topUpUrl);
     return result;
   },
 };
 
-function format(balance: number): ProviderResult {
+function format(balance: number, topUpUrl: string): ProviderResult {
   const low = balance < 2.0;
   const critical = balance < 0.5;
   let text = `ElizaCloud credits: $${balance.toFixed(2)}`;
-  if (critical) text += ` (CRITICAL — top up at ${TOP_UP_URL})`;
-  else if (low) text += ` (LOW — top up at ${TOP_UP_URL})`;
+  if (critical) text += ` (CRITICAL — top up at ${topUpUrl})`;
+  else if (low) text += ` (LOW — top up at ${topUpUrl})`;
   return {
     text,
     values: {
       cloudCredits: balance,
       cloudCreditsLow: low,
       cloudCreditsCritical: critical,
-      cloudTopUpUrl: TOP_UP_URL,
+      cloudTopUpUrl: topUpUrl,
     },
   };
 }

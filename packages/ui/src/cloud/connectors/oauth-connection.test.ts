@@ -44,6 +44,26 @@ afterEach(() => {
 });
 
 describe("useOAuthConnections connect", () => {
+  it("exposes a failed account probe instead of fabricating a disconnected state", async () => {
+    apiMock.mockRejectedValueOnce(new Error("offline"));
+    const { result } = renderHook(() => useOAuthConnections(config));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.isError).toBe(true);
+    expect(result.current.errorMessage).toBe(
+      "Failed to fetch Google connections",
+    );
+    expect(result.current.activeConnections).toEqual([]);
+    expect(toastError).not.toHaveBeenCalled();
+
+    apiMock.mockResolvedValueOnce({ connections: [] });
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.isError).toBe(false);
+    expect(result.current.errorMessage).toBeNull();
+  });
+
   it("navigates the top window to a valid https authorization URL", async () => {
     apiMock.mockImplementation((url: string) => {
       if (url.startsWith("/api/v1/oauth/connections")) {
