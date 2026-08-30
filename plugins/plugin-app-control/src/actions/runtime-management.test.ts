@@ -10,7 +10,7 @@ import {
 	createRuntimeManagementAction,
 	parseRuntimeManagementRequest,
 	type RuntimeManagementFn,
-	runtimeManagementActionInternals,
+	requiresRuntimeManagementConfirmation,
 } from "./runtime-management.ts";
 
 const runtime = {} as IAgentRuntime;
@@ -22,7 +22,11 @@ function callback(): HandlerCallback {
 
 describe("RUNTIMES action", () => {
 	it("requires confirmation for the exact complement of exempt operations", () => {
-		expect([...runtimeManagementActionInternals.confirmationRequired]).toEqual(
+		expect(
+			RUNTIME_MANAGEMENT_OPERATIONS.filter(
+				requiresRuntimeManagementConfirmation,
+			),
+		).toEqual(
 			RUNTIME_MANAGEMENT_OPERATIONS.filter(
 				(operation) =>
 					!RUNTIME_MANAGEMENT_OWNER_APPROVAL_EXEMPT_OPERATIONS.has(operation),

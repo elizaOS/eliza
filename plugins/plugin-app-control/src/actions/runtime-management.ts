@@ -46,9 +46,11 @@ const CONFIRMATION_REQUIRED: ReadonlySet<RuntimeManagementRequest["op"]> =
 		),
 	);
 
-export const runtimeManagementActionInternals = {
-	confirmationRequired: CONFIRMATION_REQUIRED,
-};
+export function requiresRuntimeManagementConfirmation(
+	operation: RuntimeManagementRequest["op"],
+): boolean {
+	return CONFIRMATION_REQUIRED.has(operation);
+}
 
 const SECRET_OPTION_NAMES = new Set([
 	"accesstoken",
@@ -426,7 +428,9 @@ export function createRuntimeManagementAction(
 				return { success: false, text: reply };
 			}
 			const normalized = normalizeActionOptions(options) ?? {};
-			const requiresConfirmation = CONFIRMATION_REQUIRED.has(request.op);
+			const requiresConfirmation = requiresRuntimeManagementConfirmation(
+				request.op,
+			);
 			const confirmationText = runtimeManagementConfirmationText(request);
 			if (
 				requiresConfirmation &&
