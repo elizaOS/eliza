@@ -149,13 +149,20 @@ describe("resolveInferenceSessionAuthContext", () => {
 
     expect(result).toMatchObject({ kind: "warming" });
     expect(result.kind === "warming" && result.hydration).toBeTruthy();
+    expect(result.kind === "warming" && result.continuation).toBeTruthy();
     expect(waited).toHaveLength(1);
     expect(cacheRead).toHaveBeenCalledTimes(1);
     expect(userReads).toBe(1);
     expect(moderationReads).toBe(0);
     releaseUser();
+    if (result.kind !== "warming" || !result.continuation) throw new Error("unreachable");
+    await expect(result.continuation).resolves.toMatchObject({
+      kind: "authorized",
+      source: "origin",
+    });
     await Promise.all(waited);
     expect(moderationReads).toBe(1);
+    expect(cacheRead).toHaveBeenCalledTimes(1);
     cacheRead.mockRestore();
   });
 

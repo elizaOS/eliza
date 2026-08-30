@@ -150,6 +150,8 @@ beforeAll(async () => {
       expected_lifecycle_revision bigint NOT NULL,
       action text NOT NULL DEFAULT 'stop',
       job_id uuid NOT NULL,
+      organization_deletion_request_id uuid,
+      requesting_user_deletion_request_id uuid,
       created_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT billing_cancel_commands_id_org_unique UNIQUE (id, organization_id),
       CONSTRAINT billing_cancel_commands_job_unique UNIQUE (job_id),
@@ -176,6 +178,8 @@ beforeAll(async () => {
       request_digest text NOT NULL,
       command_id uuid NOT NULL,
       requested_by_user_id uuid NOT NULL,
+      organization_deletion_request_id uuid,
+      requesting_user_deletion_request_id uuid,
       created_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT billing_cancel_command_keys_org_key_unique
         UNIQUE (organization_id, idempotency_key_hash),

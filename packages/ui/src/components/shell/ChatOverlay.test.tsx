@@ -91,6 +91,8 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
+import type { SlashCommandCatalogItem } from "../../chat/slash-menu";
+import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
   CHAT_PREFILL_EVENT,
   ELIZA_BACK_INTENT_EVENT,
@@ -420,6 +422,60 @@ describe("ChatOverlay", () => {
     fireEvent.change(input, { target: { value: "ping" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("ping");
+    expect(input.value).toBe("");
+  });
+
+  it("opens an exact view immediately while preserving the model-authored turn", () => {
+    const controller = makeController();
+    const navigateView = vi.fn();
+    const command: SlashCommandCatalogItem = {
+      key: "views",
+      nativeName: "views",
+      description: "Open views",
+      textAliases: ["/views"],
+      scope: "both",
+      acceptsArgs: true,
+      args: [
+        {
+          name: "view",
+          description: "view",
+          dynamicChoices: "views",
+        },
+      ],
+      requiresAuth: false,
+      requiresElevated: false,
+      target: { kind: "navigate", tab: "views", path: "/views" },
+      source: "builtin",
+    };
+    const slash: SlashCommandController = {
+      commands: [command],
+      loading: false,
+      error: false,
+      // Ordinary prose stays model-owned; exact view navigation has a narrow
+      // optimistic path that must remain available independently.
+      naturalShortcutsEnabled: false,
+      resolveChoices: () => ["notes", "calendar"],
+      describeChoice: () => "",
+      resolveSection: () => undefined,
+      isAuthorized: true,
+      isElevated: false,
+      navigateTab: vi.fn(),
+      navigateSettings: vi.fn(),
+      navigateView,
+      clearChat: vi.fn(),
+      openCommandPalette: vi.fn(),
+    };
+
+    render(<ChatOverlay controller={controller} slash={slash} />);
+    const input = screen.getByLabelText("message") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "open notes" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(navigateView).toHaveBeenCalledWith({
+      viewId: "notes",
+      viewPath: undefined,
+    });
+    expect(controller.send).toHaveBeenCalledWith("open notes");
     expect(input.value).toBe("");
   });
 
