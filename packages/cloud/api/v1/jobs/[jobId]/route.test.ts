@@ -146,8 +146,8 @@ describe("jobs route", () => {
 
   test("a stored stack never reaches the owner's response (#23117)", async () => {
     // The stored value is the operator diagnostic — full frames. The API must
-    // hand back the failure summary only: frames disclose absolute server
-    // paths and internal module layout to a non-admin org member.
+    // hand back the generic owner-safe failure: even the first line of an
+    // operator diagnostic is not a stable public contract.
     const storedDiagnostic = [
       "Error: agent_delete failed",
       "    at deleteAgent (/srv/eliza/packages/cloud/shared/src/lib/services/eliza-sandbox.ts:2703:11)",
@@ -180,7 +180,9 @@ describe("jobs route", () => {
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { data: { error: string | null } };
-    expect(body.data.error).toBe("Error: agent_delete failed");
+    expect(body.data.error).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
     expect(body.data.error).not.toContain(" at ");
     expect(body.data.error).not.toContain("/srv/eliza");
     expect(body.data.error).not.toContain(".ts:");

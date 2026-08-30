@@ -102,8 +102,8 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `TWITTER_AUTH_MODE` | No | `env` | `broker` = Eliza Cloud managed OAuth; `env` = OAuth 1.0a static credentials; `oauth` = OAuth 2.0 PKCE interactive |
-| `TWITTER_BROKER_URL` | No | Cloud X token endpoint | Managed broker base URL; override only for a self-hosted cloud API |
-| `TWITTER_BROKER_TOKEN` | No | `ELIZAOS_CLOUD_API_KEY` | Optional explicit broker credential |
+| `TWITTER_BROKER_URL` | No | Cloud X token endpoint | Public-HTTPS managed broker base URL; custom origins require `TWITTER_BROKER_TOKEN` |
+| `TWITTER_BROKER_TOKEN` | Custom broker | `ELIZAOS_CLOUD_API_KEY` on canonical Eliza Cloud origins | Broker-scoped credential; mandatory for non-Eliza origins so the Cloud key is never forwarded |
 | `TWITTER_BROKER_CONNECTION_ROLE` | No | `agent` | `agent` uses the agent's shared X identity; `owner` uses the user's own X connection for a personal agent |
 | `TWITTER_PERSONAL_DM_ROUTER_URL` | No | — | Cloud endpoint for a shared X account to route DMs to each sender's personal Shared or Dedicated agent; mentions stay public |
 | `TWITTER_API_KEY` | env-mode | — | Consumer API key |

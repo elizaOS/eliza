@@ -11,7 +11,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as appleCalendarBridgePolicyImport from "@elizaos/capacitor-calendar/macos-bridge-policy";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -61,6 +61,23 @@ type NativeCalendarEvent = {
   conferenceLink?: string | null;
   organizer?: Record<string, unknown> | null;
   attendees?: NativeCalendarAttendee[];
+  iCalUID?: string | null;
+  originalStartAt?: string | null;
+  lastModifiedAt?: string | null;
+  recurrenceRules?: Array<{
+    frequency?: string;
+    interval?: number;
+    occurrenceCount?: number | null;
+    endDate?: string | null;
+  }>;
+  reminders?: Array<{
+    relativeOffsetSeconds?: number | null;
+    absoluteDate?: string | null;
+    locationTitle?: string | null;
+  }>;
+  sourceIdentifier?: string | null;
+  sourceTitle?: string | null;
+  sourceType?: string | null;
 };
 
 type NativeCalendarSummary = {
@@ -73,6 +90,9 @@ type NativeCalendarSummary = {
   foregroundColor?: string | null;
   timeZone?: string | null;
   selected?: boolean;
+  sourceIdentifier?: string | null;
+  sourceTitle?: string | null;
+  sourceType?: string | null;
 };
 
 type NativeCalendarPayload = {
@@ -122,6 +142,10 @@ type NativeCalendarBridge = {
     payload: NativeCalendarEventPayload,
   ): Promise<NativeCalendarPayload>;
   deleteEvent(eventId: string): Promise<NativeCalendarPayload>;
+  addListener?(
+    eventName: "calendarStoreChanged",
+    listener: (event: { observedAt: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 };
 
 type NativeCalendarCreateEventPayload = {
@@ -158,6 +182,9 @@ type MacCalendarBridge = {
   createEvent(payloadJson: string): string | null;
   updateEvent(eventId: string, payloadJson: string): string | null;
   deleteEvent(eventId: string): string | null;
+  addChangeListener(
+    listener: (event: { observedAt: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 };
 
 let macCalendarBridge: MacCalendarBridge | null | undefined;
@@ -259,8 +286,23 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
           args: [FFIType.ptr],
           returns: FFIType.ptr,
         },
+        elizaCalendarStoreChangesStart: { args: [], returns: FFIType.bool },
+        elizaCalendarStoreChangesPoll: { args: [], returns: FFIType.i32 },
+        elizaCalendarStoreChangesStop: { args: [], returns: FFIType.void },
         freeNativeCString: { args: [FFIType.ptr], returns: FFIType.void },
       });
+
+      const changeListeners = new Set<
+        (event: { observedAt: string }) => void
+      >();
+      let changePollTimer: ReturnType<typeof setInterval> | null = null;
+      let lastChangeGeneration = 0;
+
+      const stopChangePolling = () => {
+        if (changePollTimer) clearInterval(changePollTimer);
+        changePollTimer = null;
+        lib.symbols.elizaCalendarStoreChangesStop();
+      };
 
       const takeNativeString = (value: unknown): string | null => {
         if (!value) return null;
@@ -303,6 +345,59 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
           return takeNativeString(
             lib.symbols.deleteAppleCalendarEventJson(ptr(id)),
           );
+        },
+        async addChangeListener(listener) {
+          changeListeners.add(listener);
+          if (!changePollTimer) {
+            if (!lib.symbols.elizaCalendarStoreChangesStart()) {
+              changeListeners.delete(listener);
+              throw new ElizaError(
+                "Native EventKit change observation could not be registered.",
+                {
+                  code: "APPLE_CALENDAR_CHANGE_OBSERVER_REGISTRATION_FAILED",
+                  severity: "ephemeral",
+                },
+              );
+            }
+            lastChangeGeneration = lib.symbols.elizaCalendarStoreChangesPoll();
+            changePollTimer = setInterval(() => {
+              try {
+                const generation = lib.symbols.elizaCalendarStoreChangesPoll();
+                if (generation === lastChangeGeneration) return;
+                lastChangeGeneration = generation;
+                const event = { observedAt: new Date().toISOString() };
+                for (const current of [...changeListeners]) {
+                  try {
+                    current(event);
+                  } catch (error) {
+                    // error-policy:J7 One consumer failure must not suppress
+                    // delivery to the remaining calendar-change listeners.
+                    logger.warn(
+                      { error },
+                      "[AppleCalendar] Native change listener failed",
+                    );
+                  }
+                }
+              } catch (error) {
+                // error-policy:J7 Native change diagnostics must not kill the
+                // desktop loop; retain the listener for the next poll.
+                logger.warn(
+                  { error },
+                  "[AppleCalendar] Native change poll failed",
+                );
+              }
+            }, 250);
+            changePollTimer.unref?.();
+          }
+          let removed = false;
+          return {
+            remove: async () => {
+              if (removed) return;
+              removed = true;
+              changeListeners.delete(listener);
+              if (changeListeners.size === 0) stopChangePolling();
+            },
+          };
         },
       };
       return macCalendarBridge;
@@ -426,10 +521,21 @@ async function loadIosCalendarBridge(): Promise<NativeCalendarBridge | null> {
           await AppleCalendar.deleteEvent({ eventId }),
         );
       },
+      async addListener(eventName, listener) {
+        return AppleCalendar.addListener(eventName, listener);
+      },
     };
   } catch {
     return null;
   }
+}
+
+export async function subscribeNativeAppleCalendarChanges(
+  listener: (event: { observedAt: string }) => void,
+): Promise<{ remove: () => Promise<void> } | null> {
+  const bridge = await loadNativeCalendarBridge();
+  if (!bridge?.addListener) return null;
+  return bridge.addListener("calendarStoreChanged", listener);
 }
 
 async function loadNativeCalendarBridge(): Promise<NativeCalendarBridge | null> {
@@ -468,6 +574,9 @@ async function loadNativeCalendarBridge(): Promise<NativeCalendarBridge | null> 
     },
     async deleteEvent(eventId) {
       return parseNativePayload(macBridge.deleteEvent(eventId));
+    },
+    async addListener(_eventName, listener) {
+      return macBridge.addChangeListener(listener);
     },
   };
 }
@@ -590,6 +699,45 @@ export function lifeOpsCalendarSummaryFromApple(args: {
   };
 }
 
+const APPLE_RECURRENCE_FREQUENCIES: Record<string, string> = {
+  daily: "DAILY",
+  weekly: "WEEKLY",
+  monthly: "MONTHLY",
+  yearly: "YEARLY",
+};
+
+/**
+ * Projects EventKit recurrence rules onto RFC 5545 RRULE lines. Rules whose
+ * frequency EventKit could not classify are dropped rather than guessed, so a
+ * returned array never claims a cadence the provider did not state.
+ */
+export function appleRecurrenceToRrules(
+  rules: NativeCalendarEvent["recurrenceRules"],
+): string[] {
+  const lines: string[] = [];
+  for (const rule of rules ?? []) {
+    const frequency = APPLE_RECURRENCE_FREQUENCIES[rule.frequency ?? ""];
+    if (!frequency) continue;
+    const parts = [`FREQ=${frequency}`];
+    const interval = Number.isInteger(rule.interval) ? rule.interval : 1;
+    if (interval && interval > 1) parts.push(`INTERVAL=${interval}`);
+    if (
+      typeof rule.occurrenceCount === "number" &&
+      Number.isInteger(rule.occurrenceCount) &&
+      rule.occurrenceCount > 0
+    ) {
+      parts.push(`COUNT=${rule.occurrenceCount}`);
+    } else if (rule.endDate) {
+      const until = new Date(rule.endDate);
+      if (!Number.isNaN(until.getTime())) {
+        parts.push(`UNTIL=${until.toISOString().replace(/[-:]|\.\d{3}/g, "")}`);
+      }
+    }
+    lines.push(`RRULE:${parts.join(";")}`);
+  }
+  return lines;
+}
+
 export function lifeOpsCalendarEventFromApple(args: {
   event: NativeCalendarEvent;
   agentId: string;
@@ -604,6 +752,13 @@ export function lifeOpsCalendarEventFromApple(args: {
   const startAt = event.startAt || syncedAt;
   const endAt = event.endAt || startAt;
   const availability = normalizeAppleAvailability(event.availability);
+  const recurrence = appleRecurrenceToRrules(event.recurrenceRules);
+  // EventKit expands a series into occurrences that all share the series'
+  // event identifier and recurrence rules (occurrenceDate is set for one-off
+  // events too, so it cannot mark a series). Every occurrence therefore
+  // carries the series rule and points at the shared identifier.
+  const seriesId = event.id?.trim() || externalId;
+  const isSeriesOccurrence = recurrence.length > 0 && seriesId.length > 0;
   return {
     id: `${agentId}:apple_calendar:${side}:calendar:${calendarId}:${externalId}`,
     externalId,
@@ -626,10 +781,20 @@ export function lifeOpsCalendarEventFromApple(args: {
     conferenceLink: event.conferenceLink ?? null,
     organizer: event.organizer ?? null,
     attendees: normalizeAttendees(event.attendees),
+    recurrence: recurrence.length > 0 ? recurrence : null,
+    recurringEventId: isSeriesOccurrence ? seriesId : null,
     metadata: {
       appleCalendar: true,
       appleAvailability: availability,
       transparency: availability === "free" ? "transparent" : "opaque",
+      iCalUID: event.iCalUID ?? null,
+      originalStartTime: event.originalStartAt ?? null,
+      appleLastModifiedAt: event.lastModifiedAt ?? null,
+      recurrenceRules: event.recurrenceRules ?? [],
+      reminders: event.reminders ?? [],
+      sourceIdentifier: event.sourceIdentifier ?? null,
+      sourceTitle: event.sourceTitle ?? null,
+      sourceType: event.sourceType ?? null,
     },
     syncedAt,
     updatedAt: syncedAt,
@@ -873,6 +1038,10 @@ export const __testing = {
   },
   setMacCalendarBridgeForTest(bridge: MacCalendarBridge | null): void {
     macCalendarBridgeOverride = bridge;
+  },
+  resetMacCalendarBridgeForTest(): void {
+    macCalendarBridgeOverride = undefined;
+    macCalendarBridge = undefined;
   },
   nativeDylibCandidates,
 };

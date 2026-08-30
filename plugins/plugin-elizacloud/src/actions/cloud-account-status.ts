@@ -21,9 +21,9 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { isCloudAuthApiKeyService } from "../cloud/auth-service-types";
+import { resolveCloudBillingUrl } from "../cloud/base-url";
+import { getBaseURL } from "../utils/config";
 import { createElizaCloudClient } from "../utils/sdk-client";
-
-const TOP_UP_URL = "https://cloud.eliza.app/cloud/billing";
 
 export const NO_CLOUD_MESSAGE =
   "I'm not connected to Eliza Cloud right now — connect your account in Settings (or set ELIZAOS_CLOUD_API_KEY) and I can check your credits.";
@@ -70,12 +70,13 @@ export const cloudAccountStatusAction: Action = {
       });
       const low = balance < 2.0;
       const critical = balance < 0.5;
+      const topUpUrl = resolveCloudBillingUrl(getBaseURL(runtime));
 
       let reply = `Your Eliza Cloud balance is $${balance.toFixed(2)}.`;
       if (critical) {
-        reply += ` That's critically low — top up at ${TOP_UP_URL} to keep your agents running.`;
+        reply += ` That's critically low — top up at ${topUpUrl} to keep your agents running.`;
       } else if (low) {
-        reply += ` That's running low — you can top up at ${TOP_UP_URL}.`;
+        reply += ` That's running low — you can top up at ${topUpUrl}.`;
       }
 
       await callback?.({ text: reply, actions: ["CLOUD_ACCOUNT_STATUS"] });
@@ -89,7 +90,7 @@ export const cloudAccountStatusAction: Action = {
         // the already-delivered balance as a second message (same opt-in as
         // LIST_CLOUD_APPS). Error exits stay un-gated.
         turnComplete: true,
-        data: { balance, low, critical, topUpUrl: TOP_UP_URL },
+        data: { balance, low, critical, topUpUrl },
       };
     } catch (err) {
       logger.warn(

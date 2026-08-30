@@ -582,6 +582,9 @@ export async function applyRestoredConnection(args: {
     const isAgentlessControlPlane = isElizaCloudControlPlaneAgentlessBase(
       resolved.apiBase,
     );
+    const isManagedSharedControlPlane = isManagedCloudSharedAgentBase(
+      resolved.apiBase,
+    );
     const initialToken = usesLocalDockerCredential
       ? resolved.accessToken || null
       : isAgentlessControlPlane
@@ -624,11 +627,7 @@ export async function applyRestoredConnection(args: {
     // refresh it BEFORE handing it to the client so a returning user never
     // boots into a permanently-401ing session (see resolveRestoredStewardToken).
     const stewardToken = await stewardTokenPromise;
-    if (
-      isManagedCloudSharedAgentBase(resolved.apiBase) &&
-      !stewardToken &&
-      !nativeOwnerApiKey
-    ) {
+    if (isManagedSharedControlPlane && !stewardToken && !nativeOwnerApiKey) {
       // Terminal refresh failure or a missing account session makes the saved
       // shared target unsafe. Clear every account-scoped mirror before startup
       // can reinstall the provision-time token or poll the previous agent.
@@ -641,11 +640,11 @@ export async function applyRestoredConnection(args: {
     // pre-refresh JWT can be expired, while native/Electrobun restores may
     // intentionally rely on a host-injected Cloud owner key instead.
     const controlPlaneOwnerToken = stewardToken ?? nativeOwnerApiKey;
-    const tierRepairPromise = isDedicatedCloudAgentBase(
-      restoredActiveServer.apiBase,
-    )
-      ? reconcileLegacyDedicatedCloudApiBase(resolved, controlPlaneOwnerToken)
-      : Promise.resolve(null);
+    const tierRepairPromise =
+      !isManagedSharedControlPlane &&
+      isDedicatedCloudAgentBase(restoredActiveServer.apiBase)
+        ? reconcileLegacyDedicatedCloudApiBase(resolved, controlPlaneOwnerToken)
+        : Promise.resolve(null);
     // Dedicated agent subdomains and explicit local-Docker pair targets use an
     // agent-local bearer for `/api/*`. The edge-owned dedicated path can keep
     // its Steward recovery fallback; a loopback process must never receive a
@@ -653,11 +652,16 @@ export async function applyRestoredConnection(args: {
     clientRef.setToken(
       usesLocalDockerCredential
         ? resolved.accessToken || null
-        : isDedicatedCloudAgentBase(resolved.apiBase)
-          ? resolved.accessToken || stewardToken || null
-          : isAgentlessControlPlane
-            ? stewardToken || nativeOwnerApiKey || null
-            : stewardToken || nativeOwnerApiKey || resolved.accessToken || null,
+        : isManagedSharedControlPlane
+          ? stewardToken || nativeOwnerApiKey || null
+          : isDedicatedCloudAgentBase(resolved.apiBase)
+            ? resolved.accessToken || stewardToken || null
+            : isAgentlessControlPlane
+              ? stewardToken || nativeOwnerApiKey || null
+              : stewardToken ||
+                nativeOwnerApiKey ||
+                resolved.accessToken ||
+                null,
     );
     void tierRepairPromise.then((repaired) => {
       if (!repaired || repaired.apiBase === resolved.apiBase) return;

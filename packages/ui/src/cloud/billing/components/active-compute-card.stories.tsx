@@ -1,4 +1,4 @@
-/** Storybook states for the canonical read-only active compute snapshot. */
+/** Storybook states for the canonical active compute snapshot and controls. */
 
 import type { Meta, StoryObj } from "@storybook/react";
 import { CloudI18nProvider } from "../../shell/CloudI18nProvider";
@@ -47,6 +47,16 @@ const CONTAINER: BillingSnapshotResource = {
   lastBilledAt: null,
   nextBillingAt: "2026-08-22T09:10:11.000Z",
   estimatedNextBillingAt: null,
+  cancellationControl: {
+    displayAction: "stop",
+    method: "POST",
+    mode: "stop",
+    endpoint:
+      "/api/v1/billing/resources/container-story-api/cancel?resourceType=container",
+    expectedLifecycleRevision: 11,
+    eligible: true,
+    blockers: [],
+  },
   ratePerHour: available(exact("0.125000", "usd_per_hour")),
   estimatedRecurringComputeCostPerDay: available(
     exact("3.000000", "usd_per_day"),
@@ -63,11 +73,24 @@ const SANDBOX: BillingSnapshotResource = {
   lastBilledAt: "2026-08-20T08:07:06.000Z",
   nextBillingAt: null,
   estimatedNextBillingAt: "2026-08-23T12:34:56.000Z",
+  cancellationControl: {
+    displayAction: "stop_compute",
+    method: "POST",
+    mode: "stop",
+    endpoint:
+      "/api/v1/billing/resources/sandbox-story-research/cancel?resourceType=agent_sandbox",
+    expectedLifecycleRevision: 5,
+    eligible: false,
+    blockers: ["owner_or_admin_role_required"],
+  },
   ratePerHour: available(exact("0.050000", "usd_per_hour")),
   estimatedRecurringComputeCostPerDay: available(
     exact("1.200000", "usd_per_day"),
   ),
 };
+
+const CONTAINER_CANCELLATION_KEY = "container:container-story-api:11";
+const RECEIPT_ID = "22222222-2222-4222-8222-222222222222";
 
 function snapshot(
   overrides: Partial<BillingSnapshotV2View> = {},
@@ -102,7 +125,11 @@ const meta = {
       </CloudI18nProvider>
     ),
   ],
-  args: { onRetry: () => undefined },
+  args: {
+    onRetry: () => undefined,
+    onRequestCancellation: () => undefined,
+    onCheckCancellationReceipt: () => undefined,
+  },
 } satisfies Meta<typeof ActiveComputeCardView>;
 
 export default meta;
@@ -118,6 +145,63 @@ export const AvailableTwoResources: Story = {
       refreshing: false,
       refreshPaused: false,
       refreshFailed: false,
+    },
+  },
+};
+
+export const CancellationAccepted: Story = {
+  args: {
+    state: {
+      kind: "ready",
+      snapshot: snapshot(),
+      refreshing: false,
+      refreshPaused: false,
+      refreshFailed: false,
+    },
+    cancellationStates: {
+      [CONTAINER_CANCELLATION_KEY]: {
+        kind: "accepted",
+        receiptId: RECEIPT_ID,
+      },
+    },
+  },
+};
+
+export const CancellationProviderConfirmed: Story = {
+  args: {
+    state: {
+      kind: "ready",
+      snapshot: snapshot(),
+      refreshing: false,
+      refreshPaused: false,
+      refreshFailed: false,
+    },
+    cancellationStates: {
+      [CONTAINER_CANCELLATION_KEY]: {
+        kind: "provider_confirmed",
+        receiptId: RECEIPT_ID,
+        computeStopped: true,
+        providerStopped: true,
+        retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
+      },
+    },
+  },
+};
+
+export const CancellationNeedsAttention: Story = {
+  args: {
+    state: {
+      kind: "ready",
+      snapshot: snapshot(),
+      refreshing: false,
+      refreshPaused: false,
+      refreshFailed: false,
+    },
+    cancellationStates: {
+      [CONTAINER_CANCELLATION_KEY]: {
+        kind: "terminal_attention",
+        receiptId: RECEIPT_ID,
+      },
     },
   },
 };

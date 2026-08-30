@@ -53,6 +53,7 @@ function privateUpdate(overrides: Record<string, unknown> = {}): string {
 function groupUpdate(
   text: string,
   chatType: "group" | "supergroup" = "supergroup",
+  overrides: Record<string, unknown> = {},
 ): string {
   return JSON.stringify({
     update_id: 7001,
@@ -62,6 +63,7 @@ function groupUpdate(
       from: { id: 42, first_name: "Ada", is_bot: false },
       chat: { id: -100123456789, type: chatType },
       text,
+      ...overrides,
     },
   });
 }
@@ -298,6 +300,19 @@ describe("telegramAdapter.extractEvent", () => {
       groupInvocation: "ambient",
     });
     expect(event?.groupActorRole).toBeUndefined();
+  });
+
+  test("preserves a Telegram forum topic on the normalized event", async () => {
+    const event = await telegramAdapter.extractEvent(
+      groupUpdate("hello topic", "supergroup", { message_thread_id: 909 }),
+      { botUsername: "ElizaBot" },
+    );
+
+    expect(event).toMatchObject({
+      chatId: "-100123456789",
+      providerThreadId: "909",
+      groupInvocation: "ambient",
+    });
   });
 
   test("resolves bot identity through getMe for a group ambient message", async () => {
@@ -647,5 +662,32 @@ describe("telegramAdapter outbound delivery", () => {
 
     await telegramAdapter.sendTypingIndicator({ botToken }, telegramEvent);
     expect(body).toEqual({ chat_id: "42", action: "typing" });
+  });
+
+  test("keeps replies and typing inside the inbound forum topic", async () => {
+    const botToken = "9013:thread";
+    const bodies: unknown[] = [];
+    globalThis.fetch = mock(async (_input, init) => {
+      const request = new Request("https://unused", init);
+      const body = await request.json();
+      bodies.push(body);
+      return "text" in (body as Record<string, unknown>)
+        ? jsonOk({ message_id: 79 })
+        : jsonOk(true);
+    }) as unknown as typeof fetch;
+    const topicEvent = { ...telegramEvent, providerThreadId: "909" };
+
+    await telegramAdapter.sendReply({ botToken }, topicEvent, "hello topic");
+    await telegramAdapter.sendTypingIndicator({ botToken }, topicEvent);
+
+    expect(bodies).toEqual([
+      {
+        chat_id: "42",
+        message_thread_id: 909,
+        text: "hello topic",
+        parse_mode: "Markdown",
+      },
+      { chat_id: "42", message_thread_id: 909, action: "typing" },
+    ]);
   });
 });

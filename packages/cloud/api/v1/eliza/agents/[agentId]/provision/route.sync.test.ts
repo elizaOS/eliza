@@ -2,9 +2,10 @@
  * POST /api/v1/eliza/agents/:id/provision `sync` is provision-wait identity,
  * leftover tax after agent-resume sync (#21099). Stock develop treated any
  * non-exact `true` token as async, so `sync=TRUE` still enqueued a 202 job
- * instead of the blocking fallback. The blocking compatibility path is also
- * fenced to canonical, user-owned, live container capacity. Credit /
- * warm-pool / enqueue parsers stay untouched.
+ * instead of the blocking fallback. The compatibility path is also fenced to
+ * canonical, user-owned, live container capacity. Credit /
+ * warm-pool / enqueue parsers stay intact while the compatibility token routes
+ * through the admitted queue instead of calling a provider inline.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
@@ -236,7 +237,7 @@ describe("POST /api/v1/eliza/agents/:id/provision sync identity", () => {
     expectNoProvisionEffects();
   });
 
-  test("keeps production sync=true async when the compatibility flag is disabled", async () => {
+  test("keeps production sync=true fenced when the compatibility flag is disabled", async () => {
     const previousNodeEnv = process.env.NODE_ENV;
     const previousAllowSync = process.env.ALLOW_AGENT_SYNC_PROVISIONING;
     process.env.NODE_ENV = "production";
@@ -256,10 +257,10 @@ describe("POST /api/v1/eliza/agents/:id/provision sync identity", () => {
     try {
       const response = await post("?sync=true");
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(409);
       expect(await response.json()).toMatchObject({
-        success: true,
-        source: "shared_runtime",
+        success: false,
+        error: "Agent provision requires a container-backed execution tier",
       });
       expect(getAgentForWrite).toHaveBeenCalledTimes(1);
       expectNoProvisionEffects();
@@ -415,7 +416,7 @@ describe("POST /api/v1/eliza/agents/:id/provision sync identity", () => {
   });
 
   test.each([...CONTAINER_BACKED_EXECUTION_TIERS])(
-    "accepts canonical %s capacity on the blocking provision path",
+    "queues canonical %s capacity on the admitted provision path",
     async (executionTier) => {
       getAgentForWrite.mockImplementationOnce(async () =>
         provisionAgent({
@@ -432,25 +433,52 @@ describe("POST /api/v1/eliza/agents/:id/provision sync identity", () => {
 
       const response = await post("?sync=true");
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(202);
       expect(getAgentForWrite).toHaveBeenCalledTimes(1);
       expect(getAgentForWrite).toHaveBeenCalledWith(AGENT_ID, ORG_A);
       expect(checkAgentCreditGate).toHaveBeenCalledTimes(1);
-      expect(provision).toHaveBeenCalledTimes(1);
-      expect(provision).toHaveBeenCalledWith(AGENT_ID, ORG_A);
-      expect(enqueueAgentProvisionOnce).not.toHaveBeenCalled();
-      expect(checkProvisioningWorkerHealth).not.toHaveBeenCalled();
-      expect(triggerImmediate).not.toHaveBeenCalled();
-      expect(claimWarmContainer).not.toHaveBeenCalled();
-      const body = await response.json();
-      expect(body).toMatchObject({
-        data: {
-          webUiUrl: `https://${AGENT_ID}.staging.elizacloud.ai`,
-        },
+      expect(provision).not.toHaveBeenCalled();
+      expect(enqueueAgentProvisionOnce).toHaveBeenCalledWith({
+        agentId: AGENT_ID,
+        organizationId: ORG_A,
+        userId: "user-1",
+        agentName: "needs-provisioning",
+        webhookUrl: undefined,
+        expectedLifecycleRevision: 1,
       });
-      expect(JSON.stringify(body)).not.toMatch(/100\.64|10\.0|192\.168/);
+      expect(checkProvisioningWorkerHealth).toHaveBeenCalledTimes(1);
+      expect(triggerImmediate).toHaveBeenCalledTimes(1);
+      expect(claimWarmContainer).not.toHaveBeenCalled();
     },
   );
+
+  test("does not call the sync provision provider after deletion fences during enqueue", async () => {
+    getAgentForWrite.mockImplementationOnce(async () =>
+      provisionAgent({
+        agent_name: "needs-provisioning",
+        execution_tier: "dedicated-lazy",
+        status: "stopped",
+        bridge_url: null,
+        health_url: null,
+      }),
+    );
+    let deletionFenceCommitted = false;
+    enqueueAgentProvisionOnce.mockImplementationOnce(async () => {
+      deletionFenceCommitted = true;
+      return {
+        job: { id: "provision-job-race", status: "pending" },
+        created: true,
+      };
+    });
+
+    const response = await post("?sync=true");
+
+    expect(response.status).toBe(202);
+    expect(deletionFenceCommitted).toBe(true);
+    expect(enqueueAgentProvisionOnce).toHaveBeenCalledTimes(1);
+    expect(provision).not.toHaveBeenCalled();
+    expect(claimWarmContainer).not.toHaveBeenCalled();
+  });
 
   test.each(["FALSE", "TRUE", "0", "1", "no", "yes", "foo", "1e2"])(
     "rejects sync=%s before lookup, credit gate, provision, and enqueue",

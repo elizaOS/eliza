@@ -5,7 +5,7 @@
  * never flashes mid-hydration. Mountable standalone or inside a modal.
  */
 
-import { ScrollText } from "lucide-react";
+import { ChevronDown, ScrollText } from "lucide-react";
 import {
   memo,
   type ReactNode,
@@ -28,18 +28,20 @@ import { formatTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { ListSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 const LOG_HYDRATION_SETTLE_MS = 1200;
 const LOG_INITIAL_SKELETON_ROWS = 4;
-const LOG_INITIAL_SKELETON_ROW_CLASS = "h-[11.375rem]";
+const LOG_INITIAL_SKELETON_ROW_CLASS = "h-16";
 
 function logEntryKey(entry: LogEntry, index: number): string {
   return `${entry.timestamp}|${entry.source}|${entry.level}|${index}`;
@@ -57,64 +59,34 @@ function logEntryKey(entry: LogEntry, index: number): string {
 const LogRow = memo(function LogRow({ entry }: { entry: LogEntry }) {
   return (
     <div
-      className="flex flex-col gap-1 p-3 text-sm md:flex-row md:items-start md:gap-3"
+      className="flex min-w-0 items-start gap-3 border-b border-border/35 px-1 py-4 text-sm last:border-b-0"
       data-testid="log-entry"
     >
-      {/* Timestamp */}
-      <span className="shrink-0 whitespace-nowrap text-xs-tight text-muted tabular-nums md:w-[5.75rem]">
-        {formatTime(entry.timestamp, { fallback: "—" })}
-      </span>
-
-      {/* Level */}
+      <div className="min-w-0 flex-1">
+        <p className="break-words font-medium leading-5 text-txt">
+          {entry.message}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs-tight text-muted">
+          <span className="whitespace-nowrap tabular-nums">
+            {formatTime(entry.timestamp, { fallback: "—" })}
+          </span>
+          <span aria-hidden>·</span>
+          <span className="break-words">{entry.source}</span>
+          {(entry.tags ?? []).map((tag) => (
+            <span key={tag}>· {tag}</span>
+          ))}
+        </div>
+      </div>
       <span
-        className={`shrink-0 font-semibold uppercase tracking-[0.08em] text-xs-tight md:w-14 ${
+        className={`shrink-0 text-xs-tight font-semibold uppercase tracking-[0.08em] ${
           entry.level === "error"
             ? "text-danger"
             : entry.level === "warn"
               ? "text-warning"
-              : entry.level === "info"
-                ? "text-muted-strong"
-                : entry.level === "debug"
-                  ? "text-muted"
-                  : "text-muted"
+              : "text-muted"
         }`}
       >
         {entry.level}
-      </span>
-
-      {/* Source */}
-      <span className="min-w-0 shrink-0 break-words text-xs-tight text-muted md:w-20 md:truncate">
-        [{entry.source}]
-      </span>
-
-      {/* Tag badges */}
-      <span className="inline-flex max-w-full shrink-0 flex-wrap gap-1 md:max-w-[14rem]">
-        {(entry.tags ?? []).map((t: string) => {
-          return (
-            <span
-              key={t}
-              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium ${
-                (
-                  {
-                    agent: "border-accent/25 bg-accent/10 text-txt-strong",
-                    cloud: "border-accent/20 bg-accent/8 text-accent",
-                    plugins: "border-accent/25 bg-accent/10 text-txt-strong",
-                  } as Record<string, string>
-                )[t] ?? "border-border/35 bg-bg-hover text-muted-strong"
-              }`}
-              style={{
-                fontFamily: "var(--font-body, sans-serif)",
-              }}
-            >
-              <span className="break-all">{t}</span>
-            </span>
-          );
-        })}
-      </span>
-
-      {/* Message */}
-      <span className="min-w-0 flex-1 break-words leading-6 text-txt">
-        {entry.message}
       </span>
     </div>
   );
@@ -221,35 +193,11 @@ function LogsViewBody() {
     setSearchQuery("");
   };
 
-  const levelControl = useAgentElement<HTMLButtonElement>({
-    id: "logs-filter-level",
-    role: "select",
-    label: t("logsview.AllLevels"),
+  const filterControl = useAgentElement<HTMLButtonElement>({
+    id: "logs-filter",
+    role: "button",
+    label: "Filter logs",
     group: "logs",
-    options: ["all", "debug", "info", "warn", "error"],
-    getValue: () => (logLevelFilter === "" ? "all" : logLevelFilter),
-    onFill: (value) => setState("logLevelFilter", value === "all" ? "" : value),
-  });
-
-  const sourceControl = useAgentElement<HTMLButtonElement>({
-    id: "logs-filter-source",
-    role: "select",
-    label: t("logsview.AllSources"),
-    group: "logs",
-    options: ["all", ...logSources],
-    getValue: () => (logSourceFilter === "" ? "all" : logSourceFilter),
-    onFill: (value) =>
-      setState("logSourceFilter", value === "all" ? "" : value),
-  });
-
-  const tagControl = useAgentElement<HTMLButtonElement>({
-    id: "logs-filter-tag",
-    role: "select",
-    label: t("logsview.AllTags"),
-    group: "logs",
-    options: ["all", ...logTags],
-    getValue: () => (logTagFilter === "" ? "all" : logTagFilter),
-    onFill: (value) => setState("logTagFilter", value === "all" ? "" : value),
   });
 
   const clearControl = useAgentElement<HTMLButtonElement>({
@@ -293,104 +241,124 @@ function LogsViewBody() {
 
   return (
     <div className="flex h-full flex-col gap-3" data-testid="logs-view">
-      {/* Filters row — filters left, count beside the title */}
-      <PagePanel variant="surface" className="space-y-3">
+      <PagePanel
+        variant="section"
+        className="space-y-3 border-b border-border/35 pb-3"
+      >
         <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-muted tabular-nums">
-            {filteredLogs.length}
-          </span>
-          {errorCount > 0 ? (
-            <span className="text-xs text-danger tabular-nums">
-              {t("logsview.ErrorCount", {
-                count: errorCount,
-                defaultValue: "{{count}} errors",
-              })}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={logLevelFilter === "" ? "all" : logLevelFilter}
-            onValueChange={(val: string) => {
-              setState("logLevelFilter", val === "all" ? "" : val);
-            }}
-          >
-            <SelectTrigger
-              ref={levelControl.ref}
-              className="h-11 w-40 rounded-sm text-sm text-txt"
-              {...levelControl.agentProps}
-            >
-              <SelectValue placeholder={t("logsview.AllLevels")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("logsview.AllLevels")}</SelectItem>
-              <SelectItem value="debug">{t("logsview.Debug")}</SelectItem>
-              <SelectItem value="info">{t("logsview.Info")}</SelectItem>
-              <SelectItem value="warn">{t("logsview.Warn")}</SelectItem>
-              <SelectItem value="error">{t("common.error")}</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={logSourceFilter === "" ? "all" : logSourceFilter}
-            onValueChange={(val: string) => {
-              setState("logSourceFilter", val === "all" ? "" : val);
-            }}
-          >
-            <SelectTrigger
-              ref={sourceControl.ref}
-              className="h-11 w-40 rounded-sm text-sm text-txt"
-              {...sourceControl.agentProps}
-            >
-              <SelectValue placeholder={t("logsview.AllSources")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("logsview.AllSources")}</SelectItem>
-              {logSources.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {logTags.length > 0 && (
-            <Select
-              value={logTagFilter === "" ? "all" : logTagFilter}
-              onValueChange={(val: string) => {
-                setState("logTagFilter", val === "all" ? "" : val);
-              }}
-            >
-              <SelectTrigger
-                ref={tagControl.ref}
-                className="h-11 w-40 rounded-sm text-sm text-txt"
-                {...tagControl.agentProps}
-              >
-                <SelectValue placeholder={t("logsview.AllTags")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("logsview.AllTags")}</SelectItem>
-                {logTags.map((tag) => (
-                  <SelectItem key={tag} value={tag}>
-                    {tag}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {hasActiveFilters && (
-            <Button
-              ref={clearControl.ref}
-              variant="outline"
-              size="sm"
-              className="logs-toolbar-button"
-              onClick={handleClearFilters}
-              {...clearControl.agentProps}
-            >
-              {t("logsview.ClearFilters")}
-            </Button>
-          )}
+          <span className="text-sm text-muted">Show</span>
+          <div className="flex items-center gap-3">
+            {errorCount > 0 ? (
+              <span className="text-xs text-danger tabular-nums">
+                {t("logsview.ErrorCount", {
+                  count: errorCount,
+                  defaultValue: "{{count}} errors",
+                })}
+              </span>
+            ) : null}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  ref={filterControl.ref}
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2"
+                  {...filterControl.agentProps}
+                >
+                  <span>{hasActiveFilters ? "Filtered" : "All logs"}</span>
+                  <span className="text-muted tabular-nums">
+                    {filteredLogs.length}
+                  </span>
+                  <ChevronDown className="size-4 text-muted" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-56">
+                <DropdownMenuLabel>Level</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={logLevelFilter === "" ? "all" : logLevelFilter}
+                  onValueChange={(value) =>
+                    setState("logLevelFilter", value === "all" ? "" : value)
+                  }
+                >
+                  <DropdownMenuRadioItem value="all">
+                    {t("logsview.AllLevels")}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="debug">
+                    {t("logsview.Debug")}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="info">
+                    {t("logsview.Info")}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="warn">
+                    {t("logsview.Warn")}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="error">
+                    {t("common.error")}
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+                {logSources.length > 0 ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Source</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={logSourceFilter === "" ? "all" : logSourceFilter}
+                      onValueChange={(value) =>
+                        setState(
+                          "logSourceFilter",
+                          value === "all" ? "" : value,
+                        )
+                      }
+                    >
+                      <DropdownMenuRadioItem value="all">
+                        {t("logsview.AllSources")}
+                      </DropdownMenuRadioItem>
+                      {logSources.map((source) => (
+                        <DropdownMenuRadioItem key={source} value={source}>
+                          {source}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </>
+                ) : null}
+                {logTags.length > 0 ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Tag</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={logTagFilter === "" ? "all" : logTagFilter}
+                      onValueChange={(value) =>
+                        setState("logTagFilter", value === "all" ? "" : value)
+                      }
+                    >
+                      <DropdownMenuRadioItem value="all">
+                        {t("logsview.AllTags")}
+                      </DropdownMenuRadioItem>
+                      {logTags.map((tag) => (
+                        <DropdownMenuRadioItem key={tag} value={tag}>
+                          {tag}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </>
+                ) : null}
+                {hasActiveFilters ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <Button
+                      ref={clearControl.ref}
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={handleClearFilters}
+                      {...clearControl.agentProps}
+                    >
+                      {t("logsview.ClearFilters")}
+                    </Button>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
         {logLoadError ? (
           <div
@@ -412,9 +380,9 @@ function LogsViewBody() {
 
       {/* Log entries — full remaining height */}
       <PagePanel
-        variant="surface"
+        variant="section"
         data-testid="logs-entry-panel"
-        className="flex-1 min-h-0 overflow-y-auto font-mono text-sm"
+        className="flex-1 min-h-0 overflow-y-auto text-sm"
         {...logPanelShiftIntentProps}
       >
         {initialLoading && filteredLogs.length === 0 && !logLoadError ? (
@@ -423,9 +391,9 @@ function LogsViewBody() {
             rows={LOG_INITIAL_SKELETON_ROWS}
             rowClassName={LOG_INITIAL_SKELETON_ROW_CLASS}
           />
-        ) : filteredLogs.length === 0 ? (
+        ) : filteredLogs.length === 0 && !logLoadError ? (
           <PagePanel.Empty
-            className="flex-1"
+            className="flex-1 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:gap-2 [@media(max-height:480px)]:p-3"
             icon={<ScrollText className="size-6" aria-hidden />}
             title={
               hasActiveFilters

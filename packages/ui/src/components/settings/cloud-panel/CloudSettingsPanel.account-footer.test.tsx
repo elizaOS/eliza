@@ -159,7 +159,7 @@ describe("CloudSettingsPanel account footer navigation", () => {
         screen.getByRole("heading", { level: 1, name: sectionLabel }),
       ).toBeTruthy();
       expect(screen.queryByRole("button", { name: "Connected" })).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+      fireEvent.click(screen.getByRole("button", { name: "Back to Settings" }));
       expect(screen.getByRole("button", { name: /General/ })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Connected" })).toBeTruthy();
     },
@@ -176,7 +176,7 @@ describe("CloudSettingsPanel account footer navigation", () => {
       fireEvent.click(screen.getByRole("link", { name: label }));
       expect(screen.getByTestId(`section-${sectionId}`)).toBeTruthy();
 
-      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+      fireEvent.click(screen.getByRole("button", { name: "Back to Settings" }));
       expect(screen.getByRole("button", { name: "Connected" })).toBeTruthy();
     },
   );

@@ -17,10 +17,12 @@ root [`CLAUDE.md`](../../CLAUDE.md).
   backward compatibility. Runtime and codegen paths use complete authored
   descriptions directly; the alias must never rewrite text.
 - Also owns the action/provider **specs** under `specs/` and the generators in `scripts/` that build a merged plugin action spec and emit `packages/core/src/generated/action-docs.ts`.
-- Bun and `eliza-source` workspace consumers load the maintained TypeScript
-  source directly, and workspace TypeScript consumers resolve source types
-  before `dist/` exists. The generated publish manifest rewrites those type
-  paths so native Node and published-package consumers load compiled `dist/`
+- Bun, Vite's `module` condition, explicitly configured `eliza-source`
+  consumers, and targeted Vitest source aliases load the maintained TypeScript
+  source directly. Workspace TypeScript consumers resolve source types before
+  `dist/` exists. Normal native Node workspace consumers continue to load
+  compiled `dist/` JavaScript. The generated publish manifest rewrites every
+  source-facing condition so published-package consumers load compiled
   JavaScript and declarations. Both manifests expose only the package root.
   Internal source imports use explicit `.js` specifiers so NodeNext typechecking
   and emitted native ESM resolve the same sibling modules.
@@ -72,9 +74,11 @@ bun run --cwd packages/prompts clean                    # rm -rf dist
 maintained source modules. The package test lane builds and packs `dist/`
 exactly as the release path does, verifies that the tarball contains the
 compiled `dist/` contract rather than TypeScript runtime source, installs it
-into an isolated native Node consumer, separately exercises Bun's workspace
-package resolution, and emits the core prompt declarations after removing
-`dist/`; either path failing is a package-contract error.
+into an isolated native Node consumer, and proves that all published
+source-facing conditions still load compiled JavaScript. It separately
+exercises Bun's workspace resolution, native Node's compiled workspace entry,
+Vitest-compatible Vite resolution of core with `dist/` removed, and clean core
+declaration emission; any path failing is a package-contract error.
 
 ## Config / env vars
 

@@ -368,14 +368,15 @@ describe("Telegram message connector adapter", () => {
     expect(runtime.getMemories).toHaveBeenCalledWith({
       tableName: "messages",
       roomId,
-      limit: 200,
+      limit: 500,
+      offset: 0,
       orderBy: "createdAt",
       orderDirection: "desc",
     });
     expect(result).toEqual([acctAMemory, legacyMemory]);
   });
 
-  it("searches fetched connector messages case-insensitively with a sane fallback limit", async () => {
+  it("searches complete connector history case-insensitively without a fallback result cap", async () => {
     const roomId = "room-1" as never;
     const runtime = {
       ...createRuntime(),
@@ -415,14 +416,39 @@ describe("Telegram message connector adapter", () => {
       {
         target: { source: "telegram", accountId: "acct-a", roomId },
         query: "deploy",
-        limit: -5,
       },
     );
 
     expect(runtime.getMemories).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 100 }),
+      expect.objectContaining({ limit: 500, offset: 0 }),
     );
     expect(result.map((memory) => memory.id)).toEqual(["memory-1", "memory-3"]);
+  });
+
+  it("rejects an invalid search limit before reading connector history", async () => {
+    const roomId = "room-1" as never;
+    const runtime = {
+      ...createRuntime(),
+      getMemories: vi.fn(),
+    };
+    const service = createTelegramService({
+      runtime,
+      bot: null,
+      defaultAccountId: "acct-a",
+      accountStates: new Map([["acct-a", { accountId: "acct-a" }]]),
+    });
+
+    await expect(
+      service.searchConnectorMessages(
+        { runtime, accountId: "acct-a" } as never,
+        {
+          target: { source: "telegram", accountId: "acct-a", roomId },
+          query: "deploy",
+          limit: -5,
+        },
+      ),
+    ).rejects.toMatchObject({ code: "TELEGRAM_MESSAGE_LIMIT_INVALID" });
+    expect(runtime.getMemories).not.toHaveBeenCalled();
   });
 
   it("starts non-default accounts when the default account has no token", async () => {

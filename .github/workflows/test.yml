@@ -248,6 +248,9 @@ jobs:
       - name: Run server tests
         run: bun run test:server
 
+      - name: Run synthetic-world transaction tests
+        run: bun run --cwd packages/synthetic-world test
+
   client-tests:
     name: Client Tests
     needs: changes

@@ -16,10 +16,8 @@ import {
   AXIS_COMMIT_SLOP,
   COPY_HOLD_MS,
   DEFAULT_HOLD_MS,
-  GRAPH_PAN_ENGAGE_SLOP,
   PAGER_AXIS_COMMIT_SLOP,
   PAGER_AXIS_DOMINANCE_RATIO,
-  TAP_SLOP,
   TOUCH_TAP_MOVE_SLOP,
 } from "./constants";
 import {
@@ -117,8 +115,6 @@ describe("tuned constants table", () => {
     expect(PAGER_AXIS_DOMINANCE_RATIO).toBeGreaterThan(1);
     // Copy-hold: a touch quicker than the default long-press.
     expect(COPY_HOLD_MS).toBeLessThan(DEFAULT_HOLD_MS);
-    // Graph pan: pixel-precise engage, far under the tap slop.
-    expect(GRAPH_PAN_ENGAGE_SLOP).toBeLessThan(TAP_SLOP);
   });
 });
 

@@ -76,6 +76,12 @@ const e2eEnv = {
   // the wrapper still gets a working KMS.
   NODE_ENV: process.env.NODE_ENV || "test",
   CLOUD_E2E: process.env.CLOUD_E2E || "1",
+  // Paid voice-provider admission requires an atomic Redis implementation.
+  // The local workerd lane has no external Redis binding, so opt it into the
+  // repository's explicit Lua-capable in-memory test backend. Without this,
+  // the real WebSocket route correctly fails closed with HTTP 503 before the
+  // binary-first middleware contract can exercise the 101 upgrade.
+  MOCK_REDIS: process.env.MOCK_REDIS || "1",
   ...(e2eRunReceipt ? { CLOUD_E2E_RUN_RECEIPT: e2eRunReceipt } : {}),
   ELIZA_KMS_BACKEND: process.env.ELIZA_KMS_BACKEND || "memory",
   // Keep the real voice upgrade route reachable in the pinned-Workerd lane.

@@ -3,7 +3,7 @@
  * tool and reasoning disclosures shared by Orchestrator and Cockpit views.
  */
 
-import { Button } from "@elizaos/ui";
+import { Badge, Button, Card, Separator } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Check,
@@ -199,13 +199,14 @@ export function ToolBody({ tool }: { tool: ToolView }): ReactNode {
   // header, so the body carries only its output — no redundant `$` echo.
   if (tool.output) {
     blocks.push(
-      <pre
-        key="out"
-        className="overflow-auto rounded-md border border-border/40 bg-bg/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-muted"
-        style={{ maxHeight: "14rem" }}
-      >
-        {clampOutput(tool.output)}
-      </pre>,
+      <Card key="out" asChild variant="codeFrame">
+        <pre
+          className="overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-muted"
+          style={{ maxHeight: "14rem" }}
+        >
+          {clampOutput(tool.output)}
+        </pre>
+      </Card>,
     );
   }
 
@@ -268,61 +269,62 @@ function ToolCallCard({
     onActivate: hasBody ? toggle : undefined,
   });
   return (
-    <div
-      className="rounded-md border border-border/50 bg-card/50"
-      data-testid="orchestrator-tool-call"
-    >
-      <Button
-        ref={ref}
-        variant="sectionToggle"
-        size="content"
-        align="start"
-        type="button"
-        disabled={!hasBody}
-        onClick={toggle}
-        className="disabled:cursor-default"
-        {...agentProps}
-      >
-        {hasBody ? (
-          <ChevronRight
-            className={`size-3 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}
-          />
-        ) : (
-          <span className="w-3 shrink-0" />
-        )}
-        <Icon className="size-3.5 shrink-0 text-muted-strong" />
-        <span className="shrink-0 text-xs font-semibold text-txt">
-          {toolVerb(tool)}
-        </span>
-        {target && target !== tool.title ? (
-          <span
-            title={target}
-            className="min-w-0 flex-1 truncate font-mono text-2xs text-muted"
-          >
-            {target}
-          </span>
-        ) : (
-          <span className="flex-1" />
-        )}
-        {diffStat && (diffStat.added > 0 || diffStat.removed > 0) ? (
-          <DiffStat added={diffStat.added} removed={diffStat.removed} />
-        ) : null}
-        <span
-          className={`flex shrink-0 items-center gap-1 text-2xs ${badge.tone}`}
+    <Card asChild variant="panel">
+      <div data-testid="orchestrator-tool-call">
+        <Button
+          ref={ref}
+          variant="sectionToggle"
+          size="content"
+          align="start"
+          type="button"
+          disabled={!hasBody}
+          onClick={toggle}
+          className="disabled:cursor-default"
+          {...agentProps}
         >
-          <BadgeIcon className={`size-3 ${badge.spin ? "animate-spin" : ""}`} />
-          {badge.label}
-        </span>
-        {meta.length > 0 ? (
-          <span className="shrink-0 font-mono text-2xs tabular-nums text-muted/70">
-            {meta.join(" · ")}
+          {hasBody ? (
+            <ChevronRight
+              className={`size-3 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}
+            />
+          ) : (
+            <span className="w-3 shrink-0" />
+          )}
+          <Icon className="size-3.5 shrink-0 text-muted-strong" />
+          <span className="shrink-0 text-xs font-semibold text-txt">
+            {toolVerb(tool)}
           </span>
+          {target && target !== tool.title ? (
+            <span
+              title={target}
+              className="min-w-0 flex-1 truncate font-mono text-2xs text-muted"
+            >
+              {target}
+            </span>
+          ) : (
+            <span className="flex-1" />
+          )}
+          {diffStat && (diffStat.added > 0 || diffStat.removed > 0) ? (
+            <DiffStat added={diffStat.added} removed={diffStat.removed} />
+          ) : null}
+          <span
+            className={`flex shrink-0 items-center gap-1 text-2xs ${badge.tone}`}
+          >
+            <BadgeIcon
+              className={`size-3 ${badge.spin ? "animate-spin" : ""}`}
+            />
+            {badge.label}
+          </span>
+          {meta.length > 0 ? (
+            <span className="shrink-0 font-mono text-2xs tabular-nums text-muted/70">
+              {meta.join(" · ")}
+            </span>
+          ) : null}
+        </Button>
+        {open ? (
+          <div className="px-2.5 pb-2">{<ToolBody tool={tool} />}</div>
         ) : null}
-      </Button>
-      {open ? (
-        <div className="px-2.5 pb-2">{<ToolBody tool={tool} />}</div>
-      ) : null}
-    </div>
+      </div>
+    </Card>
   );
 }
 
@@ -341,17 +343,16 @@ export function ConversationBlockView({
         className="flex flex-col items-end"
         data-testid="orchestrator-user-message"
       >
-        <div
-          className="rounded-lg border border-border/50 bg-surface px-3 py-2 text-xs text-txt"
-          style={{ maxWidth: "80%" }}
-        >
-          <div className="whitespace-pre-wrap break-words leading-relaxed">
-            {block.content}
+        <Card asChild variant="insetCompact">
+          <div className="text-xs text-txt" style={{ maxWidth: "80%" }}>
+            <div className="whitespace-pre-wrap break-words leading-relaxed">
+              {block.content}
+            </div>
+            <div className="mt-1 text-3xs tabular-nums text-muted/70">
+              {formatClockTime(block.at, locale)}
+            </div>
           </div>
-          <div className="mt-1 text-3xs tabular-nums text-muted/70">
-            {formatClockTime(block.at, locale)}
-          </div>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -365,10 +366,9 @@ export function ConversationBlockView({
         data-testid="orchestrator-agent-message"
       >
         <div className="mb-1 flex items-center gap-2 text-3xs text-muted">
-          <span
-            className="inline-block size-1.5 rounded-full bg-muted-strong"
-            aria-hidden
-          />
+          <Badge asChild variant="mutedDot">
+            <span className="inline-block size-1.5" aria-hidden />
+          </Badge>
           <span className="font-semibold tracking-tight text-txt/90">
             {block.senderName}
           </span>
@@ -376,15 +376,17 @@ export function ConversationBlockView({
             {formatClockTime(block.at, locale)}
           </span>
         </div>
-        <div
-          className={
-            block.tone === "error"
-              ? "w-full border-l-2 border-destructive/40 pl-2.5 text-destructive"
-              : "w-full text-txt"
-          }
-        >
-          <MarkdownText text={block.content} />
-        </div>
+        <Card asChild variant="transparentSquare">
+          <div
+            className={
+              block.tone === "error"
+                ? "w-full pl-2.5 text-destructive"
+                : "w-full text-txt"
+            }
+          >
+            <MarkdownText text={block.content} />
+          </div>
+        </Card>
       </div>
     );
   }
@@ -410,12 +412,12 @@ export function ConversationBlockView({
       className="flex items-center gap-2 px-1 text-2xs text-muted"
       data-testid="orchestrator-notice"
     >
-      <span className="h-px flex-1 bg-border/40" />
+      <Separator className="flex-1" tone="subtle40" />
       <Icon className={`size-3 shrink-0 ${block.tone}`} />
       <span className={`min-w-0 shrink truncate font-medium ${block.tone}`}>
         {block.text}
       </span>
-      <span className="h-px flex-1 bg-border/40" />
+      <Separator className="flex-1" tone="subtle40" />
     </div>
   );
 }

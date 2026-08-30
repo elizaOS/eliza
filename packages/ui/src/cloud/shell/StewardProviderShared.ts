@@ -4,9 +4,9 @@
  */
 import {
   clearStoredStewardToken,
+  readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
-  STEWARD_TOKEN_KEY,
   StewardTokenRemovalError,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
@@ -130,16 +130,18 @@ export function clearServerStewardSessionCookies(): void {
   for (const url of stewardSessionClearUrls()) {
     // error-policy:J6 best-effort sign-out cookie clear across session hosts;
     // the local token is already cleared and an expired cookie self-heals.
-    fetch(url, { method: "DELETE", credentials: "include" }).catch(
-      () => undefined,
-    );
+    fetch(url, {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    }).catch(() => undefined);
   }
 }
 
 export function readStoredToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return localStorage.getItem(STEWARD_TOKEN_KEY);
+    return readStoredStewardToken();
   } catch {
     // error-policy:J3 storage unavailable reads as signed-out (fail-closed).
     return null;

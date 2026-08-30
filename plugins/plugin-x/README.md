@@ -40,7 +40,8 @@ TWITTER_ACCESS_TOKEN_SECRET=...
 
 # Eliza Cloud managed-agent alternative
 # TWITTER_AUTH_MODE=broker
-# TWITTER_BROKER_URL=https://cloud.eliza.app/api/v1/twitter
+# TWITTER_BROKER_URL=https://api.eliza.app/api/v1/twitter
+# TWITTER_BROKER_TOKEN=... # required for any non-Eliza custom broker origin
 # TWITTER_BROKER_CONNECTION_ROLE=agent # use owner for a user's personal X identity
 # TWITTER_PERSONAL_DM_ROUTER_URL=https://cloud.eliza.app/api/v1/twitter/personal-message
 

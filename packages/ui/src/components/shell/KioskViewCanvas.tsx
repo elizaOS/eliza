@@ -6,6 +6,7 @@ import * as React from "react";
 
 import { useRafCoalescer } from "../../gestures";
 import { cn } from "../../lib/utils";
+import { Card } from "../ui/card";
 import type { KioskViewSurface } from "./useKioskViewSurfaces";
 
 /**
@@ -23,17 +24,19 @@ function ViewFrame({
   style?: React.CSSProperties;
 }): React.JSX.Element {
   return (
-    <iframe
-      key={surface.windowId}
-      title={surface.title}
-      src={surface.url}
-      // Local agent-authored views: allow scripts + same-origin so they can
-      // talk to the loopback agent, but keep top-navigation locked so a view
-      // can never replace the kiosk shell itself.
-      sandbox="allow-scripts allow-same-origin allow-forms"
-      className={cn("h-full w-full border-0 bg-bg", className)}
-      style={style}
-    />
+    <Card asChild variant="sandboxFrame">
+      <iframe
+        key={surface.windowId}
+        title={surface.title}
+        src={surface.url}
+        // Local agent-authored views: allow scripts + same-origin so they can
+        // talk to the loopback agent, but keep top-navigation locked so a view
+        // can never replace the kiosk shell itself.
+        sandbox="allow-scripts allow-same-origin allow-forms"
+        className={cn("h-full w-full", className)}
+        style={style}
+      />
+    </Card>
   );
 }
 

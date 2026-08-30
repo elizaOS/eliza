@@ -538,6 +538,30 @@ describe("CapacitorNativeSurfaceShell", () => {
     ).toHaveLength(3);
   });
 
+  it("navigates on Android WebViews that do not implement URL.canParse", async () => {
+    const originalCanParse = URL.canParse;
+    Object.defineProperty(URL, "canParse", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+    try {
+      const manager = new StatefulNativeManager();
+      const shell = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_A);
+      await shell.createSurface(CREATE_A);
+      await shell.navigate(CREATE_A.id, "https://compatible.example/path");
+      expect(manager.surfaces.get(CREATE_A.id)?.currentUrl).toBe(
+        "https://compatible.example/path",
+      );
+    } finally {
+      Object.defineProperty(URL, "canParse", {
+        configurable: true,
+        value: originalCanParse,
+        writable: true,
+      });
+    }
+  });
+
   it("accepts navigation whose mutation landed before its acknowledgement was lost", async () => {
     const manager = new StatefulNativeManager();
     const shell = new CapacitorNativeSurfaceShell(() => manager, IDENTITY_A);

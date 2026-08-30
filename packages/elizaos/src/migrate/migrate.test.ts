@@ -230,6 +230,25 @@ describe("memory-tiering", () => {
     expect(all).not.toContain("old daily log that should NOT be flat-seeded");
     expect(all).toContain("Older history");
   });
+  it("preserves a complete memory beyond the former UTF-16 cap", () => {
+    const body = `${"x".repeat(5_999)}😀complete tail`;
+    const src = {
+      ...readOcAgentHome(FIXTURE, "tess"),
+      awareness: body,
+      curatedMemory: undefined,
+      dailyLogs: [],
+      namedMemory: [],
+    };
+
+    const { memories, counts } = tierMemories(src, {
+      memoryDays: 14,
+      ...ids,
+    });
+
+    expect(counts.CURRENT).toBe(1);
+    expect(memories).toHaveLength(1);
+    expect(memories[0].content.text).toBe(`[CURRENT] ${body}`);
+  });
   it("firewall excludes ALL personal-context memory (marker only)", () => {
     const src = readOcAgentHome(FIXTURE, "tess");
     const { memories, counts } = tierMemories(src, {

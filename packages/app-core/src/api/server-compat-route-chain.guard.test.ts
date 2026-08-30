@@ -122,6 +122,7 @@ describe("compat-route registry drift guard (#12089 item 5)", () => {
       "cloud-billing",
       "dev-compat",
       "cloud-pair",
+      "desktop-auth-bootstrap",
       "auth-bootstrap",
       "auth-session",
       "auth-pairing",

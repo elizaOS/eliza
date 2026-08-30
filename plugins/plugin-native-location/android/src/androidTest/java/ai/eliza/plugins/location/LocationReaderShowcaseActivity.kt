@@ -30,7 +30,7 @@ class LocationReaderShowcaseActivity : Activity() {
             appendLine()
             appendLine("PERMISSIONS:")
             appendLine("  foreground: $foregroundStatus")
-            appendLine("  background: ${reader.readBackgroundPermissionStatus(foregroundStatus)}")
+            appendLine("  accuracy: precise or approximate (foreground only)")
             appendLine()
             appendLine("PROVIDERS (live LocationManager):")
             appendLine("  gps: ${providers.gpsEnabled}")

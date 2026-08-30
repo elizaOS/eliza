@@ -29,7 +29,11 @@ import {
   resolveViewKind,
 } from "@elizaos/core";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { LAUNCHER_AOSP_ONLY_VIEW_IDS, pathForTab } from "../../navigation";
+import {
+  LAUNCHER_AOSP_ONLY_VIEW_IDS,
+  pathForTab,
+  STREAM_ENABLED,
+} from "../../navigation";
 import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";
 
 /** Everyday apps, in display order. They lead the single launcher page; other
@@ -268,6 +272,8 @@ export interface CurateLauncherOptions {
   enabledKinds: EnabledViewKinds;
   /** True when signed into Eliza Cloud; gates cloud-only launcher tiles. */
   cloudActive: boolean;
+  /** Build-level Stream visibility. Routes remain addressable when hidden. */
+  streamEnabled?: boolean;
 }
 
 function comparator(indexes: Array<Map<string, number>>) {
@@ -300,7 +306,12 @@ function comparator(indexes: Array<Map<string, number>>) {
  */
 export function curateLauncherPages(
   entries: ViewEntry[],
-  { isAosp, enabledKinds, cloudActive }: CurateLauncherOptions,
+  {
+    isAosp,
+    enabledKinds,
+    cloudActive,
+    streamEnabled = STREAM_ENABLED,
+  }: CurateLauncherOptions,
 ): ViewEntry[] {
   const byCanonical = new Map<string, ViewEntry>();
   // Simple Views is the product Calendar surface when its live view-registry
@@ -331,6 +342,7 @@ export function curateLauncherPages(
       continue;
     }
     const canonicalId = canonicalLauncherId(entry.id);
+    if (canonicalId === "stream" && !streamEnabled) continue;
     if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
     if (isGroupedLauncherSubPage(canonicalId, entry)) continue;
     // Cloud-only tiles (e.g. the Cloud Applications dashboard) never surface

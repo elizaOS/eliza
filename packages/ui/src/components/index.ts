@@ -15,14 +15,11 @@ export {
   type ExportButtonProps,
 } from "../cloud-ui/components/analytics";
 export type {
-  BrandButtonProps,
   KeyMetric,
   TabItem,
 } from "../cloud-ui/components/brand";
 export {
   AgentCard,
-  BrandButton,
-  BrandCard,
   BrandTabs,
   BrandTabsContent,
   BrandTabsList,
@@ -223,8 +220,6 @@ export * from "./pages/ConfigPageView";
 // the direct subpath; re-exporting it here forms a barrel cycle with
 // DynamicViewLoader (issue #9154).
 export * from "./pages/DatabaseView";
-export * from "./pages/DocumentsView";
-export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/FilesView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
@@ -232,7 +227,6 @@ export * from "./pages/MemoryDetailPanel";
 export * from "./pages/MemoryViewerView";
 export * from "./pages/PluginsPageView";
 export * from "./pages/PluginsView";
-export * from "./pages/RelationshipsView";
 export * from "./pages/ReleaseCenterView";
 export * from "./pages/RuntimeView";
 export * from "./pages/SecretsView";
@@ -307,6 +301,7 @@ export * from "./ui/dialog";
 export * from "./ui/dropdown-menu";
 export * from "./ui/empty-state";
 export * from "./ui/form";
+export * from "./ui/form-select";
 export * from "./ui/hover-card";
 export * from "./ui/input";
 export * from "./ui/input-group";
@@ -328,6 +323,7 @@ export { SaveFooter as ConfigSaveFooter } from "./ui/save-footer";
 export * from "./ui/scroll-area";
 export * from "./ui/segmented-control";
 export * from "./ui/select";
+export * from "./ui/semantic-form";
 export * from "./ui/separator";
 export * from "./ui/skeleton";
 export * from "./ui/skeleton-layouts";
@@ -344,3 +340,4 @@ export * from "./ui/toggle";
 export * from "./ui/tooltip";
 export * from "./ui/tooltip-extended";
 export * from "./workspace/AppWorkspaceChrome";
+export * from "./workspace/AppWorkspaceContent";

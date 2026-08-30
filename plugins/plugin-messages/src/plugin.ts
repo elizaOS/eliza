@@ -36,6 +36,7 @@ export const appMessagesPlugin: Plugin = {
       surface: { capabilities: ["agent-surface"] },
       componentExport: "MessagesView",
       tags: ["messaging", "sms", "android"],
+      responseContext: { primaryContext: "messaging" },
       visibleInManager: true,
       desktopTabEnabled: true,
       nativeOs: true,

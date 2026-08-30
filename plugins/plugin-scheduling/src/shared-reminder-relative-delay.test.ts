@@ -198,6 +198,7 @@ describe("explicit Shared reminder relative delay", () => {
           delivery: {
             platform: "telegram",
             project: "eliza-app",
+            connectorAccountId: "bot:123456789",
             chatId: "123456",
           },
           now: () => new Date(NOW),

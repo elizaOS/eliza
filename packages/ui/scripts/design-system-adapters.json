@@ -2,6 +2,15 @@
   "schemaVersion": 1,
   "adapters": [
     {
+      "file": "packages/ui/src/cloud-ui/components/brand/key-metrics-grid.tsx",
+      "symbol": "KeyMetricCard",
+      "primitive": "Card",
+      "role": "surface",
+      "owner": "Cloud brand metric presentation",
+      "reason": "Maps metric accent state onto the canonical brand Card while preserving the metric grid's domain slots.",
+      "matchCount": 1
+    },
+    {
       "file": "packages/ui/src/components/shared/ActionListRow.tsx",
       "symbol": "ActionListRow",
       "primitive": "Button",
@@ -9,6 +18,15 @@
       "owner": "UI action-list-row composite",
       "reason": "Owns native button and link semantics with one selected row recipe and shared leading, copy, metadata, and trailing slots.",
       "matchCount": 2
+    },
+    {
+      "file": "packages/ui/src/components/character/CharacterExperienceWorkspace.tsx",
+      "symbol": "ExperienceQueueRow",
+      "primitive": "Button",
+      "role": "action",
+      "owner": "UI Character experience queue",
+      "reason": "Owns the selected queue row's flat radius, dividers, and flush horizontal geometry as one review action.",
+      "matchCount": 1
     },
     {
       "file": "packages/ui/src/components/composites/sidebar/sidebar-content.tsx",
@@ -26,15 +44,6 @@
       "role": "action",
       "owner": "UI sidebar composite",
       "reason": "Owns the sidebar row's hover-revealed destructive action affordance.",
-      "matchCount": 1
-    },
-    {
-      "file": "packages/ui/src/components/pages/RelationshipsGraphPanel.tsx",
-      "symbol": "GraphZoomButton",
-      "primitive": "Button",
-      "role": "action",
-      "owner": "UI relationships graph",
-      "reason": "Owns the graph-specific tabular zoom percentage toggle geometry.",
       "matchCount": 1
     },
     {
@@ -62,7 +71,7 @@
       "role": "action",
       "owner": "UI shell chat overlay",
       "reason": "Owns the collapsed chat pill's pull target and keyboard activation lifecycle.",
-      "matchCount": 1
+      "matchCount": 2
     },
     {
       "file": "packages/ui/src/components/shell/glass-composer.tsx",

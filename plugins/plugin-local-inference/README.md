@@ -227,7 +227,7 @@ bun install
 bun run --cwd packages/core prebuild
 
 # 1. Build + stage the fused lib with Kokoro folded in.
-node packages/app-core/scripts/stage-desktop-fused-lib.mjs --variant cpu --out /tmp/fused-lib
+bun packages/app-core/scripts/stage-desktop-fused-lib.mjs --variant cpu --out /tmp/fused-lib
 
 # 2. Stage the published Kokoro GGUF + a voice pack (af_bella is the fallback voice).
 DIR=/tmp/kokoro-model; mkdir -p "$DIR/voices"

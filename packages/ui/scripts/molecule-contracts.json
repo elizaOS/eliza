@@ -1,12 +1,14 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "contracts": [
     {
       "id": "auth-result-shell",
       "owner": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.tsx",
       "symbol": "AuthResultShell",
-      "requiredAtomicDependencies": [],
+      "requiredAtomicDependencies": ["card"],
       "requiredRenderedTags": ["main"],
+      "renderedStory": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.stories.tsx",
+      "behavioralTest": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/cloud/public-pages/pages/auth/auth-error-page.tsx",
         "packages/ui/src/cloud/public-pages/pages/auth/auth-success-page.tsx"
@@ -18,8 +20,10 @@
       "id": "connection-capability-tile",
       "owner": "packages/ui/src/cloud/connectors/connection-capability-tile.tsx",
       "symbol": "ConnectionCapabilityTile",
-      "requiredAtomicDependencies": [],
+      "requiredAtomicDependencies": ["card"],
       "requiredRenderedTags": ["p"],
+      "renderedStory": "packages/ui/src/cloud/connectors/connection-capability-tile.stories.tsx",
+      "behavioralTest": "packages/ui/src/cloud/connectors/connection-capability-tile.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/cloud/connectors/google-connection.tsx",
         "packages/ui/src/cloud/connectors/microsoft-connection.tsx"
@@ -31,8 +35,10 @@
       "id": "content-state",
       "owner": "packages/ui/src/components/composites/page-panel/content-state.tsx",
       "symbol": "ContentState",
-      "requiredAtomicDependencies": [],
+      "requiredAtomicDependencies": ["card", "spinner"],
       "requiredRenderedTags": ["LoadingContent", "PlainEmptyContent"],
+      "renderedStory": "packages/ui/src/components/composites/page-panel/content-state.stories.tsx",
+      "behavioralTest": "packages/ui/src/components/composites/page-panel/content-state.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/components/composites/page-panel/page-panel-empty.tsx",
         "packages/ui/src/components/composites/page-panel/page-panel-loading.tsx"
@@ -44,8 +50,10 @@
       "id": "settings-row",
       "owner": "packages/ui/src/components/settings/settings-layout.tsx",
       "symbol": "SettingsRow",
-      "requiredAtomicDependencies": ["button"],
+      "requiredAtomicDependencies": ["button", "card"],
       "requiredRenderedTags": ["Button"],
+      "renderedStory": "packages/ui/src/components/settings/settings-layout.stories.tsx",
+      "behavioralTest": "packages/ui/src/components/settings/settings-layout.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/components/settings/settings-agent-rows.tsx",
         "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx"
@@ -54,23 +62,13 @@
       "responsibility": "Label, description, control, and navigation alignment for settings."
     },
     {
-      "id": "selectable-tile",
-      "owner": "packages/ui/src/components/composites/settings/selectable-tile.tsx",
-      "symbol": "SelectableTile",
-      "requiredAtomicDependencies": ["button"],
-      "requiredRenderedTags": ["Button"],
-      "requiredConsumerFiles": [
-        "packages/ui/src/components/settings/AppearanceSettingsSection.tsx"
-      ],
-      "minimumMaintainedReferences": 1,
-      "responsibility": "Pressed-state selection tile with a leading visual and check indicator."
-    },
-    {
       "id": "action-list-row",
       "owner": "packages/ui/src/components/shared/ActionListRow.tsx",
       "symbol": "ActionListRow",
-      "requiredAtomicDependencies": ["button"],
+      "requiredAtomicDependencies": ["button", "card"],
       "requiredRenderedTags": ["Button"],
+      "renderedStory": "packages/ui/src/components/shared/ActionListRow.stories.tsx",
+      "behavioralTest": "packages/ui/src/components/shared/ActionListRow.test.tsx",
       "requiredConsumerFiles": [
         "packages/ui/src/components/settings/LoadedPacksList.tsx",
         "packages/ui/src/components/composites/skills/skill-sidebar-item.tsx"

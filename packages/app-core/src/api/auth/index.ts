@@ -35,6 +35,7 @@ export {
 } from "./audit.js";
 export {
   type AuthContextSource,
+  DESKTOP_LOOPBACK_SESSION_SCOPE,
   type EnsureSessionOptions,
   ensureSessionForRequest,
   type ResolvedAuthContext,

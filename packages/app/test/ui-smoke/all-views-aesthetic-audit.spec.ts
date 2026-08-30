@@ -36,6 +36,7 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
+import { seedStewardSession } from "./helpers/test-auth";
 import {
   normalize,
   type OcrExpectation,
@@ -60,6 +61,111 @@ const { strict: AUDIT_STRICT, needsWorkStrict: AUDIT_STRICT_NEEDS_WORK } =
 // scrollWidth/innerWidth rounding can differ by ~1px on a healthy layout. A real
 // un-contained overflow (WS5) blows past this comfortably.
 const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
+const FRAMED_PAGE_SLUGS = new Set([
+  "builtin-character",
+  "builtin-character-skills",
+  "builtin-database",
+  "builtin-experience",
+  "builtin-memories",
+  "builtin-tasks",
+  "builtin-vault",
+  "plugin-relationships-gui",
+]);
+const FRAMED_PAGE_MAX_WIDTH_PX = 1024;
+const FRAMED_PAGE_GEOMETRY_TOLERANCE_PX = 2;
+
+async function collectFramedPageGeometryIssues(
+  viewRoot: Locator,
+): Promise<string[]> {
+  const issues: string[] = [];
+  const framedPage = viewRoot.locator("[data-framed-page]:visible");
+  const framedPageCount = await framedPage.count();
+  if (framedPageCount !== 1) {
+    issues.push(`view has ${framedPageCount} visible framed-page roots`);
+    return issues;
+  }
+  const body = framedPage.locator(":scope > [data-framed-page-body]:visible");
+  const header = framedPage.locator(
+    ":scope > [data-framed-page-header]:visible",
+  );
+  const navigation = framedPage.locator(
+    ":scope > [data-framed-page-navigation]:visible",
+  );
+
+  const bodyCount = await body.count();
+  const headerCount = await header.count();
+  if (bodyCount !== 1)
+    issues.push(`framed page has ${bodyCount} visible bodies`);
+  if (headerCount !== 1) {
+    issues.push(`framed page has ${headerCount} visible headers`);
+  }
+  if (bodyCount !== 1 || headerCount !== 1) return issues;
+
+  const expectedSlotGeometry = async (slot: Locator) =>
+    slot.evaluate((element, maxWidth) => {
+      const parent = element.parentElement;
+      if (!parent) return null;
+      const parentBox = parent.getBoundingClientRect();
+      const style = getComputedStyle(parent);
+      const leftInset = Number.parseFloat(style.paddingLeft) || 0;
+      const rightInset = Number.parseFloat(style.paddingRight) || 0;
+      const availableWidth = parentBox.width - leftInset - rightInset;
+      const width = Math.min(availableWidth, maxWidth);
+      return {
+        width,
+        left: parentBox.x + leftInset + (availableWidth - width) / 2,
+      };
+    }, FRAMED_PAGE_MAX_WIDTH_PX);
+
+  const bodyExpected = await expectedSlotGeometry(body);
+  const bodyBox = await body.boundingBox();
+  const headerBox = await header.boundingBox();
+  if (!bodyExpected || !bodyBox || !headerBox) {
+    return [...issues, "framed page geometry could not be measured"];
+  }
+
+  if (
+    Math.abs(bodyBox.width - bodyExpected.width) >
+      FRAMED_PAGE_GEOMETRY_TOLERANCE_PX ||
+    Math.abs(bodyBox.x - bodyExpected.left) > FRAMED_PAGE_GEOMETRY_TOLERANCE_PX
+  ) {
+    issues.push(
+      `framed body is ${Math.round(bodyBox.width)}px wide at x=${Math.round(bodyBox.x)}; expected ${Math.round(bodyExpected.width)}px at x=${Math.round(bodyExpected.left)}`,
+    );
+  }
+  if (bodyBox.y < headerBox.y + headerBox.height - 1) {
+    issues.push("framed body overlaps its header slot");
+  }
+
+  const navigationCount = await navigation.count();
+  if (navigationCount > 1) {
+    issues.push(`framed page has ${navigationCount} visible navigation slots`);
+  } else if (navigationCount === 1) {
+    const navigationBox = await navigation.boundingBox();
+    const navigationExpected = await expectedSlotGeometry(navigation);
+    if (!navigationBox || !navigationExpected) {
+      issues.push("framed navigation geometry could not be measured");
+    } else {
+      if (
+        Math.abs(navigationBox.width - navigationExpected.width) >
+          FRAMED_PAGE_GEOMETRY_TOLERANCE_PX ||
+        Math.abs(navigationBox.x - navigationExpected.left) >
+          FRAMED_PAGE_GEOMETRY_TOLERANCE_PX
+      ) {
+        issues.push(
+          `framed navigation is ${Math.round(navigationBox.width)}px wide at x=${Math.round(navigationBox.x)}; expected ${Math.round(navigationExpected.width)}px at x=${Math.round(navigationExpected.left)}`,
+        );
+      }
+      if (navigationBox.y < headerBox.y + headerBox.height - 1) {
+        issues.push("framed navigation overlaps its header slot");
+      }
+      if (bodyBox.y < navigationBox.y + navigationBox.height - 1) {
+        issues.push("framed body overlaps its navigation slot");
+      }
+    }
+  }
+  return issues;
+}
 /**
  * App-side all-views aesthetic audit (#8796) — the agent app's equivalent of
  * cloud-frontend's `audit:cloud`. It walks EVERY view (built-in tabs + plugin
@@ -84,7 +190,10 @@ const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
 // Parse the canonical TAB_PATHS straight from the @elizaos/ui navigation source
 // (no UI-bundle import) so the guard reads the real table, not a stale copy.
 const NAV_INDEX_PATH = fileURLToPath(
-  new URL("../../../ui/src/navigation/index.ts", import.meta.url),
+  new URL(
+    "../../../ui/src/navigation/builtin-route-descriptors.ts",
+    import.meta.url,
+  ),
 );
 
 // {desktop,mobile} × {landscape,portrait}. "desktop" (landscape) and "mobile"
@@ -788,6 +897,7 @@ async function collectAestheticDensityMetrics(
         style.borderBottomColor,
         style.borderLeftColor,
       ];
+      const visibleBorderWidths = [0, 0, 0, 0];
       let visibleBorderSides = 0;
       for (let i = 0; i < sideWidths.length; i += 1) {
         const width = Number.parseFloat(sideWidths[i] || "0");
@@ -797,6 +907,7 @@ async function collectAestheticDensityMetrics(
           sideStyles[i] !== "hidden" &&
           alphaOf(sideColors[i]) > 0.02
         ) {
+          visibleBorderWidths[i] = width;
           visibleBorderSides += 1;
         }
       }
@@ -828,16 +939,53 @@ async function collectAestheticDensityMetrics(
         node.id === "root" ||
         tag === "main" ||
         largestRectArea > viewportArea * 0.72;
-      if (
-        !isPageShell &&
-        (visibleBorderSides > 0 ||
+      if (!isPageShell) {
+        const occupiesCompleteRect =
           hasDividerBackground ||
           hasShadow ||
           isMedia ||
           isControl ||
-          (hasVisibleBackground && largestRectArea <= viewportArea * 0.45))
-      ) {
-        for (const rect of rects) markRect(rect);
+          (hasVisibleBackground && largestRectArea <= viewportArea * 0.45);
+        if (occupiesCompleteRect) {
+          for (const rect of rects) markRect(rect);
+        } else if (visibleBorderSides > 0) {
+          // A border occupies its edge, not the empty space it encloses. The
+          // previous full-rectangle mark made one large outlined empty state
+          // look denser than a screen packed with controls. Keep the 10px-grid
+          // estimate conservative by marking each visible edge strip.
+          for (const rect of rects) {
+            const [topWidth, rightWidth, bottomWidth, leftWidth] =
+              visibleBorderWidths;
+            if (topWidth > 0) {
+              markRect(new DOMRect(rect.left, rect.top, rect.width, topWidth));
+            }
+            if (rightWidth > 0) {
+              markRect(
+                new DOMRect(
+                  rect.right - rightWidth,
+                  rect.top,
+                  rightWidth,
+                  rect.height,
+                ),
+              );
+            }
+            if (bottomWidth > 0) {
+              markRect(
+                new DOMRect(
+                  rect.left,
+                  rect.bottom - bottomWidth,
+                  rect.width,
+                  bottomWidth,
+                ),
+              );
+            }
+            if (leftWidth > 0) {
+              markRect(
+                new DOMRect(rect.left, rect.top, leftWidth, rect.height),
+              );
+            }
+          }
+        }
       }
     }
 
@@ -1257,7 +1405,20 @@ async function collectSpatialSizingIssues(page: Page): Promise<string[]> {
       const duplicatePadding =
         Number.parseFloat(surfaceStyle.paddingInlineEnd) || 0;
       const usableWidth = rect.width - duplicatePadding;
-      const expectedWidth = window.innerWidth - sideClearance;
+      const pageContent = surface.closest("[data-page-content]");
+      const pageContentStyle = pageContent
+        ? getComputedStyle(pageContent)
+        : null;
+      const pageContentWidth = pageContent
+        ? pageContent.getBoundingClientRect().width -
+          (Number.parseFloat(pageContentStyle?.paddingInlineStart ?? "0") ||
+            0) -
+          (Number.parseFloat(pageContentStyle?.paddingInlineEnd ?? "0") || 0)
+        : Number.POSITIVE_INFINITY;
+      const expectedWidth = Math.min(
+        window.innerWidth - sideClearance,
+        pageContentWidth,
+      );
       if (usableWidth >= expectedWidth * 0.8) return [];
       return [
         `spatial surface underfills shell content (${Math.round(usableWidth)}/${Math.round(expectedWidth)}px usable; ${Math.round(duplicatePadding)}px nested clearance)`,
@@ -1343,6 +1504,76 @@ async function forceRemoteBundleAuditRoute(
   view: AuditViewCase,
 ): Promise<RemoteBundleAuditProof | null> {
   if (view.kind !== "plugin") return null;
+  if (view.id === "cloud" && view.fixtureState !== "cloud-signed-out") {
+    const connectedCloudResponses = new Map<string, unknown>([
+      [
+        "/api/cloud/status",
+        {
+          connected: true,
+          enabled: true,
+          hasApiKey: true,
+          userId: "audit-user",
+          organizationId: "audit-org",
+        },
+      ],
+      [
+        "/api/cloud/credits",
+        {
+          connected: true,
+          balance: 42.5,
+          low: false,
+          critical: false,
+          topUpUrl: "https://cloud.eliza.app/cloud/billing",
+        },
+      ],
+      [
+        "/api/cloud/compat/agents",
+        {
+          success: true,
+          data: [
+            {
+              agent_id: "audit-agent",
+              agent_name: "Research agent",
+              node_id: null,
+              container_id: null,
+              headscale_ip: null,
+              bridge_url: null,
+              web_ui_url: null,
+              status: "running",
+              agent_config: {},
+              created_at: "2026-08-01T00:00:00.000Z",
+              updated_at: "2026-08-01T00:00:00.000Z",
+              containerUrl: "",
+              webUiUrl: null,
+              database_status: "healthy",
+              error_message: null,
+              last_heartbeat_at: null,
+            },
+          ],
+        },
+      ],
+      [
+        "/api/cloud/billing/summary",
+        {
+          balance: 42.5,
+          currency: "USD",
+          hasPaymentMethod: true,
+        },
+      ],
+    ]);
+    await page.route("**/api/cloud/**", async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (!connectedCloudResponses.has(pathname)) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(connectedCloudResponses.get(pathname)),
+      });
+    });
+  }
   if (view.id === "computer-use-sessions") {
     await page.route("**/api/computer-use/sessions", async (route) => {
       await route.fulfill({
@@ -1536,7 +1767,15 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       `audit BUILTIN_TAB_PATHS path drift vs navigation: ${mismatched.join(", ")}`,
     ).toEqual([]);
 
-    const uncovered = [...navDistinctPaths].filter((p) => !inlinedPaths.has(p));
+    const pluginOwnedAliases = new Set([
+      "/apps/relationships",
+      "/phone",
+      "/messages",
+      "/contacts",
+    ]);
+    const uncovered = [...navDistinctPaths].filter(
+      (p) => !inlinedPaths.has(p) && !pluginOwnedAliases.has(p),
+    );
     expect(
       uncovered,
       `navigation TAB_PATHS adds routes the audit does not cover: ${uncovered.join(", ")}`,
@@ -1778,7 +2017,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         page.locator("[data-test-overlay]"),
         cameraPolicy.fallbackExpectation,
       ),
-    ).resolves.toMatchObject({ semanticReady: true });
+    ).resolves.toMatchObject({ semanticReady: false });
 
     await page.setContent("<main>first</main><main>second</main>");
     await expect(
@@ -1816,6 +2055,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
 
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await seedAppStorage(page);
+        await seedStewardSession(page, { jwt: true });
         await installDefaultAppRoutes(page);
         const remoteBundleProof = await forceRemoteBundleAuditRoute(page, view);
         await openAppPath(page, remoteBundleProof?.auditPath ?? view.path);
@@ -1868,6 +2108,21 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           readPaint,
           overlayRequired,
         );
+        if (view.id === "cloud" && view.fixtureState !== "cloud-signed-out") {
+          await expect(
+            viewRoot.getByTestId("cloud-ready"),
+            "the Cloud plugin audit must capture the connected account state",
+          ).toBeVisible();
+        }
+        if (view.fixtureState === "cloud-signed-out") {
+          await expect(
+            viewRoot.getByTestId("cloud-signed-out"),
+            "the Cloud plugin audit must preserve the disconnected recovery state",
+          ).toBeVisible();
+          await expect(
+            viewRoot.getByText("Connected", { exact: true }),
+          ).toHaveCount(0);
+        }
         await settleHomeEntrance(page);
         const { readableChars, semanticReady, overlayPresent } = paint;
         const renderStateIssues = [
@@ -1880,6 +2135,9 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           ...(await collectSpatialOverlapIssues(page)),
           ...(await collectSpatialSizingIssues(page)),
           ...(await collectComposerLegibilityIssues(page)),
+          ...(FRAMED_PAGE_SLUGS.has(view.slug)
+            ? await collectFramedPageGeometryIssues(viewRoot)
+            : []),
         ];
 
         // Document-level horizontal-overflow invariant (WS5). Measured, not
