@@ -44,6 +44,10 @@ interface TodoActionParameters {
   op?: unknown;
   id?: unknown;
   content?: unknown;
+  targetContent?: unknown;
+  matchIndex?: unknown;
+  allowDuplicate?: unknown;
+  confirm?: unknown;
   activeForm?: unknown;
   status?: unknown;
   parentTodoId?: unknown;
@@ -593,7 +597,7 @@ async function actionUpdate({
 async function resolveTodoIdByVisibleContent(
   service: TodoStore,
   scope: { entityId: string; agentId: string },
-  params: Record<string, unknown>,
+  params: TodoActionParameters,
 ): Promise<
   { ok: true; id: string | null } | { ok: false; failure: ActionResult }
 > {
