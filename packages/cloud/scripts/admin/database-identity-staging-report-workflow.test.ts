@@ -135,6 +135,19 @@ describe("database identity staging report workflow", () => {
     expect(reportStep("Probe fixed runtime dependencies").run).toBe(
       "bun run packages/cloud/scripts/admin/preflight-database-identity.ts --probe-dependencies",
     );
+    const buildIndex = job.steps.findIndex(
+      (candidate) => candidate.name === "Build required linked runtime",
+    );
+    const probeIndex = job.steps.findIndex(
+      (candidate) => candidate.name === "Probe fixed runtime dependencies",
+    );
+    const reporterIndex = job.steps.findIndex(
+      (candidate) =>
+        candidate.name === "Emit redacted staging identity receipts",
+    );
+    expect(buildIndex).toBeGreaterThanOrEqual(0);
+    expect(probeIndex).toBeGreaterThan(buildIndex);
+    expect(reporterIndex).toBeGreaterThan(probeIndex);
     expect(reportStep("Validate identity reporter contracts").run).toContain(
       "preflight-database-identity.test.ts",
     );

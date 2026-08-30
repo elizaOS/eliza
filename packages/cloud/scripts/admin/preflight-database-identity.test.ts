@@ -270,6 +270,7 @@ describe("standalone database identity reporter", () => {
     DATABASE_URL:
       "postgresql://raw-role:raw-password@raw-host.invalid/raw-database",
   } as const;
+  const noDependencyProbe = async (): Promise<void> => {};
 
   function runtimeClient(
     overrides: {
@@ -311,10 +312,38 @@ describe("standalone database identity reporter", () => {
     expect(result.stderr.toString()).toBe("");
   });
 
+  test("a dependency probe failure is bounded and stops before client creation", async () => {
+    const diagnostics: string[] = [];
+    let clientCreated = false;
+    const privateLoaderMessage =
+      "Cannot find /private/runner/packages/core/dist/edge/index.edge.js";
+
+    const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      probeDependencies: async () => {
+        throw Object.assign(new DatabaseIdentityDependencyError("core_edge"), {
+          cause: new Error(privateLoaderMessage),
+        });
+      },
+      createClient: async () => {
+        clientCreated = true;
+        return runtimeClient();
+      },
+      writeStdout: (message) => diagnostics.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(clientCreated).toBe(false);
+    expect(diagnostics.join("")).toContain(
+      "database identity report unavailable; category=dependency_unavailable; dependency=core_edge",
+    );
+    expect(diagnostics.join("")).not.toContain(privateLoaderMessage);
+  });
+
   test("connection failures are redacted, nonzero, and close the client", async () => {
     const diagnostics: string[] = [];
     let ended = false;
     const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      probeDependencies: noDependencyProbe,
       createClient: async () =>
         runtimeClient({
           connect: async () => {
@@ -349,6 +378,7 @@ describe("standalone database identity reporter", () => {
     let publishedStatus = "";
     let ended = false;
     const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      probeDependencies: noDependencyProbe,
       createClient: async () =>
         runtimeClient({
           end: async () => {
@@ -381,6 +411,7 @@ describe("standalone database identity reporter", () => {
     const diagnostics: string[] = [];
     let ended = false;
     const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      probeDependencies: noDependencyProbe,
       createClient: async () =>
         runtimeClient({
           end: async () => {
@@ -431,6 +462,7 @@ describe("standalone database identity reporter", () => {
               : {}),
         },
         {
+          probeDependencies: noDependencyProbe,
           createClient: async () =>
             runtimeClient({
               end: async () => {
