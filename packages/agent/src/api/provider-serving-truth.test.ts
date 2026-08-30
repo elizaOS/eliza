@@ -54,17 +54,23 @@ function runtimeWith(options: {
 }
 
 describe("provider serving truth", () => {
-  it("does not hydrate or project an unresolved provider vault reference", () => {
-    const config = cerebrasConfig(VAULT_REF);
-    const env: NodeJS.ProcessEnv = {};
+  it.each([
+    ["canonical", VAULT_REF],
+    ["whitespace-padded", ` ${VAULT_REF} `],
+  ])(
+    "does not hydrate or project an unresolved provider vault reference (%s)",
+    (_label, credential) => {
+      const config = cerebrasConfig(credential);
+      const env: NodeJS.ProcessEnv = {};
 
-    hydrateConfigEnvForBoot(config, env);
-    const settings = buildRuntimeSettingsProjection(config, { env });
+      hydrateConfigEnvForBoot(config, env);
+      const settings = buildRuntimeSettingsProjection(config, { env });
 
-    expect(env.CEREBRAS_API_KEY).toBeUndefined();
-    expect(settings.CEREBRAS_API_KEY).toBeUndefined();
-    expect(resolveActiveChat(config, env, runtimeWith({}))).toBeNull();
-  });
+      expect(env.CEREBRAS_API_KEY).toBeUndefined();
+      expect(settings.CEREBRAS_API_KEY).toBeUndefined();
+      expect(resolveActiveChat(config, env, runtimeWith({}))).toBeNull();
+    },
+  );
 
   it("does not report a registered provider without a usable credential", () => {
     expect(resolveActiveChat(cerebrasConfig(), {}, runtimeWith({}))).toBeNull();

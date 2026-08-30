@@ -76,6 +76,10 @@ function isElizaCloudManagedProcessEnvKey(key: string): boolean {
   return isDevCloudEnvOwnedKey(upper) || isDevCloudInternalEnvKey(upper);
 }
 
+function isUnresolvedVaultRef(value: unknown): boolean {
+  return typeof value === "string" && isVaultRef(value.trim());
+}
+
 /**
  * Hydrate plain user-owned config values for boot without copying unresolved
  * vault references or launcher-owned Cloud settings into process authority.
@@ -94,7 +98,11 @@ export function hydrateConfigEnvForBoot(
   const hydrateEntries = (values: Record<string, unknown>): void => {
     for (const [key, value] of Object.entries(values)) {
       if (isElizaCloudManagedProcessEnvKey(key)) continue;
-      if (typeof value === "string" && !isVaultRef(value) && !env[key]) {
+      if (
+        typeof value === "string" &&
+        !isUnresolvedVaultRef(value) &&
+        !env[key]
+      ) {
         env[key] = value;
       }
     }
@@ -121,7 +129,7 @@ export function buildRuntimeSettingsProjection(
     ...Object.fromEntries(
       Object.entries(collectConfigEnvVars(config)).filter(
         ([key, value]) =>
-          isEnvKeyAllowedForForwarding(key) && !isVaultRef(value),
+          isEnvKeyAllowedForForwarding(key) && !isUnresolvedVaultRef(value),
       ),
     ),
     ...(typeof env.EMBEDDING_PROVIDER === "string" &&
@@ -133,7 +141,7 @@ export function buildRuntimeSettingsProjection(
     // value for refs the vault could serve (fail-closed for the rest).
     ...Object.fromEntries(
       Object.entries(collectConnectorEnvVars(config)).filter(
-        ([, value]) => !isVaultRef(value),
+        ([, value]) => !isUnresolvedVaultRef(value),
       ),
     ),
     ...(options.connectorSecretsOverlay ?? {}),
