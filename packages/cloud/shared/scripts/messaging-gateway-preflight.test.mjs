@@ -171,17 +171,41 @@ test("WhatsApp strict preflight wires complete and split authorities without lea
   assert.doesNotMatch(splitOutput, /whatsapp-contract-value-never-print/);
 });
 
-test("workflow keeps trusted checks manual and source tests reusable from develop", () => {
+test("workflow limits trusted configuration to the develop push caller", () => {
   const workflow = readFileSync(WORKFLOW, "utf8");
   const developWorkflow = readFileSync(DEVELOP_WORKFLOW, "utf8");
+  const trustedConfigStart = workflow.indexOf("  trusted-config:");
+  const testJobStart = workflow.indexOf("\n  test:");
 
-  assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /workflow_call:/);
+  assert.notEqual(trustedConfigStart, -1);
+  assert.ok(testJobStart > trustedConfigStart);
+
+  const trustedConfig = workflow.slice(trustedConfigStart, testJobStart);
+  const testJob = workflow.slice(testJobStart);
+
+  assert.match(workflow, /on:\s+workflow_call:\s+concurrency:/);
+  assert.doesNotMatch(workflow, /workflow_dispatch|manual/i);
   assert.doesNotMatch(workflow, /pull_request/);
-  assert.match(developWorkflow, /branches: \[develop\]/);
-  assert.match(developWorkflow, /uses: \.\/\.github\/workflows\/cloud-gateway-discord\.yml/);
-  assert.match(workflow, /Enforce trusted messaging gateway configuration/);
-  assert.match(workflow, /if: github\.event_name == 'workflow_dispatch'/);
+  assert.match(developWorkflow, /on:\s+push:\s+branches: \[develop\]/);
+  assert.match(
+    developWorkflow,
+    /cloud-gateway-discord:\s+[\s\S]*?uses: \.\/\.github\/workflows\/cloud-gateway-discord\.yml\s+secrets: inherit/,
+  );
+  assert.match(
+    trustedConfig,
+    /if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/develop'/,
+  );
+  assert.match(trustedConfig, /environment: staging/);
+  assert.doesNotMatch(trustedConfig, /production/);
+  assert.match(trustedConfig, /uses: actions\/checkout@/);
+  assert.match(trustedConfig, /Enforce trusted messaging gateway configuration/);
+  assert.ok(
+    trustedConfig.indexOf("uses: actions/checkout") <
+      trustedConfig.indexOf("name: Enforce trusted messaging gateway configuration"),
+    "trusted configuration must inspect the checked-out develop source",
+  );
+  assert.doesNotMatch(trustedConfig, /Require canonical trusted-configuration source|SOURCE_REF/);
+  assert.doesNotMatch(testJob, /^\s{4}if:/m);
   assert.match(
     workflow,
     /ELIZA_APP_WEBHOOK_GATEWAY_URL: \$\{\{ vars\.ELIZA_APP_WEBHOOK_GATEWAY_URL \}\}/,
@@ -202,19 +226,6 @@ test("workflow keeps trusted checks manual and source tests reusable from develo
   assert.match(
     workflow,
     /HAS_ELIZA_APP_DISCORD_BOT_TOKEN: \$\{\{ secrets\.ELIZA_APP_DISCORD_BOT_TOKEN != '' \}\}/,
-  );
-  assert.match(
-    workflow,
-    /Trusted configuration checks must run from refs\/heads\/develop or refs\/heads\/main/,
-  );
-  assert.match(
-    workflow,
-    /name: Require canonical trusted-configuration source\s+working-directory: \.\s+env:/,
-  );
-  assert.ok(
-    workflow.indexOf("name: Require canonical trusted-configuration source") <
-      workflow.indexOf("uses: actions/checkout"),
-    "the trusted-source guard must run before checkout",
   );
   assert.doesNotMatch(workflow, /^\s+ELIZA_APP_DISCORD_APPLICATION_ID:/m);
   assert.doesNotMatch(workflow, /^\s+ELIZA_APP_DISCORD_BOT_TOKEN:/m);

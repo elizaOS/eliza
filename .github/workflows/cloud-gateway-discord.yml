@@ -9,7 +9,6 @@ name: Cloud Gateway Discord
 
 on:
   workflow_call:
-  workflow_dispatch:
 
 concurrency:
   group: cloud-gateway-discord-${{ github.ref }}
@@ -29,22 +28,11 @@ permissions:
 jobs:
   trusted-config:
     name: Trusted configuration
-    if: github.event_name == 'workflow_dispatch'
-    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    environment: staging
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Require canonical trusted-configuration source
-        working-directory: .
-        env:
-          SOURCE_REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          if [ "$SOURCE_REF" != "refs/heads/develop" ] && [ "$SOURCE_REF" != "refs/heads/main" ]; then
-            echo "::error::Trusted configuration checks must run from refs/heads/develop or refs/heads/main"
-            exit 1
-          fi
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
