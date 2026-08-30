@@ -44,6 +44,15 @@ const appState = vi.hoisted(() => ({
   }>,
 }));
 
+/** The full authenticated `AuthStatusState`, shared so the hook and the
+ * out-of-React snapshot cannot drift apart again. */
+const AUTHENTICATED_AUTH_STATUS = vi.hoisted(() => ({
+  phase: "authenticated" as const,
+  identity: { id: "test-user" },
+  session: { id: "test-session" },
+  access: {},
+}));
+
 const authStatusMock = vi.hoisted(() => ({
   phase: "authenticated" as
     | "authenticated"
@@ -313,7 +322,14 @@ vi.mock("./hooks/useAuthStatus", () => ({
   useAuthStatus: (options: { skip?: boolean } = {}) => {
     authStatusMock.use(options);
     return {
-      state: { phase: authStatusMock.phase },
+      // AuthStatusState is a discriminated union: `phase: "authenticated"`
+      // carries identity/session/access. Returning the bare phase left
+      // consumers that read `authStatus.identity.id` dereferencing undefined,
+      // which is what getAuthStatusSnapshot below already models correctly.
+      state:
+        authStatusMock.phase === "authenticated"
+          ? AUTHENTICATED_AUTH_STATUS
+          : { phase: authStatusMock.phase },
       refetch: authStatusMock.refetch,
     };
   },
@@ -331,12 +347,7 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // same static phase in AuthStatusState shape.
   getAuthStatusSnapshot: () =>
     authStatusMock.phase === "authenticated"
-      ? {
-          phase: "authenticated",
-          identity: { id: "test-user" },
-          session: { id: "test-session" },
-          access: {},
-        }
+      ? AUTHENTICATED_AUTH_STATUS
       : { phase: "unauthenticated" },
   subscribeAuthStatus: () => vi.fn(),
 }));
