@@ -16,7 +16,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 
 function formatPerson(person: RelationshipsPersonSummary): string {
@@ -33,7 +33,7 @@ function formatPerson(person: RelationshipsPersonSummary): string {
     parts.push(`aka: ${person.aliases.join(", ")}`);
   }
   if (person.lastInteractionAt) {
-    parts.push(`last: ${person.lastInteractionAt.slice(0, 10)}`);
+    parts.push(`last: ${truncateWellFormed(toWellFormedUnicode(person.lastInteractionAt), 10)}`);
   }
   if (person.factCount > 0) {
     parts.push(`${person.factCount} facts`);

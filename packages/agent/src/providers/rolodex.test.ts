@@ -324,4 +324,15 @@ describe("rolodexProvider.get", () => {
       expect.any(String),
     );
   });
+
+  it("preserves surrogate integrity when lastInteractionAt contains multi-byte characters at 10-char boundary", async () => {
+    const person = makePerson("Astral User", {
+      lastInteractionAt: "2026-08-2🚀-time",
+    });
+    const result = await getRolodex({
+      getGraphSnapshot: vi.fn(async () => makeSnapshot([person])),
+    });
+    expect(result.text?.isWellFormed()).toBe(true);
+  });
+
 });
