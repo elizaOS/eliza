@@ -5,7 +5,19 @@
  * fabricated for unavailable backend contracts.
  */
 
-import { Button, Input } from "@elizaos/ui";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Card as SurfaceCard,
+} from "@elizaos/ui";
 import {
   CalendarSync,
   Check,
@@ -64,44 +76,39 @@ function Card({
   children: ReactNode;
 }) {
   return (
-    <section
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 20,
-        background: "var(--card)",
-        padding: "clamp(16px, 3vw, 24px)",
-      }}
+    <SurfaceCard
+      asChild
+      border="standard"
+      padding="comfortable"
+      radius="xlarge"
+      surface="card"
+      className="md:p-6"
     >
-      <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
-      {detail ? (
-        <p
-          style={{
-            margin: "6px 0 18px",
-            color: "var(--muted)",
-            lineHeight: 1.5,
-          }}
-        >
-          {detail}
-        </p>
-      ) : null}
-      {children}
-    </section>
+      <section>
+        <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
+        {detail ? (
+          <p
+            style={{
+              margin: "6px 0 18px",
+              color: "var(--muted)",
+              lineHeight: 1.5,
+            }}
+          >
+            {detail}
+          </p>
+        ) : null}
+        {children}
+      </section>
+    </SurfaceCard>
   );
 }
 
 function Unavailable({ message }: { message: string }) {
   return (
-    <div
-      role="alert"
-      style={{
-        border: "1px solid var(--status-danger)",
-        borderRadius: 12,
-        padding: 14,
-      }}
-    >
-      <strong>Unavailable</strong>
-      <p style={{ margin: "5px 0 0", color: "var(--muted)" }}>{message}</p>
-    </div>
+    <Alert variant="destructive">
+      <AlertTitle>Unavailable</AlertTitle>
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
   );
 }
 
@@ -318,27 +325,26 @@ function AgreementPanel({
         title="Agreement versions"
         detail="Signed PDFs are immutable. Select a version to review its page-cited obligations."
       >
-        <label style={{ display: "grid", gap: 7, maxWidth: 520 }}>
+        <label
+          htmlFor="agreement-version"
+          style={{ display: "grid", gap: 7, maxWidth: 520 }}
+        >
           <span>Version</span>
-          <select
-            aria-label="Agreement version"
-            value={selected.artifact.id}
-            onChange={(event) => setSelectedId(event.target.value)}
-            style={{
-              minHeight: 44,
-              borderRadius: 10,
-              border: "1px solid var(--border)",
-              background: "var(--bg)",
-              color: "var(--txt)",
-              padding: "0 12px",
-            }}
-          >
-            {agreements.map((view) => (
-              <option key={view.artifact.id} value={view.artifact.id}>
-                {view.artifact.title} · v{view.artifact.version}
-              </option>
-            ))}
-          </select>
+          <Select value={selected.artifact.id} onValueChange={setSelectedId}>
+            <SelectTrigger
+              id="agreement-version"
+              aria-label="Agreement version"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {agreements.map((view) => (
+                <SelectItem key={view.artifact.id} value={view.artifact.id}>
+                  {view.artifact.title} · v{view.artifact.version}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
         <dl
           style={{
@@ -475,17 +481,18 @@ function AgreementPanel({
             gap: 8,
           }}
         >
-          <select
-            aria-label="Pin target type"
+          <Select
             value={targetType}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setTargetType(event.target.value as "agent" | "chat")
-            }
-            style={{ minHeight: 44 }}
+            onValueChange={(value) => setTargetType(value as "agent" | "chat")}
           >
-            <option value="agent">Agent</option>
-            <option value="chat">Chat</option>
-          </select>
+            <SelectTrigger aria-label="Pin target type" className="min-h-11">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="agent">Agent</SelectItem>
+              <SelectItem value="chat">Chat</SelectItem>
+            </SelectContent>
+          </Select>
           <Input
             aria-label="Pin target ID"
             placeholder={
@@ -945,29 +952,32 @@ function PacketPanel({
               }
             />
           </label>
-          <label style={{ display: "grid", gap: 6 }}>
+          <label
+            htmlFor="packet-calendar-privacy"
+            style={{ display: "grid", gap: 6 }}
+          >
             <span>Calendar privacy</span>
-            <select
-              aria-label="Calendar privacy"
+            <Select
               value={calendarPrivacyMode}
-              onChange={(event) =>
+              onValueChange={(value) =>
                 setCalendarPrivacyMode(
-                  event.target.value as "full" | "times_only" | "busy_only",
+                  value as "full" | "times_only" | "busy_only",
                 )
               }
-              style={{
-                minHeight: 44,
-                borderRadius: 10,
-                border: "1px solid var(--border)",
-                background: "var(--bg)",
-                color: "var(--txt)",
-                padding: "0 12px",
-              }}
             >
-              <option value="busy_only">Busy only</option>
-              <option value="times_only">Times only</option>
-              <option value="full">Full event details</option>
-            </select>
+              <SelectTrigger
+                id="packet-calendar-privacy"
+                aria-label="Calendar privacy"
+                className="min-h-11"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="busy_only">Busy only</SelectItem>
+                <SelectItem value="times_only">Times only</SelectItem>
+                <SelectItem value="full">Full event details</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
         </div>
       </Card>
@@ -1113,28 +1123,18 @@ export function FamilyOperationsView({
           }}
         >
           {tabs.map(({ id, label, icon: Icon }) => (
-            <button
+            <Button
               key={id}
               type="button"
+              variant="choice"
+              data-state={tab === id ? "on" : "off"}
               aria-current={tab === id ? "page" : undefined}
               onClick={() => setTab(id)}
-              style={{
-                minHeight: 48,
-                borderRadius: 12,
-                border: `1px solid ${tab === id ? "var(--accent)" : "var(--border)"}`,
-                background: tab === id ? "var(--accent-subtle)" : "var(--card)",
-                color: "var(--txt)",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
+              className="min-h-12 w-full font-bold"
             >
               <Icon size={18} aria-hidden />
               {label}
-            </button>
+            </Button>
           ))}
         </nav>
         {loading && !snapshot ? (
