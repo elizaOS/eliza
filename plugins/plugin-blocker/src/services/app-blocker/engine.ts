@@ -104,11 +104,25 @@ export async function selectAppsForBlocking(): Promise<SelectAppsResult> {
 export async function startAppBlock(
   options: BlockAppsOptions,
 ): Promise<BlockAppsResult> {
-  statusCache = null;
-  return getPlugin().blockApps(options);
+  // Invalidate the cache AFTER the native mutation resolves (in `finally`, so a
+  // partial/failed state change still forces a refetch). Clearing it only
+  // before awaiting `blockApps` leaves a window where a concurrent status read
+  // repopulates the 5s cache with the pre-block status, so callers keep seeing
+  // stale "not blocking" for up to STATUS_CACHE_TTL_MS after the block applies.
+  // Mirrors the website-blocker engine's post-write `resetSelfControlStatusCache()`.
+  try {
+    return await getPlugin().blockApps(options);
+  } finally {
+    statusCache = null;
+  }
 }
 
 export async function stopAppBlock(): Promise<UnblockAppsResult> {
-  statusCache = null;
-  return getPlugin().unblockApps();
+  // Symmetric to `startAppBlock`: invalidate after the native unblock resolves
+  // so a concurrent read cannot re-cache the stale "still blocking" status.
+  try {
+    return await getPlugin().unblockApps();
+  } finally {
+    statusCache = null;
+  }
 }
