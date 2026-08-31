@@ -1103,9 +1103,9 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     throw new Error(`Failed to create organization for Steward user ${stewardUserId}`);
   }
 
-  // Cloud identity is created at $0. Shared service access is not a credit
-  // grant, and purchased credits remain exclusive to explicit funding paths.
-  const initialCreditsGranted = false;
+  // The organization insert above atomically establishes the fixed signup
+  // balance. Purchased credits remain exclusive to explicit funding paths.
+  const initialCreditsGranted = true;
   const initialFreeCreditsUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd;
 
   // Create user, handle race conditions

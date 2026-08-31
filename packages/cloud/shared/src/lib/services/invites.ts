@@ -13,7 +13,7 @@ import { userCharactersRepository } from "../../db/repositories/characters";
 import { containersRepository } from "../../db/repositories/containers";
 import { conversationsRepository } from "../../db/repositories/conversations";
 import { parseOrganizationCreditBalance } from "../../db/repositories/organizations-credit-balance-numeric";
-import { SIGNUP_CREDIT_POLICY } from "../signup-credits";
+import { isUntouchedSignupOpeningBalance } from "../signup-credits";
 import { generateInviteToken, hashInviteToken } from "../utils/invite-tokens";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
@@ -185,8 +185,8 @@ export class InvitesService {
     // Every self-signup provisions its user as the OWNER of a fresh solo org
     // (steward-sync), so a blanket owner block would dead-end every existing
     // account (#11332). An owner may accept iff their current org is an empty
-    // solo org: no other members, no deployed apps/agents/domains, and no
-    // credits. Anything richer keeps the block with an
+    // solo org: no other members, no deployed apps/agents/domains, and only an
+    // untouched signup opening balance. Anything richer keeps the block with an
     // actionable error — abandoning a real org needs an explicit path.
     const vacatedSoloOrgId = user.role === "owner" ? user.organization_id : null;
     if (vacatedSoloOrgId) {
@@ -231,7 +231,7 @@ export class InvitesService {
 
   /**
    * Gate for an owner accepting an invite: their current org must be an empty
-   * solo org (the auto-provisioned signup artifact), not a real organization.
+   * solo org with an untouched signup balance, not a real organization.
    */
   private async assertOwnerCanVacateSoloOrganization(
     userId: string,
@@ -268,7 +268,9 @@ export class InvitesService {
     if (organization) {
       // Fail closed on a corrupt `credit_balance` (#13415). This guard exists to
       // stop an owner vacating (and thereby auto-deleting) a solo org that still
-      // holds purchased or promotional credits. `credit_balance` is a Postgres
+      // holds purchased or promotional credits. Both the balance amount and its
+      // revision identify an untouched signup grant: a smaller balance can be
+      // purchased credit remaining after spend. `credit_balance` is a Postgres
       // NUMERIC (string at read); the previous bare `Number(...)` failed OPEN on
       // an unreadable value (`'NaN'::numeric` migration artifact / manual edit
       // reads back `"NaN"`): comparing NaN to the policy threshold is FALSE, so the guard
@@ -288,7 +290,12 @@ export class InvitesService {
         // vacate path instead of falling through as a generic storage failure.
         throw new Error(SOLO_ORG_CREDITS_BLOCK_MESSAGE, { cause: error });
       }
-      if (creditBalance > SIGNUP_CREDIT_POLICY.automaticGrantUsd) {
+      if (
+        !isUntouchedSignupOpeningBalance({
+          balanceUsd: creditBalance,
+          balanceRevision: organization.balance_revision,
+        })
+      ) {
         throw new Error(SOLO_ORG_CREDITS_BLOCK_MESSAGE);
       }
     }
