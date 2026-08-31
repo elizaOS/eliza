@@ -13,12 +13,16 @@ import {
   IFileStorageService,
   type StoredFile,
   type StoredFileListItem,
+  type StoredPrivateFile,
 } from "@elizaos/core";
 import {
   deleteMediaFile,
+  deletePrivateMediaFile,
   listMediaFiles,
   mediaFileNameFromUrl,
   persistMediaBytes,
+  persistPrivateMediaBytes,
+  readPrivateMediaBytes,
   readStoredMediaBytes,
 } from "../api/media-store.ts";
 
@@ -71,6 +75,28 @@ export class LocalFileStorageService extends IFileStorageService {
     }
     if (buffer.length === 0) return null;
     return this.store(buffer, mimeType);
+  }
+
+  async storePrivate(
+    bytes: Buffer | Uint8Array,
+    mimeType: string,
+  ): Promise<StoredPrivateFile> {
+    const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+    const persisted = persistPrivateMediaBytes(buffer, mimeType);
+    return {
+      hash: persisted.hash,
+      fileName: persisted.fileName,
+      mimeType,
+      size: buffer.length,
+    };
+  }
+
+  async readPrivate(fileName: string): Promise<Buffer | null> {
+    return readPrivateMediaBytes(fileName);
+  }
+
+  async deletePrivate(fileName: string): Promise<boolean> {
+    return deletePrivateMediaFile(fileName);
   }
 
   getUrl(fileName: string): string | null {

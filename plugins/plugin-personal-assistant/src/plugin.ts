@@ -58,6 +58,7 @@ import type {
   Prober,
 } from "@elizaos/shared";
 import { MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/shared";
+import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
 import { calendarAction } from "./actions/calendar.js";
@@ -71,6 +72,7 @@ import { creativeDraftAction } from "./actions/creative-draft.js";
 import { credentialsAction } from "./actions/credentials.js";
 import { ownerDocumentsAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
+import { familyWorkflowsAction } from "./actions/family-workflows.js";
 import { householdCoordinationAction } from "./actions/household-coordination.js";
 import { deferredOwnerTodoRoutingEvaluator } from "./actions/lib/lifeops-deferred-draft.js";
 import {
@@ -117,6 +119,7 @@ import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import { createTrackedWorkRecapDirectRoutingRule } from "./lifeops/briefing/direct-routing.js";
 import { handleBriefMessageMutation } from "./lifeops/briefing/message-engagement-handler.js";
+import { CalendarCardAccessStore } from "./lifeops/calendar-card.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import { OwnerCalendarMutationGatewayService } from "./lifeops/calendar-mutations/index.js";
 import {
@@ -142,6 +145,7 @@ import {
   resolveAuthenticatedFamilyPrincipal,
   resolveTrustedChildWeekItems,
 } from "./lifeops/family-communications/index.js";
+import { FamilyWorkflowRuntimeService } from "./lifeops/family-workflows/index.js";
 import { installFirstRunChannelInspector } from "./lifeops/first-run/channel-inspector.js";
 import { setRuntimeChannelInspector } from "./lifeops/first-run/questions.js";
 import { FirstRunService } from "./lifeops/first-run/service.js";
@@ -150,6 +154,7 @@ import {
   FoodDomainRuntimeService,
 } from "./lifeops/food/index.js";
 import { ftuGoalDiscoveryEvaluator } from "./lifeops/ftu-goal/evaluator.js";
+import { AgreementKnowledgeRuntimeService } from "./lifeops/household/agreement-knowledge.js";
 import { createHouseholdInboundApprovalMessageHandler } from "./lifeops/household/inbound-approval.js";
 import { HouseholdCoordinationRuntimeService } from "./lifeops/household/service.js";
 import {
@@ -249,6 +254,7 @@ import { isDarwin } from "./platform/host.js";
 import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
+import { agreementPinsProvider } from "./providers/agreement-pins.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 import { delegationContractsProvider } from "./providers/delegation-contracts.js";
 // LifeOps core providers
@@ -712,6 +718,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(foodDomainAction),
     ...promoteSubactionsToActions(localConditionsAction),
     ...promoteSubactionsToActions(schoolSourceFactAction),
+    familyWorkflowsAction,
     ...promoteSubactionsToActions(resolveRequestAction),
     ...promoteSubactionsToActions(ownerRemindersAction),
     ...promoteSubactionsToActions(ownerAlarmsAction),
@@ -726,6 +733,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     resolveReferentAction,
     entityAction,
     ...promoteSubactionsToActions(ownerDocumentsAction),
+    ownerAgreementKnowledgeAction,
     ...promoteSubactionsToActions(creativeDraftAction),
     ...promoteSubactionsToActions(briefAction),
     ...promoteSubactionsToActions(prioritizeAction),
@@ -757,6 +765,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     firstRunProvider,
     ftuGoalProvider,
     roomPolicyProvider,
+    agreementPinsProvider,
     lifeOpsProvider,
     pendingApprovalsProvider,
     delegationContractsProvider,
@@ -776,6 +785,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ActivityTrackerService,
     PresenceSignalBridgeService,
     HouseholdCoordinationRuntimeService,
+    AgreementKnowledgeRuntimeService,
     AuthenticatedRuntimeSpeakerVerifierService,
     FamilyCommunicationsRuntimeService,
     ParentingGuidanceRuntimeService,
@@ -784,6 +794,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ResourceCapacityRuntimeService,
     SchoolSourceFactRuntimeService,
     FoodDomainRuntimeService,
+    FamilyWorkflowRuntimeService,
     // The ScheduledTaskRunnerService is now registered by the always-loaded
     // @elizaos/plugin-scheduling. PA injects its production deps via
     // registerLifeOpsScheduledTaskRunnerDeps(runtime) in init() instead, so
@@ -822,6 +833,27 @@ const rawPersonalAssistantPlugin: Plugin = {
       componentExport: "LifeOpsConnectionsView",
       tags: ["gmail", "email", "calendar", "lifeops", "connections"],
       relatedActions: ["CONNECTOR", "INBOX", "CALENDAR"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "family-operations",
+      label: "Family Operations",
+      roleGate: { minRole: "OWNER" },
+      description:
+        "Private parenting agreements, linked calendars, school dates, and monthly coordination packets.",
+      icon: "UsersRound",
+      path: "/lifeops/family",
+      responseContext: {
+        primaryContext: "family",
+        secondaryContexts: ["calendar", "docs", "contacts"],
+      },
+      modalities: ["gui"],
+      bundlePath: "dist/views/bundle.js",
+      surface: { header: "fullscreen", capabilities: ["agent-surface"] },
+      componentExport: "FamilyOperationsView",
+      tags: ["family", "coparenting", "agreement", "calendar", "school"],
+      relatedActions: ["OWNER_AGREEMENT_KNOWLEDGE", "CALENDAR"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },
@@ -951,6 +983,32 @@ const rawPersonalAssistantPlugin: Plugin = {
             error instanceof Error ? error.message : String(error)
           }`,
         );
+      });
+
+    // Expired, revoked, and already-consumed private card files are a separate
+    // lifecycle concern from calendar-gate registration. Keep their failures
+    // independently observable so cleanup trouble cannot masquerade as a
+    // disabled calendar host gate.
+    void runtime.initPromise
+      .then(async () => {
+        if (
+          (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
+        ) {
+          return;
+        }
+        await new CalendarCardAccessStore(runtime).cleanup();
+      })
+      .catch((error) => {
+        // error-policy:J7 startup cleanup is diagnostic maintenance; report it
+        // without preventing the rest of the assistant from initializing.
+        logger.error(
+          `[lifeops] failed to clean private calendar cards: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        runtime.reportError("LifeOps.calendarCardCleanup", error, {
+          recovery: "next_monthly_workflow_or_restart",
+        });
       });
 
     const connectorRegistry = createConnectorRegistry();
@@ -1305,6 +1363,7 @@ export {
   startAppBlock,
   stopAppBlock,
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
+export { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 export { workThreadAction } from "./actions/work-thread.js";
 export type { OverdueDigest, OverdueFollowup } from "./followup/index.js";
 export {
@@ -1398,6 +1457,19 @@ export {
   type ResumeEvaluationInput,
   resolveHandoffStore,
 } from "./lifeops/handoff/store.js";
+export {
+  type AgreementGuestGrantPreview,
+  AgreementKnowledgeError,
+  AgreementKnowledgeRuntimeService,
+  AgreementKnowledgeService,
+  type AgreementObligationStatus,
+  type HouseholdKnowledgeGrant,
+  type HouseholdKnowledgePin,
+  type KnowledgePinTargetType,
+  type ParentingAgreementArtifact,
+  type ParentingAgreementObligation,
+  type ParentingAgreementView,
+} from "./lifeops/household/agreement-knowledge.js";
 export {
   createMultilingualPromptRegistry,
   getDefaultPromptExamplePair,
@@ -1529,6 +1601,7 @@ export {
   type WorkThreadStatus,
   type WorkThreadStore,
 } from "./lifeops/work-threads/index.js";
+export { agreementPinsProvider } from "./providers/agreement-pins.js";
 export { delegationContractsProvider } from "./providers/delegation-contracts.js";
 export type { FirstRunAffordance } from "./providers/first-run.js";
 export { firstRunProvider } from "./providers/first-run.js";
@@ -1559,6 +1632,7 @@ export {
 } from "./providers/recent-task-states.js";
 export { roomPolicyProvider } from "./providers/room-policy.js";
 export { workThreadsProvider } from "./providers/work-threads.js";
+export { handleAgreementKnowledgeRoutes } from "./routes/agreement-knowledge-routes.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";

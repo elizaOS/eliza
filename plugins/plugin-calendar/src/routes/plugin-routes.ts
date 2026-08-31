@@ -66,6 +66,8 @@ const CALENDAR_RATE_LIMITS: Record<CalendarRateLimitKey, RateLimitConfig> = {
   calendar_source_write: { maxRequests: 20, windowMs: 60_000 },
   calendar_source_sync: { maxRequests: 30, windowMs: 60_000 },
   calendar_imported_data_purge: { maxRequests: 10, windowMs: 60_000 },
+  calendar_link_read: { maxRequests: 120, windowMs: 60_000 },
+  calendar_link_write: { maxRequests: 20, windowMs: 60_000 },
 };
 
 const runtimeRateLimitBuckets = new WeakMap<
@@ -142,6 +144,10 @@ function isCalendarRouteService(
     typeof (service as CalendarRouteService).purgeImportedCalendarData ===
       "function" &&
     typeof (service as CalendarRouteService).seedImportedCalendarData ===
+      "function" &&
+    typeof (service as CalendarRouteService).listLinkedCalendarEvents ===
+      "function" &&
+    typeof (service as CalendarRouteService).getLinkedCalendarEvent ===
       "function"
   );
 }
@@ -322,7 +328,17 @@ function isCalendarOwnerMutationGateway(
     value !== null &&
     typeof (value as CalendarOwnerMutationGateway).create === "function" &&
     typeof (value as CalendarOwnerMutationGateway).update === "function" &&
-    typeof (value as CalendarOwnerMutationGateway).cancel === "function"
+    typeof (value as CalendarOwnerMutationGateway).cancel === "function" &&
+    typeof (value as CalendarOwnerMutationGateway).linkCalendar ===
+      "function" &&
+    typeof (value as CalendarOwnerMutationGateway).reconcileLinkedCalendar ===
+      "function" &&
+    typeof (value as CalendarOwnerMutationGateway)
+      .resolveLinkedCalendarConflict === "function" &&
+    typeof (value as CalendarOwnerMutationGateway).disconnectLinkedCalendar ===
+      "function" &&
+    typeof (value as CalendarOwnerMutationGateway)
+      .reconcileLinkedCalendarProviderChanges === "function"
   );
 }
 
@@ -615,6 +631,41 @@ export function calendarRouteHandler(): LegacyRouteHandler {
           const gateway =
             await requireCalendarOwnerMutationGateway(agentRuntime);
           return gateway.cancel(requestUrl, request);
+        },
+        async linkCalendar(requestUrl, request) {
+          const gateway =
+            await requireCalendarOwnerMutationGateway(agentRuntime);
+          return gateway.linkCalendar(requestUrl, request);
+        },
+        async reconcileLinkedCalendar(requestUrl, linkId, request) {
+          const gateway =
+            await requireCalendarOwnerMutationGateway(agentRuntime);
+          return gateway.reconcileLinkedCalendar(requestUrl, linkId, request);
+        },
+        async resolveLinkedCalendarConflict(requestUrl, linkId, request) {
+          const gateway =
+            await requireCalendarOwnerMutationGateway(agentRuntime);
+          return gateway.resolveLinkedCalendarConflict(
+            requestUrl,
+            linkId,
+            request,
+          );
+        },
+        async disconnectLinkedCalendar(requestUrl, linkId, request) {
+          const gateway =
+            await requireCalendarOwnerMutationGateway(agentRuntime);
+          return gateway.disconnectLinkedCalendar(requestUrl, linkId, request);
+        },
+        async reconcileLinkedCalendarProviderChanges(
+          requestUrl,
+          providerEventIds,
+        ) {
+          const gateway =
+            await requireCalendarOwnerMutationGateway(agentRuntime);
+          return gateway.reconcileLinkedCalendarProviderChanges(
+            requestUrl,
+            providerEventIds,
+          );
         },
       },
     });

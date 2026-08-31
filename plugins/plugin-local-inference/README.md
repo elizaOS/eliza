@@ -31,7 +31,10 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 
 ## Requirements
 
-- Node.js 20+ or Bun runtime.
+- Bun 1.3.14. A normal source-checkout `bun install` stages and freshness-checks
+  the fused desktop library and installs the pinned, SHA-256-verified
+  `gte-small_fp16.gguf` under the same state tree the runtime resolves. Node is
+  not required for install, development startup, or local inference.
 - The fused `libelizainference` native library for the desktop text/voice/vision path (built from the llama.cpp fork's fused-inference FFI tool at `tools/omnivoice` — the Kokoro TTS engine is folded into this library; resolved via `ELIZA_INFERENCE_LIBRARY` / `ELIZA_INFERENCE_LIB_DIR` or the bundle's `lib/` dir). Generic single-file GGUF additionally needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile).
 - Native binaries for optional capabilities: `sd.cpp` for image-gen on Linux/Windows and `mflux` for Apple Silicon image-gen.
 - An Eliza-1 GGUF bundle downloaded via the model catalog (dashboard → Models, or `POST /api/local-inference/downloads`).
