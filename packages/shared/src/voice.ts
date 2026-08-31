@@ -1,3 +1,4 @@
+import { tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Shared voice contracts and voice-selection data consumed across runtime,
  * cloud, plugins, and UI surfaces.
@@ -39,11 +40,12 @@ export interface VoicePreset {
 export function sanitizeApiKey(apiKey: string | undefined): string | undefined {
   if (!apiKey) return apiKey;
   if (apiKey === "[REDACTED]") return apiKey;
+  const wellFormed = toWellFormedUnicode(apiKey);
   // If the key is long enough to be real, mask the middle
-  if (apiKey.length > 8) {
-    return `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`;
+  if (wellFormed.length > 8) {
+    return `${truncateWellFormed(wellFormed, 4)}...${tailWellFormed(wellFormed, 4)}`;
   }
-  return apiKey;
+  return wellFormed;
 }
 
 /**
