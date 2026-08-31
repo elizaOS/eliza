@@ -21,13 +21,21 @@ describe("formatError", () => {
 	});
 
 	it("handles poisoned toString", () => {
-		const poisoned = { toString() { throw new Error("poisoned"); } };
+		const poisoned = {
+			toString() {
+				throw new Error("poisoned");
+			},
+		};
 		expect(formatError(poisoned)).toBe("[object Object]");
 	});
 
 	it("handles poisoned message getter", () => {
 		const poisoned = Object.create(null, {
-			message: { get() { throw new Error("poisoned"); } },
+			message: {
+				get() {
+					throw new Error("poisoned");
+				},
+			},
 		});
 		expect(formatError(poisoned)).toBe("[object Object]");
 	});
