@@ -524,6 +524,53 @@ describe("repository ruleset contract", () => {
     ).toBeFalse();
   });
 
+  test("detects a live App pin omitted from the main manifest", () => {
+    const state = stateWithManifests();
+    const actual = structuredClone(state.details["101"]);
+    const status = actual.rules.find(
+      (rule: Record<string, any>) => rule.type === "required_status_checks",
+    );
+    status.parameters.required_status_checks[0].integration_id = 15368;
+    state.details["101"] = actual;
+    const result = runHelper(state, [
+      "--manifest",
+      manifestPath("main"),
+      "--check",
+      "--repo",
+      "test/repo",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("repository ruleset drift detected");
+    expect(result.stderr).toContain("required_status_checks[0].integration_id");
+    expect(result.stderr).not.toContain("15368");
+    expect(
+      result.requests.some((request) => request.method !== "GET"),
+    ).toBeFalse();
+  });
+
+  test("treats an absent and null App pin as the same unpinned policy", () => {
+    const state = stateWithManifests();
+    const actual = structuredClone(state.details["101"]);
+    const status = actual.rules.find(
+      (rule: Record<string, any>) => rule.type === "required_status_checks",
+    );
+    status.parameters.required_status_checks[0].integration_id = null;
+    state.details["101"] = actual;
+    const result = runHelper(state, [
+      "--manifest",
+      manifestPath("main"),
+      "--check",
+      "--repo",
+      "test/repo",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("ruleset readback passed: required-main");
+    expect(result.stderr).toBe("");
+    expect(
+      result.requests.some((request) => request.method !== "GET"),
+    ).toBeFalse();
+  });
+
   test("detects extra live array entries instead of truncating them", () => {
     const state = stateWithManifests();
     const actual = structuredClone(state.details["102"]);

@@ -290,6 +290,32 @@ if (rulesetId === null) {
 }
 
 const actual = rulesetDetail(rulesetId);
+const normalizeStatusCheckAttribution = (ruleset) => {
+  const normalized = structuredClone(ruleset);
+  if (!Array.isArray(normalized?.rules)) return normalized;
+  for (const rule of normalized.rules) {
+    if (rule?.type !== "required_status_checks") continue;
+    const checks = rule.parameters?.required_status_checks;
+    if (!Array.isArray(checks)) continue;
+    rule.parameters.required_status_checks = checks.map((check) => {
+      if (!check || typeof check !== "object" || Array.isArray(check)) {
+        return check;
+      }
+      return {
+        ...check,
+        integration_id: Object.hasOwn(check, "integration_id")
+          ? check.integration_id
+          : null,
+      };
+    });
+  }
+  return normalized;
+};
+// GitHub may return a missing optional App attribution as either absent or
+// null. Canonicalize only the comparison copies so a numeric live pin can
+// never be hidden while the reviewed mutation payload stays byte-for-byte.
+const expectedComparable = normalizeStatusCheckAttribution(expected);
+const actualComparable = normalizeStatusCheckAttribution(actual);
 const pick = (template, value) => {
   if (Array.isArray(template)) {
     if (!Array.isArray(value)) return value;
@@ -306,24 +332,28 @@ const pick = (template, value) => {
   }
   return value;
 };
-const expectedTypes = expected.rules.map((rule) => rule.type).sort();
-const actualTypes = Array.isArray(actual.rules)
-  ? actual.rules.map((rule) => rule.type).sort()
+const expectedTypes = expectedComparable.rules
+  .map((rule) => rule.type)
+  .sort();
+const actualTypes = Array.isArray(actualComparable.rules)
+  ? actualComparable.rules.map((rule) => rule.type).sort()
   : [];
 const projected = {
   ...pick(
     {
-      name: expected.name,
-      target: expected.target,
-      enforcement: expected.enforcement,
-      bypass_actors: expected.bypass_actors,
-      conditions: expected.conditions,
+      name: expectedComparable.name,
+      target: expectedComparable.target,
+      enforcement: expectedComparable.enforcement,
+      bypass_actors: expectedComparable.bypass_actors,
+      conditions: expectedComparable.conditions,
     },
-    actual,
+    actualComparable,
   ),
-  rules: expected.rules.map((rule) => {
-    const matches = Array.isArray(actual.rules)
-      ? actual.rules.filter((candidate) => candidate.type === rule.type)
+  rules: expectedComparable.rules.map((rule) => {
+    const matches = Array.isArray(actualComparable.rules)
+      ? actualComparable.rules.filter(
+          (candidate) => candidate.type === rule.type,
+        )
       : [];
     if (matches.length !== 1) {
       return { type: rule.type, count: matches.length };
@@ -361,14 +391,14 @@ const recordDifferences = (template, value, path) => {
     differingPaths.add(path);
   }
 };
-recordDifferences(expected, projected, "ruleset");
+recordDifferences(expectedComparable, projected, "ruleset");
 if (JSON.stringify(expectedTypes) !== JSON.stringify(actualTypes)) {
   differingPaths.add("ruleset.rules.type-set");
 }
 
 if (
   JSON.stringify(expectedTypes) !== JSON.stringify(actualTypes) ||
-  JSON.stringify(projected) !== JSON.stringify(expected)
+  JSON.stringify(projected) !== JSON.stringify(expectedComparable)
 ) {
   console.error(`error: repository ruleset drift detected for ${expected.name}`);
   console.error(

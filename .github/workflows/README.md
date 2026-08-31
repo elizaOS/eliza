@@ -100,6 +100,9 @@ authorized apply. External and scheduled readback requires an owner-provisioned
 `REPOSITORY_RULESET_READ_TOKEN` Actions secret with repository
 `Administration: read`; the workflow-scoped `GITHUB_TOKEN` cannot request
 that repository permission and is never used for this readback.
+Until that credential is provisioned and both reviewed manifests receive their
+separately authorized initial applies, scheduled drift runs are expected to
+fail closed; merging this source alone cannot make the readback green.
 
 The GitHub Actions App pin rejects a same-name status from another app, but it
 does not bind the status to an immutable workflow. The repository PR workflow
