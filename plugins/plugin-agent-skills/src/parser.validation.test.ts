@@ -252,6 +252,43 @@ describe("YAML block scalar descriptions (issue #30121)", () => {
     );
   });
 
+  it("keeps a blank line after a more-indented folded line as a paragraph break", () => {
+    // A blank line between a more-indented line and the next line must survive
+    // as a paragraph break. Because breaks around a more-indented line are not
+    // folded, the single blank line yields two newlines ("\n\n"), matching the
+    // `yaml` reference; it must not be absorbed into a single separator.
+    const doc = [
+      "---",
+      "name: my-skill",
+      "description: >",
+      "  a",
+      "    x",
+      "",
+      "  b",
+      "---",
+      "Body",
+    ].join("\n");
+    expect(parseFrontmatter(doc).frontmatter?.description).toBe("a\n  x\n\nb\n");
+  });
+
+  it("preserves a leading blank line in a `>` description without adding a space", () => {
+    // A folded block that opens with a blank line keeps that leading newline
+    // and folds the following two plain lines to a single space. The first
+    // content line must not be prefixed with a stray space, matching `yaml`
+    // ("\na b\n").
+    const doc = [
+      "---",
+      "name: my-skill",
+      "description: >",
+      "",
+      "  a",
+      "  b",
+      "---",
+      "Body",
+    ].join("\n");
+    expect(parseFrontmatter(doc).frontmatter?.description).toBe("\na b\n");
+  });
+
   it("strips the trailing newline for a `>-` chomped description", () => {
     const stripped = [
       "---",

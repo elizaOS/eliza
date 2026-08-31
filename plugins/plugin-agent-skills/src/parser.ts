@@ -381,28 +381,39 @@ function parseBlockScalarBody(
 	if (header.style === "literal") {
 		core = content.join("\n");
 	} else {
-		// Folded style: single line breaks between equally-indented non-empty
-		// lines fold to a space, but a line that is still indented after the
-		// common indentation is stripped is "more indented" and the breaks on
-		// either side of it are preserved literally (YAML 1.2 §8.1.3).
+		// Folded style: a single line break between two equally-indented,
+		// non-blank lines folds to a space. Every other break is preserved as a
+		// literal newline, per YAML 1.2 §8.1.3: breaks around "more indented"
+		// lines (lines still indented after the common indentation is stripped)
+		// and around blank lines are not folded. A run of blank lines between
+		// two content lines yields that many newlines; leading blank lines each
+		// contribute a literal newline before the first content line.
 		core = "";
+		let started = false;
+		let blankRun = 0;
 		let prevMoreIndented = false;
 		for (let i = 0; i < content.length; i++) {
 			const line = content[i];
-			const isBlank = line === "";
-			const moreIndented = !isBlank && /^[ \t]/.test(line);
-			if (i === 0) {
-				core = line;
-			} else if (isBlank) {
-				core += "\n";
-			} else if (core.endsWith("\n")) {
-				core += line;
-			} else if (moreIndented || prevMoreIndented) {
-				core += `\n${line}`;
+			if (line === "") {
+				blankRun++;
+				continue;
+			}
+			const moreIndented = /^[ \t]/.test(line);
+			if (!started) {
+				core = `${"\n".repeat(blankRun)}${line}`;
+				started = true;
 			} else {
-				core += ` ${line}`;
+				const breaks = blankRun + 1;
+				if (moreIndented || prevMoreIndented) {
+					core += `${"\n".repeat(breaks)}${line}`;
+				} else if (blankRun === 0) {
+					core += ` ${line}`;
+				} else {
+					core += `${"\n".repeat(breaks - 1)}${line}`;
+				}
 			}
 			prevMoreIndented = moreIndented;
+			blankRun = 0;
 		}
 	}
 
