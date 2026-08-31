@@ -97,6 +97,21 @@ describe("PdfService", () => {
 		expect(Buffer.isBuffer(parserInput)).toBe(false);
 	});
 
+	it("preserves caller-owned bytes when the parser transfers its input buffer", async () => {
+		const input = Uint8Array.from(validPdfBuffer());
+		const expected = Uint8Array.from(input);
+		getDocumentProxyMock.mockImplementation(async (parserInput: Uint8Array) => {
+			structuredClone(parserInput.buffer, {
+				transfer: [parserInput.buffer as ArrayBuffer],
+			});
+			return makePdf([{ items: [{ str: "preserved" }] }]);
+		});
+
+		await expect(service().convertPdfToText(input)).resolves.toBe("preserved");
+		expect(input).toEqual(expected);
+		expect(input.byteLength).toBe(expected.byteLength);
+	});
+
 	it("retains page geometry for layout-sensitive consumers", async () => {
 		getDocumentProxyMock.mockResolvedValue(
 			makePdf([

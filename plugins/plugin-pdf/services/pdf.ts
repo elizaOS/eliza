@@ -127,7 +127,10 @@ function validatePdfInput(input: unknown): Uint8Array {
     throw new TypeError("PDF input is not a supported PDF document");
   }
 
-  return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  // PDF.js may transfer its input ArrayBuffer to a worker, which detaches that
+  // buffer. Keep the service boundary ownership-safe so callers can still hash,
+  // persist, or otherwise reuse the bytes after extraction completes.
+  return Uint8Array.from(input);
 }
 
 function validatePageOption(value: unknown, name: string): number | undefined {
