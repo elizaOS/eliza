@@ -5,7 +5,7 @@
  * POSTGRES_HOST_AUTH_METHOD=trust -p 55432:5432 postgres:16-alpine`, then run:
  * `SUBSCRIPTION_AUTHORITY_POSTGRES_URL=postgresql://postgres@127.0.0.1:55432/postgres bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/subscription-authority.postgres.integration.test.ts`.
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
@@ -21,11 +21,14 @@ const EXPIRY_SUBSCRIPTION = "12000000-0000-4000-8000-000000000092";
 const LIVE_ORG = "10000000-0000-4000-8000-000000000093";
 const LIVE_SUBSCRIPTION_ONE = "12000000-0000-4000-8000-000000000093";
 const LIVE_SUBSCRIPTION_TWO = "12000000-0000-4000-8000-000000000094";
+const CLOCK_ORG = "10000000-0000-4000-8000-000000000095";
+const CLOCK_SUBSCRIPTION = "12000000-0000-4000-8000-000000000095";
 
 let setupClient: Client | undefined;
 let allowanceRepository: import("./subscription-allowance").SubscriptionAllowanceRepository;
 let writeTransaction: typeof import("../helpers").writeTransaction;
 let microsToMoney: typeof import("./subscription-funding-reservations").microsToMoney;
+let subscriptionFundingService: import("../../lib/services/subscription-funding").SubscriptionFundingService;
 let closeDatabaseConnectionsForTests:
   | typeof import("../client").closeDatabaseConnectionsForTests
   | undefined;
@@ -67,6 +70,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [EXPIRY_ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [LIVE_ORG]);
+    await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [CLOCK_ORG]);
     await setupClient.query(`INSERT INTO users(id) VALUES ($1)`, [USER]);
     const repositoryUrl = new URL(databaseUrl!);
     repositoryUrl.searchParams.set("options", `-c search_path=${schemaName},public`);
@@ -78,6 +82,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     ));
     ({ writeTransaction } = await import("../helpers"));
     ({ microsToMoney } = await import("./subscription-funding-reservations"));
+    ({ subscriptionFundingService } = await import("../../lib/services/subscription-funding"));
     ({ closeDatabaseConnectionsForTests } = await import("../client"));
   });
 
@@ -327,6 +332,62 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       ]);
     } finally {
       await Promise.all([first.end(), second.end()]);
+    }
+  });
+
+  test("selects current funding allowance using database time under process clock skew", async () => {
+    await setupClient!.query(
+      `INSERT INTO billing_subscriptions (
+        id, organization_id, provider_environment, stripe_customer_id,
+        stripe_subscription_id, stripe_subscription_item_id, plan_key,
+        catalog_version, status, current_period_start, current_period_end,
+        lifecycle_revision, provider_object_digest
+      ) VALUES ($1,$2,'test','cus_clock','sub_clock','si_clock',
+        'plus_monthly','v1','active',clock_timestamp() - interval '1 day',
+        clock_timestamp() + interval '1 day',1,$3)`,
+      [CLOCK_SUBSCRIPTION, CLOCK_ORG, DIGEST],
+    );
+    await setupClient!.query(
+      `INSERT INTO billing_subscription_revisions (
+        organization_id, subscription_id, revision, source, provider_environment,
+        stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id,
+        plan_key, catalog_version, status, current_period_start, current_period_end,
+        cancel_at_period_end, provider_object_digest
+      ) VALUES ($2,$1,1,'webhook','test','cus_clock','sub_clock','si_clock',
+        'plus_monthly','v1','active',clock_timestamp() - interval '1 day',
+        clock_timestamp() + interval '1 day',false,$3)`,
+      [CLOCK_SUBSCRIPTION, CLOCK_ORG, DIGEST],
+    );
+    await setupClient!.query(
+      `INSERT INTO subscription_allowance_periods (
+        id, organization_id, subscription_id, subscription_revision,
+        provider_environment, stripe_invoice_id, plan_key, catalog_version,
+        period_start, period_end, expires_at, granted_amount, available_amount
+      ) VALUES ($1,$2,$3,1,'test','in_clock','plus_monthly','v1',
+        clock_timestamp() - interval '1 day', clock_timestamp() + interval '1 day',
+        clock_timestamp() + interval '1 day',5,5)`,
+      [randomUUID(), CLOCK_ORG, CLOCK_SUBSCRIPTION],
+    );
+
+    setSystemTime(new Date("2040-01-01T00:00:00.000Z"));
+    try {
+      const result = await subscriptionFundingService.reserve({
+        organizationId: CLOCK_ORG,
+        logicalOperationId: "operation.database.clock",
+        operation: "ai_inference",
+        amount: microsToMoney(1_000_000n),
+        description: "Database clock regression",
+      });
+      const allocations = await setupClient!.query(
+        `SELECT source, reserved_amount::text
+         FROM billing_funding_allocations
+         WHERE reservation_id=$1
+         ORDER BY source`,
+        [result.reservation.id],
+      );
+      expect(allocations.rows).toEqual([{ source: "allowance", reserved_amount: "1.000000" }]);
+    } finally {
+      setSystemTime();
     }
   });
 });
