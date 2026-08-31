@@ -53,17 +53,18 @@ export {
   type CalendarSourceManagerProps,
 } from "./components/CalendarSourceManager.js";
 export {
+  CalendarPage,
+  CalendarPage as CalendarView,
+} from "./components/calendar/CalendarPage.js";
+export {
   type CalendarEventRow,
   type CalendarMode,
   type CalendarSnapshot,
   CalendarSpatialView,
 } from "./components/calendar/CalendarSpatialView.js";
-// Keep the historical public name while pointing every shipped/importable
-// Calendar entry at the same month-grid implementation.
-export {
-  SimpleCalendarView,
-  SimpleCalendarView as CalendarView,
-} from "./components/calendar/SimpleCalendarView.js";
+// Keep the compact month projection importable while the canonical public
+// Calendar entry points at the full create/edit day/week/month surface.
+export { SimpleCalendarView } from "./components/calendar/SimpleCalendarView.js";
 export {
   type EventEditorDefaults,
   EventEditorDrawer,

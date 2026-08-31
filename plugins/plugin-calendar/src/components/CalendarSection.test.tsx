@@ -436,6 +436,21 @@ describe("CalendarSection", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the selected calendar grid visible on an empty desktop feed", () => {
+    calendarState.current = makeResult({
+      events: [],
+      status: "empty",
+      viewMode: "month",
+    });
+
+    render(<CalendarSection {...noopProps} />);
+
+    expect(screen.getByTestId("calendar-month-grid")).toBeTruthy();
+    expect(
+      screen.queryByRole("status", { name: "No events in this range" }),
+    ).toBeNull();
+  });
+
   it("renders the error banner when the hook reports an error", () => {
     calendarState.current = makeResult({
       error: "Calendar failed to load.",
