@@ -336,9 +336,10 @@ class FakeTodosService {
     return execution;
   }
 
-  async listMutationRecords(
-    _scope: { entityId: string; agentId: string },
-  ): Promise<Array<{ idempotencyKey: string; applied: boolean }>> {
+  async listMutationRecords(_scope: {
+    entityId: string;
+    agentId: string;
+  }): Promise<Array<{ idempotencyKey: string; applied: boolean }>> {
     return [...this.mutationLedger.values()].map((entry) => ({
       idempotencyKey: entry.execution.idempotencyKey,
       applied: true,
