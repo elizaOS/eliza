@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Playback / TTS logic for voice chat — text processing, sentence splitting,
  * speech text extraction, and mouth animation helpers.
@@ -168,12 +169,12 @@ export function splitFirstSentence(text: string): {
   }
 
   if (value.length >= 180) {
-    const window = value.slice(0, 180);
+    const window = truncateWellFormed(toWellFormedUnicode(value), 180);
     const splitAt = window.lastIndexOf(" ");
     if (splitAt > 100) {
       return {
         complete: true,
-        firstSentence: window.slice(0, splitAt).trim(),
+        firstSentence: truncateWellFormed(window, splitAt).trim(),
         remainder: value.slice(splitAt).trim(),
       };
     }
@@ -232,10 +233,10 @@ export function queueableSpeechPrefix(text: string, isFinal: boolean): string {
   }
 
   if (value.length >= 180) {
-    const window = value.slice(0, 180);
+    const window = truncateWellFormed(toWellFormedUnicode(value), 180);
     const splitAt = window.lastIndexOf(" ");
     if (splitAt > 100) {
-      return window.slice(0, splitAt).trim();
+      return truncateWellFormed(window, splitAt).trim();
     }
   }
   return "";
