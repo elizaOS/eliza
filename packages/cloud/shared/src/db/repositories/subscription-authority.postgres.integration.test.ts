@@ -1,0 +1,267 @@
+/**
+ * Proves subscription authority constraints with independent real-PostgreSQL sessions.
+ * The suite creates and drops an isolated schema and never runs against PGlite.
+ */
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { Client } from "pg";
+
+const databaseUrl = process.env.SUBSCRIPTION_AUTHORITY_POSTGRES_URL;
+const schemaName = `subscription_authority_${randomUUID().replaceAll("-", "_")}`;
+const DIGEST = "a".repeat(64);
+const ORG = "10000000-0000-4000-8000-000000000091";
+const USER = "11000000-0000-4000-8000-000000000091";
+const SUBSCRIPTION = "12000000-0000-4000-8000-000000000091";
+const EXPIRY_ORG = "10000000-0000-4000-8000-000000000092";
+const EXPIRY_SUBSCRIPTION = "12000000-0000-4000-8000-000000000092";
+
+let setupClient: Client | undefined;
+let allowanceRepository: import("./subscription-allowance").SubscriptionAllowanceRepository;
+let writeTransaction: typeof import("../helpers").writeTransaction;
+let microsToMoney: typeof import("./subscription-funding-reservations").microsToMoney;
+let closeDatabaseConnectionsForTests:
+  | typeof import("../client").closeDatabaseConnectionsForTests
+  | undefined;
+
+async function connect(): Promise<Client> {
+  if (!databaseUrl) throw new Error("SUBSCRIPTION_AUTHORITY_POSTGRES_URL is required");
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  await client.query(`SET search_path TO ${schemaName}, public`);
+  return client;
+}
+
+describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", () => {
+  beforeAll(async () => {
+    setupClient = new Client({ connectionString: databaseUrl });
+    await setupClient.connect();
+    await setupClient.query(`CREATE SCHEMA ${schemaName}`);
+    await setupClient.query(`SET search_path TO ${schemaName}, public`);
+    await setupClient.query(`
+      CREATE TABLE organizations (id uuid PRIMARY KEY);
+      CREATE TABLE users (id uuid PRIMARY KEY);
+      CREATE TABLE credit_transactions (
+        id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL REFERENCES organizations(id),
+        CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id)
+      );
+    `);
+    const migration = await readFile(
+      new URL("../migrations/0373_subscription_authority.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await setupClient.query(statement);
+    }
+    await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [ORG]);
+    await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [EXPIRY_ORG]);
+    await setupClient.query(`INSERT INTO users(id) VALUES ($1)`, [USER]);
+    const repositoryUrl = new URL(databaseUrl!);
+    repositoryUrl.searchParams.set("options", `-c search_path=${schemaName},public`);
+    process.env.DATABASE_URL = repositoryUrl.toString();
+    process.env.TEST_DATABASE_URL = repositoryUrl.toString();
+    process.env.LOCAL_PG_POOL_MAX = "4";
+    ({ subscriptionAllowanceRepository: allowanceRepository } = await import(
+      "./subscription-allowance"
+    ));
+    ({ writeTransaction } = await import("../helpers"));
+    ({ microsToMoney } = await import("./subscription-funding-reservations"));
+    ({ closeDatabaseConnectionsForTests } = await import("../client"));
+  });
+
+  afterAll(async () => {
+    if (!setupClient) return;
+    await closeDatabaseConnectionsForTests?.();
+    await setupClient.query(`DROP SCHEMA ${schemaName} CASCADE`);
+    await setupClient.end();
+  });
+
+  test("admits one live checkout and one overlapping allowance period under races", async () => {
+    const first = await connect();
+    const second = await connect();
+    try {
+      const checkoutSql = `INSERT INTO billing_subscription_commands (
+        organization_id, requested_by_user_id, kind, target_plan_key,
+        idempotency_key, provider_idempotency_key, request_digest
+      ) VALUES ($1,$2,'checkout',$3,$4,$5,$6)`;
+      const checkoutResults = await Promise.allSettled([
+        first.query(checkoutSql, [
+          ORG,
+          USER,
+          "plus_monthly",
+          "checkout.race.one",
+          "provider.checkout.race.one",
+          DIGEST,
+        ]),
+        second.query(checkoutSql, [
+          ORG,
+          USER,
+          "pro_monthly",
+          "checkout.race.two",
+          "provider.checkout.race.two",
+          DIGEST,
+        ]),
+      ]);
+      expect(checkoutResults.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+      expect(checkoutResults.filter(({ status }) => status === "rejected")).toHaveLength(1);
+
+      await setupClient?.query(
+        `INSERT INTO billing_subscriptions (
+          id, organization_id, provider_environment, stripe_customer_id,
+          stripe_subscription_id, stripe_subscription_item_id, plan_key,
+          catalog_version, status, current_period_start, current_period_end,
+          lifecycle_revision, provider_object_digest
+        ) VALUES ($1,$2,'test','cus_realrace','sub_realrace','si_realrace',
+          'plus_monthly','v1','active','2026-08-01Z','2026-09-01Z',1,$3)`,
+        [SUBSCRIPTION, ORG, DIGEST],
+      );
+      await setupClient?.query(
+        `INSERT INTO billing_subscription_revisions (
+          organization_id, subscription_id, revision, source, provider_environment,
+          stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id,
+          plan_key, catalog_version, status, current_period_start, current_period_end,
+          cancel_at_period_end, provider_object_digest
+        ) VALUES ($2,$1,1,'webhook','test','cus_realrace','sub_realrace','si_realrace',
+          'plus_monthly','v1','active','2026-08-01Z','2026-09-01Z',false,$3)`,
+        [SUBSCRIPTION, ORG, DIGEST],
+      );
+      const periodSql = `INSERT INTO subscription_allowance_periods (
+        id, organization_id, subscription_id, subscription_revision,
+        provider_environment, stripe_invoice_id, plan_key, catalog_version,
+        period_start, period_end, expires_at, granted_amount, available_amount
+      ) VALUES ($1,$2,$3,1,'test',$4,'plus_monthly','v1',$5,$6,$6,5,5)`;
+      const periodResults = await Promise.allSettled([
+        first.query(periodSql, [
+          randomUUID(),
+          ORG,
+          SUBSCRIPTION,
+          "in_realrace1",
+          "2026-08-01Z",
+          "2026-09-01Z",
+        ]),
+        second.query(periodSql, [
+          randomUUID(),
+          ORG,
+          SUBSCRIPTION,
+          "in_realrace2",
+          "2026-08-15Z",
+          "2026-09-15Z",
+        ]),
+      ]);
+      expect(periodResults.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+      expect(periodResults.filter(({ status }) => status === "rejected")).toHaveLength(1);
+
+      await setupClient?.query(`DELETE FROM subscription_allowance_periods`);
+      const spendPeriodId = randomUUID();
+      await setupClient?.query(periodSql, [
+        spendPeriodId,
+        ORG,
+        SUBSCRIPTION,
+        "in_realspend1",
+        "2026-09-01Z",
+        "2099-10-01Z",
+      ]);
+      const reserveResults = await Promise.allSettled([
+        writeTransaction((tx) =>
+          allowanceRepository.reserve(tx, {
+            organizationId: ORG,
+            periodId: spendPeriodId,
+            logicalOperationId: "operation.real.reserve.one",
+            requestDigest: DIGEST,
+            requestedAmount: microsToMoney(5_000_000n),
+            allowanceAmount: microsToMoney(5_000_000n),
+            purchasedCreditAmount: microsToMoney(0n),
+            purchasedCreditReservationTransactionId: null,
+          }),
+        ),
+        writeTransaction((tx) =>
+          allowanceRepository.reserve(tx, {
+            organizationId: ORG,
+            periodId: spendPeriodId,
+            logicalOperationId: "operation.real.reserve.two",
+            requestDigest: "b".repeat(64),
+            requestedAmount: microsToMoney(5_000_000n),
+            allowanceAmount: microsToMoney(5_000_000n),
+            purchasedCreditAmount: microsToMoney(0n),
+            purchasedCreditReservationTransactionId: null,
+          }),
+        ),
+      ]);
+      expect(reserveResults.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+      expect(reserveResults.filter(({ status }) => status === "rejected")).toHaveLength(1);
+      const persistedReserve = await setupClient!.query(
+        `SELECT
+          (SELECT count(*)::int FROM billing_funding_reservations WHERE organization_id=$1) AS reservations,
+          (SELECT count(*)::int FROM billing_funding_allocations WHERE organization_id=$1) AS allocations,
+          (SELECT count(*)::int FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='reserve') AS reserve_entries`,
+        [ORG],
+      );
+      expect(persistedReserve.rows).toEqual([
+        { reservations: 1, allocations: 1, reserve_entries: 1 },
+      ]);
+
+      await setupClient?.query(
+        `INSERT INTO billing_subscriptions (
+          id, organization_id, provider_environment, stripe_customer_id,
+          stripe_subscription_id, stripe_subscription_item_id, plan_key,
+          catalog_version, status, current_period_start, current_period_end,
+          lifecycle_revision, provider_object_digest
+        ) VALUES ($1,$2,'test','cus_realexpiry','sub_realexpiry','si_realexpiry',
+          'plus_monthly','v1','canceled','2026-08-01Z','2026-09-01Z',1,$3)`,
+        [EXPIRY_SUBSCRIPTION, EXPIRY_ORG, DIGEST],
+      );
+      await setupClient?.query(
+        `INSERT INTO billing_subscription_revisions (
+          organization_id, subscription_id, revision, source, provider_environment,
+          stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id,
+          plan_key, catalog_version, status, current_period_start, current_period_end,
+          cancel_at_period_end, provider_object_digest
+        ) VALUES ($2,$1,1,'webhook','test','cus_realexpiry','sub_realexpiry','si_realexpiry',
+          'plus_monthly','v1','canceled','2026-08-01Z','2026-09-01Z',false,$3)`,
+        [EXPIRY_SUBSCRIPTION, EXPIRY_ORG, DIGEST],
+      );
+      const expiringPeriodId = randomUUID();
+      await setupClient?.query(
+        `INSERT INTO subscription_allowance_periods (
+          id, organization_id, subscription_id, subscription_revision,
+          provider_environment, stripe_invoice_id, plan_key, catalog_version,
+          period_start, period_end, expires_at, granted_amount, available_amount
+        ) VALUES ($1,$2,$3,1,'test','in_realexpiry1','plus_monthly','v1',
+          clock_timestamp() - interval '1 day', clock_timestamp() + interval '200 milliseconds',
+          clock_timestamp() + interval '200 milliseconds',5,5)`,
+        [expiringPeriodId, EXPIRY_ORG, EXPIRY_SUBSCRIPTION],
+      );
+      await first.query("BEGIN");
+      await first.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [EXPIRY_ORG]);
+      const blockedReserve = writeTransaction((tx) =>
+        allowanceRepository.reserve(tx, {
+          organizationId: EXPIRY_ORG,
+          periodId: expiringPeriodId,
+          logicalOperationId: "operation.real.expired",
+          requestDigest: DIGEST,
+          requestedAmount: microsToMoney(5_000_000n),
+          allowanceAmount: microsToMoney(5_000_000n),
+          purchasedCreditAmount: microsToMoney(0n),
+          purchasedCreditReservationTransactionId: null,
+        }),
+      );
+      await Bun.sleep(300);
+      await first.query("COMMIT");
+      await expect(blockedReserve).rejects.toMatchObject({
+        code: "SUBSCRIPTION_ALLOWANCE_CONFLICT",
+      });
+      const postLockExpiry = await setupClient!.query(
+        `SELECT available_amount::text, reserved_amount::text,
+          (SELECT count(*)::int FROM billing_funding_reservations WHERE organization_id=$2) AS reservations
+         FROM subscription_allowance_periods WHERE id=$1`,
+        [expiringPeriodId, EXPIRY_ORG],
+      );
+      expect(postLockExpiry.rows).toEqual([
+        { available_amount: "5.000000", reserved_amount: "0.000000", reservations: 0 },
+      ]);
+    } finally {
+      await Promise.all([first.end(), second.end()]);
+    }
+  });
+});

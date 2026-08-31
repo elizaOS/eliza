@@ -135,6 +135,24 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
   },
 ]);
 
+/** Resolves one immutable plan revision for internal billing projections. */
+export function resolveSubscriptionPlanDefinition(
+  planKey: SubscriptionPlanKey,
+  catalogVersion: string,
+): Readonly<PlanDefinition> {
+  const plan = SUBSCRIPTION_CATALOG.find(
+    (candidate) => candidate.key === planKey && candidate.catalogVersion === catalogVersion,
+  );
+  if (!plan) {
+    throw new SubscriptionCatalogError(
+      "SUBSCRIPTION_CATALOG_REVISION_NOT_FOUND",
+      "Subscription plan revision is not present in the immutable catalog",
+      { planKey, catalogVersion },
+    );
+  }
+  return plan;
+}
+
 const providerIdSchemas = {
   price: z
     .string()
