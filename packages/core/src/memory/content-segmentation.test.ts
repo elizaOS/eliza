@@ -154,6 +154,7 @@ describe("shouldSegmentContent", () => {
 
 describe("clampPageWindow", () => {
 	it("clamps oversize and omitted limits to the hard page ceiling", () => {
+		expect(MEMORY_PAGE_MAX_BYTES).toBe(256 * 1024);
 		const window = clampPageWindow(10 * 1024 * 1024, 0, undefined);
 		expect(window.end).toBe(MEMORY_PAGE_MAX_BYTES);
 		const oversize = clampPageWindow(10 * 1024 * 1024, 0, 99 * 1024 * 1024);

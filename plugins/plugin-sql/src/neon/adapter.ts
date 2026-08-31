@@ -47,11 +47,13 @@ export class NeonDatabaseAdapter extends BaseDrizzleAdapter {
 
   public async withEntityContext<T>(
     entityId: UUID | null,
-    callback: (tx: DrizzleDatabase) => Promise<T>
+    callback: (tx: DrizzleDatabase) => Promise<T>,
+    options?: { isolationLevel?: "repeatable read" }
   ): Promise<T> {
     return this.manager.withIsolationContext(
       entityId,
-      callback as (tx: NeonDatabase) => Promise<T>
+      callback as (tx: NeonDatabase) => Promise<T>,
+      options
     );
   }
 
@@ -60,9 +62,10 @@ export class NeonDatabaseAdapter extends BaseDrizzleAdapter {
    */
   public async withIsolationContext<T>(
     entityId: UUID | null,
-    callback: (tx: NeonDatabase) => Promise<T>
+    callback: (tx: NeonDatabase) => Promise<T>,
+    options?: { isolationLevel?: "repeatable read" }
   ): Promise<T> {
-    return await this.manager.withIsolationContext(entityId, callback);
+    return await this.manager.withIsolationContext(entityId, callback, options);
   }
 
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {

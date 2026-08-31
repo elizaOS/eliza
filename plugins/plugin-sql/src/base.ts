@@ -732,7 +732,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   public abstract withEntityContext<T>(
     entityId: UUID | null,
-    callback: (tx: DrizzleDatabase) => Promise<T>
+    callback: (tx: DrizzleDatabase) => Promise<T>,
+    options?: { isolationLevel?: "repeatable read" }
   ): Promise<T>;
 
   public abstract init(): Promise<void>;
@@ -4085,52 +4086,60 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getMemoryContentPage(
     params: MemoryContentPageParams
   ): Promise<MemoryContentPageResult | null> {
-    return this.withEntityContext(params.accessContext?.requesterEntityId ?? null, async (tx) => {
-      // #25140 review R2: when an access context is supplied, authorize the
-      // parent row with the SAME pushed-down conditions getMemories uses —
-      // ANDed into every parent read INSIDE the page-read snapshot, so the
-      // authorization decision and the page bytes come from one repeatable-read
-      // snapshot. An ineligible caller gets null (no descriptor leak), never
-      // page bytes; a concurrently revoked room cannot slip a page through
-      // between an authorization check and the read.
-      const authorization = params.accessContext
-        ? and(
-            eq(memoryTable.id, params.memoryId),
-            ...memoryAccessContextConditions(params.accessContext, this.agentId, "messages")
-          )
-        : undefined;
-      return readMemoryContentPage({
-        db: tx,
-        memoryId: params.memoryId,
-        field: params.field as import("@elizaos/core").MemorySegmentField,
-        byteStart: params.byteStart,
-        ...(params.byteLimit === undefined ? {} : { byteLimit: params.byteLimit }),
-        ...(params.expectedRevision === undefined
-          ? {}
-          : { expectedRevision: params.expectedRevision }),
-        ...(authorization === undefined ? {} : { parentAuthorization: authorization }),
-      });
-    });
+    return this.withEntityContext(
+      params.accessContext?.requesterEntityId ?? null,
+      async (tx) => {
+        // #25140 review R2: when an access context is supplied, authorize the
+        // parent row with the SAME pushed-down conditions getMemories uses —
+        // ANDed into every parent read INSIDE the page-read snapshot, so the
+        // authorization decision and the page bytes come from one repeatable-read
+        // snapshot. An ineligible caller gets null (no descriptor leak), never
+        // page bytes; a concurrently revoked room cannot slip a page through
+        // between an authorization check and the read.
+        const authorization = params.accessContext
+          ? and(
+              eq(memoryTable.id, params.memoryId),
+              ...memoryAccessContextConditions(params.accessContext, this.agentId, "messages")
+            )
+          : undefined;
+        return readMemoryContentPage({
+          db: tx,
+          memoryId: params.memoryId,
+          field: params.field as import("@elizaos/core").MemorySegmentField,
+          byteStart: params.byteStart,
+          ...(params.byteLimit === undefined ? {} : { byteLimit: params.byteLimit }),
+          ...(params.expectedRevision === undefined
+            ? {}
+            : { expectedRevision: params.expectedRevision }),
+          ...(authorization === undefined ? {} : { parentAuthorization: authorization }),
+        });
+      },
+      { isolationLevel: "repeatable read" }
+    );
   }
 
   /** Explicit authorized migration for one legacy large inline field (#25140). */
   async reindexMemoryContent(
     params: MemoryContentReindexParams
   ): Promise<MemoryContentReindexResult> {
-    return this.withEntityContext(params.accessContext.requesterEntityId, async (tx) => {
-      const authorization =
-        and(
-          eq(memoryTable.id, params.memoryId),
-          ...memoryAccessContextConditions(params.accessContext, this.agentId, "messages")
-        ) ?? sql`false`;
-      return reindexMemoryContent({
-        db: tx,
-        memoryId: params.memoryId,
-        field: params.field as import("@elizaos/core").MemorySegmentField,
-        maxSourceBytes: params.maxSourceBytes,
-        parentAuthorization: authorization,
-      });
-    });
+    return this.withEntityContext(
+      params.accessContext.requesterEntityId,
+      async (tx) => {
+        const authorization =
+          and(
+            eq(memoryTable.id, params.memoryId),
+            ...memoryAccessContextConditions(params.accessContext, this.agentId, "messages")
+          ) ?? sql`false`;
+        return reindexMemoryContent({
+          db: tx,
+          memoryId: params.memoryId,
+          field: params.field as import("@elizaos/core").MemorySegmentField,
+          maxSourceBytes: params.maxSourceBytes,
+          parentAuthorization: authorization,
+        });
+      },
+      { isolationLevel: "repeatable read" }
+    );
   }
 
   private async resolveMemoryUniqueness(

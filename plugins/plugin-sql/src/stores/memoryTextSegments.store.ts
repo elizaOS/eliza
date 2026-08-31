@@ -252,15 +252,22 @@ export async function reindexMemoryContent(params: {
     const marker = buildSegmentedContentMarker(planned.descriptor);
 
     if (params.field.kind === "content.text") {
-      await tx
+      const updated = await tx
         .update(memoryTable)
         .set({
           content: sql`jsonb_set(content, '{text}', to_jsonb(${marker}::text), false)`,
           metadata,
         })
-        .where(and(eq(memoryTable.id, params.memoryId), params.parentAuthorization));
+        .where(and(eq(memoryTable.id, params.memoryId), params.parentAuthorization))
+        .returning();
+      if (updated.length !== 1) {
+        throw new ElizaError("Memory content reindex authorization changed", {
+          code: "MEMORY_CONTENT_REINDEX_NOT_AUTHORIZED",
+          context: { memoryId: params.memoryId },
+        });
+      }
     } else {
-      await tx.execute(sql`
+      const updated = await tx.execute(sql`
         UPDATE memories SET
           content = jsonb_set(content, ARRAY['attachments', located.ordinal::text, 'text'], to_jsonb(${marker}::text), false),
           metadata = ${JSON.stringify(metadata)}::jsonb
@@ -271,7 +278,14 @@ export async function reindexMemoryContent(params: {
           WHERE m.id = ${params.memoryId} AND a.value->>'id' = ${params.field.attachmentId}
         ) located
         WHERE memories.id = ${params.memoryId}${authz}
+        RETURNING memories.id
       `);
+      if (updated.rows.length !== 1) {
+        throw new ElizaError("Memory content reindex authorization changed", {
+          code: "MEMORY_CONTENT_REINDEX_NOT_AUTHORIZED",
+          context: { memoryId: params.memoryId },
+        });
+      }
     }
     await insertSegmentsInTransaction({
       tx,

@@ -131,7 +131,8 @@ export class PostgresConnectionManager {
 
   public async withEntityContext<T>(
     entityId: UUID | null,
-    callback: (tx: NodePgDatabase) => Promise<T>
+    callback: (tx: NodePgDatabase) => Promise<T>,
+    options?: { isolationLevel?: "repeatable read" }
   ): Promise<T> {
     if (this.isShuttingDown()) {
       throw new Error("Database pool is shutting down - operation rejected");
@@ -166,7 +167,7 @@ export class PostgresConnectionManager {
       }
 
       return await callback(tx);
-    });
+    }, options);
   }
 
   public async close(): Promise<void> {
