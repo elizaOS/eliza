@@ -2051,6 +2051,108 @@ export class IMessageService extends Service implements IIMessageService {
         "IMESSAGE_TRANSPORT"
       );
     }
+    const pollIntervalRaw = getStringSetting(
+      "IMESSAGE_POLL_INTERVAL_MS",
+      "IMESSAGE_POLL_INTERVAL_MS"
+    );
+    const parsedPollIntervalMs = Number(pollIntervalRaw);
+    const pollIntervalMs =
+      pollIntervalRaw.trim() === "" || !Number.isFinite(parsedPollIntervalMs)
+        ? DEFAULT_POLL_INTERVAL_MS
+        : Math.max(0, parsedPollIntervalMs);
+
+    // Resolve all startup configuration before opening chat.db or arming the
+    // polling interval. A rejected setting must not leave a partial service
+    // running after Service.start() rejects.
+    const heartbeatIntervalMs = resolveHeartbeatIntervalMs(
+      getStringSetting("IMESSAGE_HEARTBEAT_INTERVAL_MS", "IMESSAGE_HEARTBEAT_INTERVAL_MS")
+    );
+
+    const dmPolicy = getStringSetting(
+      "IMESSAGE_DM_POLICY",
+      "IMESSAGE_DM_POLICY",
+      "pairing"
+    ) as IMessageSettings["dmPolicy"];
+
+    const groupPolicy = getStringSetting(
+      "IMESSAGE_GROUP_POLICY",
+      "IMESSAGE_GROUP_POLICY",
+      "allowlist"
+    ) as IMessageSettings["groupPolicy"];
+
+    const allowFromRaw = getStringSetting("IMESSAGE_ALLOW_FROM", "IMESSAGE_ALLOW_FROM");
+    const allowFrom = allowFromRaw
+      ? allowFromRaw
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+      : [];
+
+    const enabledRaw = getStringSetting("IMESSAGE_ENABLED", "IMESSAGE_ENABLED", "true");
+    const enabled = enabledRaw !== "false";
+
+    return {
+      transport: transportRaw,
+      dbPath,
+      pollIntervalMs,
+      heartbeatIntervalMs,
+      dmPolicy,
+      groupPolicy,
+      allowFrom,
+      enabled,
+      blooioApiKey:
+        getStringSetting("IMESSAGE_BLOOIO_API_KEY", "IMESSAGE_BLOOIO_API_KEY") ||
+        getStringSetting("BLOOIO_API_KEY", "BLOOIO_API_KEY") ||
+        undefined,
+      blooioWebhookSecret:
+        getStringSetting("IMESSAGE_BLOOIO_WEBHOOK_SECRET", "IMESSAGE_BLOOIO_WEBHOOK_SECRET") ||
+        getStringSetting("BLOOIO_WEBHOOK_SECRET", "BLOOIO_WEBHOOK_SECRET") ||
+        undefined,
+      blooioFromNumber:
+        getStringSetting("IMESSAGE_BLOOIO_FROM_NUMBER", "IMESSAGE_BLOOIO_FROM_NUMBER") ||
+        getStringSetting("BLOOIO_FROM_NUMBER", "BLOOIO_FROM_NUMBER") ||
+        undefined,
+      blooioChannelId:
+        getStringSetting("IMESSAGE_BLOOIO_CHANNEL_ID", "IMESSAGE_BLOOIO_CHANNEL_ID") || undefined,
+    };
+  }
+
+  private async validateSettings(): Promise<void> {
+    if (!this.settings) {
+      throw new IMessageConfigurationError("Settings not loaded");
+    }
+
+    if (this.settings.transport === "blooio") {
+      for (const [setting, value] of [
+        ["IMESSAGE_BLOOIO_API_KEY", this.settings.blooioApiKey],
+        ["IMESSAGE_BLOOIO_WEBHOOK_SECRET", this.settings.blooioWebhookSecret],
+        ["IMESSAGE_BLOOIO_FROM_NUMBER", this.settings.blooioFromNumber],
+        ["IMESSAGE_BLOOIO_CHANNEL_ID", this.settings.blooioChannelId],
+      ] as const) {
+        if (!value)
+          throw new IMessageConfigurationError(
+            `${setting} is required for the Blooio transport`,
+            setting
+          );
+      }
+    }
+
+    // Do not probe Messages.app during service startup. Sending is gated by
+    // Apple Automation while chat.db reads are gated by Full Disk Access;
+    // coupling them prevented receive-only operation and could trigger an
+    // unrelated TCC prompt merely by enabling inbound messages.
+  }
+
+  private async sendSingleMessage(to: string, text: string): Promise<IMessageSendResult> {
+    if (this.settings?.transport === "blooio") {
+      return await sendBlooioMessage({
+        apiKey: this.settings.blooioApiKey as string,
+        from: this.settings.blooioChannelId ?? (this.settings.blooioFromNumber as string),
+        to,
+        text,
+        idempotencyKey: `imessage-${crypto.randomUUID()}`,
+      });
+    }
     // Outbound delivery stays on Apple's local Messages automation surface.
     // No third-party CLI, daemon, network service, or fallback transport is
     // invoked from the native connector.
@@ -2298,10 +2400,7 @@ export class IMessageService extends Service implements IIMessageService {
             );
             continue;
           }
-          const sendResult = await this.sendSingleMessage(
-            row.handle,
-            access.pairingReplyMessage,
-          );
+          const sendResult = await this.sendSingleMessage(row.handle, access.pairingReplyMessage);
           if (!sendResult.success) {
             logger.warn(
               `[imessage] Pairing reply send failed for handle=${row.handle}: ${sendResult.error}`
