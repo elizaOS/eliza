@@ -74,6 +74,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     await setupClient.query(`INSERT INTO users(id) VALUES ($1)`, [USER]);
     const repositoryUrl = new URL(databaseUrl!);
     repositoryUrl.searchParams.set("options", `-c search_path=${schemaName},public`);
+    repositoryUrl.searchParams.set("application_name", schemaName);
     process.env.DATABASE_URL = repositoryUrl.toString();
     process.env.TEST_DATABASE_URL = repositoryUrl.toString();
     process.env.LOCAL_PG_POOL_MAX = "4";
@@ -298,8 +299,8 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
           provider_environment, stripe_invoice_id, plan_key, catalog_version,
           period_start, period_end, expires_at, granted_amount, available_amount
         ) SELECT $1,$2,$3,1,'test','in_realexpiry1','plus_monthly','v1',
-          database_now - interval '1 day', database_now + interval '200 milliseconds',
-          database_now + interval '200 milliseconds',5,5
+          database_now - interval '1 day', database_now + interval '2 seconds',
+          database_now + interval '2 seconds',5,5
         FROM (SELECT clock_timestamp() AS database_now) AS clock`,
         [expiringPeriodId, EXPIRY_ORG, EXPIRY_SUBSCRIPTION],
       );
@@ -323,15 +324,27 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
           `SELECT EXISTS (
              SELECT 1 FROM pg_stat_activity
              WHERE datname = current_database() AND wait_event_type = 'Lock'
-               AND query ILIKE '%organizations%FOR UPDATE%'
+               AND application_name = $1 AND query ILIKE '%organizations%FOR UPDATE%'
            ) AS blocked`,
+          [schemaName],
         );
         reachedOrganizationLock = lockWait.rows[0]?.blocked === true;
         if (reachedOrganizationLock) break;
         await Bun.sleep(10);
       }
       expect(reachedOrganizationLock).toBe(true);
-      await setupClient!.query("SELECT pg_sleep(0.25)");
+      const liveBeforeRelease = await setupClient!.query<{ live: boolean }>(
+        `SELECT expires_at > clock_timestamp() AS live
+         FROM subscription_allowance_periods WHERE id=$1`,
+        [expiringPeriodId],
+      );
+      expect(liveBeforeRelease.rows).toEqual([{ live: true }]);
+      await setupClient!.query(
+        `SELECT pg_sleep(
+           GREATEST(0, EXTRACT(EPOCH FROM expires_at - clock_timestamp())) + 0.05
+         ) FROM subscription_allowance_periods WHERE id=$1`,
+        [expiringPeriodId],
+      );
       await first.query("COMMIT");
       await expect(blockedReserve).rejects.toMatchObject({
         code: "SUBSCRIPTION_ALLOWANCE_CONFLICT",
