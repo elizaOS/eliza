@@ -817,7 +817,7 @@ jobs:
             "$RUNNER_TEMP/production-binding-recovery-authority" \
             "$RUNNER_TEMP/production-binding-recovery-worker"; do
             if [ -d "$evidence_dir" ]; then
-              find "$evidence_dir" -type f -exec shred -u -- {} +
+              find "$evidence_dir" -type f -exec shred -f -u -- {} +
               find "$evidence_dir" -depth -type d -empty -delete
             fi
           done
