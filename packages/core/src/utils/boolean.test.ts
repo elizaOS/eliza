@@ -1,7 +1,7 @@
 /** Parse string booleans against configurable truthy and falsy vocabularies. */
 
 import { describe, expect, it } from "vitest";
-import { parseBooleanValue, parseBooleanText } from "./boolean";
+import { parseBooleanText, parseBooleanValue } from "./boolean";
 
 describe("parseBooleanValue", () => {
 	it("passes boolean values through", () => {
@@ -63,13 +63,27 @@ describe("parseBooleanValue", () => {
 	});
 
 	it("accepts both custom truthy and falsy values", () => {
-		expect(parseBooleanValue("enabled", { truthy: ["enabled"], falsy: ["disabled"] })).toBe(true);
-		expect(parseBooleanValue("disabled", { truthy: ["enabled"], falsy: ["disabled"] })).toBe(false);
-		expect(parseBooleanValue("maybe", { truthy: ["enabled"], falsy: ["disabled"] })).toBeUndefined();
+		expect(
+			parseBooleanValue("enabled", {
+				truthy: ["enabled"],
+				falsy: ["disabled"],
+			}),
+		).toBe(true);
+		expect(
+			parseBooleanValue("disabled", {
+				truthy: ["enabled"],
+				falsy: ["disabled"],
+			}),
+		).toBe(false);
+		expect(
+			parseBooleanValue("maybe", { truthy: ["enabled"], falsy: ["disabled"] }),
+		).toBeUndefined();
 	});
 
 	it("handles empty custom vocabularies", () => {
-		expect(parseBooleanValue("true", { truthy: [], falsy: [] })).toBeUndefined();
+		expect(
+			parseBooleanValue("true", { truthy: [], falsy: [] }),
+		).toBeUndefined();
 	});
 });
 
