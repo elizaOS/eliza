@@ -22,6 +22,9 @@ const { authMock } = vi.hoisted(() => ({
 vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
+vi.mock("../../../hooks/useRole", () => ({
+  useRole: () => ({ isOwner: true }),
+}));
 
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 

@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
 import {
+  hasCloudAuthCompleted,
   isCloudAuthHandoffSurface,
   publishCloudAuthComplete,
   subscribeCloudAuthComplete,
@@ -352,12 +353,18 @@ export default function CliLoginPage() {
   // self-echo double-close).
   useEffect(() => {
     if (!sessionId) return;
+    if (hasCloudAuthCompleted(sessionId)) {
+      completionFiredRef.current = true;
+      setCompletion({ status: "success", apiKeyPrefix: "" });
+      if (isCloudAuthHandoffSurface()) tryCloseAuthWindow();
+      return;
+    }
     return subscribeCloudAuthComplete((message) => {
       if (message.sessionId !== sessionId) return;
       if (completionFiredRef.current) return;
       completionFiredRef.current = true;
       setCompletion({ status: "success", apiKeyPrefix: "" });
-      tryCloseAuthWindow();
+      if (isCloudAuthHandoffSurface()) tryCloseAuthWindow();
     });
   }, [sessionId]);
 
@@ -673,17 +680,31 @@ export default function CliLoginPage() {
   }
 
   if (pageState.status === "success") {
+    const canClose = isCloudAuthHandoffSurface();
     return (
       <CliLoginPanel
         actions={
-          <Button
-            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-            onClick={() => window.close()}
-          >
-            {t("cloud.cliLogin.closeWindow", {
-              defaultValue: "Close window",
-            })}
-          </Button>
+          canClose ? (
+            <Button
+              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+              onClick={tryCloseAuthWindow}
+            >
+              {t("cloud.cliLogin.closeWindow", {
+                defaultValue: "Close window",
+              })}
+            </Button>
+          ) : (
+            <Button
+              asChild
+              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+            >
+              <a href="/">
+                {t("cloud.authSuccess.returnToAppCta", {
+                  defaultValue: "Return to App",
+                })}
+              </a>
+            </Button>
+          )
         }
         description={t("cloud.cliLogin.successDescription", {
           defaultValue:

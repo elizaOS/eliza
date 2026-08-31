@@ -60,6 +60,7 @@ vi.mock("../../hooks/useRuntimeMode", () => ({
 }));
 
 vi.mock("../../first-run/mobile-runtime-mode", () => ({
+  MOBILE_RUNTIME_MODE_STORAGE_KEY: "eliza:mobile-runtime-mode",
   readPersistedMobileRuntimeMode: () => mobileRuntimeModeMock.value,
 }));
 
