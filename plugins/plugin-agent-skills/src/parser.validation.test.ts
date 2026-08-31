@@ -207,6 +207,32 @@ describe("YAML block scalar descriptions (issue #30121)", () => {
     );
   });
 
+  it("preserves line breaks around more-indented lines in a `>` description", () => {
+    // Per YAML 1.2 §8.1.3 a folded scalar folds equally-indented lines to
+    // spaces but preserves the breaks around "more indented" lines, so a nested
+    // bullet or indented code block keeps its own lines instead of flattening.
+    const nested = [
+      "---",
+      "name: my-skill",
+      "description: >",
+      "  Use this skill when you need to:",
+      "    - list dependencies",
+      "    - render a report",
+      "  after collecting the inputs.",
+      "---",
+      "Body",
+    ].join("\n");
+    const fm = parseFrontmatter(nested).frontmatter;
+    // The lead-in and trailing line fold to spaces, but the two more-indented
+    // bullet lines keep their own newlines and relative indentation.
+    expect(fm?.description).toBe(
+      "Use this skill when you need to:\n" +
+        "  - list dependencies\n" +
+        "  - render a report\n" +
+        "after collecting the inputs.\n",
+    );
+  });
+
   it("strips the trailing newline for a `>-` chomped description", () => {
     const stripped = [
       "---",

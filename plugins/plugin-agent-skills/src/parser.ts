@@ -328,7 +328,10 @@ function parseBlockScalarHeader(valueStr: string): BlockScalarHeader | null {
  * Consumes every line more indented than `keyIndent` (blank lines included),
  * strips the block's common leading indentation, then joins literal blocks with
  * newlines and folds folded blocks so single line breaks become spaces while
- * blank lines stay newlines. Chomping controls trailing newlines. Returns the
+ * blank lines stay newlines. Per the YAML spec, a folded block preserves the
+ * line breaks around "more indented" lines (lines still indented after the
+ * common indentation is removed) so nested bullets and indented code blocks are
+ * not silently flattened. Chomping controls trailing newlines. Returns the
  * decoded string and the index of the first line the caller has not consumed.
  */
 function parseBlockScalarBody(
@@ -378,17 +381,28 @@ function parseBlockScalarBody(
 	if (header.style === "literal") {
 		core = content.join("\n");
 	} else {
+		// Folded style: single line breaks between equally-indented non-empty
+		// lines fold to a space, but a line that is still indented after the
+		// common indentation is stripped is "more indented" and the breaks on
+		// either side of it are preserved literally (YAML 1.2 §8.1.3).
 		core = "";
-		for (const line of content) {
-			if (core === "") {
+		let prevMoreIndented = false;
+		for (let i = 0; i < content.length; i++) {
+			const line = content[i];
+			const isBlank = line === "";
+			const moreIndented = !isBlank && /^[ \t]/.test(line);
+			if (i === 0) {
 				core = line;
-			} else if (line === "") {
+			} else if (isBlank) {
 				core += "\n";
 			} else if (core.endsWith("\n")) {
 				core += line;
+			} else if (moreIndented || prevMoreIndented) {
+				core += `\n${line}`;
 			} else {
 				core += ` ${line}`;
 			}
+			prevMoreIndented = moreIndented;
 		}
 	}
 
