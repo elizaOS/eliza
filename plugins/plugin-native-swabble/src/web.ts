@@ -82,15 +82,19 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * Build a word-boundary matcher for a lowercased trigger. Unicode letter/number
- * lookarounds require the trigger to be a standalone token rather than a bare
- * substring, so "elizabeth" no longer matches the trigger "eliza" and "they"
- * no longer matches "hey". Punctuation and whitespace count as boundaries, so
+ * Build a word-boundary matcher for a lowercased trigger. Unicode
+ * letter/number/mark lookarounds require the trigger to be a standalone token
+ * rather than a bare substring, so "elizabeth" no longer matches the trigger
+ * "eliza" and "they" no longer matches "hey". Combining marks (`\p{M}`) are
+ * token constituents on both sides, so a decomposed accent adjacent to the
+ * trigger keeps it inside its host word: trigger "e" does not match the
+ * decomposed "e\u0301clair" ("éclair") and trigger "clair" does not match it
+ * either. Punctuation and whitespace still count as boundaries, so
  * "eliza, open calendar" and "eliza open calendar" both match.
  */
 function buildTriggerMatcher(trigger: string): RegExp {
   return new RegExp(
-    `(?<![\\p{L}\\p{N}])${escapeRegExp(trigger)}(?![\\p{L}\\p{N}])`,
+    `(?<![\\p{L}\\p{N}\\p{M}])${escapeRegExp(trigger)}(?![\\p{L}\\p{N}\\p{M}])`,
     "u",
   );
 }
@@ -137,7 +141,9 @@ function normalizeConfig(config: SwabbleConfig): SwabbleConfig {
  * A trigger only fires when it appears as a standalone token, delimited by
  * Unicode word boundaries (whitespace, punctuation, or string edges). A bare
  * substring never fires: "elizabeth" does not trigger "eliza" and "they" does
- * not trigger "hey". TRADEOFF: for scriptless languages that write commands
+ * not trigger "hey". Combining marks are treated as part of the surrounding
+ * token, so a decomposed accent adjacent to the trigger (e.g. "e\u0301clair")
+ * does not open the gate on the trigger "e". TRADEOFF: for scriptless languages that write commands
  * with no whitespace after the trigger (e.g. continuous CJK), the following
  * text is not a separate token, so the current whitespace/punctuation-delimited
  * contract does not split it; every existing locale test delimits the trigger

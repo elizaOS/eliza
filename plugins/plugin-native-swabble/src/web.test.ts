@@ -426,6 +426,36 @@ describe("SwabbleWeb fallback", () => {
     );
   });
 
+  it.each([
+    { trigger: "e", note: "combining mark follows the trigger" },
+    { trigger: "clair", note: "combining mark precedes the trigger" },
+  ])(
+    "does not fire when a decomposed accent keeps the trigger inside a word ($note)",
+    async ({ trigger }) => {
+      setWindow({ SpeechRecognition: FakeRecognition });
+      setNavigator({
+        mediaDevices: {
+          getUserMedia: vi.fn(async () => null),
+        } as unknown as MediaDevices,
+      });
+      const plugin = new SwabbleWeb();
+      const wakeWords = vi.fn();
+      await plugin.addListener("wakeWord", wakeWords);
+      await plugin.start({ config: { triggers: [trigger], locale: "en-US" } });
+
+      // "éclair" in NFD decomposes to "e" + U+0301 (combining acute) + "clair".
+      // A boundary class that excluded combining marks would treat the mark as
+      // a token boundary, so trigger "e" (mark on its right) and trigger
+      // "clair" (mark on its left) would each false-fire inside the single word
+      // "éclair", dispatching a command the user never issued.
+      FakeRecognition.latest?.onresult?.(
+        speechEvent("e\u0301clair recipe please"),
+      );
+
+      expect(wakeWords).not.toHaveBeenCalled();
+    },
+  );
+
   it("does not fire on common words that merely start with the trigger", async () => {
     setWindow({ SpeechRecognition: FakeRecognition });
     setNavigator({
