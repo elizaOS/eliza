@@ -62,7 +62,7 @@ describe("persistActiveServerCredential", () => {
     expect(loadPersistedActiveServer()).toEqual({
       id: `remote:${window.location.origin}`,
       kind: "remote",
-      label: window.location.hostname,
+      label: window.location.host,
       apiBase: window.location.origin,
       accessToken: "paired-token",
     });
