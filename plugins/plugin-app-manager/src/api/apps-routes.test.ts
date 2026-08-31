@@ -87,6 +87,7 @@ async function callRoute(args: {
   favoriteApps?: FavoriteAppsStore;
   getPluginManager?: AppsRouteContext["getPluginManager"];
   actorRole?: AppsRouteActorRole | null;
+  runtime?: AppsRouteContext["runtime"];
 }): Promise<{
   handled: boolean;
   res: CapturedResponse;
@@ -105,7 +106,7 @@ async function callRoute(args: {
     appManager,
     favoriteApps: args.favoriteApps,
     actorRole: args.actorRole,
-    runtime: null,
+    runtime: args.runtime ?? null,
     getPluginManager:
       args.getPluginManager ??
       (() =>
@@ -162,6 +163,146 @@ describe("handleAppsRoutes", () => {
       error:
         "Invalid request body at directory: directory must be an absolute path",
     });
+  });
+
+  it("registers every valid sibling app when one package.json is malformed", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "app-manager-load-"));
+    try {
+      await mkdir(path.join(dir, "app-good"));
+      await writeFile(
+        path.join(dir, "app-good", "package.json"),
+        JSON.stringify({
+          name: "@elizaos/app-good",
+          elizaos: { app: { slug: "good", displayName: "Good App" } },
+        }),
+      );
+      await mkdir(path.join(dir, "app-bad"));
+      // Syntactically malformed manifest: previously threw SyntaxError mid-loop
+      // and aborted the whole scan with HTTP 500.
+      await writeFile(
+        path.join(dir, "app-bad", "package.json"),
+        "{ this is not json ",
+      );
+
+      const registered: Array<Record<string, unknown>> = [];
+      const rejections: Array<Record<string, unknown>> = [];
+      const register = vi.fn(async (entry: Record<string, unknown>) => {
+        registered.push(entry);
+      });
+      const recordManifestRejection = vi.fn(
+        async (rejection: Record<string, unknown>) => {
+          rejections.push(rejection);
+        },
+      );
+      const runtime = {
+        getService: (type: string) =>
+          type === "app-registry"
+            ? { register, recordManifestRejection }
+            : null,
+      };
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/load-from-directory",
+        body: { directory: dir },
+        runtime: runtime as never,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
+      const body = result.res.body as {
+        ok: boolean;
+        registered: number;
+        items: Array<{ canonicalName: string }>;
+        rejectedManifests: Array<{
+          directory: string;
+          packageName: string | null;
+          reason: string;
+          path: string;
+        }>;
+      };
+      expect(body.ok).toBe(true);
+      // The valid app registers despite the malformed sibling manifest.
+      expect(body.registered).toBe(1);
+      expect(body.items.map((i) => i.canonicalName)).toEqual([
+        "@elizaos/app-good",
+      ]);
+      expect(register).toHaveBeenCalledTimes(1);
+      expect(registered[0]?.canonicalName).toBe("@elizaos/app-good");
+
+      // The malformed manifest is surfaced as a rejection, not swallowed.
+      expect(body.rejectedManifests).toHaveLength(1);
+      const rejected = body.rejectedManifests[0];
+      expect(rejected?.directory).toBe(path.join(dir, "app-bad"));
+      expect(rejected?.packageName).toBeNull();
+      expect(rejected?.reason).toContain("invalid JSON");
+      expect(rejected?.path).toBe(path.join(dir, "app-bad", "package.json"));
+
+      // The rejection is also recorded through the registry service so callers
+      // that persist rejections still learn which manifest failed.
+      expect(recordManifestRejection).toHaveBeenCalledTimes(1);
+      expect(rejections[0]).toMatchObject({
+        directory: path.join(dir, "app-bad"),
+        packageName: null,
+        path: path.join(dir, "app-bad", "package.json"),
+        requesterEntityId: null,
+        requesterRoomId: null,
+      });
+      expect(String(rejections[0]?.reason)).toContain("invalid JSON");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("registers all apps when every manifest in the directory is valid", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "app-manager-load-ok-"));
+    try {
+      for (const name of ["alpha", "beta", "gamma"]) {
+        await mkdir(path.join(dir, `app-${name}`));
+        await writeFile(
+          path.join(dir, `app-${name}`, "package.json"),
+          JSON.stringify({
+            name: `@elizaos/app-${name}`,
+            elizaos: { app: { slug: name } },
+          }),
+        );
+      }
+
+      const register = vi.fn(async () => {});
+      const recordManifestRejection = vi.fn(async () => {});
+      const runtime = {
+        getService: (type: string) =>
+          type === "app-registry"
+            ? { register, recordManifestRejection }
+            : null,
+      };
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/load-from-directory",
+        body: { directory: dir },
+        runtime: runtime as never,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
+      const body = result.res.body as {
+        registered: number;
+        items: Array<{ canonicalName: string }>;
+        rejectedManifests: unknown[];
+      };
+      expect(body.registered).toBe(3);
+      expect(body.items.map((i) => i.canonicalName).sort()).toEqual([
+        "@elizaos/app-alpha",
+        "@elizaos/app-beta",
+        "@elizaos/app-gamma",
+      ]);
+      expect(body.rejectedManifests).toEqual([]);
+      expect(register).toHaveBeenCalledTimes(3);
+      expect(recordManifestRejection).not.toHaveBeenCalled();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("rejects malformed favorite updates before writing the store", async () => {

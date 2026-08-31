@@ -1669,7 +1669,33 @@ export async function handleAppsRoutes(
         const pkgPath = path.join(subdir, "package.json");
         const raw = await fs.readFile(pkgPath, "utf8").catch(() => null);
         if (raw === null) continue;
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(raw) as Record<string, unknown>;
+        } catch (parseError) {
+          // error-policy:J3 A syntactically malformed package.json is invalid
+          // on-disk input for this one entry, not a batch failure. Skip it the
+          // same way an unreadable manifest is skipped so every valid sibling
+          // app still registers, and surface which manifest was rejected.
+          const reason = `invalid JSON: ${
+            parseError instanceof Error
+              ? parseError.message
+              : String(parseError)
+          }`;
+          const rejection = {
+            directory: subdir,
+            packageName: null,
+            reason,
+            path: pkgPath,
+          };
+          rejectedManifests.push(rejection);
+          await registry.recordManifestRejection?.({
+            ...rejection,
+            requesterEntityId: null,
+            requesterRoomId: null,
+          });
+          continue;
+        }
         const elizaos =
           parsed.elizaos && typeof parsed.elizaos === "object"
             ? (parsed.elizaos as Record<string, unknown>)
