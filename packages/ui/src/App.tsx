@@ -136,7 +136,6 @@ import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { ViewUnavailableState } from "./components/views/ViewStatusStates";
 import { AppWorkspaceContent } from "./components/workspace/AppWorkspaceContent";
 import { useBootConfig } from "./config/boot-config-react.hooks";
-import { useBranding } from "./config/branding";
 import {
   CHAT_OPEN_EVENT,
   dispatchNavigateViewEvent,
@@ -149,10 +148,7 @@ import {
   type PushToTalkHoldDetail,
 } from "./events";
 import { completeRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
-import {
-  isElizaCloudRuntimeLocked,
-  persistMobileRuntimeModeForServerTarget,
-} from "./first-run/mobile-runtime-mode";
+import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
 import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conductor";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
@@ -2531,7 +2527,6 @@ function HomeScreenMount({
 }
 
 function AppContent() {
-  const branding = useBranding();
   const {
     startupError,
     startupCoordinator,
@@ -3262,13 +3257,11 @@ function AppContent() {
 
   const androidCloudAuthAutoStart = isAndroidCloudBuild();
   const cloudAuthFirstScreenOwnsSurface =
+    androidCloudAuthAutoStart &&
     shellMode === "full" &&
     !isPopout &&
     !isAuxiliaryAppWindow &&
-    !cloudPairToken &&
-    (branding.cloudOnly === true ||
-      (androidCloudAuthAutoStart && branding.cloudOnly !== false) ||
-      isElizaCloudRuntimeLocked());
+    !cloudPairToken;
   const hasUsableCloudSession =
     elizaCloudConnected ||
     hasUsableStoredStewardToken() ||
@@ -3410,12 +3403,22 @@ function AppContent() {
     return <VoiceWorkbenchShell />;
   }
 
-  // Cloud account auth owns the primary viewport before chat exists. Keep the
-  // first screen in Eliza and leave it only after an explicit sign-in choice.
+  // Android's Cloud build owns its native auth startup surface. Web and Mac
+  // keep first run inside the normal Eliza chat overlay so sign-in remains a
+  // deliberate conversational choice instead of replacing the whole app.
   if (cloudAuthFirstScreenOwnsSurface && !hasUsableCloudSession) {
     return (
       <BugReportProvider value={bugReport}>
-        {androidCloudAuthAutoStart && elizaCloudLoginBusy ? (
+        {elizaCloudLoginError ? (
+          <CloudSignInRecoveryView
+            detail={elizaCloudLoginError}
+            onRetry={() => {
+              void startCloudAuthFirstScreen().catch(() => {
+                // error-policy:J4 the same retry surface receives the error.
+              });
+            }}
+          />
+        ) : (
           <StartupShell
             view={{
               kind: "loading",
@@ -3424,16 +3427,6 @@ function AppContent() {
             }}
             onRetry={() => {
               void startCloudAuthFirstScreen();
-            }}
-          />
-        ) : (
-          <CloudSignInRecoveryView
-            detail={elizaCloudLoginError ?? undefined}
-            busy={elizaCloudLoginBusy}
-            onRetry={() => {
-              void startCloudAuthFirstScreen().catch(() => {
-                // error-policy:J4 the same sign-in surface receives the error.
-              });
             }}
           />
         )}

@@ -7,18 +7,15 @@ import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 
 interface CloudSignInRecoveryViewProps {
-  detail?: string;
-  busy?: boolean;
+  detail: string;
   onRetry: () => void;
 }
 
 export function CloudSignInRecoveryView({
   detail,
-  busy = false,
   onRetry,
 }: CloudSignInRecoveryViewProps) {
   const t = useAppSelector((state) => state.t);
-  const hasFailure = Boolean(detail?.trim());
 
   return (
     <Card
@@ -58,43 +55,27 @@ export function CloudSignInRecoveryView({
 
           <CardContent className="flex flex-col gap-5 pt-5">
             <p className="text-sm leading-relaxed text-muted">
-              {hasFailure
-                ? t("cloudsigninrecovery.Description", {
-                    defaultValue:
-                      "We couldn't finish signing you in. Try again to continue to your agent.",
-                  })
-                : t("cloudsigninrecovery.InitialDescription", {
-                    defaultValue:
-                      "Sign in to connect your Eliza Cloud account. You'll return here when it's ready.",
-                  })}
+              {t("cloudsigninrecovery.Description", {
+                defaultValue:
+                  "We couldn't finish signing you in. Try again to continue to your agent.",
+              })}
             </p>
-            {hasFailure ? (
-              <p
-                className="rounded-lg border border-border bg-bg/60 px-3 py-2 text-sm leading-relaxed text-txt"
-                role="status"
-              >
-                {detail}
-              </p>
-            ) : null}
+            <p
+              className="rounded-lg border border-border bg-bg/60 px-3 py-2 text-sm leading-relaxed text-txt"
+              role="status"
+            >
+              {detail}
+            </p>
             <Button
               variant="default"
               size="lg"
               onClick={onRetry}
-              disabled={busy}
               className="w-full sm:w-auto sm:min-w-[11rem]"
               data-testid="cloud-sign-in-retry"
             >
-              {busy
-                ? t("cloudsigninrecovery.Opening", {
-                    defaultValue: "Opening secure sign in…",
-                  })
-                : hasFailure
-                  ? t("cloudsigninrecovery.SignInAgain", {
-                      defaultValue: "Sign in again",
-                    })
-                  : t("cloudsigninrecovery.SignIn", {
-                      defaultValue: "Sign in to Eliza Cloud",
-                    })}
+              {t("cloudsigninrecovery.SignInAgain", {
+                defaultValue: "Sign in again",
+              })}
             </Button>
           </CardContent>
         </Card>

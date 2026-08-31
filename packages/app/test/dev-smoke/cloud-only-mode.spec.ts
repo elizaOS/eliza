@@ -115,17 +115,28 @@ async function routeFreshFirstRun(page: Page): Promise<CloudAuthRouteState> {
     },
   );
   await page.route(
-    /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?.*$/,
+    new RegExp(
+      `^https:\\/\\/api-staging\\.eliza\\.app\\/api\\/auth\\/cli-session\\/${STAGING_SESSION_ID}$`,
+    ),
     async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
-      state.hostedLoginGets += 1;
-      await route.fulfill({
-        status: 200,
-        contentType: "text/html",
-        body: "<!doctype html><html><body><h1>Hosted staging sign-in</h1></body></html>",
-      });
+      await fulfillJson(route, { status: "pending" });
     },
   );
+  await page
+    .context()
+    .route(
+      /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?.*$/,
+      async (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        state.hostedLoginGets += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: "text/html",
+          body: "<!doctype html><html><body><h1>Hosted staging sign-in</h1></body></html>",
+        });
+      },
+    );
 
   await page.route(
     /^https:\/\/staging\.eliza\.app\/steward\/auth\/providers\/?(?:\?.*)?$/,
@@ -181,20 +192,26 @@ async function expectCloudOnlyAuth(
   localOrigin: string,
   extraPages: Page[],
 ): Promise<void> {
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByText("Hi, I'm Eliza.", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("heading", {
-      level: 1,
-      name: "Sign in to Eliza Cloud",
-      exact: true,
-    }),
-  ).toBeVisible({ timeout: 20_000 });
+    page.getByText("Let's get you signed in.", { exact: true }),
+  ).toBeVisible();
   expect(new URL(page.url()).origin).toBe(localOrigin);
+  const previousPopupCount = extraPages.length;
   await page.getByRole("button", { name: "Sign in to Eliza Cloud" }).click();
-  await expect(page).toHaveURL(
+  await expect
+    .poll(() => extraPages.length, { timeout: 20_000 })
+    .toBe(previousPopupCount + 1);
+  const loginPage = extraPages.at(-1);
+  if (!loginPage) throw new Error("Cloud sign-in did not open its browser tab");
+  await expect(loginPage).toHaveURL(
     /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?/,
     { timeout: 20_000 },
   );
-  const loginUrl = new URL(page.url());
+  const loginUrl = new URL(loginPage.url());
   expect(loginUrl.origin).toBe("https://staging.eliza.app");
   expect(loginUrl.pathname).toBe("/auth/cli-login");
   expect(loginUrl.searchParams.get("session")).toBe(STAGING_SESSION_ID);
@@ -205,14 +222,9 @@ async function expectCloudOnlyAuth(
   expect(returnTo.searchParams.get("elizaCloudLoginSession")).toBe(
     STAGING_SESSION_ID,
   );
-  expect(
-    extraPages,
-    "same-tab Cloud sign-in must never open a popup or second page",
-  ).toHaveLength(0);
-  expect(page.context().pages()).toHaveLength(1);
-  expect(page.context().pages()[0]).toBe(page);
+  expect(new URL(page.url()).origin).toBe(localOrigin);
   await expect(
-    page.getByRole("heading", {
+    loginPage.getByRole("heading", {
       level: 1,
       name: "Hosted staging sign-in",
       exact: true,
@@ -224,6 +236,8 @@ async function expectCloudOnlyAuth(
       page.getByTestId(`choice-__first_run__:runtime:${runtime}`),
     ).toHaveCount(0);
   }
+  await loginPage.close();
+  expect(page.context().pages()).toEqual([page]);
 }
 
 async function capture(page: Page, outputPath: string): Promise<void> {

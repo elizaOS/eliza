@@ -90,7 +90,8 @@ export function ChatBubble({
             : undefined
         }
         radius={
-          appearance === "default" && !bare && tone === "user"
+          appearance === "firstRun" ||
+          (appearance === "default" && !bare && tone === "user")
             ? "xlarge"
             : undefined
         }

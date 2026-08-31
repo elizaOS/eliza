@@ -22,7 +22,7 @@
  *    chrome-free, so plain web `?shellMode=chat-overlay` loads are unaffected.
  */
 
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { type ReactNode, useLayoutEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -402,25 +402,20 @@ describe("App chat-overlay first-run composition", () => {
     ).not.toBeNull();
   });
 
-  it("keeps the Cloud first screen local until the user chooses sign in", async () => {
+  it("keeps Cloud first run inside the real chat shell", () => {
     window.history.replaceState(null, "", "/");
     appState.cloudOnly = true;
     appState.firstRunComplete = false;
     appState.startupPhase = "first-run-required";
     appState.authPhase = "authenticated";
+    shellControllerMock.current = {};
 
-    const screen = render(<App />);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const shell = render(<App />);
 
+    expect(shell.queryByTestId("startup-screen")).toBeNull();
+    expect(shell.getByTestId("chat-overlay")).toBeTruthy();
+    expect(shell.getByTestId("first-run-conductor-mount")).toBeTruthy();
     expect(appState.handleCloudLoginRecovery).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Sign in to Eliza Cloud" }),
-    );
-    await waitFor(() =>
-      expect(appState.handleCloudLoginRecovery).toHaveBeenCalledWith({
-        requireClientAuth: true,
-      }),
-    );
   });
 
   it("bypasses the StartupScreen gate and renders no app chrome during first-run", () => {

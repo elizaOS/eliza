@@ -294,10 +294,9 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(bubble?.getAttribute("role")).toBeNull();
     expect(bubble?.textContent).toContain(message.text);
     expect(bubble?.classList.contains("border")).toBe(true);
-    expect(bubble?.classList.contains("rounded-sm")).toBe(true);
-    expect(bubble?.classList.contains("bg-card/92")).toBe(true);
-    expect(bubble?.classList.contains("rounded-bl-md")).toBe(false);
-    expect(bubble?.classList.contains("bg-black/35")).toBe(false);
+    expect(bubble?.classList.contains("rounded-2xl")).toBe(true);
+    expect(bubble?.classList.contains("rounded-bl-md")).toBe(true);
+    expect(bubble?.classList.contains("bg-black/35")).toBe(true);
     expect(screen.queryByTestId("chat-message-action-rail")).toBeNull();
     expect(
       screen.queryByRole("button", { name: /delete/i, hidden: true }),
