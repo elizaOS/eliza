@@ -9,15 +9,32 @@
 
 import { missingWhatsAppCredentialRefs } from "./messaging-gateway-preflight-contract.mjs";
 
-const args = new Set(process.argv.slice(2));
+const cliArgs = process.argv.slice(2);
+const args = new Set(cliArgs);
 const strict = args.has("--strict");
-const channelsArg = process.argv.find((arg) => arg.startsWith("--channels="));
-const selectedChannels = new Set(
-  (channelsArg?.split("=")[1] ?? "shared,telegram,discord,whatsapp,imessage")
-    .split(",")
-    .map((channel) => channel.trim())
-    .filter(Boolean),
-);
+const supportedChannels = ["shared", "telegram", "discord", "whatsapp", "imessage"];
+const supportedChannelSet = new Set(supportedChannels);
+const channelArgs = cliArgs.filter((arg) => arg.startsWith("--channels="));
+const requestedChannels =
+  channelArgs.length === 0
+    ? supportedChannels
+    : channelArgs[0]
+        .slice("--channels=".length)
+        .split(",")
+        .map((channel) => channel.trim());
+const selectedChannels = new Set(requestedChannels);
+const invalidChannelSelection =
+  channelArgs.length > 1 ||
+  requestedChannels.length === 0 ||
+  requestedChannels.some((channel) => !supportedChannelSet.has(channel)) ||
+  selectedChannels.size !== requestedChannels.length;
+
+if (invalidChannelSelection) {
+  console.error(
+    `Invalid --channels selection. Use a non-empty comma-separated subset of: ${supportedChannels.join(", ")}. Each channel may appear once.`,
+  );
+  process.exit(2);
+}
 
 const checks = [];
 

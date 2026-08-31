@@ -118,6 +118,24 @@ test("channel scoping does not require unrelated connector credentials", () => {
   assert.doesNotMatch(result.stdout, /telegram|whatsapp|imessage/i);
 });
 
+test("strict preflight rejects empty, unknown, and duplicate channel selectors", () => {
+  for (const channels of [
+    "",
+    "discrod",
+    "discord,unknown",
+    "discord,,telegram",
+    "discord,discord",
+  ]) {
+    const result = runStrict(channels, DISCORD_ENV);
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    assert.equal(result.status, 2, output);
+    assert.match(result.stderr, /Invalid --channels selection/);
+    assert.doesNotMatch(result.stdout, /All gateway preflight checks passed/);
+    assert.doesNotMatch(output, /discrod|unknown/);
+  }
+});
+
 test("Discord preflight accepts raw operator values or exact names-only presence sentinels", () => {
   for (const env of [DISCORD_ENV, DISCORD_PRESENCE_ENV]) {
     const result = runStrict("discord", env);
@@ -252,6 +270,8 @@ test("reusable workflow keeps the develop caller source-test-only", () => {
     /cloud-gateway-discord:\s+[\s\S]*?uses: \.\/\.github\/workflows\/cloud-gateway-discord\.yml\s+secrets: inherit/,
   );
   assert.doesNotMatch(testJob, /^\s{4}if:/m);
+  assert.match(testJob, /^\s{4}runs-on:\s+ubuntu-24\.04$/m);
+  assert.doesNotMatch(workflow, /HETZNER_FLEET_ONLINE|self-hosted|hetzner-robot/);
   assert.match(
     workflow,
     /name: Generate source keyword modules\s+working-directory: \.\s+run: bun run --cwd packages\/shared build:i18n/,
