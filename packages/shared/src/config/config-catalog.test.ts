@@ -6,6 +6,7 @@
 import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  interpolateString,
   builtInValidators,
   evaluateFieldVisibility,
   evaluateLogicExpression,
@@ -572,5 +573,14 @@ describe("evaluateLogicExpression budget", () => {
         {},
       ),
     ).toThrowError(ElizaError);
+  });
+});
+
+describe("interpolateString", () => {
+  it("interpolates path values and preserves surrogate pair integrity beyond 100_000 chars", () => {
+    const big = "A".repeat(99_999) + "🚀" + "{{/name}}";
+    const out = interpolateString(big, { name: "World" });
+    expect(out.isWellFormed()).toBe(true);
+    expect(out.startsWith("A".repeat(99_999))).toBe(true);
   });
 });
