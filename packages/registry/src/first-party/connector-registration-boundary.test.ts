@@ -193,28 +193,38 @@ async function collectObservedRegistrations(): Promise<
     "../../../../plugins/plugin-imessage/src/service"
   );
   {
-    // The seam is transport-dependent since develop 9b93ec4374 made the
-    // integrated Blooio connector canonical: a `native` transport registers
-    // attachments + contact_resolution, a `blooio` transport registers only
-    // send_message + chat_context. Execute BOTH production branches so the
-    // boundary test pins each variant the service can declare.
-    for (const transport of ["native", "blooio"] as const) {
-      const { runtime, messageRegistrations } = observingRuntime();
-      const service = serviceShell(imessage.IMessageService.prototype, {
-        getStatus: () => ({
-          available: false,
-          connected: false,
-          chatDbAvailable: false,
-          sendOnly: false,
-          chatDbPath: null,
-          reason: "registration-boundary test",
-          permissionAction: null,
-          transport,
-        }),
-      });
-      imessage.IMessageService.registerSendHandlers(runtime, service);
-      for (const r of messageRegistrations) record(r);
-    }
+    // Drive both transport branches: the registration capabilities are
+    // transport-conditional (isBlooio gates attachments/contact_resolution off),
+    // and the inventory claims one variant per transport configuration.
+    const { runtime, messageRegistrations } = observingRuntime();
+    const macosStatus = {
+      available: false,
+      connected: false,
+      chatDbAvailable: false,
+      sendOnly: false,
+      chatDbPath: null,
+      reason: "registration-boundary test (macos transport)",
+      permissionAction: null,
+    };
+    const macosService = serviceShell(imessage.IMessageService.prototype, {
+      getStatus: () => ({ ...macosStatus, transport: "macos" }),
+    });
+    imessage.IMessageService.registerSendHandlers(runtime, macosService);
+    for (const r of messageRegistrations) record(r);
+
+    const {
+      runtime: blooioRuntime,
+      messageRegistrations: blooioRegistrations,
+    } = observingRuntime();
+    const blooioService = serviceShell(imessage.IMessageService.prototype, {
+      getStatus: () => ({
+        ...macosStatus,
+        reason: "registration-boundary test (blooio transport)",
+        transport: "blooio",
+      }),
+    });
+    imessage.IMessageService.registerSendHandlers(blooioRuntime, blooioService);
+    for (const r of blooioRegistrations) record(r);
   }
 
   const chat = await import(
@@ -276,6 +286,30 @@ describe("executable registration boundary (#24373)", () => {
     }
   }, 30_000);
 
+  it("pins each transport variant of plugin-imessage's registration exactly", async () => {
+    // plugin-imessage declares one registration whose capabilities are
+    // transport-conditional (service.ts isBlooio ternary). The inventory row
+    // is the UNION of both branches; this test pins each EXECUTED variant's
+    // exact capability set so neither branch can silently drift (dropping a
+    // capability from only one transport must fail even when the other
+    // transport still declares it).
+    const observed = await collectObservedRegistrations();
+    const variants = (observed.get("imessage") ?? []).map(
+      (r) => (r.capabilities as string[] | undefined) ?? [],
+    );
+    expect(variants.length).toBe(2);
+    const macos = [
+      "attachments",
+      "chat_context",
+      "contact_resolution",
+      "send_message",
+    ];
+    const blooio = ["chat_context", "send_message"];
+    const shapes = variants.map((caps) => [...caps].sort().join(","));
+    expect(shapes).toContain(macos.join(","));
+    expect(shapes).toContain(blooio.join(","));
+  }, 30_000);
+
   it("observed registrations carry the claimed capabilities and target kinds", async () => {
     const observed = await collectObservedRegistrations();
     for (const row of truthInventory.connectors as InventoryRow[]) {
@@ -298,6 +332,32 @@ describe("executable registration boundary (#24373)", () => {
           live,
           `${row.plugin}/${reg.source}: no executed registration carries capabilities ${JSON.stringify(reg.capabilities)} and supportedTargetKinds ${JSON.stringify(reg.supportedTargetKinds)}`,
         ).toBeDefined();
+        // Transport-conditional registrations (plugin-imessage declares a
+        // blooio branch and a macos branch) must have EVERY executed variant
+        // covered by the claimed aggregate: the inventory is the union of the
+        // branches, so each observed variant must be a subset of the claim,
+        // and the claim must not contain a capability no variant declares.
+        for (const candidate of observed.get(reg.source) ?? []) {
+          if (!Array.isArray(candidate.capabilities)) continue;
+          const variantCaps = candidate.capabilities as string[];
+          for (const c of variantCaps) {
+            expect(
+              reg.capabilities,
+              `${row.plugin}/${reg.source}: executed variant declares capability "${c}" missing from the claimed aggregate — extend the inventory, not the test`,
+            ).toContain(c);
+          }
+        }
+        for (const c of reg.capabilities) {
+          const declaredBySomeVariant = (observed.get(reg.source) ?? []).some(
+            (candidate) =>
+              Array.isArray(candidate.capabilities) &&
+              (candidate.capabilities as string[]).includes(c),
+          );
+          expect(
+            declaredBySomeVariant,
+            `${row.plugin}/${reg.source}: claimed capability "${c}" is declared by NO executed registration variant — the inventory overclaims`,
+          ).toBe(true);
+        }
       }
     }
   }, 30_000);
