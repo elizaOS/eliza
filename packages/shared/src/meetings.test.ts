@@ -72,4 +72,9 @@ describe("parseMeetingUrl", () => {
     expect(parseMeetingUrl("https://example.com/not-a-meeting")).toBeNull();
     expect(parseMeetingUrl("")).toBeNull();
   });
+  it("preserves surrogate pair integrity when decoded Teams id exceeds 128 chars", () => {
+    const raw = "https://teams.microsoft.com/l/meetup-join/" + "a".repeat(127) + "%F0%9F%9A%80" + "/0";
+    const parsed = parseMeetingUrl(raw);
+    expect(parsed?.nativeMeetingId?.isWellFormed()).toBe(true);
+  });
 });
