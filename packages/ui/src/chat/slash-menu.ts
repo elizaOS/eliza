@@ -265,7 +265,7 @@ export function filterArgChoices(choices: string[], query: string): string[] {
 // ── Natural client shortcuts ────────────────────────────────────────────────
 
 const NAVIGATION_VERB_PATTERN =
-  "(?:open|show(?:\\s+me)?|go\\s+to|switch\\s+to|take\\s+me\\s+to|pull\\s+up|bring\\s+up)";
+  "(?:open|show(?:\\s+me)?|go(?:\\s+to)?|switch\\s+to|take\\s+me\\s+to|pull\\s+up|bring\\s+up)";
 const OPTIONAL_OBJECT_PATTERN = "(?:(?:the|my)\\s+)?";
 const SLOT_WORD_PATTERN = "[\\p{L}\\p{N}]+(?:\\s+[\\p{L}\\p{N}]+)*";
 const SLOT_WORD_PATTERN_LAZY = "[\\p{L}\\p{N}]+(?:\\s+[\\p{L}\\p{N}]+)*?";
@@ -552,6 +552,80 @@ export function resolveClientShortcutExecution(
   }
 
   return resolveSlashExecution(command, alias, resolveSection);
+}
+
+export type NavigationSlashExecution = Extract<
+  SlashExecution,
+  { kind: "navigate-tab" | "navigate-settings" | "navigate-view" }
+>;
+
+const OPTIMISTIC_NAVIGATION_COMMANDS: SlashCommandCatalogItem[] = [
+  {
+    key: "__optimistic-home",
+    nativeName: "home",
+    description: "Open Home",
+    textAliases: ["/home"],
+    scope: "both",
+    acceptsArgs: false,
+    args: [],
+    requiresAuth: false,
+    requiresElevated: false,
+    target: { kind: "navigate", path: "/chat", tab: "home" },
+    source: "builtin",
+  },
+  {
+    key: "__optimistic-views",
+    nativeName: "views",
+    description: "Open a loaded view",
+    textAliases: ["/views"],
+    scope: "both",
+    acceptsArgs: true,
+    args: [
+      {
+        name: "view",
+        description: "Loaded view id",
+        dynamicChoices: "views",
+      },
+    ],
+    requiresAuth: false,
+    requiresElevated: false,
+    target: { kind: "navigate", tab: "views", path: "/views" },
+    source: "builtin",
+  },
+];
+
+/**
+ * Resolve an exact natural-language navigation command for optimistic routing.
+ * The caller still sends the original text to the agent, so only the local view
+ * transition is accelerated; response wording and side-effect truth remain
+ * model- and receipt-owned.
+ */
+export function resolveOptimisticNavigationExecution(
+  commands: SlashCommandCatalogItem[],
+  text: string,
+  resolveSection: (token: string) => string | undefined = (t) => t,
+  options: Omit<ResolveClientShortcutOptions, "allowNatural"> = {},
+): NavigationSlashExecution | null {
+  // Resolve the local navigation vocabulary independently so an equivalent
+  // server command cannot produce a confidence tie and disable the fast path.
+  // The remote catalog remains authoritative for every command not covered by
+  // the narrow Home/loaded-view vocabulary.
+  for (const candidateCommands of [OPTIMISTIC_NAVIGATION_COMMANDS, commands]) {
+    const execution = resolveClientShortcutExecution(
+      candidateCommands,
+      text,
+      resolveSection,
+      { ...options, allowNatural: true },
+    );
+    if (
+      execution?.kind === "navigate-tab" ||
+      execution?.kind === "navigate-settings" ||
+      execution?.kind === "navigate-view"
+    ) {
+      return execution;
+    }
+  }
+  return null;
 }
 
 // ── Completion (Tab) ─────────────────────────────────────────────────────────

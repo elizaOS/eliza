@@ -15,6 +15,7 @@ import {
 import {
   buildDesignContractGraph,
   inventoryDesignTokens,
+  parseMoleculeContracts,
   resolveCanonicalAtomImport,
   validateDeclaredAtomicDependencies,
   validateDeclaredMoleculeConsumers,
@@ -338,6 +339,60 @@ test("declared molecule consumers enforce required files and reference floors", 
       sourceConsumerFiles: ["packages/ui/src/consumer-a.tsx"],
     }),
     [],
+  );
+});
+
+test("molecule contract boundary requires representative migration evidence", () => {
+  const contract = {
+    behavioralTest: "packages/ui/src/components/example.test.tsx",
+    id: "example",
+    minimumMaintainedReferences: 2,
+    owner: "packages/ui/src/components/example.tsx",
+    renderedStory: "packages/ui/src/components/example.stories.tsx",
+    requiredAtomicDependencies: ["button"],
+    requiredConsumerFiles: [
+      "packages/ui/src/components/consumer-a.tsx",
+      "packages/ui/src/components/consumer-b.tsx",
+    ],
+    requiredRenderedTags: ["Button"],
+    responsibility: "Owns the example composition.",
+    symbol: "Example",
+  };
+
+  assert.deepEqual(
+    parseMoleculeContracts({ schemaVersion: 2, contracts: [contract] }),
+    [contract],
+  );
+  assert.throws(
+    () =>
+      parseMoleculeContracts({
+        schemaVersion: 1,
+        contracts: [contract],
+      }),
+    /schemaVersion 2/,
+  );
+  assert.throws(
+    () =>
+      parseMoleculeContracts({
+        schemaVersion: 2,
+        contracts: [{ ...contract, behavioralTest: undefined }],
+      }),
+    /behavioralTest must be a string/,
+  );
+  assert.throws(
+    () =>
+      parseMoleculeContracts({
+        schemaVersion: 2,
+        contracts: [
+          {
+            ...contract,
+            requiredConsumerFiles: [
+              "packages/ui/src/components/consumer-a.tsx",
+            ],
+          },
+        ],
+      }),
+    /at least two distinct maintained consumer files/,
   );
 });
 

@@ -150,6 +150,27 @@ describe("ManagedCloudPage", () => {
         ?.querySelector("[data-page-content]")
         ?.getAttribute("data-page-gutter"),
     ).toBe("none");
+    expect(frame?.getAttribute("data-scroll-owner")).toBe("view");
+    expect(frame?.className).toContain("overflow-hidden");
+    expect(frame?.getAttribute("data-shell-scroll-region")).toBeNull();
+    expect(document.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
+  });
+
+  it("keeps default managed pages reachable through one shell-owned scroller", () => {
+    renderPage("/cloud");
+
+    const overview = screen.getByTestId("cloud-overview");
+    const frame = overview.closest<HTMLElement>("[data-scroll-owner]");
+    expect(frame).not.toBeNull();
+    expect(frame?.getAttribute("data-scroll-owner")).toBe("shell");
+    expect(frame?.className).toContain("overflow-y-auto");
+    expect(frame?.getAttribute("data-shell-scroll-region")).toBe("true");
+    expect(
+      frame?.querySelector('[data-shell-scroll-region="true"]'),
+    ).toBeNull();
+    expect(frame?.contains(overview)).toBe(true);
+    expect(document.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
+    expect(frame?.querySelector("[data-scroll-owner]")).toBeNull();
   });
 
   it("does not require a managed agent runtime for an authenticated Cloud account", () => {

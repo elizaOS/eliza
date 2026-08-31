@@ -39,11 +39,6 @@
     "canonicalOwner": "packages/ui/src/components/ui/badge.tsx",
     "note": "Docs-route link group now composes Badge with asChild; it no longer owns badge chrome."
   },
-  "packages/ui/src/components/apps/extensions/surface.tsx:SurfaceBadge": {
-    "disposition": "consolidation-candidate",
-    "canonicalOwner": "packages/ui/src/components/ui/status-badge.tsx",
-    "note": "Tone-based text badge overlaps the canonical status badge contract."
-  },
   "packages/ui/src/components/composites/chat/chat-source.tsx:ChatVoiceSpeakerBadge": {
     "disposition": "intentional-specialization",
     "canonicalOwner": "packages/ui/src/components/ui/badge.tsx",
@@ -60,9 +55,9 @@
     "note": "Multi-field hardware summary made of several status regions."
   },
   "packages/ui/src/components/RedactedBadge.tsx:RedactedBadge": {
-    "disposition": "consolidation-candidate",
+    "disposition": "intentional-specialization",
     "canonicalOwner": "packages/ui/src/components/ui/badge.tsx",
-    "note": "Static labeled badge duplicates canonical badge structure and styling."
+    "note": "Redaction semantics stay local while presentation composes the canonical Badge."
   },
   "packages/ui/src/components/shell/BuildBadge.tsx:BuildBadge": {
     "disposition": "molecular",
@@ -70,34 +65,19 @@
     "note": "Interactive build-details control and popover, not an atomic badge."
   },
   "packages/ui/src/components/transcripts/SpeakerNameAttributionBadge.tsx:SpeakerNameAttributionBadge": {
-    "disposition": "consolidation-candidate",
+    "disposition": "intentional-specialization",
     "canonicalOwner": "packages/ui/src/components/ui/status-badge.tsx",
-    "note": "Status-toned attribution label should compose the canonical status badge."
-  },
-  "packages/ui/src/cloud-ui/components/brand/brand-button.tsx:BrandButton": {
-    "disposition": "consolidation-candidate",
-    "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
-    "note": "Reimplements Slot, button attributes, sizes, states, and variants already owned by Button."
-  },
-  "packages/ui/src/cloud-ui/components/brand/lock-on-button.tsx:LockOnButton": {
-    "disposition": "consolidation-candidate",
-    "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
-    "note": "Special hover treatment can be a canonical Button variant or wrapper without a second button base."
+    "note": "Speaker attribution maps transcript state into the canonical StatusBadge."
   },
   "packages/ui/src/components/shared/ViewHeader.tsx:ViewBackButton": {
-    "disposition": "consolidation-candidate",
+    "disposition": "intentional-specialization",
     "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
-    "note": "Agent instrumentation is specialized, but the raw button can compose the canonical Button."
+    "note": "Agent instrumentation stays local while the control composes the canonical Button."
   },
   "packages/ui/stories/src/lab/lab-ui.tsx:ActionButton": {
     "disposition": "lab-only",
     "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
     "note": "Design-lab fixture is not shipped product UI."
-  },
-  "packages/ui/src/cloud-ui/components/brand/brand-card.tsx:BrandCard": {
-    "disposition": "consolidation-candidate",
-    "canonicalOwner": "packages/ui/src/components/ui/card.tsx",
-    "note": "Reimplements the base card surface, polymorphism, padding, border, and hover contract."
   },
   "packages/ui/src/cloud-ui/components/brand/mini-stat-card.tsx:MiniStatCard": {
     "disposition": "molecular",
@@ -124,16 +104,6 @@
     "canonicalOwner": "packages/ui/src/components/ui/input.tsx",
     "note": "Settings row composition; its internal raw input remains a separate migration target."
   },
-  "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:CloudTextInput": {
-    "disposition": "consolidation-candidate",
-    "canonicalOwner": "packages/ui/src/components/ui/input.tsx",
-    "note": "Directly reimplements the canonical text input with a narrower value callback."
-  },
-  "plugins/plugin-notes/src/views/viewPrimitives.tsx:AgentInput": {
-    "disposition": "consolidation-candidate",
-    "canonicalOwner": "packages/ui/src/agent-surface/components.tsx",
-    "note": "Duplicates the shared agent-aware Input adapter inside one plugin."
-  },
   "packages/ui/src/cloud-ui/components/monetization/milestone-progress.tsx:MilestoneProgress": {
     "disposition": "molecular",
     "canonicalOwner": "packages/ui/src/components/ui/progress.tsx",
@@ -145,9 +115,9 @@
     "note": "Route lifecycle adapter around nprogress, not an inline progress control."
   },
   "packages/ui/src/components/local-inference/DownloadProgress.tsx:DownloadProgress": {
-    "disposition": "consolidation-candidate",
+    "disposition": "intentional-specialization",
     "canonicalOwner": "packages/ui/src/components/ui/progress.tsx",
-    "note": "Inline determinate progress bar duplicates the canonical Progress base."
+    "note": "Download state and labels stay local while the meter composes canonical Progress."
   },
   "packages/ui/src/cloud-ui/components/code/monaco-editor-skeleton.tsx:MonacoEditorSkeleton": {
     "disposition": "molecular",
@@ -183,10 +153,5 @@
     "disposition": "compatibility-adapter",
     "canonicalOwner": "packages/ui/src/components/ui/tabs.tsx",
     "note": "Legacy Cloud export now aliases canonical Tabs while callers migrate to the supported atom export."
-  },
-  "plugins/plugin-notes/src/views/viewPrimitives.tsx:AgentTextarea": {
-    "disposition": "consolidation-candidate",
-    "canonicalOwner": "packages/ui/src/components/ui/textarea.tsx",
-    "note": "Duplicates agent instrumentation plus the canonical Textarea inside one plugin."
   }
 }

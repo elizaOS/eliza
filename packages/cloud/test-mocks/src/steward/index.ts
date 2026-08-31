@@ -50,7 +50,10 @@ export async function startStewardMock(
 
   app.patch("/platform/users/:id/deactivate", async (c) => {
     const userId = c.req.param("id");
-    const body = await c.req.json<{ deactivated?: boolean }>();
+    const rawBody = await c.req.text();
+    const body = rawBody.trim()
+      ? (JSON.parse(rawBody) as { deactivated?: boolean })
+      : {};
     calls.push({ method: "PATCH", path: c.req.path, userId });
     users.set(userId, body.deactivated === false ? "active" : "deactivated");
     return c.json({ ok: true, data: { userId } });

@@ -55,6 +55,7 @@ import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
   parseSlashDraft,
   resolveClientShortcutExecution,
+  resolveOptimisticNavigationExecution,
   runSlashExecution,
   type SlashExecution,
 } from "../../chat/slash-menu";
@@ -95,7 +96,12 @@ import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,
 } from "../../os-intent/host";
-import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
+import {
+  isAndroid,
+  isIOS,
+  isNative,
+  isStandalonePwa,
+} from "../../platform/init";
 import {
   getPhysicalScreenVerticalExtent,
   KEYBOARD_INTRUSION_THRESHOLD_PX,
@@ -170,6 +176,7 @@ import {
   renderOverlayMessageBody,
   SpeakingStatusAccessory,
   selectFirstRunDisplayMessages,
+  selectSemanticNewestFirstRunMessage,
   shellToChatMessageData,
 } from "./chat-overlay-transcript";
 import {
@@ -179,6 +186,7 @@ import {
 import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
+  resolveChatKeyboardHiddenViewportBaseline,
   resolveChatNativeKeyboardLift,
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
@@ -334,9 +342,8 @@ type MotionControls = { stop: () => void };
 // definition of an end-pinned reader.
 const MESSAGE_SCROLLER_END_THRESHOLD_PX = 8;
 // A landscape phone still needs room for the attach, mic, voice, and text
-// controls. The old 208px cap squeezed the editable field to ~46px and made a
-// rotation look like the composer had broken. Keep the corner treatment, but
-// preserve the same useful width as a portrait-phone composer.
+// controls. The compact composer must remain a useful input surface rather
+// than forcing the editable field into a narrow utility strip.
 const SHORT_LANDSCAPE_CHAT_MAX_WIDTH_PX = 360;
 // Ceiling (px) for the composer-footprint clearance the chat reserves in the
 // home/launcher layout. The panel can momentarily measure its OPEN/animating
@@ -1612,16 +1619,17 @@ export function ChatOverlay({
     React.useState(false);
   const transcriptionComposerActive =
     transcriptionMode || transcriptionFinishing;
-  const cloudLoginWaiting = React.useMemo(
-    () =>
-      firstRunOpen &&
-      messages.some(
-        (message) =>
-          message.id === "first-run:cloud-login-waiting" &&
-          message.content.startsWith("Waiting for sign-in in the browser"),
-      ),
-    [firstRunOpen, messages],
-  );
+  const cloudLoginWaiting = React.useMemo(() => {
+    if (!firstRunOpen) return false;
+    // The conductor keeps earlier setup turns in transcript history and can
+    // refresh one in place. Only the newest semantic first-run state may
+    // minimize the sheet; a later tutorial/error/status must take ownership.
+    const activeMessage = selectSemanticNewestFirstRunMessage(messages);
+    return (
+      activeMessage?.id === "first-run:cloud-login-waiting" &&
+      activeMessage.content.startsWith("Waiting for sign-in in the browser")
+    );
+  }, [firstRunOpen, messages]);
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
@@ -2978,16 +2986,24 @@ export function ChatOverlay({
       for (const handle of handles) handle.remove();
     };
   }, []);
-  // Track the layout-viewport height with the keyboard DOWN. On Android the
-  // WebView window shrinks (adjustResize) when the keyboard opens, so the fixed
-  // overlay's `bottom: 0` already rises with it; on iOS (`resize: "body"`) the
-  // layout height is unchanged and the fixed composer stays behind the keyboard.
-  const baseInnerHeightRef = React.useRef(viewport.innerHeight);
+  // Preserve the last trustworthy keyboard-hidden viewport. Some Android
+  // windows resize before keyboardWillShow, while the Light Phone III keyboard
+  // overlays the WebView without resizing it at all. A same-orientation height
+  // drop is therefore provisional until the native event resolves; a width
+  // change resets the baseline for rotation or a new window class.
+  const keyboardHiddenViewportRef = React.useRef({
+    innerHeight: viewport.innerHeight,
+    innerWidth: viewport.innerWidth,
+  });
   React.useEffect(() => {
-    if (nativeKeyboardHeight === 0) {
-      baseInnerHeightRef.current = viewport.innerHeight;
-    }
-  }, [nativeKeyboardHeight, viewport.innerHeight]);
+    keyboardHiddenViewportRef.current =
+      resolveChatKeyboardHiddenViewportBaseline({
+        previous: keyboardHiddenViewportRef.current,
+        currentInnerHeight: viewport.innerHeight,
+        currentInnerWidth: viewport.innerWidth,
+        nativeKeyboardVisible: nativeKeyboardHeight > 0,
+      });
+  }, [nativeKeyboardHeight, viewport.innerHeight, viewport.innerWidth]);
 
   // Lift the composer above the keyboard by ONLY the part the layout didn't
   // already absorb. On Android the window shrank by ~the keyboard height
@@ -2996,17 +3012,14 @@ export function ChatOverlay({
   // iOS the layout doesn't shrink (layoutShrink = 0), so the full native height
   // lifts the fixed composer above the keyboard. Web (no native plugin) keeps
   // the visualViewport-derived inset.
-  // The shipped Android window uses adjustResize, so the native bridge height
-  // must never be applied as an additional fixed-overlay bottom offset. In the
-  // observed race the WebView resized 919→520 before keyboardWillShow; the
-  // effect above then captured 520 as its baseline and a later 398px bridge
-  // event lifted the composer a second time, all the way to the status bar.
-  // iOS keeps the explicit bridge lift because its native window is configured
-  // not to resize around the keyboard.
+  // Pixel's adjustResize path consumes the bridge height and therefore returns
+  // zero. The Light Phone III's keyboard leaves the WebView at full height, so
+  // its unabsorbed bridge height becomes the fixed-overlay lift. iOS keeps the
+  // same explicit bridge path for its resize:"body" window.
   const nativeLift = resolveChatNativeKeyboardLift({
-    platformNeedsNativeLift: isIOS,
+    platformNeedsNativeLift: isIOS || isAndroid,
     nativeKeyboardHeight,
-    keyboardDownInnerHeight: baseInnerHeightRef.current,
+    keyboardHiddenInnerHeight: keyboardHiddenViewportRef.current.innerHeight,
     currentInnerHeight: viewport.innerHeight,
   });
   const effectiveKeyboardInset = Math.max(keyboardInset, nativeLift);
@@ -3059,11 +3072,10 @@ export function ChatOverlay({
     !pinnedOpen;
 
   // Publish the RESTING composer footprint to --eliza-chat-clearance so routed
-  // content reserves exactly the space the collapsed composer occupies. The
-  // compact short-landscape composer sits in the inline-end corner instead of
-  // spanning the bottom edge, so that mode reserves side clearance only. A
-  // bottom reservation there removes usable height from overflow-hidden views
-  // and clips their final rows even though the composer does not cover them.
+  // content reserves exactly the space the collapsed composer occupies. This
+  // stays a block-axis reservation in short landscape: consuming the
+  // composer's width as permanent inline padding turns every page into an
+  // artificial half-width column.
   React.useEffect(() => {
     if (
       typeof window === "undefined" ||
@@ -3076,10 +3088,6 @@ export function ChatOverlay({
     if (sheetOpen) return; // Keep the last resting value while the sheet is open.
     if (!panel) return;
     const publish = () => {
-      if (compactLanding) {
-        root.style.setProperty("--eliza-chat-clearance", "0px");
-        return;
-      }
       const h =
         panel.getBoundingClientRect().height + CHAT_CLEARANCE_REST_GAP_PX;
       // Cap it: a mid-collapse frame can report the open panel height, and
@@ -3094,44 +3102,19 @@ export function ChatOverlay({
     const ro = new ResizeObserver(publish);
     ro.observe(panel);
     return () => ro.disconnect();
-  }, [compactLanding, sheetOpen, getPanelElement]);
+  }, [sheetOpen, getPanelElement]);
 
-  // In short landscape the resting composer moves to the bottom inline-end
-  // corner. Publish that footprint separately from bottom clearance so hosted
-  // app/plugin views can keep right-edge content out from under the corner bar.
+  // Inline clearance is deliberately zero. Routed pages retain their full
+  // reading width while block-axis clearance keeps their final content above
+  // the resting composer.
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const root = document.documentElement;
-    const reset = () => {
+    root.style.setProperty("--eliza-chat-side-clearance", "0px");
+    return () => {
       root.style.setProperty("--eliza-chat-side-clearance", "0px");
     };
-    if (!compactLanding) {
-      reset();
-      return;
-    }
-    const panel = getPanelElement();
-    if (!panel) {
-      reset();
-      return;
-    }
-    const publish = () => {
-      const width = panel.getBoundingClientRect().width;
-      root.style.setProperty(
-        "--eliza-chat-side-clearance",
-        width > 0 ? `${Math.ceil(width + 24)}px` : "0px",
-      );
-    };
-    publish();
-    if (typeof ResizeObserver === "undefined") {
-      return () => reset();
-    }
-    const ro = new ResizeObserver(publish);
-    ro.observe(panel);
-    return () => {
-      ro.disconnect();
-      reset();
-    };
-  }, [compactLanding, getPanelElement]);
+  }, []);
 
   // Top clearance + max height come from the pure, unit-tested layout solver.
   // It reserves the real measured notch inset (`safeAreaTop`) above the panel,
@@ -3187,7 +3170,7 @@ export function ChatOverlay({
   const openH = panelMaxH;
   // The nominal half detent can exceed the entire visible panel when a native
   // keyboard lifts the overlay without shrinking Chromium's layout viewport
-  // (the LP3 WebView reports 414px while Gboard consumes 223px). A resting
+  // (the LP3 WebView reports 414px while its keyboard consumes 223px). A resting
   // detent may never outrun its current panel ceiling: panelCapH intentionally
   // follows threadHeight during a live over-pull, so an oversized HALF target
   // otherwise re-expands the cap and clips the grabber above the screen.
@@ -4484,6 +4467,36 @@ export function ChatOverlay({
   );
 
   const submit = React.useCallback(() => {
+    const isExplicitSlashCommand = parseSlashDraft(draft).isSlash;
+    const optimisticNavigation =
+      !firstRunOpen && !isExplicitSlashCommand && pendingImages.length === 0
+        ? resolveOptimisticNavigationExecution(
+            slash.commands,
+            draft,
+            slash.resolveSection,
+            {
+              resolveChoices: slash.resolveChoices,
+              isAuthorized: slash.isAuthorized,
+              isElevated: slash.isElevated,
+            },
+          )
+        : null;
+    if (optimisticNavigation) {
+      runSlashExecution(optimisticNavigation, {
+        navigateTab: slash.navigateTab,
+        navigateSettings: slash.navigateSettings,
+        navigateView: slash.navigateView,
+        clearChat: () => {},
+        newConversation: () => {},
+        toggleFullscreen: () => {},
+        openCommandPalette: () => {},
+        showCommands: () => {},
+        toggleTranscription: () => {},
+        send: () => {},
+      });
+      submitText(draft, pendingImages);
+      return;
+    }
     const shortcut =
       !firstRunOpen && pendingImages.length === 0
         ? resolveClientShortcutExecution(

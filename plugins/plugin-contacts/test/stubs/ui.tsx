@@ -30,6 +30,20 @@ export const Input = React.forwardRef<
   return React.createElement("input", { ...props, ref });
 });
 
+export function Avatar({
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement>) {
+  return React.createElement("span", props, children);
+}
+
+export function AvatarFallback({
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement>) {
+  return React.createElement("span", props, children);
+}
+
 export function isElizaOS(): boolean {
   return false;
 }

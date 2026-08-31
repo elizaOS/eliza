@@ -9,7 +9,7 @@ import { buildPlugin } from "../plugin-build";
 await buildPlugin({
   name: "@elizaos/plugin-pty",
   clean: true,
-  externals: ["@elizaos/core", "@lydell/node-pty"],
+  externals: ["@elizaos/core", "@elizaos/shared", "@lydell/node-pty"],
   targets: [
     {
       label: "Node",

@@ -252,13 +252,20 @@ describe("workspace source aliases", () => {
     ];
 
     try {
-      for (const specifier of specifiers) {
-        const resolution = await server.pluginContainer
-          .resolveId(specifier, importer)
-          .then(
-            (resolved) => ({ resolved }),
-            (error: unknown) => ({ error }),
-          );
+      // Each spelling is independent. Resolve them concurrently so shared CI
+      // filesystem latency cannot grow linearly with the adversarial matrix.
+      const resolutions = await Promise.all(
+        specifiers.map(async (specifier) => ({
+          resolution: await server.pluginContainer
+            .resolveId(specifier, importer)
+            .then(
+              (resolved) => ({ resolved }),
+              (error: unknown) => ({ error }),
+            ),
+          specifier,
+        })),
+      );
+      for (const { resolution, specifier } of resolutions) {
         if ("error" in resolution) {
           expect(String(resolution.error)).toMatch(
             /is not exported|Invalid "exports" target/,

@@ -213,6 +213,7 @@ export function ViewUnavailableState({
   return (
     <ViewStatusFrame
       tone="unavailable"
+      diagnosticId={viewId}
       icon={<Ban className="size-5" aria-hidden="true" />}
       title={t("dynamicviewloader.unavailable.title", {
         defaultValue: "View unavailable",

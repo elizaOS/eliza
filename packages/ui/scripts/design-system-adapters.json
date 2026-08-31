@@ -2,6 +2,15 @@
   "schemaVersion": 1,
   "adapters": [
     {
+      "file": "packages/ui/src/cloud-ui/components/brand/key-metrics-grid.tsx",
+      "symbol": "KeyMetricCard",
+      "primitive": "Card",
+      "role": "surface",
+      "owner": "Cloud brand metric presentation",
+      "reason": "Maps metric accent state onto the canonical brand Card while preserving the metric grid's domain slots.",
+      "matchCount": 1
+    },
+    {
       "file": "packages/ui/src/components/shared/ActionListRow.tsx",
       "symbol": "ActionListRow",
       "primitive": "Button",

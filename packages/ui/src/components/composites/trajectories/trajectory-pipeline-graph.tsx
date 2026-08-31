@@ -48,9 +48,9 @@ function PipelineConnector({ dimmed }: { dimmed?: boolean }) {
       className={`flex items-center ${dimmed ? "opacity-30" : "opacity-60"}`}
     >
       <svg
-        width="36"
+        width="24"
         height="12"
-        viewBox="0 0 36 12"
+        viewBox="0 0 24 12"
         fill="none"
         className="shrink-0"
         aria-hidden="true"
@@ -59,14 +59,14 @@ function PipelineConnector({ dimmed }: { dimmed?: boolean }) {
         <line
           x1="0"
           y1="6"
-          x2="28"
+          x2="17"
           y2="6"
           stroke="currentColor"
           strokeWidth="1.5"
           className="text-muted"
         />
         <path
-          d="M28 2 L34 6 L28 10"
+          d="M17 2 L23 6 L17 10"
           stroke="currentColor"
           strokeWidth="1.5"
           strokeLinecap="round"
@@ -110,7 +110,7 @@ function PipelineNodeButton({
       size="card"
       data-state={selected ? "on" : "off"}
       onClick={onClick}
-      className="min-w-[7rem] items-center"
+      className="min-w-[6.5rem] items-center"
     >
       <Icon className={`size-5 ${iconColor[node.status]}`} />
       <span className="whitespace-nowrap text-xs font-medium">
