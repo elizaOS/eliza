@@ -19,7 +19,6 @@ import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors.ts";
 import {
 	assertSchemaAnnotationsSerializable,
-	deepToWellFormedUnicode,
 	MAX_WELL_FORMED_DEPTH,
 	wellFormedUnicodeSchemaStructure,
 } from "./well-formed";
@@ -92,9 +91,7 @@ describe("wellFormedUnicodeSchemaStructure", () => {
 
 	it("follows prefixItems keyword", () => {
 		const schema = {
-			prefixItems: [
-				{ type: "string", description: "bad\uD83Dp" },
-			],
+			prefixItems: [{ type: "string", description: "bad\uD83Dp" }],
 		};
 		const result = wellFormedUnicodeSchemaStructure(schema);
 		expect(result.prefixItems[0].description).toBe("bad�p");
@@ -141,7 +138,7 @@ describe("wellFormedUnicodeSchemaStructure", () => {
 	});
 
 	it("carries annotation data (default/examples/const) by reference", () => {
-		const annotationData = { nested: { bad\uD83D: "value" } };
+		const annotationData = { nested: { "bad\ud83D": "value" } };
 		const schema = {
 			type: "string",
 			default: annotationData,
@@ -156,7 +153,7 @@ describe("wellFormedUnicodeSchemaStructure", () => {
 	});
 
 	it("carries x-* annotation keys by reference", () => {
-		const annotationData = { bad\uD83D: "value" };
+		const annotationData = { "bad\ud83D": "value" };
 		const schema = {
 			type: "string",
 			"x-custom": annotationData,
@@ -221,13 +218,14 @@ describe("wellFormedUnicodeSchemaStructure", () => {
 
 	it("fails closed on nesting exceeding maxDepth", () => {
 		// Build a deeply nested schema that exceeds MAX_WELL_FORMED_DEPTH
-		let schema: any = { type: "string", description: "leaf" };
+		let schema: Record<string, unknown> = {
+			type: "string",
+			description: "leaf",
+		};
 		for (let i = 0; i < MAX_WELL_FORMED_DEPTH + 2; i++) {
 			schema = { type: "object", properties: { nested: schema } };
 		}
-		expect(() => wellFormedUnicodeSchemaStructure(schema)).toThrow(
-			ElizaError,
-		);
+		expect(() => wellFormedUnicodeSchemaStructure(schema)).toThrow(ElizaError);
 	});
 
 	it("respects custom maxDepth option", () => {
@@ -256,11 +254,12 @@ describe("wellFormedUnicodeSchemaStructure", () => {
 	});
 
 	it("fails closed on cyclic structures", () => {
-		const schema: any = { type: "object", properties: {} };
-		schema.properties.self = schema;
-		expect(() => wellFormedUnicodeSchemaStructure(schema)).toThrow(
-			ElizaError,
-		);
+		const schema: Record<string, unknown> = {
+			type: "object",
+			properties: {},
+		};
+		(schema.properties as Record<string, unknown>).self = schema;
+		expect(() => wellFormedUnicodeSchemaStructure(schema)).toThrow(ElizaError);
 	});
 
 	it("handles empty objects and arrays", () => {
@@ -277,7 +276,7 @@ describe("wellFormedUnicodeSchemaStructure", () => {
 	it("handles sparse arrays correctly", () => {
 		const schema = {
 			type: "array",
-			prefixItems: [{ type: "string" }, , { type: "integer" }],
+			prefixItems: [{ type: "string" }, undefined, { type: "integer" }],
 		};
 		const result = wellFormedUnicodeSchemaStructure(schema);
 		expect(result.prefixItems.length).toBe(3);
@@ -320,25 +319,19 @@ describe("wellFormedUnicodeSchemaStructure", () => {
 describe("assertSchemaAnnotationsSerializable", () => {
 	it("passes for a clean annotation value", () => {
 		const annotation = { text: "clean 💀 value", count: 42 };
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("passes for nested annotation objects", () => {
 		const annotation = {
 			nested: { deep: { value: "clean 💀" } },
 		};
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("passes for arrays in annotation data", () => {
 		const annotation = { items: [1, 2, 3], nested: ["a", "b"] };
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("passes for empty objects and arrays", () => {
@@ -350,9 +343,7 @@ describe("assertSchemaAnnotationsSerializable", () => {
 		expect(() => assertSchemaAnnotationsSerializable("clean")).not.toThrow();
 		expect(() => assertSchemaAnnotationsSerializable(42)).not.toThrow();
 		expect(() => assertSchemaAnnotationsSerializable(null)).not.toThrow();
-		expect(() =>
-			assertSchemaAnnotationsSerializable(undefined),
-		).not.toThrow();
+		expect(() => assertSchemaAnnotationsSerializable(undefined)).not.toThrow();
 		expect(() => assertSchemaAnnotationsSerializable(true)).not.toThrow();
 	});
 
@@ -366,9 +357,9 @@ describe("assertSchemaAnnotationsSerializable", () => {
 			enumerable: true,
 			configurable: true,
 		});
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).toThrow(ElizaError);
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).toThrow(
+			ElizaError,
+		);
 	});
 
 	it("skips accessor properties outside annotation subtrees", () => {
@@ -379,19 +370,17 @@ describe("assertSchemaAnnotationsSerializable", () => {
 			enumerable: true,
 			configurable: true,
 		});
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("fails closed on nesting exceeding maxDepth", () => {
-		let annotation: any = { value: "clean" };
+		let annotation: Record<string, unknown> = { value: "clean" };
 		for (let i = 0; i < MAX_WELL_FORMED_DEPTH + 2; i++) {
 			annotation = { nested: annotation };
 		}
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).toThrow(ElizaError);
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).toThrow(
+			ElizaError,
+		);
 	});
 
 	it("respects custom maxDepth option", () => {
@@ -409,34 +398,30 @@ describe("assertSchemaAnnotationsSerializable", () => {
 	});
 
 	it("fails closed on cyclic structures", () => {
-		const annotation: any = { value: "clean" };
+		const annotation: Record<string, unknown> = { value: "clean" };
 		annotation.self = annotation;
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).toThrow(ElizaError);
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).toThrow(
+			ElizaError,
+		);
 	});
 
 	it("fails closed on cyclic arrays", () => {
-		const annotation: any[] = [1, 2];
+		const annotation: unknown[] = [1, 2];
 		annotation.push(annotation);
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).toThrow(ElizaError);
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).toThrow(
+			ElizaError,
+		);
 	});
 
 	it("handles sparse arrays correctly", () => {
-		const annotation = [1, , 3];
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		const annotation = [1, undefined, 3];
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("handles arrays with non-index extra keys", () => {
-		const annotation: any[] = [1, 2, 3];
-		annotation.foo = "bar";
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		const annotation: unknown[] = [1, 2, 3];
+		(annotation as unknown as Record<string, unknown>).foo = "bar";
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("fails closed on accessor in nested annotation subtree", () => {
@@ -450,9 +435,9 @@ describe("assertSchemaAnnotationsSerializable", () => {
 			enumerable: true,
 			configurable: true,
 		});
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).toThrow(ElizaError);
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).toThrow(
+			ElizaError,
+		);
 	});
 
 	it("skips non-enumerable properties", () => {
@@ -462,38 +447,32 @@ describe("assertSchemaAnnotationsSerializable", () => {
 			enumerable: false,
 			configurable: true,
 		});
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("skips non-string keys", () => {
-		const annotation = { text: "clean" };
+		const annotation: Record<string, unknown> = { text: "clean" };
 		const sym = Symbol("test");
-		(annotation as any)[sym] = "bad\uD83Dsymbol";
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		(annotation as unknown as Record<symbol, string>)[sym] = "bad\ud83Dsymbol";
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("handles deeply nested arrays", () => {
-		let annotation: any = { value: "clean" };
+		let annotation: unknown = { value: "clean" };
 		for (let i = 0; i < 10; i++) {
 			annotation = [annotation];
 		}
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("fails closed on deeply nested arrays exceeding maxDepth", () => {
-		let annotation: any = { value: "clean" };
+		let annotation: unknown = { value: "clean" };
 		for (let i = 0; i < MAX_WELL_FORMED_DEPTH + 2; i++) {
 			annotation = [annotation];
 		}
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).toThrow(ElizaError);
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).toThrow(
+			ElizaError,
+		);
 	});
 
 	it("handles mixed objects and arrays", () => {
@@ -501,25 +480,19 @@ describe("assertSchemaAnnotationsSerializable", () => {
 			arr: [1, { nested: "clean" }, [2, 3]],
 			obj: { arr: [{ deep: "clean" }] },
 		};
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("handles large arrays within visit budget", () => {
 		const annotation = new Array(1000).fill("clean");
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 
 	it("handles wide objects within visit budget", () => {
-		const annotation: any = {};
+		const annotation: Record<string, unknown> = {};
 		for (let i = 0; i < 100; i++) {
 			annotation[`key${i}`] = `value${i}`;
 		}
-		expect(() =>
-			assertSchemaAnnotationsSerializable(annotation),
-		).not.toThrow();
+		expect(() => assertSchemaAnnotationsSerializable(annotation)).not.toThrow();
 	});
 });
