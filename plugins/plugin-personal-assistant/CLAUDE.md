@@ -6,7 +6,7 @@ Chat-first owner operations and cross-domain LifeOps orchestration for an Eliza 
 
 This package is the composition root for personal-assistant workflows: briefs, prioritization, approvals, scheduled work, household coordination, owner context, and the policy that joins domain plugins into one assistant. Domain implementations remain with their owning plugins. Calendar, inbox, goals, reminders, finances, health, blocker, browser, phone, and messaging connectors are collaborators, not duplicate subsystems to rebuild here.
 
-The plugin declares Google Workspace and scheduling dependencies and initializes the calendar, finances, reminders, goals, inbox, and health plugins when needed. `@elizaos/plugin-scheduling` owns the single scheduled-task runner; this package supplies LifeOps dependencies, workers, registries, policies, and default packs.
+The plugin declares Google Workspace, scheduling, and PDF dependencies and initializes the calendar, PDF, finances, reminders, goals, inbox, and health plugins when needed. `@elizaos/plugin-scheduling` owns the single scheduled-task runner; this package supplies LifeOps dependencies, workers, registries, policies, and default packs.
 
 All registered actions and providers are wrapped with owner-access guards. The personal assistant is primarily a chat surface, while domain views live with their domain plugins. Its focused `/lifeops/connections` view owns only cross-domain Gmail, Google Calendar, and Apple Calendar onboarding, sync health, recovery, and local imported-data lifecycle; it does not duplicate inbox or calendar product views.
 
