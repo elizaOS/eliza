@@ -2,11 +2,15 @@
 
 ## Product design and implementation plan
 
-**Status:** Approved for implementation planning  
-**Date:** August 30, 2026  
-**Pilot owner:** Bettina  
-**Product model:** Private owner workspace with a bounded co-parent guest  
-**Mandatory first live channel:** iMessage  
+**Status:** Approved for implementation planning
+
+**Date:** August 30, 2026
+
+**Pilot owner:** Bettina
+
+**Product model:** Private owner workspace with a bounded co-parent guest
+
+**Mandatory first live channel:** iMessage
 
 ## 1. Executive summary
 
