@@ -102,11 +102,22 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 60_000;
 // with a JavaScript timer, even though current TaskService compares timestamps.
 const MAX_HEARTBEAT_INTERVAL_MS = 2_147_483_647;
 const BLOOIO_RECEIPT_CACHE_NAMESPACE = "imessage:blooio-receipt:v1";
+const BLOOIO_RECEIPT_CLEANUP_TASK_NAME = "IMESSAGE_BLOOIO_RECEIPT_CLEANUP";
+export const BLOOIO_RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const BLOOIO_RECEIPT_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 interface BlooioDispatchReceipt {
   version: 1;
   acceptedAt: number;
+  cleanupTaskId?: string;
 }
+
+type BlooioReceiptState =
+  | { kind: "absent" }
+  | { kind: "processed"; receipt: BlooioDispatchReceipt }
+  | { kind: "expired"; receipt: BlooioDispatchReceipt }
+  | { kind: "future-version"; version: number }
+  | { kind: "malformed" };
 
 function blooioReceiptCacheKey(channelId: string, messageId: string): string {
   const digest = crypto
@@ -118,15 +129,38 @@ function blooioReceiptCacheKey(channelId: string, messageId: string): string {
   return `${BLOOIO_RECEIPT_CACHE_NAMESPACE}:${digest}`;
 }
 
-function isBlooioDispatchReceipt(value: unknown): value is BlooioDispatchReceipt {
-  if (!value || typeof value !== "object") return false;
+function classifyBlooioDispatchReceipt(value: unknown, now: number): BlooioReceiptState {
+  if (value === undefined) return { kind: "absent" };
+  if (!value || typeof value !== "object") return { kind: "malformed" };
   const candidate = value as Partial<BlooioDispatchReceipt>;
-  return (
-    candidate.version === 1 &&
-    typeof candidate.acceptedAt === "number" &&
-    Number.isSafeInteger(candidate.acceptedAt) &&
-    candidate.acceptedAt > 0
-  );
+  if (
+    typeof candidate.version === "number" &&
+    Number.isSafeInteger(candidate.version) &&
+    candidate.version > 1
+  ) {
+    // A newer node owns the receipt schema and its lifecycle. Older nodes in a
+    // rolling deploy must treat it as processed without rewriting or deleting it.
+    return { kind: "future-version", version: candidate.version };
+  }
+  if (
+    candidate.version !== 1 ||
+    typeof candidate.acceptedAt !== "number" ||
+    !Number.isSafeInteger(candidate.acceptedAt) ||
+    candidate.acceptedAt <= 0 ||
+    candidate.acceptedAt > now + BLOOIO_RECEIPT_MAX_FUTURE_SKEW_MS ||
+    (candidate.cleanupTaskId !== undefined &&
+      (typeof candidate.cleanupTaskId !== "string" || !candidate.cleanupTaskId.trim()))
+  ) {
+    return { kind: "malformed" };
+  }
+  const receipt: BlooioDispatchReceipt = {
+    version: 1,
+    acceptedAt: candidate.acceptedAt,
+    ...(candidate.cleanupTaskId ? { cleanupTaskId: candidate.cleanupTaskId } : {}),
+  };
+  return now - receipt.acceptedAt >= BLOOIO_RECEIPT_RETENTION_MS
+    ? { kind: "expired", receipt }
+    : { kind: "processed", receipt };
 }
 
 export function resolveHeartbeatIntervalMs(raw: string | undefined): number {
@@ -645,6 +679,8 @@ export class IMessageService extends Service implements IIMessageService {
   private contactsLoadAttempted = false;
   /** Message ids currently dispatching, preventing concurrent webhook re-entry. */
   private blooioMessagesInFlight = new Set<string>();
+  /** Whether this service has installed the durable receipt cleanup worker. */
+  private blooioCleanupWorkerRegistered = false;
 
   /**
    * Start the iMessage service.
@@ -671,6 +707,9 @@ export class IMessageService extends Service implements IIMessageService {
     // external resource. A typo must fail startup, not silently alter replay.
     const backfill = resolveBackfillRows(resolvedBackfillRaw);
     await service.validateSettings();
+    if (service.settings.transport === "blooio") {
+      service.registerBlooioReceiptCleanupWorker();
+    }
 
     // Open chat.db for inbound polling. A null return here is non-fatal —
     // the service degrades to send-only and logs its own warning. We seed
@@ -1174,6 +1213,185 @@ export class IMessageService extends Service implements IIMessageService {
     };
   }
 
+  private registerBlooioReceiptCleanupWorker(): void {
+    if (this.blooioCleanupWorkerRegistered) return;
+    if (
+      typeof this.runtime.registerTaskWorker !== "function" ||
+      typeof this.runtime.createTask !== "function"
+    ) {
+      const error = new ElizaError(
+        "Blooio durable receipt cleanup requires the runtime task system",
+        {
+          code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_UNAVAILABLE",
+          severity: "fatal",
+        }
+      );
+      this.runtime.reportError("IMessageService.blooioReceiptCleanup", error);
+      throw error;
+    }
+    const existing =
+      typeof this.runtime.getTaskWorker === "function"
+        ? this.runtime.getTaskWorker(BLOOIO_RECEIPT_CLEANUP_TASK_NAME)
+        : undefined;
+    if (!existing) {
+      this.runtime.registerTaskWorker({
+        name: BLOOIO_RECEIPT_CLEANUP_TASK_NAME,
+        execute: async (runtime, options, task) => {
+          const completeCleanupTask = async (): Promise<void> => {
+            if (task.id) await runtime.deleteTask(task.id);
+          };
+          const receiptKey = options.receiptKey;
+          const acceptedAt = options.acceptedAt;
+          if (
+            typeof receiptKey !== "string" ||
+            !receiptKey.startsWith(`${BLOOIO_RECEIPT_CACHE_NAMESPACE}:`) ||
+            typeof acceptedAt !== "number" ||
+            !Number.isSafeInteger(acceptedAt) ||
+            acceptedAt <= 0
+          ) {
+            throw new ElizaError("Blooio receipt cleanup task metadata is invalid", {
+              code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_TASK_INVALID",
+              severity: "fatal",
+            });
+          }
+          const receiptDigest = receiptKey.slice(receiptKey.lastIndexOf(":") + 1);
+          let storedReceipt: unknown;
+          try {
+            storedReceipt = await runtime.getCache<unknown>(receiptKey);
+          } catch (cause) {
+            // error-policy:J2 TaskService owns retry/backoff for durable cleanup failures.
+            const error = new ElizaError("Blooio receipt cleanup could not read durable state", {
+              code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_READ_FAILED",
+              cause,
+              context: { receiptDigest },
+              severity: "ephemeral",
+            });
+            runtime.reportError("IMessageService.blooioReceiptCleanup", error, {
+              receiptDigest,
+            });
+            throw error;
+          }
+          const state = classifyBlooioDispatchReceipt(storedReceipt, Date.now());
+          if (state.kind === "absent" || state.kind === "future-version") {
+            await completeCleanupTask();
+            return undefined;
+          }
+          if (
+            (state.kind === "processed" || state.kind === "expired") &&
+            state.receipt.acceptedAt !== acceptedAt
+          ) {
+            await completeCleanupTask();
+            return undefined;
+          }
+          try {
+            const deleted = await runtime.deleteCache(receiptKey);
+            if (!deleted && (await runtime.getCache<unknown>(receiptKey)) !== undefined) {
+              throw new Error("runtime rejected receipt cleanup");
+            }
+          } catch (cause) {
+            // error-policy:J2 TaskService owns retry/backoff for durable cleanup failures.
+            const error = new ElizaError("Blooio durable dispatch receipt cleanup failed", {
+              code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_FAILED",
+              cause,
+              context: { receiptDigest },
+              severity: "ephemeral",
+            });
+            runtime.reportError("IMessageService.blooioReceiptCleanup", error, {
+              receiptDigest,
+            });
+            throw error;
+          }
+          await completeCleanupTask();
+          return undefined;
+        },
+      });
+    }
+    this.blooioCleanupWorkerRegistered = true;
+  }
+
+  private async deleteBlooioReceipt(receiptKey: string, receiptDigest: string): Promise<void> {
+    try {
+      const deleted = await this.runtime.deleteCache(receiptKey);
+      if (!deleted && (await this.runtime.getCache<unknown>(receiptKey)) !== undefined) {
+        throw new Error("runtime rejected receipt cleanup");
+      }
+    } catch (cause) {
+      // error-policy:J2 Do not dispatch while stale or malformed dedupe state remains durable.
+      const error = new ElizaError("Blooio durable dispatch receipt cleanup failed", {
+        code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_FAILED",
+        cause,
+        context: { receiptDigest },
+        severity: "ephemeral",
+      });
+      this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+      throw error;
+    }
+  }
+
+  private async scheduleBlooioReceiptCleanup(
+    receiptKey: string,
+    receiptDigest: string,
+    acceptedAt: number
+  ): Promise<string> {
+    this.registerBlooioReceiptCleanupWorker();
+    let taskId: UUID;
+    try {
+      taskId = await this.runtime.createTask({
+        name: BLOOIO_RECEIPT_CLEANUP_TASK_NAME,
+        description: "Delete one expired durable Blooio inbound-dispatch receipt.",
+        agentId: this.runtime.agentId,
+        tags: ["queue", "repeat", "imessage", "blooio", "receipt-cleanup"],
+        metadata: {
+          receiptKey,
+          acceptedAt,
+          updateInterval: 60 * 60 * 1000,
+          maxFailures: 0,
+          blocking: true,
+        },
+        dueAt: acceptedAt + BLOOIO_RECEIPT_RETENTION_MS,
+      });
+    } catch (cause) {
+      // error-policy:J2 The webhook must retry until the durable receipt has bounded cleanup.
+      const error = new ElizaError("Blooio receipt cleanup task could not be scheduled", {
+        code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_SCHEDULE_FAILED",
+        cause,
+        context: { receiptDigest },
+        severity: "ephemeral",
+      });
+      this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+      throw error;
+    }
+    const receipt: BlooioDispatchReceipt = {
+      version: 1,
+      acceptedAt,
+      cleanupTaskId: taskId,
+    };
+    let updated: boolean;
+    try {
+      updated = await this.runtime.setCache(receiptKey, receipt);
+    } catch (cause) {
+      // error-policy:J2 The scheduled task remains safe, but the receipt update must be retried.
+      const error = new ElizaError("Blooio cleanup task receipt could not be recorded", {
+        code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_RECORD_FAILED",
+        cause,
+        context: { receiptDigest },
+        severity: "ephemeral",
+      });
+      this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+      throw error;
+    }
+    if (!updated) {
+      const error = new ElizaError("Blooio cleanup task receipt was not recorded", {
+        code: "IMESSAGE_BLOOIO_RECEIPT_CLEANUP_RECORD_REJECTED",
+        context: { receiptDigest },
+        severity: "ephemeral",
+      });
+      this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+      throw error;
+    }
+    return taskId;
+  }
+
   async handleBlooioWebhook(
     rawBody: string,
     signature: string | undefined
@@ -1232,15 +1450,30 @@ export class IMessageService extends Service implements IIMessageService {
         this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
         throw error;
       }
-      if (storedReceipt !== undefined) {
-        if (isBlooioDispatchReceipt(storedReceipt)) return "ignored";
-        const error = new ElizaError("Blooio durable dispatch receipt is invalid", {
+      const receiptState = classifyBlooioDispatchReceipt(storedReceipt, Date.now());
+      if (receiptState.kind === "future-version") {
+        return "ignored";
+      }
+      if (receiptState.kind === "processed") {
+        if (!receiptState.receipt.cleanupTaskId) {
+          await this.scheduleBlooioReceiptCleanup(
+            receiptKey,
+            receiptDigest,
+            receiptState.receipt.acceptedAt
+          );
+        }
+        return "ignored";
+      }
+      if (receiptState.kind === "expired") {
+        await this.deleteBlooioReceipt(receiptKey, receiptDigest);
+      } else if (receiptState.kind === "malformed") {
+        const error = new ElizaError("Blooio durable dispatch receipt was malformed", {
           code: "IMESSAGE_BLOOIO_RECEIPT_INVALID",
           context: { receiptDigest },
-          severity: "fatal",
+          severity: "ephemeral",
         });
         this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
-        throw error;
+        await this.deleteBlooioReceipt(receiptKey, receiptDigest);
       }
 
       const access: { allowed: boolean; pairingReplyMessage?: string } = inbound.isGroup
@@ -1284,11 +1517,12 @@ export class IMessageService extends Service implements IIMessageService {
       };
       await this.dispatchInboundMessage(row, media);
 
+      const acceptedAt = Date.now();
       let receiptStored: boolean;
       try {
         receiptStored = await this.runtime.setCache<BlooioDispatchReceipt>(receiptKey, {
           version: 1,
-          acceptedAt: Date.now(),
+          acceptedAt,
         });
       } catch (cause) {
         // error-policy:J2 Dispatch succeeded, but fail the webhook because dedupe was not durable.
@@ -1310,6 +1544,7 @@ export class IMessageService extends Service implements IIMessageService {
         this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
         throw error;
       }
+      await this.scheduleBlooioReceiptCleanup(receiptKey, receiptDigest, acceptedAt);
       return "accepted";
     } finally {
       this.blooioMessagesInFlight.delete(inbound.messageId);
