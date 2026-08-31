@@ -12,6 +12,22 @@ import type {
 
 const STATUS_CACHE_TTL_MS = 5_000;
 let statusCache: { expiresAt: number; value: AppBlockerStatus } | null = null;
+// Monotonic invalidation counter. A mutation bumps this in its `finally`; a
+// status read captures it before the async native `getStatus()` and only
+// publishes to the shared cache if it is unchanged when the read resolves. This
+// closes the lost-update window where a read that captured the pre-mutation
+// native status resolves *after* the mutation cleared the cache and would
+// otherwise repopulate it with the stale value for the full TTL.
+let statusCacheGeneration = 0;
+
+// Clears the cached status and bumps the generation. Exported to mirror the
+// website-blocker engine's `resetSelfControlStatusCache()`; the mutations call
+// it in their `finally`, and callers that change block state out-of-band can
+// force the next read to refetch.
+export function resetAppBlockerStatusCache(): void {
+  statusCache = null;
+  statusCacheGeneration += 1;
+}
 
 // ---------------------------------------------------------------------------
 // Native backend adapter
@@ -79,8 +95,19 @@ export async function getCachedAppBlockerStatus(): Promise<AppBlockerStatus> {
   if (statusCache && statusCache.expiresAt > now) {
     return statusCache.value;
   }
+  // Capture the generation before awaiting the native read. If a mutation
+  // invalidates the cache while `getStatus()` is in flight, this fetched value
+  // may predate the mutation and must not be published to the shared cache; the
+  // racing caller still receives its own (in-flight) read, but subsequent
+  // callers refetch fresh rather than being served a stale TTL window.
+  const generationAtFetch = statusCacheGeneration;
   const status = await getAppBlockerStatus();
-  statusCache = { expiresAt: now + STATUS_CACHE_TTL_MS, value: status };
+  if (statusCacheGeneration === generationAtFetch) {
+    statusCache = {
+      expiresAt: Date.now() + STATUS_CACHE_TTL_MS,
+      value: status,
+    };
+  }
   return status;
 }
 
@@ -109,20 +136,23 @@ export async function startAppBlock(
   // before awaiting `blockApps` leaves a window where a concurrent status read
   // repopulates the 5s cache with the pre-block status, so callers keep seeing
   // stale "not blocking" for up to STATUS_CACHE_TTL_MS after the block applies.
+  // `resetAppBlockerStatusCache()` also bumps the generation so a read still in
+  // flight here cannot re-publish its pre-block value after this clears.
   // Mirrors the website-blocker engine's post-write `resetSelfControlStatusCache()`.
   try {
     return await getPlugin().blockApps(options);
   } finally {
-    statusCache = null;
+    resetAppBlockerStatusCache();
   }
 }
 
 export async function stopAppBlock(): Promise<UnblockAppsResult> {
-  // Symmetric to `startAppBlock`: invalidate after the native unblock resolves
-  // so a concurrent read cannot re-cache the stale "still blocking" status.
+  // Symmetric to `startAppBlock`: invalidate (and bump the generation) after the
+  // native unblock resolves so a concurrent read cannot re-cache the stale
+  // "still blocking" status, even if that read resolves after this `finally`.
   try {
     return await getPlugin().unblockApps();
   } finally {
-    statusCache = null;
+    resetAppBlockerStatusCache();
   }
 }

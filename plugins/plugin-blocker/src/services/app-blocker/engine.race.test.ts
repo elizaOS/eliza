@@ -11,17 +11,25 @@
  * The harness uses a real registered native backend (no source-under-test
  * mock): `getStatus()` reports the live `blocked` flag, and the mutation
  * methods block on a controllable gate before flipping the flag, so the test
- * deterministically drives a read into the native mutation window. Both cases
- * fail on the pre-fix engine and pass once invalidation moves after the write,
- * mirroring the website-blocker engine's post-write
+ * deterministically drives a read into the native mutation window. The first
+ * two cases fail on the pre-fix engine and pass once invalidation moves after
+ * the write, mirroring the website-blocker engine's post-write
  * `resetSelfControlStatusCache()`.
+ *
+ * The third case covers the tighter interleaving raised in review: a read that
+ * captures the pre-mutation native status but whose `getStatus()` only resolves
+ * *after* the mutation's `finally` cleared the cache. Post-write invalidation
+ * alone does not stop that late read from repopulating the cache with the stale
+ * value; the engine's generation guard does, and this test proves it by gating
+ * the read (not the mutation).
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getCachedAppBlockerStatus,
   type NativeAppBlockerBackend,
   registerNativeAppBlockerBackend,
+  resetAppBlockerStatusCache,
   startAppBlock,
   stopAppBlock,
 } from "./engine.ts";
@@ -102,9 +110,66 @@ function makeGatedBackend(initialBlocked: boolean): {
   };
 }
 
+/**
+ * A native backend whose mutations apply immediately, but whose *first*
+ * `getStatus()` snapshots the current block flag and then parks on a gate. This
+ * lets the test start a read that captured the pre-mutation status and force it
+ * to resolve after a full mutation has completed and invalidated the cache.
+ */
+function makeReadGatedBackend(initialBlocked: boolean): {
+  backend: NativeAppBlockerBackend;
+  releaseFirstRead: () => void;
+} {
+  let blocked = initialBlocked;
+  let firstReadStarted = false;
+  const firstReadGate = deferred();
+  const permission: AppBlockerPermissionResult = {
+    status: "granted",
+    canRequest: false,
+  };
+
+  const backend: NativeAppBlockerBackend = {
+    checkPermissions: async () => permission,
+    requestPermissions: async () => permission,
+    getInstalledApps: async () => ({ apps: [] }),
+    selectApps: async () =>
+      ({ apps: [], cancelled: false }) as SelectAppsResult,
+    blockApps: async () => {
+      blocked = true;
+      return {
+        success: true,
+        endsAt: null,
+        blockedCount: 1,
+      } satisfies BlockAppsResult;
+    },
+    unblockApps: async () => {
+      blocked = false;
+      return { success: true } satisfies UnblockAppsResult;
+    },
+    getStatus: async () => {
+      if (!firstReadStarted) {
+        firstReadStarted = true;
+        const snapshot = blocked;
+        await firstReadGate.promise;
+        return statusFor(snapshot);
+      }
+      return statusFor(blocked);
+    },
+  };
+
+  return { backend, releaseFirstRead: firstReadGate.resolve };
+}
+
 describe("app-blocker status cache invalidation race (#30142)", () => {
+  beforeEach(() => {
+    // The status cache is module-level; clear leftover state so each case
+    // exercises a real cache miss instead of a prior test's cached value.
+    resetAppBlockerStatusCache();
+  });
+
   afterEach(() => {
     registerNativeAppBlockerBackend(null as unknown as NativeAppBlockerBackend);
+    resetAppBlockerStatusCache();
   });
 
   it("serves the applied block after startAppBlock even when a read hits the native window", async () => {
@@ -154,5 +219,33 @@ describe("app-blocker status cache invalidation race (#30142)", () => {
     const afterUnblock = await getCachedAppBlockerStatus();
     expect(afterUnblock.active).toBe(false);
     expect(afterUnblock.blockedCount).toBe(0);
+  });
+
+  it("does not repopulate the cache with a pre-mutation read that resolves after the mutation clears it", async () => {
+    const { backend, releaseFirstRead } = makeReadGatedBackend(false);
+    registerNativeAppBlockerBackend(backend);
+
+    // (1) A status read starts and snapshots the pre-mutation (unblocked)
+    // status, but its native getStatus() stays parked on the gate.
+    const staleRead = getCachedAppBlockerStatus();
+    // Yield so the read reaches its awaited getStatus() before the mutation.
+    await Promise.resolve();
+
+    // (2) A full block mutation completes while that read is parked. Its
+    // `finally` invalidates the cache and bumps the generation.
+    await startAppBlock({ packageNames: ["com.example.app"] });
+
+    // (3) The parked read now resolves. Pre-fix it writes the pre-mutation
+    // status into the cache *after* the invalidation; the racing caller still
+    // sees its own in-flight (stale) value, which is expected.
+    releaseFirstRead();
+    expect((await staleRead).active).toBe(false);
+
+    // (4) The shared cache must not have been poisoned: a subsequent read
+    // reflects the applied block instead of serving the stale pre-mutation
+    // status for the rest of the TTL.
+    const afterBlock = await getCachedAppBlockerStatus();
+    expect(afterBlock.active).toBe(true);
+    expect(afterBlock.blockedCount).toBe(1);
   });
 });
