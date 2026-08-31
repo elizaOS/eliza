@@ -896,7 +896,14 @@ async function memoriesToHits(
     const platformSource = roomRecord?.source ?? roomRecord?.type;
     const channel = classifyMemoryChannel(platformSource);
 
-    if (!isChannelEnabled(channel, query.channels)) {
+    // A caller that explicitly selects the memory adapter is asking for all
+    // matching memories, even when their room provenance maps back to a named
+    // connector. Re-applying the connector filter here made a memory-only
+    // search silently return nothing for Discord, Telegram, and other rooms.
+    if (
+      !query.channels?.includes("memory") &&
+      !isChannelEnabled(channel, query.channels)
+    ) {
       continue;
     }
 

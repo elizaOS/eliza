@@ -83,6 +83,34 @@ describe("PdfService", () => {
 		expect(Buffer.isBuffer(parserInput)).toBe(false);
 	});
 
+	it("retains page geometry for layout-sensitive consumers", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([
+				{
+					items: [
+						{ str: "Aug 31 First Day Students", transform: [1, 0, 0, 1, 172, 714], width: 120, height: 9 },
+					],
+				},
+			]),
+		);
+
+		await expect(
+			service().convertPdfToPositionedText(validPdfBuffer()),
+		).resolves.toEqual({
+			pageCount: 1,
+			items: [
+				{
+					page: 1,
+					text: "Aug 31 First Day Students",
+					x: 172,
+					y: 714,
+					width: 120,
+					height: 9,
+				},
+			],
+		});
+	});
+
 	it("honors start/end page bounds and returns page count for ranged extraction", async () => {
 		const pdf = makePdf([
 			{ items: [{ str: "one" }] },

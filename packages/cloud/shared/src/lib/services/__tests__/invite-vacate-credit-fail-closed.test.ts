@@ -56,6 +56,10 @@ let hashInviteToken: typeof import("../../utils/invite-tokens").hashInviteToken;
 let schemas: {
   organizations: typeof import("../../../db/schemas/organizations").organizations;
   users: typeof import("../../../db/schemas/users").users;
+  userIdentities: typeof import("../../../db/schemas/user-identities").userIdentities;
+  personalSharedGroupBindings: typeof import("../../../db/schemas/personal-shared-groups").personalSharedGroupBindings;
+  personalSharedGroupJoinChallenges: typeof import("../../../db/schemas/personal-shared-groups").personalSharedGroupJoinChallenges;
+  personalSharedGroupParticipants: typeof import("../../../db/schemas/personal-shared-groups").personalSharedGroupParticipants;
   organizationInvites: typeof import("../../../db/schemas/organization-invites").organizationInvites;
   userCharacters: typeof import("../../../db/schemas/user-characters").userCharacters;
   conversations: typeof import("../../../db/schemas/conversations").conversations;
@@ -85,6 +89,7 @@ interface SeedResult {
 
 async function seedInviteScenario(options?: {
   inviteeOrgBalance?: string;
+  inviteeOrgBalanceRevision?: number;
   invitedRole?: "admin" | "member";
 }): Promise<SeedResult> {
   const inviterOrgId = uid();
@@ -100,6 +105,7 @@ async function seedInviteScenario(options?: {
       name: "Solo Org",
       slug: `solo-${inviteeOrgId}`,
       credit_balance: options?.inviteeOrgBalance ?? "5.000000",
+      balance_revision: options?.inviteeOrgBalanceRevision ?? 0,
     },
   ]);
   await dbWrite.insert(schemas.users).values([
@@ -160,6 +166,12 @@ beforeAll(async () => {
 
     const { organizations } = await import("../../../db/schemas/organizations");
     const { users } = await import("../../../db/schemas/users");
+    const { userIdentities } = await import("../../../db/schemas/user-identities");
+    const {
+      personalSharedGroupBindings,
+      personalSharedGroupJoinChallenges,
+      personalSharedGroupParticipants,
+    } = await import("../../../db/schemas/personal-shared-groups");
     const { organizationInvites } = await import("../../../db/schemas/organization-invites");
     const { userCharacters } = await import("../../../db/schemas/user-characters");
     const { conversations } = await import("../../../db/schemas/conversations");
@@ -183,6 +195,10 @@ beforeAll(async () => {
     schemas = {
       organizations,
       users,
+      userIdentities,
+      personalSharedGroupBindings,
+      personalSharedGroupJoinChallenges,
+      personalSharedGroupParticipants,
       organizationInvites,
       userCharacters,
       conversations,
@@ -197,6 +213,10 @@ beforeAll(async () => {
       {
         organizations,
         users,
+        userIdentities,
+        personalSharedGroupBindings,
+        personalSharedGroupJoinChallenges,
+        personalSharedGroupParticipants,
         organizationInvites,
         userCharacters,
         conversations,
@@ -262,7 +282,7 @@ describe("acceptInvite solo-org vacate — corrupt credit_balance fails closed (
   );
 
   test(
-    "a healthy zero balance still vacates (no false block)",
+    "an untouched legacy zero balance still vacates (no rollout false block)",
     async () => {
       expect(pgliteReady).toBe(true);
       const seeded = await seedInviteScenario({ inviteeOrgBalance: "0.000000" });
@@ -273,6 +293,60 @@ describe("acceptInvite solo-org vacate — corrupt credit_balance fails closed (
       // Moved into the inviting org; the emptied solo org is deleted as designed.
       expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(seeded.inviterOrgId);
       expect(await orgExists(seeded.inviteeOrgId)).toBe(false);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an untouched current five-dollar signup balance still vacates",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const seeded = await seedInviteScenario();
+
+      const accepted = await invitesService.acceptInvite(seeded.token, seeded.inviteeUserId);
+      expect(accepted.status).toBe("accepted");
+      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(seeded.inviterOrgId);
+      expect(await orgExists(seeded.inviteeOrgId)).toBe(false);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a transacted balance below the signup grant blocks vacate and preserves purchased credit",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const seeded = await seedInviteScenario({
+        inviteeOrgBalance: "2.000000",
+        inviteeOrgBalanceRevision: 42,
+      });
+
+      await expect(invitesService.acceptInvite(seeded.token, seeded.inviteeUserId)).rejects.toThrow(
+        SOLO_ORG_CREDITS_BLOCK_MESSAGE,
+      );
+
+      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(seeded.inviteeOrgId);
+      expect(await readOrgBalance(seeded.inviteeOrgId)).toBe("2.000000");
+      expect(await orgExists(seeded.inviteeOrgId)).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a transacted five-dollar balance blocks vacate even when it matches the signup grant",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const seeded = await seedInviteScenario({
+        inviteeOrgBalance: "5.000000",
+        inviteeOrgBalanceRevision: 43,
+      });
+
+      await expect(invitesService.acceptInvite(seeded.token, seeded.inviteeUserId)).rejects.toThrow(
+        SOLO_ORG_CREDITS_BLOCK_MESSAGE,
+      );
+
+      expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(seeded.inviteeOrgId);
+      expect(await readOrgBalance(seeded.inviteeOrgId)).toBe("5.000000");
+      expect(await orgExists(seeded.inviteeOrgId)).toBe(true);
     },
     PGLITE_TIMEOUT,
   );

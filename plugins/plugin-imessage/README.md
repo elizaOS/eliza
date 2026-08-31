@@ -1,8 +1,9 @@
 # @elizaos/plugin-imessage
 
-iMessage plugin for elizaOS agents. Enables chat integration with Apple's iMessage on macOS.
+iMessage plugin for elizaOS agents. Uses Apple's Messages app on macOS or a
+Blooio channel on any supported server platform.
 
-**Note: This plugin only works on macOS systems.**
+Native mode requires macOS. Blooio mode supports Linux servers.
 
 ## Features
 
@@ -11,6 +12,8 @@ iMessage plugin for elizaOS agents. Enables chat integration with Apple's iMessa
 - **Attachments**: Rehost inbound Messages files into the canonical media store and send bounded local or SSRF-guarded remote media through Messages.app
 - **Message Polling**: Receive incoming messages via polling
 - **Policy Controls**: Configure DM and group policies
+- **Blooio Webhook**: Receive signed events at `/api/imessage/webhook/blooio`
+- **Channel Isolation**: Dispatch only the configured Blooio channel
 
 ## Requirements
 
@@ -42,6 +45,11 @@ bun add @elizaos/plugin-imessage
 | `IMESSAGE_ALLOW_FROM` | Comma-separated handles for allowlist | No |
 | `IMESSAGE_ENABLED` | Enable/disable the plugin | No |
 | `IMESSAGE_BACKFILL` | Rows before current DB tip to replay on startup | No |
+| `IMESSAGE_TRANSPORT` | `native` (default) or `blooio` | No |
+| `IMESSAGE_BLOOIO_API_KEY` | Blooio API key; falls back to `BLOOIO_API_KEY` | Blooio |
+| `IMESSAGE_BLOOIO_WEBHOOK_SECRET` | Webhook signing secret; falls back to `BLOOIO_WEBHOOK_SECRET` | Blooio |
+| `IMESSAGE_BLOOIO_FROM_NUMBER` | E.164 sender number; falls back to `BLOOIO_FROM_NUMBER` | Blooio |
+| `IMESSAGE_BLOOIO_CHANNEL_ID` | Exact Blooio channel accepted by this agent | Blooio |
 
 ### Agent Configuration
 
@@ -57,6 +65,18 @@ bun add @elizaos/plugin-imessage
 ```
 
 ## Setup
+
+### Blooio on Linux
+
+Set `IMESSAGE_TRANSPORT=blooio` and all four Blooio settings above. Create a
+channel-scoped Blooio webhook for the configured channel pointing to:
+
+```text
+https://YOUR_AGENT_HOST/api/imessage/webhook/blooio
+```
+
+Subscribe to `message.received`. The route verifies `X-Blooio-Signature`
+against the unmodified request body and silently ignores other channel IDs.
 
 ### Permissions
 
@@ -127,7 +147,7 @@ iMessage supports multiple target types:
 
 ## Limitations
 
-- **macOS Only**: iMessage doesn't have an official API and only works on macOS
+- **Native mode is macOS-only**: Blooio mode is the supported server transport
 - **No Official API**: Sending uses Messages.app's supported AppleScript dictionary
 - **Permissions**: Message history requires Full Disk Access, sending through
   Messages requires Automation, and contact resolution/editing requires

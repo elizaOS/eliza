@@ -79,6 +79,12 @@ page's text. An oversized `endPage` on an in-range `startPage` is clamped down
 to the final page, so `{ startPage: 2, endPage: 99 }` on a 3-page document
 extracts pages 2–3.
 
+**`convertPdfToPositionedText(pdfBuffer: Buffer): Promise<PdfPositionedTextDocument>`**
+
+Returns every non-empty PDF text item with its page, text, x/y origin, width,
+and height. Use this for layout-sensitive documents such as multi-column
+calendars where flattening the page would lose which heading owns a row.
+
 **`getDocumentInfo(pdfBuffer: Buffer): Promise<PdfDocumentInfo>`**
 
 Returns full document information: page count, per-page dimensions + text, and metadata (title, author, subject, keywords, creator, producer, creation/modification dates).
@@ -91,6 +97,8 @@ Returns full document information: page count, per-page dimensions + text, and m
 PdfConversionResult   // { success, text?, pageCount?, error? }
 PdfExtractionOptions  // { startPage?, endPage?, preserveWhitespace?, cleanContent? }
 PdfPageInfo           // { pageNumber, width, height, text }
+PdfPositionedTextItem // { page, text, x, y, width, height }
+PdfPositionedTextDocument // { pageCount, items }
 PdfMetadata           // { title?, author?, subject?, keywords?, creator?, producer?, creationDate?, modificationDate? }
 PdfDocumentInfo       // { pageCount, metadata, text, pages }
 ```
@@ -102,4 +110,3 @@ Builds for both Node.js and browser environments. The `exports` field in `packag
 ## Dependencies
 
 - [`unpdf`](https://github.com/unjs/unpdf) — PDF parsing (wraps PDF.js for Node + browser)
-

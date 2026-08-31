@@ -222,15 +222,28 @@ describe("detectExistingFirstRunConnection — wait-for-boot retry", () => {
 });
 
 describe("detectExistingFirstRunConnection — fresh-install single shot", () => {
-  it("does not wait: any failure resolves to null immediately (fast onboarding)", async () => {
-    // Even an auth error is "no install here" for a fresh install — the single
-    // shot never throws and never retries, so onboarding is instant.
+  it("treats same-origin auth as an existing install so pairing owns startup", async () => {
     const client = scriptedClient([{ throw: apiError("http", 401) }]);
 
     const result = await detectExistingFirstRunConnection({
       client,
       timeoutMs: 3_500,
       // waitForBootingAgent omitted → fresh-install path
+    });
+
+    expect(result).toEqual({
+      activeServer: expect.objectContaining({ kind: "local" }),
+      detectedExistingInstall: true,
+    });
+    expect(client.calls()).toBe(1);
+  });
+
+  it("does not wait for a transport failure on a genuinely fresh install", async () => {
+    const client = scriptedClient([{ throw: apiError("network") }]);
+
+    const result = await detectExistingFirstRunConnection({
+      client,
+      timeoutMs: 3_500,
     });
 
     expect(result).toBeNull();
