@@ -66,6 +66,8 @@ const SCHEMA = [
     error_code TEXT, error_message TEXT, created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL, PRIMARY KEY (agent_id, run_id)
   )`,
+  `ALTER TABLE app_lifeops.life_school_calendar_runs ADD COLUMN IF NOT EXISTS apply_lease_token TEXT`,
+  `ALTER TABLE app_lifeops.life_school_calendar_runs ADD COLUMN IF NOT EXISTS apply_lease_expires_at TEXT`,
   `CREATE INDEX IF NOT EXISTS life_school_calendar_runs_source_idx
     ON app_lifeops.life_school_calendar_runs (agent_id, source_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS app_lifeops.life_school_calendar_events (
@@ -73,6 +75,15 @@ const SCHEMA = [
     semantic_json TEXT NOT NULL, provider_event_id TEXT,
     provider_version TEXT, active BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at TEXT NOT NULL, PRIMARY KEY (agent_id, source_id, event_key)
+  )`,
+  `CREATE TABLE IF NOT EXISTS app_lifeops.life_school_calendar_apply_operations (
+    agent_id TEXT NOT NULL, run_id TEXT NOT NULL, operation_index INTEGER NOT NULL,
+    event_key TEXT NOT NULL, kind TEXT NOT NULL, change_json TEXT NOT NULL,
+    state TEXT NOT NULL, lease_token TEXT, lease_expires_at TEXT,
+    receipt_json TEXT, error_code TEXT, error_message TEXT,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    PRIMARY KEY (agent_id, run_id, operation_index),
+    UNIQUE (agent_id, run_id, event_key, kind)
   )`,
 ] as const;
 
@@ -91,6 +102,27 @@ export interface SchoolCalendarSemanticEvent {
   title: string;
   startDate: string;
   endDateExclusive: string;
+  citation?: SchoolCalendarCitation;
+}
+
+export interface SchoolCalendarCitation {
+  page: number;
+  sourceText: string;
+  bounds?: { x: number; y: number; width: number; height: number };
+}
+
+export interface SchoolCalendarPositionedTextItem {
+  page: number;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface SchoolCalendarExtractedDocument {
+  pageCount: number;
+  items: SchoolCalendarPositionedTextItem[];
 }
 
 export type SchoolCalendarChange =
@@ -165,7 +197,9 @@ export interface SchoolCalendarWorkflowDeps {
   fetchImpl?: FetchLike;
   lookupFn?: LookupFn;
   pinnedFetchImpl?: PinnedLookupFetchLike;
-  extractPdfText?: (bytes: Buffer) => Promise<string>;
+  extractPdfText?: (
+    bytes: Buffer,
+  ) => Promise<string | SchoolCalendarExtractedDocument>;
   retainPdf?: (bytes: Buffer) => Promise<{ url: string; hash: string }>;
   now?: () => Date;
 }
@@ -278,9 +312,25 @@ function nextDate(date: string): string {
 }
 
 export function parseSchoolCalendarText(
-  text: string,
+  input: string | SchoolCalendarExtractedDocument,
 ): SchoolCalendarSemanticEvent[] {
-  const events: SchoolCalendarSemanticEvent[] = [];
+  const text = typeof input === "string" ? input : "";
+  const candidates: Array<{
+    year?: number;
+    month: number | null;
+    startDay: number;
+    endDay: number;
+    title: string;
+    citation: SchoolCalendarCitation;
+  }> = [];
+  const schoolYears = (
+    typeof input === "string"
+      ? input
+      : input.items.map((item) => item.text).join(" ")
+  ).match(/\b(20\d{2})\s*[-‐–—]\s*(20\d{2})\b/u);
+  const firstYear = schoolYears ? Number(schoolYears[1]) : null;
+  const secondYear = schoolYears ? Number(schoolYears[2]) : null;
+
   for (const rawLine of text.split(/\r?\n/u)) {
     const line = rawLine.replace(/\s+/gu, " ").trim();
     if (!line) continue;
@@ -292,32 +342,268 @@ export function parseSchoolCalendarText(
     const startDate = match[1] ?? match[4];
     const title = (match[2] ?? match[3] ?? "").trim();
     if (!startDate || !title) continue;
-    events.push({
-      eventKey: `school-date:${startDate}`,
+    candidates.push({
+      year: Number(startDate.slice(0, 4)),
+      month: Number(startDate.slice(5, 7)),
+      startDay: Number(startDate.slice(8, 10)),
+      endDay: Number(startDate.slice(8, 10)),
       title,
-      startDate,
-      endDateExclusive: nextDate(startDate),
+      citation: { page: 1, sourceText: line },
     });
   }
+
+  if (typeof input !== "string") {
+    candidates.push(...parsePositionedSchoolCalendar(input.items));
+  } else if (schoolYears) {
+    candidates.push(...parseLayoutSchoolCalendar(text));
+  }
+
+  const events = candidates.map((candidate) => {
+    const inferredYear =
+      candidate.year ??
+      (candidate.month && firstYear && secondYear
+        ? candidate.month >= 7
+          ? firstYear
+          : secondYear
+        : null);
+    if (!candidate.month || !inferredYear)
+      throw new SchoolCalendarWorkflowError(
+        `School calendar entry has no unambiguous month/year: ${candidate.citation.sourceText}`,
+        "SCHOOL_CALENDAR_PARSE_AMBIGUOUS",
+      );
+    const lastDay = new Date(
+      Date.UTC(inferredYear, candidate.month, 0),
+    ).getUTCDate();
+    if (
+      candidate.startDay < 1 ||
+      candidate.startDay > lastDay ||
+      candidate.endDay < candidate.startDay ||
+      candidate.endDay > lastDay
+    )
+      throw new SchoolCalendarWorkflowError(
+        `School calendar entry has an invalid date (${inferredYear}-${candidate.month}-${candidate.startDay}-${candidate.endDay}): ${candidate.citation.sourceText}`,
+        "SCHOOL_CALENDAR_PARSE_AMBIGUOUS",
+      );
+    const startDate = formatCalendarDate(
+      inferredYear,
+      candidate.month,
+      candidate.startDay,
+    );
+    const endDate = formatCalendarDate(
+      inferredYear,
+      candidate.month,
+      candidate.endDay,
+    );
+    return {
+      eventKey: "",
+      title: candidate.title,
+      startDate,
+      endDateExclusive: nextDate(endDate),
+      citation: candidate.citation,
+    };
+  });
   if (events.length === 0) {
     throw new SchoolCalendarWorkflowError(
       "School calendar PDF did not contain any recognized dated entries.",
       "SCHOOL_CALENDAR_PARSE_EMPTY",
     );
   }
-  const keys = new Set<string>();
+  const dates = new Map<string, SchoolCalendarSemanticEvent[]>();
   for (const event of events) {
-    if (keys.has(event.eventKey)) {
+    const group = dates.get(event.startDate) ?? [];
+    group.push(event);
+    dates.set(event.startDate, group);
+  }
+  for (const [date, group] of dates) {
+    const unique = new Set(group.map((event) => event.title.toLowerCase()));
+    if (unique.size !== group.length)
       throw new SchoolCalendarWorkflowError(
-        `School calendar contains more than one event for ${event.startDate}; owner review is required.`,
+        `School calendar repeats the same meaning for ${date}; owner review is required.`,
         "SCHOOL_CALENDAR_PARSE_AMBIGUOUS",
       );
-    }
-    keys.add(event.eventKey);
+    group.forEach((event, index) => {
+      event.eventKey = `school-date:${date}${group.length > 1 ? `:${index + 1}` : ""}`;
+    });
   }
   return events.sort((left, right) =>
     left.eventKey.localeCompare(right.eventKey),
   );
+}
+
+const MONTHS = new Map([
+  ["JANUARY", 1],
+  ["FEBRUARY", 2],
+  ["MARCH", 3],
+  ["APRIL", 4],
+  ["MAY", 5],
+  ["JUNE", 6],
+  ["JULY", 7],
+  ["AUGUST", 8],
+  ["SEPTEMBER", 9],
+  ["SEPT", 9],
+  ["OCTOBER", 10],
+  ["NOVEMBER", 11],
+  ["DECEMBER", 12],
+] as const);
+
+function formatCalendarDate(year: number, month: number, day: number): string {
+  const value = new Date(Date.UTC(year, month - 1, day));
+  if (
+    value.getUTCFullYear() !== year ||
+    value.getUTCMonth() !== month - 1 ||
+    value.getUTCDate() !== day
+  )
+    throw new SchoolCalendarWorkflowError(
+      `School calendar date ${year}-${month}-${day} is invalid.`,
+      "SCHOOL_CALENDAR_PARSE_INVALID",
+    );
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function parseDatedEntry(
+  value: string,
+  inheritedMonth: number | null,
+  citation: SchoolCalendarCitation,
+) {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  const match =
+    /^(?:(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+)?(\d{1,2})(?:\s*(?:-|‐|–|—|&)\s*(\d{1,2}))?\s+(.+)$/iu.exec(
+      normalized,
+    );
+  if (!match) return null;
+  const explicit = match[1]
+    ? (MONTHS.get(match[1].toUpperCase().replace(/^SEP$/u, "SEPT") as never) ??
+      monthFromPrefix(match[1]))
+    : null;
+  const title = match[4]?.trim() ?? "";
+  if (!/[A-Za-z]/u.test(title) || /^includes\b/iu.test(title)) return null;
+  return {
+    month: explicit ?? inheritedMonth,
+    startDay: Number(match[2]),
+    endDay: Number(match[3] ?? match[2]),
+    title,
+    citation: { ...citation, sourceText: normalized },
+  };
+}
+
+function monthFromPrefix(value: string): number | null {
+  const prefix = value.slice(0, 3).toUpperCase();
+  if (prefix.length < 3) return null;
+  for (const [name, month] of MONTHS) if (name.startsWith(prefix)) return month;
+  return null;
+}
+
+function parseLayoutSchoolCalendar(text: string) {
+  const result: ReturnType<typeof parseDatedEntry>[] = [];
+  let leftMonth: number | null = null;
+  let rightMonth: number | null = null;
+  let lastLeft: NonNullable<ReturnType<typeof parseDatedEntry>> | null = null;
+  for (const [lineIndex, line] of text.split(/\r?\n/u).entries()) {
+    const headings = [
+      ...line.matchAll(
+        /\b(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST(?:\/SEPTEMBER)?|OCTOBER|NOVEMBER|DECEMBER)\b/gu,
+      ),
+    ];
+    if (headings.length >= 2) {
+      leftMonth = monthFromPrefix(headings[0]?.[1] ?? "");
+      rightMonth = monthFromPrefix(headings.at(-1)?.[1] ?? "");
+    }
+    const left = line.slice(22, 58);
+    const right = line.slice(80);
+    const leftEntry = parseDatedEntry(left, leftMonth, {
+      page: 1,
+      sourceText: left,
+      bounds: { x: 22, y: lineIndex, width: 39, height: 1 },
+    });
+    const rightEntry = parseDatedEntry(right, rightMonth, {
+      page: 1,
+      sourceText: right,
+      bounds: { x: 80, y: lineIndex, width: right.length, height: 1 },
+    });
+    if (leftEntry) {
+      result.push(leftEntry);
+      lastLeft = leftEntry;
+    }
+    if (rightEntry) result.push(rightEntry);
+    if (!leftEntry && lastLeft) {
+      const continuation = left.trim();
+      if (/^[A-Za-z][A-Za-z' /.-]*$/u.test(continuation))
+        lastLeft.title += ` ${continuation}`;
+    }
+  }
+  return result.filter((entry) => entry !== null);
+}
+
+function parsePositionedSchoolCalendar(
+  items: readonly SchoolCalendarPositionedTextItem[],
+) {
+  const ordered = [...items].sort(
+    (left, right) =>
+      left.page - right.page || right.y - left.y || left.x - right.x,
+  );
+  const monthHeadings = ordered.flatMap((item) => {
+    const month = monthFromPrefix(item.text.trim());
+    return month && /^[A-Z]+(?:\/[A-Z]+)?$/u.test(item.text.trim())
+      ? [{ ...item, month }]
+      : [];
+  });
+  const eventHeadings = monthHeadings.filter((heading) => {
+    const peers = monthHeadings
+      .filter(
+        (candidate) =>
+          candidate.page === heading.page &&
+          Math.abs(candidate.y - heading.y) < 1,
+      )
+      .sort((left, right) => left.x - right.x);
+    return peers.indexOf(heading) % 2 === 1;
+  });
+  const result: NonNullable<ReturnType<typeof parseDatedEntry>>[] = [];
+  const lastByColumn = new Map<
+    string,
+    NonNullable<ReturnType<typeof parseDatedEntry>>
+  >();
+  for (const item of ordered) {
+    const heading = eventHeadings
+      .filter(
+        (candidate) =>
+          candidate.page === item.page &&
+          candidate.y >= item.y &&
+          Math.abs(candidate.x - item.x) < 90,
+      )
+      .sort(
+        (left, right) =>
+          left.y - right.y ||
+          Math.abs(left.x - item.x) - Math.abs(right.x - item.x),
+      )[0];
+    if (!heading) continue;
+    const columnKey = `${heading.page}:${heading.x}:${heading.y}`;
+    const parsed = parseDatedEntry(item.text, heading?.month ?? null, {
+      page: item.page,
+      sourceText: item.text,
+      bounds: { x: item.x, y: item.y, width: item.width, height: item.height },
+    });
+    if (parsed) {
+      result.push(parsed);
+      lastByColumn.set(columnKey, parsed);
+      continue;
+    }
+    const previous = lastByColumn.get(columnKey);
+    const previousBounds = previous?.citation.bounds;
+    const continuation = item.text.replace(/\s+/gu, " ").trim();
+    if (
+      previous &&
+      previousBounds &&
+      previousBounds.y > item.y &&
+      previousBounds.y - item.y <= 14 &&
+      item.x >= previousBounds.x &&
+      item.x - previousBounds.x < 80 &&
+      /^[A-Za-z][A-Za-z' /.-]*$/u.test(continuation)
+    ) {
+      previous.title += ` ${continuation}`;
+      previous.citation.sourceText += ` ${continuation}`;
+    }
+  }
+  return result;
 }
 
 export function diffSchoolCalendarEvents(
@@ -352,12 +638,15 @@ export function diffSchoolCalendarEvents(
     if (!before || !event)
       throw new Error("School calendar diff invariant failed");
     if (
-      canonicalJson(before) ===
       canonicalJson({
-        ...event,
-        providerEventId: before.providerEventId,
-        providerVersion: before.providerVersion,
-        active: before.active,
+        title: before.title,
+        startDate: before.startDate,
+        endDateExclusive: before.endDateExclusive,
+      }) ===
+      canonicalJson({
+        title: event.title,
+        startDate: event.startDate,
+        endDateExclusive: event.endDateExclusive,
       })
     ) {
       return { kind: "unchanged", event };
@@ -549,21 +838,90 @@ export class SchoolCalendarWorkflow {
     gateway: CalendarOwnerMutationGateway;
     config?: SchoolCalendarSourceConfig;
   }): Promise<void> {
+    await this.ensureSchema();
     const config = args.config ?? CONCORD_SCHOOL_CALENDAR_SOURCE;
-    const rows = await executeRawSql(
+    const applyToken = randomUUID();
+    const startedAt = this.now();
+    const at = startedAt.toISOString();
+    const expiresAt = new Date(startedAt.getTime() + LEASE_MS).toISOString();
+    const claimed = await executeRawSql(
       this.runtime,
-      `SELECT * FROM app_lifeops.life_school_calendar_runs WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND run_id = ${sqlQuote(args.runId)} LIMIT 1`,
+      `UPDATE app_lifeops.life_school_calendar_runs
+       SET state='applying', apply_lease_token=${sqlQuote(applyToken)},
+           apply_lease_expires_at=${sqlQuote(expiresAt)}, updated_at=${sqlQuote(at)}
+       WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(args.runId)}
+         AND (state='awaiting_approval' OR
+              (state='applying' AND apply_lease_expires_at < ${sqlQuote(at)}))
+       RETURNING *`,
     );
-    const row = rows[0];
-    if (!row || toText(row.state) !== "awaiting_approval") {
+    const row = claimed[0];
+    if (!row) {
+      const existing = await executeRawSql(
+        this.runtime,
+        `SELECT state FROM app_lifeops.life_school_calendar_runs WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(args.runId)} LIMIT 1`,
+      );
+      const state = toText(existing[0]?.state);
+      if (state === "applied") return;
       throw new SchoolCalendarWorkflowError(
-        "School calendar run is not awaiting approval.",
-        "SCHOOL_CALENDAR_RUN_NOT_APPLICABLE",
+        state === "applying"
+          ? "School calendar plan is already being applied."
+          : "School calendar run is not awaiting approval.",
+        state === "applying"
+          ? "SCHOOL_CALENDAR_APPLY_IN_PROGRESS"
+          : "SCHOOL_CALENDAR_RUN_NOT_APPLICABLE",
       );
     }
     const plan = parseApprovalPlan(parseJsonRecord(row.plan_json));
-    for (const change of plan.changes) {
-      if (change.kind === "unchanged") continue;
+    const actionable = plan.changes.filter(
+      (change) => change.kind !== "unchanged",
+    );
+    for (const [index, change] of actionable.entries()) {
+      await executeRawSql(
+        this.runtime,
+        `INSERT INTO app_lifeops.life_school_calendar_apply_operations
+         (agent_id,run_id,operation_index,event_key,kind,change_json,state,created_at,updated_at)
+         VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(args.runId)},${index},
+           ${sqlQuote(change.event.eventKey)},${sqlQuote(change.kind)},${sqlQuote(canonicalJson(change))},
+           'pending',${sqlQuote(at)},${sqlQuote(at)})
+         ON CONFLICT (agent_id,run_id,operation_index) DO NOTHING`,
+      );
+    }
+    for (const [index, change] of actionable.entries()) {
+      const operationNow = this.now();
+      const operationAt = operationNow.toISOString();
+      const operationExpiresAt = new Date(
+        operationNow.getTime() + LEASE_MS,
+      ).toISOString();
+      await executeRawSql(
+        this.runtime,
+        `UPDATE app_lifeops.life_school_calendar_runs SET
+         apply_lease_expires_at=${sqlQuote(operationExpiresAt)},updated_at=${sqlQuote(operationAt)}
+         WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(args.runId)}
+           AND state='applying' AND apply_lease_token=${sqlQuote(applyToken)}`,
+      );
+      const operation = await executeRawSql(
+        this.runtime,
+        `UPDATE app_lifeops.life_school_calendar_apply_operations SET
+         state='executing',lease_token=${sqlQuote(applyToken)},
+         lease_expires_at=${sqlQuote(operationExpiresAt)},updated_at=${sqlQuote(operationAt)}
+         WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(args.runId)}
+           AND operation_index=${index}
+           AND (state='pending' OR (state='executing' AND lease_expires_at < ${sqlQuote(operationAt)}))
+         RETURNING operation_index`,
+      );
+      if (operation.length === 0) {
+        const persisted = await executeRawSql(
+          this.runtime,
+          `SELECT state FROM app_lifeops.life_school_calendar_apply_operations
+           WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(args.runId)}
+             AND operation_index=${index} LIMIT 1`,
+        );
+        if (toText(persisted[0]?.state) === "applied") continue;
+        throw new SchoolCalendarWorkflowError(
+          "A school calendar operation is already executing.",
+          "SCHOOL_CALENDAR_APPLY_IN_PROGRESS",
+        );
+      }
       if (change.kind === "add") {
         const result = await args.gateway.create(args.requestUrl, {
           grantId: config.targetGrantId,
@@ -582,6 +940,12 @@ export class SchoolCalendarWorkflow {
           );
         }
         await this.upsertEvent(config.sourceId, change.event, result.event);
+        await this.completeApplyOperation(
+          args.runId,
+          index,
+          applyToken,
+          result,
+        );
       } else if (change.kind === "update") {
         const event = await args.gateway.update(args.requestUrl, {
           grantId: config.targetGrantId,
@@ -595,8 +959,9 @@ export class SchoolCalendarWorkflow {
           idempotencyKey: `${config.sourceId}:${change.event.eventKey}:${plan.contentSha256}`,
         });
         await this.upsertEvent(config.sourceId, change.event, event);
+        await this.completeApplyOperation(args.runId, index, applyToken, event);
       } else {
-        await args.gateway.cancel(args.requestUrl, {
+        const result = await args.gateway.cancel(args.requestUrl, {
           grantId: config.targetGrantId,
           calendarId: config.targetCalendarId,
           eventId: change.providerEventId,
@@ -609,17 +974,58 @@ export class SchoolCalendarWorkflow {
           this.runtime,
           `UPDATE app_lifeops.life_school_calendar_events SET active = FALSE, updated_at = ${sqlQuote(this.now().toISOString())} WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND source_id = ${sqlQuote(config.sourceId)} AND event_key = ${sqlQuote(change.event.eventKey)}`,
         );
+        await this.completeApplyOperation(
+          args.runId,
+          index,
+          applyToken,
+          result,
+        );
       }
     }
-    const at = this.now().toISOString();
+    const completedAt = this.now().toISOString();
+    const completed = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_school_calendar_runs SET state='applied',
+       apply_lease_token=NULL,apply_lease_expires_at=NULL,updated_at=${sqlQuote(completedAt)}
+       WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(args.runId)}
+         AND state='applying' AND apply_lease_token=${sqlQuote(applyToken)}
+         AND NOT EXISTS (
+           SELECT 1 FROM app_lifeops.life_school_calendar_apply_operations op
+           WHERE op.agent_id=${sqlQuote(this.runtime.agentId)} AND op.run_id=${sqlQuote(args.runId)}
+             AND op.state <> 'applied'
+         ) RETURNING run_id`,
+    );
+    if (completed.length !== 1)
+      throw new SchoolCalendarWorkflowError(
+        "School calendar apply ownership was lost before completion.",
+        "SCHOOL_CALENDAR_APPLY_LEASE_LOST",
+      );
     await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_school_calendar_runs SET state = 'applied', updated_at = ${sqlQuote(at)} WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND run_id = ${sqlQuote(args.runId)} AND state = 'awaiting_approval'`,
+      `UPDATE app_lifeops.life_school_calendar_sources SET last_content_sha256=${sqlQuote(plan.contentSha256)},last_media_url=${sqlQuote(plan.mediaUrl)},updated_at=${sqlQuote(completedAt)} WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND source_id=${sqlQuote(config.sourceId)}`,
     );
-    await executeRawSql(
+  }
+
+  private async completeApplyOperation(
+    runId: string,
+    operationIndex: number,
+    applyToken: string,
+    receipt: unknown,
+  ): Promise<void> {
+    const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_school_calendar_sources SET last_content_sha256 = ${sqlQuote(plan.contentSha256)}, last_media_url = ${sqlQuote(plan.mediaUrl)}, updated_at = ${sqlQuote(at)} WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND source_id = ${sqlQuote(config.sourceId)}`,
+      `UPDATE app_lifeops.life_school_calendar_apply_operations SET
+       state='applied',receipt_json=${sqlQuote(canonicalJson(receipt))},
+       lease_token=NULL,lease_expires_at=NULL,updated_at=${sqlQuote(this.now().toISOString())}
+       WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(runId)}
+         AND operation_index=${operationIndex} AND state='executing'
+         AND lease_token=${sqlQuote(applyToken)} RETURNING operation_index`,
     );
+    if (rows.length !== 1)
+      throw new SchoolCalendarWorkflowError(
+        "School calendar operation ownership was lost before receipt persistence.",
+        "SCHOOL_CALENDAR_APPLY_LEASE_LOST",
+      );
   }
 
   private async retrieve(
@@ -688,11 +1094,16 @@ export class SchoolCalendarWorkflow {
     return { url: stored.url, hash: stored.hash };
   }
 
-  private async extract(bytes: Buffer): Promise<string> {
+  private async extract(
+    bytes: Buffer,
+  ): Promise<string | SchoolCalendarExtractedDocument> {
     if (this.deps.extractPdfText) return this.deps.extractPdfText(bytes);
     const pdf = this.runtime.getService<
       Service & {
-        convertPdfToText(input: Buffer): Promise<{ text: string }>;
+        convertPdfToPositionedText?(
+          input: Buffer,
+        ): Promise<SchoolCalendarExtractedDocument>;
+        convertPdfToText(input: Buffer): Promise<string>;
       }
     >(ServiceType.PDF);
     if (!pdf)
@@ -700,7 +1111,9 @@ export class SchoolCalendarWorkflow {
         "PDF extraction service is unavailable.",
         "SCHOOL_CALENDAR_PDF_SERVICE_UNAVAILABLE",
       );
-    return (await pdf.convertPdfToText(bytes)).text;
+    if (pdf.convertPdfToPositionedText)
+      return pdf.convertPdfToPositionedText(bytes);
+    return pdf.convertPdfToText(bytes);
   }
 
   private async acquire(

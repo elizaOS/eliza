@@ -7,7 +7,10 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { CalendarService } from "@elizaos/plugin-calendar";
+import {
+  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
+  CalendarService,
+} from "@elizaos/plugin-calendar";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";
 import type { ApprovalRequest } from "../approval-queue.types.js";
@@ -238,7 +241,7 @@ export class FamilyWorkflowRuntimeService extends Service {
 
   async applySchool(runId: string, requestUrl: URL): Promise<void> {
     const gateway = this.runtime.getService(
-      "lifeops_calendar_mutation_gateway",
+      CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
     ) as
       | Parameters<SchoolCalendarWorkflow["applyApprovedPlan"]>[0]["gateway"]
       | null;

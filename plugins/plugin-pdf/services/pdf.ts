@@ -16,10 +16,16 @@ import type {
   PdfExtractionOptions,
   PdfMetadata,
   PdfPageInfo,
+  PdfPositionedTextDocument,
 } from "../types";
 import { parsePdfSpecDate } from "./pdf-date.js";
 
-type PdfTextItem = { str: string };
+type PdfTextItem = {
+  str: string;
+  transform?: unknown;
+  width?: unknown;
+  height?: unknown;
+};
 
 export const MAX_PDF_BUFFER_BYTES = 100 * 1024 * 1024;
 /** Fail-closed page budget. `numPages` is attacker-declared, not a file size. */
@@ -199,6 +205,50 @@ export class PdfService extends Service {
 
     const rawText = textPages.join("\n");
     return this.cleanUpContent(rawText);
+  }
+
+  async convertPdfToPositionedText(
+    pdfBuffer: Buffer | Uint8Array
+  ): Promise<PdfPositionedTextDocument> {
+    const uint8Array = validatePdfInput(pdfBuffer);
+    const pdf = await getDocumentProxy(uint8Array);
+    const pageCount = requirePdfPageCount(pdf.numPages);
+    const items: PdfPositionedTextDocument["items"] = [];
+    for (let page = 1; page <= pageCount; page += 1) {
+      const source = await (await pdf.getPage(page)).getTextContent();
+      if (!Array.isArray(source.items))
+        throw new TypeError("PDF text content items must be an array");
+      for (const candidate of source.items) {
+        if (!isTextItem(candidate) || candidate.str.trim().length === 0) continue;
+        const transform = candidate.transform;
+        if (
+          !Array.isArray(transform) ||
+          transform.length < 6 ||
+          !transform.every((value) => typeof value === "number" && Number.isFinite(value))
+        ) {
+          throw new TypeError("PDF positioned text item has an invalid transform");
+        }
+        const width = candidate.width;
+        const height = candidate.height;
+        if (
+          typeof width !== "number" ||
+          !Number.isFinite(width) ||
+          typeof height !== "number" ||
+          !Number.isFinite(height)
+        ) {
+          throw new TypeError("PDF positioned text item has invalid dimensions");
+        }
+        items.push({
+          page,
+          text: candidate.str,
+          x: transform[4] as number,
+          y: transform[5] as number,
+          width,
+          height,
+        });
+      }
+    }
+    return { pageCount, items };
   }
 
   async convertPdfToTextWithOptions(

@@ -180,7 +180,6 @@ import {
   MicrosoftGraphDeltaExpiredError,
   type MicrosoftGraphEvent,
 } from "../microsoft/index.js";
-import type { CalendarOwnerMutationGateway } from "../routes/mutation-gateway.js";
 import type { CalendarAvailabilitySource } from "./availability.js";
 import {
   CalendarRepository,
@@ -1188,6 +1187,8 @@ export class CalendarService extends Service {
   private microsoftPort: MicrosoftGraphCalendarPort;
   private readonly googleWatch: GoogleCalendarWatchLifecycle;
   private readonly linkedRepo: LinkedCalendarRepository;
+  private linkedCalendarDrain: Promise<void> | null = null;
+  private linkedCalendarDrainRequested = false;
   private readonly googleSyncLocks = new Map<string, Promise<void>>();
   private readonly microsoftSyncLocks = new Map<string, Promise<void>>();
   private icsSecretCleanupDrain: Promise<void> | null = null;
@@ -1347,6 +1348,156 @@ export class CalendarService extends Service {
       this.linkedLocalPort(),
       new GoogleLinkedCalendarProviderPort(google as IGoogleWorkspaceService),
     );
+  }
+
+  private async activeLinkedCalendarTarget(): Promise<{
+    connectorAccountId: string;
+    providerCalendarId: "primary";
+  } | null> {
+    const accounts = await this.gate.getGoogleConnectorAccounts(
+      new URL("http://localhost/api/lifeops/calendar/linked/automatic-sync"),
+      "owner",
+    );
+    const writable = accounts
+      .filter(
+        (account) =>
+          account.connected &&
+          account.grant?.capabilities.includes("google.calendar.read") &&
+          account.grant.capabilities.includes("google.calendar.write"),
+      )
+      .sort(
+        (left, right) =>
+          Number(right.preferredByAgent) - Number(left.preferredByAgent) ||
+          String(right.grant?.updatedAt).localeCompare(
+            String(left.grant?.updatedAt),
+          ) ||
+          String(left.grant?.id).localeCompare(String(right.grant?.id)),
+      );
+    const grant = writable[0]?.grant;
+    if (
+      !grant &&
+      accounts.length > 0 &&
+      accounts.every((account) => account.reason === "disconnected")
+    ) {
+      for (const accountId of new Set(
+        (await this.linkedRepo.listForAgent(this.agentId())).map(
+          (link) => link.connectorAccountId,
+        ),
+      )) {
+        await this.linkedRepo.pauseAccount(this.agentId(), accountId);
+      }
+    }
+    return grant
+      ? {
+          connectorAccountId: accountIdForGrant(grant),
+          providerCalendarId: "primary",
+        }
+      : null;
+  }
+
+  private async enqueueBuiltInCalendarMutation(
+    event: LifeOpsCalendarEvent,
+    operation: "create" | "update" | "delete",
+  ): Promise<void> {
+    let link = await this.linkedRepo.getByLocalEvent(this.agentId(), event.id);
+    if (!link) {
+      if (operation === "delete") return;
+      const target = await this.activeLinkedCalendarTarget();
+      if (!target) return;
+      link = await this.linkedRepo.create({
+        agentId: this.agentId(),
+        localEventId: event.id,
+        connectorAccountId: target.connectorAccountId,
+        providerCalendarId: target.providerCalendarId,
+        localRevision: Number(event.metadata.version),
+      });
+    } else if (link.state === "paused" && operation !== "delete") {
+      const target = await this.activeLinkedCalendarTarget();
+      if (!target || target.connectorAccountId !== link.connectorAccountId) {
+        return;
+      }
+      link = await this.linkedRepo.create({
+        agentId: this.agentId(),
+        localEventId: event.id,
+        connectorAccountId: target.connectorAccountId,
+        providerCalendarId: target.providerCalendarId,
+        localRevision: Number(event.metadata.version),
+      });
+    }
+    await this.linkedRepo.markLocalDirty({
+      agentId: this.agentId(),
+      localEventId: event.id,
+      localRevision: Number(event.metadata.version),
+      operation:
+        operation === "delete"
+          ? "delete"
+          : link.providerEventId
+            ? "update"
+            : "create",
+    });
+    this.kickLinkedCalendarDrain();
+  }
+
+  private kickLinkedCalendarDrain(): void {
+    if (this.linkedCalendarDrain) {
+      this.linkedCalendarDrainRequested = true;
+      return;
+    }
+    this.linkedCalendarDrain = (async () => {
+      do {
+        this.linkedCalendarDrainRequested = false;
+        await this.drainLinkedCalendarQueue();
+      } while (this.linkedCalendarDrainRequested);
+    })()
+      .catch((error) => {
+        // error-policy:J7 The durable queue remains authoritative after a
+        // diagnostic drain failure and will be replayed on the next trigger.
+        this.runtime.reportError("calendar:linked-active-sync-drain", error);
+      })
+      .finally(() => {
+        this.linkedCalendarDrain = null;
+      });
+  }
+
+  private async drainLinkedCalendarQueue(): Promise<void> {
+    for (const record of await this.linkedRepo.listActionable(this.agentId())) {
+      try {
+        await this.linkedReconciler().reconcile(record);
+      } catch (error) {
+        // error-policy:J7 Durable linked-calendar work remains queued for the
+        // next boot or feed refresh; one provider failure must not stop peers.
+        this.runtime.reportError("calendar:linked-active-sync", error, {
+          linkId: record.id,
+          connectorAccountId: record.connectorAccountId,
+        });
+      }
+    }
+  }
+
+  private async bootstrapActiveLinkedCalendarSync(): Promise<void> {
+    const target = await this.activeLinkedCalendarTarget();
+    if (!target) return;
+    for (const event of await this.repo.listCalendarEvents(
+      this.agentId(),
+      ELIZA_CALENDAR_PROVIDER,
+      undefined,
+      undefined,
+      "owner",
+      ELIZA_CALENDAR_GRANT_ID,
+    )) {
+      const existing = await this.linkedRepo.getByLocalEvent(
+        this.agentId(),
+        event.id,
+      );
+      if (
+        !existing ||
+        (existing.state === "paused" &&
+          existing.connectorAccountId === target.connectorAccountId)
+      ) {
+        await this.enqueueBuiltInCalendarMutation(event, "create");
+      }
+    }
+    this.kickLinkedCalendarDrain();
   }
 
   private requireCurrentLinkedRecord(
@@ -1513,27 +1664,11 @@ export class CalendarService extends Service {
   }
 
   private async reconcileLinkedGoogleChanges(
-    requestUrl: URL,
+    _requestUrl: URL,
     providerEventIds: readonly string[],
   ): Promise<void> {
     if (providerEventIds.length === 0) return;
-    const gateway = this.runtime.getService(
-      "calendar_owner_mutation_gateway",
-    ) as Partial<CalendarOwnerMutationGateway> | null;
-    if (
-      !gateway ||
-      typeof gateway.reconcileLinkedCalendarProviderChanges !== "function"
-    ) {
-      throw new CalendarServiceError(
-        503,
-        "Linked calendar reconciliation requires the owner mutation gateway.",
-        "CALENDAR_OWNER_MUTATION_GATEWAY_UNAVAILABLE",
-      );
-    }
-    await gateway.reconcileLinkedCalendarProviderChanges(
-      requestUrl,
-      providerEventIds,
-    );
+    await this.executeLinkedCalendarProviderChanges(providerEventIds);
   }
 
   static override async start(
@@ -1547,6 +1682,10 @@ export class CalendarService extends Service {
     void service.installGoogleWatchMaintenanceOnBoot();
     void service.drainIcsSecretCleanupOnBoot();
     void service.installAppleCalendarChangeObserver();
+    void service.bootstrapActiveLinkedCalendarSync().catch((error) => {
+      // error-policy:J5 Startup observes the detached bootstrap rejection here.
+      runtime.reportError("calendar:linked-active-sync-bootstrap", error);
+    });
     return service;
   }
 
@@ -5416,6 +5555,7 @@ export class CalendarService extends Service {
       const receipt = await this.repo.insertCalendarEventIfAbsent(event);
       const persisted = receipt.event;
       if (receipt.inserted) {
+        await this.enqueueBuiltInCalendarMutation(persisted, "create");
         await this.syncCalendarReminderPlans([persisted]);
         await reconcileMeetingAutoJoin({
           runtime: this.runtime,
@@ -5763,6 +5903,7 @@ export class CalendarService extends Service {
         "PROVIDER_PRECONDITION_FAILED",
       );
     }
+    await this.enqueueBuiltInCalendarMutation(persisted, "update");
     await this.syncCalendarReminderPlans([persisted]);
     await reconcileMeetingAutoJoin({
       runtime: this.runtime,
@@ -5817,6 +5958,7 @@ export class CalendarService extends Service {
         "PROVIDER_PRECONDITION_FAILED",
       );
     }
+    await this.enqueueBuiltInCalendarMutation(event, "delete");
     await this.deleteAvailabilityReservationsForParentIds([event.id]);
     await this.deleteCalendarReminderPlansForEvents([event.id]);
     await reconcileMeetingAutoJoin({

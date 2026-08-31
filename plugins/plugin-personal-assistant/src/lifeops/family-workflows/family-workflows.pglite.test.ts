@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
+import { CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE } from "@elizaos/plugin-calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { familyCoordinationPack } from "../../default-packs/family-coordination.js";
 import { handleFamilyWorkflowRoutes } from "../../routes/family-workflows.js";
@@ -133,7 +134,7 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
       collectClaims: async () => options.claims ?? [baseClaim()],
     });
     services.set(FAMILY_WORKFLOW_RUNTIME_SERVICE, service);
-    services.set("lifeops_calendar_mutation_gateway", {});
+    services.set(CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE, {});
     return { service, school };
   }
 
@@ -246,7 +247,7 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
     expect(school.applyApprovedPlan).toHaveBeenCalledWith(
       expect.objectContaining({
         runId: "school-run-1",
-        gateway: services.get("lifeops_calendar_mutation_gateway"),
+        gateway: services.get(CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE),
       }),
     );
     expect(response).toEqual({ applied: true, runId: "school-run-1" });

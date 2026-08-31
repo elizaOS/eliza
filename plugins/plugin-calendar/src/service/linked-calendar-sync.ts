@@ -234,6 +234,11 @@ export class LinkedCalendarRepository {
       ON CONFLICT (agent_id, local_event_id) DO UPDATE SET
         local_revision = GREATEST(app_calendar.linked_calendar_events.local_revision, EXCLUDED.local_revision),
         state = CASE WHEN app_calendar.linked_calendar_events.state = 'paused' THEN 'dirty' ELSE app_calendar.linked_calendar_events.state END,
+        pending_operation = CASE
+          WHEN app_calendar.linked_calendar_events.state = 'paused'
+            THEN CASE WHEN app_calendar.linked_calendar_events.provider_event_id IS NULL THEN 'create' ELSE 'update' END
+          ELSE app_calendar.linked_calendar_events.pending_operation
+        END,
         updated_at = EXCLUDED.updated_at
       RETURNING *`,
     );
@@ -317,16 +322,20 @@ export class LinkedCalendarRepository {
     agentId: string;
     localEventId: string;
     localRevision: number;
+    operation?: LinkedCalendarOperation;
     now?: Date;
   }): Promise<LinkedCalendarEventRecord | null> {
+    const operation = args.operation ?? "update";
     const rows = await executeRawSql(
       this.runtime,
       `UPDATE app_calendar.linked_calendar_events SET
         local_revision = GREATEST(local_revision, ${args.localRevision}),
-        state = CASE WHEN state = 'clean' THEN 'dirty' ELSE state END,
+        state = CASE WHEN state IN ('clean', 'dirty') THEN 'dirty' ELSE state END,
         pending_operation = CASE
-          WHEN state = 'clean' AND provider_event_id IS NULL THEN 'create'
-          WHEN state = 'clean' THEN 'update'
+          WHEN ${args.localRevision} < local_revision THEN pending_operation
+          WHEN state IN ('clean', 'dirty') AND ${sqlQuote(operation)} = 'delete' THEN 'delete'
+          WHEN state IN ('clean', 'dirty') AND provider_event_id IS NULL THEN 'create'
+          WHEN state IN ('clean', 'dirty') THEN 'update'
           ELSE pending_operation
         END,
         updated_at = ${sqlQuote((args.now ?? new Date()).toISOString())}
@@ -430,6 +439,46 @@ export class LinkedCalendarReconciler {
 
     const local = await this.local.get(record.localEventId);
     if (!local) {
+      if (record.pendingOperation === "delete") {
+        const provider = await this.provider.get(record);
+        try {
+          if (provider) await this.provider.delete(record);
+        } catch (error) {
+          const mutationFailure = googleMutationFailure(error);
+          if (mutationFailure?.outcome === "not_accepted") {
+            await this.repository.save(record, {
+              state: "dirty",
+              pendingOperation: "delete",
+              lastErrorCode: mutationFailure.code,
+              lastErrorMessage: mutationFailure.message,
+            });
+            return "dirty";
+          }
+          if (mutationFailure?.outcome === "precondition_failed") {
+            await this.repository.save(record, {
+              state: "conflicted",
+              pendingOperation: null,
+              lastErrorCode: mutationFailure.code,
+              lastErrorMessage: mutationFailure.message,
+            });
+            return "conflicted";
+          }
+          return this.quarantine(
+            record,
+            "LINKED_CALENDAR_UNKNOWN_PROVIDER_OUTCOME",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        await this.repository.save(record, {
+          state: "paused",
+          pendingOperation: null,
+          providerEtag: null,
+          lastErrorCode: "LINKED_CALENDAR_LOCAL_EVENT_DELETED",
+          lastErrorMessage:
+            "The Eliza event was deleted and the linked Google event was removed.",
+        });
+        return "pushed";
+      }
       return this.quarantine(
         record,
         "LINKED_LOCAL_EVENT_MISSING",

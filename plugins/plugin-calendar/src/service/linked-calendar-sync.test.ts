@@ -319,6 +319,38 @@ describe("LinkedCalendarReconciler", () => {
     );
   });
 
+  it("replays a durable delete after restart even though the local row is gone", async () => {
+    const store = new MemoryStore(
+      record({
+        state: "dirty",
+        pendingOperation: "delete",
+        providerEventId: "google-event-1",
+        providerEtag: '"g1"',
+      }),
+    );
+    const testPorts = ports({
+      local: null,
+      provider: {
+        eventId: "google-event-1",
+        etag: '"g1"',
+        event: baseEvent,
+      },
+    });
+
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).reconcile(store.current),
+    ).toBe("pushed");
+    expect(store.current).toMatchObject({
+      state: "paused",
+      pendingOperation: null,
+      lastErrorCode: "LINKED_CALENDAR_LOCAL_EVENT_DELETED",
+    });
+  });
+
   it("maps a provider precondition rejection to an explicit conflict", async () => {
     const store = new MemoryStore(record());
     const testPorts = ports({

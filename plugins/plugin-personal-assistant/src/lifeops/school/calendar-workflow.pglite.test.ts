@@ -6,6 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar/routes/mutation-gateway";
@@ -68,7 +69,7 @@ function event(externalId: string, title: string): LifeOpsCalendarEvent {
 
 describe("school calendar pure contracts", () => {
   it("parses both columns into stable date-owned keys", () => {
-    expect(parseSchoolCalendarText(twoColumnText)).toEqual([
+    expect(parseSchoolCalendarText(twoColumnText)).toMatchObject([
       {
         eventKey: "school-date:2026-09-01",
         title: "First day of school",
@@ -84,11 +85,79 @@ describe("school calendar pure contracts", () => {
     ]);
   });
 
-  it("fails closed when two columns assign two meanings to one date", () => {
-    expect(() =>
+  it("parses the Concord two-column layout with school-year inference, ranges, and citations", async () => {
+    const fixture = await readFile(
+      new URL("./fixtures/concord-2026-2027-layout.txt", import.meta.url),
+      "utf8",
+    );
+    const parsed = parseSchoolCalendarText(fixture);
+    expect(parsed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: "First Day Students",
+          startDate: "2026-08-31",
+          endDateExclusive: "2026-09-01",
+          citation: expect.objectContaining({ page: 1 }),
+        }),
+        expect.objectContaining({
+          title: "February Recess",
+          startDate: "2027-02-15",
+          endDateExclusive: "2027-02-20",
+          citation: expect.objectContaining({
+            sourceText: "15-19 February Recess",
+          }),
+        }),
+        expect.objectContaining({
+          title: "Columbus Day / Indigenous Peoples' Day",
+          startDate: "2026-10-12",
+        }),
+      ]),
+    );
+  });
+
+  it("uses PDF geometry to bind an unlabeled event to its nearest month heading", () => {
+    const parsed = parseSchoolCalendarText({
+      pageCount: 1,
+      items: [
+        {
+          page: 1,
+          text: "PreK-12 2026-2027 SCHOOL CALENDAR",
+          x: 100,
+          y: 760,
+          width: 200,
+          height: 10,
+        },
+        { page: 1, text: "FEBRUARY", x: 330, y: 710, width: 60, height: 10 },
+        { page: 1, text: "FEBRUARY", x: 430, y: 710, width: 60, height: 10 },
+        {
+          page: 1,
+          text: "15-19 February Recess",
+          x: 450,
+          y: 660,
+          width: 120,
+          height: 9,
+        },
+      ],
+    });
+    expect(parsed).toEqual([
+      expect.objectContaining({
+        startDate: "2027-02-15",
+        endDateExclusive: "2027-02-20",
+        citation: expect.objectContaining({
+          bounds: { x: 450, y: 660, width: 120, height: 9 },
+        }),
+      }),
+    ]);
+  });
+
+  it("quarantines duplicate ambiguous meanings while permitting distinct same-day events", () => {
+    expect(
       parseSchoolCalendarText(
-        "2026-09-01 | First day\nDifferent event | 2026-09-01",
+        "2026-09-01 | First day\nOrientation | 2026-09-01",
       ),
+    ).toHaveLength(2);
+    expect(() =>
+      parseSchoolCalendarText("2026-09-01 | First day\nFirst day | 2026-09-01"),
     ).toThrowError(
       expect.objectContaining({ code: "SCHOOL_CALENDAR_PARSE_AMBIGUOUS" }),
     );
@@ -177,6 +246,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
   let workflow: SchoolCalendarWorkflow;
   let gateway: CalendarOwnerMutationGateway;
   let creates: number;
+  let clock: Date;
 
   beforeEach(async () => {
     db = await PGlite.create();
@@ -194,6 +264,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     pdfBytes = Buffer.from("%PDF-concord-fixture-a");
     text = twoColumnText;
     creates = 0;
+    clock = new Date("2026-08-30T12:00:00.000Z");
     const lookupFn = async () => [{ address: "93.184.216.34", family: 4 }];
     const pinnedFetchImpl = vi.fn(async ({ url }: { url: URL }) => {
       if (url.pathname.endsWith(".pdf")) {
@@ -215,7 +286,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
         url: `/api/media/${hash(bytes)}.pdf`,
         hash: hash(bytes),
       }),
-      now: () => new Date("2026-08-30T12:00:00.000Z"),
+      now: () => clock,
     };
     workflow = new SchoolCalendarWorkflow(runtime, deps);
     gateway = {
@@ -294,6 +365,91 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     expect(creates).toBe(2);
   });
 
+  it("rejects a concurrent apply owner while the first lease is active", async () => {
+    const first = await workflow.run();
+    if (first.state !== "awaiting_approval") throw new Error("expected plan");
+    let release = () => {};
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const originalCreate = gateway.create.bind(gateway);
+    gateway.create = vi.fn(async (...args) => {
+      await blocked;
+      return originalCreate(...args);
+    });
+    const applying = workflow.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    await vi.waitFor(async () => {
+      const row = await db.query<{ state: string }>(
+        "SELECT state FROM app_lifeops.life_school_calendar_runs",
+      );
+      expect(row.rows[0]?.state).toBe("applying");
+    });
+    await expect(
+      workflow.applyApprovedPlan({
+        runId: first.runId,
+        requestUrl: new URL("http://localhost"),
+        gateway,
+      }),
+    ).rejects.toMatchObject({ code: "SCHOOL_CALENDAR_APPLY_IN_PROGRESS" });
+    release();
+    await applying;
+  });
+
+  it("resumes after a partial provider success without replaying completed operations", async () => {
+    const first = await workflow.run();
+    if (first.state !== "awaiting_approval") throw new Error("expected plan");
+    const successfulKeys: string[] = [];
+    gateway.create = vi.fn(async (_url, request) => {
+      successfulKeys.push(request.idempotencyKey);
+      if (successfulKeys.length === 2) throw new Error("provider unavailable");
+      return {
+        outcome: "event",
+        event: event(`provider-${successfulKeys.length}`, request.title),
+        writeOnlyReceipt: null,
+      };
+    });
+    await expect(
+      workflow.applyApprovedPlan({
+        runId: first.runId,
+        requestUrl: new URL("http://localhost"),
+        gateway,
+      }),
+    ).rejects.toThrow("provider unavailable");
+    const operationStates = await db.query<{ state: string }>(
+      "SELECT state FROM app_lifeops.life_school_calendar_apply_operations ORDER BY operation_index",
+    );
+    expect(operationStates.rows.map((row) => row.state)).toEqual([
+      "applied",
+      "executing",
+    ]);
+
+    clock = new Date("2026-08-30T12:06:00.000Z");
+    gateway.create = vi.fn(async (_url, request) => {
+      successfulKeys.push(request.idempotencyKey);
+      return {
+        outcome: "event",
+        event: event("provider-2", request.title),
+        writeOnlyReceipt: null,
+      };
+    });
+    const restarted = new SchoolCalendarWorkflow(runtime, { now: () => clock });
+    await restarted.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    expect(gateway.create).toHaveBeenCalledTimes(1);
+    expect(successfulKeys[1]).toBe(successfulKeys[2]);
+    const run = await db.query<{ state: string }>(
+      "SELECT state FROM app_lifeops.life_school_calendar_runs",
+    );
+    expect(run.rows[0]?.state).toBe("applied");
+  });
+
   it("isolates source state by agent ownership", async () => {
     const first = await workflow.run();
     expect(first.state).toBe("awaiting_approval");
@@ -334,7 +490,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
   });
 
   it("records ambiguity as a failed run and releases the lease", async () => {
-    text = "2026-09-01 | First day\nSecond meaning | 2026-09-01";
+    text = "2026-09-01 | First day\nFirst day | 2026-09-01";
     await expect(workflow.run()).rejects.toMatchObject({
       code: "SCHOOL_CALENDAR_PARSE_AMBIGUOUS",
     });
