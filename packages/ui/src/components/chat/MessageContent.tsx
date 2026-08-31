@@ -14,7 +14,7 @@
  * exports here drive their own mutations through the typed `ElizaClient`.
  */
 
-import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
+import { stripUnclaimedInteractionMarkup, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import { Check, ShieldCheck } from "lucide-react";
 import {
@@ -1594,9 +1594,9 @@ export function MessageContent({
         return segments.map((seg) => {
           const baseKey =
             seg.kind === "text"
-              ? `text:${seg.text.slice(0, 80)}`
+              ? `text:${truncateWellFormed(toWellFormedUnicode(seg.text), 80)}`
               : seg.kind === "code"
-                ? `code:${seg.code.slice(0, 80)}`
+                ? `code:${truncateWellFormed(toWellFormedUnicode(seg.code), 80)}`
                 : seg.kind === "config"
                   ? `config:${seg.pluginId}`
                   : seg.kind === "widget"
@@ -1606,7 +1606,7 @@ export function MessageContent({
                       ? `permission:${seg.payload.feature}`
                       : seg.kind === "analysis-xml"
                         ? `analysis:${seg.tag}`
-                        : `ui:${seg.raw.slice(0, 80)}`;
+                        : `ui:${truncateWellFormed(toWellFormedUnicode(seg.raw), 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
