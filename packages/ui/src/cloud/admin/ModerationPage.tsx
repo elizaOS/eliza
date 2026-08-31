@@ -1,3 +1,4 @@
+import { tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * /cloud/admin — moderation panel.
  *
@@ -347,7 +348,7 @@ export default function ModerationPage(): React.JSX.Element {
                           {new Date(v.createdAt).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-xs">
-                          {v.userId.slice(0, 8)}...
+                          {truncateWellFormed(toWellFormedUnicode(v.userId), 8)}...
                         </TableCell>
                         <TableCell>
                           {v.categories.map((c) => (
@@ -423,7 +424,7 @@ export default function ModerationPage(): React.JSX.Element {
                         className="flex items-center justify-between rounded-sm border p-3"
                       >
                         <div>
-                          <p className="text-sm">{u.userId.slice(0, 12)}...</p>
+                          <p className="text-sm">{truncateWellFormed(toWellFormedUnicode(u.userId), 12)}...</p>
                           <div className="flex gap-2 text-xs text-muted-foreground">
                             <span>
                               {u.totalViolations}{" "}
@@ -498,7 +499,7 @@ export default function ModerationPage(): React.JSX.Element {
                         className="flex items-center justify-between rounded-sm border border-destructive/20 bg-destructive/5 p-3"
                       >
                         <div>
-                          <p className="text-sm">{u.userId.slice(0, 12)}...</p>
+                          <p className="text-sm">{truncateWellFormed(toWellFormedUnicode(u.userId), 12)}...</p>
                           <p className="text-xs text-muted-foreground">
                             {u.banReason ??
                               t("cloud.admin.noReasonProvided", {
@@ -577,8 +578,8 @@ export default function ModerationPage(): React.JSX.Element {
                     {admins.map((admin) => (
                       <TableRow key={admin.id}>
                         <TableCell className="text-sm">
-                          {admin.walletAddress.slice(0, 10)}...
-                          {admin.walletAddress.slice(-8)}
+                          {truncateWellFormed(toWellFormedUnicode(admin.walletAddress), 10)}...
+                          {tailWellFormed(toWellFormedUnicode(admin.walletAddress), 8)}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -753,7 +754,7 @@ export default function ModerationPage(): React.JSX.Element {
                       :
                     </span>{" "}
                     <span>
-                      {userDetail.user?.wallet_address?.slice(0, 10)}...
+                      {truncateWellFormed(toWellFormedUnicode(userDetail.user?.wallet_address ?? ""), 10)}...
                     </span>
                   </div>
                   <div>
