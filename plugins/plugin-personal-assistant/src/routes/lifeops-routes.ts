@@ -242,6 +242,8 @@ const LIFEOPS_RATE_LIMITS = {
   calendar_source_write: { maxRequests: 20, windowMs: 60_000 },
   calendar_source_sync: { maxRequests: 30, windowMs: 60_000 },
   calendar_imported_data_purge: { maxRequests: 10, windowMs: 60_000 },
+  calendar_link_read: { maxRequests: 120, windowMs: 60_000 },
+  calendar_link_write: { maxRequests: 20, windowMs: 60_000 },
   // OAuth + connector lifecycle: tight cap because these mutate stored
   // credentials or initiate consent flows.
   oauth_init: { maxRequests: 5, windowMs: 60_000 },
@@ -1195,7 +1197,17 @@ export async function handleLifeOpsRoutes(
     "update" in value &&
     typeof value.update === "function" &&
     "cancel" in value &&
-    typeof value.cancel === "function";
+    typeof value.cancel === "function" &&
+    "linkCalendar" in value &&
+    typeof value.linkCalendar === "function" &&
+    "reconcileLinkedCalendar" in value &&
+    typeof value.reconcileLinkedCalendar === "function" &&
+    "resolveLinkedCalendarConflict" in value &&
+    typeof value.resolveLinkedCalendarConflict === "function" &&
+    "disconnectLinkedCalendar" in value &&
+    typeof value.disconnectLinkedCalendar === "function" &&
+    "reconcileLinkedCalendarProviderChanges" in value &&
+    typeof value.reconcileLinkedCalendarProviderChanges === "function";
   const mutationGateway = (): CalendarOwnerMutationGateway => {
     const gateway = ctx.state.runtime?.getService(
       CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
@@ -1235,6 +1247,34 @@ export async function handleLifeOpsRoutes(
           mutationGateway().update(requestUrl, request),
         cancel: (requestUrl, request) =>
           mutationGateway().cancel(requestUrl, request),
+        linkCalendar: (requestUrl, request) =>
+          mutationGateway().linkCalendar(requestUrl, request),
+        reconcileLinkedCalendar: (requestUrl, linkId, request) =>
+          mutationGateway().reconcileLinkedCalendar(
+            requestUrl,
+            linkId,
+            request,
+          ),
+        resolveLinkedCalendarConflict: (requestUrl, linkId, request) =>
+          mutationGateway().resolveLinkedCalendarConflict(
+            requestUrl,
+            linkId,
+            request,
+          ),
+        disconnectLinkedCalendar: (requestUrl, linkId, request) =>
+          mutationGateway().disconnectLinkedCalendar(
+            requestUrl,
+            linkId,
+            request,
+          ),
+        reconcileLinkedCalendarProviderChanges: (
+          requestUrl,
+          providerEventIds,
+        ) =>
+          mutationGateway().reconcileLinkedCalendarProviderChanges(
+            requestUrl,
+            providerEventIds,
+          ),
       },
     })
   ) {

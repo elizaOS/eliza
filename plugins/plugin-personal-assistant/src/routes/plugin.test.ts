@@ -255,6 +255,12 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["POST", "/api/lifeops/calendar/events"],
       ["PATCH", "/api/lifeops/calendar/events/:eventId"],
       ["DELETE", "/api/lifeops/calendar/events/:eventId"],
+      ["GET", "/api/lifeops/calendar/links"],
+      ["POST", "/api/lifeops/calendar/links"],
+      ["GET", "/api/lifeops/calendar/links/:id"],
+      ["POST", "/api/lifeops/calendar/links/:id/reconcile"],
+      ["POST", "/api/lifeops/calendar/links/:id/resolve"],
+      ["POST", "/api/lifeops/calendar/links/:id/disconnect"],
     ] as const;
 
     for (const [type, path] of calendarRoutes) {

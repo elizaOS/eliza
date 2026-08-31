@@ -300,6 +300,8 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/calendar/calendars" },
   { type: "PUT", path: "/api/lifeops/calendar/calendars/:id/include" },
   { type: "GET", path: "/api/lifeops/calendar/next-context" },
+  { type: "GET", path: "/api/lifeops/calendar/links" },
+  { type: "POST", path: "/api/lifeops/calendar/links" },
   { type: "GET", path: "/api/lifeops/gmail/triage" },
   { type: "GET", path: "/api/lifeops/gmail/sync-health" },
   { type: "POST", path: "/api/lifeops/gmail/seed" },
@@ -451,6 +453,11 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   // /api/lifeops/calendar/events/:eventId
   { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
   { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },
+  // /api/lifeops/calendar/links/:id
+  { type: "GET", path: "/api/lifeops/calendar/links/:id" },
+  { type: "POST", path: "/api/lifeops/calendar/links/:id/reconcile" },
+  { type: "POST", path: "/api/lifeops/calendar/links/:id/resolve" },
+  { type: "POST", path: "/api/lifeops/calendar/links/:id/disconnect" },
   // /api/lifeops/calendar/sources/:sourceId
   { type: "PATCH", path: "/api/lifeops/calendar/sources/:sourceId" },
   { type: "DELETE", path: "/api/lifeops/calendar/sources/:sourceId" },

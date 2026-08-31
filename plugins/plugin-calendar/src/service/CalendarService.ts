@@ -20,7 +20,10 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import type { GoogleCalendarEvent } from "@elizaos/plugin-google-workspace";
+import type {
+  GoogleCalendarEvent,
+  IGoogleWorkspaceService,
+} from "@elizaos/plugin-google-workspace";
 // Runtime error classes come from the dependency-light calendar subpath so
 // importing CalendarService never evaluates the Google Workspace root barrel
 // (whose client factory eagerly imports the optional `googleapis` SDK — absent
@@ -40,6 +43,8 @@ import type {
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsCalendarEventResponse,
   CreateLifeOpsIcsCalendarSourceRequest,
+  CreateLifeOpsLinkedCalendarLinkRequest,
+  DisconnectLifeOpsLinkedCalendarRequest,
   FeatureResult,
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
@@ -57,9 +62,13 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsIcsCalendarSource,
   LifeOpsIcsCalendarSyncResponse,
+  LifeOpsLinkedCalendarLink,
+  LifeOpsLinkedCalendarMutationResponse,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
   PurgeLifeOpsCalendarImportedDataRequest,
+  ResolveLifeOpsLinkedCalendarConflictRequest,
+  RunLifeOpsLinkedCalendarReconciliationRequest,
   SeedLifeOpsCalendarRequest,
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
@@ -171,6 +180,7 @@ import {
   MicrosoftGraphDeltaExpiredError,
   type MicrosoftGraphEvent,
 } from "../microsoft/index.js";
+import type { CalendarOwnerMutationGateway } from "../routes/mutation-gateway.js";
 import type { CalendarAvailabilitySource } from "./availability.js";
 import {
   CalendarRepository,
@@ -190,6 +200,14 @@ import {
   createLifeOpsAuditEvent,
   createLifeOpsReminderPlan,
 } from "./gate.js";
+import {
+  GoogleLinkedCalendarProviderPort,
+  type LinkedCalendarEventRecord,
+  type LinkedCalendarLocalPort,
+  LinkedCalendarReconciler,
+  LinkedCalendarRepository,
+  type LinkedCalendarSemanticEvent,
+} from "./linked-calendar-sync.js";
 
 type AggregatedCalendarFeedSource = {
   calendar: Pick<
@@ -1169,6 +1187,7 @@ export class CalendarService extends Service {
   private gate: CalendarHostGate;
   private microsoftPort: MicrosoftGraphCalendarPort;
   private readonly googleWatch: GoogleCalendarWatchLifecycle;
+  private readonly linkedRepo: LinkedCalendarRepository;
   private readonly googleSyncLocks = new Map<string, Promise<void>>();
   private readonly microsoftSyncLocks = new Map<string, Promise<void>>();
   private icsSecretCleanupDrain: Promise<void> | null = null;
@@ -1178,11 +1197,343 @@ export class CalendarService extends Service {
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     this.repo = new CalendarRepository(this.runtime);
+    this.linkedRepo = new LinkedCalendarRepository(this.runtime);
     this.gate = createDefaultCalendarHostGate(this.runtime);
     this.microsoftPort = new DefaultMicrosoftGraphCalendarPort(this.runtime);
     this.googleWatch = new GoogleCalendarWatchLifecycle(this.runtime, {
       syncChannel: (channel) => this.syncGoogleCalendarWatchChannel(channel),
     });
+  }
+
+  private publicLinkedCalendar(
+    record: LinkedCalendarEventRecord,
+  ): LifeOpsLinkedCalendarLink {
+    return {
+      id: record.id,
+      localEventId: record.localEventId,
+      connectorAccountId: record.connectorAccountId,
+      providerCalendarId: record.providerCalendarId,
+      providerEventId: record.providerEventId,
+      providerEtag: record.providerEtag,
+      localRevision: record.localRevision,
+      state: record.state,
+      pendingOperation: record.pendingOperation,
+      lastErrorCode: record.lastErrorCode,
+      lastErrorMessage: record.lastErrorMessage,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    };
+  }
+
+  private linkedSemanticEvent(
+    event: LifeOpsCalendarEvent,
+  ): LinkedCalendarSemanticEvent {
+    return {
+      title: event.title,
+      description: event.description,
+      location: event.location,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      timeZone: event.timezone,
+      attendees: event.attendees.flatMap((attendee) =>
+        attendee.email
+          ? [{ email: attendee.email, optional: attendee.optional === true }]
+          : [],
+      ),
+    };
+  }
+
+  private linkedLocalPort(): LinkedCalendarLocalPort {
+    return {
+      get: async (eventId) => {
+        const event = await this.repo.getCalendarEventById(
+          this.agentId(),
+          eventId,
+        );
+        if (!event || event.provider !== ELIZA_CALENDAR_PROVIDER) return null;
+        const revision = Number(event.metadata.version);
+        if (!Number.isSafeInteger(revision) || revision < 1) {
+          throw new CalendarServiceError(
+            500,
+            "The linked Eliza event has an invalid revision.",
+            "ELIZA_CALENDAR_VERSION_INVALID",
+          );
+        }
+        return {
+          eventId: event.id,
+          revision,
+          event: this.linkedSemanticEvent(event),
+        };
+      },
+      applyProviderEvent: async (eventId, providerEvent, expectedRevision) => {
+        const existing = await this.resolveElizaCalendarEvent({ eventId });
+        if (Number(existing.metadata.version) !== expectedRevision) {
+          throw new CalendarServiceError(
+            409,
+            "The linked Eliza event changed during reconciliation.",
+            "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
+          );
+        }
+        const updated = updateElizaCalendarEvent({
+          event: existing,
+          title: providerEvent.title,
+          description: providerEvent.description,
+          location: providerEvent.location,
+          startAt: providerEvent.startAt,
+          endAt: providerEvent.endAt,
+          ...(providerEvent.timeZone
+            ? { timeZone: providerEvent.timeZone }
+            : {}),
+          attendees: providerEvent.attendees.map((attendee) => ({
+            email: attendee.email,
+            optional: attendee.optional === true,
+          })),
+          now: new Date(),
+        });
+        const expectedVersion = String(existing.metadata.etag ?? "");
+        const persisted = await this.repo.replaceCalendarEventIfVersion({
+          event: updated,
+          expectedVersion,
+        });
+        if (!persisted) {
+          throw new CalendarServiceError(
+            409,
+            "The linked Eliza event changed during reconciliation.",
+            "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
+          );
+        }
+        return {
+          eventId: persisted.id,
+          revision: Number(persisted.metadata.version),
+          event: this.linkedSemanticEvent(persisted),
+        };
+      },
+      delete: async (eventId, expectedRevision) => {
+        const existing = await this.resolveElizaCalendarEvent({ eventId });
+        if (Number(existing.metadata.version) !== expectedRevision) {
+          throw new CalendarServiceError(
+            409,
+            "The linked Eliza event changed during reconciliation.",
+            "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED",
+          );
+        }
+        const deleted = await this.repo.deleteCalendarEventByIdIfVersion({
+          agentId: this.agentId(),
+          eventId,
+          expectedVersion: String(existing.metadata.etag ?? ""),
+        });
+        if (!deleted) {
+          throw new CalendarServiceError(
+            409,
+            "The linked Eliza event changed during reconciliation.",
+            "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED",
+          );
+        }
+      },
+    };
+  }
+
+  private linkedReconciler(): LinkedCalendarReconciler {
+    const google = this.runtime.getService("google");
+    if (!google || typeof google !== "object") {
+      throw new CalendarServiceError(
+        503,
+        "Google Workspace is required for linked calendar synchronization.",
+        "GOOGLE_CALENDAR_SERVICE_UNAVAILABLE",
+      );
+    }
+    return new LinkedCalendarReconciler(
+      this.linkedRepo,
+      this.linkedLocalPort(),
+      new GoogleLinkedCalendarProviderPort(google as IGoogleWorkspaceService),
+    );
+  }
+
+  private requireCurrentLinkedRecord(
+    record: LinkedCalendarEventRecord | null,
+    expectedUpdatedAt?: string,
+  ): LinkedCalendarEventRecord {
+    if (!record) {
+      throw new CalendarServiceError(
+        404,
+        "Linked calendar mapping not found.",
+        "LINKED_CALENDAR_NOT_FOUND",
+      );
+    }
+    if (expectedUpdatedAt && record.updatedAt !== expectedUpdatedAt) {
+      throw new CalendarServiceError(
+        409,
+        "The linked calendar mapping changed; refresh before retrying.",
+        "LINKED_CALENDAR_STALE_WRITE",
+      );
+    }
+    return record;
+  }
+
+  async listLinkedCalendarEvents(): Promise<LifeOpsLinkedCalendarLink[]> {
+    return (await this.linkedRepo.listForAgent(this.agentId())).map((record) =>
+      this.publicLinkedCalendar(record),
+    );
+  }
+
+  async getLinkedCalendarEvent(
+    linkId: string,
+  ): Promise<LifeOpsLinkedCalendarLink> {
+    return this.publicLinkedCalendar(
+      this.requireCurrentLinkedRecord(
+        await this.linkedRepo.getById(this.agentId(), linkId),
+      ),
+    );
+  }
+
+  async executeLinkedCalendarLink(
+    request: CreateLifeOpsLinkedCalendarLinkRequest,
+  ): Promise<LifeOpsLinkedCalendarMutationResponse> {
+    if (
+      !Number.isSafeInteger(request.expectedLocalRevision) ||
+      request.expectedLocalRevision < 1
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "expectedLocalRevision must be a positive integer.",
+        "LINKED_CALENDAR_LOCAL_REVISION_INVALID",
+      );
+    }
+    const local = await this.linkedLocalPort().get(request.localEventId);
+    if (!local) {
+      throw new CalendarServiceError(
+        404,
+        "The built-in Eliza calendar event was not found.",
+        "CALENDAR_EVENT_NOT_FOUND",
+      );
+    }
+    if (local.revision !== request.expectedLocalRevision) {
+      throw new CalendarServiceError(
+        409,
+        "The Eliza event changed before it could be linked.",
+        "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
+      );
+    }
+    const created = await this.linkedRepo.create({
+      agentId: this.agentId(),
+      localEventId: local.eventId,
+      connectorAccountId: requireNonEmptyString(
+        request.connectorAccountId,
+        "connectorAccountId",
+      ),
+      providerCalendarId: requireNonEmptyString(
+        request.providerCalendarId,
+        "providerCalendarId",
+      ),
+      localRevision: local.revision,
+    });
+    const outcome = await this.linkedReconciler().reconcile(created);
+    const current = this.requireCurrentLinkedRecord(
+      await this.linkedRepo.getById(this.agentId(), created.id),
+    );
+    return { link: this.publicLinkedCalendar(current), outcome };
+  }
+
+  async executeLinkedCalendarReconciliation(
+    linkId: string,
+    request: RunLifeOpsLinkedCalendarReconciliationRequest,
+  ): Promise<LifeOpsLinkedCalendarMutationResponse> {
+    const record = this.requireCurrentLinkedRecord(
+      await this.linkedRepo.getById(this.agentId(), linkId),
+      requireNonEmptyString(request.expectedUpdatedAt, "expectedUpdatedAt"),
+    );
+    const outcome = await this.linkedReconciler().reconcile(record);
+    const current = this.requireCurrentLinkedRecord(
+      await this.linkedRepo.getById(this.agentId(), linkId),
+    );
+    return { link: this.publicLinkedCalendar(current), outcome };
+  }
+
+  async executeLinkedCalendarConflictResolution(
+    linkId: string,
+    request: ResolveLifeOpsLinkedCalendarConflictRequest,
+  ): Promise<LifeOpsLinkedCalendarMutationResponse> {
+    if (
+      request.strategy !== "keep_eliza" &&
+      request.strategy !== "keep_google"
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "strategy must be keep_eliza or keep_google.",
+        "LINKED_CALENDAR_CONFLICT_STRATEGY_INVALID",
+      );
+    }
+    const record = this.requireCurrentLinkedRecord(
+      await this.linkedRepo.getById(this.agentId(), linkId),
+      requireNonEmptyString(request.expectedUpdatedAt, "expectedUpdatedAt"),
+    );
+    const outcome = await this.linkedReconciler().resolveConflict(
+      record,
+      request.strategy,
+    );
+    const current = this.requireCurrentLinkedRecord(
+      await this.linkedRepo.getById(this.agentId(), linkId),
+    );
+    return { link: this.publicLinkedCalendar(current), outcome };
+  }
+
+  async executeLinkedCalendarDisconnect(
+    linkId: string,
+    request: DisconnectLifeOpsLinkedCalendarRequest,
+  ): Promise<LifeOpsLinkedCalendarMutationResponse> {
+    if (request.retainEvents !== true) {
+      throw new CalendarServiceError(
+        400,
+        "Disconnect requires retaining both independent calendar events.",
+        "LINKED_CALENDAR_RETENTION_REQUIRED",
+      );
+    }
+    const record = this.requireCurrentLinkedRecord(
+      await this.linkedRepo.getById(this.agentId(), linkId),
+      requireNonEmptyString(request.expectedUpdatedAt, "expectedUpdatedAt"),
+    );
+    const paused = await this.linkedRepo.pause(record);
+    return {
+      link: this.publicLinkedCalendar(paused),
+      outcome: "disconnected",
+    };
+  }
+
+  async executeLinkedCalendarProviderChanges(
+    providerEventIds: readonly string[],
+  ): Promise<void> {
+    const changed = new Set(providerEventIds);
+    const records = (await this.linkedRepo.listForAgent(this.agentId())).filter(
+      (record) =>
+        record.providerEventId !== null && changed.has(record.providerEventId),
+    );
+    for (const record of records) {
+      await this.linkedReconciler().reconcile(record);
+    }
+  }
+
+  private async reconcileLinkedGoogleChanges(
+    requestUrl: URL,
+    providerEventIds: readonly string[],
+  ): Promise<void> {
+    if (providerEventIds.length === 0) return;
+    const gateway = this.runtime.getService(
+      "calendar_owner_mutation_gateway",
+    ) as Partial<CalendarOwnerMutationGateway> | null;
+    if (
+      !gateway ||
+      typeof gateway.reconcileLinkedCalendarProviderChanges !== "function"
+    ) {
+      throw new CalendarServiceError(
+        503,
+        "Linked calendar reconciliation requires the owner mutation gateway.",
+        "CALENDAR_OWNER_MUTATION_GATEWAY_UNAVAILABLE",
+      );
+    }
+    await gateway.reconcileLinkedCalendarProviderChanges(
+      requestUrl,
+      providerEventIds,
+    );
   }
 
   static override async start(
@@ -3372,6 +3723,32 @@ export class CalendarService extends Service {
         syncedAt,
       }),
     );
+    try {
+      const linkedProviderEventIds = new Set(
+        batch.events.map((event) => event.id),
+      );
+      if (!incremental) {
+        for (const link of await this.linkedRepo.listForAgent(this.agentId())) {
+          if (
+            link.connectorAccountId === accountId &&
+            link.providerCalendarId === args.calendarId &&
+            link.providerEventId
+          ) {
+            linkedProviderEventIds.add(link.providerEventId);
+          }
+        }
+      }
+      await this.reconcileLinkedGoogleChanges(args.requestUrl, [
+        ...linkedProviderEventIds,
+      ]);
+    } catch (error) {
+      // error-policy:J4 The provider cache remains fresh, while linked-event
+      // reconciliation is explicitly surfaced for owner intervention.
+      this.runtime.reportError("calendar:linked-google-reconciliation", error, {
+        calendarId: args.calendarId,
+        grantId: grant.id,
+      });
+    }
     return {
       calendarId: args.calendarId,
       events: nextEvents,

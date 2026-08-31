@@ -79,6 +79,8 @@ function ports(args: {
   local?: LinkedCalendarLocalSnapshot | null;
   provider?: LinkedCalendarProviderSnapshot | null;
   createError?: unknown;
+  localApplyError?: unknown;
+  localDeleteError?: unknown;
 }) {
   let local =
     args.local === undefined
@@ -97,8 +99,13 @@ function ports(args: {
         event: LinkedCalendarSemanticEvent,
         expectedRevision: number,
       ) {
+        if (args.localApplyError) throw args.localApplyError;
         local = { eventId, event, revision: expectedRevision + 1 };
         return local;
+      },
+      async delete(_eventId: string, _expectedRevision: number) {
+        if (args.localDeleteError) throw args.localDeleteError;
+        local = null;
       },
     },
     providerPort: {
@@ -329,6 +336,109 @@ describe("LinkedCalendarReconciler", () => {
       ).reconcile(store.current),
     ).toBe("conflicted");
     expect(store.current.state).toBe("conflicted");
+  });
+
+  it("quarantines a provider pull when the local CAS rejects a stale revision", async () => {
+    const initial = record({
+      state: "clean",
+      providerEventId: "google-event-1",
+      providerEtag: '"g1"',
+    });
+    const { linkedCalendarSemanticHash } = await import(
+      "./linked-calendar-sync.js"
+    );
+    initial.lastCommonSemanticHash = linkedCalendarSemanticHash(baseEvent);
+    const store = new MemoryStore(initial);
+    const testPorts = ports({
+      provider: {
+        eventId: "google-event-1",
+        etag: '"g2"',
+        event: { ...baseEvent, title: "Provider edit" },
+      },
+      localApplyError: new Error("compare-and-swap rejected"),
+    });
+
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).reconcile(store.current),
+    ).toBe("quarantined");
+    expect(store.current).toMatchObject({
+      state: "quarantined",
+      lastErrorCode: "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
+    });
+  });
+
+  it("resolves a stale two-sided conflict using the owner's selected provider value", async () => {
+    const store = new MemoryStore(
+      record({
+        state: "conflicted",
+        providerEventId: "google-event-1",
+        providerEtag: '"g1"',
+        lastCommonSemanticHash: "old",
+      }),
+    );
+    const providerEdit = { ...baseEvent, title: "Provider wins" };
+    const testPorts = ports({
+      local: {
+        eventId: "local-1",
+        revision: 4,
+        event: { ...baseEvent, title: "Local stale edit" },
+      },
+      provider: {
+        eventId: "google-event-1",
+        etag: '"g5"',
+        event: providerEdit,
+      },
+    });
+
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).resolveConflict(store.current, "keep_google"),
+    ).toBe("pulled");
+    expect(testPorts.local()).toMatchObject({
+      revision: 5,
+      event: { title: "Provider wins" },
+    });
+    expect(store.current).toMatchObject({
+      state: "clean",
+      providerEtag: '"g5"',
+      localRevision: 5,
+    });
+  });
+
+  it("retains and pauses the mapping after a watch pull observes provider deletion", async () => {
+    const { linkedCalendarSemanticHash } = await import(
+      "./linked-calendar-sync.js"
+    );
+    const store = new MemoryStore(
+      record({
+        state: "clean",
+        providerEventId: "google-event-1",
+        providerEtag: '"g1"',
+        lastCommonSemanticHash: linkedCalendarSemanticHash(baseEvent),
+      }),
+    );
+    const testPorts = ports({ provider: null });
+
+    expect(
+      await new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).reconcile(store.current),
+    ).toBe("pulled");
+    expect(testPorts.local()).toBeNull();
+    expect(store.current).toMatchObject({
+      state: "paused",
+      providerEventId: "google-event-1",
+      lastErrorCode: "LINKED_CALENDAR_PROVIDER_EVENT_DELETED",
+    });
   });
 });
 
