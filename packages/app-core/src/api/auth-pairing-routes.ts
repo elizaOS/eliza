@@ -44,14 +44,45 @@ import { isCloudProvisioned } from "./server-first-run-helpers";
 // Pairing state & helpers
 // ---------------------------------------------------------------------------
 
-const PAIRING_TTL_MS = 10 * 60 * 1000;
+// Remote operators often retrieve the code from a service journal before
+// switching devices to the public dashboard. The longer window accommodates
+// that handoff while one-time consumption and the attempt limiter remain the
+// primary replay and guessing controls.
+const PAIRING_TTL_MS = 60 * 60 * 1000;
 const PAIRING_WINDOW_MS = 10 * 60 * 1000;
 const PAIRING_MAX_ATTEMPTS = 5;
 const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 let pairingCode: string | null = null;
 let pairingExpiresAt = 0;
+let pairingInstanceId = crypto.randomUUID();
 const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
+
+export const AUTH_PAIRING_ERROR_CODES = {
+  invalid: "PAIRING_INVALID",
+  expired: "PAIRING_EXPIRED",
+  disabled: "PAIRING_DISABLED",
+  notReady: "PAIRING_NOT_READY",
+  instanceMismatch: "PAIRING_INSTANCE_MISMATCH",
+  rateLimited: "PAIRING_RATE_LIMITED",
+  sessionFailed: "PAIRING_SESSION_FAILED",
+} as const;
+
+type AuthPairingErrorCode =
+  (typeof AUTH_PAIRING_ERROR_CODES)[keyof typeof AUTH_PAIRING_ERROR_CODES];
+
+function sendPairingError(
+  res: http.ServerResponse,
+  status: number,
+  code: AuthPairingErrorCode,
+  error: string,
+): void {
+  sendJsonResponse(res, status, {
+    error,
+    code,
+    instanceId: pairingInstanceId,
+  });
+}
 
 // Periodic sweep to prevent unbounded memory growth
 const PAIRING_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
@@ -71,6 +102,14 @@ export function _resetAuthPairingStateForTests(): void {
   pairingCode = null;
   pairingExpiresAt = 0;
   pairingAttempts.clear();
+}
+
+/** Simulates the process-identity change a restart or a different replica causes. */
+export function _rotateAuthPairingInstanceForTests(): string {
+  pairingCode = null;
+  pairingExpiresAt = 0;
+  pairingInstanceId = crypto.randomUUID();
+  return pairingInstanceId;
 }
 
 function pairingEnabled(): boolean {
@@ -103,7 +142,7 @@ function ensurePairingCode(): string | null {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
     logger.warn(
-      `[api] Pairing code for remote devices: ${pairingCode} (valid for 10 minutes)`,
+      `[api] Pairing code for remote devices: ${pairingCode} (valid for 60 minutes)`,
     );
   }
 
@@ -113,9 +152,12 @@ function ensurePairingCode(): string | null {
 export function ensureAuthPairingCodeForRemoteAccess(): {
   code: string;
   expiresAt: number;
+  instanceId: string;
 } | null {
   const code = ensurePairingCode();
-  return code ? { code, expiresAt: pairingExpiresAt } : null;
+  return code
+    ? { code, expiresAt: pairingExpiresAt, instanceId: pairingInstanceId }
+    : null;
 }
 
 async function requestHasActiveSession(
@@ -289,6 +331,7 @@ export async function handleAuthPairingCompatRoutes(
       passwordConfigured,
       pairingEnabled: enabled,
       expiresAt: enabled ? pairingExpiresAt : null,
+      instanceId: pairingInstanceId,
     });
     return true;
   }
@@ -303,10 +346,19 @@ export async function handleAuthPairingCompatRoutes(
     }
     const code = ensurePairingCode();
     if (!code) {
-      sendJsonErrorResponse(res, 503, "Pairing not enabled");
+      sendPairingError(
+        res,
+        503,
+        AUTH_PAIRING_ERROR_CODES.disabled,
+        "Pairing not enabled",
+      );
       return true;
     }
-    sendJsonResponse(res, 200, { code, expiresAt: pairingExpiresAt });
+    sendJsonResponse(res, 200, {
+      code,
+      expiresAt: pairingExpiresAt,
+      instanceId: pairingInstanceId,
+    });
     return true;
   }
 
@@ -319,39 +371,82 @@ export async function handleAuthPairingCompatRoutes(
 
     const token = getCompatApiToken();
     if (!token) {
-      sendJsonErrorResponse(res, 400, "Pairing not enabled");
+      sendPairingError(
+        res,
+        400,
+        AUTH_PAIRING_ERROR_CODES.disabled,
+        "Pairing not enabled",
+      );
       return true;
     }
     if (!pairingEnabled()) {
-      sendJsonErrorResponse(res, 403, "Pairing disabled");
+      sendPairingError(
+        res,
+        403,
+        AUTH_PAIRING_ERROR_CODES.disabled,
+        "Pairing disabled",
+      );
       return true;
     }
     const remoteAddress = req.socket.remoteAddress;
     if (!remoteAddress) {
-      sendJsonErrorResponse(res, 403, "Cannot determine client address");
+      sendPairingError(
+        res,
+        403,
+        AUTH_PAIRING_ERROR_CODES.invalid,
+        "Cannot determine client address",
+      );
+      return true;
+    }
+
+    const requestedInstanceId =
+      typeof body.instanceId === "string" ? body.instanceId : "";
+    if (
+      !requestedInstanceId ||
+      !tokenMatches(pairingInstanceId, requestedInstanceId)
+    ) {
+      sendPairingError(
+        res,
+        409,
+        AUTH_PAIRING_ERROR_CODES.instanceMismatch,
+        "Pairing target changed. Refresh pairing status and use the current code.",
+      );
       return true;
     }
 
     const provided = normalizePairingCode(
       typeof body.code === "string" ? body.code : "",
     );
-    const current = ensurePairingCode();
-    if (!current || Date.now() > pairingExpiresAt) {
+    const current = pairingCode ?? ensurePairingCode();
+    if (current && Date.now() > pairingExpiresAt) {
+      pairingCode = null;
+      pairingExpiresAt = 0;
       ensurePairingCode();
-      sendJsonErrorResponse(
+      sendPairingError(
         res,
         410,
+        AUTH_PAIRING_ERROR_CODES.expired,
         "Pairing code expired. Check server logs for a new code.",
       );
       return true;
     }
 
-    if (!tokenMatches(normalizePairingCode(current), provided)) {
+    if (!current || !tokenMatches(normalizePairingCode(current), provided)) {
       if (!rateLimitPairing(remoteAddress)) {
-        sendJsonErrorResponse(res, 429, "Too many attempts. Try again later.");
+        sendPairingError(
+          res,
+          429,
+          AUTH_PAIRING_ERROR_CODES.rateLimited,
+          "Too many attempts. Try again later.",
+        );
         return true;
       }
-      sendJsonErrorResponse(res, 403, "Invalid pairing code");
+      sendPairingError(
+        res,
+        403,
+        AUTH_PAIRING_ERROR_CODES.invalid,
+        "Invalid pairing code",
+      );
       return true;
     }
 
@@ -366,7 +461,12 @@ export async function handleAuthPairingCompatRoutes(
     // client headroom to retry once the runtime is up.
     const db = getCompatDrizzleDb(state);
     if (!db) {
-      sendJsonErrorResponse(res, 503, "Pairing not ready yet, retry shortly");
+      sendPairingError(
+        res,
+        503,
+        AUTH_PAIRING_ERROR_CODES.notReady,
+        "Pairing not ready yet, retry shortly",
+      );
       return true;
     }
 
@@ -386,7 +486,10 @@ export async function handleAuthPairingCompatRoutes(
         label: "paired-device",
         ip: remoteAddress,
       });
-      sendJsonResponse(res, 200, { token: session.id });
+      sendJsonResponse(res, 200, {
+        token: session.id,
+        instanceId: pairingInstanceId,
+      });
       return true;
     } catch (err) {
       // Surface the failure rather than silently falling back to a path that
@@ -397,7 +500,12 @@ export async function handleAuthPairingCompatRoutes(
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      sendJsonErrorResponse(res, 500, "Failed to mint session");
+      sendPairingError(
+        res,
+        500,
+        AUTH_PAIRING_ERROR_CODES.sessionFailed,
+        "Failed to mint session",
+      );
       return true;
     }
   }

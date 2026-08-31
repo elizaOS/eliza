@@ -37,6 +37,7 @@ import { findActiveSession } from "./auth/sessions";
 // reset between tests via the exported test hook.
 import {
   _resetAuthPairingStateForTests,
+  _rotateAuthPairingInstanceForTests,
   handleAuthPairingCompatRoutes,
 } from "./auth-pairing-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";
@@ -199,15 +200,20 @@ beforeEach(() => {
 });
 
 /** Read the current rotating pair code the way a local operator would. */
-async function fetchPairCode(): Promise<string> {
+async function fetchPairCode(): Promise<{
+  code: string;
+  instanceId: string;
+}> {
   const res = await request(harness.baseUrl, {
     method: "GET",
     path: "/api/auth/pair-code",
   });
   expect(res.status).toBe(200);
   const code = res.json?.code;
+  const instanceId = res.json?.instanceId;
   expect(typeof code).toBe("string");
-  return code as string;
+  expect(typeof instanceId).toBe("string");
+  return { code: code as string, instanceId: instanceId as string };
 }
 
 describe("production device-pairing auth path — real DB + real HTTP (#13692)", () => {
@@ -220,6 +226,7 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
     expect(local.json).toMatchObject({
       code: expect.stringMatching(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/),
       expiresAt: expect.any(Number),
+      instanceId: expect.any(String),
     });
 
     const proxied = await request(harness.baseUrl, {
@@ -249,14 +256,21 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
   });
 
   it("rejects a wrong pairing code", async () => {
-    await fetchPairCode();
+    const pairing = await fetchPairCode();
     const res = await request(harness.baseUrl, {
       method: "POST",
       path: "/api/auth/pair",
-      body: { code: "ZZZZ-ZZZZ-ZZZZ" },
+      body: {
+        code: "ZZZZ-ZZZZ-ZZZZ",
+        instanceId: pairing.instanceId,
+      },
     });
     expect(res.status).toBe(403);
-    expect(res.json).toMatchObject({ error: "Invalid pairing code" });
+    expect(res.json).toMatchObject({
+      error: "Invalid pairing code",
+      code: "PAIRING_INVALID",
+      instanceId: pairing.instanceId,
+    });
   });
 
   // Windows-ci only: `harness.store.findSession(sessionId)` (line ~280) resolves
@@ -273,14 +287,14 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
   it.skipIf(process.platform === "win32")(
     "mints a revocable machine session that authenticates and then stops after revoke",
     async () => {
-      const code = await fetchPairCode();
+      const pairing = await fetchPairCode();
 
       // Remote client completes pairing and receives a session id (NOT the
       // forever-valid static API token).
       const paired = await request(harness.baseUrl, {
         method: "POST",
         path: "/api/auth/pair",
-        body: { code },
+        body: pairing,
       });
       expect(paired.status).toBe(200);
       const sessionId = paired.json?.token as string;
@@ -335,12 +349,12 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
   );
 
   it("treats a pairing code as single-use — a replay of a consumed code is rejected", async () => {
-    const code = await fetchPairCode();
+    const pairing = await fetchPairCode();
 
     const first = await request(harness.baseUrl, {
       method: "POST",
       path: "/api/auth/pair",
-      body: { code },
+      body: pairing,
     });
     expect(first.status).toBe(200);
 
@@ -349,26 +363,37 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
     const replay = await request(harness.baseUrl, {
       method: "POST",
       path: "/api/auth/pair",
-      body: { code },
+      body: pairing,
     });
     expect(replay.status).toBe(403);
-    expect(replay.json).toMatchObject({ error: "Invalid pairing code" });
+    expect(replay.json).toMatchObject({
+      error: "Invalid pairing code",
+      code: "PAIRING_INVALID",
+    });
   });
 
   it("rate-limits repeated pairing attempts from the same client IP", async () => {
-    await fetchPairCode();
+    const pairing = await fetchPairCode();
     // PAIRING_MAX_ATTEMPTS = 5; the 6th attempt in the window is throttled.
-    const statuses: number[] = [];
+    const attempts: HttpResult[] = [];
     for (let i = 0; i < 6; i += 1) {
       const res = await request(harness.baseUrl, {
         method: "POST",
         path: "/api/auth/pair",
-        body: { code: "ZZZZ-ZZZZ-ZZZZ" },
+        body: {
+          code: "ZZZZ-ZZZZ-ZZZZ",
+          instanceId: pairing.instanceId,
+        },
       });
-      statuses.push(res.status);
+      attempts.push(res);
     }
-    expect(statuses.slice(0, 5)).toEqual([403, 403, 403, 403, 403]);
-    expect(statuses[5]).toBe(429);
+    expect(attempts.slice(0, 5).map(({ status }) => status)).toEqual([
+      403, 403, 403, 403, 403,
+    ]);
+    expect(attempts[5]?.status).toBe(429);
+    expect(attempts[5]?.json).toMatchObject({
+      code: "PAIRING_RATE_LIMITED",
+    });
   });
 
   it("goes dark when pairing is disabled", async () => {
@@ -379,17 +404,40 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
         path: "/api/auth/pair-code",
       });
       expect(code.status).toBe(503);
-      expect(code.json).toMatchObject({ error: "Pairing not enabled" });
+      expect(code.json).toMatchObject({
+        error: "Pairing not enabled",
+        code: "PAIRING_DISABLED",
+      });
 
       const pair = await request(harness.baseUrl, {
         method: "POST",
         path: "/api/auth/pair",
-        body: { code: "ANY0-CODE-HERE" },
+        body: { code: "ANY0-CODE-HERE", instanceId: "disabled-instance" },
       });
       expect(pair.status).toBe(403);
-      expect(pair.json).toMatchObject({ error: "Pairing disabled" });
+      expect(pair.json).toMatchObject({
+        error: "Pairing disabled",
+        code: "PAIRING_DISABLED",
+      });
     } finally {
       delete process.env.ELIZA_PAIRING_DISABLED;
     }
+  });
+
+  it("rejects stale instance bindings across a simulated restart", async () => {
+    const issued = await fetchPairCode();
+    const currentInstanceId = _rotateAuthPairingInstanceForTests();
+
+    const stale = await request(harness.baseUrl, {
+      method: "POST",
+      path: "/api/auth/pair",
+      body: issued,
+    });
+
+    expect(stale.status).toBe(409);
+    expect(stale.json).toMatchObject({
+      code: "PAIRING_INSTANCE_MISMATCH",
+      instanceId: currentInstanceId,
+    });
   });
 });
