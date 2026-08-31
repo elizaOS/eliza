@@ -155,7 +155,12 @@ export class CloudBridgeService extends Service {
       const raw = event.data;
       const data =
         typeof raw === "string" ? raw : raw instanceof Buffer ? raw.toString("utf-8") : String(raw);
-      const message = JSON.parse(data) as BridgeMessage;
+
+      const message = this.parseBridgeFrame(containerId, data);
+      // A malformed or non-object frame is dropped so one bad frame cannot take
+      // down the connection (or, via the host uncaughtException handler, the
+      // whole process). See parseBridgeFrame.
+      if (!message) return;
 
       // Handle heartbeat responses
       if (message.method === "heartbeat.ack") {
@@ -210,6 +215,48 @@ export class CloudBridgeService extends Service {
       if (this.connections.get(containerId) !== conn) return;
       logger.error(`[CloudBridge] WebSocket error for ${containerId}`);
     });
+  }
+
+  /**
+   * Parse an inbound WebSocket frame into a `BridgeMessage`, returning `null`
+   * for any frame that is not a JSON object.
+   *
+   * undici's `WebSocket` is an `EventTarget` subclass, so a throw inside the
+   * `"message"` listener is re-raised via `process.nextTick` and surfaces as an
+   * `uncaughtException`; the agent host translates that into `process.exit(1)`
+   * (`packages/app-core/src/cli/run-main.ts`). A single non-JSON text frame
+   * (protocol drift, a proxy-injected error page, or a misbehaving peer) would
+   * therefore kill the entire process, not just the bridge. This is the
+   * transport boundary, so an untrusted frame is sanitized here rather than
+   * dereferenced blindly.
+   */
+  private parseBridgeFrame(containerId: string, data: string): BridgeMessage | null {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data);
+    } catch (error) {
+      // error-policy:J3 untrusted transport frame; an unparseable body is an
+      // explicit invalid result (dropped), never a fake-valid message.
+      logger.warn(
+        `[CloudBridge] Ignoring malformed frame from ${containerId}: ${
+          error instanceof Error ? error.message : String(error)
+        } (raw preview: ${JSON.stringify(data.slice(0, 200))})`
+      );
+      return null;
+    }
+
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      // error-policy:J3 valid JSON that is not a JSON-RPC object cannot be
+      // dereferenced for `method`/`id`; treat it as an invalid frame.
+      logger.warn(
+        `[CloudBridge] Ignoring non-object frame from ${containerId}: ${JSON.stringify(
+          data.slice(0, 200)
+        )}`
+      );
+      return null;
+    }
+
+    return parsed as BridgeMessage;
   }
 
   private scheduleReconnect(containerId: string, attempt: number): void {
