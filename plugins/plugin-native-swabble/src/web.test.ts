@@ -383,6 +383,131 @@ describe("SwabbleWeb fallback", () => {
     },
   );
 
+  it.each([
+    {
+      lang: "ja-JP",
+      trigger: "エリザ",
+      said: "エリザカレンダーを開いて",
+      command: "カレンダーを開いて",
+    },
+    {
+      lang: "zh-CN",
+      trigger: "你好",
+      said: "你好打开日历",
+      command: "打开日历",
+    },
+    {
+      lang: "th-TH",
+      trigger: "สวัสดี",
+      said: "สวัสดีเปิดปฏิทิน",
+      command: "เปิดปฏิทิน",
+    },
+  ])(
+    "fires in continuous scripts where the command follows the trigger with no space ($lang)",
+    async ({ lang, trigger, said, command }) => {
+      setWindow({ SpeechRecognition: FakeRecognition });
+      setNavigator({
+        mediaDevices: {
+          getUserMedia: vi.fn(async () => null),
+        } as unknown as MediaDevices,
+      });
+      const plugin = new SwabbleWeb();
+      const wakeWords = vi.fn();
+      await plugin.addListener("wakeWord", wakeWords);
+      await plugin.start({ config: { triggers: [trigger], locale: lang } });
+
+      // Real Web Speech transcripts for Japanese/Chinese/Thai are not
+      // space-delimited, so the command abuts the trigger. A boundary rule that
+      // demanded a non-letter after the trigger would make the wake word
+      // unfireable in these scripts (a strictly worse failure than the
+      // substring over-firing this PR fixes for space-delimited scripts).
+      FakeRecognition.latest?.onresult?.(speechEvent(said));
+
+      expect(wakeWords).toHaveBeenCalledWith(
+        expect.objectContaining({ wakeWord: trigger, command }),
+      );
+    },
+  );
+
+  it("pins the command to the standalone trigger, not an earlier substring occurrence", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"], locale: "en-US" } });
+
+    // "elizabeth" contains "eliza" and precedes the standalone "eliza". The
+    // command must be sliced at the boundary-delimited match index, not the
+    // first raw substring occurrence: a plain indexOf would anchor inside
+    // "elizabeth" and dispatch "beth and eliza open calendar".
+    FakeRecognition.latest?.onresult?.(
+      speechEvent("elizabeth and eliza open calendar"),
+    );
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ wakeWord: "eliza", command: "open calendar" }),
+    );
+  });
+
+  it("treats a trigger containing regex metacharacters as a literal token", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+
+    // A trigger with an unescaped regex metacharacter ("hey(") would make
+    // `new RegExp` throw a SyntaxError at gate construction if the trigger were
+    // not escaped. Construction must succeed and the trigger must match only
+    // as a literal token.
+    await expect(
+      plugin.start({ config: { triggers: ["hey("], locale: "en-US" } }),
+    ).resolves.toEqual({ started: true });
+
+    FakeRecognition.latest?.onresult?.(speechEvent("hey( open calendar"));
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ wakeWord: "hey(", command: "open calendar" }),
+    );
+  });
+
+  it("slices the command at the true index when case folding changes length", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"], locale: "en-US" } });
+
+    // U+0130 (LATIN CAPITAL I WITH DOT ABOVE) lowercases to two code units, so
+    // a match index measured on a lowercased copy would skew the slice against
+    // the original string (yielding "pen calendar"). Matching the original
+    // transcript case-insensitively keeps the index aligned.
+    FakeRecognition.latest?.onresult?.(
+      speechEvent("\u0130\u0130 eliza open calendar"),
+    );
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ wakeWord: "eliza", command: "open calendar" }),
+    );
+  });
+
   it("does not fire the wake word when the trigger is only a substring of a larger word", async () => {
     setWindow({ SpeechRecognition: FakeRecognition });
     setNavigator({

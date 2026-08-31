@@ -81,22 +81,38 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Scripts that do not delimit words with whitespace. A word boundary is not
+// textually observable inside them, so requiring a non-letter neighbor there
+// would make the wake word unfireable (the command follows the trigger with no
+// space). For these scripts the boundary is satisfied by an adjacent letter,
+// which restores the substring behavior a continuous-script user depends on.
+const CONTINUOUS_SCRIPTS =
+  "\\p{sc=Han}\\p{sc=Hiragana}\\p{sc=Katakana}\\p{sc=Thai}\\p{sc=Lao}\\p{sc=Khmer}\\p{sc=Myanmar}";
+
 /**
- * Build a word-boundary matcher for a lowercased trigger. Unicode
- * letter/number/mark lookarounds require the trigger to be a standalone token
- * rather than a bare substring, so "elizabeth" no longer matches the trigger
- * "eliza" and "they" no longer matches "hey". Combining marks (`\p{M}`) are
- * token constituents on both sides, so a decomposed accent adjacent to the
- * trigger keeps it inside its host word: trigger "e" does not match the
- * decomposed "e\u0301clair" ("éclair") and trigger "clair" does not match it
- * either. Punctuation and whitespace still count as boundaries, so
- * "eliza, open calendar" and "eliza open calendar" both match.
+ * Build a word-boundary matcher for a lowercased trigger, case-insensitive so
+ * it runs against the original (un-lowercased) transcript and its match index
+ * lines up with the string that is later sliced for the command.
+ *
+ * In space-delimited scripts the trigger must be a standalone token: a letter,
+ * number, or combining mark on either side rejects the match, so "elizabeth"
+ * does not fire "eliza", "they" does not fire "hey", and a decomposed accent
+ * keeps the trigger inside its host word (trigger "e" does not match the NFD
+ * "e\u0301clair"). Whitespace, punctuation, and string edges are boundaries, so
+ * "eliza, open calendar" and "eliza open calendar" both fire.
+ *
+ * A neighbor in a continuous script (`CONTINUOUS_SCRIPTS`) also satisfies the
+ * boundary, because such scripts write the command directly after the trigger
+ * with no delimiter; without this relaxation the wake word could never fire in
+ * Japanese, Chinese, Thai, and similar scripts. The residual cost is that a
+ * trigger which is a prefix of a longer continuous-script word (e.g. "エリザ"
+ * inside "エリザベス") still fires, matching the prior substring behavior; text
+ * alone cannot segment those words, so this is not a regression.
  */
 function buildTriggerMatcher(trigger: string): RegExp {
-  return new RegExp(
-    `(?<![\\p{L}\\p{N}\\p{M}])${escapeRegExp(trigger)}(?![\\p{L}\\p{N}\\p{M}])`,
-    "u",
-  );
+  const before = `(?:(?<![\\p{L}\\p{N}\\p{M}])|(?<=[${CONTINUOUS_SCRIPTS}]))`;
+  const after = `(?:(?![\\p{L}\\p{N}\\p{M}])|(?=[${CONTINUOUS_SCRIPTS}]))`;
+  return new RegExp(`${before}${escapeRegExp(trigger)}${after}`, "iu");
 }
 
 const getSpeechRecognition = (): SpeechRecognitionCtor | null =>
@@ -138,16 +154,16 @@ function normalizeConfig(config: SwabbleConfig): SwabbleConfig {
 /**
  * WakeWordGate detects trigger phrases in transcripts.
  *
- * A trigger only fires when it appears as a standalone token, delimited by
- * Unicode word boundaries (whitespace, punctuation, or string edges). A bare
- * substring never fires: "elizabeth" does not trigger "eliza" and "they" does
- * not trigger "hey". Combining marks are treated as part of the surrounding
- * token, so a decomposed accent adjacent to the trigger (e.g. "e\u0301clair")
- * does not open the gate on the trigger "e". TRADEOFF: for scriptless languages that write commands
- * with no whitespace after the trigger (e.g. continuous CJK), the following
- * text is not a separate token, so the current whitespace/punctuation-delimited
- * contract does not split it; every existing locale test delimits the trigger
- * from its command with a space.
+ * In space-delimited scripts a trigger only fires as a standalone token,
+ * delimited by Unicode word boundaries (whitespace, punctuation, or string
+ * edges). A bare substring never fires: "elizabeth" does not trigger "eliza"
+ * and "they" does not trigger "hey". Combining marks are treated as part of the
+ * surrounding token, so a decomposed accent adjacent to the trigger (e.g.
+ * "e\u0301clair") does not open the gate on the trigger "e". In continuous
+ * scripts (Japanese, Chinese, Thai, and similar) the command follows the
+ * trigger with no whitespace, so an adjacent letter also satisfies the
+ * boundary; without this the wake word could never fire there. See
+ * `buildTriggerMatcher` for the exact rule and its residual prefix-word cost.
  *
  * LIMITATION: Web Speech API does not provide word-level timing data.
  * Unlike native implementations, we cannot measure post-trigger gaps.
@@ -196,8 +212,9 @@ class WakeWordGate {
    * (a trigger awaiting its command) versus safe to discard.
    */
   hasTrigger(transcript: string): boolean {
-    const normalizedTranscript = transcript.toLowerCase();
-    return this.matchers.some(({ regex }) => regex.test(normalizedTranscript));
+    // Matchers are case-insensitive, so they run against the original
+    // transcript directly (no separate lowercasing that could shift offsets).
+    return this.matchers.some(({ regex }) => regex.test(transcript));
   }
 
   /**
@@ -207,16 +224,19 @@ class WakeWordGate {
   match(
     transcript: string,
   ): { wakeWord: string; command: string; postGap: number } | null {
-    const normalizedTranscript = transcript.toLowerCase();
-
     for (const { trigger, regex } of this.matchers) {
-      const found = regex.exec(normalizedTranscript);
+      // The matcher is case-insensitive and runs against the original
+      // transcript, so its index and matched length are measured in the same
+      // string that is sliced below. Lowercasing first could change length
+      // (e.g. U+0130) and skew the offset.
+      const found = regex.exec(transcript);
       if (!found) continue;
 
       // Extract command after the standalone trigger token. Using the match
-      // index (not raw indexOf) keeps the boundary contract: only a whole-word
-      // trigger reaches this point, so "elizabeth" never yields a command.
-      const commandStart = found.index + trigger.length;
+      // index and matched length (not raw indexOf) keeps the boundary contract:
+      // only a boundary-delimited trigger reaches this point, so "elizabeth"
+      // never yields a command.
+      const commandStart = found.index + found[0].length;
       const command = transcript.slice(commandStart).trim();
 
       if (command.length < this.minCommandLength) continue;
