@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ensureCalendarSourceIdentity,
+  ensureLinkedCalendarEventTable,
   MIGRATED_CALENDAR_TABLES,
   migrateCalendarTable,
   migrateCalendarTables,
@@ -111,5 +112,14 @@ describe("CalendarMigration", () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it("bootstraps durable linked event identity and guarded states", async () => {
+    const log: string[] = [];
+    await ensureLinkedCalendarEventTable(fakeExec([], log));
+    expect(log.join("\n")).toContain("linked_calendar_events_local_unique");
+    expect(log.join("\n")).toContain("linked_calendar_events_provider_unique");
+    expect(log.join("\n")).toContain("quarantined");
+    expect(log.join("\n")).toContain("linked_calendar_events_reconcile_idx");
   });
 });
