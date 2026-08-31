@@ -423,6 +423,13 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/agreements" },
   { type: "POST", path: "/api/lifeops/agreements/grants/preview" },
   { type: "POST", path: "/api/lifeops/agreements/grants" },
+  { type: "PUT", path: "/api/lifeops/family-workflows/school/source" },
+  { type: "GET", path: "/api/lifeops/family-workflows/school/status" },
+  { type: "POST", path: "/api/lifeops/family-workflows/school/run" },
+  { type: "POST", path: "/api/lifeops/family-workflows/school/apply" },
+  { type: "POST", path: "/api/lifeops/family-workflows/run-now" },
+  { type: "GET", path: "/api/lifeops/family-workflows/packets" },
+  { type: "POST", path: "/api/lifeops/family-workflows/packets" },
   // Knowledge-graph: entities + relationships.
   { type: "GET", path: "/api/lifeops/entities" },
   { type: "POST", path: "/api/lifeops/entities" },
@@ -434,6 +441,19 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
 ];
 
 const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
+  {
+    type: "GET",
+    path: "/api/lifeops/family-workflows/school/runs/:runId",
+  },
+  { type: "GET", path: "/api/lifeops/family-workflows/packets/:packetId" },
+  {
+    type: "POST",
+    path: "/api/lifeops/family-workflows/packets/:packetId/drafts",
+  },
+  {
+    type: "POST",
+    path: "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/approval",
+  },
   {
     type: "GET",
     path: "/api/lifeops/connectors/health/:provider/status",

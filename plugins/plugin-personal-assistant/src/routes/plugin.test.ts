@@ -292,6 +292,29 @@ describe("LifeOps raw route owner/admin gate", () => {
     }
   });
 
+  it("mounts every family workflow surface behind the owner gate", () => {
+    const workflowRoutes = [
+      ["PUT", "/api/lifeops/family-workflows/school/source"],
+      ["GET", "/api/lifeops/family-workflows/school/status"],
+      ["POST", "/api/lifeops/family-workflows/school/run"],
+      ["GET", "/api/lifeops/family-workflows/school/runs/:runId"],
+      ["POST", "/api/lifeops/family-workflows/school/apply"],
+      ["POST", "/api/lifeops/family-workflows/run-now"],
+      ["GET", "/api/lifeops/family-workflows/packets"],
+      ["POST", "/api/lifeops/family-workflows/packets"],
+      ["GET", "/api/lifeops/family-workflows/packets/:packetId"],
+      ["POST", "/api/lifeops/family-workflows/packets/:packetId/drafts"],
+      [
+        "POST",
+        "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/approval",
+      ],
+    ] as const;
+
+    for (const [type, path] of workflowRoutes) {
+      expect(findRoute(type, path).public).not.toBe(true);
+    }
+  });
+
   it("does not wrap public OAuth callback routes with the owner/admin gate", async () => {
     const route = findRoute("GET", "/api/connectors/google/oauth/callback");
     const res = createResponse();
