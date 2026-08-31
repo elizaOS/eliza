@@ -222,45 +222,62 @@ function literalsIn(text: string): string[] {
 
 /**
  * Extract string-literal elements of the array assigned to `key:` inside an
- * extracted registration body. Resolves the `[...CONST]` spread form against
- * the constant's literal array declaration in the same file.
+ * extracted registration body, UNIONED across conditional (ternary) branches —
+ * the inventory's claim is the aggregate of what the site may declare, so a
+ * transport-conditional registration must not silently drop one branch's
+ * capabilities. Resolves the `[...CONST]` spread form against the constant's
+ * literal array declaration in the same file.
  */
 function literalArrayFor(file: string, body: string, key: string): string[] {
   const keyIdx = body.indexOf(`${key}:`);
   if (keyIdx === -1) return [];
-  const bracket = body.indexOf("[", keyIdx);
-  if (bracket === -1) return [];
-  // Balanced bracket scan.
-  let depth = 0;
-  let end = -1;
-  for (let i = bracket; i < body.length; i++) {
-    const ch = body[i];
-    if (ch === "[") depth++;
-    else if (ch === "]") {
-      depth--;
-      if (depth === 0) {
-        end = i;
-        break;
+  const out = new Set<string>();
+  let cursor = body.indexOf("[", keyIdx);
+  let sawArray = false;
+  // Continue past `? [..] : [..]` ternary alternates only: after a balanced
+  // array, the next non-space token must be `:` (a new property key starts
+  // with an identifier, not a colon, so sibling properties cannot chain in).
+  while (cursor !== -1) {
+    let depth = 0;
+    let end = -1;
+    for (let i = cursor; i < body.length; i++) {
+      const ch = body[i];
+      if (ch === "[") depth++;
+      else if (ch === "]") {
+        depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
       }
     }
-  }
-  if (end === -1) return [];
-  const inner = body.slice(bracket + 1, end).trim();
-  if (inner.length === 0) return [];
-  const spread = inner.match(/^\.\.\.([A-Z][A-Z0-9_]*)$/);
-  if (spread) {
-    const constName = spread[1] as string;
-    const decl = file.match(
-      new RegExp(`(?:const|let) ${constName}\\s*[=:]\\s*\\[([\\s\\S]*?)\\]`),
-    );
-    if (!decl) {
-      throw new Error(
-        `[registry/generate] connector truth inventory: cannot resolve array constant ${constName} — extend the extractor or inline the literal`,
-      );
+    if (end === -1) break;
+    sawArray = true;
+    const inner = body.slice(cursor + 1, end).trim();
+    if (inner.length > 0) {
+      const spread = inner.match(/^\.\.\.([A-Z][A-Z0-9_]*)$/);
+      if (spread) {
+        const constName = spread[1] as string;
+        const decl = file.match(
+          new RegExp(
+            `(?:const|let) ${constName}\\s*[=:]\\s*\\[([\\s\\S]*?)\\]`,
+          ),
+        );
+        if (!decl) {
+          throw new Error(
+            `[registry/generate] connector truth inventory: cannot resolve array constant ${constName} — extend the extractor or inline the literal`,
+          );
+        }
+        for (const lit of literalsIn(decl[1] ?? "")) out.add(lit);
+      } else {
+        for (const lit of literalsIn(inner)) out.add(lit);
+      }
     }
-    return literalsIn(decl[1] ?? "");
+    if (!/^\s*:/.test(body.slice(end + 1))) break;
+    cursor = body.indexOf("[", end + 1);
   }
-  return literalsIn(inner);
+  if (!sawArray) return [];
+  return [...out].sort();
 }
 
 /** Registration `source:` values: literals directly, known constants by map. */
