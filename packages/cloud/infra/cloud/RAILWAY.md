@@ -64,6 +64,16 @@ activation, prove that the protected migration role can execute
 `pg_catalog.pg_control_system()` through `pg_monitor` membership or a narrower
 explicit function grant.
 
+The manual `database-identity-staging-report.yml` workflow admits an exact,
+reviewed `develop` SHA before attaching the staging Environment. Its report job
+binds `DATABASE_URL` only on the final reporter step, which prevents direct or
+accidental injection into the earlier checkout, build, probe, and contract-test
+steps. This step scoping is not an adversarial isolation boundary: those steps
+share one mutable job and can persist state for the final step. The exact
+reviewed SHA together with staging Environment approval is therefore the
+trusted computing base; do not treat final-step scoping as protection from
+malicious repository or dependency code in that job.
+
 Every protected workflow that invokes the remote migrator forwards this same
 environment-scoped gate configuration: the canonical Cloudflare release, the
 manual legacy migration, and the exact-SHA provisioning-worker predeploy. None

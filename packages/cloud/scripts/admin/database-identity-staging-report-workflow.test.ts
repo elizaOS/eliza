@@ -303,7 +303,7 @@ function sensitiveDatabaseUrlPaths(root: unknown): {
   return { databaseUrlKeys, secretReferences };
 }
 
-function assertExclusiveReporterSecretBinding(candidate: Workflow): void {
+function assertFinalReporterSecretReferenceScope(candidate: Workflow): void {
   const candidateJob = candidate.jobs.report;
   const reporterIndexes = candidateJob.steps.flatMap((step, index) =>
     step.name === "Emit redacted staging identity receipts" ? [index] : [],
@@ -341,7 +341,7 @@ function assertExclusiveReporterSecretBinding(candidate: Workflow): void {
       JSON.stringify([expectedPath])
   ) {
     throw new Error(
-      "Only the final reporter DATABASE_URL may reference the secrets context",
+      "Declared secret references must be limited to the final reporter DATABASE_URL",
     );
   }
 }
@@ -534,7 +534,7 @@ describe("database identity staging report workflow", () => {
     }
   });
 
-  test("binds the protected URL only to the redacted reporter step", () => {
+  test("keeps direct DATABASE_URL injection out of earlier step environments", () => {
     expect(job.env).not.toHaveProperty("DATABASE_URL");
     expect(job.env.DATABASE_IDENTITY_GATE_MODE).toBe("report");
     expect(job.env.DATABASE_IDENTITY_ENVIRONMENT).toBe("staging");
@@ -555,6 +555,12 @@ describe("database identity staging report workflow", () => {
     if (reporterIndex === undefined) throw new Error("Missing reporter step");
     const reporter = job.steps[reporterIndex];
     if (!reporter) throw new Error("Missing reporter step");
+    // This proves declared workflow scoping, not isolation from malicious code
+    // in earlier steps. Those steps share the mutable job and remain part of
+    // the exact-reviewed develop SHA's trusted computing base.
+    for (const earlierStep of job.steps.slice(0, reporterIndex)) {
+      expect(earlierStep.env).not.toHaveProperty("DATABASE_URL");
+    }
     expect(reporter.env).toEqual({
       DATABASE_URL: expression("secrets.DATABASE_URL"),
     });
@@ -567,7 +573,9 @@ describe("database identity staging report workflow", () => {
       databaseUrlKeys: [expectedPath],
       secretReferences: [expectedPath],
     });
-    expect(() => assertExclusiveReporterSecretBinding(workflow)).not.toThrow();
+    expect(() =>
+      assertFinalReporterSecretReferenceScope(workflow),
+    ).not.toThrow();
   });
 
   test("does not collapse aliased sensitive scopes during validation", () => {
@@ -723,10 +731,10 @@ describe("database identity staging report workflow", () => {
       const candidate = structuredClone(workflow);
       mutation.mutate(candidate);
       expect(
-        () => assertExclusiveReporterSecretBinding(candidate),
+        () => assertFinalReporterSecretReferenceScope(candidate),
         mutation.name,
       ).toThrow(
-        "Only the final reporter DATABASE_URL may reference the secrets context",
+        "Declared secret references must be limited to the final reporter DATABASE_URL",
       );
     }
   });
@@ -741,7 +749,7 @@ describe("database identity staging report workflow", () => {
       reporter.if = expression(condition);
 
       expect(
-        () => assertExclusiveReporterSecretBinding(candidate),
+        () => assertFinalReporterSecretReferenceScope(candidate),
         condition,
       ).toThrow("The final reporter step does not fail closed");
     }
@@ -783,7 +791,7 @@ describe("database identity staging report workflow", () => {
       mutation.mutate(reporter);
 
       expect(
-        () => assertExclusiveReporterSecretBinding(candidate),
+        () => assertFinalReporterSecretReferenceScope(candidate),
         mutation.name,
       ).toThrow("The final reporter step does not fail closed");
     }
