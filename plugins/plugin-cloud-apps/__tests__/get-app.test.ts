@@ -233,6 +233,54 @@ describe("GET_APP", () => {
     expect(reply).not.toContain("Cloud API returned an error");
   });
 
+  it("REGRESSION (#29917 review): an id-endpoint 5xx is an error, not app-not-found", async () => {
+    // The degrade-to-list guard must be scoped to the benign 404/403 of a
+    // stale/foreign id. A 500 from the id endpoint is an outage; if it fell
+    // through to listApps the user would be told their app does not exist
+    // (with the org's app names listed) when the truth is "try again in a
+    // moment". The 500 must re-raise into the outer catch.
+    const uuid = "11111111-2222-3333-4444-555555555555";
+    let listCalled = false;
+    setListApps(() => {
+      listCalled = true;
+      return Promise.resolve({
+        success: true,
+        apps: [makeApp({ name: "Acme Bot", slug: "acme-bot" })],
+      });
+    });
+    setGetApp((id) => {
+      expect(id).toBe(uuid);
+      return Promise.reject(
+        Object.assign(new Error("HTTP 500"), {
+          name: "CloudApiError",
+          statusCode: 500,
+          errorBody: { success: false, error: "Internal Server Error" },
+        }),
+      );
+    });
+
+    const cb = captureCallback();
+    const result = await getAppAction.handler(
+      keyedRuntime(),
+      makeMessage("tell me about my app"),
+      undefined,
+      { app: uuid },
+      cb.fn,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("error");
+    // No list-based resolution: the outage must not be cross-checked against
+    // the org's other apps.
+    expect(listCalled).toBe(false);
+    const errReply = cb.calls[0]?.text ?? "";
+    expect(errReply).toContain("Cloud API returned an error");
+    expect(errReply).not.toContain("Acme Bot");
+  });
+
   it("REGRESSION (#29917 review): delivery failure on the happy id path reports error, not success", async () => {
     // The stale-UUID guard must cover ONLY the getApp fetch. If the try also
     // wrapped formatting/delivery/return, a rejecting callback after a
