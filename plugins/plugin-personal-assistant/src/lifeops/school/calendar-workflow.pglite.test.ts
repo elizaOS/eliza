@@ -1,0 +1,339 @@
+/**
+ * Real-PGlite coverage for the school-calendar source, lease, hash, semantic
+ * diff, approval, ownership, and crash-recovery contracts. Network responses
+ * use the real DNS-pinned fetch boundary with deterministic Concord-shaped
+ * landing/PDF fixtures.
+ */
+
+import { createHash } from "node:crypto";
+import { PGlite } from "@electric-sql/pglite";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { CalendarOwnerMutationGateway } from "@elizaos/plugin-calendar/routes/mutation-gateway";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RawSqlQuery } from "../sql.js";
+import {
+  CONCORD_SCHOOL_CALENDAR_SOURCE,
+  diffSchoolCalendarEvents,
+  discoverSchoolCalendarPdf,
+  parseSchoolCalendarText,
+  SchoolCalendarWorkflow,
+  SchoolCalendarWorkflowError,
+} from "./calendar-workflow.js";
+
+const landing = `<!doctype html><a href="https://resources.finalsite.net/images/v1767898007/concordpsorg/fngaaxlgullcz1ezh11m/CPSCCRSD2026-2027SchoolCalendar.pdf">Calendar</a>`;
+const twoColumnText = [
+  "2026-09-01 | First day of school",
+  "Professional development | 2026-10-09",
+].join("\n");
+
+function hash(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function responseBody(bytes: Buffer): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+}
+
+function event(externalId: string, title: string): LifeOpsCalendarEvent {
+  return {
+    id: `agent:eliza:${externalId}`,
+    externalId,
+    agentId: "agent-a",
+    provider: "eliza",
+    side: "owner",
+    calendarId: "primary",
+    title,
+    description: "",
+    location: "",
+    status: "confirmed",
+    startAt: "2026-09-01T00:00:00.000Z",
+    endAt: "2026-09-02T00:00:00.000Z",
+    isAllDay: true,
+    timezone: "America/New_York",
+    htmlLink: null,
+    conferenceLink: null,
+    organizer: null,
+    attendees: [],
+    metadata: { etag: '"eliza-1"', version: 1 },
+    syncedAt: "2026-08-30T12:00:00.000Z",
+    updatedAt: "2026-08-30T12:00:00.000Z",
+    grantId: "eliza-calendar",
+    connectorAccountId: "eliza-calendar",
+  };
+}
+
+describe("school calendar pure contracts", () => {
+  it("parses both columns into stable date-owned keys", () => {
+    expect(parseSchoolCalendarText(twoColumnText)).toEqual([
+      {
+        eventKey: "school-date:2026-09-01",
+        title: "First day of school",
+        startDate: "2026-09-01",
+        endDateExclusive: "2026-09-02",
+      },
+      {
+        eventKey: "school-date:2026-10-09",
+        title: "Professional development",
+        startDate: "2026-10-09",
+        endDateExclusive: "2026-10-10",
+      },
+    ]);
+  });
+
+  it("fails closed when two columns assign two meanings to one date", () => {
+    expect(() =>
+      parseSchoolCalendarText(
+        "2026-09-01 | First day\nDifferent event | 2026-09-01",
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "SCHOOL_CALENDAR_PARSE_AMBIGUOUS" }),
+    );
+  });
+
+  it("rejects a matching-looking PDF link on an untrusted host", () => {
+    expect(() =>
+      discoverSchoolCalendarPdf(
+        '<a href="https://evil.example/CPSCCRSD2026-2027SchoolCalendar.pdf">x</a>',
+        CONCORD_SCHOOL_CALENDAR_SOURCE.landingPageUrl,
+        CONCORD_SCHOOL_CALENDAR_SOURCE,
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "SCHOOL_CALENDAR_URL_NOT_ALLOWED" }),
+    );
+  });
+
+  it("classifies semantic add, update, cancel, and unchanged", () => {
+    const previous = [
+      {
+        eventKey: "school-date:2026-09-01",
+        title: "Old title",
+        startDate: "2026-09-01",
+        endDateExclusive: "2026-09-02",
+        providerEventId: "provider-1",
+        providerVersion: '"v1"',
+        active: true,
+      },
+      {
+        eventKey: "school-date:2026-09-02",
+        title: "Removed",
+        startDate: "2026-09-02",
+        endDateExclusive: "2026-09-03",
+        providerEventId: "provider-2",
+        providerVersion: '"v1"',
+        active: true,
+      },
+    ];
+    const current = [
+      {
+        eventKey: "school-date:2026-09-01",
+        title: "New title",
+        startDate: "2026-09-01",
+        endDateExclusive: "2026-09-02",
+      },
+      {
+        eventKey: "school-date:2026-09-03",
+        title: "Added",
+        startDate: "2026-09-03",
+        endDateExclusive: "2026-09-04",
+      },
+    ];
+    expect(
+      diffSchoolCalendarEvents(previous, current).map((change) => change.kind),
+    ).toEqual(["update", "cancel", "add"]);
+  });
+});
+
+describe("SchoolCalendarWorkflow with real PGlite", () => {
+  let db: PGlite;
+  let runtime: IAgentRuntime;
+  let pdfBytes: Buffer;
+  let text: string;
+  let workflow: SchoolCalendarWorkflow;
+  let gateway: CalendarOwnerMutationGateway;
+  let creates: number;
+
+  beforeEach(async () => {
+    db = await PGlite.create();
+    runtime = {
+      agentId: "agent-a",
+      adapter: {
+        db: {
+          execute: async (query: RawSqlQuery) =>
+            db.query(
+              query.queryChunks.map((chunk) => chunk.value ?? "").join(""),
+            ),
+        },
+      },
+    } as unknown as IAgentRuntime;
+    pdfBytes = Buffer.from("%PDF-concord-fixture-a");
+    text = twoColumnText;
+    creates = 0;
+    const lookupFn = async () => [{ address: "93.184.216.34", family: 4 }];
+    const pinnedFetchImpl = vi.fn(async ({ url }: { url: URL }) => {
+      if (url.pathname.endsWith(".pdf")) {
+        return new Response(responseBody(pdfBytes), {
+          status: 200,
+          headers: { "content-type": "application/pdf" },
+        });
+      }
+      return new Response(landing, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    });
+    const deps = {
+      lookupFn,
+      pinnedFetchImpl: pinnedFetchImpl as never,
+      extractPdfText: async () => text,
+      retainPdf: async (bytes: Buffer) => ({
+        url: `/api/media/${hash(bytes)}.pdf`,
+        hash: hash(bytes),
+      }),
+      now: () => new Date("2026-08-30T12:00:00.000Z"),
+    };
+    workflow = new SchoolCalendarWorkflow(runtime, deps);
+    gateway = {
+      async create(_url, request) {
+        creates += 1;
+        return {
+          outcome: "event",
+          event: event(`provider-${creates}`, request.title),
+          writeOnlyReceipt: null,
+        };
+      },
+      async update(_url, request) {
+        return event(request.eventId, request.title ?? "updated");
+      },
+      async cancel() {
+        return { cancelled: true } as never;
+      },
+    };
+  });
+
+  afterEach(async () => {
+    await db.close();
+  });
+
+  it("runs source to retained hash to approval plan, applies through the gateway, then records hash-equal no-op", async () => {
+    const first = await workflow.run();
+    expect(first.state).toBe("awaiting_approval");
+    if (first.state !== "awaiting_approval") throw new Error("expected plan");
+    expect(first.plan.changes.map((change) => change.kind)).toEqual([
+      "add",
+      "add",
+    ]);
+    expect(first.plan.mediaUrl).toBe(`/api/media/${hash(pdfBytes)}.pdf`);
+    await workflow.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost/api/lifeops/calendar/events"),
+      gateway,
+    });
+    expect(creates).toBe(2);
+
+    const restarted = new SchoolCalendarWorkflow(runtime, {
+      lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+      pinnedFetchImpl: async ({ url }) =>
+        url.pathname.endsWith(".pdf")
+          ? new Response(responseBody(pdfBytes), {
+              headers: { "content-type": "application/pdf" },
+            })
+          : new Response(landing, { headers: { "content-type": "text/html" } }),
+      extractPdfText: async () => text,
+      retainPdf: async (bytes) => ({
+        url: `/api/media/${hash(bytes)}.pdf`,
+        hash: hash(bytes),
+      }),
+      now: () => new Date("2026-09-30T12:00:00.000Z"),
+    });
+    await expect(restarted.run(undefined, "scheduled")).resolves.toMatchObject({
+      state: "unchanged",
+      contentSha256: hash(pdfBytes),
+    });
+  });
+
+  it("records a metadata-only PDF change as semantic no-op", async () => {
+    const first = await workflow.run();
+    if (first.state !== "awaiting_approval") throw new Error("expected plan");
+    await workflow.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    pdfBytes = Buffer.from("%PDF-concord-fixture-b-metadata-only");
+    const second = await workflow.run();
+    expect(second).toMatchObject({
+      state: "unchanged",
+      contentSha256: hash(pdfBytes),
+    });
+    expect(creates).toBe(2);
+  });
+
+  it("isolates source state by agent ownership", async () => {
+    const first = await workflow.run();
+    expect(first.state).toBe("awaiting_approval");
+    const other = { ...runtime, agentId: "agent-b" } as IAgentRuntime;
+    const otherWorkflow = new SchoolCalendarWorkflow(other, {
+      lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+      pinnedFetchImpl: async ({ url }) =>
+        url.pathname.endsWith(".pdf")
+          ? new Response(responseBody(pdfBytes), {
+              headers: { "content-type": "application/pdf" },
+            })
+          : new Response(landing, { headers: { "content-type": "text/html" } }),
+      extractPdfText: async () => text,
+      retainPdf: async (bytes) => ({
+        url: `/api/media/${hash(bytes)}.pdf`,
+        hash: hash(bytes),
+      }),
+    });
+    const otherResult = await otherWorkflow.run();
+    expect(otherResult.state).toBe("awaiting_approval");
+  });
+
+  it("leases concurrent runs and permits restart after an expired crash lease", async () => {
+    await workflow.ensureSchema();
+    await db.exec(`INSERT INTO app_lifeops.life_school_calendar_sources
+      (agent_id, source_id, config_json, lease_token, lease_expires_at, created_at, updated_at)
+      VALUES ('agent-a', '${CONCORD_SCHOOL_CALENDAR_SOURCE.sourceId}', '{}', 'crashed',
+      '2026-08-30T11:00:00.000Z', '2026-08-30T10:00:00.000Z', '2026-08-30T10:00:00.000Z')`);
+    const recovered = await workflow.run();
+    expect(recovered.state).toBe("awaiting_approval");
+    await db.exec(
+      `UPDATE app_lifeops.life_school_calendar_sources SET lease_token = 'live', lease_expires_at = '2026-08-30T13:00:00.000Z' WHERE agent_id = 'agent-a'`,
+    );
+    await expect(workflow.run()).resolves.toEqual({
+      state: "already_running",
+      runId: null,
+    });
+  });
+
+  it("records ambiguity as a failed run and releases the lease", async () => {
+    text = "2026-09-01 | First day\nSecond meaning | 2026-09-01";
+    await expect(workflow.run()).rejects.toMatchObject({
+      code: "SCHOOL_CALENDAR_PARSE_AMBIGUOUS",
+    });
+    const rows = await db.query<{ state: string; error_code: string }>(
+      "SELECT state, error_code FROM app_lifeops.life_school_calendar_runs",
+    );
+    expect(rows.rows).toEqual([
+      { state: "failed", error_code: "SCHOOL_CALENDAR_PARSE_AMBIGUOUS" },
+    ]);
+    text = twoColumnText;
+    await expect(workflow.run()).resolves.toMatchObject({
+      state: "awaiting_approval",
+    });
+  });
+
+  it("rejects a malicious source URL before any fetch", async () => {
+    await expect(
+      workflow.run({
+        ...CONCORD_SCHOOL_CALENDAR_SOURCE,
+        landingPageUrl: "http://169.254.169.254/latest/meta-data",
+      }),
+    ).rejects.toBeInstanceOf(SchoolCalendarWorkflowError);
+  });
+});
