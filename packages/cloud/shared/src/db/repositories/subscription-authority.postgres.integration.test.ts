@@ -297,9 +297,10 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
           id, organization_id, subscription_id, subscription_revision,
           provider_environment, stripe_invoice_id, plan_key, catalog_version,
           period_start, period_end, expires_at, granted_amount, available_amount
-        ) VALUES ($1,$2,$3,1,'test','in_realexpiry1','plus_monthly','v1',
-          clock_timestamp() - interval '1 day', clock_timestamp() + interval '200 milliseconds',
-          clock_timestamp() + interval '200 milliseconds',5,5)`,
+        ) SELECT $1,$2,$3,1,'test','in_realexpiry1','plus_monthly','v1',
+          database_now - interval '1 day', database_now + interval '200 milliseconds',
+          database_now + interval '200 milliseconds',5,5
+        FROM (SELECT clock_timestamp() AS database_now) AS clock`,
         [expiringPeriodId, EXPIRY_ORG, EXPIRY_SUBSCRIPTION],
       );
       await first.query("BEGIN");
@@ -363,9 +364,10 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         id, organization_id, subscription_id, subscription_revision,
         provider_environment, stripe_invoice_id, plan_key, catalog_version,
         period_start, period_end, expires_at, granted_amount, available_amount
-      ) VALUES ($1,$2,$3,1,'test','in_clock','plus_monthly','v1',
-        clock_timestamp() - interval '1 day', clock_timestamp() + interval '1 day',
-        clock_timestamp() + interval '1 day',5,5)`,
+      ) SELECT $1,$2,$3,1,'test','in_clock','plus_monthly','v1',
+        database_now - interval '1 day', database_now + interval '1 day',
+        database_now + interval '1 day',5,5
+      FROM (SELECT clock_timestamp() AS database_now) AS clock`,
       [randomUUID(), CLOCK_ORG, CLOCK_SUBSCRIPTION],
     );
 
