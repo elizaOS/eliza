@@ -45,6 +45,7 @@ import {
   type CloudLiveDedicatedConsentGate,
   CloudLiveOptionalActionDeadlineError,
   type CloudLivePersonalIdentityRecovery,
+  CloudLiveRequiredActionUnavailableError,
   clickCloudLiveOptionalAction,
   createCloudLiveDedicatedConsentGate,
   prepareCloudLivePersonalIdentity,
@@ -117,7 +118,7 @@ async function clickIfVisible(
 async function chooseCloudRuntime(
   page: Page,
   onRuntimeChoiceState?: (
-    state: "attempt" | "success" | "timeout",
+    state: "attempt" | "success" | "timeout" | "unavailable",
   ) => Promise<void>,
 ): Promise<void> {
   await onRuntimeChoiceState?.("attempt");
@@ -129,12 +130,15 @@ async function chooseCloudRuntime(
         action: "runtime-cloud",
         offerTimeoutMs: 30_000,
         actionTimeoutMs: 30_000,
+        required: true,
       },
     );
     if (clicked) await onRuntimeChoiceState?.("success");
   } catch (error) {
     if (error instanceof CloudLiveOptionalActionDeadlineError) {
       await onRuntimeChoiceState?.("timeout");
+    } else if (error instanceof CloudLiveRequiredActionUnavailableError) {
+      await onRuntimeChoiceState?.("unavailable");
     }
     throw error;
   }
@@ -763,6 +767,7 @@ test.describe("real cloud login + personal identity + chat", () => {
       runtimeCloudActionAttemptCount: 0,
       runtimeCloudActionSuccessCount: 0,
       runtimeCloudActionTimeoutCount: 0,
+      runtimeCloudActionUnavailableCount: 0,
       runtimeCloudRecoveryVisibleCount: 0,
       personalIdentityRetryVisibleCount: 0,
     };
@@ -911,8 +916,10 @@ test.describe("real cloud login + personal identity + chat", () => {
             runtimeChoiceCounters.runtimeCloudActionAttemptCount += 1;
           } else if (state === "success") {
             runtimeChoiceCounters.runtimeCloudActionSuccessCount += 1;
-          } else {
+          } else if (state === "timeout") {
             runtimeChoiceCounters.runtimeCloudActionTimeoutCount += 1;
+          } else {
+            runtimeChoiceCounters.runtimeCloudActionUnavailableCount += 1;
           }
           await writePreIdentityDiagnostic();
         });
