@@ -56,6 +56,11 @@ import {
   ApprovalStateTransitionError,
 } from "../lifeops/approval-queue.types.js";
 import {
+  CalendarCardAccessStore,
+  calendarCardDeliveryStatus,
+  verifyCalendarCardApproval,
+} from "../lifeops/calendar-card.js";
+import {
   createLifeOpsCalendarMutationPort,
   executeCalendarMutationApproval,
 } from "../lifeops/calendar-mutations/index.js";
@@ -1111,6 +1116,37 @@ export async function executeApprovedRequest(args: {
   request: ApprovalRequest;
   callback?: HandlerCallback;
 }): Promise<ActionResult> {
+  const calendarCard = verifyCalendarCardApproval(args.request.payload);
+  if (calendarCard && !calendarCard.matches) {
+    return preflightFailureResult(
+      args.request,
+      new ApprovalConnectorPreflightError(
+        "CALENDAR_CARD_APPROVAL_TAMPERED",
+        "Calendar card text no longer matches the exact approved bytes",
+      ),
+    );
+  }
+  if (calendarCard) {
+    if (
+      args.request.channel !== "imessage" ||
+      args.request.subjectUserId !== calendarCard.correlation.recipientEntityId
+    ) {
+      return preflightFailureResult(
+        args.request,
+        new ApprovalConnectorPreflightError(
+          "CALENDAR_CARD_IDENTITY_MISMATCH",
+          "Calendar card approval is not bound to this iMessage recipient identity",
+        ),
+      );
+    }
+    try {
+      await new CalendarCardAccessStore(args.runtime).verifyApprovedBytes(
+        calendarCard.correlation,
+      );
+    } catch (error) {
+      return preflightFailureResult(args.request, error);
+    }
+  }
   const scheduling = verifySchedulingApprovalContent(args.request.payload);
   if (scheduling && !scheduling.matches) {
     logger.error(
@@ -1578,7 +1614,16 @@ export async function executeApprovedRequest(args: {
       });
     }
     const done = outcome.request;
-    const text = `Approved and sent ${channel} message.`;
+    const cardStatus = calendarCard
+      ? calendarCardDeliveryStatus({
+          accepted: true,
+          providerReceipt: done.execution?.providerReceipt ?? null,
+          delivered: null,
+        })
+      : null;
+    const text = calendarCard
+      ? `Approved calendar card message was accepted by ${channel}; recipient delivery is not confirmed.`
+      : `Approved and sent ${channel} message.`;
     await args.callback?.({ text });
     return {
       text,
@@ -1589,6 +1634,7 @@ export async function executeApprovedRequest(args: {
         action: done.action,
         channel,
         providerReceipt: done.execution?.providerReceipt ?? null,
+        ...(cardStatus ? { calendarCardDelivery: cardStatus } : {}),
       },
     };
   }
