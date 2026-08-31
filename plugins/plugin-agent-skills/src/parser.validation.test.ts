@@ -4,7 +4,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { validateFrontmatter, validateSkillDirectory } from "./parser.ts";
+import {
+  parseFrontmatter,
+  validateFrontmatter,
+  validateSkillDirectory,
+} from "./parser.ts";
 import type { SkillFrontmatter } from "./types.ts";
 
 const fm = (over: Partial<SkillFrontmatter> = {}): SkillFrontmatter => ({
@@ -148,5 +152,86 @@ describe("validateSkillDirectory", () => {
     ].join("\n");
     const r = validateSkillDirectory("/x/SKILL.md", content, "my-skill");
     expect(r.valid).toBe(true);
+  });
+});
+
+describe("YAML block scalar descriptions (issue #30121)", () => {
+  // A folded (`>`) description mirroring the real @reduxjs/toolkit skills that
+  // regressed to MISSING_FRONTMATTER before the block-scalar fix.
+  const foldedSkill = [
+    "---",
+    "name: build-modern-redux-apps",
+    "description: >",
+    "  Use this when setting up a new Redux Toolkit app or modernizing an",
+    "  existing React + Redux codebase.",
+    "type: lifecycle",
+    "license: MIT",
+    "---",
+    "",
+    "# Body",
+  ].join("\n");
+
+  it("folds a `>` description into a single space-joined line", () => {
+    const fm = parseFrontmatter(foldedSkill).frontmatter;
+    expect(fm).not.toBeNull();
+    expect(fm?.name).toBe("build-modern-redux-apps");
+    // Single line breaks fold to spaces; clip chomping adds one trailing newline.
+    expect(fm?.description).toBe(
+      "Use this when setting up a new Redux Toolkit app or modernizing an " +
+        "existing React + Redux codebase.\n",
+    );
+    expect(fm?.description).not.toContain("\n  ");
+  });
+
+  it("keeps a same-indent key after the block scalar (no line swallowing)", () => {
+    // `license` sits at the key indent right after the folded block; it must
+    // still be parsed rather than absorbed into the description.
+    const fm = parseFrontmatter(foldedSkill).frontmatter;
+    expect(fm?.license).toBe("MIT");
+  });
+
+  it("preserves internal newlines for a literal `|` description", () => {
+    const literal = [
+      "---",
+      "name: my-skill",
+      "description: |",
+      "  First sentence about when to use this skill.",
+      "  Second sentence on the next line.",
+      "---",
+      "Body",
+    ].join("\n");
+    const fm = parseFrontmatter(literal).frontmatter;
+    expect(fm?.description).toBe(
+      "First sentence about when to use this skill.\n" +
+        "Second sentence on the next line.\n",
+    );
+  });
+
+  it("strips the trailing newline for a `>-` chomped description", () => {
+    const stripped = [
+      "---",
+      "name: my-skill",
+      "description: >-",
+      "  alpha",
+      "  beta",
+      "---",
+      "Body",
+    ].join("\n");
+    expect(parseFrontmatter(stripped).frontmatter?.description).toBe(
+      "alpha beta",
+    );
+  });
+
+  it("treats a folded description directory as valid, not MISSING_FRONTMATTER", () => {
+    const before = validateSkillDirectory(
+      "/x/SKILL.md",
+      // Same content but with the description as an empty value would still be
+      // missing; here we prove the folded form now validates end to end.
+      foldedSkill,
+      "build-modern-redux-apps",
+    );
+    expect(codes(before)).not.toContain("MISSING_FRONTMATTER");
+    expect(codes(before)).not.toContain("MISSING_DESCRIPTION");
+    expect(before.valid).toBe(true);
   });
 });

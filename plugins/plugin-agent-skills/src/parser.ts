@@ -200,7 +200,22 @@ function parseYamlSubset(yaml: string): Record<string, unknown> {
 
 			const parent = stack[stack.length - 1].obj;
 
-			if (valueStr === "" || valueStr === "|" || valueStr === ">") {
+			const blockScalar = parseBlockScalarHeader(valueStr);
+			if (blockScalar) {
+				// YAML block scalar (`|` literal or `>` folded). Consume every
+				// following line indented deeper than the key and assign the
+				// dedented, folded/joined text to the key so a `description: >`
+				// (used by real published skills) becomes a string instead of an
+				// empty object that later resolves the frontmatter to null.
+				const { value, nextIndex } = parseBlockScalarBody(
+					lines,
+					i + 1,
+					indent,
+					blockScalar,
+				);
+				parent[key] = value;
+				i = nextIndex - 1;
+			} else if (valueStr === "") {
 				// Could be object, multiline string, or multiline JSON
 				// Check if next non-empty line starts with { or [
 				let nextLineIdx = i + 1;
@@ -274,6 +289,120 @@ function parseYamlSubset(yaml: string): Record<string, unknown> {
 	}
 
 	return result;
+}
+
+/**
+ * Parsed YAML block-scalar header: literal (`|`) or folded (`>`) style plus a
+ * chomping indicator and an optional explicit indentation offset.
+ */
+interface BlockScalarHeader {
+	style: "literal" | "folded";
+	chomping: "clip" | "strip" | "keep";
+	explicitIndent: number | null;
+}
+
+/**
+ * Recognize a YAML block-scalar header such as `|`, `>`, `|-`, `>+`, or `>2`.
+ *
+ * The indicator character selects literal vs folded style; a trailing `-`/`+`
+ * selects strip/keep chomping (default clip); a single digit selects an
+ * explicit indentation. Returns null for any other value so ordinary scalars
+ * and the empty-value (nested object) case keep their existing handling.
+ */
+function parseBlockScalarHeader(valueStr: string): BlockScalarHeader | null {
+	const match = valueStr.match(/^([|>])([+-]?)([1-9]?)([+-]?)$/);
+	if (!match) return null;
+	const [, indicator, chompA, digit, chompB] = match;
+	if (chompA && chompB) return null; // at most one chomping indicator
+	const chomp = chompA || chompB;
+	return {
+		style: indicator === "|" ? "literal" : "folded",
+		chomping: chomp === "-" ? "strip" : chomp === "+" ? "keep" : "clip",
+		explicitIndent: digit ? parseInt(digit, 10) : null,
+	};
+}
+
+/**
+ * Collect and decode a YAML block-scalar body starting at `startIdx`.
+ *
+ * Consumes every line more indented than `keyIndent` (blank lines included),
+ * strips the block's common leading indentation, then joins literal blocks with
+ * newlines and folds folded blocks so single line breaks become spaces while
+ * blank lines stay newlines. Chomping controls trailing newlines. Returns the
+ * decoded string and the index of the first line the caller has not consumed.
+ */
+function parseBlockScalarBody(
+	lines: string[],
+	startIdx: number,
+	keyIndent: number,
+	header: BlockScalarHeader,
+): { value: string; nextIndex: number } {
+	const raw: string[] = [];
+	let idx = startIdx;
+	for (; idx < lines.length; idx++) {
+		const line = lines[idx];
+		if (line.trim() === "") {
+			raw.push(line);
+			continue;
+		}
+		if (line.search(/\S/) <= keyIndent) break;
+		raw.push(line);
+	}
+
+	// Base indentation: explicit offset from the key, else the first content line.
+	let baseIndent = header.explicitIndent
+		? keyIndent + header.explicitIndent
+		: null;
+	if (baseIndent === null) {
+		for (const line of raw) {
+			if (line.trim() === "") continue;
+			baseIndent = line.search(/\S/);
+			break;
+		}
+	}
+	if (baseIndent === null) baseIndent = keyIndent + 1; // block was all blank
+
+	const base = baseIndent;
+	const content = raw.map((line) =>
+		line.trim() === "" ? "" : line.slice(Math.min(base, line.search(/\S/))),
+	);
+
+	// Separate trailing blank lines so chomping can control final newlines.
+	let trailingBlanks = 0;
+	while (content.length > 0 && content[content.length - 1] === "") {
+		content.pop();
+		trailingBlanks++;
+	}
+
+	let core: string;
+	if (header.style === "literal") {
+		core = content.join("\n");
+	} else {
+		core = "";
+		for (const line of content) {
+			if (core === "") {
+				core = line;
+			} else if (line === "") {
+				core += "\n";
+			} else if (core.endsWith("\n")) {
+				core += line;
+			} else {
+				core += ` ${line}`;
+			}
+		}
+	}
+
+	let value: string;
+	if (header.chomping === "strip") {
+		value = core;
+	} else if (header.chomping === "keep") {
+		value = core === "" && trailingBlanks === 0 ? "" : `${core}${"\n".repeat(trailingBlanks + 1)}`;
+	} else {
+		// clip: exactly one trailing newline when there is any content
+		value = core === "" ? "" : `${core}\n`;
+	}
+
+	return { value, nextIndex: idx };
 }
 
 /**
