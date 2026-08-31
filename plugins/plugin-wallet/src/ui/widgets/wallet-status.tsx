@@ -1,3 +1,4 @@
+import { tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * `WalletStatusSidebarWidget` — the chat-sidebar widget showing abbreviated
  * EVM/Solana addresses, per-chain badges, asset count, and total USD value.
@@ -49,8 +50,9 @@ const CHAIN_DISPLAY_LABELS: Record<ChainKey, string> = {
 
 function shortenAddress(value: string | null | undefined): string | null {
   if (!value) return null;
-  if (value.length <= 10) return value;
-  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= 10) return wellFormed;
+  return `${truncateWellFormed(wellFormed, 6)}…${tailWellFormed(wellFormed, 4)}`;
 }
 
 function parseUsd(value: string | null | undefined): number {
@@ -119,7 +121,7 @@ function ChainBadge({ chain }: { chain: ChainKey }) {
       role="img"
       aria-label={label}
     >
-      {label.slice(0, 3).toUpperCase()}
+      {truncateWellFormed(toWellFormedUnicode(label), 3).toUpperCase()}
     </span>
   );
 }

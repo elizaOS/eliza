@@ -1,3 +1,4 @@
+import { tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * InventoryAppView — the full-screen wallet dashboard.
  *
@@ -267,8 +268,9 @@ function formatPercentDelta(value: number): string {
 }
 
 function formatCompactAddress(address: string): string {
-  if (address.length <= 12) return address;
-  return `${address.slice(0, 5)}...${address.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(address ?? "");
+  if (wellFormed.length <= 12) return wellFormed;
+  return `${truncateWellFormed(wellFormed, 5)}...${tailWellFormed(wellFormed, 4)}`;
 }
 
 function formatBnb(value: string | null | undefined): string {
@@ -828,7 +830,7 @@ function MarketAvatar({
 
   return (
     <div className="flex size-11 shrink-0 items-center justify-center text-sm font-semibold text-txt">
-      {label.slice(0, 1).toUpperCase()}
+      {truncateWellFormed(toWellFormedUnicode(label), 1).toUpperCase()}
     </div>
   );
 }
