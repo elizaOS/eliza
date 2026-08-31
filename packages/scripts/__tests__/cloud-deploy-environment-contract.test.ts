@@ -616,13 +616,16 @@ describe("canonical cloud deployment environment contract", () => {
       "DEPLOY_HOST",
       "DEPLOY_SSH_KEY",
       "HEADSCALE_PUBLIC_URL",
-      "HEADSCALE_API_KEY",
       "DATABASE_URL",
     ]) {
       expect(requiredManifest).toContain(`\n  ${name}\n`);
     }
     expect(requiredManifest).not.toContain("CONTAINERS_SSH_KEY");
     expect(requiredManifest).not.toContain("SECRETS_MASTER_KEY");
+    // The Headscale key may predate GitHub inventory. Empty CI preserves the
+    // host value, and the remote required_host_settings preflight still fails
+    // closed before restart if that preserved value is absent.
+    expect(requiredManifest).not.toContain("HEADSCALE_API_KEY");
     expect(preflight.run).toContain(
       "Missing required provisioning settings for GitHub environment $TARGET_ENVIRONMENT",
     );
@@ -772,6 +775,45 @@ describe("canonical cloud deployment environment contract", () => {
     expect(inventory?.run).toContain("values were not read");
   });
 
+  test("gates anonymous provider discovery before cutover and after the exact Worker deploy", () => {
+    const steps = cloud.jobs?.["deploy-api"]?.steps ?? [];
+    const upstreamIndex = steps.findIndex(
+      (candidate) =>
+        candidate.name === "Verify Steward provider discovery before cutover",
+    );
+    const cutoverIndex = steps.findIndex(
+      (candidate) =>
+        candidate.name === "Disable staging session exchange before cutover",
+    );
+    const healthIndex = steps.findIndex(
+      (candidate) => candidate.name === "Verify deployed API commit",
+    );
+    const deployedIndex = steps.findIndex(
+      (candidate) =>
+        candidate.name === "Verify deployed API provider discovery",
+    );
+    expect(upstreamIndex).toBeGreaterThan(0);
+    expect(upstreamIndex).toBeLessThan(cutoverIndex);
+    expect(deployedIndex).toBeGreaterThan(healthIndex);
+
+    const upstream = steps[upstreamIndex];
+    expect(upstream?.env?.STEWARD_UPSTREAM_URL).toContain(
+      "https://steward-api-staging.up.railway.app",
+    );
+    expect(upstream?.env?.STEWARD_UPSTREAM_URL).not.toContain(
+      "https://eliza.steward.fi",
+    );
+    expect(upstream?.if).toContain("deploy_environment == 'staging'");
+    expect(upstream?.run).toContain("verify-steward-provider-discovery.mjs");
+    expect(upstream?.run).toContain("--surface upstream");
+
+    const deployed = steps[deployedIndex];
+    expect(deployed?.env?.API_URL).toContain("https://api-staging.eliza.app");
+    expect(deployed?.env?.API_URL).not.toContain("https://api.eliza.app");
+    expect(deployed?.if).toContain("deploy_environment == 'staging'");
+    expect(deployed?.run).toContain("--surface proxy");
+  });
+
   test("handles only the Pages project already-exists outcome", () => {
     const bootstrap = step(
       cloud,
@@ -809,6 +851,14 @@ describe("canonical cloud deployment environment contract", () => {
     expect(verify.run).toContain(
       "node packages/cloud/scripts/verify-steward-oauth-callbacks.mjs",
     );
+    expect(verify.run).toContain(
+      "node packages/cloud/scripts/verify-steward-provider-discovery.mjs",
+    );
+    expect(verify.run).toContain(
+      'if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then',
+    );
+    expect(verify.run).toContain('--base-url "$served_url"');
+    expect(verify.run).toContain("--surface proxy");
     expect(verify.run).toContain('--callback-url "$served_url/login"');
     expect(verify.run).toContain('tenant_id="elizacloud-staging"');
     expect(verify.run).toContain("OIDC issuer mismatch");

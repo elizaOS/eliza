@@ -56,7 +56,7 @@ export function formatStoragePersistenceFailure(args: {
     key: keyof ReturningInstallStorageSnapshot,
     value: string | null,
   ): string => {
-    if (value === null) return "null";
+    if (value == null) return value === null ? "null" : "undefined";
     if (key !== "activeServer") return JSON.stringify(value);
     const digest = createHash("sha256")
       .update(value)

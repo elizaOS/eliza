@@ -5,14 +5,28 @@ import { runWithCloudBindings } from "../runtime/cloud-bindings";
 
 mock.module("../cache/client", () => ({ cache: {} }));
 mock.module("./usage", () => ({ usageService: { create: mock() } }));
+const runFlatProviderOperation = mock(
+  async (_context: unknown, _operation: unknown, dispatch: () => Promise<unknown>) => dispatch(),
+);
+mock.module("./generative-operation", () => ({
+  isGenerativeOperationAdmissionError: () => false,
+  runFlatProviderOperation,
+}));
 
 const { extractHostedPage } = await import("./browser-tools");
 
 const originalFetch = globalThis.fetch;
 const originalFirecrawlKey = process.env.FIRECRAWL_API_KEY;
 const originalFirecrawlUrl = process.env.FIRECRAWL_API_URL;
+const operationContext = {
+  organizationId: "org-1",
+  userId: "user-1",
+  apiKeyId: "key-1",
+  requestId: "request-1",
+};
 
 afterEach(() => {
+  runFlatProviderOperation.mockClear();
   globalThis.fetch = originalFetch;
   if (originalFirecrawlKey === undefined) delete process.env.FIRECRAWL_API_KEY;
   else process.env.FIRECRAWL_API_KEY = originalFirecrawlKey;
@@ -35,9 +49,38 @@ test("uses Firecrawl key and URL from the active Worker binding context", async 
       FIRECRAWL_API_KEY: "worker-secret",
       FIRECRAWL_API_URL: "https://firecrawl.example/",
     },
-    () => extractHostedPage({ url: "https://www.doordash.com/" }),
+    () =>
+      extractHostedPage(
+        { url: "https://www.doordash.com/" },
+        {
+          organizationId: "org-1",
+          userId: "user-1",
+          apiKeyId: "key-1",
+          operationContext,
+        },
+      ),
   );
 
   expect(result.markdown).toBe("Menu");
   expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(runFlatProviderOperation).toHaveBeenCalledTimes(1);
+  expect(runFlatProviderOperation.mock.calls[0]?.[1]).toMatchObject({
+    operation: "extract_page",
+    provider: "firecrawl",
+  });
+});
+
+test("fails closed before Firecrawl when standing context is absent", async () => {
+  const fetchMock = mock(async () => Response.json({ success: true }));
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  await expect(
+    extractHostedPage(
+      { url: "https://example.com" },
+      { organizationId: "org-1", userId: "user-1" },
+    ),
+  ).rejects.toThrow("account-standing context");
+
+  expect(runFlatProviderOperation).not.toHaveBeenCalled();
+  expect(fetchMock).not.toHaveBeenCalled();
 });

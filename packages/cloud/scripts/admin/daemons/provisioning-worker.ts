@@ -12,8 +12,10 @@
  *   npx tsx packages/cloud/scripts/admin/daemons/provisioning-worker.ts --once
  */
 
+import { isIP } from "node:net";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveDatabaseUrl } from "@elizaos/cloud-shared/db/database-url";
 import type { AppOrphanReconcileResult } from "@elizaos/cloud-shared/lib/services/app-container-orphan-reconciler";
 import type { OrphanReconcileResult } from "@elizaos/cloud-shared/lib/services/docker-node-workloads";
 import {
@@ -408,6 +410,114 @@ export function formatErrorWithCause(error: unknown): string {
   return message;
 }
 
+function normalizeDatabaseHost(rawHostname: string): string {
+  let hostname = rawHostname.trim().toLowerCase();
+  const zoneIndex = hostname.indexOf("%");
+  if (zoneIndex >= 0) hostname = hostname.slice(0, zoneIndex);
+  hostname = hostname.replace(/\.$/, "");
+  if (!hostname || hostname.startsWith("/") || hostname.startsWith("\\")) {
+    return hostname;
+  }
+
+  try {
+    const urlHost =
+      hostname.includes(":") && !hostname.startsWith("[")
+        ? `[${hostname}]`
+        : hostname;
+    hostname = new URL(`http://${urlHost}/`).hostname.toLowerCase();
+  } catch {
+    // Keep the original value. Invalid remote hosts fail when pg connects;
+    // known local forms still fail closed below.
+  }
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    hostname = hostname.slice(1, -1);
+  }
+  return hostname.replace(/\.$/, "");
+}
+
+function isLocalDatabaseHost(rawHostname: string): boolean {
+  const hostname = normalizeDatabaseHost(rawHostname);
+  if (!hostname || hostname.startsWith("/") || hostname.startsWith("\\"))
+    return true;
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
+  if (isIP(hostname) === 4) {
+    return hostname === "0.0.0.0" || hostname.startsWith("127.");
+  }
+  if (isIP(hostname) !== 6) return false;
+  if (hostname === "::" || hostname === "::1") return true;
+  const mapped = /^::ffff:([0-9a-f]{1,4}):[0-9a-f]{1,4}$/.exec(hostname);
+  if (!mapped) return false;
+  const mappedFirstOctet = Number.parseInt(mapped[1] ?? "", 16) >> 8;
+  return mappedFirstOctet === 0 || mappedFirstOctet === 127;
+}
+
+function effectivePostgresHost(parsed: URL): string {
+  const queryHosts = parsed.searchParams.getAll("host");
+  const queryHost = queryHosts.at(-1);
+  // pg-connection-string applies query fields in order (last one wins), but an
+  // exactly empty `host=` falls back to the authority hostname.
+  return queryHost !== undefined && queryHost !== ""
+    ? queryHost
+    : parsed.hostname;
+}
+
+/**
+ * Refuse to start a deployed provisioning daemon without the same remote
+ * PostgreSQL authority used by the API. A missing URL otherwise falls through
+ * to local defaults and the daemon can publish a healthy heartbeat while
+ * polling an empty queue forever, leaving every dedicated agent pending.
+ */
+export function assertProvisioningWorkerDatabaseConfigured(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const nodeEnv = env.NODE_ENV;
+  if (nodeEnv === "test" || nodeEnv === "development") return;
+  if (env.TEST_DATABASE_URL !== undefined && env.TEST_DATABASE_URL !== "") {
+    throw new Error(
+      "Provisioning worker TEST_DATABASE_URL is test-only and must be unset outside test/development; refusing a hidden database-authority override.",
+    );
+  }
+
+  // Use the same resolver as the database client. In deployed environments we
+  // additionally require an explicit DATABASE_URL so a local fallback can
+  // never become the worker's effective jobs-queue authority.
+  const raw = resolveDatabaseUrl(env);
+  if (env.DATABASE_URL === undefined || env.DATABASE_URL === "" || !raw) {
+    throw new Error(
+      "Provisioning worker DATABASE_URL is required outside test/development; refusing to advertise liveness against a local or implicit database.",
+    );
+  }
+  if (raw !== raw.trim()) {
+    throw new Error(
+      "Provisioning worker DATABASE_URL must not contain leading or trailing whitespace; the startup gate validates the exact URL consumed by the database client.",
+    );
+  }
+  if (/^pglite:\/\//i.test(raw)) {
+    throw new Error(
+      "Provisioning worker DATABASE_URL must be a remote PostgreSQL URL outside test/development; pglite:// is local-only and cannot own the cloud jobs queue.",
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(
+      "Provisioning worker DATABASE_URL is malformed; expected a postgresql:// or postgres:// URL.",
+    );
+  }
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+    throw new Error(
+      "Provisioning worker DATABASE_URL must use postgres:// or postgresql:// outside test/development.",
+    );
+  }
+  const effectiveHost = effectivePostgresHost(parsed);
+  if (isLocalDatabaseHost(effectiveHost)) {
+    throw new Error(
+      "Provisioning worker DATABASE_URL must target a remote PostgreSQL host outside test/development; hostless, loopback, unspecified, and local-socket targets are forbidden.",
+    );
+  }
+}
+
 /**
  * One-shot latch so the active KMS backend is logged once at startup, not on
  * every poll cycle (the preflight re-runs each cycle to gate the hb_signal).
@@ -636,6 +746,18 @@ export function evaluateDbLiveness(deps: {
     heartbeatAgeMinutes,
     heartbeatMaxAgeMinutes,
   };
+}
+
+/**
+ * Destructive orphan reconciliation is safe only when this daemon can prove
+ * it is reading the Cloud API's live database. A split or pre-heartbeat
+ * database can make every real container appear rowless; treating that as
+ * cleanup authority would delete another environment's healthy workloads.
+ */
+export function allowsOrphanReconciliation(
+  assessment: DbLivenessAssessment | undefined,
+): boolean {
+  return assessment?.verdict === "healthy" || assessment?.verdict === "idle";
 }
 
 /**
@@ -1656,7 +1778,7 @@ async function runBoundedPhase<T>(
   phase: () => Promise<T>,
   onResult: (result: T) => void,
   timeoutMs: number = PHASE_TIMEOUT_MS,
-): Promise<void> {
+): Promise<T | undefined> {
   const { withTimeout } = await loadDeps();
   try {
     const result = await withTimeout(
@@ -1665,10 +1787,12 @@ async function runBoundedPhase<T>(
       `[provisioning-worker] ${label}`,
     );
     onResult(result);
+    return result;
   } catch (error) {
     logger.error(`[provisioning-worker] ${label} failed`, {
       error: formatErrorWithCause(error),
     });
+    return undefined;
   }
 }
 
@@ -1894,12 +2018,13 @@ export async function runInfraMaintenanceCycle(
   // once at boot and going silent. First so a dragging SSH sweep can't
   // starve it. Runs BEFORE the health check touches docker_nodes, so it is
   // a pure read.
-  await runBoundedPhase(
+  const dbLiveness = await runBoundedPhase(
     logger,
     "db liveness check cycle",
     () => processDbLivenessCheckCycle(config),
     (assessment) => logJobsTableLiveness(logger, assessment),
   );
+  const orphanReconciliationAllowed = allowsOrphanReconciliation(dbLiveness);
 
   await runBoundedPhase(
     logger,
@@ -2151,7 +2276,7 @@ export async function runInfraMaintenanceCycle(
   // node-status from the health check above — the reconciler only touches
   // HEALTHY nodes, so a node that just failed its probe is excluded and a
   // transient SSH blip never reaps live containers. Gated OFF by default.
-  if (config.orphanReconcilerEnabled) {
+  if (config.orphanReconcilerEnabled && orphanReconciliationAllowed) {
     await runBoundedPhase(
       logger,
       "orphan reconciler cycle",
@@ -2185,6 +2310,14 @@ export async function runInfraMaintenanceCycle(
             reapFailed: result.reapFailed,
           },
         );
+      },
+    );
+  } else if (config.orphanReconcilerEnabled) {
+    logger.warn(
+      "[provisioning-worker] orphan reconciliation skipped: live Cloud API database authority is not proven",
+      {
+        event: "orphan_reconciler.database_authority_unproven",
+        dbLivenessVerdict: dbLiveness?.verdict ?? "check_failed",
       },
     );
   }
@@ -2231,6 +2364,10 @@ async function armAppsDeployBackendIfEnabled(
 
 async function main(): Promise<void> {
   loadLocalEnv(import.meta.url);
+  // Validate the exact DB resolver inputs before importing repositories. That
+  // prevents a deployed worker from even constructing a client against a
+  // TEST_DATABASE_URL override or local fallback.
+  assertProvisioningWorkerDatabaseConfigured();
 
   const config = readWorkerConfig();
   const { logger, assertSSHKeyAvailable } = await loadDeps();

@@ -174,6 +174,12 @@ export interface ConnectorAccountProvider {
 		request: ConnectorOAuthCallbackRequest,
 		manager: ConnectorAccountManager,
 	) => Promise<ConnectorOAuthCallbackResult>;
+	compensateOAuthCompletion?: (
+		request: ConnectorOAuthCallbackRequest,
+		result: ConnectorOAuthCallbackResult,
+		cause: unknown,
+		manager: ConnectorAccountManager,
+	) => Promise<void>;
 }
 
 export interface ConnectorAccountProviderRegistrationResult {
@@ -1799,9 +1805,48 @@ export class ConnectorAccountManager extends Service {
 				throw completionError;
 			}
 
-			const account = result.account
-				? await this.upsertAccount(providerId, result.account, flow.accountId)
-				: undefined;
+			let account: ConnectorAccount | undefined;
+			try {
+				account = result.account
+					? await this.upsertAccount(providerId, result.account, flow.accountId)
+					: undefined;
+			} catch (accountWriteCause) {
+				const failures: unknown[] = [accountWriteCause];
+				try {
+					await registered.compensateOAuthCompletion?.(
+						{
+							provider: providerId,
+							flow,
+							code: input.code,
+							error: input.error,
+							errorDescription: input.errorDescription,
+							query: input.query ?? {},
+							body: input.body,
+						},
+						result,
+						accountWriteCause,
+						this,
+					);
+				} catch (compensationCause) {
+					// error-policy:J2 Preserve the authoritative account write and
+					// provider compensation failures on the same terminal error.
+					failures.push(compensationCause);
+				}
+				const publicFailureMessage = `Connector OAuth account persistence failed for ${providerId}; the issued grant was compensated and the flow must be restarted.`;
+				await this.storage.updateOAuthFlow(providerId, flow.id, {
+					status: "failed",
+					error: publicFailureMessage,
+				});
+				throw new ElizaError(publicFailureMessage, {
+					code: "CONNECTOR_OAUTH_ACCOUNT_PERSISTENCE_FAILED",
+					cause:
+						failures.length === 1
+							? accountWriteCause
+							: new AggregateError(failures, publicFailureMessage),
+					context: { provider: providerId, flowId: flow.id },
+					severity: "fatal",
+				});
+			}
 			const completed = await this.storage.updateOAuthFlow(
 				providerId,
 				flow.id,

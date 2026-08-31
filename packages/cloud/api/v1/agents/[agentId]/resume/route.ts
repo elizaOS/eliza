@@ -11,6 +11,7 @@ import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { isContainerBackedExecutionTier } from "@/lib/services/sandbox-provider-types";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -49,40 +50,36 @@ app.post("/", async (c) => {
 
     logger.info("[service-api] Resuming agent", { agentId });
 
-    const result = await elizaSandboxService.executeResume(
+    const enqueueResult = await provisioningJobService.enqueueAgentResumeOnce({
       agentId,
-      agent.organization_id,
-    );
-    if (!result.success) {
-      const authoritativeAgent = result.reprovisioned
-        ? await elizaSandboxService.getAgentForWrite(
-            agentId,
-            agent.organization_id,
-          )
-        : null;
-      const status =
-        result.error === "Agent not found"
-          ? 404
-          : result.error ===
-              "Insufficient credits to settle accrued agent compute charges"
-            ? 402
-            : result.error === "Agent is already being provisioned"
-              ? 409
-              : 500;
-      return c.json(
-        {
-          success: false,
-          status: authoritativeAgent?.status ?? agent.status,
-          error: result.error,
-        },
-        status,
-      );
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+    });
+    if (enqueueResult.created) {
+      void provisioningJobService.triggerImmediate(c.env).catch((error) => {
+        // error-policy:J7 the durable job remains visible to the polling worker.
+        logger.warn("[service-api] Resume worker nudge failed", {
+          agentId,
+          jobId: enqueueResult.job.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     }
 
-    return c.json({
-      success: true,
-      status: "running",
-    });
+    return c.json(
+      {
+        success: true,
+        status: "provisioning",
+        created: enqueueResult.created,
+        alreadyInProgress: !enqueueResult.created,
+        jobId: enqueueResult.job.id,
+        polling: {
+          endpoint: `/api/v1/jobs/${enqueueResult.job.id}`,
+          intervalMs: 5_000,
+        },
+      },
+      enqueueResult.created ? 202 : 409,
+    );
   } catch (error) {
     return failureResponse(c, error);
   }

@@ -139,11 +139,17 @@ mock.module("@/lib/services/email", () => ({
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
   readAdminCanaryImageJobData: (job: { data: unknown }) => job.data,
+  listRecoverableAgentComputeStopIntents: mock(async () => []),
+  rearmRecoverableAgentComputeStopIntentOnce: mock(async () => ({
+    id: "recovered-stop-job",
+    rearmed: true,
+  })),
   provisioningJobService: {
     enqueueAgentSuspendOnce: mock(async () => ({
       job: { id: "stop-job" },
       created: true,
     })),
+    triggerImmediate: mock(async () => undefined),
   },
 }));
 

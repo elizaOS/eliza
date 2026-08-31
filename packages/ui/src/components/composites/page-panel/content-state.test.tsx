@@ -5,6 +5,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
+import { AlertTriangle } from "lucide-react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ContentState } from "./content-state";
 import { PageEmptyState } from "./page-panel-empty";
@@ -38,6 +39,7 @@ describe("ContentState", () => {
         placement="workspace"
         title="No results"
         description="Change the filters and try again."
+        icon={<AlertTriangle data-testid="empty-icon" />}
         data-testid="state"
       />,
     );
@@ -47,6 +49,7 @@ describe("ContentState", () => {
     expect(state.classList.contains("flex-1")).toBe(true);
     expect(state.hasAttribute("data-slot")).toBe(false);
     expect(screen.getByText("No results").tagName).toBe("DIV");
+    expect(screen.getByTestId("empty-icon")).toBeTruthy();
   });
 
   it("keeps loading descriptions screen-reader-only", () => {
@@ -62,6 +65,24 @@ describe("ContentState", () => {
     expect(
       screen.getByText("Fetching your agents.").classList.contains("sr-only"),
     ).toBe(true);
+  });
+
+  it("renders a recoverable error as one accessible alert", () => {
+    render(
+      <ContentState
+        state="error"
+        placement="workspace"
+        icon={<AlertTriangle />}
+        title="Knowledge unavailable"
+        description="Reconnect to load your documents."
+        action={<button type="button">Retry</button>}
+      />,
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Knowledge unavailable");
+    expect(alert.textContent).toContain("Reconnect to load your documents.");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 });
 

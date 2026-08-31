@@ -20,6 +20,7 @@ import {
 } from "../schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { dockerNodes } from "../schemas/docker-nodes";
+import { organizations } from "../schemas/organizations";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -68,6 +69,8 @@ export interface AgentSandboxReplacementLocatorInput {
   readonly nodeId: string;
   readonly containerName: string;
   readonly nodeRecordId: string;
+  readonly nodeIncarnation: string;
+  readonly nodeHistoryId: string;
   readonly nodeHostname: string;
   readonly nodeSshPort: number;
   readonly nodeSshUser: string;
@@ -130,6 +133,8 @@ interface ValidatedLocator {
   nodeId: string;
   containerName: string;
   nodeRecordId: string;
+  nodeIncarnation: string;
+  nodeHistoryId: string;
   nodeHostname: string;
   nodeSshPort: number;
   nodeSshUser: string;
@@ -470,6 +475,8 @@ function validateLocator(
     nodeId: requireBoundedNonblankString(locator.nodeId, "locator.nodeId", 255),
     containerName,
     nodeRecordId: requireCanonicalUuid(locator.nodeRecordId, "locator.nodeRecordId"),
+    nodeIncarnation: requireCanonicalUuid(locator.nodeIncarnation, "locator.nodeIncarnation"),
+    nodeHistoryId: requireCanonicalUuid(locator.nodeHistoryId, "locator.nodeHistoryId"),
     nodeHostname: requireBoundedNonblankString(locator.nodeHostname, "locator.nodeHostname", 255),
     nodeSshPort: locator.nodeSshPort,
     nodeSshUser: requireBoundedNonblankString(locator.nodeSshUser, "locator.nodeSshUser", 255),
@@ -546,6 +553,8 @@ function assertLocatorCoreMatches(
     attempt.locator_node_id !== locator.nodeId ||
     attempt.locator_container_name !== locator.containerName ||
     attempt.locator_node_record_id !== locator.nodeRecordId ||
+    attempt.locator_node_incarnation !== locator.nodeIncarnation ||
+    attempt.locator_node_history_id !== locator.nodeHistoryId ||
     attempt.locator_node_hostname !== locator.nodeHostname ||
     attempt.locator_node_ssh_port !== locator.nodeSshPort ||
     attempt.locator_node_ssh_user !== locator.nodeSshUser ||
@@ -695,6 +704,17 @@ async function lockAndValidateAgentSandboxAuthority(
   assertAgentSandboxAuthorityMatches(await lockAgentSandboxAuthority(tx, expected), expected);
 }
 
+async function assertRestoreLeaseNotExpired(
+  tx: DbTransaction,
+  expiresAt: Date,
+  reference: ValidatedReference,
+): Promise<void> {
+  const databaseNow = await readPostLockDatabaseNow(tx);
+  if (expiresAt <= databaseNow) {
+    throw conflict("Restore lease is expired or released", reference);
+  }
+}
+
 async function lockAndValidateReplacementNodeAuthority(
   tx: DbTransaction,
   locator: ValidatedLocator,
@@ -707,6 +727,8 @@ async function lockAndValidateReplacementNodeAuthority(
       and(
         eq(dockerNodes.id, locator.nodeRecordId),
         eq(dockerNodes.node_id, locator.nodeId),
+        eq(dockerNodes.node_incarnation, locator.nodeIncarnation),
+        eq(dockerNodes.current_node_history_id, locator.nodeHistoryId),
         eq(dockerNodes.hostname, locator.nodeHostname),
         eq(dockerNodes.ssh_port, locator.nodeSshPort),
         eq(dockerNodes.ssh_user, locator.nodeSshUser),
@@ -725,7 +747,10 @@ async function lockAndValidateReplacementNodeAuthority(
  * Insert the pre-effect one-shot marker. Any existing ID is rejected even when
  * its bytes match: replaying start could launch provider effects a second time.
  * The caller owns the transaction so its lifecycle admission CAS and this row
- * either commit or roll back together.
+ * either commit or roll back together. This function owns the complete lock
+ * order: organization (KEY SHARE), restore lease when present (UPDATE), sandbox
+ * (UPDATE), then attempt insert. A caller must not pre-lock the sandbox before
+ * entering this function or it can reintroduce an account-deletion deadlock.
  */
 export async function startAgentSandboxReplacementAttemptInTransaction(
   tx: DbTransaction,
@@ -733,6 +758,19 @@ export async function startAgentSandboxReplacementAttemptInTransaction(
 ): Promise<AgentSandboxReplacementAttemptWriteResult> {
   const validated = validateStart(input);
   try {
+    // Take the FK parent first. Account deletion takes the same organization
+    // row before cascading through sandboxes and attempts, so every path now
+    // agrees on organization -> sandbox instead of forming an AB-BA cycle.
+    const [organization] = await tx
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, validated.organizationId))
+      .for("key share")
+      .limit(1);
+    if (!organization) {
+      throw conflict("Replacement attempt organization authority is missing", validated);
+    }
+
     const restore = validated.restoreAuthority;
     let restoreLeaseExpiresAt: Date | null = null;
     if (restore) {
@@ -763,13 +801,18 @@ export async function startAgentSandboxReplacementAttemptInTransaction(
       if (!lease || lease.expires_at.getTime() !== restore.expiresAt.getTime()) {
         throw conflict("Restore lease replay authority does not match", validated);
       }
-      const databaseNow = await readPostLockDatabaseNow(tx);
-      if (lease.released_at !== null || lease.expires_at <= databaseNow) {
+      if (lease.released_at !== null) {
         throw conflict("Restore lease is expired or released", validated);
       }
       restoreLeaseExpiresAt = new Date(lease.expires_at.getTime());
+      await assertRestoreLeaseNotExpired(tx, restoreLeaseExpiresAt, validated);
     }
     await lockAndValidateAgentSandboxAuthority(tx, validated);
+    if (restoreLeaseExpiresAt) {
+      // The lease row remains UPDATE-locked, so it cannot be released, but its
+      // wall-clock expiry can pass while the sandbox lock is contended.
+      await assertRestoreLeaseNotExpired(tx, restoreLeaseExpiresAt, validated);
+    }
 
     const [created] = await tx
       .insert(agentSandboxReplacementAttempts)
@@ -798,6 +841,12 @@ export async function startAgentSandboxReplacementAttemptInTransaction(
       .returning();
     if (!created) {
       throw conflict("Replacement attempt insert returned no row", validated);
+    }
+    if (restoreLeaseExpiresAt) {
+      // INSERT can itself wait on a primary-key or partial-unique-index rival.
+      // Revalidate after RETURNING so no blocking operation can admit provider
+      // work under authority that expired while this transaction was waiting.
+      await assertRestoreLeaseNotExpired(tx, restoreLeaseExpiresAt, validated);
     }
     return frozenResult(created, false);
   } catch (error) {
@@ -838,6 +887,8 @@ async function recordLocatorStageInTransaction(
         locator_node_id: locator.nodeId,
         locator_container_name: locator.containerName,
         locator_node_record_id: locator.nodeRecordId,
+        locator_node_incarnation: locator.nodeIncarnation,
+        locator_node_history_id: locator.nodeHistoryId,
         locator_node_hostname: locator.nodeHostname,
         locator_node_ssh_port: locator.nodeSshPort,
         locator_node_ssh_user: locator.nodeSshUser,

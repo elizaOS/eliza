@@ -144,6 +144,9 @@ describe("SAVED_NOTES provider", () => {
     expect(
       filterProvidersByContextGate([notesProvider], ["general"], ["OWNER"]),
     ).toEqual([notesProvider]);
+    expect(
+      filterProvidersByContextGate([notesProvider], ["notes"], ["OWNER"]),
+    ).toEqual([notesProvider]);
   });
 
   it("surfaces a saved note through composeState so recall does not depend on memory search", async () => {
@@ -171,7 +174,11 @@ describe("SAVED_NOTES provider", () => {
   it("is routed to the contexts a recall turn actually selects", () => {
     // "make a note …" routes general and "who is alex again" routes memory;
     // a notes-only gate would have reproduced the bug on the recall turn.
-    expect(registeredNotesProvider().contexts).toEqual(["general", "memory"]);
+    expect(registeredNotesProvider().contexts).toEqual([
+      "notes",
+      "general",
+      "memory",
+    ]);
   });
 
   it("renders designed-empty distinctly from unavailable", async () => {
@@ -248,6 +255,7 @@ describe("SAVED_NOTES provider", () => {
 
     const text = renderSavedNotesText(notes);
 
+    expect(text).toContain("Exact note count: 23.");
     expect(text).toContain("- note 0");
     expect(text).toContain("- note 19");
     expect(text).toContain("- note 20");

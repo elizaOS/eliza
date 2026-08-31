@@ -5,6 +5,10 @@ import { Socket } from "node:net";
 import { runInNewContext } from "node:vm";
 import { logger } from "@elizaos/core";
 import {
+  resetDevCloudEnvAuthorityForTests,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
+import {
   CLOUD_PAIR_LEGACY_STORAGE_KEY,
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
@@ -35,7 +39,10 @@ interface FakeRes {
 }
 
 const AGENT_ID = "55555555-5555-4555-8555-555555555555";
+const HOSTILE_AGENT_ID = "99999999-9999-4999-8999-999999999999";
 const MANAGED_ENV_KEYS = [
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
   "ELIZA_CLOUD_PROVISIONED",
   "ELIZA_CLOUD_PAIR_DIRECT_RELAY",
   "ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS",
@@ -140,6 +147,7 @@ function fakeReq(opts: {
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
   __resetCloudPairRateLimitForTests();
   clearManagedEnv();
   process.env.ELIZA_CLOUD_PROVISIONED = "1";
@@ -151,9 +159,113 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.unstubAllGlobals();
   restoreManagedEnv();
+  resetDevCloudEnvAuthorityForTests();
 });
 
 describe("handleStandaloneCloudPairRoute", () => {
+  it.each(["staging-default", "offline"] as const)(
+    "keeps the relay disabled under frozen %s authority despite late env pollution",
+    async (authority) => {
+      delete process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY;
+      delete process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS;
+      delete process.env.ELIZA_CLOUD_AGENT_ID;
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_BASE_URL =
+        "https://api-staging.eliza.app/api/v1";
+      expect(resolveDevCloudEnvAuthority()).toBe(authority);
+
+      process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY = "1";
+      process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS = "203.0.113.0/24";
+      process.env.ELIZA_CLOUD_AGENT_ID = HOSTILE_AGENT_ID;
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const harness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({ pathname: "/pair", search: "?token=late-token" }),
+        harness.res,
+      );
+
+      expect(harness.status()).toBe(421);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    {
+      authority: "staging-explicit" as const,
+      launchBase: "https://api-staging.eliza.app/api/v1",
+      exchangeUrl: "https://api-staging.eliza.app/api/auth/pair",
+    },
+    {
+      authority: "self-hosted" as const,
+      launchBase: "https://private.example:8787/api/v1",
+      exchangeUrl: "https://private.example:8787/api/auth/pair",
+    },
+  ])(
+    "uses only the frozen $authority relay identity, base, and CIDRs",
+    async ({ authority, launchBase, exchangeUrl }) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_BASE_URL = launchBase;
+      process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY = "1";
+      process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS = "172.17.0.0/16";
+      process.env.ELIZA_CLOUD_AGENT_ID = AGENT_ID;
+      expect(resolveDevCloudEnvAuthority()).toBe(authority);
+
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+      process.env.ELIZA_CLOUD_PAIR_DIRECT_RELAY = "0";
+      process.env.ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS = "192.168.0.0/16";
+      process.env.ELIZA_CLOUD_AGENT_ID = HOSTILE_AGENT_ID;
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            apiKey: "agent_secret_value",
+            agentId: AGENT_ID,
+            agentName: "Frozen",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const admitted = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({
+          pathname: "/pair",
+          search: "?token=frozen-token",
+          ip: "172.17.0.2",
+        }),
+        admitted.res,
+      );
+      expect(admitted.status()).toBe(200);
+      expect(fetchMock).toHaveBeenCalledWith(
+        exchangeUrl,
+        expect.objectContaining({
+          body: JSON.stringify({
+            token: "frozen-token",
+            agentId: AGENT_ID,
+          }),
+        }),
+      );
+
+      fetchMock.mockClear();
+      const lateOnlyPeer = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({
+          pathname: "/pair",
+          search: "?token=late-token",
+          ip: "192.168.1.2",
+        }),
+        lateOnlyPeer.res,
+      );
+      expect(lateOnlyPeer.status()).toBe(421);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   it("falls through for non-pair paths", async () => {
     const harness = fakeRes();
     await expect(

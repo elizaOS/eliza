@@ -55,6 +55,13 @@ const isPlaywrightTestAuthEnabled = mock(
 );
 let adminBehavior: () => Promise<unknown> = async () => ({ isAdmin: false, role: null });
 const getAdminStatusForUser = mock(() => adminBehavior());
+let lifecycleBehavior: () => Promise<unknown> = async () => ({
+  state: "active",
+  revision: 0,
+  active: true,
+  deletionRequestId: null,
+});
+const readOrganizationLifecycleAuthority = mock(() => lifecycleBehavior());
 
 mock.module("../services/api-keys", () => ({
   apiKeysService: {
@@ -82,6 +89,18 @@ mock.module("../services/admin", () => ({
   },
 }));
 
+mock.module("../services/account-lifecycle-authority", () => ({
+  readOrganizationLifecycleAuthority,
+  organizationLifecycleAllowsNewWork: (authority: unknown) =>
+    Boolean(
+      authority &&
+        typeof authority === "object" &&
+        (authority as { state?: string }).state === "active" &&
+        (authority as { active?: boolean }).active === true &&
+        (authority as { deletionRequestId?: string | null }).deletionRequestId === null,
+    ),
+}));
+
 mock.module("./steward-client", () => ({
   isStagingSessionTokenCandidate: () => false,
   verifyStewardTokenCached,
@@ -107,10 +126,12 @@ mock.module("../utils/logger", () => ({
 const {
   apiKeyScopeHashPrefix,
   getCurrentUser,
+  readStewardSessionToken,
   requireAdmin,
   requireApiKeyCredential,
   requireCurrentBillingManagerSession,
   requireCronSecret,
+  requireRecentSessionUserWithOrg,
   requireSessionUserWithOrg,
   requireUser,
   requireUserOrApiKey,
@@ -175,6 +196,12 @@ beforeEach(() => {
     env.ENVIRONMENT !== "production" &&
     env.PLAYWRIGHT_TEST_AUTH === "true";
   adminBehavior = async () => ({ isAdmin: false, role: null });
+  lifecycleBehavior = async () => ({
+    state: "active",
+    revision: 0,
+    active: true,
+    deletionRequestId: null,
+  });
   validateApiKey.mockClear();
   getWithOrganization.mockClear();
   getByStewardId.mockClear();
@@ -182,9 +209,28 @@ beforeEach(() => {
   findWithOrganizationForWrite.mockClear();
   verifyPlaywrightTestSessionToken.mockClear();
   getAdminStatusForUser.mockClear();
+  readOrganizationLifecycleAuthority.mockClear();
 });
 
 describe("Workers API-key auth", () => {
+  test("selects a bearer Steward JWT for session teardown", () => {
+    const context = contextWithHeaders({
+      authorization: "Bearer header.payload.signature",
+      cookie: "steward-token=cookie.jwt.signature",
+    });
+
+    expect(readStewardSessionToken(context as never)).toBe("header.payload.signature");
+  });
+
+  test("does not mistake an API-key bearer for a Steward session", () => {
+    const context = contextWithHeaders({
+      authorization: "Bearer eliza_live_key",
+      cookie: "steward-token=cookie.jwt.signature",
+    });
+
+    expect(readStewardSessionToken(context as never)).toBe("cookie.jwt.signature");
+  });
+
   test("returns a service-unavailable error when API-key storage throws", async () => {
     await expect(
       requireUserOrApiKey(contextWithApiKey("eliza_live_key") as never),
@@ -714,6 +760,60 @@ describe("Workers API-key auth", () => {
       role: "admin",
     });
     expect(verifyPlaywrightTestSessionToken).toHaveBeenCalled();
+  });
+
+  test("rejects a stale cached session after primary lifecycle authority is fenced", async () => {
+    const c = contextWithHeaders({});
+    c.set("user", activeUser());
+    c.set("authMethod", "session");
+    lifecycleBehavior = async () => ({
+      state: "deletion_recovery",
+      revision: 1,
+      active: false,
+      deletionRequestId: "deletion-1",
+    });
+
+    await expect(requireSessionUserWithOrg(c as never)).rejects.toMatchObject({
+      status: 403,
+      code: "access_denied",
+    });
+    expect(readOrganizationLifecycleAuthority).toHaveBeenCalledWith("org-1");
+  });
+
+  test("accepts a verified Playwright session as recent only behind the non-production gate", async () => {
+    cookieBehavior = () => "signed-playwright-capability";
+    playwrightTokenBehavior = () => ({
+      userId: "user-1",
+      organizationId: "org-1",
+      exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    userBehavior = async () => activeUser();
+
+    await expect(
+      requireRecentSessionUserWithOrg(
+        contextWithHeaders(
+          {},
+          {
+            NODE_ENV: "test",
+            PLAYWRIGHT_TEST_AUTH: "true",
+          },
+        ) as never,
+      ),
+    ).resolves.toMatchObject({ id: "user-1", organization_id: "org-1" });
+
+    playwrightEnabledBehavior = () => false;
+    const productionContext = contextWithHeaders(
+      {},
+      {
+        NODE_ENV: "production",
+        PLAYWRIGHT_TEST_AUTH: "true",
+      },
+    );
+    productionContext.set("user", activeUser());
+    productionContext.set("authMethod", "session");
+    await expect(requireRecentSessionUserWithOrg(productionContext as never)).rejects.toMatchObject(
+      { code: "recent_auth_required" },
+    );
   });
 
   test("getCurrentUser caches null when no Steward token is present", async () => {

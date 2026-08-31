@@ -30,6 +30,7 @@ import {
 	DefaultMessageService,
 	NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
 	preservedSettledToolResult,
+	structuredEffectConfirmation,
 	subAgentCompletionRelayBody,
 } from "./message";
 
@@ -541,5 +542,167 @@ describe("answerlessToolTurnReport", () => {
 				{ success: false, data: { actionName: "TASKS_SPAWN_AGENT" } },
 			),
 		).toBe(NO_REPORTABLE_TOOL_OUTCOME_MESSAGE);
+	});
+});
+
+// The live tj-a835d4c6da235f shape: a deterministic VIEWS navigation succeeds
+// with an internal-visibility JSON effect receipt and no `userFacingText`.
+// The answerless floor must confirm from the accepted effect instead of
+// apologizing for a missing result; anything short of a successful accepted
+// effect keeps the honest fallback.
+describe("structuredEffectConfirmation", () => {
+	const receipt = (fields: Record<string, unknown>): string =>
+		JSON.stringify(fields);
+	const settle = (
+		result: Partial<PlannerToolResult>,
+		name = "VIEWS",
+	): Array<{ name: string; result: PlannerToolResult }> => [
+		{ name, result: { success: true, ...result } as PlannerToolResult },
+	];
+
+	it("confirms an accepted view navigation by its label", () => {
+		expect(
+			structuredEffectConfirmation(
+				settle({
+					text: receipt({
+						effect: "view_navigation",
+						status: "accepted",
+						viewId: "chat",
+						label: "Home",
+						path: "/",
+					}),
+					transcriptVisibility: "internal",
+				}),
+			),
+		).toBe("done — you're on Home.");
+	});
+
+	it("confirms an unknown accepted effect family generically", () => {
+		expect(
+			structuredEffectConfirmation(
+				settle({
+					text: receipt({
+						effect: "theme_change",
+						status: "accepted",
+						label: "Dark Mode",
+					}),
+				}),
+			),
+		).toBe("done — Dark Mode.");
+		expect(
+			structuredEffectConfirmation(
+				settle({ text: receipt({ effect: "refresh", status: "accepted" }) }),
+			),
+		).toBe("done.");
+	});
+
+	it("never confirms a non-accepted status, a failed result, or a terminal tool", () => {
+		expect(
+			structuredEffectConfirmation(
+				settle({
+					text: receipt({
+						effect: "view_navigation",
+						status: "unconfirmed",
+						label: "Home",
+					}),
+				}),
+			),
+		).toBeUndefined();
+		expect(
+			structuredEffectConfirmation(
+				settle({
+					success: false,
+					text: receipt({
+						effect: "view_navigation",
+						status: "accepted",
+						label: "Home",
+					}),
+				}),
+			),
+		).toBeUndefined();
+		expect(
+			structuredEffectConfirmation(
+				settle(
+					{
+						text: receipt({
+							effect: "view_navigation",
+							status: "accepted",
+							label: "Home",
+						}),
+					},
+					"REPLY",
+				),
+			),
+		).toBeUndefined();
+	});
+
+	it("treats malformed or non-effect JSON as no structured effect", () => {
+		expect(
+			structuredEffectConfirmation(settle({ text: "{not json" })),
+		).toBeUndefined();
+		expect(
+			structuredEffectConfirmation(
+				settle({ text: receipt({ status: "accepted" }) }),
+			),
+		).toBeUndefined();
+		expect(
+			structuredEffectConfirmation(settle({ text: "plain diagnostic" })),
+		).toBeUndefined();
+		expect(structuredEffectConfirmation(settle({}))).toBeUndefined();
+	});
+});
+
+describe("answerlessToolTurnReport — structured effect receipts", () => {
+	const viewsAction: Action = {
+		name: "VIEWS",
+		similes: [],
+		description: "Switch the visible view.",
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+	};
+	const report = (result: Partial<PlannerToolResult>): string =>
+		answerlessToolTurnReport({
+			settledToolResults: [
+				{
+					name: "VIEWS",
+					result: { success: true, ...result } as PlannerToolResult,
+				},
+			],
+			deliveredVisibleTexts: new Set(),
+			actionResults: [{ success: true, data: { actionName: "VIEWS" } }],
+			actions: [viewsAction],
+			stageOneAck: "",
+		});
+
+	it("replaces the no-result apology with the effect confirmation on the live shape", () => {
+		expect(
+			report({
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					viewId: "chat",
+					label: "Home",
+					path: "/",
+				}),
+				transcriptVisibility: "internal",
+			}),
+		).toBe("done — you're on Home.");
+	});
+
+	it("keeps the no-result apology for a genuinely empty success", () => {
+		expect(report({})).toBe(NO_REPORTABLE_TOOL_OUTCOME_MESSAGE);
+	});
+
+	it("prefers a preserved user-facing text over the effect confirmation", () => {
+		expect(
+			report({
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					label: "Home",
+				}),
+				userFacingText: "you're back on the home view.",
+			}),
+		).toBe("you're back on the home view.");
 	});
 });

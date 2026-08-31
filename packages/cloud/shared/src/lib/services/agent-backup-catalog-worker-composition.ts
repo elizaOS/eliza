@@ -1,19 +1,31 @@
 /**
  * Disabled-first production entrypoint for the manifest-v3 backup catalogue.
- * The two gates are the only environment names read before the enabled
- * composition is dynamically imported, so disabled hosts cannot initialize
- * storage, KMS, database, provider, executor, or spool authorities.
+ * The runtime, scheduler, and deletion-authority gates are the only environment
+ * names read before the enabled composition is dynamically imported, so a
+ * fully disabled host cannot initialize storage, KMS, database, provider,
+ * executor, or spool authorities.
  */
 
+import type {
+  AccountDeletionBackupAuthority,
+  AccountDeletionSpoolAuthority,
+} from "./account-deletion-provider-adapters";
 import type { AgentBackupCatalogRuntimeSummary } from "./agent-backup-catalog-runtime";
 
 export interface AgentBackupCatalogWorkerComposition {
   readonly enabled: boolean;
+  readonly accountDeletionAuthorities?: Readonly<{
+    backup: AccountDeletionBackupAuthority;
+    spool: AccountDeletionSpoolAuthority;
+  }>;
   runCycle(signal?: AbortSignal): Promise<AgentBackupCatalogRuntimeSummary>;
 }
 
 export interface AgentBackupCatalogWorkerEnabledCompositionModule {
   createAgentBackupCatalogWorkerEnabledComposition(input: {
+    env: NodeJS.ProcessEnv;
+  }): Promise<AgentBackupCatalogWorkerComposition>;
+  createAccountDeletionBackupAuthorityComposition(input: {
     env: NodeJS.ProcessEnv;
   }): Promise<AgentBackupCatalogWorkerComposition>;
 }
@@ -64,18 +76,19 @@ function disabledSummary(): AgentBackupCatalogRuntimeSummary {
   };
 }
 
-/** Parse only the two gates; every other environment read belongs after this boundary. */
+/** Parse only the three gates; every other environment read belongs after this boundary. */
 export function isAgentBackupCatalogWorkerEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const scheduleEnabled = env.AGENT_BACKUP_RPO_SCHEDULER_ENABLED === "1";
-  if (env.AGENT_BACKUP_CATALOG_RUNTIME_ENABLED !== "1") {
+  const runtimeEnabled = env.AGENT_BACKUP_CATALOG_RUNTIME_ENABLED === "1";
+  const deletionAuthorityEnabled = env.ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED === "1";
+  if (!runtimeEnabled) {
     if (scheduleEnabled) {
       throw new Error(
         "AGENT_BACKUP_RPO_SCHEDULER_ENABLED requires AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=1",
       );
     }
-    return false;
   }
-  return true;
+  return runtimeEnabled || deletionAuthorityEnabled;
 }
 
 /** Build one process-wide production composition, or a zero-authority disabled facade. */
@@ -94,5 +107,8 @@ export async function createAgentBackupCatalogWorkerComposition(
   const enabledModule = options.loadEnabledComposition
     ? await options.loadEnabledComposition()
     : await import("./agent-backup-catalog-worker-enabled-composition");
+  if (env.AGENT_BACKUP_CATALOG_RUNTIME_ENABLED !== "1") {
+    return enabledModule.createAccountDeletionBackupAuthorityComposition({ env });
+  }
   return enabledModule.createAgentBackupCatalogWorkerEnabledComposition({ env });
 }

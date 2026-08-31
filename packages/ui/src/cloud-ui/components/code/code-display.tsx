@@ -5,6 +5,7 @@
  */
 import { type HTMLAttributes, memo } from "react";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
+import { Card } from "../../../components/ui/card";
 import { cn } from "../../lib/utils";
 import { SyntaxHighlighter } from "./prism-light";
 
@@ -82,12 +83,7 @@ export const CodeDisplay = memo(function CodeDisplay({
   className,
 }: CodeDisplayProps) {
   return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-md border border-border bg-card",
-        className,
-      )}
-    >
+    <Card variant="panel" className={cn("overflow-hidden", className)}>
       <div>
         <SyntaxHighlighter
           language={language}
@@ -100,6 +96,6 @@ export const CodeDisplay = memo(function CodeDisplay({
           {code}
         </SyntaxHighlighter>
       </div>
-    </div>
+    </Card>
   );
 });

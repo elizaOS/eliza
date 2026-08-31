@@ -56,14 +56,26 @@ describe("readAppManifest", () => {
       elizaos: {
         app: {
           candidates: ["@elizaos/plugin-anthropic"],
-          defaults: { wallet: { enabled: false } },
+          defaults: {
+            wallet: {
+              enabled: false,
+              requiredForReady: true,
+              routingOnlyWhenDisabled: true,
+            },
+          },
           capabilities: { browser: "required" },
         },
       },
     });
     const manifest = await readAppManifest(tmpRoot);
     expect(manifest?.candidates).toEqual(["@elizaos/plugin-anthropic"]);
-    expect(manifest?.defaults).toEqual({ wallet: { enabled: false } });
+    expect(manifest?.defaults).toEqual({
+      wallet: {
+        enabled: false,
+        requiredForReady: true,
+        routingOnlyWhenDisabled: true,
+      },
+    });
     expect(manifest?.capabilities).toEqual({ browser: "required" });
   });
 });

@@ -9,6 +9,10 @@
  * memoized lazy imports so they stay out of the static boot graph.
  */
 import type http from "node:http";
+import {
+  createDevCloudConfigAuthorityView,
+  materializeDevCloudConfigAuthorityView,
+} from "../config/dev-cloud-env-authority.ts";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { handleApprovalRoute } from "./approval-routes.ts";
@@ -204,12 +208,13 @@ export async function handleCloudAndCoreRouteGroup({
   // through to `tryHandleRuntimePluginRoute`.
 
   const cloudRoutes = await getCloudRoutesPlugin();
+  const effectiveConfig = createDevCloudConfigAuthorityView(state.config);
   const billingHandled = await cloudRoutes.handleCloudBillingRoute(
     req,
     res,
     pathname,
     method,
-    { config: state.config, runtime: state.runtime },
+    { config: effectiveConfig, runtime: state.runtime },
   );
   if (billingHandled) return true;
 
@@ -218,17 +223,32 @@ export async function handleCloudAndCoreRouteGroup({
     res,
     pathname,
     method,
-    { config: state.config, runtime: state.runtime },
+    { config: effectiveConfig, runtime: state.runtime },
   );
   if (compatHandled) return true;
 
-  const cloudState = {
-    config: state.config,
+  // Core Cloud routes include explicit login/disconnect mutations. Give those
+  // handlers a sanitized, unmarked working copy and persist it only through
+  // this deliberate adapter; the durable state object remains separate from
+  // the read-only authority view until a successful save.
+  const cloudRouteConfig =
+    materializeDevCloudConfigAuthorityView(effectiveConfig);
+  const persistCloudRouteConfig =
+    cloudRouteConfig === state.config
+      ? saveConfig
+      : (nextConfig: ServerState["config"]): void => {
+          saveConfig(nextConfig);
+          state.config = nextConfig;
+        };
+  const cloudState: Parameters<CloudHostRoutesModule["handleCloudRoute"]>[4] = {
+    config: cloudRouteConfig,
     cloudManager: state.cloudManager,
     runtime: state.runtime,
-    saveConfig,
-    createTelemetrySpan: createIntegrationTelemetrySpan,
     restartRuntime,
+    services: {
+      saveElizaConfig: persistCloudRouteConfig,
+      createIntegrationTelemetrySpan,
+    },
   };
   return cloudRoutes.handleCloudRoute(req, res, pathname, method, cloudState);
 }
@@ -347,5 +367,11 @@ export async function handleLifeOpsRuntimePluginRoute({
     url,
     runtime: state.runtime,
     isAuthorized: () => isAuthorizedRequest(req),
+    hostContext: {
+      config: createDevCloudConfigAuthorityView(state.config) as Record<
+        string,
+        unknown
+      >,
+    },
   });
 }

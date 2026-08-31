@@ -183,51 +183,20 @@ describe("buildTelegramCommandDescriptors", () => {
     expect(commands.some((c) => c.target.kind === "navigate")).toBe(true);
   });
 
-  it("keeps UTF-16 surrogate pairs intact when clamping description to 256", () => {
-    const emojiDesc = `${"a".repeat(255)}🦊${"b".repeat(100)}`;
+  it("rejects an over-limit command description instead of publishing a shortened one", () => {
+    const longDescription = "a".repeat(257);
     pluginCommandsMock.getConnectorCommands.mockReturnValueOnce([
       {
-        name: "emoji_desc",
-        description: emojiDesc,
+        name: "long_description",
+        description: longDescription,
         target: { kind: "agent" },
       },
     ]);
-    const [descriptor] = buildTelegramCommandDescriptors();
-    expect(descriptor).toBeDefined();
-    expect(descriptor.description.isWellFormed()).toBe(true);
-    expect(descriptor.description.length).toBeLessThanOrEqual(256);
-    expect(descriptor.description.length).toBe(255);
-    expect(descriptor.description).toBe("a".repeat(255));
-  });
-
-  it("sanitizes lone surrogates in description before clamping", () => {
-    const loneDesc = "a\ud800bc";
-    pluginCommandsMock.getConnectorCommands.mockReturnValueOnce([
-      {
-        name: "lone_desc",
-        description: loneDesc,
-        target: { kind: "agent" },
-      },
-    ]);
-    const [descriptor] = buildTelegramCommandDescriptors();
-    expect(descriptor).toBeDefined();
-    expect(descriptor.description).toBe("a\ufffdbc");
-    expect(descriptor.description.isWellFormed()).toBe(true);
-  });
-
-  it("preserves an emoji that fits entirely under the 256 cap", () => {
-    const fittingDesc = `${"a".repeat(254)}🦊`;
-    pluginCommandsMock.getConnectorCommands.mockReturnValueOnce([
-      {
-        name: "fitting_desc",
-        description: fittingDesc,
-        target: { kind: "agent" },
-      },
-    ]);
-    const [descriptor] = buildTelegramCommandDescriptors();
-    expect(descriptor.description).toBe(fittingDesc);
-    expect(descriptor.description.isWellFormed()).toBe(true);
-    expect(descriptor.description.length).toBe(256);
+    expect(() => buildTelegramCommandDescriptors()).toThrow(
+      expect.objectContaining({
+        code: "TELEGRAM_COMMAND_DESCRIPTION_TOO_LONG",
+      }),
+    );
   });
 });
 
@@ -302,56 +271,23 @@ describe("registerTelegramCommandHandlers", () => {
     expect(reply.mock.calls[0]?.[0]).toContain("Eliza app");
   });
 
-  it.each([
-    [
-      "a lone high surrogate",
-      "before\ud800after",
-      "Open settings → before�after in the Eliza app.",
-    ],
-    [
-      "a lone low surrogate",
-      "before\udc00after",
-      "Open settings → before�after in the Eliza app.",
-    ],
-    [
-      "an exact-cap reply",
-      "a".repeat(4062),
-      `Open settings → ${"a".repeat(4062)} in the Eliza app.`,
-    ],
-    [
-      "a cap-plus-one reply",
-      "a".repeat(4063),
-      `Open settings → ${"a".repeat(4063)} in the Eliza app`,
-    ],
-    [
-      "an astral character crossing the cap",
-      `${"a".repeat(4079)}🦊tail`,
-      `Open settings → ${"a".repeat(4079)}`,
-    ],
-    [
-      "a hostile over-limit raw argument",
-      "a".repeat(5000),
-      `Open settings → ${"a".repeat(4080)}`,
-    ],
-  ])(
-    "normalizes the /settings wire reply for %s",
-    async (_label, section, expected) => {
-      const { handlers } = registerHandlers();
-      const settingsHandler = handlers.get("settings");
-      expect(settingsHandler).toBeDefined();
-      const { ctx, reply } = makeCtx(`/settings ${section}`);
+  it("delivers a long deterministic reply completely as ordered messages", async () => {
+    const completeReply = `${"a".repeat(4095)}🦊${"b".repeat(100)}`;
+    pluginCommandsMock.resolveCommand.mockResolvedValueOnce({
+      handled: true,
+      reply: completeReply,
+    });
+    const { handlers } = registerHandlers();
+    const thinkHandler = handlers.get("think");
+    const { ctx, reply } = makeCtx("/think high");
 
-      await settingsHandler?.(ctx);
+    await thinkHandler?.(ctx);
 
-      expect(reply).toHaveBeenCalledTimes(1);
-      const wireText = reply.mock.calls[0]?.[0];
-      // Observe the production handler's actual wire argument: restoring the
-      // raw describeNavigation reply breaks the malformed/over-limit cases.
-      expect(wireText).toBe(expected);
-      expect(wireText?.length).toBeLessThanOrEqual(4096);
-      expect(wireText?.isWellFormed()).toBe(true);
-    },
-  );
+    const delivered = reply.mock.calls.map((call) => call[0]);
+    expect(delivered.length).toBeGreaterThan(1);
+    expect(delivered.every((chunk) => chunk.length <= 4096)).toBe(true);
+    expect(delivered.join("")).toBe(completeReply);
+  });
 });
 
 describe("Telegram Mini App launch command", () => {

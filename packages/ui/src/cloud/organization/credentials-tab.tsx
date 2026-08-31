@@ -18,7 +18,7 @@
 import { KeyRound, Loader2, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { BrandButton } from "../../cloud-ui";
+import { Button } from "../../cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { ContributeCredentialDialog } from "./contribute-credential-dialog";
 import { CredentialsList } from "./credentials-list";
@@ -118,7 +118,7 @@ export function CredentialsTab({
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {canManage && (
-            <BrandButton
+            <Button
               type="button"
               variant="outline"
               onClick={() => setIsInviteOpen(true)}
@@ -128,11 +128,11 @@ export function CredentialsTab({
               {t("cloud.credentialsTab.inviteAndConnect", {
                 defaultValue: "Invite & Connect",
               })}
-            </BrandButton>
+            </Button>
           )}
-          <BrandButton
+          <Button
             type="button"
-            variant="primary"
+            variant="default"
             onClick={() => setIsContributeOpen(true)}
             className="font-mono text-sm md:text-base w-full sm:w-auto"
           >
@@ -140,7 +140,7 @@ export function CredentialsTab({
             {t("cloud.credentialsTab.contribute", {
               defaultValue: "Contribute Key",
             })}
-          </BrandButton>
+          </Button>
         </div>
       </div>
 

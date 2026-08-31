@@ -5,6 +5,7 @@ import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { containersEnv } from "@/lib/config/containers-env";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
@@ -18,27 +19,7 @@ import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
-// Reduced from 120s — async path returns 202 immediately.
-// Sync fallback (?sync=true) still needs headroom for compatibility callers.
-
 const CORS_METHODS = "POST, OPTIONS";
-
-function getProvisionFailureStatus(error?: string): 404 | 409 | 500 {
-  if (error === "Agent not found") return 404;
-  if (error === "Agent is already being provisioned") return 409;
-  return 500;
-}
-
-function sanitizeProvisionFailureMessage(
-  error: string | undefined,
-  status: 404 | 409 | 500,
-): string {
-  if (status !== 500) {
-    return error ?? "Provisioning failed";
-  }
-
-  return "Provisioning failed";
-}
 
 function sanitizeEnqueueFailureMessage(
   error: string,
@@ -70,8 +51,8 @@ function createFailureId(): string {
  * fires a fire-and-forget kick at the worker so we don't wait up to 60s
  * for the next cron tick.
  *
- * **Sync fallback:** Pass `?sync=true` to get the old blocking behaviour
- * (useful during migration). Will be removed in a future release.
+ * `sync=true` remains a strict compatibility token, but every provider-mutating
+ * request uses the durable admitted queue so deletion fencing cannot be bypassed.
  *
  * Idempotent: if the sandbox is already running, returns 200 with
  * existing connection info (no job created).
@@ -110,15 +91,12 @@ async function __hono_POST(
       );
     }
     const syncRequested = requestedSync === "true";
-    const sync =
-      syncRequested &&
-      (process.env.NODE_ENV !== "production" ||
-        process.env.ALLOW_AGENT_SYNC_PROVISIONING === "true");
 
     logger.info("[agent-api] Provision requested", {
       agentId,
       orgId: user.organization_id,
-      async: !sync,
+      async: true,
+      syncRequested,
     });
 
     // Fast path: check if already running (no job needed)
@@ -136,10 +114,10 @@ async function __hono_POST(
       );
     }
 
-    // This primary snapshot is not a lock/CAS. Fence only the legacy blocking
-    // path here; async behavior remains unchanged and is covered by separate
-    // enqueue/worker authority work.
-    if (sync) {
+    // Preserve the stricter compatibility-token eligibility checks before the
+    // request enters the queue. The durable worker admission remains the
+    // authoritative deletion/provider serialization boundary.
+    if (syncRequested) {
       if (
         !CONTAINER_BACKED_EXECUTION_TIERS.some(
           (tier) => tier === existing.execution_tier,
@@ -228,8 +206,10 @@ async function __hono_POST(
             id: existing.id,
             agentName: existing.agent_name,
             status: existing.status,
-            bridgeUrl: existing.bridge_url,
-            healthUrl: existing.health_url,
+            webUiUrl: getConfiguredElizaAgentPublicWebUiUrl(
+              existing,
+              ctx?.env?.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+            ),
           },
         }),
         CORS_METHODS,
@@ -254,7 +234,7 @@ async function __hono_POST(
     // Attempt to atomically claim a pre-warmed container. Falls through
     // (returns null) when the pool is empty, disabled, or the user's row
     // already has a database (re-provision).
-    if (containersEnv.warmPoolEnabled() && !sync) {
+    if (containersEnv.warmPoolEnabled() && !syncRequested) {
       let committedWarmClaim = false;
       try {
         const claimed = await agentSandboxesRepository.claimWarmContainer({
@@ -372,8 +352,10 @@ async function __hono_POST(
                 id: claimed.id,
                 agentName: claimed.agent_name,
                 status: "running",
-                bridgeUrl: claimed.bridge_url,
-                healthUrl: claimed.health_url,
+                webUiUrl: getConfiguredElizaAgentPublicWebUiUrl(
+                  claimed,
+                  ctx?.env?.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+                ),
               },
               source: "warm_pool",
             }),
@@ -434,49 +416,6 @@ async function __hono_POST(
           error: err instanceof Error ? err.message : String(err),
         });
       }
-    }
-
-    // ── Sync compatibility fallback ───────────────────────────────────
-    if (sync) {
-      const result = await elizaSandboxService.provision(
-        agentId,
-        user.organization_id!,
-      );
-
-      if (!result.success) {
-        const status = getProvisionFailureStatus(result.error);
-        const clientError = sanitizeProvisionFailureMessage(
-          result.error,
-          status,
-        );
-
-        if (status === 500) {
-          logger.error("[agent-api] Sync provision failed", {
-            agentId,
-            orgId: user.organization_id,
-            error: result.error,
-          });
-        }
-
-        return applyCorsHeaders(
-          Response.json({ success: false, error: clientError }, { status }),
-          CORS_METHODS,
-        );
-      }
-
-      return applyCorsHeaders(
-        Response.json({
-          success: true,
-          data: {
-            id: result.sandboxRecord.id,
-            agentName: result.sandboxRecord.agent_name,
-            status: result.sandboxRecord.status,
-            bridgeUrl: result.bridgeUrl,
-            healthUrl: result.healthUrl,
-          },
-        }),
-        CORS_METHODS,
-      );
     }
 
     const workerHealth = await checkProvisioningWorkerHealth();

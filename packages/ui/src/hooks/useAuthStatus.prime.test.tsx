@@ -48,10 +48,15 @@ function makeJwt(expSecondsFromNow: number): string {
   })}.sig`;
 }
 
-function jsonResponse(status: number, body: unknown): Response {
+function jsonResponse(
+  status: number,
+  body: unknown,
+  headers?: HeadersInit,
+): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: new Headers(headers),
     json: async () => body,
   } as unknown as Response;
 }
@@ -475,6 +480,23 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
     // The prime must NOT have published server_unavailable (that would flash
     // the startup-failure screen for a backend that comes up moments later).
+    expect(result.current.state.phase).toBe("loading");
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits through a throttled prime without starting the 503 retry storm", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(429, {}, { "Retry-After": "0" }))
+      .mockResolvedValueOnce(jsonResponse(200, AUTH_ME_BODY));
+
+    await act(async () => {
+      primeAuthStatusProbe();
+    });
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
     expect(result.current.state.phase).toBe("loading");
     await waitFor(() =>
       expect(result.current.state.phase).toBe("authenticated"),

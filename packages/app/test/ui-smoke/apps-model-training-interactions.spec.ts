@@ -67,30 +67,6 @@ async function clickRequired(locator: Locator, label: string): Promise<void> {
   await target.click();
 }
 
-async function openVisiblePageSidebar(
-  page: Page,
-  testId: string,
-): Promise<Locator> {
-  const trigger = page.getByTestId("page-layout-mobile-sidebar-trigger");
-  if (await trigger.isVisible().catch(() => false)) {
-    await trigger.click();
-  }
-
-  const sidebar = page.locator(`[data-testid="${testId}"]:visible`).first();
-  await expect(sidebar, `${testId} should be visible`).toBeVisible();
-  return sidebar;
-}
-
-async function closeMobilePageSidebar(page: Page): Promise<void> {
-  const drawer = page.getByTestId("page-layout-mobile-sidebar-drawer");
-  if (!(await drawer.isVisible().catch(() => false))) return;
-  await clickRequired(
-    drawer.getByRole("button", { name: "Close sidebar" }),
-    "close mobile page sidebar",
-  );
-  await expect(drawer).toBeHidden();
-}
-
 async function fulfillJson(
   route: Route,
   body: unknown,
@@ -430,8 +406,9 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
   await openRouteCase(page, routeCaseByName("trajectories app window"));
 
   await expect(page.getByTestId("trajectories-view")).toBeVisible();
-  let sidebar = await openVisiblePageSidebar(page, "trajectories-sidebar");
-  await expect(sidebar.getByText("scenario-alpha")).toBeVisible();
+  await expect(
+    page.getByText("chat / scenario-alpha / batch-ui-smoke"),
+  ).toBeVisible();
   // The minimal redesign dropped the manual Refresh button: the list stays
   // current via a silent ~15s background poll. Assert the poll re-queries the
   // list source (no user-facing refresh control).
@@ -439,8 +416,6 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
   await expect
     .poll(() => recorder.listRequestCount(), { timeout: 30_000 })
     .toBeGreaterThan(listCount);
-  await closeMobilePageSidebar(page);
-
   await expect(page.getByText("deterministic-model-a").first()).toBeVisible();
   await expect(
     page
@@ -454,25 +429,22 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
   );
   await expect(page.getByText(/Showing 1 plan calls/i)).toBeVisible();
 
-  sidebar = await openVisiblePageSidebar(page, "trajectories-sidebar");
   await clickRequired(
-    sidebar.getByText("scenario-beta"),
+    page.getByText("orchestrator / scenario-beta / batch-ui-smoke"),
     "beta trajectory row",
   );
   await expect
     .poll(() => recorder.detailRequests().includes("traj-beta"))
     .toBe(true);
-  await closeMobilePageSidebar(page);
   await expect(page.getByText("deterministic-model-b").first()).toBeVisible();
-  const sparseInput = page.locator('section[aria-label="Input (User)"]');
-  const sparseOutput = page.locator('section[aria-label="Output (Response)"]');
+  const sparseInput = page.getByRole("region", { name: "Input (User)" });
+  const sparseOutput = page.getByRole("region", {
+    name: "Output (Response)",
+  });
   await expect(sparseInput).toHaveText("0");
   await expect(sparseOutput).toHaveText("false");
   await expect(
-    sparseInput.locator("xpath=..").getByText("1 lines", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    sparseOutput.locator("xpath=..").getByText("1 lines", { exact: true }),
+    page.getByText("1 lines", { exact: true }).first(),
   ).toBeVisible();
 
   // NOTE: the trajectories list search moved to the floating chat composer.

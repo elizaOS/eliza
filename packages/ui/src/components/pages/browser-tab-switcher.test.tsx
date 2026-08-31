@@ -119,6 +119,9 @@ describe("BrowserTabFoldControl", () => {
       />,
     );
     const control = screen.getByTestId("browser-workspace-tab-fold-control");
+    expect(
+      screen.getByTestId("browser-workspace-tabs-icon").getAttribute("class"),
+    ).toContain("lucide-square-stack");
     expect(control.textContent).toContain("DuckDuckGo");
     expect(
       screen.getByTestId("browser-workspace-tab-count").textContent,
@@ -254,7 +257,7 @@ describe("BrowserTabSwitcher", () => {
     expect(dialog.getAttribute("data-chat-clearance-aware")).toBe("true");
     expect(dialog.style.top).toContain("--eliza-chat-clearance");
     expect(dialog.style.maxHeight).toContain("--eliza-chat-clearance");
-    expect(dialog.className).toContain("rounded-3xl");
+    expect(dialog.className).toContain("rounded-2xl");
     expect(dialog.className).not.toContain("accent");
     expect(Z_VIEW_MODAL).toBeLessThan(Z_SHELL_OVERLAY);
     expect(Z_VIEW_MODAL_BACKDROP).toBeLessThan(Z_VIEW_MODAL);

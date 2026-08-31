@@ -27,6 +27,7 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const stylesDir = join(here, "../../../../styles");
 const outDir = join(here, "output-wallet");
+const WIDGET_TIMEOUT_MS = 30_000;
 await mkdir(outDir, { recursive: true });
 
 let failures = 0;
@@ -112,6 +113,14 @@ await writeFile(
 // The UI registry-host shim re-exports through the @elizaos/shared barrel;
 // resolve it straight to the self-contained shared source module instead.
 const registryHostSource = join(here, "../../../../../../shared/src/registry-host.ts");
+const sharedOverlayRegistrySource = join(
+  here,
+  "../../../../../../shared/src/apps/overlay-app-registry.ts",
+);
+const sharedAppsContractSource = join(
+  here,
+  "../../../../../../shared/src/contracts/apps.ts",
+);
 
 const stubModules = {
   name: "stub-wallet-deps",
@@ -126,6 +135,24 @@ const stubModules = {
     b.onResolve({ filter: /\/registry-host$/ }, () => ({
       path: registryHostSource,
     }));
+    // app-shell-registry needs two browser-safe shared exports. Keep their real
+    // implementations while bypassing the package root, whose server exports
+    // intentionally reach Node builtins that do not belong in this fixture.
+    b.onResolve({ filter: /^@elizaos\/shared$/ }, () => ({
+      path: "wallet-shared-app-shell",
+      namespace: "wallet-shared",
+    }));
+    b.onLoad(
+      { filter: /.*/, namespace: "wallet-shared" },
+      () => ({
+        contents: [
+          `export { getAllOverlayApps } from ${JSON.stringify(sharedOverlayRegistrySource)};`,
+          `export { packageNameToAppRouteSlug } from ${JSON.stringify(sharedAppsContractSource)};`,
+        ].join("\n"),
+        loader: "js",
+        resolveDir: here,
+      }),
+    );
   },
 };
 
@@ -163,7 +190,7 @@ try {
   // DEFAULT state — no holdings, BTC/SOL/ETH rows must appear (the bug fix).
   await page.goto(`file://${htmlPath}?state=default`);
   await page.waitForSelector('[data-testid="chat-widget-wallet-prices"]', {
-    timeout: 8000,
+    timeout: WIDGET_TIMEOUT_MS,
   });
   const defaultRows = await page
     .locator('[data-testid^="wallet-price-row-"]')
@@ -186,7 +213,7 @@ try {
   // HELD state — top-3 priced holdings by holding value: ETH $5000, SOL $2000, USDC $800.
   await page.goto(`file://${htmlPath}?state=held`);
   await page.waitForSelector('[data-testid="chat-widget-wallet-prices"]', {
-    timeout: 8000,
+    timeout: WIDGET_TIMEOUT_MS,
   });
   const heldRows = await page
     .locator('[data-testid^="wallet-price-row-"]')
@@ -217,7 +244,7 @@ try {
   // Market prices alone cannot prove whether the wallet has holdings.
   await page.goto(`file://${htmlPath}?state=unavailable`);
   await page.waitForSelector('[data-testid="chat-widget-wallet-unavailable"]', {
-    timeout: 8000,
+    timeout: WIDGET_TIMEOUT_MS,
   });
   await page.waitForTimeout(100);
   const unavailableRows = await page
@@ -233,10 +260,9 @@ try {
     .screenshot({ path: join(outDir, "wallet-unavailable-card.png") });
   console.log("  📸 wallet-unavailable.png");
 
-  // WALLET SECTION surface (#16943) — the decided routed mount after the home
-  // demotion: the REAL WalletSectionNav (real app-shell registry + tab strip)
-  // must carry the price rows, proving the surface cannot silently orphan the
-  // widget again. Captured at desktop and mobile viewports for PR evidence.
+  // WALLET SECTION surface — the REAL WalletSectionNav owns only the routed
+  // header and section tabs. Balance data belongs to the canonical wallet body
+  // now, so this fixture proves the wrapper does not mount a duplicate widget.
   const desktop = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 2,
@@ -246,23 +272,14 @@ try {
   await desktopPage.goto(
     `file://${htmlPath}?surface=wallet-section&state=default`,
   );
-  await desktopPage.waitForSelector(
-    '[data-testid="wallet-section-price-surface"] [data-testid="chat-widget-wallet-prices"]',
-    { timeout: 8000 },
-  );
-  const sectionRows = await desktopPage
-    .locator(
-      '[data-testid="wallet-section-price-surface"] [data-testid^="wallet-price-row-"]',
-    )
-    .evaluateAll((els) => els.map((e) => e.dataset.testid));
+  await desktopPage.waitForSelector('[data-testid="wallet-section-header-inset"]', {
+    state: "visible",
+    timeout: WIDGET_TIMEOUT_MS,
+  });
   assert(
-    JSON.stringify(sectionRows) ===
-      JSON.stringify([
-        "wallet-price-row-BTC",
-        "wallet-price-row-SOL",
-        "wallet-price-row-ETH",
-      ]),
-    `WALLET SECTION surface carries the default BTC/SOL/ETH price rows (got ${JSON.stringify(sectionRows)})`,
+    (await desktopPage.locator('[data-testid="wallet-section-price-surface"]').count()) ===
+      0,
+    "WALLET SECTION surface does not duplicate the wallet balance widget",
   );
   assert(
     (await desktopPage.locator('[data-testid="section-nav-wallet"]').count()) ===
@@ -292,36 +309,18 @@ try {
   });
   const mobilePage = await mobile.newPage();
   mobilePage.on("pageerror", (e) => errors.push(String(e)));
-  // Held state on mobile: the section surface shows the top-3 held rows.
+  // The mobile wrapper has the same navigation-only contract.
   await mobilePage.goto(
     `file://${htmlPath}?surface=wallet-section&state=held`,
   );
-  await mobilePage.waitForSelector(
-    '[data-testid="wallet-section-price-surface"] [data-testid^="wallet-price-row-"]',
-    { timeout: 8000 },
-  );
-  const mobileRows = await mobilePage
-    .locator(
-      '[data-testid="wallet-section-price-surface"] [data-testid^="wallet-price-row-"]',
-    )
-    .evaluateAll((els) => els.map((e) => e.dataset.testid));
+  await mobilePage.waitForSelector('[data-testid="wallet-section-header-inset"]', {
+    state: "visible",
+    timeout: WIDGET_TIMEOUT_MS,
+  });
   assert(
-    JSON.stringify(mobileRows) ===
-      JSON.stringify([
-        "wallet-price-row-ETH",
-        "wallet-price-row-SOL",
-        "wallet-price-row-USDC",
-      ]),
-    `WALLET SECTION (mobile, held) shows top-3 held rows (got ${JSON.stringify(mobileRows)})`,
-  );
-  const mobileText = await mobilePage
-    .locator('[data-testid="wallet-section-price-surface"]')
-    .innerText();
-  assert(
-    !mobileText.includes("5,000") &&
-      !mobileText.includes("2,000") &&
-      !mobileText.includes("800"),
-    "WALLET SECTION (mobile, held) leaks no holding values (price-only #10706)",
+    (await mobilePage.locator('[data-testid="wallet-section-price-surface"]').count()) ===
+      0,
+    "WALLET SECTION (mobile) does not duplicate the wallet balance widget",
   );
   await mobilePage.screenshot({
     path: join(outDir, "wallet-section-mobile.png"),

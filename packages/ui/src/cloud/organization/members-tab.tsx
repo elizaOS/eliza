@@ -19,8 +19,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  BrandButton,
 } from "../../cloud-ui";
+import { Button } from "../../components/ui/button";
+import { Separator } from "../../components/ui/separator";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   canManageOrg,
@@ -150,9 +151,9 @@ export function MembersTab({ user }: MembersTabProps) {
             </p>
           </div>
           {canManageMembers && (
-            <BrandButton
+            <Button
               type="button"
-              variant="primary"
+              variant="default"
               onClick={() => setIsInviteDialogOpen(true)}
               className="font-mono text-sm md:text-base w-full sm:w-auto"
             >
@@ -160,7 +161,7 @@ export function MembersTab({ user }: MembersTabProps) {
               {t("cloud.membersTab.inviteMember", {
                 defaultValue: "Invite Member",
               })}
-            </BrandButton>
+            </Button>
           )}
         </div>
 
@@ -182,7 +183,8 @@ export function MembersTab({ user }: MembersTabProps) {
 
         {/* Pending Invites */}
         {canManageMembers && (
-          <div className="pt-4 md:pt-6 border-t border-border">
+          <div className="pt-4 md:pt-6">
+            <Separator className="mb-4 md:mb-6" />
             <h3 className="text-base md:text-lg font-mono font-semibold mb-3 md:mb-4 text-txt-strong">
               {t("cloud.membersTab.pendingInvitations", {
                 defaultValue: "Pending Invitations",
@@ -233,12 +235,11 @@ export function MembersTab({ user }: MembersTabProps) {
             <AlertDialogCancel>
               {t("cloud.membersTab.cancel", { defaultValue: "Cancel" })}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmRemove}
-              className="bg-destructive text-destructive-fg hover:bg-destructive/85"
-            >
-              {t("cloud.membersTab.remove", { defaultValue: "Remove" })}
-            </AlertDialogAction>
+            <Button asChild variant="destructive">
+              <AlertDialogAction onClick={handleConfirmRemove}>
+                {t("cloud.membersTab.remove", { defaultValue: "Remove" })}
+              </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

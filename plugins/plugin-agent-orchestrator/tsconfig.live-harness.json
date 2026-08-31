@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
+      "@elizaos/auth": ["../../packages/auth/src/index.ts"],
+      "@elizaos/auth/*": ["../../packages/auth/src/*"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/plugin-agent-orchestrator": ["./src/index.ts"]
+    }
+  },
+  "include": [
+    "src/__tests__/task-agent-live.live.test.ts",
+    "../../packages/core/test/live/task-agent-live-smoke.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

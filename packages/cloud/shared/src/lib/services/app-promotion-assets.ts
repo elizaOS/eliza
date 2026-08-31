@@ -4,6 +4,7 @@ import { generateText } from "ai";
 import { z } from "zod";
 import type { App } from "../../db/repositories";
 import { uploadToBlob } from "../blob";
+import { AD_COPY_GENERATION_COST, PROMO_IMAGE_COST } from "../promotion-pricing";
 import { mergeAnthropicCotProviderOptions } from "../providers/anthropic-thinking";
 import { getImageProvider } from "../providers/image/registry";
 import { getLanguageModel } from "../providers/language-model";
@@ -15,6 +16,11 @@ import { extractErrorMessage } from "../utils/error-handling";
 import { logger } from "../utils/logger";
 import { DEFAULT_IMAGE_MODEL_ID, getSupportedImageModelDefinition } from "./ai-pricing-definitions";
 import { contentSafetyService } from "./content-safety";
+import {
+  type GenerativeOperationContext,
+  isGenerativeOperationAdmissionError,
+  runFlatProviderOperation,
+} from "./generative-operation";
 
 const IMAGE_MODEL = DEFAULT_IMAGE_MODEL_ID;
 
@@ -260,6 +266,7 @@ class AppPromotionAssetsService {
     app: App,
     size: AdSize = "twitter_card",
     customPrompt?: string,
+    operationContext?: GenerativeOperationContext,
   ): Promise<GeneratedAsset | null> {
     const dimensions = AD_SIZES[size];
 
@@ -301,8 +308,6 @@ class AppPromotionAssetsService {
       hasWebsiteContext: Object.keys(websiteContext).length > 0,
     });
 
-    let imageBytes: Uint8Array | null = null;
-
     try {
       // Dispatch through the priced image-provider registry (matching
       // /api/v1/generate-image). The old streamText path resolved the retired
@@ -311,20 +316,69 @@ class AppPromotionAssetsService {
       if (!definition) {
         throw new Error(`Unsupported image model: ${IMAGE_MODEL}`);
       }
+      if (!operationContext) {
+        throw new Error("Promotional image generation requires generative admission");
+      }
       const env = getCloudAwareEnv();
-      const generated = await getImageProvider(definition.billingSource).generate({
-        model: definition.modelId,
-        prompt: `Generate a promotional banner image: ${prompt}`,
-        size: `${dimensions.width}x${dimensions.height}`,
-        apiKeys: {
-          ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
-          ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
-          FAL_KEY: env.FAL_KEY,
-          FAL_API_KEY: env.FAL_API_KEY,
+      return await runFlatProviderOperation(
+        operationContext,
+        {
+          provider: definition.provider,
+          billingSource: definition.billingSource,
+          model: definition.modelId,
+          operation: `promotion_image_${size}`,
+          cost: PROMO_IMAGE_COST,
+          metadata: { appId: app.id, size },
         },
-      });
-      imageBytes = generated.bytes;
+        async () => {
+          const generated = await getImageProvider(definition.billingSource).generate({
+            model: definition.modelId,
+            prompt: `Generate a promotional banner image: ${prompt}`,
+            size: `${dimensions.width}x${dimensions.height}`,
+            apiKeys: {
+              ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
+              ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
+              FAL_KEY: env.FAL_KEY,
+              FAL_API_KEY: env.FAL_API_KEY,
+            },
+          });
+          if (!generated.bytes) {
+            throw new Error("Image provider returned no image bytes");
+          }
+          const buffer = Buffer.from(generated.bytes);
+          logger.info("[PromotionAssets] Uploading to blob storage", {
+            appId: app.id,
+            size,
+            bufferSize: buffer.length,
+          });
+          const blob = await uploadToBlob(buffer, {
+            filename: `${size}-${Date.now()}.png`,
+            contentType: "image/png",
+            folder: `promotion-assets/${app.id}`,
+          });
+          await contentSafetyService.assertSafeForPublicUse({
+            surface: "promotion_asset_output",
+            organizationId: app.organization_id,
+            appId: app.id,
+            imageUrls: [blob.url],
+            metadata: { size, format: "png" },
+          });
+          logger.info("[PromotionAssets] Image generated and uploaded", {
+            appId: app.id,
+            size,
+            url: blob.url,
+          });
+          return {
+            type: "social_card",
+            size: dimensions,
+            url: blob.url,
+            format: "png",
+            generatedAt: new Date(),
+          };
+        },
+      );
     } catch (error) {
+      if (isGenerativeOperationAdmissionError(error)) throw error;
       logger.error("[PromotionAssets] Image generation error", {
         appId: app.id,
         size,
@@ -332,60 +386,19 @@ class AppPromotionAssetsService {
       });
       return null;
     }
-
-    if (!imageBytes) {
-      logger.warn("[PromotionAssets] Failed to generate image - no image returned", {
-        appId: app.id,
-        size,
-      });
-      return null;
-    }
-
-    // Upload to R2 storage
-    const buffer = Buffer.from(imageBytes);
-
-    logger.info("[PromotionAssets] Uploading to blob storage", {
-      appId: app.id,
-      size,
-      bufferSize: buffer.length,
-    });
-
-    const blob = await uploadToBlob(buffer, {
-      filename: `${size}-${Date.now()}.png`,
-      contentType: "image/png",
-      folder: `promotion-assets/${app.id}`,
-    });
-
-    await contentSafetyService.assertSafeForPublicUse({
-      surface: "promotion_asset_output",
-      organizationId: app.organization_id,
-      appId: app.id,
-      imageUrls: [blob.url],
-      metadata: { size, format: "png" },
-    });
-
-    logger.info("[PromotionAssets] Image generated and uploaded", {
-      appId: app.id,
-      size,
-      url: blob.url,
-    });
-
-    return {
-      type: "social_card",
-      size: dimensions,
-      url: blob.url,
-      format: "png",
-      generatedAt: new Date(),
-    };
   }
 
   /**
    * Generate ad banners - runs in parallel for speed
    */
-  async generateAdBanners(app: App, sizes: AdSize[]): Promise<GeneratedAsset[]> {
+  async generateAdBanners(
+    app: App,
+    sizes: AdSize[],
+    operationContext?: GenerativeOperationContext,
+  ): Promise<GeneratedAsset[]> {
     const results = await Promise.all(
       sizes.map(async (size) => {
-        const asset = await this.generateSocialCard(app, size);
+        const asset = await this.generateSocialCard(app, size, undefined, operationContext);
         if (!asset) return null;
         return { ...asset, type: "banner" } as GeneratedAsset;
       }),
@@ -400,6 +413,7 @@ class AppPromotionAssetsService {
     app: App,
     targetAudience?: string,
     tone: "professional" | "casual" | "exciting" | "informative" = "professional",
+    operationContext?: GenerativeOperationContext,
   ): Promise<AdCopyVariants> {
     // Detect app category for better copy
     const description = (app.description || "").toLowerCase();
@@ -475,37 +489,53 @@ Return JSON with these exact fields:
 Return ONLY valid JSON. No markdown, no explanation.`;
 
     const copyModel = "anthropic/claude-sonnet-4.6";
+    if (!operationContext) {
+      throw new Error("Promotional copy generation requires generative admission");
+    }
     // Note: When ANTHROPIC_COT_BUDGET is set, @ai-sdk/anthropic silently strips temperature,
     // topP, and topK when extended thinking is active. We explicitly disable extended thinking
     // (pass budget=0) to preserve temperature control for creative promotional content quality.
-    const result = await generateText({
-      model: getLanguageModel(copyModel),
-      ...mergeAnthropicCotProviderOptions(copyModel, process.env, 0),
-      temperature: 0.8,
-      prompt,
-    });
-    assertModelOutputComplete({
-      finishReason: result.finishReason,
-      provider: "anthropic",
-      model: copyModel,
-    });
+    return await runFlatProviderOperation(
+      operationContext,
+      {
+        provider: "anthropic",
+        billingSource: "anthropic",
+        model: copyModel,
+        operation: "promotion_ad_copy",
+        cost: AD_COPY_GENERATION_COST,
+        metadata: { appId: app.id },
+      },
+      async () => {
+        const result = await generateText({
+          model: getLanguageModel(copyModel),
+          ...mergeAnthropicCotProviderOptions(copyModel, process.env, 0),
+          temperature: 0.8,
+          prompt,
+        });
+        assertModelOutputComplete({
+          finishReason: result.finishReason,
+          provider: "anthropic",
+          model: copyModel,
+        });
 
-    const parsed = parseAiJson(result.text, AdCopyVariantsSchema, "ad copy variants");
+        const parsed = parseAiJson(result.text, AdCopyVariantsSchema, "ad copy variants");
 
-    await contentSafetyService.assertSafeForPublicUse({
-      surface: "promotion_copy",
-      organizationId: app.organization_id,
-      appId: app.id,
-      text: [
-        ...parsed.headlines.map((headline) => `Headline: ${headline}`),
-        ...parsed.descriptions.map((description) => `Description: ${description}`),
-        ...parsed.callToActions.map((callToAction) => `CTA: ${callToAction}`),
-        ...parsed.hashtags.map((hashtag) => `Hashtag: ${hashtag}`),
-      ],
-      metadata: { stage: "output" },
-    });
+        await contentSafetyService.assertSafeForPublicUse({
+          surface: "promotion_copy",
+          organizationId: app.organization_id,
+          appId: app.id,
+          text: [
+            ...parsed.headlines.map((headline) => `Headline: ${headline}`),
+            ...parsed.descriptions.map((description) => `Description: ${description}`),
+            ...parsed.callToActions.map((callToAction) => `CTA: ${callToAction}`),
+            ...parsed.hashtags.map((hashtag) => `Hashtag: ${hashtag}`),
+          ],
+          metadata: { stage: "output" },
+        });
 
-    return parsed;
+        return parsed;
+      },
+    );
   }
 
   /**
@@ -521,6 +551,7 @@ Return ONLY valid JSON. No markdown, no explanation.`;
       targetAudience?: string;
       customPrompt?: string; // Optional user-provided context for image generation
     } = {},
+    operationContext?: GenerativeOperationContext,
   ): Promise<{
     assets: GeneratedAsset[];
     copy?: AdCopyVariants;
@@ -532,19 +563,23 @@ Return ONLY valid JSON. No markdown, no explanation.`;
     // Generate social card (just 1 for speed)
     if (options.includeSocialCards !== false) {
       imagePromises.push(
-        this.generateSocialCard(app, "twitter_card", options.customPrompt).catch((err) => {
-          errors.push(`Failed to generate social card: ${extractErrorMessage(err)}`);
-          return null;
-        }),
+        this.generateSocialCard(app, "twitter_card", options.customPrompt, operationContext).catch(
+          (err) => {
+            if (isGenerativeOperationAdmissionError(err)) throw err;
+            errors.push(`Failed to generate social card: ${extractErrorMessage(err)}`);
+            return null;
+          },
+        ),
       );
     }
 
     // Generate 1 banner (for speed - instagram_square is most versatile)
     if (options.includeAdBanners) {
       imagePromises.push(
-        this.generateSocialCard(app, "instagram_square", options.customPrompt)
+        this.generateSocialCard(app, "instagram_square", options.customPrompt, operationContext)
           .then((asset) => (asset ? ({ ...asset, type: "banner" } as GeneratedAsset) : null))
           .catch((err) => {
+            if (isGenerativeOperationAdmissionError(err)) throw err;
             errors.push(`Failed to generate banner: ${extractErrorMessage(err)}`);
             return null;
           }),
@@ -554,10 +589,13 @@ Return ONLY valid JSON. No markdown, no explanation.`;
     // Generate copy in parallel with images
     const copyPromise =
       options.includeCopy !== false
-        ? this.generateAdCopy(app, options.targetAudience).catch((err) => {
-            errors.push(`Failed to generate copy: ${extractErrorMessage(err)}`);
-            return undefined;
-          })
+        ? this.generateAdCopy(app, options.targetAudience, "professional", operationContext).catch(
+            (err) => {
+              if (isGenerativeOperationAdmissionError(err)) throw err;
+              errors.push(`Failed to generate copy: ${extractErrorMessage(err)}`);
+              return undefined;
+            },
+          )
         : Promise.resolve(undefined);
 
     // Wait for all in parallel

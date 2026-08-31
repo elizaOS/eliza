@@ -65,7 +65,8 @@
       "category": "system",
       "androidOnly": true,
       "heroImage": "assets/hero.png"
-    }
+    },
+    "appRegister": "register"
   },
   "publishConfig": {
     "access": "public"

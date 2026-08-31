@@ -58,7 +58,7 @@ import {
   normalizeConnectorAccountRecord,
   normalizeConnectorAccountsListResponse,
 } from "./client-agent-connector-accounts";
-import { ElizaClient } from "./client-base";
+import { ElizaClient, isRemoteRelayRestAdapterBase } from "./client-base";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
 import type {
   AgentAutomationMode,
@@ -274,7 +274,12 @@ async function getDesktopStatusRpc<T>(
   rpcMethod: string,
   params?: unknown,
 ): Promise<T | null> {
-  if (isDesktopExternalApiBaseUrl(baseUrl)) return null;
+  if (
+    isDesktopExternalApiBaseUrl(baseUrl) ||
+    isRemoteRelayRestAdapterBase(baseUrl)
+  ) {
+    return null;
+  }
   const outcome = await invokeDesktopBridgeRequestWithTimeout<T>({
     rpcMethod,
     ipcChannel: "agent",
@@ -288,7 +293,12 @@ async function invokeLocalDesktopAgentRpc<T>(
   baseUrl: string,
   options: { rpcMethod: string; ipcChannel: string; params?: unknown },
 ): Promise<T | null> {
-  if (isDesktopExternalApiBaseUrl(baseUrl)) return null;
+  if (
+    isDesktopExternalApiBaseUrl(baseUrl) ||
+    isRemoteRelayRestAdapterBase(baseUrl)
+  ) {
+    return null;
+  }
   return invokeDesktopBridgeRequest<T>(options);
 }
 

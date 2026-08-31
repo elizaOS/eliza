@@ -25,6 +25,10 @@ import {
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const workflowPath = resolve(repoRoot, CERTIFICATION_WORKFLOW);
 const workflow = readFileSync(workflowPath, "utf8").replaceAll("\r\n", "\n");
+const releaseWorkflow = readFileSync(
+  resolve(repoRoot, ".github/workflows/cloud-cf-release.yml"),
+  "utf8",
+).replaceAll("\r\n", "\n");
 const sourceSha = "a".repeat(40);
 const treeSha = "b".repeat(40);
 const workflowSha256 = "c".repeat(64);
@@ -315,7 +319,7 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(validate).not.toContain("environment: production");
     expect(validate).toContain("ref: $" + "{{ github.sha }}");
     expect(validate).toContain("persist-credentials: false");
-    expect(validate).toContain("git rev-parse 'HEAD^{tree}'");
+    expect(validate).toContain(`git rev-parse "\${certified_base_sha}^{tree}"`);
     expect(validate).toContain(
       '(.event == "push" or .event == "workflow_dispatch")',
     );
@@ -333,7 +337,7 @@ describe("Cloud CF workflow staging certification gate", () => {
     );
     expect(validate).toContain("digest-mismatch: error");
     expect(validate).toContain("staging-release-certification.mjs verify");
-    expect(validate).not.toContain("inputs.force");
+    expect(validate).toContain("inputs.force == true");
     expect(authorize).toContain("validate-staging-certification");
     expect(authorize).toContain(
       "needs.validate-staging-certification.result == 'success'",
@@ -342,6 +346,109 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(release).toContain(
       "needs.validate-staging-certification.result == 'success'",
     );
+  });
+
+  test("admits only a certified currently served binding-only recovery", () => {
+    const source = jobBlock(workflow, "validate-deploy-source");
+    const validate = jobBlock(workflow, "validate-staging-certification");
+    expect(workflow).toContain("production_binding_only_recovery:");
+    expect(workflow).toContain("certified_production_base_sha:");
+    expect(workflow).toContain("certified_recovery_policy_sha:");
+    expect(source).toContain(
+      "Production binding-only recovery may target only production",
+    );
+    expect(source).toContain("Production binding-only recovery forbids force");
+    expect(validate).toContain("fetch-depth: 0");
+    expect(validate).toContain("https://api.eliza.app/api/health");
+    expect(validate).toContain(".commit == $base");
+    expect(validate).toContain('.environment == "production"');
+    expect(validate).toContain("git merge-base --is-ancestor");
+    expect(validate).toContain("production-hyperdrive-binding-admission.mjs");
+    expect(validate).toContain('certification_mode="binding_only"');
+    expect(validate).toContain(
+      `git show "\${CERTIFIED_BASE_SHA}:.github/workflows/cloud-cf-deploy.yml"`,
+    );
+    expect(validate).toContain('--workflow-file "$workflow_file"');
+    expect(validate).toContain(
+      "Resolve immutable successful recovery-policy artifact",
+    );
+    expect(validate).toContain("recovery-policy-certification");
+    expect(validate).toContain(
+      `git show "\${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.mjs"`,
+    );
+    expect(validate).toContain('--policy-sha "$POLICY_SHA"');
+    expect(validate).toContain("Certified develop policy bytes admitted");
+  });
+
+  test("rechecks the trusted policy and all authorities inside the mutation job", () => {
+    const caller = jobBlock(workflow, "release");
+    const migrate = jobBlock(releaseWorkflow, "migrate-db");
+    expect(caller).toContain("production_binding_only_recovery:");
+    expect(caller).toContain("certified_production_base_sha:");
+    expect(caller).toContain("certified_recovery_policy_sha:");
+    expect(migrate).toContain(
+      "Re-admit bounded Hyperdrive recovery immediately before mutation",
+    );
+    expect(migrate).toContain('--policy-sha "$POLICY_SHA"');
+    expect(migrate).toContain(`hyperdrive/configs/\${candidate_id}`);
+    expect(migrate).toContain("preflight-database-identity.ts");
+    expect(migrate).toContain("loadCanonicalMigrations");
+    expect(migrate).toContain("validateAppliedMigrationLedger");
+    expect(migrate).toContain(
+      "Production migration ledger matches exact current main",
+    );
+    expect(migrate).not.toContain("railway variable list");
+    expect(migrate).toContain("wrangler deploy --env production --dry-run");
+    expect(migrate).toContain("Served production base drifted before mutation");
+    expect(migrate).toContain("--canonical-ref refs/heads/main");
+    expect(
+      migrate.indexOf("Re-admit bounded Hyperdrive recovery"),
+    ).toBeLessThan(migrate.indexOf("- name: Run migrations"));
+  });
+
+  test("fails closed before mutation when trusted policy or authority evidence drifts", () => {
+    const migrate = jobBlock(releaseWorkflow, "migrate-db");
+    expect(migrate).toContain(
+      "Certified recovery policy is no longer contained in develop",
+    );
+    expect(migrate).toContain(
+      "Protected audit and migration database authorities differ",
+    );
+    expect(migrate).toContain(
+      "Protected recovery authority settings are incomplete",
+    );
+    expect(migrate).toContain("trap cleanup EXIT");
+    expect(migrate).toContain("production_migration_ledger_not_current");
+    expect(migrate).toContain('DATABASE_IDENTITY_GATE_MODE" = "enforce');
+  });
+
+  test("re-audits database authority and exact production Worker before approval", () => {
+    const authorize = jobBlock(workflow, "authorize-production");
+    const release = jobBlock(workflow, "release");
+    expect(authorize).toContain("environment: production");
+    expect(authorize).toContain("secrets.DATABASE_URL");
+    expect(authorize).toContain("secrets.RAILWAY_TOKEN");
+    expect(authorize).toContain("secrets.CLOUDFLARE_API_TOKEN");
+    expect(authorize).toContain("secrets.CLOUDFLARE_ACCOUNT_ID");
+    expect(authorize).toContain(`hyperdrive/configs/\${candidate_id}`);
+    expect(authorize).toContain('--hyperdrive-json "$response"');
+    expect(authorize).toContain("develop:refs/remotes/origin/develop");
+    expect(authorize).toContain(
+      'git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/develop',
+    );
+    expect(authorize).toContain(
+      "audit-production-railway-database-authority.ts",
+    );
+    expect(authorize).toContain("--canonical-ref refs/heads/main");
+    expect(authorize).toContain("bun run build:core");
+    expect(authorize).toContain("wrangler deploy --env production --dry-run");
+    expect(authorize.match(/--canonical-ref refs\/heads\/main/g)).toHaveLength(
+      2,
+    );
+    expect(authorize).toContain("Destroy private bounded-recovery evidence");
+    expect(release).toContain("environment == 'production'");
+    expect(release).toContain("group: cloud-cf-release-v6-");
+    expect(release).toContain("cancel-in-progress: false");
   });
 
   test("fails closed on absent, expired, digestless, or noncanonical artifacts", () => {

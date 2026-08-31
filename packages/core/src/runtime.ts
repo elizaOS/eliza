@@ -40,6 +40,10 @@ import {
 	validateTaskQueryPagination,
 } from "./database";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+import {
+	mergeWorldMetadataForLegacyWrite,
+	worldMetadataValueEquals,
+} from "./database/world-metadata-cas";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import {
 	type CapabilityConfig,
@@ -154,6 +158,7 @@ import {
 import { DefaultMessageService } from "./services/message";
 import {
 	describeModelCallError,
+	isElizaCloudGatewayWarmingExhaustedError,
 	isModelProviderFallbackError,
 } from "./services/message/fallback-reply";
 import { sanitizeOutboundText } from "./services/message/outbound-sanitize";
@@ -203,6 +208,7 @@ import {
 	type Content,
 	type ControlMessage,
 	type CreateOAuthFlowStateParams,
+	type DeleteConnectorAccountCredentialRefsParams,
 	type DeleteConnectorAccountParams,
 	type DeleteOAuthFlowStateParams,
 	type Entity,
@@ -1116,6 +1122,8 @@ function normalizeMessageConnector(
 	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
 	if (metadata.resolveTargets)
 		connector.resolveTargets = metadata.resolveTargets;
+	if (metadata.resolveIdentityClaimTarget)
+		connector.resolveIdentityClaimTarget = metadata.resolveIdentityClaimTarget;
 	if (metadata.listRecentTargets)
 		connector.listRecentTargets = metadata.listRecentTargets;
 	if (metadata.listRooms) connector.listRooms = metadata.listRooms;
@@ -4894,26 +4902,62 @@ export class AgentRuntime implements IAgentRuntime {
 		return ids;
 	}
 
-	/**
-	 * Ensure the existence of a world.
-	 *
-	 * WHY upsert: Eliminates race condition where concurrent agent basic-capabilitiess
-	 * could both try to create the same world. Upsert is atomic.
-	 */
+	/** Ensures a world exists while preserving persisted metadata and revision. */
 	async ensureWorldExists({ id, name, messageServerId, metadata }: World) {
-		// Check if world exists (for logging only)
-		const world = (await this.adapter.getWorldsByIds([id]))[0] ?? null;
-
-		// Atomic upsert - handles both insert and update
-		await this.adapter.upsertWorlds([
-			{
-				id,
-				name,
-				agentId: this.agentId,
-				messageServerId,
-				metadata,
-			},
-		]);
+		let world: World | null = null;
+		let completed = false;
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			world = (await this.adapter.getWorldsByIds([id]))[0] ?? null;
+			const mergedMetadata = world
+				? mergeWorldMetadataForLegacyWrite(
+						world.metadata as Metadata | undefined,
+						metadata as Metadata | undefined,
+						String(id),
+					)
+				: metadata;
+			if (
+				world &&
+				worldMetadataValueEquals(world.metadata ?? {}, mergedMetadata ?? {}) &&
+				world.name === (name ?? world.name) &&
+				world.messageServerId === (messageServerId ?? world.messageServerId)
+			) {
+				completed = true;
+				break;
+			}
+			try {
+				await this.adapter.upsertWorlds([
+					{
+						...world,
+						id,
+						name: name ?? world?.name,
+						agentId: this.agentId,
+						messageServerId: messageServerId ?? world?.messageServerId,
+						metadata: mergedMetadata as World["metadata"],
+					},
+				]);
+				completed = true;
+				break;
+			} catch (error) {
+				if (
+					!(error instanceof ElizaError) ||
+					!(
+						["WORLD_METADATA_STALE_WRITE", "WORLD_ALREADY_EXISTS"] as const
+					).includes(
+						error.code as "WORLD_METADATA_STALE_WRITE" | "WORLD_ALREADY_EXISTS",
+					)
+				) {
+					throw error;
+				}
+				// error-policy:J2 — retry against a fresh snapshot after a concurrent
+				// creator wins the unique insert or a legacy writer advances revision.
+			}
+		}
+		if (!completed) {
+			throw new ElizaError("World ensure retries were exhausted", {
+				code: "WORLD_ENSURE_CONFLICT_EXHAUSTED",
+				context: { worldId: id, attempts: 3 },
+			});
+		}
 
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, worldId: id, messageServerId },
@@ -6990,6 +7034,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		let lastModelError: unknown;
 		let providerAttemptStartedOutput = false;
+		const providersWithExhaustedWarmingBudget = new Set<string>();
 		for (
 			let resolvedIndex = 0;
 			resolvedIndex < resolvedModels.length;
@@ -6997,6 +7042,9 @@ export class AgentRuntime implements IAgentRuntime {
 		) {
 			const resolvedModel = resolvedModels[resolvedIndex];
 			if (!resolvedModel) {
+				continue;
+			}
+			if (providersWithExhaustedWarmingBudget.has(resolvedModel.provider)) {
 				continue;
 			}
 			const resolvedModelKey = resolvedModel.modelKey;
@@ -8165,7 +8213,16 @@ export class AgentRuntime implements IAgentRuntime {
 					});
 				}
 				lastModelError = error;
-				const nextModel = resolvedModels[resolvedIndex + 1];
+				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
+					providersWithExhaustedWarmingBudget.add(resolvedModel.provider);
+				}
+				const nextModelIndex = resolvedModels.findIndex(
+					(candidate, candidateIndex) =>
+						candidateIndex > resolvedIndex &&
+						!providersWithExhaustedWarmingBudget.has(candidate.provider),
+				);
+				const nextModel =
+					nextModelIndex >= 0 ? resolvedModels[nextModelIndex] : undefined;
 				if (
 					requestedProvider !== undefined ||
 					!nextModel ||
@@ -8183,6 +8240,10 @@ export class AgentRuntime implements IAgentRuntime {
 					nextModel,
 					error,
 				});
+				// The loop increments after this catch. Jump over every registration
+				// backed by a provider whose one warming budget was already spent,
+				// while preserving an actually distinct provider as the next attempt.
+				resolvedIndex = nextModelIndex - 1;
 			}
 		}
 		this.rethrowModelFailoverError(
@@ -11550,8 +11611,10 @@ ${section_end}`;
 	}
 	async getMemories(params: {
 		entityId?: UUID;
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		roomId?: UUID;
+		excludeRoomIds?: UUID[];
 		limit?: number;
 		count?: number;
 		offset?: number;
@@ -11600,8 +11663,10 @@ ${section_end}`;
 	 */
 	private coalesceRoomMessagesScan(params: {
 		entityId?: UUID;
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		roomId?: UUID;
+		excludeRoomIds?: UUID[];
 		limit?: number;
 		count?: number;
 		offset?: number;
@@ -11621,7 +11686,9 @@ ${section_end}`;
 		if (params.tableName !== "messages" || !params.roomId) return null;
 		if (
 			params.entityId !== undefined ||
+			params.authorEntityIds !== undefined ||
 			params.agentId !== undefined ||
+			params.excludeRoomIds !== undefined ||
 			params.worldId !== undefined ||
 			params.unique ||
 			(params.offset !== undefined && params.offset !== 0) ||
@@ -13470,6 +13537,12 @@ ${section_end}`;
 		params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]> {
 		return this.adapter.listConnectorAccountCredentialRefs(params);
+	}
+
+	async deleteConnectorAccountCredentialRefs(
+		params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number> {
+		return this.adapter.deleteConnectorAccountCredentialRefs(params);
 	}
 
 	async appendConnectorAccountAuditEvent(
