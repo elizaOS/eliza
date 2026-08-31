@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Calendar visual audit</title>
+    <link rel="stylesheet" href="/stubs/calendar-tailwind-shim.css" />
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #0a0a0a;
+        color: #f5f5f5;
+      }
+      #root,
+      #root > * {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/calendar-only-entry.tsx"></script>
+  </body>
+</html>

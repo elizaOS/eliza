@@ -45,118 +45,31 @@ async function expectTopmostAtCenter(
   ).toBe(true);
 }
 
-test("calendar decomposed view: day selection and month navigation", async ({
+test("calendar decomposed view: responsive modes and event creation", async ({
   page,
 }) => {
-  // /calendar mounts the canonical SimpleCalendarView (#17859 swapped the view
-  // bundle from the canonical Calendar view): a month grid with month/year
-  // navigation and a per-day agenda, always fetching a 42-day month-grid
-  // window. There is no Day/Week/Month mode control here anymore — that
-  // belongs to the retired unified CalendarView. The shipped month-grid
-  // behavior is covered by SimpleCalendarView.test.tsx.
-  // The feed mock anchors "Design sync" at the requested window start (the
-  // grid's first cell), so the populated feed renders as a day-cell event
-  // badge ("1 event on <date>").
-  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  const feedWindows: Array<{ timeMin: number; timeMax: number }> = [];
-  page.on("request", (request) => {
-    if (!request.url().includes("/api/lifeops/calendar/feed")) return;
-    const url = new URL(request.url());
-    const timeMin = Date.parse(url.searchParams.get("timeMin") ?? "");
-    const timeMax = Date.parse(url.searchParams.get("timeMax") ?? "");
-    if (Number.isFinite(timeMin) && Number.isFinite(timeMax)) {
-      feedWindows.push({ timeMin, timeMax });
-    }
-  });
-
   await openAppPath(page, "/calendar");
-  await expect(page.getByTestId("simple-calendar-view")).toBeVisible({
+  await expect(page.getByTestId("lifeops-calendar-section")).toBeVisible({
     timeout: 60_000,
   });
-  // Today's cell is marked and the mocked feed rendered into the grid as an
-  // event badge (the events sit on the grid's first two days, which usually
-  // belong to the previous month, so the badge — not the agenda — is the
-  // deterministic populated signal).
-  await expect(page.locator('[aria-current="date"]').first()).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(
-    page.getByRole("button", { name: /\. 1 event$/ }).first(),
-  ).toBeVisible({ timeout: 15_000 });
-  // The initial fetch is a month-grid window (42 local days; ±1 for DST).
-  await expect
-    .poll(() => feedWindows.length, { timeout: 15_000 })
-    .toBeGreaterThan(0);
-  const initialWindow = feedWindows[0];
-  expect(initialWindow.timeMax - initialWindow.timeMin).toBeGreaterThanOrEqual(
-    41 * ONE_DAY_MS,
-  );
-  expect(initialWindow.timeMax - initialWindow.timeMin).toBeLessThanOrEqual(
-    43 * ONE_DAY_MS,
-  );
-
-  // Day selection is a real client-side state change: the agenda panel's
-  // accessible name carries the raw selected date key, so pick an in-month,
-  // event-free day (the 15th, or the 16th when today IS the 15th, so the
-  // click always changes the selection) and assert the agenda re-targets it
-  // with the designed empty state.
-  const today = new Date();
-  const targetDay = today.getDate() === 15 ? 16 : 15;
-  const targetKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
-  const targetCell = page.locator(
-    `[data-agent-id="calendar-day-${targetKey}"]`,
-  );
-  await expect(targetCell).toBeVisible({ timeout: 15_000 });
-  await targetCell.scrollIntoViewIfNeeded();
-  await expectTopmostAtCenter(targetCell, `Calendar day cell ${targetKey}`);
-  await targetCell.click();
-  await expect(targetCell).toHaveAttribute("aria-pressed", "true", {
-    timeout: 15_000,
-  });
-  await expect(
-    page.locator(`section[aria-label="Events for ${targetKey}"]`),
-  ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("No plans yet").first()).toBeVisible({
+  await expect(page.getByText("Design sync").first()).toBeVisible({
     timeout: 15_000,
   });
 
-  // Month navigation is a real server-visible state change: "Next month"
-  // shifts the base date, useCalendarWeek refetches a later month-grid
-  // window, and the header label changes. The mock re-anchors its events to
-  // the new window start, so the event badge stays rendered.
-  const monthTrigger = page.getByRole("button", {
-    name: /^Choose month and year/,
-  });
-  await expect(monthTrigger).toBeVisible({ timeout: 15_000 });
-  const initialMonthLabel = (await monthTrigger.innerText()).trim();
-  const requestCountBeforeNav = feedWindows.length;
-  await page.getByRole("button", { name: /^Next month/ }).click();
-  await expect
-    .poll(
-      () =>
-        feedWindows
-          .slice(requestCountBeforeNav)
-          .some(
-            (window) =>
-              window.timeMin > initialWindow.timeMin &&
-              window.timeMax - window.timeMin >= 41 * ONE_DAY_MS &&
-              window.timeMax - window.timeMin <= 43 * ONE_DAY_MS,
-          ),
-      { timeout: 15_000 },
-    )
-    .toBe(true);
-  await expect(monthTrigger).not.toHaveText(initialMonthLabel, {
+  const monthMode = page.getByRole("button", { name: "Month", exact: true });
+  await expectTopmostAtCenter(monthMode, "Calendar Month mode");
+  await monthMode.click();
+  await expect(monthMode).toHaveAttribute("aria-pressed", "true");
+
+  const newEvent = page.getByTestId("lifeops-calendar-new-event");
+  await expectTopmostAtCenter(newEvent, "Calendar New event");
+  await newEvent.click();
+  await expect(page.getByTestId("event-editor-drawer")).toBeVisible({
     timeout: 15_000,
   });
   await expect(
-    page.getByRole("button", { name: /\. 1 event$/ }).first(),
-  ).toBeVisible({ timeout: 15_000 });
-
-  // Reverse path: "Today" returns the grid to the current month.
-  await page.getByRole("button", { name: "Today", exact: true }).click();
-  await expect(monthTrigger).toHaveText(initialMonthLabel, {
-    timeout: 15_000,
-  });
+    page.getByRole("button", { name: "Create event" }),
+  ).toBeVisible();
 });
 
 test("inbox decomposed view: channel filters toggle", async ({ page }) => {
