@@ -7,6 +7,19 @@
  * adoption across restarts, idempotent evidence keys, and fail-closed
  * degradation on chat.db/TCC errors. No external bridge is consulted —
  * the local Apple database is the sole source of membership truth.
+ *
+ * Trust boundary for derived principal ids: the namespace seed below is a
+ * public constant, so anyone who knows an (account key, handle) pair can
+ * recompute that principal id — it must never be treated as a secret or a
+ * capability. The ids intentionally reach only local surfaces: MembershipService
+ * authority rows (canonicalPrincipalId), the local entity table (whose own
+ * names/metadata already store the raw handle, so the derived id discloses
+ * nothing new to a local-database reader), and in-process renewal evidence
+ * keys. They are never sent over any HTTP route in this plugin, never embedded
+ * in model context, and never synced to a cloud or shared surface; the
+ * governed chat inventory at service.ts persists chat ids only. If a future
+ * change needs to persist these ids somewhere readable by another party,
+ * derive instead from a per-install secret rather than the public namespace.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -47,10 +60,13 @@ const IMESSAGE_MEMBERSHIP_NAMESPACE = createHash("sha1")
   .subarray(0, 16);
 
 function uuidV5(name: string): UUID {
-  // RFC 4122 4.3: SHA-1 over namespace bytes || name, then set version 5
-  // and variant bits. Implemented with node:crypto so this plugin carries no
-  // uuid dependency (the ambient `uuid` module is not a declared dependency
-  // of this workspace).
+  // RFC 4122 §4.3 (Algorithm for Creating a Name-Based UUID, SHA-1 variant,
+  // version 5): SHA-1 over namespace bytes || name bytes, first 16 octets,
+  // version nibble in octet 6, variant bits in octet 8. Implemented with
+  // node:crypto so this plugin carries no runtime `uuid` dependency (uuid
+  // is only a devDependency of this workspace, used in tests).
+  // Known-answer vectors (cross-checked against the `uuid` package's v5)
+  // are pinned in membership.test.ts.
   const digest = createHash("sha1")
     .update(IMESSAGE_MEMBERSHIP_NAMESPACE)
     .update(Buffer.from(name, "utf8"))

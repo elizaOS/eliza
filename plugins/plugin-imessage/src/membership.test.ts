@@ -157,12 +157,33 @@ afterAll(async () => {
 
 describe("iMessage membership publisher (real PGlite authority)", () => {
   it("derives pattern-valid deterministic principals from handles", () => {
-    const a = imessageMembershipPrincipalId("default", "+15550001111");
-    const b = imessageMembershipPrincipalId("default", "+15550001111");
-    const c = imessageMembershipPrincipalId("default", "+15550002222");
+    const a = imessageMembershipPrincipalId("default", "+155****1111");
+    const b = imessageMembershipPrincipalId("default", "+155****1111");
+    const c = imessageMembershipPrincipalId("default", "+155****2222");
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
     expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  });
+
+  it("derives RFC 4122 v5 principal ids byte-for-byte (known-answer vectors)", () => {
+    // Known-answer vectors for the local uuidV5 over namespace seed
+    // "elizaos:plugin-imessage:membership:v1". Expected values were
+    // generated with the `uuid` package's v5 over the identical 16-byte
+    // namespace array, so this pins RFC 4122 §4.3 conformance (namespace ||
+    // name concatenation order, first-16-octet slice, version/variant
+    // nibbles) rather than just the output shape: a wrong concatenation
+    // order or slice offset produces a different, valid-looking v5 UUID and
+    // fails here. The phone/email/account mixes cover the handle forms the
+    // publisher feeds through imessageMembershipPrincipalId.
+    expect(imessageMembershipPrincipalId("default", "+155****1111")).toBe(
+      "c4b79126-3900-5d07-be84-521c570129fc"
+    );
+    expect(imessageMembershipPrincipalId("default", "user@icloud.com")).toBe(
+      "d3140fda-3a74-53a1-ae7e-77e47ec09c96"
+    );
+    expect(imessageMembershipPrincipalId("acct-2", "+155****2222")).toBe(
+      "f665282a-7391-528c-845e-ff6e622d2f4d"
+    );
   });
 
   it("publishes a complete roster snapshot and admits its members", async () => {
