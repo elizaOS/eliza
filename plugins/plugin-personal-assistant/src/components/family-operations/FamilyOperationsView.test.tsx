@@ -10,7 +10,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MAX_AGREEMENT_PDF_BYTES } from "../../lifeops/household/agreement-upload-limits.js";
 import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
@@ -205,9 +204,6 @@ describe("FamilyOperationsView", () => {
       type: "application/pdf",
     });
     fireEvent.click(await screen.findByText("Choose a signed PDF"));
-    fireEvent.change(await screen.findByLabelText("PDF page count"), {
-      target: { value: "14" },
-    });
     fireEvent.change(screen.getByLabelText("Signed PDF"), {
       target: { files: [file] },
     });
@@ -215,16 +211,18 @@ describe("FamilyOperationsView", () => {
       screen.getByRole("button", { name: "Upload immutable PDF" }),
     );
     await waitFor(() =>
-      expect(local.uploadAgreement).toHaveBeenCalledWith({
-        agreementKey: "parenting-plan",
-        title: "Parenting agreement",
-        pageCount: 14,
-        file,
-      }),
+      expect(local.uploadAgreement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agreementKey: "parenting-plan",
+          title: "Parenting agreement",
+          file,
+          onProgress: expect.any(Function),
+        }),
+      ),
     );
   });
 
-  it("blocks an oversized agreement before the upload adapter is called", async () => {
+  it("allows an agreement above the former 20 MiB ceiling", async () => {
     const local = adapter({
       ...snapshot(),
       agreements: { status: "ready", data: [] },
@@ -234,27 +232,23 @@ describe("FamilyOperationsView", () => {
       type: "application/pdf",
     });
     Object.defineProperty(file, "size", {
-      value: MAX_AGREEMENT_PDF_BYTES + 1,
+      value: 20 * 1024 * 1024 + 1,
     });
     fireEvent.click(await screen.findByText("Choose a signed PDF"));
-    fireEvent.change(await screen.findByLabelText("PDF page count"), {
-      target: { value: "14" },
-    });
     fireEvent.change(screen.getByLabelText("Signed PDF"), {
       target: { files: [file] },
     });
-
-    expect(
-      screen.getByText("Agreement PDF must be 20 MiB or smaller."),
-    ).toBeTruthy();
     expect(
       (
         screen.getByRole("button", {
           name: "Upload immutable PDF",
         }) as HTMLButtonElement
       ).disabled,
-    ).toBe(true);
-    expect(local.uploadAgreement).not.toHaveBeenCalled();
+    ).toBe(false);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Upload immutable PDF" }),
+    );
+    await waitFor(() => expect(local.uploadAgreement).toHaveBeenCalled());
   });
 
   it("creates, reviews, and requests approval for an immutable packet draft", async () => {

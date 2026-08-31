@@ -1,12 +1,7 @@
 /**
- * Defines the parenting-agreement upload limits shared by the HTTP boundary
- * and browser UI. The JSON allowance accounts for base64 expansion of one
- * maximum-size PDF plus bounded contract metadata.
+ * Defines per-request transport limits for resumable parenting-agreement
+ * uploads. These constants never limit the complete PDF or extracted content.
  */
 
-export const MAX_AGREEMENT_PDF_BYTES = 20 * 1024 * 1024;
-export const MAX_AGREEMENT_UPLOAD_JSON_BYTES = 28 * 1024 * 1024;
-
-export function agreementUploadSizeMessage(): string {
-  return "Agreement PDF must be 20 MiB or smaller.";
-}
+export const AGREEMENT_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
+export const AGREEMENT_UPLOAD_METADATA_BYTES = 64 * 1024;

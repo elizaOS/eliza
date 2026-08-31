@@ -5,16 +5,24 @@
  * service rather than request-provided role headers.
  */
 
+import { readRequestBodyBuffer } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   AgreementKnowledgeError,
   getAgreementKnowledgeService,
+  type ParentingAgreementArtifact,
 } from "../lifeops/household/agreement-knowledge.js";
 import {
-  agreementUploadSizeMessage,
-  MAX_AGREEMENT_PDF_BYTES,
-  MAX_AGREEMENT_UPLOAD_JSON_BYTES,
+  AGREEMENT_UPLOAD_CHUNK_BYTES,
+  AGREEMENT_UPLOAD_METADATA_BYTES,
 } from "../lifeops/household/agreement-upload-limits.js";
+import {
+  acceptAgreementChunk,
+  agreementUploadView,
+  beginAgreementUpload,
+  commitAgreementUpload,
+  readAgreementUpload,
+} from "../lifeops/household/agreement-upload-session.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 type JsonObject = Record<string, unknown>;
@@ -58,47 +66,6 @@ function optionalString(body: JsonObject, field: string): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function decodeAgreementPdf(bytesBase64: string): Buffer {
-  if (
-    bytesBase64.length % 4 !== 0 ||
-    !/^[A-Za-z0-9+/]*={0,2}$/.test(bytesBase64)
-  ) {
-    throw new AgreementKnowledgeError(
-      "bytesBase64 must be canonical base64",
-      "AGREEMENT_INVALID_CONTRACT",
-      { field: "bytesBase64" },
-    );
-  }
-  const paddingBytes = bytesBase64.endsWith("==")
-    ? 2
-    : bytesBase64.endsWith("=")
-      ? 1
-      : 0;
-  const decodedBytes = (bytesBase64.length / 4) * 3 - paddingBytes;
-  if (decodedBytes > MAX_AGREEMENT_PDF_BYTES) {
-    throw new AgreementKnowledgeError(
-      agreementUploadSizeMessage(),
-      "AGREEMENT_INVALID_CONTRACT",
-      { maxBytes: MAX_AGREEMENT_PDF_BYTES, decodedBytes },
-    );
-  }
-  const bytes = Buffer.from(bytesBase64, "base64");
-  if (bytes.toString("base64") !== bytesBase64) {
-    throw new AgreementKnowledgeError(
-      "bytesBase64 must be canonical base64",
-      "AGREEMENT_INVALID_CONTRACT",
-      { field: "bytesBase64" },
-    );
-  }
-  if (bytes.subarray(0, 5).toString("ascii") !== "%PDF-") {
-    throw new AgreementKnowledgeError(
-      "Parenting agreement bytes do not have a PDF signature",
-      "AGREEMENT_INVALID_CONTRACT",
-    );
-  }
-  return bytes;
-}
-
 function pathMatch(pathname: string, expression: RegExp): string[] | null {
   const match = expression.exec(pathname);
   if (!match) return null;
@@ -124,10 +91,15 @@ function statusFor(error: AgreementKnowledgeError): number {
 export async function handleAgreementKnowledgeRoutes(
   ctx: LifeOpsRouteContext,
 ): Promise<boolean> {
-  if (!ctx.pathname.startsWith("/api/lifeops/agreements")) return false;
+  if (
+    !ctx.pathname.startsWith("/api/lifeops/agreements") &&
+    !ctx.pathname.startsWith("/api/lifeops/agreement-uploads")
+  ) {
+    return false;
+  }
   const runtime = ctx.state.runtime;
   const service = runtime ? getAgreementKnowledgeService(runtime) : null;
-  if (!service) {
+  if (!runtime || !service) {
     ctx.json(
       ctx.res,
       {
@@ -151,25 +123,132 @@ export async function handleAgreementKnowledgeRoutes(
       return true;
     }
 
-    if (ctx.method === "POST" && ctx.pathname === "/api/lifeops/agreements") {
+    if (
+      ctx.method === "POST" &&
+      ctx.pathname === "/api/lifeops/agreement-uploads"
+    ) {
       const body = record(
         await ctx.readJsonBody(ctx.req, ctx.res, {
-          maxBytes: MAX_AGREEMENT_UPLOAD_JSON_BYTES,
+          maxBytes: AGREEMENT_UPLOAD_METADATA_BYTES,
         }),
       );
-      const bytesBase64 = stringField(body, "bytesBase64");
-      const bytes = decodeAgreementPdf(bytesBase64);
-      const artifact = await service.createAgreementVersion({
-        householdId: optionalString(body, "householdId"),
+      const manifest = await beginAgreementUpload(runtime, {
         agreementKey: stringField(body, "agreementKey"),
         title: stringField(body, "title"),
         originalFilename: stringField(body, "originalFilename"),
         mimeType: stringField(body, "mimeType"),
-        bytes,
-        pageCount: numberField(body, "pageCount"),
-        uploadedByEntityId: SELF_ENTITY_ID,
+        sizeBytes: numberField(body, "sizeBytes"),
       });
-      ctx.json(ctx.res, { artifact }, 201);
+      ctx.json(ctx.res, { upload: agreementUploadView(manifest) }, 201);
+      return true;
+    }
+
+    const uploadStatus = pathMatch(
+      ctx.pathname,
+      /^\/api\/lifeops\/agreement-uploads\/([^/]+)$/,
+    );
+    if (ctx.method === "GET" && uploadStatus) {
+      const manifest = await readAgreementUpload(
+        runtime,
+        uploadStatus[0] ?? "",
+      );
+      ctx.json(ctx.res, { upload: agreementUploadView(manifest) });
+      return true;
+    }
+
+    const uploadChunk = pathMatch(
+      ctx.pathname,
+      /^\/api\/lifeops\/agreement-uploads\/([^/]+)\/chunks\/(\d+)$/,
+    );
+    if (ctx.method === "PUT" && uploadChunk) {
+      const bytes = await readRequestBodyBuffer(ctx.req, {
+        maxBytes: AGREEMENT_UPLOAD_CHUNK_BYTES,
+      });
+      if (!bytes) {
+        throw new AgreementKnowledgeError(
+          "Agreement chunk body is required",
+          "AGREEMENT_INVALID_CONTRACT",
+        );
+      }
+      const shaHeader = ctx.req.headers["x-chunk-sha256"];
+      const sha256 = Array.isArray(shaHeader) ? shaHeader[0] : shaHeader;
+      if (!sha256) {
+        throw new AgreementKnowledgeError(
+          "X-Chunk-Sha256 is required",
+          "AGREEMENT_INVALID_CONTRACT",
+        );
+      }
+      const manifest = await acceptAgreementChunk({
+        runtime,
+        uploadId: uploadChunk[0] ?? "",
+        index: Number(uploadChunk[1]),
+        bytes,
+        sha256,
+      });
+      ctx.json(ctx.res, { upload: agreementUploadView(manifest) });
+      return true;
+    }
+
+    const uploadCommit = pathMatch(
+      ctx.pathname,
+      /^\/api\/lifeops\/agreement-uploads\/([^/]+)\/commit$/,
+    );
+    if (ctx.method === "POST" && uploadCommit) {
+      const body = record(
+        (await ctx.readJsonBody(ctx.req, ctx.res, {
+          maxBytes: AGREEMENT_UPLOAD_METADATA_BYTES,
+        })) ?? {},
+      );
+      const committed = await commitAgreementUpload<ParentingAgreementArtifact>(
+        {
+          runtime,
+          uploadId: uploadCommit[0] ?? "",
+          contentIdentity: stringField(body, "contentIdentity"),
+          expectedSha256: optionalString(body, "sha256"),
+          createArtifact: async ({ manifest, bytes }) => {
+            return await service.createAgreementVersion({
+              agreementKey: manifest.agreementKey,
+              title: manifest.title,
+              originalFilename: manifest.originalFilename,
+              mimeType: manifest.mimeType,
+              bytes,
+              uploadedByEntityId: SELF_ENTITY_ID,
+            });
+          },
+          readArtifact: async (artifactId) => {
+            const existing = await service.readFor({
+              artifactId,
+              principalEntityId: SELF_ENTITY_ID,
+            });
+            return existing.artifact as ParentingAgreementArtifact;
+          },
+        },
+      );
+      ctx.json(
+        ctx.res,
+        { artifact: committed.artifact },
+        committed.created ? 201 : 200,
+      );
+      return true;
+    }
+
+    const artifactDownload = pathMatch(
+      ctx.pathname,
+      /^\/api\/lifeops\/agreements\/([^/]+)\/download$/,
+    );
+    if (ctx.method === "GET" && artifactDownload) {
+      const file = await service.readOwnerPdf({
+        artifactId: artifactDownload[0] ?? "",
+        ownerEntityId: SELF_ENTITY_ID,
+      });
+      ctx.res.statusCode = 200;
+      ctx.res.setHeader("Content-Type", file.mimeType);
+      ctx.res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      );
+      ctx.res.setHeader("Content-Length", String(file.bytes.length));
+      ctx.res.end(file.bytes);
       return true;
     }
 

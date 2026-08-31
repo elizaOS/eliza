@@ -51,7 +51,10 @@ vi.mock("./cloud-features-routes.js", () => ({
   handleCloudFeaturesRoute: cloudRouteMocks.handleCloudFeaturesRoute,
 }));
 
-import { MAX_AGREEMENT_UPLOAD_JSON_BYTES } from "../lifeops/household/agreement-upload-limits.js";
+import {
+  AGREEMENT_UPLOAD_CHUNK_BYTES,
+  AGREEMENT_UPLOAD_METADATA_BYTES,
+} from "../lifeops/household/agreement-upload-limits.js";
 import {
   personalAssistantRoutesPlugin,
   requireLifeOpsRouteOwnerAdminAccess,
@@ -278,6 +281,7 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["POST", "/api/lifeops/agreements"],
       ["GET", "/api/lifeops/agreements/:id"],
       ["GET", "/api/lifeops/agreements/:id/guest-projection"],
+      ["GET", "/api/lifeops/agreements/:id/download"],
       ["POST", "/api/lifeops/agreements/:id/obligations"],
       ["GET", "/api/lifeops/agreements/:id/pins"],
       ["POST", "/api/lifeops/agreements/:id/pins"],
@@ -286,14 +290,22 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["POST", "/api/lifeops/agreements/grants"],
       ["POST", "/api/lifeops/agreements/grants/:id/revoke"],
       ["POST", "/api/lifeops/agreements/obligations/:id/decision"],
+      ["POST", "/api/lifeops/agreement-uploads"],
+      ["GET", "/api/lifeops/agreement-uploads/:id"],
+      ["PUT", "/api/lifeops/agreement-uploads/:id/chunks/:index"],
+      ["POST", "/api/lifeops/agreement-uploads/:id/commit"],
     ] as const;
 
     for (const [type, path] of agreementRoutes) {
       expect(findRoute(type, path).public).not.toBe(true);
     }
-    expect(findRoute("POST", "/api/lifeops/agreements").maxBodyBytes).toBe(
-      MAX_AGREEMENT_UPLOAD_JSON_BYTES,
-    );
+    expect(
+      findRoute("POST", "/api/lifeops/agreement-uploads").maxBodyBytes,
+    ).toBe(AGREEMENT_UPLOAD_METADATA_BYTES);
+    expect(
+      findRoute("PUT", "/api/lifeops/agreement-uploads/:id/chunks/:index")
+        .maxBodyBytes,
+    ).toBe(AGREEMENT_UPLOAD_CHUNK_BYTES);
     expect(
       findRoute("POST", "/api/lifeops/agreements/grants").maxBodyBytes,
     ).toBeUndefined();

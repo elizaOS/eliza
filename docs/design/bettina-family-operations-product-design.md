@@ -182,16 +182,24 @@ grant expires automatically and can be revoked earlier.
 
 ### 6.2 Parenting-agreement setup
 
-1. Bettina uploads the signed PDF.
-2. Eliza stores the original bytes and verifies a SHA-256 hash.
-3. The PDF becomes an immutable artifact version.
-4. Eliza extracts proposed obligations with page and source-range citations.
-5. Bettina approves, edits, or rejects each proposed obligation.
-6. The approved obligation set is pinned to the agent.
-7. The original PDF remains available for citation but is not automatically
+1. Bettina uploads the signed PDF through resumable, independently hashed
+   chunks; there is no whole-document size cap.
+2. Eliza verifies every ordered chunk, the complete byte count, and the
+   reassembled SHA-256 before accepting the original bytes.
+3. Eliza derives the page count from the parser and processes every page.
+   Native text is preserved; image-bearing or native-text-empty pages are
+   rendered for strict OCR/vision transcription. A verified blank page is
+   explicit, and any failed page fails the whole ingestion rather than
+   publishing partial content as complete.
+4. The PDF becomes an immutable artifact version with complete owner-private
+   searchable text and per-page provenance.
+5. Eliza extracts proposed obligations with page and source-range citations.
+6. Bettina approves, edits, or rejects each proposed obligation.
+7. The approved obligation set is pinned to the agent.
+8. The original PDF remains available for citation but is not automatically
    injected into every turn.
-8. Default access remains owner-only.
-9. Bettina may share a specific document or excerpt with the verified
+9. Default access remains owner-only.
+10. Bettina may share a specific document or excerpt with the verified
    co-parent guest.
 
 ### 6.3 Calendar setup

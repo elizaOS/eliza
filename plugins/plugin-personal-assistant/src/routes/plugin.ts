@@ -41,7 +41,10 @@ import {
   resolveDevCloudEnvAuthority,
   SELF_ENTITY_ID,
 } from "@elizaos/shared";
-import { MAX_AGREEMENT_UPLOAD_JSON_BYTES } from "../lifeops/household/agreement-upload-limits.js";
+import {
+  AGREEMENT_UPLOAD_CHUNK_BYTES,
+  AGREEMENT_UPLOAD_METADATA_BYTES,
+} from "../lifeops/household/agreement-upload-limits.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import { handleAgreementKnowledgeRoutes } from "./agreement-knowledge-routes.js";
 import {
@@ -438,8 +441,19 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/agreements" },
   {
     type: "POST",
-    path: "/api/lifeops/agreements",
-    maxBodyBytes: MAX_AGREEMENT_UPLOAD_JSON_BYTES,
+    path: "/api/lifeops/agreement-uploads",
+    maxBodyBytes: AGREEMENT_UPLOAD_METADATA_BYTES,
+  },
+  { type: "GET", path: "/api/lifeops/agreement-uploads/:id" },
+  {
+    type: "PUT",
+    path: "/api/lifeops/agreement-uploads/:id/chunks/:index",
+    maxBodyBytes: AGREEMENT_UPLOAD_CHUNK_BYTES,
+  },
+  {
+    type: "POST",
+    path: "/api/lifeops/agreement-uploads/:id/commit",
+    maxBodyBytes: AGREEMENT_UPLOAD_METADATA_BYTES,
   },
   { type: "POST", path: "/api/lifeops/agreements/grants/preview" },
   { type: "POST", path: "/api/lifeops/agreements/grants" },
@@ -552,6 +566,7 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "PATCH", path: "/api/lifeops/relationships/:id" },
   { type: "POST", path: "/api/lifeops/relationships/:id/retire" },
   { type: "GET", path: "/api/lifeops/agreements/:id" },
+  { type: "GET", path: "/api/lifeops/agreements/:id/download" },
   {
     type: "GET",
     path: "/api/lifeops/agreements/:id/guest-projection",

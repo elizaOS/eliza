@@ -13,6 +13,8 @@ import {
   type AgentRuntime,
   documentsPluginCore,
   type Plugin,
+  Service,
+  ServiceType,
   type UUID,
 } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
@@ -38,6 +40,43 @@ const fileStoragePlugin: Plugin = {
   services: [LocalFileStorageService],
 };
 
+class AgreementTestPdfService extends Service {
+  static override serviceType = ServiceType.PDF;
+  override capabilityDescription =
+    "Deterministic complete PDF extraction for agreement domain tests";
+
+  async stop(): Promise<void> {}
+
+  async extractCompleteDocument(bytes: Buffer | Uint8Array) {
+    const text = Buffer.from(bytes).toString("utf8");
+    return {
+      complete: true as const,
+      pageCount: 12,
+      pages: Array.from({ length: 12 }, (_, index) => ({
+        pageNumber: index + 1,
+        width: 612,
+        height: 792,
+        method: "native" as const,
+        nativeText: text,
+        ocrText: null,
+        visionText: null,
+        text,
+        hasVisualContent: false,
+      })),
+      text: Array.from(
+        { length: 12 },
+        (_, index) => `--- Page ${index + 1} ---\n${text}`,
+      ).join("\n\n"),
+    };
+  }
+}
+
+const pdfPlugin: Plugin = {
+  name: "agreement-knowledge-test-pdf",
+  description: "Complete deterministic PDF extraction for agreement tests.",
+  services: [AgreementTestPdfService],
+};
+
 function pdf(label: string): Buffer {
   return Buffer.from(`%PDF-1.7\n${label}\n%%EOF\n`, "utf8");
 }
@@ -56,7 +95,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     );
     process.env.ELIZA_STATE_DIR = mediaStateDir;
     runtimeResult = await createLifeOpsTestRuntime({
-      plugins: [fileStoragePlugin, documentsPluginCore],
+      plugins: [fileStoragePlugin, documentsPluginCore, pdfPlugin],
     });
     runtime = runtimeResult.runtime;
     const graph = resolveKnowledgeGraphService(runtime);
@@ -162,7 +201,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       originalFilename: "parenting-plan.pdf",
       mimeType: "application/pdf",
       bytes: firstBytes,
-      pageCount: 12,
       uploadedByEntityId: SELF_ENTITY_ID,
     });
     expect(artifact).toMatchObject({
@@ -176,7 +214,9 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       byteSize: firstBytes.byteLength,
       pageCount: 12,
     });
-    expect(artifact.mediaUrl).toBe(`/api/media/${artifact.mediaFileName}`);
+    expect(artifact.mediaUrl).toBe(
+      `/api/lifeops/agreements/${artifact.id}/download`,
+    );
     await expect(
       runtime.getMemoryById(artifact.documentId as UUID),
     ).resolves.toMatchObject({
@@ -195,7 +235,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         originalFilename: "duplicate.pdf",
         mimeType: "application/pdf",
         bytes: firstBytes,
-        pageCount: 12,
         uploadedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_DUPLICATE_CONTENT" });
@@ -206,7 +245,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       originalFilename: "parenting-plan-amended.pdf",
       mimeType: "application/pdf",
       bytes: pdf("agreement version two"),
-      pageCount: 13,
       uploadedByEntityId: SELF_ENTITY_ID,
     });
     expect(second).toMatchObject({
@@ -220,7 +258,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         originalFilename: "old-content.pdf",
         mimeType: "application/pdf",
         bytes: firstBytes,
-        pageCount: 12,
         uploadedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_DUPLICATE_CONTENT" });
@@ -524,7 +561,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         originalFilename: "guest.pdf",
         mimeType: "application/pdf",
         bytes: pdf("guest"),
-        pageCount: 1,
         uploadedByEntityId: "verified-co-parent",
       }),
     ).rejects.toBeInstanceOf(AgreementKnowledgeError);
@@ -535,7 +571,6 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         originalFilename: "not-pdf.pdf",
         mimeType: "application/pdf",
         bytes: Buffer.from("not actually a PDF"),
-        pageCount: 1,
         uploadedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_INVALID_CONTRACT" });
