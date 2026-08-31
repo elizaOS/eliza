@@ -13,6 +13,10 @@ import {
   isOAuthSuccessLandingPath,
   mintOAuthSuccessProof,
 } from "@/lib/services/oauth/success-proof";
+import {
+  normalizeXProviderIdentity,
+  X_PROVIDER_IDENTITY_VERIFICATION_FAILED,
+} from "@/lib/services/oauth/x-identity";
 import { twitterAutomationService } from "@/lib/services/twitter-automation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -163,25 +167,28 @@ app.get("/", async (c) => {
         state.redirectUri,
       );
     } catch (error) {
-      const detail = redirectErrorDetail(error);
       logger.error("[Twitter Callback] Failed to exchange OAuth2 token", {
-        error: detail,
+        error: redirectErrorDetail(error),
         organizationId: state.organizationId,
       });
       return redirectTo(
         buildRedirectUrl(state.redirectUrl, {
           twitter_error: "token_exchange_failed",
-          twitter_error_detail: detail,
         }),
       );
     }
 
+    const verifiedIdentity = normalizeXProviderIdentity({
+      userId: tokens.userId,
+      username: tokens.screenName,
+    });
+
     try {
-      if (state.connectionRole === "owner" && tokens.userId) {
+      if (state.connectionRole === "owner" && verifiedIdentity) {
         await linkVerifiedXOwnerIdentity({
           organizationId: state.organizationId,
           userId: state.userId,
-          twitterUserId: tokens.userId,
+          twitterUserId: verifiedIdentity.userId,
         });
       }
       await twitterAutomationService.storeCredentials(
@@ -211,20 +218,25 @@ app.get("/", async (c) => {
     }
 
     await invalidateOAuthState(state.organizationId, "twitter", state.userId);
+
+    if (!verifiedIdentity || tokens.identityLookupError) {
+      logger.warn("[Twitter Callback] OAuth2 identity verification failed", {
+        organizationId: state.organizationId,
+        errorCode: X_PROVIDER_IDENTITY_VERIFICATION_FAILED,
+      });
+      return redirectTo(
+        buildRedirectUrl(state.redirectUrl, {
+          twitter_error: X_PROVIDER_IDENTITY_VERIFICATION_FAILED,
+        }),
+      );
+    }
+
     const successParams: Record<string, string> = {
       twitter_connected: "true",
       platform: "twitter",
       twitter_role: state.connectionRole ?? "owner",
+      twitter_username: verifiedIdentity.username,
     };
-    if (tokens.screenName) {
-      successParams.twitter_username = tokens.screenName;
-    }
-    if (tokens.identityLookupError) {
-      successParams.twitter_warning = "identity_lookup_failed";
-      successParams.twitter_warning_detail = redirectErrorDetail(
-        tokens.identityLookupError,
-      );
-    }
     const successTarget = buildRedirectUrl(state.redirectUrl, successParams);
     if (isOAuthSuccessLandingPath(successTarget.pathname)) {
       const proof = await mintOAuthSuccessProof({
@@ -321,15 +333,13 @@ app.get("/", async (c) => {
       oauthVerifier,
     );
   } catch (error) {
-    const detail = redirectErrorDetail(error);
     logger.error("[Twitter Callback] Failed to exchange token", {
-      error: detail,
+      error: redirectErrorDetail(error),
       organizationId: state.organizationId,
     });
     return redirectTo(
       buildRedirectUrl(redirectUrl, {
         twitter_error: "token_exchange_failed",
-        twitter_error_detail: detail,
       }),
     );
   }

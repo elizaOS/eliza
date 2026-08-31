@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 interface MeResult {
-  data: { username: string; id: string; profile_image_url?: string };
+  data?: { username?: unknown; id?: unknown; profile_image_url?: unknown };
 }
 
 // Per-test behavior for the stubbed twitter-api-v2 client and oauth2 token endpoint.
@@ -124,7 +124,9 @@ describe("TwitterAutomationService error policy", () => {
 
     test("surfaces a failed identity lookup as a distinct field, not a fabricated identity", async () => {
       twitterApiBehavior.me = async () => {
-        throw Object.assign(new Error("profile forbidden"), { code: 403 });
+        throw Object.assign(new Error("profile forbidden: secret-provider-detail-xyz"), {
+          code: 403,
+        });
       };
       const service = await loadService();
       const result = await service.exchangeOAuth2Token("code", "verifier", "https://cb");
@@ -133,8 +135,31 @@ describe("TwitterAutomationService error policy", () => {
       expect(result.accessToken).toBe("access-tok");
       expect(result.screenName).toBeUndefined();
       expect(result.userId).toBeUndefined();
-      expect(typeof result.identityLookupError).toBe("string");
-      expect(result.identityLookupError).toContain("forbidden");
+      expect(result.identityLookupError).toBe("provider_identity_verification_failed");
+      expect(result.identityLookupError).not.toContain("forbidden");
+      expect(result.identityLookupError).not.toContain("secret-provider-detail-xyz");
+    });
+
+    test.each([
+      { data: { username: "", id: "42" } },
+      { data: { username: "alice", id: "" } },
+      { data: { username: "   ", id: "42" } },
+      { data: { username: "alice", id: "   " } },
+      { data: { username: "alice" } },
+      { data: { id: "42" } },
+      { data: { username: 1, id: "42" } },
+      { data: { username: "alice", id: 42 } },
+      { data: {} },
+      {},
+    ])("treats incomplete OAuth2 /2/users/me payload %j as unverified", async (payload) => {
+      twitterApiBehavior.me = async () => payload as MeResult;
+      const service = await loadService();
+      const result = await service.exchangeOAuth2Token("code", "verifier", "https://cb");
+
+      expect(result.accessToken).toBe("access-tok");
+      expect(result.screenName).toBeUndefined();
+      expect(result.userId).toBeUndefined();
+      expect(result.identityLookupError).toBe("provider_identity_verification_failed");
     });
 
     test("a successful identity lookup leaves no lingering error signal", async () => {
