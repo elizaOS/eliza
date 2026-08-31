@@ -55,6 +55,7 @@ let elevenLabsStreamFactory = () => {
 const elevenLabsTextToSpeech = mock(async () => elevenLabsStreamFactory());
 let allowKokoroFetch = false;
 let cartesiaStatus = 200;
+let gandrStatus = 200;
 let cacheBypass = true;
 let cachedVoiceResponse: {
   bytes: Uint8Array;
@@ -79,6 +80,22 @@ const fetchMock = Object.assign(
           },
         }),
         { headers: { "Content-Type": "audio/mpeg; codec=mp3" } },
+      );
+    }
+    if (url === "https://tts.gandr.ai/v1/audio/speech") {
+      if (gandrStatus !== 200) {
+        return new Response("provider body must stay private", {
+          status: gandrStatus,
+        });
+      }
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array([73, 68, 51, 4]));
+            controller.close();
+          },
+        }),
+        { headers: { "Content-Type": "audio/mpeg" } },
       );
     }
     if (allowKokoroFetch) {
@@ -256,6 +273,7 @@ beforeAll(async () => {
 beforeEach(() => {
   allowKokoroFetch = false;
   cartesiaStatus = 200;
+  gandrStatus = 200;
   cacheBypass = true;
   cachedVoiceResponse = null;
   elevenLabsBytes = new Uint8Array([73, 68, 51]);
@@ -431,6 +449,111 @@ describe("POST /api/v1/voice/tts provider selection", () => {
       new Uint8Array([82, 73, 70, 70]).buffer,
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("maps Gandr rate limits honestly without falling back to ElevenLabs", async () => {
+    gandrStatus = 429;
+    const response = await postTts(
+      { text: "Hello from Gandr.", voiceId: "gandr-mia" },
+      { GANDR_API_KEY: "gandr-key" },
+    );
+
+    expect(response.status).toBe(429);
+    expect(elevenLabsTextToSpeech).not.toHaveBeenCalled();
+    const body = (await response.json()) as {
+      error: string;
+      provider: string;
+      code: string;
+    };
+    expect(body).toEqual({
+      error:
+        "Gandr text-to-speech is rate limited or quota constrained. Please try again later.",
+      provider: "gandr",
+      code: "rate_limit",
+    });
+  });
+
+  test("rejects unsupported Gandr-shaped voice ids with clear 4xx and no upstream call", async () => {
+    const response = await postTts(
+      { text: "Hello.", voiceId: "gandr-not_a_voice" },
+      { GANDR_API_KEY: "gandr-key" },
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("X-Eliza-TTS-Provider")).toBe("gandr");
+    const serverTiming = response.headers.get("Server-Timing") ?? "";
+    expect(serverTiming).toContain("admission;dur=");
+    const body = (await response.json()) as {
+      error: string;
+      code: string;
+    };
+    expect(body).toEqual({
+      error: "Unsupported Gandr voice ID: gandr-not_a_voice",
+      code: "unsupported_gandr_voice",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(assertSafeForPublicUse).not.toHaveBeenCalled();
+    expect(elevenLabsTextToSpeech).not.toHaveBeenCalled();
+  });
+
+  test("fails a Gandr voice fast when the provider is unconfigured", async () => {
+    const response = await postTts({ text: "Hello.", voiceId: "gandr-mia" });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("X-Eliza-TTS-Provider")).toBe("gandr");
+    expect(response.headers.get("Server-Timing")).toContain("admission;dur=");
+    const body = (await response.json()) as {
+      error: string;
+      code: string;
+    };
+    expect(body).toEqual({
+      error: "Gandr TTS is not configured for this environment.",
+      code: "gandr_unconfigured",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(assertSafeForPublicUse).not.toHaveBeenCalled();
+    expect(elevenLabsTextToSpeech).not.toHaveBeenCalled();
+  });
+
+  test("rejects Gandr text over 2000 characters before any reservation", async () => {
+    const response = await postTts(
+      { text: "a".repeat(2001), voiceId: "gandr-mia" },
+      { GANDR_API_KEY: "gandr-key" },
+    );
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as {
+      error: string;
+      code: string;
+    };
+    expect(body).toEqual({
+      error: "Gandr voices support up to 2000 characters per request",
+      code: "gandr_text_too_long",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(billUsage).not.toHaveBeenCalled();
+  });
+
+  test("tags Gandr MP3 cache entries as gandr so cross-provider collisions cannot happen", async () => {
+    const response = await postTts(
+      { text: "Hello from Gandr.", voiceId: "gandr-mia" },
+      { GANDR_API_KEY: "gandr-key" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Eliza-TTS-Provider")).toBe("gandr");
+    await response.arrayBuffer();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(cachePut).toHaveBeenCalledTimes(1);
+    const cachedKey = cachePut.mock.calls[0]?.[0] as {
+      provider: string;
+      voiceId: string;
+      voiceRevision: string;
+    };
+    expect(cachedKey.provider).toBe("gandr");
+    expect(cachedKey.voiceId).toBe("gandr-mia");
+    expect(cachedKey.voiceRevision).toBe("gandr:gandr-mia:tts-1:mp3");
   });
 
   test("rejects unsupported Kokoro-shaped voice ids with clear 4xx and no upstream call", async () => {
