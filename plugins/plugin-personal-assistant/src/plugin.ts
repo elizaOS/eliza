@@ -835,6 +835,27 @@ const rawPersonalAssistantPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "family-operations",
+      label: "Family Operations",
+      roleGate: { minRole: "OWNER" },
+      description:
+        "Private parenting agreements, linked calendars, school dates, and monthly coordination packets.",
+      icon: "UsersRound",
+      path: "/lifeops/family",
+      responseContext: {
+        primaryContext: "family",
+        secondaryContexts: ["calendar", "docs", "contacts"],
+      },
+      modalities: ["gui"],
+      bundlePath: "dist/views/bundle.js",
+      surface: { header: "fullscreen", capabilities: ["agent-surface"] },
+      componentExport: "FamilyOperationsView",
+      tags: ["family", "coparenting", "agreement", "calendar", "school"],
+      relatedActions: ["OWNER_AGREEMENT_KNOWLEDGE", "CALENDAR"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
   events: {
     [EventType.MESSAGE_MUTATED]: [handleBriefMessageMutation],
