@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Renders live computer-use sessions as a responsive monitor grid. It polls
  * authenticated snapshots and read-only frames, keeps failures visibly
@@ -232,7 +233,9 @@ function errorMessage(error: unknown): string {
 
 function kindLabel(kind: SessionKind): string {
   if (kind === "remote_guest") return "Remote guest";
-  return `${kind.slice(0, 1).toUpperCase()}${kind.slice(1)}`;
+  const wellFormed = toWellFormedUnicode(kind);
+  const head = truncateWellFormed(wellFormed, 1);
+  return `${head.toUpperCase()}${wellFormed.slice(head.length)}`;
 }
 
 function statusTone(status: SessionSnapshot["status"]): string {
