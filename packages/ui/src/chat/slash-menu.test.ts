@@ -343,60 +343,35 @@ describe("resolveClientShortcutExecution", () => {
 });
 
 describe("resolveOptimisticNavigationExecution", () => {
-  const commands = [
-    cmd({
-      key: "views",
-      textAliases: ["/views"],
-      description: "Open views",
-      acceptsArgs: true,
-      args: [{ name: "view", description: "view", dynamicChoices: "views" }],
-      target: { kind: "navigate", tab: "views", path: "/views" },
-    }),
-    cmd({
-      key: "clear",
-      textAliases: ["/clear"],
-      description: "Clear chat",
-      target: { kind: "client", clientAction: "clear-chat" },
-    }),
-  ];
-
   it("accelerates exact loaded-view navigation without consuming the chat turn", () => {
     expect(
-      resolveOptimisticNavigationExecution(commands, "open notes", undefined, {
+      resolveOptimisticNavigationExecution("open notes", undefined, {
         resolveChoices: () => ["notes", "calendar"],
       }),
     ).toEqual({ kind: "navigate-view", viewId: "notes" });
   });
 
-  it("keeps Home and loaded views immediate when the remote command catalog is unavailable", () => {
+  it("resolves Home and loaded views from the local vocabulary alone", () => {
     const options = { resolveChoices: () => ["notes", "calendar"] };
 
     expect(
-      resolveOptimisticNavigationExecution([], "go home", undefined, options),
+      resolveOptimisticNavigationExecution("go home", undefined, options),
     ).toEqual({ kind: "navigate-tab", tab: "home" });
     expect(
-      resolveOptimisticNavigationExecution(
-        [],
-        "open calendar",
-        undefined,
-        options,
-      ),
+      resolveOptimisticNavigationExecution("open calendar", undefined, options),
     ).toEqual({ kind: "navigate-view", viewId: "calendar" });
   });
 
   it("never optimistically runs client actions or unknown views", () => {
     expect(
-      resolveOptimisticNavigationExecution(commands, "clear chat", undefined, {
+      resolveOptimisticNavigationExecution("clear chat", undefined, {
         resolveChoices: () => ["notes"],
       }),
     ).toBeNull();
     expect(
-      resolveOptimisticNavigationExecution(
-        commands,
-        "open private panel",
-        undefined,
-        { resolveChoices: () => ["notes"] },
-      ),
+      resolveOptimisticNavigationExecution("open private panel", undefined, {
+        resolveChoices: () => ["notes"],
+      }),
     ).toBeNull();
   });
 });

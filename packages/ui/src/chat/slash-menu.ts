@@ -599,31 +599,31 @@ const OPTIMISTIC_NAVIGATION_COMMANDS: SlashCommandCatalogItem[] = [
  * The caller still sends the original text to the agent, so only the local view
  * transition is accelerated; response wording and side-effect truth remain
  * model- and receipt-owned.
+ *
+ * The fast path never consults the remote command catalog: every other command
+ * stays behind `naturalShortcutsEnabled` in `resolveClientShortcutExecution`, so
+ * an ordinary chat message cannot bypass inference and a flagged command
+ * consumes its draft instead of both navigating and re-sending the same text.
  */
 export function resolveOptimisticNavigationExecution(
-  commands: SlashCommandCatalogItem[],
   text: string,
   resolveSection: (token: string) => string | undefined = (t) => t,
   options: Omit<ResolveClientShortcutOptions, "allowNatural"> = {},
 ): NavigationSlashExecution | null {
-  // Resolve the local navigation vocabulary independently so an equivalent
-  // server command cannot produce a confidence tie and disable the fast path.
-  // The remote catalog remains authoritative for every command not covered by
-  // the narrow Home/loaded-view vocabulary.
-  for (const candidateCommands of [OPTIMISTIC_NAVIGATION_COMMANDS, commands]) {
-    const execution = resolveClientShortcutExecution(
-      candidateCommands,
-      text,
-      resolveSection,
-      { ...options, allowNatural: true },
-    );
-    if (
-      execution?.kind === "navigate-tab" ||
-      execution?.kind === "navigate-settings" ||
-      execution?.kind === "navigate-view"
-    ) {
-      return execution;
-    }
+  // Resolved from the local vocabulary alone so an equivalent remote command
+  // cannot produce a confidence tie and disable the fast path.
+  const execution = resolveClientShortcutExecution(
+    OPTIMISTIC_NAVIGATION_COMMANDS,
+    text,
+    resolveSection,
+    { ...options, allowNatural: true },
+  );
+  if (
+    execution?.kind === "navigate-tab" ||
+    execution?.kind === "navigate-settings" ||
+    execution?.kind === "navigate-view"
+  ) {
+    return execution;
   }
   return null;
 }

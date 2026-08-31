@@ -4470,16 +4470,11 @@ export function ChatOverlay({
     const isExplicitSlashCommand = parseSlashDraft(draft).isSlash;
     const optimisticNavigation =
       !firstRunOpen && !isExplicitSlashCommand && pendingImages.length === 0
-        ? resolveOptimisticNavigationExecution(
-            slash.commands,
-            draft,
-            slash.resolveSection,
-            {
-              resolveChoices: slash.resolveChoices,
-              isAuthorized: slash.isAuthorized,
-              isElevated: slash.isElevated,
-            },
-          )
+        ? resolveOptimisticNavigationExecution(draft, slash.resolveSection, {
+            resolveChoices: slash.resolveChoices,
+            isAuthorized: slash.isAuthorized,
+            isElevated: slash.isElevated,
+          })
         : null;
     if (optimisticNavigation) {
       runSlashExecution(optimisticNavigation, {
