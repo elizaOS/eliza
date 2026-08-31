@@ -7,6 +7,12 @@
  * asserts which model is resident at generate/embed time, which is exactly the
  * bug's observable — a chat completion executing against the embedding model
  * (or vice versa) because both roles shared one in-flight promise.
+ *
+ * The barrier can pin a load in flight AND hold a generate()/embed() call open,
+ * so the atomicity case proves the load-PLUS-use transaction is serialized: an
+ * arriving cross-role request cannot swap the native context while the other
+ * role's inference is still running. The resident model is recorded when each
+ * call RETURNS, so a mid-call swap surfaces as a wrong-model observation.
  */
 
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -69,23 +75,21 @@ interface BarrierLoader {
   embedResidentPaths: string[];
   started(marker: string): Promise<void>;
   release(marker: string): void;
+  startedUse(marker: string): Promise<void>;
+  releaseUse(marker: string): void;
 }
 
-// Fake AospLoader whose loadModel blocks on a per-marker barrier so a test can
-// pin one role's load in-flight while a request for the OTHER role arrives.
-// `generate`/`embed` record which model is resident at call time — the exact
-// wrong-model observable of the bug. Passed through the real instrumented
-// lifecycle by `ensureAospLocalInferenceHandlers`.
-function makeBarrierLoader(blockOn: string[]): BarrierLoader {
-  const loadModelCalls: string[] = [];
-  const generateResidentPaths: string[] = [];
-  const embedResidentPaths: string[] = [];
-  let currentPath: string | null = null;
+function makeGate(markers: string[]): {
+  wait(marker: string): Promise<void> | undefined;
+  release(marker: string): void;
+  started(marker: string): Promise<void>;
+  signalStarted(marker: string): void;
+} {
   const gates = new Map<string, Promise<void>>();
   const releasers = new Map<string, () => void>();
   const startedFlags = new Map<string, Promise<void>>();
   const startedSignals = new Map<string, () => void>();
-  for (const marker of blockOn) {
+  for (const marker of markers) {
     gates.set(
       marker,
       new Promise<void>((resolve) => releasers.set(marker, resolve)),
@@ -95,13 +99,47 @@ function makeBarrierLoader(blockOn: string[]): BarrierLoader {
       new Promise<void>((resolve) => startedSignals.set(marker, resolve)),
     );
   }
+  return {
+    wait: (marker) => gates.get(marker),
+    release: (marker) => releasers.get(marker)?.(),
+    started: (marker) => startedFlags.get(marker) ?? Promise.resolve(),
+    signalStarted: (marker) => startedSignals.get(marker)?.(),
+  };
+}
+
+// Fake AospLoader whose loadModel blocks on a per-marker barrier so a test can
+// pin one role's load in flight while a request for the OTHER role arrives.
+// `holdUseOn` markers additionally block generate()/embed() while that GGUF is
+// resident, so a test can hold one role's inference open and observe whether an
+// arriving cross-role request swaps the context mid-call. `generate`/`embed`
+// record which model is resident when they RETURN — the exact wrong-model
+// observable of the bug. Passed through the real instrumented lifecycle by
+// `ensureAospLocalInferenceHandlers`.
+function makeBarrierLoader(
+  blockLoadOn: string[],
+  holdUseOn: string[] = [],
+): BarrierLoader {
+  const loadModelCalls: string[] = [];
+  const generateResidentPaths: string[] = [];
+  const embedResidentPaths: string[] = [];
+  let currentPath: string | null = null;
+  const loadGate = makeGate(blockLoadOn);
+  const useGate = makeGate(holdUseOn);
+  async function holdUse(resident: string | null): Promise<void> {
+    for (const marker of holdUseOn) {
+      if (resident?.endsWith(marker)) {
+        useGate.signalStarted(marker);
+        await useGate.wait(marker);
+      }
+    }
+  }
   const loader: AospLoader = {
     async loadModel(args) {
       loadModelCalls.push(args.modelPath);
-      for (const marker of blockOn) {
+      for (const marker of blockLoadOn) {
         if (args.modelPath.endsWith(marker)) {
-          startedSignals.get(marker)?.();
-          await gates.get(marker);
+          loadGate.signalStarted(marker);
+          await loadGate.wait(marker);
         }
       }
       currentPath = args.modelPath;
@@ -111,10 +149,12 @@ function makeBarrierLoader(blockOn: string[]): BarrierLoader {
     },
     currentModelPath: () => currentPath,
     generate: async () => {
+      await holdUse(currentPath);
       generateResidentPaths.push(currentPath ?? "<none>");
       return `gen:${currentPath}`;
     },
     embed: async () => {
+      await holdUse(currentPath);
       embedResidentPaths.push(currentPath ?? "<none>");
       return { embedding: [0.1, 0.2], tokens: 1 };
     },
@@ -124,8 +164,10 @@ function makeBarrierLoader(blockOn: string[]): BarrierLoader {
     loadModelCalls,
     generateResidentPaths,
     embedResidentPaths,
-    started: (marker) => startedFlags.get(marker) ?? Promise.resolve(),
-    release: (marker) => releasers.get(marker)?.(),
+    started: (marker) => loadGate.started(marker),
+    release: (marker) => loadGate.release(marker),
+    startedUse: (marker) => useGate.started(marker),
+    releaseUse: (marker) => useGate.release(marker),
   };
 }
 
@@ -184,6 +226,57 @@ describe("AOSP fused loader cross-role in-flight guard (#30147)", () => {
 
         // The chat model WAS loaded (never true under the bug) and the chat
         // generate ran against the chat model, not the embedding GGUF.
+        expect(barrier.loadModelCalls).toEqual([embeddingPath, chatPath]);
+        expect(barrier.generateResidentPaths).toEqual([chatPath]);
+      } finally {
+        await runtime.stop({ fast: true });
+      }
+    });
+  });
+
+  it("keeps load-plus-use atomic: an arriving chat request cannot swap the native context while an embedding call is still running", async () => {
+    const stateDir = mkdtempSync(
+      path.join(os.tmpdir(), "aosp-crossrole-atomic-"),
+    );
+    const { chatPath, embeddingPath } = seedBothModels(stateDir);
+    // Nothing blocks at load time; the embed CALL is held open so a chat
+    // request can try to race the in-flight embedding inference.
+    const barrier = makeBarrierLoader([], ["bge-embedding.gguf"]);
+
+    await withEnvAsync(crossRoleEnv(stateDir), async () => {
+      const runtime = new AgentRuntime({ logLevel: "fatal" });
+      try {
+        await ensureAospLocalInferenceHandlers(runtime, {
+          buildLoader: async () => barrier.loader,
+          prewarm: false,
+        });
+        const embedHandler = runtime.getModel(ModelType.TEXT_EMBEDDING);
+        const chatHandler = runtime.getModel(ModelType.TEXT_LARGE);
+        if (!embedHandler || !chatHandler) {
+          throw new Error("AOSP cross-role handlers not registered");
+        }
+
+        // (1) The embedding model loads and embed() enters, then blocks — the
+        //     embedding transaction is still open on the native context.
+        const embedPromise = embedHandler(runtime, "index this memory");
+        await barrier.startedUse("bge-embedding.gguf");
+        // (2) A chat request arrives while the embedding call is mid-flight.
+        const chatPromise = chatHandler(runtime, { prompt: "hello there" });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        // (3) The chat load MUST NOT have started: swapping the context now
+        //     would unload the embedding model out from under the running
+        //     embed() and persist a vector produced against the chat GGUF.
+        //     Under a load-only guard the chat loadModel already fired here.
+        expect(barrier.loadModelCalls).toEqual([embeddingPath]);
+
+        // (4) Release the embedding call; it ran against the embedding model.
+        barrier.releaseUse("bge-embedding.gguf");
+        await expect(embedPromise).resolves.toEqual([0.1, 0.2]);
+        expect(barrier.embedResidentPaths).toEqual([embeddingPath]);
+
+        // (5) Only now does the chat swap happen, and the generate runs against
+        //     the freshly-resident chat model.
+        await expect(chatPromise).resolves.toBe(`gen:${chatPath}`);
         expect(barrier.loadModelCalls).toEqual([embeddingPath, chatPath]);
         expect(barrier.generateResidentPaths).toEqual([chatPath]);
       } finally {
