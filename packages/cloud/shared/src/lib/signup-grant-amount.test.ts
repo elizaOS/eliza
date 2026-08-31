@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { SIGNUP_CREDIT_POLICY } from "./signup-credits";
+import { isUntouchedSignupOpeningBalance, SIGNUP_CREDIT_POLICY } from "./signup-credits";
 
 const originalInitialFreeCredits = process.env.INITIAL_FREE_CREDITS;
 
@@ -21,6 +21,7 @@ describe("signup credit policy", () => {
     expect(SIGNUP_CREDIT_POLICY).toEqual({
       automaticGrantUsd: 5,
       openingBalanceUsd: "5.00",
+      legacyOpeningBalanceUsd: 0,
     });
   });
 
@@ -28,5 +29,13 @@ describe("signup credit policy", () => {
     process.env.INITIAL_FREE_CREDITS = "99";
     expect(SIGNUP_CREDIT_POLICY.automaticGrantUsd).toBe(5);
     expect(SIGNUP_CREDIT_POLICY.openingBalanceUsd).toBe("5.00");
+  });
+
+  test("recognizes only untouched current and legacy opening balances", () => {
+    expect(isUntouchedSignupOpeningBalance({ balanceUsd: 0, balanceRevision: 0 })).toBe(true);
+    expect(isUntouchedSignupOpeningBalance({ balanceUsd: 5, balanceRevision: 0 })).toBe(true);
+    expect(isUntouchedSignupOpeningBalance({ balanceUsd: 2, balanceRevision: 0 })).toBe(false);
+    expect(isUntouchedSignupOpeningBalance({ balanceUsd: 0, balanceRevision: 1 })).toBe(false);
+    expect(isUntouchedSignupOpeningBalance({ balanceUsd: 5, balanceRevision: 1 })).toBe(false);
   });
 });
