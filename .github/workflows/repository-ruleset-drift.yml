@@ -1,9 +1,11 @@
-# Performs semantic readback of the canonical repository ruleset. The workflow
-# never applies settings; an owner must authorize and run the separate mutation
-# mode after reviewing the exact manifest.
+# Performs semantic readback of both disjoint repository ruleset manifests. The
+# workflow never applies settings; an owner must authorize and run the separate
+# mutation mode after reviewing one explicit manifest.
 name: Repository Ruleset Drift
 
 on:
+  schedule:
+    - cron: "17 */6 * * *"
   workflow_dispatch:
   repository_dispatch:
     types: [repository_ruleset_drift]
@@ -20,12 +22,22 @@ jobs:
     name: Ruleset readback
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        manifest:
+          - .github/rulesets/required-main.json
+          - .github/rulesets/epic-25025-develop-admission.json
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: develop
           persist-credentials: false
           submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
 
       - name: Require the Administration-read credential
         env:
@@ -39,4 +51,8 @@ jobs:
       - name: Compare live ruleset with the reviewed manifest
         env:
           GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}
-        run: ./scripts/security/apply-branch-protection.sh --check --repo "$GITHUB_REPOSITORY"
+        run: >-
+          ./scripts/security/apply-branch-protection.sh
+          --manifest "${{ matrix.manifest }}"
+          --check
+          --repo "$GITHUB_REPOSITORY"

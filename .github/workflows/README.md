@@ -75,34 +75,57 @@ checkout credential, and grants no deploy authority. This is supplemental
 evidence, not a replacement for PR Static Smoke or the automatic Develop Full
 validation of the merged tip.
 
-`.github/rulesets/required-branches.json` is the reviewed no-bypass ruleset
-manifest for `develop` and `main`. `scripts/security/apply-branch-protection.sh`
-is read-only by default (`--check`) and requires explicit `--apply` authority to
-create or update that exact ruleset. `repository-ruleset-drift.yml` performs the
-same semantic readback by manual dispatch and through the
-`repository_ruleset_drift` external repository-dispatch event. A green readback
-proves configuration parity only; owner audit-log review plus red/green and
-direct-push canaries remain required after an authorized apply. External
-readback requires an owner-provisioned
+`.github/rulesets/required-main.json` and
+`.github/rulesets/epic-25025-develop-admission.json` are disjoint exact-ref,
+no-bypass manifests for `main` and `develop`. The main manifest preserves the
+existing linear-history, last-push approval, and merge-method contract. The
+develop manifest independently requires current-base `All Tests Passed` from
+GitHub Actions App ID `15368`, one non-stale approval from someone other than
+the last pusher, and resolved threads.
+`scripts/security/apply-branch-protection.sh` is read-only by default
+(`--check`), requires an explicit `--manifest` in every mode, and requires
+separate explicit `--apply` authority to create or update only the selected
+ruleset. It asks GitHub for the active rules effective on each exact target ref
+and fails closed when any rule is attributed to a different repository or
+inherited ruleset, both before and immediately after an authorized apply. An
+active ruleset with no rules has no admission effect and is not reported by
+that API; same-name ambiguity is still rejected from the full ruleset list.
+
+`repository-ruleset-drift.yml` performs a read-only two-manifest semantic
+readback every six hours, by manual dispatch, and through the
+`repository_ruleset_drift` external repository-dispatch event. It contains no
+apply route. A green readback proves configuration parity only; owner audit-log
+review plus red/green and direct-push canaries remain required after an
+authorized apply. External and scheduled readback requires an owner-provisioned
 `REPOSITORY_RULESET_READ_TOKEN` Actions secret with repository
 `Administration: read`; the workflow-scoped `GITHUB_TOKEN` cannot request
 that repository permission and is never used for this readback.
 
-The manifest intentionally keeps Code Owner review disabled while
+The GitHub Actions App pin rejects a same-name status from another app, but it
+does not bind the status to an immutable workflow. The repository PR workflow
+still checks out candidate source, so this is bounded mechanical admission,
+not the protected external READY authority required by #28746. Within #25025,
+the develop manifest must not be applied and no READY claim may rely on it until
+that separate authority and the remaining owner canaries are independently
+proven.
+
+Both manifests intentionally keep Code Owner review disabled while
 `.github/CODEOWNERS` names placeholder teams. An organization owner must
 replace every placeholder, verify each team exists and can review the covered
 paths, then submit a separate reviewed manifest change enabling Code Owner
-review. The current ruleset still requires one approval, last-push approval,
-and review-thread resolution.
+review. Both refs require one approval from someone other than the last pusher,
+stale-review dismissal, and review-thread resolution.
 
-The manifest allows squash and rebase only: linear history rejects merge commits.
+Both manifests allow squash and rebase only. Main's linear-history rule rejects
+merge commits; the bounded develop admission manifest does not add that
+separate policy.
 Required-signature enforcement is deferred because GitHub cannot generally
 produce a signed web squash for an external contributor unless the merger is
 also the pull-request author, while rebase admission requires every source
 commit to be signed. An owner may propose signature enforcement separately only
 after proving contributor-safe signed squash/rebase canaries; ordinary approval,
-last-push approval, thread resolution, status checks, linear history, and the
-force-push/deletion bans remain active here.
+last-push approval, thread resolution, status checks, and the force-push/deletion
+bans remain active for both refs, while main also retains linear history.
 
 ## On-demand security analysis
 

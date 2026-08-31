@@ -1,30 +1,37 @@
 #!/usr/bin/env bash
-# Reconciles the reviewed no-bypass repository ruleset for main and develop.
-# The default mode is a read-only semantic drift check; mutation requires the
-# explicit --apply flag and repository Administration permission.
+# Reconciles one reviewed exact-ref repository ruleset manifest. Every mode
+# requires the manifest explicitly; mutation additionally requires --apply and
+# refuses foreign active rules effective on the target before and after it.
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-MANIFEST="$REPO_ROOT/.github/rulesets/required-branches.json"
+MANIFEST=""
 REPO="${GITHUB_REPOSITORY:-elizaOS/eliza}"
 MODE="check"
 
 usage() {
   cat <<EOF_USAGE
-Usage: $0 [--repo OWNER/NAME] [--manifest PATH] [--check|--dry-run|--apply]
+Usage: $0 --manifest PATH [--repo OWNER/NAME] [--check|--dry-run|--apply]
 
-Checks the canonical repository ruleset by default. --dry-run prints the exact
-reviewed payload without contacting GitHub. --apply creates or updates only the
-named ruleset and then performs the same semantic readback.
+Checks one reviewed exact-ref repository ruleset. --dry-run prints that payload
+without contacting GitHub. --apply creates or updates only the named ruleset,
+then repeats overlap detection and semantic readback. Every mode requires an
+explicit --manifest so main and develop can never be selected implicitly.
 EOF_USAGE
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --repo) REPO="$2"; shift 2 ;;
-    --manifest) MANIFEST="$2"; shift 2 ;;
+    --repo)
+      [[ $# -ge 2 ]] || { echo "error: --repo requires OWNER/NAME" >&2; exit 2; }
+      REPO="$2"
+      shift 2
+      ;;
+    --manifest)
+      [[ $# -ge 2 ]] || { echo "error: --manifest requires PATH" >&2; exit 2; }
+      MANIFEST="$2"
+      shift 2
+      ;;
     --check) MODE="check"; shift ;;
     --dry-run) MODE="dry-run"; shift ;;
     --apply) MODE="apply"; shift ;;
@@ -33,6 +40,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -z "$MANIFEST" ]]; then
+  echo "error: --manifest is required in every mode" >&2
+  usage >&2
+  exit 2
+fi
 if [[ ! "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   echo "error: --repo must be OWNER/NAME" >&2
   exit 2
@@ -42,108 +54,327 @@ if [[ ! -f "$MANIFEST" ]]; then
   exit 1
 fi
 
-manifest_json="$(node -e '
-  const fs = require("node:fs");
-  const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  if (value.target !== "branch" || !value.name) throw new Error("manifest must name a branch ruleset");
-  process.stdout.write(JSON.stringify(value));
-' "$MANIFEST")"
-ruleset_name="$(printf '%s' "$manifest_json" | node -e '
-  let source = "";
-  process.stdin.on("data", (chunk) => (source += chunk));
-  process.stdin.on("end", () => process.stdout.write(JSON.parse(source).name));
-')"
-
-if [[ "$MODE" == "dry-run" ]]; then
-  printf '%s\n' "$manifest_json"
-  exit 0
-fi
-
-if ! command -v gh >/dev/null 2>&1; then
-  echo "error: gh CLI is required for ruleset readback" >&2
-  exit 1
-fi
-if ! gh auth status >/dev/null 2>&1; then
-  echo "error: gh is not authenticated; set GH_TOKEN or run gh auth login" >&2
-  exit 1
-fi
-
-list_json="$(gh api "repos/$REPO/rulesets?includes_parents=false")"
-ruleset_ids="$(printf '%s' "$list_json" | node -e '
-  let source = "";
-  const name = process.argv[1];
-  process.stdin.on("data", (chunk) => (source += chunk));
-  process.stdin.on("end", () => {
-    const ids = JSON.parse(source).filter((item) => item.name === name).map((item) => item.id);
-    process.stdout.write(ids.join("\n"));
-  });
-' "$ruleset_name")"
-ruleset_count="$(printf '%s\n' "$ruleset_ids" | sed '/^$/d' | wc -l | tr -d ' ')"
-if [[ "$ruleset_count" -gt 1 ]]; then
-  echo "error: multiple repository rulesets are named '$ruleset_name'; refusing ambiguous reconciliation" >&2
-  exit 1
-fi
-ruleset_id="$(printf '%s\n' "$ruleset_ids" | sed -n '1p')"
-
-if [[ "$MODE" == "apply" ]]; then
-  if [[ -n "$ruleset_id" ]]; then
-    gh api -X PUT "repos/$REPO/rulesets/$ruleset_id" --input "$MANIFEST" >/dev/null
-    echo "updated ruleset $ruleset_name ($ruleset_id)"
-  else
-    created_json="$(gh api -X POST "repos/$REPO/rulesets" --input "$MANIFEST")"
-    ruleset_id="$(printf '%s' "$created_json" | node -e '
-      let source = "";
-      process.stdin.on("data", (chunk) => (source += chunk));
-      process.stdin.on("end", () => process.stdout.write(String(JSON.parse(source).id)));
-    ')"
-    echo "created ruleset $ruleset_name ($ruleset_id)"
+if [[ "$MODE" != "dry-run" ]]; then
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "error: gh CLI is required for ruleset readback" >&2
+    exit 1
+  fi
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "error: gh is not authenticated; set GH_TOKEN or run gh auth login" >&2
+    exit 1
   fi
 fi
 
-if [[ -z "$ruleset_id" ]]; then
-  echo "error: required repository ruleset '$ruleset_name' is absent" >&2
-  exit 1
-fi
+node - "$REPO" "$MANIFEST" "$MODE" <<'EOF_NODE'
+const { readFileSync } = require("node:fs");
+const { spawnSync } = require("node:child_process");
 
-actual_json="$(gh api "repos/$REPO/rulesets/$ruleset_id")"
-printf '%s' "$actual_json" | node -e '
-  const fs = require("node:fs");
-  const expected = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  let source = "";
-  process.stdin.on("data", (chunk) => (source += chunk));
-  process.stdin.on("end", () => {
-    const actual = JSON.parse(source);
-    const pick = (template, value) => {
-      if (Array.isArray(template)) {
-        if (!Array.isArray(value)) return value;
-        return template.map((entry, index) => pick(entry, value[index]));
-      }
-      if (template && typeof template === "object") {
-        return Object.fromEntries(Object.keys(template).map((key) => [key, pick(template[key], value?.[key])]));
-      }
-      return value;
-    };
-    const expectedTypes = expected.rules.map((rule) => rule.type).sort();
-    const actualTypes = actual.rules.map((rule) => rule.type).sort();
-    const projected = {
-      ...pick({
-        name: expected.name,
-        target: expected.target,
-        enforcement: expected.enforcement,
-        bypass_actors: expected.bypass_actors,
-        conditions: expected.conditions,
-      }, actual),
-      rules: expected.rules.map((rule) => {
-        const matches = actual.rules.filter((candidate) => candidate.type === rule.type);
-        if (matches.length !== 1) return { type: rule.type, count: matches.length };
-        return pick(rule, matches[0]);
-      }),
-    };
-    if (JSON.stringify(expectedTypes) !== JSON.stringify(actualTypes) || JSON.stringify(projected) !== JSON.stringify(expected)) {
-      console.error(`error: repository ruleset drift detected for ${expected.name}`);
-      console.error(JSON.stringify({ expected, actual: projected }, null, 2));
-      process.exit(1);
-    }
-    console.log(`ruleset readback passed: ${expected.name}`);
+const [repo, manifestPath, mode] = process.argv.slice(2);
+
+function fail(message) {
+  console.error(`error: ${message}`);
+  process.exit(1);
+}
+
+function readManifest() {
+  let value;
+  try {
+    value = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    fail(`invalid ruleset manifest: ${error.message}`);
+  }
+  if (
+    value.target !== "branch" ||
+    typeof value.name !== "string" ||
+    value.name.length === 0
+  ) {
+    fail("manifest must name a branch ruleset");
+  }
+  const refs = value.conditions?.ref_name?.include;
+  const excludes = value.conditions?.ref_name?.exclude;
+  if (
+    !Array.isArray(refs) ||
+    refs.length === 0 ||
+    new Set(refs).size !== refs.length ||
+    refs.some(
+      (ref) =>
+        typeof ref !== "string" ||
+        !/^refs\/heads\/[A-Za-z0-9._/-]+$/.test(ref),
+    ) ||
+    !Array.isArray(excludes) ||
+    excludes.length !== 0
+  ) {
+    fail(
+      "manifest ref_name conditions must contain unique exact refs/heads/* includes and no excludes",
+    );
+  }
+  return value;
+}
+
+const expected = readManifest();
+const targetRefs = expected.conditions.ref_name.include;
+const expectedPayload = `${JSON.stringify(expected)}\n`;
+
+if (mode === "dry-run") {
+  process.stdout.write(expectedPayload);
+  process.exit(0);
+}
+
+function runGh(args, input) {
+  const result = spawnSync("gh", args, {
+    encoding: "utf8",
+    env: process.env,
+    input,
+    maxBuffer: 16 * 1024 * 1024,
   });
-' "$MANIFEST"
+  if (result.error) fail(`gh invocation failed: ${result.error.message}`);
+  if (result.status !== 0) {
+    const detail = (result.stderr || "").trim();
+    fail(
+      `gh ${args.slice(0, 3).join(" ")} failed${detail ? `: ${detail}` : ""}`,
+    );
+  }
+  return result.stdout;
+}
+
+function ghJson(args, input) {
+  const source = runGh(["api", ...args], input);
+  try {
+    return JSON.parse(source);
+  } catch (error) {
+    fail(`GitHub returned invalid JSON: ${error.message}`);
+  }
+}
+
+function paginatedArray(endpoint, label) {
+  const pages = ghJson(["--paginate", "--slurp", endpoint]);
+  if (
+    !Array.isArray(pages) ||
+    pages.some((page) => !Array.isArray(page))
+  ) {
+    fail(`${label} did not return paginated arrays`);
+  }
+  return pages.flat();
+}
+
+function listRulesets() {
+  return paginatedArray(
+    `repos/${repo}/rulesets?includes_parents=true&per_page=100`,
+    "repository ruleset listing",
+  );
+}
+
+function rulesetDetail(id) {
+  return ghJson([`repos/${repo}/rulesets/${id}`]);
+}
+
+function effectiveRules(ref) {
+  // Let GitHub evaluate its own fnmatch dialect. This endpoint returns every
+  // active rule effective on the exact branch, including inherited rules.
+  const branch = ref.slice("refs/heads/".length);
+  return paginatedArray(
+    `repos/${repo}/rules/branches/${encodeURIComponent(branch)}?per_page=100`,
+    `effective rule listing for ${ref}`,
+  );
+}
+
+function validRulesetId(value) {
+  return (
+    Number.isInteger(value) ||
+    (typeof value === "string" && value.length > 0)
+  );
+}
+
+function inspectLive(label) {
+  const listed = listRulesets();
+  const sameName = listed.filter((item) => item.name === expected.name);
+  if (sameName.length > 1) {
+    fail(
+      `${label}: multiple rulesets are named '${expected.name}'; refusing ambiguous reconciliation`,
+    );
+  }
+  if (sameName.length === 1 && sameName[0].source_type !== "Repository") {
+    fail(
+      `${label}: ruleset '${expected.name}' is inherited rather than repository-owned`,
+    );
+  }
+  const ownId = sameName.length === 1 ? sameName[0].id : null;
+  if (
+    ownId !== null &&
+    (typeof sameName[0].source !== "string" ||
+      sameName[0].source.toLowerCase() !== repo.toLowerCase())
+  ) {
+    fail(
+      `${label}: repository-owned ruleset '${expected.name}' has an unexpected source`,
+    );
+  }
+
+  const ownEffectiveRefs = new Set();
+  for (const ref of targetRefs) {
+    for (const rule of effectiveRules(ref)) {
+      const ruleId = rule?.ruleset_id;
+      const sourceType = rule?.ruleset_source_type;
+      const source = rule?.ruleset_source;
+      if (
+        !validRulesetId(ruleId) ||
+        typeof sourceType !== "string" ||
+        sourceType.length === 0 ||
+        typeof source !== "string" ||
+        source.length === 0
+      ) {
+        fail(
+          `${label}: effective rule on ${ref} omitted ruleset attribution`,
+        );
+      }
+      if (ownId !== null && String(ruleId) === String(ownId)) {
+        if (
+          sourceType !== "Repository" ||
+          source.toLowerCase() !== repo.toLowerCase()
+        ) {
+          fail(
+            `${label}: expected ruleset attribution is not repository-owned`,
+          );
+        }
+        ownEffectiveRefs.add(ref);
+        continue;
+      }
+      fail(
+        `${label}: foreign effective rule '${rule.type || "unknown"}' from ruleset ${ruleId} (${sourceType}) overlaps ${ref}`,
+      );
+    }
+  }
+  return { ownEffectiveRefs, ownId };
+}
+
+function requireEffectiveTargets(snapshot, label) {
+  if (expected.enforcement !== "active") return;
+  for (const ref of targetRefs) {
+    if (!snapshot.ownEffectiveRefs.has(ref)) {
+      fail(`${label}: expected active ruleset has no effective rule on ${ref}`);
+    }
+  }
+}
+
+const before = inspectLive("preflight");
+let rulesetId = before.ownId;
+
+if (mode === "apply") {
+  if (rulesetId !== null) {
+    ghJson(
+      ["-X", "PUT", `repos/${repo}/rulesets/${rulesetId}`, "--input", "-"],
+      expectedPayload,
+    );
+    console.log(`updated ruleset ${expected.name} (${rulesetId})`);
+  } else {
+    const created = ghJson(
+      ["-X", "POST", `repos/${repo}/rulesets`, "--input", "-"],
+      expectedPayload,
+    );
+    if (!validRulesetId(created.id)) {
+      fail("created ruleset response omitted id");
+    }
+    rulesetId = created.id;
+    console.log(`created ruleset ${expected.name} (${rulesetId})`);
+  }
+  const postflight = inspectLive("postflight");
+  if (String(postflight.ownId) !== String(rulesetId)) {
+    fail("postflight ruleset identity differs from the mutation response");
+  }
+  requireEffectiveTargets(postflight, "postflight");
+} else if (rulesetId !== null) {
+  requireEffectiveTargets(before, "preflight");
+}
+
+if (rulesetId === null) {
+  fail(`required repository ruleset '${expected.name}' is absent`);
+}
+
+const actual = rulesetDetail(rulesetId);
+const pick = (template, value) => {
+  if (Array.isArray(template)) {
+    if (!Array.isArray(value)) return value;
+    if (template.length !== value.length) return value;
+    return template.map((entry, index) => pick(entry, value[index]));
+  }
+  if (template && typeof template === "object") {
+    return Object.fromEntries(
+      Object.keys(template).map((key) => [
+        key,
+        pick(template[key], value?.[key]),
+      ]),
+    );
+  }
+  return value;
+};
+const expectedTypes = expected.rules.map((rule) => rule.type).sort();
+const actualTypes = Array.isArray(actual.rules)
+  ? actual.rules.map((rule) => rule.type).sort()
+  : [];
+const projected = {
+  ...pick(
+    {
+      name: expected.name,
+      target: expected.target,
+      enforcement: expected.enforcement,
+      bypass_actors: expected.bypass_actors,
+      conditions: expected.conditions,
+    },
+    actual,
+  ),
+  rules: expected.rules.map((rule) => {
+    const matches = Array.isArray(actual.rules)
+      ? actual.rules.filter((candidate) => candidate.type === rule.type)
+      : [];
+    if (matches.length !== 1) {
+      return { type: rule.type, count: matches.length };
+    }
+    return pick(rule, matches[0]);
+  }),
+};
+
+const differingPaths = new Set();
+const recordDifferences = (template, value, path) => {
+  if (Array.isArray(template)) {
+    if (!Array.isArray(value)) {
+      differingPaths.add(path);
+      return;
+    }
+    if (template.length !== value.length) {
+      differingPaths.add(`${path}.length`);
+    }
+    for (let index = 0; index < Math.min(template.length, value.length); index++) {
+      recordDifferences(template[index], value[index], `${path}[${index}]`);
+    }
+    return;
+  }
+  if (template && typeof template === "object") {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      differingPaths.add(path);
+      return;
+    }
+    for (const key of Object.keys(template)) {
+      recordDifferences(template[key], value[key], `${path}.${key}`);
+    }
+    return;
+  }
+  if (JSON.stringify(template) !== JSON.stringify(value)) {
+    differingPaths.add(path);
+  }
+};
+recordDifferences(expected, projected, "ruleset");
+if (JSON.stringify(expectedTypes) !== JSON.stringify(actualTypes)) {
+  differingPaths.add("ruleset.rules.type-set");
+}
+
+if (
+  JSON.stringify(expectedTypes) !== JSON.stringify(actualTypes) ||
+  JSON.stringify(projected) !== JSON.stringify(expected)
+) {
+  console.error(`error: repository ruleset drift detected for ${expected.name}`);
+  console.error(
+    `error: redacted drift fields: ${[...differingPaths].sort().join(", ") || "unknown"}`,
+  );
+  process.exit(1);
+}
+console.log(`ruleset readback passed: ${expected.name}`);
+EOF_NODE

@@ -1,18 +1,17 @@
 {
-  "name": "required-main-and-develop",
+  "name": "epic-25025-develop-admission",
   "target": "branch",
   "enforcement": "active",
   "bypass_actors": [],
   "conditions": {
     "ref_name": {
-      "include": ["refs/heads/develop", "refs/heads/main"],
+      "include": ["refs/heads/develop"],
       "exclude": []
     }
   },
   "rules": [
     { "type": "deletion" },
     { "type": "non_fast_forward" },
-    { "type": "required_linear_history" },
     {
       "type": "pull_request",
       "parameters": {
@@ -28,7 +27,9 @@
       "type": "required_status_checks",
       "parameters": {
         "do_not_enforce_on_create": true,
-        "required_status_checks": [{ "context": "All Tests Passed" }],
+        "required_status_checks": [
+          { "context": "All Tests Passed", "integration_id": 15368 }
+        ],
         "strict_required_status_checks_policy": true
       }
     }
