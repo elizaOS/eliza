@@ -75,53 +75,60 @@ checkout credential, and grants no deploy authority. This is supplemental
 evidence, not a replacement for PR Static Smoke or the automatic Develop Full
 validation of the merged tip.
 
-`.github/rulesets/required-main.json` and
-`.github/rulesets/epic-25025-develop-admission.json` are disjoint exact-ref,
-no-bypass manifests for `main` and `develop`. The main manifest preserves the
-existing linear-history, last-push approval, and merge-method contract. The
-develop manifest independently requires current-base `All Tests Passed` from
-GitHub Actions App ID `15368`, one non-stale approval from someone other than
-the last pusher, and resolved threads.
+`.github/rulesets/required-main.json` is the active exact-ref, no-bypass
+manifest for `main`; it preserves the existing linear-history, last-push
+approval, and merge-method contract.
+`.github/rulesets/epic-25025-develop-admission.json` is a disjoint, disabled
+source candidate for `develop`. Its eventual policy requires current-base
+`All Tests Passed` from GitHub Actions App ID `15368`, one non-stale approval
+from someone other than the last pusher, and resolved threads.
 `scripts/security/apply-branch-protection.sh` is read-only by default
 (`--check`), requires an explicit `--manifest` in every mode, and requires
 separate explicit `--apply` authority to create or update only the selected
-ruleset. It asks GitHub for the active rules effective on each exact target ref
-and fails closed when any rule is attributed to a different repository or
-inherited ruleset, both before and immediately after an authorized apply. An
-active ruleset with no rules has no admission effect and is not reported by
-that API; same-name ambiguity is still rejected from the full ruleset list.
+ruleset. Apply accepts only a manifest whose reviewed source state is already
+`active`; `disabled` and `evaluate` manifests fail before any GitHub API
+request, with no runtime bypass flag. It asks GitHub for the active rules
+effective on each exact target ref and fails closed when any rule is attributed
+to a different repository or inherited ruleset, both before and immediately
+after an authorized apply. An active ruleset with no rules has no admission
+effect and is not reported by that API; same-name ambiguity is still rejected
+from the full ruleset list.
 Readback canonicalizes only GitHub's known materialized default forms and
 known set-like policy arrays. Set membership still compares exactly, and order
 changes in unknown arrays plus every non-default or unknown nested rule-policy
 field fail closed with redacted field paths.
 
-`repository-ruleset-drift.yml` performs a read-only two-manifest semantic
-readback every six hours, by manual dispatch, and through the
+`repository-ruleset-drift.yml` performs a read-only semantic readback of the
+active main manifest every six hours, by manual dispatch, and through the
 `repository_ruleset_drift` external repository-dispatch event. It contains no
 apply route. A green readback proves configuration parity only; owner audit-log
 review plus red/green and direct-push canaries remain required after an
 authorized apply. External and scheduled readback requires an owner-provisioned
 `REPOSITORY_RULESET_READ_TOKEN` Actions secret with repository
 `Administration: read`; the workflow-scoped `GITHUB_TOKEN` cannot request
-that repository permission and is never used for this readback.
-Until that credential is provisioned and both reviewed manifests receive their
-separately authorized initial applies, scheduled drift runs are expected to
-fail closed; merging this source alone cannot make the readback green.
+that repository permission and is never used for this readback. The disabled
+develop candidate is checked by source contract tests, not treated as live
+configuration. Until the credential is provisioned and the reviewed main
+manifest receives its separately authorized initial apply, scheduled drift
+runs are expected to fail closed; merging this source alone cannot make the
+readback green.
 
 The GitHub Actions App pin rejects a same-name status from another app, but it
 does not bind the status to an immutable workflow. The repository PR workflow
 still checks out candidate source, so this is bounded mechanical admission,
 not the protected external READY authority required by #28746. Within #25025,
-the develop manifest must not be applied and no READY claim may rely on it until
-that separate authority and the remaining owner canaries are independently
-proven.
+the develop manifest is mechanically disabled and the helper refuses to apply
+it. No READY claim may rely on it until that separate authority and the
+remaining owner canaries are independently proven, followed by a separate
+reviewed source change from `disabled` to `active` before any authorized apply.
 
 Both manifests intentionally keep Code Owner review disabled while
 `.github/CODEOWNERS` names placeholder teams. An organization owner must
 replace every placeholder, verify each team exists and can review the covered
 paths, then submit a separate reviewed manifest change enabling Code Owner
-review. Both refs require one approval from someone other than the last pusher,
-stale-review dismissal, and review-thread resolution.
+review. Both policy definitions require one approval from someone other than
+the last pusher, stale-review dismissal, and review-thread resolution when
+active.
 
 Both manifests allow squash and rebase only. Main's linear-history rule rejects
 merge commits; the bounded develop admission manifest does not add that

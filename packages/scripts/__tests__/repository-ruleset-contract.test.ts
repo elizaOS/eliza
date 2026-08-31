@@ -145,6 +145,8 @@ if (method === "GET" && endpoint.includes("/rulesets?")) {
   state.details[String(id)] = { id, ...materializeRuleset(payload) };
   publishRuleset(id, payload);
   if (state.injectPostOverlap) {
+    const overlapRef = payload.conditions.ref_name.include[0];
+    const overlapBranch = overlapRef.slice("refs/heads/".length);
     state.list.push({
       id: 9002,
       name: "inherited-overlap",
@@ -158,11 +160,11 @@ if (method === "GET" && endpoint.includes("/rulesets?")) {
       name: "inherited-overlap",
       target: "branch",
       enforcement: "active",
-      conditions: { ref_name: { include: ["refs/heads/develop"], exclude: [] } },
+      conditions: { ref_name: { include: [overlapRef], exclude: [] } },
       rules: [{ type: "deletion" }],
     };
-    state.effective.develop ||= [];
-    state.effective.develop.push({
+    state.effective[overlapBranch] ||= [];
+    state.effective[overlapBranch].push({
       type: "deletion",
       ruleset_source_type: "Organization",
       ruleset_source: "test-org",
@@ -203,6 +205,7 @@ function effectiveEntries(
   id: number,
   sourceType = "Repository",
 ): Record<string, Array<Record<string, any>>> {
+  if (manifest.enforcement !== "active") return {};
   return Object.fromEntries(
     manifest.conditions.ref_name.include.map((ref: string) => [
       ref.slice("refs/heads/".length),
@@ -366,7 +369,7 @@ describe("repository ruleset contract", () => {
     expect(admission.concurrency["cancel-in-progress"]).toBeTrue();
   });
 
-  test("keeps main semantics unchanged and gives each manifest one exact disjoint ref", () => {
+  test("keeps main active and the disjoint develop candidate disabled", () => {
     expect(mainManifest.name).toBe("required-main");
     expect(mainManifest.conditions.ref_name).toEqual({
       include: ["refs/heads/main"],
@@ -382,8 +385,9 @@ describe("repository ruleset contract", () => {
         developManifest.conditions.ref_name.include.includes(ref),
       ),
     ).toEqual([]);
+    expect(mainManifest.enforcement).toBe("active");
+    expect(developManifest.enforcement).toBe("disabled");
     for (const manifest of [mainManifest, developManifest]) {
-      expect(manifest.enforcement).toBe("active");
       expect(manifest.target).toBe("branch");
       expect(manifest.bypass_actors).toEqual([]);
     }
@@ -451,6 +455,21 @@ describe("repository ruleset contract", () => {
     expect(result.requests).toEqual([]);
   });
 
+  test("refuses to apply the disabled develop candidate before any API request", () => {
+    const result = runHelper(stateWithManifests(), [
+      "--manifest",
+      manifestPath("develop"),
+      "--apply",
+      "--repo",
+      "test/repo",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      "a reviewed source change to active is required first",
+    );
+    expect(result.requests).toEqual([]);
+  });
+
   test("performs a successful check without a mutating GitHub request", () => {
     const result = runHelper(stateWithManifests(), [
       "--manifest",
@@ -474,7 +493,7 @@ describe("repository ruleset contract", () => {
       list: [
         {
           id: 201,
-          name: "organization-wide-develop",
+          name: "organization-wide-main",
           target: "branch",
           enforcement: "active",
           source_type: "Organization",
@@ -491,13 +510,13 @@ describe("repository ruleset contract", () => {
             },
           },
           enforcement: "active",
-          name: "organization-wide-develop",
+          name: "organization-wide-main",
           rules: [{ type: "deletion" }],
           target: "branch",
         },
       },
       effective: {
-        develop: [
+        main: [
           {
             type: "deletion",
             ruleset_source_type: "Organization",
@@ -509,7 +528,7 @@ describe("repository ruleset contract", () => {
     };
     const result = runHelper(state, [
       "--manifest",
-      manifestPath("develop"),
+      manifestPath("main"),
       "--apply",
       "--repo",
       "test/repo",
@@ -526,12 +545,12 @@ describe("repository ruleset contract", () => {
 
   test("refuses duplicate same-name rulesets before apply without mutation", () => {
     const state: FakeState = {
-      list: [listEntry(developManifest, 301), listEntry(developManifest, 302)],
+      list: [listEntry(mainManifest, 301), listEntry(mainManifest, 302)],
       details: {},
     };
     const result = runHelper(state, [
       "--manifest",
-      manifestPath("develop"),
+      manifestPath("main"),
       "--apply",
       "--repo",
       "test/repo",
@@ -546,7 +565,7 @@ describe("repository ruleset contract", () => {
   test("fails postflight when overlap appears across the apply race", () => {
     const result = runHelper(
       { details: {}, injectPostOverlap: true, list: [] },
-      ["--manifest", manifestPath("develop"), "--apply", "--repo", "test/repo"],
+      ["--manifest", manifestPath("main"), "--apply", "--repo", "test/repo"],
     );
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("postflight");
@@ -911,13 +930,13 @@ describe("repository ruleset contract", () => {
 
   test("applies the validated in-memory payload if the manifest path is replaced", () => {
     const root = mkdtempSync(join(tmpdir(), "ruleset-manifest-race-"));
-    const path = join(root, "develop.json");
-    const weakened = structuredClone(developManifest);
+    const path = join(root, "main.json");
+    const weakened = structuredClone(mainManifest);
     weakened.bypass_actors = [
       { actor_id: 1, actor_type: "Team", bypass_mode: "always" },
     ];
-    weakened.conditions.ref_name.include = ["refs/heads/main"];
-    writeFileSync(path, JSON.stringify(developManifest));
+    weakened.conditions.ref_name.include = ["refs/heads/develop"];
+    writeFileSync(path, JSON.stringify(mainManifest));
     try {
       const result = runHelper(
         {
@@ -929,16 +948,14 @@ describe("repository ruleset contract", () => {
         ["--manifest", path, "--apply", "--repo", "test/repo"],
       );
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(
-        "ruleset readback passed: epic-25025-develop-admission",
-      );
+      expect(result.stdout).toContain("ruleset readback passed: required-main");
       expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(weakened);
       const writes = result.requests.filter((request) =>
         ["POST", "PUT"].includes(request.method),
       );
       expect(writes).toHaveLength(1);
       expect(writes[0].inputSource).toBe("-");
-      expect(writes[0].payload).toEqual(developManifest);
+      expect(writes[0].payload).toEqual(mainManifest);
       const writtenPullRequest = writes[0].payload?.rules.find(
         (rule: Record<string, any>) => rule.type === "pull_request",
       );
@@ -957,7 +974,7 @@ describe("repository ruleset contract", () => {
     }
   });
 
-  test("keeps the scheduled two-manifest workflow strictly read-only", () => {
+  test("keeps scheduled live readback limited to the active manifest", () => {
     expect(Object.keys(drift.on).sort()).toEqual([
       "repository_dispatch",
       "schedule",
@@ -970,7 +987,6 @@ describe("repository ruleset contract", () => {
     expect(drift.permissions).toEqual({ contents: "read" });
     expect(drift.jobs.readback.strategy.matrix.manifest).toEqual([
       ".github/rulesets/required-main.json",
-      ".github/rulesets/epic-25025-develop-admission.json",
     ]);
     expect(driftSource).not.toContain("github.token");
     expect(driftSource).not.toContain("--apply");

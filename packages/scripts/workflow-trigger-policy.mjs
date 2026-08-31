@@ -197,7 +197,9 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       `${CANONICAL_ADMISSION_WORKFLOW}: canonical merge_group trigger is absent or invalid`,
     );
   }
-  if (sawRulesetDriftWorkflow && !sawRulesetDriftSchedule) {
+  if (!sawRulesetDriftWorkflow) {
+    failures.push(`${RULESET_DRIFT_WORKFLOW}: required workflow is absent`);
+  } else if (!sawRulesetDriftSchedule) {
     failures.push(
       `${RULESET_DRIFT_WORKFLOW}: required six-hour schedule is absent or invalid`,
     );

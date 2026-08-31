@@ -1,6 +1,6 @@
-# Performs semantic readback of both disjoint repository ruleset manifests. The
-# workflow never applies settings; an owner must authorize and run the separate
-# mutation mode after reviewing one explicit manifest.
+# Performs semantic readback of the active repository ruleset manifest. The
+# disabled develop candidate stays source-validated and cannot enter this live
+# readback until a reviewed source transition makes it active and applyable.
 name: Repository Ruleset Drift
 
 on:
@@ -27,7 +27,6 @@ jobs:
       matrix:
         manifest:
           - .github/rulesets/required-main.json
-          - .github/rulesets/epic-25025-develop-admission.json
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

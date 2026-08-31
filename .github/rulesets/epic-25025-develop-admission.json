@@ -1,7 +1,7 @@
 {
   "name": "epic-25025-develop-admission",
   "target": "branch",
-  "enforcement": "active",
+  "enforcement": "disabled",
   "bypass_actors": [],
   "conditions": {
     "ref_name": {

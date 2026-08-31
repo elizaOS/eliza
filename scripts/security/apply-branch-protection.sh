@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Reconciles one reviewed exact-ref repository ruleset manifest. Every mode
-# requires the manifest explicitly; mutation additionally requires --apply and
-# refuses foreign active rules effective on the target before and after it.
+# requires the manifest explicitly; mutation additionally requires --apply, an
+# active source manifest, and no foreign active rules on the target.
 
 set -euo pipefail
 
@@ -15,8 +15,9 @@ Usage: $0 --manifest PATH [--repo OWNER/NAME] [--check|--dry-run|--apply]
 
 Checks one reviewed exact-ref repository ruleset. --dry-run prints that payload
 without contacting GitHub. --apply creates or updates only the named ruleset,
-then repeats overlap detection and semantic readback. Every mode requires an
-explicit --manifest so main and develop can never be selected implicitly.
+then repeats overlap detection and semantic readback. Apply rejects disabled or
+evaluate manifests: activation requires a reviewed source change to active.
+Every mode requires an explicit --manifest so refs are never selected implicitly.
 EOF_USAGE
 }
 
@@ -90,6 +91,9 @@ function readManifest() {
   ) {
     fail("manifest must name a branch ruleset");
   }
+  if (!["active", "disabled", "evaluate"].includes(value.enforcement)) {
+    fail("manifest enforcement must be active, disabled, or evaluate");
+  }
   const refs = value.conditions?.ref_name?.include;
   const excludes = value.conditions?.ref_name?.exclude;
   if (
@@ -112,6 +116,11 @@ function readManifest() {
 }
 
 const expected = readManifest();
+if (mode === "apply" && expected.enforcement !== "active") {
+  fail(
+    `manifest '${expected.name}' cannot be applied while enforcement is '${expected.enforcement}'; a reviewed source change to active is required first`,
+  );
+}
 const targetRefs = expected.conditions.ref_name.include;
 const expectedPayload = `${JSON.stringify(expected)}\n`;
 
