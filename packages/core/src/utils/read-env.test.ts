@@ -7,7 +7,9 @@ describe("readEnv", () => {
 	});
 
 	it("trims whitespace", () => {
-		expect(readEnv("HOME", { env: { HOME: "  /home/user  " } })).toBe("/home/user");
+		expect(readEnv("HOME", { env: { HOME: "  /home/user  " } })).toBe(
+			"/home/user",
+		);
 	});
 
 	it("treats empty strings as unset", () => {
