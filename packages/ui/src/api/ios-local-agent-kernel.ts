@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * In-renderer fetch kernel for the iOS local agent: services a subset of routes
  * (market data, steward session) directly in the webview when the full-bun agent
@@ -4037,7 +4038,7 @@ export async function handleIosLocalAgentRequest(
       };
       conversation.messages.push(userMessage);
       if (conversation.title === "New chat") {
-        conversation.title = text.slice(0, 60) || conversation.title;
+        conversation.title = truncateWellFormed(toWellFormedUnicode(text), 60) || conversation.title;
       }
       const reply = await generateLocalReply(conversation, text);
       const assistantMessage: LocalMessage = {
