@@ -106,4 +106,18 @@ describe("integration-observability", () => {
     expect(loggerMock.info).toHaveBeenCalledTimes(1);
     expect(loggerMock.warn).not.toHaveBeenCalled();
   });
+
+  it("preserves surrogate integrity when error message exceeds 1024 characters", () => {
+    const loggerMock = { info: vi.fn(), warn: vi.fn() };
+    const span = createIntegrationTelemetrySpan(
+      { boundary: "cloud", operation: "sync" },
+      { sink: loggerMock },
+    );
+    const huge = "err_" + "a".repeat(1020) + "🚀" + "_failed";
+    span.failure({ error: huge });
+    expect(loggerMock.warn).toHaveBeenCalledTimes(1);
+    const line = loggerMock.warn.mock.calls[0][0] as string;
+    expect(line.isWellFormed()).toBe(true);
+  });
+
 });
