@@ -1864,6 +1864,11 @@ export class CalendarService extends Service {
   /** LifeOps injects its connector + reminder + audit implementation here. */
   setGate(gate: CalendarHostGate): void {
     this.gate = gate;
+    void this.bootstrapActiveLinkedCalendarSync().catch((error) => {
+      // error-policy:J5 Gate installation observes the detached durable-sync
+      // bootstrap; queued rows remain authoritative for the next trigger.
+      this.runtime.reportError("calendar:linked-active-sync-gate", error);
+    });
   }
 
   /** Host/test seam for the calendar-owned Microsoft provider implementation. */

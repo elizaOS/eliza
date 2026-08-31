@@ -325,6 +325,43 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       .toBe("delete");
   });
 
+  it("bootstraps existing local events as soon as a writable Google gate connects", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Created before Google",
+      startAt: "2026-08-14T19:00:00.000Z",
+      endAt: "2026-08-14T20:00:00.000Z",
+      timeZone: "America/New_York",
+      idempotencyKey: "created-before-google",
+    });
+    const event = created.event;
+    if (!event) throw new Error("Built-in calendar create returned no event.");
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.linked_calendar_events"))
+        .rows,
+    ).toHaveLength(0);
+
+    service.setGate(connectedGoogleGate());
+
+    await expect
+      .poll(async () => {
+        const row = await pg.query<{
+          local_event_id: string;
+          connector_account_id: string;
+          provider_calendar_id: string;
+          pending_operation: string;
+        }>(
+          "SELECT local_event_id, connector_account_id, provider_calendar_id, pending_operation FROM app_calendar.linked_calendar_events",
+        );
+        return row.rows[0];
+      })
+      .toMatchObject({
+        local_event_id: event.id,
+        connector_account_id: "shawgotbags",
+        provider_calendar_id: "primary",
+        pending_operation: "create",
+      });
+  });
+
   it("resolves an unscoped mutation target to the built-in event without hijacking external grants", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
       title: "Unscoped lookup",
