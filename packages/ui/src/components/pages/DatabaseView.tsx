@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * The Database view (`/database`): browse the agent's SQL store — tables, rows,
  * and an ad-hoc query editor — behind a segmented Tables/SQL control.
@@ -459,7 +460,7 @@ export function DatabaseView({
             active={selectedTable === table.name}
             onClick={() => handleSelectTable(table.name)}
           >
-            {table.name.slice(0, 1).toUpperCase()}
+            {truncateWellFormed(toWellFormedUnicode(table.name), 1).toUpperCase()}
           </SidebarContent.RailItem>
         ))}
       >
@@ -497,7 +498,7 @@ export function DatabaseView({
                       <SidebarContent.ItemIcon
                         active={selectedTable === table.name}
                       >
-                        {table.name.slice(0, 1).toUpperCase()}
+                        {truncateWellFormed(toWellFormedUnicode(table.name), 1).toUpperCase()}
                       </SidebarContent.ItemIcon>
                       <SidebarContent.ItemBody>
                         <SidebarContent.ItemTitle>
@@ -731,7 +732,7 @@ export function DatabaseView({
                         <SidebarContent.ItemIcon
                           active={selectedTable === t.name}
                         >
-                          {t.name.slice(0, 1).toUpperCase()}
+                          {truncateWellFormed(toWellFormedUnicode(t.name), 1).toUpperCase()}
                         </SidebarContent.ItemIcon>
                         <SidebarContent.ItemBody>
                           <SidebarContent.ItemTitle>
