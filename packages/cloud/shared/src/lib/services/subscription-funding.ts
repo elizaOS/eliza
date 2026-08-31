@@ -276,6 +276,36 @@ export class SubscriptionFundingService {
       actualAmount,
       input.occurredAt.toISOString(),
     ]);
+    const reservedAmount = await writeTransaction(async (tx) => {
+      const reservation = await findReservation(tx, input.organizationId, input.logicalOperationId);
+      return canonicalMoney(reservation.reserved_amount, "reservedAmount", false);
+    });
+    const actualMicros = moneyToMicros(actualAmount, "actualAmount");
+    const reservedMicros = moneyToMicros(reservedAmount, "reservedAmount");
+    if (actualMicros > reservedMicros) {
+      const overageOperationId = `overage.${digest.slice(0, 64)}`;
+      const overageAmount = microsToMoney(actualMicros - reservedMicros);
+      const overage = await this.reserve({
+        organizationId: input.organizationId,
+        logicalOperationId: overageOperationId,
+        operation: input.operation,
+        amount: overageAmount,
+        description: "Subscription funding overage",
+        reservationTtlMs: 2 * 60 * 60 * 1000,
+        metadata: input.metadata,
+      });
+      await this.settle({
+        ...input,
+        logicalOperationId: overageOperationId,
+        actualAmount: overageAmount,
+      });
+      const base = await this.settle({ ...input, actualAmount: reservedAmount });
+      return {
+        ...base,
+        overageReservation: overage.reservation,
+        replayed: base.replayed && overage.replayed,
+      };
+    }
     let purchasedMutation = false;
     const result = await writeTransaction(async (tx) => {
       await lockOrganization(tx, input.organizationId);
