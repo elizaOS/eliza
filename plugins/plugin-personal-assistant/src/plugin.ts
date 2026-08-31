@@ -47,6 +47,7 @@ import {
   registerHealthDefaultPacks,
 } from "@elizaos/plugin-health";
 import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
+import { pdfPlugin } from "@elizaos/plugin-pdf";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
 import { waitForScheduledTaskRunnerService } from "@elizaos/plugin-scheduling";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
@@ -525,6 +526,22 @@ export async function ensureLifeOpsCalendarPluginRegistered(
 }
 
 /**
+ * Register `@elizaos/plugin-pdf` when LifeOps is loaded directly. Parenting
+ * agreement ingestion and the school-calendar workflow both require the
+ * canonical `ServiceType.PDF` service, so exposing those routes without this
+ * service leaves an otherwise healthy LifeOps installation unable to execute
+ * either document path.
+ */
+export async function ensureLifeOpsPdfPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some((plugin) => plugin.name === pdfPlugin.name)) {
+    return;
+  }
+  await runtime.registerPlugin(pdfPlugin);
+}
+
+/**
  * Register `@elizaos/plugin-finances` if it is not already in the runtime. The
  * finance tables (life_payment_*, life_subscription_*) moved out of LifeOps
  * into the finances plugin's `app_finances` schema; PA's finance repository
@@ -695,7 +712,11 @@ const rawPersonalAssistantPlugin: Plugin = {
   // generic scheduled-task route; PA injects its production deps into it. It is
   // always-loaded (CORE + MOBILE), but declaring the dependency guarantees the
   // runner host is registered before PA's init injects deps + seeds.
-  dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE, "@elizaos/plugin-scheduling"],
+  dependencies: [
+    GOOGLE_CONNECTOR_PLUGIN_PACKAGE,
+    "@elizaos/plugin-scheduling",
+    "@elizaos/plugin-pdf",
+  ],
   // LifeOps owns the reply pipeline: connectors ingest but do not auto-reply
   // unless the operator explicitly disables passive mode.
   passiveConnectorsByDefault: true,
@@ -957,6 +978,7 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
+    await ensureLifeOpsPdfPluginRegistered(runtime);
 
     await ensureLifeOpsFinancesPluginRegistered(runtime);
     await ensureLifeOpsRemindersPluginRegistered(runtime);
