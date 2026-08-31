@@ -146,7 +146,7 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     relativePath: "shared/src/lib/mcp/helpers.ts",
     operation: "app_or_marketplace",
     fundingClass: "cash_only",
-    expectedSignals: { credit_service_deduct: 1 },
+    expectedSignals: { credit_service_deduct: 2 },
   },
   {
     relativePath: "shared/src/lib/services/advertising/index.ts",
@@ -176,13 +176,15 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     relativePath: "shared/src/lib/services/app-credits.ts",
     operation: "app_or_marketplace",
     fundingClass: "cash_only",
-    expectedSignals: { credit_service_reserve_and_deduct: 3 },
+    expectedSignals: { credit_service_deduct: 1, credit_service_reserve_and_deduct: 3 },
   },
   {
     relativePath: "shared/src/lib/services/credits.ts",
     operation: "unclassified",
     fundingClass: "cash_only",
     expectedSignals: {
+      credit_service_deduct: 1,
+      credit_service_reserve_and_deduct: 2,
       credit_transaction_repository_create: 1,
       raw_credit_balance_decrement: 2,
       raw_credit_transaction_sql_insert: 6,

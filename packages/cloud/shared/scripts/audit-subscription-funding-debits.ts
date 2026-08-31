@@ -10,9 +10,9 @@ import type { SubscriptionDebitSignal } from "../src/lib/services/subscription-f
 export const CLOUD_ROOT = resolve(import.meta.dirname, "../..");
 
 const SIGNAL_PATTERNS: Readonly<Record<SubscriptionDebitSignal, RegExp>> = {
-  credit_service_deduct: /\bcreditsService\.deductCredits\s*\(/g,
+  credit_service_deduct: /\.deductCredits\s*\(/g,
   credit_service_reserve: /\bcreditsService\.reserve\s*\(/g,
-  credit_service_reserve_and_deduct: /\bcreditsService\.reserveAndDeductCredits\s*\(/g,
+  credit_service_reserve_and_deduct: /\.reserveAndDeductCredits\s*\(/g,
   credit_transaction_repository_create: /\bcreditTransactionsRepository\.create\s*\(/g,
   debit_ledger_literal: /\btype\s*:\s*["']debit["']/g,
   organization_repository_deduct: /\borganizationsRepository\.deductCreditsWithTransaction\s*\(/g,

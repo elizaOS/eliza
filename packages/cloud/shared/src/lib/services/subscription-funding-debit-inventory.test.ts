@@ -33,6 +33,18 @@ describe("subscription funding production debit inventory", () => {
     });
   });
 
+  test("detects renamed credit-service receivers", () => {
+    expect(
+      scanSubscriptionDebitSignals(`
+        await usageCreditsService.deductCredits({ amount: 1 });
+        await billingAuthority.reserveAndDeductCredits({ amount: 2 });
+      `),
+    ).toEqual({
+      credit_service_deduct: 1,
+      credit_service_reserve_and_deduct: 1,
+    });
+  });
+
   test("matches the reviewed production call graph exactly", () => {
     const reviewed = Object.fromEntries(
       SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES.map((entry) => [
