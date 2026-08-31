@@ -1,6 +1,8 @@
 /** Verifies the development Vite subprocess resolves source TypeScript config imports. */
 
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, test } from "vitest";
@@ -60,4 +62,39 @@ test("resolveViteCommand stays Bun-backed when its caller runs under Bun", () =>
   );
   expect(runtime.status, runtime.stderr).toBe(0);
   expect(runtime.stdout).toBe("bun");
+});
+
+test("Vite resolution succeeds with a PATH that contains Bun and no Node executable", () => {
+  const binDir = mkdtempSync(path.join(os.tmpdir(), "eliza-bun-only-path-"));
+  const bunName = process.platform === "win32" ? "bun.exe" : "bun";
+  const bunPath = path.join(binDir, bunName);
+  try {
+    symlinkSync(process.execPath, bunPath);
+    const helperUrl = pathToFileURL(
+      path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        "dev-ui-vite.mjs",
+      ),
+    ).href;
+    const script = `
+      import { resolveViteCommand } from ${JSON.stringify(helperUrl)};
+      const resolved = resolveViteCommand({ appDir: ${JSON.stringify(appDir)} });
+      process.stdout.write(JSON.stringify(resolved));
+    `;
+    const result = spawnSync(bunPath, ["--eval", script], {
+      encoding: "utf8",
+      env: { PATH: binDir, ELIZA_NODE_PATH: "" },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const resolved = JSON.parse(result.stdout);
+    expect(path.basename(resolved.command)).toBe("bun");
+    expect(resolved.args).not.toContain("tsx");
+    const nodeProbe = spawnSync("node", ["--version"], {
+      encoding: "utf8",
+      env: { PATH: binDir },
+    });
+    expect(nodeProbe.status).not.toBe(0);
+  } finally {
+    rmSync(binDir, { recursive: true, force: true });
+  }
 });
