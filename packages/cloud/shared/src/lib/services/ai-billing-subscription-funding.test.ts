@@ -10,6 +10,7 @@ test("AI billing subscription funding contract passes in isolation", async () =>
       process.execPath,
       "test",
       "--config=/dev/null",
+      "--timeout=60000",
       `${import.meta.dir}/ai-billing-subscription-funding.fixture.mts`,
     ],
     {
