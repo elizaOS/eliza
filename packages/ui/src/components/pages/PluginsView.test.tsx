@@ -40,7 +40,13 @@ vi.mock("../../state", () => ({
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
 }));
-vi.mock("../../api", () => ({ client: clientMock }));
+// `./PluginsView` reaches `src/voice/index.ts`, whose diarization harness
+// constructs an `ElizaClient` at module scope, so the api mock has to name the
+// class even though no assertion here uses it.
+vi.mock("../../api", () => ({
+  client: clientMock,
+  ElizaClient: class {},
+}));
 
 function t(key: string, options?: { defaultValue?: string }) {
   return options?.defaultValue ?? key;
