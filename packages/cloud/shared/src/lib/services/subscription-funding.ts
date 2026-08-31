@@ -7,7 +7,10 @@ import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, gt, lte } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { writeTransaction } from "../../db/helpers";
-import { subscriptionAllowanceRepository } from "../../db/repositories/subscription-allowance";
+import {
+  readPostLockDatabaseNow,
+  subscriptionAllowanceRepository,
+} from "../../db/repositories/subscription-allowance";
 import {
   type CanonicalMoney,
   microsToMoney,
@@ -199,7 +202,7 @@ export class SubscriptionFundingService {
     let purchasedDebit = false;
     const result = await writeTransaction(async (tx) => {
       await lockOrganization(tx, input.organizationId);
-      const now = new Date();
+      const now = await readPostLockDatabaseNow(tx);
       const fundingClass = SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation];
       const period =
         fundingClass === "allowance_eligible"
