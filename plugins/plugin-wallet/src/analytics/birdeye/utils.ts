@@ -3,7 +3,7 @@
  * extraction from free-form user text, response formatting for chat display,
  * and the shared `fetch` wrapper (`makeApiRequest`) used by the Birdeye service.
  */
-import { logger } from "@elizaos/core";
+import { logger, tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { sanitizeWalletDisplayLabel } from "../../security/wallet-context-safety.js";
 import type { BirdeyeApiParams } from "./types/api/common";
 import type {
@@ -341,8 +341,10 @@ export const formatPercentChange = (change?: number): string => {
 };
 
 export const shortenAddress = (address?: string): string => {
-  if (!address || address.length <= 12) return address || "Unknown";
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  if (!address) return "Unknown";
+  const wellFormed = toWellFormedUnicode(address);
+  if (wellFormed.length <= 12) return wellFormed;
+  return `${truncateWellFormed(wellFormed, 6)}...${tailWellFormed(wellFormed, 4)}`;
 };
 
 export const formatTimestamp = (timestamp?: number): string => {
