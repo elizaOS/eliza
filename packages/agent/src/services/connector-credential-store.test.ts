@@ -133,3 +133,14 @@ describe("hasDurableHostVault", () => {
     expect(hasDurableHostVault()).toBe(true);
   });
 });
+
+describe("normalizeVaultSegment", () => {
+  it("normalizes and handles surrogate pairs safely", async () => {
+    const { normalizeVaultSegment } = await import("./connector-credential-store");
+    expect(normalizeVaultSegment("agent🚀test")).toBe("agent_test");
+    expect(normalizeVaultSegment(" my-agent-123 ")).toBe("my-agent-123");
+    expect(normalizeVaultSegment("")).toBe("unknown");
+    const longName = "a".repeat(70);
+    expect(normalizeVaultSegment(longName).length).toBe(64);
+  });
+});

@@ -28,7 +28,7 @@
  * which credential resolvers probe first when reading refs.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { createVault, type Vault } from "@elizaos/vault";
 import {
   getAgentHostBridge,
@@ -140,10 +140,10 @@ export function buildConnectorCredentialVaultRef(params: {
   ].join(".");
 }
 
-function normalizeVaultSegment(value: string): string {
-  const normalized = value
+export function normalizeVaultSegment(value: string): string {
+  const normalized = toWellFormedUnicode(value)
     .trim()
     .replace(/[^a-zA-Z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "");
-  return (normalized || "unknown").slice(0, 64);
+  return truncateWellFormed(normalized || "unknown", 64);
 }
