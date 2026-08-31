@@ -317,7 +317,21 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
           purchasedCreditReservationTransactionId: null,
         }),
       );
-      await Bun.sleep(300);
+      let reachedOrganizationLock = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const lockWait = await setupClient!.query<{ blocked: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1 FROM pg_stat_activity
+             WHERE datname = current_database() AND wait_event_type = 'Lock'
+               AND query ILIKE '%organizations%FOR UPDATE%'
+           ) AS blocked`,
+        );
+        reachedOrganizationLock = lockWait.rows[0]?.blocked === true;
+        if (reachedOrganizationLock) break;
+        await Bun.sleep(10);
+      }
+      expect(reachedOrganizationLock).toBe(true);
+      await setupClient!.query("SELECT pg_sleep(0.25)");
       await first.query("COMMIT");
       await expect(blockedReserve).rejects.toMatchObject({
         code: "SUBSCRIPTION_ALLOWANCE_CONFLICT",
@@ -336,7 +350,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     }
   });
 
-  test("selects current funding allowance using database time under process clock skew", async () => {
+  test("serializes allowance settlement behind the organization lock", async () => {
     await setupClient!.query(
       `INSERT INTO billing_subscriptions (
         id, organization_id, provider_environment, stripe_customer_id,
@@ -388,6 +402,35 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         [result.reservation.id],
       );
       expect(allocations.rows).toEqual([{ source: "allowance", reserved_amount: "1.000000" }]);
+
+      const locker = await connect();
+      try {
+        await locker.query("BEGIN");
+        await locker.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [CLOCK_ORG]);
+        let settlementCompleted = false;
+        const settlementPromise = subscriptionFundingService
+          .settle({
+            organizationId: CLOCK_ORG,
+            logicalOperationId: "operation.database.clock",
+            operation: "ai_inference",
+            actualAmount: microsToMoney(1_000_000n),
+            occurredAt: new Date("2026-08-31T00:00:00.000Z"),
+          })
+          .then((settlement) => {
+            settlementCompleted = true;
+            return settlement;
+          });
+        await Bun.sleep(300);
+        expect(settlementCompleted).toBe(false);
+        await locker.query("COMMIT");
+        await expect(settlementPromise).resolves.toMatchObject({
+          replayed: false,
+          reservation: { status: "finalized" },
+        });
+      } finally {
+        await locker.query("ROLLBACK");
+        await locker.end();
+      }
     } finally {
       setSystemTime();
     }
