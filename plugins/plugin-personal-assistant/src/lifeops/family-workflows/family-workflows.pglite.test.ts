@@ -21,6 +21,29 @@ import {
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 
+async function waitForRunningLease(db: PGlite): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const table = await db.query<{ present: boolean }>(
+      `SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'app_lifeops'
+          AND table_name = 'life_family_workflow_runs'
+      ) AS present`,
+    );
+    if (!table.rows[0]?.present) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      continue;
+    }
+    const rows = await db.query<{ state: string }>(
+      "SELECT state FROM app_lifeops.life_family_workflow_runs",
+    );
+    if (rows.rows[0]?.state === "running") return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Timed out waiting for the family workflow run lease.");
+}
+
 function baseClaim(): FamilyPacketClaim {
   return {
     claimId: "calendar:event-1",
@@ -144,12 +167,7 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
       },
     });
     const firstPromise = service.runMonthly("manual");
-    await vi.waitFor(async () => {
-      const rows = await db.query<{ state: string }>(
-        "SELECT state FROM app_lifeops.life_family_workflow_runs",
-      );
-      expect(rows.rows[0]?.state).toBe("running");
-    });
+    await waitForRunningLease(db);
     const second = await service.runMonthly("scheduled");
     expect(second.state).toBe("already_running");
     release();
