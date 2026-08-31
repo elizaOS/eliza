@@ -77,7 +77,11 @@ describe("calendar card authenticated route", () => {
       method: "GET",
       pathname: parsed.pathname,
       url: parsed,
-      state: { runtime, adminEntityId: principal as never },
+      state: {
+        runtime,
+        adminEntityId: principal as never,
+        requestEntityId: principal,
+      },
       json(response, data, code = 200) {
         response.writeHead(code, { "Content-Type": "application/json" });
         response.end(JSON.stringify(data));
@@ -134,6 +138,21 @@ describe("calendar card authenticated route", () => {
     expect(denied.status).toBe(403);
     expect(JSON.parse(denied.body.toString())).toEqual({
       error: "CARD_ACCESS_WRONG_IDENTITY",
+    });
+  });
+
+  it("denies access immediately after owner revocation", async () => {
+    const issued = await store.issue({
+      recipientEntityId: "guest-1",
+      html: "<html>private</html>",
+      ttlMs: 60_000,
+      baseUrl: "https://eliza.test",
+    });
+    await expect(store.revoke(issued.cardId)).resolves.toBe(true);
+    const denied = await request(issued.accessUrl, "guest-1");
+    expect(denied.status).toBe(410);
+    expect(JSON.parse(denied.body.toString())).toEqual({
+      error: "CARD_ACCESS_REVOKED",
     });
   });
 });

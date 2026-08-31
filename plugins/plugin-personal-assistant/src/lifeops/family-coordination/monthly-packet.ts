@@ -11,6 +11,7 @@ import type {
   ApprovalQueue,
   ApprovalRequest,
 } from "../approval-queue.types.js";
+import { getAgreementKnowledgeService } from "../household/agreement-knowledge.js";
 import {
   executeRawSql,
   executeRawSqlTx,
@@ -60,6 +61,10 @@ export interface FamilyPacketClaim {
   readonly commitments: readonly string[];
   readonly accountability: readonly string[];
   readonly obligationApprovalId?: string | null;
+  /** Exact guest Entities allowed to receive this non-public claim. */
+  readonly recipientEntityIds?: readonly string[];
+  /** Required for revalidating agreement access immediately before projection/send. */
+  readonly agreementArtifactId?: string | null;
   readonly unanswered?: boolean;
   readonly carryForwardCount?: 0 | 1;
   readonly carriedFromClaimId?: string | null;
@@ -97,6 +102,10 @@ export interface FamilyPacketTransformation {
   readonly kind:
     | "private_claim_omitted"
     | "unapproved_obligation_omitted"
+    | "recipient_acl_omitted"
+    | "agreement_grant_omitted"
+    | "calendar_privacy_redacted"
+    | "internal_metadata_omitted"
     | "contradiction_surfaced"
     | "missing_section_surfaced"
     | "unanswered_carried_once";
@@ -109,6 +118,9 @@ export interface MonthlyFamilyDraft {
   readonly internalVersion: number;
   readonly draftVersion: number;
   readonly recipient: string;
+  readonly recipientEntityId: string;
+  readonly calendarPrivacyMode: "full" | "times_only" | "busy_only";
+  readonly includedClaimIds: readonly string[];
   readonly body: string;
   readonly bodySha256: string;
   readonly transformations: readonly FamilyPacketTransformation[];
@@ -129,10 +141,15 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS app_lifeops.life_family_packet_drafts (
     agent_id TEXT NOT NULL, packet_id TEXT NOT NULL, internal_version INTEGER NOT NULL,
     draft_version INTEGER NOT NULL, recipient TEXT NOT NULL, body TEXT NOT NULL,
+    recipient_entity_id TEXT, calendar_privacy_mode TEXT,
+    included_claim_ids_json TEXT,
     body_sha256 TEXT NOT NULL, transformations_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
     PRIMARY KEY (agent_id, packet_id, draft_version)
   )`,
+  `ALTER TABLE app_lifeops.life_family_packet_drafts ADD COLUMN IF NOT EXISTS recipient_entity_id TEXT`,
+  `ALTER TABLE app_lifeops.life_family_packet_drafts ADD COLUMN IF NOT EXISTS calendar_privacy_mode TEXT`,
+  `ALTER TABLE app_lifeops.life_family_packet_drafts ADD COLUMN IF NOT EXISTS included_claim_ids_json TEXT`,
   `CREATE TABLE IF NOT EXISTS app_lifeops.life_family_packet_approvals (
     agent_id TEXT NOT NULL, packet_id TEXT NOT NULL, draft_version INTEGER NOT NULL,
     draft_sha256 TEXT NOT NULL, approval_id TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -158,7 +175,7 @@ function stable(value: unknown): string {
 function fail(message: string, code: string): never {
   throw new ElizaError(`[MonthlyFamilyPacket] ${message}`, {
     code,
-    severity: "warn",
+    severity: "ephemeral",
   });
 }
 
@@ -382,7 +399,11 @@ export class MonthlyFamilyPacketService {
 
   async createExternalDraft(
     packet: MonthlyFamilyPacket,
-    recipient: string,
+    input: {
+      recipient: string;
+      recipientEntityId: string;
+      calendarPrivacyMode: "full" | "times_only" | "busy_only";
+    },
   ): Promise<MonthlyFamilyDraft> {
     await this.ensureSchema();
     const current = await this.latest(packet.period.key);
@@ -397,17 +418,21 @@ export class MonthlyFamilyPacketService {
         "FAMILY_PACKET_INTERNAL_STALE",
       );
     }
-    if (!recipient.trim())
+    const recipient = input.recipient.trim();
+    const recipientEntityId = input.recipientEntityId.trim();
+    if (!recipient || !recipientEntityId)
       fail("recipient is required", "FAMILY_PACKET_RECIPIENT_INVALID");
     const transformations: FamilyPacketTransformation[] = [];
-    const shareable = packet.claims.filter((claim) => {
+    const shareable: FamilyPacketClaim[] = [];
+    const agreements = getAgreementKnowledgeService(this.runtime);
+    for (const claim of packet.claims) {
       if (claim.visibility !== "guest_shareable") {
         transformations.push({
           kind: "private_claim_omitted",
           claimId: claim.claimId,
           detail: "Owner-only claim omitted from external draft.",
         });
-        return false;
+        continue;
       }
       if (
         claim.section === "approved_obligations" &&
@@ -418,7 +443,49 @@ export class MonthlyFamilyPacketService {
           claimId: claim.claimId,
           detail: "Obligation notice omitted until approved.",
         });
-        return false;
+        continue;
+      }
+      const requiresRecipientAcl =
+        claim.section === "custody_calendar" ||
+        claim.section === "approved_obligations";
+      if (
+        (requiresRecipientAcl || claim.recipientEntityIds !== undefined) &&
+        !claim.recipientEntityIds?.includes(recipientEntityId)
+      ) {
+        transformations.push({
+          kind: "recipient_acl_omitted",
+          claimId: claim.claimId,
+          detail:
+            "Claim omitted because the recipient Entity is not authorized.",
+        });
+        continue;
+      }
+      if (claim.section === "approved_obligations") {
+        if (!agreements || !claim.agreementArtifactId) {
+          transformations.push({
+            kind: "agreement_grant_omitted",
+            claimId: claim.claimId,
+            detail:
+              "Agreement claim omitted because no resource grant can be proven.",
+          });
+          continue;
+        }
+        try {
+          await agreements.readFor({
+            artifactId: claim.agreementArtifactId,
+            principalEntityId: recipientEntityId,
+          });
+        } catch {
+          // error-policy:J4 authorization denial is projected as an explicit
+          // omission; another claim may still be independently shareable.
+          transformations.push({
+            kind: "agreement_grant_omitted",
+            claimId: claim.claimId,
+            detail:
+              "Agreement claim omitted because its guest grant is inactive.",
+          });
+          continue;
+        }
       }
       if (claim.carriedFromClaimId)
         transformations.push({
@@ -426,8 +493,36 @@ export class MonthlyFamilyPacketService {
           claimId: claim.claimId,
           detail: `Unanswered item carried once from ${claim.carriedFromClaimId}.`,
         });
-      return true;
-    });
+      let projected = claim;
+      if (
+        claim.section === "custody_calendar" &&
+        input.calendarPrivacyMode !== "full"
+      ) {
+        projected = {
+          ...claim,
+          statement:
+            input.calendarPrivacyMode === "times_only"
+              ? "Scheduled event"
+              : "Busy",
+          requests: [],
+          commitments: [],
+          accountability: [],
+        };
+        transformations.push({
+          kind: "calendar_privacy_redacted",
+          claimId: claim.claimId,
+          detail: `Calendar claim projected as ${input.calendarPrivacyMode}.`,
+        });
+      }
+      if (claim.provenance.length > 0 || claim.accountability.length > 0) {
+        transformations.push({
+          kind: "internal_metadata_omitted",
+          claimId: claim.claimId,
+          detail: "Internal provenance and Entity attribution omitted.",
+        });
+      }
+      shareable.push(projected);
+    }
     const lines = [
       `Family coordination for ${packet.period.startsOn} through ${packet.period.endsOnExclusive} (${packet.period.timeZone})`,
       "",
@@ -465,11 +560,8 @@ export class MonthlyFamilyPacketService {
         if (claim.urgency) lines.push(`  Urgency: ${claim.urgency}`);
         if (claim.commitments.length)
           lines.push(`  Commitments: ${claim.commitments.join("; ")}`);
-        if (claim.accountability.length)
-          lines.push(`  Accountability: ${claim.accountability.join("; ")}`);
-        lines.push(
-          `  Sources: ${claim.provenance.map((source) => `${source.source}:${source.sourceId}@${source.observedAt}#${source.contentSha256}`).join("; ")}`,
-        );
+        // Provenance and accountability remain owner-internal. The external
+        // body contains only approved user-facing claim fields.
       }
       lines.push("");
     }
@@ -490,6 +582,9 @@ export class MonthlyFamilyPacketService {
       internalVersion: packet.version,
       draftVersion,
       recipient,
+      recipientEntityId,
+      calendarPrivacyMode: input.calendarPrivacyMode,
+      includedClaimIds: shareable.map((claim) => claim.claimId),
       body,
       bodySha256: sha256(body),
       transformations,
@@ -497,7 +592,7 @@ export class MonthlyFamilyPacketService {
     };
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,body,body_sha256,transformations_json,created_at) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},${draftVersion},${sqlQuote(recipient)},${sqlQuote(body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(transformations))},${sqlQuote(draft.createdAt)})`,
+      `INSERT INTO app_lifeops.life_family_packet_drafts (agent_id,packet_id,internal_version,draft_version,recipient,recipient_entity_id,calendar_privacy_mode,included_claim_ids_json,body,body_sha256,transformations_json,created_at) VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(packet.packetId)},${packet.version},${draftVersion},${sqlQuote(recipient)},${sqlQuote(recipientEntityId)},${sqlQuote(input.calendarPrivacyMode)},${sqlQuote(JSON.stringify(draft.includedClaimIds))},${sqlQuote(body)},${sqlQuote(draft.bodySha256)},${sqlQuote(JSON.stringify(transformations))},${sqlQuote(draft.createdAt)})`,
     );
     return draft;
   }
@@ -521,7 +616,9 @@ export class MonthlyFamilyPacketService {
       !draft ||
       draft.bodySha256 !== args.draft.bodySha256 ||
       draft.body !== args.draft.body ||
-      draft.recipient !== args.draft.recipient
+      draft.recipient !== args.draft.recipient ||
+      draft.recipientEntityId !== args.draft.recipientEntityId ||
+      draft.calendarPrivacyMode !== args.draft.calendarPrivacyMode
     ) {
       fail("draft is missing or tampered", "FAMILY_PACKET_DRAFT_TAMPERED");
     }
@@ -543,7 +640,7 @@ export class MonthlyFamilyPacketService {
             body: draft.body,
             replyToMessageId: null,
           },
-          channel: "internal",
+          channel: "imessage",
           reason: `Review monthly family coordination packet ${draft.packetId} draft ${draft.draftVersion}`,
           idempotencyKey: `family-packet:${draft.packetId}:draft:${draft.draftVersion}:${draft.bodySha256}`,
           expiresAt: args.expiresAt,
@@ -612,7 +709,55 @@ export class MonthlyFamilyPacketService {
     );
     if (toNumber(latestRows[0]?.version) !== draft.draftVersion)
       fail("approved draft is stale", "FAMILY_PACKET_APPROVAL_STALE");
+    await this.validateDraftRecipientAccess(draft);
     return draft;
+  }
+
+  private async validateDraftRecipientAccess(
+    draft: MonthlyFamilyDraft,
+  ): Promise<void> {
+    const packet = await this.read(draft.packetId, draft.internalVersion);
+    if (!packet)
+      fail("draft source packet is missing", "FAMILY_PACKET_APPROVAL_STALE");
+    const included = new Set(draft.includedClaimIds);
+    const agreements = getAgreementKnowledgeService(this.runtime);
+    for (const claim of packet.claims) {
+      if (!included.has(claim.claimId)) continue;
+      if (
+        (claim.section === "custody_calendar" ||
+          claim.section === "approved_obligations") &&
+        !claim.recipientEntityIds?.includes(draft.recipientEntityId)
+      ) {
+        fail(
+          "recipient claim authorization changed",
+          "FAMILY_PACKET_RECIPIENT_ACCESS_REVOKED",
+        );
+      }
+      if (claim.section === "approved_obligations") {
+        if (!agreements || !claim.agreementArtifactId) {
+          fail(
+            "agreement grant cannot be revalidated",
+            "FAMILY_PACKET_RECIPIENT_ACCESS_REVOKED",
+          );
+        }
+        await agreements.readFor({
+          artifactId: claim.agreementArtifactId,
+          principalEntityId: draft.recipientEntityId,
+        });
+      }
+    }
+  }
+
+  /** Return null for unrelated approvals; otherwise enforce the full stale guard. */
+  async validateApprovedDraftIfBound(
+    request: ApprovalRequest,
+  ): Promise<MonthlyFamilyDraft | null> {
+    await this.ensureSchema();
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT approval_id FROM app_lifeops.life_family_packet_approvals WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND approval_id=${sqlQuote(request.id)} LIMIT 1`,
+    );
+    return rows[0] ? this.validateApprovedDraft(request) : null;
   }
 
   async readDraft(
@@ -630,6 +775,11 @@ export class MonthlyFamilyPacketService {
       internalVersion: toNumber(row.internal_version),
       draftVersion: toNumber(row.draft_version),
       recipient: toText(row.recipient),
+      recipientEntityId: toText(row.recipient_entity_id),
+      calendarPrivacyMode: toText(
+        row.calendar_privacy_mode,
+      ) as MonthlyFamilyDraft["calendarPrivacyMode"],
+      includedClaimIds: parseJsonArray<string>(row.included_claim_ids_json),
       body: toText(row.body),
       bodySha256: toText(row.body_sha256),
       transformations: parseJsonArray<FamilyPacketTransformation>(

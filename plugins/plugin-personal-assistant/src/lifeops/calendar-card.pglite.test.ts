@@ -234,6 +234,24 @@ describe("CalendarCardAccessStore", () => {
     expect(files.bytes.size).toBe(0);
   });
 
+  it("garbage-collects expired unopened card rows and their private bytes", async () => {
+    await store.issue({
+      recipientEntityId: "guest-1",
+      html: "<html>expired unopened</html>",
+      ttlMs: 1,
+      baseUrl: "https://eliza.test",
+    });
+    expect(files.bytes.size).toBe(1);
+    now = new Date(now.getTime() + 2);
+
+    await expect(store.cleanup()).resolves.toBe(1);
+    expect(files.bytes.size).toBe(0);
+    const rows = await db.query(
+      "SELECT card_id FROM app_lifeops.life_calendar_card_access",
+    );
+    expect(rows.rows).toEqual([]);
+  });
+
   it("rejects private-byte tampering before an approved send", async () => {
     const issued = await store.issue({
       recipientEntityId: "owner-1",

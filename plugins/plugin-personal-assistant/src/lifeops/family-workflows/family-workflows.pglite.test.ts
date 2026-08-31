@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { familyCoordinationPack } from "../../default-packs/family-coordination.js";
 import { handleFamilyWorkflowRoutes } from "../../routes/family-workflows.js";
 import type { LifeOpsRouteContext } from "../../routes/lifeops-routes.js";
+import { CalendarCardAccessStore } from "../calendar-card.js";
 import type { FamilyPacketClaim } from "../family-coordination/index.js";
 import { createProductionScheduledTaskDispatcher } from "../scheduled-task/runtime-wiring.js";
 import type { RawSqlQuery } from "../sql.js";
@@ -139,6 +140,7 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
   }
 
   it("runs manually, persists a packet, and deduplicates after service restart", async () => {
+    const cleanup = vi.spyOn(CalendarCardAccessStore.prototype, "cleanup");
     const firstService = makeService();
     const first = await firstService.service.runMonthly("manual");
     expect(first.state).toBe("completed");
@@ -149,6 +151,7 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
     expect(replay.state).toBe("deduplicated");
     expect(replay.runId).toBe(first.runId);
     expect(restarted.school.run).not.toHaveBeenCalled();
+    expect(cleanup).toHaveBeenCalledTimes(2);
   });
 
   it("elects one concurrent owner and reports the second run as already running", async () => {

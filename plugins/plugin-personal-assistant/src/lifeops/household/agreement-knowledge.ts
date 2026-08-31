@@ -117,6 +117,36 @@ export interface ParentingAgreementView {
   obligations: ParentingAgreementObligation[];
 }
 
+/** Guest-safe source metadata. Permanent byte capabilities and owner internals are excluded. */
+export type ParentingAgreementGuestArtifact = Pick<
+  ParentingAgreementArtifact,
+  | "id"
+  | "version"
+  | "title"
+  | "originalFilename"
+  | "mimeType"
+  | "byteSize"
+  | "pageCount"
+  | "createdAt"
+>;
+
+export interface ParentingAgreementGuestView {
+  artifact: ParentingAgreementGuestArtifact;
+  obligations: ParentingAgreementGuestObligation[];
+}
+
+export type ParentingAgreementGuestObligation = Pick<
+  ParentingAgreementObligation,
+  | "id"
+  | "title"
+  | "obligationText"
+  | "pageStart"
+  | "pageEnd"
+  | "citationText"
+  | "status"
+  | "decidedAt"
+>;
+
 export interface AgreementGuestGrantPreview {
   allowed: boolean;
   artifactId: string;
@@ -614,6 +644,19 @@ export class AgreementKnowledgeRepository {
     return rows.map(grantFromRow);
   }
 
+  async listArtifactGrants(
+    artifactId: string,
+  ): Promise<HouseholdKnowledgeGrant[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT * FROM app_lifeops.life_household_knowledge_grants
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND artifact_id = ${sqlQuote(artifactId)}
+        ORDER BY created_at ASC, id ASC`,
+    );
+    return rows.map(grantFromRow);
+  }
+
   async revokeGrant(input: {
     grantId: string;
     revokedByEntityId: string;
@@ -654,6 +697,36 @@ function nonEmpty(value: string, field: string): string {
     );
   }
   return normalized;
+}
+
+function guestArtifactProjection(
+  artifact: ParentingAgreementArtifact,
+): ParentingAgreementGuestArtifact {
+  return {
+    id: artifact.id,
+    version: artifact.version,
+    title: artifact.title,
+    originalFilename: artifact.originalFilename,
+    mimeType: artifact.mimeType,
+    byteSize: artifact.byteSize,
+    pageCount: artifact.pageCount,
+    createdAt: artifact.createdAt,
+  };
+}
+
+function guestObligationProjection(
+  obligation: ParentingAgreementObligation,
+): ParentingAgreementGuestObligation {
+  return {
+    id: obligation.id,
+    title: obligation.title,
+    obligationText: obligation.obligationText,
+    pageStart: obligation.pageStart,
+    pageEnd: obligation.pageEnd,
+    citationText: obligation.citationText,
+    status: obligation.status,
+    decidedAt: obligation.decidedAt,
+  };
 }
 
 function requirePositiveInteger(value: number, field: string): number {
@@ -1106,6 +1179,37 @@ export class AgreementKnowledgeService {
     });
   }
 
+  /** Owner-only recipient ACL projection for downstream share drafts. */
+  async listActiveGuestPrincipals(input: {
+    artifactId: string;
+    ownerEntityId: string;
+    at?: Date;
+  }): Promise<string[]> {
+    this.requireOwner(input.ownerEntityId);
+    const artifact = await this.requireArtifact(input.artifactId);
+    const allowed: string[] = [];
+    for (const grant of await this.deps.repository.listArtifactGrants(
+      artifact.id,
+    )) {
+      if (grant.revokedAt) continue;
+      try {
+        await this.deps.household.requireGrantActive({
+          householdId: artifact.householdId,
+          grantId: grant.householdGrantId,
+          principalEntityId: grant.principalEntityId,
+          scope: "knowledge.read",
+          at: input.at ?? this.now(),
+        });
+        allowed.push(grant.principalEntityId);
+      } catch (error) {
+        if (!(error instanceof HouseholdCoordinationError)) throw error;
+        // error-policy:J4 inactive household grants are omitted from the
+        // explicit downstream ACL instead of being presented as active.
+      }
+    }
+    return [...new Set(allowed)].sort();
+  }
+
   async revokeGuestRead(input: {
     grantId: string;
     revokedByEntityId: string;
@@ -1124,7 +1228,7 @@ export class AgreementKnowledgeService {
     artifactId: string;
     principalEntityId: string;
     at?: Date;
-  }): Promise<ParentingAgreementView> {
+  }): Promise<ParentingAgreementView | ParentingAgreementGuestView> {
     const artifact = await this.requireArtifact(input.artifactId);
     const principalEntityId = normalizeHouseholdIdentifier(
       input.principalEntityId,
@@ -1149,10 +1253,10 @@ export class AgreementKnowledgeService {
           at: input.at ?? this.now(),
         });
         return {
-          artifact,
-          obligations: obligations.filter(
-            (obligation) => obligation.status === "approved",
-          ),
+          artifact: guestArtifactProjection(artifact),
+          obligations: obligations
+            .filter((obligation) => obligation.status === "approved")
+            .map(guestObligationProjection),
         };
       } catch (error) {
         if (!(error instanceof HouseholdCoordinationError)) throw error;

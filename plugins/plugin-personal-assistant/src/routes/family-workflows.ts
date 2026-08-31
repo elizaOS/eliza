@@ -124,17 +124,42 @@ export async function handleFamilyWorkflowRoutes(
       /^\/api\/lifeops\/family-workflows\/packets\/([^/]+)\/drafts$/u,
     );
     if (method === "POST" && draftMatch) {
-      const body = await readJsonBody<{ recipient?: unknown }>(req, res);
+      const body = await readJsonBody<{
+        recipient?: unknown;
+        recipientEntityId?: unknown;
+        calendarPrivacyMode?: unknown;
+      }>(req, res);
       if (!body) return true;
       if (typeof body.recipient !== "string" || !body.recipient.trim()) {
         ctx.error(res, "recipient is required", 400);
+        return true;
+      }
+      if (
+        typeof body.recipientEntityId !== "string" ||
+        !body.recipientEntityId.trim() ||
+        !["full", "times_only", "busy_only"].includes(
+          String(body.calendarPrivacyMode),
+        )
+      ) {
+        ctx.error(
+          res,
+          "recipientEntityId and calendarPrivacyMode are required",
+          400,
+        );
         return true;
       }
       json(
         res,
         await runtimeService.createDraft(
           decodeURIComponent(draftMatch[1] ?? ""),
-          body.recipient.trim(),
+          {
+            recipient: body.recipient.trim(),
+            recipientEntityId: body.recipientEntityId.trim(),
+            calendarPrivacyMode: body.calendarPrivacyMode as
+              | "full"
+              | "times_only"
+              | "busy_only",
+          },
         ),
         201,
       );

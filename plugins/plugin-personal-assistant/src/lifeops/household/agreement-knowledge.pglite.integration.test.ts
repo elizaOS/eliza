@@ -409,6 +409,30 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       pageStart: 4,
       pageEnd: 5,
     });
+    for (const forbidden of [
+      "mediaUrl",
+      "mediaFileName",
+      "contentSha256",
+      "documentId",
+      "agentId",
+      "uploadedByEntityId",
+      "householdId",
+      "agreementKey",
+      "supersedesArtifactId",
+    ]) {
+      expect(guestView.artifact).not.toHaveProperty(forbidden);
+    }
+    for (const forbidden of [
+      "agentId",
+      "artifactId",
+      "proposedByEntityId",
+      "decidedByEntityId",
+      "decisionReason",
+      "createdAt",
+      "updatedAt",
+    ]) {
+      expect(guestView.obligations[0]).not.toHaveProperty(forbidden);
+    }
 
     const restartedService = createAgreementKnowledgeService(runtime);
     await expect(

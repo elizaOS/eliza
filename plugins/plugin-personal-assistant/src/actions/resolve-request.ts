@@ -66,6 +66,7 @@ import {
 } from "../lifeops/calendar-mutations/index.js";
 import { getChannelRegistry } from "../lifeops/channels/index.js";
 import { extractCommitmentLedgerRecords } from "../lifeops/commitments/index.js";
+import { getFamilyWorkflowRuntimeService } from "../lifeops/family-workflows/index.js";
 import {
   FOOD_APPROVAL_WORKFLOW_ID,
   getFoodDomainService,
@@ -1582,6 +1583,23 @@ export async function executeApprovedRequest(args: {
         `[approval] action/payload mismatch: action=send_message, payload.action=${payload.action}`,
       );
     }
+    const familyPackets = getFamilyWorkflowRuntimeService(
+      args.runtime,
+    )?.packets;
+    let familyPacketDraft = null;
+    try {
+      familyPacketDraft =
+        (await familyPackets?.validateApprovedDraftIfBound(args.request)) ??
+        null;
+      if (familyPacketDraft && channel !== "imessage") {
+        throw new ApprovalConnectorPreflightError(
+          "FAMILY_PACKET_CHANNEL_INVALID",
+          "Family packet approvals require the supported iMessage transport",
+        );
+      }
+    } catch (error) {
+      return preflightFailureResult(args.request, error);
+    }
     let prepared: Awaited<ReturnType<typeof prepareCrossChannelSend>>;
     try {
       prepared = await prepareCrossChannelSend({
@@ -1600,10 +1618,17 @@ export async function executeApprovedRequest(args: {
       subjectUserId: args.request.subjectUserId,
       prepared: {
         provider: prepared.provider,
-        dispatch: async (providerIdempotencyKey) => ({
-          value: undefined,
-          receipt: await prepared.dispatch(providerIdempotencyKey),
-        }),
+        dispatch: async (providerIdempotencyKey) => {
+          if (familyPacketDraft && familyPackets) {
+            // Re-check the immutable draft, latest-version guard, recipient
+            // ACL, and live agreement grant at the final pre-provider edge.
+            await familyPackets.validateApprovedDraft(args.request);
+          }
+          return {
+            value: undefined,
+            receipt: await prepared.dispatch(providerIdempotencyKey),
+          };
+        },
       },
     });
     if (outcome.kind !== "delivered") {
@@ -1623,7 +1648,9 @@ export async function executeApprovedRequest(args: {
       : null;
     const text = calendarCard
       ? `Approved calendar card message was accepted by ${channel}; recipient delivery is not confirmed.`
-      : `Approved and sent ${channel} message.`;
+      : familyPacketDraft
+        ? `Approved family packet was accepted by ${channel}; recipient delivery is not confirmed.`
+        : `Approved and sent ${channel} message.`;
     await args.callback?.({ text });
     return {
       text,
@@ -1635,6 +1662,15 @@ export async function executeApprovedRequest(args: {
         channel,
         providerReceipt: done.execution?.providerReceipt ?? null,
         ...(cardStatus ? { calendarCardDelivery: cardStatus } : {}),
+        ...(familyPacketDraft
+          ? {
+              familyPacketDelivery: calendarCardDeliveryStatus({
+                accepted: true,
+                providerReceipt: done.execution?.providerReceipt ?? null,
+                delivered: null,
+              }),
+            }
+          : {}),
       },
     };
   }

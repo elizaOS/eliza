@@ -17,6 +17,7 @@ import type {
   EntityFilter,
   EntityIdentity,
 } from "../lifeops/entities/types.js";
+import { bindMachineAuthIdentityToEntity } from "./authenticated-entity-principal.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 function defaultAgentId(runtime: AgentRuntime): string {
@@ -159,6 +160,50 @@ export async function handleEntityRoutes(
     }
     const merged = await store.merge(targetId, sourceIds);
     json(res, { entity: merged });
+    return true;
+  }
+
+  // POST /api/lifeops/entities/:id/identities
+  const authBindingMatch = pathname.match(
+    /^\/api\/lifeops\/entities\/([^/]+)\/auth-bindings$/,
+  );
+  if (method === "POST" && authBindingMatch) {
+    const entityId = ctx.decodePathComponent(
+      authBindingMatch[1] ?? "",
+      res,
+      "entity id",
+    );
+    if (!entityId) return true;
+    const body = await readJsonBody<{ authIdentityId?: unknown }>(req, res);
+    if (!body) return true;
+    if (
+      typeof body.authIdentityId !== "string" ||
+      !body.authIdentityId.trim()
+    ) {
+      ctx.error(res, "authIdentityId is required", 400);
+      return true;
+    }
+    try {
+      json(
+        res,
+        {
+          binding: await bindMachineAuthIdentityToEntity({
+            runtime: ctx.state.runtime as AgentRuntime,
+            entityId,
+            authIdentityId: body.authIdentityId.trim(),
+          }),
+        },
+        201,
+      );
+    } catch (error) {
+      // error-policy:J1 translate the typed owner binding failure at the HTTP
+      // boundary; no auth or Entity mutation is reported as successful.
+      ctx.error(
+        res,
+        error instanceof Error ? error.message : "Auth binding failed",
+        409,
+      );
+    }
     return true;
   }
 

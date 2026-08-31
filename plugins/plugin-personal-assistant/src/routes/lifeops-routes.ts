@@ -125,6 +125,7 @@ import {
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { entityHasVerifiedMachineAuthBinding } from "./authenticated-entity-principal.js";
 import { handleFamilyWorkflowRoutes } from "./family-workflows.js";
 
 export interface LifeOpsRouteContext {
@@ -136,6 +137,7 @@ export interface LifeOpsRouteContext {
   state: {
     runtime: AgentRuntime | null;
     adminEntityId: UUID | null;
+    requestEntityId?: string | null;
   };
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
@@ -1218,7 +1220,7 @@ export async function handleLifeOpsRoutes(
       const bytes = await new CalendarCardAccessStore(runtime).consume({
         cardId,
         token,
-        principalEntityId: String(ctx.state.adminEntityId ?? SELF_ENTITY_ID),
+        principalEntityId: String(ctx.state.requestEntityId ?? ""),
       });
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
@@ -1274,17 +1276,20 @@ export async function handleLifeOpsRoutes(
       ttlMs?: number;
     }>(req, res);
     if (!body) return true;
-    const recipientEntityId = String(
-      body.recipientEntityId ?? ctx.state.adminEntityId ?? SELF_ENTITY_ID,
-    );
     const authenticatedEntityId = String(
-      ctx.state.adminEntityId ?? SELF_ENTITY_ID,
+      ctx.state.requestEntityId ?? ctx.state.adminEntityId ?? SELF_ENTITY_ID,
     );
+    const recipientEntityId = String(
+      body.recipientEntityId ?? authenticatedEntityId,
+    );
+    const recipientCanAuthenticate =
+      recipientEntityId === authenticatedEntityId ||
+      (await entityHasVerifiedMachineAuthBinding(runtime, recipientEntityId));
     if (
       !body.recipient?.trim() ||
       !Array.isArray(body.events) ||
       !["full", "times_only", "busy_only"].includes(body.privacyMode) ||
-      recipientEntityId !== authenticatedEntityId
+      !recipientCanAuthenticate
     ) {
       json(res, { error: "Invalid calendar card request" }, 400);
       return true;

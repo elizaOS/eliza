@@ -6,14 +6,16 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   CalendarService,
 } from "@elizaos/plugin-calendar";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { type LifeOpsCalendarEvent, SELF_ENTITY_ID } from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";
 import type { ApprovalRequest } from "../approval-queue.types.js";
+import { CalendarCardAccessStore } from "../calendar-card.js";
 import {
   type FamilyPacketClaim,
   type FamilyPacketPeriod,
@@ -89,7 +91,7 @@ function calendarClaim(event: LifeOpsCalendarEvent): FamilyPacketClaim {
     stableKey: `calendar:${event.provider}:${event.calendarId}:${event.externalId}`,
     section: "custody_calendar",
     statement: event.title,
-    visibility: "guest_shareable",
+    visibility: "owner_only",
     provenance: [
       {
         source: "calendar",
@@ -134,6 +136,7 @@ function schoolClaim(fact: SourceFact): FamilyPacketClaim {
 
 function obligationClaim(
   value: ParentingAgreementObligation,
+  recipientEntityIds: readonly string[],
 ): FamilyPacketClaim {
   return {
     claimId: `agreement:${value.id}`,
@@ -156,10 +159,10 @@ function obligationClaim(
     requests: [],
     urgency: null,
     commitments: [value.title],
-    accountability: value.decidedByEntityId
-      ? [`Approved by ${value.decidedByEntityId}`]
-      : [],
+    accountability: [],
     obligationApprovalId: value.id,
+    agreementArtifactId: value.artifactId,
+    recipientEntityIds,
   };
 }
 
@@ -274,10 +277,19 @@ export class FamilyWorkflowRuntimeService extends Service {
     const school = getSchoolSourceFactRuntimeService(this.runtime);
     if (school) claims.push(...(await school.listFacts()).map(schoolClaim));
     const agreements = getAgreementKnowledgeService(this.runtime);
-    if (agreements)
-      claims.push(
-        ...(await agreements.listApprovedObligations()).map(obligationClaim),
-      );
+    if (agreements) {
+      for (const obligation of await agreements.listApprovedObligations()) {
+        claims.push(
+          obligationClaim(
+            obligation,
+            await agreements.listActiveGuestPrincipals({
+              artifactId: obligation.artifactId,
+              ownerEntityId: SELF_ENTITY_ID,
+            }),
+          ),
+        );
+      }
+    }
     const household = new HouseholdCoordinationRepository(
       this.runtime,
       this.runtime.agentId,
@@ -302,8 +314,9 @@ export class FamilyWorkflowRuntimeService extends Service {
         requests: [],
         urgency: null,
         commitments: [],
-        accountability: agreement.approvedByEntityIds.map(
-          (id) => `Approved by ${id}`,
+        accountability: [],
+        recipientEntityIds: agreement.approvedByEntityIds.filter(
+          (entityId) => entityId !== SELF_ENTITY_ID,
         ),
       });
     }
@@ -347,11 +360,36 @@ export class FamilyWorkflowRuntimeService extends Service {
 
   async createDraft(
     packetId: string,
-    recipient: string,
+    input: {
+      recipient: string;
+      recipientEntityId: string;
+      calendarPrivacyMode: "full" | "times_only" | "busy_only";
+    },
   ): Promise<MonthlyFamilyDraft> {
     const packet = await this.packets.read(packetId);
     if (!packet) throw new Error("[FamilyWorkflowRuntime] packet not found");
-    return this.packets.createExternalDraft(packet, recipient);
+    const entity = await resolveKnowledgeGraphService(this.runtime)
+      ?.getEntityStore(this.runtime.agentId)
+      .get(input.recipientEntityId);
+    const recipient = input.recipient.trim();
+    if (
+      !entity?.identities.some(
+        (identity) =>
+          identity.verified &&
+          ["imessage", "blooio", "sms", "phone"].includes(
+            identity.platform.toLowerCase(),
+          ) &&
+          identity.handle === recipient,
+      )
+    ) {
+      throw new Error(
+        "[FamilyWorkflowRuntime] recipient is not a verified iMessage Entity identity",
+      );
+    }
+    return this.packets.createExternalDraft(packet, {
+      ...input,
+      recipient,
+    });
   }
 
   async requestDraftApproval(args: {
@@ -378,6 +416,7 @@ export class FamilyWorkflowRuntimeService extends Service {
   async runMonthly(
     trigger: "manual" | "scheduled",
   ): Promise<FamilyWorkflowRunResult> {
+    await new CalendarCardAccessStore(this.runtime).cleanup();
     await this.ensureSchema();
     const period = periodFor(this.now());
     const token = randomUUID();

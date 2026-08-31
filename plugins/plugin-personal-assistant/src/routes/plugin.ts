@@ -39,9 +39,14 @@ import {
   readJsonBody as httpReadJsonBody,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
+  SELF_ENTITY_ID,
 } from "@elizaos/shared";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import { handleAgreementKnowledgeRoutes } from "./agreement-knowledge-routes.js";
+import {
+  type LifeOpsAuthenticatedPrincipal,
+  resolveLifeOpsAuthenticatedPrincipal,
+} from "./authenticated-entity-principal.js";
 import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
@@ -53,6 +58,11 @@ import {
 import { handleSleepRoutes } from "./sleep-routes.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
 import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
+
+const requestPrincipals = new WeakMap<
+  http.IncomingMessage,
+  LifeOpsAuthenticatedPrincipal
+>();
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
@@ -185,6 +195,8 @@ function buildLifeOpsContext(
     state: {
       runtime,
       adminEntityId: routeOwnerEntityId(runtime),
+      requestEntityId:
+        requestPrincipals.get(req)?.entityId ?? routeOwnerEntityId(runtime),
     },
     json,
     error,
@@ -273,6 +285,7 @@ interface PrivateRouteSpec {
   type: HttpRouteType;
   path: string;
   public?: false;
+  access?: "owner" | "authenticated_entity";
 }
 
 interface PublicRouteSpec {
@@ -484,7 +497,11 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/calendar/links/:id/reconcile" },
   { type: "POST", path: "/api/lifeops/calendar/links/:id/resolve" },
   { type: "POST", path: "/api/lifeops/calendar/links/:id/disconnect" },
-  { type: "GET", path: "/api/lifeops/calendar/cards/:cardId" },
+  {
+    type: "GET",
+    path: "/api/lifeops/calendar/cards/:cardId",
+    access: "authenticated_entity",
+  },
   { type: "DELETE", path: "/api/lifeops/calendar/cards/:cardId" },
   // /api/lifeops/calendar/sources/:sourceId
   { type: "PATCH", path: "/api/lifeops/calendar/sources/:sourceId" },
@@ -523,6 +540,7 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/entities/:id" },
   { type: "PATCH", path: "/api/lifeops/entities/:id" },
   { type: "POST", path: "/api/lifeops/entities/:id/identities" },
+  { type: "POST", path: "/api/lifeops/entities/:id/auth-bindings" },
   { type: "GET", path: "/api/lifeops/relationships/:id" },
   { type: "PATCH", path: "/api/lifeops/relationships/:id" },
   { type: "POST", path: "/api/lifeops/relationships/:id/retire" },
@@ -637,7 +655,57 @@ function withOwnerAdminGate(handler: LegacyRouteHandler): LegacyRouteHandler {
     if (!allowed) {
       return;
     }
-    await handler(req as never, res as never, runtime as never);
+    requestPrincipals.set(httpReq, {
+      kind: "owner",
+      entityId: String(routeOwnerEntityId(agentRuntime) ?? SELF_ENTITY_ID),
+      authIdentityId: null,
+    });
+    try {
+      await handler(req as never, res as never, runtime as never);
+    } finally {
+      requestPrincipals.delete(httpReq);
+    }
+  };
+}
+
+function withAuthenticatedEntityGate(
+  handler: LegacyRouteHandler,
+): LegacyRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const agentRuntime = (runtime as AgentRuntime) ?? null;
+    if (!agentRuntime) {
+      error(httpRes, "Agent runtime is not available", 503);
+      return;
+    }
+    const resolved = await resolveLifeOpsAuthenticatedPrincipal({
+      req: httpReq,
+      runtime: agentRuntime,
+    });
+    if (!resolved.ok) {
+      error(httpRes, resolved.reason, resolved.status);
+      return;
+    }
+    const principal =
+      resolved.principal.kind === "owner"
+        ? {
+            ...resolved.principal,
+            entityId: String(
+              routeOwnerEntityId(agentRuntime) ?? SELF_ENTITY_ID,
+            ),
+          }
+        : resolved.principal;
+    requestPrincipals.set(httpReq, principal);
+    try {
+      await handler(req as never, res as never, runtime as never);
+    } finally {
+      requestPrincipals.delete(httpReq);
+    }
   };
 }
 
@@ -662,7 +730,10 @@ function buildRawRoutes(
       type: spec.type,
       path: spec.path,
       rawPath: true,
-      handler: withOwnerAdminGate(handler),
+      handler:
+        spec.access === "authenticated_entity"
+          ? withAuthenticatedEntityGate(handler)
+          : withOwnerAdminGate(handler),
     };
   });
 }

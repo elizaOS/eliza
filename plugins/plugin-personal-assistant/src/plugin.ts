@@ -119,6 +119,7 @@ import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import { createTrackedWorkRecapDirectRoutingRule } from "./lifeops/briefing/direct-routing.js";
 import { handleBriefMessageMutation } from "./lifeops/briefing/message-engagement-handler.js";
+import { CalendarCardAccessStore } from "./lifeops/calendar-card.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import { OwnerCalendarMutationGatewayService } from "./lifeops/calendar-mutations/index.js";
 import {
@@ -982,6 +983,32 @@ const rawPersonalAssistantPlugin: Plugin = {
             error instanceof Error ? error.message : String(error)
           }`,
         );
+      });
+
+    // Expired, revoked, and already-consumed private card files are a separate
+    // lifecycle concern from calendar-gate registration. Keep their failures
+    // independently observable so cleanup trouble cannot masquerade as a
+    // disabled calendar host gate.
+    void runtime.initPromise
+      .then(async () => {
+        if (
+          (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
+        ) {
+          return;
+        }
+        await new CalendarCardAccessStore(runtime).cleanup();
+      })
+      .catch((error) => {
+        // error-policy:J7 startup cleanup is diagnostic maintenance; report it
+        // without preventing the rest of the assistant from initializing.
+        logger.error(
+          `[lifeops] failed to clean private calendar cards: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        runtime.reportError("LifeOps.calendarCardCleanup", error, {
+          recovery: "next_monthly_workflow_or_restart",
+        });
       });
 
     const connectorRegistry = createConnectorRegistry();

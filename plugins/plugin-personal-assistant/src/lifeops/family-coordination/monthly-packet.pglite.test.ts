@@ -56,9 +56,16 @@ function claim(
     urgency: null,
     commitments: [],
     accountability: [],
+    recipientEntityIds: ["guest-1"],
     ...overrides,
   };
 }
+
+const guestDraft = {
+  recipient: "guest@example.com",
+  recipientEntityId: "guest-1",
+  calendarPrivacyMode: "full" as const,
+};
 
 function approval(
   input: ApprovalEnqueueInput,
@@ -94,6 +101,7 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
     db = await PGlite.create();
     runtime = {
       agentId: "agent-a",
+      getService: () => null,
       adapter: {
         db: {
           execute: async (query: RawSqlQuery) =>
@@ -179,13 +187,10 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
       packet.sections.find((entry) => entry.section === "approved_obligations")
         ?.state,
     ).toBe("missing");
-    const draft = await service.createExternalDraft(
-      packet,
-      "guest@example.com",
-    );
+    const draft = await service.createExternalDraft(packet, guestDraft);
     expect(draft.body).toContain("Needs resolution");
-    expect(draft.body).toContain("district-pdf");
-    expect(draft.body).toContain("pinned-note");
+    expect(draft.body).not.toContain("district-pdf");
+    expect(draft.body).not.toContain("pinned-note");
   });
 
   it("carries an unanswered item forward exactly once", async () => {
@@ -217,10 +222,7 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
         obligationApprovalId: null,
       }),
     ]);
-    const draft = await service.createExternalDraft(
-      packet,
-      "guest@example.com",
-    );
+    const draft = await service.createExternalDraft(packet, guestDraft);
     expect(draft.body).not.toContain("private medical detail canary");
     expect(draft.body).not.toContain("Unapproved notice canary");
     expect(draft.transformations.map((entry) => entry.kind)).toEqual(
@@ -242,6 +244,58 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
     ).rejects.toMatchObject({ code: "FAMILY_PACKET_EXPENSE_FORBIDDEN" });
   });
 
+  it("binds calendar projection to the recipient Entity and requested privacy mode", async () => {
+    const packet = await service.buildInternal(period("2026-09"), [
+      claim("custody", { statement: "Private custody title" }),
+    ]);
+    const wrongGuest = await service.createExternalDraft(packet, {
+      ...guestDraft,
+      recipientEntityId: "guest-2",
+    });
+    expect(wrongGuest.body).not.toContain("Private custody title");
+    expect(wrongGuest.transformations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "recipient_acl_omitted" }),
+      ]),
+    );
+
+    const timesOnly = await service.createExternalDraft(packet, {
+      ...guestDraft,
+      calendarPrivacyMode: "times_only",
+    });
+    expect(timesOnly.body).toContain("Scheduled event");
+    expect(timesOnly.body).not.toContain("Private custody title");
+    expect(timesOnly.body).not.toContain("source-custody");
+
+    const busyOnly = await service.createExternalDraft(packet, {
+      ...guestDraft,
+      calendarPrivacyMode: "busy_only",
+    });
+    expect(busyOnly.body).toContain("Busy");
+    expect(busyOnly.body).not.toContain("Private custody title");
+
+    const full = await service.createExternalDraft(packet, guestDraft);
+    expect(full.body).toContain("Private custody title");
+  });
+
+  it("omits agreement claims when the exact resource grant cannot be proven", async () => {
+    const packet = await service.buildInternal(period("2026-09"), [
+      claim("agreement", {
+        section: "approved_obligations",
+        statement: "Agreement obligation canary",
+        obligationApprovalId: "approved-obligation",
+        agreementArtifactId: "agreement-artifact",
+      }),
+    ]);
+    const draft = await service.createExternalDraft(packet, guestDraft);
+    expect(draft.body).not.toContain("Agreement obligation canary");
+    expect(draft.transformations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "agreement_grant_omitted" }),
+      ]),
+    );
+  });
+
   it("preserves material fields without inventing apology, legal, or therapy claims", async () => {
     const packet = await service.buildInternal(period("2026-09"), [
       claim("travel", {
@@ -254,19 +308,16 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
         accountability: ["Alex owns the consent response."],
       }),
     ]);
-    const draft = await service.createExternalDraft(
-      packet,
-      "guest@example.com",
-    );
+    const draft = await service.createExternalDraft(packet, guestDraft);
     for (const exact of [
       "2026-09-12 through 2026-09-15",
       "Please provide consent by 2026-09-05.",
       "Reply needed before booking.",
       "I will share the itinerary.",
-      "Alex owns the consent response.",
     ]) {
       expect(draft.body).toContain(exact);
     }
+    expect(draft.body).not.toContain("Alex owns the consent response.");
     expect(draft.body.toLowerCase()).not.toMatch(
       /sorry|apolog|legal advice|therapy/,
     );
@@ -274,10 +325,7 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
 
   it("uses the canonical approval queue and rejects stale or tampered drafts and approvals", async () => {
     const packet = await service.buildInternal(period("2026-09"), [claim("a")]);
-    const first = await service.createExternalDraft(
-      packet,
-      "guest@example.com",
-    );
+    const first = await service.createExternalDraft(packet, guestDraft);
     let enqueued: ApprovalRequest | null = null;
     const queue = {
       enqueueTransactional: vi.fn(async (input: ApprovalEnqueueInput) => {
@@ -320,10 +368,7 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
       },
     );
 
-    const second = await service.createExternalDraft(
-      packet,
-      "guest@example.com",
-    );
+    const second = await service.createExternalDraft(packet, guestDraft);
     expect(second.internalVersion).toBe(first.internalVersion);
     expect(second.draftVersion).toBe(first.draftVersion + 1);
     await expect(service.validateApprovedDraft(approved)).rejects.toMatchObject(
