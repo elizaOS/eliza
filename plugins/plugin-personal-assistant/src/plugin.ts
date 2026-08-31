@@ -150,6 +150,7 @@ import {
   FoodDomainRuntimeService,
 } from "./lifeops/food/index.js";
 import { ftuGoalDiscoveryEvaluator } from "./lifeops/ftu-goal/evaluator.js";
+import { AgreementKnowledgeRuntimeService } from "./lifeops/household/agreement-knowledge.js";
 import { createHouseholdInboundApprovalMessageHandler } from "./lifeops/household/inbound-approval.js";
 import { HouseholdCoordinationRuntimeService } from "./lifeops/household/service.js";
 import {
@@ -776,6 +777,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ActivityTrackerService,
     PresenceSignalBridgeService,
     HouseholdCoordinationRuntimeService,
+    AgreementKnowledgeRuntimeService,
     AuthenticatedRuntimeSpeakerVerifierService,
     FamilyCommunicationsRuntimeService,
     ParentingGuidanceRuntimeService,

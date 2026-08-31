@@ -46,6 +46,7 @@ Inbox triage context is owned and registered by `@elizaos/plugin-inbox`.
 - `BrowserBridgePluginService`
 - `ActivityTrackerService` and `PresenceSignalBridgeService`
 - `HouseholdCoordinationRuntimeService`
+- `AgreementKnowledgeRuntimeService`
 - `AuthenticatedRuntimeSpeakerVerifierService` and `FamilyCommunicationsRuntimeService`
 - `ParentingGuidanceRuntimeService`
 - `HouseholdOperationsRuntimeService`
@@ -90,7 +91,7 @@ src/
     relationships/              relationship store
     owner/                      owner facts and profile extraction
     work-threads/               durable work-thread state
-    household*/                 household coordination and operations
+    household*/                 coordination, agreement knowledge, and operations
     family-communications/      authenticated family messaging
     parenting/ food/ school/    household domain modules
     oracles/                    external facts and local conditions
@@ -139,6 +140,7 @@ Connector credentials and domain-specific settings belong to their owning plugin
 
 - Scheduled behavior is structural. Never branch on `promptInstructions`; use `kind`, `trigger`, `shouldFire`, `completionCheck`, `pipeline`, and related fields.
 - There is one scheduler and one entity/relationship graph. Extend their registries rather than creating parallel stores or runners.
+- Parenting-agreement bytes use `IFileStorageService` and retain an owner-private `DocumentService` record, never a package-local file store. Agreement versions are immutable; reviewed obligations cite source pages; pins affect discovery only; guest reads require both a resource binding and the exact still-active `knowledge.read` household grant.
 - Connector dispatch returns typed `DispatchResult` values. Do not reduce transport outcomes to booleans.
 - External sends, signatures, and other consequential operations pass through owner policy and approval boundaries.
 - Add domain logic to the owning plugin. Keep this package focused on orchestration, normalized owner projections, and cross-domain policy.

@@ -170,6 +170,27 @@ src/lifeops/
                                   subscriptions, assistant workflows, etc.)
 ```
 
+## Parenting-agreement knowledge
+
+Parenting agreements are stored as immutable versions whose PDF bytes go
+through the runtime's single content-addressed `IFileStorageService` and retain
+an owner-private `DocumentService` record so knowledge search and media GC use
+the canonical document path. LifeOps persists the returned SHA-256, media
+handle, document id, byte size, MIME type, filename, page count, and version
+chain; it does not create another file store.
+
+Owner- or agent-extracted obligations begin as `proposed` and must carry an
+in-range page citation plus the cited source text. Only the owner can make the terminal
+`approved` or `rejected` decision. Agent and chat pins are independent
+discovery records and never confer access.
+
+The owner is the only implicit reader. A guest read requires a resource grant
+bound to one exact household grant with `knowledge.read`; the guest entity must
+have a verified identity, and both grants must remain unrevoked and unexpired.
+Guest views expose approved obligations only. Revoking the relationship-backed
+household grant immediately invalidates every agreement binding that relies on
+it.
+
 ## Default packs
 
 Default packs are bundles of typed scheduled-item definitions compiled into
