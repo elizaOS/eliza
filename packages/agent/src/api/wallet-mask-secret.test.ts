@@ -33,3 +33,28 @@ describe("maskSecret", () => {
     expect(masked).toBe("sk-M...MEND"); // first4 "sk-M" + last4 "MEND"
   });
 });
+
+describe("maskSecret surrogate safety", () => {
+  const ROCKET = "\u{1F680}";
+  it("backs off an astral pair straddling the visible-start boundary", () => {
+    const masked = maskSecret(`012${ROCKET}3456789abcdefghij`);
+    expect(masked.isWellFormed()).toBe(true);
+    expect(masked.startsWith("012...")).toBe(true);
+  });
+
+  it("backs off an astral pair straddling the visible-end boundary", () => {
+    const masked = maskSecret(`0123456789abcdefg${ROCKET}hij`);
+    expect(masked.isWellFormed()).toBe(true);
+    expect(masked.endsWith("...hij")).toBe(true);
+  });
+
+  it("keeps a fitting astral pair intact at both boundaries", () => {
+    const masked = maskSecret(`${ROCKET}123456789abcdef${ROCKET}`);
+    expect(masked.isWellFormed()).toBe(true);
+  });
+
+  it("sanitizes a pre-existing lone surrogate", () => {
+    const masked = maskSecret("0123\uD83D456789abcdefghij");
+    expect(masked.isWellFormed()).toBe(true);
+  });
+});
