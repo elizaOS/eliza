@@ -48,6 +48,44 @@ describe("markdownToSlackMrkdwn", () => {
     expect(markdownToSlackMrkdwn("")).toBe("");
   });
 
+  it("leaves fenced code bodies exactly as authored", () => {
+    // The link/heading/style passes are regex-based and cannot see fence
+    // state, so without protection they rewrote code: a `#` comment line
+    // became bold, `a * b` became `a _ b`, and a literal markdown link
+    // became a Slack link. Slack renders none of that inside ``` — the user
+    // just sees corrupted code and copies it out.
+    expect(
+      markdownToSlackMrkdwn("Run this:\n```bash\n# install deps\nnpm i\n```"),
+    ).toContain("# install deps");
+    expect(markdownToSlackMrkdwn("```python\narea = w * h * d\n```")).toContain(
+      "area = w * h * d",
+    );
+    expect(
+      markdownToSlackMrkdwn("```md\nsee [docs](https://ex.com)\n```"),
+    ).toContain("[docs](https://ex.com)");
+  });
+
+  it("still entity-escapes & < > inside a fenced body", () => {
+    // The body is held aside before `escapeSlackMrkdwn` runs, so it is escaped
+    // at lift-out time instead; Slack renders raw & < > inside a fence.
+    const out = markdownToSlackMrkdwn(
+      "```sh\nif [ $a -lt 5 ] && echo <hi>\n```",
+    );
+    expect(out).toContain("&amp;&amp;");
+    expect(out).toContain("&lt;hi&gt;");
+  });
+
+  it("restores multiple fences in order and still styles the prose between", () => {
+    const out = markdownToSlackMrkdwn(
+      "```\nAAA * A\n```\nmid *em*\n```\nBBB * B\n```",
+    );
+    expect(out).toContain("AAA * A");
+    expect(out).toContain("BBB * B");
+    expect(out).toContain("_em_");
+    expect(out.indexOf("AAA")).toBeLessThan(out.indexOf("BBB"));
+    expect(out).not.toContain("\u0000");
+  });
+
   it("handles a 100k unterminated code fence without backtracking", () => {
     const adversarial = `\`\`\`json\n${"x".repeat(100_000)}`;
     expect(markdownToSlackMrkdwn(adversarial)).toContain("x".repeat(100_000));

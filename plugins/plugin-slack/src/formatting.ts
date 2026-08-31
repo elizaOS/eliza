@@ -104,6 +104,13 @@ export function escapeSlackMrkdwn(text: string): string {
 
 // Sentinel used during conversion to prevent bold from being matched as italic.
 const BOLD_SENTINEL = "\u0000BOLD\u0000";
+// Fenced bodies are lifted out behind this sentinel before the link/heading/
+// style passes run, because those passes are regex-based and cannot see fence
+// state: a `# comment` line became bold, `a * b` became `a _ b`, and a literal
+// `[text](url)` became a Slack link. The sibling Telegram converter
+// (plugins/plugin-telegram/src/utils.ts) already substitutes code this way.
+const CODE_SENTINEL_PREFIX = "\u0000CODE";
+const CODE_SENTINEL_SUFFIX = "\u0000";
 
 /**
  * Converts markdown bold to Slack mrkdwn
@@ -136,7 +143,7 @@ function convertStrikethrough(text: string): string {
 /**
  * Converts markdown code blocks to Slack mrkdwn
  */
-function convertCodeBlocks(text: string): string {
+function convertCodeBlocks(text: string, codeSink: string[]): string {
   // Slack code blocks don't support language hints in the same way
   const out: string[] = [];
   let cursor = 0;
@@ -157,12 +164,13 @@ function convertCodeBlocks(text: string): string {
     if (text[bodyStart] === "\n") bodyStart += 1;
     const closer = text.indexOf("```", bodyStart);
     if (closer < 0) break;
-    out.push(
-      text.slice(cursor, opener),
-      "```\n",
-      text.slice(bodyStart, closer),
-      "```",
+    // Escape the body here: `escapeSlackMrkdwn` runs after restoration and can
+    // no longer reach it, but Slack still renders raw &, < and > inside a fence.
+    const token = `${CODE_SENTINEL_PREFIX}${codeSink.length}${CODE_SENTINEL_SUFFIX}`;
+    codeSink.push(
+      `\`\`\`\n${escapeSlackMrkdwnSegment(text.slice(bodyStart, closer))}\`\`\``,
     );
+    out.push(text.slice(cursor, opener), token);
     cursor = closer + 3;
   }
   out.push(text.slice(cursor));
@@ -199,6 +207,19 @@ function convertHeadings(text: string): string {
 }
 
 /**
+ * Puts the held-aside fenced bodies back, after every style pass has run.
+ */
+function restoreCodeBlocks(text: string, codeSink: string[]): string {
+  let restored = text;
+  for (let index = 0; index < codeSink.length; index++) {
+    restored = restored
+      .split(`${CODE_SENTINEL_PREFIX}${index}${CODE_SENTINEL_SUFFIX}`)
+      .join(codeSink[index] ?? "");
+  }
+  return restored;
+}
+
+/**
  * Converts markdown to Slack mrkdwn format
  */
 export function markdownToSlackMrkdwn(markdown: string): string {
@@ -206,14 +227,17 @@ export function markdownToSlackMrkdwn(markdown: string): string {
     return "";
   }
 
-  // Process in order: code blocks -> links -> headings -> text styles -> escape
-  let result = convertCodeBlocks(markdown);
+  // Process in order: code blocks -> links -> headings -> text styles -> escape.
+  // Fenced bodies are held aside for the whole pipeline and restored last.
+  const codeSink: string[] = [];
+  let result = convertCodeBlocks(markdown, codeSink);
   result = convertLinks(result);
   result = convertHeadings(result);
   result = convertBold(result);
   result = convertItalic(result);
   result = convertStrikethrough(result);
   result = escapeSlackMrkdwn(result);
+  result = restoreCodeBlocks(result, codeSink);
 
   return result;
 }
