@@ -357,21 +357,23 @@ tokens so staging automation cannot mutate production zones.
 
 The Cloud release resolves the public Telegram bot ID and username before
 database migration or API deployment. Staging consumes the complete
-`VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` pair only from the
-protected `staging` GitHub Environment and requires both components to differ
-from production. Before the reusable release enters any Environment,
-`cloud-cf-deploy.yml` evaluates both names at organization/repository scope and
-passes a required provenance flag plus the workflow attempt that produced it.
-The Environment-scoped preflight rejects a stale attempt receipt before it
-validates or emits Environment values, then rejects either component at either
-outer scope as conflicting authority and validates the pair exposed by its job
-Environment. Because GitHub preserves successful job outputs during failed-job
-reruns, the migration, API deploy, Pages build, and Pages deploy jobs each
-repeat the attempt check as their first step; a partial rerun must be replaced
-with a full rerun before any stale receipt can reach a release mutation.
-Missing, partial, malformed, out-of-range, duplicate-scope, or
-cross-environment staging configuration stops the release without printing
-either value. Production continues to ignore every GitHub Telegram input and
+`VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` configuration-variable
+pair only when it matches the protected `staging` GitHub Environment secret
+`TELEGRAM_IDENTITY_AUTHORITY_SHA256`, and requires both components to differ
+from production. The receipt is the lowercase SHA-256 of the framed bytes
+`elizaOS/eliza\0staging\0telegram-public-identity\0v1\0<ID>\0<lowercase-username>\n`.
+The reusable release uses an exact caller-secret allowlist that deliberately
+does not forward that receipt, so a repository or organization secret cannot
+substitute for the Environment authority. A repository/organization variable
+may resolve the same committed public pair, but cannot select a different pair.
+Because GitHub preserves successful job outputs during failed-job reruns, the
+migration, API deploy, Pages build, and Pages deploy jobs each repeat the bound
+attempt check as their first step; a partial rerun must be replaced with a full
+rerun before stale admitted values can reach a release mutation. Cancel and
+fully rerun any in-flight release when rotating the pair or receipt. Missing,
+partial, malformed, out-of-range, receipt-mismatched, or cross-environment
+staging configuration stops the release without printing either value or the
+receipt. Production continues to ignore every GitHub Telegram input and
 derives its exact canonical identity from the checked out
 `packages/homepage/src/lib/contact.ts`. Implicit Vite fallback use remains
 local/direct-only; protected production explicitly selects and validates the

@@ -122,8 +122,8 @@ isolated visual harness.
 | Variable | Default | Purpose |
 |---|---|---|
 | `VITE_ELIZACLOUD_API_URL` | `https://api.eliza.app` | Eliza Cloud backend base URL |
-| `VITE_TELEGRAM_BOT_USERNAME` | source constant | Local/direct-build Telegram username fallback; protected staging reads the pair only from its GitHub Environment |
-| `VITE_TELEGRAM_BOT_ID` | source constant | Local/direct-build numeric Telegram ID fallback; protected staging reads the pair only from its GitHub Environment |
+| `VITE_TELEGRAM_BOT_USERNAME` | source constant | Local/direct-build Telegram username fallback; protected staging accepts the pair only with its Environment authority receipt |
+| `VITE_TELEGRAM_BOT_ID` | source constant | Local/direct-build numeric Telegram ID fallback; protected staging accepts the pair only with its Environment authority receipt |
 | `VITE_DISCORD_CLIENT_ID` | `1468649258654630063` | Optional Discord Application ID override |
 | `WHATSAPP_PUBLIC_ENABLED` | disabled | Deployment-only switch that admits the public WhatsApp CTA |
 | `VITE_WHATSAPP_PHONE_NUMBER` | — | Admitted Blooio WhatsApp sender (E.164); production uses the shared `+18087881821` number only after its WhatsApp channel passes live proof |
@@ -131,13 +131,16 @@ isolated visual harness.
 Auth token is stored in `localStorage` under key `eliza_app_session`. The test signer hook is `window.__siwsTestSigner` (used by Playwright e2e to skip wallet interaction).
 
 The Telegram defaults above do not authorize a protected staging Pages
-artifact. The Cloud release preflight requires the explicit, valid pair on the
-protected `staging` GitHub Environment before migrations or API deployment,
-and neither component may match production. Before entering that Environment,
-the caller records whether either name resolves at organization or repository
-scope. The Environment-scoped preflight rejects a conflicting scope before any
-mutation. Production ignores all GitHub Telegram inputs and derives its exact
-identity from `src/lib/contact.ts` at the checked-out release SHA.
+artifact. The Cloud release preflight requires the explicit, valid pair as
+configuration variables before migrations or API deployment, and neither
+component may match production. It accepts the pair only when the protected
+`staging` GitHub Environment secret `TELEGRAM_IDENTITY_AUTHORITY_SHA256` matches
+the framed ID plus lowercase username. The reusable release explicitly does
+not forward that secret from repository or organization scope; configuration
+variables carry public values but are not release authority. Cancel and fully
+rerun an in-flight release after rotating the pair or receipt. Production
+ignores all GitHub Telegram inputs and derives its exact identity from
+`src/lib/contact.ts` at the checked-out release SHA.
 
 ## How to extend
 
