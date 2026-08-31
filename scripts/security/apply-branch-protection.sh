@@ -290,65 +290,105 @@ if (rulesetId === null) {
 }
 
 const actual = rulesetDetail(rulesetId);
-const normalizeStatusCheckAttribution = (ruleset) => {
+const sortObjectKeys = (value) => {
+  if (Array.isArray(value)) return value.map(sortObjectKeys);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortObjectKeys(value[key])]),
+  );
+};
+const normalizeForComparison = (ruleset, expectedSide) => {
   const normalized = structuredClone(ruleset);
   if (!Array.isArray(normalized?.rules)) return normalized;
   for (const rule of normalized.rules) {
-    if (rule?.type !== "required_status_checks") continue;
-    const checks = rule.parameters?.required_status_checks;
-    if (!Array.isArray(checks)) continue;
-    rule.parameters.required_status_checks = checks.map((check) => {
-      if (!check || typeof check !== "object" || Array.isArray(check)) {
-        return check;
+    if (rule?.type === "required_status_checks") {
+      const checks = rule.parameters?.required_status_checks;
+      if (Array.isArray(checks)) {
+        rule.parameters.required_status_checks = checks.map((check) => {
+          if (!check || typeof check !== "object" || Array.isArray(check)) {
+            return check;
+          }
+          return {
+            ...check,
+            integration_id: Object.hasOwn(check, "integration_id")
+              ? check.integration_id
+              : null,
+          };
+        });
       }
-      return {
-        ...check,
-        integration_id: Object.hasOwn(check, "integration_id")
-          ? check.integration_id
-          : null,
+    }
+    if (
+      rule?.type === "pull_request" &&
+      rule.parameters &&
+      typeof rule.parameters === "object" &&
+      !Array.isArray(rule.parameters)
+    ) {
+      const parameters = rule.parameters;
+      // These are symmetric absence-equivalences observed from the versioned
+      // REST API. Non-default values remain intact and therefore drift.
+      const materializedDefaults = {
+        dismissal_restriction: { allowed_actors: [], enabled: false },
+        ignore_approvals_from_contributors: false,
+        required_reviewers: [],
       };
-    });
+      for (const [key, defaultValue] of Object.entries(materializedDefaults)) {
+        if (!Object.hasOwn(parameters, key)) {
+          parameters[key] = structuredClone(defaultValue);
+        }
+      }
+      const restriction = parameters.dismissal_restriction;
+      if (
+        restriction &&
+        typeof restriction === "object" &&
+        !Array.isArray(restriction) &&
+        restriction.enabled === false &&
+        !Object.hasOwn(restriction, "allowed_actors")
+      ) {
+        restriction.allowed_actors = [];
+      }
+      // This response-only field is absent from the OpenAPI schema but is
+      // materialized as true in current REST readback. Require that explicit
+      // live evidence rather than treating an absent actual field as equal.
+      if (
+        expectedSide &&
+        !Object.hasOwn(
+          parameters,
+          "require_extra_approval_for_unattributed_changes",
+        )
+      ) {
+        parameters.require_extra_approval_for_unattributed_changes = true;
+      }
+    }
   }
-  return normalized;
+  return sortObjectKeys(normalized);
 };
-// GitHub may return a missing optional App attribution as either absent or
-// null. Canonicalize only the comparison copies so a numeric live pin can
-// never be hidden while the reviewed mutation payload stays byte-for-byte.
-const expectedComparable = normalizeStatusCheckAttribution(expected);
-const actualComparable = normalizeStatusCheckAttribution(actual);
-const pick = (template, value) => {
-  if (Array.isArray(template)) {
-    if (!Array.isArray(value)) return value;
-    if (template.length !== value.length) return value;
-    return template.map((entry, index) => pick(entry, value[index]));
-  }
-  if (template && typeof template === "object") {
-    return Object.fromEntries(
-      Object.keys(template).map((key) => [
-        key,
-        pick(template[key], value?.[key]),
-      ]),
-    );
-  }
-  return value;
-};
+// GitHub materializes several optional defaults in ruleset responses. Normalize
+// only comparison copies, preserve every non-default or unknown nested policy
+// field, and leave the reviewed mutation payload unchanged.
+const expectedComparable = normalizeForComparison(expected, true);
+const actualComparable = normalizeForComparison(actual, false);
 const expectedTypes = expectedComparable.rules
   .map((rule) => rule.type)
   .sort();
 const actualTypes = Array.isArray(actualComparable.rules)
   ? actualComparable.rules.map((rule) => rule.type).sort()
   : [];
-const projected = {
-  ...pick(
-    {
-      name: expectedComparable.name,
-      target: expectedComparable.target,
-      enforcement: expectedComparable.enforcement,
-      bypass_actors: expectedComparable.bypass_actors,
-      conditions: expectedComparable.conditions,
-    },
-    actualComparable,
-  ),
+const expectedPolicy = sortObjectKeys({
+  name: expectedComparable.name,
+  target: expectedComparable.target,
+  enforcement: expectedComparable.enforcement,
+  bypass_actors: expectedComparable.bypass_actors,
+  conditions: expectedComparable.conditions,
+  rules: expectedComparable.rules,
+});
+const projected = sortObjectKeys({
+  name: actualComparable.name,
+  target: actualComparable.target,
+  enforcement: actualComparable.enforcement,
+  bypass_actors: actualComparable.bypass_actors,
+  conditions: actualComparable.conditions,
   rules: expectedComparable.rules.map((rule) => {
     const matches = Array.isArray(actualComparable.rules)
       ? actualComparable.rules.filter(
@@ -358,9 +398,9 @@ const projected = {
     if (matches.length !== 1) {
       return { type: rule.type, count: matches.length };
     }
-    return pick(rule, matches[0]);
+    return matches[0];
   }),
-};
+});
 
 const differingPaths = new Set();
 const recordDifferences = (template, value, path) => {
@@ -382,7 +422,12 @@ const recordDifferences = (template, value, path) => {
       differingPaths.add(path);
       return;
     }
-    for (const key of Object.keys(template)) {
+    const keys = new Set([...Object.keys(template), ...Object.keys(value)]);
+    for (const key of keys) {
+      if (!Object.hasOwn(template, key) || !Object.hasOwn(value, key)) {
+        differingPaths.add(`${path}.${key}`);
+        continue;
+      }
       recordDifferences(template[key], value[key], `${path}.${key}`);
     }
     return;
@@ -391,14 +436,14 @@ const recordDifferences = (template, value, path) => {
     differingPaths.add(path);
   }
 };
-recordDifferences(expectedComparable, projected, "ruleset");
+recordDifferences(expectedPolicy, projected, "ruleset");
 if (JSON.stringify(expectedTypes) !== JSON.stringify(actualTypes)) {
   differingPaths.add("ruleset.rules.type-set");
 }
 
 if (
   JSON.stringify(expectedTypes) !== JSON.stringify(actualTypes) ||
-  JSON.stringify(projected) !== JSON.stringify(expectedComparable)
+  JSON.stringify(projected) !== JSON.stringify(expectedPolicy)
 ) {
   console.error(`error: repository ruleset drift detected for ${expected.name}`);
   console.error(

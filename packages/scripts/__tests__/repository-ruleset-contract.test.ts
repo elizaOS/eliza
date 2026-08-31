@@ -64,7 +64,6 @@ if (methodIndex !== -1) method = args[methodIndex + 1];
 const endpoint = args.find((value) => value.startsWith("repos/"));
 const inputIndex = args.indexOf("--input");
 const inputSource = inputIndex === -1 ? null : args[inputIndex + 1];
-appendFileSync(logPath, JSON.stringify({ method, endpoint, inputSource }) + "\n");
 
 const reply = (value) => process.stdout.write(JSON.stringify(value));
 const save = () => writeFileSync(statePath, JSON.stringify(state));
@@ -75,6 +74,25 @@ const payload = inputIndex === -1
         ? readFileSync(0, "utf8")
         : readFileSync(inputSource, "utf8"),
     );
+appendFileSync(
+  logPath,
+  JSON.stringify({ method, endpoint, inputSource, payload }) + "\n",
+);
+
+function materializeRuleset(value) {
+  const materialized = structuredClone(value);
+  for (const rule of materialized.rules || []) {
+    if (rule.type !== "pull_request" || !rule.parameters) continue;
+    rule.parameters.dismissal_restriction ??= {
+      allowed_actors: [],
+      enabled: false,
+    };
+    rule.parameters.ignore_approvals_from_contributors ??= false;
+    rule.parameters.require_extra_approval_for_unattributed_changes ??= true;
+    rule.parameters.required_reviewers ??= [];
+  }
+  return materialized;
+}
 
 function publishRuleset(id, value) {
   for (const [branch, rules] of Object.entries(state.effective)) {
@@ -124,7 +142,7 @@ if (method === "GET" && endpoint.includes("/rulesets?")) {
     source_type: "Repository",
     source: "test/repo",
   });
-  state.details[String(id)] = { id, ...payload };
+  state.details[String(id)] = { id, ...materializeRuleset(payload) };
   publishRuleset(id, payload);
   if (state.injectPostOverlap) {
     state.list.push({
@@ -152,10 +170,10 @@ if (method === "GET" && endpoint.includes("/rulesets?")) {
     });
   }
   save();
-  reply({ id, ...payload });
+  reply(state.details[String(id)]);
 } else if (method === "PUT" && endpoint.includes("/rulesets/")) {
   const id = endpoint.split("/").at(-1);
-  state.details[id] = { id: Number(id), ...payload };
+  state.details[id] = { id: Number(id), ...materializeRuleset(payload) };
   publishRuleset(id, payload);
   save();
   reply(state.details[id]);
@@ -199,12 +217,30 @@ function effectiveEntries(
   );
 }
 
+function materializedDetail(
+  manifest: Record<string, any>,
+  id: number,
+): Record<string, any> {
+  const detail = { id, ...structuredClone(manifest) };
+  for (const rule of detail.rules) {
+    if (rule.type !== "pull_request" || !rule.parameters) continue;
+    rule.parameters.dismissal_restriction ??= {
+      allowed_actors: [],
+      enabled: false,
+    };
+    rule.parameters.ignore_approvals_from_contributors ??= false;
+    rule.parameters.require_extra_approval_for_unattributed_changes ??= true;
+    rule.parameters.required_reviewers ??= [];
+  }
+  return detail;
+}
+
 function stateWithManifests(): FakeState {
   return {
     list: [listEntry(mainManifest, 101), listEntry(developManifest, 102)],
     details: {
-      "101": { id: 101, ...structuredClone(mainManifest) },
-      "102": { id: 102, ...structuredClone(developManifest) },
+      "101": materializedDetail(mainManifest, 101),
+      "102": materializedDetail(developManifest, 102),
     },
     effective: {
       ...effectiveEntries(mainManifest, 101),
@@ -222,6 +258,7 @@ function runHelper(
     endpoint: string;
     inputSource: string | null;
     method: string;
+    payload: Record<string, any> | null;
   }>;
   stderr: string;
   stdout: string;
@@ -505,7 +542,7 @@ describe("repository ruleset contract", () => {
     status.parameters.required_status_checks[0].integration_id = 999;
     const state: FakeState = {
       list: [listEntry(developManifest, 401)],
-      details: { "401": { id: 401, ...actual } },
+      details: { "401": materializedDetail(actual, 401) },
       effective: effectiveEntries(developManifest, 401),
     };
     const result = runHelper(state, [
@@ -566,6 +603,130 @@ describe("repository ruleset contract", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("ruleset readback passed: required-main");
     expect(result.stderr).toBe("");
+    expect(
+      result.requests.some((request) => request.method !== "GET"),
+    ).toBeFalse();
+  });
+
+  test("accepts GitHub-materialized pull-request defaults", () => {
+    const state = stateWithManifests();
+    const actual = structuredClone(state.details["101"]);
+    const pullRequest = actual.rules.find(
+      (rule: Record<string, any>) => rule.type === "pull_request",
+    );
+    Object.assign(pullRequest.parameters, {
+      dismissal_restriction: { allowed_actors: [], enabled: false },
+      ignore_approvals_from_contributors: false,
+      require_extra_approval_for_unattributed_changes: true,
+      required_reviewers: [],
+    });
+    state.details["101"] = actual;
+    const result = runHelper(state, [
+      "--manifest",
+      manifestPath("main"),
+      "--check",
+      "--repo",
+      "test/repo",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("ruleset readback passed: required-main");
+    expect(result.stderr).toBe("");
+    expect(
+      result.requests.some((request) => request.method !== "GET"),
+    ).toBeFalse();
+  });
+
+  test("fails closed when the observed extra-approval field is absent", () => {
+    const state = stateWithManifests();
+    const actual = structuredClone(state.details["101"]);
+    const pullRequest = actual.rules.find(
+      (rule: Record<string, any>) => rule.type === "pull_request",
+    );
+    delete pullRequest.parameters
+      .require_extra_approval_for_unattributed_changes;
+    state.details["101"] = actual;
+    const result = runHelper(state, [
+      "--manifest",
+      manifestPath("main"),
+      "--check",
+      "--repo",
+      "test/repo",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("repository ruleset drift detected");
+    expect(result.stderr).toContain(
+      "require_extra_approval_for_unattributed_changes",
+    );
+    expect(
+      result.requests.some((request) => request.method !== "GET"),
+    ).toBeFalse();
+  });
+
+  test("detects non-default live review policy without leaking its values", () => {
+    const state = stateWithManifests();
+    const actual = structuredClone(state.details["101"]);
+    const pullRequest = actual.rules.find(
+      (rule: Record<string, any>) => rule.type === "pull_request",
+    );
+    Object.assign(pullRequest.parameters, {
+      dismissal_restriction: {
+        allowed_actors: [{ id: 8675309, type: "Team" }],
+        enabled: true,
+      },
+      ignore_approvals_from_contributors: true,
+      require_extra_approval_for_unattributed_changes: false,
+      required_reviewers: [
+        {
+          file_patterns: ["sensitive-pattern/**"],
+          minimum_approvals: 1,
+          reviewer: { id: 8675309, type: "Team" },
+        },
+      ],
+    });
+    state.details["101"] = actual;
+    const result = runHelper(state, [
+      "--manifest",
+      manifestPath("main"),
+      "--check",
+      "--repo",
+      "test/repo",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("repository ruleset drift detected");
+    expect(result.stderr).toContain("dismissal_restriction.enabled");
+    expect(result.stderr).toContain("required_reviewers.length");
+    expect(result.stderr).toContain(
+      "require_extra_approval_for_unattributed_changes",
+    );
+    expect(result.stderr).toContain("ignore_approvals_from_contributors");
+    expect(result.stderr).not.toContain("8675309");
+    expect(result.stderr).not.toContain("sensitive-pattern");
+    expect(
+      result.requests.some((request) => request.method !== "GET"),
+    ).toBeFalse();
+  });
+
+  test("fails closed on an unknown live rule parameter", () => {
+    const state = stateWithManifests();
+    const actual = structuredClone(state.details["102"]);
+    const pullRequest = actual.rules.find(
+      (rule: Record<string, any>) => rule.type === "pull_request",
+    );
+    pullRequest.parameters.future_review_policy = {
+      opaque_value: "sensitive-future-value",
+    };
+    state.details["102"] = actual;
+    const result = runHelper(state, [
+      "--manifest",
+      manifestPath("develop"),
+      "--check",
+      "--repo",
+      "test/repo",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("repository ruleset drift detected");
+    expect(result.stderr).toContain("future_review_policy");
+    expect(result.stderr).not.toContain("sensitive-future-value");
     expect(
       result.requests.some((request) => request.method !== "GET"),
     ).toBeFalse();
@@ -648,6 +809,20 @@ describe("repository ruleset contract", () => {
       );
       expect(writes).toHaveLength(1);
       expect(writes[0].inputSource).toBe("-");
+      expect(writes[0].payload).toEqual(developManifest);
+      const writtenPullRequest = writes[0].payload?.rules.find(
+        (rule: Record<string, any>) => rule.type === "pull_request",
+      );
+      for (const responseOnlyField of [
+        "dismissal_restriction",
+        "ignore_approvals_from_contributors",
+        "require_extra_approval_for_unattributed_changes",
+        "required_reviewers",
+      ]) {
+        expect(
+          Object.hasOwn(writtenPullRequest.parameters, responseOnlyField),
+        ).toBeFalse();
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
