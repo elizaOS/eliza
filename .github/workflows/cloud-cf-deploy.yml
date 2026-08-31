@@ -664,7 +664,7 @@ jobs:
           set -euo pipefail
           umask 077
           evidence_dir="$RUNNER_TEMP/production-binding-recovery-authority"
-          mkdir -m 0700 "$evidence_dir"
+          install -d -m 0700 "$evidence_dir"
           candidate_id="$(
             bun -e '
               const source = await Bun.file("packages/cloud/api/wrangler.toml").text();
@@ -728,7 +728,7 @@ jobs:
           set -euo pipefail
           umask 077
           evidence_dir="$RUNNER_TEMP/production-binding-recovery-authority"
-          mkdir -m 0700 "$evidence_dir"
+          install -d -m 0700 "$evidence_dir"
           capture() {
             local label="$1"
             local output="$2"
