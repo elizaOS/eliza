@@ -22,3 +22,8 @@ patches/CHECKSUMS.sha256 -text
 *.java text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# This adversarial fixture deliberately includes control-character source
+# literals. Force a textual diff so security-relevant assertion changes remain
+# reviewable instead of appearing as an opaque binary replacement.
+plugins/plugin-personal-assistant/test/connector-payload-fuzz.test.ts diff
