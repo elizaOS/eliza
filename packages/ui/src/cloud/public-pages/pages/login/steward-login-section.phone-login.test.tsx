@@ -219,8 +219,11 @@ describe("StewardLoginSection phone login", () => {
     renderSection();
 
     await screen.findByRole("button", { name: "Google" });
-    const divider = screen.getByText("or continue with");
+    const divider = screen.getByText("or continue with email");
     expect(divider.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      document.querySelector('label[for="steward-login-phone"]')?.className,
+    ).toContain("sr-only");
     expect(
       screen.getByRole("group", { name: "or continue with" }),
     ).toBeTruthy();

@@ -1,11 +1,10 @@
 /**
- * Native Ethereum + Solana sign-in buttons for the Steward login section.
+ * Headless Ethereum + Solana sign-in launchers for the Steward login section.
  *
  * Bounded port of `cloud-frontend@4056e0e868`'s wallet-buttons (#the wallet
  * branch dropped in the cloud-frontend → @elizaos/ui fold). Changes from the
- * original: i18n comes from CloudI18nProvider, and the @web3icons brand marks
- * are dropped for text-only buttons (the console is black-and-white; color is
- * reserved for meaning).
+ * original: i18n comes from CloudI18nProvider, while the visible network
+ * chooser remains in the lightweight login bundle.
  *
  * Click flow:
  *   1. If not connected, open the wallet connect modal (native EIP-1193 /
@@ -27,8 +26,6 @@ import type {
 } from "@stwd/sdk";
 import { useCallback, useEffect, useRef } from "react";
 import { type Connector, useAccount, useConnect, useSignMessage } from "wagmi";
-import { Button } from "../../../../components/ui/button";
-import { Spinner } from "../../../../components/ui/spinner";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 
 type HexAddress = `0x${string}`;
@@ -106,58 +103,59 @@ async function personalSign(
   return signature;
 }
 
-// Phantom injects itself as an Ethereum provider but must never be used for
-// SIWE — it is Solana-first and the user's intent for SIWE is a real EVM wallet.
-// We mirror the previous EIP-1193 isPhantom check, but against the connector's
-// underlying provider so the wagmi store stays the source of truth.
-async function isPhantomConnector(connector: Connector): Promise<boolean> {
+function isInjectedConnector(connector: Connector): boolean {
+  const type = connector.type.toLowerCase();
   const id = connector.id.toLowerCase();
-  const name = (connector.name ?? "").toLowerCase();
-  if (id.includes("phantom") || name.includes("phantom")) return true;
-  try {
-    const provider = (await connector.getProvider()) as unknown;
-    if (provider !== null && typeof provider === "object") {
-      if (Reflect.get(provider, "isPhantom") === true) return true;
-    }
-  } catch {
-    // error-policy:J6 best-effort provider probe. A connector that can't
-    // surface its provider yet is treated as non-Phantom; the real failure (if
-    // any) surfaces at the downstream connect() the caller runs regardless.
-    return false;
-  }
-  return false;
+  return (
+    type === "injected" ||
+    id === "metamask" ||
+    id === "metamasksdk" ||
+    id === "coinbasewallet" ||
+    id === "coinbasewalletsdk"
+  );
 }
 
-// Pick the best EVM connector that is NOT Phantom. Prefer an "injected"-style
-// connector (MetaMask, generic injected, Coinbase, etc.) over WalletConnect so
-// users with a wallet extension get the native popup instead of a QR modal.
+// Pick a ready, non-Phantom injected EVM connector. Wagmi registers a generic
+// injected connector even when no browser wallet exists, so connector presence
+// alone is not readiness. If no candidate can expose an EIP-1193 provider, the
+// caller opens RainbowKit instead (WalletConnect QR / mobile handoff).
 async function pickInjectedConnector(
   connectors: readonly Connector[],
 ): Promise<Connector | null> {
-  const eligible: Connector[] = [];
   for (const connector of connectors) {
-    if (await isPhantomConnector(connector)) continue;
-    eligible.push(connector);
+    if (!isInjectedConnector(connector)) continue;
+    const id = connector.id.toLowerCase();
+    const name = (connector.name ?? "").toLowerCase();
+    if (id.includes("phantom") || name.includes("phantom")) continue;
+    try {
+      const provider = (await connector.getProvider()) as unknown;
+      if (
+        provider === null ||
+        typeof provider !== "object" ||
+        typeof Reflect.get(provider, "request") !== "function" ||
+        Reflect.get(provider, "isPhantom") === true
+      ) {
+        continue;
+      }
+      return connector;
+    } catch (error) {
+      // error-policy:J6 an unavailable injected provider is ordinary on
+      // extension-free and mobile browsers; RainbowKit is the intended path.
+      void error;
+    }
   }
-  if (eligible.length === 0) return null;
-
-  // Prefer injected-type connectors over walletConnect; ordering within
-  // `connectors` already reflects RainbowKit's wallet detection priority.
-  const injected = eligible.find((c) => {
-    const type = c.type.toLowerCase();
-    const id = c.id.toLowerCase();
-    return (
-      type === "injected" ||
-      id === "metamask" ||
-      id === "metaMaskSDK".toLowerCase() ||
-      id === "coinbasewallet" ||
-      id === "coinbasewalletsdk"
-    );
-  });
-  return injected ?? eligible[0];
+  return null;
 }
 
-export function WalletButtons({
+/**
+ * Mounts only the selected wallet integration and immediately starts it.
+ *
+ * The network chooser owns the visible controls. Keeping this launcher
+ * headless avoids leaving duplicate interactive wallet buttons hidden in the
+ * document while preserving the provider hooks until connect/sign completes.
+ */
+export function WalletAutoLauncher({
+  kind,
   autoStart,
   auth,
   disabled,
@@ -166,8 +164,10 @@ export function WalletButtons({
   onError,
   onLoadingChange,
   loadingProvider,
+  returnFocusTarget,
 }: {
-  autoStart?: "ethereum" | "solana" | null;
+  kind: "ethereum" | "solana";
+  autoStart: boolean;
   auth: StewardAuth;
   disabled: boolean;
   onAutoStartHandled?: () => void;
@@ -175,30 +175,35 @@ export function WalletButtons({
   onError: (error: Error, kind: "ethereum" | "solana") => void;
   onLoadingChange: (kind: "ethereum" | "solana" | null) => void;
   loadingProvider: "ethereum" | "solana" | null;
+  returnFocusTarget?: HTMLElement | null;
 }) {
-  return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <EthereumButton
-        autoStart={autoStart === "ethereum"}
-        auth={auth}
-        disabled={disabled}
-        onAutoStartHandled={onAutoStartHandled}
-        loading={loadingProvider === "ethereum"}
-        onSuccess={onSuccess}
-        onError={(err) => onError(err, "ethereum")}
-        onLoadingChange={(l) => onLoadingChange(l ? "ethereum" : null)}
-      />
-      <SolanaButton
-        autoStart={autoStart === "solana"}
-        auth={auth}
-        disabled={disabled}
-        onAutoStartHandled={onAutoStartHandled}
-        loading={loadingProvider === "solana"}
-        onSuccess={onSuccess}
-        onError={(err) => onError(err, "solana")}
-        onLoadingChange={(l) => onLoadingChange(l ? "solana" : null)}
-      />
-    </div>
+  return kind === "ethereum" ? (
+    <EthereumButton
+      autoStart={autoStart}
+      auth={auth}
+      disabled={disabled}
+      onAutoStartHandled={onAutoStartHandled}
+      loading={loadingProvider === "ethereum"}
+      onSuccess={onSuccess}
+      onError={(error) => onError(error, "ethereum")}
+      onLoadingChange={(isLoading) =>
+        onLoadingChange(isLoading ? "ethereum" : null)
+      }
+    />
+  ) : (
+    <SolanaButton
+      autoStart={autoStart}
+      auth={auth}
+      disabled={disabled}
+      onAutoStartHandled={onAutoStartHandled}
+      loading={loadingProvider === "solana"}
+      onSuccess={onSuccess}
+      onError={(error) => onError(error, "solana")}
+      onLoadingChange={(isLoading) =>
+        onLoadingChange(isLoading ? "solana" : null)
+      }
+      returnFocusTarget={returnFocusTarget}
+    />
   );
 }
 
@@ -349,19 +354,7 @@ function EthereumButton({
   // set until the next connect. That's fine — worst case is a stale flag
   // that fires on a later successful connect.
 
-  return (
-    <Button
-      variant="outlineMuted"
-      size="touch"
-      type="button"
-      onClick={handleClick}
-      disabled={disabled}
-      className="hosted-signin-focus-emphasis"
-    >
-      {loading && <Spinner />}
-      {t("cloud.login.wallet.evm", { defaultValue: "EVM wallet" })}
-    </Button>
-  );
+  return null;
 }
 
 // ── Solana ──────────────────────────────────────────────────────────────────
@@ -375,6 +368,7 @@ function SolanaButton({
   onSuccess,
   onError,
   onLoadingChange,
+  returnFocusTarget,
 }: {
   autoStart: boolean;
   auth: StewardAuth;
@@ -384,11 +378,66 @@ function SolanaButton({
   onSuccess: (result: StewardAuthResult) => void | Promise<void>;
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
+  returnFocusTarget?: HTMLElement | null;
 }) {
   const t = useCloudT();
   const wallet = useWallet();
-  const { setVisible } = useWalletModal();
+  const { setVisible, visible } = useWalletModal();
   const pendingSignRef = useRef(false);
+  const modalReturnFocusRef = useRef<HTMLElement | null>(null);
+  const modalWasVisibleRef = useRef(false);
+
+  // The upstream Solana modal traps Tab only after focus has entered it. Move
+  // focus into the portal on open and return it to our wallet trigger on close.
+  useEffect(() => {
+    if (visible) {
+      modalWasVisibleRef.current = true;
+      const frame = window.requestAnimationFrame(() => {
+        const modal = document.querySelector<HTMLElement>(
+          ".wallet-adapter-modal[role='dialog']",
+        );
+        const title = modal?.querySelector<HTMLElement>(
+          ".wallet-adapter-modal-title",
+        );
+        if (modal && title) {
+          const referencedTitleId = modal
+            .getAttribute("aria-labelledby")
+            ?.trim();
+          if (!title.id) {
+            title.id = referencedTitleId || "wallet-adapter-modal-title";
+          }
+          if (!referencedTitleId) {
+            modal.setAttribute("aria-labelledby", title.id);
+          }
+        }
+        const closeButton = document.querySelector<HTMLButtonElement>(
+          ".wallet-adapter-modal-button-close",
+        );
+        if (closeButton && !closeButton.getAttribute("aria-label")) {
+          closeButton.setAttribute(
+            "aria-label",
+            t("common.close", { defaultValue: "Close" }),
+          );
+        }
+        document
+          .querySelector<HTMLButtonElement>(
+            ".wallet-adapter-modal-list button:not(:disabled):not([tabindex='-1'])",
+          )
+          ?.focus({ preventScroll: true });
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    if (!modalWasVisibleRef.current) return;
+    modalWasVisibleRef.current = false;
+    const returnTarget = modalReturnFocusRef.current;
+    modalReturnFocusRef.current = null;
+    if (!returnTarget?.isConnected) return;
+    const frame = window.requestAnimationFrame(() =>
+      returnTarget.focus({ preventScroll: true }),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [t, visible]);
 
   const sign = useCallback(async () => {
     if (!wallet.publicKey || !wallet.signMessage) {
@@ -441,8 +490,21 @@ function SolanaButton({
       return;
     }
     pendingSignRef.current = true;
+    modalReturnFocusRef.current =
+      returnFocusTarget ??
+      (document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null);
     setVisible(true);
-  }, [disabled, loading, wallet.connected, wallet.publicKey, sign, setVisible]);
+  }, [
+    disabled,
+    loading,
+    returnFocusTarget,
+    wallet.connected,
+    wallet.publicKey,
+    sign,
+    setVisible,
+  ]);
 
   const autoStartedRef = useRef(false);
   useEffect(() => {
@@ -452,17 +514,5 @@ function SolanaButton({
     handleClick();
   }, [autoStart, disabled, handleClick, loading, onAutoStartHandled]);
 
-  return (
-    <Button
-      variant="outlineMuted"
-      size="touch"
-      type="button"
-      onClick={handleClick}
-      disabled={disabled}
-      className="hosted-signin-focus-emphasis"
-    >
-      {loading && <Spinner />}
-      {t("cloud.login.wallet.solana", { defaultValue: "Solana wallet" })}
-    </Button>
-  );
+  return null;
 }

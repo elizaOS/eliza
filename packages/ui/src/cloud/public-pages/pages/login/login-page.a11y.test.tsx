@@ -104,6 +104,10 @@ describe("LoginPage accessibility", () => {
     const privacy = screen.getByRole("link", { name: "Privacy Policy" });
     expect(terms.className).toContain("min-h-touch");
     expect(privacy.className).toContain("min-h-touch");
+    expect(terms.parentElement).toBe(privacy.parentElement);
+    expect(terms.closest("p")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+      "By signing in, you agree to the Terms and Privacy Policy",
+    );
   });
 });
 

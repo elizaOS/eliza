@@ -2,15 +2,15 @@
  * Verifies StewardLoginSection's transient states reserve the final option
  * stack's geometry (#18256) under a mocked Steward harness (jsdom). The
  * provider-discovery state must render the structural skeleton — the same
- * 44px row stack as the fully-enabled form — instead of a short spinner
+ * touch-height control set as the fully-enabled form — instead of a short spinner
  * block, and the completing-callback state must carry an invisible sizing
  * ghost of that stack, so neither state resolves with a card-height jump.
  * jsdom cannot measure layout, so the contract is structural: both states
- * expose exactly the skeleton's touch-height row set and no live options.
+ * expose exactly the skeleton's touch-height controls and no live options.
  */
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -93,13 +93,13 @@ vi.mock("../../lib/login-return-to", () => ({
 
 import StewardLoginSection from "./steward-login-section";
 
-// The skeleton's 44px rows: email input, passkey + magic-link, three OAuth
-// buttons (Google/Discord/GitHub), two wallet buttons. Must track the
-// fully-enabled option stack in login-section-skeleton.tsx.
-const SKELETON_TOUCH_ROWS = 8;
-
-function countTouchRows(scope: HTMLElement): number {
-  return scope.querySelectorAll(".h-touch").length;
+function expectFullyEnabledProviderSkeleton(scope: HTMLElement): void {
+  const providerGrid = scope.querySelector<HTMLElement>(
+    '[data-testid="login-provider-skeleton-grid"]',
+  );
+  expect(providerGrid).not.toBeNull();
+  // The production profile exposes six compact actions in a 3×2 grid.
+  expect(providerGrid?.children).toHaveLength(6);
 }
 
 function renderSection(entry: string) {
@@ -122,14 +122,15 @@ describe("StewardLoginSection — reserved loading geometry (#18256)", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the full option-stack skeleton (not a bare spinner) while provider discovery is pending", () => {
+  it("renders the full option-stack skeleton (not a bare spinner) while provider discovery is pending", async () => {
     renderSection("/login");
+    await act(async () => undefined);
 
     const status = screen.getByRole("status", {
       name: "Loading sign-in options",
     });
     expect(status.getAttribute("aria-busy")).toBe("true");
-    expect(countTouchRows(status)).toBe(SKELETON_TOUCH_ROWS);
+    expectFullyEnabledProviderSkeleton(status);
     // Skeleton only — no live options may exist before discovery resolves.
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
@@ -145,6 +146,6 @@ describe("StewardLoginSection — reserved loading geometry (#18256)", () => {
     );
     const ghost = screen.getByTestId("login-reserved-geometry-ghost");
     expect(ghost.getAttribute("aria-hidden")).toBe("true");
-    expect(countTouchRows(ghost)).toBe(SKELETON_TOUCH_ROWS);
+    expectFullyEnabledProviderSkeleton(ghost);
   });
 });

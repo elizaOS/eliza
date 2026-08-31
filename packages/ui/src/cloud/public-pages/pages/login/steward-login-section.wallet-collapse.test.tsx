@@ -1,7 +1,15 @@
-/** Verifies StewardLoginSection wallet-method collapse (#19217). */
+/** Verifies StewardLoginSection wallet-method modal (#19217). */
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,6 +41,12 @@ const emailLoginSpies = vi.hoisted(() => ({
 const sessionSpies = vi.hoisted(() => ({
   recover: vi.fn(),
   hasCookie: false,
+}));
+
+const walletLauncherHarness = vi.hoisted(() => ({
+  onLoadingChange: null as
+    | ((kind: "ethereum" | "solana" | null) => void)
+    | null,
 }));
 
 vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
@@ -113,9 +127,16 @@ vi.mock("../../../billing/wallet/steward-wallet-providers", () => ({
 }));
 
 vi.mock("./wallet-buttons", () => ({
-  WalletButtons: () => (
-    <div data-testid="mounted-wallet-buttons">Mounted wallet stack</div>
-  ),
+  WalletAutoLauncher: ({
+    onLoadingChange,
+  }: {
+    onLoadingChange: (kind: "ethereum" | "solana" | null) => void;
+  }) => {
+    walletLauncherHarness.onLoadingChange = onLoadingChange;
+    return (
+      <div data-testid="mounted-wallet-launcher">Mounted wallet stack</div>
+    );
+  },
 }));
 
 import StewardLoginSection from "./steward-login-section";
@@ -143,7 +164,7 @@ function walletProviders() {
   };
 }
 
-describe("StewardLoginSection wallet collapse (#19217)", () => {
+describe("StewardLoginSection wallet dialog (#19217)", () => {
   beforeEach(() => {
     capabilityRef.usable = false;
     capabilityRef.reason = "native-without-bridge";
@@ -166,6 +187,7 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     });
     sessionSpies.recover.mockResolvedValue(null);
     sessionSpies.hasCookie = false;
+    walletLauncherHarness.onLoadingChange = null;
   });
 
   afterEach(() => {
@@ -173,57 +195,47 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     vi.clearAllMocks();
   });
 
-  it("collapses wallet methods behind a two-way disclosure toggle", async () => {
+  it("opens and closes wallet methods in a modal", async () => {
     renderSection();
 
-    // Wait for provider discovery to settle, then the collapsed toggle appears.
+    // Wait for provider discovery to settle, then the modal trigger appears.
     const walletToggle = await screen.findByRole("button", {
       name: /Continue with a wallet/i,
     });
     expect(screen.queryByRole("button", { name: "Apple" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Telegram" })).toBeNull();
 
-    // Disclosure semantics: collapsed state has aria-expanded=false and the
-    // button is NOT disabled — keyboard users can focus and activate it.
+    // Dialog semantics: closed state is focusable and advertises a dialog.
     expect(walletToggle.getAttribute("aria-expanded")).toBe("false");
-    expect(walletToggle.getAttribute("aria-controls")).toBe(
-      "steward-wallet-options",
-    );
+    expect(walletToggle.getAttribute("aria-haspopup")).toBe("dialog");
     expect(walletToggle.hasAttribute("disabled")).toBe(false);
-
-    // The controlled region is always in the DOM (aria-controls resolves) but
-    // hidden when collapsed, so screen readers don't announce stale contents.
-    const region = document.getElementById("steward-wallet-options");
-    expect(region).toBeTruthy();
-    expect(region?.hasAttribute("hidden")).toBe(true);
+    expect(screen.queryByRole("dialog")).toBeNull();
 
     // Wallet peer buttons must NOT be visible until the user expands.
-    expect(screen.queryByText("EVM wallet")).toBeNull();
-    expect(screen.queryByText("Solana wallet")).toBeNull();
+    expect(screen.queryByText("Ethereum")).toBeNull();
+    expect(screen.queryByText("Solana")).toBeNull();
 
-    // Expanding reveals the individual wallet buttons.
+    // Opening reveals the network choices without expanding the login card.
     fireEvent.click(walletToggle);
-    expect(await screen.findByText("EVM wallet")).toBeTruthy();
-    expect(screen.getByText("Solana wallet")).toBeTruthy();
-
-    // The toggle is an enabled disclosure with aria-expanded=true — focus is
-    // never lost because the control does not get disabled on expansion.
-    const toggleExpanded = screen.getByRole("button", {
-      name: /Collapse wallet options/i,
+    const dialog = await screen.findByRole("dialog", {
+      name: "Continue with a wallet",
     });
-    expect(toggleExpanded.getAttribute("aria-expanded")).toBe("true");
-    expect(toggleExpanded.hasAttribute("disabled")).toBe(false);
-    expect(region?.hasAttribute("hidden")).toBe(false);
+    expect(
+      within(dialog).getByRole("button", { name: "Ethereum" }),
+    ).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Solana" })).toBeTruthy();
 
-    // Collapsing again hides the wallet buttons (two-way disclosure).
-    fireEvent.click(toggleExpanded);
-    expect(toggleExpanded.getAttribute("aria-expanded")).toBe("false");
-    expect(region?.hasAttribute("hidden")).toBe(true);
-    expect(screen.queryByText("EVM wallet")).toBeNull();
-    expect(screen.queryByText("Solana wallet")).toBeNull();
+    // The canonical close action restores focus to the trigger.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const restoredTrigger = screen.getByRole("button", {
+      name: /Continue with a wallet/i,
+    });
+    expect(restoredTrigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(restoredTrigger);
   });
 
-  it("locks the disclosure only after wallet intent and moves focus into the live region", async () => {
+  it("closes the chooser before starting the lazy wallet stack", async () => {
     renderSection();
 
     const walletToggle = await screen.findByRole("button", {
@@ -231,30 +243,37 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     });
     fireEvent.click(walletToggle);
 
-    const evmButton = await screen.findByRole("button", {
-      name: /EVM wallet/i,
+    const dialog = await screen.findByRole("dialog", {
+      name: "Continue with a wallet",
     });
-    // Simulate keyboard activation of a peer intent button so focus would
-    // otherwise be stranded when that button unmounts.
-    evmButton.focus();
-    expect(document.activeElement).toBe(evmButton);
-    fireEvent.click(evmButton);
-
-    // Distinct post-intent state: toggle stays expanded but is now disabled
-    // because collapse is no longer meaningful once the lazy stack is mounted.
-    const lockedToggle = screen.getByRole("button", {
-      name: /Wallet options/i,
+    const ethereumButton = within(dialog).getByRole("button", {
+      name: "Ethereum",
     });
-    expect(lockedToggle.getAttribute("aria-expanded")).toBe("true");
-    expect(lockedToggle.hasAttribute("disabled")).toBe(true);
-    expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
-    expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
+    ethereumButton.focus();
+    expect(document.activeElement).toBe(ethereumButton);
+    fireEvent.click(ethereumButton);
 
-    const liveRegion = document.getElementById("steward-wallet-options");
-    expect(liveRegion).toBeTruthy();
-    expect(liveRegion?.hasAttribute("hidden")).toBe(false);
-    // Focus must land in the controlled region (not body / not the disabled
-    // toggle) after the peer button unmounts and the disclosure locks.
-    expect(document.activeElement).toBe(liveRegion);
+    expect(await screen.findByTestId("mounted-wallet-launcher")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // The headless launcher stays mounted outside the chooser, avoiding a
+    // nested focus trap when RainbowKit or Solana opens its own modal. Radix
+    // restores focus to the still-focusable, busy trigger in the meantime.
+    const loadingTrigger = screen.getByRole("button", {
+      name: "Loading wallet options",
+    });
+    expect(loadingTrigger.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(loadingTrigger);
+
+    // The real launcher reports wallet-owned loading as soon as an extension
+    // or signing flow begins. Keep the return target natively focusable so a
+    // cancelled vendor modal cannot strand keyboard focus.
+    act(() => walletLauncherHarness.onLoadingChange?.("ethereum"));
+    const signingTrigger = screen.getByRole("button", {
+      name: "Loading wallet options",
+    });
+    expect(signingTrigger.hasAttribute("disabled")).toBe(false);
+    expect(signingTrigger.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(signingTrigger);
   });
 });
