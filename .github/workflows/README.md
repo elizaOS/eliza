@@ -13,9 +13,11 @@ secrets, linting changed workflow definitions, performing a frozen install, and
 building plus linting and typechecking the affected workspace closure. When the
 Billing replay runtime workspace closure changes, it also runs the keyless,
 mock-backed payment replay Playwright proof and requires that job in the same
-aggregate. It does not run scenarios, live providers, devices, deployments, or
-destructive effects. New commits cancel stale work for the same pull request or
-merge group.
+aggregate. It also runs the subscription authority's organization-lock,
+post-lock expiry, live-subscription uniqueness, and allowance-accounting proof
+against PostgreSQL 16. It does not run scenarios, live providers, devices,
+deployments, or destructive effects. New commits cancel stale work for the same
+pull request or merge group.
 
 `develop-full.yml` is the sole develop-push workflow. Its stable concurrency
 group cancels the complete read-only graph for a superseded tip, delegates each

@@ -1,6 +1,9 @@
 /**
  * Proves subscription authority constraints with independent real-PostgreSQL sessions.
  * The suite creates and drops an isolated schema and never runs against PGlite.
+ * Start one locally with `docker run --rm --detach --name eliza-subscription-postgres -e
+ * POSTGRES_HOST_AUTH_METHOD=trust -p 55432:5432 postgres:16-alpine`, then run:
+ * `SUBSCRIPTION_AUTHORITY_POSTGRES_URL=postgresql://postgres@127.0.0.1:55432/postgres bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/subscription-authority.postgres.integration.test.ts`.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
@@ -15,6 +18,9 @@ const USER = "11000000-0000-4000-8000-000000000091";
 const SUBSCRIPTION = "12000000-0000-4000-8000-000000000091";
 const EXPIRY_ORG = "10000000-0000-4000-8000-000000000092";
 const EXPIRY_SUBSCRIPTION = "12000000-0000-4000-8000-000000000092";
+const LIVE_ORG = "10000000-0000-4000-8000-000000000093";
+const LIVE_SUBSCRIPTION_ONE = "12000000-0000-4000-8000-000000000093";
+const LIVE_SUBSCRIPTION_TWO = "12000000-0000-4000-8000-000000000094";
 
 let setupClient: Client | undefined;
 let allowanceRepository: import("./subscription-allowance").SubscriptionAllowanceRepository;
@@ -56,6 +62,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     }
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [EXPIRY_ORG]);
+    await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [LIVE_ORG]);
     await setupClient.query(`INSERT INTO users(id) VALUES ($1)`, [USER]);
     const repositoryUrl = new URL(databaseUrl!);
     repositoryUrl.searchParams.set("options", `-c search_path=${schemaName},public`);
@@ -105,6 +112,44 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       ]);
       expect(checkoutResults.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
       expect(checkoutResults.filter(({ status }) => status === "rejected")).toHaveLength(1);
+
+      const liveSubscriptionSql = `INSERT INTO billing_subscriptions (
+        id, organization_id, provider_environment, stripe_customer_id,
+        stripe_subscription_id, stripe_subscription_item_id, plan_key,
+        catalog_version, status, current_period_start, current_period_end,
+        lifecycle_revision, provider_object_digest
+      ) VALUES ($1,$2,'test',$3,$4,$5,'plus_monthly','v1','active',
+        '2026-08-01Z','2026-09-01Z',1,$6)`;
+      const liveSubscriptionResults = await Promise.allSettled([
+        first.query(liveSubscriptionSql, [
+          LIVE_SUBSCRIPTION_ONE,
+          LIVE_ORG,
+          "cus_liveone",
+          "sub_liveone",
+          "si_liveone",
+          DIGEST,
+        ]),
+        second.query(liveSubscriptionSql, [
+          LIVE_SUBSCRIPTION_TWO,
+          LIVE_ORG,
+          "cus_livetwo",
+          "sub_livetwo",
+          "si_livetwo",
+          DIGEST,
+        ]),
+      ]);
+      expect(liveSubscriptionResults.filter(({ status }) => status === "fulfilled")).toHaveLength(
+        1,
+      );
+      expect(liveSubscriptionResults.filter(({ status }) => status === "rejected")).toHaveLength(1);
+      const persistedLiveSubscriptions = await setupClient!.query(
+        `SELECT count(*)::int AS live_subscriptions
+         FROM billing_subscriptions
+         WHERE organization_id=$1
+           AND status IN ('pending','incomplete','active','grace','past_due','unpaid')`,
+        [LIVE_ORG],
+      );
+      expect(persistedLiveSubscriptions.rows).toEqual([{ live_subscriptions: 1 }]);
 
       await setupClient?.query(
         `INSERT INTO billing_subscriptions (
@@ -200,6 +245,22 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       expect(persistedReserve.rows).toEqual([
         { reservations: 1, allocations: 1, reserve_entries: 1 },
       ]);
+      await expect(
+        writeTransaction((tx) =>
+          allowanceRepository.reserve(tx, {
+            organizationId: ORG,
+            periodId: spendPeriodId,
+            logicalOperationId: "operation.real.reserve.insufficient",
+            requestDigest: "c".repeat(64),
+            requestedAmount: microsToMoney(1_000_000n),
+            allowanceAmount: microsToMoney(1_000_000n),
+            purchasedCreditAmount: microsToMoney(0n),
+            purchasedCreditReservationTransactionId: null,
+          }),
+        ),
+      ).rejects.toMatchObject({
+        code: "SUBSCRIPTION_ALLOWANCE_CONFLICT",
+      });
 
       await setupClient?.query(
         `INSERT INTO billing_subscriptions (

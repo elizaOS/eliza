@@ -1,9 +1,10 @@
 # This workflow is the sole pull-request and merge-candidate validation authority.
 # It checks mergeability, changed secrets and workflow syntax, then builds and
 # statically validates the affected workspace closure. A narrow, mock-backed
-# billing replay E2E and the bounded synthetic-world transaction suite are the
-# affected-path test exceptions; provider, device, deployment, and
-# destructive-effect lanes remain excluded.
+# billing replay E2E, real PostgreSQL subscription-authority proof, and the
+# bounded synthetic-world transaction suite are the affected-path test
+# exceptions. Provider, device, deployment, and destructive-effect lanes remain
+# excluded.
 name: PR Static Smoke
 
 on:
@@ -322,6 +323,48 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
+  subscription-authority-postgres:
+    name: Subscription authority PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Build core contract
+        run: bun run build:core
+      - name: Run subscription authority PostgreSQL constraints
+        env:
+          SUBSCRIPTION_AUTHORITY_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
+        run: >-
+          bun test --config=/dev/null --isolate
+          packages/cloud/shared/src/db/repositories/subscription-authority.postgres.integration.test.ts
+
   browser-bridge-windows-security:
     name: Browser bridge Windows security
     uses: ./.github/workflows/browser-bridge-windows-security.yml
@@ -329,7 +372,11 @@ jobs:
   static-smoke:
     name: All Tests Passed
     if: always()
-    needs: [source-smoke, browser-bridge-windows-security, billing-payment-replay-e2e]
+    needs:
+      - source-smoke
+      - browser-bridge-windows-security
+      - billing-payment-replay-e2e
+      - subscription-authority-postgres
     runs-on: ubuntu-24.04
     steps:
       - name: Require every admission lane
@@ -338,6 +385,7 @@ jobs:
             source-smoke=${{ needs.source-smoke.result }}
             browser-bridge-windows-security=${{ needs.browser-bridge-windows-security.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
+            subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
         run: |
           set -euo pipefail
           for pair in $RESULTS; do
