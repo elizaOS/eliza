@@ -22,13 +22,15 @@
  *    chrome-free, so plain web `?shellMode=chat-overlay` loads are unaffected.
  */
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { type ReactNode, useLayoutEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appState = vi.hoisted(() => ({
   authPhase: "loading",
+  cloudOnly: false,
   firstRunComplete: false,
+  handleCloudLoginRecovery: vi.fn(async () => undefined),
   startupPhase: "first-run-required",
 }));
 
@@ -188,6 +190,7 @@ vi.mock("./state", () => {
     firstRunComplete: appState.firstRunComplete,
     firstRunName: "",
     gameOverlayEnabled: false,
+    handleCloudLoginRecovery: appState.handleCloudLoginRecovery,
     handlePluginToggle: vi.fn(),
     loadDropStatus: vi.fn(async () => undefined),
     ownerName: "Test Owner",
@@ -233,6 +236,11 @@ vi.mock("./state", () => {
 
 vi.mock("./config/boot-config-react.hooks", () => ({
   useBootConfig: () => ({}),
+}));
+
+vi.mock("./config/branding", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./config/branding")>()),
+  useBranding: () => ({ cloudOnly: appState.cloudOnly }),
 }));
 
 vi.mock("./components/shell/ShellControllerContext", () => ({
@@ -355,7 +363,9 @@ import { App } from "./App";
 describe("App chat-overlay first-run composition", () => {
   beforeEach(() => {
     appState.authPhase = "loading";
+    appState.cloudOnly = false;
     appState.firstRunComplete = false;
+    appState.handleCloudLoginRecovery.mockClear();
     appState.startupPhase = "first-run-required";
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
     conductorMock.mount.mockClear();
@@ -390,6 +400,27 @@ describe("App chat-overlay first-run composition", () => {
         '[data-testid="first-run-conductor-mount"]',
       ),
     ).not.toBeNull();
+  });
+
+  it("keeps the Cloud first screen local until the user chooses sign in", async () => {
+    window.history.replaceState(null, "", "/");
+    appState.cloudOnly = true;
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    appState.authPhase = "authenticated";
+
+    const screen = render(<App />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(appState.handleCloudLoginRecovery).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sign in to Eliza Cloud" }),
+    );
+    await waitFor(() =>
+      expect(appState.handleCloudLoginRecovery).toHaveBeenCalledWith({
+        requireClientAuth: true,
+      }),
+    );
   });
 
   it("bypasses the StartupScreen gate and renders no app chrome during first-run", () => {

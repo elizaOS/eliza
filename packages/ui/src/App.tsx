@@ -3260,13 +3260,14 @@ function AppContent() {
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupScreen.
 
+  const androidCloudAuthAutoStart = isAndroidCloudBuild();
   const cloudAuthFirstScreenOwnsSurface =
     shellMode === "full" &&
     !isPopout &&
     !isAuxiliaryAppWindow &&
     !cloudPairToken &&
     (branding.cloudOnly === true ||
-      (isAndroidCloudBuild() && branding.cloudOnly !== false) ||
+      (androidCloudAuthAutoStart && branding.cloudOnly !== false) ||
       isElizaCloudRuntimeLocked());
   const hasUsableCloudSession =
     elizaCloudConnected ||
@@ -3286,6 +3287,7 @@ function AppContent() {
   const cloudAuthAutoStartedRef = useRef(false);
   useEffect(() => {
     if (
+      !androidCloudAuthAutoStart ||
       !cloudAuthFirstScreenOwnsSurface ||
       hasUsableCloudSession ||
       elizaCloudLoginBusy ||
@@ -3299,13 +3301,13 @@ function AppContent() {
       // error-policy:J4 the full-screen retry surface renders the hook's error.
     });
   }, [
+    androidCloudAuthAutoStart,
     cloudAuthFirstScreenOwnsSurface,
     elizaCloudLoginBusy,
     elizaCloudLoginError,
     hasUsableCloudSession,
     startCloudAuthFirstScreen,
   ]);
-
   useEffect(() => {
     // Safety-net watchdog: the coordinator has its own timeouts per phase, but
     // this catches any edge case where the coordinator gets stuck in a loading
@@ -3408,23 +3410,12 @@ function AppContent() {
     return <VoiceWorkbenchShell />;
   }
 
-  // Cloud account auth owns the primary viewport before chat exists. Hosted
-  // web redirects to Steward in this tab; the Android launcher keeps Eliza's
-  // hosted page in-app and uses the secure browser only for providers such as
-  // Google that reject embedded WebViews.
+  // Cloud account auth owns the primary viewport before chat exists. Keep the
+  // first screen in Eliza and leave it only after an explicit sign-in choice.
   if (cloudAuthFirstScreenOwnsSurface && !hasUsableCloudSession) {
     return (
       <BugReportProvider value={bugReport}>
-        {elizaCloudLoginError ? (
-          <CloudSignInRecoveryView
-            detail={elizaCloudLoginError}
-            onRetry={() => {
-              void startCloudAuthFirstScreen().catch(() => {
-                // error-policy:J4 the same retry surface receives the error.
-              });
-            }}
-          />
-        ) : (
+        {androidCloudAuthAutoStart && elizaCloudLoginBusy ? (
           <StartupShell
             view={{
               kind: "loading",
@@ -3433,6 +3424,16 @@ function AppContent() {
             }}
             onRetry={() => {
               void startCloudAuthFirstScreen();
+            }}
+          />
+        ) : (
+          <CloudSignInRecoveryView
+            detail={elizaCloudLoginError ?? undefined}
+            busy={elizaCloudLoginBusy}
+            onRetry={() => {
+              void startCloudAuthFirstScreen().catch(() => {
+                // error-policy:J4 the same sign-in surface receives the error.
+              });
             }}
           />
         )}

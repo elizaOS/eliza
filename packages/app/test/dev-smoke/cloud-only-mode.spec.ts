@@ -181,6 +181,15 @@ async function expectCloudOnlyAuth(
   localOrigin: string,
   extraPages: Page[],
 ): Promise<void> {
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Sign in to Eliza Cloud",
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 20_000 });
+  expect(new URL(page.url()).origin).toBe(localOrigin);
+  await page.getByRole("button", { name: "Sign in to Eliza Cloud" }).click();
   await expect(page).toHaveURL(
     /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?/,
     { timeout: 20_000 },
@@ -221,7 +230,7 @@ async function capture(page: Page, outputPath: string): Promise<void> {
   await page.screenshot({ path: outputPath, fullPage: true });
 }
 
-test("ordinary Vite development defaults to staging Cloud sign-in", async ({
+test("ordinary Vite development offers staging Cloud sign-in", async ({
   page,
 }, testInfo) => {
   await installRenderTelemetryGuard(page);
