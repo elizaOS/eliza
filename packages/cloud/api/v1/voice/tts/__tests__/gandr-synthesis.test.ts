@@ -115,9 +115,25 @@ describe("synthesizeGandrWav", () => {
     expect(result.wav.byteLength).toBe(44 + 8);
     expect(String.fromCharCode(...result.wav.slice(0, 4))).toBe("RIFF");
     expect(String.fromCharCode(...result.wav.slice(8, 12))).toBe("WAVE");
-    expect(new DataView(result.wav.buffer).getUint32(24, true)).toBe(
-      GANDR_PCM_SAMPLE_RATE,
-    );
+    // Assert the contract value directly: comparing the header against the
+    // same constant used to write it cannot fail, so a wrong constant would
+    // ship audio at the wrong playback rate with the suite green.
+    expect(new DataView(result.wav.buffer).getUint32(24, true)).toBe(24_000);
+    expect(GANDR_PCM_SAMPLE_RATE).toBe(24_000);
+  });
+
+  it("rejects a 200 response with no body instead of streaming undefined", async () => {
+    const fetchImpl = (async () =>
+      new Response(null, { status: 200, statusText: "OK" })) as typeof fetch;
+
+    await expect(
+      synthesizeGandrBytes({
+        apiKey: "gandr-key",
+        voice: "gandr-mia",
+        text: "hello",
+        fetch: fetchImpl,
+      }),
+    ).rejects.toThrow("Gandr text-to-speech is unavailable.");
   });
 
   it("throws when the PCM body exceeds the byte cap instead of truncating", async () => {
