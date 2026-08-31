@@ -103,8 +103,12 @@ export async function getCachedAppBlockerStatus(): Promise<AppBlockerStatus> {
   const generationAtFetch = statusCacheGeneration;
   const status = await getAppBlockerStatus();
   if (statusCacheGeneration === generationAtFetch) {
+    // Measure the TTL window from the pre-fetch `now` (request start), not from
+    // resolution: a slow native `getStatus()` must not extend worst-case cache
+    // staleness by its own call duration. This is the conservative bound and
+    // matches the cache's original behavior before the generation guard.
     statusCache = {
-      expiresAt: Date.now() + STATUS_CACHE_TTL_MS,
+      expiresAt: now + STATUS_CACHE_TTL_MS,
       value: status,
     };
   }
