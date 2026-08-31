@@ -21,7 +21,10 @@ vi.mock("./settings-layout", () => ({
 }));
 
 import type { VaultEntryMeta } from "./vault-tabs/types";
-import { entryDisplayLabel } from "./WalletKeysSection";
+import {
+  entryDisplayDescription,
+  entryDisplayLabel,
+} from "./WalletKeysSection";
 
 function meta(key: string): VaultEntryMeta {
   return {
@@ -37,25 +40,44 @@ describe("entryDisplayLabel encoding", () => {
   it("marks a lone percent agent id unavailable", () => {
     expect(() => entryDisplayLabel(meta("agent.%.wallet.evm"))).not.toThrow();
     expect(entryDisplayLabel(meta("agent.%.wallet.evm"))).toBe(
-      "Unavailable agent (evm)",
+      "Unavailable agent · EVM",
     );
   });
 
   it("does not present an invalid escape as an agent id", () => {
     expect(entryDisplayLabel(meta("agent.%ZZ.wallet.sol"))).toBe(
-      "Unavailable agent (sol)",
+      "Unavailable agent · Solana",
     );
   });
 
   it("marks truncated UTF-8 unavailable", () => {
     expect(entryDisplayLabel(meta("agent.%E0%A4%A.wallet.evm"))).toBe(
-      "Unavailable agent (evm)",
+      "Unavailable agent · EVM",
     );
   });
 
   it("still decodes a valid %20 agent id", () => {
     expect(entryDisplayLabel(meta("agent.my%20bot.wallet.evm"))).toBe(
-      "my bot (evm)",
+      "agent my bot · EVM",
     );
+  });
+
+  it("normalizes the generated backend labels without changing their keys", () => {
+    const entry = {
+      ...meta("agent.eliza.wallet.evm"),
+      label: "agent eliza (evm)",
+    };
+    expect(entryDisplayLabel(entry)).toBe("agent eliza · EVM");
+    expect(entryDisplayDescription(entry)).toBe("EVM wallet key");
+    expect(entry.key).toBe("agent.eliza.wallet.evm");
+  });
+
+  it("uses a clear Solana label and description", () => {
+    const entry = {
+      ...meta("agent.eliza.wallet.solana"),
+      label: "agent eliza (solana)",
+    };
+    expect(entryDisplayLabel(entry)).toBe("agent eliza · Solana");
+    expect(entryDisplayDescription(entry)).toBe("Solana wallet key");
   });
 });

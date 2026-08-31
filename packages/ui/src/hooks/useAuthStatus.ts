@@ -76,16 +76,29 @@ const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000;
 // is authoritative and never retried.
 const SERVER_UNAVAILABLE_RETRIES = 10;
 const SERVER_UNAVAILABLE_RETRY_MS = 1000;
+// A 429 is an explicit throttle, not a backend outage. Retrying it every
+// second extends the server bucket and can turn one bad actor behind a reverse
+// proxy into a cold-start failure for every valid session. Respect Retry-After
+// when present; older servers omit it, so use a conservative fallback cadence.
+const RATE_LIMIT_RETRIES = 4;
+const RATE_LIMIT_RETRY_MS = 15_000;
+const RATE_LIMIT_MAX_RETRY_MS = 60_000;
 const authStatusSubscribers = new Set<(state: AuthStatusState) => void>();
 let authStatusSnapshot: AuthStatusState = { phase: "loading" };
 let authStatusFetch: Promise<void> | null = null;
 let authStatusPrime: Promise<void> | null = null;
 let authStatusPrimeSettledAt = 0;
+let authStatusPrimeRetryAt = 0;
 let authStatusEpoch = 0;
 // A primed result is only trusted by the activation path for a boot-scale
 // window; a hook that (re)activates later re-probes exactly as before, so a
 // stale prime can never stand in for the session's current auth state.
 const AUTH_STATUS_PRIME_FRESH_MS = 30_000;
+
+function rateLimitRetryMs(retryAfterMs?: number): number {
+  const delay = retryAfterMs ?? RATE_LIMIT_RETRY_MS;
+  return Math.max(0, Math.min(delay, RATE_LIMIT_MAX_RETRY_MS));
+}
 
 function publishAuthStatus(state: AuthStatusState): void {
   authStatusSnapshot = state;
@@ -153,6 +166,17 @@ async function fetchAuthStatus(): Promise<void> {
         publishAuthStatus({ phase: "server_unavailable" });
         return;
       }
+      if (result.status === 429) {
+        if (attempt < RATE_LIMIT_RETRIES) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, rateLimitRetryMs(result.retryAfterMs)),
+          );
+          if (probeEpoch !== authStatusEpoch) return;
+          continue;
+        }
+        publishAuthStatus({ phase: "server_unavailable" });
+        return;
+      }
       publishAuthStatus({
         phase: "unauthenticated",
         reason:
@@ -208,6 +232,11 @@ export function primeAuthStatusProbe(): void {
       return;
     }
     if (result.status === 503) return;
+    if (result.status === 429) {
+      authStatusPrimeRetryAt =
+        Date.now() + rateLimitRetryMs(result.retryAfterMs);
+      return;
+    }
     publishAuthStatus({
       phase: "unauthenticated",
       reason:
@@ -234,6 +263,14 @@ async function ensureAuthStatusProbe(): Promise<void> {
   if (authStatusFetch) return authStatusFetch;
   if (authStatusPrime) {
     await authStatusPrime;
+    if (authStatusPrimeRetryAt > Date.now()) {
+      const probeEpoch = authStatusEpoch;
+      await new Promise((resolve) =>
+        setTimeout(resolve, authStatusPrimeRetryAt - Date.now()),
+      );
+      if (probeEpoch !== authStatusEpoch) return;
+    }
+    authStatusPrimeRetryAt = 0;
     const fresh =
       Date.now() - authStatusPrimeSettledAt <= AUTH_STATUS_PRIME_FRESH_MS;
     if (
@@ -328,6 +365,7 @@ export function __resetAuthStatusForTests(): void {
   authStatusFetch = null;
   authStatusPrime = null;
   authStatusPrimeSettledAt = 0;
+  authStatusPrimeRetryAt = 0;
   authStatusEpoch += 1;
   publishAuthStatus({ phase: "loading" });
 }

@@ -28,6 +28,8 @@ export interface RuntimeSettingsProjectionOptions {
    * plugins the plaintext while the environment stays clean.
    */
   connectorSecretsOverlay?: Record<string, string>;
+  /** Selected provider credential revealed into runtime scope, never process.env. */
+  providerCredentialsOverlay?: Record<string, string>;
 }
 
 /**
@@ -95,6 +97,7 @@ export function buildRuntimeSettingsProjection(
       ),
     ),
     ...(options.connectorSecretsOverlay ?? {}),
+    ...(options.providerCredentialsOverlay ?? {}),
     ...(options.preferredProviderId
       ? { MODEL_PROVIDER: options.preferredProviderId }
       : {}),

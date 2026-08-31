@@ -14,7 +14,11 @@ import type {
   DispatchSensitiveRequest as SensitiveRequest,
   SensitiveRequestDeliveryAdapter,
 } from "@elizaos/core";
-import { normalizeCloudSiteUrl, readAliasedEnv } from "@elizaos/shared";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  normalizeCloudSiteUrl,
+  readAliasedEnv,
+} from "@elizaos/shared";
 
 export interface CloudLinkAdapterDeps {
   /**
@@ -42,6 +46,21 @@ function readSetting(runtime: unknown, key: string): string | undefined {
 }
 
 function defaultResolveCloudBase(runtime: unknown): string | null {
+  const authoritySnapshot = captureDevCloudEnvAuthoritySnapshot();
+  if (authoritySnapshot) {
+    if (
+      authoritySnapshot.authority === "staging-default" ||
+      authoritySnapshot.authority === "offline"
+    ) {
+      return null;
+    }
+    const apiKey = authoritySnapshot.values.ELIZAOS_CLOUD_API_KEY?.trim();
+    const rawBase = authoritySnapshot.values.ELIZAOS_CLOUD_BASE_URL?.trim();
+    if (!apiKey || !rawBase) return null;
+    const normalized = normalizeCloudSiteUrl(rawBase);
+    return normalized || null;
+  }
+
   const apiKey =
     readSetting(runtime, "ELIZAOS_CLOUD_API_KEY") ??
     readAliasedEnv("ELIZAOS_CLOUD_API_KEY");

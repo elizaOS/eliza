@@ -24,6 +24,7 @@ import {
   Service,
   type ServiceTypeName,
 } from "@elizaos/core";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/shared";
 
 export interface WalletAsset {
   address: string;
@@ -108,6 +109,45 @@ const PROVIDER_CONFIG = {
     ETH: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
   },
 };
+
+type SolanaCloudProxyTuple = {
+  baseUrl: string;
+  apiKey: string;
+};
+
+function nonEmptySetting(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function cloudEnabled(value: unknown): boolean {
+  return (
+    typeof value === "string" && (value.trim().toLowerCase() === "true" || value.trim() === "1")
+  );
+}
+
+/** Resolve Cloud base/key/activation from one ownership domain. */
+export function resolveSolanaCloudProxyTuple(
+  runtime: Pick<IAgentRuntime, "getSetting">
+): SolanaCloudProxyTuple | null {
+  const authority = resolveDevCloudEnvAuthority();
+  if (authority) {
+    if (authority === "staging-default" || authority === "offline") {
+      return null;
+    }
+    const apiKey = nonEmptySetting(resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"));
+    const baseUrl = nonEmptySetting(resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL"));
+    const enabled = cloudEnabled(resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_ENABLED"));
+    return apiKey && baseUrl && enabled ? { apiKey, baseUrl } : null;
+  }
+
+  const apiKey = nonEmptySetting(runtime.getSetting("ELIZAOS_CLOUD_API_KEY"));
+  if (!apiKey || !cloudEnabled(runtime.getSetting("ELIZAOS_CLOUD_ENABLED"))) {
+    return null;
+  }
+  const baseUrl =
+    nonEmptySetting(runtime.getSetting("ELIZAOS_CLOUD_BASE_URL")) ?? "https://api.eliza.app/api/v1";
+  return { apiKey, baseUrl };
+}
 
 export const SOLANA_WALLET_COMPAT_SERVICE_NAME = `${SOLANA_SERVICE_NAME}_wallet`;
 
@@ -928,23 +968,14 @@ export class SolanaService extends Service {
     }
 
     // Check if Eliza Cloud is available for proxy
-    const cloudKey = this.runtime.getSetting("ELIZAOS_CLOUD_API_KEY");
-    const cloudEnabled = this.runtime.getSetting("ELIZAOS_CLOUD_ENABLED");
-    if (
-      typeof cloudKey === "string" &&
-      cloudKey.length > 0 &&
-      (cloudEnabled === "true" || cloudEnabled === "1")
-    ) {
-      const cloudBaseRaw = this.runtime.getSetting("ELIZAOS_CLOUD_BASE_URL");
-      const cloudBase =
-        typeof cloudBaseRaw === "string" ? cloudBaseRaw : "https://api.eliza.app/api/v1";
-
+    const cloud = resolveSolanaCloudProxyTuple(this.runtime);
+    if (cloud) {
       return {
-        baseUrl: `${cloudBase}/proxy/birdeye`,
+        baseUrl: `${cloud.baseUrl}/proxy/birdeye`,
         headers: {
           Accept: "application/json",
           "x-chain": "solana",
-          Authorization: `Bearer ${cloudKey}`,
+          Authorization: `Bearer ${cloud.apiKey}`,
         },
         mode: "cloud",
       };
@@ -981,17 +1012,9 @@ export class SolanaService extends Service {
       return `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
     }
 
-    const cloudKey = runtime.getSetting("ELIZAOS_CLOUD_API_KEY");
-    const cloudEnabled = runtime.getSetting("ELIZAOS_CLOUD_ENABLED");
-    if (
-      typeof cloudKey === "string" &&
-      cloudKey.length > 0 &&
-      (cloudEnabled === "true" || cloudEnabled === "1")
-    ) {
-      const cloudBaseRaw = runtime.getSetting("ELIZAOS_CLOUD_BASE_URL");
-      const cloudBase =
-        typeof cloudBaseRaw === "string" ? cloudBaseRaw : "https://api.eliza.app/api/v1";
-      return `${cloudBase}/proxy/solana-rpc?api_key=${cloudKey}`;
+    const cloud = resolveSolanaCloudProxyTuple(runtime);
+    if (cloud) {
+      return `${cloud.baseUrl}/proxy/solana-rpc?api_key=${encodeURIComponent(cloud.apiKey)}`;
     }
 
     return PROVIDER_CONFIG.DEFAULT_RPC;

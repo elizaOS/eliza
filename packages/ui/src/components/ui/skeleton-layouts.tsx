@@ -82,3 +82,15 @@ export function DetailSkeleton({ className }: { className?: string }) {
     </div>
   );
 }
+
+/** Compact title, copy, and metadata stack — for cards in responsive grids. */
+export function CompactCardSkeleton() {
+  return (
+    <div className="flex h-full min-h-28 flex-col gap-2" aria-hidden="true">
+      <Skeleton className="h-4 w-1/2" />
+      <Skeleton className="h-3 w-full" />
+      <Skeleton className="h-3 w-4/5" />
+      <Skeleton className="mt-auto h-3 w-16" />
+    </div>
+  );
+}

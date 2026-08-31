@@ -6,7 +6,10 @@ import {
   type CloudAuthApiKeyService,
   normalizeCloudApiKey,
 } from "../cloud/auth-service-types";
-import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
+import {
+  resolveCloudApiKey,
+  resolveCloudApiKeyWithRuntimeOverride,
+} from "../cloud/cloud-api-key.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { CloudProxyConfigLike } from "../lib/config-like";
 import { sendJson, sendJsonError } from "../lib/http";
@@ -33,7 +36,11 @@ function resolveProxyApiKey(state: CloudCompatRouteState): string | null {
       ? normalizeCloudApiKey(cloudAuth.getApiKey?.())
       : null;
 
-  return runtimeApiKey ?? resolveCloudApiKey(state.config, state.runtime);
+  return resolveCloudApiKeyWithRuntimeOverride(
+    runtimeApiKey,
+    state.config,
+    state.runtime,
+  );
 }
 
 function buildAuthHeaders(

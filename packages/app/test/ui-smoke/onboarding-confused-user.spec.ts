@@ -90,7 +90,7 @@ test.describe("confused-user onboarding", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("the sign-in-first composer is locked during onboarding — prefilled/typed text is ignored and never reaches the server, and tapping still completes", async ({
+  test("the onboarding composer stays enabled while external prefill is gated, and tapping still completes", async ({
     page,
   }) => {
     await injectFullCapabilityHost(page);
@@ -109,19 +109,13 @@ test.describe("confused-user onboarding", () => {
     });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    // The onboarding surface is sign-in-first (#15339): the composer mounts
-    // LOCKED (disabled) with a "Sign in to start chatting" placeholder — the
-    // helper asserts that — so the confused user CANNOT type past setup, and the
-    // old #12178 "type free text → in-transcript reply" affordance is gone.
+    // The chat-native conductor keeps ordinary text input usable while its
+    // programmatic prefill seam remains gated. Tapping a structured choice is
+    // still a deterministic way to complete setup.
     await expectChatFirstOnboarding(page);
 
     const composer = page.getByTestId("chat-composer-textarea");
-    await expect(composer).toBeDisabled();
-
-    // The "just type at it" instinct — modeled by the same programmatic prefill
-    // path the app uses (CHAT_PREFILL_EVENT) — is IGNORED while onboarding is
-    // open: the draft is never set and nothing is sent. (The unit suite
-    // ChatOverlay.firstrun.test asserts the same behavior at the seam.)
+    await expect(composer).toBeEnabled();
     await page.evaluate(() => {
       window.dispatchEvent(
         new CustomEvent("eliza:chat:prefill", {
@@ -131,16 +125,16 @@ test.describe("confused-user onboarding", () => {
     });
     await page.waitForTimeout(500);
     await expect(composer).toHaveValue("");
-    await screenshot(page, "locked-composer-ignores-typing");
+    await screenshot(page, "composer-gates-external-prefill");
 
-    // Nothing was POSTed to /api/first-run, and no typed text leaked as a send.
+    // A gated external prefill must not POST setup or leak a chat send.
     expect(
       state.firstRunPosts.length,
-      "a locked onboarding composer must not trigger any first-run POST",
+      "a gated onboarding prefill must not trigger any first-run POST",
     ).toBe(0);
     expect(
       chatSends,
-      "prefilled/typed text must never reach the server before completion",
+      "a gated onboarding prefill must never reach the server",
     ).toEqual([]);
     expect(leaks).toEqual([]);
 
@@ -288,7 +282,8 @@ test.describe("confused-user onboarding", () => {
 
     // Nothing was persisted (no POST yet) → the conductor re-seeds a fresh
     // onboarding surface: the runtime CHOICE is unlocked (re-offered) while the
-    // composer stays sign-in-first locked, same contract as the first paint.
+    // text composer stays enabled and external prefill remains gated, matching
+    // the first paint.
     await expectChatFirstOnboarding(page);
     await screenshot(page, "after-reload-fresh-onboarding");
 

@@ -105,6 +105,14 @@ export interface ActionParameter {
 	 * and never lets an unclaimed/unknown key through (that still rejects).
 	 */
 	aliases?: readonly string[];
+	/**
+	 * Exact string spellings that the model-tool boundary treats as omission for
+	 * this optional top-level parameter. Matching ignores surrounding whitespace
+	 * and ASCII case. This is not JSON Schema behavior and is never applied by
+	 * recursive structured-output validation; use it only where these literals
+	 * cannot be valid domain values, such as an optional UUID identifier.
+	 */
+	modelOmissionSentinels?: readonly string[];
 	/** JSON Schema for parameter validation */
 	schema: ActionParameterSchema;
 	/**

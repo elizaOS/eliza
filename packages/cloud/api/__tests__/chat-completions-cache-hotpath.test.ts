@@ -345,6 +345,55 @@ test("warm Worker request reaches provider with authoritative stores tripwired",
   expect(shouldBlockUser).not.toHaveBeenCalled();
 });
 
+test("preserves a cached standing 503 before provider dispatch", async () => {
+  resolveInferenceAuthContext.mockResolvedValueOnce({
+    kind: "rejected",
+    status: 503,
+  } as never);
+  const background: Promise<unknown>[] = [];
+
+  const response = await handleChatCompletionsPOST(request(), {
+    executionCtx: executionCtx(background),
+  });
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBe("1");
+  expect(await response.json()).toMatchObject({
+    error: {
+      type: "service_unavailable",
+      code: "service_unavailable",
+      details: { reason: "authorization_unavailable" },
+    },
+  });
+  expect(enforceOrgRateLimit).not.toHaveBeenCalled();
+  expect(admitAppInferenceCacheOnly).not.toHaveBeenCalled();
+  expect(generateText).not.toHaveBeenCalled();
+});
+
+test("returns a typed cached standing reason before provider dispatch", async () => {
+  resolveInferenceAuthContext.mockResolvedValueOnce({
+    kind: "rejected",
+    status: 403,
+    reason: "organization_inactive",
+  } as never);
+  const background: Promise<unknown>[] = [];
+
+  const response = await handleChatCompletionsPOST(request(), {
+    executionCtx: executionCtx(background),
+  });
+
+  expect(response.status).toBe(403);
+  expect(await response.json()).toMatchObject({
+    error: {
+      message: "Organization is inactive",
+      code: "access_denied",
+      details: { reason: "organization_inactive" },
+    },
+  });
+  expect(admitAppInferenceCacheOnly).not.toHaveBeenCalled();
+  expect(generateText).not.toHaveBeenCalled();
+});
+
 test("cold dependency returns 503 before held hydration completes", async () => {
   appCacheState = "warming";
   const hydration = Promise.withResolvers<void>();

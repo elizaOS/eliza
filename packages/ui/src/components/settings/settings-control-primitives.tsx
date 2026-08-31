@@ -8,6 +8,13 @@
 import type * as React from "react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible";
 
 // Field primitives have a single home in the ui layer (settings-controls.tsx).
 // Re-exported here so existing `./settings-control-primitives` importers keep
@@ -35,15 +42,25 @@ export function AdvancedSettingsDisclosure({
   const shouldRenderChildren = !lazy || open;
 
   return (
-    <details
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-      className={cn("group rounded-sm bg-card/45 px-3 py-2", className)}
-    >
-      <summary className="cursor-pointer select-none list-none text-xs font-medium text-muted transition-colors hover:text-txt">
-        {title}
-      </summary>
-      {shouldRenderChildren ? <div className="mt-3">{children}</div> : null}
-    </details>
+    <Card asChild variant="transparent" surface="card" padding="compact">
+      <Collapsible
+        open={open}
+        onOpenChange={setOpen}
+        className={cn("group text-card-fg", className)}
+      >
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghostMuted"
+            size="content"
+            className="w-full justify-start"
+          >
+            {title}
+          </Button>
+        </CollapsibleTrigger>
+        {shouldRenderChildren ? (
+          <CollapsibleContent className="mt-3">{children}</CollapsibleContent>
+        ) : null}
+      </Collapsible>
+    </Card>
   );
 }

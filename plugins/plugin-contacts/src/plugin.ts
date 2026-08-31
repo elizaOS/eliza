@@ -35,6 +35,7 @@ export const appContactsPlugin: Plugin = {
       surface: { capabilities: ["agent-surface"] },
       componentExport: "ContactsView",
       tags: ["contacts", "android", "address-book"],
+      responseContext: { primaryContext: "contacts" },
       visibleInManager: true,
       desktopTabEnabled: true,
       nativeOs: true,

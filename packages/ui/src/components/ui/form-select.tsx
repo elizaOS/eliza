@@ -6,7 +6,6 @@
 import type * as SelectPrimitive from "@radix-ui/react-select";
 import * as React from "react";
 
-import { cn } from "../../lib/utils";
 import {
   Select,
   SelectContent,
@@ -40,19 +39,12 @@ export function FormSelect({
       <SelectTrigger
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
-        className={cn(
-          "h-11 w-full rounded-sm border border-border bg-bg px-4 py-2 text-sm text-txt outline-none transition-colors hover:border-border-strong hover:bg-bg-hover data-[placeholder]:text-muted",
-          triggerClassName,
-        )}
+        variant="form"
+        className={triggerClassName}
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent
-        className={cn(
-          "rounded-sm border border-border bg-card p-1 ",
-          contentClassName,
-        )}
-      >
+      <SelectContent variant="form" className={contentClassName}>
         {children}
       </SelectContent>
     </Select>
@@ -63,13 +55,6 @@ export const FormSelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
 >(({ className, ...props }, ref) => (
-  <SelectItem
-    ref={ref}
-    className={cn(
-      "min-h-[2.75rem] rounded-sm px-3 py-2.5 text-sm text-txt outline-none transition-colors data-[highlighted]:bg-bg-hover data-[highlighted]:text-txt-strong data-[state=checked]:bg-accent-subtle data-[state=checked]:text-txt-strong",
-      className,
-    )}
-    {...props}
-  />
+  <SelectItem ref={ref} variant="form" className={className} {...props} />
 ));
 FormSelectItem.displayName = "FormSelectItem";

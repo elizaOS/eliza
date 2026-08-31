@@ -12,17 +12,6 @@
 
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
-// The @stwd/react components — notably <StewardLogin> on the app-auth authorize
-// page (packages/ui/src/cloud-ui/components/auth/authorize-content.tsx) — are
-// styled ENTIRELY by this scoped `.stwd-*` stylesheet (it drives layout, button
-// borders/fills, and the input box via CSS custom properties). It was never
-// imported anywhere, so <StewardLogin> rendered completely unstyled in prod: the
-// authorize/sign-in buttons collapsed to plain inline text with icons floating
-// above jammed labels and no input box. Import it here, co-located with the lazy
-// web-only Steward chunk, so it loads exactly when the Steward UI mounts. Scoped
-// to `.stwd-*` → touches nothing else. This module is dynamically imported
-// (never in the Node barrel), so the .css never reaches a Node plugin loader.
-import "@stwd/react/styles.css";
 import { StewardClient } from "@stwd/sdk";
 import {
   type ComponentProps,

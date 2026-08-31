@@ -23,6 +23,12 @@ const decisions = JSON.parse(
 
 export const ATOMS = {
   alert: { names: ["Alert"], hosts: ["div"], rawHosts: [] },
+  alertDialog: {
+    names: ["AlertDialog"],
+    hosts: ["div"],
+    rawHosts: [],
+  },
+  attachment: { names: ["Attachment"], hosts: ["div"], rawHosts: [] },
   avatar: { names: ["Avatar"], hosts: ["div", "img"], rawHosts: [] },
   badge: {
     names: ["Badge", "StatusBadge"],
@@ -30,20 +36,49 @@ export const ATOMS = {
     rawHosts: [],
   },
   button: { names: ["Button"], hosts: ["button"], rawHosts: ["button"] },
+  banner: { names: ["Banner"], hosts: ["div"], rawHosts: [] },
   card: { names: ["Card"], hosts: ["div", "section", "article"], rawHosts: [] },
   checkbox: {
     names: ["Checkbox"],
     hosts: ["button", "input"],
     rawHosts: ["input:checkbox"],
   },
+  codeBlock: { names: ["CodeBlock"], hosts: ["pre", "code"], rawHosts: [] },
+  cornerBrackets: {
+    names: ["CornerBrackets"],
+    hosts: ["div"],
+    rawHosts: [],
+  },
+  statusDot: {
+    names: ["StatusDot"],
+    hosts: ["span"],
+    rawHosts: [],
+  },
+  statusPulseDot: {
+    names: ["StatusPulseDot"],
+    hosts: ["span"],
+    rawHosts: [],
+  },
   dialog: { names: ["Dialog"], hosts: ["dialog", "div"], rawHosts: ["dialog"] },
+  dropdownMenu: {
+    names: ["DropdownMenu"],
+    hosts: ["div"],
+    rawHosts: [],
+  },
   input: { names: ["Input"], hosts: ["input"], rawHosts: ["input"] },
+  marker: { names: ["Marker"], hosts: ["div", "span"], rawHosts: [] },
   popover: { names: ["Popover"], hosts: ["div"], rawHosts: [] },
   progress: {
     names: ["Progress"],
     hosts: ["div", "progress"],
     rawHosts: ["progress"],
   },
+  radioGroup: {
+    names: ["RadioGroup"],
+    hosts: ["div", "button"],
+    rawHosts: [],
+  },
+  scrollArea: { names: ["ScrollArea"], hosts: ["div"], rawHosts: [] },
   select: {
     names: ["Select"],
     hosts: ["select", "button"],
@@ -51,6 +86,7 @@ export const ATOMS = {
   },
   separator: { names: ["Separator"], hosts: ["div", "hr"], rawHosts: ["hr"] },
   skeleton: { names: ["Skeleton"], hosts: ["div"], rawHosts: [] },
+  slider: { names: ["Slider"], hosts: ["span"], rawHosts: [] },
   spinner: { names: ["Spinner"], hosts: ["svg", "div"], rawHosts: [] },
   switch: {
     names: ["Switch"],
@@ -76,14 +112,26 @@ const ATOM_BY_NAME = new Map(
 const relative = (file) =>
   path.relative(repoRoot, file).replaceAll(path.sep, "/");
 
-function isMaintainedSource(file) {
+export function isMaintainedSource(file) {
   const rel = relative(file);
-  return (
+  const maintained =
     /^(packages|plugins)\//.test(rel) &&
-    /\.[jt]sx$/.test(rel) &&
+    /\.[jt]sx?$/.test(rel) &&
     !/(^|\/)(node_modules|dist|build|coverage|generated)(\/|$)/.test(rel) &&
-    !/\.(stories|test|spec)\.[jt]sx$/.test(rel) &&
-    !/(^|\/)(__tests__|__fixtures__|fixtures)(\/|$)/.test(rel)
+    !/\.(stories|test|spec)\.[jt]sx?$/.test(rel) &&
+    !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(
+      rel,
+    );
+  if (!maintained || /\.[jt]sx$/.test(rel)) return maintained;
+  let source;
+  try {
+    source = fs.readFileSync(file, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+  return (
+    /\bcreateElement\b/.test(source) && /from\s+["']react["']/.test(source)
   );
 }
 

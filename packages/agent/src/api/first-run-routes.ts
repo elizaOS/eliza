@@ -37,6 +37,10 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
+import {
+  captureDevCloudEnvAuthority,
+  restoreDevCloudEnvAuthority,
+} from "../config/dev-cloud-env-authority.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
   applyCanonicalFirstRunConfig,
@@ -363,6 +367,7 @@ export async function handleFirstRunRoutes(
 
   // ── POST /api/first-run ────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/first-run") {
+    const devCloudSnapshot = captureDevCloudEnvAuthority();
     const rawFirstRun = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawFirstRun === null) return true;
     const parsedFirstRun = PostFirstRunRequestSchema.safeParse(rawFirstRun);
@@ -514,13 +519,17 @@ export async function handleFirstRunRoutes(
       body,
       "credentialInputs",
     );
-    const explicitCredentialInputs = explicitCredentialInputsRequested
+    const parsedCredentialInputs = explicitCredentialInputsRequested
       ? normalizeFirstRunCredentialInputs(body.credentialInputs)
       : null;
-    if (explicitCredentialInputsRequested && !explicitCredentialInputs) {
+    if (explicitCredentialInputsRequested && !parsedCredentialInputs) {
       error(res, "Invalid credentialInputs", 400);
       return true;
     }
+    const explicitCredentialInputs =
+      devCloudSnapshot && parsedCredentialInputs
+        ? { ...parsedCredentialInputs, cloudApiKey: undefined }
+        : parsedCredentialInputs;
     const hasCanonicalRuntimeConfig =
       explicitDeploymentTargetRequested ||
       explicitLinkedAccountsRequested ||
@@ -565,26 +574,38 @@ export async function handleFirstRunRoutes(
             : [],
       });
 
-      await applyFirstRunCredentialPersistence(config, {
-        credentialInputs: explicitCredentialInputs,
-        deploymentTarget:
-          normalizedDeploymentTarget ??
-          normalizeDeploymentTargetConfig(config.deploymentTarget),
-        serviceRouting:
-          normalizedServiceRouting ??
-          normalizeServiceRoutingConfig(config.serviceRouting),
-      });
+      try {
+        await applyFirstRunCredentialPersistence(config, {
+          credentialInputs: explicitCredentialInputs,
+          deploymentTarget:
+            normalizedDeploymentTarget ??
+            normalizeDeploymentTargetConfig(config.deploymentTarget),
+          serviceRouting:
+            normalizedServiceRouting ??
+            normalizeServiceRoutingConfig(config.serviceRouting),
+        });
 
-      delete process.env.ELIZAOS_CLOUD_ENABLED;
-      delete process.env.ELIZAOS_CLOUD_NANO_MODEL;
-      delete process.env.ELIZAOS_CLOUD_MEDIUM_MODEL;
-      delete process.env.ELIZAOS_CLOUD_SMALL_MODEL;
-      delete process.env.ELIZAOS_CLOUD_LARGE_MODEL;
-      delete process.env.ELIZAOS_CLOUD_MEGA_MODEL;
-      delete process.env.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL;
-      delete process.env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL;
-      delete process.env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL;
-      delete process.env.ELIZAOS_CLOUD_PLANNER_MODEL;
+        delete process.env.ELIZAOS_CLOUD_ENABLED;
+        delete process.env.ELIZAOS_CLOUD_NANO_MODEL;
+        delete process.env.ELIZAOS_CLOUD_MEDIUM_MODEL;
+        delete process.env.ELIZAOS_CLOUD_SMALL_MODEL;
+        delete process.env.ELIZAOS_CLOUD_LARGE_MODEL;
+        delete process.env.ELIZAOS_CLOUD_MEGA_MODEL;
+        delete process.env.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL;
+        delete process.env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL;
+        delete process.env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL;
+        delete process.env.ELIZAOS_CLOUD_PLANNER_MODEL;
+
+        if (
+          !isCloudInferenceSelectedInConfig(config as Record<string, unknown>)
+        ) {
+          delete process.env.ELIZAOS_CLOUD_API_KEY;
+        }
+      } finally {
+        if (devCloudSnapshot) {
+          restoreDevCloudEnvAuthority(devCloudSnapshot);
+        }
+      }
 
       if (config.models && typeof config.models === "object") {
         const legacyModels = config.models as Record<string, unknown>;
@@ -593,12 +614,6 @@ export async function handleFirstRunRoutes(
         delete legacyModels.medium;
         delete config.models.large;
         delete legacyModels.mega;
-      }
-
-      if (
-        !isCloudInferenceSelectedInConfig(config as Record<string, unknown>)
-      ) {
-        delete process.env.ELIZAOS_CLOUD_API_KEY;
       }
     }
     if (hasCanonicalRuntimeConfig && config.agents.defaults.model) {

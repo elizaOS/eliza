@@ -41,6 +41,7 @@
 
 import {
   createUniqueUuid,
+  ElizaError,
   hasRoleAccess,
   type IAgentRuntime,
   logger,
@@ -74,12 +75,30 @@ const TELEGRAM_MAX_COMMANDS = 100;
 /** Telegram caps a single text message at 4096 characters. */
 const TELEGRAM_MESSAGE_MAX = 4096;
 
-/**
- * Caps a slash-command reply at Telegram's message limit without splitting a
- * surrogate pair, sanitizing lone surrogates so the strict-JSON Bot API accepts it.
- */
-export function truncateTelegramCommandReply(reply: string): string {
-  return truncateWellFormed(toWellFormedUnicode(reply), TELEGRAM_MESSAGE_MAX);
+/** Split a command reply into ordered Bot API messages without dropping text. */
+export function splitTelegramCommandReply(reply: string): string[] {
+  const chunks: string[] = [];
+  let remaining = toWellFormedUnicode(reply);
+  while (remaining.length > 0) {
+    const chunk = truncateWellFormed(remaining, TELEGRAM_MESSAGE_MAX);
+    if (!chunk) {
+      throw new ElizaError("Unable to split Telegram command reply", {
+        code: "TELEGRAM_COMMAND_REPLY_SPLIT_FAILED",
+      });
+    }
+    chunks.push(chunk);
+    remaining = remaining.slice(chunk.length);
+  }
+  return chunks;
+}
+
+async function replyInTelegramChunks(
+  ctx: Context,
+  reply: string,
+): Promise<void> {
+  for (const chunk of splitTelegramCommandReply(reply)) {
+    await ctx.reply(chunk);
+  }
 }
 
 /** The catalog surface this bridge serves. */
@@ -100,7 +119,7 @@ export type TelegramSenderAuth = ConnectorSenderAuth & {
 export interface TelegramCommandDescriptor {
   /** Sanitized Telegram command name (without the leading slash). */
   name: string;
-  /** Description, clamped to Telegram's 256-character limit. */
+  /** Description, validated against Telegram's 256-character limit. */
   description: string;
   /** The originating catalog command. */
   command: ConnectorCommand;
@@ -125,24 +144,33 @@ function sanitizeCommandName(name: string): string | null {
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, "_")
     .replace(/_{2,}/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 32);
+    .replace(/^_+|_+$/g, "");
   return TELEGRAM_COMMAND_NAME_RE.test(sanitized) ? sanitized : null;
 }
 
-/** Clamp a description to Telegram's limit; a description is always required. */
-function clampDescription(description: string): string {
+/** Validate required command metadata before it reaches the Bot API boundary. */
+function requireDescription(description: string, commandName: string): string {
   const wellFormed = toWellFormedUnicode(description.trim());
-  if (wellFormed.length <= TELEGRAM_COMMAND_DESCRIPTION_MAX) {
-    return wellFormed;
+  if (wellFormed.length > TELEGRAM_COMMAND_DESCRIPTION_MAX) {
+    throw new ElizaError(
+      `Telegram command /${commandName} description exceeds the Bot API limit`,
+      {
+        code: "TELEGRAM_COMMAND_DESCRIPTION_TOO_LONG",
+        context: {
+          commandName,
+          actualLength: wellFormed.length,
+          maxLength: TELEGRAM_COMMAND_DESCRIPTION_MAX,
+        },
+      },
+    );
   }
-  return truncateWellFormed(wellFormed, TELEGRAM_COMMAND_DESCRIPTION_MAX);
+  return wellFormed;
 }
 
 /**
  * Project the catalog onto Telegram command descriptors, deduped by sanitized
- * name (first occurrence wins) and capped at Telegram's 100-command limit. Pure
- * — no side effects.
+ * name (first occurrence wins). Invalid provider metadata is rejected rather
+ * than silently shortened or omitted.
  */
 export function buildTelegramCommandDescriptors(
   agentId?: string | null,
@@ -150,10 +178,18 @@ export function buildTelegramCommandDescriptors(
   const out: TelegramCommandDescriptor[] = [];
   const seen = new Set<string>();
   for (const command of getConnectorCommands(TELEGRAM_SURFACE, { agentId })) {
-    if (out.length >= TELEGRAM_MAX_COMMANDS) break;
     const name = sanitizeCommandName(command.name);
     if (!name || seen.has(name)) continue;
-    const description = clampDescription(command.description);
+    if (out.length >= TELEGRAM_MAX_COMMANDS) {
+      throw new ElizaError(
+        "Telegram command catalog exceeds the Bot API limit",
+        {
+          code: "TELEGRAM_COMMAND_CATALOG_TOO_LARGE",
+          context: { maxCommands: TELEGRAM_MAX_COMMANDS },
+        },
+      );
+    }
+    const description = requireDescription(command.description, name);
     if (!description) continue;
     seen.add(name);
     out.push({ name, description, command });
@@ -345,7 +381,7 @@ async function dispatchAgentCommand(
       ...(sender.senderName ? { senderName: sender.senderName } : {}),
     });
     if (resolved.handled && resolved.reply !== undefined) {
-      await ctx.reply(truncateTelegramCommandReply(resolved.reply));
+      await replyInTelegramChunks(ctx, resolved.reply);
       return;
     }
   }
@@ -403,12 +439,12 @@ function buildCommandHandler(
       if (command.name === "settings") {
         const raw = firstCommandArg(messageText(ctx));
         if (raw) {
-          sectionLabel =
-            resolveSettingsSection(raw) ?? truncateTelegramCommandReply(raw);
+          sectionLabel = resolveSettingsSection(raw) ?? raw;
         }
       }
-      await ctx.reply(
-        truncateTelegramCommandReply(describeNavigation(command, sectionLabel)),
+      await replyInTelegramChunks(
+        ctx,
+        describeNavigation(command, sectionLabel),
       );
       return;
     }

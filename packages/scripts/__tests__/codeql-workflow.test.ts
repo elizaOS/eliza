@@ -175,6 +175,7 @@ describe("on-demand CodeQL workflow", () => {
       "benchmarks",
       "docs",
       "examples",
+      "research",
       "test",
     ]);
     const maintainedPackages = readdirSync(
@@ -199,6 +200,7 @@ describe("on-demand CodeQL workflow", () => {
     expect(
       allPaths.filter((path) => path.startsWith("packages/")).sort(),
     ).toEqual(maintainedPackages);
+    expect(allPaths).not.toContain("packages/research/**");
     expect(
       allPaths.filter((path) => /^plugins\/[^*]+\/\*\*$/.test(path)).sort(),
     ).toEqual(maintainedPlugins);

@@ -276,17 +276,15 @@ describe("describeAppReference / appReferenceLogView — reference display seam"
     expect(describeAppReference("x\ny", "that name")).toBe("that name");
   });
 
-  it("appReferenceLogView collapses whitespace runs to one line", () => {
+  it("appReferenceLogView preserves complete reference content", () => {
     expect(appReferenceLogView("  Acme   Bot \n\n twice\t ")).toBe(
-      "Acme Bot twice",
+      "Acme   Bot \n\n twice",
     );
     expect(appReferenceLogView("")).toBe("");
   });
 
-  it("appReferenceLogView clamps long references with a trailing ellipsis", () => {
-    expect(appReferenceLogView("a".repeat(120))).toBe("a".repeat(120));
-    const view = appReferenceLogView("a".repeat(500));
-    expect(view).toBe(`${"a".repeat(120)}…`);
-    expect(view.length).toBe(121);
+  it("appReferenceLogView keeps content beyond the retired clamp", () => {
+    const reference = `${"a".repeat(500)} distinguishing-tail`;
+    expect(appReferenceLogView(reference)).toBe(reference);
   });
 });

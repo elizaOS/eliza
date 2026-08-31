@@ -16,8 +16,8 @@ import {
   type Transcript,
 } from "@elizaos/shared/transcripts";
 import * as React from "react";
-import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { SpeakerNameAttributionBadge } from "./SpeakerNameAttributionBadge";
 
 export interface TranscriptBodyProps {
@@ -107,39 +107,39 @@ export function TranscriptBody({
                 />
               </div>
             ) : null}
-            <p
-              className={cn(
-                "rounded",
-                segActive && "bg-accent/12 px-1 text-txt-strong",
-              )}
+            <Card
+              asChild
+              variant={segActive ? "nativeTranscriptUser" : "transparent"}
             >
-              {seg.words.length > 0 ? (
-                seg.words.map((w, wi) => (
-                  <TranscriptWord
-                    key={`${seg.id}-${w.startMs}-${w.text}`}
-                    text={w.text}
-                    startMs={w.startMs}
-                    isActive={
-                      active !== undefined &&
-                      active.segmentIndex === si &&
-                      active.wordIndex === wi
-                    }
-                    testId={`transcript-word-${si}-${wi}`}
-                    onSeek={handleSeek}
-                  />
-                ))
-              ) : (
-                <Button
-                  variant="transparent"
-                  size="content"
-                  align="start"
-                  data-testid={`transcript-segment-text-${si}`}
-                  onClick={() => handleSeek(seg.startMs)}
-                >
-                  {seg.text}
-                </Button>
-              )}
-            </p>
+              <p>
+                {seg.words.length > 0 ? (
+                  seg.words.map((w, wi) => (
+                    <TranscriptWord
+                      key={`${seg.id}-${w.startMs}-${w.text}`}
+                      text={w.text}
+                      startMs={w.startMs}
+                      isActive={
+                        active !== undefined &&
+                        active.segmentIndex === si &&
+                        active.wordIndex === wi
+                      }
+                      testId={`transcript-word-${si}-${wi}`}
+                      onSeek={handleSeek}
+                    />
+                  ))
+                ) : (
+                  <Button
+                    variant="transparent"
+                    size="content"
+                    align="start"
+                    data-testid={`transcript-segment-text-${si}`}
+                    onClick={() => handleSeek(seg.startMs)}
+                  >
+                    {seg.text}
+                  </Button>
+                )}
+              </p>
+            </Card>
           </div>
         );
       })}

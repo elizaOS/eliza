@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Read-only Linux development capability doctor. It verifies the repository
- * toolchain pins, native desktop libraries, media/device plumbing, SSH, and the
- * generated Electrobun artifact without reading or printing credential values.
+ * Read-only Linux development capability doctor. It inventories bounded host
+ * facts and verifies toolchain pins, native desktop libraries, media/device
+ * plumbing, SSH, and the generated Electrobun artifact without printing
+ * credential values or invoking privileged commands.
  */
 
 import { spawnSync } from "node:child_process";
@@ -82,10 +83,210 @@ function serviceProbe(run, id, unit, user = false) {
   );
 }
 
+function formatGib(bytes) {
+  return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+}
+
+function parseMeminfo(value) {
+  const entries = new Map();
+  for (const match of value.matchAll(/^([A-Za-z_()]+):\s+(\d+)\s+kB$/gmu)) {
+    entries.set(match[1], Number(match[2]) * 1024);
+  }
+  return {
+    available: entries.get("MemAvailable"),
+    swapFree: entries.get("SwapFree"),
+    swapTotal: entries.get("SwapTotal"),
+    total: entries.get("MemTotal"),
+  };
+}
+
+function desktopSessionFinding(env) {
+  const desktop = firstLine(
+    env.XDG_CURRENT_DESKTOP || env.DESKTOP_SESSION || "",
+  );
+  const sessionType = firstLine(
+    env.XDG_SESSION_TYPE ||
+      (env.WAYLAND_DISPLAY ? "wayland" : env.DISPLAY ? "x11" : ""),
+  );
+  const display = firstLine(env.WAYLAND_DISPLAY || env.DISPLAY || "");
+  const detected = Boolean(desktop || sessionType || display);
+  return finding(
+    "display-session",
+    false,
+    detected,
+    detected
+      ? `desktop ${desktop || "unknown"}; session ${sessionType || "unknown"}; display ${display || "not exported"}`
+      : "Desktop and display session are unknown; packaged tests can use Xvfb",
+  );
+}
+
+function gpuFinding(run) {
+  const result = run("lspci", ["-mm"]);
+  if (!result.ok) {
+    return finding(
+      "gpu",
+      false,
+      false,
+      "GPU summary unknown because lspci is unavailable or unreadable",
+      "Install pciutils to enable a read-only GPU inventory",
+    );
+  }
+  const controllers = result.output
+    .split(/\r?\n/u)
+    .filter((line) =>
+      /(?:VGA compatible controller|3D controller|Display controller)/iu.test(
+        line,
+      ),
+    )
+    .map((line) => line.replaceAll('"', "").replace(/\s+/gu, " ").trim())
+    .filter(Boolean);
+  return finding(
+    "gpu",
+    false,
+    controllers.length > 0,
+    controllers.length > 0
+      ? controllers.join(" | ")
+      : "lspci is readable but reports no display controller",
+  );
+}
+
+function packageManagerFinding(run) {
+  const candidates = ["apt-get", "dnf", "yum", "zypper", "pacman", "apk"];
+  for (const command of candidates) {
+    const result = run(command, ["--version"]);
+    if (result.ok) {
+      return finding(
+        "package-manager",
+        false,
+        true,
+        `${command}: ${firstLine(result.output) || "available"}`,
+      );
+    }
+  }
+  return finding(
+    "package-manager",
+    false,
+    false,
+    "No supported package manager was detected",
+  );
+}
+
+function containerRuntimeFinding(run, runtime) {
+  const client = run(runtime, ["--version"]);
+  if (!client.ok) {
+    return finding(
+      `container:${runtime}`,
+      false,
+      false,
+      `${runtime} client unavailable; engine status not applicable`,
+    );
+  }
+  const info =
+    runtime === "docker"
+      ? run("docker", ["info", "--format", "{{.ServerVersion}}"])
+      : run("podman", ["info", "--format", "{{.Version.Version}}"]);
+  const clientVersion = firstLine(client.output) || `${runtime} client present`;
+  if (!info.ok) {
+    return finding(
+      `container:${runtime}`,
+      false,
+      false,
+      `${clientVersion}; engine unavailable or inaccessible`,
+      `${runtime} info`,
+    );
+  }
+  const engineVersion = firstLine(info.output);
+  return finding(
+    `container:${runtime}`,
+    false,
+    true,
+    runtime === "podman"
+      ? `${clientVersion}; daemonless engine usable${engineVersion ? ` (${engineVersion})` : ""}`
+      : `${clientVersion}; daemon reachable${engineVersion ? ` (${engineVersion})` : ""}`,
+  );
+}
+
+function firewallFinding(run) {
+  const ufw = run("ufw", ["status"]);
+  const ufwStatus = ufw.output.match(/\bStatus:\s*(active|inactive)\b/iu)?.[1];
+  if (ufwStatus) {
+    return finding("firewall", false, true, `ufw status: ${ufwStatus}`);
+  }
+
+  const firewalld = run("firewall-cmd", ["--state"]);
+  const firewalldStatus = firstLine(firewalld.output).toLowerCase();
+  if (["running", "not running"].includes(firewalldStatus)) {
+    return finding(
+      "firewall",
+      false,
+      true,
+      `firewalld status: ${firewalldStatus}`,
+    );
+  }
+
+  for (const [command, args, label] of [
+    ["nft", ["list", "ruleset"], "nftables"],
+    ["iptables", ["-S"], "iptables"],
+  ]) {
+    const result = run(command, args);
+    if (result.ok) {
+      const ruleLines = result.output
+        .split(/\r?\n/u)
+        .filter((line) => line.trim()).length;
+      return finding(
+        "firewall",
+        false,
+        true,
+        `${label} readable; ${ruleLines} non-empty rule lines`,
+      );
+    }
+  }
+
+  return finding(
+    "firewall",
+    false,
+    false,
+    "Firewall status unknown without elevated access or a readable firewall service",
+  );
+}
+
+function githubAccountFinding(run) {
+  // The CLI applies this projection before emitting stdout, so the doctor sees
+  // only the active login rather than normal auth-status details or scopes.
+  const result = run("gh", [
+    "auth",
+    "status",
+    "--active",
+    "--json",
+    "hosts",
+    "--jq",
+    ".hosts | to_entries[] | .value[] | select(.active == true) | .login",
+  ]);
+  const login = firstLine(result.output);
+  const validLogin =
+    result.ok && /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/u.test(login);
+  return finding(
+    "github-auth",
+    true,
+    validLogin,
+    validLogin
+      ? `GitHub account ${login}`
+      : "GitHub account unavailable or unauthenticated",
+    validLogin ? undefined : "gh auth login",
+  );
+}
+
 function listVideoDevices(readDir = readdirSync) {
   try {
-    return readDir("/dev").filter((entry) => /^video\d+$/u.test(entry));
+    return readDir("/dev")
+      .filter((entry) => /^video\d+$/u.test(entry))
+      .sort(
+        (left, right) =>
+          Number(left.slice("video".length)) -
+          Number(right.slice("video".length)),
+      );
   } catch {
+    // error-policy:J4 unreadable device discovery is reported as unavailable.
     return [];
   }
 }
@@ -110,6 +311,7 @@ export function collectLinuxDevReport(deps = {}) {
   const statfs = deps.statfs ?? statfsSync;
   const readText = deps.readText ?? ((target) => readFileSync(target, "utf8"));
   const readDir = deps.readDir ?? readdirSync;
+  const kernelRelease = deps.kernelRelease ?? os.release();
   const findings = [];
 
   findings.push(
@@ -128,6 +330,14 @@ export function collectLinuxDevReport(deps = {}) {
       ["x64", "arm64"].includes(arch),
       arch,
       "Use a supported x64 or arm64 Linux host",
+    ),
+  );
+  findings.push(
+    finding(
+      "kernel",
+      false,
+      Boolean(firstLine(kernelRelease)),
+      firstLine(kernelRelease) || "Linux kernel release unknown",
     ),
   );
 
@@ -151,6 +361,38 @@ export function collectLinuxDevReport(deps = {}) {
     ),
   );
 
+  findings.push(desktopSessionFinding(env));
+
+  let memory;
+  try {
+    memory = parseMeminfo(readText("/proc/meminfo"));
+  } catch {
+    // error-policy:J4 an unreadable kernel inventory is reported as unknown.
+  }
+  findings.push(
+    finding(
+      "memory",
+      false,
+      Boolean(memory?.total),
+      memory?.total
+        ? `${formatGib(memory.total)} total; ${memory.available ? `${formatGib(memory.available)} available` : "available unknown"}`
+        : "RAM capacity unknown",
+    ),
+  );
+  findings.push(
+    finding(
+      "swap",
+      false,
+      memory?.swapTotal !== undefined,
+      memory?.swapTotal !== undefined
+        ? memory.swapTotal === 0
+          ? "Swap disabled (0.0 GiB total)"
+          : `${formatGib(memory.swapTotal)} total; ${memory.swapFree !== undefined ? `${formatGib(memory.swapFree)} free` : "free unknown"}`
+        : "Swap capacity unknown",
+    ),
+  );
+  findings.push(gpuFinding(run));
+
   const bun = run("bun", ["--version"]);
   findings.push(
     finding(
@@ -158,8 +400,8 @@ export function collectLinuxDevReport(deps = {}) {
       true,
       bun.ok && firstLine(bun.output) === REQUIRED_BUN,
       bun.ok
-        ? `Bun ${firstLine(bun.output)} (required ${REQUIRED_BUN})`
-        : "Bun unavailable",
+        ? `ambient Bun ${firstLine(bun.output)}; repository pin ${REQUIRED_BUN}`
+        : `ambient Bun unavailable; repository pin ${REQUIRED_BUN}`,
       "bash scripts/bootstrap-linux-dev.sh --skip-install",
     ),
   );
@@ -170,8 +412,8 @@ export function collectLinuxDevReport(deps = {}) {
       true,
       node.ok && firstLine(node.output) === REQUIRED_NODE,
       node.ok
-        ? `Node ${firstLine(node.output)} (required ${REQUIRED_NODE})`
-        : "Node unavailable",
+        ? `ambient Node ${firstLine(node.output)}; repository pin ${REQUIRED_NODE}`
+        : `ambient Node unavailable; repository pin ${REQUIRED_NODE}`,
       "bash scripts/bootstrap-linux-dev.sh --skip-install",
     ),
   );
@@ -209,6 +451,8 @@ export function collectLinuxDevReport(deps = {}) {
   ]) {
     findings.push(commandProbe(run, ...probe));
   }
+  findings.push(githubAccountFinding(run));
+  findings.push(packageManagerFinding(run));
 
   findings.push(pkgConfigProbe(run, "gtk+-3.0", "libgtk-3-dev"));
   findings.push(pkgConfigProbe(run, "webkit2gtk-4.1", "libwebkit2gtk-4.1-dev"));
@@ -260,16 +504,21 @@ export function collectLinuxDevReport(deps = {}) {
   try {
     const disk = statfs(REPO_ROOT);
     const freeBytes = Number(disk.bavail) * Number(disk.bsize);
+    const totalBytes = Number(disk.blocks) * Number(disk.bsize);
+    const usedBytes =
+      (Number(disk.blocks) - Number(disk.bfree)) * Number(disk.bsize);
+    const hasCapacity = Number.isFinite(totalBytes) && totalBytes > 0;
     findings.push(
       finding(
         "disk",
         true,
         freeBytes >= MIN_FREE_BYTES,
-        `${(freeBytes / 1024 ** 3).toFixed(1)} GiB free (minimum 8.0 GiB for a desktop package build)`,
+        `${REPO_ROOT}: ${formatGib(freeBytes)} available${hasCapacity ? ` of ${formatGib(totalBytes)} total (${((usedBytes / totalBytes) * 100).toFixed(1)}% used)` : ""}; minimum 8.0 GiB available for a desktop package build`,
         "Free generated build/cache space before packaging Electrobun",
       ),
     );
   } catch {
+    // error-policy:J4 unreadable filesystem capacity is a hard visible finding.
     findings.push(
       finding("disk", true, false, "Unable to measure workspace filesystem"),
     );
@@ -278,7 +527,9 @@ export function collectLinuxDevReport(deps = {}) {
   findings.push(serviceProbe(run, "pipewire", "pipewire", true));
   findings.push(serviceProbe(run, "wireplumber", "wireplumber", true));
   findings.push(serviceProbe(run, "ssh-server", "ssh"));
-  findings.push(serviceProbe(run, "docker", "docker"));
+  findings.push(containerRuntimeFinding(run, "docker"));
+  findings.push(containerRuntimeFinding(run, "podman"));
+  findings.push(firewallFinding(run));
 
   findings.push(
     finding(
@@ -301,19 +552,6 @@ export function collectLinuxDevReport(deps = {}) {
       "Check camera privacy controls and V4L2 device exposure",
     ),
   );
-  findings.push(
-    finding(
-      "display-session",
-      false,
-      Boolean(env.WAYLAND_DISPLAY || env.DISPLAY),
-      env.WAYLAND_DISPLAY
-        ? `Wayland ${env.WAYLAND_DISPLAY}`
-        : env.DISPLAY
-          ? `X11 ${env.DISPLAY}`
-          : "No interactive display; packaged tests can use Xvfb",
-    ),
-  );
-
   const launcher = path.join(
     REPO_ROOT,
     "packages/app-core/platforms/electrobun/build",

@@ -67,6 +67,34 @@ loaders can import `@elizaos/ui` without evaluating CSS. Import
   metadata and native credential references, never controller private keys or
   durable runtime bearer values.
 
+## Registered plugin pages
+
+Register a page with `registerAppShellPage` and let its surface manifest own the
+framing contract. The default `header: "normal"` gives both signed in-process
+and remotely loaded versions exactly one shell `ViewHeader`, titled from the
+registration. Use `fullscreen`, `immersive`, or `modal` only when the page owns
+that framing deliberately; those policies suppress the injected header.
+
+Plugin pages can import the shared recipe from narrow stable subpaths:
+
+```tsx
+import {
+  ActionListRow,
+  AppPageSidebar,
+  SectionNav,
+  ViewBackButton,
+  ViewHeader,
+} from "@elizaos/ui/components/shared";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "@elizaos/ui/components/composites/settings";
+```
+
+Normal pages render only their body. Do not recreate a header, safe-area pad,
+or floating-chat clearance inside the plugin; the shell owns those layers.
+
 ## Development
 
 ```bash

@@ -6,6 +6,7 @@ import { forwardToWebhookGateway, safeWebhookSuffix } from "../_forward";
 import {
   handlePersonalTelegramDeliveryLedger,
   handlePersonalTelegramEdge,
+  personalTelegramGatewayConnectorAccountFailure,
   verifyPersonalTelegramGatewayRequest,
 } from "../_telegram-edge";
 
@@ -16,9 +17,12 @@ const handle = async (c: Parameters<typeof handlePersonalTelegramEdge>[0]) => {
     return handlePersonalTelegramDeliveryLedger(c);
   }
   if (c.req.method === "POST" && suffix === "/edge") {
-    return verifyPersonalTelegramGatewayRequest(c)
-      ? handlePersonalTelegramEdge(c)
-      : c.json({ success: false, error: "Unauthorized" }, 401);
+    if (!verifyPersonalTelegramGatewayRequest(c)) {
+      return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
+    const connectorAccountFailure =
+      await personalTelegramGatewayConnectorAccountFailure(c);
+    return connectorAccountFailure ?? handlePersonalTelegramEdge(c);
   }
   return c.req.method === "POST" &&
     isPersonalSharedTelegramEdgeEnabled(c.env) &&

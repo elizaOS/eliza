@@ -3,6 +3,7 @@ import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   foreignKey,
   index,
   integer,
@@ -14,6 +15,12 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
+
+const pgXid8 = customType<{ data: string }>({
+  dataType() {
+    return "xid8";
+  },
+});
 
 export type DockerNodeStatus = "healthy" | "degraded" | "offline" | "unknown";
 export type DockerNodeFleetKind = "robot" | "cloud";
@@ -66,6 +73,10 @@ export const dockerNodes = pgTable(
     node_incarnation: uuid("node_incarnation"),
     /** Trigger-owned durable token for this exact mutable-node occurrence. */
     current_node_history_id: uuid("current_node_history_id"),
+    /** Trigger-owned source version; xid8 zero is reserved for pre-cutover rows. */
+    backup_admission_xid: pgXid8("backup_admission_xid")
+      .notNull()
+      .default(sql`pg_current_xact_id()`),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

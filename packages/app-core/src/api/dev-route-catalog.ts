@@ -448,7 +448,7 @@ const SETTINGS_SECTIONS: DevRouteSettingsSection[] = [
   { id: "capabilities", label: "Capabilities" },
   { id: "apps", label: "Apps" },
   { id: "connectors", label: "Connectors" },
-  { id: "appearance", label: "Appearance" },
+  { id: "appearance", label: "General" },
   { id: "background", label: "Background" },
   { id: "notifications", label: "Notifications" },
   { id: "runtime", label: "Runtime" },

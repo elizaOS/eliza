@@ -6,6 +6,12 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
+import { STEWARD_ACTIVE_SCOPE_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  DEFAULT_BOOT_CONFIG,
+  getBootConfig,
+  setBootConfig,
+} from "@elizaos/ui/config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const webBoot = vi.hoisted(() => ({
@@ -15,6 +21,7 @@ const webBoot = vi.hoisted(() => ({
   createRoot: vi.fn(),
   runEmbedHandshake: vi.fn(async () => undefined),
   registerServiceWorker: vi.fn(),
+  cloudApiBaseAtServiceWorkerModuleLoad: undefined as string | undefined,
 }));
 
 webBoot.createRoot.mockReturnValue({ render: webBoot.render });
@@ -43,9 +50,16 @@ vi.mock("./embed-bootstrap", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./embed-bootstrap")>()),
   runEmbedHandshake: webBoot.runEmbedHandshake,
 }));
-vi.mock("./sw-registration", () => ({
-  registerViewServiceWorker: webBoot.registerServiceWorker,
-}));
+vi.mock("./sw-registration", () => {
+  const bootConfig = Reflect.get(globalThis, "__ELIZAOS_APP_BOOT_CONFIG__") as
+    | { cloudApiBase?: unknown }
+    | undefined;
+  webBoot.cloudApiBaseAtServiceWorkerModuleLoad =
+    typeof bootConfig?.cloudApiBase === "string"
+      ? bootConfig.cloudApiBase
+      : undefined;
+  return { registerViewServiceWorker: webBoot.registerServiceWorker };
+});
 
 beforeEach(() => {
   vi.mocked(Capacitor.getPlatform).mockReturnValue("web");
@@ -53,7 +67,11 @@ beforeEach(() => {
   vi.mocked(runIosFullBunSmokeIfRequested).mockResolvedValue(false);
   vi.stubGlobal("__ELIZA_BUILD_VARIANT__", "local");
   vi.stubGlobal("__ELIZA_WEB_SHELL__", false);
+  vi.stubGlobal("__ELIZA_SERVICE_WORKER__", true);
   vi.stubGlobal("__ELIZA_CHAT_UI_HARNESS__", false);
+  vi.stubEnv("VITE_ELIZA_CLOUD_BASE", "https://cloud-staging.eliza.app");
+  setBootConfig(DEFAULT_BOOT_CONFIG);
+  webBoot.cloudApiBaseAtServiceWorkerModuleLoad = undefined;
   animationFrames.length = 0;
   idleCallbacks.length = 0;
   vi.stubGlobal(
@@ -71,6 +89,7 @@ beforeEach(() => {
     }),
   );
   document.body.innerHTML = '<div id="root"></div>';
+  window.localStorage.clear();
 });
 
 describe("renderer web composition", () => {
@@ -86,6 +105,16 @@ describe("renderer web composition", () => {
     expect(main.isNative).toBe(false);
     expect(webBoot.runEmbedHandshake).toHaveBeenCalledOnce();
     expect(webBoot.registerServiceWorker).toHaveBeenCalledOnce();
+    expect(webBoot.cloudApiBaseAtServiceWorkerModuleLoad).toBe(
+      "https://cloud-staging.eliza.app",
+    );
+    expect(getBootConfig()).toMatchObject({
+      preferSharedCloudTier: true,
+      autoUpgradeSharedToDedicated: true,
+    });
+    expect(window.localStorage.getItem(STEWARD_ACTIVE_SCOPE_KEY)).toBe(
+      "eliza-cloud:staging",
+    );
     expect(webBoot.initializeStorage).toHaveBeenCalledTimes(2);
     expect(webBoot.initializeCapacitor).toHaveBeenCalledOnce();
     expect(document.body.classList).toContain("platform-web");

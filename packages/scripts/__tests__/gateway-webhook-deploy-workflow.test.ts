@@ -90,6 +90,21 @@ function githubExpression(body: string): string {
   return ["$", "{{ ", body, " }}"].join("");
 }
 
+function hasExactWorkflowReadmeRow(
+  readme: string,
+  environment: "staging" | "production",
+  branch: "develop" | "main",
+  service: "gateway-webhook-stg" | "gateway-webhook",
+): boolean {
+  const escaped = [environment, branch, service].map((value) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+  );
+  return new RegExp(
+    `^[ \\t]*\\|[ \\t]+${escaped[0]}[ \\t]+\\|[ \\t]+${escaped[1]}[ \\t]+\\|[ \\t]+${escaped[2]}[ \\t]+\\|`,
+    "m",
+  ).test(readme.replaceAll("`", ""));
+}
+
 const expectedJobEnvironment = {
   TARGET_ENVIRONMENT: githubExpression("inputs.environment"),
   DEPLOY_BRANCH: githubExpression(
@@ -344,12 +359,30 @@ describe("protected gateway-webhook deployment workflow", () => {
         }),
       ).toThrow(`${name} mapping drifted`);
     }
-    expect(workflowReadme).toContain(
-      "| `staging` | `develop` | `gateway-webhook-stg` |",
-    );
-    expect(workflowReadme).toContain(
-      "| `production` | `main` | `gateway-webhook` |",
-    );
+    expect(
+      hasExactWorkflowReadmeRow(
+        workflowReadme,
+        "staging",
+        "develop",
+        "gateway-webhook-stg",
+      ),
+    ).toBe(true);
+    expect(
+      hasExactWorkflowReadmeRow(
+        workflowReadme,
+        "production",
+        "main",
+        "gateway-webhook",
+      ),
+    ).toBe(true);
+    expect(
+      hasExactWorkflowReadmeRow(
+        "| staging\n| develop\n| gateway-webhook-stg\n|",
+        "staging",
+        "develop",
+        "gateway-webhook-stg",
+      ),
+    ).toBe(false);
 
     const checkout = steps.find((candidate) =>
       candidate.uses?.startsWith("actions/checkout@"),

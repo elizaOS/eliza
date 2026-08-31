@@ -3,8 +3,8 @@
  * navigation without loading live settings sections or native bridges.
  * @vitest-environment jsdom
  */
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../hooks/useMediaQuery", () => ({
   useMediaQuery: () => false,
@@ -60,17 +60,43 @@ vi.mock("./cloud-panel-sections", () => {
 import { CloudSettingsPanel } from "./CloudSettingsPanel";
 
 describe("CloudSettingsPanel narrow navigation", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     window.history.replaceState(null, "", "/settings");
   });
 
-  it("returns from section content to the settings hub", () => {
+  it("uses the compact mobile shell without desktop drag-strip spacing", () => {
+    const { container } = render(<CloudSettingsPanel />);
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Back to launcher" }),
+    ).toBeTruthy();
+    expect(container.querySelector(".settings-window-drag-strip")).toBeNull();
+    const shell = container.firstElementChild as HTMLElement;
+    expect(shell.className).not.toContain("pt-8");
+    expect(shell.className).toContain("--eliza-chat-clearance");
+    expect(screen.getByTestId("view-header").className).toContain("min-h-12");
+  });
+
+  it("shows one visible section title and returns to the settings hub", () => {
     render(<CloudSettingsPanel />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Voice/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Voice behavior/ }));
     expect(screen.getByText("Voice section")).toBeTruthy();
+    expect(
+      screen.getAllByRole("heading", { level: 1, name: "Voice" }),
+    ).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to Settings" }));
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: /General/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Voice/ })).toBeTruthy();
   });

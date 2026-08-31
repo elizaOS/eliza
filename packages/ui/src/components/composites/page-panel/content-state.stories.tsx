@@ -1,5 +1,6 @@
 /** Storybook coverage for the shared empty/loading content-state molecule. */
 import type { Meta, StoryObj } from "@storybook/react";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "../../ui/button";
 import { ContentState } from "./content-state";
 
@@ -44,5 +45,16 @@ export const SurfaceLoading: Story = {
     placement: "surface",
     heading: "Preparing your surface",
     description: "This usually takes a few seconds.",
+  },
+};
+
+export const RecoverableError: Story = {
+  args: {
+    state: "error",
+    placement: "surface",
+    icon: <AlertTriangle className="size-5" />,
+    title: "Calendar unavailable",
+    description: "Reconnect to refresh your events.",
+    action: <Button variant="outline">Retry</Button>,
   },
 };

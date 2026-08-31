@@ -34,6 +34,7 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Switch } from "../../../components/ui/switch";
@@ -192,7 +193,7 @@ export function AppSettings({ app }: AppSettingsProps) {
   return (
     <div className="space-y-4">
       {/* Basic Settings */}
-      <div className="bg-card rounded-sm p-4 space-y-4">
+      <Card stack="default" variant="flatPadded">
         <h3 className="text-sm font-medium text-txt flex items-center gap-2">
           <Settings className="size-4 text-muted" />
           {t("cloud.appSettings.basicSettings", {
@@ -293,7 +294,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             />
           </div>
 
-          <div className="flex items-center justify-between gap-3 p-3 bg-surface rounded-sm border border-border">
+          <Card flow="rowBetween" gap="default" variant="insetPadded">
             <div>
               <Label
                 htmlFor="is_active"
@@ -320,12 +321,12 @@ export function AppSettings({ app }: AppSettingsProps) {
                 setFormData({ ...formData, is_active: checked })
               }
             />
-          </div>
+          </Card>
         </div>
-      </div>
+      </Card>
 
       {/* Allowed Origins */}
-      <div className="bg-card rounded-sm p-4 space-y-4">
+      <Card stack="default" variant="flatPadded">
         <div>
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Shield className="size-4 text-muted" />
@@ -382,7 +383,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Save Button */}
       <div className="flex justify-end">
