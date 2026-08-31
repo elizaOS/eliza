@@ -18,13 +18,19 @@ describe("unwrapWholeCodeFence", () => {
 
 	it("unwraps unlabeled fence", () => {
 		expect(unwrapWholeCodeFence("```true```", ["ts"])).toBe("true");
-		expect(unwrapWholeCodeFence("```name: value```", ["ts"])).toBe("name: value");
+		expect(unwrapWholeCodeFence("```name: value```", ["ts"])).toBe(
+			"name: value",
+		);
 	});
 
 	it("unwraps labeled fence with supported language", () => {
 		expect(unwrapWholeCodeFence("```ts\ncode\n```", ["ts"])).toBe("code");
-		expect(unwrapWholeCodeFence("```typescript\ncode\n```", ["typescript"])).toBe("code");
-		expect(unwrapWholeCodeFence("```python\nprint('hi')\n```", ["python"])).toBe("print('hi')");
+		expect(
+			unwrapWholeCodeFence("```typescript\ncode\n```", ["typescript"]),
+		).toBe("code");
+		expect(
+			unwrapWholeCodeFence("```python\nprint('hi')\n```", ["python"]),
+		).toBe("print('hi')");
 	});
 
 	it("returns null for unsupported language label", () => {
@@ -32,13 +38,19 @@ describe("unwrapWholeCodeFence", () => {
 	});
 
 	it("handles multiple languages", () => {
-		expect(unwrapWholeCodeFence("```python\ncode\n```", ["ts", "python"])).toBe("code");
-		expect(unwrapWholeCodeFence("```ts\ncode\n```", ["python", "ts"])).toBe("code");
+		expect(unwrapWholeCodeFence("```python\ncode\n```", ["ts", "python"])).toBe(
+			"code",
+		);
+		expect(unwrapWholeCodeFence("```ts\ncode\n```", ["python", "ts"])).toBe(
+			"code",
+		);
 	});
 
 	it("is case-insensitive for language matching", () => {
 		expect(unwrapWholeCodeFence("```TS\ncode\n```", ["ts"])).toBe("code");
-		expect(unwrapWholeCodeFence("```TypeScript\ncode\n```", ["typescript"])).toBe("code");
+		expect(
+			unwrapWholeCodeFence("```TypeScript\ncode\n```", ["typescript"]),
+		).toBe("code");
 	});
 
 	it("handles whitespace around content", () => {
