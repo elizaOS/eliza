@@ -193,20 +193,28 @@ async function collectObservedRegistrations(): Promise<
     "../../../../plugins/plugin-imessage/src/service"
   );
   {
-    const { runtime, messageRegistrations } = observingRuntime();
-    const service = serviceShell(imessage.IMessageService.prototype, {
-      getStatus: () => ({
-        available: false,
-        connected: false,
-        chatDbAvailable: false,
-        sendOnly: false,
-        chatDbPath: null,
-        reason: "registration-boundary test",
-        permissionAction: null,
-      }),
-    });
-    imessage.IMessageService.registerSendHandlers(runtime, service);
-    for (const r of messageRegistrations) record(r);
+    // The seam is transport-dependent since develop 9b93ec4374 made the
+    // integrated Blooio connector canonical: a `native` transport registers
+    // attachments + contact_resolution, a `blooio` transport registers only
+    // send_message + chat_context. Execute BOTH production branches so the
+    // boundary test pins each variant the service can declare.
+    for (const transport of ["native", "blooio"] as const) {
+      const { runtime, messageRegistrations } = observingRuntime();
+      const service = serviceShell(imessage.IMessageService.prototype, {
+        getStatus: () => ({
+          available: false,
+          connected: false,
+          chatDbAvailable: false,
+          sendOnly: false,
+          chatDbPath: null,
+          reason: "registration-boundary test",
+          permissionAction: null,
+          transport,
+        }),
+      });
+      imessage.IMessageService.registerSendHandlers(runtime, service);
+      for (const r of messageRegistrations) record(r);
+    }
   }
 
   const chat = await import(
