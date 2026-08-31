@@ -416,32 +416,13 @@ export class SubscriptionAuthorityRepository {
           )
           .limit(1);
         if (recordedEvent) {
-          if (
-            recordedEvent.subscription_id !== current.id ||
-            recordedEvent.provider_object_digest !== input.values.provider_object_digest
-          ) {
+          if (recordedEvent.subscription_id !== current.id) {
             conflict("Subscription provider event replay has a different authority", {
               subscriptionId: current.id,
               providerEventId: input.values.last_provider_event_id,
             });
           }
-          const [currentRevision] = await tx
-            .select()
-            .from(billingSubscriptionRevisions)
-            .where(
-              and(
-                eq(billingSubscriptionRevisions.subscription_id, current.id),
-                eq(billingSubscriptionRevisions.revision, current.lifecycle_revision),
-              ),
-            )
-            .limit(1);
-          if (!currentRevision) {
-            conflict("Current subscription revision is missing during provider replay", {
-              subscriptionId: current.id,
-              lifecycleRevision: current.lifecycle_revision,
-            });
-          }
-          return { subscription: current, revision: currentRevision, replayed: true };
+          return { subscription: current, revision: recordedEvent, replayed: true };
         }
       }
       // Provider event timestamps are deduplication metadata, not object versions. The

@@ -31,6 +31,25 @@ type RebuildValues = Omit<
   "organization_id" | "created_at" | "updated_at" | "rebuilt_at" | "projection_revision"
 >;
 
+const FREE_ENTITLEMENT_VALUES = {
+  completions_rpm: 60,
+  embeddings_rpm: 100,
+  standard_rpm: 30,
+  strict_rpm: 5,
+  cloud_characters_ceiling: 5,
+  agent_sandboxes_ceiling: 5,
+  containers_ceiling: 1,
+  storage_gib_ceiling: 5,
+  apps_ceiling: 25,
+  plan_key: "free",
+  state: "free",
+  entitlement_effective: true,
+  effective_until: null,
+  catalog_version: "v1",
+  source_subscription_id: null,
+  source_subscription_revision: null,
+} as const satisfies Omit<RebuildValues, "effective_from" | "source_digest">;
+
 export interface RebuildSubscriptionEntitlementInput {
   organizationId: string;
   expectedProjectionRevision: number | null;
@@ -61,6 +80,13 @@ function sameEntitlementValue(stored: unknown, requested: unknown): boolean {
 export function deriveSubscriptionEntitlementValues(
   revision: BillingSubscriptionRevision,
 ): RebuildValues {
+  if (revision.status === "canceled" || revision.status === "incomplete_expired") {
+    return {
+      ...FREE_ENTITLEMENT_VALUES,
+      effective_from: revision.ended_at ?? revision.canceled_at ?? revision.recorded_at,
+      source_digest: revision.provider_object_digest,
+    };
+  }
   if (
     revision.status !== "active" &&
     revision.status !== "grace" &&

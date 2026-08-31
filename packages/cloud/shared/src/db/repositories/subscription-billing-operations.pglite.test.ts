@@ -41,6 +41,7 @@ let getPgliteClientForTests: typeof import("../client").getPgliteClientForTests;
 let repository: import("./subscription-billing-operations").SubscriptionBillingOperationsRepository;
 let authority: import("./subscription-authority").SubscriptionAuthorityRepository;
 let allowance: import("./subscription-allowance").SubscriptionAllowanceRepository;
+let entitlements: import("./subscription-entitlements").SubscriptionEntitlementsRepository;
 let writeTransaction: typeof import("../helpers").writeTransaction;
 let microsToMoney: typeof import("./subscription-funding-reservations").microsToMoney;
 
@@ -102,6 +103,9 @@ beforeAll(async () => {
   ));
   ({ subscriptionAuthorityRepository: authority } = await import("./subscription-authority"));
   ({ subscriptionAllowanceRepository: allowance } = await import("./subscription-allowance"));
+  ({ subscriptionEntitlementsRepository: entitlements } = await import(
+    "./subscription-entitlements"
+  ));
   ({ writeTransaction } = await import("../helpers"));
   ({ microsToMoney } = await import("./subscription-funding-reservations"));
   await getPgliteClientForTests().exec(`
@@ -228,6 +232,19 @@ describe("SubscriptionBillingOperationsRepository", () => {
         '${CHECKOUT_SUB}', '${ORG_A}', 'test', 'cus_checkout', 'sub_checkout', 'si_checkout',
         'plus_monthly', 'v1', 'active', '2026-08-01Z', '2026-09-01Z', 1, '${DIGEST_B}'
       );
+      INSERT INTO billing_subscription_revisions (
+        organization_id, subscription_id, revision, source, provider_environment,
+        stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id,
+        plan_key, catalog_version, status, current_period_start, current_period_end,
+        cancel_at_period_end, provider_object_digest
+      ) VALUES (
+        '${ORG_A}', '${CHECKOUT_SUB}', 1, 'checkout', 'test', 'cus_checkout', 'sub_checkout',
+        'si_checkout', 'plus_monthly', 'v1', 'active', '2026-08-01Z', '2026-09-01Z',
+        false, '${DIGEST_B}'
+      );
+      UPDATE billing_subscriptions
+      SET plan_key='pro_monthly', provider_object_digest='${DIGEST_A}', lifecycle_revision=2
+      WHERE id='${CHECKOUT_SUB}';
     `);
     expect(
       await repository.applyCheckoutResult({
@@ -439,11 +456,59 @@ describe("SubscriptionBillingOperationsRepository", () => {
       expectedRevision: 4,
       source: "webhook",
       observation: "authoritative_provider_retrieval",
-      values: lifecycle,
+      values: {
+        ...lifecycle,
+        status: "unpaid",
+        provider_object_digest: DIGEST_A,
+      },
     });
     expect(historicalReplay).toMatchObject({ replayed: true });
     expect(historicalReplay.subscription.lifecycle_revision).toBe(4);
-    expect(historicalReplay.revision.revision).toBe(4);
+    expect(historicalReplay.revision.revision).toBe(2);
+  });
+
+  test("rebuilds a terminated paid subscription back to the Free projection", async () => {
+    const paid = await entitlements.rebuild({
+      organizationId: ORG_A,
+      expectedProjectionRevision: 0,
+      sourceSubscriptionId: SUB_A,
+      sourceSubscriptionRevision: 1,
+    });
+    expect(paid.entitlement).toMatchObject({
+      plan_key: "plus_monthly",
+      state: "active",
+      projection_revision: 1,
+    });
+    await getPgliteClientForTests().exec(`
+      INSERT INTO billing_subscription_revisions (
+        organization_id, subscription_id, revision, source, provider_environment,
+        stripe_customer_id, stripe_subscription_id, stripe_subscription_item_id,
+        plan_key, catalog_version, status, current_period_start, current_period_end,
+        cancel_at_period_end, canceled_at, ended_at, provider_object_digest
+      ) VALUES (
+        '${ORG_A}', '${SUB_A}', 2, 'webhook', 'test', 'cus_repoa', 'sub_repoa', 'si_repoa',
+        'plus_monthly', 'v1', 'canceled', '2026-08-01Z', '2026-09-01Z', false,
+        '2026-08-25Z', '2026-08-25Z', '${DIGEST_B}'
+      );
+      UPDATE billing_subscriptions
+      SET status='canceled', lifecycle_revision=2, canceled_at='2026-08-25Z',
+          ended_at='2026-08-25Z', provider_object_digest='${DIGEST_B}'
+      WHERE id='${SUB_A}';
+    `);
+    const free = await entitlements.rebuild({
+      organizationId: ORG_A,
+      expectedProjectionRevision: 1,
+      sourceSubscriptionId: SUB_A,
+      sourceSubscriptionRevision: 2,
+    });
+    expect(free.entitlement).toMatchObject({
+      plan_key: "free",
+      state: "free",
+      entitlement_effective: true,
+      projection_revision: 2,
+      source_subscription_id: null,
+      source_subscription_revision: null,
+    });
   });
 
   test("conserves allowance across reserve, partial finalize, release, and cancellation", async () => {

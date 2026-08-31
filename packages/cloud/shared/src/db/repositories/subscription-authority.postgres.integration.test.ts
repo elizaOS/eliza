@@ -53,12 +53,16 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
         CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id)
       );
     `);
-    const migration = await readFile(
-      new URL("../migrations/0373_subscription_authority.sql", import.meta.url),
-      "utf8",
+    const migrations = await Promise.all(
+      [
+        "../migrations/0373_subscription_authority.sql",
+        "../migrations/0374_subscription_funding_transaction_uniqueness.sql",
+      ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),
     );
-    for (const statement of migration.split("--> statement-breakpoint")) {
-      if (statement.trim()) await setupClient.query(statement);
+    for (const migration of migrations) {
+      for (const statement of migration.split("--> statement-breakpoint")) {
+        if (statement.trim()) await setupClient.query(statement);
+      }
     }
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [EXPIRY_ORG]);

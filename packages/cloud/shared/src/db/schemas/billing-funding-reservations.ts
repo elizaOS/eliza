@@ -156,6 +156,12 @@ export const billingFundingAllocations = pgTable(
     purchased_reservation_unique: uniqueIndex("billing_funding_allocations_credit_reserve_idx")
       .on(table.purchased_credit_reservation_transaction_id)
       .where(sql`${table.purchased_credit_reservation_transaction_id} IS NOT NULL`),
+    purchased_settlement_unique: uniqueIndex("billing_funding_allocations_credit_settle_idx")
+      .on(table.purchased_credit_settlement_transaction_id)
+      .where(sql`${table.purchased_credit_settlement_transaction_id} IS NOT NULL`),
+    purchased_refund_unique: uniqueIndex("billing_funding_allocations_credit_refund_idx")
+      .on(table.purchased_credit_refund_transaction_id)
+      .where(sql`${table.purchased_credit_refund_transaction_id} IS NOT NULL`),
     amount_check: check(
       "billing_funding_allocations_amount_check",
       sql`${table.sequence} > 0 AND ${table.reserved_amount} > 0 AND ${table.finalized_amount} >= 0 AND ${table.released_amount} >= 0 AND ${table.expired_refund_amount} >= 0 AND ${table.finalized_amount} + ${table.released_amount} + ${table.expired_refund_amount} <= ${table.reserved_amount}`,

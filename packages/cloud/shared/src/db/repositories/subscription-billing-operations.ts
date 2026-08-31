@@ -6,7 +6,10 @@ import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
-import { billingSubscriptions } from "../schemas/billing-subscriptions";
+import {
+  billingSubscriptionRevisions,
+  billingSubscriptions,
+} from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
 import {
   type BillingSubscriptionCommand,
@@ -423,15 +426,15 @@ export class SubscriptionBillingOperationsRepository {
       if (
         existing.kind !== "checkout" ||
         existing.status !== "SUCCEEDED" ||
-        existing.state_revision !== input.expectedStateRevision
+        existing.state_revision !== input.expectedStateRevision ||
+        existing.target_plan_key === null ||
+        existing.provider_response_digest === null
       ) {
         return null;
       }
       const [subscription] = await tx
         .select({
           id: billingSubscriptions.id,
-          planKey: billingSubscriptions.plan_key,
-          providerObjectDigest: billingSubscriptions.provider_object_digest,
         })
         .from(billingSubscriptions)
         .where(
@@ -442,12 +445,24 @@ export class SubscriptionBillingOperationsRepository {
         )
         .limit(1)
         .for("update");
-      if (
-        !subscription ||
-        subscription.planKey !== existing.target_plan_key ||
-        subscription.providerObjectDigest !== existing.provider_response_digest
-      )
-        return null;
+      if (!subscription) return null;
+      const [resultRevision] = await tx
+        .select({ id: billingSubscriptionRevisions.id })
+        .from(billingSubscriptionRevisions)
+        .where(
+          and(
+            eq(billingSubscriptionRevisions.organization_id, input.organizationId),
+            eq(billingSubscriptionRevisions.subscription_id, input.resultSubscriptionId),
+            eq(billingSubscriptionRevisions.source, "checkout"),
+            eq(billingSubscriptionRevisions.plan_key, existing.target_plan_key),
+            eq(
+              billingSubscriptionRevisions.provider_object_digest,
+              existing.provider_response_digest,
+            ),
+          ),
+        )
+        .limit(1);
+      if (!resultRevision) return null;
       const now = await readPostLockDatabaseNow(tx);
       const [updated] = await tx
         .update(billingSubscriptionCommands)

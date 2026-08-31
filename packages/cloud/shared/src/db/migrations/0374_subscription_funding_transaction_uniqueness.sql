@@ -1,0 +1,19 @@
+CREATE UNIQUE INDEX "billing_funding_allocations_credit_settle_idx"
+  ON "billing_funding_allocations" USING btree ("purchased_credit_settlement_transaction_id")
+  WHERE "purchased_credit_settlement_transaction_id" IS NOT NULL;
+--> statement-breakpoint
+CREATE UNIQUE INDEX "billing_funding_allocations_credit_refund_idx"
+  ON "billing_funding_allocations" USING btree ("purchased_credit_refund_transaction_id")
+  WHERE "purchased_credit_refund_transaction_id" IS NOT NULL;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION reject_subscription_append_only_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF current_setting('eliza.subscription_account_deletion_authority', true) = 'on' THEN
+    RETURN NULL;
+  END IF;
+  RAISE EXCEPTION '% is append-only', TG_TABLE_NAME USING ERRCODE = '23514';
+END
+$$;

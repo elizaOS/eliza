@@ -1,4 +1,4 @@
-/** Applies the consolidated subscription authority migration to real PGlite. */
+/** Applies the subscription authority migration chain to real PGlite. */
 import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
@@ -20,9 +20,10 @@ const ORG = "10000000-0000-4000-8000-000000000001";
 const SUB = "20000000-0000-4000-8000-000000000001";
 const PERIOD = "30000000-0000-4000-8000-000000000001";
 const DIGEST = "a".repeat(64);
-const migration = await readFile(
-  new URL("0373_subscription_authority.sql", import.meta.url),
-  "utf8",
+const migrations = await Promise.all(
+  ["0373_subscription_authority.sql", "0374_subscription_funding_transaction_uniqueness.sql"].map(
+    (name) => readFile(new URL(name, import.meta.url), "utf8"),
+  ),
 );
 const databases: PGlite[] = [];
 setDefaultTimeout(120_000);
@@ -32,8 +33,10 @@ async function database(): Promise<PGlite> {
   await db.exec(
     `CREATE TABLE organizations (id uuid PRIMARY KEY); CREATE TABLE users (id uuid PRIMARY KEY); CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id)); INSERT INTO organizations VALUES ('${ORG}');`,
   );
-  for (const statement of migration.split("--> statement-breakpoint"))
-    if (statement.trim()) await db.exec(statement);
+  for (const migration of migrations) {
+    for (const statement of migration.split("--> statement-breakpoint"))
+      if (statement.trim()) await db.exec(statement);
+  }
   return db;
 }
 async function seed(db: PGlite): Promise<void> {
@@ -42,7 +45,7 @@ async function seed(db: PGlite): Promise<void> {
   );
 }
 afterEach(async () => Promise.all(databases.splice(0).map((db) => db.close())));
-describe("0370 subscription authority migration", () => {
+describe("subscription authority migrations", () => {
   test("matches every authority table's current Drizzle column contract", async () => {
     const db = await database();
     for (const table of [
@@ -63,7 +66,7 @@ describe("0370 subscription authority migration", () => {
       );
     }
   });
-  test("is the sole journal tail and seeds existing and future free entitlements", async () => {
+  test("is the journal tail and seeds existing and future free entitlements", async () => {
     const db = await database();
     await db.exec("INSERT INTO organizations VALUES ('10000000-0000-4000-8000-000000000002')");
     const rows = await db.query<{ plan_key: string; entitlement_effective: boolean }>(
@@ -76,7 +79,10 @@ describe("0370 subscription authority migration", () => {
     const journal = JSON.parse(
       await readFile(new URL("meta/_journal.json", import.meta.url), "utf8"),
     ) as { entries: Array<{ idx: number; tag: string }> };
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 356, tag: "0373_subscription_authority" });
+    expect(journal.entries.at(-1)).toMatchObject({
+      idx: 357,
+      tag: "0374_subscription_funding_transaction_uniqueness",
+    });
   });
   test("tenant-fences revisions and excludes overlapping allowance periods", async () => {
     const db = await database();
@@ -108,5 +114,73 @@ describe("0370 subscription authority migration", () => {
     await expect(
       db.exec(`UPDATE subscription_allowance_periods SET available_amount=24 WHERE id='${PERIOD}'`),
     ).rejects.toThrow(/amounts_check/i);
+  });
+
+  test("prevents one settlement or refund ledger movement from funding multiple allocations", async () => {
+    const db = await database();
+    await db.exec(`
+      INSERT INTO credit_transactions (id, organization_id) VALUES
+        ('40000000-0000-4000-8000-000000000001','${ORG}'),
+        ('40000000-0000-4000-8000-000000000002','${ORG}'),
+        ('40000000-0000-4000-8000-000000000003','${ORG}'),
+        ('40000000-0000-4000-8000-000000000004','${ORG}'),
+        ('40000000-0000-4000-8000-000000000005','${ORG}');
+      INSERT INTO billing_funding_reservations
+        (id, organization_id, logical_operation_id, request_digest, funding_class,
+         requested_amount, reserved_amount, expires_at)
+      VALUES
+        ('50000000-0000-4000-8000-000000000001','${ORG}','operation.unique.one','${DIGEST}',
+         'cash_only',1,1,'2027-01-01Z'),
+        ('50000000-0000-4000-8000-000000000002','${ORG}','operation.unique.two','${"b".repeat(64)}',
+         'cash_only',1,1,'2027-01-01Z'),
+        ('50000000-0000-4000-8000-000000000003','${ORG}','operation.unique.three','${"c".repeat(64)}',
+         'cash_only',1,1,'2027-01-01Z');
+      INSERT INTO billing_funding_allocations
+        (organization_id, reservation_id, sequence, source,
+         purchased_credit_reservation_transaction_id,
+         purchased_credit_settlement_transaction_id,
+         purchased_credit_refund_transaction_id, reserved_amount)
+      VALUES
+        ('${ORG}','50000000-0000-4000-8000-000000000001',1,'purchased_credit',
+         '40000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000003',
+         '40000000-0000-4000-8000-000000000004',1);
+    `);
+    await expect(
+      db.exec(`INSERT INTO billing_funding_allocations
+        (organization_id, reservation_id, sequence, source,
+         purchased_credit_reservation_transaction_id,
+         purchased_credit_settlement_transaction_id, reserved_amount)
+        VALUES ('${ORG}','50000000-0000-4000-8000-000000000002',1,'purchased_credit',
+          '40000000-0000-4000-8000-000000000002','40000000-0000-4000-8000-000000000003',1)`),
+    ).rejects.toThrow(/billing_funding_allocations_credit_settle_idx/);
+    await expect(
+      db.exec(`INSERT INTO billing_funding_allocations
+        (organization_id, reservation_id, sequence, source,
+         purchased_credit_reservation_transaction_id,
+         purchased_credit_refund_transaction_id, reserved_amount)
+        VALUES ('${ORG}','50000000-0000-4000-8000-000000000003',1,'purchased_credit',
+          '40000000-0000-4000-8000-000000000005','40000000-0000-4000-8000-000000000004',1)`),
+    ).rejects.toThrow(/billing_funding_allocations_credit_refund_idx/);
+  });
+
+  test("keeps subscription history append-only except inside account erasure authority", async () => {
+    const db = await database();
+    await seed(db);
+    await expect(db.exec("DELETE FROM billing_subscription_revisions")).rejects.toThrow(
+      /append-only/,
+    );
+    await db.exec(`
+      BEGIN;
+      SELECT set_config('eliza.subscription_account_deletion_authority', 'on', true);
+      DELETE FROM organization_entitlements WHERE organization_id='${ORG}';
+      DELETE FROM billing_subscription_revisions WHERE organization_id='${ORG}';
+      DELETE FROM billing_subscriptions WHERE organization_id='${ORG}';
+      DELETE FROM organizations WHERE id='${ORG}';
+      COMMIT;
+    `);
+    const remaining = await db.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM organizations WHERE id='${ORG}'`,
+    );
+    expect(remaining.rows).toEqual([{ count: "0" }]);
   });
 });

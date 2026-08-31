@@ -60,10 +60,25 @@ describe("subscription entitlement derivation", () => {
     });
   });
 
-  test("rejects a terminal lifecycle revision and keeps unknown resource ceilings nullable", () => {
-    expect(() => deriveSubscriptionEntitlementValues({ ...revision, status: "canceled" })).toThrow(
-      "cannot produce a paid entitlement",
-    );
+  test("projects terminal lifecycle revisions back to Free", () => {
+    const endedAt = new Date("2026-08-25T00:00:00.000Z");
+    expect(
+      deriveSubscriptionEntitlementValues({ ...revision, status: "canceled", ended_at: endedAt }),
+    ).toMatchObject({
+      plan_key: "free",
+      state: "free",
+      entitlement_effective: true,
+      effective_from: endedAt,
+      effective_until: null,
+      source_subscription_id: null,
+      source_subscription_revision: null,
+    });
+    expect(
+      deriveSubscriptionEntitlementValues({ ...revision, status: "incomplete_expired" }),
+    ).toMatchObject({ plan_key: "free", state: "free" });
+  });
+
+  test("keeps unknown paid resource ceilings nullable and rejects unapproved catalogs", () => {
     expect(deriveSubscriptionEntitlementValues(revision).apps_ceiling).toBeNull();
     expect(() =>
       deriveSubscriptionEntitlementValues({ ...revision, catalog_version: "unapproved" }),
