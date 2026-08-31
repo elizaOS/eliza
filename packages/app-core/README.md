@@ -41,6 +41,12 @@ bun run --cwd packages/app-core lint         # Biome
 
 This package is consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, the `packages/app` shell, and most `plugins/*` app plugins. It targets Node `>=24`, with `react`/`react-dom`/`three` as peer dependencies and the `@elizaos/capacitor-*` mobile bridges as optional dependencies.
 
+> **`bun run dev` requires Node 24+.** The combined dev supervisor pins its Vite
+> proxy child to a Node 24+ executable (the Vite proxy relies on Node-only
+> socket methods that Bun does not implement), so a Bun-only checkout without a
+> compliant Node fails at supervisor start. See
+> [`scripts/README.md`](scripts/README.md#node-runtime-for-the-supervised-vite-proxy).
+
 ## Native inference setup
 
 A normal root `bun install` initializes the pinned fused inference submodule,
