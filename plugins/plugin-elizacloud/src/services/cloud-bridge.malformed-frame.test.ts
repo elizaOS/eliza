@@ -8,11 +8,14 @@
  * `process.nextTick` and surfaces as an `uncaughtException`; the agent host
  * translates that into `process.exit(1)`. This proves that a single malformed
  * or non-object frame is dropped without emitting `uncaughtException` and
- * without disrupting an in-flight JSON-RPC request on the same connection.
+ * without disrupting an in-flight JSON-RPC request on the same connection. It
+ * also pins the redaction guarantee: the warn arms log a shape/error name plus
+ * a byte count, never the peer-controlled bytes that may carry the `?token=`
+ * API key, and the dropped-shape label stays precise for `null`.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocketServer } from "ws";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { CloudBridgeService } from "./cloud-bridge";
 
 describe("CloudBridgeService malformed-frame resilience (real undici WebSocket)", () => {
@@ -114,5 +117,47 @@ describe("CloudBridgeService malformed-frame resilience (real undici WebSocket)"
     expect(uncaughtErrors).toEqual([]);
     expect(received).toEqual([]);
     expect(service.getConnectionState("container-2")).toBe("connected");
+  });
+
+  it("never logs peer frame bytes and labels the dropped JSON shape precisely", async () => {
+    await connect("container-3");
+
+    // Capture the warn arm. The connect URL carries `?token=<apiKey>`, so a
+    // proxy-injected error page echoing that URL is the frame most likely to be
+    // malformed and to contain the key; the guard must log a shape/name plus a
+    // byte count and never the raw bytes. Without this assertion, restoring the
+    // raw frame into either warn string leaves the suite green (see #30159).
+    const warnings: string[] = [];
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map((arg) => String(arg)).join(" "));
+      return logger;
+    });
+
+    const marker = "LEAKMARK-a1b2c3-secret-token";
+    const pending = service.sendRequest("container-3", "status.get", {});
+    // Malformed frame carrying the marker (mirrors a proxy error page whose body
+    // echoes the requested `?token=` URL).
+    serverSocket?.send(`not json ${marker} {`);
+    // Valid JSON that is not a JSON-RPC object: a string carrying the marker, a
+    // literal `null` (the `typeof null === "object"` trap), and an array.
+    serverSocket?.send(JSON.stringify(marker));
+    serverSocket?.send("null");
+    serverSocket?.send(JSON.stringify([marker]));
+    serverSocket?.send(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { ok: true } }));
+
+    await expect(pending).resolves.toEqual({ ok: true });
+    await new Promise((r) => setTimeout(r, 50));
+    warnSpy.mockRestore();
+
+    const combined = warnings.join("\n");
+    // Security guarantee: no peer-controlled bytes reach the log, from either arm.
+    expect(combined).not.toContain(marker);
+    // Shape-only labels stay precise, including the `null` special-case.
+    expect(warnings).toContainEqual(expect.stringContaining("JSON string"));
+    expect(warnings).toContainEqual(expect.stringContaining("JSON null"));
+    expect(warnings).toContainEqual(expect.stringContaining("JSON array"));
+    expect(warnings).not.toContainEqual(expect.stringContaining("JSON object"));
+    expect(uncaughtErrors).toEqual([]);
+    expect(service.getConnectionState("container-3")).toBe("connected");
   });
 });

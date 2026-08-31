@@ -252,10 +252,12 @@ export class CloudBridgeService extends Service {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       // error-policy:J3 valid JSON that is not a JSON-RPC object cannot be
       // dereferenced for `method`/`id`; treat it as an invalid frame. Log the
-      // JSON shape and byte length only, never the peer-controlled bytes.
+      // JSON shape and byte length only, never the peer-controlled bytes. The
+      // shape label special-cases `null` because `typeof null === "object"`
+      // would otherwise mislabel a dropped `null` frame as a JSON object.
       logger.warn(
         `[CloudBridge] Ignoring non-object frame from ${containerId}: JSON ${
-          Array.isArray(parsed) ? "array" : typeof parsed
+          parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed
         } (${data.length} bytes)`
       );
       return null;
