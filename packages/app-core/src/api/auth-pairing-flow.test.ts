@@ -13,6 +13,7 @@
  * `AuthStore` backed by a real, migrated PGlite database — nothing mocked:
  *
  *   loopback GET  /api/auth/pair-code            → operator reads rotating code
+ *   owner    POST /api/auth/guest-pair-code      → one-time USER grant
  *   proxied  GET  /api/auth/pair-code            → 403 (pairing wall)
  *   remote   POST /api/auth/pair  (wrong code)   → 403
  *   remote   POST /api/auth/pair  (correct code) → 200 { token: <sessionId> }
@@ -217,6 +218,24 @@ async function fetchPairCode(): Promise<{
   return { code: code as string, instanceId: instanceId as string };
 }
 
+/** Mint a guest-only one-time code through the owner-gated route. */
+async function fetchGuestPairCode(): Promise<{
+  code: string;
+  instanceId: string;
+}> {
+  const res = await request(harness.baseUrl, {
+    method: "POST",
+    path: "/api/auth/guest-pair-code",
+  });
+  expect(res.status).toBe(201);
+  expect(res.json).toMatchObject({ access: "guest" });
+  const code = res.json?.code;
+  const instanceId = res.json?.instanceId;
+  expect(typeof code).toBe("string");
+  expect(typeof instanceId).toBe("string");
+  return { code: code as string, instanceId: instanceId as string };
+}
+
 describe("production device-pairing auth path — real DB + real HTTP (#13692)", () => {
   it("discloses the pair code to loopback but hides it from proxied/remote callers", async () => {
     const local = await request(harness.baseUrl, {
@@ -274,6 +293,31 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
     });
   });
 
+  it("derives OWNER authority from the operator code and ignores client-selected access", async () => {
+    const pairing = await fetchPairCode();
+    const paired = await request(harness.baseUrl, {
+      method: "POST",
+      path: "/api/auth/pair",
+      body: { ...pairing, access: "guest" },
+    });
+
+    expect(paired.status).toBe(200);
+    expect(paired.json).toMatchObject({
+      access: "owner",
+      identityId: expect.any(String),
+      token: expect.any(String),
+    });
+    await expect(
+      resolveSessionTokenRole(paired.json?.token as string, {
+        store: harness.store,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      role: "OWNER",
+      identityId: paired.json?.identityId,
+    });
+  });
+
   // Windows-ci only: `harness.store.findSession(sessionId)` (line ~280) resolves
   // null for the session the pairing POST just minted and returned (200) — even
   // though the route and this test share ONE in-process PGlite instance
@@ -295,9 +339,13 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
       const paired = await request(harness.baseUrl, {
         method: "POST",
         path: "/api/auth/pair",
-        body: pairing,
+        body: { ...pairing, access: "guest" },
       });
       expect(paired.status).toBe(200);
+      expect(paired.json).toMatchObject({
+        access: "owner",
+        identityId: expect.any(String),
+      });
       const sessionId = paired.json?.token as string;
       expect(typeof sessionId).toBe("string");
       expect(sessionId).not.toBe(process.env.ELIZA_API_TOKEN);
@@ -328,6 +376,13 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
       // Independent confirmation through the real session lookup helper.
       const active = await findActiveSession(harness.store, sessionId);
       expect(active?.id).toBe(sessionId);
+      await expect(
+        resolveSessionTokenRole(sessionId, { store: harness.store }),
+      ).resolves.toMatchObject({
+        ok: true,
+        role: "OWNER",
+        identityId: paired.json?.identityId,
+      });
 
       // Revoke in the real DB and confirm the bearer no longer authenticates —
       // sessions are revocable, unlike the static connection key.
@@ -373,13 +428,13 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
     });
   });
 
-  it("mints distinct USER identities for explicitly guest-paired devices", async () => {
+  it("server-binds guest codes to distinct USER identities, denies elevation and replay", async () => {
     const pairGuest = async () => {
-      const pairing = await fetchPairCode();
+      const pairing = await fetchGuestPairCode();
       const paired = await request(harness.baseUrl, {
         method: "POST",
         path: "/api/auth/pair",
-        body: { ...pairing, access: "guest" },
+        body: { ...pairing, access: "owner" },
       });
       expect(paired.status).toBe(200);
       expect(paired.json).toMatchObject({
@@ -387,7 +442,11 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
         identityId: expect.any(String),
         token: expect.any(String),
       });
-      return paired.json as { identityId: string; token: string };
+      return {
+        code: pairing.code,
+        instanceId: pairing.instanceId,
+        ...(paired.json as { identityId: string; token: string }),
+      };
     };
 
     const first = await pairGuest();
@@ -410,6 +469,26 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
         identityId: paired.identityId,
       });
     }
+
+    const replay = await request(harness.baseUrl, {
+      method: "POST",
+      path: "/api/auth/pair",
+      body: {
+        code: first.code,
+        instanceId: first.instanceId,
+        access: "guest",
+      },
+    });
+    expect(replay.status).toBe(403);
+    expect(replay.json).toMatchObject({ code: "PAIRING_INVALID" });
+
+    const guestCannotInvite = await request(harness.baseUrl, {
+      method: "POST",
+      path: "/api/auth/guest-pair-code",
+      proxied: true,
+      bearer: first.token,
+    });
+    expect(guestCannotInvite.status).toBe(403);
   });
 
   it("rate-limits repeated pairing attempts from the same client IP", async () => {

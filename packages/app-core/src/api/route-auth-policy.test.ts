@@ -72,6 +72,9 @@ describe("compat route auth policy table", () => {
     expect(
       resolveCompatRouteAuthPolicy("GET", "/api/auth/pair-code"),
     ).toMatchObject({ id: "auth.pair-code", tier: "public" });
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/auth/guest-pair-code"),
+    ).toMatchObject({ id: "auth.guest-pair-code", tier: "session" });
     expect(resolveCompatRouteAuthPolicy("GET", "/api/auth/me")).toMatchObject({
       id: "auth.me",
       tier: "public",

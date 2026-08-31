@@ -1,11 +1,11 @@
 /**
  * Covers `handleAuthPairingCompatRoutes` — the device-pairing compat routes
- * (`GET /api/auth/pair-code`, `POST /api/auth/pair`): the pair code is visible
- * only to trusted-loopback callers, a successful remote pair mints a revocable
- * machine session (returning the session id, never the static API token) and
- * reuses an existing owner identity when present, creates unique machine
- * identities for explicit guest access, and stays dark when pairing is
- * disabled. Harness mocks core logger/`stringToUuid`, the agent
+ * (`GET /api/auth/pair-code`, owner-only `POST /api/auth/guest-pair-code`, and
+ * public `POST /api/auth/pair`): the pair code is visible only to trusted-
+ * loopback callers, the server-held code record fixes owner versus guest
+ * authority regardless of client input, and a successful remote pair mints a
+ * revocable machine session (returning the session id, never the static API
+ * token). Harness mocks core logger/`stringToUuid`, the agent
  * config loader, shared loopback/token helpers, the `auth` module overrides,
  * the session and `AuthStore` layers, and first-run provisioning; drives
  * synthetic Node http request/response objects.
@@ -84,6 +84,7 @@ vi.mock("@elizaos/shared", async (importOriginal) => {
 
 const authOverrides = {
   ensureRouteAuthorized: vi.fn(async () => true),
+  ensureRouteMinRole: vi.fn(async () => true),
   getCompatApiToken: () => process.env.ELIZA_API_TOKEN?.trim() || null,
   getProvidedApiToken: (req: Pick<http.IncomingMessage, "headers">) => {
     const header = req.headers.authorization;
@@ -366,6 +367,7 @@ describe("auth pairing pair-code route", () => {
     (remote as unknown as { body: unknown }).body = {
       code: "AAAA-AAAA-AAAA",
       instanceId: ensureAuthPairingCodeForRemoteAccess()?.instanceId,
+      access: "guest",
     };
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(remote, res.res, STATE);
@@ -490,7 +492,7 @@ describe("auth pairing pair-code route", () => {
     expect(authStoreMocks.createIdentity).toHaveBeenCalledTimes(1);
     expect(authStoreMocks.createIdentity).toHaveBeenCalledWith(
       expect.objectContaining({
-        kind: "machine",
+        kind: "owner",
         displayName: "paired-device",
       }),
     );
@@ -544,28 +546,32 @@ describe("auth pairing pair-code route", () => {
     await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
 
     expect(res.status()).toBe(200);
+    expect(res.body()).toMatchObject({ access: "owner" });
     expect(authStoreMocks.createIdentity).not.toHaveBeenCalled();
     expect(sessionMocks.createMachineSession.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({ identityId: "owner-id" }),
     );
   });
 
-  it("creates a fresh machine identity for an explicitly guest-paired device", async () => {
+  it("binds an owner-issued guest code to a fresh USER identity even if the client requests owner", async () => {
     vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
     sessionMocks.createMachineSession.mockClear();
     authStoreMocks.createIdentity.mockClear();
     authStoreMocks.listIdentitiesByKind.mockClear();
 
+    const inviteRes = fakeRes();
     await handleAuthPairingCompatRoutes(
       fakeReq({
-        method: "GET",
-        pathname: "/api/auth/pair-code",
+        method: "POST",
+        pathname: "/api/auth/guest-pair-code",
         ip: "127.0.0.1",
         host: "localhost:2138",
       }),
-      fakeRes().res,
+      inviteRes.res,
       STATE_WITH_DB,
     );
+    expect(inviteRes.status()).toBe(201);
+    const invite = inviteRes.body() as { code: string; instanceId: string };
 
     const remote = fakeReq({
       method: "POST",
@@ -573,9 +579,8 @@ describe("auth pairing pair-code route", () => {
       ip: "203.0.113.10",
     });
     (remote as unknown as { body: unknown }).body = {
-      code: "AAAA-AAAA-AAAA",
-      instanceId: ensureAuthPairingCodeForRemoteAccess()?.instanceId,
-      access: "guest",
+      ...invite,
+      access: "owner",
     };
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
