@@ -94,6 +94,8 @@ async function main(): Promise<void> {
       conversationId,
     }),
     listenPort: gatewayPort,
+    allowContinuousHandoff:
+      process.env.ELIZA_LOCAL_VOICE_CONTINUOUS_HANDOFF === "1",
     hooks: { log: writeLog },
   });
 
