@@ -1009,6 +1009,92 @@ describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
     expect(VOLUME_VAULT_STDIN_FRAME_END).toBe("ELIZA_VAULT_STDIN_V1_END");
   });
 
+  test("places the fenced publication candidate on the durable key filesystem", () => {
+    const volume = "/data/agents/11111111-1111-4111-8111-111111111111";
+    const attemptId = "33333333-3333-4333-8333-333333333333";
+    const keyPath = getVolumeVaultPassphrasePath(volume);
+    const candidatePath = `${keyPath}.candidate.${attemptId}`;
+    const command = buildVolumeVaultPassphraseCommand(volume, 0, attemptId);
+    const cleanupCommand = buildReplacementSecretArtifactsCleanupCommand(
+      getContainerName("11111111-1111-4111-8111-111111111111"),
+      attemptId,
+    );
+
+    expect(command).toContain(
+      `generated_file='/var/lib/eliza/replacement-attempts/${attemptId}/vault-generated'`,
+    );
+    expect(command).toContain(`key_candidate_file='${candidatePath}'`);
+    expect(command).toContain('if exec 8>"$key_candidate_file"');
+    expect(command).toContain("secure_private_regular_fd_proof 8");
+    expect(command).toContain('ln "$key_candidate_file" "$key_file"');
+    expect(command).not.toContain('ln "$generated_file" "$key_file"');
+    expect(cleanupCommand).toContain(candidatePath);
+  });
+
+  test.skipIf(process.platform !== "linux")(
+    "publishes a fenced key when control and target paths are on distinct filesystems",
+    async () => {
+      const { spawn } = await import("node:child_process");
+      const fs = await import("node:fs");
+      const os = await import("node:os");
+      const path = await import("node:path");
+      const targetFilesystemRoot = ["/dev/shm", "/run/shm"].find((candidate) => {
+        try {
+          fs.accessSync(candidate, fs.constants.W_OK);
+          return fs.statSync(candidate).dev !== fs.statSync(os.tmpdir()).dev;
+        } catch {
+          return false;
+        }
+      });
+      if (!targetFilesystemRoot) return;
+
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-crossfs-control-"));
+      const volume = fs.mkdtempSync(path.join(targetFilesystemRoot, "eliza-crossfs-volume-"));
+      const bin = path.join(root, "bin");
+      const attempts = path.join(root, "attempts");
+      const productionVolume = "/data/agents/11111111-1111-4111-8111-111111111111";
+      const productionAttempts = "/var/lib/eliza/replacement-attempts";
+      const attemptId = "33333333-3333-4333-8333-333333333333";
+      const override = "cross-filesystem-vault-secret";
+      fs.mkdirSync(bin, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+      fs.writeFileSync(
+        path.join(bin, "stat"),
+        '#!/bin/sh\ncase "$2" in "%u") printf 0 ;; "%a") if test -d "$4"; then printf 700; else printf 600; fi ;; "%h") printf 1 ;; "%d:%i") printf "1:1" ;; "%d:%i:%s:%y:%z") printf stable-fingerprint ;; *) exit 64 ;; esac\n',
+        { mode: 0o700 },
+      );
+
+      try {
+        expect(fs.statSync(root).dev).not.toBe(fs.statSync(volume).dev);
+        const command = buildVolumeVaultPassphraseCommand(
+          productionVolume,
+          Buffer.byteLength(override),
+          attemptId,
+        )
+          .replaceAll(productionVolume, volume)
+          .replaceAll(productionAttempts, attempts);
+        const frame = `${VOLUME_VAULT_STDIN_FRAME_VERSION} ${Buffer.byteLength(override)}\n${override}\n${VOLUME_VAULT_STDIN_FRAME_END}\n`;
+        const result = await new Promise<{ code: number | null; output: string }>((resolve) => {
+          const child = spawn("/bin/sh", ["-c", command], {
+            env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
+          });
+          let output = "";
+          child.stdout.on("data", (chunk) => (output += chunk.toString()));
+          child.stderr.on("data", (chunk) => (output += chunk.toString()));
+          child.on("close", (code) => resolve({ code, output }));
+          child.stdin.end(frame);
+        });
+
+        expect(result).toEqual({ code: 0, output: "" });
+        expect(fs.readFileSync(getVolumeVaultPassphrasePath(volume), "utf8")).toBe(override);
+        expect(fs.readdirSync(volume)).toEqual([".vault-passphrase"]);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+        fs.rmSync(volume, { recursive: true, force: true });
+      }
+    },
+  );
+
   test("exact vault staging replaces control symlinks and rejects a durable-key symlink", async () => {
     const { spawn } = await import("node:child_process");
     const fs = await import("node:fs");

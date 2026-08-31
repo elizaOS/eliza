@@ -83,6 +83,19 @@ function createDockerSshAbortError(hostname: string): Error {
   return error;
 }
 
+function getDockerSshAbortReason(signal: AbortSignal, hostname: string): unknown {
+  // Abort reasons are part of the caller's cancellation contract. Preserve the
+  // exact value (including non-Error values) when the runtime exposes one, and
+  // synthesize a redacted AbortError only for older/incomplete implementations.
+  try {
+    const reason = signal.reason;
+    if (reason !== undefined) return reason;
+  } catch {
+    /* fall through to the compatibility error */
+  }
+  return createDockerSshAbortError(hostname);
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -377,7 +390,7 @@ export class DockerSSHClient {
    */
   async connect(signal?: AbortSignal): Promise<void> {
     if (signal?.aborted) {
-      throw createDockerSshAbortError(this.hostname);
+      throw getDockerSshAbortReason(signal, this.hostname);
     }
     if (this.connected && this.client) {
       return;
@@ -386,7 +399,7 @@ export class DockerSSHClient {
     const SSHClientCtor = await loadSSHClientCtor();
 
     if (signal?.aborted) {
-      throw createDockerSshAbortError(this.hostname);
+      throw getDockerSshAbortReason(signal, this.hostname);
     }
 
     return new Promise<void>((resolve, reject) => {
@@ -399,7 +412,7 @@ export class DockerSSHClient {
         signal?.removeEventListener("abort", onAbort);
       };
 
-      const failPendingConnection = (error: Error) => {
+      const failPendingConnection = (error: unknown) => {
         if (settled) return;
         settled = true;
         cleanupPendingConnection();
@@ -414,7 +427,8 @@ export class DockerSSHClient {
       };
 
       const onAbort = () => {
-        failPendingConnection(createDockerSshAbortError(this.hostname));
+        if (!signal) return;
+        failPendingConnection(getDockerSshAbortReason(signal, this.hostname));
       };
 
       const timeout = setTimeout(() => {
@@ -758,13 +772,13 @@ export class DockerSSHClient {
     timeoutMs?: number,
   ): Promise<void> {
     if (signal.aborted) {
-      throw createDockerSshAbortError(this.hostname);
+      throw getDockerSshAbortReason(signal, this.hostname);
     }
     if (!this.connected || !this.client) {
       await this.connect(signal);
     }
     if (signal.aborted) {
-      throw createDockerSshAbortError(this.hostname);
+      throw getDockerSshAbortReason(signal, this.hostname);
     }
 
     this.lastActivityMs = Date.now();
@@ -774,7 +788,8 @@ export class DockerSSHClient {
     return new Promise<void>((resolve, reject) => {
       let outputBytes = 0;
       let settled = false;
-      let terminalError: Error | undefined;
+      let terminalError: unknown;
+      let hasTerminalError = false;
       let stream: ClientChannel | undefined;
       let closeGraceTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -784,11 +799,11 @@ export class DockerSSHClient {
         signal.removeEventListener("abort", onAbort);
       };
 
-      const finish = (error?: Error) => {
+      const finish = (error?: unknown) => {
         if (settled) return;
         settled = true;
         cleanup();
-        if (error) reject(error);
+        if (error !== undefined) reject(error);
         else resolve();
       };
 
@@ -817,9 +832,10 @@ export class DockerSSHClient {
         }
       };
 
-      const cancel = (error: Error) => {
-        if (settled || terminalError) return;
+      const cancel = (error: unknown) => {
+        if (settled || hasTerminalError) return;
         terminalError = error;
+        hasTerminalError = true;
         clearTimeout(commandTimer);
 
         if (!stream) {
@@ -844,7 +860,7 @@ export class DockerSSHClient {
       };
 
       const onAbort = () => {
-        cancel(createDockerSshAbortError(this.hostname));
+        cancel(getDockerSshAbortReason(signal, this.hostname));
       };
 
       const commandTimer = setTimeout(() => {
@@ -879,7 +895,7 @@ export class DockerSSHClient {
 
         const observeBoundedOutput = (data: Buffer) => {
           try {
-            if (terminalError || settled) return;
+            if (hasTerminalError || settled) return;
             outputBytes += data.byteLength;
             if (outputBytes > ABORTABLE_STDIN_MAX_OUTPUT_BYTES) {
               cancel(
@@ -903,7 +919,7 @@ export class DockerSSHClient {
           observeBoundedOutput(data);
         });
         stream.on("close", (code: number) => {
-          if (terminalError) {
+          if (hasTerminalError) {
             finish(terminalError);
             return;
           }
@@ -918,7 +934,7 @@ export class DockerSSHClient {
           }
         });
         stream.on("error", () => {
-          if (terminalError) return;
+          if (hasTerminalError) return;
           cancel(new Error(`[docker-ssh] stdin channel failed on ${this.hostname}`));
         });
 

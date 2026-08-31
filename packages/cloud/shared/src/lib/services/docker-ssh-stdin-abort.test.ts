@@ -1,6 +1,29 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { DockerSSHClient } from "./docker-ssh";
+
+let connectingSession: FakeConnectingSshClient | undefined;
+
+class FakeConnectingSshClient extends EventEmitter {
+  connectCalls = 0;
+  destroyCalls = 0;
+
+  constructor() {
+    super();
+    connectingSession = this;
+  }
+
+  connect(): void {
+    this.connectCalls += 1;
+  }
+
+  destroy(): this {
+    this.destroyCalls += 1;
+    return this;
+  }
+}
+
+mock.module("ssh2", () => ({ Client: FakeConnectingSshClient }));
 
 class FakeClientChannel extends EventEmitter {
   readonly stderr = new EventEmitter();
@@ -55,8 +78,58 @@ async function requireError(promise: Promise<unknown>): Promise<Error> {
   throw new Error("Expected promise to reject");
 }
 
+function makeCallerAbortReason(message: string): Error {
+  const reason = new Error(message);
+  reason.name = "AbortError";
+  return reason;
+}
+
+describe("DockerSSHClient.connect cancellation", () => {
+  test("preserves the exact reason of a pre-aborted signal", async () => {
+    const client = new DockerSSHClient({
+      hostname: "restore-node.example.test",
+      privateKey: Buffer.from("unused"),
+      hostKeyFingerprint: "test-host-key-fingerprint",
+    });
+    const controller = new AbortController();
+    const reason = makeCallerAbortReason("cancelled before SSH connect");
+    controller.abort(reason);
+
+    const error = await requireError(client.connect(controller.signal));
+
+    expect(error).toBe(reason);
+    expect(client.isConnected).toBe(false);
+  });
+
+  test("preserves the exact reason when aborted while connect is in flight", async () => {
+    connectingSession = undefined;
+    const client = new DockerSSHClient({
+      hostname: "restore-node.example.test",
+      privateKey: Buffer.from("unused"),
+      hostKeyFingerprint: "test-host-key-fingerprint",
+    });
+    const controller = new AbortController();
+    const reason = makeCallerAbortReason("cancelled during SSH connect");
+
+    const promise = client.connect(controller.signal);
+
+    for (let attempt = 0; attempt < 100 && !connectingSession; attempt += 1) {
+      await Bun.sleep(1);
+    }
+    if (!connectingSession) throw new Error("Expected SSH connection attempt to start");
+    expect(connectingSession.connectCalls).toBe(1);
+
+    controller.abort(reason);
+    const error = await requireError(promise);
+
+    expect(error).toBe(reason);
+    expect(connectingSession.destroyCalls).toBe(1);
+    expect(client.isConnected).toBe(false);
+  });
+});
+
 describe("DockerSSHClient.execStdinAbortable", () => {
-  test("rejects a pre-aborted signal before opening an SSH exec channel", async () => {
+  test("preserves a pre-aborted signal reason before opening an SSH exec channel", async () => {
     const channel = new FakeClientChannel();
     const session: FakeSshSession = {
       execCalls: 0,
@@ -71,7 +144,8 @@ describe("DockerSSHClient.execStdinAbortable", () => {
     };
     const client = makeConnectedClient(session);
     const controller = new AbortController();
-    controller.abort();
+    const reason = makeCallerAbortReason("cancelled before stdin transfer");
+    controller.abort(reason);
 
     const error = await requireError(
       client.execStdinAbortable(
@@ -81,6 +155,7 @@ describe("DockerSSHClient.execStdinAbortable", () => {
       ),
     );
 
+    expect(error).toBe(reason);
     expect(error.name).toBe("AbortError");
     expect(error.message).not.toContain("secret-command");
     expect(error.message).not.toContain("secret");
@@ -103,6 +178,7 @@ describe("DockerSSHClient.execStdinAbortable", () => {
     };
     const client = makeConnectedClient(session);
     const controller = new AbortController();
+    const reason = makeCallerAbortReason("cancelled during stdin transfer");
     const input = Buffer.from("vault-passphrase-frame");
     let outcome = "pending";
 
@@ -121,7 +197,7 @@ describe("DockerSSHClient.execStdinAbortable", () => {
     );
 
     expect(channel.endedWith).toBe(input);
-    controller.abort();
+    controller.abort(reason);
     await Promise.resolve();
 
     expect(channel.closeCalls).toBe(1);
@@ -130,6 +206,7 @@ describe("DockerSSHClient.execStdinAbortable", () => {
 
     channel.emit("close", 0);
     const error = await requireError(promise);
+    expect(error).toBe(reason);
     expect(error.name).toBe("AbortError");
     expect(outcome).toBe("rejected");
     expect(session.destroyCalls).toBe(0);
