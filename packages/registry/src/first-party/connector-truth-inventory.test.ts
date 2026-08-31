@@ -24,7 +24,6 @@ const repositoryRoot = path.resolve(
 
 /** External transports unregistered by #24373 — none may return. */
 const EXTERNAL_TRANSPORT_IDS = [
-  "blooio",
   "mattermost",
   "msteams",
   "nextcloud-talk",
@@ -43,6 +42,10 @@ const LEGACY_CHANNEL_ALIASES = new Map([
   ["discordLocal", "discord"],
   ["twitter", "x"],
   ["googlechat", "google-chat"],
+  // Blooio is an integrated transport of plugin-imessage (develop 9b93ec4374
+  // made the connector canonical); its channel key resolves to the imessage
+  // registration source rather than a standalone registration.
+  ["blooio", "imessage"],
 ]);
 
 describe("external transport unregistration (#24373)", () => {

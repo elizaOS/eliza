@@ -119,17 +119,12 @@
     {
       "plugin": "plugin-imessage",
       "packageName": "@elizaos/plugin-imessage",
-      "channels": ["imessage"],
+      "channels": ["blooio", "imessage"],
       "registrationSites": ["plugins/plugin-imessage/src/service.ts"],
       "registrations": [
         {
           "source": "imessage",
-          "capabilities": [
-            "attachments",
-            "chat_context",
-            "contact_resolution",
-            "send_message"
-          ],
+          "capabilities": ["chat_context", "send_message"],
           "supportedTargetKinds": [
             "contact",
             "email",
@@ -142,12 +137,7 @@
           "sites": ["plugins/plugin-imessage/src/service.ts"]
         }
       ],
-      "capabilities": [
-        "attachments",
-        "chat_context",
-        "contact_resolution",
-        "send_message"
-      ],
+      "capabilities": ["chat_context", "send_message"],
       "supportedTargetKinds": [
         "contact",
         "email",
