@@ -34,7 +34,7 @@ export const CONCORD_SCHOOL_CALENDAR_SOURCE: SchoolCalendarSourceConfig = {
   landingPageUrl:
     "https://www.concordps.org/district-resources/school-year-calendars",
   allowedHosts: ["www.concordps.org", "resources.finalsite.net"],
-  pdfHrefPattern: "CPSCCRSD.*SchoolCalendar\\.pdf(?:$|[?#])",
+  pdfHrefPattern: "CPSCCRSD2026-2027SchoolCalendar\\.pdf(?:$|[?#])",
   timeZone: "America/New_York",
   targetGrantId: ELIZA_CALENDAR_GRANT_ID,
   targetCalendarId: "primary",

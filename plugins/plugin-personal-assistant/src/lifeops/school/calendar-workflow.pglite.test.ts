@@ -111,7 +111,11 @@ describe("school calendar pure contracts", () => {
       data-file-name="CPSCCRSD2026-2027SchoolCalendar.pdf"
       data-resource-uuid="ed54b79f-c59a-4e94-b07d-1fa97013b17b"
       href="/fs/resource-manager/view/ed54b79f-c59a-4e94-b07d-1fa97013b17b"
-      target="_blank">2026-2027 School Calendar</a>`;
+      target="_blank">2026-2027 School Calendar</a>
+      <a data-file-name="CPSCCRSD2025-2026SchoolCalendar.pdf"
+        href="/fs/resource-manager/view/previous">2025-2026 School Calendar</a>
+      <a data-file-name="CPSCCRSD2024-2025SchoolCalendar.pdf"
+        href="/fs/resource-manager/view/archived">2024-2025 School Calendar</a>`;
 
     expect(
       discoverSchoolCalendarPdf(
