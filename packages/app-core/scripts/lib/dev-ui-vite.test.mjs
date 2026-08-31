@@ -13,6 +13,17 @@ const appDir = path.resolve(
   "../../../app",
 );
 
+function resolveBunExecutable() {
+  if (process.versions.bun) return process.execPath;
+  const probe = spawnSync(
+    "bun",
+    ["--eval", "process.stdout.write(process.execPath)"],
+    { encoding: "utf8" },
+  );
+  expect(probe.status, probe.stderr).toBe(0);
+  return probe.stdout.trim();
+}
+
 test("resolveViteCommand keeps the Vite 8 config and React plugin on one loader", () => {
   const resolved = resolveViteCommand({
     appDir,
@@ -69,7 +80,7 @@ test("Vite resolution succeeds with a PATH that contains Bun and no Node executa
   const bunName = process.platform === "win32" ? "bun.exe" : "bun";
   const bunPath = path.join(binDir, bunName);
   try {
-    symlinkSync(process.execPath, bunPath);
+    symlinkSync(resolveBunExecutable(), bunPath);
     const helperUrl = pathToFileURL(
       path.join(
         path.dirname(fileURLToPath(import.meta.url)),
