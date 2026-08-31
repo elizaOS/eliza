@@ -1,3 +1,4 @@
+import { tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 "use client";
 
 /**
@@ -115,7 +116,9 @@ const NETWORK_LABELS: Record<DirectNetwork, string> = {
 
 function formatAddress(value: string | null | undefined) {
   if (!value) return "";
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= 10) return wellFormed;
+  return `${truncateWellFormed(wellFormed, 6)}...${tailWellFormed(wellFormed, 4)}`;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
