@@ -233,6 +233,25 @@ describe("YAML block scalar descriptions (issue #30121)", () => {
     );
   });
 
+  it("honors an explicit indentation indicator (`|2`) for the block base", () => {
+    // The explicit indentation indicator fixes the block base at keyIndent + 2
+    // instead of inferring it from the first content line. Without it, the
+    // first (6-space) line would set a deeper base and its leading spaces would
+    // be stripped; the indicator keeps the 4 extra spaces, matching js-yaml.
+    const explicit = [
+      "---",
+      "name: my-skill",
+      "description: |2",
+      "      deep line",
+      "  base line",
+      "---",
+      "Body",
+    ].join("\n");
+    expect(parseFrontmatter(explicit).frontmatter?.description).toBe(
+      "    deep line\nbase line\n",
+    );
+  });
+
   it("strips the trailing newline for a `>-` chomped description", () => {
     const stripped = [
       "---",
