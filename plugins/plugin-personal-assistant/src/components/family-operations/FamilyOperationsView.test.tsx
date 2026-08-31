@@ -204,6 +204,7 @@ describe("FamilyOperationsView", () => {
     const file = new File(["%PDF-1.7"], "parenting-plan.pdf", {
       type: "application/pdf",
     });
+    fireEvent.click(await screen.findByText("Choose a signed PDF"));
     fireEvent.change(await screen.findByLabelText("PDF page count"), {
       target: { value: "14" },
     });
@@ -235,6 +236,7 @@ describe("FamilyOperationsView", () => {
     Object.defineProperty(file, "size", {
       value: MAX_AGREEMENT_PDF_BYTES + 1,
     });
+    fireEvent.click(await screen.findByText("Choose a signed PDF"));
     fireEvent.change(await screen.findByLabelText("PDF page count"), {
       target: { value: "14" },
     });

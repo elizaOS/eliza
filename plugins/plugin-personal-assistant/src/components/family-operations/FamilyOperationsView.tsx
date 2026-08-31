@@ -120,6 +120,7 @@ function AgreementUploadCard({
   const [title, setTitle] = useState("Parenting agreement");
   const [pageCount, setPageCount] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const validPageCount = Number(pageCount);
@@ -156,76 +157,92 @@ function AgreementUploadCard({
       title="Upload signed agreement"
       detail="Signed PDFs stay immutable and owner-private. Confirm the page count for citation review."
     >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-          gap: 12,
-        }}
-      >
-        <label htmlFor="agreement-title" style={{ display: "grid", gap: 6 }}>
-          <span>Agreement name</span>
-          <Input
-            id="agreement-title"
-            value={title}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setTitle(event.target.value)
-            }
-          />
-        </label>
-        <label htmlFor="agreement-key" style={{ display: "grid", gap: 6 }}>
-          <span>Agreement key</span>
-          <Input
-            id="agreement-key"
-            value={agreementKey}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setAgreementKey(event.target.value)
-            }
-          />
-        </label>
-        <label htmlFor="agreement-pages" style={{ display: "grid", gap: 6 }}>
-          <span>PDF page count</span>
-          <Input
-            id="agreement-pages"
-            type="number"
-            min={1}
-            step={1}
-            value={pageCount}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setPageCount(event.target.value)
-            }
-          />
-        </label>
-        <label htmlFor="agreement-pdf" style={{ display: "grid", gap: 6 }}>
-          <span>Signed PDF</span>
-          <Input
-            id="agreement-pdf"
-            type="file"
-            aria-label="Signed PDF"
-            accept="application/pdf,.pdf"
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              const selected = event.target.files?.[0] ?? null;
-              setFile(selected);
-              setNotice(null);
-              setError(
-                selected && selected.size > MAX_AGREEMENT_PDF_BYTES
-                  ? agreementUploadSizeMessage()
-                  : selected && selected.size < 1
-                    ? "Agreement PDF must not be empty."
-                    : null,
-              );
+      <Button variant="outline" onClick={() => setExpanded((value) => !value)}>
+        {expanded ? "Close PDF form" : "Choose a signed PDF"}
+      </Button>
+      {expanded ? (
+        <div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+              gap: 12,
+              marginTop: 14,
             }}
-          />
-          <small style={{ color: "var(--muted)" }}>Maximum size: 20 MiB</small>
-        </label>
-      </div>
-      <div style={{ marginTop: 14 }}>
-        <Button disabled={!canUpload} onClick={() => void upload()}>
-          Upload immutable PDF
-        </Button>
-      </div>
-      {notice ? <p role="status">{notice}</p> : null}
-      {error ? <Unavailable message={error} /> : null}
+          >
+            <label
+              htmlFor="agreement-title"
+              style={{ display: "grid", gap: 6 }}
+            >
+              <span>Agreement name</span>
+              <Input
+                id="agreement-title"
+                value={title}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setTitle(event.target.value)
+                }
+              />
+            </label>
+            <label htmlFor="agreement-key" style={{ display: "grid", gap: 6 }}>
+              <span>Agreement key</span>
+              <Input
+                id="agreement-key"
+                value={agreementKey}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setAgreementKey(event.target.value)
+                }
+              />
+            </label>
+            <label
+              htmlFor="agreement-pages"
+              style={{ display: "grid", gap: 6 }}
+            >
+              <span>PDF page count</span>
+              <Input
+                id="agreement-pages"
+                type="number"
+                min={1}
+                step={1}
+                value={pageCount}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setPageCount(event.target.value)
+                }
+              />
+            </label>
+            <label htmlFor="agreement-pdf" style={{ display: "grid", gap: 6 }}>
+              <span>Signed PDF</span>
+              <Input
+                id="agreement-pdf"
+                type="file"
+                aria-label="Signed PDF"
+                accept="application/pdf,.pdf"
+                onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                  const selected = event.target.files?.[0] ?? null;
+                  setFile(selected);
+                  setNotice(null);
+                  setError(
+                    selected && selected.size > MAX_AGREEMENT_PDF_BYTES
+                      ? agreementUploadSizeMessage()
+                      : selected && selected.size < 1
+                        ? "Agreement PDF must not be empty."
+                        : null,
+                  );
+                }}
+              />
+              <small style={{ color: "var(--muted)" }}>
+                Maximum size: 20 MiB
+              </small>
+            </label>
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <Button disabled={!canUpload} onClick={() => void upload()}>
+              Upload immutable PDF
+            </Button>
+          </div>
+          {notice ? <p role="status">{notice}</p> : null}
+          {error ? <Unavailable message={error} /> : null}
+        </div>
+      ) : null}
     </Card>
   );
 }
