@@ -32,6 +32,9 @@ const FOCUSABLE_SELECTOR =
 function approvalStreamUrl(): string | null {
   const baseUrl = client.getBaseUrl();
   const restToken = client.getRestAuthToken();
+  // Browser EventSource cannot attach the bearer header used by paired
+  // machine sessions. Those sessions use the authenticated polling fallback.
+  if (restToken) return null;
   let url: URL;
   try {
     url = new URL(
