@@ -1,6 +1,11 @@
 /** Production Family Operations adapter over owner-authorized local APIs. */
 
 import type { ParentingAgreementView } from "../../lifeops/household/agreement-knowledge.js";
+import type { MonthlyFamilyPacket } from "../../lifeops/family-coordination/index.js";
+import type {
+  SchoolCalendarRunReview,
+  SchoolCalendarWorkflowStatus,
+} from "../../lifeops/school/calendar-workflow.js";
 import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
@@ -41,6 +46,89 @@ async function loadSection<T>(path: string, key: string): Promise<Loadable<T>> {
   }
 }
 
+function schoolView(
+  status: SchoolCalendarWorkflowStatus,
+  review: SchoolCalendarRunReview | null,
+): SchoolWorkflowView {
+  const state = status.lastRun?.state ?? "never_run";
+  return {
+    sourceId: status.sourceId,
+    label: "Concord Public Schools calendar",
+    state:
+      state === "running" ||
+      state === "unchanged" ||
+      state === "awaiting_approval" ||
+      state === "applied" ||
+      state === "failed"
+        ? state
+        : "never_run",
+    lastCheckedAt: status.lastRun?.updatedAt ?? null,
+    sourceUrl: status.config?.landingPageUrl ?? "",
+    runId: status.lastRun?.runId,
+    changes: review?.plan?.changes.map((change) => ({
+      kind: change.kind === "cancel" ? "remove" : change.kind,
+      label:
+        change.kind === "update"
+          ? change.event.title
+          : change.event.title,
+    })),
+    error: review?.errorMessage ?? undefined,
+  };
+}
+
+function packetView(packet: MonthlyFamilyPacket): FamilyPacketView {
+  const states = packet.sections.map((section) => section.state);
+  return {
+    packetId: packet.packetId,
+    periodKey: packet.period.key,
+    version: packet.version,
+    createdAt: packet.createdAt,
+    status: states.includes("contradictory")
+      ? "contradictory"
+      : states.includes("missing")
+        ? "missing"
+        : "complete",
+    claims: packet.claims.map((claim) => ({
+      id: claim.claimId,
+      section: claim.section,
+      text: claim.statement,
+    })),
+  };
+}
+
+async function loadSchool(): Promise<Loadable<SchoolWorkflowView>> {
+  try {
+    const status = await request<SchoolCalendarWorkflowStatus>(
+      "/api/lifeops/family-workflows/school/status",
+    );
+    const review = status.lastRun?.runId
+      ? await request<SchoolCalendarRunReview>(
+          `/api/lifeops/family-workflows/school/runs/${encodeURIComponent(status.lastRun.runId)}`,
+        )
+      : null;
+    return { status: "ready", data: schoolView(status, review) };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      message: error instanceof Error ? error.message : "Service unavailable",
+    };
+  }
+}
+
+async function loadPackets(): Promise<Loadable<FamilyPacketView[]>> {
+  try {
+    const payload = await request<{ packets: MonthlyFamilyPacket[] }>(
+      "/api/lifeops/family-workflows/packets",
+    );
+    return { status: "ready", data: payload.packets.map(packetView) };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      message: error instanceof Error ? error.message : "Service unavailable",
+    };
+  }
+}
+
 export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
   async load(): Promise<FamilyOperationsSnapshot> {
     const [agreements, calendarLinks, school, packets] = await Promise.all([
@@ -49,11 +137,8 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
         "agreements",
       ),
       loadSection<LinkedCalendarView[]>("/api/lifeops/calendar/links", "links"),
-      loadSection<SchoolWorkflowView>(
-        "/api/lifeops/school-calendar/status",
-        "workflow",
-      ),
-      loadSection<FamilyPacketView[]>("/api/lifeops/family-packets", "packets"),
+      loadSchool(),
+      loadPackets(),
     ]);
     return { agreements, calendarLinks, school, packets };
   },
@@ -141,21 +226,21 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
     );
   },
   async runSchoolWorkflow() {
-    await request("/api/lifeops/school-calendar/run", {
+    await request("/api/lifeops/family-workflows/school/run", {
       method: "POST",
-      body: JSON.stringify({ triggerKind: "manual" }),
+      body: JSON.stringify({}),
     });
   },
   async approveSchoolDiff(runId) {
-    await request(
-      `/api/lifeops/school-calendar/runs/${encodeURIComponent(runId)}/approve`,
-      { method: "POST", body: JSON.stringify({ approved: true }) },
-    );
-  },
-  async generatePacket(periodKey) {
-    await request("/api/lifeops/family-packets/generate", {
+    await request("/api/lifeops/family-workflows/school/apply", {
       method: "POST",
-      body: JSON.stringify({ periodKey }),
+      body: JSON.stringify({ runId }),
+    });
+  },
+  async generatePacket(_periodKey) {
+    await request("/api/lifeops/family-workflows/packets", {
+      method: "POST",
+      body: JSON.stringify({}),
     });
   },
 };
