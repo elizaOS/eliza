@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Agent detail page (`/cloud/agents/:id`).
  */
@@ -30,7 +31,7 @@ export default function AgentDetailPage() {
   const enabled = session.ready && session.authenticated;
   const query = useAgent(enabled ? id : undefined);
 
-  const titleId = id ? id.slice(0, 8) : "";
+  const titleId = id ? truncateWellFormed(toWellFormedUnicode(id), 8) : "";
   useDocumentTitle(
     t("cloud.agents.detail.metaTitle", {
       defaultValue: "Agent {{id}} — Agents",

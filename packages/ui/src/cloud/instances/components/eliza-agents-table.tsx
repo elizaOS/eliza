@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Eliza Agents Table — lists hosted agent sandboxes on the Instances page.
  * Auto-refreshes while any sandbox is in an active (pending/provisioning) state.
@@ -327,7 +328,7 @@ function StatusCell({
         <span className="text-2xs text-muted flex items-center gap-1 pl-0.5">
           <Loader2 className="size-2.5 animate-spin" />
           {t("cloud.elizaAgentsTable.jobLabel", {
-            jobId: trackedJob.jobId.slice(0, 8),
+            jobId: truncateWellFormed(toWellFormedUnicode(trackedJob.jobId), 8),
             defaultValue: "Job {{jobId}}",
           })}
         </span>
