@@ -10,6 +10,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MAX_AGREEMENT_PDF_BYTES } from "../../lifeops/household/agreement-upload-limits.js";
 import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
@@ -220,6 +221,38 @@ describe("FamilyOperationsView", () => {
         file,
       }),
     );
+  });
+
+  it("blocks an oversized agreement before the upload adapter is called", async () => {
+    const local = adapter({
+      ...snapshot(),
+      agreements: { status: "ready", data: [] },
+    });
+    render(<FamilyOperationsView adapter={local} />);
+    const file = new File(["%PDF-1.7"], "oversized.pdf", {
+      type: "application/pdf",
+    });
+    Object.defineProperty(file, "size", {
+      value: MAX_AGREEMENT_PDF_BYTES + 1,
+    });
+    fireEvent.change(await screen.findByLabelText("PDF page count"), {
+      target: { value: "14" },
+    });
+    fireEvent.change(screen.getByLabelText("Signed PDF"), {
+      target: { files: [file] },
+    });
+
+    expect(
+      screen.getByText("Agreement PDF must be 20 MiB or smaller."),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Upload immutable PDF",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(local.uploadAgreement).not.toHaveBeenCalled();
   });
 
   it("creates, reviews, and requests approval for an immutable packet draft", async () => {

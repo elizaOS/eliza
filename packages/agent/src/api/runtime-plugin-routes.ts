@@ -198,12 +198,14 @@ async function attachJsonBodyIfPresent(
   req: IncomingMessage,
   res: ServerResponse,
   method: string,
+  maxBodyBytes: number | undefined,
 ): Promise<boolean> {
   if (!requestMayHaveJsonBody(req, method)) {
     return true;
   }
   try {
     const buffer = await readRequestBodyBuffer(req, {
+      ...(maxBodyBytes === undefined ? {} : { maxBytes: maxBodyBytes }),
       returnNullOnError: true,
       returnNullOnTooLarge: true,
       destroyOnTooLarge: true,
@@ -291,7 +293,9 @@ export async function tryHandleRuntimePluginRoute(options: {
 
     attachExpressResponseHelpers(res);
     augmentRequest(req, url, params);
-    if (!(await attachJsonBodyIfPresent(req, res, method))) {
+    if (
+      !(await attachJsonBodyIfPresent(req, res, method, route.maxBodyBytes))
+    ) {
       return true;
     }
 

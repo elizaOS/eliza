@@ -7,6 +7,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { AgreementKnowledgeError } from "../lifeops/household/agreement-knowledge.js";
+import { MAX_AGREEMENT_PDF_BYTES } from "../lifeops/household/agreement-upload-limits.js";
 import { handleAgreementKnowledgeRoutes } from "./agreement-knowledge-routes.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
@@ -70,6 +71,95 @@ describe("agreement knowledge routes", () => {
       uploadedByEntityId: "self",
     });
     expect(harness.responses).toEqual([{ status: 201, data: { artifact } }]);
+  });
+
+  it("accepts agreement PDF bytes above the default 1 MiB transport cap", async () => {
+    const createAgreementVersion = vi.fn(async () => ({
+      id: "artifact-large",
+    }));
+    const bytes = Buffer.alloc(1024 * 1024 + 1, 0x61);
+    bytes.write("%PDF-", 0, "ascii");
+    const harness = context({
+      method: "POST",
+      pathname: "/api/lifeops/agreements",
+      body: {
+        agreementKey: "parenting-plan",
+        title: "Parenting agreement",
+        originalFilename: "agreement.pdf",
+        mimeType: "application/pdf",
+        pageCount: 14,
+        bytesBase64: bytes.toString("base64"),
+      },
+      agreements: { createAgreementVersion },
+    });
+
+    await expect(handleAgreementKnowledgeRoutes(harness.ctx)).resolves.toBe(
+      true,
+    );
+    expect(harness.responses[0]?.status).toBe(201);
+    const call = createAgreementVersion.mock.calls[0]?.[0] as {
+      bytes: Buffer;
+    };
+    expect(call.bytes.byteLength).toBe(bytes.byteLength);
+    expect(call.bytes.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+  });
+
+  it("rejects oversized or non-PDF decoded bytes before storage", async () => {
+    const createAgreementVersion = vi.fn();
+    const oversized = Buffer.alloc(MAX_AGREEMENT_PDF_BYTES + 1, 0x61);
+    oversized.write("%PDF-", 0, "ascii");
+    const tooLarge = context({
+      method: "POST",
+      pathname: "/api/lifeops/agreements",
+      body: {
+        agreementKey: "parenting-plan",
+        title: "Parenting agreement",
+        originalFilename: "agreement.pdf",
+        mimeType: "application/pdf",
+        pageCount: 14,
+        bytesBase64: oversized.toString("base64"),
+      },
+      agreements: { createAgreementVersion },
+    });
+    await handleAgreementKnowledgeRoutes(tooLarge.ctx);
+    expect(tooLarge.responses).toEqual([
+      expect.objectContaining({
+        status: 400,
+        data: expect.objectContaining({
+          error: expect.objectContaining({
+            code: "AGREEMENT_INVALID_CONTRACT",
+            context: expect.objectContaining({
+              maxBytes: MAX_AGREEMENT_PDF_BYTES,
+            }),
+          }),
+        }),
+      }),
+    ]);
+
+    const badSignature = context({
+      method: "POST",
+      pathname: "/api/lifeops/agreements",
+      body: {
+        agreementKey: "parenting-plan",
+        title: "Parenting agreement",
+        originalFilename: "agreement.pdf",
+        mimeType: "application/pdf",
+        pageCount: 14,
+        bytesBase64: Buffer.from("not-a-pdf").toString("base64"),
+      },
+      agreements: { createAgreementVersion },
+    });
+    await handleAgreementKnowledgeRoutes(badSignature.ctx);
+    expect(badSignature.responses[0]).toMatchObject({
+      status: 400,
+      data: {
+        error: {
+          code: "AGREEMENT_INVALID_CONTRACT",
+          message: "Parenting agreement bytes do not have a PDF signature",
+        },
+      },
+    });
+    expect(createAgreementVersion).not.toHaveBeenCalled();
   });
 
   it("returns a stable forbidden error when the domain denies the read", async () => {

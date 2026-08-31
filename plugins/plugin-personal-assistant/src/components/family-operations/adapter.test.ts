@@ -1,6 +1,7 @@
 /** HTTP contract tests for Family Operations calendar conflict mutations. */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MAX_AGREEMENT_PDF_BYTES } from "../../lifeops/household/agreement-upload-limits.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -61,6 +62,7 @@ describe("defaultFamilyOperationsAdapter", () => {
     const file = {
       name: "agreement.pdf",
       type: "application/pdf",
+      size: 8,
       arrayBuffer: async () => new TextEncoder().encode("%PDF-1.7").buffer,
     } as File;
 
@@ -94,6 +96,29 @@ describe("defaultFamilyOperationsAdapter", () => {
       recipientEntityId: "guest-1",
       calendarPrivacyMode: "times_only",
     });
+  });
+
+  it("rejects a PDF over 20 MiB before reading or sending it", async () => {
+    const arrayBuffer = vi.fn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const file = {
+      name: "oversized.pdf",
+      type: "application/pdf",
+      size: MAX_AGREEMENT_PDF_BYTES + 1,
+      arrayBuffer,
+    } as unknown as File;
+
+    await expect(
+      defaultFamilyOperationsAdapter.uploadAgreement({
+        agreementKey: "parenting-plan",
+        title: "Parenting agreement",
+        pageCount: 14,
+        file,
+      }),
+    ).rejects.toThrow("Agreement PDF must be 20 MiB or smaller.");
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("restores the latest draft and approval binding into the packet view", async () => {

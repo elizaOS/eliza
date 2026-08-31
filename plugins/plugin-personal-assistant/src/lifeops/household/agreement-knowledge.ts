@@ -32,6 +32,10 @@ import {
   withTransaction,
 } from "../sql.js";
 import {
+  agreementUploadSizeMessage,
+  MAX_AGREEMENT_PDF_BYTES,
+} from "./agreement-upload-limits.js";
+import {
   getHouseholdCoordinationService,
   HOUSEHOLD_COORDINATION_SERVICE,
   type HouseholdCoordinationService,
@@ -839,6 +843,16 @@ export class AgreementKnowledgeService {
       throw new AgreementKnowledgeError(
         "Parenting agreement PDF must not be empty",
         "AGREEMENT_INVALID_CONTRACT",
+      );
+    }
+    if (input.bytes.byteLength > MAX_AGREEMENT_PDF_BYTES) {
+      throw new AgreementKnowledgeError(
+        agreementUploadSizeMessage(),
+        "AGREEMENT_INVALID_CONTRACT",
+        {
+          maxBytes: MAX_AGREEMENT_PDF_BYTES,
+          decodedBytes: input.bytes.byteLength,
+        },
       );
     }
     const bytes = Buffer.from(input.bytes);

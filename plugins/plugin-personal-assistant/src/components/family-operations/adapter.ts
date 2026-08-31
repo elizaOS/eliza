@@ -5,6 +5,10 @@ import type {
   MonthlyFamilyPacket,
 } from "../../lifeops/family-coordination/index.js";
 import type { ParentingAgreementView } from "../../lifeops/household/agreement-knowledge.js";
+import {
+  agreementUploadSizeMessage,
+  MAX_AGREEMENT_PDF_BYTES,
+} from "../../lifeops/household/agreement-upload-limits.js";
 import type {
   SchoolCalendarRunReview,
   SchoolCalendarWorkflowStatus,
@@ -180,7 +184,19 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
     if (input.file.type !== "application/pdf") {
       throw new Error("Agreement must be a PDF.");
     }
+    if (input.file.size < 1) {
+      throw new Error("Agreement PDF must not be empty.");
+    }
+    if (input.file.size > MAX_AGREEMENT_PDF_BYTES) {
+      throw new Error(agreementUploadSizeMessage());
+    }
     const bytes = new Uint8Array(await input.file.arrayBuffer());
+    if (bytes.byteLength > MAX_AGREEMENT_PDF_BYTES) {
+      throw new Error(agreementUploadSizeMessage());
+    }
+    if (new TextDecoder("ascii").decode(bytes.subarray(0, 5)) !== "%PDF-") {
+      throw new Error("Agreement PDF signature is invalid.");
+    }
     let binary = "";
     for (let offset = 0; offset < bytes.length; offset += 0x8000) {
       binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));

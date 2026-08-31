@@ -24,6 +24,10 @@ import {
   useMemo,
   useState,
 } from "react";
+import {
+  agreementUploadSizeMessage,
+  MAX_AGREEMENT_PDF_BYTES,
+} from "../../lifeops/household/agreement-upload-limits.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
 import type {
   FamilyOperationsAdapter,
@@ -121,6 +125,8 @@ function AgreementUploadCard({
   const validPageCount = Number(pageCount);
   const canUpload =
     file?.type === "application/pdf" &&
+    file.size > 0 &&
+    file.size <= MAX_AGREEMENT_PDF_BYTES &&
     title.trim().length > 0 &&
     agreementKey.trim().length > 0 &&
     Number.isSafeInteger(validPageCount) &&
@@ -148,7 +154,7 @@ function AgreementUploadCard({
   return (
     <Card
       title="Upload signed agreement"
-      detail="The original PDF is retained as an immutable owner-private version. Confirm its page count so every reviewed obligation can be bounded to a real citation."
+      detail="Signed PDFs stay immutable and owner-private. Confirm the page count for citation review."
     >
       <div
         style={{
@@ -195,11 +201,22 @@ function AgreementUploadCard({
           <Input
             id="agreement-pdf"
             type="file"
+            aria-label="Signed PDF"
             accept="application/pdf,.pdf"
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setFile(event.target.files?.[0] ?? null)
-            }
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              const selected = event.target.files?.[0] ?? null;
+              setFile(selected);
+              setNotice(null);
+              setError(
+                selected && selected.size > MAX_AGREEMENT_PDF_BYTES
+                  ? agreementUploadSizeMessage()
+                  : selected && selected.size < 1
+                    ? "Agreement PDF must not be empty."
+                    : null,
+              );
+            }}
           />
+          <small style={{ color: "var(--muted)" }}>Maximum size: 20 MiB</small>
         </label>
       </div>
       <div style={{ marginTop: 14 }}>

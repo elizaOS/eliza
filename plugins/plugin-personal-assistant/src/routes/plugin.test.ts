@@ -51,6 +51,7 @@ vi.mock("./cloud-features-routes.js", () => ({
   handleCloudFeaturesRoute: cloudRouteMocks.handleCloudFeaturesRoute,
 }));
 
+import { MAX_AGREEMENT_UPLOAD_JSON_BYTES } from "../lifeops/household/agreement-upload-limits.js";
 import {
   personalAssistantRoutesPlugin,
   requireLifeOpsRouteOwnerAdminAccess,
@@ -290,6 +291,12 @@ describe("LifeOps raw route owner/admin gate", () => {
     for (const [type, path] of agreementRoutes) {
       expect(findRoute(type, path).public).not.toBe(true);
     }
+    expect(findRoute("POST", "/api/lifeops/agreements").maxBodyBytes).toBe(
+      MAX_AGREEMENT_UPLOAD_JSON_BYTES,
+    );
+    expect(
+      findRoute("POST", "/api/lifeops/agreements/grants").maxBodyBytes,
+    ).toBeUndefined();
   });
 
   it("mounts every family workflow surface behind the owner gate", () => {

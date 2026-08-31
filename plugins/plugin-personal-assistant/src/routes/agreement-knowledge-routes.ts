@@ -10,6 +10,10 @@ import {
   AgreementKnowledgeError,
   getAgreementKnowledgeService,
 } from "../lifeops/household/agreement-knowledge.js";
+import {
+  agreementUploadSizeMessage,
+  MAX_AGREEMENT_PDF_BYTES,
+} from "../lifeops/household/agreement-upload-limits.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 type JsonObject = Record<string, unknown>;
@@ -51,6 +55,47 @@ function numberField(body: JsonObject, field: string): number {
 function optionalString(body: JsonObject, field: string): string | undefined {
   const value = body[field];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function decodeAgreementPdf(bytesBase64: string): Buffer {
+  if (
+    bytesBase64.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(bytesBase64)
+  ) {
+    throw new AgreementKnowledgeError(
+      "bytesBase64 must be canonical base64",
+      "AGREEMENT_INVALID_CONTRACT",
+      { field: "bytesBase64" },
+    );
+  }
+  const paddingBytes = bytesBase64.endsWith("==")
+    ? 2
+    : bytesBase64.endsWith("=")
+      ? 1
+      : 0;
+  const decodedBytes = (bytesBase64.length / 4) * 3 - paddingBytes;
+  if (decodedBytes > MAX_AGREEMENT_PDF_BYTES) {
+    throw new AgreementKnowledgeError(
+      agreementUploadSizeMessage(),
+      "AGREEMENT_INVALID_CONTRACT",
+      { maxBytes: MAX_AGREEMENT_PDF_BYTES, decodedBytes },
+    );
+  }
+  const bytes = Buffer.from(bytesBase64, "base64");
+  if (bytes.toString("base64") !== bytesBase64) {
+    throw new AgreementKnowledgeError(
+      "bytesBase64 must be canonical base64",
+      "AGREEMENT_INVALID_CONTRACT",
+      { field: "bytesBase64" },
+    );
+  }
+  if (bytes.subarray(0, 5).toString("ascii") !== "%PDF-") {
+    throw new AgreementKnowledgeError(
+      "Parenting agreement bytes do not have a PDF signature",
+      "AGREEMENT_INVALID_CONTRACT",
+    );
+  }
+  return bytes;
 }
 
 function pathMatch(pathname: string, expression: RegExp): string[] | null {
@@ -108,7 +153,7 @@ export async function handleAgreementKnowledgeRoutes(
     if (ctx.method === "POST" && ctx.pathname === "/api/lifeops/agreements") {
       const body = record(await ctx.readJsonBody(ctx.req));
       const bytesBase64 = stringField(body, "bytesBase64");
-      const bytes = Buffer.from(bytesBase64, "base64");
+      const bytes = decodeAgreementPdf(bytesBase64);
       const artifact = await service.createAgreementVersion({
         householdId: optionalString(body, "householdId"),
         agreementKey: stringField(body, "agreementKey"),

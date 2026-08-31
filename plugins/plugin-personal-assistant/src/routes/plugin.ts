@@ -41,6 +41,7 @@ import {
   resolveDevCloudEnvAuthority,
   SELF_ENTITY_ID,
 } from "@elizaos/shared";
+import { MAX_AGREEMENT_UPLOAD_JSON_BYTES } from "../lifeops/household/agreement-upload-limits.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import { handleAgreementKnowledgeRoutes } from "./agreement-knowledge-routes.js";
 import {
@@ -286,6 +287,7 @@ interface PrivateRouteSpec {
   path: string;
   public?: false;
   access?: "owner" | "authenticated_entity";
+  maxBodyBytes?: number;
 }
 
 interface PublicRouteSpec {
@@ -296,6 +298,7 @@ interface PublicRouteSpec {
   publicReason: string;
   /** Required for non-GET public routes: names the out-of-band auth. */
   publicWrite?: string;
+  maxBodyBytes?: number;
 }
 
 type RouteSpec = PrivateRouteSpec | PublicRouteSpec;
@@ -433,7 +436,11 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/features/toggle" },
   { type: "GET", path: "/api/lifeops/agreements" },
-  { type: "POST", path: "/api/lifeops/agreements" },
+  {
+    type: "POST",
+    path: "/api/lifeops/agreements",
+    maxBodyBytes: MAX_AGREEMENT_UPLOAD_JSON_BYTES,
+  },
   { type: "POST", path: "/api/lifeops/agreements/grants/preview" },
   { type: "POST", path: "/api/lifeops/agreements/grants" },
   { type: "PUT", path: "/api/lifeops/family-workflows/school/source" },
@@ -723,6 +730,9 @@ function buildRawRoutes(
         name: spec.name,
         publicReason: spec.publicReason,
         ...(spec.publicWrite ? { publicWrite: spec.publicWrite } : {}),
+        ...(spec.maxBodyBytes === undefined
+          ? {}
+          : { maxBodyBytes: spec.maxBodyBytes }),
         handler,
       };
     }
@@ -730,6 +740,9 @@ function buildRawRoutes(
       type: spec.type,
       path: spec.path,
       rawPath: true,
+      ...(spec.maxBodyBytes === undefined
+        ? {}
+        : { maxBodyBytes: spec.maxBodyBytes }),
       handler:
         spec.access === "authenticated_entity"
           ? withAuthenticatedEntityGate(handler)
