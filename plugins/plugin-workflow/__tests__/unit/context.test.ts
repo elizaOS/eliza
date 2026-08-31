@@ -63,4 +63,17 @@ describe('getUserTagName', () => {
       'Customer 12345678-1111-2222-3333-444455556666_12345678_agent_87654321222233334444555566667777'
     );
   });
+
+  it('preserves surrogate integrity when custom user ID contains astral characters', async () => {
+    const astralUserId = '1234567🚀-1111-2222-3333-444455556666' as UUID;
+    const runtime = {
+      agentId,
+      getEntityById: vi.fn().mockResolvedValue(null),
+    } as unknown as IAgentRuntime;
+
+    const tag = await getUserTagName(runtime, astralUserId);
+    expect(tag.isWellFormed()).toBe(true);
+    expect(tag.startsWith('user_1234567_agent_')).toBe(true);
+  });
+
 });

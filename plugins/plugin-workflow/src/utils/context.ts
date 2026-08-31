@@ -9,6 +9,8 @@ import {
   type Memory,
   resolveCanonicalOwnerId,
   type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from '@elizaos/core';
 
@@ -43,7 +45,7 @@ export function buildConversationContext(message: Memory, state: State | undefin
 
 export async function getUserTagName(runtime: IAgentRuntime, userId: string): Promise<string> {
   const entity = await runtime.getEntityById(userId as UUID);
-  const shortId = userId.replace(/-/g, '').slice(0, 8);
+  const shortId = truncateWellFormed(toWellFormedUnicode(userId).replace(/-/g, ''), 8);
   const agentScopeId = runtime.agentId.replace(/-/g, '');
   const name = entity?.names?.[0];
   const isDefaultName = name === `User ${userId}` || name === `User${userId}`;
