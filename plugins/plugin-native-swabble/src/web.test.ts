@@ -383,6 +383,121 @@ describe("SwabbleWeb fallback", () => {
     },
   );
 
+  it("does not fire the wake word when the trigger is only a substring of a larger word", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"], locale: "en-US" } });
+
+    // "elizabeth" contains "eliza" but the user never spoke the trigger as a
+    // distinct token, so the gate must stay closed. A bare substring match
+    // would fire { wakeWord: "eliza", command: "beth opened the door" } and
+    // dispatch a garbled command the user never issued (issue #30151).
+    FakeRecognition.latest?.onresult?.(
+      speechEvent("elizabeth opened the door"),
+    );
+
+    expect(wakeWords).not.toHaveBeenCalled();
+  });
+
+  it("still fires the wake word when the trigger is a standalone token", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"], locale: "en-US" } });
+
+    FakeRecognition.latest?.onresult?.(speechEvent("eliza open calendar"));
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ wakeWord: "eliza", command: "open calendar" }),
+    );
+  });
+
+  it("does not fire on common words that merely start with the trigger", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    // "hey" is a prefix of "they"; ambient speech must not trip the gate.
+    await plugin.start({ config: { triggers: ["hey"], locale: "en-US" } });
+
+    FakeRecognition.latest?.onresult?.(speechEvent("they left the room"));
+
+    expect(wakeWords).not.toHaveBeenCalled();
+  });
+
+  it("fires when the trigger token is delimited by punctuation, not whitespace", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"], locale: "en-US" } });
+
+    // A comma after the trigger is a boundary, so the gate still opens. The
+    // command slice begins right after the trigger token; leading punctuation
+    // is preserved (whitespace-only trim), matching the pre-existing contract.
+    FakeRecognition.latest?.onresult?.(speechEvent("eliza, open calendar"));
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({
+        wakeWord: "eliza",
+        command: ", open calendar",
+      }),
+    );
+  });
+
+  it("drops the carry-over buffer when a triggerless substring word finalizes", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"], locale: "en-US" } });
+
+    // "elizabeth" is not a trigger, so it must not be retained as a
+    // trigger-awaiting-command buffer. A following unrelated final must not
+    // become a command dispatched under the substring "eliza".
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent([{ transcript: "elizabeth spoke" }], 0),
+    );
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent(
+        [{ transcript: "elizabeth spoke" }, { transcript: "open calendar" }],
+        1,
+      ),
+    );
+
+    expect(wakeWords).not.toHaveBeenCalled();
+  });
+
   it("ignores malformed speech result payloads without emitting transcripts", async () => {
     setWindow({ SpeechRecognition: FakeRecognition });
     setNavigator({

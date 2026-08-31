@@ -77,6 +77,24 @@ function subscribeDesktopBridgeEvent(options: {
   return () => {};
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Build a word-boundary matcher for a lowercased trigger. Unicode letter/number
+ * lookarounds require the trigger to be a standalone token rather than a bare
+ * substring, so "elizabeth" no longer matches the trigger "eliza" and "they"
+ * no longer matches "hey". Punctuation and whitespace count as boundaries, so
+ * "eliza, open calendar" and "eliza open calendar" both match.
+ */
+function buildTriggerMatcher(trigger: string): RegExp {
+  return new RegExp(
+    `(?<![\\p{L}\\p{N}])${escapeRegExp(trigger)}(?![\\p{L}\\p{N}])`,
+    "u",
+  );
+}
+
 const getSpeechRecognition = (): SpeechRecognitionCtor | null =>
   (window as SpeechRecognitionWindow).SpeechRecognition ||
   (window as SpeechRecognitionWindow).webkitSpeechRecognition ||
@@ -116,27 +134,45 @@ function normalizeConfig(config: SwabbleConfig): SwabbleConfig {
 /**
  * WakeWordGate detects trigger phrases in transcripts.
  *
+ * A trigger only fires when it appears as a standalone token, delimited by
+ * Unicode word boundaries (whitespace, punctuation, or string edges). A bare
+ * substring never fires: "elizabeth" does not trigger "eliza" and "they" does
+ * not trigger "hey". TRADEOFF: for scriptless languages that write commands
+ * with no whitespace after the trigger (e.g. continuous CJK), the following
+ * text is not a separate token, so the current whitespace/punctuation-delimited
+ * contract does not split it; every existing locale test delimits the trigger
+ * from its command with a space.
+ *
  * LIMITATION: Web Speech API does not provide word-level timing data.
  * Unlike native implementations, we cannot measure post-trigger gaps.
  * The `postGap` returned is always -1 (unavailable), and minPostTriggerGap is ignored.
  * Detection is purely text-based: trigger phrase + subsequent command text.
  */
 class WakeWordGate {
-  private triggers: string[];
+  // Each matcher pairs a lowercased trigger with its word-boundary regex so a
+  // trigger only fires as a standalone token, never as a bare substring of a
+  // larger word ("elizabeth" must not fire the trigger "eliza").
+  private matchers: Array<{ trigger: string; regex: RegExp }>;
   private minCommandLength: number;
 
   constructor(config: SwabbleConfig) {
     const normalized = normalizeConfig(config);
-    this.triggers = normalized.triggers.map((t) => t.toLowerCase());
+    this.matchers = normalized.triggers.map((t) => {
+      const trigger = t.toLowerCase();
+      return { trigger, regex: buildTriggerMatcher(trigger) };
+    });
     this.minCommandLength = config.minCommandLength ?? 1;
     // Note: minPostTriggerGap cannot be enforced - Web Speech API lacks timing data
   }
 
   updateConfig(config: Partial<SwabbleConfig>): void {
     if (config.triggers) {
-      this.triggers = normalizeConfig({
+      this.matchers = normalizeConfig({
         triggers: config.triggers,
-      }).triggers.map((t) => t.toLowerCase());
+      }).triggers.map((t) => {
+        const trigger = t.toLowerCase();
+        return { trigger, regex: buildTriggerMatcher(trigger) };
+      });
     }
     if (
       typeof config.minCommandLength === "number" &&
@@ -155,9 +191,7 @@ class WakeWordGate {
    */
   hasTrigger(transcript: string): boolean {
     const normalizedTranscript = transcript.toLowerCase();
-    return this.triggers.some(
-      (trigger) => normalizedTranscript.indexOf(trigger) !== -1,
-    );
+    return this.matchers.some(({ regex }) => regex.test(normalizedTranscript));
   }
 
   /**
@@ -169,12 +203,14 @@ class WakeWordGate {
   ): { wakeWord: string; command: string; postGap: number } | null {
     const normalizedTranscript = transcript.toLowerCase();
 
-    for (const trigger of this.triggers) {
-      const triggerIndex = normalizedTranscript.indexOf(trigger);
-      if (triggerIndex === -1) continue;
+    for (const { trigger, regex } of this.matchers) {
+      const found = regex.exec(normalizedTranscript);
+      if (!found) continue;
 
-      // Extract command after the trigger phrase
-      const commandStart = triggerIndex + trigger.length;
+      // Extract command after the standalone trigger token. Using the match
+      // index (not raw indexOf) keeps the boundary contract: only a whole-word
+      // trigger reaches this point, so "elizabeth" never yields a command.
+      const commandStart = found.index + trigger.length;
       const command = transcript.slice(commandStart).trim();
 
       if (command.length < this.minCommandLength) continue;
