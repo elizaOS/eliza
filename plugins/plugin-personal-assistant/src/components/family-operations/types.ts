@@ -45,7 +45,28 @@ export interface FamilyPacketView {
   createdAt: string;
   status: "complete" | "missing" | "contradictory";
   claims: Array<{ id: string; section: string; text: string }>;
-  draft?: { draftVersion: number; body: string; approvalId?: string } | null;
+  draft?: {
+    draftVersion: number;
+    recipient: string;
+    recipientEntityId: string;
+    calendarPrivacyMode: "full" | "times_only" | "busy_only";
+    body: string;
+    approvalId?: string;
+  } | null;
+}
+
+export interface AgreementUploadInput {
+  agreementKey: string;
+  title: string;
+  pageCount: number;
+  file: File;
+}
+
+export interface PacketDraftInput {
+  packetId: string;
+  recipient: string;
+  recipientEntityId: string;
+  calendarPrivacyMode: "full" | "times_only" | "busy_only";
 }
 
 export interface FamilyOperationsSnapshot {
@@ -57,6 +78,7 @@ export interface FamilyOperationsSnapshot {
 
 export interface FamilyOperationsAdapter {
   load(): Promise<FamilyOperationsSnapshot>;
+  uploadAgreement(input: AgreementUploadInput): Promise<void>;
   decideObligation(
     obligation: ParentingAgreementObligation,
     decision: "approve" | "reject",
@@ -92,4 +114,6 @@ export interface FamilyOperationsAdapter {
   runSchoolWorkflow(): Promise<void>;
   approveSchoolDiff(runId: string): Promise<void>;
   generatePacket(periodKey: string): Promise<void>;
+  createPacketDraft(input: PacketDraftInput): Promise<void>;
+  requestPacketApproval(packetId: string, draftVersion: number): Promise<void>;
 }

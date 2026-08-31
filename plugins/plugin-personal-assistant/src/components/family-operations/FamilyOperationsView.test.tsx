@@ -119,6 +119,9 @@ function adapter(data = snapshot()): FamilyOperationsAdapter {
     runSchoolWorkflow: vi.fn(async () => undefined),
     approveSchoolDiff: vi.fn(async () => undefined),
     generatePacket: vi.fn(async () => undefined),
+    uploadAgreement: vi.fn(async () => undefined),
+    createPacketDraft: vi.fn(async () => undefined),
+    requestPacketApproval: vi.fn(async () => undefined),
   } as FamilyOperationsAdapter;
 }
 
@@ -188,6 +191,87 @@ describe("FamilyOperationsView", () => {
         "guest-grant-1",
         "Access is no longer needed.",
       ),
+    );
+  });
+
+  it("uploads a signed PDF as an immutable agreement version", async () => {
+    const local = adapter({
+      ...snapshot(),
+      agreements: { status: "ready", data: [] },
+    });
+    render(<FamilyOperationsView adapter={local} />);
+    const file = new File(["%PDF-1.7"], "parenting-plan.pdf", {
+      type: "application/pdf",
+    });
+    fireEvent.change(await screen.findByLabelText("PDF page count"), {
+      target: { value: "14" },
+    });
+    fireEvent.change(screen.getByLabelText("Signed PDF"), {
+      target: { files: [file] },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Upload immutable PDF" }),
+    );
+    await waitFor(() =>
+      expect(local.uploadAgreement).toHaveBeenCalledWith({
+        agreementKey: "parenting-plan",
+        title: "Parenting agreement",
+        pageCount: 14,
+        file,
+      }),
+    );
+  });
+
+  it("creates, reviews, and requests approval for an immutable packet draft", async () => {
+    const data = snapshot();
+    data.packets = {
+      status: "ready",
+      data: [
+        {
+          packetId: "packet/1",
+          periodKey: "2026-08",
+          version: 1,
+          createdAt: "2026-08-30T12:00:00.000Z",
+          status: "complete",
+          claims: [{ id: "claim-1", section: "school", text: "No school." }],
+          draft: {
+            draftVersion: 2,
+            recipient: "+15551234567",
+            recipientEntityId: "guest-1",
+            calendarPrivacyMode: "busy_only",
+            body: "Family coordination\n\n## school\n- No school.",
+          },
+        },
+      ],
+    };
+    const local = adapter(data);
+    render(<FamilyOperationsView adapter={local} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Monthly packet" }),
+    );
+    fireEvent.change(screen.getByLabelText("Recipient Entity ID"), {
+      target: { value: "guest-1" },
+    });
+    fireEvent.change(screen.getByLabelText("Verified iMessage address"), {
+      target: { value: "+15551234567" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create privacy-filtered draft" }),
+    );
+    await waitFor(() =>
+      expect(local.createPacketDraft).toHaveBeenCalledWith({
+        packetId: "packet/1",
+        recipient: "+15551234567",
+        recipientEntityId: "guest-1",
+        calendarPrivacyMode: "busy_only",
+      }),
+    );
+    expect(screen.getByText(/Family coordination/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Request owner approval" }),
+    );
+    await waitFor(() =>
+      expect(local.requestPacketApproval).toHaveBeenCalledWith("packet/1", 2),
     );
   });
 });

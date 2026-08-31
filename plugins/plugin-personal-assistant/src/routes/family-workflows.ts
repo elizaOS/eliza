@@ -90,9 +90,27 @@ export async function handleFamilyWorkflowRoutes(
       method === "GET" &&
       pathname === "/api/lifeops/family-workflows/packets"
     ) {
+      const packets = await runtimeService.packets.list(
+        url.searchParams.get("period") ?? undefined,
+      );
       json(res, {
-        packets: await runtimeService.packets.list(
-          url.searchParams.get("period") ?? undefined,
+        packets,
+        packetStates: await Promise.all(
+          packets.map(async (packet) => {
+            const draft = await runtimeService.packets.readLatestDraft(
+              packet.packetId,
+            );
+            return {
+              packetId: packet.packetId,
+              draft,
+              approvalId: draft
+                ? await runtimeService.packets.readDraftApprovalId(
+                    packet.packetId,
+                    draft.draftVersion,
+                  )
+                : null,
+            };
+          }),
         ),
       });
       return true;

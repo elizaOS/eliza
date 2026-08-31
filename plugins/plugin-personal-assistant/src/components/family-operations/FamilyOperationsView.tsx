@@ -105,6 +105,114 @@ function Empty({ children }: { children: ReactNode }) {
   return <p style={{ color: "var(--muted)", margin: 0 }}>{children}</p>;
 }
 
+function AgreementUploadCard({
+  adapter,
+  refresh,
+}: {
+  adapter: FamilyOperationsAdapter;
+  refresh: () => Promise<void>;
+}) {
+  const [agreementKey, setAgreementKey] = useState("parenting-plan");
+  const [title, setTitle] = useState("Parenting agreement");
+  const [pageCount, setPageCount] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const validPageCount = Number(pageCount);
+  const canUpload =
+    file?.type === "application/pdf" &&
+    title.trim().length > 0 &&
+    agreementKey.trim().length > 0 &&
+    Number.isSafeInteger(validPageCount) &&
+    validPageCount > 0;
+
+  const upload = async () => {
+    if (!file || !canUpload) return;
+    setError(null);
+    setNotice(null);
+    try {
+      await adapter.uploadAgreement({
+        agreementKey: agreementKey.trim(),
+        title: title.trim(),
+        pageCount: validPageCount,
+        file,
+      });
+      setNotice("Immutable agreement version uploaded.");
+      setFile(null);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Upload failed");
+    }
+  };
+
+  return (
+    <Card
+      title="Upload signed agreement"
+      detail="The original PDF is retained as an immutable owner-private version. Confirm its page count so every reviewed obligation can be bounded to a real citation."
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+          gap: 12,
+        }}
+      >
+        <label htmlFor="agreement-title" style={{ display: "grid", gap: 6 }}>
+          <span>Agreement name</span>
+          <Input
+            id="agreement-title"
+            value={title}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setTitle(event.target.value)
+            }
+          />
+        </label>
+        <label htmlFor="agreement-key" style={{ display: "grid", gap: 6 }}>
+          <span>Agreement key</span>
+          <Input
+            id="agreement-key"
+            value={agreementKey}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setAgreementKey(event.target.value)
+            }
+          />
+        </label>
+        <label htmlFor="agreement-pages" style={{ display: "grid", gap: 6 }}>
+          <span>PDF page count</span>
+          <Input
+            id="agreement-pages"
+            type="number"
+            min={1}
+            step={1}
+            value={pageCount}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setPageCount(event.target.value)
+            }
+          />
+        </label>
+        <label htmlFor="agreement-pdf" style={{ display: "grid", gap: 6 }}>
+          <span>Signed PDF</span>
+          <Input
+            id="agreement-pdf"
+            type="file"
+            accept="application/pdf,.pdf"
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setFile(event.target.files?.[0] ?? null)
+            }
+          />
+        </label>
+      </div>
+      <div style={{ marginTop: 14 }}>
+        <Button disabled={!canUpload} onClick={() => void upload()}>
+          Upload immutable PDF
+        </Button>
+      </div>
+      {notice ? <p role="status">{notice}</p> : null}
+      {error ? <Unavailable message={error} /> : null}
+    </Card>
+  );
+}
+
 function AgreementPanel({
   state,
   adapter,
@@ -163,9 +271,15 @@ function AgreementPanel({
   if (state.status === "unavailable")
     return <Unavailable message={state.message} />;
   if (!selected)
-    return <Empty>No parenting agreement has been uploaded yet.</Empty>;
+    return (
+      <div style={{ display: "grid", gap: 16 }}>
+        <AgreementUploadCard adapter={adapter} refresh={refresh} />
+        <Empty>No parenting agreement has been uploaded yet.</Empty>
+      </div>
+    );
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      <AgreementUploadCard adapter={adapter} refresh={refresh} />
       <Card
         title="Agreement versions"
         detail="Signed PDFs are immutable. Select a version to review its page-cited obligations."
@@ -699,6 +813,12 @@ function PacketPanel({
   refresh: () => Promise<void>;
 }) {
   const currentPeriod = useMemo(() => new Date().toISOString().slice(0, 7), []);
+  const [recipient, setRecipient] = useState("");
+  const [recipientEntityId, setRecipientEntityId] = useState("");
+  const [calendarPrivacyMode, setCalendarPrivacyMode] = useState<
+    "full" | "times_only" | "busy_only"
+  >("busy_only");
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (state.status === "unavailable")
     return <Unavailable message={state.message} />;
@@ -713,6 +833,39 @@ function PacketPanel({
       );
     }
   };
+  const createDraft = async (packetId: string) => {
+    try {
+      setError(null);
+      setNotice(null);
+      await adapter.createPacketDraft({
+        packetId,
+        recipient: recipient.trim(),
+        recipientEntityId: recipientEntityId.trim(),
+        calendarPrivacyMode,
+      });
+      setNotice("Immutable guest-shareable draft created for review.");
+      await refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Draft creation failed",
+      );
+    }
+  };
+  const requestApproval = async (packetId: string, draftVersion: number) => {
+    try {
+      setError(null);
+      setNotice(null);
+      await adapter.requestPacketApproval(packetId, draftVersion);
+      setNotice("Exact draft submitted to the owner approval queue.");
+      await refresh();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Approval request failed",
+      );
+    }
+  };
+  const canCreateDraft =
+    recipient.trim().length > 0 && recipientEntityId.trim().length > 0;
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div>
@@ -720,6 +873,70 @@ function PacketPanel({
           Generate {currentPeriod} packet
         </Button>
       </div>
+      <Card
+        title="Guest delivery"
+        detail="Choose the exact verified co-parent Entity and its iMessage address. The draft is privacy-filtered before it can enter the approval queue; this screen never sends it directly."
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+            gap: 12,
+          }}
+        >
+          <label
+            htmlFor="packet-recipient-entity"
+            style={{ display: "grid", gap: 6 }}
+          >
+            <span>Recipient Entity ID</span>
+            <Input
+              id="packet-recipient-entity"
+              value={recipientEntityId}
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                setRecipientEntityId(event.target.value)
+              }
+            />
+          </label>
+          <label
+            htmlFor="packet-recipient-imessage"
+            style={{ display: "grid", gap: 6 }}
+          >
+            <span>Verified iMessage address</span>
+            <Input
+              id="packet-recipient-imessage"
+              value={recipient}
+              placeholder="+15551234567 or Apple ID"
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                setRecipient(event.target.value)
+              }
+            />
+          </label>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Calendar privacy</span>
+            <select
+              aria-label="Calendar privacy"
+              value={calendarPrivacyMode}
+              onChange={(event) =>
+                setCalendarPrivacyMode(
+                  event.target.value as "full" | "times_only" | "busy_only",
+                )
+              }
+              style={{
+                minHeight: 44,
+                borderRadius: 10,
+                border: "1px solid var(--border)",
+                background: "var(--bg)",
+                color: "var(--txt)",
+                padding: "0 12px",
+              }}
+            >
+              <option value="busy_only">Busy only</option>
+              <option value="times_only">Times only</option>
+              <option value="full">Full event details</option>
+            </select>
+          </label>
+        </div>
+      </Card>
       {state.data.length === 0 ? (
         <Empty>No monthly packets have been generated.</Empty>
       ) : (
@@ -736,6 +953,15 @@ function PacketPanel({
                 </li>
               ))}
             </ul>
+            <div style={{ marginBottom: 12 }}>
+              <Button
+                variant="outline"
+                disabled={!canCreateDraft}
+                onClick={() => void createDraft(packet.packetId)}
+              >
+                Create privacy-filtered draft
+              </Button>
+            </div>
             {packet.draft ? (
               <details>
                 <summary>
@@ -749,6 +975,18 @@ function PacketPanel({
                     ? "Waiting in the shared approvals queue."
                     : "Draft has not been submitted for approval."}
                 </p>
+                {!packet.draft.approvalId ? (
+                  <Button
+                    onClick={() =>
+                      void requestApproval(
+                        packet.packetId,
+                        packet.draft?.draftVersion as number,
+                      )
+                    }
+                  >
+                    Request owner approval
+                  </Button>
+                ) : null}
               </details>
             ) : (
               <Empty>No shareable draft yet.</Empty>
@@ -756,6 +994,7 @@ function PacketPanel({
           </Card>
         ))
       )}
+      {notice ? <p role="status">{notice}</p> : null}
       {error ? <Unavailable message={error} /> : null}
     </div>
   );

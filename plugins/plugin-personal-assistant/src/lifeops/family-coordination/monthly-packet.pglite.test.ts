@@ -343,6 +343,15 @@ describe("MonthlyFamilyPacketService with real PGlite", () => {
     });
     expect(queue.enqueueTransactional).toHaveBeenCalledOnce();
     expect(queue.surfaceEnqueuedApproval).toHaveBeenCalledOnce();
+    await expect(
+      service.readLatestDraft(packet.packetId),
+    ).resolves.toMatchObject({
+      draftVersion: first.draftVersion,
+      recipientEntityId: "guest-1",
+    });
+    await expect(
+      service.readDraftApprovalId(packet.packetId, first.draftVersion),
+    ).resolves.toBe("approval-1");
     expect(enqueued?.payload).toMatchObject({
       action: "send_message",
       recipient: "guest@example.com",

@@ -1,7 +1,10 @@
 /** Production Family Operations adapter over owner-authorized local APIs. */
 
+import type {
+  MonthlyFamilyDraft,
+  MonthlyFamilyPacket,
+} from "../../lifeops/family-coordination/index.js";
 import type { ParentingAgreementView } from "../../lifeops/household/agreement-knowledge.js";
-import type { MonthlyFamilyPacket } from "../../lifeops/family-coordination/index.js";
 import type {
   SchoolCalendarRunReview,
   SchoolCalendarWorkflowStatus,
@@ -14,6 +17,12 @@ import type {
   Loadable,
   SchoolWorkflowView,
 } from "./types.js";
+
+interface PacketPersistenceState {
+  packetId: string;
+  draft: MonthlyFamilyDraft | null;
+  approvalId: string | null;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -65,18 +74,24 @@ function schoolView(
     lastCheckedAt: status.lastRun?.updatedAt ?? null,
     sourceUrl: status.config?.landingPageUrl ?? "",
     runId: status.lastRun?.runId,
-    changes: review?.plan?.changes.map((change) => ({
-      kind: change.kind === "cancel" ? "remove" : change.kind,
-      label:
-        change.kind === "update"
-          ? change.event.title
-          : change.event.title,
-    })),
+    changes: review?.plan?.changes.flatMap((change) =>
+      change.kind === "unchanged"
+        ? []
+        : [
+            {
+              kind: change.kind === "cancel" ? "remove" : change.kind,
+              label: change.event.title,
+            },
+          ],
+    ),
     error: review?.errorMessage ?? undefined,
   };
 }
 
-function packetView(packet: MonthlyFamilyPacket): FamilyPacketView {
+function packetView(
+  packet: MonthlyFamilyPacket,
+  persistence?: PacketPersistenceState,
+): FamilyPacketView {
   const states = packet.sections.map((section) => section.state);
   return {
     packetId: packet.packetId,
@@ -93,6 +108,16 @@ function packetView(packet: MonthlyFamilyPacket): FamilyPacketView {
       section: claim.section,
       text: claim.statement,
     })),
+    draft: persistence?.draft
+      ? {
+          draftVersion: persistence.draft.draftVersion,
+          recipient: persistence.draft.recipient,
+          recipientEntityId: persistence.draft.recipientEntityId,
+          calendarPrivacyMode: persistence.draft.calendarPrivacyMode,
+          body: persistence.draft.body,
+          approvalId: persistence.approvalId ?? undefined,
+        }
+      : null,
   };
 }
 
@@ -117,10 +142,19 @@ async function loadSchool(): Promise<Loadable<SchoolWorkflowView>> {
 
 async function loadPackets(): Promise<Loadable<FamilyPacketView[]>> {
   try {
-    const payload = await request<{ packets: MonthlyFamilyPacket[] }>(
-      "/api/lifeops/family-workflows/packets",
+    const payload = await request<{
+      packets: MonthlyFamilyPacket[];
+      packetStates?: PacketPersistenceState[];
+    }>("/api/lifeops/family-workflows/packets");
+    const states = new Map(
+      (payload.packetStates ?? []).map((state) => [state.packetId, state]),
     );
-    return { status: "ready", data: payload.packets.map(packetView) };
+    return {
+      status: "ready",
+      data: payload.packets.map((packet) =>
+        packetView(packet, states.get(packet.packetId)),
+      ),
+    };
   } catch (error) {
     return {
       status: "unavailable",
@@ -141,6 +175,27 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
       loadPackets(),
     ]);
     return { agreements, calendarLinks, school, packets };
+  },
+  async uploadAgreement(input) {
+    if (input.file.type !== "application/pdf") {
+      throw new Error("Agreement must be a PDF.");
+    }
+    const bytes = new Uint8Array(await input.file.arrayBuffer());
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    await request("/api/lifeops/agreements", {
+      method: "POST",
+      body: JSON.stringify({
+        agreementKey: input.agreementKey,
+        title: input.title,
+        originalFilename: input.file.name,
+        mimeType: input.file.type,
+        pageCount: input.pageCount,
+        bytesBase64: btoa(binary),
+      }),
+    });
   },
   async decideObligation(obligation, decision, reason) {
     const response = await request<{ obligation: typeof obligation }>(
@@ -242,5 +297,24 @@ export const defaultFamilyOperationsAdapter: FamilyOperationsAdapter = {
       method: "POST",
       body: JSON.stringify({}),
     });
+  },
+  async createPacketDraft(input) {
+    await request(
+      `/api/lifeops/family-workflows/packets/${encodeURIComponent(input.packetId)}/drafts`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          recipient: input.recipient,
+          recipientEntityId: input.recipientEntityId,
+          calendarPrivacyMode: input.calendarPrivacyMode,
+        }),
+      },
+    );
+  },
+  async requestPacketApproval(packetId, draftVersion) {
+    await request(
+      `/api/lifeops/family-workflows/packets/${encodeURIComponent(packetId)}/drafts/${draftVersion}/approval`,
+      { method: "POST", body: JSON.stringify({}) },
+    );
   },
 };

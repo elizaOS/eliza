@@ -39,6 +39,39 @@ function context(input: {
 }
 
 describe("agreement knowledge routes", () => {
+  it("creates an immutable PDF version from the owner upload contract", async () => {
+    const artifact = { id: "artifact-1", version: 1 };
+    const createAgreementVersion = vi.fn(async () => artifact);
+    const harness = context({
+      method: "POST",
+      pathname: "/api/lifeops/agreements",
+      body: {
+        agreementKey: "parenting-plan",
+        title: "Parenting agreement",
+        originalFilename: "agreement.pdf",
+        mimeType: "application/pdf",
+        pageCount: 14,
+        bytesBase64: Buffer.from("%PDF-1.7").toString("base64"),
+      },
+      agreements: { createAgreementVersion },
+    });
+
+    await expect(handleAgreementKnowledgeRoutes(harness.ctx)).resolves.toBe(
+      true,
+    );
+    expect(createAgreementVersion).toHaveBeenCalledWith({
+      householdId: undefined,
+      agreementKey: "parenting-plan",
+      title: "Parenting agreement",
+      originalFilename: "agreement.pdf",
+      mimeType: "application/pdf",
+      pageCount: 14,
+      bytes: Buffer.from("%PDF-1.7"),
+      uploadedByEntityId: "self",
+    });
+    expect(harness.responses).toEqual([{ status: 201, data: { artifact } }]);
+  });
+
   it("returns a stable forbidden error when the domain denies the read", async () => {
     const readFor = vi.fn(async () => {
       throw new AgreementKnowledgeError(

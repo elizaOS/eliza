@@ -256,6 +256,76 @@ describe("FamilyWorkflowRuntimeService with real PGlite", () => {
     expect(response).toEqual({ applied: true, runId: "school-run-1" });
   });
 
+  it("accepts a verified-recipient draft contract and queues its exact version for approval", async () => {
+    const { service } = makeService();
+    const createDraft = vi.spyOn(service, "createDraft").mockResolvedValue({
+      packetId: "packet/1",
+      internalVersion: 1,
+      draftVersion: 2,
+      recipient: "+15551234567",
+      recipientEntityId: "guest-1",
+      calendarPrivacyMode: "busy_only",
+      includedClaimIds: [],
+      body: "Busy",
+      bodySha256: sha("Busy"),
+      transformations: [],
+      createdAt: "2026-09-01T13:00:00.000Z",
+    });
+    const requestDraftApproval = vi
+      .spyOn(service, "requestDraftApproval")
+      .mockResolvedValue({ id: "approval-1" } as never);
+    let response: unknown;
+    let status = 0;
+    const route = async (pathname: string, body: unknown) => {
+      const ctx = {
+        req: {} as never,
+        res: {} as never,
+        method: "POST",
+        pathname,
+        url: new URL(`http://localhost${pathname}`),
+        state: { runtime, adminEntityId: "self" },
+        json: (_res: unknown, data: unknown, nextStatus = 200) => {
+          response = data;
+          status = nextStatus;
+        },
+        error: (_res: unknown, message: string, nextStatus = 400) => {
+          response = { error: message };
+          status = nextStatus;
+        },
+        readJsonBody: async () => body,
+        decodePathComponent: (value: string) => value,
+      } as unknown as LifeOpsRouteContext;
+      await handleFamilyWorkflowRoutes(ctx);
+    };
+
+    await route("/api/lifeops/family-workflows/packets/packet%2F1/drafts", {
+      recipient: "+15551234567",
+      recipientEntityId: "guest-1",
+      calendarPrivacyMode: "busy_only",
+    });
+    expect(status).toBe(201);
+    expect(createDraft).toHaveBeenCalledWith("packet/1", {
+      recipient: "+15551234567",
+      recipientEntityId: "guest-1",
+      calendarPrivacyMode: "busy_only",
+    });
+
+    await route(
+      "/api/lifeops/family-workflows/packets/packet%2F1/drafts/2/approval",
+      {},
+    );
+    expect(status).toBe(201);
+    expect(response).toEqual({ id: "approval-1" });
+    expect(requestDraftApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        packetId: "packet/1",
+        draftVersion: 2,
+        requestedBy: "self",
+        subjectUserId: "self",
+      }),
+    );
+  });
+
   it("fails closed at the route boundary when no owner runtime is available", async () => {
     let status = 0;
     const ctx = {

@@ -788,4 +788,27 @@ export class MonthlyFamilyPacketService {
       createdAt: toText(row.created_at),
     };
   }
+
+  async readLatestDraft(packetId: string): Promise<MonthlyFamilyDraft | null> {
+    await this.ensureSchema();
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT draft_version FROM app_lifeops.life_family_packet_drafts WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(packetId)} ORDER BY draft_version DESC LIMIT 1`,
+    );
+    return rows[0]
+      ? this.readDraft(packetId, toNumber(rows[0].draft_version))
+      : null;
+  }
+
+  async readDraftApprovalId(
+    packetId: string,
+    draftVersion: number,
+  ): Promise<string | null> {
+    await this.ensureSchema();
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT approval_id FROM app_lifeops.life_family_packet_approvals WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(packetId)} AND draft_version=${draftVersion} LIMIT 1`,
+    );
+    return rows[0] ? toText(rows[0].approval_id) : null;
+  }
 }
