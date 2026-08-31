@@ -1037,6 +1037,27 @@ export function findConditionalSkipSites(filePath, content) {
           record(node, `conditional-${modifier}`);
         }
       }
+      if (modifier === null && isRunnerReference(chain)) {
+        for (const argument of node.arguments) {
+          const value = unwrapExpression(argument);
+          if (!ts.isObjectLiteralExpression(value)) continue;
+          for (const property of value.properties) {
+            if (
+              !ts.isPropertyAssignment(property) ||
+              !(
+                ts.isIdentifier(property.name) ||
+                ts.isStringLiteralLike(property.name)
+              ) ||
+              property.name.text !== "skip"
+            ) {
+              continue;
+            }
+            if (staticTruthiness(property.initializer) === undefined) {
+              record(property, "conditional-options-skip");
+            }
+          }
+        }
+      }
     }
     ts.forEachChild(node, visit);
   };

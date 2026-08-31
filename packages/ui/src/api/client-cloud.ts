@@ -3705,6 +3705,22 @@ export function isDirectCloudSharedAgentBase(
   return /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim());
 }
 
+function isLoopbackCloudAgentBase(value: string | null | undefined): boolean {
+  if (!value?.trim()) return false;
+  try {
+    const host = new URL(value.trim()).hostname.toLowerCase();
+    return (
+      host === "127.0.0.1" ||
+      host === "localhost" ||
+      host === "::1" ||
+      host === "[::1]"
+    );
+  } catch {
+    // error-policy:J3 malformed bases cannot qualify for the local-only proxy.
+    return false;
+  }
+}
+
 ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const { cloudApiBase, authToken, name, bio, onProgress } = options;
   const allowSharedRuntime = options.allowSharedRuntime === true;
@@ -5561,21 +5577,20 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
         agentId: readinessAgentId,
         cloudApiBase: resolvedCloudApiBase,
       });
+      const isLocalDedicatedProxy =
+        isDedicatedCloudAgentBase(base) && isLoopbackCloudAgentBase(base);
       // Hosted agents expose a public URL. The local Cloud harness deliberately
       // does not; its UUID-scoped Worker proxy is the dedicated runtime route.
       const hasDedicatedUrl = Boolean(
         agent.bridge_url ||
           agent.web_ui_url ||
           agent.webUiUrl ||
-          isDedicatedCloudAgentBase(base),
+          isLocalDedicatedProxy,
       );
       if (!hasDedicatedUrl) return null;
       if (agent.status && agent.status !== "running") return null;
       // Never "switch" onto the shared adapter (no migration target there).
-      if (
-        isDirectCloudSharedAgentBase(base) &&
-        !isDedicatedCloudAgentBase(base)
-      ) {
+      if (isDirectCloudSharedAgentBase(base) && !isLocalDedicatedProxy) {
         return null;
       }
       // Control-plane `running` precedes actual routability: the runtime proxy

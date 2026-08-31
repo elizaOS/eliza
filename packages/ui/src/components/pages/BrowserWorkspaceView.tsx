@@ -2619,7 +2619,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="max-md:hidden size-11 shrink-0"
+        className="hidden size-11 shrink-0 md:inline-flex"
         aria-label={newTabLabel}
         disabled={busyAction !== null || browserWorkspaceUnavailable}
         onClick={() =>
@@ -2646,7 +2646,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="max-md:hidden size-11"
+        className="hidden size-11 md:inline-flex"
         aria-label={t("common.refresh", { defaultValue: "Refresh" })}
         disabled={!selectedTab || busyAction !== null}
         onClick={() =>
@@ -2657,7 +2657,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       >
         <RefreshCw className="size-4" />
       </BrowserNavButton>
-      <span className="max-md:hidden">
+      <span className="hidden md:inline">
         <BrowserNavButton
           agentId="close-all-tabs"
           agentLabel={t("browserworkspace.CloseAllTabs", {
@@ -2756,7 +2756,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       >
         <ArrowRight className="size-4" aria-hidden />
       </BrowserNavButton>
-      <span className="max-md:hidden">
+      <span className="hidden md:inline">
         <BrowserNavButton
           agentId="open-external"
           agentLabel={t("browserworkspace.OpenExternal", {

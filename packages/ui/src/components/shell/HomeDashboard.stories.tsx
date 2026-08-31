@@ -6,6 +6,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useRef, useState } from "react";
 import { ShaderBackground } from "../../backgrounds/ShaderBackground";
 import type { ViewEntry } from "../../hooks/view-catalog";
+import { WithAuthenticatedSession } from "../../storybook/home-widget-decorator";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import {
   HOME_WIDGET_MOCK_PLUGINS,
@@ -91,17 +92,23 @@ function HomeDashboard({ seed = true }: { seed?: boolean }) {
         conversations: [],
       }}
     >
-      <HomeWidgetData seed={seed}>
-        <div className="absolute inset-0 overflow-hidden bg-[#0a0d16]">
-          <ShaderBackground />
-          <HomeScreen
-            onOpenTile={() => {}}
-            apps={
-              <Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} embedded />
-            }
-          />
-        </div>
-      </HomeWidgetData>
+      <WithAuthenticatedSession>
+        <HomeWidgetData seed={seed}>
+          <div className="absolute inset-0 overflow-hidden bg-[#0a0d16]">
+            <ShaderBackground />
+            <HomeScreen
+              onOpenTile={() => {}}
+              apps={
+                <Launcher
+                  entries={LAUNCHER_TILES}
+                  onLaunch={() => {}}
+                  embedded
+                />
+              }
+            />
+          </div>
+        </HomeWidgetData>
+      </WithAuthenticatedSession>
     </MockAppProvider>
   );
 }
