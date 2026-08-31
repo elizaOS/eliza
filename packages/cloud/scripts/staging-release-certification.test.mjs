@@ -439,6 +439,9 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(authorize).toContain(
       "audit-production-railway-database-authority.ts",
     );
+    expect(
+      authorize.match(/install -d -m 0700 "\$evidence_dir"/g),
+    ).toHaveLength(2);
     expect(authorize).toContain("--canonical-ref refs/heads/main");
     expect(authorize).toContain("bun run build:core");
     expect(authorize).toContain("wrangler deploy --env production --dry-run");
