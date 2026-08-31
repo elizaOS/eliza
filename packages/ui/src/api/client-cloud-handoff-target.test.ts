@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { isNativePlatform: () => false },
+  Capacitor: { isNativePlatform: () => false, registerPlugin: () => ({}) },
   CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
 
@@ -146,6 +146,54 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     });
 
     expect(getCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
+  it("uses the agent-scoped local Cloud proxy when no public agent URL exists", async () => {
+    const dedicatedId = "00000000-0000-4000-8000-000000000001";
+    const cloudApiBase = "http://127.0.0.1:8787";
+    const localDedicatedBase = `${cloudApiBase}/api/v1/eliza/agents/${dedicatedId}`;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === localDedicatedBase) {
+        return {
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: {
+              id: dedicatedId,
+              status: "running",
+              webUiUrl: null,
+            },
+          }),
+        };
+      }
+      if (url === `${localDedicatedBase}/api/health`) {
+        return { status: 200, json: async () => ({ ready: true }) };
+      }
+      if (url.endsWith("/messages")) {
+        return { status: 200, json: async () => ({ messages: [] }) };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { client } = fakeClient({});
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: SHARED_BASE,
+      conversationId: "shared-1",
+      dedicatedAgentId: dedicatedId,
+      cloudApiBase,
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 200,
+      log: () => {},
+    });
+
+    expect(result.status).toBe("switched-empty");
+    expect(onSwitch).toHaveBeenCalledWith(localDedicatedBase);
   });
 });
 

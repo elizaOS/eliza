@@ -5555,22 +5555,29 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
         agent = compatDetail?.success ? compatDetail.data : null;
       }
       if (!agent) return null;
-      // The container is "ready" only once the record exposes a dedicated base
-      // (bridge/web-ui subdomain) AND reports running — until then the user is
-      // served by the shared adapter.
-      const hasDedicatedUrl = Boolean(
-        agent.bridge_url || agent.web_ui_url || agent.webUiUrl,
-      );
-      if (!hasDedicatedUrl) return null;
-      if (agent.status && agent.status !== "running") return null;
       const base = resolveCloudAgentApiBase({
         bridgeUrl: agent.bridge_url,
         webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
         agentId: readinessAgentId,
         cloudApiBase: resolvedCloudApiBase,
       });
+      // Hosted agents expose a public URL. The local Cloud harness deliberately
+      // does not; its UUID-scoped Worker proxy is the dedicated runtime route.
+      const hasDedicatedUrl = Boolean(
+        agent.bridge_url ||
+          agent.web_ui_url ||
+          agent.webUiUrl ||
+          isDedicatedCloudAgentBase(base),
+      );
+      if (!hasDedicatedUrl) return null;
+      if (agent.status && agent.status !== "running") return null;
       // Never "switch" onto the shared adapter (no migration target there).
-      if (isDirectCloudSharedAgentBase(base)) return null;
+      if (
+        isDirectCloudSharedAgentBase(base) &&
+        !isDedicatedCloudAgentBase(base)
+      ) {
+        return null;
+      }
       // Control-plane `running` precedes actual routability: the runtime proxy
       // can keep 404ing the subdomain for minutes after the record flips
       // (#15901). Probe the base itself and only report ready once the proxy
