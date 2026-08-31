@@ -114,6 +114,10 @@ export function mergeWorldMetadataForLegacyWrite(
 	// newly constructed owner-only projection during message ingestion.
 	delete incoming.roles;
 	delete incoming.roleSources;
+	// The role-write audit trail is the same authority state: caller metadata
+	// is a possibly-stale round-tripped snapshot, so its shorter audit array
+	// must never erase appended rows on the stored world.
+	delete incoming[WORLD_METADATA_ROLE_AUDIT_KEY];
 	return {
 		...stored,
 		...incoming,
@@ -121,6 +125,12 @@ export function mergeWorldMetadataForLegacyWrite(
 		...(stored.roleSources === undefined
 			? {}
 			: { roleSources: stored.roleSources }),
+		...(stored[WORLD_METADATA_ROLE_AUDIT_KEY] === undefined
+			? {}
+			: {
+					[WORLD_METADATA_ROLE_AUDIT_KEY]:
+						stored[WORLD_METADATA_ROLE_AUDIT_KEY],
+				}),
 		[WORLD_METADATA_REVISION_KEY]: storedRevision,
 	};
 }
