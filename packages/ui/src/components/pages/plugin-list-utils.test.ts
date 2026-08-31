@@ -10,6 +10,7 @@ import { Puzzle } from "lucide-react";
 import { describe, expect, it } from "vitest";
 import type { PluginInfo } from "../../api";
 import {
+  pluginMonogram,
   buildPluginListState,
   iconImageSource,
   resolveIcon,
@@ -194,5 +195,14 @@ describe("buildPluginListState", () => {
       "needs-config",
       "disabled",
     ]);
+  });
+});
+describe("pluginMonogram", () => {
+  it("preserves surrogate pair integrity for astral characters in plugin names", () => {
+    const monoSingle = pluginMonogram(plugin({ id: "p1", name: "🚀Rocket" }));
+    expect(monoSingle.isWellFormed()).toBe(true);
+
+    const monoMulti = pluginMonogram(plugin({ id: "p2", name: "🚀 Rocket" }));
+    expect(monoMulti.isWellFormed()).toBe(true);
   });
 });

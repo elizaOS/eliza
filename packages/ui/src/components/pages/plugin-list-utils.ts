@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Plugin list utilities — pure functions, constants, and type aliases
  * shared across the plugin management UI.
@@ -611,13 +612,15 @@ function hashString(input: string): number {
 
 /** One- or two-character monogram for a plugin (skips leading punctuation). */
 export function pluginMonogram(plugin: PluginInfo): string {
-  const source = (plugin.name ?? plugin.id ?? "?").replace(/^[^a-z0-9]+/i, "");
+  const source = toWellFormedUnicode(plugin.name ?? plugin.id ?? "?").replace(/^[^a-z0-9]+/i, "");
   const words = source.split(/[\s_\-./]+/).filter(Boolean);
   if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
+    const first = truncateWellFormed(words[0], 1);
+    const second = truncateWellFormed(words[1], 1);
+    return (first + second).toUpperCase();
   }
   const single = words[0] ?? source;
-  return single.slice(0, 2).toUpperCase() || "·";
+  return truncateWellFormed(single, 2).toUpperCase() || "·";
 }
 
 /**
