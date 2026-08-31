@@ -401,6 +401,9 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(migrate).toContain("wrangler deploy --env production --dry-run");
     expect(migrate).toContain("Served production base drifted before mutation");
     expect(migrate).toContain("--canonical-ref refs/heads/main");
+    expect(migrate.indexOf("bun run build:core")).toBeLessThan(
+      migrate.indexOf("preflight-database-identity.ts"),
+    );
     expect(
       migrate.indexOf("Re-admit bounded Hyperdrive recovery"),
     ).toBeLessThan(migrate.indexOf("- name: Run migrations"));

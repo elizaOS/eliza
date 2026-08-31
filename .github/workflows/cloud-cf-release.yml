@@ -582,6 +582,7 @@ jobs:
             --hyperdrive-json "$hyperdrive_file"
           candidate_id=""
 
+          bun run build:core > "$evidence_dir/build.stdout" 2> "$evidence_dir/build.stderr"
           env -u GITHUB_STEP_SUMMARY \
             bun packages/cloud/scripts/admin/preflight-database-identity.ts \
             > "$evidence_dir/database-identity.stdout" \
@@ -628,7 +629,6 @@ jobs:
           ' > "$evidence_dir/migration-ledger.stdout" \
             2> "$evidence_dir/migration-ledger.stderr"
 
-          bun run build:core > "$evidence_dir/build.stdout" 2> "$evidence_dir/build.stderr"
           (
             cd packages/cloud/api
             bunx wrangler deploy --env production --dry-run \
