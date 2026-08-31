@@ -1,10 +1,12 @@
 /** HTTP contract tests for Family Operations calendar conflict mutations. */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MAX_AGREEMENT_PDF_BYTES } from "../../lifeops/household/agreement-upload-limits.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  sessionStorage.clear();
+  vi.unstubAllGlobals();
+});
 
 describe("defaultFamilyOperationsAdapter", () => {
   it("loads and mutates the mounted family workflow contracts", async () => {
@@ -53,23 +55,35 @@ describe("defaultFamilyOperationsAdapter", () => {
       "fetch",
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         calls.push([String(input), init]);
-        return new Response(JSON.stringify({}), {
+        const path = String(input);
+        const payload =
+          path === "/api/lifeops/agreement-uploads"
+            ? {
+                upload: {
+                  uploadId: "upload-1",
+                  sizeBytes: 8,
+                  chunkSizeBytes: 4,
+                  chunkCount: 2,
+                  receivedChunks: [],
+                  receivedBytes: 0,
+                  status: "uploading",
+                },
+              }
+            : { upload: {} };
+        return new Response(JSON.stringify(payload), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
       }),
     );
-    const file = {
-      name: "agreement.pdf",
+    const file = new File(["%PDF-1.7"], "agreement.pdf", {
       type: "application/pdf",
-      size: 8,
-      arrayBuffer: async () => new TextEncoder().encode("%PDF-1.7").buffer,
-    } as File;
+      lastModified: 1,
+    });
 
     await defaultFamilyOperationsAdapter.uploadAgreement({
       agreementKey: "parenting-plan",
       title: "Parenting agreement",
-      pageCount: 14,
       file,
     });
     await defaultFamilyOperationsAdapter.createPacketDraft({
@@ -81,44 +95,173 @@ describe("defaultFamilyOperationsAdapter", () => {
     await defaultFamilyOperationsAdapter.requestPacketApproval("packet/1", 3);
 
     expect(calls.map(([path]) => path)).toEqual([
-      "/api/lifeops/agreements",
+      "/api/lifeops/agreement-uploads",
+      "/api/lifeops/agreement-uploads/upload-1/chunks/0",
+      "/api/lifeops/agreement-uploads/upload-1/chunks/1",
+      "/api/lifeops/agreement-uploads/upload-1/commit",
       "/api/lifeops/family-workflows/packets/packet%2F1/drafts",
       "/api/lifeops/family-workflows/packets/packet%2F1/drafts/3/approval",
     ]);
     expect(JSON.parse(calls[0]?.[1]?.body as string)).toMatchObject({
       originalFilename: "agreement.pdf",
       mimeType: "application/pdf",
-      pageCount: 14,
-      bytesBase64: "JVBERi0xLjc=",
+      sizeBytes: 8,
     });
-    expect(JSON.parse(calls[1]?.[1]?.body as string)).toEqual({
+    expect(calls[1]?.[1]?.body).toBeInstanceOf(ArrayBuffer);
+    expect(calls[2]?.[1]?.body).toBeInstanceOf(ArrayBuffer);
+    expect(JSON.parse(calls[3]?.[1]?.body as string)).toEqual({
+      contentIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(JSON.parse(calls[4]?.[1]?.body as string)).toEqual({
       recipient: "+15551234567",
       recipientEntityId: "guest-1",
       calendarPrivacyMode: "times_only",
     });
   });
 
-  it("rejects a PDF over 20 MiB before reading or sending it", async () => {
-    const arrayBuffer = vi.fn();
-    const fetchMock = vi.fn();
+  it("uploads a PDF above the former 20 MiB ceiling in bounded chunks", async () => {
+    const size = 20 * 1024 * 1024 + 1;
+    const chunkSizeBytes = 4 * 1024 * 1024;
+    const chunkCount = Math.ceil(size / chunkSizeBytes);
+    const fetchMock = vi.fn(async (_input: string | URL | Request) => {
+      return new Response(
+        JSON.stringify({
+          upload: {
+            uploadId: "large-upload",
+            sizeBytes: size,
+            chunkSizeBytes,
+            chunkCount,
+            receivedChunks: [],
+            receivedBytes: 0,
+            status: "uploading",
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
     vi.stubGlobal("fetch", fetchMock);
     const file = {
       name: "oversized.pdf",
       type: "application/pdf",
-      size: MAX_AGREEMENT_PDF_BYTES + 1,
-      arrayBuffer,
+      size,
+      lastModified: 1,
+      slice: (start: number, end: number) => ({
+        arrayBuffer: async () => {
+          const bytes = new Uint8Array(end - start);
+          if (start === 0) bytes.set(new TextEncoder().encode("%PDF-"));
+          return bytes.buffer;
+        },
+      }),
     } as unknown as File;
+
+    await defaultFamilyOperationsAdapter.uploadAgreement({
+      agreementKey: "parenting-plan",
+      title: "Parenting agreement",
+      file,
+    });
+    expect(
+      fetchMock.mock.calls.filter(([path]) =>
+        String(path).includes("/chunks/"),
+      ),
+    ).toHaveLength(chunkCount);
+  });
+
+  it("rehashes skipped chunks and rejects a stale resumable upload", async () => {
+    const staleBytes = new TextEncoder().encode("old!").buffer;
+    const staleHash = await crypto.subtle.digest("SHA-256", staleBytes);
+    const staleHashHex = [...new Uint8Array(staleHash)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    const file = new File(["%PDF-new"], "agreement.pdf", {
+      type: "application/pdf",
+      lastModified: 1,
+    });
+    const resumeKey = `lifeops:agreement-upload:${file.name}:${file.size}:${file.lastModified}:parenting-plan:Parenting agreement`;
+    sessionStorage.setItem(resumeKey, "stale-upload");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            upload: {
+              uploadId: "stale-upload",
+              sizeBytes: file.size,
+              chunkSizeBytes: 4,
+              chunkCount: Math.ceil(file.size / 4),
+              receivedChunks: [{ index: 0, size: 4, sha256: staleHashHex }],
+              receivedBytes: 4,
+              status: "uploading",
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
 
     await expect(
       defaultFamilyOperationsAdapter.uploadAgreement({
         agreementKey: "parenting-plan",
         title: "Parenting agreement",
-        pageCount: 14,
         file,
       }),
-    ).rejects.toThrow("Agreement PDF must be 20 MiB or smaller.");
-    expect(arrayBuffer).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    ).rejects.toThrow("no longer matches the resumable upload");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(sessionStorage.getItem(resumeKey)).toBeNull();
+  });
+
+  it("rehashes a matching resumed chunk and commits the complete content identity", async () => {
+    const file = new File(["%PDF-1.7"], "agreement.pdf", {
+      type: "application/pdf",
+      lastModified: 1,
+    });
+    const first = await file.slice(0, 4).arrayBuffer();
+    const firstDigest = await crypto.subtle.digest("SHA-256", first);
+    const firstSha256 = [...new Uint8Array(firstDigest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    const resumeKey = `lifeops:agreement-upload:${file.name}:${file.size}:${file.lastModified}:parenting-plan:Parenting agreement`;
+    sessionStorage.setItem(resumeKey, "upload-1");
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const path = String(input);
+        calls.push([path, init]);
+        const payload =
+          path === "/api/lifeops/agreement-uploads/upload-1"
+            ? {
+                upload: {
+                  uploadId: "upload-1",
+                  sizeBytes: file.size,
+                  chunkSizeBytes: 4,
+                  chunkCount: 2,
+                  receivedChunks: [{ index: 0, size: 4, sha256: firstSha256 }],
+                  receivedBytes: 4,
+                  status: "uploading",
+                },
+              }
+            : { upload: {} };
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    await defaultFamilyOperationsAdapter.uploadAgreement({
+      agreementKey: "parenting-plan",
+      title: "Parenting agreement",
+      file,
+    });
+
+    expect(calls.map(([path]) => path)).toEqual([
+      "/api/lifeops/agreement-uploads/upload-1",
+      "/api/lifeops/agreement-uploads/upload-1/chunks/1",
+      "/api/lifeops/agreement-uploads/upload-1/commit",
+    ]);
+    expect(JSON.parse(calls[2]?.[1]?.body as string)).toEqual({
+      contentIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(sessionStorage.getItem(resumeKey)).toBeNull();
   });
 
   it("restores the latest draft and approval binding into the packet view", async () => {

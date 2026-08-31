@@ -58,8 +58,12 @@ export interface FamilyPacketView {
 export interface AgreementUploadInput {
   agreementKey: string;
   title: string;
-  pageCount: number;
   file: File;
+  onProgress?: (progress: {
+    uploadedBytes: number;
+    totalBytes: number;
+    phase: "uploading" | "processing";
+  }) => void;
 }
 
 export interface PacketDraftInput {

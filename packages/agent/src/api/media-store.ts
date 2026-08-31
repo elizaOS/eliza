@@ -253,10 +253,15 @@ export function selectMediaToEvict(
   files: MediaFileStat[],
   cap: number,
 ): string[] {
-  let total = files.reduce((sum, file) => sum + file.size, 0);
+  // Private files have explicit owner/revocation lifecycles and cannot be
+  // reconstructed from public attachment references after blind eviction.
+  const evictable = files.filter(
+    (file) => !PRIVATE_MEDIA_FILE_NAME.test(file.name),
+  );
+  let total = evictable.reduce((sum, file) => sum + file.size, 0);
   if (total <= cap) return [];
   const target = Math.floor(cap * 0.9);
-  const oldestFirst = [...files].sort((a, b) => a.mtimeMs - b.mtimeMs);
+  const oldestFirst = evictable.sort((a, b) => a.mtimeMs - b.mtimeMs);
   const evict: string[] = [];
   for (const file of oldestFirst) {
     if (total <= target) break;

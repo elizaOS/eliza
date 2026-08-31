@@ -20,6 +20,7 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
+import type { PdfCompleteDocument, PdfService } from "@elizaos/plugin-pdf";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   executeRawSql,
@@ -31,10 +32,6 @@ import {
   toText,
   withTransaction,
 } from "../sql.js";
-import {
-  agreementUploadSizeMessage,
-  MAX_AGREEMENT_PDF_BYTES,
-} from "./agreement-upload-limits.js";
 import {
   getHouseholdCoordinationService,
   HOUSEHOLD_COORDINATION_SERVICE,
@@ -48,6 +45,29 @@ import {
 
 export const HOUSEHOLD_AGREEMENT_KNOWLEDGE_SERVICE =
   "lifeops_household_agreement_knowledge";
+
+interface AgreementOcrService {
+  describe(input: {
+    displayId: string;
+    sourceX: number;
+    sourceY: number;
+    pngBytes: Uint8Array;
+  }): Promise<{ blocks: ReadonlyArray<{ text: string }> }>;
+}
+
+async function resolveAgreementOcr(): Promise<AgreementOcrService | null> {
+  const specifier: string = "@elizaos/plugin-vision/ocr-with-coords";
+  try {
+    const module = (await import(specifier)) as {
+      getOcrWithCoordsService?: () => AgreementOcrService | null;
+    };
+    return module.getOcrWithCoordsService?.() ?? null;
+  } catch {
+    // error-policy:J4 OCR is an optional enrichment; strict rendered-page
+    // IMAGE_DESCRIPTION transcription remains required and visible.
+    return null;
+  }
+}
 
 export type AgreementObligationStatus = "proposed" | "approved" | "rejected";
 export type KnowledgePinTargetType = "agent" | "chat";
@@ -756,6 +776,7 @@ export class AgreementKnowledgeService {
       repository: AgreementKnowledgeRepository;
       fileStorage: () => IFileStorageService | null;
       documents: () => DocumentService | null;
+      pdf: () => PdfService | null;
       now?: () => Date;
     },
   ) {
@@ -827,7 +848,6 @@ export class AgreementKnowledgeService {
     originalFilename: string;
     mimeType: string;
     bytes: Buffer | Uint8Array;
-    pageCount: number;
     uploadedByEntityId: string;
   }): Promise<ParentingAgreementArtifact> {
     this.requireOwner(input.uploadedByEntityId);
@@ -838,21 +858,10 @@ export class AgreementKnowledgeService {
         { mimeType: input.mimeType },
       );
     }
-    const pageCount = requirePositiveInteger(input.pageCount, "pageCount");
     if (input.bytes.byteLength < 1) {
       throw new AgreementKnowledgeError(
         "Parenting agreement PDF must not be empty",
         "AGREEMENT_INVALID_CONTRACT",
-      );
-    }
-    if (input.bytes.byteLength > MAX_AGREEMENT_PDF_BYTES) {
-      throw new AgreementKnowledgeError(
-        agreementUploadSizeMessage(),
-        "AGREEMENT_INVALID_CONTRACT",
-        {
-          maxBytes: MAX_AGREEMENT_PDF_BYTES,
-          decodedBytes: input.bytes.byteLength,
-        },
       );
     }
     const bytes = Buffer.from(input.bytes);
@@ -890,18 +899,48 @@ export class AgreementKnowledgeService {
     }
     const fileStorage = this.deps.fileStorage();
     const documents = this.deps.documents();
-    if (!fileStorage || !documents) {
+    const pdf = this.deps.pdf();
+    if (!fileStorage || !documents || !pdf) {
       throw new AgreementKnowledgeError(
-        "The runtime file-storage or document service is unavailable",
+        "The runtime file-storage, document, or PDF service is unavailable",
         "AGREEMENT_STORAGE_UNAVAILABLE",
-        { fileStorage: Boolean(fileStorage), documents: Boolean(documents) },
+        {
+          fileStorage: Boolean(fileStorage),
+          documents: Boolean(documents),
+          pdf: Boolean(pdf),
+        },
       );
     }
-    const stored = await fileStorage.store(bytes, "application/pdf");
+    let extracted: PdfCompleteDocument;
+    try {
+      const ocr = await resolveAgreementOcr();
+      extracted = await pdf.extractCompleteDocument(bytes, {
+        ocrPage: ocr
+          ? async ({ pageNumber, pngBytes }) => {
+              const result = await ocr.describe({
+                displayId: `agreement-pdf-page-${pageNumber}`,
+                sourceX: 0,
+                sourceY: 0,
+                pngBytes,
+              });
+              return result.blocks.map((block) => block.text).join("\n");
+            }
+          : undefined,
+      });
+    } catch (error) {
+      throw new AgreementKnowledgeError(
+        `The complete parenting-agreement PDF could not be extracted: ${error instanceof Error ? error.message : String(error)}`,
+        "AGREEMENT_INVALID_CONTRACT",
+        undefined,
+        error,
+      );
+    }
+    const pageCount = extracted.pageCount;
+    const artifactId = `hag_${crypto.randomUUID()}`;
+    const stored = await fileStorage.storePrivate(bytes, "application/pdf");
     if (
       stored.hash !== expectedSha256 ||
       !stored.fileName.startsWith(`${expectedSha256}.`) ||
-      !stored.url.endsWith(stored.fileName) ||
       stored.size !== bytes.byteLength
     ) {
       throw new AgreementKnowledgeError(
@@ -923,6 +962,9 @@ export class AgreementKnowledgeService {
         `Source PDF: ${originalFilename}`,
         `Content SHA-256: ${stored.hash}`,
         `Pages: ${pageCount}`,
+        "",
+        extracted.text,
+        "",
         "Agreement obligations are inactive until the owner approves their page-cited review records.",
       ].join("\n"),
       scope: "owner-private",
@@ -935,7 +977,7 @@ export class AgreementKnowledgeService {
         title,
         originalFilename,
         contentType: "application/pdf",
-        mediaUrl: stored.url,
+        mediaUrl: `/api/lifeops/agreements/${artifactId}/download`,
         mediaHash: stored.hash,
         mediaFileName: stored.fileName,
         agreementKey,
@@ -943,7 +985,7 @@ export class AgreementKnowledgeService {
       },
     });
     return await this.deps.repository.insertArtifact({
-      id: `hag_${crypto.randomUUID()}`,
+      id: artifactId,
       agentId: this.deps.agentId,
       householdId,
       agreementKey,
@@ -951,7 +993,7 @@ export class AgreementKnowledgeService {
       title,
       originalFilename,
       documentId: document.storedDocumentMemoryId,
-      mediaUrl: stored.url,
+      mediaUrl: `/api/lifeops/agreements/${artifactId}/download`,
       mediaFileName: stored.fileName,
       contentSha256: stored.hash,
       mimeType: stored.mimeType,
@@ -960,6 +1002,42 @@ export class AgreementKnowledgeService {
       uploadedByEntityId: input.uploadedByEntityId,
       createdAt: this.now().toISOString(),
     });
+  }
+
+  async readOwnerPdf(input: {
+    artifactId: string;
+    ownerEntityId: string;
+  }): Promise<{ bytes: Buffer; mimeType: string; fileName: string }> {
+    this.requireOwner(input.ownerEntityId);
+    const artifact = await this.requireArtifact(input.artifactId);
+    const fileStorage = this.deps.fileStorage();
+    if (!fileStorage) {
+      throw new AgreementKnowledgeError(
+        "The runtime private file-storage service is unavailable",
+        "AGREEMENT_STORAGE_UNAVAILABLE",
+      );
+    }
+    const bytes = await fileStorage.readPrivate(artifact.mediaFileName);
+    if (!bytes) {
+      throw new AgreementKnowledgeError(
+        "The immutable parenting-agreement PDF is unavailable",
+        "AGREEMENT_STORAGE_UNAVAILABLE",
+        { artifactId: artifact.id },
+      );
+    }
+    const hash = crypto.createHash("sha256").update(bytes).digest("hex");
+    if (hash !== artifact.contentSha256 || bytes.length !== artifact.byteSize) {
+      throw new AgreementKnowledgeError(
+        "The immutable parenting-agreement PDF failed integrity verification",
+        "AGREEMENT_INVALID_CONTRACT",
+        { artifactId: artifact.id },
+      );
+    }
+    return {
+      bytes,
+      mimeType: artifact.mimeType,
+      fileName: artifact.originalFilename,
+    };
   }
 
   async proposeObligation(input: {
@@ -1377,6 +1455,7 @@ export function createAgreementKnowledgeService(
       runtime.getService<IFileStorageService>(ServiceType.REMOTE_FILES),
     documents: () =>
       runtime.getService<DocumentService>(DocumentService.serviceType),
+    pdf: () => runtime.getService<PdfService>(ServiceType.PDF),
     now,
   });
 }

@@ -478,6 +478,16 @@ describe("selectMediaToEvict", () => {
     // total 150, cap 60, target 54 → drop f1 (100), f2 (50<=54) stop
     expect(selectMediaToEvict(files, 60)).toEqual(["f1", "f2"]);
   });
+
+  it("never blindly evicts private files with explicit lifecycles", () => {
+    const privateName = `${"a".repeat(64)}.private-${"b".repeat(16)}.pdf`;
+    const files = [
+      { name: privateName, size: 500, mtimeMs: 1 },
+      { name: "public-oldest", size: 70, mtimeMs: 2 },
+      { name: "public-newest", size: 70, mtimeMs: 3 },
+    ];
+    expect(selectMediaToEvict(files, 100)).toEqual(["public-oldest"]);
+  });
 });
 
 describe("handleMediaRouteRequest (in-process / iOS path)", () => {
