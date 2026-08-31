@@ -239,6 +239,10 @@ describe("handleAppsRoutes", () => {
       expect(rejected?.directory).toBe(path.join(dir, "app-bad"));
       expect(rejected?.packageName).toBeNull();
       expect(rejected?.reason).toContain("invalid JSON");
+      // The reason is built from the error's name, not a constant: this pins the
+      // positive half of the decision so replacing `parseError.name` with a bare
+      // literal is caught, not just the negative hygiene half below.
+      expect(rejected?.reason).toContain("SyntaxError");
       // Data hygiene: the reason must not carry the malformed file's bytes into
       // the HTTP response. V8's JSON.parse message would embed them; the reason
       // is built from the error name instead.
@@ -256,6 +260,7 @@ describe("handleAppsRoutes", () => {
         requesterRoomId: null,
       });
       expect(String(rejections[0]?.reason)).toContain("invalid JSON");
+      expect(String(rejections[0]?.reason)).toContain("SyntaxError");
       // The persisted rejection record must not carry file bytes either.
       expect(String(rejections[0]?.reason)).not.toContain("LEAKMARK");
     } finally {
