@@ -541,6 +541,10 @@ async function __hono_POST(c: AppContext) {
       providerSelection.provider === "cartesia" && Boolean(cartesiaApiKey);
     const gandrEligible =
       providerSelection.provider === "gandr" && Boolean(gandrApiKey);
+    // NOTE: the WAV first-line cache below is Cartesia-only today. The Gandr
+    // lane synthesizes WAV through the same shape and could join the cache,
+    // but parity is left to a follow-up with its own evidence pass rather
+    // than riding along on this PR.
     const wavCacheKey =
       cartesiaEligible &&
       wantWav &&
