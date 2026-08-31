@@ -63,18 +63,6 @@ export type SubscriptionDebitSignal =
  */
 export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
   {
-    relativePath: "api/fal/proxy/route.ts",
-    operation: "media_generation",
-    fundingClass: "allowance_eligible",
-    expectedSignals: { credit_service_reserve: 1 },
-  },
-  {
-    relativePath: "api/mcp/proxy/[mcpId]/route.ts",
-    operation: "app_or_marketplace",
-    fundingClass: "cash_only",
-    expectedSignals: { credit_service_reserve_and_deduct: 1 },
-  },
-  {
     relativePath: "api/v1/apis/tunnels/tailscale/auth-key/route.ts",
     operation: "hardware_or_network_access",
     fundingClass: "cash_only",
@@ -83,12 +71,6 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
   {
     relativePath: "api/v1/apps/[id]/domains/buy/route.ts",
     operation: "domain",
-    fundingClass: "cash_only",
-    expectedSignals: { credit_service_deduct: 1 },
-  },
-  {
-    relativePath: "api/v1/apps/[id]/promote/assets/route.ts",
-    operation: "advertising_or_promotion",
     fundingClass: "cash_only",
     expectedSignals: { credit_service_deduct: 1 },
   },
@@ -197,12 +179,6 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     expectedSignals: { credit_service_reserve_and_deduct: 3 },
   },
   {
-    relativePath: "shared/src/lib/services/app-promotion.ts",
-    operation: "advertising_or_promotion",
-    fundingClass: "cash_only",
-    expectedSignals: { credit_service_deduct: 1 },
-  },
-  {
     relativePath: "shared/src/lib/services/credits.ts",
     operation: "unclassified",
     fundingClass: "cash_only",
@@ -213,22 +189,10 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     },
   },
   {
-    relativePath: "shared/src/lib/services/discord-automation/app-automation.ts",
-    operation: "advertising_or_promotion",
-    fundingClass: "cash_only",
-    expectedSignals: { credit_service_deduct: 1 },
-  },
-  {
     relativePath: "shared/src/lib/services/domain-renewals.ts",
     operation: "domain",
     fundingClass: "cash_only",
     expectedSignals: { credit_service_deduct: 1 },
-  },
-  {
-    relativePath: "shared/src/lib/services/google-search.ts",
-    operation: "search",
-    fundingClass: "allowance_eligible",
-    expectedSignals: { credit_service_reserve: 1 },
   },
   {
     relativePath: "shared/src/lib/services/inference-billing-fast-path.ts",
@@ -282,34 +246,10 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     expectedSignals: { credit_service_reserve: 1 },
   },
   {
-    relativePath: "shared/src/lib/services/seo.ts",
-    operation: "search",
-    fundingClass: "allowance_eligible",
-    expectedSignals: { credit_service_deduct: 1 },
-  },
-  {
     relativePath: "shared/src/lib/services/social-media/index.ts",
     operation: "advertising_or_promotion",
     fundingClass: "cash_only",
     expectedSignals: { credit_service_deduct: 2 },
-  },
-  {
-    relativePath: "shared/src/lib/services/subscription-funding.ts",
-    operation: "unclassified",
-    fundingClass: "cash_only",
-    expectedSignals: { credit_service_reserve_and_deduct: 1 },
-  },
-  {
-    relativePath: "shared/src/lib/services/telegram-automation/app-automation.ts",
-    operation: "advertising_or_promotion",
-    fundingClass: "cash_only",
-    expectedSignals: { credit_service_deduct: 2 },
-  },
-  {
-    relativePath: "shared/src/lib/services/twitter-automation/app-automation.ts",
-    operation: "advertising_or_promotion",
-    fundingClass: "cash_only",
-    expectedSignals: { credit_service_deduct: 1 },
   },
   {
     relativePath: "shared/src/lib/services/user-mcps.ts",
