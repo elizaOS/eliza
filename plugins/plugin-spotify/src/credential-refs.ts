@@ -12,6 +12,8 @@ import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccountManager,
   type IAgentRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 type JsonValue =
@@ -331,12 +333,12 @@ function buildVaultRef(params: {
   ].join(".");
 }
 
-function normalizeVaultSegment(value: string): string {
-  const normalized = value
+export function normalizeVaultSegment(value: string): string {
+  const normalized = toWellFormedUnicode(value)
     .trim()
     .replace(/[^a-zA-Z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "");
-  return (normalized || "unknown").slice(0, 64);
+  return truncateWellFormed(normalized || "unknown", 64);
 }
 
 function getFirstService(runtime: IAgentRuntime, serviceTypes: readonly string[]): unknown {
