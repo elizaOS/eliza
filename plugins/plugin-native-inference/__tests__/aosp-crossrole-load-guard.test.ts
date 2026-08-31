@@ -13,6 +13,11 @@
  * arriving cross-role request cannot swap the native context while the other
  * role's inference is still running. The resident model is recorded when each
  * call RETURNS, so a mid-call swap surfaces as a wrong-model observation.
+ *
+ * The eviction case drives the exported lifecycle's `evict()` (the seam the
+ * voice ASR handler unloads through) directly, proving the out-of-band unload
+ * is serialized on the same executor and so waits behind an in-flight embed
+ * rather than freeing the native context out from under it.
  */
 
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -23,6 +28,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AospLoader,
   ensureAospLocalInferenceHandlers,
+  makeLoaderLifecycle,
 } from "../src/aosp-local-inference-bootstrap";
 
 async function withEnvAsync<T>(
@@ -319,6 +325,69 @@ describe("AOSP fused loader cross-role in-flight guard (#30147)", () => {
       } finally {
         await runtime.stop({ fast: true });
       }
+    });
+  });
+
+  it("routes an out-of-band eviction through the context executor so the unload waits behind an in-flight embed instead of dropping the model mid-call", async () => {
+    const stateDir = mkdtempSync(
+      path.join(os.tmpdir(), "aosp-crossrole-evict-"),
+    );
+    const { embeddingPath } = seedBothModels(stateDir);
+
+    await withEnvAsync(crossRoleEnv(stateDir), async () => {
+      let currentPath: string | null = null;
+      const events: string[] = [];
+      let signalEmbedIn!: () => void;
+      let releaseEmbed!: () => void;
+      const embedIn = new Promise<void>((resolve) => {
+        signalEmbedIn = resolve;
+      });
+      const embedGate = new Promise<void>((resolve) => {
+        releaseEmbed = resolve;
+      });
+      const loader: AospLoader = {
+        loadModel: async (args) => {
+          currentPath = args.modelPath;
+        },
+        unloadModel: async () => {
+          events.push("unload");
+          currentPath = null;
+        },
+        currentModelPath: () => currentPath,
+        generate: async () => "gen",
+        embed: async () => ({ embedding: [0.1, 0.2], tokens: 1 }),
+      };
+      const lifecycle = makeLoaderLifecycle(loader);
+
+      // (1) An embedding transaction loads its model and enters the call, then
+      //     blocks — the embedding model is resident and the context is busy.
+      const embedPromise = lifecycle.withEmbedding(async () => {
+        events.push("embed:start");
+        signalEmbedIn();
+        await embedGate;
+        events.push("embed:end");
+        return [0.1, 0.2];
+      });
+      await embedIn;
+      expect(currentPath).toBe(embeddingPath);
+
+      // (2) A voice eviction fires while the embed is mid-flight. Routed through
+      //     the same serial executor, it MUST queue behind the running embed
+      //     rather than unload the embedding model out from under it — the
+      //     same-class window the load-plus-use serialization closes, reached
+      //     through the unload door. A direct loader.unloadModel() would push
+      //     "unload" into events here, before the embed returns.
+      const evictPromise = lifecycle.evict();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(events).toEqual(["embed:start"]);
+
+      // (3) Release the embed; only now does the queued eviction unload run, and
+      //     the resident role is cleared for the next load.
+      releaseEmbed();
+      await embedPromise;
+      await evictPromise;
+      expect(events).toEqual(["embed:start", "embed:end", "unload"]);
+      expect(currentPath).toBeNull();
     });
   });
 
