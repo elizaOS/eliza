@@ -819,6 +819,34 @@ function isAmbientStage1Turn(
 	return isUnaddressedTextGroupTurn(message, explicitlyAddressesAgent);
 }
 
+/**
+ * Whether an ambient (unaddressed group) turn should carry the restrained
+ * HARD-GATE shouldRespond policy instead of the participatory default. Only an
+ * explicit `addressed_or_ambient` reply_gate opts a room's agent back into the
+ * quiet-ambient bias; the unset default participates on its own judgment while
+ * keeping ambient classification (ack suppression, provider exclusions, the
+ * deliberate-silence terminal, and the engagement addressing gate) intact.
+ */
+function isStage1AmbientHardGated(
+	runtime: IAgentRuntime,
+	message: Memory,
+): boolean {
+	try {
+		return (
+			resolveStage1ReplyGateMode(runtime, message) === "addressed_or_ambient"
+		);
+	} catch (error) {
+		// error-policy:J7 personality lookup is advisory routing context. A store
+		// failure must fail open to the participatory default, not force the
+		// restrained gate.
+		runtime.reportError("MessageService.resolveAmbientReplyGate", error, {
+			roomId: message.roomId,
+			entityId: message.entityId,
+		});
+		return false;
+	}
+}
+
 function getPlannerActionObjectName(action: Record<string, unknown>): string {
 	const rawName = action.name ?? action.action ?? action.actionName;
 	return typeof rawName === "string" ? unwrapPlannerIdentifier(rawName) : "";
@@ -4181,6 +4209,13 @@ async function createV5MessageContextObject(args: {
 	 * byte-identical to before, so addressed turns are untouched.
 	 */
 	ambientTurn?: boolean;
+	/**
+	 * When the ambient turn's effective reply_gate is the restrained
+	 * `addressed_or_ambient` mode, Stage-1 renders the HARD-GATE IGNORE bias;
+	 * otherwise the participatory default policy renders (no @-mention needed,
+	 * model judges each turn on concrete value).
+	 */
+	ambientHardGate?: boolean;
 	/** Trusted same-speaker continuation after a recent correction of this agent. */
 	peerCorrectionContinuation?: boolean;
 }): Promise<ContextObject> {
@@ -4328,13 +4363,19 @@ async function createV5MessageContextObject(args: {
 			stable: false,
 			content: args.includeTools
 				? "ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Contribute only if this turn's work produced something concrete and useful to those participants (a tool result, a substantive answer to what they are discussing). If your work yields nothing concrete to contribute, end the turn by calling the IGNORE tool — deliberate silence — instead of composing a reply. Never send a status update, a progress note, or a description of your own process as the reply — any sentence whose subject is what you did, tried, handled, or checked rather than what they are discussing: on an unaddressed message, an empty outcome means silence."
-				: // Stage-1 wording: the decision here is the shouldRespond field, not
-					// a terminal tool. Live group-chat evaluation (five ambient-mode
-					// rooms, gemma-4-31b) replied to nearly every unaddressed message —
-					// "Hard to miss.", "Sounds like the move." — a running commentary
-					// nobody asked for. Unaddressed group chatter defaults to IGNORE;
-					// RESPOND is reserved for a concrete contribution.
-					"ambient_turn_policy: HARD GATE. The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Default shouldRespond=IGNORE. You MUST set shouldRespond=IGNORE unless the current turn explicitly challenges or asks to clarify your immediately preceding prior_message:agent reply, silence would allow a concrete consequential error or harm you can specifically prevent, or an explicit standing responsibility makes this turn yours to handle. A broadcast question, a useful fact you could add, your ability to answer, or your desire to keep the discussion moving is never enough. IGNORE banter, jokes, reactions, acknowledgements, open group questions, and side chatter where you would only answer, agree, comment, restate, or continue the conversation. Having replied earlier is a reason to stay silent unless the current turn directly challenges or needs clarification of that reply.",
+				: args.ambientHardGate
+					? // Restrained opt-in (reply_gate=addressed_or_ambient): the
+						// quiet-ambient bias, kept for rooms that want it. Live group-chat
+						// evaluation (five ambient-mode rooms, gemma-4-31b) replied to
+						// nearly every unaddressed message — "Hard to miss.", "Sounds
+						// like the move." — a running commentary nobody asked for; this
+						// mode keeps that hard IGNORE default.
+						"ambient_turn_policy: HARD GATE. The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Default shouldRespond=IGNORE. You MUST set shouldRespond=IGNORE unless the current turn explicitly challenges or asks to clarify your immediately preceding prior_message:agent reply, silence would allow a concrete consequential error or harm you can specifically prevent, or an explicit standing responsibility makes this turn yours to handle. A broadcast question, a useful fact you could add, your ability to answer, or your desire to keep the discussion moving is never enough. IGNORE banter, jokes, reactions, acknowledgements, open group questions, and side chatter where you would only answer, agree, comment, restate, or continue the conversation. Having replied earlier is a reason to stay silent unless the current turn directly challenges or needs clarification of that reply."
+					: // Participatory default: no @-mention required — the agent is a
+						// full participant and judges each unaddressed turn on concrete
+						// value. Chatter still resolves to IGNORE, so ambient rooms get
+						// contribution, not commentary.
+						"ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other. You are a full participant in this room and need no @-mention to reply, but replying is optional: judge each turn on concrete value. Set shouldRespond=RESPOND when you can add something genuinely useful — answer a question you can answer well, correct a consequential error, supply a fact or next step the discussion is missing. Set shouldRespond=IGNORE for banter, jokes, reactions, acknowledgements, and side chatter where you would only agree, restate, or keep the conversation moving. Do not reply to every message; when you do reply, be brief and on-topic.",
 		});
 	}
 	if (args.peerCorrectionContinuation) {
@@ -8797,11 +8838,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			) ||
 			peerCorrectionContinuation,
 	);
+	const ambientHardGate =
+		ambientTurn && isStage1AmbientHardGated(args.runtime, args.message);
 	let context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
 		ambientTurn,
+		ambientHardGate,
 		peerCorrectionContinuation,
 		extraProviderExclusions: ambientTurnProviderExclusions(
 			args.runtime,
@@ -8819,6 +8863,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				userRoles: [senderRole],
 				availableContexts,
 				ambientTurn,
+				ambientHardGate,
 				peerCorrectionContinuation,
 				extraProviderExclusions: ambientTurnProviderExclusions(
 					args.runtime,

@@ -4237,11 +4237,15 @@ describe("runV5MessageRuntimeStage1", () => {
 			"a direct mention, reply, or clear continuation addressed to Test Agent -> RESPOND",
 		);
 		expect(stage1Content).not.toContain("addressed to  ->");
-		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
-		expect(stage1Content).toContain(
-			"challenges or asks to clarify your immediately preceding prior_message:agent reply",
-		);
-		expect(stage1Content).toContain("explicit standing responsibility");
+		// Participatory default (no reply_gate set): no @-mention needed — the
+		// model judges each unaddressed turn on concrete value. The restrained
+		// HARD-GATE wording is reserved for reply_gate=addressed_or_ambient
+		// (covered by the companion test below).
+		expect(stage1Content).toContain("need no @-mention to reply");
+		expect(stage1Content).toContain("judge each turn on concrete value");
+		expect(stage1Content).toContain("Do not reply to every message");
+		expect(stage1Content).not.toContain("Default shouldRespond=IGNORE");
+		expect(stage1Content).not.toContain("HARD GATE");
 		expect(stage1Content).not.toContain("someone asks the group");
 		expect(stage1Content).not.toContain("active in the conversation");
 		expect(stage1Content).not.toContain("able to usefully add");
@@ -4250,6 +4254,51 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		// Deliberate planner silence records as a terminal IGNORE — the same
 		// observable outcome a Stage-1 IGNORE gets — not a silent drop.
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+	});
+
+	it("renders the restrained HARD-GATE ambient policy only when reply_gate is addressed_or_ambient", async () => {
+		// The quiet-ambient bias is an opt-in now: rooms that want the agent to
+		// hold back on unaddressed group chatter set reply_gate to
+		// addressed_or_ambient, which restores the hard IGNORE default. The
+		// participatory wording must not leak into this mode.
+		const runtime = withReplyGateMode(
+			makeRuntime([
+				stage1Response({
+					thought: "Ambient chatter under the restrained gate.",
+					contexts: ["general"],
+					replyText: "",
+				}),
+				{
+					text: "",
+					toolCalls: [{ id: "ignore-2", name: "IGNORE", arguments: {} }],
+				},
+			]),
+			"addressed_or_ambient",
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000019" as UUID,
+		});
+
+		const calls = useModelCalls(runtime);
+		const stage1Params = calls[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (stage1Params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).toContain("ambient_turn_policy: HARD GATE");
+		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
+		expect(stage1Content).not.toContain("need no @-mention to reply");
 		expect(result.kind).toBe("terminal");
 		if (result.kind === "terminal") {
 			expect(result.action).toBe("IGNORE");
