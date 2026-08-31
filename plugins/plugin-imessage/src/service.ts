@@ -16,6 +16,7 @@ import {
   checkPairingAllowed,
   createUniqueUuid,
   DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
+  ElizaError,
   type Entity,
   type EventPayload,
   EventType,
@@ -100,6 +101,33 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 60_000;
 // Keep the recurring-task value portable to runtimes that ultimately schedule
 // with a JavaScript timer, even though current TaskService compares timestamps.
 const MAX_HEARTBEAT_INTERVAL_MS = 2_147_483_647;
+const BLOOIO_RECEIPT_CACHE_NAMESPACE = "imessage:blooio-receipt:v1";
+
+interface BlooioDispatchReceipt {
+  version: 1;
+  acceptedAt: number;
+}
+
+function blooioReceiptCacheKey(channelId: string, messageId: string): string {
+  const digest = crypto
+    .createHash("sha256")
+    .update(channelId)
+    .update("\0")
+    .update(messageId)
+    .digest("hex");
+  return `${BLOOIO_RECEIPT_CACHE_NAMESPACE}:${digest}`;
+}
+
+function isBlooioDispatchReceipt(value: unknown): value is BlooioDispatchReceipt {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<BlooioDispatchReceipt>;
+  return (
+    candidate.version === 1 &&
+    typeof candidate.acceptedAt === "number" &&
+    Number.isSafeInteger(candidate.acceptedAt) &&
+    candidate.acceptedAt > 0
+  );
+}
 
 export function resolveHeartbeatIntervalMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return DEFAULT_HEARTBEAT_INTERVAL_MS;
@@ -615,8 +643,8 @@ export class IMessageService extends Service implements IIMessageService {
   private contacts: ContactsMap = new Map();
   /** Whether the lazy contact load has been attempted this session. */
   private contactsLoadAttempted = false;
-  /** Webhook message ids accepted during this process lifetime. */
-  private blooioMessageIds = new Set<string>();
+  /** Message ids currently dispatching, preventing concurrent webhook re-entry. */
+  private blooioMessagesInFlight = new Set<string>();
 
   /**
    * Start the iMessage service.
@@ -1174,55 +1202,118 @@ export class IMessageService extends Service implements IIMessageService {
       return "unauthorized";
     }
     const inbound = parseBlooioInbound(rawBody, settings.blooioChannelId);
-    if (!inbound || this.blooioMessageIds.has(inbound.messageId)) return "ignored";
+    if (!inbound) return "ignored";
 
-    const access: { allowed: boolean; pairingReplyMessage?: string } = inbound.isGroup
-      ? this.checkGroupAccess(inbound.sender)
-      : await this.checkDmAccess(inbound.sender);
-    if (!access.allowed) {
-      if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
-        await this.sendSingleMessage(inbound.sender, access.pairingReplyMessage);
+    const receiptKey = blooioReceiptCacheKey(settings.blooioChannelId, inbound.messageId);
+    const receiptDigest = receiptKey.slice(receiptKey.lastIndexOf(":") + 1);
+    if (this.blooioMessagesInFlight.has(inbound.messageId)) {
+      const error = new ElizaError("Blooio message dispatch is already in progress", {
+        code: "IMESSAGE_BLOOIO_DISPATCH_IN_FLIGHT",
+        context: { receiptDigest },
+        severity: "ephemeral",
+      });
+      this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+      throw error;
+    }
+
+    this.blooioMessagesInFlight.add(inbound.messageId);
+    try {
+      let storedReceipt: unknown;
+      try {
+        storedReceipt = await this.runtime.getCache<unknown>(receiptKey);
+      } catch (cause) {
+        // error-policy:J2 The webhook must fail so Blooio retries when durable dedupe is unavailable.
+        const error = new ElizaError("Blooio durable dispatch receipt could not be read", {
+          code: "IMESSAGE_BLOOIO_RECEIPT_READ_FAILED",
+          cause,
+          context: { receiptDigest },
+          severity: "ephemeral",
+        });
+        this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+        throw error;
       }
-      return "ignored";
-    }
+      if (storedReceipt !== undefined) {
+        if (isBlooioDispatchReceipt(storedReceipt)) return "ignored";
+        const error = new ElizaError("Blooio durable dispatch receipt is invalid", {
+          code: "IMESSAGE_BLOOIO_RECEIPT_INVALID",
+          context: { receiptDigest },
+          severity: "fatal",
+        });
+        this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+        throw error;
+      }
 
-    this.blooioMessageIds.add(inbound.messageId);
-    if (this.blooioMessageIds.size > 2_000) {
-      const oldest = this.blooioMessageIds.values().next().value;
-      if (typeof oldest === "string") this.blooioMessageIds.delete(oldest);
-    }
+      const access: { allowed: boolean; pairingReplyMessage?: string } = inbound.isGroup
+        ? this.checkGroupAccess(inbound.sender)
+        : await this.checkDmAccess(inbound.sender);
+      if (!access.allowed) {
+        if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
+          await this.sendSingleMessage(inbound.sender, access.pairingReplyMessage);
+        }
+        return "ignored";
+      }
 
-    const media: Media[] = inbound.mediaUrls.map((url, index) => ({
-      id: `${inbound.messageId}-${index}`,
-      url,
-      source: "imessage",
-      title: "Blooio attachment",
-      description: "Inbound Blooio attachment",
-    }));
-    const row: ChatDbMessage = {
-      rowId: inbound.timestamp,
-      guid: inbound.messageId,
-      text: inbound.text,
-      kind: "text",
-      handle: inbound.sender,
-      chatId: inbound.chatId,
-      chatType: inbound.isGroup ? "group" : "direct",
-      displayName: null,
-      timestamp: inbound.timestamp,
-      isFromMe: false,
-      service: "iMessage",
-      isSent: false,
-      isDelivered: true,
-      isRead: false,
-      dateRead: 0,
-      dateEdited: 0,
-      dateRetracted: 0,
-      replyToGuid: inbound.replyToMessageId ?? null,
-      reaction: null,
-      attachments: [],
-    };
-    await this.dispatchInboundMessage(row, media);
-    return "accepted";
+      const media: Media[] = inbound.mediaUrls.map((url, index) => ({
+        id: `${inbound.messageId}-${index}`,
+        url,
+        source: "imessage",
+        title: "Blooio attachment",
+        description: "Inbound Blooio attachment",
+      }));
+      const row: ChatDbMessage = {
+        rowId: inbound.timestamp,
+        guid: inbound.messageId,
+        text: inbound.text,
+        kind: "text",
+        handle: inbound.sender,
+        chatId: inbound.chatId,
+        chatType: inbound.isGroup ? "group" : "direct",
+        displayName: null,
+        timestamp: inbound.timestamp,
+        isFromMe: false,
+        service: "iMessage",
+        isSent: false,
+        isDelivered: true,
+        isRead: false,
+        dateRead: 0,
+        dateEdited: 0,
+        dateRetracted: 0,
+        replyToGuid: inbound.replyToMessageId ?? null,
+        reaction: null,
+        attachments: [],
+      };
+      await this.dispatchInboundMessage(row, media);
+
+      let receiptStored: boolean;
+      try {
+        receiptStored = await this.runtime.setCache<BlooioDispatchReceipt>(receiptKey, {
+          version: 1,
+          acceptedAt: Date.now(),
+        });
+      } catch (cause) {
+        // error-policy:J2 Dispatch succeeded, but fail the webhook because dedupe was not durable.
+        const error = new ElizaError("Blooio durable dispatch receipt could not be written", {
+          code: "IMESSAGE_BLOOIO_RECEIPT_WRITE_FAILED",
+          cause,
+          context: { receiptDigest },
+          severity: "ephemeral",
+        });
+        this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+        throw error;
+      }
+      if (!receiptStored) {
+        const error = new ElizaError("Blooio durable dispatch receipt was not stored", {
+          code: "IMESSAGE_BLOOIO_RECEIPT_WRITE_REJECTED",
+          context: { receiptDigest },
+          severity: "ephemeral",
+        });
+        this.runtime.reportError("IMessageService.blooioWebhook", error, { receiptDigest });
+        throw error;
+      }
+      return "accepted";
+    } finally {
+      this.blooioMessagesInFlight.delete(inbound.messageId);
+    }
   }
 
   /**
