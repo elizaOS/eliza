@@ -69,6 +69,10 @@ import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
 import { getConnectorRegistry } from "../connectors/registry.js";
 import { resolveDefaultTimeZone } from "../defaults.js";
+import {
+  FAMILY_MONTHLY_SYSTEM_OPERATION,
+  getFamilyWorkflowRuntimeService,
+} from "../family-workflows/index.js";
 import { resolveGlobalPauseStore } from "../global-pause/store.js";
 import { registerHouseholdGrantExpiryWarningGate } from "../household/grant-expiry-warning.js";
 import { HouseholdCoordinationRepository } from "../household/repository.js";
@@ -535,6 +539,10 @@ function isLocalAgentBackupDispatch(
   return record.metadata?.systemOperation === LOCAL_AGENT_BACKUP_OPERATION;
 }
 
+function isFamilyMonthlyDispatch(record: ScheduledTaskDispatchRecord): boolean {
+  return record.metadata?.systemOperation === FAMILY_MONTHLY_SYSTEM_OPERATION;
+}
+
 function targetNeedsOwnerResolution(
   channelKey: string,
   target: string | undefined,
@@ -705,6 +713,23 @@ export function createProductionScheduledTaskDispatcher(opts: {
         return {
           ok: true,
           messageId: `agent-backup:${backup.fileName}`,
+        };
+      }
+
+      if (isFamilyMonthlyDispatch(record)) {
+        const service = getFamilyWorkflowRuntimeService(opts.runtime);
+        if (!service) {
+          return {
+            ok: false,
+            reason: "disconnected",
+            userActionable: false,
+            message: "Family workflow runtime service is unavailable.",
+          };
+        }
+        const result = await service.runMonthly("scheduled");
+        return {
+          ok: true,
+          messageId: `family-monthly:${result.periodKey}:${result.runId}`,
         };
       }
 

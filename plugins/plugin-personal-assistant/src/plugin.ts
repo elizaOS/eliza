@@ -72,6 +72,7 @@ import { creativeDraftAction } from "./actions/creative-draft.js";
 import { credentialsAction } from "./actions/credentials.js";
 import { ownerDocumentsAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
+import { familyWorkflowsAction } from "./actions/family-workflows.js";
 import { householdCoordinationAction } from "./actions/household-coordination.js";
 import { deferredOwnerTodoRoutingEvaluator } from "./actions/lib/lifeops-deferred-draft.js";
 import {
@@ -143,6 +144,7 @@ import {
   resolveAuthenticatedFamilyPrincipal,
   resolveTrustedChildWeekItems,
 } from "./lifeops/family-communications/index.js";
+import { FamilyWorkflowRuntimeService } from "./lifeops/family-workflows/index.js";
 import { installFirstRunChannelInspector } from "./lifeops/first-run/channel-inspector.js";
 import { setRuntimeChannelInspector } from "./lifeops/first-run/questions.js";
 import { FirstRunService } from "./lifeops/first-run/service.js";
@@ -715,6 +717,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(foodDomainAction),
     ...promoteSubactionsToActions(localConditionsAction),
     ...promoteSubactionsToActions(schoolSourceFactAction),
+    familyWorkflowsAction,
     ...promoteSubactionsToActions(resolveRequestAction),
     ...promoteSubactionsToActions(ownerRemindersAction),
     ...promoteSubactionsToActions(ownerAlarmsAction),
@@ -790,6 +793,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ResourceCapacityRuntimeService,
     SchoolSourceFactRuntimeService,
     FoodDomainRuntimeService,
+    FamilyWorkflowRuntimeService,
     // The ScheduledTaskRunnerService is now registered by the always-loaded
     // @elizaos/plugin-scheduling. PA injects its production deps via
     // registerLifeOpsScheduledTaskRunnerDeps(runtime) in init() instead, so

@@ -14,6 +14,7 @@ export * from "./enforcement-windows.js";
 export * from "./engine.js";
 export * from "./family-communications/index.js";
 export * from "./family-coordination/index.js";
+export * from "./family-workflows/index.js";
 export * from "./food/index.js";
 export * from "./goal-grounding.js";
 export * from "./goal-semantic-evaluator.js";

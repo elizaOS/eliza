@@ -133,6 +133,29 @@ export type SchoolCalendarRunResult =
     }
   | { state: "already_running"; runId: null };
 
+export interface SchoolCalendarWorkflowStatus {
+  sourceId: string;
+  config: SchoolCalendarSourceConfig | null;
+  lastRun: {
+    runId: string;
+    state: string;
+    triggerKind: string;
+    contentSha256: string | null;
+    mediaUrl: string | null;
+    updatedAt: string;
+  } | null;
+}
+
+export interface SchoolCalendarRunReview {
+  runId: string;
+  state: string;
+  triggerKind: string;
+  plan: SchoolCalendarApprovalPlan | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  updatedAt: string;
+}
+
 type FetchLike = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -368,6 +391,75 @@ export class SchoolCalendarWorkflow {
   async ensureSchema(): Promise<void> {
     for (const statement of SCHEMA)
       await executeRawSql(this.runtime, statement);
+  }
+
+  async configure(
+    config: SchoolCalendarSourceConfig,
+  ): Promise<SchoolCalendarWorkflowStatus> {
+    await this.ensureSchema();
+    assertAllowedUrl(config.landingPageUrl, config);
+    const at = this.now().toISOString();
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_school_calendar_sources (agent_id, source_id, config_json, created_at, updated_at) VALUES (${sqlQuote(this.runtime.agentId)}, ${sqlQuote(config.sourceId)}, ${sqlQuote(canonicalJson(config))}, ${sqlQuote(at)}, ${sqlQuote(at)}) ON CONFLICT (agent_id, source_id) DO UPDATE SET config_json = EXCLUDED.config_json, updated_at = EXCLUDED.updated_at`,
+    );
+    return this.status(config.sourceId);
+  }
+
+  async status(
+    sourceId = CONCORD_SCHOOL_CALENDAR_SOURCE.sourceId,
+  ): Promise<SchoolCalendarWorkflowStatus> {
+    await this.ensureSchema();
+    const sources = await executeRawSql(
+      this.runtime,
+      `SELECT config_json FROM app_lifeops.life_school_calendar_sources WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND source_id=${sqlQuote(sourceId)} LIMIT 1`,
+    );
+    const runs = await executeRawSql(
+      this.runtime,
+      `SELECT run_id,state,trigger_kind,content_sha256,media_url,updated_at FROM app_lifeops.life_school_calendar_runs WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND source_id=${sqlQuote(sourceId)} ORDER BY created_at DESC LIMIT 1`,
+    );
+    const run = runs[0];
+    return {
+      sourceId,
+      config: sources[0]
+        ? (parseJsonRecord(
+            sources[0].config_json,
+          ) as unknown as SchoolCalendarSourceConfig)
+        : null,
+      lastRun: run
+        ? {
+            runId: toText(run.run_id),
+            state: toText(run.state),
+            triggerKind: toText(run.trigger_kind),
+            contentSha256: run.content_sha256
+              ? toText(run.content_sha256)
+              : null,
+            mediaUrl: run.media_url ? toText(run.media_url) : null,
+            updatedAt: toText(run.updated_at),
+          }
+        : null,
+    };
+  }
+
+  async review(runId: string): Promise<SchoolCalendarRunReview | null> {
+    await this.ensureSchema();
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT run_id,state,trigger_kind,plan_json,error_code,error_message,updated_at FROM app_lifeops.life_school_calendar_runs WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(runId)} LIMIT 1`,
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      runId: toText(row.run_id),
+      state: toText(row.state),
+      triggerKind: toText(row.trigger_kind),
+      plan: row.plan_json
+        ? parseApprovalPlan(parseJsonRecord(row.plan_json))
+        : null,
+      errorCode: row.error_code ? toText(row.error_code) : null,
+      errorMessage: row.error_message ? toText(row.error_message) : null,
+      updatedAt: toText(row.updated_at),
+    };
   }
 
   async run(

@@ -462,6 +462,16 @@ export class AgreementKnowledgeRepository {
     return rows.map(obligationFromRow);
   }
 
+  async listApprovedObligations(): Promise<ParentingAgreementObligation[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT * FROM app_lifeops.life_household_agreement_obligations
+        WHERE agent_id = ${sqlQuote(this.agentId)} AND status = 'approved'
+        ORDER BY updated_at ASC, id ASC`,
+    );
+    return rows.map(obligationFromRow);
+  }
+
   async setPin(input: {
     artifactId: string;
     targetType: KnowledgePinTargetType;
@@ -683,6 +693,10 @@ export class AgreementKnowledgeService {
         { actorEntityId },
       );
     }
+  }
+
+  listApprovedObligations(): Promise<ParentingAgreementObligation[]> {
+    return this.deps.repository.listApprovedObligations();
   }
 
   private requireOwnerOrAgent(actorEntityId: string): void {

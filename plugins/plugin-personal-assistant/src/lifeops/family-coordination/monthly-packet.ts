@@ -292,6 +292,30 @@ export class MonthlyFamilyPacketService {
     return rows[0] ? parsePacket(rows[0]) : null;
   }
 
+  async list(periodKey?: string): Promise<MonthlyFamilyPacket[]> {
+    await this.ensureSchema();
+    const filter = periodKey ? ` AND period_key=${sqlQuote(periodKey)}` : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT packet_json FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)}${filter} ORDER BY period_key DESC, internal_version DESC`,
+    );
+    return rows.map(parsePacket);
+  }
+
+  async read(
+    packetId: string,
+    version?: number,
+  ): Promise<MonthlyFamilyPacket | null> {
+    await this.ensureSchema();
+    const versionClause =
+      version === undefined ? "" : ` AND internal_version=${version}`;
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT packet_json FROM app_lifeops.life_family_packets WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND packet_id=${sqlQuote(packetId)}${versionClause} ORDER BY internal_version DESC LIMIT 1`,
+    );
+    return rows[0] ? parsePacket(rows[0]) : null;
+  }
+
   private async previous(
     periodKey: string,
   ): Promise<MonthlyFamilyPacket | null> {
@@ -591,7 +615,7 @@ export class MonthlyFamilyPacketService {
     return draft;
   }
 
-  private async readDraft(
+  async readDraft(
     packetId: string,
     version: number,
   ): Promise<MonthlyFamilyDraft | null> {

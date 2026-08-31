@@ -115,6 +115,7 @@ import {
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { handleFamilyWorkflowRoutes } from "./family-workflows.js";
 
 export interface LifeOpsRouteContext {
   req: http.IncomingMessage;
@@ -1220,6 +1221,8 @@ export async function handleLifeOpsRoutes(
     }
     return gateway;
   };
+
+  if (await handleFamilyWorkflowRoutes(ctx)) return true;
 
   // Calendar routes are owned by @elizaos/plugin-calendar; the path -> service
   // mapping lives there. We inject LifeOps' HTTP plumbing so the calendar plugin
