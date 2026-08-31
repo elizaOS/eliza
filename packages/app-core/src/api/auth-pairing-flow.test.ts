@@ -32,6 +32,7 @@ import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { createTestDatabase } from "@elizaos/plugin-sql/__tests__/test-helpers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { AuthStore } from "../services/auth-store";
+import { resolveSessionTokenRole } from "./auth";
 import { findActiveSession } from "./auth/sessions";
 // The route module holds pairing state in module globals; import once and
 // reset between tests via the exported test hook.
@@ -370,6 +371,45 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
       error: "Invalid pairing code",
       code: "PAIRING_INVALID",
     });
+  });
+
+  it("mints distinct USER identities for explicitly guest-paired devices", async () => {
+    const pairGuest = async () => {
+      const pairing = await fetchPairCode();
+      const paired = await request(harness.baseUrl, {
+        method: "POST",
+        path: "/api/auth/pair",
+        body: { ...pairing, access: "guest" },
+      });
+      expect(paired.status).toBe(200);
+      expect(paired.json).toMatchObject({
+        access: "guest",
+        identityId: expect.any(String),
+        token: expect.any(String),
+      });
+      return paired.json as { identityId: string; token: string };
+    };
+
+    const first = await pairGuest();
+    const second = await pairGuest();
+    expect(second.identityId).not.toBe(first.identityId);
+
+    for (const paired of [first, second]) {
+      await expect(
+        harness.store.findIdentity(paired.identityId),
+      ).resolves.toMatchObject({
+        id: paired.identityId,
+        kind: "machine",
+        displayName: "paired-guest-device",
+      });
+      await expect(
+        resolveSessionTokenRole(paired.token, { store: harness.store }),
+      ).resolves.toMatchObject({
+        ok: true,
+        role: "USER",
+        identityId: paired.identityId,
+      });
+    }
   });
 
   it("rate-limits repeated pairing attempts from the same client IP", async () => {

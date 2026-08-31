@@ -350,6 +350,18 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
   it("requires verified identity plus an exact active household grant", async () => {
     const service = createAgreementKnowledgeService(runtime);
+    await service.pin({
+      artifactId: artifact.id,
+      targetType: "chat",
+      targetId: "family-chat",
+      pinnedByEntityId: SELF_ENTITY_ID,
+    });
+    await expect(
+      service.activePinnedContextForPrincipal({
+        principalEntityId: "verified-co-parent",
+        roomId: "family-chat",
+      }),
+    ).resolves.toEqual([]);
     const unverifiedGrant = await household.issueGrant({
       principalEntityId: "unverified-guest",
       role: "caregiver",
@@ -433,6 +445,11 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     ]) {
       expect(guestView.obligations[0]).not.toHaveProperty(forbidden);
     }
+    const guestPinned = await service.activePinnedContextForPrincipal({
+      principalEntityId: "verified-co-parent",
+      roomId: "family-chat",
+    });
+    expect(guestPinned).toEqual([guestView]);
 
     const restartedService = createAgreementKnowledgeService(runtime);
     await expect(
@@ -453,6 +470,12 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         principalEntityId: "verified-co-parent",
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+    await expect(
+      restartedService.activePinnedContextForPrincipal({
+        principalEntityId: "verified-co-parent",
+        roomId: "family-chat",
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("fails closed after household-grant revocation or expiry", async () => {

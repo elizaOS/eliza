@@ -1135,6 +1135,70 @@ export class AgreementKnowledgeService {
     return views;
   }
 
+  /**
+   * Resolve active pins through the requesting principal's current resource
+   * grants. Owner callers retain the complete owner view; guests receive only
+   * the safe projection from `readFor`, and a pin never turns a denial into
+   * access.
+   */
+  async activePinnedContextForPrincipal(input: {
+    principalEntityId: string;
+    roomId?: string;
+    at?: Date;
+  }): Promise<Array<ParentingAgreementView | ParentingAgreementGuestView>> {
+    const principalEntityId = normalizeHouseholdIdentifier(
+      input.principalEntityId,
+      "principalEntityId",
+    );
+    if (principalEntityId === SELF_ENTITY_ID) {
+      return this.activePinnedContext({
+        ownerEntityId: SELF_ENTITY_ID,
+        ...(input.roomId ? { roomId: input.roomId } : {}),
+      });
+    }
+    const targets: Array<{
+      targetType: KnowledgePinTargetType;
+      targetId: string;
+    }> = [{ targetType: "agent", targetId: this.deps.agentId }];
+    if (input.roomId) {
+      targets.push({
+        targetType: "chat",
+        targetId: normalizeHouseholdIdentifier(input.roomId, "roomId"),
+      });
+    }
+    const pins = await this.deps.repository.listActivePinsForTargets(targets);
+    const artifactIds = [...new Set(pins.map((pin) => pin.artifactId))];
+    const views: ParentingAgreementGuestView[] = [];
+    for (const artifactId of artifactIds) {
+      try {
+        const view = await this.readFor({
+          artifactId,
+          principalEntityId,
+          ...(input.at ? { at: input.at } : {}),
+        });
+        if ("contentSha256" in view.artifact) {
+          throw new AgreementKnowledgeError(
+            "Guest pin projection unexpectedly resolved owner knowledge",
+            "AGREEMENT_ACCESS_DENIED",
+            { artifactId, principalEntityId },
+          );
+        }
+        views.push(view);
+      } catch (error) {
+        if (
+          error instanceof AgreementKnowledgeError &&
+          error.code === "AGREEMENT_ACCESS_DENIED"
+        ) {
+          // error-policy:J4 A pin is discovery metadata, never authorization.
+          // Omit an inaccessible artifact while independently evaluating peers.
+          continue;
+        }
+        throw error;
+      }
+    }
+    return views;
+  }
+
   async grantGuestRead(input: {
     artifactId: string;
     principalEntityId: string;

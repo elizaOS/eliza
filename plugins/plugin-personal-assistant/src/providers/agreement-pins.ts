@@ -4,6 +4,7 @@
  * participate in guest authorization or widen a resource grant.
  */
 
+import { hasOwnerAccess } from "@elizaos/agent";
 import type { Memory, Provider } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { getAgreementKnowledgeService } from "../lifeops/household/agreement-knowledge.js";
@@ -23,8 +24,13 @@ export const agreementPinsProvider: Provider = {
     if (!service) {
       return { text: "", values: { agreementPinCount: 0 }, data: {} };
     }
-    const views = await service.activePinnedContext({
-      ownerEntityId: SELF_ENTITY_ID,
+    const owner = await hasOwnerAccess(runtime, message);
+    const principalEntityId = owner ? SELF_ENTITY_ID : message.entityId;
+    if (typeof principalEntityId !== "string" || !principalEntityId.trim()) {
+      return { text: "", values: { agreementPinCount: 0 }, data: {} };
+    }
+    const views = await service.activePinnedContextForPrincipal({
+      principalEntityId,
       roomId: typeof message.roomId === "string" ? message.roomId : undefined,
     });
     if (views.length === 0) {
@@ -38,7 +44,11 @@ export const agreementPinsProvider: Provider = {
               `- ${obligation.title}: ${obligation.obligationText} (source pages ${obligation.pageStart}-${obligation.pageEnd}; reviewed citation: ${obligation.citationText})`,
           )
           .join("\n");
-        return `Pinned parenting agreement: ${view.artifact.title}, immutable version ${view.artifact.version}, SHA-256 ${view.artifact.contentSha256}\n${obligations}`;
+        const ownerDigest =
+          "contentSha256" in view.artifact
+            ? `, SHA-256 ${view.artifact.contentSha256}`
+            : "";
+        return `Pinned parenting agreement: ${view.artifact.title}, immutable version ${view.artifact.version}${ownerDigest}\n${obligations}`;
       })
       .join("\n\n");
     return {

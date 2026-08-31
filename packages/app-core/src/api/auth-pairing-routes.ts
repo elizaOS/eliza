@@ -206,9 +206,15 @@ function rateLimitPairing(ip: string | null): boolean {
 // ---------------------------------------------------------------------------
 
 const PAIRED_DEVICE_IDENTITY_DISPLAY_NAME = "paired-device";
+const PAIRED_GUEST_IDENTITY_DISPLAY_NAME = "paired-guest-device";
+
+type PairingAccess = "owner" | "guest";
 
 /**
- * Resolve an identity id to bind a paired-device machine session to:
+ * Resolve an identity id to bind a paired-device machine session to. Owner
+ * pairing preserves the established operator flow; explicit guest pairing
+ * always creates a distinct machine identity so devices can be independently
+ * bound, revoked, and audited:
  *   1. existing owner identity (typical password-configured deployments).
  *   2. existing `paired-device` machine identity (idempotent on repeat pair).
  *   3. otherwise create a fresh `paired-device` machine identity.
@@ -219,7 +225,21 @@ const PAIRED_DEVICE_IDENTITY_DISPLAY_NAME = "paired-device";
  */
 async function ensurePairedDeviceIdentityId(
   store: import("../services/auth-store").AuthStore,
+  access: PairingAccess,
 ): Promise<string> {
+  if (access === "guest") {
+    const id = crypto.randomUUID();
+    await store.createIdentity({
+      id,
+      kind: "machine",
+      displayName: PAIRED_GUEST_IDENTITY_DISPLAY_NAME,
+      createdAt: Date.now(),
+      passwordHash: null,
+      cloudUserId: null,
+    });
+    return id;
+  }
+
   const owner = (await store.listIdentitiesByKind("owner"))[0];
   if (owner) return owner.id;
 
@@ -417,6 +437,21 @@ export async function handleAuthPairingCompatRoutes(
     const provided = normalizePairingCode(
       typeof body.code === "string" ? body.code : "",
     );
+    if (
+      body.access !== undefined &&
+      body.access !== "owner" &&
+      body.access !== "guest"
+    ) {
+      sendPairingError(
+        res,
+        400,
+        AUTH_PAIRING_ERROR_CODES.invalid,
+        "Pairing access must be owner or guest",
+      );
+      return true;
+    }
+    const requestedAccess: PairingAccess =
+      body.access === "guest" ? "guest" : "owner";
     const current = pairingCode ?? ensurePairingCode();
     if (current && Date.now() > pairingExpiresAt) {
       pairingCode = null;
@@ -479,7 +514,10 @@ export async function handleAuthPairingCompatRoutes(
       const store = new AuthStore(
         db as ConstructorParameters<typeof AuthStore>[0],
       );
-      const identityId = await ensurePairedDeviceIdentityId(store);
+      const identityId = await ensurePairedDeviceIdentityId(
+        store,
+        requestedAccess,
+      );
       const { session } = await createMachineSession(store, {
         identityId,
         scopes: [],
@@ -489,6 +527,8 @@ export async function handleAuthPairingCompatRoutes(
       sendJsonResponse(res, 200, {
         token: session.id,
         instanceId: pairingInstanceId,
+        identityId,
+        access: requestedAccess,
       });
       return true;
     } catch (err) {

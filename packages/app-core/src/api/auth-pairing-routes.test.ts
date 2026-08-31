@@ -3,8 +3,9 @@
  * (`GET /api/auth/pair-code`, `POST /api/auth/pair`): the pair code is visible
  * only to trusted-loopback callers, a successful remote pair mints a revocable
  * machine session (returning the session id, never the static API token) and
- * reuses an existing owner identity when present, and the flow stays dark when
- * pairing is disabled. Harness mocks core logger/`stringToUuid`, the agent
+ * reuses an existing owner identity when present, creates unique machine
+ * identities for explicit guest access, and stays dark when pairing is
+ * disabled. Harness mocks core logger/`stringToUuid`, the agent
  * config loader, shared loopback/token helpers, the `auth` module overrides,
  * the session and `AuthStore` layers, and first-run provisioning; drives
  * synthetic Node http request/response objects.
@@ -546,6 +547,56 @@ describe("auth pairing pair-code route", () => {
     expect(authStoreMocks.createIdentity).not.toHaveBeenCalled();
     expect(sessionMocks.createMachineSession.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({ identityId: "owner-id" }),
+    );
+  });
+
+  it("creates a fresh machine identity for an explicitly guest-paired device", async () => {
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    sessionMocks.createMachineSession.mockClear();
+    authStoreMocks.createIdentity.mockClear();
+    authStoreMocks.listIdentitiesByKind.mockClear();
+
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/pair-code",
+        ip: "127.0.0.1",
+        host: "localhost:2138",
+      }),
+      fakeRes().res,
+      STATE_WITH_DB,
+    );
+
+    const remote = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (remote as unknown as { body: unknown }).body = {
+      code: "AAAA-AAAA-AAAA",
+      instanceId: ensureAuthPairingCodeForRemoteAccess()?.instanceId,
+      access: "guest",
+    };
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
+
+    expect(res.status()).toBe(200);
+    expect(res.body()).toMatchObject({
+      token: "test-machine-session-id",
+      identityId: expect.any(String),
+      access: "guest",
+    });
+    expect(authStoreMocks.listIdentitiesByKind).not.toHaveBeenCalled();
+    expect(authStoreMocks.createIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "machine",
+        displayName: "paired-guest-device",
+      }),
+    );
+    const identityId = (res.body() as { identityId: string }).identityId;
+    expect(sessionMocks.createMachineSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ identityId }),
     );
   });
 
