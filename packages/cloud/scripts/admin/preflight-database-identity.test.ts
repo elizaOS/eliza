@@ -449,7 +449,7 @@ describe("standalone database identity reporter", () => {
     expect(publishCalls).toBe(0);
     expect(listenerCountDuringConnect).toBe(initialListenerCount + 1);
     expect(listenerCountDuringQuery).toBe(initialListenerCount + 1);
-    expect(eventClient.listenerCount("error")).toBe(initialListenerCount);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount + 1);
     expect(diagnostics).toEqual([
       "::warning::database identity report unavailable; category=database_connection_failed\n",
     ]);
@@ -492,12 +492,88 @@ describe("standalone database identity reporter", () => {
     expect(existingListenerCalls).toBe(2);
     expect(listenerCountDuringEnd).toBe(initialListenerCount + 1);
     expect(listenerCountAfterFirstEndEvent).toBe(initialListenerCount + 1);
-    expect(eventClient.listenerCount("error")).toBe(initialListenerCount);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount + 1);
     expect(diagnostics).toEqual([
       "::warning::database identity report unavailable; category=database_connection_failed\n",
     ]);
     expect(diagnostics.join("")).not.toContain(sentinel);
     eventClient.off("error", existingListener);
+  });
+
+  test("client error events queued after close remain bounded before publication", async () => {
+    const diagnostics: string[] = [];
+    const sentinel = "SENSITIVE_DB_EVENT_DETAIL_AFTER_TEARDOWN";
+    let lateEventEmitted = false;
+    let publishCalls = 0;
+    const eventClient = runtimeClient({
+      end: async (events) => {
+        setImmediate(() => {
+          lateEventEmitted = events.emit("error", new Error(sentinel));
+        });
+      },
+    });
+    const initialListenerCount = eventClient.listenerCount("error");
+
+    const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      probeDependencies: noDependencyProbe,
+      createClient: async () => eventClient,
+      publishResult: async () => {
+        publishCalls += 1;
+      },
+      writeStdout: (message) => diagnostics.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(lateEventEmitted).toBe(true);
+    expect(publishCalls).toBe(0);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount + 1);
+    expect(diagnostics).toEqual([
+      "::warning::database identity report unavailable; category=database_connection_failed\n",
+    ]);
+    expect(diagnostics.join("")).not.toContain(sentinel);
+  });
+
+  test("client error events after publication fail the process boundary", async () => {
+    const diagnostics: string[] = [];
+    const sentinel = "SENSITIVE_DB_EVENT_DETAIL_AFTER_PUBLICATION";
+    let completeLateEvent = (): void => {};
+    const lateEvent = new Promise<void>((resolve) => {
+      completeLateEvent = resolve;
+    });
+    let processFailureCalls = 0;
+    let publishCalls = 0;
+    const eventClient = runtimeClient({
+      end: async (events) => {
+        setTimeout(() => {
+          events.emit("error", new Error(sentinel));
+          completeLateEvent();
+        }, 30);
+      },
+    });
+    const initialListenerCount = eventClient.listenerCount("error");
+
+    const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
+      probeDependencies: noDependencyProbe,
+      createClient: async () => eventClient,
+      markProcessFailure: () => {
+        processFailureCalls += 1;
+      },
+      publishResult: async () => {
+        publishCalls += 1;
+      },
+      writeStdout: (message) => diagnostics.push(message),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(publishCalls).toBe(1);
+    expect(processFailureCalls).toBe(0);
+    await lateEvent;
+    expect(processFailureCalls).toBe(1);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount + 1);
+    expect(diagnostics).toEqual([
+      "::warning::database identity report invalidated; category=database_connection_failed\n",
+    ]);
+    expect(diagnostics.join("")).not.toContain(sentinel);
   });
 
   test("a client close rejection fails report mode before publication", async () => {
@@ -522,7 +598,7 @@ describe("standalone database identity reporter", () => {
 
     expect(exitCode).toBe(1);
     expect(publishCalls).toBe(0);
-    expect(eventClient.listenerCount("error")).toBe(initialListenerCount);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount + 1);
     expect(diagnostics).toEqual([
       "::warning::database identity report unavailable; category=database_connection_failed\n",
     ]);
@@ -570,7 +646,7 @@ describe("standalone database identity reporter", () => {
     expect((failure as Error).message).toBe("database_identity_client_error");
     expect((failure as Error).message).not.toContain(sentinel);
     expect(publishCalls).toBe(0);
-    expect(eventClient.listenerCount("error")).toBe(initialListenerCount);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount + 1);
   });
 
   test("a client close rejection preserves an earlier query failure", async () => {
@@ -608,7 +684,7 @@ describe("standalone database identity reporter", () => {
     expect(publishedStatus).not.toContain(querySentinel);
     expect(publishedStatus).not.toContain(closeSentinel);
     expect(diagnostics).toEqual([]);
-    expect(eventClient.listenerCount("error")).toBe(initialListenerCount);
+    expect(eventClient.listenerCount("error")).toBe(initialListenerCount + 1);
   });
 
   test("an unavailable query status is nonzero without leaking its cause", async () => {

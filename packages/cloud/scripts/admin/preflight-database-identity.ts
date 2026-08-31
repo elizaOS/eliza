@@ -35,6 +35,7 @@ export interface RuntimePgClient extends IdentityQueryClient {
 
 export interface DatabaseIdentityReporterDependencies {
   createClient?: (databaseUrl: string) => Promise<RuntimePgClient>;
+  markProcessFailure?: () => void;
   probeDependencies?: typeof probeDatabaseIdentityDependencies;
   publishResult?: typeof publishDatabaseIdentityResult;
   writeStdout?: (message: string) => void;
@@ -381,6 +382,11 @@ export async function runDatabaseIdentityReporter(
   const writeStdout =
     dependencies.writeStdout ??
     ((message: string) => process.stdout.write(message));
+  const markProcessFailure =
+    dependencies.markProcessFailure ??
+    (() => {
+      process.exitCode = 1;
+    });
   const config = readDatabaseIdentityConfig(environment);
   if (config.mode === "off") {
     writeStdout(
@@ -401,10 +407,18 @@ export async function runDatabaseIdentityReporter(
     );
   }
   let client: RuntimePgClient | undefined;
-  let clientErrorListenerAttached = false;
   let clientErrorObserved = false;
+  let lateClientErrorReported = false;
+  let reporterSettled = false;
   const recordClientError = (): void => {
     clientErrorObserved = true;
+    if (reporterSettled && !lateClientErrorReported) {
+      lateClientErrorReported = true;
+      markProcessFailure();
+      writeStdout(
+        "::warning::database identity report invalidated; category=database_connection_failed\n",
+      );
+    }
   };
   let failure: unknown;
   let failed = false;
@@ -413,7 +427,6 @@ export async function runDatabaseIdentityReporter(
     await probeDependencies();
     client = await createClient(databaseUrl);
     client.on("error", recordClientError);
-    clientErrorListenerAttached = true;
     await client.connect();
     result = await runDatabaseIdentityPreflight(config, client);
   } catch (error) {
@@ -433,18 +446,13 @@ export async function runDatabaseIdentityReporter(
           failed = true;
           failure = new DatabaseIdentityClientEventError();
         }
-      } finally {
-        if (clientErrorListenerAttached) {
-          try {
-            client.off("error", recordClientError);
-          } catch {
-            // error-policy:J6 listener cleanup is best-effort after client close.
-            process.stderr.write(
-              "[database-identity] warning: database client error listener cleanup failed\n",
-            );
-          }
-        }
       }
+
+      // error-policy:J1 pg can enqueue an error after end() resolves. Drain the
+      // already-queued turn before publication, then deliberately retain this
+      // value-discarding listener for the short-lived reporter process so a
+      // still-later EventEmitter error cannot surface raw provider details.
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
 
@@ -459,6 +467,14 @@ export async function runDatabaseIdentityReporter(
       failed = true;
       failure = error;
     }
+  }
+  // No asynchronous work occurs between this transition and the final error
+  // check. Earlier client errors are reflected in the returned status; any
+  // later event uses the retained listener to make the process fail closed.
+  reporterSettled = true;
+  if (clientErrorObserved) {
+    failed = true;
+    failure = new DatabaseIdentityClientEventError();
   }
   if (failed) {
     // error-policy:J1 the CLI boundary emits only a generic class so provider
@@ -489,7 +505,9 @@ async function main(): Promise<number> {
 if (import.meta.main) {
   main().then(
     (exitCode) => {
-      process.exitCode = exitCode;
+      if (process.exitCode == null || process.exitCode === 0) {
+        process.exitCode = exitCode;
+      }
     },
     (error) => {
       process.stderr.write(
