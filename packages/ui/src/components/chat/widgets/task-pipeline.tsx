@@ -7,9 +7,11 @@
  * from `task-activity-store`; these components only render it — no fetching.
  */
 
-import type {
-  SwarmActivityPlanEntry,
-  SwarmActivityStatus,
+import {
+  type SwarmActivityPlanEntry,
+  type SwarmActivityStatus,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   CircleAlert,
@@ -229,7 +231,7 @@ export function SubagentBlock({ agent }: { agent: SubagentActivity }) {
       <div className="flex items-center gap-2">
         <StatusDot status={agent.status} />
         <span className="truncate text-sm font-medium text-txt">
-          {agent.label ?? agent.sessionId.slice(0, 8)}
+          {agent.label ?? truncateWellFormed(toWellFormedUnicode(agent.sessionId), 8)}
         </span>
         <span className={`text-xs ${STATUS_TONE[agent.status]}`}>
           {STATUS_LABEL[agent.status]}
