@@ -280,6 +280,7 @@ export class SubscriptionFundingService {
     let purchasedMutation = false;
     const result = await writeTransaction(async (tx) => {
       await lockOrganization(tx, input.organizationId);
+      const now = await readPostLockDatabaseNow(tx);
       const reservation = await findReservation(tx, input.organizationId, input.logicalOperationId);
       if (reservation.funding_class !== SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation]) {
         fundingError(
@@ -355,7 +356,7 @@ export class SubscriptionFundingService {
         purchasedCreditSettlementTransactionId:
           terminalInput.purchasedCreditSettlementTransactionId,
         purchasedCreditRefundTransactionId: refundId,
-        databaseNow: new Date(),
+        databaseNow: now,
       });
       return { reservation: terminal.reservation, replayed: terminal.replayed };
     });

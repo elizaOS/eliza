@@ -475,6 +475,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     );
 
     const locker = await connect();
+    setSystemTime(new Date("2040-01-01T00:00:00.000Z"));
     try {
       await locker.query("BEGIN");
       await locker.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [PURCHASED_ORG]);
@@ -513,7 +514,14 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       expect(allocation.rows).toEqual([
         { finalized_amount: "1.000000", released_amount: "0.000000" },
       ]);
+      const stamp = await setupClient!.query<{ skewed: boolean }>(
+        `SELECT finalized_at > clock_timestamp() + interval '1 year' AS skewed
+         FROM billing_funding_reservations WHERE id=$1`,
+        [reservationId],
+      );
+      expect(stamp.rows).toEqual([{ skewed: false }]);
     } finally {
+      setSystemTime();
       await locker.query("ROLLBACK");
       await locker.end();
     }
