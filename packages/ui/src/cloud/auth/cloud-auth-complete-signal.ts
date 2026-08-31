@@ -74,6 +74,7 @@ export function hasCloudAuthCompleted(sessionId: string): boolean {
     const completedAt = Number(window.localStorage.getItem(key));
     if (
       !Number.isFinite(completedAt) ||
+      completedAt > Date.now() ||
       Date.now() - completedAt > CLOUD_AUTH_COMPLETE_TTL_MS
     ) {
       window.localStorage.removeItem(key);

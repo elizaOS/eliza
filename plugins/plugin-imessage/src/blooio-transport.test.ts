@@ -45,6 +45,11 @@ describe("Blooio iMessage transport", () => {
     expect(verifyBlooioSignature(SECRET, sign(body).replace(",", ", "), body, NOW)).toBe(true);
     expect(verifyBlooioSignature(SECRET, sign(body), `${body} `, NOW)).toBe(false);
     expect(verifyBlooioSignature(SECRET, sign(body, NOW - 301), body, NOW)).toBe(false);
+    expect(verifyBlooioSignature(SECRET, sign(body, NOW + 301), body, NOW)).toBe(false);
+    expect(verifyBlooioSignature(SECRET, `t=not-a-number,v1=${"a".repeat(64)}`, body, NOW)).toBe(
+      false
+    );
+    expect(verifyBlooioSignature(SECRET, `t=${NOW},v1=abc`, body, NOW)).toBe(false);
   });
 
   it("dispatches only the configured channel and retains trusted Blooio media", () => {
@@ -55,6 +60,20 @@ describe("Blooio iMessage transport", () => {
       channelId: "ch_bettina",
       mediaUrls: ["https://media.blooio.com/a.jpg"],
     });
+  });
+
+  it("rejects insecure and suffix-confusable media origins", () => {
+    const body = JSON.parse(envelope()) as {
+      data: { attachments: string[] };
+    };
+    body.data.attachments = [
+      "http://media.blooio.com/insecure.jpg",
+      "https://notblooio.com/confusable.jpg",
+      "https://media.blooio.com/trusted.jpg",
+    ];
+    expect(parseBlooioInbound(JSON.stringify(body), "ch_bettina")?.mediaUrls).toEqual([
+      "https://media.blooio.com/trusted.jpg",
+    ]);
   });
 
   it("sends through v4 with the selected channel and requires a receipt", async () => {
@@ -81,6 +100,29 @@ describe("Blooio iMessage transport", () => {
         body: JSON.stringify({ to: "+15551234567", from: "ch_bettina", text: "reply" }),
       })
     );
+  });
+
+  it("rejects provider errors and successful responses without a message receipt", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("provider unavailable", { status: 503 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const input = {
+      apiKey: "api_test",
+      from: "ch_bettina",
+      to: "+15551234567",
+      text: "reply",
+      idempotencyKey: "reply-msg-1",
+    };
+    await expect(sendBlooioMessage(input)).resolves.toEqual({
+      success: false,
+      error: "Blooio rejected delivery (503)",
+    });
+    await expect(sendBlooioMessage(input)).resolves.toEqual({
+      success: false,
+      error: "Blooio accepted delivery without a message id",
+    });
   });
 
   it("replies to v4 groups through their chat resource", async () => {

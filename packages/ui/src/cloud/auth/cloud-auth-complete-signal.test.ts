@@ -91,4 +91,17 @@ describe("publish / subscribe", () => {
     publishCloudAuthComplete("sess-one");
     expect(hasCloudAuthCompleted("sess-two")).toBe(false);
   });
+
+  it("removes a completion marker dated in the future", () => {
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    window.localStorage.setItem(
+      "eliza-cloud-auth-complete:sess-future",
+      String(now + 1),
+    );
+    expect(hasCloudAuthCompleted("sess-future")).toBe(false);
+    expect(
+      window.localStorage.getItem("eliza-cloud-auth-complete:sess-future"),
+    ).toBeNull();
+  });
 });
