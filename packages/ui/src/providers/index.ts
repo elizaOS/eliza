@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /** Provider logo mapping — maps AI provider IDs to their logo image paths. */
 
 export {
@@ -147,7 +148,7 @@ export function getProviderLogo(
  * Creates a colored square with the provider's initials
  */
 function generateFallbackLogo(providerId: string): string {
-  const initials = providerId.slice(0, 2).toUpperCase();
+  const initials = truncateWellFormed(toWellFormedUnicode(providerId), 2).toUpperCase();
   const colors = ["3b82f6", "ef4444", "10b981", "f59e0b", "8b5cf6", "ec4899"];
   const colorIndex = providerId.charCodeAt(0) % colors.length;
   const bgColor = colors[colorIndex];

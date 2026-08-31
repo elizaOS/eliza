@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Hosted public page for an app credit-charge request. Reads the charge +
  * owning app from /api/v1/apps/:appId/charges/:chargeId, then begins a
@@ -325,7 +326,7 @@ export default function AppChargePaymentPage() {
                 />
               ) : (
                 <div className="flex size-12 shrink-0 items-center justify-center border border-border bg-bg-elevated text-sm font-semibold text-muted">
-                  {details.app.name.slice(0, 2).toUpperCase()}
+                  {truncateWellFormed(toWellFormedUnicode(details.app.name), 2).toUpperCase()}
                 </div>
               )}
               <div className="min-w-0">
