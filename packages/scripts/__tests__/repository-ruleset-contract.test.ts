@@ -313,6 +313,28 @@ function manifestPath(name: "develop" | "main"): string {
   );
 }
 
+function runManifestCheck(
+  manifest: Record<string, any>,
+  actual: Record<string, any>,
+): ReturnType<typeof runHelper> {
+  const root = mkdtempSync(join(tmpdir(), "ruleset-manifest-"));
+  const path = join(root, "manifest.json");
+  const id = 701;
+  writeFileSync(path, `${JSON.stringify(manifest)}\n`);
+  try {
+    return runHelper(
+      {
+        list: [listEntry(manifest, id)],
+        details: { [String(id)]: actual },
+        effective: effectiveEntries(manifest, id),
+      },
+      ["--manifest", path, "--check", "--repo", "test/repo"],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 describe("repository ruleset contract", () => {
   test("publishes one stable fail-closed aggregate for PR and merge candidates", () => {
     expect(admission.on.pull_request).toEqual({
@@ -631,6 +653,113 @@ describe("repository ruleset contract", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("ruleset readback passed: required-main");
     expect(result.stderr).toBe("");
+    expect(
+      result.requests.some((request) => request.method !== "GET"),
+    ).toBeFalse();
+  });
+
+  test("treats known set-like policy arrays as order-independent", () => {
+    const manifest = structuredClone(mainManifest);
+    manifest.conditions.ref_name.include.push("refs/heads/release-candidate");
+    manifest.bypass_actors = [
+      { actor_id: 2, actor_type: "Team", bypass_mode: "pull_request" },
+      { actor_id: 1, actor_type: "Team", bypass_mode: "pull_request" },
+    ];
+    const expectedPullRequest = manifest.rules.find(
+      (rule: Record<string, any>) => rule.type === "pull_request",
+    );
+    expectedPullRequest.parameters.dismissal_restriction = {
+      allowed_actors: [
+        { actor_id: 4, actor_type: "Team" },
+        { actor_id: 3, actor_type: "Team" },
+      ],
+      enabled: true,
+    };
+    expectedPullRequest.parameters.required_reviewers = [
+      {
+        file_patterns: ["packages/**", "scripts/**"],
+        minimum_approvals: 1,
+        reviewer: { id: 6, type: "Team" },
+      },
+      {
+        file_patterns: ["docs/**", ".github/**"],
+        minimum_approvals: 1,
+        reviewer: { id: 5, type: "Team" },
+      },
+    ];
+    const expectedStatusChecks = manifest.rules.find(
+      (rule: Record<string, any>) => rule.type === "required_status_checks",
+    );
+    expectedStatusChecks.parameters.required_status_checks.push({
+      context: "Typecheck",
+      integration_id: 15368,
+    });
+
+    const actual = materializedDetail(manifest, 701);
+    actual.conditions.ref_name.include.reverse();
+    actual.bypass_actors.reverse();
+    const pullRequest = actual.rules.find(
+      (rule: Record<string, any>) => rule.type === "pull_request",
+    );
+    pullRequest.parameters.allowed_merge_methods.reverse();
+    pullRequest.parameters.dismissal_restriction.allowed_actors.reverse();
+    pullRequest.parameters.required_reviewers.reverse();
+    for (const reviewer of pullRequest.parameters.required_reviewers) {
+      reviewer.file_patterns.reverse();
+    }
+    const statusChecks = actual.rules.find(
+      (rule: Record<string, any>) => rule.type === "required_status_checks",
+    );
+    statusChecks.parameters.required_status_checks.reverse();
+
+    const result = runManifestCheck(manifest, actual);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("ruleset readback passed: required-main");
+    expect(result.stderr).toBe("");
+    expect(
+      result.requests.some((request) => request.method !== "GET"),
+    ).toBeFalse();
+  });
+
+  test("keeps unknown policy arrays order-sensitive", () => {
+    const manifest = structuredClone(mainManifest);
+    const expectedPullRequest = manifest.rules.find(
+      (rule: Record<string, any>) => rule.type === "pull_request",
+    );
+    expectedPullRequest.parameters.future_ordered_policy = ["first", "second"];
+    const actual = materializedDetail(manifest, 701);
+    const pullRequest = actual.rules.find(
+      (rule: Record<string, any>) => rule.type === "pull_request",
+    );
+    pullRequest.parameters.future_ordered_policy.reverse();
+
+    const result = runManifestCheck(manifest, actual);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("repository ruleset drift detected");
+    expect(result.stderr).toContain("future_ordered_policy[0]");
+    expect(
+      result.requests.some((request) => request.method !== "GET"),
+    ).toBeFalse();
+  });
+
+  test("still detects membership drift in a known set-like policy array", () => {
+    const state = stateWithManifests();
+    const actual = structuredClone(state.details["101"]);
+    const pullRequest = actual.rules.find(
+      (rule: Record<string, any>) => rule.type === "pull_request",
+    );
+    pullRequest.parameters.allowed_merge_methods.push("merge");
+    state.details["101"] = actual;
+    const result = runHelper(state, [
+      "--manifest",
+      manifestPath("main"),
+      "--check",
+      "--repo",
+      "test/repo",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("repository ruleset drift detected");
+    expect(result.stderr).toContain("allowed_merge_methods.length");
     expect(
       result.requests.some((request) => request.method !== "GET"),
     ).toBeFalse();

@@ -90,9 +90,10 @@ and fails closed when any rule is attributed to a different repository or
 inherited ruleset, both before and immediately after an authorized apply. An
 active ruleset with no rules has no admission effect and is not reported by
 that API; same-name ambiguity is still rejected from the full ruleset list.
-Readback canonicalizes only GitHub's known materialized default forms; every
-non-default or unknown nested rule-policy field fails closed with redacted
-field paths.
+Readback canonicalizes only GitHub's known materialized default forms and
+known set-like policy arrays. Set membership still compares exactly, and order
+changes in unknown arrays plus every non-default or unknown nested rule-policy
+field fail closed with redacted field paths.
 
 `repository-ruleset-drift.yml` performs a read-only two-manifest semantic
 readback every six hours, by manual dispatch, and through the

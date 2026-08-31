@@ -299,24 +299,43 @@ const sortObjectKeys = (value) => {
       .map((key) => [key, sortObjectKeys(value[key])]),
   );
 };
+const sortSetLikeArray = (values) =>
+  values.map(sortObjectKeys).sort((left, right) => {
+    const leftKey = JSON.stringify(left);
+    const rightKey = JSON.stringify(right);
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
 const normalizeForComparison = (ruleset, expectedSide) => {
   const normalized = structuredClone(ruleset);
+  if (Array.isArray(normalized?.bypass_actors)) {
+    normalized.bypass_actors = sortSetLikeArray(normalized.bypass_actors);
+  }
+  const refNames = normalized?.conditions?.ref_name;
+  if (refNames && typeof refNames === "object" && !Array.isArray(refNames)) {
+    for (const key of ["include", "exclude"]) {
+      if (Array.isArray(refNames[key])) {
+        refNames[key] = sortSetLikeArray(refNames[key]);
+      }
+    }
+  }
   if (!Array.isArray(normalized?.rules)) return normalized;
   for (const rule of normalized.rules) {
     if (rule?.type === "required_status_checks") {
       const checks = rule.parameters?.required_status_checks;
       if (Array.isArray(checks)) {
-        rule.parameters.required_status_checks = checks.map((check) => {
-          if (!check || typeof check !== "object" || Array.isArray(check)) {
-            return check;
-          }
-          return {
-            ...check,
-            integration_id: Object.hasOwn(check, "integration_id")
-              ? check.integration_id
-              : null,
-          };
-        });
+        rule.parameters.required_status_checks = sortSetLikeArray(
+          checks.map((check) => {
+            if (!check || typeof check !== "object" || Array.isArray(check)) {
+              return check;
+            }
+            return {
+              ...check,
+              integration_id: Object.hasOwn(check, "integration_id")
+                ? check.integration_id
+                : null,
+            };
+          }),
+        );
       }
     }
     if (
@@ -338,6 +357,31 @@ const normalizeForComparison = (ruleset, expectedSide) => {
           parameters[key] = structuredClone(defaultValue);
         }
       }
+      if (Array.isArray(parameters.allowed_merge_methods)) {
+        parameters.allowed_merge_methods = sortSetLikeArray(
+          parameters.allowed_merge_methods,
+        );
+      }
+      if (Array.isArray(parameters.required_reviewers)) {
+        parameters.required_reviewers = sortSetLikeArray(
+          parameters.required_reviewers.map((reviewer) => {
+            if (
+              !reviewer ||
+              typeof reviewer !== "object" ||
+              Array.isArray(reviewer)
+            ) {
+              return reviewer;
+            }
+            const normalizedReviewer = { ...reviewer };
+            if (Array.isArray(normalizedReviewer.file_patterns)) {
+              normalizedReviewer.file_patterns = sortSetLikeArray(
+                normalizedReviewer.file_patterns,
+              );
+            }
+            return normalizedReviewer;
+          }),
+        );
+      }
       const restriction = parameters.dismissal_restriction;
       if (
         restriction &&
@@ -347,6 +391,16 @@ const normalizeForComparison = (ruleset, expectedSide) => {
         !Object.hasOwn(restriction, "allowed_actors")
       ) {
         restriction.allowed_actors = [];
+      }
+      if (
+        restriction &&
+        typeof restriction === "object" &&
+        !Array.isArray(restriction) &&
+        Array.isArray(restriction.allowed_actors)
+      ) {
+        restriction.allowed_actors = sortSetLikeArray(
+          restriction.allowed_actors,
+        );
       }
       // This response-only field is absent from the OpenAPI schema but is
       // materialized as true in current REST readback. Require that explicit
