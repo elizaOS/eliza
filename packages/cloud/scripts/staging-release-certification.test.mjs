@@ -418,6 +418,7 @@ describe("Cloud CF workflow staging certification gate", () => {
       "Protected recovery authority settings are incomplete",
     );
     expect(migrate).toContain("trap cleanup EXIT");
+    expect(migrate).toContain("shred -f -u --");
     expect(migrate).toContain("production_migration_ledger_not_current");
     expect(migrate).toContain('DATABASE_IDENTITY_GATE_MODE" = "enforce');
   });
