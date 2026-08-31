@@ -236,22 +236,27 @@ export class CloudBridgeService extends Service {
       parsed = JSON.parse(data);
     } catch (error) {
       // error-policy:J3 untrusted transport frame; an unparseable body is an
-      // explicit invalid result (dropped), never a fake-valid message.
+      // explicit invalid result (dropped), never a fake-valid message. The
+      // frame is peer-controlled and the connect URL carries `?token=<apiKey>`,
+      // so a proxy-injected error page echoing that URL must not reach a log:
+      // record the error name and byte length, never the raw bytes or the
+      // `SyntaxError` message (which itself quotes a slice of the input).
       logger.warn(
         `[CloudBridge] Ignoring malformed frame from ${containerId}: ${
-          error instanceof Error ? error.message : String(error)
-        } (raw preview: ${JSON.stringify(data.slice(0, 200))})`
+          error instanceof Error ? error.name : "ParseError"
+        } (${data.length} bytes)`
       );
       return null;
     }
 
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       // error-policy:J3 valid JSON that is not a JSON-RPC object cannot be
-      // dereferenced for `method`/`id`; treat it as an invalid frame.
+      // dereferenced for `method`/`id`; treat it as an invalid frame. Log the
+      // JSON shape and byte length only, never the peer-controlled bytes.
       logger.warn(
-        `[CloudBridge] Ignoring non-object frame from ${containerId}: ${JSON.stringify(
-          data.slice(0, 200)
-        )}`
+        `[CloudBridge] Ignoring non-object frame from ${containerId}: JSON ${
+          Array.isArray(parsed) ? "array" : typeof parsed
+        } (${data.length} bytes)`
       );
       return null;
     }
