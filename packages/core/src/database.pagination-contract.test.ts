@@ -71,6 +71,24 @@ describe("validateQueryEntitiesPagination", () => {
 		}
 	});
 
+	it("rejects non-safe integers but accepts the max safe integer", () => {
+		const unsafe = Number.MAX_SAFE_INTEGER + 1;
+		expect(() => validateQueryEntitiesPagination({ limit: unsafe })).toThrow(
+			new RangeError("queryEntities limit must be a non-negative safe integer"),
+		);
+		expect(() => validateQueryEntitiesPagination({ offset: unsafe })).toThrow(
+			new RangeError(
+				"queryEntities offset must be a non-negative safe integer",
+			),
+		);
+		expect(() =>
+			validateQueryEntitiesPagination({
+				limit: Number.MAX_SAFE_INTEGER,
+				offset: Number.MAX_SAFE_INTEGER,
+			}),
+		).not.toThrow();
+	});
+
 	it("does not confuse the queryEntities boundary with the getTasks boundary", () => {
 		expect(() => validateQueryEntitiesPagination({ limit: -1 })).toThrow(
 			/queryEntities/,
@@ -118,6 +136,22 @@ describe("validateTaskQueryPagination", () => {
 				/getTasks offset must be a non-negative safe integer/,
 			);
 		}
+	});
+
+	it("rejects non-safe integers but accepts the max safe integer", () => {
+		const unsafe = Number.MAX_SAFE_INTEGER + 1;
+		expect(() => validateTaskQueryPagination({ limit: unsafe })).toThrow(
+			new RangeError("getTasks limit must be a non-negative safe integer"),
+		);
+		expect(() => validateTaskQueryPagination({ offset: unsafe })).toThrow(
+			new RangeError("getTasks offset must be a non-negative safe integer"),
+		);
+		expect(() =>
+			validateTaskQueryPagination({
+				limit: Number.MAX_SAFE_INTEGER,
+				offset: Number.MAX_SAFE_INTEGER,
+			}),
+		).not.toThrow();
 	});
 
 	it("does not confuse the getTasks boundary with the queryEntities boundary", () => {
