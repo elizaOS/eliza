@@ -106,6 +106,24 @@ describe("school calendar pure contracts", () => {
     );
   });
 
+  it("discovers Finalsite resource-manager links by their declared PDF filename", () => {
+    const currentLandingMarkup = `<a
+      data-file-name="CPSCCRSD2026-2027SchoolCalendar.pdf"
+      data-resource-uuid="ed54b79f-c59a-4e94-b07d-1fa97013b17b"
+      href="/fs/resource-manager/view/ed54b79f-c59a-4e94-b07d-1fa97013b17b"
+      target="_blank">2026-2027 School Calendar</a>`;
+
+    expect(
+      discoverSchoolCalendarPdf(
+        currentLandingMarkup,
+        CONCORD_SCHOOL_CALENDAR_SOURCE.landingPageUrl,
+        CONCORD_SCHOOL_CALENDAR_SOURCE,
+      ),
+    ).toBe(
+      "https://www.concordps.org/fs/resource-manager/view/ed54b79f-c59a-4e94-b07d-1fa97013b17b",
+    );
+  });
+
   it("classifies semantic add, update, cancel, and unchanged", () => {
     const previous = [
       {

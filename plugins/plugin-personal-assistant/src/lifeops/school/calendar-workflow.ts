@@ -215,10 +215,23 @@ export function discoverSchoolCalendarPdf(
   config: SchoolCalendarSourceConfig,
 ): string {
   const pattern = new RegExp(config.pdfHrefPattern, "i");
-  const candidates = [...html.matchAll(/href\s*=\s*["']([^"']+)["']/giu)]
-    .map((match) => new URL(match[1] ?? "", finalLandingUrl).toString())
-    .filter((candidate) => pattern.test(candidate))
-    .map((candidate) => assertAllowedUrl(candidate, config).toString());
+  const candidates = [...html.matchAll(/<a\b[^>]*>/giu)]
+    .map((match) => match[0])
+    .flatMap((anchor) => {
+      const href = /\bhref\s*=\s*["']([^"']+)["']/iu.exec(anchor)?.[1];
+      const fileName = /\bdata-file-name\s*=\s*["']([^"']+)["']/iu.exec(
+        anchor,
+      )?.[1];
+      if (!href || (!pattern.test(href) && !pattern.test(fileName ?? ""))) {
+        return [];
+      }
+      return [
+        assertAllowedUrl(
+          new URL(href, finalLandingUrl).toString(),
+          config,
+        ).toString(),
+      ];
+    });
   const unique = [...new Set(candidates)];
   if (unique.length !== 1) {
     throw new SchoolCalendarWorkflowError(
