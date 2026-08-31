@@ -46,7 +46,10 @@ describe("Anthropic native text plumbing", () => {
     await expect(
       handleTextSmall(createRuntime(), { prompt: "complete this" })
     ).rejects.toMatchObject({
-      cause: expect.objectContaining({ code: "MODEL_OUTPUT_INCOMPLETE" }),
+      // assertModelOutputComplete throws a typed ElizaError, and
+      // formatModelError passes an ElizaError through unwrapped, so the code is
+      // on the error itself rather than nested under `cause`.
+      code: "MODEL_OUTPUT_INCOMPLETE",
     });
   }, 60_000);
 

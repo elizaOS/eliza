@@ -74,7 +74,9 @@ describe("Anthropic image description plumbing", () => {
 
     await expect(
       handleImageDescription(createRuntime(), "https://example.com/screen.png")
-    ).rejects.toMatchObject({ cause: { code: "MODEL_OUTPUT_INCOMPLETE" } });
+      // formatModelError returns a typed ElizaError unwrapped, so the code is
+      // on the error itself rather than nested under `cause`.
+    ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
   });
 
   it("rejects empty image URLs before calling the provider", async () => {
