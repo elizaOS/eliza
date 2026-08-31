@@ -1585,8 +1585,16 @@ function resolveBundledModelPaths(modelsDir: string): {
 /**
  * Per-modelType auto-load gate. We track which model role is currently
  * loaded so a chat handler doesn't try to swap-in the embedding model
- * (and vice versa) on every call. Promise-shaped so two concurrent
- * requests share the single load.
+ * (and vice versa) on every call.
+ *
+ * The fused loader owns ONE native context that holds ONE model at a time, so
+ * in-flight tracking MUST be role-aware (#30147): a load for role A can never
+ * satisfy a request for role B. `inflightByRole` dedups concurrent same-role
+ * requests onto one load, while a different-role request waits behind the
+ * in-flight swap (`loadChain`) and then loads its own model. A single shared
+ * `inflight` promise would let a chat request piggyback on an embedding load
+ * (or vice versa) whenever no model was resident — fresh boot or after any
+ * `markEvicted()` — and then run its native call against the wrong GGUF.
  */
 type LoadedRole = "chat" | "embedding" | null;
 function makeLoaderLifecycle(loader: AospLoader): {
@@ -1595,12 +1603,18 @@ function makeLoaderLifecycle(loader: AospLoader): {
   markEvicted(): void;
 } {
   let currentRole: LoadedRole = null;
-  let inflight: Promise<void> | null = null;
+  // In-flight loads keyed by role. A pending entry dedups concurrent requests
+  // for the SAME role; a request for the OTHER role never adopts this promise.
+  const inflightByRole = new Map<"chat" | "embedding", Promise<void>>();
+  // Serializes swaps on the single native context: each load waits for any
+  // currently in-flight load (of either role) to settle before it touches the
+  // loader, so two model swaps never interleave.
+  let loadChain: Promise<void> = Promise.resolve();
   const modelsDir = resolveBundledModelsDir();
   let resolved = resolveBundledModelPaths(modelsDir);
-  async function loadRole(role: "chat" | "embedding"): Promise<void> {
-    if (currentRole === role) return;
-    if (inflight) return inflight;
+  async function resolveRoleTarget(
+    role: "chat" | "embedding",
+  ): Promise<string> {
     let target = role === "chat" ? resolved.chat : resolved.embedding;
     if (!target) {
       // The models dir is empty at first boot, so the lifecycle's initial
@@ -1630,50 +1644,72 @@ function makeLoaderLifecycle(loader: AospLoader): {
         resolved.embedding = target;
       }
     }
-    inflight = (async () => {
-      writeAospLlamaDebugLog("bootstrap:loadRole:start", {
-        role,
-        model: path.basename(target),
-      });
-      logger.info(
-        `[aosp-local-inference] Loading bundled ${role} model: ${path.basename(target)}`,
-      );
-      try {
-        await loader.loadModel(buildAospLoadModelArgs(role, target));
-        currentRole = role;
-        writeAospActiveModelState({
-          status: "ready",
-          role,
-          provider: PROVIDER,
-          path: target,
-          loadedAt: new Date().toISOString(),
-        });
-      } catch (err) {
-        // error-policy:J2 context-adding rethrow — record the per-role load failure
-        // in the status sidecar (observable), then rethrow; the role is not marked
-        // ready.
-        writeAospActiveModelState({
-          status: "error",
-          role,
-          provider: PROVIDER,
-          path: target,
-          error: err instanceof Error ? err.message : String(err),
-          updatedAt: new Date().toISOString(),
-        });
-        throw err;
-      }
-      writeAospLlamaDebugLog("bootstrap:loadRole:done", {
-        role,
-        model: path.basename(target),
-      });
-      logger.info(
-        `[aosp-local-inference] Loaded ${role} model (path=${target})`,
-      );
-    })();
+    return target;
+  }
+  async function performRoleLoad(role: "chat" | "embedding"): Promise<void> {
+    const target = await resolveRoleTarget(role);
+    writeAospLlamaDebugLog("bootstrap:loadRole:start", {
+      role,
+      model: path.basename(target),
+    });
+    logger.info(
+      `[aosp-local-inference] Loading bundled ${role} model: ${path.basename(target)}`,
+    );
     try {
-      await inflight;
+      await loader.loadModel(buildAospLoadModelArgs(role, target));
+      currentRole = role;
+      writeAospActiveModelState({
+        status: "ready",
+        role,
+        provider: PROVIDER,
+        path: target,
+        loadedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      // error-policy:J2 context-adding rethrow — record the per-role load failure
+      // in the status sidecar (observable), then rethrow; the role is not marked
+      // ready.
+      writeAospActiveModelState({
+        status: "error",
+        role,
+        provider: PROVIDER,
+        path: target,
+        error: err instanceof Error ? err.message : String(err),
+        updatedAt: new Date().toISOString(),
+      });
+      throw err;
+    }
+    writeAospLlamaDebugLog("bootstrap:loadRole:done", {
+      role,
+      model: path.basename(target),
+    });
+    logger.info(`[aosp-local-inference] Loaded ${role} model (path=${target})`);
+  }
+  async function loadRole(role: "chat" | "embedding"): Promise<void> {
+    if (currentRole === role) return;
+    const existing = inflightByRole.get(role);
+    if (existing) return existing;
+    // Chain behind any in-flight load so the single native context is swapped
+    // one model at a time. A cross-role request must NOT piggyback on the other
+    // role's promise (#30147) — it waits for that swap, then loads its own
+    // model against the freshly-resident context.
+    const prior = loadChain;
+    const load = (async () => {
+      // Wait for the in-flight load (of either role) to settle. Its failure is
+      // that request's concern; this role still needs its own model, so we do
+      // not adopt the prior error.
+      await prior.catch(() => {});
+      // A concurrent request for THIS role may have completed the load while we
+      // waited behind the other role's swap.
+      if (currentRole === role) return;
+      await performRoleLoad(role);
+    })();
+    inflightByRole.set(role, load);
+    loadChain = load.catch(() => {});
+    try {
+      await load;
     } finally {
-      inflight = null;
+      inflightByRole.delete(role);
     }
   }
   return {
