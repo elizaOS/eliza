@@ -90,8 +90,18 @@ describe("CloudBridgeService malformed-frame resilience (real undici WebSocket)"
     expect(service.getConnectionState("container-1")).toBe("connected");
   });
 
-  it("drops a valid-JSON but non-object frame without dereferencing method/id", async () => {
+  it("drops a valid-JSON but non-object frame without dispatching it to handlers", async () => {
     await connect("container-2");
+
+    // A registered handler must never see a non-object frame. Pre-fix, `42`
+    // and the array fell through to this dispatch typed as BridgeMessage; the
+    // guard's `typeof !== "object" || null || Array.isArray` branch is what
+    // this assertion locks (the valid response below resolves the pending
+    // request and returns before handler dispatch, so it is never delivered).
+    const received: unknown[] = [];
+    service.onMessage("container-2", (message) => {
+      received.push(message);
+    });
 
     const pending = service.sendRequest("container-2", "status.get", {});
     // `42` and `[...]` are valid JSON but not JSON-RPC objects.
@@ -102,6 +112,7 @@ describe("CloudBridgeService malformed-frame resilience (real undici WebSocket)"
     await expect(pending).resolves.toEqual({ survived: true });
     await new Promise((r) => setTimeout(r, 50));
     expect(uncaughtErrors).toEqual([]);
+    expect(received).toEqual([]);
     expect(service.getConnectionState("container-2")).toBe("connected");
   });
 });
