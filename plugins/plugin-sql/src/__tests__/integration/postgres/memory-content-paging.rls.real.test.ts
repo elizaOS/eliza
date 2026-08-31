@@ -1,10 +1,12 @@
 /** Real PostgreSQL/RLS proof for authorized legacy-content reindex (#25140). */
 import type { Memory, UUID } from "@elizaos/core";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PgDatabaseAdapter } from "../../../pg/adapter";
 import { PostgresConnectionManager } from "../../../pg/manager";
+import { reindexMemoryContent as reindexMemoryContentInTransaction } from "../../../stores/memoryTextSegments.store";
 import { bootstrapPostgresRlsSchema, toPostgresSuperuserUrl } from "./rls-test-helpers";
 
 describe.skipIf(!process.env.POSTGRES_URL)("memory content paging PostgreSQL RLS", () => {
@@ -96,5 +98,69 @@ describe.skipIf(!process.env.POSTGRES_URL)("memory content paging PostgreSQL RLS
         accessContext: { ...base, authorizedRoomIds: [v4() as UUID] },
       })
     ).resolves.toBeNull();
+  });
+
+  it("opens the entity context at repeatable read for snapshot-safe paging", async () => {
+    const isolation = await manager.withEntityContext(
+      entityId,
+      async (tx) => {
+        const result = await tx.execute(sql`SHOW transaction_isolation`);
+        return (result.rows as Array<{ transaction_isolation: string }>)[0]?.transaction_isolation;
+      },
+      { isolationLevel: "repeatable read" }
+    );
+
+    expect(isolation).toBe("repeatable read");
+  });
+
+  it("rolls back segments when authorization changes before parent publication", async () => {
+    const revocationMemoryId = v4() as UUID;
+    await adapter.createMemory(
+      {
+        id: revocationMemoryId,
+        agentId,
+        entityId,
+        roomId,
+        content: { text: "seed", source: "test" },
+      } as Memory,
+      "messages"
+    );
+    await superuser.query(
+      "UPDATE memories SET content = jsonb_build_object('text', repeat('r', 1048576), 'source', 'legacy') WHERE id = $1",
+      [revocationMemoryId]
+    );
+    await superuser.query("DROP SEQUENCE IF EXISTS reindex_authz_calls");
+    await superuser.query("CREATE SEQUENCE reindex_authz_calls START 1");
+    await superuser.query("GRANT USAGE, SELECT ON SEQUENCE reindex_authz_calls TO PUBLIC");
+
+    await expect(
+      manager.withEntityContext(
+        entityId,
+        (tx) =>
+          reindexMemoryContentInTransaction({
+            db: tx,
+            memoryId: revocationMemoryId,
+            field: { kind: "content.text" },
+            maxSourceBytes: 2 * 1024 * 1024,
+            // The first two authorized reads succeed; publication observes
+            // the simulated revocation and must abort before inserting rows.
+            parentAuthorization: sql`nextval('reindex_authz_calls') <= 2`,
+          }),
+        { isolationLevel: "repeatable read" }
+      )
+    ).rejects.toMatchObject({ code: "MEMORY_CONTENT_REINDEX_NOT_AUTHORIZED" });
+
+    const persisted = await superuser.query<{
+      segment_count: string;
+      text_bytes: number;
+    }>(
+      `SELECT
+         (SELECT count(*) FROM memory_text_segments WHERE parent_id = $1) AS segment_count,
+         octet_length(content->>'text') AS text_bytes
+       FROM memories WHERE id = $1`,
+      [revocationMemoryId]
+    );
+    expect(persisted.rows[0]).toEqual({ segment_count: "0", text_bytes: 1024 * 1024 });
+    await superuser.query("DROP SEQUENCE reindex_authz_calls");
   });
 });

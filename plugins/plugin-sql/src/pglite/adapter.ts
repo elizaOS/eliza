@@ -55,9 +55,10 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
 
   public async withEntityContext<T>(
     _entityId: UUID | null,
-    callback: (tx: PgliteDatabase) => Promise<T>
+    callback: (tx: PgliteDatabase) => Promise<T>,
+    options?: { isolationLevel?: "repeatable read" }
   ): Promise<T> {
-    return this.db.transaction(callback);
+    return this.db.transaction(callback, options);
   }
 
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
