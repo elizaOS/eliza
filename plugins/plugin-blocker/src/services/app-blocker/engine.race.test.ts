@@ -22,9 +22,15 @@
  * alone does not stop that late read from repopulating the cache with the stale
  * value; the engine's generation guard does, and this test proves it by gating
  * the read (not the mutation).
+ *
+ * The fourth case pins the TTL base to request start rather than native-call
+ * resolution. Anchoring `expiresAt` to `Date.now()` after the await would let a
+ * slow native `getStatus()` extend worst-case staleness by its own duration; a
+ * fake-timer clock whose native read spans part of the TTL proves the entry
+ * expires at request-start + TTL, so the next read after that point refetches.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getCachedAppBlockerStatus,
   type NativeAppBlockerBackend,
@@ -247,5 +253,65 @@ describe("app-blocker status cache invalidation race (#30142)", () => {
     const afterBlock = await getCachedAppBlockerStatus();
     expect(afterBlock.active).toBe(true);
     expect(afterBlock.blockedCount).toBe(1);
+  });
+
+  it("anchors the status-cache TTL to request start, not native-call resolution", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(0);
+
+      let getStatusCalls = 0;
+      const firstReadGate = deferred();
+      const permission: AppBlockerPermissionResult = {
+        status: "granted",
+        canRequest: false,
+      };
+      const backend: NativeAppBlockerBackend = {
+        checkPermissions: async () => permission,
+        requestPermissions: async () => permission,
+        getInstalledApps: async () => ({ apps: [] }),
+        selectApps: async () =>
+          ({ apps: [], cancelled: false }) as SelectAppsResult,
+        blockApps: async () =>
+          ({
+            success: true,
+            endsAt: null,
+            blockedCount: 1,
+          }) satisfies BlockAppsResult,
+        unblockApps: async () =>
+          ({ success: true }) satisfies UnblockAppsResult,
+        getStatus: async () => {
+          getStatusCalls += 1;
+          // Park only the first read so its native call visibly spans clock
+          // time while the test advances the fake timer past resolution.
+          if (getStatusCalls === 1) {
+            await firstReadGate.promise;
+          }
+          return statusFor(false);
+        },
+      };
+      registerNativeAppBlockerBackend(backend);
+
+      // (1) The first read starts at t=0 and parks inside the native getStatus().
+      const firstRead = getCachedAppBlockerStatus();
+
+      // (2) The native call "takes" 4s (< the 5s TTL): advance the clock so its
+      // resolution timestamp (4000) differs from the request start (0), then
+      // release it. The published entry must expire at request-start + TTL.
+      vi.setSystemTime(4_000);
+      firstReadGate.resolve();
+      await firstRead;
+      expect(getStatusCalls).toBe(1);
+
+      // (3) At t=6000 a request-start-anchored entry (expires at 0 + 5000) has
+      // expired, so the next read must refetch. A resolution-anchored entry
+      // (expires at 4000 + 5000 = 9000) would still be live and skip the native
+      // call, extending worst-case staleness by the native-call duration.
+      vi.setSystemTime(6_000);
+      await getCachedAppBlockerStatus();
+      expect(getStatusCalls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
