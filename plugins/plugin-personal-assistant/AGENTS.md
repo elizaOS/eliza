@@ -32,7 +32,7 @@ Most umbrella actions use `promoteSubactionsToActions`, so both the umbrella and
 The plugin registers these owner-private providers:
 
 - `lifeops_browser` from `src/provider.ts`
-- `firstRun`, `ftuGoal`, `roomPolicy`, and `lifeops`
+- `firstRun`, `ftuGoal`, `roomPolicy`, `agreementPins`, and `lifeops`
 - `pendingApprovals`, `delegationContracts`, and `pendingPrompts`
 - `workThreads` and `recentTaskStates`
 - `lifeops-health`, `crossChannelContext`, and `activity-profile`
@@ -54,6 +54,12 @@ Inbox triage context is owned and registered by `@elizaos/plugin-inbox`.
 - `ResourceCapacityRuntimeService`
 - `SchoolSourceFactRuntimeService`
 - `FoodDomainRuntimeService`
+
+Agreement owner operations use `OWNER_AGREEMENT_KNOWLEDGE` and the private
+`/api/lifeops/agreements/*` routes. Keep typed domain authorization in
+`AgreementKnowledgeService`; routes/actions may translate failures but must not
+infer access from actor headers or pins. The planner provider is owner-private
+and may inject only approved obligations from active agent/chat pins.
 
 The scheduled-task runner service is registered by `@elizaos/plugin-scheduling`. Website and app blocking services are registered by `@elizaos/plugin-blocker`; this package composes their action and permission seams.
 

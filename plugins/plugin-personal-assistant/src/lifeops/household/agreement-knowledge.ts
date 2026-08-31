@@ -117,6 +117,20 @@ export interface ParentingAgreementView {
   obligations: ParentingAgreementObligation[];
 }
 
+export interface AgreementGuestGrantPreview {
+  allowed: boolean;
+  artifactId: string;
+  principalEntityId: string;
+  householdGrantId: string;
+  effects: readonly ["read_artifact_metadata", "read_approved_obligations"];
+  exclusions: readonly [
+    "read_proposed_or_rejected_obligations",
+    "mutate_agreement",
+    "inherit_access_from_pin",
+  ];
+  denial: { code: string; message: string } | null;
+}
+
 type AgreementKnowledgeErrorCode =
   | "AGREEMENT_ACCESS_DENIED"
   | "AGREEMENT_ARTIFACT_NOT_FOUND"
@@ -345,6 +359,19 @@ export class AgreementKnowledgeRepository {
     return rows[0] ? artifactFromRow(rows[0]) : null;
   }
 
+  async listArtifacts(
+    householdId?: string,
+  ): Promise<ParentingAgreementArtifact[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT * FROM app_lifeops.life_household_agreement_artifacts
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          ${householdId ? `AND household_id = ${sqlQuote(householdId)}` : ""}
+        ORDER BY agreement_key ASC, version DESC, created_at DESC, id ASC`,
+    );
+    return rows.map(artifactFromRow);
+  }
+
   async getArtifactByContent(input: {
     householdId: string;
     agreementKey: string;
@@ -479,6 +506,54 @@ export class AgreementKnowledgeRepository {
         ORDER BY pinned_at ASC, id ASC`,
     );
     return rows.map(pinFromRow);
+  }
+
+  async listActivePinsForTargets(
+    targets: ReadonlyArray<{
+      targetType: KnowledgePinTargetType;
+      targetId: string;
+    }>,
+  ): Promise<HouseholdKnowledgePin[]> {
+    if (targets.length === 0) return [];
+    const targetSql = targets
+      .map(
+        (target) =>
+          `(target_type = ${sqlQuote(target.targetType)} AND target_id = ${sqlQuote(target.targetId)})`,
+      )
+      .join(" OR ");
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT * FROM app_lifeops.life_household_knowledge_pins
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND unpinned_at IS NULL
+          AND (${targetSql})
+        ORDER BY pinned_at ASC, id ASC`,
+    );
+    return rows.map(pinFromRow);
+  }
+
+  async removePin(input: {
+    pinId: string;
+    unpinnedAt: string;
+  }): Promise<HouseholdKnowledgePin> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_household_knowledge_pins
+          SET unpinned_at = ${sqlQuote(input.unpinnedAt)}
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND id = ${sqlQuote(input.pinId)}
+          AND unpinned_at IS NULL
+      RETURNING *`,
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new AgreementKnowledgeError(
+        "Knowledge pin is missing or already inactive",
+        "AGREEMENT_INVALID_CONTRACT",
+        { pinId: input.pinId },
+      );
+    }
+    return pinFromRow(row);
   }
 
   async upsertGrant(input: HouseholdKnowledgeGrant) {
@@ -635,6 +710,23 @@ export class AgreementKnowledgeService {
       );
     }
     return artifact;
+  }
+
+  async listOwnerAgreements(input: {
+    ownerEntityId: string;
+    householdId?: string;
+  }): Promise<ParentingAgreementView[]> {
+    this.requireOwner(input.ownerEntityId);
+    const householdId = input.householdId
+      ? normalizeHouseholdIdentifier(input.householdId, "householdId")
+      : undefined;
+    const artifacts = await this.deps.repository.listArtifacts(householdId);
+    return await Promise.all(
+      artifacts.map(async (artifact) => ({
+        artifact,
+        obligations: await this.deps.repository.listObligations(artifact.id),
+      })),
+    );
   }
 
   async createAgreementVersion(input: {
@@ -846,6 +938,114 @@ export class AgreementKnowledgeService {
       pinnedByEntityId: input.pinnedByEntityId,
       pinnedAt: this.now().toISOString(),
     });
+  }
+
+  async listPins(input: {
+    artifactId: string;
+    ownerEntityId: string;
+  }): Promise<HouseholdKnowledgePin[]> {
+    this.requireOwner(input.ownerEntityId);
+    const artifact = await this.requireArtifact(input.artifactId);
+    return await this.deps.repository.listPins(artifact.id);
+  }
+
+  async unpin(input: {
+    pinId: string;
+    unpinnedByEntityId: string;
+  }): Promise<HouseholdKnowledgePin> {
+    this.requireOwner(input.unpinnedByEntityId);
+    return await this.deps.repository.removePin({
+      pinId: normalizeHouseholdIdentifier(input.pinId, "pinId"),
+      unpinnedAt: this.now().toISOString(),
+    });
+  }
+
+  async previewGuestRead(input: {
+    artifactId: string;
+    principalEntityId: string;
+    householdGrantId: string;
+    ownerEntityId: string;
+  }): Promise<AgreementGuestGrantPreview> {
+    this.requireOwner(input.ownerEntityId);
+    const artifact = await this.requireArtifact(input.artifactId);
+    const principalEntityId = normalizeHouseholdIdentifier(
+      input.principalEntityId,
+      "principalEntityId",
+    );
+    const householdGrantId = normalizeHouseholdIdentifier(
+      input.householdGrantId,
+      "householdGrantId",
+    );
+    const base = {
+      artifactId: artifact.id,
+      principalEntityId,
+      householdGrantId,
+      effects: ["read_artifact_metadata", "read_approved_obligations"] as const,
+      exclusions: [
+        "read_proposed_or_rejected_obligations",
+        "mutate_agreement",
+        "inherit_access_from_pin",
+      ] as const,
+    };
+    const principal = await this.deps.entityStore.get(principalEntityId);
+    if (!principal?.identities.some((identity) => identity.verified)) {
+      return {
+        ...base,
+        allowed: false,
+        denial: {
+          code: "AGREEMENT_ACCESS_DENIED",
+          message: "Guest requires a verified identity",
+        },
+      };
+    }
+    try {
+      await this.deps.household.requireGrantActive({
+        householdId: artifact.householdId,
+        grantId: householdGrantId,
+        principalEntityId,
+        scope: "knowledge.read",
+        at: this.now(),
+      });
+      return { ...base, allowed: true, denial: null };
+    } catch (error) {
+      if (!(error instanceof HouseholdCoordinationError)) throw error;
+      return {
+        ...base,
+        allowed: false,
+        denial: {
+          code: "AGREEMENT_ACCESS_DENIED",
+          message: error.message,
+        },
+      };
+    }
+  }
+
+  async activePinnedContext(input: {
+    ownerEntityId: string;
+    roomId?: string;
+  }): Promise<ParentingAgreementView[]> {
+    this.requireOwner(input.ownerEntityId);
+    const targets: Array<{
+      targetType: KnowledgePinTargetType;
+      targetId: string;
+    }> = [{ targetType: "agent", targetId: this.deps.agentId }];
+    if (input.roomId) {
+      targets.push({
+        targetType: "chat",
+        targetId: normalizeHouseholdIdentifier(input.roomId, "roomId"),
+      });
+    }
+    const pins = await this.deps.repository.listActivePinsForTargets(targets);
+    const artifactIds = [...new Set(pins.map((pin) => pin.artifactId))];
+    const views: ParentingAgreementView[] = [];
+    for (const artifactId of artifactIds) {
+      const artifact = await this.requireArtifact(artifactId);
+      const obligations = (
+        await this.deps.repository.listObligations(artifact.id)
+      ).filter((obligation) => obligation.status === "approved");
+      if (obligations.length > 0) views.push({ artifact, obligations });
+    }
+    return views;
   }
 
   async grantGuestRead(input: {

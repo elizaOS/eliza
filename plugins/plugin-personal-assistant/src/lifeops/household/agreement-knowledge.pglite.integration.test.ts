@@ -301,7 +301,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
 
   it("keeps agent and chat pins separate from guest authorization", async () => {
     const service = createAgreementKnowledgeService(runtime);
-    await service.pin({
+    const agentPin = await service.pin({
       artifactId: artifact.id,
       targetType: "agent",
       targetId: runtime.agentId,
@@ -318,6 +318,33 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         artifactId: artifact.id,
         principalEntityId: "verified-co-parent",
       }),
+    ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+
+    await service.unpin({
+      pinId: agentPin.id,
+      unpinnedByEntityId: SELF_ENTITY_ID,
+    });
+
+    const pinned = await service.activePinnedContext({
+      ownerEntityId: SELF_ENTITY_ID,
+      roomId: "family-chat",
+    });
+    expect(pinned).toHaveLength(1);
+    expect(pinned[0]?.obligations).toHaveLength(1);
+    expect(pinned[0]?.obligations[0]?.status).toBe("approved");
+    await expect(
+      service.activePinnedContext({
+        ownerEntityId: SELF_ENTITY_ID,
+        roomId: "different-chat",
+      }),
+    ).resolves.toEqual([]);
+
+    const ownerList = await service.listOwnerAgreements({
+      ownerEntityId: SELF_ENTITY_ID,
+    });
+    expect(ownerList.map((view) => view.artifact.version)).toEqual([2, 1]);
+    await expect(
+      service.listOwnerAgreements({ ownerEntityId: "verified-co-parent" }),
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
   });
 
@@ -339,6 +366,32 @@ describe("parenting-agreement knowledge — real PGlite", () => {
         issuedByEntityId: SELF_ENTITY_ID,
       }),
     ).rejects.toMatchObject({ code: "AGREEMENT_ACCESS_DENIED" });
+
+    await expect(
+      service.previewGuestRead({
+        artifactId: artifact.id,
+        principalEntityId: "unverified-guest",
+        householdGrantId: unverifiedGrant.id,
+        ownerEntityId: SELF_ENTITY_ID,
+      }),
+    ).resolves.toMatchObject({
+      allowed: false,
+      denial: { code: "AGREEMENT_ACCESS_DENIED" },
+      exclusions: expect.arrayContaining(["inherit_access_from_pin"]),
+    });
+
+    await expect(
+      service.previewGuestRead({
+        artifactId: artifact.id,
+        principalEntityId: "verified-co-parent",
+        householdGrantId: guestHouseholdGrantId,
+        ownerEntityId: SELF_ENTITY_ID,
+      }),
+    ).resolves.toMatchObject({
+      allowed: true,
+      denial: null,
+      effects: ["read_artifact_metadata", "read_approved_obligations"],
+    });
 
     const resourceGrant = await service.grantGuestRead({
       artifactId: artifact.id,

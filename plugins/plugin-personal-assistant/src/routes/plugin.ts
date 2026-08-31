@@ -41,6 +41,7 @@ import {
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
+import { handleAgreementKnowledgeRoutes } from "./agreement-knowledge-routes.js";
 import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
@@ -417,6 +418,10 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/features/toggle" },
+  { type: "GET", path: "/api/lifeops/agreements" },
+  { type: "POST", path: "/api/lifeops/agreements" },
+  { type: "POST", path: "/api/lifeops/agreements/grants/preview" },
+  { type: "POST", path: "/api/lifeops/agreements/grants" },
   // Knowledge-graph: entities + relationships.
   { type: "GET", path: "/api/lifeops/entities" },
   { type: "POST", path: "/api/lifeops/entities" },
@@ -498,6 +503,20 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/relationships/:id" },
   { type: "PATCH", path: "/api/lifeops/relationships/:id" },
   { type: "POST", path: "/api/lifeops/relationships/:id/retire" },
+  { type: "GET", path: "/api/lifeops/agreements/:id" },
+  {
+    type: "GET",
+    path: "/api/lifeops/agreements/:id/guest-projection",
+  },
+  { type: "POST", path: "/api/lifeops/agreements/:id/obligations" },
+  { type: "GET", path: "/api/lifeops/agreements/:id/pins" },
+  { type: "POST", path: "/api/lifeops/agreements/:id/pins" },
+  {
+    type: "POST",
+    path: "/api/lifeops/agreements/obligations/:id/decision",
+  },
+  { type: "DELETE", path: "/api/lifeops/agreements/pins/:id" },
+  { type: "POST", path: "/api/lifeops/agreements/grants/:id/revoke" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -640,6 +659,7 @@ function lifeOpsRouteHandler(): LegacyRouteHandler {
     );
     if (await handleEntityRoutes(ctx)) return;
     if (await handleRelationshipRoutes(ctx)) return;
+    if (await handleAgreementKnowledgeRoutes(ctx)) return;
     await handleLifeOpsRoutes(ctx);
   };
 }

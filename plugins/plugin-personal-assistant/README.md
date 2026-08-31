@@ -191,6 +191,12 @@ Guest views expose approved obligations only. Revoking the relationship-backed
 household grant immediately invalidates every agreement binding that relies on
 it.
 
+The owner surface is available through `OWNER_AGREEMENT_KNOWLEDGE` and the
+authenticated `/api/lifeops/agreements/*` routes. Grant previews enumerate the
+exact read effects and exclusions before issuance. Active agent/chat pins feed
+only approved, page-cited obligations into owner planner context; uploading a
+PDF remains on the document/API surface so chat actions never invent bytes.
+
 ## Default packs
 
 Default packs are bundles of typed scheduled-item definitions compiled into

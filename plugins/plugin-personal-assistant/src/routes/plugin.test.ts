@@ -268,6 +268,27 @@ describe("LifeOps raw route owner/admin gate", () => {
     }
   });
 
+  it("mounts every agreement mutation and preview behind the owner gate", () => {
+    const agreementRoutes = [
+      ["GET", "/api/lifeops/agreements"],
+      ["POST", "/api/lifeops/agreements"],
+      ["GET", "/api/lifeops/agreements/:id"],
+      ["GET", "/api/lifeops/agreements/:id/guest-projection"],
+      ["POST", "/api/lifeops/agreements/:id/obligations"],
+      ["GET", "/api/lifeops/agreements/:id/pins"],
+      ["POST", "/api/lifeops/agreements/:id/pins"],
+      ["DELETE", "/api/lifeops/agreements/pins/:id"],
+      ["POST", "/api/lifeops/agreements/grants/preview"],
+      ["POST", "/api/lifeops/agreements/grants"],
+      ["POST", "/api/lifeops/agreements/grants/:id/revoke"],
+      ["POST", "/api/lifeops/agreements/obligations/:id/decision"],
+    ] as const;
+
+    for (const [type, path] of agreementRoutes) {
+      expect(findRoute(type, path).public).not.toBe(true);
+    }
+  });
+
   it("does not wrap public OAuth callback routes with the owner/admin gate", async () => {
     const route = findRoute("GET", "/api/connectors/google/oauth/callback");
     const res = createResponse();

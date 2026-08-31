@@ -58,6 +58,7 @@ import type {
   Prober,
 } from "@elizaos/shared";
 import { MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/shared";
+import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
 import { calendarAction } from "./actions/calendar.js";
@@ -250,6 +251,7 @@ import { isDarwin } from "./platform/host.js";
 import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
+import { agreementPinsProvider } from "./providers/agreement-pins.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 import { delegationContractsProvider } from "./providers/delegation-contracts.js";
 // LifeOps core providers
@@ -727,6 +729,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     resolveReferentAction,
     entityAction,
     ...promoteSubactionsToActions(ownerDocumentsAction),
+    ownerAgreementKnowledgeAction,
     ...promoteSubactionsToActions(creativeDraftAction),
     ...promoteSubactionsToActions(briefAction),
     ...promoteSubactionsToActions(prioritizeAction),
@@ -758,6 +761,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     firstRunProvider,
     ftuGoalProvider,
     roomPolicyProvider,
+    agreementPinsProvider,
     lifeOpsProvider,
     pendingApprovalsProvider,
     delegationContractsProvider,
@@ -1307,6 +1311,7 @@ export {
   startAppBlock,
   stopAppBlock,
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
+export { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 export { workThreadAction } from "./actions/work-thread.js";
 export type { OverdueDigest, OverdueFollowup } from "./followup/index.js";
 export {
@@ -1400,6 +1405,19 @@ export {
   type ResumeEvaluationInput,
   resolveHandoffStore,
 } from "./lifeops/handoff/store.js";
+export {
+  type AgreementGuestGrantPreview,
+  AgreementKnowledgeError,
+  AgreementKnowledgeRuntimeService,
+  AgreementKnowledgeService,
+  type AgreementObligationStatus,
+  type HouseholdKnowledgeGrant,
+  type HouseholdKnowledgePin,
+  type KnowledgePinTargetType,
+  type ParentingAgreementArtifact,
+  type ParentingAgreementObligation,
+  type ParentingAgreementView,
+} from "./lifeops/household/agreement-knowledge.js";
 export {
   createMultilingualPromptRegistry,
   getDefaultPromptExamplePair,
@@ -1531,6 +1549,7 @@ export {
   type WorkThreadStatus,
   type WorkThreadStore,
 } from "./lifeops/work-threads/index.js";
+export { agreementPinsProvider } from "./providers/agreement-pins.js";
 export { delegationContractsProvider } from "./providers/delegation-contracts.js";
 export type { FirstRunAffordance } from "./providers/first-run.js";
 export { firstRunProvider } from "./providers/first-run.js";
@@ -1561,6 +1580,7 @@ export {
 } from "./providers/recent-task-states.js";
 export { roomPolicyProvider } from "./providers/room-policy.js";
 export { workThreadsProvider } from "./providers/work-threads.js";
+export { handleAgreementKnowledgeRoutes } from "./routes/agreement-knowledge-routes.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
