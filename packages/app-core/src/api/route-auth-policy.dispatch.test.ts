@@ -13,6 +13,7 @@ import http from "node:http";
 import { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { __resetRuntimeModeSnapshotCacheForTests } from "@elizaos/agent/api/runtime-mode/runtime-mode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CompatRuntimeState } from "./compat-route-shared";
@@ -45,6 +46,7 @@ const targetHits: Array<{
 }> = [];
 
 beforeEach(async () => {
+  __resetRuntimeModeSnapshotCacheForTests();
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   // Force a non-loopback peer + no token so the request is unauthenticated.
   delete process.env.ELIZA_API_TOKEN;
@@ -110,6 +112,7 @@ afterEach(async () => {
     else process.env[k] = saved[k];
   }
   vi.restoreAllMocks();
+  __resetRuntimeModeSnapshotCacheForTests();
 });
 
 function unauthReq(method: string, pathname: string): http.IncomingMessage {
