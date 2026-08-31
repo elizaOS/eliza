@@ -57,8 +57,12 @@ export interface SettleSubscriptionFundingInput {
 
 export interface SubscriptionFundingReservationResult {
   reservation: BillingFundingReservation;
-  overageReservation?: BillingFundingReservation;
   replayed: boolean;
+}
+
+export interface SubscriptionFundingSettlementResult extends SubscriptionFundingReservationResult {
+  collectedAmount: CanonicalMoney;
+  uncollectedOverageAmount: CanonicalMoney;
 }
 
 export interface FundingSourceSplit {
@@ -83,6 +87,19 @@ export function splitSubscriptionFundingSources(params: {
   return {
     allowanceAmount: microsToMoney(allowance),
     purchasedCreditAmount: microsToMoney(requested - allowance),
+  };
+}
+
+export function capSubscriptionFundingSettlement(params: {
+  requestedActualAmount: CanonicalMoney;
+  reservedAmount: CanonicalMoney;
+}): { collectedAmount: CanonicalMoney; uncollectedOverageAmount: CanonicalMoney } {
+  const requested = moneyToMicros(params.requestedActualAmount, "requestedActualAmount");
+  const reserved = moneyToMicros(params.reservedAmount, "reservedAmount");
+  const collected = requested < reserved ? requested : reserved;
+  return {
+    collectedAmount: microsToMoney(collected),
+    uncollectedOverageAmount: microsToMoney(requested - collected),
   };
 }
 
@@ -265,7 +282,7 @@ export class SubscriptionFundingService {
 
   async settle(
     input: SettleSubscriptionFundingInput,
-  ): Promise<SubscriptionFundingReservationResult> {
+  ): Promise<SubscriptionFundingSettlementResult> {
     validateOperationId(input.logicalOperationId);
     const actualAmount = canonicalMoney(input.actualAmount, "actualAmount", true);
     const digest = await requestDigest([
@@ -276,36 +293,6 @@ export class SubscriptionFundingService {
       actualAmount,
       input.occurredAt.toISOString(),
     ]);
-    const reservedAmount = await writeTransaction(async (tx) => {
-      const reservation = await findReservation(tx, input.organizationId, input.logicalOperationId);
-      return canonicalMoney(reservation.reserved_amount, "reservedAmount", false);
-    });
-    const actualMicros = moneyToMicros(actualAmount, "actualAmount");
-    const reservedMicros = moneyToMicros(reservedAmount, "reservedAmount");
-    if (actualMicros > reservedMicros) {
-      const overageOperationId = `overage.${digest.slice(0, 64)}`;
-      const overageAmount = microsToMoney(actualMicros - reservedMicros);
-      const overage = await this.reserve({
-        organizationId: input.organizationId,
-        logicalOperationId: overageOperationId,
-        operation: input.operation,
-        amount: overageAmount,
-        description: "Subscription funding overage",
-        reservationTtlMs: 2 * 60 * 60 * 1000,
-        metadata: input.metadata,
-      });
-      await this.settle({
-        ...input,
-        logicalOperationId: overageOperationId,
-        actualAmount: overageAmount,
-      });
-      const base = await this.settle({ ...input, actualAmount: reservedAmount });
-      return {
-        ...base,
-        overageReservation: overage.reservation,
-        replayed: base.replayed && overage.replayed,
-      };
-    }
     let purchasedMutation = false;
     const result = await writeTransaction(async (tx) => {
       await lockOrganization(tx, input.organizationId);
@@ -334,16 +321,17 @@ export class SubscriptionFundingService {
         ? moneyToMicros(purchasedAllocation.reserved_amount, "purchasedReserved")
         : 0n;
       const reserved = allowanceReserved + purchasedReserved;
-      const requestedActual = moneyToMicros(actualAmount, "actualAmount");
-      if (requestedActual > reserved) {
-        fundingError(SUBSCRIPTION_FUNDING_INSUFFICIENT, "Settlement exceeds its reserved funding", {
-          logicalOperationId: input.logicalOperationId,
-          actualAmount,
-        });
-      }
-      const actualAllowance =
-        requestedActual < allowanceReserved ? requestedActual : allowanceReserved;
-      const actualPurchased = requestedActual - actualAllowance;
+      const settlementCap = capSubscriptionFundingSettlement({
+        requestedActualAmount: actualAmount,
+        reservedAmount: microsToMoney(reserved),
+      });
+      const collected = moneyToMicros(settlementCap.collectedAmount, "collectedAmount");
+      const uncollectedOverage = moneyToMicros(
+        settlementCap.uncollectedOverageAmount,
+        "uncollectedOverageAmount",
+      );
+      const actualAllowance = collected < allowanceReserved ? collected : allowanceReserved;
+      const actualPurchased = collected - actualAllowance;
       let refundId: string | null = null;
       if (purchasedReserved > actualPurchased) {
         const refund = await creditsService.refundCredits({
@@ -373,7 +361,12 @@ export class SubscriptionFundingService {
       };
       if (allowanceAllocation) {
         const terminal = await subscriptionAllowanceRepository.finalize(tx, terminalInput);
-        return { reservation: terminal.reservation, replayed: terminal.replayed };
+        return {
+          reservation: terminal.reservation,
+          replayed: terminal.replayed,
+          collectedAmount: microsToMoney(collected),
+          uncollectedOverageAmount: microsToMoney(uncollectedOverage),
+        };
       }
       const terminal = await subscriptionFundingReservationsRepository.persistTerminal(tx, locked, {
         kind: "settlement",
@@ -387,7 +380,12 @@ export class SubscriptionFundingService {
         purchasedCreditRefundTransactionId: refundId,
         databaseNow: now,
       });
-      return { reservation: terminal.reservation, replayed: terminal.replayed };
+      return {
+        reservation: terminal.reservation,
+        replayed: terminal.replayed,
+        collectedAmount: microsToMoney(collected),
+        uncollectedOverageAmount: microsToMoney(uncollectedOverage),
+      };
     });
     if (purchasedMutation) await creditsService.invalidateCreditCaches(input.organizationId);
     return result;

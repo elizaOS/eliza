@@ -177,17 +177,20 @@ async function reserveSubscriptionFunding(params: {
         metadata: params.metadata,
       });
       const actual = Number(canonicalActual);
+      const collected = Number(settlement.collectedAmount);
+      const uncollectedOverage = Number(settlement.uncollectedOverageAmount);
       return {
         reservedAmount,
         actualCost,
-        collectedAmount: actual,
+        collectedAmount: collected,
         reservationTransactionId: reserveResult.reservation.id,
-        settlementTransactionIds: [
-          settlement.reservation.id,
-          ...(settlement.overageReservation ? [settlement.overageReservation.id] : []),
-        ],
+        settlementTransactionIds: [settlement.reservation.id],
         adjustmentType:
-          actual > reservedAmount ? "overage" : actual < reservedAmount ? "refund" : "none",
+          uncollectedOverage > 0
+            ? "uncollected_overage"
+            : actual < reservedAmount
+              ? "refund"
+              : "none",
       };
     },
   };
