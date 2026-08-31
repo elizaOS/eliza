@@ -1676,11 +1676,13 @@ export async function handleAppsRoutes(
           // error-policy:J3 A syntactically malformed package.json is invalid
           // on-disk input for this one entry, not a batch failure. Skip it the
           // same way an unreadable manifest is skipped so every valid sibling
-          // app still registers, and surface which manifest was rejected.
+          // app still registers, and surface which manifest was rejected. Use
+          // the error's name (e.g. "SyntaxError"), not its message: V8 embeds a
+          // slice of the offending file bytes in JSON.parse messages, and this
+          // reason is persisted through recordManifestRejection; `path` already
+          // identifies which manifest failed.
           const reason = `invalid JSON: ${
-            parseError instanceof Error
-              ? parseError.message
-              : String(parseError)
+            parseError instanceof Error ? parseError.name : String(parseError)
           }`;
           const rejection = {
             directory: subdir,

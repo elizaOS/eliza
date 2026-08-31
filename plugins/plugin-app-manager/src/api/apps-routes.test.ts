@@ -178,10 +178,13 @@ describe("handleAppsRoutes", () => {
       );
       await mkdir(path.join(dir, "app-bad"));
       // Syntactically malformed manifest: previously threw SyntaxError mid-loop
-      // and aborted the whole scan with HTTP 500.
+      // and aborted the whole scan with HTTP 500. The bareword value also makes
+      // V8 embed a slice of these file bytes in the JSON.parse message, so the
+      // marker below pins that the rejection reason does not persist file
+      // content.
       await writeFile(
         path.join(dir, "app-bad", "package.json"),
-        "{ this is not json ",
+        `{"n": LEAKMARK}`,
       );
 
       const registered: Array<Record<string, unknown>> = [];
@@ -236,6 +239,10 @@ describe("handleAppsRoutes", () => {
       expect(rejected?.directory).toBe(path.join(dir, "app-bad"));
       expect(rejected?.packageName).toBeNull();
       expect(rejected?.reason).toContain("invalid JSON");
+      // Data hygiene: the reason must not carry the malformed file's bytes into
+      // the HTTP response. V8's JSON.parse message would embed them; the reason
+      // is built from the error name instead.
+      expect(rejected?.reason).not.toContain("LEAKMARK");
       expect(rejected?.path).toBe(path.join(dir, "app-bad", "package.json"));
 
       // The rejection is also recorded through the registry service so callers
@@ -249,6 +256,8 @@ describe("handleAppsRoutes", () => {
         requesterRoomId: null,
       });
       expect(String(rejections[0]?.reason)).toContain("invalid JSON");
+      // The persisted rejection record must not carry file bytes either.
+      expect(String(rejections[0]?.reason)).not.toContain("LEAKMARK");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
