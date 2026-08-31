@@ -260,7 +260,7 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     ).resolves.toEqual({ status: "identity_projection_conflict" });
   });
 
-  test("converges exactly two $0 provisional accounts and retains an idempotent alias receipt", async () => {
+  test("converges two signup accounts without doubling the $5 opening balance", async () => {
     const pair = await createPair();
     const proof = proofFor(pair);
     const inspection = await usersRepository.inspectPhoneTelegramPersonalAccountConvergence(proof);
@@ -289,7 +289,7 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
       phone_number: pair.phoneNumber,
       phone_verified: true,
     });
-    expect(result.organization.credit_balance).toBe("0.000000");
+    expect(result.organization.credit_balance).toBe("5.000000");
     expect(await dbWrite.select().from(users)).toHaveLength(1);
     expect(await dbWrite.select().from(organizations)).toHaveLength(1);
     expect(await dbWrite.select().from(userIdentities)).toHaveLength(1);

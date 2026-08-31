@@ -1,5 +1,5 @@
 /**
- * The opening-balance policy stays zero across every runtime environment.
+ * The opening-balance policy stays fixed across every runtime environment.
  * Explicit funding and promotion paths have their own independently tested ledgers.
  */
 
@@ -17,16 +17,16 @@ afterEach(() => {
 });
 
 describe("signup credit policy", () => {
-  test("opens every new organization at zero without an automatic grant", () => {
+  test("opens every new organization with the fixed signup credit", () => {
     expect(SIGNUP_CREDIT_POLICY).toEqual({
-      automaticGrantUsd: 0,
-      openingBalanceUsd: "0.00",
+      automaticGrantUsd: 5,
+      openingBalanceUsd: "5.00",
     });
   });
 
-  test("cannot be re-enabled by the retired environment override", () => {
-    process.env.INITIAL_FREE_CREDITS = "5";
-    expect(SIGNUP_CREDIT_POLICY.automaticGrantUsd).toBe(0);
-    expect(SIGNUP_CREDIT_POLICY.openingBalanceUsd).toBe("0.00");
+  test("cannot be changed by the retired environment override", () => {
+    process.env.INITIAL_FREE_CREDITS = "99";
+    expect(SIGNUP_CREDIT_POLICY.automaticGrantUsd).toBe(5);
+    expect(SIGNUP_CREDIT_POLICY.openingBalanceUsd).toBe("5.00");
   });
 });

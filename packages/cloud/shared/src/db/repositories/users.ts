@@ -9,6 +9,7 @@ import {
   sharedRuntimeWorldId,
   sharedTodoStorageScope,
 } from "../../lib/services/shared-runtime/shared-runtime-storage-identity";
+import { SIGNUP_CREDIT_POLICY } from "../../lib/signup-credits";
 import type { DbTransaction } from "../client";
 import { type SqlExecutor, sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -275,15 +276,15 @@ function hasOnlyEmptySettings(value: unknown): boolean {
   );
 }
 
-function isZeroBalance(value: unknown): boolean {
+function isSignupOpeningBalance(value: unknown): boolean {
   const amount = typeof value === "number" ? value : Number(String(value));
-  return Number.isFinite(amount) && amount === 0;
+  return Number.isFinite(amount) && amount === SIGNUP_CREDIT_POLICY.automaticGrantUsd;
 }
 
 function isPristineProvisionalOrganization(organization: Organization): boolean {
   return (
     organization.is_active &&
-    isZeroBalance(organization.credit_balance) &&
+    isSignupOpeningBalance(organization.credit_balance) &&
     organization.balance_revision === 0 &&
     hasOnlyEmptySettings(organization.settings) &&
     organization.stripe_customer_id === null &&
@@ -1824,7 +1825,7 @@ export class UsersRepository {
         .values({
           name: params.organizationName,
           slug: params.organizationSlug,
-          credit_balance: "0.00",
+          credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
         })
         .returning();
       if (!organization) {
@@ -2292,7 +2293,7 @@ export class UsersRepository {
         .values({
           name: params.organizationName,
           slug: params.organizationSlug,
-          credit_balance: "0.00",
+          credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
         })
         .returning();
       if (!organization) throw new Error(`Failed to create ${label} personal organization`);
