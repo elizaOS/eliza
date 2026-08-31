@@ -27,6 +27,7 @@ const workflow = Bun.YAML.parse(source) as {
       services?: Record<string, { image?: string }>;
       steps?: Array<{
         id?: string;
+        if?: string;
         name?: string;
         env?: Record<string, string>;
         run?: string;
@@ -99,16 +100,31 @@ describe("PR Static Smoke workflow", () => {
   test("runs subscription authority concurrency constraints against PostgreSQL 16", () => {
     const postgresJob = workflow.jobs?.["subscription-authority-postgres"];
     expect(postgresJob?.needs).toBeUndefined();
-    expect(postgresJob?.services?.postgres?.image).toBe("postgres:16-alpine");
+    const detectStep = postgresJob?.steps?.find(
+      (step) => step.id === "authority-diff",
+    );
+    expect(detectStep?.run).toContain(
+      "packages/cloud/shared packages/core packages/shared",
+    );
+    expect(detectStep?.run).toContain('echo "run=true"');
     const postgresStep = postgresJob?.steps?.find(
       (step) =>
         step.name === "Run subscription authority PostgreSQL constraints",
     );
+    expect(postgresStep?.if).toBe("steps.authority-diff.outputs.run == 'true'");
     expect(postgresStep?.env?.SUBSCRIPTION_AUTHORITY_POSTGRES_URL).toContain(
       "127.0.0.1:5432",
     );
+    expect(postgresStep?.run).toContain("postgres:16-alpine");
     expect(postgresStep?.run).toContain(
       "subscription-authority.postgres.integration.test.ts",
+    );
+    const outcomeStep = postgresJob?.steps?.find(
+      (step) => step.name === "Require subscription authority outcome",
+    );
+    expect(outcomeStep?.if).toBe("always()");
+    expect(outcomeStep?.run).toContain(
+      '"$SHOULD_RUN" = "true" ] && [ "$TEST_OUTCOME" != "success"',
     );
     const admission = workflow.jobs?.["static-smoke"]?.steps?.find(
       (step) => step.name === "Require every admission lane",

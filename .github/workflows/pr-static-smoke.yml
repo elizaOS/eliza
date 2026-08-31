@@ -346,7 +346,8 @@ jobs:
           merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           test -n "$merge_base"
           if git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
-            packages/cloud/shared package.json bun.lock bunfig.toml turbo.json \
+            packages/cloud/shared packages/core packages/shared \
+            package.json bun.lock bunfig.toml turbo.json \
             tsconfig.json tsconfig.base.json .github/actions/setup-bun-workspace \
             .github/workflows/pr-static-smoke.yml; then
             echo "run=false" >> "$GITHUB_OUTPUT"
@@ -368,6 +369,7 @@ jobs:
         if: steps.authority-diff.outputs.run == 'true'
         run: bun run build:core
       - name: Run subscription authority PostgreSQL constraints
+        id: authority-test
         if: steps.authority-diff.outputs.run == 'true'
         env:
           SUBSCRIPTION_AUTHORITY_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
@@ -382,6 +384,21 @@ jobs:
           done
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/subscription-authority.postgres.integration.test.ts
+      - name: Require subscription authority outcome
+        if: always()
+        env:
+          SHOULD_RUN: ${{ steps.authority-diff.outputs.run }}
+          TEST_OUTCOME: ${{ steps.authority-test.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$SHOULD_RUN" = "true" ] && [ "$TEST_OUTCOME" != "success" ]; then
+            echo "::error::Subscription authority proof was required but finished with $TEST_OUTCOME."
+            exit 1
+          fi
+          if [ "$SHOULD_RUN" = "false" ] && [ "$TEST_OUTCOME" != "skipped" ]; then
+            echo "::error::Subscription authority proof ran outside its affected path."
+            exit 1
+          fi
 
   browser-bridge-windows-security:
     name: Browser bridge Windows security
