@@ -1,4 +1,4 @@
-/** Verifies that Cloud join binds the rowless personal Eliza without provisioning compute. */
+/** Verifies that Cloud join persists only the signed-in personal Dedicated runtime. */
 
 import { describe, expect, test, vi } from "vitest";
 import {
@@ -9,23 +9,24 @@ import {
 
 const CLOUD_API_BASE = "https://api.eliza.app";
 const PERSONAL_ID = "personal:00000000-0000-5000-8000-000000000001";
-const PERSONAL_BASE = `${CLOUD_API_BASE}/api/v1/eliza/agents/personal%3A00000000-0000-5000-8000-000000000001`;
+const DEDICATED_ID = "00000000-0000-4000-8000-000000000020";
+const PERSONAL_BASE = `https://${DEDICATED_ID}.cloud.eliza.app`;
 
 function harness() {
-  const getPersonalSharedEliza = vi.fn().mockResolvedValue({
+  const ensurePersonalDedicatedEliza = vi.fn().mockResolvedValue({
     personalElizaId: PERSONAL_ID,
     agentId: PERSONAL_ID,
-    activeAgentId: PERSONAL_ID,
+    activeAgentId: DEDICATED_ID,
     agentName: "Eliza",
     apiBase: PERSONAL_BASE,
-    runtime: "shared" as const,
+    runtime: "dedicated" as const,
   });
   const setBaseUrl = vi.fn();
   const setToken = vi.fn();
   const savePersistedActiveServer = vi.fn();
   const savePersistedFirstRunComplete = vi.fn();
   const client: JoinFlowClient = {
-    getPersonalSharedEliza,
+    ensurePersonalDedicatedEliza,
     setBaseUrl,
     setToken,
   };
@@ -36,7 +37,7 @@ function harness() {
   return {
     client,
     effects,
-    getPersonalSharedEliza,
+    ensurePersonalDedicatedEliza,
     setBaseUrl,
     setToken,
     savePersistedActiveServer,
@@ -45,7 +46,7 @@ function harness() {
 }
 
 describe("runJoinFlow", () => {
-  test("resolves and persists the account-native Shared identity", async () => {
+  test("activates and persists the account-native Dedicated identity", async () => {
     const h = harness();
     const onProgress = vi.fn();
 
@@ -57,9 +58,10 @@ describe("runJoinFlow", () => {
       onProgress,
     });
 
-    expect(h.getPersonalSharedEliza).toHaveBeenCalledWith({
+    expect(h.ensurePersonalDedicatedEliza).toHaveBeenCalledWith({
       cloudApiBase: CLOUD_API_BASE,
       authToken: "session-token",
+      onProgress,
     });
     expect(onProgress).toHaveBeenCalledWith(
       "connecting",
@@ -73,17 +75,17 @@ describe("runJoinFlow", () => {
       label: "Eliza",
       apiBase: PERSONAL_BASE,
       accessToken: "session-token",
-      cloudRuntimeAgentId: PERSONAL_ID,
-      cloudRuntime: "shared",
+      cloudRuntimeAgentId: DEDICATED_ID,
+      cloudRuntime: "dedicated",
     });
     expect(h.savePersistedFirstRunComplete).toHaveBeenCalledWith(true);
     expect(result).toEqual({
       personalElizaId: PERSONAL_ID,
       agentId: PERSONAL_ID,
-      activeAgentId: PERSONAL_ID,
+      activeAgentId: DEDICATED_ID,
       agentName: "Eliza",
       apiBase: PERSONAL_BASE,
-      runtime: "shared",
+      runtime: "dedicated",
     });
   });
 
@@ -91,7 +93,7 @@ describe("runJoinFlow", () => {
     const h = harness();
     const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
     const dedicatedBase = `https://${dedicatedAgentId}.cloud.eliza.app`;
-    h.getPersonalSharedEliza.mockResolvedValueOnce({
+    h.ensurePersonalDedicatedEliza.mockResolvedValueOnce({
       personalElizaId: PERSONAL_ID,
       agentId: PERSONAL_ID,
       activeAgentId: dedicatedAgentId,
@@ -128,7 +130,7 @@ describe("runJoinFlow", () => {
 
   test("fails closed without persisting when identity resolution fails", async () => {
     const h = harness();
-    h.getPersonalSharedEliza.mockRejectedValueOnce(
+    h.ensurePersonalDedicatedEliza.mockRejectedValueOnce(
       new Error("Cloud unavailable"),
     );
 
@@ -160,7 +162,7 @@ describe("runJoinFlow", () => {
         signal: controller.signal,
       }),
     ).rejects.toThrow(/cancelled/i);
-    expect(h.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(h.ensurePersonalDedicatedEliza).not.toHaveBeenCalled();
     expect(h.savePersistedActiveServer).not.toHaveBeenCalled();
   });
 
@@ -176,7 +178,7 @@ describe("runJoinFlow", () => {
       signal: controller.signal,
     });
 
-    expect(h.getPersonalSharedEliza).toHaveBeenCalledWith({
+    expect(h.ensurePersonalDedicatedEliza).toHaveBeenCalledWith({
       cloudApiBase: CLOUD_API_BASE,
       authToken: "tok",
       signal: controller.signal,
@@ -186,15 +188,15 @@ describe("runJoinFlow", () => {
   test("does not persist when cancellation arrives after identity resolution", async () => {
     const controller = new AbortController();
     const h = harness();
-    h.getPersonalSharedEliza.mockImplementationOnce(async () => {
+    h.ensurePersonalDedicatedEliza.mockImplementationOnce(async () => {
       controller.abort(new DOMException("signed out", "AbortError"));
       return {
         personalElizaId: PERSONAL_ID,
         agentId: PERSONAL_ID,
-        activeAgentId: PERSONAL_ID,
+        activeAgentId: DEDICATED_ID,
         agentName: "Eliza",
         apiBase: PERSONAL_BASE,
-        runtime: "shared" as const,
+        runtime: "dedicated" as const,
       };
     });
 

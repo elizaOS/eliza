@@ -40,6 +40,7 @@ import {
   type BridgeRequest,
   elizaSandboxService,
 } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { resolveJobTypesForLanes } from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
 import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
 import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -881,7 +882,16 @@ app.post("/api/v1/cron/node-autoscale", nodeAutoscaleResponse);
 function processProvisioningJobsResponse(c: Context) {
   return handleInternal(c, async () => {
     const batchSize = parseClampedLimit(c.req.query("limit"), 5, 25);
-    const result = await provisioningJobService.processPendingJobs(batchSize);
+    // Keep the compatibility endpoint aligned with the standalone daemon's
+    // lane contract. Without this, a sidecar invocation silently claims every
+    // job type even when the host is pinned to the agent lane, allowing an
+    // apps job to consume the same worker budget and obscure agent startup.
+    const jobTypes = resolveJobTypesForLanes(
+      process.env.PROVISIONING_JOB_LANES,
+    );
+    const result = await provisioningJobService.processPendingJobs(batchSize, {
+      jobTypes,
+    });
     return c.json({
       success: true,
       data: {

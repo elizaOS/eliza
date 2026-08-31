@@ -16,6 +16,7 @@
 
 import { KeyRound, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 // All requests go through the shared client (never bare `fetch`) so they hit
 // the configured apiBase and carry the injected auth token — a bare relative
 // fetch targets the page origin unauthenticated, which breaks remote/token-
@@ -60,6 +61,50 @@ import type {
 } from "./vault-tabs/types";
 
 const HASH_PREFIX = "vault";
+
+const VAULT_SECTION_TABS = [
+  { id: "overview", label: "Overview", testId: "vault-tab-overview" },
+  { id: "secrets", label: "Secrets", testId: "vault-tab-secrets" },
+  { id: "logins", label: "Logins", testId: "vault-tab-logins" },
+  { id: "routing", label: "Routing", testId: "vault-tab-routing" },
+] as const;
+
+function VaultTabTrigger({
+  id,
+  label,
+  testId,
+  activeTab,
+  onSelect,
+}: {
+  id: VaultTab;
+  label: string;
+  testId: string;
+  activeTab: VaultTab;
+  onSelect: (tab: VaultTab) => void;
+}): React.JSX.Element {
+  const isActive = activeTab === id;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `vault-tab-${id}`,
+    role: "tab",
+    label: `${label} Vault section`,
+    group: "vault-tabs",
+    status: isActive ? "active" : "inactive",
+    onActivate: () => onSelect(id),
+  });
+
+  return (
+    <TabsTrigger
+      ref={ref}
+      {...agentProps}
+      value={id}
+      data-state={isActive ? "active" : "inactive"}
+      data-testid={testId}
+      className="h-9 shrink-0 bg-transparent px-3 py-1.5 text-xs text-txt-strong hover:bg-accent-subtle data-[state=active]:bg-accent-subtle data-[state=active]:text-txt-strong pointer-coarse:min-h-touch pointer-coarse:min-w-touch max-[420px]:px-2 max-[360px]:px-1"
+    >
+      {label}
+    </TabsTrigger>
+  );
+}
 
 function readHashTab(): VaultTab | null {
   if (typeof window === "undefined") return null;
@@ -205,8 +250,8 @@ export function VaultModal({
 }
 
 export interface VaultWorkspaceProps extends VaultModalProps {
-  /** Dialog chrome for the shortcut modal; page chrome for `/vault`. */
-  presentation?: "dialog" | "page";
+  /** Dialog chrome, legacy self-owned page chrome, or canonical framed-page chrome. */
+  presentation?: "dialog" | "page" | "framed-page";
 }
 
 export function VaultWorkspace({
@@ -535,7 +580,7 @@ export function VaultWorkspace({
 
   return (
     <>
-      {presentation === "dialog" ? (
+      {presentation === "framed-page" ? null : presentation === "dialog" ? (
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
@@ -575,7 +620,7 @@ export function VaultWorkspace({
 
       <div
         data-chat-occlusion-policy={
-          presentation === "page" ? "hide" : undefined
+          presentation !== "dialog" ? "hide" : undefined
         }
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-2"
       >
@@ -600,19 +645,19 @@ export function VaultWorkspace({
               onValueChange={onTabChange}
               className="flex min-h-0 flex-1 flex-col"
             >
-              <TabsList className="h-9 shrink-0 self-start">
-                <TabsTrigger value="overview" data-testid="vault-tab-overview">
-                  Overview
-                </TabsTrigger>
-                <TabsTrigger value="secrets" data-testid="vault-tab-secrets">
-                  Secrets
-                </TabsTrigger>
-                <TabsTrigger value="logins" data-testid="vault-tab-logins">
-                  Logins
-                </TabsTrigger>
-                <TabsTrigger value="routing" data-testid="vault-tab-routing">
-                  Routing
-                </TabsTrigger>
+              <TabsList
+                aria-label="Vault sections"
+                data-testid="section-nav-vault"
+                className="h-auto max-w-full self-start justify-start gap-1 overflow-x-auto rounded-none bg-transparent p-0"
+              >
+                {VAULT_SECTION_TABS.map((tab) => (
+                  <VaultTabTrigger
+                    key={tab.id}
+                    {...tab}
+                    activeTab={activeTab}
+                    onSelect={onTabChange}
+                  />
+                ))}
               </TabsList>
 
               <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">

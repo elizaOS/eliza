@@ -923,6 +923,23 @@ export interface TalkModePluginLike extends NativePlugin {
 }
 
 /**
+ * Minimal Android voice bridge shipped by remote-only Play/VPS builds.
+ *
+ * Those builds deliberately omit TalkMode's local-inference runtime, so the
+ * renderer must use this platform SpeechRecognizer/TextToSpeech surface rather
+ * than treating the absent heavyweight plugin as a callable object.
+ */
+export interface ElizaPlayVoicePluginLike extends NativePlugin {
+  requestPermission(): Promise<{ granted: boolean }>;
+  startDictation(options?: {
+    language?: string;
+  }): Promise<{ started: boolean }>;
+  stopDictation(): Promise<void>;
+  speak(options: { text: string; language?: string }): Promise<void>;
+  stop(): Promise<void>;
+}
+
+/**
  * `ElizaVoice` — the in-process bionic JNI voice host (the normal Android APK).
  *
  * Drives the fused `libelizainference` voice runtimes (VAD, wake-word, speaker
@@ -1051,6 +1068,10 @@ export function getAgentPlugin(): AgentPluginLike {
 
 export function getElizaVoicePlugin(): ElizaVoicePluginLike {
   return getNativePlugin<ElizaVoicePluginLike>("ElizaVoice");
+}
+
+export function getElizaPlayVoicePlugin(): ElizaPlayVoicePluginLike {
+  return getNativePlugin<ElizaPlayVoicePluginLike>("ElizaPlayVoice");
 }
 
 export function getGatewayPlugin(): GenericNativePlugin {

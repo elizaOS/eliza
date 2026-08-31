@@ -34,6 +34,40 @@ class TestStorage {
   failNextPut = false;
   failNextSetAlarm = false;
   failNextTransactionCommit = false;
+  rejectAsyncRateLimitStorage = false;
+
+  readonly kv = {
+    get: <T = unknown>(key: string): T | undefined => {
+      const value = this.values.get(key);
+      return value === undefined ? undefined : (structuredClone(value) as T);
+    },
+    put: <T>(key: string, value: T): void => {
+      if (this.failNextPut) {
+        this.failNextPut = false;
+        throw new Error("injected storage failure");
+      }
+      this.values.set(key, structuredClone(value));
+    },
+    delete: (key: string): boolean => this.values.delete(key),
+    list: <T = unknown>(options: { prefix?: string; limit?: number } = {}) =>
+      this.syncEntries<T>(options),
+  };
+
+  private syncEntries<T>(options: {
+    prefix?: string;
+    limit?: number;
+  }): Array<[string, T]> {
+    const entries = [...this.values.entries()]
+      .filter(
+        ([key]) =>
+          options.prefix === undefined || key.startsWith(options.prefix),
+      )
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]): [string, T] => [key, structuredClone(value) as T]);
+    return options.limit === undefined
+      ? entries
+      : entries.slice(0, options.limit);
+  }
 
   async get<T>(key: string): Promise<T | undefined>;
   async get<T>(keys: string[]): Promise<Map<string, T>>;
@@ -41,6 +75,13 @@ class TestStorage {
     keyOrKeys: string | string[],
   ): Promise<T | undefined | Map<string, T>> {
     await Promise.resolve();
+    if (
+      this.rejectAsyncRateLimitStorage &&
+      (keyOrKeys === "rate-limits" ||
+        (Array.isArray(keyOrKeys) && keyOrKeys.includes("rate-limits")))
+    ) {
+      throw new Error("async rate-limit storage path must not be used");
+    }
     if (Array.isArray(keyOrKeys)) {
       return new Map(
         keyOrKeys.flatMap((key) => {
@@ -74,6 +115,9 @@ class TestStorage {
 
   async put(key: string, value: unknown): Promise<void> {
     await Promise.resolve();
+    if (this.rejectAsyncRateLimitStorage && key === "rate-limits") {
+      throw new Error("async rate-limit storage path must not be used");
+    }
     if (this.failNextPut) {
       this.failNextPut = false;
       throw new Error("injected storage failure");
@@ -182,6 +226,21 @@ function createGate(
   return new InferenceAdmissionGate(state, env as never);
 }
 
+class QueueTestGate extends InferenceAdmissionGate {
+  runBillingQueueOperation(operation: () => Promise<void>): Promise<void> {
+    return this.serialize(operation);
+  }
+
+  runRevocationQueueOperation(operation: () => Promise<void>): Promise<void> {
+    return this.serializeRevocation(operation);
+  }
+}
+
+function createQueueTestGate(storage = new TestStorage()): QueueTestGate {
+  const state = { storage } as unknown as DurableObjectState;
+  return new QueueTestGate(state, {} as never);
+}
+
 function post(
   gate: InferenceAdmissionGate,
   path:
@@ -193,7 +252,13 @@ function post(
     | "/rate-limit"
     | "/rate-limit-v2-cutover"
     | "/rate-limit-warm"
-    | "/rate-limit-handoff",
+    | "/rate-limit-handoff"
+    | "/credential/check"
+    | "/credential/revoke"
+    | "/subject/set-active"
+    | "/session/revoke-through"
+    | "/session/set-binding-active"
+    | "/organization/set-active",
   body: Record<string, unknown>,
 ): Promise<Response> {
   const payload =
@@ -320,6 +385,71 @@ describe("InferenceAdmissionGate", () => {
     getOrganizationBalanceSnapshot.mockRestore();
   });
 
+  test("credential checks do not wait behind a blocked billing operation", async () => {
+    const gate = createQueueTestGate();
+    let enterBilling: () => void = () => undefined;
+    const billingEntered = new Promise<void>((resolve) => {
+      enterBilling = resolve;
+    });
+    let releaseBilling: () => void = () => undefined;
+    const billingReleased = new Promise<void>((resolve) => {
+      releaseBilling = resolve;
+    });
+    const blockedBilling = gate.runBillingQueueOperation(async () => {
+      enterBilling();
+      await billingReleased;
+    });
+    await billingEntered;
+
+    const response = await Promise.race([
+      post(gate, "/credential/check", {
+        organizationId: "org-a",
+        kind: "api_key",
+        credentialId: "key-a",
+        userId: "user-a",
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("credential check waited behind billing")),
+          100,
+        );
+      }),
+    ]);
+    expect(response.status).toBe(200);
+
+    releaseBilling();
+    await blockedBilling;
+  });
+
+  test("revocation reads and writes retain one ordered queue", async () => {
+    const gate = createQueueTestGate();
+    const order: string[] = [];
+    let enterFirst: () => void = () => undefined;
+    const firstEntered = new Promise<void>((resolve) => {
+      enterFirst = resolve;
+    });
+    let releaseFirst: () => void = () => undefined;
+    const firstReleased = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const first = gate.runRevocationQueueOperation(async () => {
+      order.push("first:start");
+      enterFirst();
+      await firstReleased;
+      order.push("first:end");
+    });
+    await firstEntered;
+    const second = gate.runRevocationQueueOperation(async () => {
+      order.push("second");
+    });
+    await Promise.resolve();
+    expect(order).toEqual(["first:start"]);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(["first:start", "first:end", "second"]);
+  });
+
   test("serializes and persists an exact fixed endpoint window", async () => {
     const clock = spyOn(Date, "now").mockReturnValue(61_234);
     try {
@@ -405,6 +535,46 @@ describe("InferenceAdmissionGate", () => {
     ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
   });
 
+  test("rate-only requests use synchronous SQLite KV and preserve the legacy key", async () => {
+    const storage = new TestStorage();
+    storage.rejectAsyncRateLimitStorage = true;
+    const gate = createGate(storage);
+    const windowStartedAt = 60_000;
+    const clock = spyOn(Date, "now").mockReturnValue(windowStartedAt + 1);
+    try {
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            endpointType: "completions",
+            windowMs: 60_000,
+            maxRequests: 1,
+            windowStartedAt,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            endpointType: "completions",
+            windowMs: 60_000,
+            maxRequests: 1,
+            windowStartedAt,
+          })
+        ).status,
+      ).toBe(429);
+      expect(storage.read<Record<string, unknown>>("rate-limits")).toEqual({
+        completions: {
+          count: 2,
+          maxRequests: 1,
+          windowMs: 60_000,
+          windowStartedAt,
+        },
+      });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("rate-limit prewarm loads its isolated window without consuming a request", async () => {
     const network = createRateLimitGateNetwork();
     await runWithCloudBindingsAsync(network.bindings, async () => {
@@ -414,6 +584,8 @@ describe("InferenceAdmissionGate", () => {
       expect(network.rateStorage.read("ledger")).toBeUndefined();
       expect(network.rateStorage.read("rate-limits")).toBeUndefined();
       expect(network.requestedNames).toContain("rate-limit:v2:org-a");
+      expect(network.requestedNames).not.toContain("rate-limit:v2:cutover");
+      expect(network.requestedNames).not.toContain("org-a");
       expect(
         network.requestedNames.filter((name) => name === "rate-limit:v2:org-a"),
       ).toHaveLength(1);
@@ -428,7 +600,7 @@ describe("InferenceAdmissionGate", () => {
     });
   });
 
-  test("cuts over only after the entire legacy fixed window has expired", async () => {
+  test("advances fixed windows entirely on the isolated rate-limit identity", async () => {
     const network = createRateLimitGateNetwork();
     const clock = spyOn(Date, "now").mockReturnValue(61_234);
     const body = {
@@ -459,8 +631,10 @@ describe("InferenceAdmissionGate", () => {
           }),
         ).toMatchObject({ allowed: true, remaining: 0 });
       });
-      expect(network.legacyStorage.read("rate-limits")).toBeDefined();
+      expect(network.legacyStorage.read("rate-limits")).toBeUndefined();
       expect(network.rateStorage.read("rate-limits")).toBeDefined();
+      expect(network.requestedNames).not.toContain("rate-limit:v2:cutover");
+      expect(network.requestedNames).not.toContain("org-a");
     } finally {
       clock.mockRestore();
     }

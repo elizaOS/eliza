@@ -19,12 +19,16 @@ import { readDatabaseIdentityReceipt } from "./database-identity-receipt";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_EVIDENCE_BYTES = 4 * 1024 * 1024;
 
+// Provisioning relations added here must also be considered by the worker's
+// startup gate in preflight-job-execution-interruptions.ts.
 export const REQUIRED_PRODUCTION_RELATIONS = [
   "public.apps",
   "public.organizations",
   "public.users",
   "public.api_keys",
   "public.mobile_app_auth_grants",
+  "public.agent_sandboxes",
+  "public.jobs",
   "steward.users",
   "steward.accounts",
   "steward.sessions",
@@ -149,6 +153,14 @@ function resourceMatches(
   );
 }
 
+function isTaggedPostgres18(image: string): boolean {
+  return /(?:^|\/)postgres[^:]*:18(?:$|[-.])/.test(image);
+}
+
+function isDigestPinnedPostgres(image: string): boolean {
+  return /(?:^|\/)postgres[^:@]*@sha256:[0-9a-f]{64}$/i.test(image);
+}
+
 /** Resolves exactly one production Postgres 18 service, honoring an optional pin. */
 export function resolveCanonicalRailwayTarget(
   evidence: RailwayTargetEvidence,
@@ -164,19 +176,36 @@ export function resolveCanonicalRailwayTarget(
   ) {
     return { verdict: "mismatch" };
   }
+
+  if (expected.serviceId) {
+    if (!UUID.test(expected.serviceId)) return { verdict: "mismatch" };
+    const pinned = evidence.services.filter(
+      ({ id }) => id === expected.serviceId,
+    );
+    if (pinned.length !== 1) return { verdict: "mismatch" };
+    const image = pinned[0]?.source?.image;
+    if (
+      typeof image !== "string" ||
+      (!isTaggedPostgres18(image) && !isDigestPinnedPostgres(image))
+    ) {
+      return { verdict: "mismatch" };
+    }
+    if (!resourceMatches(evidence.status.services?.edges, expected.serviceId)) {
+      return { verdict: "mismatch" };
+    }
+    return { verdict: "match", serviceId: expected.serviceId };
+  }
+
   const candidates = evidence.services.filter(
     ({ id, source }) =>
       typeof id === "string" &&
       UUID.test(id) &&
       typeof source?.image === "string" &&
-      /(?:^|\/)postgres[^:]*:18(?:$|[-.])/.test(source.image),
+      isTaggedPostgres18(source.image),
   );
   if (candidates.length !== 1) return { verdict: "unavailable" };
   const serviceId = candidates[0]?.id;
   if (typeof serviceId !== "string") return { verdict: "unavailable" };
-  if (expected.serviceId && expected.serviceId !== serviceId) {
-    return { verdict: "mismatch" };
-  }
   if (!resourceMatches(evidence.status.services?.edges, serviceId)) {
     return { verdict: "mismatch" };
   }
@@ -218,6 +247,8 @@ async function relationPresence(
       to_regclass('public.users') IS NOT NULL AS "public.users",
       to_regclass('public.api_keys') IS NOT NULL AS "public.api_keys",
       to_regclass('public.mobile_app_auth_grants') IS NOT NULL AS "public.mobile_app_auth_grants",
+      to_regclass('public.agent_sandboxes') IS NOT NULL AS "public.agent_sandboxes",
+      to_regclass('public.jobs') IS NOT NULL AS "public.jobs",
       to_regclass('steward.users') IS NOT NULL AS "steward.users",
       to_regclass('steward.accounts') IS NOT NULL AS "steward.accounts",
       to_regclass('steward.sessions') IS NOT NULL AS "steward.sessions",
@@ -291,7 +322,9 @@ export async function auditProductionDatabaseAuthority(input: {
     ]);
     const authorityMatches =
       canonicalIdentity.clusterSha256 === protectedIdentity.clusterSha256 &&
-      canonicalIdentity.authoritySha256 === protectedIdentity.authoritySha256;
+      canonicalIdentity.authoritySha256 === protectedIdentity.authoritySha256 &&
+      canonicalIdentity.postgresMajor === 18 &&
+      protectedIdentity.postgresMajor === 18;
     const [canonicalRequiredTables, protectedRequiredTables] =
       await Promise.all([
         relationPresence(input.canonicalClient),

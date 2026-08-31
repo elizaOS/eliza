@@ -7,7 +7,11 @@ import type {
   GuardedFetchResult,
   IAgentRuntime,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  resetDevCloudEnvAuthorityForTests,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BROKER_FETCH_TIMEOUT_MS,
   BROKER_RESPONSE_MAX_BYTES,
@@ -35,6 +39,36 @@ function newTestProvider(runtimeValue: IAgentRuntime): BrokerAuthProvider {
   return new BrokerAuthProvider(runtimeValue, testGuardedFetch);
 }
 
+const DEV_CLOUD_ENV_KEYS = [
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZA_DEV_CLOUD_TARGET",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZAOS_CLOUD_API_KEY",
+] as const;
+const ORIGINAL_DEV_CLOUD_ENV = Object.fromEntries(
+  DEV_CLOUD_ENV_KEYS.map((key) => [key, process.env[key]]),
+) as Record<(typeof DEV_CLOUD_ENV_KEYS)[number], string | undefined>;
+
+function installDevCloudAuthority(options: {
+  authority:
+    | "staging-default"
+    | "staging-explicit"
+    | "production"
+    | "offline"
+    | "self-hosted";
+  baseUrl: string;
+  apiKey: string;
+}): void {
+  resetDevCloudEnvAuthorityForTests();
+  process.env.ELIZA_DEV_SOURCE = "1";
+  process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = options.authority;
+  process.env.ELIZA_DEV_CLOUD_TARGET = options.authority;
+  process.env.ELIZAOS_CLOUD_BASE_URL = options.baseUrl;
+  process.env.ELIZAOS_CLOUD_API_KEY = options.apiKey;
+  resolveDevCloudEnvAuthority();
+}
+
 async function settleWithin<T>(
   promise: Promise<T>,
   milliseconds = 250,
@@ -58,10 +92,21 @@ async function settleWithin<T>(
   }
 }
 
+beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
+  for (const key of DEV_CLOUD_ENV_KEYS) delete process.env[key];
+});
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  for (const key of DEV_CLOUD_ENV_KEYS) {
+    const original = ORIGINAL_DEV_CLOUD_ENV[key];
+    if (original === undefined) delete process.env[key];
+    else process.env[key] = original;
+  }
+  resetDevCloudEnvAuthorityForTests();
 });
 
 describe("BrokerAuthProvider", () => {
@@ -591,6 +636,132 @@ describe("BrokerAuthProvider", () => {
       code: "X_BROKER_CREDENTIAL_MISSING",
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "staging authority to production",
+      authority: "staging-explicit" as const,
+      authorityBase: "https://api-staging.eliza.app/api/v1",
+      brokerUrl: "https://api.eliza.app/api/v1/twitter",
+    },
+    {
+      label: "production authority to staging",
+      authority: "production" as const,
+      authorityBase: "https://api.eliza.app/api/v1",
+      brokerUrl: "https://api-staging.eliza.app/api/v1/twitter",
+    },
+    {
+      label: "production authority outside its frozen path",
+      authority: "production" as const,
+      authorityBase: "https://api.eliza.app/api/v1",
+      brokerUrl: "https://api.eliza.app/private/twitter",
+    },
+  ])("blocks Cloud-key crossover: $label", async (testCase) => {
+    installDevCloudAuthority({
+      authority: testCase.authority,
+      baseUrl: testCase.authorityBase,
+      apiKey: `${testCase.authority}-frozen-key`,
+    });
+    process.env.ELIZAOS_CLOUD_BASE_URL = testCase.brokerUrl;
+    process.env.ELIZAOS_CLOUD_API_KEY = "mutable-process-key";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = newTestProvider(
+      runtime({
+        ELIZAOS_CLOUD_API_KEY: "mutable-runtime-key",
+        TWITTER_BROKER_URL: testCase.brokerUrl,
+      }),
+    );
+
+    await expect(provider.getAccessToken()).rejects.toMatchObject({
+      code: "X_BROKER_CREDENTIAL_MISSING",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses only the frozen key for a self-hosted broker owned by the frozen base", async () => {
+    installDevCloudAuthority({
+      authority: "self-hosted",
+      baseUrl: "https://self-hosted.example/cloud/api/v1",
+      apiKey: "frozen-self-hosted-key",
+    });
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://mutable.example/api/v1";
+    process.env.ELIZAOS_CLOUD_API_KEY = "mutable-process-key";
+    const fetchMock = vi.fn(async () =>
+      Response.json({ auth_mode: "oauth2", access_token: "x-token" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = newTestProvider(
+      runtime({
+        ELIZAOS_CLOUD_API_KEY: "mutable-runtime-key",
+        TWITTER_BROKER_URL: "https://self-hosted.example/cloud/api/v1/twitter/",
+      }),
+    );
+
+    await expect(provider.getAccessToken()).resolves.toBe("x-token");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://self-hosted.example/cloud/api/v1/twitter/token?connectionRole=agent",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer frozen-self-hosted-key",
+        }),
+      }),
+    );
+  });
+
+  it.each(["staging-default", "offline"] as const)(
+    "does not revive a mutable Cloud key in blocked %s mode",
+    async (authority) => {
+      installDevCloudAuthority({
+        authority,
+        baseUrl: "https://api.eliza.app/api/v1",
+        apiKey: "stale-process-key",
+      });
+      process.env.ELIZAOS_CLOUD_API_KEY = "mutated-process-key";
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const provider = newTestProvider(
+        runtime({
+          ELIZAOS_CLOUD_API_KEY: "stale-runtime-key",
+          TWITTER_BROKER_URL: "https://api-staging.eliza.app/api/v1/twitter",
+        }),
+      );
+
+      await expect(provider.getAccessToken()).rejects.toMatchObject({
+        code: "X_BROKER_CREDENTIAL_MISSING",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows a custom broker only when it has an explicit broker token", async () => {
+    installDevCloudAuthority({
+      authority: "staging-explicit",
+      baseUrl: "https://api-staging.eliza.app/api/v1",
+      apiKey: "frozen-staging-key",
+    });
+    const fetchMock = vi.fn(async () =>
+      Response.json({ auth_mode: "oauth2", access_token: "x-token" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = newTestProvider(
+      runtime({
+        ELIZAOS_CLOUD_API_KEY: "mutable-runtime-key",
+        TWITTER_BROKER_TOKEN: "explicit-broker-token",
+        TWITTER_BROKER_URL: "https://broker.example/api/v1/twitter",
+      }),
+    );
+
+    await expect(provider.getAccessToken()).resolves.toBe("x-token");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://broker.example/api/v1/twitter/token?connectionRole=agent",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer explicit-broker-token",
+        }),
+      }),
+    );
   });
 
   it.each([

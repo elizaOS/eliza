@@ -61,7 +61,7 @@ interface ImportBinding {
   origin: string;
 }
 
-interface LegacyMoleculeContract {
+export interface MoleculeContract {
   id: string;
   owner: string;
   symbol: string;
@@ -70,6 +70,8 @@ interface LegacyMoleculeContract {
   requiredRenderedTags: readonly string[];
   requiredConsumerFiles: readonly string[];
   minimumMaintainedReferences: number;
+  renderedStory: string;
+  behavioralTest: string;
 }
 
 interface ExportedDeclaration {
@@ -460,20 +462,45 @@ async function loadAtomicInventory(): Promise<{
   return { definitions, files: [...new Set(files)].sort() };
 }
 
-function loadMoleculeContracts(): LegacyMoleculeContract[] {
-  const raw: unknown = JSON.parse(
-    fs.readFileSync(moleculeContractsPath, "utf8"),
+function isSafePackagesRelativePath(value: string): boolean {
+  return (
+    value.startsWith("packages/") &&
+    !path.isAbsolute(value) &&
+    !value.split("/").includes("..")
   );
+}
+
+export function parseMoleculeContracts(raw: unknown): MoleculeContract[] {
   if (
     !isRecord(raw) ||
-    raw.schemaVersion !== 1 ||
+    raw.schemaVersion !== 2 ||
     !Array.isArray(raw.contracts)
   ) {
-    throw new Error("Molecule contracts require schemaVersion 1 and contracts");
+    throw new Error("Molecule contracts require schemaVersion 2 and contracts");
   }
   return raw.contracts.map((value, index) => {
     if (!isRecord(value))
       throw new Error(`Molecule contract ${index} must be an object`);
+    const allowedFields: Record<string, true> = {
+      behavioralTest: true,
+      id: true,
+      minimumMaintainedReferences: true,
+      owner: true,
+      renderedStory: true,
+      requiredAtomicDependencies: true,
+      requiredConsumerFiles: true,
+      requiredRenderedTags: true,
+      responsibility: true,
+      symbol: true,
+    };
+    const unknownField = Object.keys(value).find(
+      (field) => !Object.hasOwn(allowedFields, field),
+    );
+    if (unknownField) {
+      throw new Error(
+        `Molecule contract ${index} has unknown field ${unknownField}`,
+      );
+    }
     const required = (field: string): string => {
       const entry = value[field];
       if (typeof entry !== "string" || entry.trim() === "") {
@@ -481,9 +508,57 @@ function loadMoleculeContracts(): LegacyMoleculeContract[] {
       }
       return entry;
     };
+    const owner = required("owner");
+    const renderedStory = required("renderedStory");
+    const behavioralTest = required("behavioralTest");
+    if (!isSafePackagesRelativePath(owner)) {
+      throw new Error(`Molecule contract ${index}.owner must be a safe path`);
+    }
+    if (
+      !isSafePackagesRelativePath(renderedStory) ||
+      !/\.stories\.[jt]sx?$/.test(renderedStory)
+    ) {
+      throw new Error(
+        `Molecule contract ${index}.renderedStory must name a packages-relative Storybook story`,
+      );
+    }
+    if (
+      !isSafePackagesRelativePath(behavioralTest) ||
+      !/\.(?:test|spec)\.[jt]sx?$/.test(behavioralTest)
+    ) {
+      throw new Error(
+        `Molecule contract ${index}.behavioralTest must name a packages-relative test`,
+      );
+    }
+    const requiredConsumerFiles = requireStringListForBoundary(
+      value.requiredConsumerFiles,
+      `Molecule contract ${index}.requiredConsumerFiles`,
+    );
+    if (
+      requiredConsumerFiles.length < 2 ||
+      new Set(requiredConsumerFiles).size !== requiredConsumerFiles.length ||
+      requiredConsumerFiles.some(
+        (consumer) =>
+          !isSafePackagesRelativePath(consumer) || consumer === owner,
+      )
+    ) {
+      throw new Error(
+        `Molecule contract ${index} requires at least two distinct maintained consumer files`,
+      );
+    }
+    const minimumMaintainedReferences = value.minimumMaintainedReferences;
+    if (
+      typeof minimumMaintainedReferences !== "number" ||
+      !Number.isInteger(minimumMaintainedReferences) ||
+      minimumMaintainedReferences < 2
+    ) {
+      throw new Error(
+        `Molecule contract ${index}.minimumMaintainedReferences must be an integer of at least 2`,
+      );
+    }
     return {
       id: required("id"),
-      owner: required("owner"),
+      owner,
       symbol: required("symbol"),
       responsibility: required("responsibility"),
       requiredAtomicDependencies: requireStringListForBoundary(
@@ -494,25 +569,18 @@ function loadMoleculeContracts(): LegacyMoleculeContract[] {
         value.requiredRenderedTags,
         `Molecule contract ${index}.requiredRenderedTags`,
       ),
-      requiredConsumerFiles: requireStringListForBoundary(
-        value.requiredConsumerFiles,
-        `Molecule contract ${index}.requiredConsumerFiles`,
-      ),
-      minimumMaintainedReferences: (() => {
-        const count = value.minimumMaintainedReferences;
-        if (
-          typeof count !== "number" ||
-          !Number.isInteger(count) ||
-          count < 0
-        ) {
-          throw new Error(
-            `Molecule contract ${index}.minimumMaintainedReferences must be a non-negative integer`,
-          );
-        }
-        return count;
-      })(),
+      requiredConsumerFiles,
+      minimumMaintainedReferences,
+      renderedStory,
+      behavioralTest,
     };
   });
+}
+
+function loadMoleculeContracts(): MoleculeContract[] {
+  return parseMoleculeContracts(
+    JSON.parse(fs.readFileSync(moleculeContractsPath, "utf8")),
+  );
 }
 
 function fingerprint(
@@ -547,9 +615,9 @@ function makeFinding(input: {
   };
 }
 
-/** Compares a declared molecule contract with its discovered live atom closure. */
-export function validateDeclaredMoleculeAtomicDependencies(input: {
-  nodeId: `molecule:${string}`;
+/** Compares a declared composition with its discovered live atom closure. */
+export function validateDeclaredAtomicDependencies(input: {
+  nodeId: DesignNodeId;
   owner: string;
   declaredAtomicDependencies: readonly string[];
   sourceAtomicDependencies: readonly string[];
@@ -882,6 +950,21 @@ export async function buildDesignContractGraph(): Promise<DesignContractGraph> {
       component,
     ]),
   );
+  for (const node of higherOrderNodes) {
+    const ownerKey = designOwnerKey(node.owner);
+    const discoveredComponent = discoveredComponentByOwner.get(ownerKey);
+    if (!discoveredComponent) continue;
+    findings.push(
+      ...validateDeclaredAtomicDependencies({
+        nodeId: node.id,
+        owner: ownerKey,
+        declaredAtomicDependencies: node.dependsOn
+          .filter((dependency) => dependency.startsWith("atom:"))
+          .map((dependency) => dependency.slice("atom:".length)),
+        sourceAtomicDependencies: discoveredComponent.transitiveAtoms,
+      }),
+    );
+  }
   const rawCapabilityClosure = (rootId: string) => {
     const occurrences: Array<{
       component: (typeof componentGraph.components)[number];
@@ -985,7 +1068,7 @@ export async function buildDesignContractGraph(): Promise<DesignContractGraph> {
         );
       }
       findings.push(
-        ...validateDeclaredMoleculeAtomicDependencies({
+        ...validateDeclaredAtomicDependencies({
           nodeId,
           owner: ownerKey,
           declaredAtomicDependencies: contract.requiredAtomicDependencies,

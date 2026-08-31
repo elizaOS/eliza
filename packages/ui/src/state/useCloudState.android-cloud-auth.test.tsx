@@ -12,6 +12,7 @@ const harness = vi.hoisted(() => ({
   })),
   browserFinished: null as null | (() => void),
   cancel: vi.fn(async () => true),
+  directCloudRequest: vi.fn(),
   sequence: 0,
   stewardToken: null as string | null,
   switchAccountPending: false,
@@ -32,6 +33,9 @@ vi.mock("@capacitor/core", () => ({
   Capacitor: {
     getPlatform: () => "android",
     isNativePlatform: () => true,
+  },
+  CapacitorHttp: {
+    request: harness.directCloudRequest,
   },
 }));
 
@@ -92,6 +96,10 @@ vi.mock("../utils", async (importOriginal) => {
 
 import { useCloudState } from "./useCloudState";
 
+const runtimeWithPinnedRemote = globalThis as typeof globalThis & {
+  __ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__?: string;
+};
+
 function params() {
   return {
     setActionNotice: vi.fn(),
@@ -105,6 +113,7 @@ describe("useCloudState Android hosted auth", () => {
     vi.useFakeTimers();
     harness.browserFinished = null;
     harness.cancel.mockClear();
+    harness.directCloudRequest.mockReset();
     harness.begin.mockReset();
     harness.begin.mockImplementation(async () => {
       harness.sequence += 1;
@@ -120,6 +129,7 @@ describe("useCloudState Android hosted auth", () => {
   });
 
   afterEach(() => {
+    delete runtimeWithPinnedRemote.__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__;
     vi.useRealTimers();
   });
 
@@ -234,6 +244,28 @@ describe("useCloudState Android hosted auth", () => {
     expect(result.current.elizaCloudConnected).toBe(true);
     expect(harness.api.setToken).toHaveBeenCalledWith("durable-steward-token");
     expect(harness.api.getCloudStatus).toHaveBeenCalled();
+  });
+
+  it("keeps the native Steward token when direct reconciliation is transient", async () => {
+    runtimeWithPinnedRemote.__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__ =
+      "https://bot.nubs.site";
+    harness.stewardToken = "durable-steward-token";
+    harness.directCloudRequest.mockRejectedValueOnce(
+      new Error("control plane unavailable"),
+    );
+    const { result } = renderHook(() => useCloudState(params()));
+
+    await act(async () => {
+      for (let index = 0; index < 10; index += 1) await Promise.resolve();
+    });
+
+    expect(harness.directCloudRequest).toHaveBeenCalled();
+    expect(result.current.elizaCloudConnected).toBe(false);
+    expect(result.current.elizaCloudLoginError).toBe(
+      "Eliza Cloud is temporarily unavailable. Retry in a moment.",
+    );
+    expect(result.current.elizaCloudLoginError).not.toContain("sign in again");
+    expect(harness.stewardToken).toBe("durable-steward-token");
   });
 
   it("rejects required-client-auth callers when hosted sign-in cannot start", async () => {

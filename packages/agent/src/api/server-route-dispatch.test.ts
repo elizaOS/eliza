@@ -12,7 +12,11 @@
  */
 import type http from "node:http";
 import type { AgentRuntime, Route } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  captureDevCloudEnvAuthority,
+  resetDevCloudEnvAuthorityForTests,
+} from "../config/dev-cloud-env-authority.ts";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import {
   handleCloudAndCoreRouteGroup,
@@ -46,6 +50,9 @@ type SandboxCtx = Parameters<typeof handleSandboxRouteGroup>[0];
 type DatabaseCtx = Parameters<typeof handleDatabaseRouteGroup>[0];
 type ConversationCtx = Parameters<typeof handleConversationRouteGroup>[0];
 type LifeOpsCtx = Parameters<typeof handleLifeOpsRuntimePluginRoute>[0];
+type CloudPluginState = Parameters<
+  typeof import("@elizaos/plugin-elizacloud/host-routes")["handleCloudRoute"]
+>[4];
 
 function makeRes(): http.ServerResponse {
   const headers: Record<string, string> = {};
@@ -112,6 +119,7 @@ function helpers() {
 }
 
 beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
   cloudHost.handleCloudRelayRoute.mockClear();
   cloudHost.handleCloudBillingRoute.mockClear();
   cloudHost.handleCloudCompatRoute.mockClear();
@@ -122,6 +130,11 @@ beforeEach(() => {
   cloudHost.handleCloudRoute.mockResolvedValue(true);
   computeUse.handleSandboxRoute.mockClear();
   computeUse.handleSandboxRoute.mockResolvedValue(true);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  resetDevCloudEnvAuthorityForTests();
 });
 
 describe("handleInboxAndCloudRelayRouteGroup", () => {
@@ -318,21 +331,226 @@ describe("handleCloudAndCoreRouteGroup", () => {
     expect(cloudHost.handleCloudCompatRoute).toHaveBeenCalledTimes(1);
     expect(cloudHost.handleCloudRoute).toHaveBeenCalledTimes(1);
     const pluginState = cloudHost.handleCloudRoute.mock.calls[0]?.[4] as
-      | {
-          config: unknown;
-          cloudManager: unknown;
-          saveConfig: CloudCtx["saveConfig"];
-          restartRuntime: CloudCtx["restartRuntime"];
-          createTelemetrySpan: typeof createIntegrationTelemetrySpan;
-        }
+      | CloudPluginState
       | undefined;
     expect(pluginState?.config).toEqual({ cloud: true });
     expect(pluginState?.cloudManager).toEqual({ id: "cm" });
-    expect(pluginState?.saveConfig).toBe(args.saveConfig);
     expect(pluginState?.restartRuntime).toBe(args.restartRuntime);
-    expect(pluginState?.createTelemetrySpan).toBe(
+    expect(pluginState?.services?.saveElizaConfig).toBe(args.saveConfig);
+    expect(pluginState?.services?.createIntegrationTelemetrySpan).toBe(
       createIntegrationTelemetrySpan,
     );
+    expect(pluginState).not.toHaveProperty("saveConfig");
+    expect(pluginState).not.toHaveProperty("createTelemetrySpan");
+  });
+
+  it("lets the real disconnect handler persist only its staging-authority working state", async () => {
+    for (const [key, value] of Object.entries(process.env)) {
+      if (key.startsWith("ELIZAOS_CLOUD_") && value !== undefined) {
+        vi.stubEnv(key, value);
+      }
+    }
+    vi.stubEnv("ELIZA_DEV_SOURCE", "1");
+    vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "staging-default");
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "ambient-prod-key");
+    vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api.eliza.app/api/v1");
+    resetDevCloudEnvAuthorityForTests();
+
+    const actualCloudHost = await vi.importActual<
+      typeof import("@elizaos/plugin-elizacloud/host-routes")
+    >("@elizaos/plugin-elizacloud/host-routes");
+    cloudHost.handleCloudRoute.mockImplementationOnce(
+      actualCloudHost.handleCloudRoute as unknown as PluginHandler,
+    );
+
+    const durableConfig = {
+      keep: "durable",
+      cloud: {
+        enabled: true,
+        baseUrl: "https://api.eliza.app/api/v1",
+        apiKey: "persisted-prod-key",
+        serviceKey: "persisted-prod-service-key",
+      },
+    };
+    const saveConfig = vi.fn<CloudCtx["saveConfig"]>();
+    const args = ctx("/api/cloud/disconnect");
+    args.req = makeReq("POST", args.pathname);
+    args.method = "POST";
+    args.state = dispatchState({ config: durableConfig });
+    args.saveConfig = saveConfig;
+
+    await expect(handleCloudAndCoreRouteGroup(args)).resolves.toBe(true);
+
+    expect(saveConfig).toHaveBeenCalledTimes(1);
+    const savedConfig = saveConfig.mock.calls[0]?.[0];
+    expect(savedConfig).toMatchObject({
+      keep: "durable",
+      deploymentTarget: { runtime: "local" },
+      cloud: {
+        enabled: false,
+        baseUrl: "https://api-staging.eliza.app/api/v1",
+      },
+    });
+    expect(savedConfig?.cloud).not.toHaveProperty("apiKey");
+    expect(savedConfig?.cloud).not.toHaveProperty("serviceKey");
+    expect(JSON.stringify(savedConfig)).not.toContain("persisted-prod");
+    expect(args.state.config).toBe(savedConfig);
+    expect(durableConfig.cloud).toMatchObject({
+      apiKey: "persisted-prod-key",
+      serviceKey: "persisted-prod-service-key",
+    });
+  });
+
+  it("blocks hostile login persistence from mutating runtime state under staging-default authority", async () => {
+    vi.stubEnv("ELIZA_DEV_SOURCE", "1");
+    vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "staging-default");
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "");
+    vi.stubEnv("ELIZAOS_CLOUD_ENABLED", "");
+    vi.stubEnv(
+      "ELIZAOS_CLOUD_BASE_URL",
+      "https://api-staging.eliza.app/api/v1",
+    );
+    resetDevCloudEnvAuthorityForTests();
+    captureDevCloudEnvAuthority();
+
+    process.env.ELIZAOS_CLOUD_API_KEY = "late-process-prod-key";
+    process.env.ELIZAOS_CLOUD_ENABLED = "late-process-sentinel";
+    const cloudAuth = {
+      authenticateWithApiKey: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    const relay = { startRelayLoopIfReady: vi.fn() };
+    const runtimeSecrets = {
+      ELIZAOS_CLOUD_API_KEY: "runtime-prod-key",
+      ELIZAOS_CLOUD_ENABLED: "true",
+    };
+    const runtime = {
+      agentId: "runtime-agent",
+      character: { secrets: runtimeSecrets },
+      getService: vi.fn((name: string) => {
+        if (name === "CLOUD_AUTH") return cloudAuth;
+        if (name.includes("GATEWAY_RELAY") || name.includes("gateway-relay")) {
+          return relay;
+        }
+        return null;
+      }),
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZAOS_CLOUD_API_KEY" ? "runtime-prod-key" : undefined,
+      ),
+      setSetting: vi.fn(),
+      updateAgent: vi.fn(async () => undefined),
+    } as unknown as AgentRuntime;
+    const cloudManager = {
+      replaceApiKey: vi.fn(async () => undefined),
+      getClient: vi.fn(() => null),
+      init: vi.fn(async () => undefined),
+    };
+    const durableConfig = {
+      keep: "durable",
+      cloud: {
+        enabled: true,
+        baseUrl: "https://api.eliza.app/api/v1",
+        apiKey: "persisted-prod-key",
+      },
+    };
+    const saveConfig = vi.fn<CloudCtx["saveConfig"]>();
+    const actualCloudHost = await vi.importActual<
+      typeof import("@elizaos/plugin-elizacloud/host-routes")
+    >("@elizaos/plugin-elizacloud/host-routes");
+    cloudHost.handleCloudRoute.mockImplementationOnce(
+      actualCloudHost.handleCloudRoute as unknown as PluginHandler,
+    );
+    const args = ctx("/api/cloud/login/persist");
+    args.method = "POST";
+    args.req = makeReq("POST", args.pathname);
+    (args.req as http.IncomingMessage & { body?: unknown }).body = {
+      apiKey: "hostile-body-prod-key",
+      organizationId: "prod-org",
+      userId: "prod-user",
+      forceInferenceEnabled: true,
+    };
+    args.res = makeRes();
+    args.state = dispatchState({
+      config: durableConfig,
+      runtime,
+      cloudManager,
+    });
+    args.saveConfig = saveConfig;
+
+    await expect(handleCloudAndCoreRouteGroup(args)).resolves.toBe(true);
+
+    expect(args.res.statusCode).toBe(409);
+    expect(saveConfig).not.toHaveBeenCalled();
+    expect(args.state.config).toBe(durableConfig);
+    expect(durableConfig.cloud.apiKey).toBe("persisted-prod-key");
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("late-process-prod-key");
+    expect(process.env.ELIZAOS_CLOUD_ENABLED).toBe("late-process-sentinel");
+    expect(runtime.character.secrets).toEqual(runtimeSecrets);
+    expect(runtime.setSetting).not.toHaveBeenCalled();
+    expect(runtime.updateAgent).not.toHaveBeenCalled();
+    expect(cloudAuth.authenticateWithApiKey).not.toHaveBeenCalled();
+    expect(relay.startRelayLoopIfReady).not.toHaveBeenCalled();
+    expect(cloudManager.replaceApiKey).not.toHaveBeenCalled();
+    expect(cloudManager.init).not.toHaveBeenCalled();
+  });
+
+  it("rejects a replacement credential under staging-explicit authority", async () => {
+    vi.stubEnv("ELIZA_DEV_SOURCE", "1");
+    vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "staging-explicit");
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "launch-staging-key");
+    vi.stubEnv(
+      "ELIZAOS_CLOUD_BASE_URL",
+      "https://api-staging.eliza.app/api/v1",
+    );
+    resetDevCloudEnvAuthorityForTests();
+    captureDevCloudEnvAuthority();
+    process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+
+    const cloudAuth = { authenticateWithApiKey: vi.fn() };
+    const runtimeSecrets = { ELIZAOS_CLOUD_API_KEY: "runtime-prod-key" };
+    const runtime = {
+      agentId: "runtime-agent",
+      character: { secrets: runtimeSecrets },
+      getService: vi.fn((name: string) =>
+        name === "CLOUD_AUTH" ? cloudAuth : null,
+      ),
+      getSetting: vi.fn(() => "runtime-prod-key"),
+      setSetting: vi.fn(),
+      updateAgent: vi.fn(async () => undefined),
+    } as unknown as AgentRuntime;
+    const saveConfig = vi.fn<CloudCtx["saveConfig"]>();
+    const actualCloudHost = await vi.importActual<
+      typeof import("@elizaos/plugin-elizacloud/host-routes")
+    >("@elizaos/plugin-elizacloud/host-routes");
+    cloudHost.handleCloudRoute.mockImplementationOnce(
+      actualCloudHost.handleCloudRoute as unknown as PluginHandler,
+    );
+    const args = ctx("/api/cloud/login/persist");
+    args.method = "POST";
+    args.req = makeReq("POST", args.pathname);
+    (args.req as http.IncomingMessage & { body?: unknown }).body = {
+      apiKey: "replacement-production-key",
+    };
+    args.state = dispatchState({
+      config: {
+        cloud: {
+          apiKey: "persisted-production-key",
+          baseUrl: "https://api.eliza.app/api/v1",
+        },
+      },
+      runtime,
+    });
+    args.saveConfig = saveConfig;
+
+    await expect(handleCloudAndCoreRouteGroup(args)).resolves.toBe(true);
+
+    expect(args.res.statusCode).toBe(409);
+    expect(saveConfig).not.toHaveBeenCalled();
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("late-production-key");
+    expect(runtime.character.secrets).toEqual(runtimeSecrets);
+    expect(runtime.setSetting).not.toHaveBeenCalled();
+    expect(runtime.updateAgent).not.toHaveBeenCalled();
+    expect(cloudAuth.authenticateWithApiKey).not.toHaveBeenCalled();
   });
 
   it("returns handleCloudRoute's false when nothing in the cascade claims the path", async () => {

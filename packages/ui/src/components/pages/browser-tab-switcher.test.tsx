@@ -119,6 +119,9 @@ describe("BrowserTabFoldControl", () => {
       />,
     );
     const control = screen.getByTestId("browser-workspace-tab-fold-control");
+    expect(
+      screen.getByTestId("browser-workspace-tabs-icon").getAttribute("class"),
+    ).toContain("lucide-square-stack");
     expect(control.textContent).toContain("DuckDuckGo");
     expect(
       screen.getByTestId("browser-workspace-tab-count").textContent,

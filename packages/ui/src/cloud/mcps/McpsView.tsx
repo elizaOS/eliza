@@ -11,7 +11,6 @@
 
 import { Plus, Puzzle, Search, Zap } from "lucide-react";
 import { memo, useCallback, useMemo, useState } from "react";
-import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
 import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
 import { useSetPageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 import { Button } from "../../components/ui/button";
@@ -54,8 +53,8 @@ export function McpsView() {
           "Register, publish and connect Model Context Protocol servers for your agents.",
       }),
       actions: (
-        <BrandButton
-          variant="primary"
+        <Button
+          variant="default"
           size="sm"
           onClick={() => {
             setEditing(null);
@@ -64,7 +63,7 @@ export function McpsView() {
         >
           <Plus className="size-4" />
           {t("cloud.mcps.registerCta", { defaultValue: "Register MCP" })}
-        </BrandButton>
+        </Button>
       ),
     },
     [t],
@@ -208,8 +207,8 @@ export function McpsView() {
           }
           action={
             tab === "own" ? (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 onClick={() => {
                   setEditing(null);
@@ -218,7 +217,7 @@ export function McpsView() {
               >
                 <Plus className="size-4" />
                 {t("cloud.mcps.registerCta", { defaultValue: "Register MCP" })}
-              </BrandButton>
+              </Button>
             ) : undefined
           }
         />
@@ -351,7 +350,7 @@ const BuiltinCard = memo(function BuiltinCard({
         <code className="font-mono text-xs text-muted truncate">
           {mcp.endpoint}
         </code>
-        <BrandButton
+        <Button
           variant="outline"
           size="sm"
           onClick={() => void runTest()}
@@ -360,7 +359,7 @@ const BuiltinCard = memo(function BuiltinCard({
           {testing
             ? t("cloud.mcps.testing", { defaultValue: "Testing..." })
             : t("cloud.mcps.test", { defaultValue: "Test" })}
-        </BrandButton>
+        </Button>
       </div>
       {result && (
         <CodeBlock

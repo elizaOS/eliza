@@ -134,6 +134,18 @@ describe("navigation built-in route descriptors", () => {
     expect(resolveBuiltinRouteDescriptor("some-plugin-tab")).toBeNull();
   });
 
+  it.each(["database", "memories", "tasks", "automations"] as const)(
+    "delegates %s width and gutter geometry to its FramedPage",
+    (id) => {
+      expect(resolveBuiltinRouteDescriptor(id)?.layout).toEqual({
+        kind: "content",
+        width: "standard",
+        scroll: "view",
+        gutter: "none",
+      });
+    },
+  );
+
   it("matches scroll ownership to the current routed view architecture", () => {
     const shellScrolled = BUILTIN_ROUTE_IDS.filter(
       (id) => resolveBuiltinRouteDescriptor(id)?.layout.scroll === "shell",

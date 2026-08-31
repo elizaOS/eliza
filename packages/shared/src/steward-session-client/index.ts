@@ -12,12 +12,25 @@
  * Browser-only helpers return cleanly under SSR (`typeof window === "undefined"`).
  */
 
+import { classifyElizaHostname } from "../elizacloud/domain-contract.js";
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 /** localStorage key for the Steward access token (JWT). */
 export const STEWARD_TOKEN_KEY = "steward_session_token";
+
+/**
+ * Deployment scope paired with the Steward access token on a loopback-rendered
+ * app. Hosted Cloud origins already isolate localStorage by origin; localhost
+ * does not, so this companion key prevents a token minted for one configured
+ * control plane from crossing into another after a local target switch.
+ */
+export const STEWARD_TOKEN_SCOPE_KEY = "steward_session_token_scope";
+
+/** Current loopback app target, stored separately from the token's mint scope. */
+export const STEWARD_ACTIVE_SCOPE_KEY = "steward_session_active_scope";
 
 /** Typed browser event emitted after a canonical Steward token mutation. */
 export const STEWARD_SESSION_CHANGE_EVENT = "steward-session-change";
@@ -307,21 +320,94 @@ export interface ClearOpts {
 // localStorage helpers
 // ---------------------------------------------------------------------------
 
+function isLoopbackRenderedApp(): boolean {
+  if (typeof window === "undefined") return false;
+  const protocol = window.location?.protocol?.toLowerCase() ?? "";
+  if (protocol !== "http:" && protocol !== "https:") return false;
+  const hostname = window.location?.hostname?.toLowerCase() ?? "";
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]" ||
+    hostname.startsWith("127.")
+  );
+}
+
+function stewardScopeForBase(configuredBase: string): string | null {
+  try {
+    const parsed = new URL(configuredBase);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    const classified = classifyElizaHostname(parsed.hostname);
+    if (classified.environment) {
+      return `eliza-cloud:${classified.environment}`;
+    }
+    return `origin:${parsed.origin}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Bind this loopback page to its launcher-selected Cloud control plane before
+ * any auth reads. Hosted pages need no marker because browser origins already
+ * isolate their storage. Invalid local targets publish a fail-closed sentinel.
+ */
+export function configureStoredStewardTokenScope(
+  configuredBase: string | null | undefined,
+): void {
+  if (!isLoopbackRenderedApp()) return;
+  const scope = configuredBase?.trim()
+    ? stewardScopeForBase(configuredBase.trim())
+    : null;
+  window.localStorage.setItem(
+    STEWARD_ACTIVE_SCOPE_KEY,
+    scope ?? "invalid:unconfigured-cloud-target",
+  );
+}
+
+function configuredLoopbackStewardScope(): string | null {
+  if (!isLoopbackRenderedApp()) return null;
+  return window.localStorage.getItem(STEWARD_ACTIVE_SCOPE_KEY);
+}
+
 /**
  * Reads the canonical access token. Returns `null` for SSR or a missing token;
  * storage access failures propagate so callers cannot mistake them for logout.
  */
 export function readStoredStewardToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(STEWARD_TOKEN_KEY);
+  const token = window.localStorage.getItem(STEWARD_TOKEN_KEY);
+  if (!token) return null;
+  const requiredScope = configuredLoopbackStewardScope();
+  if (!requiredScope) return token;
+  return window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY) === requiredScope
+    ? token
+    : null;
 }
 
-async function persistStoredStewardToken(token: string): Promise<void> {
+async function persistStoredStewardToken(
+  token: string,
+  requiredScope: string | null,
+): Promise<void> {
   try {
     if (stewardTokenPersistence) {
       await stewardTokenPersistence(token);
     } else {
       window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    }
+    // Publish the scope only after the new token is durable. During an awaited
+    // protected-store write, the previous scope therefore keeps both the old
+    // token and any early secure-store mirror of the new token quarantined.
+    // If this write fails, the previous scope remains intact and the newly
+    // persisted token stays unreadable rather than inheriting false authority.
+    if (
+      requiredScope &&
+      window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY) !== requiredScope
+    ) {
+      window.localStorage.setItem(STEWARD_TOKEN_SCOPE_KEY, requiredScope);
     }
   } catch (error) {
     // error-policy:J2 callers must not publish authenticated state after a
@@ -338,9 +424,13 @@ async function persistStoredStewardToken(token: string): Promise<void> {
 export async function writeStoredStewardToken(token: string): Promise<void> {
   if (typeof window === "undefined") return;
   await serializeStewardTokenMutation(async () => {
-    const wasCurrent = window.localStorage.getItem(STEWARD_TOKEN_KEY) === token;
+    const requiredScope = configuredLoopbackStewardScope();
+    const wasCurrent =
+      window.localStorage.getItem(STEWARD_TOKEN_KEY) === token &&
+      (!requiredScope ||
+        window.localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY) === requiredScope);
     if (!stewardTokenPersistence && wasCurrent) return;
-    await persistStoredStewardToken(token);
+    await persistStoredStewardToken(token, requiredScope);
     if (!wasCurrent) dispatchStewardSessionChange("present");
   });
 }
@@ -356,9 +446,9 @@ export async function replaceStoredStewardTokenIfCurrent(
 ): Promise<boolean> {
   if (typeof window === "undefined") return false;
   return serializeStewardTokenMutation(async () => {
-    const current = window.localStorage.getItem(STEWARD_TOKEN_KEY);
+    const current = readStoredStewardToken();
     if (current !== expectedToken) return false;
-    await persistStoredStewardToken(token);
+    await persistStoredStewardToken(token, configuredLoopbackStewardScope());
     if (current !== token) dispatchStewardSessionChange("present");
     return true;
   });
@@ -384,6 +474,7 @@ export async function clearStoredStewardToken(): Promise<void> {
       throw new StewardTokenRemovalError(error);
     }
     dispatchStewardSessionChange("cleared");
+    window.localStorage.removeItem(STEWARD_TOKEN_SCOPE_KEY);
     window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
   });
 }

@@ -15,8 +15,10 @@ import {
 test("a generated declaration removed during a concurrent build is skipped", () => {
   assert.equal(
     isMaintainedSource(
-      new URL("../../core/src/vanished-runtime-composition.d.ts", import.meta.url)
-        .pathname,
+      new URL(
+        "../../core/src/vanished-runtime-composition.d.ts",
+        import.meta.url,
+      ).pathname,
     ),
     false,
   );
@@ -37,29 +39,56 @@ test("the inventory identifies canonical ownership without regressing wrappers",
   const canonicalButtons = report.atoms.button.canonical.map(
     (entry) => entry.file,
   );
-  const parallelButtons = report.atoms.button.candidates
-    .filter((entry) => entry.classification === "parallel-primitive")
-    .map((entry) => entry.name);
+  const allCandidates = Object.values(report.atoms).flatMap(
+    (group) => group.candidates,
+  );
+  const componentIds = new Set(
+    report.components.map((entry) => `${entry.file}:${entry.name}`),
+  );
+  const removedComponentIds = [
+    "packages/ui/src/cloud-ui/components/brand/brand-button.tsx:BrandButton",
+    "packages/ui/src/cloud-ui/components/brand/brand-card.tsx:BrandCard",
+    "packages/ui/src/cloud-ui/components/brand/lock-on-button.tsx:LockOnButton",
+    "packages/ui/src/components/apps/extensions/surface.tsx:SurfaceBadge",
+    "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:CloudTextInput",
+  ];
 
   assert.ok(
     canonicalButtons.includes("packages/ui/src/components/ui/button.tsx"),
   );
-  assert.ok(!parallelButtons.includes("BrandButton"));
-  assert.ok(!parallelButtons.includes("ViewBackButton"));
-  assert.ok(
-    report.atoms.button.candidates.some(
-      (entry) =>
-        entry.name === "BrandButton" &&
-        entry.classification === "canonical-wrapper",
-    ),
-  );
-  assert.ok(
-    report.atoms.button.candidates.some(
-      (entry) =>
-        entry.name === "ViewBackButton" &&
-        entry.classification === "canonical-wrapper",
-    ),
-  );
+  for (const id of removedComponentIds) {
+    assert.equal(componentIds.has(id), false, `${id} must stay deleted`);
+  }
+
+  const retainedAdapters = [
+    {
+      id: "packages/ui/src/components/RedactedBadge.tsx:RedactedBadge",
+      canonicalOwner: "packages/ui/src/components/ui/badge.tsx",
+    },
+    {
+      id: "packages/ui/src/components/transcripts/SpeakerNameAttributionBadge.tsx:SpeakerNameAttributionBadge",
+      canonicalOwner: "packages/ui/src/components/ui/status-badge.tsx",
+    },
+    {
+      id: "packages/ui/src/components/shared/ViewHeader.tsx:ViewBackButton",
+      canonicalOwner: "packages/ui/src/components/ui/button.tsx",
+    },
+    {
+      id: "packages/ui/src/components/local-inference/DownloadProgress.tsx:DownloadProgress",
+      canonicalOwner: "packages/ui/src/components/ui/progress.tsx",
+    },
+  ];
+  for (const expected of retainedAdapters) {
+    const candidate = allCandidates.find(
+      (entry) => `${entry.file}:${entry.name}` === expected.id,
+    );
+    assert.equal(
+      candidate?.decision?.disposition,
+      "intentional-specialization",
+      `${expected.id} must remain a reviewed adapter`,
+    );
+    assert.equal(candidate?.decision?.canonicalOwner, expected.canonicalOwner);
+  }
   assert.equal(report.atoms.card.rawHostUsage.length, 0);
   assert.ok(report.atoms.button.rawHostUsage.length > 0);
   assert.ok(
@@ -96,8 +125,12 @@ test("the markdown report exposes classifications and the molecular queue", () =
 
   assert.match(markdown, /Parallel primitives/);
   assert.match(markdown, /molecular-candidate/);
+  assert.doesNotMatch(markdown, /brand\/brand-button\.tsx/);
+  assert.doesNotMatch(markdown, /brand\/brand-card\.tsx/);
+  assert.doesNotMatch(markdown, /brand\/lock-on-button\.tsx/);
+  assert.match(markdown, /intentional-specialization/);
   assert.match(
     markdown,
-    /packages\/ui\/src\/cloud-ui\/components\/brand\/brand-button\.tsx/,
+    /packages\/ui\/src\/components\/shared\/ViewHeader\.tsx/,
   );
 });

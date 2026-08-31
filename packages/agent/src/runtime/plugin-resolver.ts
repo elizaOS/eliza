@@ -34,6 +34,10 @@ import {
 } from "@elizaos/shared/config/plugin-manifest";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+import {
+  isDevCloudConfigAuthorityView,
+  resolveDevCloudEnvAuthority,
+} from "../config/dev-cloud-env-authority.ts";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 import type { PluginInstallRecord } from "../config/types.eliza.ts";
@@ -3027,6 +3031,13 @@ export async function resolvePlugins(
   // Persist repaired install records so subsequent startups stop importing
   // from stale install directories.
   if (repairedInstallRecords.size > 0) {
+    const devCloudAuthority = resolveDevCloudEnvAuthority();
+    if (devCloudAuthority && isDevCloudConfigAuthorityView(config)) {
+      logger.info(
+        `[eliza] Repaired ${repairedInstallRecords.size} plugin install record(s) in the ephemeral ${devCloudAuthority} development config view`,
+      );
+      return plugins;
+    }
     try {
       saveElizaConfig(config);
       logger.info(

@@ -15,8 +15,9 @@ import {
 import {
   buildDesignContractGraph,
   inventoryDesignTokens,
+  parseMoleculeContracts,
   resolveCanonicalAtomImport,
-  validateDeclaredMoleculeAtomicDependencies,
+  validateDeclaredAtomicDependencies,
   validateDeclaredMoleculeConsumers,
   validateDesignDependencyGraph,
   validateHigherOrderOwners,
@@ -282,8 +283,8 @@ test("atomic composition requires the canonical source module", () => {
   );
 });
 
-test("declared molecule atoms reject drift in both directions", () => {
-  const findings = validateDeclaredMoleculeAtomicDependencies({
+test("declared composition atoms reject drift in both directions", () => {
+  const findings = validateDeclaredAtomicDependencies({
     nodeId: "molecule:test",
     owner: "packages/ui/src/components/test.tsx:TestMolecule",
     declaredAtomicDependencies: ["button", "spinner"],
@@ -300,7 +301,7 @@ test("declared molecule atoms reject drift in both directions", () => {
   assert.match(findings[0].detail, /spinner/);
   assert.match(findings[1].detail, /card/);
   assert.deepEqual(
-    validateDeclaredMoleculeAtomicDependencies({
+    validateDeclaredAtomicDependencies({
       nodeId: "molecule:test",
       owner: "packages/ui/src/components/test.tsx:TestMolecule",
       declaredAtomicDependencies: ["button", "card"],
@@ -338,6 +339,60 @@ test("declared molecule consumers enforce required files and reference floors", 
       sourceConsumerFiles: ["packages/ui/src/consumer-a.tsx"],
     }),
     [],
+  );
+});
+
+test("molecule contract boundary requires representative migration evidence", () => {
+  const contract = {
+    behavioralTest: "packages/ui/src/components/example.test.tsx",
+    id: "example",
+    minimumMaintainedReferences: 2,
+    owner: "packages/ui/src/components/example.tsx",
+    renderedStory: "packages/ui/src/components/example.stories.tsx",
+    requiredAtomicDependencies: ["button"],
+    requiredConsumerFiles: [
+      "packages/ui/src/components/consumer-a.tsx",
+      "packages/ui/src/components/consumer-b.tsx",
+    ],
+    requiredRenderedTags: ["Button"],
+    responsibility: "Owns the example composition.",
+    symbol: "Example",
+  };
+
+  assert.deepEqual(
+    parseMoleculeContracts({ schemaVersion: 2, contracts: [contract] }),
+    [contract],
+  );
+  assert.throws(
+    () =>
+      parseMoleculeContracts({
+        schemaVersion: 1,
+        contracts: [contract],
+      }),
+    /schemaVersion 2/,
+  );
+  assert.throws(
+    () =>
+      parseMoleculeContracts({
+        schemaVersion: 2,
+        contracts: [{ ...contract, behavioralTest: undefined }],
+      }),
+    /behavioralTest must be a string/,
+  );
+  assert.throws(
+    () =>
+      parseMoleculeContracts({
+        schemaVersion: 2,
+        contracts: [
+          {
+            ...contract,
+            requiredConsumerFiles: [
+              "packages/ui/src/components/consumer-a.tsx",
+            ],
+          },
+        ],
+      }),
+    /at least two distinct maintained consumer files/,
   );
 });
 
@@ -434,6 +489,69 @@ test("declared molecule nodes retain the complete live atom closure", async () =
     assert.ok(node, `missing declared molecule ${nodeId}`);
     assert.deepEqual(node.dependsOn, expected, nodeId);
   }
+});
+
+test("declared higher-order nodes retain their discovered live atom closure", async () => {
+  const graph = await buildDesignContractGraph();
+  const higherOrderNodes = graph.nodes.filter(
+    (node) => node.layer === "organism" || node.layer === "page-shell",
+  );
+
+  for (const node of higherOrderNodes) {
+    assert.equal(node.owner.kind, "export", node.id);
+    if (node.owner.kind !== "export") continue;
+    const component = graph.observations.discoveredComponents.find(
+      (candidate) =>
+        candidate.file === node.owner.file &&
+        candidate.symbol === node.owner.symbol,
+    );
+    assert.ok(component, `missing discovered owner for ${node.id}`);
+    assert.deepEqual(
+      node.dependsOn.filter((dependency) => dependency.startsWith("atom:")),
+      component.transitiveAtoms.map((atom) => `atom:${atom}`),
+      node.id,
+    );
+  }
+
+  const vaultWorkspace = graph.nodes.find(
+    (node) => node.id === "organism:vault-workspace",
+  );
+  assert.ok(vaultWorkspace, "missing organism:vault-workspace");
+  assert.deepEqual(vaultWorkspace.owner, {
+    kind: "export",
+    file: "packages/ui/src/components/settings/SecretsManagerSection.tsx",
+    symbol: "VaultWorkspace",
+  });
+  const vaultOwner = vaultWorkspace.owner;
+  assert.equal(vaultOwner.kind, "export");
+  if (vaultOwner.kind !== "export") {
+    assert.fail("organism:vault-workspace owner must be an exported component");
+  }
+  const vaultComponent = graph.observations.discoveredComponents.find(
+    (candidate) =>
+      candidate.file === vaultOwner.file &&
+      candidate.symbol === vaultOwner.symbol,
+  );
+  assert.ok(vaultComponent, "missing live VaultWorkspace component");
+  assert.deepEqual(vaultComponent.transitiveAtoms, [
+    "alert",
+    "badge",
+    "banner",
+    "button",
+    "card",
+    "checkbox",
+    "dialog",
+    "input",
+    "radioGroup",
+    "select",
+    "separator",
+    "table",
+    "tabs",
+  ]);
+  assert.deepEqual(
+    vaultWorkspace.dependsOn,
+    vaultComponent.transitiveAtoms.map((atom) => `atom:${atom}`),
+  );
 });
 
 test("reusable owners inherit raw capability findings from private helpers", async () => {

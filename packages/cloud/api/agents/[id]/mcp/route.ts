@@ -493,8 +493,10 @@ export async function handleToolCall(
       throw error;
     }
 
+    let providerDispatchStarted = false;
     try {
       await admission.markProviderDispatched?.();
+      providerDispatchStarted = true;
       logger.info("[Agent MCP] Invoking configured provider", {
         agentId: character.id,
         model,
@@ -605,11 +607,14 @@ export async function handleToolCall(
         id: rpcId,
       });
     } catch (error) {
-      // error-policy:J1 the JSON-RPC boundary refunds a failed generation and
-      // returns a structured failure instead of partial model output.
-      const release = admission.settle(0);
-      if (authUser.executionCtx) authUser.executionCtx.waitUntil(release);
-      else await release;
+      // error-policy:J1 the JSON-RPC boundary conservatively settles dispatches
+      // with unknown usage, while failures before provider dispatch are safe to
+      // refund in full.
+      const terminal = providerDispatchStarted
+        ? admission.settleUnknown()
+        : admission.settle(0);
+      if (authUser.executionCtx) authUser.executionCtx.waitUntil(terminal);
+      else await terminal;
       logger.error("[Agent MCP] Error generating response", {
         error: error instanceof Error ? error.message : "Unknown error",
         agentId: character.id,

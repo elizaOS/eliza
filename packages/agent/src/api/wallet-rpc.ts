@@ -12,6 +12,8 @@ import {
   migrateLegacyRuntimeConfig,
   normalizeWalletRpcSelections,
   resolveCloudApiBaseUrl,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
   type WalletConfigUpdateRequest,
   type WalletRpcChain,
   type WalletRpcCredentialKey,
@@ -28,6 +30,11 @@ function normalizeSecret(value: string | null | undefined): string | null {
 function resolveCloudApiKey(
   config?: Pick<WalletCapableConfig, "cloud"> | null,
 ): string | null {
+  if (resolveDevCloudEnvAuthority()) {
+    return normalizeSecret(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
+    );
+  }
   return normalizeSecret(
     config?.cloud?.apiKey ?? process.env.ELIZAOS_CLOUD_API_KEY,
   );
@@ -282,8 +289,11 @@ function buildCloudRpcProxyUrl(
   pathname: string,
   options: WalletRpcResolutionOptions = {},
 ): string | null {
+  const devCloudAuthority = resolveDevCloudEnvAuthority();
   const cloudApiKey = normalizeSecret(
-    options.cloudApiKey ?? process.env.ELIZAOS_CLOUD_API_KEY,
+    devCloudAuthority
+      ? resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY")
+      : (options.cloudApiKey ?? process.env.ELIZAOS_CLOUD_API_KEY),
   );
   const cloudManagedAccess = options.cloudManagedAccess ?? Boolean(cloudApiKey);
   if (!cloudManagedAccess || !cloudApiKey) {

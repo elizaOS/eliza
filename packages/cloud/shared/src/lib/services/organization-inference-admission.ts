@@ -262,6 +262,14 @@ export async function admitOrganizationInference(
   if (workerHotPath && !canDefer) {
     throw new InferenceAdmissionUnavailableError();
   }
+  // The legacy KV pending-charge lane cannot make an authoritative balance
+  // decision before provider dispatch. A delayed post-debit projection write
+  // may temporarily replace a newer hint, so non-Worker callers without the
+  // atomic DB ledger must reserve against Postgres synchronously. Workers are
+  // independently fenced by the revision-aware Durable Object.
+  if (!workerHotPath && !useDbLedger) {
+    return await reserveSynchronously(params);
+  }
 
   const normalizedModel = normalizeModelName(params.context.model);
   let estimatedCostUsd: number;

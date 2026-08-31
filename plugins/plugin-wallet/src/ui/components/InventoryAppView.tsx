@@ -18,17 +18,20 @@ import type {
   WalletNftsResponse,
   WalletTradingProfileResponse,
 } from "@elizaos/shared";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-  Badge,
-  Button,
-} from "@elizaos/ui";
+import { Avatar, AvatarFallback, AvatarImage, Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client, isApiError } from "@elizaos/ui/api";
 import { shellLocalStorage } from "@elizaos/ui/bridge";
-import { ListSkeleton } from "@elizaos/ui/components";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  ListSkeleton,
+} from "@elizaos/ui/components";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import {
   type ActivityEvent,
@@ -47,11 +50,13 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   CheckCircle2,
+  ChevronDown,
   Copy,
   EyeOff,
   Image as ImageIcon,
   Layers3,
   type LucideIcon,
+  MoreHorizontal,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -73,8 +78,7 @@ import { useInventoryData } from "../inventory/useInventoryData.ts";
 // Keep the namespace live even though the standalone view uses the automatic runtime.
 void React;
 
-type WalletRailTab = "tokens" | "defi" | "nfts";
-type WalletInsightTab = "activity" | "markets";
+type WalletRailTab = "tokens" | "defi" | "nfts" | "activity" | "markets";
 
 const ALL_INVENTORY_FILTERS: InventoryChainFilters = {
   ethereum: true,
@@ -83,11 +87,6 @@ const ALL_INVENTORY_FILTERS: InventoryChainFilters = {
   avax: true,
   solana: true,
 };
-const WALLET_IDENTITY_CHAINS = [
-  { chain: "ethereum", label: "EVM", id: "evm" },
-  { chain: "solana", label: "Solana", id: "solana" },
-] as const;
-
 function isSupportedWalletAssetChain(chain: string): boolean {
   const config = getChainConfig(chain);
   return config?.isEvm === true || config?.chainKey === "solana";
@@ -384,17 +383,6 @@ function tokenValueAvailable(
   return chain?.error === null;
 }
 
-function assetAllocationRows(rows: TokenRow[]): TokenRow[] {
-  return rows
-    .filter((row) => Number.isFinite(row.valueUsd) && row.valueUsd > 0)
-    .sort(
-      (left, right) =>
-        (Number.isFinite(right.valueUsd) ? right.valueUsd : 0) -
-        (Number.isFinite(left.valueUsd) ? left.valueUsd : 0),
-    )
-    .slice(0, 5);
-}
-
 function looksLikeLpPosition(value: string): boolean {
   const text = ` ${value.toLowerCase()} `;
   return (
@@ -587,80 +575,6 @@ function TokenIdentityIcon({
         className="-bottom-0.5 -right-0.5 absolute"
       />
     </span>
-  );
-}
-
-function AssetAllocationStrip({
-  rows,
-  compact = false,
-}: {
-  rows: TokenRow[];
-  compact?: boolean;
-}) {
-  const allocationRows = useMemo(() => assetAllocationRows(rows), [rows]);
-  const total = allocationRows.reduce((sum, row) => sum + row.valueUsd, 0);
-  if (total <= 0 || allocationRows.length === 0) return null;
-
-  return (
-    <div className={cn("space-y-2", compact && "space-y-3")}>
-      <Badge
-        asChild
-        variant="chainDot"
-        tone="muted"
-        className={cn("flex overflow-hidden", compact ? "h-2.5" : "h-2")}
-      >
-        <div>
-          {allocationRows.map((row, index) => (
-            <Badge
-              asChild
-              variant="chainDot"
-              tone={index < 3 ? "accent" : "muted"}
-              key={tokenId(row)}
-              className="h-full"
-            >
-              <span
-                style={{ width: `${(row.valueUsd / total) * 100}%` }}
-                title={`${row.symbol}: ${formatUsd(row.valueUsd)}`}
-              />
-            </Badge>
-          ))}
-        </div>
-      </Badge>
-      {compact ? (
-        <div className="flex flex-wrap gap-2">
-          {allocationRows.slice(0, 3).map((row, index) => (
-            <div
-              key={tokenId(row)}
-              className="inline-flex items-center gap-1.5 text-[0.68rem] font-medium text-txt"
-            >
-              <Badge
-                asChild
-                variant="chainDot"
-                tone={index < 3 ? "accent" : "muted"}
-                className="size-1.5"
-              >
-                <span />
-              </Badge>
-              <span>{row.symbol}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid gap-1">
-          {allocationRows.slice(0, 3).map((row) => (
-            <div
-              key={tokenId(row)}
-              className="flex items-center justify-between gap-2 text-[0.68rem]"
-            >
-              <span className="truncate text-muted">{row.symbol}</span>
-              <span className="shrink-0 font-mono text-txt">
-                {formatUsd(row.valueUsd)}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1200,45 +1114,6 @@ function WalletRailAddress({
   );
 }
 
-function WalletConnectionChip({
-  label,
-  ready,
-}: {
-  label: string;
-  ready: boolean;
-}) {
-  const StatusIcon = ready ? CheckCircle2 : AlertTriangle;
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 text-[0.68rem] font-medium text-muted"
-      title={`${label} ${ready ? "RPC ready" : "needs RPC"}`}
-    >
-      <StatusIcon
-        className={cn("size-3.5", ready ? "text-muted-strong" : "text-warn")}
-        aria-hidden
-      />
-      {label}
-    </span>
-  );
-}
-
-function WalletIdentityCluster() {
-  return (
-    <span className="flex shrink-0 -space-x-1.5">
-      {WALLET_IDENTITY_CHAINS.map((identity) => (
-        <ChainLogoBadge
-          key={identity.id}
-          chain={identity.chain}
-          label={identity.label}
-          size={18}
-          className="ring-1 ring-bg"
-          testId={`wallet-identity-chip-${identity.id}`}
-        />
-      ))}
-    </span>
-  );
-}
-
 function WalletAddressCluster({
   addresses,
 }: {
@@ -1306,6 +1181,8 @@ function WalletRailRpcButton({
     walletConfig?.selectedRpcProviders?.solana,
     "solana",
   );
+  const evmStatus = walletConfig?.evmBalanceReady ? "ready" : "needs RPC";
+  const solanaStatus = walletConfig?.solanaBalanceReady ? "ready" : "needs RPC";
 
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "account-rpc-settings",
@@ -1321,8 +1198,9 @@ function WalletRailRpcButton({
       size="sm"
       ref={ref}
       type="button"
+      className="self-start sm:self-auto"
       onClick={onOpenSettings}
-      title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
+      title={`Network settings: EVM ${evmStatus} via ${evmProvider}; Solana ${solanaStatus} via ${solanaProvider}`}
       aria-label="Open network settings"
       {...agentProps}
     >
@@ -1343,33 +1221,48 @@ function WalletRailAccount({
   walletConfig: WalletConfigStatus | null;
   onOpenSettings: () => void;
 }) {
-  const evmReady = Boolean(walletConfig?.evmBalanceReady);
-  const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
+    <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
+      <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-xs-tight font-medium text-muted">
             Portfolio balance
           </h2>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="mt-1">
             <div className="font-mono text-3xl font-semibold leading-none tracking-tight tabular-nums text-txt">
               {portfolioValueUsd === null ? "—" : formatUsd(portfolioValueUsd)}
             </div>
-            <WalletIdentityCluster />
-          </div>
-          <div className="mt-2 flex flex-wrap gap-3">
-            <WalletConnectionChip label="EVM" ready={evmReady} />
-            <WalletConnectionChip label="Solana" ready={solanaReady} />
           </div>
         </div>
-        <WalletRailRpcButton
-          walletConfig={walletConfig}
-          onOpenSettings={onOpenSettings}
-        />
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghostMuted"
+            size="compact"
+            type="button"
+            aria-label={`${detailsOpen ? "Hide" : "Show"} wallet details`}
+          >
+            Details
+            <ChevronDown
+              className={cn(
+                "size-3.5 transition-transform",
+                detailsOpen && "rotate-180",
+              )}
+              aria-hidden
+            />
+          </Button>
+        </CollapsibleTrigger>
       </div>
-      <WalletAddressCluster addresses={addresses} />
-    </div>
+      <CollapsibleContent>
+        <div className="mt-4 flex flex-col gap-2 border-t border-border/70 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <WalletAddressCluster addresses={addresses} />
+          <WalletRailRpcButton
+            walletConfig={walletConfig}
+            onOpenSettings={onOpenSettings}
+          />
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -1393,10 +1286,10 @@ function WalletRailTabButton({
   return (
     <Button
       variant="selection"
-      size="default"
+      size="compact"
       ref={ref}
       type="button"
-      className="min-w-0"
+      className="min-w-0 shrink-0"
       data-state={active ? "on" : "off"}
       onClick={() => onSelect(tab.id)}
       aria-label={tab.label}
@@ -1409,7 +1302,7 @@ function WalletRailTabButton({
       {...agentProps}
     >
       <tab.icon className="size-3.5 shrink-0" />
-      <span className="truncate">{tab.label}</span>
+      <span>{tab.label}</span>
     </Button>
   );
 }
@@ -1426,17 +1319,17 @@ function TokenRailRowImpl({
   onHideToken: (row: TokenRow) => void;
 }) {
   const slug = tokenAgentSlug(row);
-  const { ref: hideRef, agentProps: hideAgentProps } =
+  const { ref: manageRef, agentProps: manageAgentProps } =
     useAgentElement<HTMLButtonElement>({
-      id: `token-${slug}-hide`,
+      id: `token-${slug}-manage`,
       role: "button",
-      label: `Hide ${row.symbol}`,
+      label: `Manage ${row.symbol}`,
       group: "token-list",
-      description: `Hide the ${row.symbol} token from the list`,
+      description: `Open management actions for the ${row.symbol} token`,
     });
   return (
     <div
-      className="group flex min-h-[4.75rem] min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-hover focus-within:bg-bg-hover"
+      className="group flex min-h-[4.75rem] min-w-0 items-center gap-3 py-3 transition-colors hover:bg-bg-hover focus-within:bg-bg-hover"
       data-testid={`wallet-token-row-${slug}`}
     >
       <TokenIdentityIcon row={row} size={42} />
@@ -1455,20 +1348,31 @@ function TokenRailRowImpl({
           </div>
           <TokenPerformance row={row} profile={profile} />
         </div>
-        <Button
-          variant="ghostMuted"
-          size="icon"
-          ref={hideRef}
-          type="button"
-          className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-          onClick={() => onHideToken(row)}
-          aria-label={`Hide ${row.symbol}`}
-          title={`Hide ${row.symbol}`}
-          data-testid={`wallet-token-hide-${slug}`}
-          {...hideAgentProps}
-        >
-          <EyeOff className="size-3.5" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghostMuted"
+              size="icon"
+              ref={manageRef}
+              type="button"
+              aria-label={`Manage ${row.symbol}`}
+              title={`Manage ${row.symbol}`}
+              data-testid={`wallet-token-manage-${slug}`}
+              {...manageAgentProps}
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem
+              onSelect={() => onHideToken(row)}
+              data-testid={`wallet-token-hide-${slug}`}
+            >
+              <EyeOff className="mr-2 size-3.5" />
+              Hide token
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
@@ -1558,7 +1462,7 @@ function RailNftList({
       {nfts.slice(0, 20).map((nft) => (
         <div
           key={`${nft.chain}:${nft.collectionName}:${nft.name}:${nft.imageUrl}`}
-          className="flex min-h-[4.75rem] min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-hover"
+          className="flex min-h-[4.75rem] min-w-0 items-center gap-3 py-3 transition-colors hover:bg-bg-hover"
         >
           {nft.imageUrl ? (
             <img
@@ -1606,7 +1510,7 @@ function RailPositionList({
       {positions.map((position) => (
         <div
           key={position.id}
-          className="flex min-h-[4.75rem] min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-hover"
+          className="flex min-h-[4.75rem] min-w-0 items-center gap-3 py-3 transition-colors hover:bg-bg-hover"
         >
           {position.imageUrl ? (
             <img
@@ -1648,6 +1552,9 @@ function WalletHoldingsSection({
   hiddenTokenIds,
   walletConfig,
   profile,
+  events,
+  marketOverview,
+  marketOverviewLoading,
   onHideToken,
   onOpenRpcSettings,
   walletEnabled,
@@ -1670,6 +1577,9 @@ function WalletHoldingsSection({
   hiddenTokenIds: Set<string>;
   walletConfig: WalletConfigStatus | null;
   profile: WalletTradingProfileResponse | null;
+  events: ActivityEvent[];
+  marketOverview: WalletMarketOverviewResponse | null;
+  marketOverviewLoading: boolean;
   onHideToken: (row: TokenRow) => void;
   onOpenRpcSettings: () => void;
   walletEnabled: boolean | null;
@@ -1715,6 +1625,8 @@ function WalletHoldingsSection({
     { id: "tokens", label: "Tokens", icon: Wallet },
     { id: "defi", label: "DeFi", icon: Layers3 },
     { id: "nfts", label: "NFTs", icon: ImageIcon },
+    { id: "activity", label: "Activity", icon: Activity },
+    { id: "markets", label: "Markets", icon: TrendingUp },
   ];
   const { ref: enableWalletRef, agentProps: enableWalletAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -1736,9 +1648,9 @@ function WalletHoldingsSection({
       <section
         data-testid="wallets-sidebar"
         aria-label="Wallet holdings"
-        className="overflow-hidden rounded-xl border border-border bg-card"
+        className="overflow-hidden"
       >
-        <div className="flex min-h-40 items-center justify-between gap-4 p-4 sm:p-5">
+        <div className="flex min-h-40 items-center justify-between gap-4 py-4 sm:py-5">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-accent">
               <Wallet className="size-4.5" aria-hidden />
@@ -1769,22 +1681,19 @@ function WalletHoldingsSection({
     <section
       data-testid="wallets-sidebar"
       aria-label="Wallet holdings"
-      className="overflow-hidden rounded-xl border border-border bg-card"
+      className="overflow-hidden"
     >
-      <div className="space-y-4 p-4 sm:p-5">
+      <div className="space-y-4 py-4 sm:py-5">
         <WalletRailAccount
           addresses={addresses}
           portfolioValueUsd={portfolioValueUsd}
           walletConfig={walletConfig}
           onOpenSettings={onOpenRpcSettings}
         />
-        {visibleRows.length > 0 ? (
-          <AssetAllocationStrip rows={visibleRows} compact />
-        ) : null}
       </div>
 
       {walletEnabled === false ? (
-        <div className="border-t border-border/70 p-4">
+        <div className="border-t border-border/70 py-4">
           <WalletEmptyHero />
           <Button
             ref={enableWalletRef}
@@ -1797,9 +1706,9 @@ function WalletHoldingsSection({
         </div>
       ) : (
         <>
-          <div className="flex flex-col gap-2 border-t border-border/70 p-2 sm:flex-row sm:items-center">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 py-2">
             <div
-              className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-sm bg-surface p-1"
+              className="flex min-w-0 max-w-full items-center gap-1 overflow-x-auto"
               role="tablist"
               aria-label="Wallet asset type"
             >
@@ -1816,7 +1725,7 @@ function WalletHoldingsSection({
               <Button
                 variant="ghostMuted"
                 size="compact"
-                className="w-full sm:w-auto"
+                className="shrink-0"
                 onClick={onRestoreHiddenTokens}
                 aria-label={`Show ${hiddenRowsCount} hidden ${hiddenRowsCount === 1 ? "token" : "tokens"}`}
               >
@@ -1873,121 +1782,21 @@ function WalletHoldingsSection({
                 error={nftsError}
                 onRetry={onRetryNfts}
               />
+            ) : activeTab === "activity" ? (
+              <ActivityLog profile={profile} events={events} />
+            ) : activeTab === "markets" ? (
+              <div className="py-4 sm:py-5">
+                <PortfolioMoversPanel
+                  rows={visibleRows}
+                  profile={profile}
+                  marketOverview={marketOverview}
+                  loading={marketOverviewLoading}
+                />
+              </div>
             ) : null}
           </div>
         </>
       )}
-    </section>
-  );
-}
-
-function WalletInsightTabButton({
-  tab,
-  active,
-  onSelect,
-}: {
-  tab: { id: WalletInsightTab; label: string };
-  active: boolean;
-  onSelect: (tab: WalletInsightTab) => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `wallet-insight-${tab.id}`,
-    role: "tab",
-    label: tab.label,
-    group: "wallet-insights",
-    status: active ? "active" : "inactive",
-    description: `Show wallet ${tab.label.toLowerCase()}`,
-  });
-
-  return (
-    <Button
-      ref={ref}
-      variant="selection"
-      size="touch"
-      type="button"
-      className="min-w-0"
-      role="tab"
-      id={`wallet-insight-tab-${tab.id}`}
-      aria-controls={`wallet-insight-panel-${tab.id}`}
-      aria-selected={active}
-      data-state={active ? "on" : "off"}
-      onClick={() => onSelect(tab.id)}
-      {...agentProps}
-    >
-      <span className="truncate">{tab.label}</span>
-    </Button>
-  );
-}
-
-function WalletInsightsPanel({
-  activeTab,
-  onSelectTab,
-  profile,
-  events,
-  rows,
-  marketOverview,
-  marketOverviewLoading,
-}: {
-  activeTab: WalletInsightTab;
-  onSelectTab: (tab: WalletInsightTab) => void;
-  profile: WalletTradingProfileResponse | null;
-  events: ActivityEvent[];
-  rows: TokenRow[];
-  marketOverview: WalletMarketOverviewResponse | null;
-  marketOverviewLoading: boolean;
-}) {
-  const tabs: Array<{
-    id: WalletInsightTab;
-    label: string;
-  }> = [
-    { id: "activity", label: "Activity" },
-    { id: "markets", label: "Markets" },
-  ];
-
-  return (
-    <section
-      aria-labelledby="wallet-insights-title"
-      className="overflow-hidden rounded-xl border border-border bg-card"
-    >
-      <h2 id="wallet-insights-title" className="sr-only">
-        Wallet insights
-      </h2>
-      <div className="p-2">
-        <div
-          className="grid grid-cols-2 gap-1 rounded-sm bg-surface p-1"
-          role="tablist"
-          aria-label="Wallet insights"
-        >
-          {tabs.map((tab) => (
-            <WalletInsightTabButton
-              key={tab.id}
-              tab={tab}
-              active={activeTab === tab.id}
-              onSelect={onSelectTab}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div
-        id={`wallet-insight-panel-${activeTab}`}
-        role="tabpanel"
-        aria-labelledby={`wallet-insight-tab-${activeTab}`}
-        className="border-t border-border/70"
-      >
-        {activeTab === "activity" ? (
-          <ActivityLog profile={profile} events={events} />
-        ) : (
-          <div className="p-4 sm:p-5">
-            <PortfolioMoversPanel
-              rows={rows}
-              profile={profile}
-              marketOverview={marketOverview}
-              loading={marketOverviewLoading}
-            />
-          </div>
-        )}
-      </div>
     </section>
   );
 }
@@ -2026,7 +1835,7 @@ function ActivityLog({
                 ? "bg-danger/10 text-danger"
                 : "bg-bg/55 text-muted";
         const body = (
-          <div className="flex min-h-[4.5rem] min-w-0 items-center gap-3 px-4 py-3 text-sm transition-colors hover:bg-bg-hover">
+          <div className="flex min-h-[4.5rem] min-w-0 items-center gap-3 py-3 text-sm transition-colors hover:bg-bg-hover">
             <span
               className={cn(
                 "flex size-8 shrink-0 items-center justify-center rounded-sm",
@@ -2117,7 +1926,6 @@ export function InventoryAppView() {
   const [hiddenTokenIds, setHiddenTokenIds] = useState<Set<string>>(() =>
     readHiddenTokenIds(),
   );
-  const [insightTab, setInsightTab] = useState<WalletInsightTab>("markets");
   const [marketOverview, setMarketOverview] =
     useState<WalletMarketOverviewResponse | null>(null);
   const [marketOverviewLoading, setMarketOverviewLoading] = useState(false);
@@ -2376,16 +2184,12 @@ export function InventoryAppView() {
     (walletConfigStatus === "idle" || walletConfigStatus === "loading");
 
   return (
-    <PagePanel.Frame
-      as="main"
-      data-testid="wallet-shell"
-      className="flex-col bg-bg"
-    >
+    <PagePanel.Frame as="main" data-testid="wallet-shell" className="flex-col">
       <PagePanel.ContentArea>
         <PagePanel.ContentRail
           width="standard"
           data-testid="wallet-content-rail"
-          className="flex flex-col gap-5 pt-3 pb-[var(--view-pad-bottom)] sm:pt-5"
+          className="flex flex-col gap-4 pt-3 pb-[var(--view-pad-bottom)] sm:pt-5"
         >
           {balanceLoadingWithoutSnapshot ||
           walletIdentityLoadingWithoutSnapshot ? (
@@ -2442,6 +2246,9 @@ export function InventoryAppView() {
                 hiddenTokenIds={hiddenTokenIds}
                 walletConfig={walletConfig}
                 profile={primaryTradingProfile}
+                events={activityEvents}
+                marketOverview={activeMarketOverview}
+                marketOverviewLoading={activeMarketOverviewLoading}
                 onHideToken={handleHideToken}
                 onOpenRpcSettings={handleOpenRpcSettings}
                 walletEnabled={walletEnabled}
@@ -2456,18 +2263,6 @@ export function InventoryAppView() {
                 showWalletEmptyState={showWalletEmptyState}
                 onRestoreHiddenTokens={handleRestoreHiddenTokens}
               />
-
-              {!showWalletEmptyState ? (
-                <WalletInsightsPanel
-                  activeTab={insightTab}
-                  onSelectTab={setInsightTab}
-                  profile={primaryTradingProfile}
-                  events={activityEvents}
-                  rows={displayedAssetRows}
-                  marketOverview={activeMarketOverview}
-                  marketOverviewLoading={activeMarketOverviewLoading}
-                />
-              ) : null}
             </>
           )}
         </PagePanel.ContentRail>

@@ -20,6 +20,7 @@ import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
+import { resolveDirectCloudAuthApiBase } from "../api/direct-cloud-endpoints";
 import {
   appendIosBootTrace,
   isIosInProcessLocalAgentBase,
@@ -29,6 +30,7 @@ import {
 import { isPasswordAuthTransportConfidential } from "../api/password-auth-transport-policy";
 import { getBackendStartupTimeoutMs } from "../bridge";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
+import { getBootConfig } from "../config/boot-config";
 import {
   ANDROID_LOCAL_AGENT_SERVER_ID,
   isMobileLocalAgentIpcBase,
@@ -47,7 +49,9 @@ import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
+  isManagedCloudSharedAgentBase,
   isPersonalSharedElizaId,
+  resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
 import { isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
 import {
@@ -229,10 +233,30 @@ export function isRecoverableRemoteBase(args: {
   return true;
 }
 
-// Direct elizaCloud control-plane API base, used to verify an agent record when
-// a per-agent base 404s. Mirrors DEFAULT_DIRECT_CLOUD_API_BASE_URL in
-// api/client-cloud.ts and DIRECT_CLOUD_API_BASE in startup-phase-restore.ts.
-const DIRECT_CLOUD_API_BASE = "https://api.eliza.app";
+const DEFAULT_DIRECT_CLOUD_SITE_BASE = "https://eliza.app";
+
+/** Resolve recovery probes onto the same Cloud environment as startup restore. */
+export function resolveStartupCloudControlPlaneBase(
+  agentBase: string,
+  options: {
+    bootCloudApiBase?: string | null;
+    pageHostname?: string | null;
+  } = {},
+): string {
+  const pageHostname =
+    options.pageHostname ??
+    (typeof window !== "undefined" ? window.location.hostname : "");
+  const bootCloudApiBase =
+    options.bootCloudApiBase ?? getBootConfig().cloudApiBase;
+  return resolveDirectCloudAuthApiBase(
+    resolveCloudEnvironmentBase({
+      pageHostname,
+      apiBase: agentBase,
+      bootCloudApiBase,
+      fallback: DEFAULT_DIRECT_CLOUD_SITE_BASE,
+    }),
+  );
+}
 
 function sharedCloudAgentIdFromBase(base: string): string | null {
   try {
@@ -272,7 +296,7 @@ async function dedicatedCloudAgentIsGone(base: string): Promise<boolean> {
   // getCloudCompatAgent resolves the control-plane via the client base, so point
   // the client at the control-plane (the dedicated subdomain is not a direct
   // cloud base and would route the lookup to the dead agent itself).
-  client.setBaseUrl(DIRECT_CLOUD_API_BASE);
+  client.setBaseUrl(resolveStartupCloudControlPlaneBase(base));
   try {
     const res = await client.getCloudCompatAgent(agentId);
     // success:false => the control-plane has no such agent record (deleted). A
@@ -292,6 +316,9 @@ async function dedicatedCloudAgentIsGone(base: string): Promise<boolean> {
 async function sharedCloudAgentIsMissingFromRunningSet(
   base: string,
 ): Promise<boolean> {
+  // A self-hosted server may expose the same path shape. Never forward a
+  // Steward token from that origin to a hosted control plane.
+  if (!isManagedCloudSharedAgentBase(base)) return false;
   const agentId = sharedCloudAgentIdFromBase(base);
   if (!agentId) return false;
   // The signed-in account's personal Eliza is rowless by design: it is served
@@ -304,7 +331,7 @@ async function sharedCloudAgentIsMissingFromRunningSet(
 
   const priorBaseUrl = client.getBaseUrl();
   const priorToken = client.hasToken();
-  client.setBaseUrl(DIRECT_CLOUD_API_BASE);
+  client.setBaseUrl(resolveStartupCloudControlPlaneBase(base));
   try {
     const res = await client.getCloudCompatAgents();
     if (!res.success) return false;

@@ -19,7 +19,6 @@ import { HANDLED_STEP_FALLBACK_MESSAGE } from "../runtime/planner-loop";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { validateCharacter } from "../schemas/character";
 import {
 	GazetteerEntityRecognizer,
 	hardenIncomingUserMessage,
@@ -27,6 +26,7 @@ import {
 } from "../security/index.js";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+	messageContinuesAfterRecentAgentCorrection,
 	messageHandlerFromFieldResult,
 	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
@@ -397,6 +397,57 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
 		}
+	});
+
+	it("tolerates a partial runtime without model registration introspection", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hello from a partial runtime.",
+			}),
+		]);
+		delete (runtime as Partial<IAgentRuntime>).getModelRegistrations;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Hello from a partial runtime.",
+			);
+		}
+	});
+
+	it("does not restore the retired maxReplyTokens Stage-1 ceiling", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "This reply uses the provider model boundary.",
+			}),
+		]);
+		runtime.character.settings = {};
+		(
+			runtime.character.settings as unknown as Record<string, unknown>
+		).maxReplyTokens = 200;
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			maxTokens?: number;
+			omitMaxTokens?: boolean;
+		};
+		expect(params.maxTokens).toBeUndefined();
+		expect(params.omitMaxTokens).toBe(true);
 	});
 
 	it("short-circuits an explicit owner-private candidate denied by disclosure", async () => {
@@ -914,56 +965,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(domainJson);
 		}
 		expect(runtime.reportError).not.toHaveBeenCalled();
-	});
-
-	// #16395: a per-agent maxReplyTokens setting caps Stage-1 with a real
-	// max_tokens, overriding the 2048 group default.
-	it("caps Stage-1 max_tokens at a per-agent maxReplyTokens setting", async () => {
-		const runtime = makeRuntime([
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "mh-1",
-						name: "HANDLE_RESPONSE",
-						arguments: {
-							shouldRespond: "RESPOND",
-							thought: "Direct answer.",
-							replyText: "Hi.",
-							contexts: ["simple"],
-							intents: [],
-							candidateActionNames: [],
-							facts: [],
-							relationships: [],
-							addressedTo: [],
-						},
-					},
-				],
-				finishReason: "tool_calls",
-			},
-		]);
-		// Round-trip through the character schema: maxReplyTokens must survive
-		// validation as a known top-level settings key (not be relocated into
-		// settings.extra, which would silently strip the budget).
-		const validated = validateCharacter({
-			name: runtime.character.name ?? "Test",
-			settings: { maxReplyTokens: 200 },
-		});
-		expect(validated.success).toBe(true);
-		if (!validated.success) return;
-		expect(validated.data.settings?.maxReplyTokens).toBe(200);
-		runtime.character.settings = validated.data.settings;
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
-		});
-
-		const params = useModelCalls(runtime)[0]?.[1] as { maxTokens?: number };
-		// Hard-capped at the per-agent budget, overriding the 2048 group default.
-		expect(params.maxTokens).toBe(200);
 	});
 
 	it("restores PII surrogates at the direct reply boundary only", async () => {
@@ -4248,6 +4249,221 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "terminal") {
 			expect(result.action).toBe("IGNORE");
 		}
+	});
+
+	it("recognizes a bounded continuation from the participant who corrected the agent", () => {
+		const runtime = makeRuntime([]);
+		const correctingEntityId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const otherEntityId = "00000000-0000-0000-0000-000000000005" as UUID;
+		const recentMessages: Memory[] = [
+			{
+				...makeMessage({ text: "You should send a follow-up email." }),
+				id: "00000000-0000-0000-0000-000000000010" as UUID,
+				entityId: runtime.agentId,
+			},
+			{
+				...makeMessage({
+					text: "Please don't fix it. In this chat we listen unless someone asks for ideas.",
+				}),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: correctingEntityId,
+			},
+			{
+				...makeMessage({ text: "yeah, no homework assignment right now" }),
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				entityId: otherEntityId,
+			},
+		];
+		const state: State = {
+			...makeState(),
+			data: { providers: { RECENT_MESSAGES: { data: { recentMessages } } } },
+		};
+		const continuation = makeMessage({
+			text: "and now I remembered I blanked on the easiest question",
+			channelType: ChannelType.GROUP,
+		});
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(runtime, continuation, state),
+		).toBe(true);
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{ ...continuation, entityId: otherEntityId },
+				state,
+			),
+		).toBe(false);
+	});
+
+	it("does not treat incidental or third-party correction language as agent repair", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const agentMessage = {
+			...makeMessage({ text: "Here is my thought." }),
+			id: "00000000-0000-0000-0000-000000000010" as UUID,
+			entityId: runtime.agentId,
+		};
+		const continuation = {
+			...makeMessage({
+				text: "and now I remembered another part",
+				channelType: ChannelType.GROUP,
+			}),
+			entityId: speakerId,
+		};
+		for (const text of [
+			"The bus stop is nearby.",
+			"That quote is too much for us.",
+			"Please do not deploy that.",
+			"Bob, stop explaining it to me.",
+		]) {
+			const correction = {
+				...makeMessage({ text }),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: speakerId,
+			};
+			const state: State = {
+				...makeState(),
+				data: {
+					providers: {
+						RECENT_MESSAGES: {
+							data: { recentMessages: [agentMessage, correction] },
+						},
+					},
+				},
+			};
+			expect(
+				messageContinuesAfterRecentAgentCorrection(
+					runtime,
+					continuation,
+					state,
+				),
+			).toBe(false);
+		}
+	});
+
+	it("fails closed when the current continuation has no stable message id", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const state: State = {
+			...makeState(),
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									...makeMessage({ text: "You should follow up." }),
+									id: "00000000-0000-0000-0000-000000000010" as UUID,
+									entityId: runtime.agentId,
+								},
+								{
+									...makeMessage({ text: "Please don't fix it." }),
+									id: "00000000-0000-0000-0000-000000000011" as UUID,
+									entityId: speakerId,
+								},
+							],
+						},
+					},
+				},
+			},
+		};
+		const continuation = {
+			...makeMessage({
+				text: "and now I remembered another part",
+				channelType: ChannelType.GROUP,
+			}),
+			id: undefined,
+			entityId: speakerId,
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(runtime, continuation, state),
+		).toBe(false);
+	});
+
+	it("expires repair permission after the correcting participant's first continuation", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const recentMessages: Memory[] = [
+			{
+				...makeMessage({ text: "You should send a follow-up email." }),
+				id: "00000000-0000-0000-0000-000000000010" as UUID,
+				entityId: runtime.agentId,
+			},
+			{
+				...makeMessage({ text: "Please don't fix it." }),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: speakerId,
+			},
+			{
+				...makeMessage({ text: "and now I remembered another part" }),
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				entityId: speakerId,
+			},
+		];
+		const state: State = {
+			...makeState(),
+			data: { providers: { RECENT_MESSAGES: { data: { recentMessages } } } },
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{
+					...makeMessage({
+						text: "also, lunch at noon?",
+						channelType: ChannelType.GROUP,
+					}),
+					entityId: speakerId,
+				},
+				state,
+			),
+		).toBe(false);
+	});
+
+	it("expires a sparse-room repair exchange after fifteen minutes", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const correction = {
+			...makeMessage({ text: "Please don't fix it." }),
+			id: "00000000-0000-0000-0000-000000000011" as UUID,
+			entityId: speakerId,
+			createdAt: 1_000,
+		};
+		const state: State = {
+			...makeState(),
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									...makeMessage({ text: "You should follow up." }),
+									id: "00000000-0000-0000-0000-000000000010" as UUID,
+									entityId: runtime.agentId,
+								},
+								correction,
+							],
+						},
+					},
+				},
+			},
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{
+					...makeMessage({
+						text: "and I remembered another part",
+						channelType: ChannelType.GROUP,
+					}),
+					entityId: speakerId,
+					createdAt: 15 * 60_000 + 1_001,
+				},
+				state,
+			),
+		).toBe(false);
 	});
 
 	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {

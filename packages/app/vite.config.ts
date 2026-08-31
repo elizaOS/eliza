@@ -1752,6 +1752,47 @@ function resolveOptionalLocalVoiceGatewayPort(
   return port;
 }
 
+/**
+ * A configured loopback voice gateway is an explicit local-development opt-in
+ * to the realtime voice stack. Keep deployed builds staged behind their
+ * existing flags, while making the supported local gateway command sufficient
+ * to enable both the staged realtime client and its self-hosted eligibility
+ * path. The eligibility path still requires a paired remote runtime and a live
+ * same-origin health probe. The force flag stays an explicit diagnostic bypass,
+ * so a failed capability check remains visible. Explicit client flag values
+ * always win, including an explicit opt-out.
+ */
+export function resolveLocalRealtimeVoiceDefines(
+  command: string,
+  gatewayPort: number | null,
+  env: NodeJS.ProcessEnv,
+): Record<string, string> {
+  if (command !== "serve" || gatewayPort === null) return {};
+
+  const defines: Record<string, string> = {};
+  if (env.VITE_VOICE_REALTIME_WS === undefined) {
+    defines["import.meta.env.VITE_VOICE_REALTIME_WS"] = JSON.stringify("1");
+  }
+  if (env.VITE_VOICE_REALTIME_SELF_HOSTED === undefined) {
+    defines["import.meta.env.VITE_VOICE_REALTIME_SELF_HOSTED"] =
+      JSON.stringify("1");
+  }
+  return defines;
+}
+
+export function resolveLocalRealtimeVoiceDefinesFromEnv(
+  command: string,
+  mode: string,
+  gatewayPort: number | null,
+  envDir: string,
+): Record<string, string> {
+  return resolveLocalRealtimeVoiceDefines(
+    command,
+    gatewayPort,
+    loadEnv(mode, envDir, "VITE_VOICE_REALTIME_"),
+  );
+}
+
 export function appDevWsBasePlugin(): Plugin {
   const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
 
@@ -2416,7 +2457,7 @@ const optimizerNodePolyfills: Readonly<Record<string, string>> = (() => {
   return resolved;
 })();
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, mode }) => ({
   root: here,
   customLogger: viteLogger,
   // Native shells (Electrobun `views://`, Capacitor `file://`) load assets
@@ -2443,6 +2484,12 @@ export default defineConfig(({ command }) => ({
     : path.resolve(here, "public"),
   define: {
     global: "globalThis",
+    ...resolveLocalRealtimeVoiceDefinesFromEnv(
+      command,
+      mode,
+      localVoiceGatewayPort,
+      here,
+    ),
     // Build variant — set at signing time by desktop-build.mjs and embedded
     // here so the renderer can branch on store vs direct without an API call.
     __ELIZA_BUILD_VARIANT__: JSON.stringify(

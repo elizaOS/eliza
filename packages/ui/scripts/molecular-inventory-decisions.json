@@ -1,50 +1,119 @@
 {
-  "dialog:button+dialog": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "The shared atoms describe ordinary modal chrome; the six components own unrelated workflows and state."
-  },
-  "card:button+input": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "Domain purchase, chat choice, and connector cards only coincide at a broad dependency signature."
-  },
-  "dialog:button+dialog+input": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "Withdrawal, command persistence, conversation renaming, and generic prompting have different validation, pending, error, and result contracts; their only stable shared behavior already belongs to the canonical Dialog, Input, and Button atoms."
-  },
-  "panel:button+input": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "Search, connector setup, and release-note panels have different interaction and state contracts."
-  },
-  "card:badge+button+card+checkbox+dialog+spinner": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "The credential-pool card owns priority ordering, provider usage windows, credential repair, and enabled opacity; the connector card owns selection/default state, capability grants, privacy/purpose, sync identity, and independent busy transitions. Their shared status, editing, controls, and confirmation behavior already comes from canonical atoms, while a shared slot shell would hide distinct state machines without removing domain logic."
-  },
-  "dialog:alert+button+card": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "The dialogs share canonical feedback and surface atoms while retaining unrelated validation, confirmation, and completion lifecycles."
-  },
-  "form:button+input": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "Trigger configuration and tag editing do not share a domain contract or meaningful layout beyond generic form controls."
-  },
-  "panel:button+card+input": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "These panels use the canonical Card boundary but retain unrelated search, connector, and release workflows."
-  },
-  "row:button+card": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "Sidebar and settings rows share atomic controls but own different selection, status, and lifecycle contracts."
-  },
-  "row:button+card+statusDot": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "Rail rows compose the same atomic status indicator while preserving domain-specific navigation and selection behavior."
-  },
-  "panel:badge+button+input": {
-    "disposition": "shared-lifecycle-owner",
-    "rationale": "The cloud-panel-owned useCloudAgentManagement pattern owns list refresh, create, rename, suspend/resume, delete polling, wake-and-switch, persistence, and notices; AgentSection and CloudAgentsSection are distinct presentation adapters with explicit management-token providers."
-  },
-  "list:badge+button+card": {
-    "disposition": "distinct-domain-compositions",
-    "rationale": "The lists share canonical status, action, and surface atoms, but their item identity, loading, selection, and mutation contracts remain domain-specific."
+  "schemaVersion": 2,
+  "decisions": {
+    "row:button+card": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Sidebar and settings rows share atomic controls but own different selection, status, and lifecycle contracts.",
+      "memberComponentIds": [
+        "packages/ui/src/components/composites/sidebar/sidebar-content.tsx:SidebarItem",
+        "packages/ui/src/components/settings/settings-layout.tsx:SettingsRow",
+        "packages/ui/src/components/shared/ActionListRow.tsx:ActionListRow",
+        "plugins/plugin-task-coordinator/src/orchestrator-reasoning.tsx:ReasoningCell"
+      ],
+      "semanticFingerprint": "sha256:fd78fc85a90ee454e7e021a6637ca7d81c7d1c48cd9491e96b99f3175784a020"
+    },
+    "dialog:button+dialog": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "The three dialogs own unrelated editing, confirmation, and calendar workflows.",
+      "memberComponentIds": [
+        "packages/ui/src/components/pages/skill-detail-panel.tsx:EditSkillModal",
+        "packages/ui/src/components/ui/confirm-dialog.tsx:ConfirmDialog",
+        "plugins/plugin-calendar/src/components/EventEditorDrawer.tsx:EventEditorDrawer"
+      ],
+      "semanticFingerprint": "sha256:947ceb36e16ef7a3aa4c0573a96769b3876c58f6564e858ac1f3bbb636e997ed"
+    },
+    "dialog:button+dialog+input": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Command persistence, conversation renaming, and generic prompting have different validation, pending, error, and result contracts. Their stable shared behavior already belongs to Dialog, Input, and Button.",
+      "memberComponentIds": [
+        "packages/ui/src/components/chat/SaveCommandModal.tsx:SaveCommandModal",
+        "packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx:ChatConversationRenameDialog",
+        "packages/ui/src/components/ui/confirm-dialog.tsx:PromptDialog"
+      ],
+      "semanticFingerprint": "sha256:00ceb89f6fe73868413b0028529b0ad6edf2af5297e2c21084e59cc1026a2e7d"
+    },
+    "list:badge+button+card": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "The lists share canonical status, action, and surface atoms, but their item identity, loading, selection, and mutation contracts remain domain-specific.",
+      "memberComponentIds": [
+        "packages/ui/src/cloud/organization/credentials-list.tsx:CredentialsList",
+        "packages/ui/src/cloud/organization/members-list.tsx:MembersList",
+        "packages/ui/src/cloud/organization/pending-invites-list.tsx:PendingInvitesList"
+      ],
+      "semanticFingerprint": "sha256:c31d0df24a1084c39b7dbc6d355666c54d88f8166c02a6a55bba547b6e91f30a"
+    },
+    "panel:button+card+input": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "These panels use the canonical Card boundary but retain unrelated search, connector, and release workflows.",
+      "memberComponentIds": [
+        "packages/ui/src/components/chat/message-search/MessageSearchPanel.tsx:MessageSearchPanel",
+        "packages/ui/src/components/connectors/TelegramAccountConnectorPanel.tsx:TelegramAccountConnectorPanel",
+        "packages/ui/src/components/settings/VoiceConfigView.tsx:DesktopTalkModePanel"
+      ],
+      "semanticFingerprint": "sha256:f7345abc1428d196ccedee6737be18b6f42af9f022aad9cb9a0d948ad8c6be6d"
+    },
+    "card:badge+button+card+checkbox+dialog+spinner": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "The credential-pool card owns priority ordering, provider usage windows, credential repair, and enabled opacity; the connector card owns selection/default state, capability grants, privacy/purpose, sync identity, and independent busy transitions. Their shared status, editing, controls, and confirmation behavior already comes from canonical atoms, while a shared slot shell would hide distinct state machines without removing domain logic.",
+      "memberComponentIds": [
+        "packages/ui/src/components/accounts/AccountCard.tsx:AccountCard",
+        "packages/ui/src/components/connectors/ConnectorAccountCard.tsx:ConnectorAccountCard"
+      ],
+      "semanticFingerprint": "sha256:4250aea273e79d484e15009ef24f27ec2e4ef7ffb9c3a9a50df793e44e46938a"
+    },
+    "card:button+input": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Domain purchase, chat choice, and connector cards only coincide at a broad dependency signature.",
+      "memberComponentIds": [
+        "packages/ui/src/components/chat/widgets/ChoiceWidget.tsx:ChoiceWidget",
+        "packages/ui/src/components/chat/widgets/connector-card.tsx:ConnectorCardWidget"
+      ],
+      "semanticFingerprint": "sha256:d117c0f4416d00578f8951dea1438e1314848151b99ba8432591a7f77bb3d93b"
+    },
+    "dialog:alert+button+card": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "The dialogs share canonical feedback and surface atoms while retaining unrelated validation, confirmation, and completion lifecycles.",
+      "memberComponentIds": [
+        "packages/ui/src/cloud/organization/contribute-credential-dialog.tsx:ContributeCredentialDialog",
+        "packages/ui/src/cloud/organization/invite-member-dialog.tsx:InviteMemberDialog"
+      ],
+      "semanticFingerprint": "sha256:d79bada7a8fe1a7748f1f3ed393b0ad8b5ea866611e2a11e24b9ad1b779b20c6"
+    },
+    "form:button+input": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Trigger configuration and tag editing do not share a domain contract or meaningful layout beyond generic form controls.",
+      "memberComponentIds": [
+        "packages/ui/src/components/pages/TriggerForm.tsx:TriggerForm",
+        "packages/ui/src/components/ui/tag-editor.tsx:TagEditor"
+      ],
+      "semanticFingerprint": "sha256:ecc864434687a7ce763252d359cad9bdb85db187f1defa060a767d5e5df45290"
+    },
+    "panel:badge+button+input": {
+      "disposition": "shared-lifecycle-owner",
+      "rationale": "The cloud-panel-owned useCloudAgentManagement pattern owns list refresh, create, rename, suspend/resume, delete polling, wake-and-switch, persistence, and notices; AgentSection and CloudAgentsSection are distinct presentation adapters with explicit management-token providers.",
+      "memberComponentIds": [
+        "packages/ui/src/components/settings/cloud-panel/sections/AgentSection.tsx:AgentSection",
+        "packages/ui/src/components/settings/CloudAgentsSection.tsx:CloudAgentsSection"
+      ],
+      "semanticFingerprint": "sha256:f0e0a109e0fab258115f7e1cc83319bae2890d554c23083a69f95a6700db6757"
+    },
+    "panel:button+input": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Search, connector setup, and release-note panels have different interaction and state contracts.",
+      "memberComponentIds": [
+        "packages/ui/src/components/connectors/TelegramBotSetupPanel.tsx:TelegramBotSetupPanel",
+        "packages/ui/src/components/release-center/sections.tsx:ReleaseNotesSection"
+      ],
+      "semanticFingerprint": "sha256:7c11e8d4a6401f86006252780a6d7d428dc8d5ade6007d697bf320b213c709af"
+    },
+    "row:button+card+statusDot": {
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Rail rows compose the same atomic status indicator while preserving domain-specific navigation and selection behavior.",
+      "memberComponentIds": [
+        "packages/ui/src/components/composites/chat/chat-conversation-item.tsx:ChatConversationItem",
+        "packages/ui/src/components/composites/sidebar/sidebar-content.tsx:SidebarRailItem"
+      ],
+      "semanticFingerprint": "sha256:f6d48d195f3dd4ea624645beeb9ab2db5ffd4c892685663a2498a8d0a9bfda91"
+    }
   }
 }

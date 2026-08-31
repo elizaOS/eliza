@@ -13,6 +13,7 @@ import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   normalizeFirstRunProviderId,
   PostProviderSwitchRequestSchema,
+  resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
 import type { SecretsManager } from "@elizaos/vault";
 import type { ElizaConfig } from "../config/config.ts";
@@ -96,6 +97,15 @@ export async function handleProviderSwitchRoutes(
     }
 
     const trimmedApiKey = body.apiKey;
+    const devCloudAuthority = resolveDevCloudEnvAuthority();
+    if (normalizedProvider === "elizacloud" && devCloudAuthority) {
+      error(
+        res,
+        "Cloud provider activation is owned by the immutable local dev launch target; restart with the intended target and credential.",
+        409,
+      );
+      return true;
+    }
 
     try {
       let connection:
@@ -155,15 +165,14 @@ export async function handleProviderSwitchRoutes(
             }
           }
 
+          await applyFirstRunConnectionConfig(config, connection);
           if (normalizedProvider === "elizacloud" && trimmedApiKey) {
-            const cloudBaseUrl = "https://cloud.eliza.app";
-            process.env.ANTHROPIC_BASE_URL = `${cloudBaseUrl}/api/v1`;
+            const cloudProxyBaseUrl = "https://cloud.eliza.app/api/v1";
+            process.env.ANTHROPIC_BASE_URL = cloudProxyBaseUrl;
             process.env.ANTHROPIC_API_KEY = trimmedApiKey;
-            process.env.OPENAI_BASE_URL = `${cloudBaseUrl}/api/v1`;
+            process.env.OPENAI_BASE_URL = cloudProxyBaseUrl;
             process.env.OPENAI_API_KEY = trimmedApiKey;
           }
-
-          await applyFirstRunConnectionConfig(config, connection);
           ctx.saveElizaConfig(config);
 
           return {

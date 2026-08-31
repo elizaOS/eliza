@@ -36,6 +36,11 @@ import {
 } from "../../hooks/runtime-capability-retry";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
+import {
+  FramedPage,
+  FramedPageBody,
+  FramedPageHeader,
+} from "../../layouts/framed-page";
 import { WorkspaceLayout } from "../../layouts/workspace-layout";
 import { useWorkspaceMobileSidebarHeader } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import { WorkspaceMobileSidebarScope } from "../../layouts/workspace-layout/workspace-mobile-sidebar-scope";
@@ -51,7 +56,6 @@ import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
-import { ViewHeader } from "../shared/ViewHeader";
 import { ViewHeaderSidebarTrigger } from "../shared/ViewHeaderSidebarTrigger";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -393,7 +397,16 @@ function MemoryListSurface({
   );
 }
 
-function MemoryStateSurface({ children }: { children: ReactNode }) {
+function MemoryStateSurface({
+  children,
+  plain = false,
+}: {
+  children: ReactNode;
+  plain?: boolean;
+}) {
+  if (plain) {
+    return <div className="overflow-hidden">{children}</div>;
+  }
   return (
     <Card variant="panel" radius="xlarge" className="overflow-hidden">
       {children}
@@ -540,7 +553,7 @@ function MemoryFeedPanel({
 
   if (feed.length === 0) {
     return (
-      <MemoryStateSurface>
+      <MemoryStateSurface plain>
         <PagePanel.ContentState
           state="empty"
           placement="workspace"
@@ -769,7 +782,7 @@ function MemoryBrowserPanel({
           />
         </MemoryStateSurface>
       ) : !result || result.memories.length === 0 ? (
-        <MemoryStateSurface>
+        <MemoryStateSurface plain>
           <PagePanel.ContentState
             state="empty"
             placement="workspace"
@@ -1242,7 +1255,7 @@ function MemoryViewerViewForAuthority({
           <h2 className="px-1 text-xs font-semibold text-[color:var(--settings-muted)]">
             {t("memoryviewer.library", { defaultValue: "Library" })}
           </h2>
-          <div className="space-y-4 rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] p-4">
+          <div className="space-y-4 border-b border-[color:var(--settings-hairline)] px-1 pb-5">
             <div className="flex min-h-11 items-center justify-between gap-3">
               <span className="text-sm text-[color:var(--settings-foreground)]">
                 {t("memoryviewer.allMemories", {
@@ -1297,7 +1310,7 @@ function MemoryViewerViewForAuthority({
           <h2 className="px-1 text-xs font-semibold text-[color:var(--settings-muted)]">
             {t("memoryviewer.people", { defaultValue: "People" })}
           </h2>
-          <div className="rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] p-4">
+          <div className="border-b border-[color:var(--settings-hairline)] px-1 pb-5">
             {peopleLoading ? (
               <div className="flex min-h-11 items-center text-sm text-[color:var(--settings-muted)]">
                 {t("memoryviewer.loading", { defaultValue: "Loading..." })}
@@ -1408,11 +1421,10 @@ function MemoryViewerViewForAuthority({
 
   return (
     <ShellViewAgentSurface viewId="memories">
-      <div className="settings-surface settings-canvas flex h-full min-h-0 w-full flex-col">
-        <ViewHeader
+      <FramedPage gutterOwner="framed-page">
+        <FramedPageHeader
           title={t("memoryviewer.title", { defaultValue: "Memories" })}
-          className="text-[color:var(--settings-foreground)]"
-          right={
+          actions={
             memoryRuntimeUnavailable ? undefined : (
               <ViewHeaderSidebarTrigger
                 control={mobileSidebarHeader.control}
@@ -1421,7 +1433,7 @@ function MemoryViewerViewForAuthority({
             )
           }
         />
-        <div className="flex min-h-0 flex-1 overflow-hidden">
+        <FramedPageBody scroll="view" padded={false}>
           <WorkspaceMobileSidebarScope controls={mobileSidebarHeader.controls}>
             <WorkspaceLayout
               sidebar={memoryRuntimeUnavailable ? null : sidebar}
@@ -1528,8 +1540,8 @@ function MemoryViewerViewForAuthority({
               </div>
             </WorkspaceLayout>
           </WorkspaceMobileSidebarScope>
-        </div>
-      </div>
+        </FramedPageBody>
+      </FramedPage>
     </ShellViewAgentSurface>
   );
 }

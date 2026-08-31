@@ -150,6 +150,8 @@ beforeAll(async () => {
       expected_lifecycle_revision bigint NOT NULL,
       action text NOT NULL DEFAULT 'stop',
       job_id uuid NOT NULL,
+      organization_deletion_request_id uuid,
+      requesting_user_deletion_request_id uuid,
       created_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT billing_cancel_commands_id_org_unique UNIQUE (id, organization_id),
       CONSTRAINT billing_cancel_commands_job_unique UNIQUE (job_id),
@@ -176,6 +178,8 @@ beforeAll(async () => {
       request_digest text NOT NULL,
       command_id uuid NOT NULL,
       requested_by_user_id uuid NOT NULL,
+      organization_deletion_request_id uuid,
+      requesting_user_deletion_request_id uuid,
       created_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT billing_cancel_command_keys_org_key_unique
         UNIQUE (organization_id, idempotency_key_hash),
@@ -452,8 +456,78 @@ describe("billing cancellation durable receipt authority", () => {
     expect(replay.disposition).toBe("same_key_replay");
     expect(replay.receipt).toEqual(first.receipt);
     expect(first.receipt.resourceId).toBe(RESOURCE);
+    expect(first.receipt.pollEndpoint).toBe(
+      `/api/v1/billing/resources/${RESOURCE}/cancel?receiptId=${first.receipt.receiptId}`,
+    );
     expect(enqueueCount).toBe(1);
     expect(await authorityCounts()).toEqual({ commands: 1, keys: 1, jobs: 1 });
+  });
+
+  test("authoritative receipt reads reproject the durable stop intent", async () => {
+    const service = createService();
+    const accepted = await request(service);
+
+    const initial = await service.readReceipt({
+      organizationId: ORG_A,
+      resourceId: RESOURCE.toUpperCase(),
+      receiptId: accepted.receipt.receiptId.toUpperCase(),
+    });
+    expect(initial).toEqual(accepted.receipt);
+
+    await dbWrite
+      .update(containerComputeStopIntents)
+      .set({ status: "provider_confirmed", provider_confirmed_at: new Date() })
+      .where(eq(containerComputeStopIntents.job_id, accepted.receipt.jobId));
+    await dbWrite
+      .update(jobs)
+      .set({ status: "in_progress" })
+      .where(eq(jobs.id, accepted.receipt.jobId));
+
+    await expect(
+      service.readReceipt({
+        organizationId: ORG_A,
+        resourceId: RESOURCE,
+        receiptId: accepted.receipt.receiptId,
+      }),
+    ).resolves.toMatchObject({
+      receiptId: accepted.receipt.receiptId,
+      status: "provider_confirmed",
+      computeStopped: true,
+      providerStopped: true,
+      retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
+      infrastructureStatus: "provider_confirmed",
+    });
+  });
+
+  test("unknown, cross-tenant, and wrong-resource receipt reads do not leak existence", async () => {
+    const service = createService();
+    const accepted = await request(service);
+    const misses = [
+      {
+        organizationId: ORG_A,
+        resourceId: RESOURCE,
+        receiptId: "00000000-0000-4000-8000-000000000099",
+      },
+      {
+        organizationId: ORG_B,
+        resourceId: RESOURCE,
+        receiptId: accepted.receipt.receiptId,
+      },
+      {
+        organizationId: ORG_A,
+        resourceId: OTHER_RESOURCE,
+        receiptId: accepted.receipt.receiptId,
+      },
+    ];
+
+    for (const miss of misses) {
+      await expect(service.readReceipt(miss)).rejects.toMatchObject({
+        status: 404,
+        code: "resource_not_found",
+        message: "Billing cancellation receipt not found",
+        details: undefined,
+      });
+    }
   });
 
   test("one key cannot be rebound to a different request digest", async () => {
@@ -744,7 +818,7 @@ describe("billing cancellation durable receipt authority", () => {
     });
     expect(agentReplay.receipt).toMatchObject({
       jobId: originalAgentJobId,
-      pollEndpoint: `/api/v1/jobs/${originalAgentJobId}`,
+      pollEndpoint: `/api/v1/billing/resources/${OTHER_RESOURCE}/cancel?receiptId=${agentReplay.receipt.receiptId}`,
       retainedBackupBilling: { status: "billable", ratePerHour: 0.0025 },
     });
   });

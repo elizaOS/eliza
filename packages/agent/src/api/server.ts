@@ -341,6 +341,11 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "../config/config.ts";
+import {
+  createDevCloudConfigAuthorityView,
+  materializeDevCloudConfigAuthorityView,
+  mergeDevCloudConfigAuthorityMutation,
+} from "../config/dev-cloud-env-authority.ts";
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.ts";
 import { CharacterSchema } from "../config/zod-schema.ts";
@@ -440,6 +445,7 @@ import {
   buildPluginDiagnosticEntry,
   resolveWalletDiagnosticStatus,
 } from "./plugin-diagnostic.ts";
+import { maybeCapRequestStorm } from "./request-storm-cap.ts";
 import { handleRuntimeManagementRoutes } from "./runtime-management-routes.ts";
 import {
   handleRuntimeModePreDispatch,
@@ -1861,6 +1867,14 @@ async function handleRequest(
     return;
   }
 
+  // ── Per-session request-storm cap ───────────────────────────────────────
+  // Before auth resolution and route handlers: a bearer session sustaining
+  // more than its polling budget gets 429 + Retry-After (see
+  // request-storm-cap.ts for the live incident this guards against).
+  if (maybeCapRequestStorm(req, res, pathname)) {
+    return;
+  }
+
   if (requireBrowserCompanionOwnerSession) {
     if (!hasBrowserCompanionOwnerSessionCookie(req)) {
       json(res, { error: "Owner session required" }, 401);
@@ -2805,14 +2819,30 @@ async function handleRequest(
       setSolanaWalletEnv,
       validatePrivateKey,
     } = await getCoreWalletApi();
+    const durableWalletConfig = loadElizaConfig();
+    const walletUsesCloudNetwork =
+      method === "GET" || pathname === "/api/wallet/refresh-cloud";
+    const walletAuthorityView = walletUsesCloudNetwork
+      ? createDevCloudConfigAuthorityView(durableWalletConfig)
+      : durableWalletConfig;
+    const walletConfig =
+      materializeDevCloudConfigAuthorityView(walletAuthorityView);
+    const saveWalletConfig = (nextConfig: ElizaConfig): void => {
+      const persistable = mergeDevCloudConfigAuthorityMutation(
+        durableWalletConfig,
+        walletAuthorityView,
+        nextConfig,
+      );
+      saveElizaConfig(persistable);
+    };
     if (
       await handleWalletRoutes({
         req,
         res,
         method,
         pathname,
-        config: loadElizaConfig(),
-        saveConfig: saveElizaConfig,
+        config: walletConfig,
+        saveConfig: saveWalletConfig,
         ensureWalletKeysInEnvAndConfig,
         resolveWalletExportRejection,
         restartRuntime,
@@ -2876,7 +2906,13 @@ async function handleRequest(
         method,
         pathname,
         url,
-        state,
+        state:
+          pathname === "/api/agent/self-status"
+            ? {
+                ...state,
+                config: createDevCloudConfigAuthorityView(state.config),
+              }
+            : state,
         json,
         error,
         readJsonBody,
@@ -3178,7 +3214,7 @@ async function handleRequest(
       res,
       method,
       pathname,
-      config: state.config,
+      config: createDevCloudConfigAuthorityView(state.config),
       runtime: state.runtime,
       json,
     })
@@ -3539,6 +3575,11 @@ async function handleRequest(
   // Extracted to @elizaos/plugin-whatsapp setup-routes.ts (Plugin.routes).
 
   // ── elizaOS plugin HTTP routes (runtime.routes, e.g. /music-player/*) ───
+  const runtimeRouteConfig = pathname.startsWith("/api/cloud/")
+    ? materializeDevCloudConfigAuthorityView(
+        createDevCloudConfigAuthorityView(state.config),
+      )
+    : state.config;
   if (
     await tryHandleRuntimePluginRoute({
       req,
@@ -3549,10 +3590,11 @@ async function handleRequest(
       runtime: state.runtime,
       isAuthorized: () => hostSessionAuthorization.ok || isAuthorized(req),
       hostContext: {
-        config: state.config as Record<string, unknown>,
+        config: runtimeRouteConfig as Record<string, unknown>,
         saveConfig: (nextConfig) => {
-          state.config = nextConfig as ElizaConfig;
-          saveElizaConfig(state.config);
+          const persistable = nextConfig as ElizaConfig;
+          saveElizaConfig(persistable);
+          state.config = persistable;
         },
         restartRuntime,
       },

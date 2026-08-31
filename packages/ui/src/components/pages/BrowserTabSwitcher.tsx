@@ -16,7 +16,7 @@
  * chrome and reserving its measured resting footprint (see
  * `BROWSER_WORKSPACE_TAB_MASK_SELECTORS`).
  */
-import { Globe, Plus, X } from "lucide-react";
+import { Plus, SquareStack, X } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import { Button } from "../ui/button";
 import {
@@ -152,7 +152,11 @@ export function BrowserTabFoldControl({
       data-testid="browser-workspace-tab-fold-control"
       className="relative min-w-0 shrink-0 px-0 md:px-4"
     >
-      <Globe className="size-4 shrink-0 text-muted" aria-hidden />
+      <SquareStack
+        className="size-4 shrink-0 text-muted"
+        data-testid="browser-workspace-tabs-icon"
+        aria-hidden
+      />
       <span className="hidden min-w-0 max-w-[9rem] truncate font-medium md:inline">
         {activeLabel}
       </span>

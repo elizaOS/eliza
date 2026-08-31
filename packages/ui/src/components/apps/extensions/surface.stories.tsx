@@ -1,11 +1,11 @@
 /**
- * Storybook stories for the detail-extension surface primitives — section,
- * badge tones, card grid, empty state, and a mixed composition.
+ * Storybook stories for the detail-extension surface primitives: sections,
+ * card grids, empty states, and mixed canonical compositions.
  */
 
 import type { Meta, StoryObj } from "@storybook/react";
+import { StatusBadge } from "../../ui/status-badge";
 import {
-  SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
@@ -44,21 +44,6 @@ export const Section: Story = {
           subtitle="p95 across the last 100 runs"
         />
       </SurfaceGrid>
-    ),
-  },
-};
-
-export const BadgeTones: Story = {
-  args: {
-    title: "Badge tones",
-    children: (
-      <div className="flex flex-wrap gap-2">
-        <SurfaceBadge>Neutral</SurfaceBadge>
-        <SurfaceBadge tone="accent">Accent</SurfaceBadge>
-        <SurfaceBadge tone="success">Success</SurfaceBadge>
-        <SurfaceBadge tone="warn">Warn</SurfaceBadge>
-        <SurfaceBadge tone="danger">Danger</SurfaceBadge>
-      </div>
     ),
   },
 };
@@ -110,9 +95,9 @@ export const MixedContent: Story = {
     children: (
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <SurfaceBadge tone="success">Active</SurfaceBadge>
-          <SurfaceBadge tone="accent">v2.4.1</SurfaceBadge>
-          <SurfaceBadge>Background</SurfaceBadge>
+          <StatusBadge label="Active" tone="success" />
+          <StatusBadge label="v2.4.1" tone="info" />
+          <StatusBadge label="Background" tone="muted" />
         </div>
         <SurfaceGrid>
           <SurfaceCard

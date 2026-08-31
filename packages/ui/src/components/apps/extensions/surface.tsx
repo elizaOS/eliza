@@ -1,13 +1,12 @@
 /**
- * Presentational building blocks for app detail-extension surfaces — section,
- * card, grid, badge, and empty-state components plus the shared `SurfaceTone`
- * palette. Registered detail extensions compose these so third-party app detail
- * panels render with consistent chrome without re-implementing base styling.
+ * Presentational building blocks for app detail-extension surfaces: sections,
+ * cards, grids, and empty states plus the shared `SurfaceTone` palette.
+ * Registered detail extensions compose these so third-party app detail panels
+ * render with consistent chrome without re-implementing base styling.
  */
 
 import type React from "react";
 import type { AppRunSummary } from "../../../api";
-import { StatusBadge, type StatusTone } from "../../ui/status-badge";
 
 export type SurfaceTone = "neutral" | "accent" | "success" | "warn" | "danger";
 
@@ -29,23 +28,6 @@ function toneClassName(tone: SurfaceTone): string {
     default:
       return "text-muted-strong";
   }
-}
-
-export function SurfaceBadge({
-  children,
-  tone = "neutral",
-}: {
-  children: React.ReactNode;
-  tone?: SurfaceTone;
-}) {
-  const statusTone: Record<SurfaceTone, StatusTone> = {
-    neutral: "muted",
-    accent: "info",
-    success: "success",
-    warn: "warning",
-    danger: "danger",
-  };
-  return <StatusBadge label={children} tone={statusTone[tone]} />;
 }
 
 export function SurfaceCard({

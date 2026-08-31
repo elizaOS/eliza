@@ -40,7 +40,7 @@ describe("real ContactsWeb parser contract", () => {
         count: 0,
       });
       // 25.9 is truncated to 25 by loadContactsState's normalizer before the
-      // real ContactsWeb re-validates the 1..500 range.
+      // real ContactsWeb re-validates that it is a positive safe integer.
       await expect(loadContactsState({ limit: 25.9 })).resolves.toMatchObject({
         count: 0,
       });
@@ -65,21 +65,24 @@ describe("real ContactsWeb parser contract", () => {
     });
   });
 
-  describe("ContactsWeb itself enforces the documented 1..500 limit", () => {
+  describe("ContactsWeb itself enforces a positive-safe-integer limit", () => {
     // Hit the real parser directly (bypassing loadContactsState's pre-clamp) to
     // prove the upstream contract these consumers depend on still holds.
-    it.each([0, -1, 501, Number.POSITIVE_INFINITY, Number.NaN])(
-      "rejects out-of-range limit %s",
-      async (limit) => {
-        await expect(realWeb.listContacts({ limit })).rejects.toThrow(
-          "limit must be between 1 and 500",
-        );
-      },
-    );
+    it.each([
+      0,
+      -1,
+      Number.MAX_SAFE_INTEGER + 1,
+      Number.POSITIVE_INFINITY,
+      Number.NaN,
+    ])("rejects invalid limit %s", async (limit) => {
+      await expect(realWeb.listContacts({ limit })).rejects.toThrow(
+        "limit must be a positive safe integer",
+      );
+    });
 
-    it("returns the empty {contacts:[]} web shape for valid queries", async () => {
+    it("returns the empty {contacts:[]} web shape for valid uncapped queries", async () => {
       await expect(
-        realWeb.listContacts({ limit: 50, query: "ada" }),
+        realWeb.listContacts({ limit: 501, query: "ada" }),
       ).resolves.toEqual({ contacts: [] });
     });
   });
@@ -119,14 +122,14 @@ describe("real ContactsWeb parser contract", () => {
   });
 
   describe("androidContacts provider over the real ContactsWeb", () => {
-    it("requests limit 50 and reports the empty web list (contactsAvailable=false, no error)", async () => {
+    it("does not impose a list cap and reports the empty web list (contactsAvailable=false, no error)", async () => {
       const result = await contactsProvider.get(
         {} as IAgentRuntime,
         {} as Memory,
         {} as State,
       );
-      const data = result.data as { count: number; limit: number };
-      expect(data.limit).toBe(50);
+      const data = result.data as { count: number; limit?: number };
+      expect(data.limit).toBeUndefined();
       expect(data.count).toBe(0);
       // The real ContactsWeb returns zero rows (web fallback), so the provider
       // reports contactsAvailable=false. Crucially it does NOT report an error:

@@ -128,6 +128,13 @@ function healthySources(
       },
     }),
     autoTopUpRuntimeEnabled: () => true,
+    cancellationAuthority: {
+      authMethod: "session",
+      role: "owner",
+      userActive: true,
+      userAnonymous: false,
+      organizationActive: true,
+    },
     defaultStorageBytesLimit: DEFAULT_STORAGE_LIMIT,
     now: () => new Date("2026-08-20T12:00:01.000Z"),
     ...overrides,
@@ -284,6 +291,16 @@ describe("buildAccountBillingSnapshot v2", () => {
             status: "available",
             value: { value: "2.962944", unit: "usd_per_day", currency: "USD" },
           },
+          cancellationControl: {
+            displayAction: "stop",
+            method: "POST",
+            mode: "stop",
+            endpoint:
+              "/api/v1/billing/resources/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cancel?resourceType=container",
+            expectedLifecycleRevision: 7,
+            eligible: true,
+            blockers: [],
+          },
         },
       ],
     });
@@ -317,6 +334,151 @@ describe("buildAccountBillingSnapshot v2", () => {
     });
     expect(JSON.stringify(snapshot)).not.toContain("paidCreditsObserved");
     expect(JSON.stringify(snapshot)).not.toContain('"tierName"');
+  });
+
+  test.each([
+    {
+      name: "owner interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "owner",
+        userActive: true,
+        userAnonymous: false,
+        organizationActive: true,
+      },
+      eligible: true,
+      blockers: [],
+    },
+    {
+      name: "admin interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "admin",
+        userActive: true,
+        userAnonymous: false,
+        organizationActive: true,
+      },
+      eligible: true,
+      blockers: [],
+    },
+    {
+      name: "member interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "member",
+        userActive: true,
+        userAnonymous: false,
+        organizationActive: true,
+      },
+      eligible: false,
+      blockers: ["owner_or_admin_role_required"],
+    },
+    {
+      name: "API key owner",
+      authority: {
+        authMethod: "api_key" as const,
+        role: "owner",
+        userActive: true,
+        userAnonymous: false,
+        organizationActive: true,
+      },
+      eligible: false,
+      blockers: ["interactive_session_required"],
+    },
+    {
+      name: "anonymous owner interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "owner",
+        userActive: true,
+        userAnonymous: true,
+        organizationActive: true,
+      },
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
+    },
+    {
+      name: "anonymous admin interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "admin",
+        userActive: true,
+        userAnonymous: true,
+        organizationActive: true,
+      },
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
+    },
+    {
+      name: "inactive owner interactive session",
+      authority: {
+        authMethod: "session" as const,
+        role: "owner",
+        userActive: false,
+        userAnonymous: false,
+        organizationActive: true,
+      },
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
+    },
+    {
+      name: "active admin session in an inactive organization",
+      authority: {
+        authMethod: "session" as const,
+        role: "admin",
+        userActive: true,
+        userAnonymous: false,
+        organizationActive: false,
+      },
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
+    },
+    {
+      name: "unknown authentication and role",
+      authority: {
+        authMethod: null,
+        role: null,
+        userActive: false,
+        userAnonymous: true,
+        organizationActive: false,
+      },
+      eligible: false,
+      blockers: [
+        "interactive_session_required",
+        "billing_account_ineligible",
+        "owner_or_admin_role_required",
+      ],
+    },
+  ])("projects fail-closed cancellation eligibility for $name", async (fixture) => {
+    const snapshot = await buildAccountBillingSnapshot(
+      healthySources(healthyPrimary(), {
+        cancellationAuthority: fixture.authority,
+      }),
+    );
+
+    expect(snapshot.v2.activeCompute.resources.status).toBe("available");
+    if (snapshot.v2.activeCompute.resources.status !== "available") {
+      throw new Error("active compute resources unexpectedly unavailable");
+    }
+    expect(snapshot.v2.activeCompute.resources.value[0]?.cancellationControl).toEqual({
+      displayAction: "stop",
+      method: "POST",
+      mode: "stop",
+      endpoint:
+        "/api/v1/billing/resources/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cancel?resourceType=container",
+      expectedLifecycleRevision: 7,
+      eligible: fixture.eligible,
+      blockers: fixture.blockers,
+    });
+  });
+
+  test("fails the snapshot closed when cancellation compare-and-set state is invalid", async () => {
+    const primary = healthyPrimary();
+    primary.activeResources[0]!.lifecycleRevision = Number.NaN;
+
+    await expect(buildAccountBillingSnapshot(healthySources(primary))).rejects.toMatchObject({
+      code: "INVALID_ACCOUNT_LIMIT_SOURCE",
+    });
   });
 
   test("preserves N-1, N, and N+1 parity for each landed count authority", async () => {
@@ -816,7 +978,7 @@ describe("buildAccountBillingSnapshot v2", () => {
               name: "missing-rate-agent",
               status: "running",
               billingInterval: "hour",
-              cancelAction: "suspend_billing",
+              cancelAction: "stop_compute",
               cancelEndpoint: `/api/v1/billing/resources/${agentId}/cancel?resourceType=agent_sandbox`,
             },
           ],

@@ -17,7 +17,7 @@ import {
 } from "@elizaos/cloud-sdk/browser-contracts";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
+import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import {
   Dialog,
@@ -547,15 +547,15 @@ export function McpEditorDialog({
         </div>
 
         <DialogFooter className="gap-2">
-          <BrandButton
+          <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={submitting}
           >
             {t("cloud.mcps.cancel", { defaultValue: "Cancel" })}
-          </BrandButton>
-          <BrandButton
-            variant="primary"
+          </Button>
+          <Button
+            variant="default"
             onClick={() => void onSubmit()}
             disabled={submitting || !valid}
           >
@@ -564,7 +564,7 @@ export function McpEditorDialog({
               : isEdit
                 ? t("cloud.mcps.saveChanges", { defaultValue: "Save changes" })
                 : t("cloud.mcps.register", { defaultValue: "Register MCP" })}
-          </BrandButton>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

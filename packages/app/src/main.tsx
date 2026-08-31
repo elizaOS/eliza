@@ -68,6 +68,7 @@ import {
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
 import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
+import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
 import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
 import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";
 import { client } from "@elizaos/ui/api";
@@ -246,6 +247,7 @@ import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
 } from "./plugin-registrations";
+import { isRemoteControllerPairingRuntimeAllowed } from "./remote-controller-deep-link";
 import {
   PHONE_COMPANION_AGENT_VIEW_ID,
   resolveRendererShellKind,
@@ -483,6 +485,7 @@ const isStoreBuild =
   typeof __ELIZA_BUILD_VARIANT__ === "string" &&
   __ELIZA_BUILD_VARIANT__ === "store";
 const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
+configureStoredStewardTokenScope(IOS_RUNTIME_ENV_CONFIG.cloudApiBase);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
@@ -2236,11 +2239,18 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
   );
   if (remotePairing) {
     if (
-      !isElectrobunRuntime() ||
-      !navigator.platform.toLowerCase().includes("linux")
+      !isRemoteControllerPairingRuntimeAllowed({
+        isElectrobun: isElectrobunRuntime(),
+        navigatorPlatform:
+          typeof navigator === "undefined" ? "" : navigator.platform,
+        nativePlatform: Capacitor.getPlatform(),
+        native: Capacitor.isNativePlatform(),
+        nativePluginAvailable:
+          Capacitor.isPluginAvailable?.("RemoteControllerIdentity") === true,
+      })
     ) {
       console.warn(
-        `${APP_LOG_PREFIX} Remote target pairing is available only on the enrolled Linux desktop target`,
+        `${APP_LOG_PREFIX} Remote controller pairing requires the enrolled Linux desktop shell or this iPhone's secure native controller bridge`,
       );
       return;
     }

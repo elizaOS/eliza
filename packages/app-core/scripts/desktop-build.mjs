@@ -26,6 +26,13 @@ import {
 import { canReuseDesktopRuntimePackage } from "./lib/desktop-runtime-package-policy.mjs";
 import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
+import {
+  nativeActivityTrackerBundleBinary,
+  nativeActivityTrackerSourceBinary,
+  nativeActivityTrackerStagedBinary,
+  shouldPackageNativeActivityTracker,
+  verifyNativeActivityTrackerBinary,
+} from "./lib/native-activity-tracker-packaging.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
 
@@ -214,6 +221,9 @@ const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
 );
 const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-local-inference",
+);
+const PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR = resolveWorkspacePluginDir(
+  "plugin-native-activity-tracker",
 );
 const PLUGIN_SQL_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-sql");
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
@@ -1051,6 +1061,53 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
 }
 
+function shouldStageNativeActivityTracker() {
+  return shouldPackageNativeActivityTracker({
+    platform: process.platform,
+    buildVariant,
+    buildProfile,
+    cloudOnly: cloudOnlyBuild,
+  });
+}
+
+function stageNativeActivityTrackerSourceBinary() {
+  if (!shouldStageNativeActivityTracker()) return;
+
+  runBun(["run", "build:swift"], {
+    cwd: PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR,
+    label: "Building native macOS activity collector",
+  });
+  const result = verifyNativeActivityTrackerBinary(
+    nativeActivityTrackerSourceBinary(ROOT),
+    { arch: process.arch, label: "generated activity collector" },
+  );
+  console.log(
+    `[desktop-build] Verified generated activity collector (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function verifyStagedNativeActivityTrackerBinary() {
+  if (!shouldStageNativeActivityTracker()) return;
+  const result = verifyNativeActivityTrackerBinary(
+    nativeActivityTrackerStagedBinary(ROOT),
+    { arch: process.arch, label: "staged activity collector" },
+  );
+  console.log(
+    `[desktop-build] Verified staged activity collector (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function verifyPackagedNativeActivityTrackerBinary(appBundlePath) {
+  if (!shouldStageNativeActivityTracker()) return;
+  const result = verifyNativeActivityTrackerBinary(
+    nativeActivityTrackerBundleBinary(appBundlePath),
+    { arch: process.arch, label: "packaged activity collector" },
+  );
+  console.log(
+    `[desktop-build] Verified packaged activity collector (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
 function desktopRendererBuildEnv() {
   let env = {
     ...process.env,
@@ -1480,6 +1537,7 @@ function stageDesktopBuild() {
 
   ensureRootRuntimeBundle();
   ensureWorkspaceRuntimePackagesBuilt();
+  stageNativeActivityTrackerSourceBinary();
 
   // Build + bundle the fused local-inference native lib so the packaged app
   // serves local AI out of the box. Gated (see stageDesktopFusedLib) so plain
@@ -1495,6 +1553,7 @@ function stageDesktopBuild() {
   });
 
   copyRuntimeNodeModulesWithRetry();
+  verifyStagedNativeActivityTrackerBinary();
 
   // `bun install` for these workspaces can emit benign EEXIST errors when
   // file: deps overlap with manually-linked @elizaos/* symlinks. The links
@@ -1813,6 +1872,12 @@ function packageDesktopBuild() {
   }
 
   hardenPackagedLinuxArtifacts();
+
+  // Verify after every possible package pass so this gate covers the final
+  // bundle rather than an intermediate bundle that may have been replaced.
+  if (process.platform === "darwin") {
+    verifyPackagedNativeActivityTrackerBinary(findLatestMacAppBundle());
+  }
 
   // The legacy compatibility path (APP_DIR/electrobun) is not read by any
   // production code — only docs and this mirror fn reference it (the inno

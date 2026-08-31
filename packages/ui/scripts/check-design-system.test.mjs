@@ -10,6 +10,7 @@ import {
   auditCanonicalTokenRoles,
   buildCardVariantMigrationInventory,
   buildComplianceReport,
+  collectAtomicDuplicateFindings,
   compareToBaseline,
   compareToTightBaseline,
   extractButtonAxisDefinitions,
@@ -25,7 +26,85 @@ import {
   scanSourceText,
   validateAdapterRegistry,
   validateExceptions,
+  validatePublicCardVariantCompatibility,
 } from "./check-design-system.mjs";
+
+test("atomic consolidation ledger survives relabel, deletion, and reintroduction", () => {
+  const componentId = "packages/ui/src/example.tsx:ExampleButton";
+  const canonicalOwner = "packages/ui/src/components/ui/button.tsx";
+  const candidate = {
+    classification: "canonical-wrapper",
+    decision: {
+      canonicalOwner,
+      disposition: "intentional-specialization",
+    },
+    file: "packages/ui/src/example.tsx",
+    line: 12,
+    name: "ExampleButton",
+  };
+  const inventory = {
+    atoms: { button: { candidates: [candidate] } },
+    components: [{ file: candidate.file, name: candidate.name }],
+  };
+  const unresolved = {
+    schemaVersion: 1,
+    entries: [{ componentId, canonicalOwner, status: "unresolved" }],
+  };
+  const ownerExists = {
+    fileExists: (file) => file === canonicalOwner,
+  };
+
+  assert.deepEqual(
+    collectAtomicDuplicateFindings(inventory, unresolved, ownerExists),
+    [
+      {
+        detail: `Consolidate with ${canonicalOwner}.`,
+        file: candidate.file,
+        line: 12,
+        rule: "atomic-duplicate",
+        symbol: candidate.name,
+      },
+    ],
+  );
+  assert.equal(
+    collectAtomicDuplicateFindings(
+      { atoms: { button: { candidates: [] } }, components: [] },
+      unresolved,
+      ownerExists,
+    )[0]?.file,
+    candidate.file,
+  );
+
+  assert.throws(
+    () =>
+      collectAtomicDuplicateFindings(
+        inventory,
+        {
+          schemaVersion: 1,
+          entries: [
+            { componentId, canonicalOwner, status: "resolved-deleted" },
+          ],
+        },
+        ownerExists,
+      ),
+    /reintroduced after deletion/,
+  );
+
+  assert.throws(
+    () =>
+      collectAtomicDuplicateFindings(
+        { atoms: { button: { candidates: [] } }, components: [] },
+        {
+          schemaVersion: 1,
+          entries: [
+            { componentId, canonicalOwner, status: "resolved-deleted" },
+          ],
+        },
+        { fileExists: () => false },
+      ),
+    /lost canonical owner/,
+  );
+});
 
 test("named CSS cannot hide paint on a canonical atom", () => {
   const paintedCssClasses = indexPaintedCssClasses([
@@ -783,6 +862,217 @@ test("Card variants require reuse instead of storing molecule-local paint", () =
   });
 });
 
+test("published Card compatibility variants require exact public API and recipe evidence", () => {
+  const now = new Date("2026-08-27T00:00:00Z");
+  const entry = {
+    id: "legacy-public-compatibility",
+    value: "legacy",
+    file: "packages/ui/src/components/ui/card.tsx",
+    packageExports: [".", "./card"],
+    publicSymbols: ["Card", "CardProps", "cardVariants"],
+    publicBarrels: [
+      {
+        file: "packages/ui/src/index.ts",
+        reexport: "./components/primitives/index",
+      },
+      {
+        file: "packages/ui/src/components/primitives/index.ts",
+        reexport: "../ui/card",
+      },
+      {
+        file: "packages/ui/src/browser.ts",
+        reexport: "./components/ui/card.tsx",
+      },
+    ],
+    recipe: "legacy-recipe",
+    reason: "Preserves a published downstream variant.",
+    reviewBy: "2027-02-27",
+  };
+  const cardVariants = [
+    {
+      axis: "variant",
+      callerCount: 0,
+      callers: [],
+      file: entry.file,
+      line: 1,
+      recipe: entry.recipe,
+      value: entry.value,
+    },
+  ];
+  const packageDocument = {
+    exports: {
+      ".": {
+        types: "./dist/index.d.ts",
+        import: "./dist/index.js",
+        default: "./dist/index.js",
+      },
+      "./card": {
+        types: "./dist/components/ui/card.d.ts",
+        import: "./dist/components/ui/card.js",
+        default: "./dist/components/ui/card.js",
+      },
+    },
+  };
+  const cardSource = `
+    type VariantProps<T> = T;
+    const Card = () => null;
+    const cardVariants = () => "";
+    export interface CardProps extends VariantProps<typeof cardVariants> {}
+    export { Card, cardVariants };
+  `;
+  const publicBarrelSources = {
+    "packages/ui/src/index.ts":
+      'export * from "./components/primitives/index";',
+    "packages/ui/src/components/primitives/index.ts":
+      'export * from "../ui/card";',
+    "packages/ui/src/browser.ts": 'export * from "./components/ui/card.tsx";',
+  };
+
+  assert.deepEqual(
+    validatePublicCardVariantCompatibility({
+      cardSource,
+      cardVariants,
+      document: { schemaVersion: 1, variants: [entry] },
+      now,
+      publicBarrelSources,
+      packageDocument,
+    }).map(({ callerCount, value }) => ({ callerCount, value })),
+    [{ callerCount: 0, value: "legacy" }],
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: {
+          schemaVersion: 1,
+          variants: [{ ...entry, recipe: "drifted" }],
+        },
+        now,
+        publicBarrelSources,
+        packageDocument,
+      }),
+    /does not match its canonical recipe/,
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants: [{ ...cardVariants[0], callerCount: 2 }],
+        document: { schemaVersion: 1, variants: [entry] },
+        now,
+        publicBarrelSources,
+        packageDocument,
+      }),
+    /is no longer underused/,
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: {
+          schemaVersion: 1,
+          variants: [{ ...entry, publicSymbols: ["Card"] }],
+        },
+        now,
+        publicBarrelSources,
+        packageDocument,
+      }),
+    /Invalid public Card variant compatibility/,
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource: cardSource.replace(
+          "extends VariantProps<typeof cardVariants>",
+          "",
+        ),
+        cardVariants,
+        document: { schemaVersion: 1, variants: [entry] },
+        now,
+        publicBarrelSources,
+        packageDocument,
+      }),
+    /requires CardProps to derive VariantProps<typeof cardVariants>/,
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: { schemaVersion: 1, variants: [entry] },
+        now,
+        publicBarrelSources: {
+          ...publicBarrelSources,
+          "packages/ui/src/browser.ts": "export const browser = true;",
+        },
+        packageDocument,
+      }),
+    /is missing public barrel packages\/ui\/src\/browser\.ts/,
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: { schemaVersion: 1, variants: [entry] },
+        now,
+        publicBarrelSources,
+        packageDocument: {
+          exports: { ".": packageDocument.exports["."] },
+        },
+      }),
+    /requires the canonical \.\/card package export/,
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: { schemaVersion: 1, variants: [entry] },
+        now,
+        publicBarrelSources,
+        packageDocument: {
+          exports: { "./card": packageDocument.exports["./card"] },
+        },
+      }),
+    /requires the canonical root package export/,
+  );
+  for (const duplicate of [
+    { ...entry, value: "other-public-compatibility" },
+    { ...entry, id: "other-public-compatibility" },
+  ]) {
+    assert.throws(
+      () =>
+        validatePublicCardVariantCompatibility({
+          cardSource,
+          cardVariants,
+          document: { schemaVersion: 1, variants: [entry, duplicate] },
+          now,
+          publicBarrelSources,
+          packageDocument,
+        }),
+      /Invalid public Card variant compatibility/,
+    );
+  }
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: {
+          schemaVersion: 1,
+          variants: [{ ...entry, reviewBy: "2026-08-26" }],
+        },
+        now,
+        publicBarrelSources,
+        packageDocument,
+      }),
+    /Stale public Card variant compatibility/,
+  );
+});
+
 test("Card axis inventory follows helper-returned JSX spreads", () => {
   const file = new URL(
     "../src/components/__scanner-card-spread__.tsx",
@@ -983,6 +1273,36 @@ test("compliance inventory is deterministic and covers every governed rule", {
     false,
   );
   assert.equal(first.counts["unstyled-canonical"], 0);
+  const vaultEmpty = first.publicCardVariantCompatibility.find(
+    (entry) => entry.id === "vault-empty-public-compatibility",
+  );
+  assert.deepEqual(vaultEmpty, {
+    callerCount: 0,
+    file: "packages/ui/src/components/ui/card.tsx",
+    id: "vault-empty-public-compatibility",
+    packageExports: [".", "./card"],
+    publicBarrels: [
+      {
+        file: "packages/ui/src/index.ts",
+        reexport: "./components/primitives/index",
+      },
+      {
+        file: "packages/ui/src/components/primitives/index.ts",
+        reexport: "../ui/card",
+      },
+      {
+        file: "packages/ui/src/browser.ts",
+        reexport: "./components/ui/card.tsx",
+      },
+    ],
+    publicSymbols: ["Card", "CardProps", "cardVariants"],
+    reason:
+      "The published @elizaos/ui/card VariantProps and cardVariants helper exposed vaultEmpty before the maintained Vault callers moved to layout-owned empty states. Preserve downstream source and runtime compatibility while internal usage remains intentionally zero.",
+    recipe:
+      "border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted",
+    reviewBy: "2027-02-27",
+    value: "vaultEmpty",
+  });
 });
 
 test("supported UI barrels resolve to canonical atoms without relying on debt", () => {

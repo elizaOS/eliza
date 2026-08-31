@@ -28,6 +28,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  applyDevCloudAuthoritySnapshotToEnv,
+  captureDevCloudEnvAuthoritySnapshot,
+  type DevCloudEnvAuthoritySnapshot,
   resolveApiToken,
   resolveDesktopApiPort,
   resolveDisableAutoApiToken,
@@ -602,6 +605,28 @@ export function configureDesktopLocalApiAuth(
   const token = ensureDesktopApiToken(env);
   env.ELIZA_PAIRING_DISABLED = "1";
   return token;
+}
+
+/** Capture launcher-owned Cloud/Steward values before startup services mutate env. */
+export function captureDesktopDevCloudLaunchAuthority(
+  env: NodeJS.ProcessEnv = process.env,
+): DevCloudEnvAuthoritySnapshot | null {
+  return captureDevCloudEnvAuthoritySnapshot(env);
+}
+
+/** Add the local API bearer minted at start without recapturing Cloud values. */
+export function bindDesktopApiTokenToDevCloudSnapshot(
+  snapshot: DevCloudEnvAuthoritySnapshot | null,
+  env: NodeJS.ProcessEnv = process.env,
+): DevCloudEnvAuthoritySnapshot | null {
+  if (!snapshot) return null;
+  return Object.freeze({
+    authority: snapshot.authority,
+    values: Object.freeze({
+      ...snapshot.values,
+      ELIZA_API_TOKEN: env.ELIZA_API_TOKEN,
+    }),
+  });
 }
 
 function getDesktopApiToken(
@@ -1390,6 +1415,14 @@ export class AgentManager {
   private startupPhase = "not_started";
   private databaseSnapshot: DatabaseSnapshot = createUnknownDatabaseSnapshot();
   private databaseStartupLock: DatabaseStartupLock | null = null;
+  /** Captured before Steward sidecars or startup restore can mutate env. */
+  private readonly devCloudLaunchAuthoritySnapshot =
+    captureDesktopDevCloudLaunchAuthority();
+  /** Launch tuple plus first-start local API bearer, reused across restarts. */
+  private devCloudChildAuthoritySnapshot:
+    | DevCloudEnvAuthoritySnapshot
+    | null
+    | undefined;
   /** Timestamps (ms) of recent crash-triggered restarts, for loop detection. */
   private readonly crashRestartTimestamps: number[] = [];
   /** Pending crash auto-restart timer, if one is scheduled. */
@@ -1455,6 +1488,12 @@ export class AgentManager {
     let preferredPort: number;
     try {
       configureDesktopLocalApiAuth();
+      if (this.devCloudChildAuthoritySnapshot === undefined) {
+        this.devCloudChildAuthoritySnapshot =
+          bindDesktopApiTokenToDevCloudSnapshot(
+            this.devCloudLaunchAuthoritySnapshot,
+          );
+      }
       packagedRuntime = isPackagedDesktopRuntime();
 
       // Reset per-startup flags
@@ -1589,6 +1628,10 @@ export class AgentManager {
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),
       };
+      applyDevCloudAuthoritySnapshotToEnv(
+        childEnv,
+        this.devCloudChildAuthoritySnapshot,
+      );
       if (packagedRuntime) childEnv.ELIZA_DESKTOP_PACKAGED_RUNTIME = "1";
       else delete childEnv.ELIZA_DESKTOP_PACKAGED_RUNTIME;
       childEnv.ELIZA_NAMESPACE = resolveDesktopChildNamespace(childEnv);

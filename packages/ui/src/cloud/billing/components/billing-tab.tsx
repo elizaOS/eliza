@@ -8,13 +8,7 @@
 
 "use client";
 
-import {
-  BrandButton,
-  BrandCard,
-  CornerBrackets,
-  Input,
-  Label,
-} from "@elizaos/ui/cloud-ui";
+import { CornerBrackets, Input, Label } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   CheckCircle,
@@ -43,6 +37,7 @@ import {
   type BillingSnapshotV2View,
   useBillingSnapshotV2,
 } from "../data/billing-snapshot";
+import type { BillingCancelIntentCoordinator } from "../lib/billing-cancel-intent";
 import {
   browserCardCheckoutIntentCoordinator,
   type CardCheckoutBindResult,
@@ -51,6 +46,7 @@ import {
   type CardCheckoutIntentHandle,
 } from "../lib/card-checkout-intent";
 import { formatExactUsd } from "../lib/format-exact-usd";
+import { useBillingResourceCancellations } from "../lib/use-billing-resource-cancellations";
 import type {
   BillingUser,
   CryptoStatusResponse,
@@ -84,6 +80,7 @@ import { Skeleton } from "../../../components/ui/skeleton";
 interface BillingTabProps {
   user: BillingUser;
   checkoutIntentCoordinator?: CardCheckoutIntentCoordinator;
+  billingCancellationCoordinator?: BillingCancelIntentCoordinator;
 }
 
 const AMOUNT_LIMITS = {
@@ -253,11 +250,28 @@ function getInvoiceStatusPresentation(status: string): {
 export function BillingTab({
   user,
   checkoutIntentCoordinator = browserCardCheckoutIntentCoordinator,
+  billingCancellationCoordinator,
 }: BillingTabProps) {
   const t = useCloudT();
   const navigate = useNavigate();
   const billingSnapshot = useBillingSnapshotV2(user.organization_id);
   const billingSnapshotState = toSnapshotViewState(billingSnapshot);
+  const activeComputeResources =
+    billingSnapshotState.kind === "ready" &&
+    billingSnapshotState.snapshot.activeCompute.resources.status === "available"
+      ? billingSnapshotState.snapshot.activeCompute.resources.value
+      : null;
+  const refetchBillingSnapshot = billingSnapshot.refetch;
+  const handleCancellationTerminal = useCallback(async () => {
+    return await refetchBillingSnapshot();
+  }, [refetchBillingSnapshot]);
+  const billingCancellations = useBillingResourceCancellations({
+    organizationId: user.organization_id,
+    initiatedByUserId: user.id,
+    resources: activeComputeResources,
+    coordinator: billingCancellationCoordinator,
+    onTerminal: handleCancellationTerminal,
+  });
   const [invoices, setInvoices] = useState<InvoiceDisplay[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(true);
   const [invoicesError, setInvoicesError] = useState<string | null>(null);
@@ -664,7 +678,7 @@ export function BillingTab({
   return (
     <div className="flex flex-col gap-4 md:gap-6 pb-6 md:pb-8">
       {/* Credit Balance Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
 
         <div className="relative z-10 space-y-6">
@@ -846,9 +860,9 @@ export function BillingTab({
 
                   {(paymentMethod !== "crypto" ||
                     !cryptoStatus?.directWallet?.enabled) && (
-                    <BrandButton
+                    <Button
                       type="submit"
-                      variant="primaryBilling"
+                      variant={isProcessingCheckout ? "outline" : "default"}
                       disabled={isProcessingCheckout}
                       className="h-11 px-6 w-full sm:w-auto shrink-0 font-mono text-base whitespace-nowrap sm:mt-[26px]"
                     >
@@ -871,7 +885,7 @@ export function BillingTab({
                           defaultValue: "Buy credits",
                         })
                       )}
-                    </BrandButton>
+                    </Button>
                   )}
                 </SemanticForm>
 
@@ -924,10 +938,18 @@ export function BillingTab({
             </div>
           </div>
         </div>
-      </BrandCard>
+      </Card>
 
       <ActiveComputeCardView
         state={billingSnapshotState}
+        cancellationAuthorityKey={`${user.organization_id}:${user.id}`}
+        cancellationStates={billingCancellations.states}
+        onRequestCancellation={(resource) => {
+          void billingCancellations.request(resource);
+        }}
+        onCheckCancellationReceipt={(resource) => {
+          void billingCancellations.checkReceipt(resource);
+        }}
         onRetry={() => {
           void billingSnapshot.refetch();
         }}
@@ -937,7 +959,7 @@ export function BillingTab({
       <AutoTopUpCard />
 
       {/* Invoices Card */}
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
 
         <div className="relative z-10 space-y-6">
@@ -1110,7 +1132,7 @@ export function BillingTab({
             )}
           </div>
         </div>
-      </BrandCard>
+      </Card>
     </div>
   );
 }
