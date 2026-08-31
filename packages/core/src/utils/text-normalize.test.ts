@@ -20,11 +20,19 @@ describe("flattenTextValues", () => {
 	});
 
 	it("flattens nested arrays", () => {
-		expect(flattenTextValues(["a", ["b", "c"], "d"])).toEqual(["a", "b", "c", "d"]);
+		expect(flattenTextValues(["a", ["b", "c"], "d"])).toEqual([
+			"a",
+			"b",
+			"c",
+			"d",
+		]);
 	});
 
 	it("flattens objects into key: value fragments", () => {
-		expect(flattenTextValues({ name: "Alice", age: 30 })).toEqual(["name: Alice", "age: 30"]);
+		expect(flattenTextValues({ name: "Alice", age: 30 })).toEqual([
+			"name: Alice",
+			"age: 30",
+		]);
 	});
 
 	it("flattens nested objects", () => {
@@ -33,7 +41,9 @@ describe("flattenTextValues", () => {
 	});
 
 	it("drops empty object values", () => {
-		expect(flattenTextValues({ a: "hello", b: null, c: undefined, d: "" })).toEqual(["a: hello"]);
+		expect(
+			flattenTextValues({ a: "hello", b: null, c: undefined, d: "" }),
+		).toEqual(["a: hello"]);
 	});
 
 	it("handles numbers and booleans", () => {
@@ -59,13 +69,17 @@ describe("flattenTextValues", () => {
 				{ role: "bot", content: "hi" },
 			],
 		});
-		expect(result).toEqual(["messages: role: user, content: hello, role: bot, content: hi"]);
+		expect(result).toEqual([
+			"messages: role: user, content: hello, role: bot, content: hi",
+		]);
 	});
 });
 
 describe("toMultilineText", () => {
 	it("joins flattened values with newlines", () => {
-		expect(toMultilineText({ a: "hello", b: "world" })).toBe("a: hello\nb: world");
+		expect(toMultilineText({ a: "hello", b: "world" })).toBe(
+			"a: hello\nb: world",
+		);
 	});
 
 	it("handles empty objects", () => {
