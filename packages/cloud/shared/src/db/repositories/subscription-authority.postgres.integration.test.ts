@@ -23,6 +23,8 @@ const LIVE_SUBSCRIPTION_ONE = "12000000-0000-4000-8000-000000000093";
 const LIVE_SUBSCRIPTION_TWO = "12000000-0000-4000-8000-000000000094";
 const CLOCK_ORG = "10000000-0000-4000-8000-000000000095";
 const CLOCK_SUBSCRIPTION = "12000000-0000-4000-8000-000000000095";
+const PURCHASED_ORG = "10000000-0000-4000-8000-000000000096";
+const PURCHASED_TRANSACTION = "13000000-0000-4000-8000-000000000096";
 
 let setupClient: Client | undefined;
 let allowanceRepository: import("./subscription-allowance").SubscriptionAllowanceRepository;
@@ -71,6 +73,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [EXPIRY_ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [LIVE_ORG]);
     await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [CLOCK_ORG]);
+    await setupClient.query(`INSERT INTO organizations(id) VALUES ($1)`, [PURCHASED_ORG]);
     await setupClient.query(`INSERT INTO users(id) VALUES ($1)`, [USER]);
     const repositoryUrl = new URL(databaseUrl!);
     repositoryUrl.searchParams.set("options", `-c search_path=${schemaName},public`);
@@ -446,6 +449,73 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       }
     } finally {
       setSystemTime();
+    }
+  });
+
+  test("serializes purchased-credit-only settlement behind the organization lock", async () => {
+    await setupClient!.query(
+      `INSERT INTO credit_transactions (id, organization_id) VALUES ($1,$2)`,
+      [PURCHASED_TRANSACTION, PURCHASED_ORG],
+    );
+    const reservationId = randomUUID();
+    await setupClient!.query(
+      `INSERT INTO billing_funding_reservations (
+         id, organization_id, logical_operation_id, request_digest, funding_class,
+         requested_amount, reserved_amount, expires_at
+       ) VALUES ($1,$2,'operation.purchased.lock',$3,'cash_only',1,1,
+         clock_timestamp() + interval '1 day')`,
+      [reservationId, PURCHASED_ORG, DIGEST],
+    );
+    await setupClient!.query(
+      `INSERT INTO billing_funding_allocations (
+         organization_id, reservation_id, sequence, source,
+         purchased_credit_reservation_transaction_id, reserved_amount
+       ) VALUES ($1,$2,1,'purchased_credit',$3,1)`,
+      [PURCHASED_ORG, reservationId, PURCHASED_TRANSACTION],
+    );
+
+    const locker = await connect();
+    try {
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [PURCHASED_ORG]);
+      const settlementPromise = subscriptionFundingService.settle({
+        organizationId: PURCHASED_ORG,
+        logicalOperationId: "operation.purchased.lock",
+        operation: "unclassified",
+        actualAmount: microsToMoney(1_000_000n),
+        occurredAt: new Date("2026-08-31T00:00:00.000Z"),
+      });
+      let reachedOrganizationLock = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const lockWait = await setupClient!.query<{ blocked: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1 FROM pg_stat_activity
+             WHERE datname = current_database() AND wait_event_type = 'Lock'
+               AND application_name = $1 AND query ILIKE '%organizations%FOR UPDATE%'
+           ) AS blocked`,
+          [schemaName],
+        );
+        reachedOrganizationLock = lockWait.rows[0]?.blocked === true;
+        if (reachedOrganizationLock) break;
+        await Bun.sleep(10);
+      }
+      expect(reachedOrganizationLock).toBe(true);
+      await locker.query("COMMIT");
+      await expect(settlementPromise).resolves.toMatchObject({
+        replayed: false,
+        reservation: { status: "finalized" },
+      });
+      const allocation = await setupClient!.query(
+        `SELECT finalized_amount::text, released_amount::text
+         FROM billing_funding_allocations WHERE reservation_id=$1`,
+        [reservationId],
+      );
+      expect(allocation.rows).toEqual([
+        { finalized_amount: "1.000000", released_amount: "0.000000" },
+      ]);
+    } finally {
+      await locker.query("ROLLBACK");
+      await locker.end();
     }
   });
 });
