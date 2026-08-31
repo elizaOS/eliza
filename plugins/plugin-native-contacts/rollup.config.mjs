@@ -1,9 +1,8 @@
 /**
- * Rollup config bundling the tsc output (`dist/esm/index.js`) into the
- * IIFE (`dist/plugin.js`, global `capacitorContacts`) and CJS
- * (`dist/plugin.cjs.js`) artifacts Capacitor hosts load; `@capacitor/core`
- * is left external since the host app supplies it.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
+
 export default {
   input: "dist/esm/index.js",
   output: [

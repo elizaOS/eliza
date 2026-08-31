@@ -1,12 +1,8 @@
 /**
- * Bundles the compiled `dist/esm/index.js` into an IIFE (`dist/plugin.js`,
- * global `capacitorElizaTasks`) and a CJS build (`dist/plugin.cjs.js`) —
- * the two formats Capacitor's web/Electron targets load. `@capacitor/core`
- * stays external; the host app provides it at runtime.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
 import nodeResolve from "@rollup/plugin-node-resolve";
-
-const external = ["@capacitor/core"];
 
 export default [
   {
@@ -16,9 +12,7 @@ export default [
         file: "dist/plugin.js",
         format: "iife",
         name: "capacitorElizaTasks",
-        globals: {
-          "@capacitor/core": "capacitorExports",
-        },
+        globals: { "@capacitor/core": "capacitorExports" },
         sourcemap: true,
         inlineDynamicImports: true,
       },
@@ -29,7 +23,7 @@ export default [
         inlineDynamicImports: true,
       },
     ],
-    external,
+    external: ["@capacitor/core"],
     plugins: [nodeResolve()],
   },
 ];

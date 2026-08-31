@@ -6,5 +6,5 @@
  * and stays Fast-Refresh-compatible in dev.
  */
 
-export { MessagesView } from "./MessagesView.tsx";
+export { MessagesPage as MessagesView } from "./MessagesPage.tsx";
 export { interact } from "./messages-interact.ts";

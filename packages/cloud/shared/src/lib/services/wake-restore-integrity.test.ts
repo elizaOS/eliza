@@ -190,6 +190,7 @@ beforeAll(async () => {
       userCharacters,
       agentNodeIncarnationHistories,
       agentSandboxes,
+      agentNodeIncarnationHistories,
       agentSandboxBackups,
       agentBackupCatalogAuthorities,
       agentBackupObjects,

@@ -120,7 +120,12 @@ mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
 }));
 mock.module("@/lib/services/account-lifecycle-authority", () => ({
   organizationLifecycleAllowsNewWork: () => true,
-  readOrganizationLifecycleAuthority: async () => ({ state: "active" }),
+  readOrganizationLifecycleAuthority: async () => ({
+    state: "active",
+    revision: 0,
+    active: true,
+    deletionRequestId: null,
+  }),
 }));
 mock.module("@/lib/utils/logger", () => ({
   logger: {

@@ -18,6 +18,7 @@ import {
   persistSleepEpisodes,
   resolveLifeOpsDayBoundary,
   resolveLifeOpsSleepCycle,
+  roundConfidence,
   SLEEP_ONSET_WINDOW_MS,
   type SleepRegularityEpisodeLike,
   scoreCircadianRules,
@@ -44,7 +45,6 @@ import type {
   LifeOpsScheduleInsightRecord,
 } from "./repository.js";
 import { getZonedDateParts } from "./time.js";
-import { roundConfidence } from "./time-util.js";
 
 const LOOKBACK_MS = 72 * 60 * 60 * 1_000;
 const SIGNAL_ACTIVITY_PAD_MS = 3 * 60 * 1_000;

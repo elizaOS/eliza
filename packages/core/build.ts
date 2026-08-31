@@ -28,6 +28,8 @@ export interface ElizaBuildOptions {
 	entrypoints?: string[];
 	/** Output directory - defaults to 'dist' */
 	outdir?: string;
+	/** Stable source root used to derive emitted entrypoint paths. */
+	root?: string;
 	/** Target environment - defaults to 'node' for packages */
 	target?: "node" | "bun" | "browser";
 	/** External dependencies */
@@ -163,6 +165,7 @@ export async function createElizaBuildConfig(
 	const {
 		entrypoints = ["src/index.ts"],
 		outdir = "dist",
+		root,
 		target = "node",
 		external = [],
 		sourcemap = false,
@@ -227,6 +230,7 @@ export async function createElizaBuildConfig(
 	const config: BuildConfig = {
 		entrypoints: resolvedEntrypoints,
 		outdir,
+		...(root ? { root } : {}),
 		target: target === "node" ? "node" : target,
 		format,
 		sourcemap,
@@ -810,8 +814,14 @@ export async function buildNode(
 	const runNode = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
+			root: TS_SRC,
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
+				`${TS_SRC}/contracts/cloud-topology.ts`,
+				`${TS_SRC}/contracts/first-run-options.ts`,
+				`${TS_SRC}/contracts/service-routing.ts`,
+				`${TS_SRC}/contracts/wallet.ts`,
+				`${TS_SRC}/runtime-env.ts`,
 				`${TS_SRC}/errors.ts`,
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/client-public.ts`,
@@ -849,8 +859,14 @@ export async function buildBrowser(
 	const runBrowser = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
+			root: TS_SRC,
 			entrypoints: [
 				`${TS_SRC}/index.browser.ts`,
+				`${TS_SRC}/contracts/cloud-topology.ts`,
+				`${TS_SRC}/contracts/first-run-options.ts`,
+				`${TS_SRC}/contracts/service-routing.ts`,
+				`${TS_SRC}/contracts/wallet.ts`,
+				`${TS_SRC}/runtime-env.ts`,
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/client-public.ts`,
 			],
@@ -897,7 +913,15 @@ export async function buildEdge(
 	const runEdge = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/index.edge.ts`],
+			root: TS_SRC,
+			entrypoints: [
+				`${TS_SRC}/index.edge.ts`,
+				`${TS_SRC}/contracts/cloud-topology.ts`,
+				`${TS_SRC}/contracts/first-run-options.ts`,
+				`${TS_SRC}/contracts/service-routing.ts`,
+				`${TS_SRC}/contracts/wallet.ts`,
+				`${TS_SRC}/runtime-env.ts`,
+			],
 			outdir: "dist/edge",
 			// Browser targeting avoids Bun's CommonJS createRequire shim; supported
 			// node:* imports remain external for Workerd's nodejs_compat runtime.
@@ -1029,6 +1053,7 @@ export async function buildTesting(
 	const runTesting = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
+			root: `${TS_SRC}/testing`,
 			entrypoints: [
 				`${TS_SRC}/testing/index.ts`,
 				`${TS_SRC}/testing/live-provider.ts`,

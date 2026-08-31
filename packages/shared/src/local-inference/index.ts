@@ -91,6 +91,20 @@ export type {
   ProviderMeta,
   ProviderStatus,
 } from "./providers-types.js";
+export {
+  assessCatalogModelFit,
+  catalogDownloadSizeBytes,
+  catalogDownloadSizeGb,
+  chooseSmallerFallbackModel,
+  classifyRecommendationPlatform,
+  type RecommendationOptions,
+  type RecommendationPlatformClass,
+  type RecommendationRamBudget,
+  type RecommendedModelSelection,
+  recommendForFirstRun,
+  selectRecommendedModelForSlot,
+  selectRecommendedModels,
+} from "./recommendation.js";
 export type {
   RoutingPolicy,
   RoutingPreferences,

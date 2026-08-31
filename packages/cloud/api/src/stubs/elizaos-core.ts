@@ -1644,6 +1644,7 @@ export const addHeader = (header: string, body: string) =>
   body ? `${header}\n${body}` : "";
 
 export const UUID = (value?: string): string => asUUID(value ?? "");
+export const registerProviderModels = throwingExport("registerProviderModels");
 export const composeActionExamples = throwingExport("composeActionExamples");
 export const formatActions = throwingExport("formatActions");
 export const formatActionNames = throwingExport("formatActionNames");

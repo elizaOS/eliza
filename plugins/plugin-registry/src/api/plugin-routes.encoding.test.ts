@@ -22,7 +22,8 @@ vi.mock("@elizaos/agent", () => ({
   validatePluginConfig: mocks.validatePluginConfig,
 }));
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -31,23 +32,14 @@ vi.mock("@elizaos/core", () => ({
   },
 }));
 
-vi.mock("@elizaos/shared", () => {
+vi.mock("@elizaos/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/shared")>();
   const schema = {
     safeParse: (value: unknown) => ({ success: true, data: value }),
   };
 
   return {
-    DEV_CLOUD_STEWARD_OPERATIONAL_ENV_KEYS: [
-      "STEWARD_API_URL",
-      "STEWARD_TENANT_ID",
-      "STEWARD_AGENT_ID",
-      "ELIZA_STEWARD_AGENT_ID",
-      "STEWARD_API_KEY",
-      "STEWARD_AGENT_TOKEN",
-      "STEWARD_TRADE_SESSION_ID",
-      "STEWARD_HYPERLIQUID_TRADE_SESSION_ID",
-      "STEWARD_POLYMARKET_TRADE_SESSION_ID",
-    ],
+    ...actual,
     asRecord: (value: unknown) =>
       value && typeof value === "object" && !Array.isArray(value)
         ? (value as Record<string, unknown>)

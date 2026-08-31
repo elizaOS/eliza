@@ -113,7 +113,7 @@ function float32ToBase64(pcm: Float32Array): string {
 }
 
 const JNI_VOICE_PCM_TURN_TIMEOUT_MS = 15_000;
-let localAgentClient: ElizaClient | null = null;
+let localAgentClient: ElizaClient | undefined;
 
 function getLocalAgentClient(): ElizaClient {
   localAgentClient ??= new ElizaClient(MOBILE_LOCAL_AGENT_API_BASE);

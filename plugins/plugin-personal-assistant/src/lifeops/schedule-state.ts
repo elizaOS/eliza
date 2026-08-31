@@ -14,6 +14,7 @@ import type {
   SyncLifeOpsScheduleObservationInput,
   SyncLifeOpsScheduleObservationsRequest,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import { parseIsoMs, roundConfidence } from "@elizaos/plugin-health";
 import {
   asRecord,
   type LifeOpsAwakeProbability,
@@ -33,7 +34,6 @@ import {
   getLocalDateKey,
   getZonedDateParts,
 } from "./time.js";
-import { parseIsoMs, roundConfidence } from "./time-util.js";
 
 export const SCHEDULE_OBSERVATION_BUCKET_MINUTES = 30;
 export const SCHEDULE_OBSERVATION_LOOKBACK_MS = 48 * 60 * 60 * 1_000;

@@ -20,6 +20,10 @@ function fakeExec(
 ): SqlExecutor {
   return async (sql: string) => {
     log?.push(sql);
+    if (sql.includes("carve-out:claim")) {
+      return [{ holder_token: [...sql.matchAll(/'([^']+)'/g)][1]?.[1] }];
+    }
+    if (sql.includes("carve-out:complete")) return [{ migration_key: "done" }];
     for (const [re, rows] of responses) {
       if (re.test(sql)) return rows;
     }

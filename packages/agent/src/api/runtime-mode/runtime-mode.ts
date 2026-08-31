@@ -132,37 +132,29 @@ export function resolveRuntimeMode(
 }
 
 /**
- * Disk-backed resolver with an mtime-keyed cache. A persisted mode change
- * still applies to the next request without a restart (the settings write
- * bumps the config file's mtime, invalidating the cache), but the pre-dispatch
- * route guard no longer pays a full four-file config load per request — under
- * a client request storm that read amplification alone pinned the API core
- * (observed live: ~40 config loads/second, 130% CPU).
+ * Disk-backed resolver with an mtime-keyed cache. Every request stats the
+ * config because retaining a local snapshot after a remote/cloud mode change
+ * could execute a target-owned mutation locally. Unchanged files still reuse
+ * the parsed snapshot, avoiding the full four-file config load that previously
+ * pinned the API core under request storms.
  */
 let cachedSnapshot: RuntimeModeSnapshot | null = null;
-let cachedConfigMtimeMs = -1;
-let cachedStatAtMs = 0;
-const SNAPSHOT_STAT_INTERVAL_MS = 1_000;
+let cachedConfigMtimeNs = -1n;
 
-function currentConfigMtimeMs(): number {
+function currentConfigMtimeNs(): bigint {
   try {
-    return statSync(resolveConfigPath()).mtimeMs;
+    return statSync(resolveConfigPath(), { bigint: true }).mtimeNs;
   } catch {
     // Missing config file: defaults apply; represent as a stable sentinel so
     // the cache still works and creation of the file invalidates it.
-    return 0;
+    return 0n;
   }
 }
 
 function resolveSnapshotCached(): RuntimeModeSnapshot {
-  const now = Date.now();
-  if (cachedSnapshot && now - cachedStatAtMs < SNAPSHOT_STAT_INTERVAL_MS) {
-    return cachedSnapshot;
-  }
-  const mtimeMs = currentConfigMtimeMs();
-  cachedStatAtMs = now;
-  if (!cachedSnapshot || mtimeMs !== cachedConfigMtimeMs) {
-    cachedConfigMtimeMs = mtimeMs;
+  const mtimeNs = currentConfigMtimeNs();
+  if (!cachedSnapshot || mtimeNs !== cachedConfigMtimeNs) {
+    cachedConfigMtimeNs = mtimeNs;
     cachedSnapshot = resolveRuntimeMode(
       parseRuntimeModeConfig(loadEffectiveElizaConfig()),
     );
@@ -173,8 +165,7 @@ function resolveSnapshotCached(): RuntimeModeSnapshot {
 /** Test-only: drop the snapshot cache so config edits apply immediately. */
 export function __resetRuntimeModeSnapshotCacheForTests(): void {
   cachedSnapshot = null;
-  cachedConfigMtimeMs = -1;
-  cachedStatAtMs = 0;
+  cachedConfigMtimeNs = -1n;
 }
 
 export function getRuntimeMode(): RuntimeMode {

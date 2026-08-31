@@ -5,7 +5,9 @@
  * Capacitor host.
  */
 
+import type { IAgentRuntime, RouteHandlerContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { screenFrameRoute } from "./routes.js";
 import {
   ScreenCaptureBridgeService,
   type ScreenCaptureFrame,
@@ -19,6 +21,26 @@ function makeBridge(timeoutMs = 30_000): ScreenCaptureBridgeService {
 
 /** base64 of the bytes [1, 2, 3, 4]. */
 const SAMPLE_BASE64 = Buffer.from([1, 2, 3, 4]).toString("base64");
+
+async function submitFrameRoute(
+  bridge: ScreenCaptureBridgeService,
+  body: unknown,
+) {
+  const routeHandler = screenFrameRoute.routeHandler;
+  if (!routeHandler) throw new Error("screen frame route handler is missing");
+  return routeHandler({
+    body,
+    params: {},
+    query: {},
+    headers: {},
+    method: "POST",
+    path: "/api/vision/screen-frame",
+    runtime: {
+      getService: () => bridge,
+    } as unknown as IAgentRuntime,
+    inProcess: false,
+  } satisfies RouteHandlerContext);
+}
 
 describe("ScreenCaptureBridgeService", () => {
   it("enqueues a request via requestFrame and drains it via takeRequests", () => {
@@ -58,9 +80,52 @@ describe("ScreenCaptureBridgeService", () => {
 
     const frame = (await framePromise) as ScreenCaptureFrame;
     expect(frame).not.toBeNull();
-    expect(Array.from(frame.pngBytes)).toEqual([1, 2, 3, 4]);
+    expect(Array.from(frame.imageBytes)).toEqual([1, 2, 3, 4]);
+    expect(frame.format).toBe("png");
+    expect(frame.width).toBe(10);
+    expect(frame.height).toBe(20);
     expect(frame.displayId).toBe(3);
     expect(typeof frame.capturedAt).toBe("number");
+  });
+
+  it("accepts an old frame without capturedAt at the new vision route", async () => {
+    const bridge = makeBridge();
+    const framePromise = bridge.requestFrame();
+    const [request] = bridge.takeRequests();
+    const beforeSubmit = Date.now();
+
+    const result = await submitFrameRoute(bridge, {
+      requestId: request.requestId,
+      base64: SAMPLE_BASE64,
+      format: "jpeg",
+      width: 10,
+      height: 20,
+    });
+
+    expect(result.status).toBe(200);
+    const frame = (await framePromise) as ScreenCaptureFrame;
+    expect(frame.capturedAt).toBeGreaterThanOrEqual(beforeSubmit);
+    expect(frame.format).toBe("jpeg");
+  });
+
+  it.each([
+    { format: "webp", width: 10, height: 20 },
+    { format: "jpeg", width: 0, height: 20 },
+    { format: "png", width: 10.5, height: 20 },
+    { format: "png", width: 10, height: Number.POSITIVE_INFINITY },
+  ])("rejects invalid frame format or dimensions: %j", async (invalid) => {
+    const bridge = makeBridge();
+    void bridge.requestFrame();
+    const [request] = bridge.takeRequests();
+
+    const result = await submitFrameRoute(bridge, {
+      requestId: request.requestId,
+      base64: SAMPLE_BASE64,
+      ...invalid,
+    });
+
+    expect(result.status).toBe(400);
+    await bridge.stop();
   });
 
   it("submitFrame returns false for an unknown requestId", () => {

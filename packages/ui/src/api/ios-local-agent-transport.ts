@@ -25,6 +25,7 @@ import {
 import { createIosStreamingAgentPlugin } from "./ios-streaming-agent-plugin";
 import { createIttpAgentTransport } from "./ittp-agent-transport";
 import { createNativeStreamingResponse } from "./native-agent-stream";
+import { nativeHttpResultToResponse } from "./native-http-codec";
 import {
   type AgentRequestTransport,
   headersToRecord,
@@ -954,38 +955,10 @@ async function requestToNativeBridgeOptions(
   };
 }
 
-/**
- * Reconstruct the response body. Prefer the lossless `bodyBase64` (raw bytes)
- * so binary payloads — served media, generated images, TTS audio — survive the
- * bridge; fall back to the UTF-8 `body` string when base64 is absent.
- */
-function nativeResponseBody(
-  result: IosLocalAgentNativeRequestResult,
-): ArrayBuffer | string {
-  const base64 = result.bodyBase64;
-  if (typeof base64 === "string" && base64.length > 0) {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes.buffer;
-  }
-  return result.body;
-}
-
 function nativeResultToResponse(
   result: IosLocalAgentNativeRequestResult,
 ): Response {
-  const body =
-    result.status === 204 || result.status === 205 || result.status === 304
-      ? null
-      : nativeResponseBody(result);
-  return new Response(body, {
-    status: result.status,
-    statusText: result.statusText,
-    headers: result.headers,
-  });
+  return nativeHttpResultToResponse(result);
 }
 
 /**

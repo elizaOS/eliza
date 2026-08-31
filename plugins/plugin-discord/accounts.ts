@@ -4,12 +4,17 @@
  * config, or character settings, and normalizes the account ids the rest of the
  * plugin keys on.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+	DEFAULT_CONNECTOR_ACCOUNT_ID,
+	type IAgentRuntime,
+	normalizeConnectorAccountId,
+	selectDefaultConnectorAccountId,
+} from "@elizaos/core";
 
 /**
  * Default account identifier used when no specific account is configured
  */
-export const DEFAULT_ACCOUNT_ID = "default";
+export const DEFAULT_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID;
 
 /**
  * Source of the Discord token
@@ -143,11 +148,7 @@ export interface ResolvedDiscordAccount {
  * Normalizes an account ID, returning the default if not provided
  */
 export function normalizeAccountId(accountId?: string | null): string {
-	if (!accountId || typeof accountId !== "string") {
-		return DEFAULT_ACCOUNT_ID;
-	}
-	const trimmed = accountId.trim().toLowerCase();
-	return trimmed || DEFAULT_ACCOUNT_ID;
+	return normalizeConnectorAccountId(accountId);
 }
 
 /**
@@ -198,11 +199,7 @@ export function listDiscordAccountIds(runtime: IAgentRuntime): string[] {
  * Resolves the default account ID to use
  */
 export function resolveDefaultDiscordAccountId(runtime: IAgentRuntime): string {
-	const ids = listDiscordAccountIds(runtime);
-	if (ids.includes(DEFAULT_ACCOUNT_ID)) {
-		return DEFAULT_ACCOUNT_ID;
-	}
-	return ids[0] ?? DEFAULT_ACCOUNT_ID;
+	return selectDefaultConnectorAccountId(listDiscordAccountIds(runtime));
 }
 
 /**

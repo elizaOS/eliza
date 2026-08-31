@@ -4,7 +4,7 @@
  * handling are consistent. WHY one path: avoids drift between SIWE/topup/wallet-auth.
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getAddress } from "viem";
 import type { DbTransaction } from "../../db/client";
 import { writeTransaction } from "../../db/helpers";
@@ -93,7 +93,24 @@ async function createOrFindWalletOrg(params: {
     })
     .onConflictDoNothing()
     .returning();
-  const org = created ?? (await findOrgBySlugForWrite(params.tx, params.slug));
+  if (created) return created;
+
+  // A wallet slug can be reserved before its owner row exists (for example by
+  // an older x402/provisioning path). Adopt an untouched legacy-zero row into
+  // the same canonical opening balance as a newly inserted signup; otherwise
+  // the result would claim the grant while returning an unfunded organization.
+  const [adoptedLegacyOpeningBalance] = await params.tx
+    .update(organizations)
+    .set({ credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd })
+    .where(
+      and(
+        eq(organizations.slug, params.slug),
+        eq(organizations.credit_balance, String(SIGNUP_CREDIT_POLICY.legacyOpeningBalanceUsd)),
+        eq(organizations.balance_revision, 0),
+      ),
+    )
+    .returning();
+  const org = adoptedLegacyOpeningBalance ?? (await findOrgBySlugForWrite(params.tx, params.slug));
   if (!org) {
     throw new Error("Organization creation failed and could not find existing org");
   }

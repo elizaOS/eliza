@@ -4,6 +4,10 @@
  * agent→renderer push channel. See the block below for the full protocol.
  */
 import { Capacitor } from "@capacitor/core";
+import {
+  normalizeScreenCaptureRequestContract,
+  type ScreenCaptureRequestContract,
+} from "@elizaos/shared";
 import { getScreenCapturePlugin } from "../bridge/native-plugins";
 import { fetchWithDeadline } from "../utils/fetch-with-deadline";
 
@@ -47,14 +51,15 @@ export function computePollDelayMs(consecutiveFailures: number): number {
   return Math.min(MAX_BACKOFF_MS, POLL_INTERVAL_MS * 2 ** over);
 }
 
-interface CaptureRequest {
-  requestId: string;
-  createdAt: number;
-  displayId?: number;
-  /** Optional agent-requested downscale (0–1 of native resolution). */
-  scale?: number;
-  /** Optional agent-requested JPEG quality (1–100). */
-  quality?: number;
+type CaptureRequest = ScreenCaptureRequestContract;
+
+/** Normalize queued requests from both pre-contract and current agents. */
+export function normalizeCaptureRequests(value: unknown): CaptureRequest[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((request) => {
+    const normalized = normalizeScreenCaptureRequestContract(request);
+    return normalized ? [normalized] : [];
+  });
 }
 
 let started = false;
@@ -82,14 +87,6 @@ function isNativeMobile(): boolean {
     // error-policy:J3 an exotic host global shape reads as "not native".
     return false;
   }
-}
-
-function isCaptureRequest(value: unknown): value is CaptureRequest {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { requestId?: unknown }).requestId === "string"
-  );
 }
 
 async function postScreenFrame(
@@ -124,10 +121,10 @@ async function serveRequest(
     // the IMAGE_DESCRIPTION (on-device GPU) describe path wants. Honour an
     // optional per-request maxScale/quality from the agent, else use frugal
     // defaults tuned for screen understanding + battery/latency.
-    const scale = clampScale(request.scale ?? 0.5);
+    const scale = clampScale(request.scale);
     const quality = clampQuality(request.quality ?? 70);
     const shot = await getScreenCapturePlugin().captureScreenshot({
-      format: "jpeg",
+      format: request.format,
       quality,
       scale,
     });
@@ -138,6 +135,7 @@ async function serveRequest(
         format: shot.format,
         width: shot.width,
         height: shot.height,
+        capturedAt: Date.now(),
       },
       signal,
     );
@@ -170,8 +168,7 @@ async function poll(signal: AbortSignal): Promise<void> {
           throw new Error(`Capture-request poll failed (${response.status})`);
         }
         const data = (await response.json()) as { requests?: unknown };
-        const list = Array.isArray(data.requests) ? data.requests : [];
-        return list.filter(isCaptureRequest);
+        return normalizeCaptureRequests(data.requests);
       },
       { signal, timeoutMs: SCREEN_CAPTURE_HOP_TIMEOUT_MS },
     );

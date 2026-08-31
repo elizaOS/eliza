@@ -1,8 +1,8 @@
 /**
- * Bundles the tsc-emitted `dist/esm/index.js` into the CJS
- * (`dist/plugin.cjs.js`) and IIFE (`dist/plugin.js`, for unpkg) artifacts
- * consumers outside the ESM/bun export condition load.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
+
 export default {
   input: "dist/esm/index.js",
   output: [
@@ -10,9 +10,7 @@ export default {
       file: "dist/plugin.js",
       format: "iife",
       name: "capacitorAppleCalendar",
-      globals: {
-        "@capacitor/core": "capacitorExports",
-      },
+      globals: { "@capacitor/core": "capacitorExports" },
       sourcemap: true,
       inlineDynamicImports: true,
     },

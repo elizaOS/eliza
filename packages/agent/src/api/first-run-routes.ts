@@ -268,6 +268,98 @@ export interface FirstRunServerState {
   chatConnectionPromise: Promise<void> | null;
 }
 
+export interface CanonicalBlooioConnectorConfig {
+  apiKey: string;
+  webhookSecret: string;
+  fromNumber: string;
+  channelId: string;
+}
+
+export type BlooioFirstRunResolution =
+  | { requested: false }
+  | { requested: true; config: CanonicalBlooioConnectorConfig }
+  | { requested: true; error: string };
+
+function firstNonBlankString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+/** Resolves legacy first-run fields into the complete canonical connector. */
+export function resolveBlooioFirstRunConfig(input: {
+  current?: Record<string, unknown> | null;
+  explicit?: Record<string, unknown> | null;
+  explicitConnectorRequested?: boolean;
+  blooioApiKey?: unknown;
+  blooioWebhookSecret?: unknown;
+  blooioPhoneNumber?: unknown;
+  blooioChannelId?: unknown;
+}): BlooioFirstRunResolution {
+  const legacyRequested = [
+    input.blooioApiKey,
+    input.blooioWebhookSecret,
+    input.blooioPhoneNumber,
+    input.blooioChannelId,
+  ].some((value) => value !== undefined);
+  const requested =
+    input.explicitConnectorRequested === true ||
+    (input.current !== null && input.current !== undefined) ||
+    legacyRequested;
+  if (!requested) return { requested: false };
+
+  const apiKey = firstNonBlankString(
+    input.explicit?.apiKey,
+    input.blooioApiKey,
+    input.current?.apiKey,
+  );
+  const webhookSecret = firstNonBlankString(
+    input.explicit?.webhookSecret,
+    input.blooioWebhookSecret,
+    input.current?.webhookSecret,
+  );
+  const fromNumber = firstNonBlankString(
+    input.explicit?.fromNumber,
+    input.explicit?.phoneNumber,
+    input.blooioPhoneNumber,
+    input.current?.fromNumber,
+    input.current?.phoneNumber,
+  );
+  const channelId = firstNonBlankString(
+    input.explicit?.channelId,
+    input.blooioChannelId,
+    input.current?.channelId,
+  );
+
+  const missing = [
+    ["apiKey", apiKey],
+    ["webhookSecret", webhookSecret],
+    ["fromNumber", fromNumber],
+    ["channelId", channelId],
+  ]
+    .filter((entry) => !entry[1])
+    .map((entry) => entry[0]);
+  if (missing.length > 0) {
+    return {
+      requested: true,
+      error: `Incomplete Blooio connector configuration; missing: ${missing.join(", ")}`,
+    };
+  }
+
+  return {
+    requested: true,
+    config: {
+      apiKey: apiKey as string,
+      webhookSecret: webhookSecret as string,
+      fromNumber: fromNumber as string,
+      channelId: channelId as string,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
@@ -388,6 +480,23 @@ export async function handleFirstRunRoutes(
       logger.warn(
         `[eliza-api] Failed to reload config before first-run: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+    const requestedConnectors = asRecord(body.connectors);
+    const explicitBlooioRequested = Boolean(
+      requestedConnectors && Object.hasOwn(requestedConnectors, "blooio"),
+    );
+    const blooioResolution = resolveBlooioFirstRunConfig({
+      current: asRecord(config.connectors?.blooio),
+      explicit: asRecord(requestedConnectors?.blooio),
+      explicitConnectorRequested: explicitBlooioRequested,
+      blooioApiKey: body.blooioApiKey,
+      blooioWebhookSecret: body.blooioWebhookSecret,
+      blooioPhoneNumber: body.blooioPhoneNumber,
+      blooioChannelId: body.blooioChannelId,
+    });
+    if ("error" in blooioResolution) {
+      error(res, blooioResolution.error, 400);
+      return true;
     }
     const configuredLanguage = ctx.normalizeCharacterLanguage(
       (body.language as string | undefined) ??
@@ -634,7 +743,7 @@ export async function handleFirstRunRoutes(
 
     // ── Connectors (Telegram, Discord, WhatsApp, Twilio, Blooio) ────────
     if (!config.connectors) config.connectors = {};
-    const explicitConnectors = asRecord(body.connectors);
+    const explicitConnectors = requestedConnectors;
     if (explicitConnectors) {
       for (const [connectorName, connectorValue] of Object.entries(
         explicitConnectors,
@@ -703,31 +812,25 @@ export async function handleFirstRunRoutes(
         ).trim();
       }
     }
-    if (
-      body.blooioApiKey &&
-      typeof body.blooioApiKey === "string" &&
-      body.blooioApiKey.trim()
-    ) {
+    if (blooioResolution.requested) {
       if (!config.env) config.env = {};
-      const trimmedKey = (body.blooioApiKey as string).trim();
-      (config.env as Record<string, string>).BLOOIO_API_KEY = trimmedKey;
-      process.env.BLOOIO_API_KEY = trimmedKey;
+      const blooio = blooioResolution.config;
+      config.connectors.blooio = { ...blooio };
 
-      const blooioConnector: Record<string, string> = { apiKey: trimmedKey };
-
-      if (
-        body.blooioPhoneNumber &&
-        typeof body.blooioPhoneNumber === "string" &&
-        body.blooioPhoneNumber.trim()
-      ) {
-        const trimmedPhone = (body.blooioPhoneNumber as string).trim();
-        (config.env as Record<string, string>).BLOOIO_PHONE_NUMBER =
-          trimmedPhone;
-        process.env.BLOOIO_PHONE_NUMBER = trimmedPhone;
-        blooioConnector.fromNumber = trimmedPhone;
-      }
-
-      config.connectors.blooio = blooioConnector;
+      const blooioEnv = {
+        IMESSAGE_TRANSPORT: "blooio",
+        IMESSAGE_BLOOIO_API_KEY: blooio.apiKey,
+        IMESSAGE_BLOOIO_WEBHOOK_SECRET: blooio.webhookSecret,
+        IMESSAGE_BLOOIO_FROM_NUMBER: blooio.fromNumber,
+        IMESSAGE_BLOOIO_CHANNEL_ID: blooio.channelId,
+        // Compatibility aliases for older plugin builds and settings readers.
+        BLOOIO_API_KEY: blooio.apiKey,
+        BLOOIO_WEBHOOK_SECRET: blooio.webhookSecret,
+        BLOOIO_FROM_NUMBER: blooio.fromNumber,
+        BLOOIO_PHONE_NUMBER: blooio.fromNumber,
+      };
+      Object.assign(config.env as Record<string, string>, blooioEnv);
+      Object.assign(process.env, blooioEnv);
     }
 
     const explicitFeatures = asRecord(body.features);

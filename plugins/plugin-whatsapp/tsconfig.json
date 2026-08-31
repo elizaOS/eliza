@@ -34,6 +34,7 @@
     "node_modules",
     "dist",
     "build.ts",
+    "vitest.config.ts",
     "./generated/**",
     "**/__tests__/**",
     "**/*.test.ts",

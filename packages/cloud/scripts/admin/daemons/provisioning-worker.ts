@@ -2029,7 +2029,6 @@ export async function runInfraMaintenanceCycle(
     () => processDbLivenessCheckCycle(config),
     (assessment) => logJobsTableLiveness(logger, assessment),
   );
-  const orphanReconciliationAllowed = allowsOrphanReconciliation(dbLiveness);
 
   await runBoundedPhase(
     logger,
@@ -2277,11 +2276,25 @@ export async function runInfraMaintenanceCycle(
     2 * 60_000,
   );
 
-  // FIX 3: orphan-container reconciliation. Runs LAST so it sees the fresh
-  // node-status from the health check above — the reconciler only touches
-  // HEALTHY nodes, so a node that just failed its probe is excluded and a
-  // transient SSH blip never reaps live containers. Gated OFF by default.
-  if (config.orphanReconcilerEnabled && orphanReconciliationAllowed) {
+  await runOrphanReconciliationCycle(logger, config, dbLiveness);
+}
+
+/**
+ * Applies the database-authority gate and runs both destructive orphan sweeps.
+ * Kept as one callable boundary so every daemon cycle and focused safety test
+ * exercises the same decision and paired reconciler ordering.
+ */
+export async function runOrphanReconciliationCycle(
+  logger: WorkerLogger,
+  config: ProvisioningWorkerConfig,
+  dbLiveness: DbLivenessAssessment | undefined,
+): Promise<void> {
+  // Runs after node health in the full maintenance cycle. The reconcilers only
+  // touch HEALTHY nodes, so a transient SSH failure cannot reap live workloads.
+  if (
+    config.orphanReconcilerEnabled &&
+    allowsOrphanReconciliation(dbLiveness)
+  ) {
     await runBoundedPhase(
       logger,
       "orphan reconciler cycle",
@@ -2574,19 +2587,19 @@ export function requestShutdown(
   timer.unref();
 }
 
-process.on("SIGINT", () => requestShutdown("SIGINT"));
+if (isMainModule()) {
+  process.on("SIGINT", () => requestShutdown("SIGINT"));
 
-process.on("SIGTERM", () => requestShutdown("SIGTERM"));
+  process.on("SIGTERM", () => requestShutdown("SIGTERM"));
 
-process.on("unhandledRejection", (reason) => {
-  void loadDeps().then(({ logger }) => {
-    logger.error("[provisioning-worker] unhandled rejection", {
-      error: formatErrorWithCause(reason),
+  process.on("unhandledRejection", (reason) => {
+    void loadDeps().then(({ logger }) => {
+      logger.error("[provisioning-worker] unhandled rejection", {
+        error: formatErrorWithCause(reason),
+      });
     });
   });
-});
 
-if (isMainModule()) {
   main().then(
     () => {
       // Exit explicitly: the dependency graph holds live handles the daemon

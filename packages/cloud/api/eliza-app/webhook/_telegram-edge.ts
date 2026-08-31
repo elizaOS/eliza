@@ -891,11 +891,20 @@ async function runTurnWithRetry(
   try {
     result = await executeResponseAttempts({
       maxAttempts,
+      replayPolicy: "idempotent",
       honorExplicitRetryable: true,
       request: () => deps.runTurn(body, traceId, c.env, c.executionCtx),
       retryStatuses: !event.voiceNote,
       retryTransport: !event.voiceNote,
       retryDelayCapMs: RETRY_DELAY_CAP_MS,
+      reportObservationError: (error, observation) => {
+        logger.warn("[PersonalTelegramEdge] attempt observation failed", {
+          traceId,
+          messageId: event.messageId,
+          attempt: observation.attempt,
+          errorName: safeObservedErrorName(error),
+        });
+      },
       observe: (observation) => {
         observedAttempts = observation.attempt;
         const response = observation.response;

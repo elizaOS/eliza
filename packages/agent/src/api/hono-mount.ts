@@ -120,7 +120,10 @@ async function readNodeBody(
 
   const declaredLength = Number(req.headers["content-length"]);
   if (Number.isFinite(declaredLength) && declaredLength > maxBodyBytes) {
-    req.pause();
+    // Drain without retaining bytes so the peer can finish its write and read
+    // the 413 response. Pausing or destroying here turns a valid HTTP rejection
+    // into EPIPE/ECONNRESET for clients that are still sending the declared body.
+    req.resume();
     return { body: null, tooLarge: true };
   }
 
@@ -155,10 +158,9 @@ async function readNodeBody(
       total += buf.byteLength;
       if (total > maxBodyBytes) {
         cleanup();
-        // Pause immediately, but keep the socket alive until the 413 response
-        // is flushed. Destroying IncomingMessage here resets the connection and
-        // turns the promised HTTP response into ECONNRESET for real clients.
-        req.pause();
+        // Stop retaining bytes but keep draining the request. This preserves the
+        // memory cap while allowing a real client to receive the promised 413.
+        req.resume();
         resolve({ body: null, tooLarge: true });
         return;
       }
@@ -303,11 +305,10 @@ export async function tryHandleHonoRuntimeRoute(options: {
   const { body: bodyBytes, tooLarge } = await readNodeBody(req, maxBodyBytes);
   if (tooLarge) {
     // The request body exceeded this route's cap. Respond 413 without
-    // dispatching to Hono; the body was never fully buffered.
+    // dispatching to Hono. Remaining bytes are discarded without retention.
     res.statusCode = 413;
     res.setHeader("content-type", "application/json");
     res.setHeader("connection", "close");
-    res.once("finish", () => req.destroy());
     res.end(
       JSON.stringify({
         error: "Request body too large",

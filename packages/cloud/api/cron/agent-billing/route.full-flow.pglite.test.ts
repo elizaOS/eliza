@@ -25,7 +25,9 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { closeDatabaseConnectionsForTests, dbWrite } from "@/db/client";
+import { agentComputeStopIntents } from "@/db/schemas/agent-compute-stop-intents";
 import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
+import { apiKeys } from "@/db/schemas/api-keys";
 import {
   agentBillingRecords,
   agentBillingRunItems,
@@ -33,7 +35,10 @@ import {
 } from "@/db/schemas/compute-billing";
 import { computeBillingRateSegments } from "@/db/schemas/compute-billing-rate-segments";
 import { creditTransactions } from "@/db/schemas/credit-transactions";
+import { generations } from "@/db/schemas/generations";
+import { jobs } from "@/db/schemas/jobs";
 import { organizations } from "@/db/schemas/organizations";
+import { usageRecords } from "@/db/schemas/usage-records";
 import { userCharacters } from "@/db/schemas/user-characters";
 import { users } from "@/db/schemas/users";
 import {
@@ -102,8 +107,13 @@ beforeAll(async () => {
       {
         organizations,
         users,
+        apiKeys,
+        usageRecords,
+        generations,
         userCharacters,
         agentSandboxes,
+        jobs,
+        agentComputeStopIntents,
         creditTransactions,
         agentBillingRecords,
         agentBillingRuns,
@@ -165,6 +175,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   expect(pgliteReady).toBe(true);
   await dbWrite.delete(computeBillingRateSegments);
+  await dbWrite.delete(agentComputeStopIntents);
+  await dbWrite.delete(jobs);
   await dbWrite.delete(agentBillingRunItems);
   await dbWrite.delete(agentBillingRuns);
   await dbWrite.delete(agentBillingRecords);

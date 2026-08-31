@@ -86,6 +86,29 @@ describe("model definition schemas", () => {
   it("keeps optional compat blocks absent when omitted", () => {
     expect(ModelCompatSchema.parse(undefined)).toBeUndefined();
   });
+
+  it("validates dependency-light input without materializing runtime defaults", () => {
+    expect(ModelDefinitionSchema.parse({ id: "gpt-x", name: "GPT X" })).toEqual(
+      {
+        id: "gpt-x",
+        name: "GPT X",
+      },
+    );
+    expect(
+      ModelDefinitionSchema.safeParse({
+        id: "gpt-x",
+        name: "GPT X",
+        cost: { input: -1 },
+      }).success,
+    ).toBe(false);
+    expect(
+      ModelDefinitionSchema.safeParse({
+        id: "gpt-x",
+        name: "GPT X",
+        contextWindow: 1.5,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("queue and chat config schemas", () => {

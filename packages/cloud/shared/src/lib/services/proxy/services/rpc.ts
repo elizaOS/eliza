@@ -1,4 +1,7 @@
-// Coordinates cloud service rpc behavior behind route handlers.
+/**
+ * Routes priced EVM and Solana JSON-RPC requests through configured providers,
+ * including batch validation and provider-specific chain mapping.
+ */
 import { getCloudAwareEnv } from "../../../runtime/cloud-bindings";
 import { logger } from "../../../utils/logger";
 import { getProxyConfig } from "../config";
@@ -235,6 +238,14 @@ function buildEvmRpcHandler(chain: string): ServiceHandler {
         timeoutMs: getProxyConfig().ALCHEMY_TIMEOUT_MS,
         serviceTag: "EVM RPC",
         nonRetriableStatuses: [400, 404],
+        replayPolicy:
+          !Array.isArray(body) &&
+          body &&
+          typeof body === "object" &&
+          "method" in body &&
+          body.method === "eth_sendRawTransaction"
+            ? "never"
+            : "idempotent",
       });
 
       if (!response.ok) {

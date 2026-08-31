@@ -19,6 +19,14 @@ class BenchmarkStorage {
     delete: (key: string): boolean => this.values.delete(key),
   };
 
+  readonly kv = {
+    get: <T>(key: string): T | undefined =>
+      this.values.get(key) as T | undefined,
+    put: (key: string, value: unknown): void => {
+      this.values.set(key, structuredClone(value));
+    },
+  };
+
   async get<T>(key: string): Promise<T | undefined> {
     await Promise.resolve();
     return this.values.get(key) as T | undefined;

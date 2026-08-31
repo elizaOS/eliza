@@ -52,10 +52,8 @@ vi.mock("@stwd/sdk", () => ({
   StewardApiError: class extends Error {},
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
-  STEWARD_TOKEN_KEY: "steward_session_token",
-  registerStewardTokenPersistence: vi.fn(),
-  registerStewardTokenRemoval: vi.fn(),
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+  ...(await importOriginal()),
   buildStewardOAuthAuthorizeUrl: vi.fn(),
   generateStewardOAuthState: vi.fn(),
   hasStewardAuthedCookie: () => false,

@@ -85,9 +85,10 @@ The runner pattern-matches **only** on the structural fields above
 `subject`, `priority`, `respectsGlobalPause`). It never inspects
 `promptInstructions` content. This is non-negotiable.
 
-The frozen contract is defined in `src/lifeops/scheduled-task/types.ts`
-(the runner imports `ScheduledTask` from there). `src/lifeops/wave1-types.ts`
-is a slightly diverged copy consumed only by the `first-run` module.
+The canonical task contract is exported by `@elizaos/plugin-scheduling`.
+Both the runner and the `first-run` module consume its `ScheduledTask` and
+`ScheduledTaskInput` types; personal-assistant must not define a parallel task
+shape.
 
 ### No-reply semantics
 
@@ -353,7 +354,7 @@ internals; it consumes the plugin's public exports only. See
 
 ## Where to look next
 
-- Frozen interface types: `src/lifeops/scheduled-task/types.ts`.
+- Frozen interface types: `plugins/plugin-scheduling/src/scheduled-task/types.ts`, exported by `@elizaos/plugin-scheduling`.
 - Prompt-content lint rules: `scripts/lint-default-packs.mjs`.
 - Health domain: `plugins/plugin-health/README.md`.
 - REST routes: `src/routes/`.

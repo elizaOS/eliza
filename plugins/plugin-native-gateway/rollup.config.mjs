@@ -1,9 +1,8 @@
 /**
- * Bundles the compiled ESM output into the IIFE and CJS artifacts Capacitor
- * plugin consumers expect (`dist/plugin.js` for unpkg, `dist/plugin.cjs.js`
- * for CommonJS); `@capacitor/core` stays external and is resolved by the host
- * app at runtime.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
+
 export default {
   input: "dist/esm/index.js",
   output: [
@@ -11,9 +10,7 @@ export default {
       file: "dist/plugin.js",
       format: "iife",
       name: "capacitorGateway",
-      globals: {
-        "@capacitor/core": "capacitorExports",
-      },
+      globals: { "@capacitor/core": "capacitorExports" },
       sourcemap: true,
       inlineDynamicImports: true,
     },

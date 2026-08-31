@@ -30,6 +30,12 @@ function makeExecutor(opts: { sourcePresent: boolean; targetEmpty: boolean }): {
   const inserts: string[] = [];
   const state = { createdSchema: false };
   const exec: SqlExecutor = async (sql) => {
+    if (sql.includes("carve-out:claim")) {
+      return [{ holder_token: [...sql.matchAll(/'([^']+)'/g)][1]?.[1] }];
+    }
+    if (sql.includes("carve-out:release")) return [];
+    if (sql.includes("carve-out:complete")) return [{ migration_key: "done" }];
+    if (sql.startsWith("CREATE TABLE")) return [];
     if (sql.startsWith("CREATE SCHEMA")) {
       state.createdSchema = true;
       return [];

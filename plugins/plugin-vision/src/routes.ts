@@ -7,6 +7,7 @@
  */
 
 import type { Route } from "@elizaos/core";
+import { normalizeScreenCaptureFrameContract } from "@elizaos/shared";
 import {
   OCR_BRIDGE_SERVICE_TYPE,
   type OcrBridgeService,
@@ -16,26 +17,6 @@ import {
   SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
   type ScreenCaptureBridgeService,
 } from "./screen-capture-bridge";
-
-interface ScreenFrameBody {
-  requestId: string;
-  base64: string;
-  format: string;
-  width: number;
-  height: number;
-}
-
-function isScreenFrameBody(value: unknown): value is ScreenFrameBody {
-  if (typeof value !== "object" || value === null) return false;
-  const body = value as Record<string, unknown>;
-  return (
-    typeof body.requestId === "string" &&
-    typeof body.base64 === "string" &&
-    typeof body.format === "string" &&
-    typeof body.width === "number" &&
-    typeof body.height === "number"
-  );
-}
 
 function jsonResult(
   status: number,
@@ -91,16 +72,18 @@ export const screenFrameRoute: Route = {
         : jsonResult(404, { ok: false, error: "unknown_request" });
     }
 
-    if (!isScreenFrameBody(body)) {
+    const frame = normalizeScreenCaptureFrameContract(body);
+    if (!frame) {
       return jsonResult(400, { ok: false, error: "invalid_body" });
     }
 
     const ok = bridge.submitFrame(
-      body.requestId,
-      body.base64,
-      body.format,
-      body.width,
-      body.height,
+      frame.requestId,
+      frame.base64,
+      frame.format,
+      frame.width,
+      frame.height,
+      frame.capturedAt,
     );
     return ok
       ? jsonResult(200, { ok: true })

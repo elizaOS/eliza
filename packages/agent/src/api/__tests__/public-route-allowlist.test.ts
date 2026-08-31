@@ -263,7 +263,7 @@ function scanRepo(): PublicRoute[] {
       text,
       path.relative(REPO_ROOT, file),
     )) {
-      const dedupe = `${route.identity} ${route.file}`;
+      const dedupe = `${route.identity}\0${route.file}`;
       if (seen.has(dedupe)) continue;
       seen.add(dedupe);
       routes.push(route);
@@ -316,6 +316,11 @@ const ALLOWLIST: Record<string, string> = {
   // @elizaos/agent
   "/api/media/:filename (media-file)":
     "iOS in-process media GET; the sha256 hash in the path is the capability",
+
+  // plugin-imessage — Blooio signs the exact inbound body; the handler rejects
+  // missing or invalid signatures before dispatching the event.
+  "/api/imessage/webhook/blooio (imessage-blooio-webhook)":
+    "Blooio webhook delivery; HMAC signature over the exact raw body is required before dispatch",
 
   // @elizaos/core
   "/api/oauth/callback (oauth-local-callback)":

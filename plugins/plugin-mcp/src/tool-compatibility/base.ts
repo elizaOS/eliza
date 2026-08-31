@@ -1,18 +1,11 @@
 /**
- * Base class for per-model-provider MCP tool-schema fixup, plus provider
- * detection. transformToolSchema walks a JSON Schema and, per node type, drops
- * the provider's unsupported keywords (subclasses declare which) and folds the
- * dropped constraints into the description so the model still sees them.
- * detectModelProvider infers the provider (openai/anthropic/google/openrouter)
- * and capability flags from the runtime's model id.
- *
- * MCP tool `inputSchema` is attacker-controlled. The walk is gated on the
- * same byte/depth/node budget as Ajv compile so a cyclic or deeply nested
- * schema cannot RangeError the event loop.
+ * Local MCP compatibility facade: model metadata and provider-specific prose
+ * stay public here while schema traversal and budgets live in the shared kernel.
  */
+
 import type { IAgentRuntime } from "@elizaos/core";
+import { detectMcpModelProvider, transformMcpToolSchema } from "@elizaos/shared/mcp";
 import type { JSONSchema7 } from "json-schema";
-import { assertMcpJsonSchemaBudget } from "../utils/schema-budget";
 
 export interface StringConstraints {
   minLength?: number;
@@ -21,7 +14,6 @@ export interface StringConstraints {
   format?: string;
   enum?: readonly string[];
 }
-
 export interface NumberConstraints {
   minimum?: number;
   maximum?: number;
@@ -29,28 +21,22 @@ export interface NumberConstraints {
   exclusiveMaximum?: number;
   multipleOf?: number;
 }
-
 export interface ArrayConstraints {
   minItems?: number;
   maxItems?: number;
   uniqueItems?: boolean;
 }
-
 export interface ObjectConstraints {
   minProperties?: number;
   maxProperties?: number;
   additionalProperties?: boolean;
 }
-
 export type SchemaConstraints =
   | StringConstraints
   | NumberConstraints
   | ArrayConstraints
   | ObjectConstraints;
-
-// Model provider detection
 export type ModelProvider = "openai" | "anthropic" | "google" | "openrouter";
-
 export interface ModelInfo {
   readonly provider: ModelProvider;
   readonly modelId: string;
@@ -67,208 +53,34 @@ export abstract class McpToolCompatibility {
 
   abstract shouldApply(): boolean;
 
-  public transformToolSchema(toolSchema: JSONSchema7): JSONSchema7 {
-    assertMcpJsonSchemaBudget(toolSchema);
-    if (!this.shouldApply()) {
-      return toolSchema;
-    }
-
-    const processed = this.processSchema(toolSchema);
-    // Rewrites can expand removed constraints into prose, so the retained
-    // schema needs the same bound as the untrusted input.
-    assertMcpJsonSchemaBudget(processed);
-    return processed;
+  transformToolSchema(toolSchema: JSONSchema7): JSONSchema7 {
+    return transformMcpToolSchema(toolSchema as Record<string, unknown>, {
+      applies: this.shouldApply(),
+      unsupportedFor: (type) => this.unsupportedFor(type),
+      describe: (original, constraints) =>
+        this.mergeDescription(original, constraints as SchemaConstraints),
+    }) as JSONSchema7;
   }
 
-  protected processSchema(schema: JSONSchema7): JSONSchema7 {
-    const processed = { ...schema };
-
-    switch (processed.type) {
+  private unsupportedFor(type: string | undefined): readonly string[] {
+    switch (type) {
       case "string":
-        return this.processStringSchema(processed);
+        return this.getUnsupportedStringProperties();
       case "number":
       case "integer":
-        return this.processNumberSchema(processed);
+        return this.getUnsupportedNumberProperties();
       case "array":
-        return this.processArraySchema(processed);
+        return this.getUnsupportedArrayProperties();
       case "object":
-        return this.processObjectSchema(processed);
+        return this.getUnsupportedObjectProperties();
       default:
-        return this.processGenericSchema(processed);
+        return [];
     }
   }
 
-  protected processStringSchema(schema: JSONSchema7): JSONSchema7 {
-    const constraints: StringConstraints = {};
-    const processed: Record<string, unknown> = { ...schema };
-
-    if (typeof schema.minLength === "number") {
-      constraints.minLength = schema.minLength;
-    }
-    if (typeof schema.maxLength === "number") {
-      constraints.maxLength = schema.maxLength;
-    }
-    if (typeof schema.pattern === "string") {
-      constraints.pattern = schema.pattern;
-    }
-    if (typeof schema.format === "string") {
-      constraints.format = schema.format;
-    }
-    if (Array.isArray(schema.enum)) {
-      constraints.enum = schema.enum as string[];
-    }
-
-    const unsupportedProps = this.getUnsupportedStringProperties();
-    for (const prop of unsupportedProps) {
-      if (prop in processed) {
-        delete processed[prop];
-      }
-    }
-
-    if (Object.keys(constraints).length > 0) {
-      processed.description = this.mergeDescription(schema.description, constraints);
-    }
-
-    return processed as JSONSchema7;
-  }
-
-  protected processNumberSchema(schema: JSONSchema7): JSONSchema7 {
-    const constraints: NumberConstraints = {};
-    const processed: Record<string, unknown> = { ...schema };
-
-    if (typeof schema.minimum === "number") {
-      constraints.minimum = schema.minimum;
-    }
-    if (typeof schema.maximum === "number") {
-      constraints.maximum = schema.maximum;
-    }
-    if (typeof schema.exclusiveMinimum === "number") {
-      constraints.exclusiveMinimum = schema.exclusiveMinimum;
-    }
-    if (typeof schema.exclusiveMaximum === "number") {
-      constraints.exclusiveMaximum = schema.exclusiveMaximum;
-    }
-    if (typeof schema.multipleOf === "number") {
-      constraints.multipleOf = schema.multipleOf;
-    }
-
-    const unsupportedProps = this.getUnsupportedNumberProperties();
-    for (const prop of unsupportedProps) {
-      if (prop in processed) {
-        delete processed[prop];
-      }
-    }
-
-    if (Object.keys(constraints).length > 0) {
-      processed.description = this.mergeDescription(schema.description, constraints);
-    }
-
-    return processed as JSONSchema7;
-  }
-
-  protected processArraySchema(schema: JSONSchema7): JSONSchema7 {
-    const constraints: ArrayConstraints = {};
-    const processed: Record<string, unknown> = { ...schema };
-
-    if (typeof schema.minItems === "number") {
-      constraints.minItems = schema.minItems;
-    }
-    if (typeof schema.maxItems === "number") {
-      constraints.maxItems = schema.maxItems;
-    }
-    if (typeof schema.uniqueItems === "boolean") {
-      constraints.uniqueItems = schema.uniqueItems;
-    }
-
-    if (schema.items && typeof schema.items === "object" && !Array.isArray(schema.items)) {
-      processed.items = this.processSchema(schema.items as JSONSchema7);
-    }
-
-    const unsupportedProps = this.getUnsupportedArrayProperties();
-    for (const prop of unsupportedProps) {
-      if (prop in processed) {
-        delete processed[prop];
-      }
-    }
-
-    if (Object.keys(constraints).length > 0) {
-      processed.description = this.mergeDescription(schema.description, constraints);
-    }
-
-    return processed as JSONSchema7;
-  }
-
-  protected processObjectSchema(schema: JSONSchema7): JSONSchema7 {
-    const constraints: ObjectConstraints = {};
-    const processed: Record<string, unknown> = { ...schema };
-
-    if (typeof schema.minProperties === "number") {
-      constraints.minProperties = schema.minProperties;
-    }
-    if (typeof schema.maxProperties === "number") {
-      constraints.maxProperties = schema.maxProperties;
-    }
-    if (typeof schema.additionalProperties === "boolean") {
-      constraints.additionalProperties = schema.additionalProperties;
-    }
-
-    if (schema.properties && typeof schema.properties === "object") {
-      const newProperties: Record<string, JSONSchema7> = {};
-      for (const [key, prop] of Object.entries(schema.properties)) {
-        if (typeof prop === "object" && !Array.isArray(prop)) {
-          newProperties[key] = this.processSchema(prop as JSONSchema7);
-        } else {
-          newProperties[key] = prop as JSONSchema7;
-        }
-      }
-      processed.properties = newProperties;
-    }
-
-    const unsupportedProps = this.getUnsupportedObjectProperties();
-    for (const prop of unsupportedProps) {
-      if (prop in processed) {
-        delete processed[prop];
-      }
-    }
-
-    if (Object.keys(constraints).length > 0) {
-      processed.description = this.mergeDescription(schema.description, constraints);
-    }
-
-    return processed as JSONSchema7;
-  }
-
-  protected processGenericSchema(schema: JSONSchema7): JSONSchema7 {
-    const processed: Record<string, unknown> = { ...schema };
-
-    if (Array.isArray(schema.oneOf)) {
-      processed.oneOf = schema.oneOf.map((s) =>
-        typeof s === "object" ? this.processSchema(s as JSONSchema7) : s
-      );
-    }
-    if (Array.isArray(schema.anyOf)) {
-      processed.anyOf = schema.anyOf.map((s) =>
-        typeof s === "object" ? this.processSchema(s as JSONSchema7) : s
-      );
-    }
-    if (Array.isArray(schema.allOf)) {
-      processed.allOf = schema.allOf.map((s) =>
-        typeof s === "object" ? this.processSchema(s as JSONSchema7) : s
-      );
-    }
-
-    return processed as JSONSchema7;
-  }
-
-  protected mergeDescription(
-    originalDescription: string | undefined,
-    constraints: SchemaConstraints
-  ): string {
-    const constraintJson = JSON.stringify(constraints);
-    if (originalDescription) {
-      return `${originalDescription}\n${constraintJson}`;
-    }
-    return constraintJson;
+  protected mergeDescription(original: string | undefined, constraints: SchemaConstraints): string {
+    const serialized = JSON.stringify(constraints);
+    return original ? `${original}\n${serialized}` : serialized;
   }
 
   protected abstract getUnsupportedStringProperties(): readonly string[];
@@ -277,71 +89,16 @@ export abstract class McpToolCompatibility {
   protected abstract getUnsupportedObjectProperties(): readonly string[];
 }
 
-interface RuntimeWithModel extends IAgentRuntime {
-  modelProvider?: string;
-  model?: string;
-}
-
-function hasModelInfo(runtime: IAgentRuntime): runtime is RuntimeWithModel {
-  return (
-    typeof runtime === "object" &&
-    runtime !== null &&
-    ("modelProvider" in runtime || "model" in runtime)
-  );
-}
-
-function getModelString(runtime: IAgentRuntime): string {
-  if (hasModelInfo(runtime)) {
-    return runtime.modelProvider ?? runtime.model ?? "";
-  }
-  if (
-    runtime.character &&
-    typeof runtime.character === "object" &&
-    "settings" in runtime.character &&
-    runtime.character.settings &&
-    typeof runtime.character.settings === "object"
-  ) {
-    const settings = runtime.character.settings as Record<string, unknown>;
-    const modelProvider = settings.MODEL_PROVIDER ?? settings.modelProvider;
-    const model = settings.MODEL ?? settings.model;
-    return String(modelProvider ?? model ?? "");
-  }
-  return "";
-}
-
 export function detectModelProvider(runtime: IAgentRuntime): ModelInfo {
-  const modelString = getModelString(runtime);
-  const modelId = String(modelString).toLowerCase();
-
-  let provider: ModelProvider = "openrouter";
-  let supportsStructuredOutputs = false;
-  let isReasoningModel = false;
-
-  if (
-    modelId.includes("openai") ||
-    modelId.includes("gpt-") ||
-    modelId.includes("o1-") ||
-    modelId.includes("o3-")
-  ) {
-    provider = "openai";
-    supportsStructuredOutputs =
-      modelId.includes("gpt-5") || modelId.includes("o1") || modelId.includes("o3");
-    isReasoningModel = modelId.includes("o1") || modelId.includes("o3");
-  } else if (modelId.includes("anthropic") || modelId.includes("claude")) {
-    provider = "anthropic";
-    supportsStructuredOutputs = true;
-  } else if (modelId.includes("google") || modelId.includes("gemini")) {
-    provider = "google";
-    supportsStructuredOutputs = true;
-  } else if (modelId.includes("openrouter")) {
-    provider = "openrouter";
-    supportsStructuredOutputs = false;
-  }
-
+  const detected = detectMcpModelProvider(runtime);
   return {
-    provider,
-    modelId,
-    supportsStructuredOutputs,
-    isReasoningModel,
+    ...detected,
+    // The local facade has historically treated unrecognized and pass-through
+    // routers as OpenRouter so callers never receive a provider outside its
+    // public ModelProvider union.
+    provider:
+      detected.provider === "unknown" || detected.provider === "bitrouter"
+        ? "openrouter"
+        : detected.provider,
   };
 }

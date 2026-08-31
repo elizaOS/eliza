@@ -103,6 +103,10 @@ mock.module("@/lib/services/credits", () => ({
     refundCredits: mock(async () => undefined),
   },
 }));
+mock.module("@/lib/services/generative-operation", () => ({
+  isGenerativeOperationAdmissionError: mock(() => false),
+  retainGenerativeTask: mock(async () => undefined),
+}));
 mock.module("@/lib/services/twitter-automation/app-automation", () => ({
   twitterAppAutomationService: { postAppTweet, generateAppTweet },
 }));

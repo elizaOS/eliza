@@ -175,6 +175,8 @@ beforeEach(() => {
   sshMock.connect.mockReset();
   sshMock.exec.mockReset();
   sshMock.getVerifiedHostKeyFingerprint.mockReset();
+  process.env.ENVIRONMENT = "local";
+  process.env.CONTAINERS_HCLOUD_FIREWALL_IDS = "8101";
 });
 
 describe("healthCheckNode auto-disable on repeated failure", () => {

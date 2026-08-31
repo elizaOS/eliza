@@ -76,9 +76,17 @@ export function ttsDebugTextPreview(
 // Emit at the lowest level the active threshold still lets through: info by
 // default, escalating only as far as the configuration forces (#16958).
 function ttsEmit(): (typeof logger)["info"] {
-  const level = String(logger.level ?? "info")
-    .trim()
-    .toLowerCase();
+  const configuredLevel =
+    (typeof process !== "undefined" ? process.env?.LOG_LEVEL : undefined) ??
+    logger.level ??
+    "info";
+  if (typeof configuredLevel === "number") {
+    if (configuredLevel >= 60) return logger.fatal.bind(logger);
+    if (configuredLevel >= 50) return logger.error.bind(logger);
+    if (configuredLevel >= 40) return logger.warn.bind(logger);
+    return logger.info.bind(logger);
+  }
+  const level = String(configuredLevel).trim().toLowerCase();
   if (level === "fatal" || level === "alert") return logger.fatal.bind(logger);
   if (level === "error") return logger.error.bind(logger);
   if (level === "warn") return logger.warn.bind(logger);

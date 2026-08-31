@@ -9,10 +9,10 @@ import { withTimeout } from "@elizaos/cloud-shared/lib/utils/with-timeout";
 import {
   __setDepsForTests,
   readWorkerConfig,
-  runInfraMaintenanceCycle,
+  runOrphanReconciliationCycle,
 } from "./provisioning-worker";
 
-type WorkerLogger = Parameters<typeof runInfraMaintenanceCycle>[0];
+type WorkerLogger = Parameters<typeof runOrphanReconciliationCycle>[0];
 type WorkerDeps = Parameters<typeof __setDepsForTests>[0];
 
 function logger(): WorkerLogger {
@@ -31,7 +31,7 @@ function config() {
   );
 }
 
-function install(latestJobCreatedAt: Date | null | Error) {
+function install() {
   const reconcileOrphanContainersOnNodes = mock(async () => ({
     nodesScanned: 1,
     nodesSkipped: 0,
@@ -46,13 +46,6 @@ function install(latestJobCreatedAt: Date | null | Error) {
   }));
   const deps = {
     withTimeout,
-    jobsRepository: {
-      findLatestCreatedAt: mock(async () => {
-        if (latestJobCreatedAt instanceof Error) throw latestJobCreatedAt;
-        return latestJobCreatedAt;
-      }),
-    },
-    readCloudApiDbHeartbeatAt: mock(async () => null),
     reconcileOrphanContainersOnNodes,
     reconcileOrphanAppContainersOnNodes,
   } as unknown as Exclude<WorkerDeps, null>;
@@ -67,12 +60,21 @@ afterEach(() => {
   __setDepsForTests(null);
 });
 
-describe("runInfraMaintenanceCycle orphan DB-authority gate", () => {
+describe("orphan reconciliation DB-authority gate", () => {
   test("runs both orphan reconcilers when recent jobs prove the live API database", async () => {
     const log = logger();
-    const reconcilers = install(new Date());
+    const reconcilers = install();
 
-    await runInfraMaintenanceCycle(log, config());
+    await runOrphanReconciliationCycle(log, config(), {
+      stale: false,
+      ageHours: 0,
+      maxAgeHours: 24,
+      latestJobCreatedAt: new Date(),
+      verdict: "healthy",
+      heartbeatAt: null,
+      heartbeatAgeMinutes: null,
+      heartbeatMaxAgeMinutes: 15,
+    });
 
     expect(reconcilers.reconcileOrphanContainersOnNodes).toHaveBeenCalledTimes(
       1,
@@ -84,9 +86,18 @@ describe("runInfraMaintenanceCycle orphan DB-authority gate", () => {
 
   test("skips destructive cleanup when the database has no live API authority", async () => {
     const log = logger();
-    const reconcilers = install(null);
+    const reconcilers = install();
 
-    await runInfraMaintenanceCycle(log, config());
+    await runOrphanReconciliationCycle(log, config(), {
+      stale: true,
+      ageHours: null,
+      maxAgeHours: 24,
+      latestJobCreatedAt: null,
+      verdict: "stale-unknown",
+      heartbeatAt: null,
+      heartbeatAgeMinutes: null,
+      heartbeatMaxAgeMinutes: 15,
+    });
 
     expect(reconcilers.reconcileOrphanContainersOnNodes).not.toHaveBeenCalled();
     expect(
@@ -103,9 +114,9 @@ describe("runInfraMaintenanceCycle orphan DB-authority gate", () => {
 
   test("fails closed when the liveness query itself fails", async () => {
     const log = logger();
-    const reconcilers = install(new Error("database unavailable"));
+    const reconcilers = install();
 
-    await runInfraMaintenanceCycle(log, config());
+    await runOrphanReconciliationCycle(log, config(), undefined);
 
     expect(reconcilers.reconcileOrphanContainersOnNodes).not.toHaveBeenCalled();
     expect(

@@ -26,6 +26,12 @@ export {
 } from "./db/schema.js";
 export { relationshipsPlugin } from "./plugin.js";
 export { entityGraphProvider } from "./providers/entity-graph.js";
+export {
+  inventoryLegacyRelationshipsSchema,
+  type LegacyRelationshipsInventory,
+  LegacyRelationshipsSchemaAuditService,
+  RELATIONSHIPS_LEGACY_SCHEMA_AUDIT_SERVICE_TYPE,
+} from "./services/legacy-schema-audit.js";
 export * from "./types.js";
 
 import { relationshipsPlugin } from "./plugin.js";

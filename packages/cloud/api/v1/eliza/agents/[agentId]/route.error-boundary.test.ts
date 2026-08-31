@@ -80,6 +80,7 @@ mock.module("@/lib/config/containers-env", () => ({
   containersEnv: { publicBaseDomain: () => null },
 }));
 mock.module("@/lib/eliza-agent-web-ui", () => ({
+  getElizaAgentPublicWebUiUrl: () => "https://example.test",
   getConfiguredElizaAgentPublicWebUiUrl: () => "https://example.test",
   getElizaAgentPublicWebUiUrl: () => "https://example.test",
 }));

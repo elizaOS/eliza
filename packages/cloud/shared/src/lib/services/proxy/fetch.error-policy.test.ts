@@ -22,6 +22,7 @@ const baseOpts: RetryFetchOptions = {
   initialDelayMs: 0,
   timeoutMs: 50,
   serviceTag: "TEST",
+  replayPolicy: "safe",
 };
 
 describe("retryFetch error policy", () => {
@@ -83,5 +84,17 @@ describe("retryFetch error policy", () => {
     // Never fabricated into a 200 default; the caller decides how to translate it.
     expect(res.status).toBe(503);
     expect(f.mock.calls.length).toBe(2);
+  });
+
+  it("does not replay an unsafe POST after an ambiguous 5xx", async () => {
+    const f = mock(async () => new Response("ambiguous", { status: 503 }));
+    globalThis.fetch = f as unknown as typeof fetch;
+    const res = await retryFetch({
+      ...baseOpts,
+      replayPolicy: "never",
+      maxRetries: 3,
+    });
+    expect(res.status).toBe(503);
+    expect(f).toHaveBeenCalledTimes(1);
   });
 });

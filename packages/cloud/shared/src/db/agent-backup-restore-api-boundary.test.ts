@@ -1,4 +1,8 @@
-/** Static gate: restore authority has only the explicitly activated production callers. */
+/**
+ * Static gate for the dormant restore authority and its one shared read-only
+ * vault pointer. Restore mutations remain unpublished while manifest-v3
+ * capture may consume the canonical current vault authority.
+ */
 
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
@@ -143,7 +147,6 @@ describe("disabled-first restore API boundary", () => {
       "releaseAgentBackupRestoreLease",
       "loadAgentBackupRestoreSourceV3",
       "createOrRotateAgentVaultKeyGeneration",
-      "loadCurrentAgentVaultKeyAuthority",
       "bindAgentBackupVaultKeyGeneration",
       "withAgentBackupRestoreVaultPassphrase",
       "openAgentBackupRestoreOperation",
@@ -356,6 +359,19 @@ describe("disabled-first restore API boundary", () => {
       "cleanup reconciliation must never read mutable registry state",
     ).toBe(0);
   }, 60_000);
+
+  test("limits the canonical vault pointer reader to manifest-v3 capture", () => {
+    const symbol = "loadCurrentAgentVaultKeyAuthority";
+    const occurrences = productionSources().flatMap((path) =>
+      readFileSync(path, "utf8").includes(symbol) ? [path] : [],
+    );
+    expect(occurrences.map((path) => path.slice(REPOSITORY_ROOT.length + 1)).sort()).toEqual([
+      "packages/cloud/shared/src/db/repositories/agent-vault-key-authority.ts",
+      "packages/cloud/shared/src/lib/services/agent-backup-capture-v3-vault-authority.ts",
+    ]);
+    const production = occurrences.map((path) => readFileSync(path, "utf8")).join("\n");
+    expect(production.match(new RegExp(`\\b${symbol}\\s*\\(`, "g")) ?? []).toHaveLength(3);
+  }, 15_000);
 
   test("keeps target reservation free of remote effects and generic identity bypasses", () => {
     const operationSource = readFileSync(

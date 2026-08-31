@@ -108,6 +108,7 @@ export class SwapAction {
     createConfig({
       integrator: "eliza",
       chains: lifiChains,
+      preloadChains: false,
     });
   }
 

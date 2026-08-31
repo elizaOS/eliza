@@ -190,10 +190,12 @@ describe("fishAudioPlugin", () => {
 
     await fishAudioPlugin.init?.({}, rt);
 
+    expect(rt.registerModel).toHaveBeenCalledTimes(1);
     expect(rt.registerModel).toHaveBeenCalledWith(
       ModelType.TEXT_TO_SPEECH,
       expect.any(Function),
       "fish-audio",
+      undefined,
       undefined,
     );
   });

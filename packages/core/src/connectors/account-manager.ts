@@ -50,6 +50,39 @@ export const CONNECTOR_ACCOUNT_SERVICE_TYPE = "connector_account";
 export const CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE =
 	"connector_account_storage";
 
+export const DEFAULT_CONNECTOR_ACCOUNT_ID = "default";
+
+export function normalizeConnectorAccountId(accountId?: string | null): string {
+	if (typeof accountId !== "string") return DEFAULT_CONNECTOR_ACCOUNT_ID;
+	return accountId.trim().toLowerCase() || DEFAULT_CONNECTOR_ACCOUNT_ID;
+}
+
+export function selectDefaultConnectorAccountId(
+	accountIds: readonly string[],
+): string {
+	return accountIds.includes(DEFAULT_CONNECTOR_ACCOUNT_ID)
+		? DEFAULT_CONNECTOR_ACCOUNT_ID
+		: (accountIds[0] ?? DEFAULT_CONNECTOR_ACCOUNT_ID);
+}
+
+export interface ConnectorCredentialCandidate<Source extends string> {
+	source: Source;
+	value?: string | null;
+}
+
+/** Selects the first channel-valid credential without logging or serializing it. */
+export function selectConnectorCredential<Source extends string>(
+	candidates: readonly ConnectorCredentialCandidate<Source>[],
+	normalize: (value?: string | null) => string | undefined,
+): { credential: string; source: Source } | undefined {
+	for (const candidate of candidates) {
+		const credential = normalize(candidate.value);
+		if (credential !== undefined)
+			return { credential, source: candidate.source };
+	}
+	return undefined;
+}
+
 export type ConnectorOAuthFlowStatus =
 	| "pending"
 	| "completed"

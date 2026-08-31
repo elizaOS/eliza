@@ -149,7 +149,7 @@ describe("generateOnPriorityLane — lock priority (#11914)", () => {
     }
   });
 
-  it("preserves a background output request once the lane is available", async () => {
+  it("preserves a background request instead of imposing a device output cap", async () => {
     setInferencePriorityGate(new InferencePriorityGate());
     const lane = makeFakeLane();
     lane.setDecodeMs(1);

@@ -113,7 +113,7 @@ src/
     index.ts                    Barrel: UI assistant command exports
     assistant-commands.ts       UI assistant command helpers
   util/
-    index.ts                    Barrel: re-exports time.ts + time-util.ts
+    index.ts                    Barrel: re-exports canonical time helpers
     time.ts                     getZonedDateParts — IANA timezone date arithmetic
     time-util.ts                parseIsoMs and other time helpers
     normalize.ts                normalisation helpers
@@ -178,7 +178,7 @@ Create `src/default-packs/<name>.ts` implementing `DefaultPack`, add it to `HEAL
 - **No `app-lifeops` build-time dep.** Timestamp parsing and confidence normalization come from `@elizaos/shared/lifeops-normalize`; `src/util/time-util.ts` preserves existing imports. Time-zone arithmetic in `src/util/time.ts` remains local. Do not import these helpers from an application host.
 - **CircadianInsightContract is the canonical seam.** Any code that needs circadian state or scheduling-window inference resolves it via `getCircadianInsightContract(runtime)` — never deep-imports `src/sleep/*` from outside the plugin.
 - **screen-time aggregation ownership.** `src/screen-time/` owns taxonomy/classification, range/window helpers, mobile signal parsing/status helpers, pure summary/breakdown/metrics builders, system-inactivity filtering, and shared payload contracts. The repository-backed aggregator lives in `@elizaos/plugin-personal-assistant` while signal-bus ownership remains split across the two plugins.
-- **Token encryption.** `src/util/token-encryption.ts` encrypts OAuth tokens at rest using a per-runtime key; do not store raw tokens elsewhere.
+- **Token encryption.** `src/util/token-encryption.ts` is a compatibility re-export of the Node-only `@elizaos/core` implementation; do not fork the ciphertext, key-file, or environment contract.
 - See root `CLAUDE.md` for global architecture rules, logger conventions, and ESM/naming requirements.
 
 ## Verification

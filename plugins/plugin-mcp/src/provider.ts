@@ -4,28 +4,9 @@
  * data without dropping any discovered server, tool, or resource.
  */
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { formatMcpProviderForPrompt } from "@elizaos/shared/mcp";
 import type { McpService } from "./service";
-import type { McpProviderData } from "./types";
 import { MCP_SERVICE_NAME } from "./types";
-
-function formatMcpServersForPrompt(mcp: McpProviderData): string {
-  const entries = Object.entries(mcp);
-  if (entries.length === 0) return "No MCP servers are available.";
-
-  return [
-    `mcpServers[${Object.keys(mcp).length}, showing ${entries.length}]:`,
-    ...entries.flatMap(([serverName, server]) => {
-      const tools = Object.keys(server.tools ?? {});
-      const resources = Object.keys(server.resources ?? {});
-      return [
-        `  - name: ${serverName}`,
-        `    status: ${server.status}`,
-        `    tools: ${tools.length > 0 ? tools.join(", ") : "none"}`,
-        `    resources: ${resources.length > 0 ? resources.join(", ") : "none"}`,
-      ];
-    }),
-  ].join("\n");
-}
 
 export const provider: Provider = {
   name: "MCP",
@@ -50,13 +31,14 @@ export const provider: Provider = {
       const providerData = mcpService.getProviderData();
       const mcp = providerData.values.mcp;
       const serverEntries = Object.entries(providerData.data.mcp);
+      const text = formatMcpProviderForPrompt(mcp);
       return {
-        values: { mcpServers: formatMcpServersForPrompt(mcp) },
+        values: { mcpServers: text },
         data: {
           mcpServerCount: Object.keys(providerData.data.mcp).length,
           shownMcpServerCount: serverEntries.length,
         },
-        text: formatMcpServersForPrompt(mcp),
+        text,
       };
     } catch (error) {
       // error-policy:J4 explicit degrade — a McpService read failure must not

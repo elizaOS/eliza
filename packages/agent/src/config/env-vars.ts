@@ -4,7 +4,8 @@
  * connector's config fields to the env keys its plugin expects;
  * collectConfigEnvVars flattens config.env (nested vars + top-level) and
  * collectConnectorEnvVars walks the configured connectors, normalizing
- * string/number/boolean/array values and mirroring the Discord token aliases.
+ * string/number/boolean/array values and mirroring compatibility aliases for
+ * Discord and the Blooio-backed iMessage transport.
  * Both drop any key rejected by isBlockedEnvKey (the secret denylist plus the
  * dangerous prefix families).
  */
@@ -83,9 +84,10 @@ export const CONNECTOR_ENV_MAP: Readonly<
     serviceAccountKey: "GOOGLE_CHAT_SERVICE_ACCOUNT_KEY",
   },
   blooio: {
-    apiKey: "BLOOIO_API_KEY",
-    fromNumber: "BLOOIO_PHONE_NUMBER",
-    webhookSecret: "BLOOIO_WEBHOOK_SECRET",
+    apiKey: "IMESSAGE_BLOOIO_API_KEY",
+    fromNumber: "IMESSAGE_BLOOIO_FROM_NUMBER",
+    webhookSecret: "IMESSAGE_BLOOIO_WEBHOOK_SECRET",
+    channelId: "IMESSAGE_BLOOIO_CHANNEL_ID",
     webhookUrl: "BLOOIO_WEBHOOK_URL",
     webhookPort: "BLOOIO_WEBHOOK_PORT",
   },
@@ -156,6 +158,10 @@ export function collectConnectorEnvVars(
     }
 
     const configObj = connectorConfig as Record<string, unknown>;
+
+    if (connectorName === "blooio") {
+      entries.IMESSAGE_TRANSPORT = "blooio";
+    }
 
     // Mirror Discord token aliases so older plugins and settings surfaces
     // agree on a single configured state. Owner snowflakes must stay JSON
@@ -228,6 +234,22 @@ export function collectConnectorEnvVars(
         continue;
       }
       entries[envKey] = normalized;
+    }
+
+    if (connectorName === "blooio") {
+      const apiKey = entries.IMESSAGE_BLOOIO_API_KEY;
+      const webhookSecret = entries.IMESSAGE_BLOOIO_WEBHOOK_SECRET;
+      const fromNumber = entries.IMESSAGE_BLOOIO_FROM_NUMBER;
+
+      // plugin-imessage still accepts these pre-canonical names. Project them
+      // for older plugin builds and settings consumers while keeping the
+      // IMESSAGE_BLOOIO_* keys above as the startup authority.
+      if (apiKey) entries.BLOOIO_API_KEY = apiKey;
+      if (webhookSecret) entries.BLOOIO_WEBHOOK_SECRET = webhookSecret;
+      if (fromNumber) {
+        entries.BLOOIO_FROM_NUMBER = fromNumber;
+        entries.BLOOIO_PHONE_NUMBER = fromNumber;
+      }
     }
 
     if (connectorName === "whatsapp") {

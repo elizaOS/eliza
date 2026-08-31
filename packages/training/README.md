@@ -204,6 +204,9 @@ extend the Nebius path.
   is used by the supported Gemma bundle staging path to produce the q4/q6/q8
   artifacts consumed by the local inference manifests. The old
   `scripts/optimize_for_eliza1.py` `eliza1-optimized` wrapper was retired.
+  The public per-level `gguf-q*_apply.py` commands are compatibility facades
+  over `scripts/quantization/gguf_k_quant.py`, which owns conversion, binary
+  discovery, smoke verification, release eligibility, and sidecar generation.
 - **MTP drafter verify** — Gemma 4 uses separate official drafter checkpoints;
   publish gates validate the drafter manifest rather than same-model EAGLE
   distillation.

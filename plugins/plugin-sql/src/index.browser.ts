@@ -12,6 +12,9 @@ import {
   type Plugin,
   type UUID,
 } from "@elizaos/core";
+
+export * from "./carve-out-migration";
+
 import {
   createAdapterReadinessError,
   describeAdapterReadinessError,

@@ -711,7 +711,9 @@ const rawPersonalAssistantPlugin: Plugin = {
   // @elizaos/plugin-scheduling hosts the ScheduledTaskRunnerService + the
   // generic scheduled-task route; PA injects its production deps into it. It is
   // always-loaded (CORE + MOBILE), but declaring the dependency guarantees the
-  // runner host is registered before PA's init injects deps + seeds.
+  // runner host is registered before PA's init injects deps + seeds. Agreement
+  // ingestion also resolves the canonical complete-document PDF service and
+  // must not boot with that required collaborator absent.
   dependencies: [
     GOOGLE_CONNECTOR_PLUGIN_PACKAGE,
     "@elizaos/plugin-scheduling",

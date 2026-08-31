@@ -1,4 +1,7 @@
-// Coordinates cloud service chain data behavior behind route handlers.
+/**
+ * Translates provider-neutral chain-data methods into Alchemy REST or JSON-RPC
+ * requests while preserving proxy pricing, retry, and error boundaries.
+ */
 import { logger } from "../../../utils/logger";
 import { getProxyConfig } from "../config";
 import { retryFetch } from "../fetch";
@@ -187,6 +190,7 @@ export const chainDataHandler: ServiceHandler = async ({ body }) => {
         timeoutMs: getProxyConfig().ALCHEMY_TIMEOUT_MS,
         serviceTag: "Chain Data",
         nonRetriableStatuses: [400, 404],
+        replayPolicy: "safe",
       });
 
       if (!response.ok) {
@@ -238,6 +242,7 @@ export const chainDataHandler: ServiceHandler = async ({ body }) => {
       timeoutMs: getProxyConfig().ALCHEMY_TIMEOUT_MS,
       serviceTag: "Chain Data",
       nonRetriableStatuses: [400, 404],
+      replayPolicy: "idempotent",
     });
 
     if (!response.ok) {

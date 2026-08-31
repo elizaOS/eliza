@@ -174,6 +174,7 @@ beforeAll(async () => {
       agentSandboxes,
       agentSandboxBackups,
       agentBackupCatalogAuthorities,
+      agentNodeIncarnationHistories,
       agentBackupObjects,
       agentNodeIncarnationHistories,
       apiKeys,

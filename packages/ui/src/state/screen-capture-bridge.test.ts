@@ -16,7 +16,46 @@ import {
   __resetScreenCaptureBridgeForTests,
   computePollDelayMs,
   initScreenCaptureBridge,
+  normalizeCaptureRequests,
 } from "./screen-capture-bridge";
+
+describe("screen-capture request compatibility", () => {
+  it("upgrades an old request before the new renderer consumes it", () => {
+    expect(
+      normalizeCaptureRequests([
+        { requestId: "legacy-request", createdAt: 123, displayId: 2 },
+      ]),
+    ).toEqual([
+      {
+        requestId: "legacy-request",
+        createdAt: 123,
+        displayId: 2,
+        format: "jpeg",
+        scale: 0.5,
+        quality: 70,
+      },
+    ]);
+  });
+
+  it("rejects explicit invalid formats and dimensions instead of defaulting", () => {
+    expect(
+      normalizeCaptureRequests([
+        {
+          requestId: "bad-format",
+          createdAt: 123,
+          format: "webp",
+          scale: 0.5,
+        },
+        {
+          requestId: "bad-scale",
+          createdAt: 123,
+          format: "jpeg",
+          scale: 0,
+        },
+      ]),
+    ).toEqual([]);
+  });
+});
 
 describe("computePollDelayMs — vision-poll backoff curve", () => {
   it("stays at the fast 1500ms interval below the failure threshold", () => {

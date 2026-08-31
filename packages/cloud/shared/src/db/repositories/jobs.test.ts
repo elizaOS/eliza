@@ -77,7 +77,7 @@ describe("prepareJobInsertData", () => {
     });
   });
 
-  test("a failure dump can no longer be written whole into the error column", async () => {
+  test("rejects an oversized failure dump instead of truncating it", async () => {
     setRuntimeR2Bucket(null);
     process.env.SQL_HEAVY_PAYLOAD_STORAGE = "inline";
     process.env.SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES = "4096";

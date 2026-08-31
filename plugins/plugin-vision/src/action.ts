@@ -17,6 +17,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
+import sharp from "sharp";
 import { normalizeOp, normalizeVisionMode, VISION_OPS } from "./action-params";
 import { buildGetScreen, summarizeGetScreen } from "./get-screen";
 import { assertValidVisionImageBuffer } from "./image-input";
@@ -148,7 +149,17 @@ async function acquireScreenFrame(runtime: IAgentRuntime): Promise<{
     const bridge = runtime.getService<ScreenCaptureBridgeService>(
       SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
     );
-    return bridge ? await bridge.requestFrame() : null;
+    const frame = bridge ? await bridge.requestFrame() : null;
+    if (!frame) return null;
+    const pngBytes =
+      frame.format === "png"
+        ? frame.imageBytes
+        : new Uint8Array(await sharp(frame.imageBytes).png().toBuffer());
+    return {
+      pngBytes,
+      displayId: frame.displayId,
+      capturedAt: frame.capturedAt,
+    };
   }
   const cu = runtime.getService("computeruse") as ComputerUseLike | null;
   if (cu?.executeCommand) {

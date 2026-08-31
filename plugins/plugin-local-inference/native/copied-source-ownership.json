@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "policy": "Standalone packages are canonical. Exact integrated copies must remain byte-identical; adapted files require an explicit integration reason.",
+  "families": [
+    {
+      "name": "wakeword",
+      "ownerRoot": "packages/native/plugins/wakeword-cpp/src",
+      "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/wakeword",
+      "exact": ["wakeword_window.c", "wakeword_runtime.c", "wakeword_internal.h", "wakeword_melspec.c"],
+      "adapted": []
+    },
+    {
+      "name": "silero-vad",
+      "ownerRoot": "packages/native/plugins/silero-vad-cpp/src",
+      "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/vad",
+      "exact": ["silero_vad_runtime.c", "silero_vad_state.c", "silero_vad_resample.c", "silero_vad_state.h"],
+      "adapted": []
+    },
+    {
+      "name": "voice-classifier",
+      "ownerRoot": "packages/native/plugins/voice-classifier-cpp/src",
+      "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/voice_classifier",
+      "exact": ["voice_mel_features.c", "voice_speaker_distance.c", "voice_gguf_tensors.c", "voice_gguf_loader.c", "voice_speaker.c", "voice_diarizer.c", "voice_gguf_tensors.h"],
+      "adapted": [
+        { "file": "voice_gguf_loader.h", "reason": "Integrated omnivoice loader exposes llama.cpp-owned include wiring." }
+      ]
+    },
+    {
+      "name": "qjl-cpu",
+      "ownerRoot": "packages/native/plugins/qjl-cpu/src",
+      "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-cpu/qjl",
+      "exact": ["qjl_quantize_ref.c", "qjl_projection.c", "qjl_score_i8_ref.c", "qjl_score_ref.c", "qjl_block.h"],
+      "adapted": [
+        { "file": "qjl_quantize_neon.c", "reason": "ggml integration uses fork dispatch macros." },
+        { "file": "qjl_quantize_avx2.c", "reason": "ggml integration uses fork dispatch macros." },
+        { "file": "qjl_cpu_features.h", "reason": "ggml integration binds the fork feature probe." },
+        { "file": "qjl_score_avxvnni.c", "reason": "ggml integration uses fork SIMD dispatch." },
+        { "file": "qjl_dispatch.c", "reason": "ggml integration registers ggml kernels." },
+        { "file": "qjl_score_avx2.c", "reason": "ggml integration uses fork SIMD dispatch." },
+        { "file": "qjl_score_neon.c", "reason": "ggml integration uses fork SIMD dispatch." },
+        { "file": "qjl_score_dotprod.c", "reason": "ggml integration uses fork SIMD dispatch." }
+      ]
+    },
+    {
+      "name": "polarquant-cpu",
+      "ownerRoot": "packages/native/plugins/polarquant-cpu/fork-integration",
+      "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-cpu",
+      "exact": [],
+      "adapted": [
+        { "file": "quants-polar.c", "reason": "Production fork materializes the standalone patch-set against its pinned ggml revision." }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,8 @@
-// Coordinates cloud service fetch behavior behind route handlers.
+/** Applies the named Cloud proxy transport policy without owning provider authentication. */
+import {
+  executeResponseAttempts,
+  type ResponseReplayPolicy,
+} from "@elizaos/cloud-services-common/response-attempts";
 import { logger } from "../../utils/logger";
 
 export interface RetryFetchOptions {
@@ -9,6 +13,7 @@ export interface RetryFetchOptions {
   timeoutMs: number;
   serviceTag: string;
   nonRetriableStatuses?: number[];
+  replayPolicy: ResponseReplayPolicy;
 }
 
 /**
@@ -51,7 +56,7 @@ function sanitizeUrl(url: string): string {
  * - 404 Not Found: resource doesn't exist, retrying won't help
  * - 5xx errors ARE retriable: server issues may be transient
  */
-export async function retryFetch(opts: RetryFetchOptions, attempt: number = 1): Promise<Response> {
+export async function retryFetch(opts: RetryFetchOptions): Promise<Response> {
   const {
     url,
     init,
@@ -60,58 +65,44 @@ export async function retryFetch(opts: RetryFetchOptions, attempt: number = 1): 
     timeoutMs,
     serviceTag,
     nonRetriableStatuses = [400, 404],
+    replayPolicy,
   } = opts;
-
-  try {
-    const response = await fetch(url, {
-      ...init,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-
-    const sanitizedUrl = sanitizeUrl(url);
-    logger.debug(`[${serviceTag}] Attempt`, {
-      attempt,
-      url: sanitizedUrl,
-      status: response.status,
-    });
-
-    if (response.ok || nonRetriableStatuses.includes(response.status)) {
-      return response;
-    }
-
-    if (attempt < maxRetries) {
-      const delayMs = initialDelayMs * 2 ** (attempt - 1);
-      logger.warn(`[${serviceTag}] Retriable error, retrying`, {
-        attempt,
-        status: response.status,
-        delayMs,
+  const sanitizedUrl = sanitizeUrl(url);
+  const result = await executeResponseAttempts({
+    maxAttempts: maxRetries,
+    replayPolicy,
+    retryStatuses: true,
+    retryTransport: true,
+    baseDelayMs: initialDelayMs,
+    request: () =>
+      fetch(url, {
+        ...init,
+        signal: init.signal
+          ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)])
+          : AbortSignal.timeout(timeoutMs),
+      }),
+    reportObservationError: (error) => {
+      logger.warn(`[${serviceTag}] Attempt observation failed`, {
+        error: error instanceof Error ? error.message : String(error),
+        url: sanitizedUrl,
       });
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      return retryFetch(opts, attempt + 1);
-    }
-
-    return response;
-  } catch (error) {
-    // error-policy:J1 transport boundary — retries a transient TimeoutError, then
-    // rethrows the original error (and any non-timeout error immediately) so the
-    // caller's proxy handler translates it to a typed failure. Fails closed: never
-    // returns a fabricated default in place of a failed fetch.
-    const sanitizedUrl = sanitizeUrl(url);
-
-    if (error instanceof Error && error.name === "TimeoutError") {
-      logger.warn(`[${serviceTag}] Timeout`, { attempt, url: sanitizedUrl });
-
-      if (attempt < maxRetries) {
-        const delayMs = initialDelayMs * 2 ** (attempt - 1);
-        logger.info(`[${serviceTag}] Retrying after timeout`, {
-          attempt,
-          delayMs,
-        });
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        return retryFetch(opts, attempt + 1);
-      }
-    }
-
-    throw error;
-  }
+    },
+    observe: (observation) => {
+      logger.debug(`[${serviceTag}] Attempt`, {
+        attempt: observation.attempt,
+        url: sanitizedUrl,
+        status: observation.response?.status,
+        error:
+          observation.error instanceof Error
+            ? observation.error.message
+            : observation.error
+              ? String(observation.error)
+              : undefined,
+        retryReason: observation.retryReason,
+        retryDelayMs: observation.retryDelayMs,
+      });
+    },
+  });
+  if (nonRetriableStatuses.includes(result.response.status)) return result.response;
+  return result.response;
 }

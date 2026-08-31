@@ -1157,43 +1157,6 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
   );
 
   test(
-    // #11683: app-chat holds must settle through appCreditsService.reconcileCredits
-    // (the lane the route's late settle uses, keyed `reconcile-refund:<holdId>`),
-    // NEVER the generic lane below (keyed `recon:<holdId>:refund`) — the disjoint
-    // keys let a swept-but-still-in-flight hold be refunded twice, and the
-    // generic base-only math over-refunded the markup. This minimal fixture has
-    // no users/apps rows, so it proves the synthetic no-markup fallback still
-    // uses the app-credits lane and shared idempotency key. The full app-credits
-    // sweep proof (markup math, mutable org/app state, cross-writer dedup with
-    // the real settle lane) lives in app-chat-sweep-double-refund.test.ts.
-    "sweep settles app-chat holds through the app lane, never the generic lane",
-    async () => {
-      if (!pgliteReady) return;
-      await seedOrg("8.5");
-      const reservationId = await insertAppChatReservation(1.5, 25 * 60 * 1000);
-
-      const stats = await creditsService.sweepStaleReservations({
-        graceMs: 20 * 60 * 1000,
-        batchSize: 10,
-      });
-
-      expect(stats.scanned).toBe(1);
-      expect(stats.settled).toBe(1);
-      expect(stats.refunds).toBe(1);
-      expect(stats.skipped).toBe(0);
-      expect(await getBalance()).toBeCloseTo(9, 6);
-      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
-      const settlements = await settlementRowsForReservation(reservationId);
-      expect(settlements).toHaveLength(1);
-      expect(settlements[0]?.type).toBe("refund");
-      expect(Number(settlements[0]?.amount)).toBeCloseTo(0.5, 6);
-      expect(settlements[0]?.stripe_payment_intent_id).toBe(`reconcile-refund:${reservationId}`);
-      expect(await countByType("refund")).toBe(1);
-    },
-    PGLITE_TIMEOUT,
-  );
-
-  test(
     "sweep does not settle monetized app-chat holds through the generic lane",
     async () => {
       if (!pgliteReady) return;

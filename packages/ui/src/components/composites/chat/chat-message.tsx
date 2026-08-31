@@ -1194,6 +1194,7 @@ export const ChatMessage = memo(function ChatMessage({
                   : undefined
               }
               data-chat-message-bubble="true"
+              source={normalizedSource}
               data-proactive-suggestion={isSuggestion ? "true" : undefined}
             >
               {bubbleContent}
@@ -1215,6 +1216,7 @@ export const ChatMessage = memo(function ChatMessage({
                   : undefined
               }
               data-chat-message-bubble="true"
+              source={normalizedSource}
               data-proactive-suggestion={isSuggestion ? "true" : undefined}
             >
               {bubbleContent}

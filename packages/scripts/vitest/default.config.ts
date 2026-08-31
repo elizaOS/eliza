@@ -453,6 +453,27 @@ const vitestResolveAlias: ModuleAlias[] = [
           ),
         },
         {
+          // Shared compatibility facades import these canonical core leaves.
+          // Keep the exports-map subpaths ahead of the prefix-matching bare
+          // alias so source tests do not resolve them beneath index.node.ts.
+          find: /^@elizaos\/core\/contracts\/(first-run-options|cloud-topology|service-routing|wallet)$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts")
+              ? "contracts/$1.ts"
+              : "contracts/$1.js",
+          ),
+        },
+        {
+          find: /^@elizaos\/core\/runtime-env$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts")
+              ? "runtime-env.ts"
+              : "runtime-env.js",
+          ),
+        },
+        {
           find: /^@elizaos\/core\/security\/kms$/,
           replacement: path.join(
             path.dirname(elizaCoreEntry),

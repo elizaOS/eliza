@@ -286,7 +286,8 @@ export function createInternalElizaConversationFetchFactory(
               response.status === 503 &&
               dedicatedResolution?.kind !== "not_dedicated" &&
               !runtime.dedicatedFetch &&
-              (sharedScopeWarming || dedicatedResolutionPromise !== null)
+              ((sharedScopeWarming && hydrationPromise === null) ||
+                dedicatedResolutionPromise !== null)
             ) {
               try {
                 const target = await resolveDedicatedConversation();

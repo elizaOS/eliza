@@ -13,8 +13,10 @@
     "./k8s-deployment-wake": "./src/k8s-deployment-wake.ts",
     "./identity-link-code": "./src/identity-link-code.ts",
     "./gateway-auth": "./src/gateway-auth.ts",
+    "./hash-router": "./src/hash-router.ts",
     "./personal-shared-failure": "./src/personal-shared-failure.ts",
     "./response-attempts": "./src/response-attempts.ts",
+    "./retry": "./src/retry.ts",
     "./telegram-connector": "./src/telegram-connector.ts",
     "./telegram-delivery": "./src/telegram-delivery.ts",
     "./bounded-fetch": "./src/bounded-fetch.ts"
@@ -27,9 +29,6 @@
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
-  },
-  "dependencies": {
-    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "22.19.17",

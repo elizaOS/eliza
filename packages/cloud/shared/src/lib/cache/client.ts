@@ -594,12 +594,13 @@ export class CacheClient {
         this.logMetric(key, "miss", duration);
         const fresh = await revalidate();
         if (fresh !== null) {
+          const cachedAt = Date.now();
           await this.set(
             key,
             {
               data: fresh,
-              cachedAt: Date.now(),
-              staleAt: Date.now() + staleTTL * 1000,
+              cachedAt,
+              staleAt: cachedAt + staleTTL * 1000,
             } as CachedValue<T>,
             effectiveTTL,
           );
@@ -639,12 +640,13 @@ export class CacheClient {
           const revalidationPromise = Promise.race([revalidate(), timeoutPromise])
             .then((fresh) => {
               if (fresh !== null) {
+                const cachedAt = Date.now();
                 return this.set(
                   key,
                   {
                     data: fresh,
-                    cachedAt: Date.now(),
-                    staleAt: Date.now() + staleTTL * 1000,
+                    cachedAt,
+                    staleAt: cachedAt + staleTTL * 1000,
                   } as CachedValue<T>,
                   effectiveTTL,
                 );

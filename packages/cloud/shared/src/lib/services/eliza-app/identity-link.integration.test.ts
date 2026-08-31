@@ -70,6 +70,9 @@ beforeAll(async () => {
         personalSharedGroupJoinChallenges,
         personalSharedGroupParticipants,
         identityLinkCodes,
+        personalSharedGroupBindings,
+        personalSharedGroupJoinChallenges,
+        personalSharedGroupParticipants,
       } as never,
       dbWrite as never,
     );
@@ -83,6 +86,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(pgliteReady).toBe(true);
+  await dbWrite.delete(personalSharedGroupParticipants);
+  await dbWrite.delete(personalSharedGroupJoinChallenges);
+  await dbWrite.delete(personalSharedGroupBindings);
   await dbWrite.delete(identityLinkCodes);
   await dbWrite.delete(userIdentities);
   await dbWrite.delete(users);

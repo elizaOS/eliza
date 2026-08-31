@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "groups": [
+    {
+      "id": "standalone-plugin-npm-deploy",
+      "source": ".github/workflow-templates/plugin-npm-deploy.yml",
+      "generated": [
+        "plugins/plugin-discord/.github/workflows/npm-deploy.yml",
+        "plugins/plugin-elizacloud/.github/workflows/npm-deploy.yml",
+        "plugins/plugin-mcp/.github/workflows/npm-deploy.yml",
+        "plugins/plugin-openai/.github/workflows/npm-deploy.yml",
+        "plugins/plugin-pdf/.github/workflows/npm-deploy.yml",
+        "plugins/plugin-telegram/.github/workflows/npm-deploy.yml",
+        "plugins/plugin-wallet/src/chains/evm/.github/workflows/npm-deploy.yml",
+        "plugins/plugin-wallet/src/chains/solana/.github/workflows/npm-deploy.yml",
+        "plugins/plugin-x/.github/workflows/npm-deploy.yml"
+      ]
+    },
+    {
+      "id": "plugin-build-tsconfig",
+      "source": "packages/scripts/config-templates/plugin-build.tsconfig.json",
+      "generated": [
+        "plugins/plugin-browser/tsconfig.build.json",
+        "plugins/plugin-blocker/tsconfig.build.json",
+        "plugins/plugin-calendar/tsconfig.build.json",
+        "plugins/plugin-companion/tsconfig.build.json",
+        "plugins/plugin-contacts/tsconfig.build.json",
+        "plugins/plugin-finances/tsconfig.build.json",
+        "plugins/plugin-form/tsconfig.build.json",
+        "plugins/plugin-inbox/tsconfig.build.json",
+        "plugins/plugin-maps/tsconfig.build.json",
+        "plugins/plugin-messages/tsconfig.build.json",
+        "plugins/plugin-omarchy/tsconfig.build.json",
+        "plugins/plugin-personal-assistant/tsconfig.build.json",
+        "plugins/plugin-registry/tsconfig.build.json",
+        "plugins/plugin-relationships/tsconfig.build.json",
+        "plugins/plugin-reminders/tsconfig.build.json",
+        "plugins/plugin-scheduling/tsconfig.build.json",
+        "plugins/plugin-task-coordinator/tsconfig.build.json",
+        "plugins/plugin-todos/tsconfig.build.json",
+        "plugins/plugin-trajectory-logger/tsconfig.build.json"
+      ]
+    },
+    {
+      "id": "native-plugin-tsconfig",
+      "source": "packages/scripts/config-templates/native-plugin.tsconfig.json",
+      "generated": [
+        "plugins/plugin-native-network-policy/tsconfig.json",
+        "plugins/plugin-native-appblocker/tsconfig.json",
+        "plugins/plugin-native-contacts/tsconfig.json",
+        "plugins/plugin-native-location/tsconfig.json",
+        "plugins/plugin-native-messages/tsconfig.json",
+        "plugins/plugin-native-phone/tsconfig.json",
+        "plugins/plugin-native-system/tsconfig.json",
+        "plugins/plugin-native-websiteblocker/tsconfig.json",
+        "plugins/plugin-native-wifi/tsconfig.json"
+      ]
+    },
+    {
+      "id": "native-view-plugin-tsconfig",
+      "source": "packages/scripts/config-templates/native-view-plugin.tsconfig.json",
+      "generated": [
+        "plugins/plugin-native-screencapture/tsconfig.json",
+        "plugins/plugin-native-canvas/tsconfig.json",
+        "plugins/plugin-native-eliza-tasks/tsconfig.json",
+        "plugins/plugin-native-mlkit-text/tsconfig.json",
+        "plugins/plugin-native-mobile-signals/tsconfig.json",
+        "plugins/plugin-native-swabble/tsconfig.json"
+      ]
+    },
+    {
+      "id": "workspace-connector-tsconfig",
+      "source": "packages/scripts/config-templates/workspace-connector.tsconfig.json",
+      "generated": [
+        "plugins/plugin-google-workspace/tsconfig.json",
+        "plugins/plugin-dropbox/tsconfig.json",
+        "plugins/plugin-notion/tsconfig.json"
+      ]
+    },
+    {
+      "id": "workspace-connector-biome",
+      "source": "packages/scripts/config-templates/workspace-connector.biome.json",
+      "generated": [
+        "plugins/plugin-google-workspace/biome.json",
+        "plugins/plugin-dropbox/biome.json",
+        "plugins/plugin-notion/biome.json"
+      ]
+    },
+    {
+      "id": "standalone-template-rm-path",
+      "source": "packages/elizaos/template-assets/rm-path-recursive.mjs",
+      "generated": [
+        "packages/elizaos/templates/plugin/scripts/rm-path-recursive.mjs",
+        "packages/elizaos/templates/project/scripts/rm-path-recursive.mjs",
+        "packages/elizaos/templates/project/apps/app/scripts/rm-path-recursive.mjs"
+      ]
+    }
+  ],
+  "approvedBespokeNpmWorkflows": {
+    "plugins/plugin-anthropic/.github/workflows/npm-deploy.yml": "publishes the standalone typescript/ package",
+    "plugins/plugin-google-genai/.github/workflows/npm-deploy.yml": "publishes standalone npm, PyPI, and crates packages",
+    "plugins/plugin-vision/.github/workflows/npm-deploy.yml": "uses its standalone release-note flow"
+  }
+}

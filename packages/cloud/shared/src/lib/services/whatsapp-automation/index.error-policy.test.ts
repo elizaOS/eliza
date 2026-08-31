@@ -106,7 +106,7 @@ describe("validateAccessToken error policy (#13415)", () => {
 });
 
 describe("sendMessage error policy (#13415)", () => {
-  test("outbound API failure surfaces success:false with the sanitized provider error", async () => {
+  test("outbound API failure surfaces success:false with the canonical error, never fabricated delivery", async () => {
     let sendAttempted = false;
     fetchImpl = async () => {
       sendAttempted = true;
@@ -119,6 +119,7 @@ describe("sendMessage error policy (#13415)", () => {
     expect(sendAttempted).toBe(true);
     expect(result.success).toBe(false);
     expect(result.messageId).toBeUndefined();
+    // The typed transport error's stable message propagates instead of a swallowed default.
     expect(result.error).toBe("WhatsApp rejected the provider request");
     // And it is NOT the designed not-configured message.
     expect(result.error).not.toBe("WhatsApp not configured");

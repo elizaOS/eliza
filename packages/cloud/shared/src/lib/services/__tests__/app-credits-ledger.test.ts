@@ -199,6 +199,12 @@ beforeEach(() => {
   cacheGet.mockResolvedValue(null);
   cacheSet.mockResolvedValue(undefined);
   cacheDel.mockResolvedValue(undefined);
+  selectedCreditTransaction = {
+    organizationId: ORG_ID,
+    amount: "-1.1",
+    type: "debit",
+    metadata: {},
+  };
 
   findAppById.mockResolvedValue(monetizedApp);
   findUserById.mockResolvedValue({ id: USER_ID, organization_id: ORG_ID });
@@ -247,17 +253,26 @@ beforeEach(() => {
       organizationId: string;
       amount: number;
       metadata?: Record<string, unknown>;
-    }) => ({
-      success: true,
-      newBalance: 41.4,
-      transaction: {
-        id: "tx-2",
-        organization_id: args.organizationId,
-        type: "debit",
+    }) => {
+      const { settlement_marker: _settlementMarker, ...legacyMetadata } = args.metadata ?? {};
+      selectedCreditTransaction = {
+        organizationId: args.organizationId,
         amount: String(-args.amount),
-        metadata: args.metadata ?? {},
-      },
-    }),
+        type: "debit",
+        metadata: legacyMetadata,
+      };
+      return {
+        success: true,
+        newBalance: 41.4,
+        transaction: {
+          id: "tx-2",
+          organization_id: args.organizationId,
+          type: "debit",
+          amount: String(-args.amount),
+          metadata: args.metadata ?? {},
+        },
+      };
+    },
   );
   refundCredits.mockResolvedValue({ newBalance: 43.6 });
   markReservationSettled.mockResolvedValue(true);

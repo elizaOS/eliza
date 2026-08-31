@@ -37,15 +37,17 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   PRIMARY KEY ("id")
 )`,
   `CREATE TABLE IF NOT EXISTS "provider_admissions" (
-  "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "organization_id" uuid NOT NULL,
   "operation_kind" text NOT NULL,
   "operation_id" uuid NOT NULL,
   "admitted_at" timestamptz NOT NULL,
-  "released_at" timestamptz,
-  PRIMARY KEY ("id"),
-  UNIQUE ("operation_kind", "operation_id")
+  "released_at" timestamptz
 )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "provider_admissions_operation_idx"
+  ON "provider_admissions" ("operation_kind", "operation_id")`,
+  `CREATE INDEX IF NOT EXISTS "provider_admissions_active_organization_idx"
+  ON "provider_admissions" ("organization_id", "released_at")`,
   `CREATE TABLE IF NOT EXISTS "users" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
   "email" text,

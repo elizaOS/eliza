@@ -2195,7 +2195,7 @@ describe("runOnboardingChat", () => {
       }
     });
 
-    test("a failed remember error body read is logged without fabricating handoff success", async () => {
+    test("a failed remember response is logged without fabricating handoff success", async () => {
       const originalFetch = globalThis.fetch;
       globalThis.fetch = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => {
         return {
@@ -2236,11 +2236,10 @@ describe("runOnboardingChat", () => {
         expect(result.handoffComplete).toBe(false);
         expect(result.session.handoffCopiedAt).toBeUndefined();
         expect(loggerWarn).toHaveBeenCalledWith(
-          "[eliza-app onboarding] failed to read remember error body",
+          "[eliza-app onboarding] handoff memory copy failed",
           expect.objectContaining({
             agentId: "agent-1",
-            status: 502,
-            error: "body stream broke",
+            error: "memory copy failed (502) upstream failed",
           }),
         );
       } finally {

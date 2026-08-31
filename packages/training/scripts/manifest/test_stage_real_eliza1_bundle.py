@@ -43,14 +43,16 @@ def _seed_assets(bundle: Path) -> None:
     _write(bundle / "licenses" / "LICENSE.vad", "vad license\n")
     _write(
         bundle / "lineage.json",
-        json.dumps({
-            "voice": {"base": "voice-source@rev", "license": "apache-2.0"},
-            "asr": {"base": "asr-source@rev", "license": "apache-2.0"},
-            "vad": {"base": "vad-source@rev", "license": "mit"},
-            # The asset stager always writes this; the real bundle stager
-            # must drop it because there are no wakeword files in the bundle.
-            "wakeword": {"base": "wakeword-source", "license": "apache-2.0"},
-        }),
+        json.dumps(
+            {
+                "voice": {"base": "voice-source@rev", "license": "apache-2.0"},
+                "asr": {"base": "asr-source@rev", "license": "apache-2.0"},
+                "vad": {"base": "vad-source@rev", "license": "mit"},
+                # The asset stager always writes this; the real bundle stager
+                # must drop it because there are no wakeword files in the bundle.
+                "wakeword": {"base": "wakeword-source", "license": "apache-2.0"},
+            }
+        ),
     )
 
 
@@ -66,7 +68,9 @@ def _seed_recipes(root: Path) -> Path:
     ):
         _write(
             root / sub / fname,
-            json.dumps({"method": method, "kernel_manifest": kernel_manifest_fragment(method)}),
+            json.dumps(
+                {"method": method, "kernel_manifest": kernel_manifest_fragment(method)}
+            ),
         )
     return root
 
@@ -79,9 +83,7 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
         lambda path: (
             131072
             if "-128k." in path.name
-            else 262144
-            if "-256k." in path.name
-            else None
+            else 262144 if "-256k." in path.name else None
         ),
     )
     bundle = tmp_path / "eliza-1-2b.bundle"
@@ -93,12 +95,23 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     vision_gguf = _write(tmp_path / "src" / "mmproj.gguf", b"vision-weights")
 
     args = argparse.Namespace(
-        tier="2b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
-        recipes_dir=recipes, vision_gguf=vision_gguf,
-        text_lineage_repo="google/gemma-4-E2B", text_lineage_rev="deadbeef",
-        text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
-        skip_assets=True, skip_wakeword=True, link_mode="copy",
-        version="1.0.0-staged.1", generated_at="2026-05-11T00:00:00Z", force=False,
+        tier="2b",
+        bundle_dir=bundle,
+        text_gguf=text_gguf,
+        drafter_gguf=drafter_gguf,
+        recipes_dir=recipes,
+        vision_gguf=vision_gguf,
+        text_lineage_repo="google/gemma-4-E2B",
+        text_lineage_rev="deadbeef",
+        text_lineage_note="substitute base",
+        text_substituted=True,
+        drafter_stamp_only=True,
+        skip_assets=True,
+        skip_wakeword=True,
+        link_mode="copy",
+        version="1.0.0-staged.1",
+        generated_at="2026-05-11T00:00:00Z",
+        force=False,
     )
     report = stage.stage_real_bundle(args)
 
@@ -144,10 +157,20 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert "wakeword" not in lineage
 
     # Quantization recipe sidecars copied verbatim.
-    for fname in ("turboquant.json", "fused_turboquant.json", "qjl_config.json", "polarquant_config.json"):
+    for fname in (
+        "turboquant.json",
+        "fused_turboquant.json",
+        "qjl_config.json",
+        "polarquant_config.json",
+    ):
         side = json.loads((bundle / "quantization" / fname).read_text())
         assert set(side["kernel_manifest"]) == {
-            "kernel_target", "block_layout_version", "codebook_hash", "per_block_tolerance"
+            "kernel_target",
+            "block_layout_version",
+            "codebook_hash",
+            "codebook_hash_source",
+            "per_block_tolerance",
+            "target_class",
         }
 
 
@@ -166,18 +189,31 @@ def test_stage_real_bundle_rejects_retired_qwen_embedding_artifact(
     drafter_gguf = _write(tmp_path / "src" / "drafter.gguf", b"drafter-weights")
     vision_gguf = _write(tmp_path / "src" / "vision.gguf", b"vision-weights")
     args = argparse.Namespace(
-        tier="4b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
-        recipes_dir=recipes, vision_gguf=vision_gguf,
-        text_lineage_repo="google/gemma-4-E4B", text_lineage_rev="cafebabe",
-        text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
-        skip_assets=True, skip_wakeword=True, link_mode="copy",
-        version="1.0.0-staged.1", generated_at="2026-05-11T00:00:00Z", force=False,
+        tier="4b",
+        bundle_dir=bundle,
+        text_gguf=text_gguf,
+        drafter_gguf=drafter_gguf,
+        recipes_dir=recipes,
+        vision_gguf=vision_gguf,
+        text_lineage_repo="google/gemma-4-E4B",
+        text_lineage_rev="cafebabe",
+        text_lineage_note="substitute base",
+        text_substituted=True,
+        drafter_stamp_only=True,
+        skip_assets=True,
+        skip_wakeword=True,
+        link_mode="copy",
+        version="1.0.0-staged.1",
+        generated_at="2026-05-11T00:00:00Z",
+        force=False,
     )
     with pytest.raises(SystemExit, match="retired Qwen embedding artifacts"):
         stage.stage_real_bundle(args)
 
 
-def test_remove_stale_text_variants_handles_27b_256k_bundle_names(tmp_path: Path) -> None:
+def test_remove_stale_text_variants_handles_27b_256k_bundle_names(
+    tmp_path: Path,
+) -> None:
     bundle = tmp_path / "eliza-1-27b-256k.bundle"
     keep_128 = _write(bundle / "text" / "eliza-1-27b-128k.gguf", b"128k")
     keep_256 = _write(bundle / "text" / "eliza-1-27b-256k.gguf", b"256k")

@@ -23,6 +23,7 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { runCarveOutMigration } from "@elizaos/plugin-sql";
 import { extractRows } from "@elizaos/shared/db/raw-sql";
 
 export const CALENDAR_MIGRATION_LOG_PREFIX = "[Calendar]";
@@ -92,7 +93,12 @@ export type SqlExecutor = (
 
 export interface TableMigrationResult {
   table: MigratedCalendarTable;
-  outcome: "copied" | "source-missing" | "target-non-empty";
+  outcome:
+    | "copied"
+    | "source-missing"
+    | "target-non-empty"
+    | "already-migrated"
+    | "migration-in-progress";
 }
 
 /**
@@ -490,7 +496,23 @@ export async function migrateCalendarTables(
   await ensureLinkedCalendarEventTable(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_CALENDAR_TABLES) {
-    results.push(await migrateCalendarTable(exec, table));
+    const receipt = await runCarveOutMigration(exec, {
+      key: `calendar/${table}/v1`,
+      run: () => migrateCalendarTable(exec, table),
+      outcome: (result) => result.outcome,
+      shouldComplete: (result) => result.outcome !== "source-missing",
+    });
+    results.push(
+      receipt.status === "completed"
+        ? receipt.value
+        : {
+            table,
+            outcome:
+              receipt.status === "already-completed"
+                ? "already-migrated"
+                : "migration-in-progress",
+          },
+    );
   }
   await ensureCalendarSourceIdentity(exec);
   return results;

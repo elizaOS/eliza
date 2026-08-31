@@ -55,10 +55,10 @@ function request(
 	req.url = pathname;
 	if (body !== undefined) {
 		const cached = req as http.IncomingMessage & {
-			[REQUEST_BODY]?: string;
+			[REQUEST_BODY]?: Buffer;
 			[JSON_BODY]?: unknown;
 		};
-		cached[REQUEST_BODY] = JSON.stringify(body);
+		cached[REQUEST_BODY] = Buffer.from(JSON.stringify(body));
 		cached[JSON_BODY] = body;
 	}
 	return req;

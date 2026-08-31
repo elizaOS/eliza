@@ -25,6 +25,7 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { runCarveOutMigration } from "@elizaos/plugin-sql";
 import { extractRows } from "@elizaos/shared/db/raw-sql";
 
 export const REMINDERS_LOG_PREFIX = "[Reminders]";
@@ -51,7 +52,8 @@ export interface TableMigrationResult {
     | "copied"
     | "source-missing"
     | "target-non-empty"
-    | "already-migrated";
+    | "already-migrated"
+    | "migration-in-progress";
 }
 
 function quoteIdent(name: string): string {
@@ -150,7 +152,23 @@ export async function migrateReminderTables(
   await ensureMigrationMarkerTable(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_REMINDER_TABLES) {
-    results.push(await migrateReminderTable(exec, table));
+    const receipt = await runCarveOutMigration(exec, {
+      key: `reminders/${table}/v1`,
+      run: () => migrateReminderTable(exec, table),
+      outcome: (result) => result.outcome,
+      shouldComplete: (result) => result.outcome !== "source-missing",
+    });
+    results.push(
+      receipt.status === "completed"
+        ? receipt.value
+        : {
+            table,
+            outcome:
+              receipt.status === "already-completed"
+                ? "already-migrated"
+                : "migration-in-progress",
+          },
+    );
   }
   return results;
 }

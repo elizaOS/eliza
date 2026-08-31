@@ -8,6 +8,7 @@
  * mutating the old tables.
  */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { runCarveOutMigration } from "@elizaos/plugin-sql";
 import { executeRawSql, getRuntimeDb } from "./sql.js";
 
 export const SCHEDULING_MIGRATION_SERVICE_TYPE = "scheduling_migration";
@@ -30,7 +31,11 @@ export type SqlExecutor = (
 
 export interface TableMigrationResult {
   table: MigratedSchedulingTable;
-  outcome: "copied" | "source-missing";
+  outcome:
+    | "copied"
+    | "source-missing"
+    | "already-migrated"
+    | "migration-in-progress";
 }
 
 function quoteIdent(name: string): string {
@@ -269,7 +274,23 @@ export async function migrateSchedulingTables(
   await ensureSchedulingTables(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_SCHEDULING_TABLES) {
-    results.push(await migrateSchedulingTable(exec, table));
+    const receipt = await runCarveOutMigration(exec, {
+      key: `scheduling/${table}/v1`,
+      run: () => migrateSchedulingTable(exec, table),
+      outcome: (result) => result.outcome,
+      shouldComplete: (result) => result.outcome !== "source-missing",
+    });
+    results.push(
+      receipt.status === "completed"
+        ? receipt.value
+        : {
+            table,
+            outcome:
+              receipt.status === "already-completed"
+                ? "already-migrated"
+                : "migration-in-progress",
+          },
+    );
   }
   return results;
 }

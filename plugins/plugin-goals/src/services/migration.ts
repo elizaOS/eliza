@@ -25,6 +25,7 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { runCarveOutMigration } from "@elizaos/plugin-sql";
 import { extractRows } from "@elizaos/shared/db/raw-sql";
 
 export const GOALS_MIGRATION_LOG_PREFIX = "[Goals]";
@@ -46,7 +47,12 @@ export type SqlExecutor = (
 
 export interface TableMigrationResult {
   table: MigratedGoalTable;
-  outcome: "copied" | "source-missing" | "target-non-empty";
+  outcome:
+    | "copied"
+    | "source-missing"
+    | "target-non-empty"
+    | "already-migrated"
+    | "migration-in-progress";
 }
 
 function quoteIdent(name: string): string {
@@ -102,7 +108,23 @@ export async function migrateGoalTables(
   await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_GOAL_TABLES) {
-    results.push(await migrateGoalTable(exec, table));
+    const receipt = await runCarveOutMigration(exec, {
+      key: `goals/${table}/v1`,
+      run: () => migrateGoalTable(exec, table),
+      outcome: (result) => result.outcome,
+      shouldComplete: (result) => result.outcome !== "source-missing",
+    });
+    results.push(
+      receipt.status === "completed"
+        ? receipt.value
+        : {
+            table,
+            outcome:
+              receipt.status === "already-completed"
+                ? "already-migrated"
+                : "migration-in-progress",
+          },
+    );
   }
   return results;
 }

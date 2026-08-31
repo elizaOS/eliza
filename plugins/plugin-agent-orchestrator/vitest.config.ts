@@ -26,6 +26,9 @@ export default defineConfig({
       "@elizaos/vault": fileURLToPath(
         new URL("../../packages/vault/src/index.ts", import.meta.url),
       ),
+      "@elizaos/plugin-sql": fileURLToPath(
+        new URL("../plugin-sql/src/index.node.ts", import.meta.url),
+      ),
       "@elizaos/shared": fileURLToPath(
         new URL("./__tests__/shared-runtime-env.ts", import.meta.url),
       ),

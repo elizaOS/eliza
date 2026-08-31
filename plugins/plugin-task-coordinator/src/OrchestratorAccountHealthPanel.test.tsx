@@ -17,7 +17,7 @@ const calls = {
   getOrchestratorAccountReadiness: vi.fn(),
 };
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: {
     listAccounts: () => calls.listAccounts(),
     getOrchestratorAccounts: () => calls.getOrchestratorAccounts(),

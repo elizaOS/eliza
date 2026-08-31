@@ -16,6 +16,7 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
+import { normalizeHostPairingCode } from "@elizaos/shared/host-use-cases";
 import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import { AuthStore } from "../services/auth-store";
 import {
@@ -130,10 +131,6 @@ function pairingEnabled(): boolean {
   );
 }
 
-function normalizePairingCode(code: string): string {
-  return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-}
-
 function generatePairingCode(): string {
   let raw = "";
   for (let i = 0; i < 12; i += 1) {
@@ -145,7 +142,7 @@ function generatePairingCode(): string {
 function pairingCodeDigest(code: string): string {
   return crypto
     .createHash("sha256")
-    .update(normalizePairingCode(code))
+    .update(normalizeHostPairingCode(code))
     .digest("hex");
 }
 
@@ -158,8 +155,8 @@ function createGuestPairingInvite(): {
   while (
     (pairingCode &&
       tokenMatches(
-        normalizePairingCode(pairingCode),
-        normalizePairingCode(code),
+        normalizeHostPairingCode(pairingCode),
+        normalizeHostPairingCode(code),
       )) ||
     guestPairingInvites.has(pairingCodeDigest(code))
   ) {
@@ -492,7 +489,7 @@ export async function handleAuthPairingCompatRoutes(
       return true;
     }
 
-    const provided = normalizePairingCode(
+    const provided = normalizeHostPairingCode(
       typeof body.code === "string" ? body.code : "",
     );
     const current = pairingCode ?? ensurePairingCode();
@@ -512,7 +509,7 @@ export async function handleAuthPairingCompatRoutes(
     if (
       current &&
       now > pairingExpiresAt &&
-      tokenMatches(normalizePairingCode(current), provided)
+      tokenMatches(normalizeHostPairingCode(current), provided)
     ) {
       pairingCode = null;
       pairingExpiresAt = 0;
@@ -528,7 +525,7 @@ export async function handleAuthPairingCompatRoutes(
 
     const pairingAccess: PairingAccess | null = guestInvite
       ? "guest"
-      : current && tokenMatches(normalizePairingCode(current), provided)
+      : current && tokenMatches(normalizeHostPairingCode(current), provided)
         ? "owner"
         : null;
     if (!pairingAccess) {

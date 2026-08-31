@@ -19,6 +19,10 @@ const EMPTY_RECOVERY = {
   unchanged: 0,
   failures: [],
 };
+const provisioningJobService = new ProvisioningJobService({
+  acquireProviderAdmission: async () => true,
+  releaseProviderAdmission: async () => undefined,
+});
 
 function makeDowngradeJob(): Job {
   const now = new Date("2026-06-20T00:00:00.000Z");
