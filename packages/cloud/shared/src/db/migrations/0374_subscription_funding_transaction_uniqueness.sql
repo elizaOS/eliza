@@ -6,6 +6,11 @@ CREATE UNIQUE INDEX "billing_funding_allocations_credit_refund_idx"
   ON "billing_funding_allocations" USING btree ("purchased_credit_refund_transaction_id")
   WHERE "purchased_credit_refund_transaction_id" IS NOT NULL;
 --> statement-breakpoint
+-- This transaction-local escape hatch supports complete account erasure and
+-- guards against accidental application mutations only. PostgreSQL custom
+-- settings are writable by any SQL-capable session, so this function is not an
+-- audit-grade hostile-session boundary; that would require a dedicated
+-- database role unavailable to ordinary application connections.
 CREATE OR REPLACE FUNCTION reject_subscription_append_only_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
