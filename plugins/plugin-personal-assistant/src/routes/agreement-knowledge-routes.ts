@@ -13,6 +13,7 @@ import {
 import {
   agreementUploadSizeMessage,
   MAX_AGREEMENT_PDF_BYTES,
+  MAX_AGREEMENT_UPLOAD_JSON_BYTES,
 } from "../lifeops/household/agreement-upload-limits.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
@@ -151,7 +152,11 @@ export async function handleAgreementKnowledgeRoutes(
     }
 
     if (ctx.method === "POST" && ctx.pathname === "/api/lifeops/agreements") {
-      const body = record(await ctx.readJsonBody(ctx.req));
+      const body = record(
+        await ctx.readJsonBody(ctx.req, ctx.res, {
+          maxBytes: MAX_AGREEMENT_UPLOAD_JSON_BYTES,
+        }),
+      );
       const bytesBase64 = stringField(body, "bytesBase64");
       const bytes = decodeAgreementPdf(bytesBase64);
       const artifact = await service.createAgreementVersion({
@@ -207,7 +212,7 @@ export async function handleAgreementKnowledgeRoutes(
       /^\/api\/lifeops\/agreements\/([^/]+)\/obligations$/,
     );
     if (ctx.method === "POST" && obligationCreate) {
-      const body = record(await ctx.readJsonBody(ctx.req));
+      const body = record(await ctx.readJsonBody(ctx.req, ctx.res));
       const obligation = await service.proposeObligation({
         artifactId: obligationCreate[0] ?? "",
         title: stringField(body, "title"),
@@ -229,7 +234,7 @@ export async function handleAgreementKnowledgeRoutes(
       /^\/api\/lifeops\/agreements\/obligations\/([^/]+)\/decision$/,
     );
     if (ctx.method === "POST" && decision) {
-      const body = record(await ctx.readJsonBody(ctx.req));
+      const body = record(await ctx.readJsonBody(ctx.req, ctx.res));
       const requestedDecision = stringField(body, "decision");
       if (requestedDecision !== "approve" && requestedDecision !== "reject") {
         throw new AgreementKnowledgeError(
@@ -261,7 +266,7 @@ export async function handleAgreementKnowledgeRoutes(
       return true;
     }
     if (pins && ctx.method === "POST") {
-      const body = record(await ctx.readJsonBody(ctx.req));
+      const body = record(await ctx.readJsonBody(ctx.req, ctx.res));
       const targetType = stringField(body, "targetType");
       if (targetType !== "agent" && targetType !== "chat") {
         throw new AgreementKnowledgeError(
@@ -297,7 +302,7 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.method === "POST" &&
       ctx.pathname === "/api/lifeops/agreements/grants/preview"
     ) {
-      const body = record(await ctx.readJsonBody(ctx.req));
+      const body = record(await ctx.readJsonBody(ctx.req, ctx.res));
       const preview = await service.previewGuestRead({
         artifactId: stringField(body, "artifactId"),
         principalEntityId: stringField(body, "principalEntityId"),
@@ -312,7 +317,7 @@ export async function handleAgreementKnowledgeRoutes(
       ctx.method === "POST" &&
       ctx.pathname === "/api/lifeops/agreements/grants"
     ) {
-      const body = record(await ctx.readJsonBody(ctx.req));
+      const body = record(await ctx.readJsonBody(ctx.req, ctx.res));
       const grant = await service.grantGuestRead({
         artifactId: stringField(body, "artifactId"),
         principalEntityId: stringField(body, "principalEntityId"),
@@ -328,7 +333,7 @@ export async function handleAgreementKnowledgeRoutes(
       /^\/api\/lifeops\/agreements\/grants\/([^/]+)\/revoke$/,
     );
     if (ctx.method === "POST" && revoke) {
-      const body = record(await ctx.readJsonBody(ctx.req));
+      const body = record(await ctx.readJsonBody(ctx.req, ctx.res));
       const grant = await service.revokeGuestRead({
         grantId: revoke[0] ?? "",
         revokedByEntityId: SELF_ENTITY_ID,

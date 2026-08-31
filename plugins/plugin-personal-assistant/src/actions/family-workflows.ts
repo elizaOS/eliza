@@ -1,6 +1,12 @@
 /** Owner chat control for school-calendar and monthly packet workflow operations. */
 
-import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  Content,
+  ContentValue,
+  HandlerOptions,
+} from "@elizaos/core";
 import { getFamilyWorkflowRuntimeService } from "../lifeops/family-workflows/index.js";
 
 type Operation = "status" | "run_school" | "run_monthly" | "generate_packet";
@@ -50,15 +56,17 @@ export const familyWorkflowsAction: Action = {
           : operation === "run_monthly"
             ? await service.runMonthly("manual")
             : await service.generatePacket();
-    const result = {
-      success: true,
+    // The callback contract uses ContentValue's JSON shape. This round-trip
+    // preserves the complete workflow result while proving it is transportable.
+    const callbackData = JSON.parse(JSON.stringify(data)) as ContentValue;
+    const content: Content = {
       text:
         operation === "status"
           ? "School calendar workflow status loaded."
           : "Family workflow completed without sending any external draft.",
-      data: { operation, result: data },
+      data: { operation, result: callbackData },
     };
-    await callback?.(result);
-    return result;
+    await callback?.(content);
+    return { success: true, ...content };
   },
 };

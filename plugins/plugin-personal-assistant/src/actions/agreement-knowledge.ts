@@ -4,7 +4,12 @@
  * authenticated HTTP/document surface; this action never creates file bytes.
  */
 
-import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  HandlerOptions,
+  ProviderValue,
+} from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
@@ -88,17 +93,46 @@ export const ownerAgreementKnowledgeAction: Action = {
         ],
       },
     },
-    { name: "artifactId", schema: { type: "string" as const } },
-    { name: "obligationId", schema: { type: "string" as const } },
-    { name: "reason", schema: { type: "string" as const } },
+    {
+      name: "artifactId",
+      description: "Immutable agreement artifact identifier.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "obligationId",
+      description: "Proposed obligation identifier to approve or reject.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "reason",
+      description: "Owner-provided reason for a review or revocation decision.",
+      schema: { type: "string" as const },
+    },
     {
       name: "targetType",
+      description: "Pin destination kind: agent or chat.",
       schema: { type: "string" as const, enum: ["agent", "chat"] },
     },
-    { name: "targetId", schema: { type: "string" as const } },
-    { name: "pinId", schema: { type: "string" as const } },
-    { name: "principalEntityId", schema: { type: "string" as const } },
-    { name: "householdGrantId", schema: { type: "string" as const } },
+    {
+      name: "targetId",
+      description: "Agent or chat identifier receiving the pin.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "pinId",
+      description: "Existing agreement pin identifier to remove.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "principalEntityId",
+      description: "Guest entity whose effective read access is previewed.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "householdGrantId",
+      description: "Household grant that would authorize the guest read.",
+      schema: { type: "string" as const },
+    },
   ],
   async handler(runtime, _message, _state, options) {
     const service = getAgreementKnowledgeService(runtime);
@@ -112,7 +146,7 @@ export const ownerAgreementKnowledgeAction: Action = {
     const input = parameters(options);
     const action = text(input, "action") as AgreementAction;
     try {
-      let result: unknown;
+      let result: ProviderValue;
       switch (action) {
         case "list":
           result = await service.listOwnerAgreements({

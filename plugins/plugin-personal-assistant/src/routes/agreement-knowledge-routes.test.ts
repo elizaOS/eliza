@@ -7,7 +7,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { AgreementKnowledgeError } from "../lifeops/household/agreement-knowledge.js";
-import { MAX_AGREEMENT_PDF_BYTES } from "../lifeops/household/agreement-upload-limits.js";
+import {
+  MAX_AGREEMENT_PDF_BYTES,
+  MAX_AGREEMENT_UPLOAD_JSON_BYTES,
+} from "../lifeops/household/agreement-upload-limits.js";
 import { handleAgreementKnowledgeRoutes } from "./agreement-knowledge-routes.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
@@ -95,6 +98,11 @@ describe("agreement knowledge routes", () => {
 
     await expect(handleAgreementKnowledgeRoutes(harness.ctx)).resolves.toBe(
       true,
+    );
+    expect(harness.ctx.readJsonBody).toHaveBeenCalledWith(
+      harness.ctx.req,
+      harness.ctx.res,
+      { maxBytes: MAX_AGREEMENT_UPLOAD_JSON_BYTES },
     );
     expect(harness.responses[0]?.status).toBe(201);
     const call = createAgreementVersion.mock.calls[0]?.[0] as {
