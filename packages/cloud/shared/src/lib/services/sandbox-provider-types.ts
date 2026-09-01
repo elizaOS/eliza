@@ -76,6 +76,10 @@ export interface SandboxReplacementCleanupLocator {
   containerName: string;
   /** Immutable docker_nodes primary key for exact-placement recovery. */
   nodeRecordId?: string | null;
+  /** Immutable Linux-boot occurrence bound to the reserved restore target. */
+  nodeIncarnation?: string | null;
+  /** Trigger-owned history row for that exact node occurrence. */
+  nodeHistoryId?: string | null;
   /** SSH authority frozen with nodeRecordId before candidate effects. */
   nodeHostname?: string | null;
   nodeSshPort?: number | null;
@@ -84,6 +88,8 @@ export interface SandboxReplacementCleanupLocator {
   /** Attempt-scoped remote secret cleanup protocol understood by this locator. */
   replacementSecretCleanupVersion?: 1 | null;
   replacementAttemptId?: string | null;
+  /** Restore generation that derived an attempt-scoped quarantine container. */
+  restoreAttemptId?: string | null;
   containerId?: string | null;
   vpnNodeId?: string | null;
   vpnNodeName?: string | null;
@@ -138,12 +144,15 @@ export class SandboxReplacementCleanupUnresolvedError extends ElizaError {
   readonly nodeId: string;
   readonly containerName: string;
   readonly nodeRecordId: string | null;
+  readonly nodeIncarnation: string | null;
+  readonly nodeHistoryId: string | null;
   readonly nodeHostname: string | null;
   readonly nodeSshPort: number | null;
   readonly nodeSshUser: string | null;
   readonly nodeHostKeyFingerprint: string | null;
   readonly replacementSecretCleanupVersion: 1 | null;
   readonly replacementAttemptId: string | null;
+  readonly restoreAttemptId: string | null;
   readonly containerId: string | null;
   readonly vpnNodeId: string | null;
   readonly vpnNodeName: string | null;
@@ -166,7 +175,10 @@ export class SandboxReplacementCleanupUnresolvedError extends ElizaError {
           nodeId: locator.nodeId,
           containerName: locator.containerName,
           nodeRecordId: locator.nodeRecordId ?? null,
+          nodeIncarnation: locator.nodeIncarnation ?? null,
+          nodeHistoryId: locator.nodeHistoryId ?? null,
           replacementAttemptId: locator.replacementAttemptId ?? null,
+          restoreAttemptId: locator.restoreAttemptId ?? null,
           containerId: locator.containerId ?? null,
           vpnNodeId: locator.vpnNodeId ?? null,
         },
@@ -178,12 +190,15 @@ export class SandboxReplacementCleanupUnresolvedError extends ElizaError {
     this.nodeId = locator.nodeId;
     this.containerName = locator.containerName;
     this.nodeRecordId = locator.nodeRecordId ?? null;
+    this.nodeIncarnation = locator.nodeIncarnation ?? null;
+    this.nodeHistoryId = locator.nodeHistoryId ?? null;
     this.nodeHostname = locator.nodeHostname ?? null;
     this.nodeSshPort = locator.nodeSshPort ?? null;
     this.nodeSshUser = locator.nodeSshUser ?? null;
     this.nodeHostKeyFingerprint = locator.nodeHostKeyFingerprint ?? null;
     this.replacementSecretCleanupVersion = locator.replacementSecretCleanupVersion ?? null;
     this.replacementAttemptId = locator.replacementAttemptId ?? null;
+    this.restoreAttemptId = locator.restoreAttemptId ?? null;
     this.containerId = locator.containerId ?? null;
     this.vpnNodeId = locator.vpnNodeId ?? null;
     this.vpnNodeName = locator.vpnNodeName ?? null;
@@ -229,6 +244,12 @@ export interface SandboxProvider {
    * unsupported.
    */
   readonly replacementCreateSettlementCapability?: "exact-success";
+  /**
+   * Declares support for an exact, already-reserved restore target whose
+   * container is created stopped and unroutable. Callers must check this exact
+   * value before supplying {@link SandboxExactRestoreCreateConfig}.
+   */
+  readonly exactRestoreCreateCapability?: "stopped-quarantine-v1";
   create(config: SandboxCreateConfig): Promise<SandboxHandle>;
   /**
    * Tears down a sandbox for deletion and reports whether the provider proved
@@ -298,6 +319,36 @@ export interface SandboxContainerLaunchConfig {
   healthCheckPath?: string;
 }
 
+/** Caller-owned placement authority for one already-reserved node occurrence. */
+export interface SandboxExactRestoreTarget {
+  readonly nodeRecordId: string;
+  readonly nodeId: string;
+  readonly nodeIncarnation: string;
+  readonly nodeHistoryId: string;
+  /** Canonical runtime platform attested for this node occurrence. */
+  readonly platform: "linux/amd64" | "linux/arm64";
+}
+
+/**
+ * Disabled-first Docker materialization authority for one restore attempt.
+ *
+ * `imageReference` is the registry-qualified `name@sha256:...` generation
+ * reference and must carry the same digest as `imageDigest`.
+ * `imagePlatformDigest` is the registry-verified child manifest selected for
+ * `target.platform`. The provider pulls and creates from that child digest,
+ * never from a tag or an implicitly selected manifest-list child. The provider
+ * derives both the container name and staging volume from
+ * `agentId + restoreAttemptId`.
+ */
+export interface SandboxExactRestoreCreateConfig {
+  readonly restoreAttemptId: string;
+  readonly target: SandboxExactRestoreTarget;
+  readonly imageReference: string;
+  readonly imageDigest: string;
+  readonly imagePlatformDigest: string;
+  readonly quarantine: true;
+}
+
 export interface SandboxCreateConfig {
   agentId: string;
   agentName: string;
@@ -326,6 +377,11 @@ export interface SandboxCreateConfig {
   timeout?: number;
   dockerImage?: string;
   container?: SandboxContainerLaunchConfig;
+  /**
+   * Opts into exact stopped restore materialization. Absence preserves the
+   * existing discovery, autoscale, image-resolution, and startup behavior.
+   */
+  exactRestore?: SandboxExactRestoreCreateConfig;
   /**
    * When set, the provider will not place the new sandbox on this Docker node.
    * Used for retry-on-failure to avoid re-selecting a node that just failed.

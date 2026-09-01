@@ -23,12 +23,16 @@ import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
 import {
+  AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+  deriveRestoreStagingVolumePathV1,
+} from "./agent-backup-restore-vault-seed";
+import {
   agentCpuUnitsToDockerCpus,
   buildAgentContainerCpuFlags,
   buildAgentContainerMemoryFlags,
   buildAgentContainerSecurityFlags,
 } from "./agent-container-security";
-import { ensureRegistryAccess } from "./containers/hetzner-client/registry";
+import { ensureRegistryAccess, getImageRegistryHost } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { resolveImageDigest } from "./containers/registry-probe";
 import {
@@ -50,7 +54,9 @@ import {
   buildDockerContainerEnvTransport,
   buildDockerCreateWithSecretEnvCommand,
   buildEnsureNetworkCmd,
+  buildExactRestoreStagingVolumeCleanupCommand,
   buildReplacementCandidateObservedCommand,
+  buildReplacementCreatedContainerIdProofCommand,
   buildReplacementSecretArtifactsCleanupCommand,
   CONTAINER_DURABLE_STATE_DIR,
   dockerPlatformFlag,
@@ -58,6 +64,7 @@ import {
   extractDockerCreateContainerId,
   getContainerName,
   getContainerSecretEnvPath,
+  getExactRestoreStagingVolumeCleanupReceipt,
   getReplacementCandidateObservedReceipt,
   getReplacementControlSecretEnvPath,
   getReplacementControlVaultPassphrasePath,
@@ -65,6 +72,7 @@ import {
   getReplacementSecretArtifactsCleanupReceipt,
   getVolumePath,
   getVolumeVaultPassphrasePath,
+  inferNodeArchitectureFromMetadata,
   parseDockerNodes,
   requiresDockerHostGateway,
   resolveAgentContainerClass,
@@ -73,8 +81,10 @@ import {
   shellQuote,
   validateAgentId,
   validateAgentName,
+  validateContainerName,
   validateEnvKey,
   validateEnvValue,
+  validateVolumePath,
   WEBUI_PORT_MAX,
   WEBUI_PORT_MIN,
 } from "./docker-sandbox-utils";
@@ -97,6 +107,8 @@ import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import type {
   SandboxCreateConfig,
   SandboxDeletionStopOutcome,
+  SandboxExactRestoreCreateConfig,
+  SandboxExactRestoreTarget,
   SandboxHandle,
   SandboxHealthOutcome,
   SandboxProvider,
@@ -126,6 +138,9 @@ export interface DockerSandboxMetadata {
   hostname: string;
   /** Exact DB record + SSH authority used by replacement cleanup. */
   nodeRecordId?: string;
+  /** Exact Linux boot and history occurrence for restore materialization. */
+  nodeIncarnation?: string;
+  nodeHistoryId?: string;
   nodeSshPort?: number;
   nodeSshUser?: string;
   nodeHostKeyFingerprint?: string;
@@ -143,6 +158,12 @@ export interface DockerSandboxMetadata {
    * uses this to detect when the tag's digest has moved.
    */
   imageDigest: string | null;
+  /** Exact restore manifest-list/generation reference retained for audit. */
+  imageIndexReference?: string;
+  /** Registry-verified child manifest actually materialized. */
+  imagePlatformDigest?: string;
+  /** Canonical runtime platform bound to the reserved node occurrence. */
+  imagePlatform?: "linux/amd64" | "linux/arm64";
   headscaleIp?: string;
   /** Exact Headscale identity for strict replacement cleanup. */
   vpnNodeId?: string;
@@ -152,6 +173,9 @@ export interface DockerSandboxMetadata {
   vpnRegistrationStartedAt?: string;
   /** Unique Docker label binding this candidate to its durable intent. */
   replacementAttemptId: string;
+  /** Restore generation for a stopped, unroutable quarantine candidate. */
+  restoreAttemptId?: string;
+  quarantine?: true;
   /** Exact Docker id after create responds; absent on the pre-create intent. */
   containerId?: string;
   /** Whether this placement reserved docker_nodes.allocated_count. */
@@ -206,6 +230,14 @@ let hasWarnedMissingStewardTenantApiKey = false;
 const DEFAULT_AGENT_PORT = containersEnv.agentPort();
 const DEFAULT_BRIDGE_PORT = containersEnv.agentBridgePort();
 const REPLACEMENT_ATTEMPT_LABEL = "ai.elizaos.replacement-attempt";
+const EXACT_RESTORE_ATTEMPT_LABEL = "ai.elizaos.restore-attempt-id";
+const EXACT_RESTORE_NODE_RECORD_LABEL = "ai.elizaos.restore-node-record-id";
+const EXACT_RESTORE_NODE_INCARNATION_LABEL = "ai.elizaos.restore-node-incarnation";
+const EXACT_RESTORE_NODE_HISTORY_LABEL = "ai.elizaos.restore-node-history-id";
+const EXACT_RESTORE_IMAGE_DIGEST_LABEL = "ai.elizaos.restore-image-digest";
+const EXACT_RESTORE_QUARANTINE_LABEL = "ai.elizaos.restore-quarantine";
+const REMOTE_NODE_BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
+const EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE = 78;
 const REPLACEMENT_VPN_SETTLE_OBSERVATIONS = 4;
 const REPLACEMENT_VPN_SETTLE_INTERVAL_MS = 750;
 const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
@@ -252,7 +284,317 @@ function isCanonicalNodeAuthorityUuid(value: string | null | undefined): value i
   );
 }
 
+function exactRestoreContainerName(agentId: string, restoreAttemptId: string): string {
+  validateAgentId(agentId);
+  assertSandboxReplacementAttemptId(restoreAttemptId);
+  const containerName = `agent-restore-${agentId}-${restoreAttemptId}`;
+  validateContainerName(containerName);
+  return containerName;
+}
+
+function exactRestoreVolumePath(agentId: string, restoreAttemptId: string): string {
+  const volumePath = deriveRestoreStagingVolumePathV1(agentId, restoreAttemptId);
+  validateVolumePath(volumePath);
+  return volumePath;
+}
+
+function exactRestoreVolumePathFromCleanupLocator(
+  locator: SandboxReplacementCleanupLocator,
+): string | undefined {
+  const restoreAttemptId = locator.restoreAttemptId ?? null;
+  if (restoreAttemptId === null) return undefined;
+  const prefix = "agent-restore-";
+  const suffix = `-${restoreAttemptId}`;
+  if (!locator.containerName.startsWith(prefix) || !locator.containerName.endsWith(suffix)) {
+    throw new ElizaError("Exact restore cleanup locator has a non-canonical container name", {
+      code: "SANDBOX_EXACT_RESTORE_CLEANUP_LOCATOR_INVALID",
+      context: { containerName: locator.containerName, restoreAttemptId },
+      severity: "fatal",
+    });
+  }
+  const agentId = locator.containerName.slice(prefix.length, -suffix.length);
+  return exactRestoreVolumePath(agentId, restoreAttemptId);
+}
+
+function freezeExactRestoreTarget(target: SandboxExactRestoreTarget): SandboxExactRestoreTarget {
+  if (
+    !target ||
+    !isCanonicalNodeAuthorityUuid(target.nodeRecordId) ||
+    typeof target.nodeId !== "string" ||
+    target.nodeId.length === 0 ||
+    target.nodeId !== target.nodeId.trim() ||
+    !isCanonicalNodeAuthorityUuid(target.nodeIncarnation) ||
+    !isCanonicalNodeAuthorityUuid(target.nodeHistoryId) ||
+    (target.platform !== "linux/amd64" && target.platform !== "linux/arm64")
+  ) {
+    throw new ElizaError("Exact restore target must identify one canonical node occurrence", {
+      code: "SANDBOX_EXACT_RESTORE_TARGET_INVALID",
+      context: {
+        nodeRecordId:
+          target && typeof target.nodeRecordId === "string" ? target.nodeRecordId : null,
+        nodeId: target && typeof target.nodeId === "string" ? target.nodeId : null,
+      },
+      severity: "fatal",
+    });
+  }
+  return Object.freeze({
+    nodeRecordId: target.nodeRecordId,
+    nodeId: target.nodeId,
+    nodeIncarnation: target.nodeIncarnation,
+    nodeHistoryId: target.nodeHistoryId,
+    platform: target.platform,
+  });
+}
+
+function freezeExactRestoreConfig(
+  exactRestore: SandboxExactRestoreCreateConfig,
+): SandboxExactRestoreCreateConfig {
+  const target = freezeExactRestoreTarget(exactRestore.target);
+  assertSandboxReplacementAttemptId(exactRestore.restoreAttemptId);
+  if (exactRestore.quarantine !== true) {
+    throw new ElizaError("Exact restore creation requires explicit quarantine", {
+      code: "SANDBOX_EXACT_RESTORE_QUARANTINE_REQUIRED",
+      severity: "fatal",
+    });
+  }
+  if (!/^sha256:[0-9a-f]{64}$/.test(exactRestore.imageDigest)) {
+    throw new ElizaError("Exact restore image digest must be a canonical sha256 digest", {
+      code: "SANDBOX_EXACT_RESTORE_IMAGE_DIGEST_INVALID",
+      severity: "fatal",
+    });
+  }
+  if (!/^sha256:[0-9a-f]{64}$/.test(exactRestore.imagePlatformDigest)) {
+    throw new ElizaError("Exact restore platform image digest must be a canonical sha256 digest", {
+      code: "SANDBOX_EXACT_RESTORE_IMAGE_PLATFORM_DIGEST_INVALID",
+      severity: "fatal",
+    });
+  }
+  const digestSeparator = exactRestore.imageReference.indexOf("@");
+  const imageName = exactRestore.imageReference.slice(0, digestSeparator);
+  if (
+    digestSeparator <= 0 ||
+    digestSeparator !== exactRestore.imageReference.lastIndexOf("@") ||
+    imageName !== imageName.toLowerCase() ||
+    !imageName.includes("/") ||
+    getImageRegistryHost(exactRestore.imageReference) === null ||
+    /\s/.test(exactRestore.imageReference) ||
+    exactRestore.imageReference.slice(digestSeparator + 1) !== exactRestore.imageDigest
+  ) {
+    throw new ElizaError("Exact restore image reference must pin the manifest digest", {
+      code: "SANDBOX_EXACT_RESTORE_IMAGE_REFERENCE_INVALID",
+      severity: "fatal",
+    });
+  }
+  return Object.freeze({
+    restoreAttemptId: exactRestore.restoreAttemptId,
+    target,
+    imageReference: exactRestore.imageReference,
+    imageDigest: exactRestore.imageDigest,
+    imagePlatformDigest: exactRestore.imagePlatformDigest,
+    quarantine: true,
+  });
+}
+
+function isExactRestoreContainerName(value: string): boolean {
+  const match = /^agent-restore-([0-9a-f-]{36})-([0-9a-f-]{36})$/.exec(value);
+  if (!match) return false;
+  try {
+    return exactRestoreContainerName(match[1]!, match[2]!) === value;
+  } catch {
+    // error-policy:J3 canonical validation translates rejected input to false.
+    return false;
+  }
+}
+
+export function buildExactRestoreBootFencedCommand(
+  expectedNodeIncarnation: string,
+  exactCommand: string,
+): string {
+  return [
+    `observed_boot_id=$(cat ${shellQuote(REMOTE_NODE_BOOT_ID_PATH)} 2>/dev/null) || { printf '%s\\n' 'ELIZA_RESTORE_BOOT_ID_UNREADABLE' >&2; exit ${EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE}; }`,
+    `if [ "$observed_boot_id" != ${shellQuote(expectedNodeIncarnation)} ]; then printf '%s\\n' 'ELIZA_RESTORE_BOOT_ID_MISMATCH' >&2; exit ${EXACT_RESTORE_REMOTE_BOOT_FENCE_EXIT_CODE}; fi`,
+    exactCommand,
+  ].join("; ");
+}
+
+/** Boot-fence and isolate every exact Docker CLI call from ambient client state. */
+export function buildExactRestoreDockerBootFencedCommand(
+  expectedNodeIncarnation: string,
+  exactDockerCommand: string,
+): string {
+  const configTemplate = "/tmp/eliza-exact-docker.XXXXXXXXXX";
+  const cleanup =
+    "cleanup_exact_docker_config() { cleanup_status=$?; trap - EXIT; " +
+    'case "$exact_docker_config" in /tmp/eliza-exact-docker.?*) ' +
+    'rm -rf -- "$exact_docker_config" || cleanup_status=70 ;; *) cleanup_status=70 ;; esac; ' +
+    'exit "$cleanup_status"; }';
+  const isolatedCommand = [
+    "set -eu",
+    "umask 077",
+    `exact_docker_config=$(mktemp -d ${shellQuote(configTemplate)})`,
+    cleanup,
+    "trap cleanup_exact_docker_config EXIT",
+    "trap 'exit 129' HUP",
+    "trap 'exit 130' INT",
+    "trap 'exit 143' TERM",
+    'chmod 700 -- "$exact_docker_config"',
+    `printf '%s\\n' ${shellQuote('{"auths":{},"proxies":{}}')} > "$exact_docker_config/config.json"`,
+    'chmod 600 -- "$exact_docker_config/config.json"',
+    "unset DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH DOCKER_CONFIG DOCKER_DEFAULT_PLATFORM DOCKER_API_VERSION",
+    'DOCKER_HOST="unix:///var/run/docker.sock"',
+    'DOCKER_CONFIG="$exact_docker_config"',
+    "export DOCKER_HOST DOCKER_CONFIG",
+    'docker() { command docker --host unix:///var/run/docker.sock --config "$exact_docker_config" "$@"; }',
+    `(${exactDockerCommand})`,
+  ].join("; ");
+  return buildExactRestoreBootFencedCommand(expectedNodeIncarnation, isolatedCommand);
+}
+
+function buildExactRestoreAnonymousPullCommand(
+  imageReference: string,
+  platform: "linux/amd64" | "linux/arm64",
+): string {
+  return ["docker pull", ...dockerPlatformFlag(platform), shellQuote(imageReference)].join(" ");
+}
+
+const EXACT_RESTORE_MANIFEST_DESCRIPTOR_MINIMUM_API_MINOR = 48;
+const CONTAINERD_SNAPSHOTTER_DRIVER = "io.containerd.snapshotter.v1";
+
+function assertExactRestoreManifestProofCapability(
+  proof: string,
+  nodeId: string,
+  replacementAttemptId: string,
+): void {
+  const lines = proof
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const [clientApiVersion = "", serverApiVersion = "", ...unexpectedApiFields] = (
+    lines[0] ?? ""
+  ).split("|");
+  const supportsManifestDescriptor = (apiVersion: string): boolean => {
+    const apiMatch = /^(\d+)\.(\d+)$/.exec(apiVersion);
+    return Boolean(
+      apiMatch &&
+        (Number(apiMatch[1]) > 1 ||
+          (Number(apiMatch[1]) === 1 &&
+            Number(apiMatch[2]) >= EXACT_RESTORE_MANIFEST_DESCRIPTOR_MINIMUM_API_MINOR)),
+    );
+  };
+  const apiSupportsManifestDescriptor =
+    unexpectedApiFields.length === 0 &&
+    supportsManifestDescriptor(clientApiVersion) &&
+    supportsManifestDescriptor(serverApiVersion);
+  let driverStatus: unknown = null;
+  try {
+    driverStatus = JSON.parse(lines[1] ?? "null");
+  } catch {
+    // error-policy:J3 malformed daemon capability output must fail closed.
+  }
+  const hasContainerdImageStore =
+    Array.isArray(driverStatus) &&
+    driverStatus.some(
+      (entry) =>
+        Array.isArray(entry) &&
+        entry.length === 2 &&
+        entry[0] === "driver-type" &&
+        entry[1] === CONTAINERD_SNAPSHOTTER_DRIVER,
+    );
+  if (lines.length !== 2 || !apiSupportsManifestDescriptor || !hasContainerdImageStore) {
+    throw new ElizaError(
+      "Exact restore target cannot prove the container-bound platform manifest",
+      {
+        code: "SANDBOX_EXACT_RESTORE_IMAGE_PROOF_UNSUPPORTED",
+        context: {
+          nodeId,
+          replacementAttemptId,
+          dockerClientApiVersion: clientApiVersion || null,
+          dockerServerApiVersion: serverApiVersion || null,
+          containerdImageStore: hasContainerdImageStore,
+        },
+        severity: "fatal",
+      },
+    );
+  }
+}
+
+function buildExactRestorePreseedProofCommand(volumePath: string): string {
+  validateVolumePath(volumePath);
+  const elizaPath = `${volumePath}/eliza`;
+  const vaultPassphrasePath = getVolumeVaultPassphrasePath(volumePath);
+  const volume = shellQuote(volumePath);
+  const eliza = shellQuote(elizaPath);
+  const vaultPassphrase = shellQuote(vaultPassphrasePath);
+  return [
+    "set -eu",
+    `test ! -L ${volume} && test -d ${volume}`,
+    `test ! -L ${eliza} && test -d ${eliza}`,
+    `test ! -L ${vaultPassphrase} && test -f ${vaultPassphrase}`,
+    `test "$(stat -c '%a' ${vaultPassphrase})" = '600'`,
+    `vault_length=$(wc -c < ${vaultPassphrase} | tr -d ' ')`,
+    `test "$vault_length" = '${AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES}'`,
+  ].join("; ");
+}
+
+function extractExactRestoreDockerContainerId(output: string): string {
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length !== 1 || !/^[0-9a-f]{64}$/.test(lines[0] ?? "")) {
+    throw new ElizaError("Exact restore Docker create did not produce one full container ID", {
+      code: "SANDBOX_EXACT_RESTORE_CONTAINER_ID_INVALID",
+      severity: "fatal",
+    });
+  }
+  return lines[0]!;
+}
+
+const EXACT_RESTORE_FORBIDDEN_ENVIRONMENT_KEYS = new Set([
+  "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
+  "AGENT_SERVER_SHARED_SECRET",
+  "KV_REST_API_TOKEN",
+  "KV_REST_API_URL",
+  "ELIZA_CLOUD_PUBLIC_URL",
+  "ORCHESTRATOR_SESSION_ID",
+  "PUBLIC_URL",
+  "SANDBOX_AGENT_ID",
+  "SANDBOX_PUBLIC_URL",
+  "SANDBOX_ROUTE_AGENT_ID",
+  "SANDBOX_SERVER_NAME",
+]);
+
+const EXACT_RESTORE_FORBIDDEN_ENVIRONMENT_PREFIXES = [
+  "AGENT_ROUTER_",
+  "ELIZA_STEWARD_",
+  "HEADSCALE_",
+  "STEWARD_",
+  "TAILSCALE_",
+  "TS_",
+] as const;
+
+function exactRestoreEnvironment(
+  environmentVars: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const filtered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(environmentVars)) {
+    const normalizedKey = key.trim().toUpperCase();
+    if (
+      EXACT_RESTORE_FORBIDDEN_ENVIRONMENT_KEYS.has(normalizedKey) ||
+      normalizedKey.startsWith("SANDBOX_") ||
+      EXACT_RESTORE_FORBIDDEN_ENVIRONMENT_PREFIXES.some((prefix) =>
+        normalizedKey.startsWith(prefix),
+      )
+    ) {
+      continue;
+    }
+    filtered[key] = value;
+  }
+  return filtered;
+}
+
 function isCanonicalReplacementContainerName(value: string): boolean {
+  if (isExactRestoreContainerName(value)) return true;
   if (!value.startsWith("agent-")) return false;
   try {
     return getContainerName(value.slice("agent-".length)) === value;
@@ -280,12 +622,15 @@ function replacementCleanupLocatorFromHandle(
     nodeId: metadata.nodeId,
     containerName: metadata.containerName,
     nodeRecordId: optionalLocatorString(metadata.nodeRecordId),
+    nodeIncarnation: optionalLocatorString(metadata.nodeIncarnation),
+    nodeHistoryId: optionalLocatorString(metadata.nodeHistoryId),
     nodeHostname: optionalLocatorString(metadata.hostname),
     nodeSshPort: optionalLocatorNumber(metadata.nodeSshPort),
     nodeSshUser: optionalLocatorString(metadata.nodeSshUser),
     nodeHostKeyFingerprint: optionalLocatorString(metadata.nodeHostKeyFingerprint),
     replacementSecretCleanupVersion: metadata.replacementSecretCleanupVersion === 1 ? 1 : null,
     replacementAttemptId: metadata.replacementAttemptId,
+    restoreAttemptId: optionalLocatorString(metadata.restoreAttemptId),
     containerId: optionalLocatorString(metadata.containerId),
     vpnNodeId: optionalLocatorString(metadata.vpnNodeId),
     vpnNodeName: optionalLocatorString(metadata.vpnNodeName),
@@ -347,6 +692,8 @@ function isCanonicalExactReplacementLocator(
   const previousVpnNodeId = locator.previousVpnNodeId ?? null;
   const containerId = locator.containerId ?? null;
   const hasVpnRegistrationPair = vpnNodeName !== null && vpnRegistrationStartedAt !== null;
+  const restoreAttemptId = locator.restoreAttemptId ?? null;
+  const isRestoreLocator = restoreAttemptId !== null;
 
   return (
     isCanonicalReplacementLocatorCore(locator, expected?.replacementAttemptId) &&
@@ -363,11 +710,36 @@ function isCanonicalExactReplacementLocator(
     locator.nodeSshPort <= 65_535 &&
     Boolean(locator.nodeSshUser?.trim()) &&
     Boolean(locator.nodeHostKeyFingerprint?.trim()) &&
-    locator.replacementSecretCleanupVersion === 1 &&
+    (isRestoreLocator
+      ? assertCanonicalRestoreLocatorIdentity(locator, restoreAttemptId)
+      : locator.replacementSecretCleanupVersion === 1) &&
     locator.allocationCounted === true &&
     (previousVpnNodeId === null || hasVpnRegistrationPair) &&
     (vpnNodeId === null ||
       (containerId !== null && hasVpnRegistrationPair && vpnNodeId !== previousVpnNodeId))
+  );
+}
+
+function assertCanonicalRestoreLocatorIdentity(
+  locator: SandboxReplacementCleanupLocator,
+  restoreAttemptId: string,
+): boolean {
+  try {
+    assertSandboxReplacementAttemptId(restoreAttemptId);
+  } catch {
+    // error-policy:J3 canonical validation translates rejected input to false.
+    return false;
+  }
+  return (
+    isExactRestoreContainerName(locator.containerName) &&
+    locator.containerName.endsWith(`-${restoreAttemptId}`) &&
+    isCanonicalNodeAuthorityUuid(locator.nodeIncarnation) &&
+    isCanonicalNodeAuthorityUuid(locator.nodeHistoryId) &&
+    locator.replacementSecretCleanupVersion === 1 &&
+    (locator.vpnNodeId ?? null) === null &&
+    (locator.vpnNodeName ?? null) === null &&
+    (locator.previousVpnNodeId ?? null) === null &&
+    (locator.vpnRegistrationStartedAt ?? null) === null
   );
 }
 
@@ -1559,6 +1931,7 @@ export async function registerAgentWithSteward(
 
 export class DockerSandboxProvider implements SandboxProvider {
   readonly replacementCreateSettlementCapability = "exact-success" as const;
+  readonly exactRestoreCreateCapability = "stopped-quarantine-v1" as const;
 
   /**
    * In-memory container metadata cache.
@@ -1599,6 +1972,9 @@ export class DockerSandboxProvider implements SandboxProvider {
    */
   async create(config: SandboxCreateConfig): Promise<SandboxHandle> {
     assertContainerBackedExecutionTier(config.executionTier);
+    if (config.exactRestore !== undefined) {
+      return this.createExactRestore(config, freezeExactRestoreConfig(config.exactRestore));
+    }
     const requestedReplacementAttemptId = config.replacementAttemptId;
     if (requestedReplacementAttemptId !== undefined) {
       assertSandboxReplacementAttemptId(requestedReplacementAttemptId);
@@ -1951,6 +2327,560 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     return handle;
+  }
+
+  private async resolveExactRestoreTarget(target: SandboxExactRestoreTarget): Promise<DockerNode> {
+    const node = await dockerNodesRepository.findByIdOnPrimary(target.nodeRecordId);
+    if (!node) {
+      throw new ElizaError("Exact restore target record is no longer registered", {
+        code: "SANDBOX_EXACT_RESTORE_TARGET_MISSING",
+        context: { nodeRecordId: target.nodeRecordId, nodeId: target.nodeId },
+        severity: "fatal",
+      });
+    }
+
+    const drifted = [
+      ["nodeRecordId", node.id, target.nodeRecordId],
+      ["nodeId", node.node_id, target.nodeId],
+      ["nodeIncarnation", node.node_incarnation, target.nodeIncarnation],
+      ["nodeHistoryId", node.current_node_history_id, target.nodeHistoryId],
+    ].find(([, actual, expected]) => actual !== expected);
+    if (drifted) {
+      throw new ElizaError("Exact restore target occurrence changed", {
+        code: "SANDBOX_EXACT_RESTORE_TARGET_DRIFT",
+        context: {
+          nodeRecordId: target.nodeRecordId,
+          nodeId: target.nodeId,
+          driftedKey: drifted[0],
+        },
+        severity: "fatal",
+      });
+    }
+
+    const configuredEnvironment = containersEnv.environment();
+    const targetEnvironment =
+      typeof node.metadata.environment === "string" ? node.metadata.environment : null;
+    if (targetEnvironment !== configuredEnvironment) {
+      throw new ElizaError("Exact restore target belongs to a different environment", {
+        code: "SANDBOX_EXACT_RESTORE_TARGET_ENVIRONMENT_MISMATCH",
+        context: {
+          nodeRecordId: target.nodeRecordId,
+          nodeId: target.nodeId,
+          configuredEnvironment,
+          targetEnvironment,
+        },
+        severity: "fatal",
+      });
+    }
+
+    const targetArchitecture = inferNodeArchitectureFromMetadata(node.metadata);
+    const expectedArchitecture =
+      target.platform === "linux/amd64"
+        ? "amd64"
+        : target.platform === "linux/arm64"
+          ? "arm64"
+          : null;
+    if (targetArchitecture === null || targetArchitecture !== expectedArchitecture) {
+      throw new ElizaError(
+        "Exact restore target architecture does not match its platform authority",
+        {
+          code: "SANDBOX_EXACT_RESTORE_TARGET_PLATFORM_MISMATCH",
+          context: {
+            nodeRecordId: target.nodeRecordId,
+            nodeId: target.nodeId,
+            platform: target.platform,
+            targetArchitecture,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+
+    const capacityProvisional =
+      node.metadata.capacityProvisional === true || node.metadata.capacityProvisional === "true";
+    if (
+      !node.enabled ||
+      node.status !== "healthy" ||
+      node.placement_state !== "open" ||
+      capacityProvisional
+    ) {
+      throw new ElizaError("Exact restore target is no longer eligible for materialization", {
+        code: "SANDBOX_EXACT_RESTORE_TARGET_INELIGIBLE",
+        context: {
+          nodeRecordId: target.nodeRecordId,
+          nodeId: target.nodeId,
+          enabled: node.enabled,
+          status: node.status,
+          placementState: node.placement_state,
+          capacityProvisional,
+        },
+        severity: "fatal",
+      });
+    }
+
+    if (
+      !node.hostname.trim() ||
+      !Number.isSafeInteger(node.ssh_port) ||
+      node.ssh_port < 1 ||
+      node.ssh_port > 65_535 ||
+      !node.ssh_user.trim() ||
+      !node.host_key_fingerprint?.trim()
+    ) {
+      throw new ElizaError("Exact restore target lacks pinned SSH authority", {
+        code: "SANDBOX_EXACT_RESTORE_TARGET_SSH_AUTHORITY_INVALID",
+        context: { nodeRecordId: target.nodeRecordId, nodeId: target.nodeId },
+        severity: "fatal",
+      });
+    }
+
+    return node;
+  }
+
+  private assertExactRestoreHostAuthorityStable(
+    expected: DockerNode,
+    actual: DockerNode,
+    target: SandboxExactRestoreTarget,
+  ): void {
+    const drifted = [
+      ["hostname", expected.hostname, actual.hostname],
+      ["sshPort", expected.ssh_port, actual.ssh_port],
+      ["sshUser", expected.ssh_user, actual.ssh_user],
+      ["hostKeyFingerprint", expected.host_key_fingerprint, actual.host_key_fingerprint],
+    ].find(([, before, after]) => before !== after);
+    if (drifted) {
+      throw new ElizaError("Exact restore target host authority changed", {
+        code: "SANDBOX_EXACT_RESTORE_TARGET_HOST_AUTHORITY_DRIFT",
+        context: {
+          nodeRecordId: target.nodeRecordId,
+          nodeId: target.nodeId,
+          driftedKey: drifted[0],
+        },
+        severity: "fatal",
+      });
+    }
+  }
+
+  private async createExactRestore(
+    config: SandboxCreateConfig,
+    exactRestore: SandboxExactRestoreCreateConfig,
+  ): Promise<SandboxHandle> {
+    const replacementAttemptId = config.replacementAttemptId;
+    assertSandboxReplacementAttemptId(replacementAttemptId);
+    validateAgentId(config.agentId);
+    validateAgentName(config.agentName);
+    for (const [key, value] of Object.entries(config.environmentVars)) {
+      validateEnvKey(key);
+      validateEnvValue(key, value);
+    }
+    if (
+      !config.onReplacementCreateAttemptStarted ||
+      !config.onReplacementCreateIntent ||
+      !config.onReplacementCreated ||
+      !config.onReplacementCreateSettled
+    ) {
+      throw new ElizaError(
+        "Exact restore creation requires the complete exact-success callback set",
+        {
+          code: "SANDBOX_EXACT_RESTORE_CALLBACKS_REQUIRED",
+          context: { replacementAttemptId },
+          severity: "fatal",
+        },
+      );
+    }
+    if (config.onReplacementVpnRegistered) {
+      throw new ElizaError("Exact restore quarantine cannot register a VPN identity", {
+        code: "SANDBOX_EXACT_RESTORE_VPN_CALLBACK_FORBIDDEN",
+        context: { replacementAttemptId },
+        severity: "fatal",
+      });
+    }
+    if (config.excludeNodeId !== undefined) {
+      throw new ElizaError("Exact restore target cannot be combined with node exclusion", {
+        code: "SANDBOX_EXACT_RESTORE_NODE_RESELECTION_FORBIDDEN",
+        context: { nodeId: exactRestore.target.nodeId, excludedNodeId: config.excludeNodeId },
+        severity: "fatal",
+      });
+    }
+    if (config.dockerImage !== undefined && config.dockerImage !== exactRestore.imageReference) {
+      throw new ElizaError("Exact restore image conflicts with the generic Docker image", {
+        code: "SANDBOX_EXACT_RESTORE_IMAGE_CONFLICT",
+        severity: "fatal",
+      });
+    }
+
+    const containerName = exactRestoreContainerName(config.agentId, exactRestore.restoreAttemptId);
+    const volumePath = exactRestoreVolumePath(config.agentId, exactRestore.restoreAttemptId);
+    const containerPort = resolveContainerPort(config);
+    const containerMemoryMb =
+      config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb();
+    const imageName = exactRestore.imageReference.slice(
+      0,
+      exactRestore.imageReference.indexOf("@"),
+    );
+    const platformImageReference = `${imageName}@${exactRestore.imagePlatformDigest}`;
+    const platformFlags = dockerPlatformFlag(exactRestore.target.platform);
+    const initialNode = await this.resolveExactRestoreTarget(exactRestore.target);
+    const initialHostKeyFingerprint = initialNode.host_key_fingerprint!;
+    // The generic handle shape still carries route fields, but quarantine has
+    // no published host ports or reachable health surface by construction.
+    const bridgePort = 0;
+    const webUiPort = 0;
+    const baseMetadata = {
+      provider: "docker" as const,
+      nodeId: exactRestore.target.nodeId,
+      hostname: initialNode.hostname,
+      nodeRecordId: exactRestore.target.nodeRecordId,
+      nodeIncarnation: exactRestore.target.nodeIncarnation,
+      nodeHistoryId: exactRestore.target.nodeHistoryId,
+      nodeSshPort: initialNode.ssh_port,
+      nodeSshUser: initialNode.ssh_user,
+      nodeHostKeyFingerprint: initialHostKeyFingerprint,
+      containerName,
+      bridgePort,
+      webUiPort,
+      agentId: config.agentId,
+      volumePath,
+      dockerImage: platformImageReference,
+      imageDigest: exactRestore.imageDigest,
+      imageIndexReference: exactRestore.imageReference,
+      imagePlatformDigest: exactRestore.imagePlatformDigest,
+      imagePlatform: exactRestore.target.platform,
+      replacementAttemptId,
+      restoreAttemptId: exactRestore.restoreAttemptId,
+      quarantine: true as const,
+      allocationCounted: true,
+      replacementSecretCleanupVersion: 1 as const,
+    } satisfies DockerSandboxMetadata;
+    const handleFor = (containerId?: string): SandboxHandle => ({
+      sandboxId: containerName,
+      bridgeUrl: "",
+      healthUrl: "",
+      metadata: containerId ? { ...baseMetadata, containerId } : { ...baseMetadata },
+    });
+    let createdContainerId: string | undefined;
+    const locatorFor = (
+      containerId: string | undefined = createdContainerId,
+    ): SandboxReplacementCleanupLocator => ({
+      sandboxId: containerName,
+      nodeId: exactRestore.target.nodeId,
+      containerName,
+      nodeRecordId: exactRestore.target.nodeRecordId,
+      nodeIncarnation: exactRestore.target.nodeIncarnation,
+      nodeHistoryId: exactRestore.target.nodeHistoryId,
+      nodeHostname: initialNode.hostname,
+      nodeSshPort: initialNode.ssh_port,
+      nodeSshUser: initialNode.ssh_user,
+      nodeHostKeyFingerprint: initialHostKeyFingerprint,
+      replacementAttemptId,
+      restoreAttemptId: exactRestore.restoreAttemptId,
+      containerId,
+      allocationCounted: true,
+      replacementSecretCleanupVersion: 1,
+    });
+
+    if (containersEnv.registryToken() || containersEnv.registryTokenFile()) {
+      throw new ElizaError(
+        "Exact restore cannot use the legacy registry credential command transport",
+        {
+          code: "SANDBOX_EXACT_RESTORE_REGISTRY_CREDENTIAL_TRANSPORT_UNSUPPORTED",
+          context: { nodeId: exactRestore.target.nodeId },
+          severity: "fatal",
+        },
+      );
+    }
+
+    const started = Object.freeze({ replacementAttemptId });
+    await config.onReplacementCreateAttemptStarted(started);
+
+    let exactSsh: DockerSSHClient | null = null;
+    try {
+      try {
+        await config.onReplacementCreateIntent(handleFor());
+      } catch (cause) {
+        // error-policy:J2 the verifier may have committed before its response
+        // was lost, but no provider-side remote effect has started yet.
+        throw new ReplacementPlacementPersistenceError(cause);
+      }
+
+      // Re-read primary authority after the awaited intent verifier and before
+      // constructing an SSH client. Discovery, autoscale, and seed fallback are
+      // deliberately absent from this exact branch.
+      const node = await this.resolveExactRestoreTarget(exactRestore.target);
+      this.assertExactRestoreHostAuthorityStable(initialNode, node, exactRestore.target);
+      const ssh = (exactSsh = DockerSSHClient.createDedicated(
+        node.hostname,
+        node.ssh_port,
+        node.host_key_fingerprint!,
+        node.ssh_user,
+      ));
+      const exactRemoteCommand = (command: string): string =>
+        buildExactRestoreBootFencedCommand(exactRestore.target.nodeIncarnation, command);
+      const exactDockerRemoteCommand = (command: string): string =>
+        buildExactRestoreDockerBootFencedCommand(exactRestore.target.nodeIncarnation, command);
+
+      const manifestProofCapability = await ssh.exec(
+        exactDockerRemoteCommand(
+          [
+            `docker version --format ${shellQuote("{{.Client.APIVersion}}|{{.Server.APIVersion}}")}`,
+            `docker info --format ${shellQuote("{{json .DriverStatus}}")}`,
+          ].join("; "),
+        ),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+      assertExactRestoreManifestProofCapability(
+        manifestProofCapability,
+        exactRestore.target.nodeId,
+        replacementAttemptId,
+      );
+
+      await ssh.exec(
+        exactRemoteCommand(buildExactRestorePreseedProofCommand(volumePath)),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+
+      await ssh.exec(
+        exactDockerRemoteCommand(
+          buildExactRestoreAnonymousPullCommand(
+            platformImageReference,
+            exactRestore.target.platform,
+          ),
+        ),
+        PULL_TIMEOUT_MS,
+      );
+
+      const allEnv = exactRestoreEnvironment(
+        applyRemoteDockerRuntimeMode({
+          ...config.environmentVars,
+          ...(config.agentConfig && typeof config.agentConfig === "object"
+            ? {
+                ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(
+                  redactCharacterSecrets(config.agentConfig),
+                ),
+              }
+            : {}),
+          AGENT_NAME: config.agentName,
+          ELIZA_CLOUD_PROVISIONED: "1",
+          ELIZA_PORT: containerPort,
+          PORT: containerPort,
+          BRIDGE_PORT: DEFAULT_BRIDGE_PORT,
+          AGENT_DISABLE_AUTO_API_TOKEN: "1",
+          ELIZA_DISABLE_AUTO_API_TOKEN: "1",
+          ELIZA_STATE_DIR:
+            config.environmentVars.ELIZA_STATE_DIR?.trim() || CONTAINER_DURABLE_STATE_DIR,
+        }),
+      );
+      delete allEnv.ELIZA_VAULT_PASSPHRASE;
+      for (const [key, value] of Object.entries(allEnv)) {
+        validateEnvKey(key);
+        validateEnvValue(key, value);
+      }
+      const envTransport = buildDockerContainerEnvTransport(allEnv);
+      const secretEnvPath = getReplacementControlSecretEnvPath(replacementAttemptId);
+      const dockerCreateCommand = [
+        "docker create",
+        `--name ${shellQuote(containerName)}`,
+        ...buildAgentContainerLabelFlags({
+          agentId: config.agentId,
+          organizationId: config.organizationId,
+          containerClass: resolveAgentContainerClass(config.organizationId, {
+            warmPoolOrgId: WARM_POOL_ORG_ID,
+            testOrgIds: containersEnv.testOrgIds(),
+          }),
+        }),
+        `--label ${shellQuote(`${REPLACEMENT_ATTEMPT_LABEL}=${replacementAttemptId}`)}`,
+        `--label ${shellQuote(`${EXACT_RESTORE_ATTEMPT_LABEL}=${exactRestore.restoreAttemptId}`)}`,
+        `--label ${shellQuote(`${EXACT_RESTORE_NODE_RECORD_LABEL}=${exactRestore.target.nodeRecordId}`)}`,
+        `--label ${shellQuote(`${EXACT_RESTORE_NODE_INCARNATION_LABEL}=${exactRestore.target.nodeIncarnation}`)}`,
+        `--label ${shellQuote(`${EXACT_RESTORE_NODE_HISTORY_LABEL}=${exactRestore.target.nodeHistoryId}`)}`,
+        `--label ${shellQuote(`${EXACT_RESTORE_IMAGE_DIGEST_LABEL}=${exactRestore.imageDigest}`)}`,
+        `--label ${shellQuote(`${EXACT_RESTORE_QUARANTINE_LABEL}=true`)}`,
+        "--restart no",
+        "--network none",
+        "--no-healthcheck",
+        ...buildAgentContainerMemoryFlags(containerMemoryMb),
+        ...buildAgentContainerCpuFlags(
+          config.container?.cpu !== undefined
+            ? agentCpuUnitsToDockerCpus(config.container.cpu)
+            : containersEnv.agentContainerCpuLimit(),
+        ),
+        ...buildAgentContainerSecurityFlags({ headscaleEnabled: false }),
+        ...platformFlags,
+        `-v ${shellQuote(volumePath)}:/app/data`,
+        `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
+        ...envTransport.commandFlags,
+        `--env-file ${shellQuote(secretEnvPath)}`,
+        shellQuote(platformImageReference),
+      ].join(" ");
+      const createWithSecretEnvironment = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand,
+        secretEnvPath,
+        vaultPassphrasePath: getReplacementControlVaultPassphrasePath(replacementAttemptId),
+        exactReplacement: {
+          containerName,
+          replacementAttemptId,
+          volumePath,
+          recordContainerId: true,
+        },
+      });
+      const secretInput = Buffer.from(envTransport.secretInput, "utf8");
+      envTransport.secretInput = "";
+      try {
+        await ssh.execStdinAbortable(
+          exactDockerRemoteCommand(createWithSecretEnvironment),
+          secretInput,
+          new AbortController().signal,
+          DOCKER_CMD_TIMEOUT_MS,
+        );
+      } finally {
+        secretInput.fill(0);
+      }
+      const containerId = extractExactRestoreDockerContainerId(
+        await ssh.exec(
+          exactRemoteCommand(buildReplacementCreatedContainerIdProofCommand(replacementAttemptId)),
+          DOCKER_CMD_TIMEOUT_MS,
+        ),
+      );
+      createdContainerId = containerId;
+      const createdHandle = handleFor(containerId);
+      try {
+        await config.onReplacementCreated(createdHandle);
+      } catch (cause) {
+        // error-policy:J2 the exact stopped candidate remains fenced by its
+        // durable locator when created-enrichment persistence is ambiguous.
+        throw new SandboxReplacementCleanupUnresolvedError(locatorFor(containerId), cause);
+      }
+
+      const inspectFormat =
+        "{{.Id}}|{{.Name}}|{{.State.Running}}|{{.State.Status}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.RestartPolicy.Name}}|{{json .HostConfig.PortBindings}}|{{.Config.Image}}|{{.Image}}|{{.Platform}}|{{.ImageManifestDescriptor.Digest}}|{{.ImageManifestDescriptor.Platform.OS}}/{{.ImageManifestDescriptor.Platform.Architecture}}";
+      const proof = await ssh.exec(
+        exactDockerRemoteCommand(
+          `docker inspect --format ${shellQuote(inspectFormat)} ${shellQuote(containerId)}`,
+        ),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+      const proofLines = proof
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const proofFields = proofLines.length === 1 ? proofLines[0]!.split("|") : [];
+      if (
+        proofFields.length !== 12 ||
+        proofFields[0] !== containerId ||
+        proofFields[1] !== `/${containerName}` ||
+        proofFields[2] !== "false" ||
+        proofFields[3] !== "created" ||
+        proofFields[4] !== "none" ||
+        proofFields[5] !== "no" ||
+        (proofFields[6] !== "{}" && proofFields[6] !== "null") ||
+        proofFields[7] !== platformImageReference ||
+        !/^sha256:[0-9a-f]{64}$/.test(proofFields[8] ?? "") ||
+        proofFields[9] !== "linux"
+      ) {
+        throw new ElizaError("Exact restore candidate is not pristine and quarantined", {
+          code: "SANDBOX_EXACT_RESTORE_QUARANTINE_PROOF_MISMATCH",
+          context: {
+            nodeId: exactRestore.target.nodeId,
+            replacementAttemptId,
+            containerId,
+          },
+          severity: "fatal",
+        });
+      }
+
+      // `.Image` is only the config-image ID. Multiple manifests can share it,
+      // and RepoDigests can consequently contain the expected child even when
+      // a different manifest created the container. Docker's container-bound
+      // descriptor is the authority for the child manifest actually selected.
+      if (
+        proofFields[10] !== exactRestore.imagePlatformDigest ||
+        proofFields[11] !== exactRestore.target.platform
+      ) {
+        throw new ElizaError(
+          "Exact restore container manifest descriptor does not match its authority",
+          {
+            code: "SANDBOX_EXACT_RESTORE_IMAGE_PROOF_MISMATCH",
+            context: {
+              nodeId: exactRestore.target.nodeId,
+              replacementAttemptId,
+              containerId,
+              platform: exactRestore.target.platform,
+              imagePlatformDigest: exactRestore.imagePlatformDigest,
+            },
+            severity: "fatal",
+          },
+        );
+      }
+
+      const imageInspectFormat = "{{.Id}}|{{.Os}}/{{.Architecture}}|{{json .RepoDigests}}";
+      const imageProof = await ssh.exec(
+        exactDockerRemoteCommand(
+          `docker image inspect --format ${shellQuote(imageInspectFormat)} ${shellQuote(proofFields[8]!)}`,
+        ),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+      const imageProofLines = imageProof
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const imageProofFields = imageProofLines.length === 1 ? imageProofLines[0]!.split("|") : [];
+      let repoDigests: unknown = null;
+      try {
+        repoDigests = JSON.parse(imageProofFields[2] ?? "null");
+      } catch {
+        // error-policy:J3 an untrusted Docker inspect response must fail closed.
+      }
+      if (
+        imageProofFields.length !== 3 ||
+        imageProofFields[0] !== proofFields[8] ||
+        imageProofFields[1] !== exactRestore.target.platform ||
+        !Array.isArray(repoDigests) ||
+        !repoDigests.includes(platformImageReference)
+      ) {
+        throw new ElizaError("Exact restore child image proof does not match its authority", {
+          code: "SANDBOX_EXACT_RESTORE_IMAGE_PROOF_MISMATCH",
+          context: {
+            nodeId: exactRestore.target.nodeId,
+            replacementAttemptId,
+            containerId,
+            platform: exactRestore.target.platform,
+            imagePlatformDigest: exactRestore.imagePlatformDigest,
+          },
+          severity: "fatal",
+        });
+      }
+
+      const settlementNode = await this.resolveExactRestoreTarget(exactRestore.target);
+      this.assertExactRestoreHostAuthorityStable(node, settlementNode, exactRestore.target);
+      const settlement = Object.freeze({
+        replacementAttemptId,
+        outcome: "succeeded" as const,
+      });
+      try {
+        await config.onReplacementCreateSettled(settlement);
+      } catch (persistenceError) {
+        // error-policy:J2 preserve the successful stopped handle and exact
+        // locator without retrying Docker creation.
+        throw new SandboxReplacementCreateSettlementCleanupUnresolvedError({
+          settlement,
+          locator: locatorFor(containerId),
+          providerHandle: createdHandle,
+          persistenceError,
+        });
+      }
+      return createdHandle;
+    } catch (error) {
+      // error-policy:J2 every failure after the durable intent verifier keeps
+      // the reserved occurrence fenced for exact reconciliation.
+      if (
+        error instanceof ReplacementPlacementPersistenceError ||
+        error instanceof SandboxReplacementCleanupUnresolvedError
+      ) {
+        throw error;
+      }
+      throw new SandboxReplacementCleanupUnresolvedError(locatorFor(), error);
+    } finally {
+      await exactSsh?.disconnect();
+    }
   }
 
   private async createWithRetries(
@@ -3241,6 +4171,8 @@ export class DockerSandboxProvider implements SandboxProvider {
   ): Promise<DockerNodeConnection> {
     const exactAuthorityValues = [
       locator.nodeRecordId,
+      locator.nodeIncarnation,
+      locator.nodeHistoryId,
       locator.nodeHostname,
       locator.nodeSshPort,
       locator.nodeSshUser,
@@ -3286,6 +4218,12 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
     const drifted = [
       ["nodeId", node.node_id, locator.nodeId],
+      ...(locator.nodeIncarnation === undefined || locator.nodeIncarnation === null
+        ? []
+        : [["nodeIncarnation", node.node_incarnation, locator.nodeIncarnation]]),
+      ...(locator.nodeHistoryId === undefined || locator.nodeHistoryId === null
+        ? []
+        : [["nodeHistoryId", node.current_node_history_id, locator.nodeHistoryId]]),
       ["nodeHostname", node.hostname, locator.nodeHostname],
       ["nodeSshPort", node.ssh_port, locator.nodeSshPort],
       ["nodeSshUser", node.ssh_user, locator.nodeSshUser],
@@ -3311,18 +4249,28 @@ export class DockerSandboxProvider implements SandboxProvider {
     gracefulSeconds: number,
     allowUnreachableAbandon: boolean,
     releaseCapacity: boolean,
+    exactExecution?: {
+      readonly ssh?: DockerSSHClient;
+      readonly expectedNodeIncarnation?: string;
+    },
   ): Promise<void> {
-    const ssh = DockerSSHClient.getClient(
-      node.hostname,
-      node.ssh_port ?? DEFAULT_SSH_PORT,
-      node.host_key_fingerprint ?? undefined,
-      node.ssh_user ?? DEFAULT_SSH_USERNAME,
-    );
+    const ssh =
+      exactExecution?.ssh ??
+      DockerSSHClient.getClient(
+        node.hostname,
+        node.ssh_port ?? DEFAULT_SSH_PORT,
+        node.host_key_fingerprint ?? undefined,
+        node.ssh_user ?? DEFAULT_SSH_USERNAME,
+      );
+    const remoteCommand = (command: string): string =>
+      exactExecution?.expectedNodeIncarnation
+        ? buildExactRestoreDockerBootFencedCommand(exactExecution.expectedNodeIncarnation, command)
+        : command;
     let stopErr: unknown;
     let rmErr: unknown;
     try {
       await ssh.exec(
-        `docker stop -t ${gracefulSeconds} ${shellQuote(containerName)}`,
+        remoteCommand(`docker stop -t ${gracefulSeconds} ${shellQuote(containerName)}`),
         DOCKER_CMD_TIMEOUT_MS,
       );
     } catch (err) {
@@ -3335,7 +4283,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
     try {
-      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        remoteCommand(`docker rm -f ${shellQuote(containerName)}`),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
     } catch (err) {
       rmErr = err;
       const msg = err instanceof Error ? err.message : String(err);
@@ -3387,17 +4338,52 @@ export class DockerSandboxProvider implements SandboxProvider {
     locator: SandboxReplacementCleanupLocator,
     node: DockerNodeConnection,
   ): Promise<void> {
+    let exactCleanupSsh: DockerSSHClient | null = null;
+    let ownsExactCleanupSsh = false;
+    const exactCleanupCommand = (command: string): string => {
+      if (locator.restoreAttemptId === undefined || locator.restoreAttemptId === null) {
+        return command;
+      }
+      if (!isCanonicalNodeAuthorityUuid(locator.nodeIncarnation)) {
+        throw new ElizaError("Exact restore cleanup lacks a canonical node boot fence", {
+          code: "SANDBOX_EXACT_RESTORE_CLEANUP_BOOT_FENCE_INVALID",
+          severity: "fatal",
+        });
+      }
+      return buildExactRestoreBootFencedCommand(locator.nodeIncarnation, command);
+    };
+    const exactCleanupDockerCommand = (command: string): string => {
+      if (locator.restoreAttemptId === undefined || locator.restoreAttemptId === null) {
+        return command;
+      }
+      if (!isCanonicalNodeAuthorityUuid(locator.nodeIncarnation)) {
+        throw new ElizaError("Exact restore cleanup lacks a canonical node boot fence", {
+          code: "SANDBOX_EXACT_RESTORE_CLEANUP_BOOT_FENCE_INVALID",
+          severity: "fatal",
+        });
+      }
+      return buildExactRestoreDockerBootFencedCommand(locator.nodeIncarnation, command);
+    };
     try {
       let observedCandidateId: string | null = null;
       let dockerCreateQuiescent = false;
-      let exactCleanupSsh: DockerSSHClient | null = null;
       if (locator.replacementSecretCleanupVersion === 1 && locator.replacementAttemptId) {
-        const ssh = DockerSSHClient.getClient(
-          node.hostname,
-          node.ssh_port ?? DEFAULT_SSH_PORT,
-          node.host_key_fingerprint ?? undefined,
-          node.ssh_user ?? DEFAULT_SSH_USERNAME,
-        );
+        const isExactRestore =
+          locator.restoreAttemptId !== undefined && locator.restoreAttemptId !== null;
+        const ssh = isExactRestore
+          ? DockerSSHClient.createDedicated(
+              node.hostname,
+              node.ssh_port ?? DEFAULT_SSH_PORT,
+              node.host_key_fingerprint ?? undefined,
+              node.ssh_user ?? DEFAULT_SSH_USERNAME,
+            )
+          : DockerSSHClient.getClient(
+              node.hostname,
+              node.ssh_port ?? DEFAULT_SSH_PORT,
+              node.host_key_fingerprint ?? undefined,
+              node.ssh_user ?? DEFAULT_SSH_USERNAME,
+            );
+        ownsExactCleanupSsh = isExactRestore;
         exactCleanupSsh = ssh;
         // Tombstone first, under the same remote flock used by both plaintext
         // producers. The receipt proves the attempt cannot start again and its
@@ -3406,9 +4392,12 @@ export class DockerSandboxProvider implements SandboxProvider {
         // id-less absence settles only with a quiescent producer marker or a
         // durable exact candidate observation from an earlier cleanup pass.
         const cleanupReceipt = await ssh.exec(
-          buildReplacementSecretArtifactsCleanupCommand(
-            locator.containerName,
-            locator.replacementAttemptId,
+          exactCleanupCommand(
+            buildReplacementSecretArtifactsCleanupCommand(
+              locator.containerName,
+              locator.replacementAttemptId,
+              exactRestoreVolumePathFromCleanupLocator(locator),
+            ),
           ),
           DOCKER_CMD_TIMEOUT_MS,
         );
@@ -3484,10 +4473,15 @@ export class DockerSandboxProvider implements SandboxProvider {
         }
       }
       const cleanupTarget = locator.replacementAttemptId
-        ? await this.resolveReplacementContainerForCleanup(locator, node, {
-            observedCandidateId,
-            dockerCreateQuiescent,
-          })
+        ? await this.resolveReplacementContainerForCleanup(
+            locator,
+            node,
+            {
+              observedCandidateId,
+              dockerCreateQuiescent,
+            },
+            exactCleanupSsh ?? undefined,
+          )
         : locator.containerName;
       if (cleanupTarget) {
         if (
@@ -3511,7 +4505,9 @@ export class DockerSandboxProvider implements SandboxProvider {
             );
           }
           const observationReceipt = await exactCleanupSsh.exec(
-            buildReplacementCandidateObservedCommand(locator.replacementAttemptId, cleanupTarget),
+            exactCleanupCommand(
+              buildReplacementCandidateObservedCommand(locator.replacementAttemptId, cleanupTarget),
+            ),
             DOCKER_CMD_TIMEOUT_MS,
           );
           const expectedObservationReceipt = getReplacementCandidateObservedReceipt(
@@ -3533,7 +4529,46 @@ export class DockerSandboxProvider implements SandboxProvider {
             );
           }
         }
-        await this.stopOnSpecificNodeWithPolicy(node, cleanupTarget, 10, false, false);
+        await this.stopOnSpecificNodeWithPolicy(node, cleanupTarget, 10, false, false, {
+          ssh: exactCleanupSsh ?? undefined,
+          expectedNodeIncarnation:
+            locator.restoreAttemptId === undefined || locator.restoreAttemptId === null
+              ? undefined
+              : (locator.nodeIncarnation ?? undefined),
+        });
+      }
+      const restoreVolumePath = exactRestoreVolumePathFromCleanupLocator(locator);
+      if (restoreVolumePath !== undefined) {
+        if (!exactCleanupSsh || !locator.replacementAttemptId) {
+          throw new ElizaError("Exact restore staging cleanup SSH authority is unavailable", {
+            code: "SANDBOX_EXACT_RESTORE_STAGING_CLEANUP_SSH_AUTHORITY_UNAVAILABLE",
+            severity: "fatal",
+          });
+        }
+        const volumeCleanupReceipt = await exactCleanupSsh.exec(
+          exactCleanupDockerCommand(
+            buildExactRestoreStagingVolumeCleanupCommand(
+              locator.containerName,
+              locator.replacementAttemptId,
+              restoreVolumePath,
+            ),
+          ),
+          DOCKER_CMD_TIMEOUT_MS,
+        );
+        const expectedVolumeCleanupReceipt = getExactRestoreStagingVolumeCleanupReceipt(
+          locator.replacementAttemptId,
+          locator.restoreAttemptId!,
+        );
+        if (volumeCleanupReceipt.trim() !== expectedVolumeCleanupReceipt) {
+          throw new ElizaError("Exact restore staging cleanup receipt was missing or malformed", {
+            code: "SANDBOX_EXACT_RESTORE_STAGING_CLEANUP_RECEIPT_INVALID",
+            context: {
+              containerName: locator.containerName,
+              replacementAttemptId: locator.replacementAttemptId,
+            },
+            severity: "fatal",
+          });
+        }
       }
       if (locator.vpnNodeId) {
         if (!isCanonicalHeadscaleNodeId(locator.vpnNodeId)) {
@@ -3601,6 +4636,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       // error-policy:J2 context-adding rethrow — the exact persisted locator is
       // required to retry cleanup without guessing at remote identities.
       throw new SandboxReplacementCleanupUnresolvedError(locator, error);
+    } finally {
+      if (ownsExactCleanupSsh && exactCleanupSsh) {
+        await exactCleanupSsh.disconnect().catch((error) => {
+          logger.warn(
+            `[docker-sandbox] exact replacement cleanup SSH disconnect failed for ${locator.containerName}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      }
     }
   }
 
@@ -3611,13 +4654,20 @@ export class DockerSandboxProvider implements SandboxProvider {
       observedCandidateId: string | null;
       dockerCreateQuiescent: boolean;
     },
+    exactSsh?: DockerSSHClient,
   ): Promise<string | null> {
-    const ssh = DockerSSHClient.getClient(
-      node.hostname,
-      node.ssh_port ?? DEFAULT_SSH_PORT,
-      node.host_key_fingerprint ?? undefined,
-      node.ssh_user ?? DEFAULT_SSH_USERNAME,
-    );
+    const ssh =
+      exactSsh ??
+      DockerSSHClient.getClient(
+        node.hostname,
+        node.ssh_port ?? DEFAULT_SSH_PORT,
+        node.host_key_fingerprint ?? undefined,
+        node.ssh_user ?? DEFAULT_SSH_USERNAME,
+      );
+    const remoteCommand = (command: string): string =>
+      locator.restoreAttemptId !== undefined && locator.restoreAttemptId !== null
+        ? buildExactRestoreDockerBootFencedCommand(locator.nodeIncarnation!, command)
+        : command;
     const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}|{{.Name}}|{{.Created}}`;
     // When Docker returned the create id before a later phase failed, inspect
     // that immutable object directly. A same-name replacement can never make
@@ -3627,7 +4677,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     let output: string;
     try {
       output = await ssh.exec(
-        `docker inspect --format ${shellQuote(format)} ${shellQuote(inspectTarget)}`,
+        remoteCommand(`docker inspect --format ${shellQuote(format)} ${shellQuote(inspectTarget)}`),
         DOCKER_CMD_TIMEOUT_MS,
       );
     } catch (error) {
