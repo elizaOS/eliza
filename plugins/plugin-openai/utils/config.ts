@@ -99,6 +99,11 @@ export function isCerebrasMode(runtime: IAgentRuntime): boolean {
   }
   const cerebrasKey = getSetting(runtime, "CEREBRAS_API_KEY");
   if (
+    // Key-alias inference only applies when nothing was declared —
+    // mirrors resolveOpenAIBaseURL, so the key this mode selects always
+    // belongs to the endpoint that same mode routes to. Truthiness, not a
+    // strict undefined check: this raw getSetting yields null when unset.
+    !explicitProvider &&
     cerebrasKey &&
     !getSetting(runtime, "OPENAI_API_KEY") &&
     !getSetting(runtime, "OPENAI_BASE_URL")
@@ -124,49 +129,15 @@ export function isEvoLinkMode(runtime: IAgentRuntime): boolean {
   }
   const evolinkKey = getSetting(runtime, "EVOLINK_API_KEY");
   if (
+    // Key-alias inference only applies when nothing was declared —
+    // mirrors resolveOpenAIBaseURL, so the key this mode selects always
+    // belongs to the endpoint that same mode routes to. Truthiness, not a
+    // strict undefined check: this raw getSetting yields null when unset.
+    !explicitProvider &&
     evolinkKey &&
     !getSetting(runtime, "OPENAI_API_KEY") &&
     !getSetting(runtime, "OPENAI_BASE_URL")
   ) {
-    return true;
-  }
-  return false;
-}
-
-/**
- * True when the resolved base URL or `ELIZA_PROVIDER` marks the runtime as
- * using OpenZoo — either its hosted endpoint or the local `npx openzoo`
- * gateway on port 8402, which is the path that actually settles requests
- * (over x402) from this plugin. There is no OpenZoo key alias: the service
- * accepts any bearer value, so `OPENAI_API_KEY` is already sufficient.
- */
-export function isOpenZooMode(runtime: IAgentRuntime): boolean {
-  const explicitProvider = getSetting(runtime, "ELIZA_PROVIDER");
-  if (explicitProvider && explicitProvider.toLowerCase() === "openzoo") {
-    return true;
-  }
-  const baseURL = getSetting(runtime, "OPENAI_BASE_URL");
-  if (!baseURL) {
-    return false;
-  }
-  // Match on the PARSED host, not the raw string: a substring regex misses the
-  // apex domain (the `/` before `openzoo.fun` fails a `(^|.)` anchor) and
-  // matches lookalikes smuggled into paths, query strings, and fragments.
-  let host = "";
-  let port = "";
-  try {
-    const url = new URL(baseURL);
-    host = url.hostname.toLowerCase();
-    port = url.port;
-  } catch {
-    return false;
-  }
-  if (host === "openzoo.fun" || host.endsWith(".openzoo.fun")) {
-    return true;
-  }
-  // The documented local gateway (`npx openzoo`). Billing attribution is the
-  // point: requests through it are handled and billed by OpenZoo, not OpenAI.
-  if ((host === "localhost" || host === "127.0.0.1") && port === "8402") {
     return true;
   }
   return false;

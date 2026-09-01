@@ -7,7 +7,13 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getBaseURL, getUsageProvider, isOpenZooMode } from "../utils/config";
+import {
+  getApiKey,
+  getBaseURL,
+  getUsageProvider,
+  isCerebrasMode,
+  providerForEndpoint,
+} from "../utils/config";
 
 function buildRuntime(settings: Record<string, string | undefined>): IAgentRuntime {
   return {
@@ -44,83 +50,68 @@ afterEach(() => {
   }
 });
 
-describe("isOpenZooMode", () => {
-  it("is on for the hosted endpoint", () => {
-    const runtime = buildRuntime({
-      OPENAI_BASE_URL: "https://api.openzoo.fun/v1",
-    });
-    expect(isOpenZooMode(runtime)).toBe(true);
+describe("providerForEndpoint host hardening", () => {
+  // These assertions aim at the LIVE classifier getUsageProvider consults —
+  // the mutants they exist to kill (includes-vs-endsWith, apex arm, gateway
+  // port, hostile-input catch) must die on the code path that runs.
+  it("classifies the hosted endpoint, apex domain, and ported host as openzoo", () => {
+    expect(providerForEndpoint("https://api.openzoo.fun/v1")).toBe("openzoo");
+    expect(providerForEndpoint("https://openzoo.fun/v1")).toBe("openzoo");
+    expect(providerForEndpoint("https://openzoo.fun:8402/v1")).toBe("openzoo");
   });
 
-  it("is on for the local gateway address", () => {
-    const runtime = buildRuntime({
-      OPENAI_BASE_URL: "http://localhost:8402/v1",
-    });
-    expect(isOpenZooMode(runtime)).toBe(true);
+  it("classifies the local gateway by exact host and port", () => {
+    expect(providerForEndpoint("http://localhost:8402/v1")).toBe("openzoo");
+    expect(providerForEndpoint("http://127.0.0.1:8402")).toBe("openzoo");
+    expect(providerForEndpoint("http://localhost:84020/v1")).not.toBe("openzoo");
+    expect(providerForEndpoint("http://localhost:9999/v1")).toBe("unknown");
   });
 
-  it("is on for ELIZA_PROVIDER=openzoo regardless of URL", () => {
-    const runtime = buildRuntime({ ELIZA_PROVIDER: "openzoo" });
-    expect(isOpenZooMode(runtime)).toBe(true);
+  it("does not classify lookalike hosts as openzoo", () => {
+    expect(providerForEndpoint("https://notopenzoo.fun/v1")).toBe("unknown");
+    expect(providerForEndpoint("https://openzoo.funhouse.example.com/v1")).toBe("unknown");
+    expect(providerForEndpoint("https://openzoo.fun.evil.com/v1")).toBe("unknown");
   });
 
-  it("is on for the apex domain and a ported host", () => {
-    expect(isOpenZooMode(buildRuntime({ OPENAI_BASE_URL: "https://openzoo.fun/v1" }))).toBe(true);
-    expect(isOpenZooMode(buildRuntime({ OPENAI_BASE_URL: "https://openzoo.fun:8402/v1" }))).toBe(
-      true
+  it("does not classify names smuggled into paths, queries, or fragments", () => {
+    expect(providerForEndpoint("https://evil.example.com/a.openzoo.fun/v1")).toBe("unknown");
+    expect(providerForEndpoint("https://evil.example.com/?redirect=https://api.openzoo.fun/")).toBe(
+      "unknown"
     );
+    expect(providerForEndpoint("https://api.openai.com/v1#.openzoo.fun/")).toBe("openai");
   });
 
-  it("is on for ELIZA_PROVIDER=openzoo case-insensitively", () => {
-    expect(isOpenZooMode(buildRuntime({ ELIZA_PROVIDER: "OpenZoo" }))).toBe(true);
+  it("returns unknown for hostile input, never a provider", () => {
+    expect(providerForEndpoint("not a url")).toBe("unknown");
   });
 
-  it("is off for plain OpenAI and for lookalike hosts", () => {
-    expect(isOpenZooMode(buildRuntime({ OPENAI_BASE_URL: "https://api.openai.com/v1" }))).toBe(
-      false
-    );
-    expect(isOpenZooMode(buildRuntime({ OPENAI_BASE_URL: "https://notopenzoo.fun/v1" }))).toBe(
-      false
-    );
-    expect(
-      isOpenZooMode(
-        buildRuntime({
-          OPENAI_BASE_URL: "https://openzoo.funhouse.example.com/v1",
-        })
-      )
-    ).toBe(false);
-    expect(isOpenZooMode(buildRuntime({}))).toBe(false);
+  it("classifies the siblings and definitive OpenAI hosts", () => {
+    expect(providerForEndpoint("https://api.cerebras.ai/v1")).toBe("cerebras");
+    expect(providerForEndpoint("https://direct.evolink.ai/v1")).toBe("evolink");
+    expect(providerForEndpoint("https://api.openai.com/v1")).toBe("openai");
+  });
+});
+
+describe("key and endpoint belong to the same vendor", () => {
+  // A contradictory environment must fail loudly (no key resolves, so the
+  // client constructor throws) rather than send one vendor's key to another.
+  it("does not select a sibling key when the declaration contradicts it", () => {
+    const cerebras = buildRuntime({ ELIZA_PROVIDER: "openai", CEREBRAS_API_KEY: "csk-stale" });
+    expect(isCerebrasMode(cerebras)).toBe(false);
+    expect(getApiKey(cerebras)).toBeUndefined();
+
+    const evolink = buildRuntime({ ELIZA_PROVIDER: "openai", EVOLINK_API_KEY: "evk-stale" });
+    expect(getApiKey(evolink)).toBeUndefined();
+
+    const cross = buildRuntime({ ELIZA_PROVIDER: "evolink", CEREBRAS_API_KEY: "csk-stale" });
+    expect(isCerebrasMode(cross)).toBe(false);
+    expect(getApiKey(cross)).toBeUndefined();
   });
 
-  it("is off when the name only appears in a path, query, or fragment", () => {
-    expect(
-      isOpenZooMode(
-        buildRuntime({
-          OPENAI_BASE_URL: "https://evil.example.com/a.openzoo.fun/v1",
-        })
-      )
-    ).toBe(false);
-    expect(
-      isOpenZooMode(
-        buildRuntime({
-          OPENAI_BASE_URL: "https://evil.example.com/?redirect=https://api.openzoo.fun/",
-        })
-      )
-    ).toBe(false);
-    expect(
-      isOpenZooMode(
-        buildRuntime({
-          OPENAI_BASE_URL: "https://api.openai.com/v1#.openzoo.fun/",
-        })
-      )
-    ).toBe(false);
-  });
-
-  it("is off for a non-gateway localhost port", () => {
-    const runtime = buildRuntime({
-      OPENAI_BASE_URL: "http://localhost:11434/v1",
-    });
-    expect(isOpenZooMode(runtime)).toBe(false);
+  it("keeps key-alias inference for an undeclared environment", () => {
+    const bare = buildRuntime({ CEREBRAS_API_KEY: "csk-live" });
+    expect(isCerebrasMode(bare)).toBe(true);
+    expect(getApiKey(bare)).toBe("csk-live");
   });
 });
 
@@ -200,6 +191,23 @@ describe("attribution/endpoint agreement ratchet", () => {
   }
 });
 
+describe("OPENZOO_BASE_URL override", () => {
+  it("wins over the gateway default, port included, and keeps openzoo attribution", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "openzoo",
+      OPENZOO_BASE_URL: "http://localhost:9999/v1",
+    });
+    expect(getBaseURL(runtime)).toBe("http://localhost:9999/v1");
+    expect(getUsageProvider(runtime)).toBe("openzoo");
+  });
+
+  it("treats ELIZA_PROVIDER case-insensitively end to end", () => {
+    const runtime = buildRuntime({ ELIZA_PROVIDER: "OpenZoo" });
+    expect(getBaseURL(runtime)).toBe("http://localhost:8402/v1");
+    expect(getUsageProvider(runtime)).toBe("openzoo");
+  });
+});
+
 describe("getUsageProvider with OpenZoo", () => {
   it("attributes hosted and gateway requests to openzoo", () => {
     expect(getUsageProvider(buildRuntime({ OPENAI_BASE_URL: "https://api.openzoo.fun/v1" }))).toBe(
@@ -215,8 +223,8 @@ describe("getUsageProvider with OpenZoo", () => {
     expect(getUsageProvider(buildRuntime({ OPENAI_API_KEY: "sk-test" }))).toBe("openai");
   });
 
-  it("holds the malformed-URL catch branch to false", () => {
-    expect(isOpenZooMode(buildRuntime({ OPENAI_BASE_URL: "not a url" }))).toBe(false);
+  it("attributes a malformed base URL to openai, never a provider", () => {
+    expect(getUsageProvider(buildRuntime({ OPENAI_BASE_URL: "not a url" }))).toBe("openai");
   });
 
   it("keeps endpoint and attribution in agreement for a bare ELIZA_PROVIDER=openzoo", () => {
