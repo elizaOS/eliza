@@ -1,7 +1,7 @@
 /** Proxies validated token-trade history requests to the market-data provider. */
 import { Hono } from "hono";
+import { executePaidProxyWithCombinedAdmission } from "@/api-app/lib/legacy-proxy-combined-admission";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { executeWithBody } from "@/lib/services/proxy/engine";
 import {
   isValidAddress,
   isValidChain,
@@ -11,7 +11,7 @@ import {
   marketDataHandler,
 } from "@/lib/services/proxy/services/market-data";
 import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, OPTIONS";
 export const TOKEN_TRADE_TYPES = Object.freeze([
@@ -33,9 +33,10 @@ async function __hono_OPTIONS() {
 }
 
 async function __hono_GET(
-  request: Request,
+  c: AppContext,
   { params }: { params: Promise<{ chain: string; address: string }> },
 ) {
+  const request = c.req.raw;
   const { chain, address } = await params;
   const normalizedChain = chain.toLowerCase();
   const { searchParams } = new URL(request.url);
@@ -108,7 +109,13 @@ async function __hono_GET(
   };
 
   return applyCorsHeaders(
-    await executeWithBody(marketDataConfig, marketDataHandler, request, body),
+    await executePaidProxyWithCombinedAdmission(
+      c,
+      marketDataConfig,
+      marketDataHandler,
+      request,
+      body,
+    ),
     CORS_METHODS,
   );
 }
@@ -116,7 +123,7 @@ async function __hono_GET(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", async () => __hono_OPTIONS());
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, {
+  __hono_GET(c, {
     params: Promise.resolve({
       chain: c.req.param("chain")!,
       address: c.req.param("address")!,

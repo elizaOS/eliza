@@ -12,8 +12,12 @@ import type { ServiceConfig } from "./types";
 
 const realAuth = { ...authActual };
 const realAdmission = { ...admissionActual };
+const realCredits = { ...creditsActual };
 const legacyAuth = mock(async () => {
   throw new Error("legacy auth must not run");
+});
+const reserve = mock(async () => {
+  throw new Error("generic reserve must not run in combined mode");
 });
 const admit = mock<typeof admissionActual.admitOrganizationInference>();
 
@@ -27,6 +31,10 @@ mock.module("../../auth", () => ({
 mock.module("../organization-inference-admission", () => ({
   ...realAdmission,
   admitOrganizationInference: admit,
+}));
+mock.module("../credits", () => ({
+  ...realCredits,
+  creditsService: { ...realCredits.creditsService, reserve },
 }));
 
 const { createHandler } = await import("./engine");
@@ -50,11 +58,13 @@ const snapshot = {
 beforeEach(() => {
   legacyAuth.mockClear();
   admit.mockReset();
+  reserve.mockClear();
 });
 
 afterAll(() => {
   mock.module("../../auth", () => realAuth);
   mock.module("../organization-inference-admission", () => realAdmission);
+  mock.module("../credits", () => realCredits);
 });
 
 test("combined RPC admission orders mark before dispatch and defers settlement", async () => {
@@ -101,6 +111,7 @@ test("combined RPC admission orders mark before dispatch and defers settlement",
   expect(response.status).toBe(200);
   expect(order).toEqual(["mark", "dispatch", "settle"]);
   expect(legacyAuth).not.toHaveBeenCalled();
+  expect(reserve).not.toHaveBeenCalled();
   expect(admit).toHaveBeenCalledTimes(1);
   expect(admit.mock.calls[0]?.[0].admissionSnapshot).toBe(snapshot);
   expect(retained).toHaveLength(1);
@@ -127,5 +138,28 @@ test("combined RPC admission denial performs zero provider dispatch", async () =
 
   expect(response.status).toBe(402);
   expect(work).not.toHaveBeenCalled();
+  expect(legacyAuth).not.toHaveBeenCalled();
+  expect(reserve).not.toHaveBeenCalled();
+});
+
+test("combined mode without a snapshot fails closed before generic reserve", async () => {
+  const work = mock(async () => ({ response: new Response("not reached") }));
+  const handler = createHandler(config, work, {
+    auth: { user: { id: "user-1", organization_id: "org-1" } },
+    executionCtx: { waitUntil: () => undefined },
+    requestId: "rpc-warming",
+  });
+
+  const response = await handler(
+    new Request("https://api.test/api/v1/rpc/ethereum", {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", id: 1 }),
+    }),
+  );
+
+  expect(response.status).toBe(503);
+  expect(work).not.toHaveBeenCalled();
+  expect(admit).not.toHaveBeenCalled();
+  expect(reserve).not.toHaveBeenCalled();
   expect(legacyAuth).not.toHaveBeenCalled();
 });

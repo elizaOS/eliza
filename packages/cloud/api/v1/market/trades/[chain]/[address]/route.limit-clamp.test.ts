@@ -11,15 +11,15 @@ import { Hono } from "hono";
 
 const SOLANA_TOKEN = "So11111111111111111111111111111111111111112";
 
-type ExecuteWithBody =
-  typeof import("@/lib/services/proxy/engine").executeWithBody;
+type ExecutePaid =
+  typeof import("@/api-app/lib/legacy-proxy-combined-admission").executePaidProxyWithCombinedAdmission;
 
-const executeWithBody = mock(async (..._args: Parameters<ExecuteWithBody>) =>
-  Response.json({ success: true }),
+const executePaidProxyWithCombinedAdmission = mock(
+  async (..._args: Parameters<ExecutePaid>) => Response.json({ success: true }),
 );
 
-mock.module("@/lib/services/proxy/engine", () => ({
-  executeWithBody,
+mock.module("@/api-app/lib/legacy-proxy-combined-admission", () => ({
+  executePaidProxyWithCombinedAdmission,
 }));
 mock.module("@/lib/services/proxy/cors", () => ({
   applyCorsHeaders: (response: Response) => response,
@@ -44,7 +44,7 @@ function trades(query: string) {
 async function forwardedParams(query: string) {
   const response = await trades(query);
   expect(response.status).toBe(200);
-  const body = executeWithBody.mock.calls.at(-1)?.[3] as {
+  const body = executePaidProxyWithCombinedAdmission.mock.calls.at(-1)?.[4] as {
     params: Record<string, string>;
   };
   return body.params;
@@ -52,7 +52,7 @@ async function forwardedParams(query: string) {
 
 describe("GET /api/v1/market/trades limit/offset clamp", () => {
   beforeEach(() => {
-    executeWithBody.mockClear();
+    executePaidProxyWithCombinedAdmission.mockClear();
   });
 
   test("omits limit/offset when absent, matching provider defaults", async () => {

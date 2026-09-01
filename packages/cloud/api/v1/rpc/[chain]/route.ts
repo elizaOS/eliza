@@ -1,9 +1,8 @@
 // Handles v1 cloud API v1 rpc chain route traffic with route-local auth expectations.
 import { Hono } from "hono";
-import {
-  getGenerativeExecutionContext,
-  requireGenerativeRouteCaller,
-} from "@/api-app/lib/generative-route-auth";
+import { asGenerativeCacheApiError } from "@/api-app/lib/generative-route-auth";
+import { resolvePaidProxyCombinedAdmission } from "@/api-app/lib/legacy-proxy-combined-admission";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { createHandler } from "@/lib/services/proxy/engine";
 import {
@@ -38,29 +37,20 @@ async function __hono_POST(
   }
 
   const config = rpcConfigForChain(normalized);
-  const caller = await requireGenerativeRouteCaller(c, {
-    rateLimitEndpoint: "standard",
-  });
-  const executionCtx = getGenerativeExecutionContext(c);
-  if (executionCtx && !caller.admissionSnapshot) {
+  try {
+    const combinedAdmission = await resolvePaidProxyCombinedAdmission(c);
+    const handler = createHandler(
+      config,
+      rpcHandlerForChain(normalized),
+      combinedAdmission,
+    );
+    return applyCorsHeaders(await handler(c.req.raw), CORS_METHODS);
+  } catch (error) {
     return applyCorsHeaders(
-      Response.json(
-        { error: "Provider admission is unavailable; retry shortly" },
-        { status: 503, headers: { "Retry-After": "1" } },
-      ),
+      failureResponse(c, asGenerativeCacheApiError(error) ?? error),
       CORS_METHODS,
     );
   }
-  const handler = createHandler(config, rpcHandlerForChain(normalized), {
-    auth: {
-      user: caller.user,
-      ...(caller.apiKeyId ? { apiKey: { id: caller.apiKeyId } } : {}),
-    },
-    admissionSnapshot: caller.admissionSnapshot,
-    executionCtx,
-    requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
-  });
-  return applyCorsHeaders(await handler(c.req.raw), CORS_METHODS);
 }
 
 const __hono_app = new Hono<AppEnv>();
