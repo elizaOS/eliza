@@ -775,14 +775,20 @@ function MonthGrid({
 
   return (
     <div className="overflow-hidden" data-testid="calendar-month-grid">
-      <div className="grid grid-cols-7 border-b border-border/12 text-[10px] font-medium text-muted">
+      <div
+        className="grid border-b border-border/12 text-[10px] font-medium text-muted"
+        style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+      >
         {weekdayLabels.map((label) => (
           <div key={label} className="px-2 py-1.5 text-center">
             {label}
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-px bg-border/8">
+      <div
+        className="grid gap-px bg-border/8"
+        style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+      >
         {days.map((day) => {
           const key = toLocalDayKey(day);
           const dayEvents = eventsByDay.get(key) ?? [];
