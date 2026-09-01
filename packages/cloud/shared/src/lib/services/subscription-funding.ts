@@ -201,6 +201,7 @@ export class SubscriptionFundingService {
     ]);
     let purchasedDebit = false;
     const result = await writeTransaction(async (tx) => {
+      // Cash-only reservations never enter the allowance repository, so this is their sole organization lock.
       await lockOrganization(tx, input.organizationId);
       const now = await readPostLockDatabaseNow(tx);
       const fundingClass = SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation];
