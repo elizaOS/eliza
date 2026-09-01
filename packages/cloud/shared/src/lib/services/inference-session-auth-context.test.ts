@@ -80,6 +80,9 @@ mock.module("./inference-credential-revocation", () => ({
     _organizationId: string,
     credential: Record<string, unknown>,
   ) => {
+    if (process.env.INFERENCE_STRONG_REVOCATION_ENABLED !== "true") {
+      return Promise.resolve();
+    }
     strongCredentialChecks.push(credential);
     return assertSessionActive();
   },
@@ -105,6 +108,7 @@ function request(): Request {
 }
 
 beforeEach(async () => {
+  process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
   __clearInferenceSessionAuthHydrations();
   claims = {
     userId: "steward-1",
@@ -200,6 +204,59 @@ describe("resolveInferenceSessionAuthContext", () => {
       stewardUserId: "steward-1",
       issuedAt: claims?.issuedAt,
     });
+  });
+
+  test("warm verified session carries its signed credential into admission without a standalone check", async () => {
+    const waited: Promise<unknown>[] = [];
+    await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    await Promise.all(waited);
+    strongCredentialChecks.length = 0;
+    const cacheRead = spyOn(cache, "getWithOutcome");
+
+    const result = await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      deferStrongCredentialCheck: true,
+    });
+
+    expect(result).toMatchObject({
+      kind: "authorized",
+      source: "cache",
+      credential: {
+        kind: "steward_session",
+        userId: "user-1",
+        stewardUserId: "steward-1",
+        issuedAt: claims?.issuedAt,
+      },
+    });
+    expect(cacheRead).toHaveBeenCalledTimes(1);
+    expect(strongCredentialChecks).toHaveLength(0);
+  });
+
+  test("flag-off Steward auth never defers its signed credential into admission", async () => {
+    const waited: Promise<unknown>[] = [];
+    await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    await Promise.all(waited);
+    process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "false";
+    strongCredentialChecks.length = 0;
+
+    const result = await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      deferStrongCredentialCheck: true,
+    });
+
+    expect(result).toMatchObject({ kind: "authorized", source: "cache" });
+    expect(result).not.toHaveProperty("credential");
+    expect(strongCredentialChecks).toHaveLength(0);
   });
 
   test("warm verified session is denied when its issued-at cutoff is revoked", async () => {

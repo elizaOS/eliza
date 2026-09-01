@@ -47,7 +47,10 @@ import {
 } from "./inference-auth-cache";
 import {
   assertInferenceCredentialActive,
+  type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+  isInferenceStrongRevocationEnabled,
 } from "./inference-credential-revocation";
 import { isInferenceAuthCacheEnabled } from "./inference-hot-path-caches";
 import { resolveInferenceSessionAuthContext } from "./inference-session-auth-context";
@@ -142,6 +145,8 @@ export interface ResolveInferenceAuthOptions {
   forceAuthoritative?: boolean;
   /** Internal hook preserving a bounded authoritative standing reason. */
   onAuthoritativeRejection?(reason: InferenceAuthRejectionReason): void;
+  /** The caller will fuse this strong check into its atomic admission lease. */
+  deferStrongCredentialCheck?: boolean;
 }
 
 interface MutableInferenceAuthTrace {
@@ -181,23 +186,6 @@ function boundedTraceId(traceId: string | undefined): string {
 
 function durationSince(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 100) / 100;
-}
-
-function rejectionReasonForRevocation(reason: string): InferenceAuthRejectionReason {
-  switch (reason) {
-    case "organization_disabled":
-      return "organization_inactive";
-    case "subject_account_disabled":
-      return "account_inactive";
-    case "subject_membership_disabled":
-      return "membership_missing";
-    case "subject_moderation_disabled":
-      return "moderation_blocked";
-    case "credential_revoked":
-      return "credential_inactive";
-    default:
-      return "credential_invalid";
-  }
 }
 
 function controlledProbeDiscriminator(req: Request): string | null {
@@ -265,6 +253,7 @@ export type InferenceAuthResolution =
       kind: "authorized";
       ctx: ResolvedInferenceAuthContext;
       source: "cache" | "origin";
+      credential?: InferenceCredentialCheck;
     }
   | { kind: "suspended"; userId?: string; reason?: InferenceAuthRejectionReason }
   | { kind: "rejected"; status: 401 | 403; reason?: InferenceAuthRejectionReason }
@@ -546,6 +535,8 @@ export async function resolveInferenceAuthContext(
 
   try {
     const authCacheEnabled = isInferenceAuthCacheEnabled();
+    const deferStrongCredentialCheck =
+      options.deferStrongCredentialCheck === true && isInferenceStrongRevocationEnabled();
     const extractStartedAt = performance.now();
     const credential = extractApiKeyCredentialWithSource(req);
     trace.timings.extractMs = durationSince(extractStartedAt);
@@ -554,6 +545,7 @@ export async function resolveInferenceAuthContext(
         cacheOnly: authCacheEnabled && options.cacheOnly,
         useAuthCache: authCacheEnabled,
         executionCtx: options.executionCtx,
+        deferStrongCredentialCheck,
       });
       if (session.kind === "not_session") {
         return { kind: "slow_path", reason: "non_api_key" };
@@ -618,16 +610,30 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead = cached.kind;
       trace.cacheBackend = cached.backend;
       if (cached.kind === "hit") {
+        const credential: InferenceCredentialCheck = {
+          kind: "api_key",
+          credentialId: cached.ctx.apiKeyId,
+          userId: cached.ctx.userId,
+        };
+        if (deferStrongCredentialCheck) {
+          observeInferenceApiKeyUsage(
+            { kind: "authorized", ctx: cached.ctx, source: "cache" },
+            options.executionCtx,
+          );
+          trace.result = "authorized_cache";
+          return {
+            kind: "authorized",
+            ctx: cached.ctx,
+            source: "cache",
+            credential,
+          };
+        }
         try {
-          await assertInferenceCredentialActive(cached.ctx.orgId, {
-            kind: "api_key",
-            credentialId: cached.ctx.apiKeyId,
-            userId: cached.ctx.userId,
-          });
+          await assertInferenceCredentialActive(cached.ctx.orgId, credential);
         } catch (error) {
           if (error instanceof InferenceCredentialRevokedError) {
             trace.result = error.reason === "credential_revoked" ? "rejected" : "suspended";
-            const reason = rejectionReasonForRevocation(error.reason);
+            const reason = inferenceCredentialRevocationReason(error.reason);
             logStandingDenial({
               status: error.reason === "credential_revoked" ? 401 : 403,
               reason,
@@ -749,15 +755,17 @@ export async function resolveInferenceAuthContext(
       ...(admission ? { admission } : {}),
     };
     try {
-      await assertInferenceCredentialActive(ctx.orgId, {
-        kind: "api_key",
-        credentialId: ctx.apiKeyId,
-        userId: ctx.userId,
-      });
+      if (!deferStrongCredentialCheck) {
+        await assertInferenceCredentialActive(ctx.orgId, {
+          kind: "api_key",
+          credentialId: ctx.apiKeyId,
+          userId: ctx.userId,
+        });
+      }
     } catch (error) {
       if (error instanceof InferenceCredentialRevokedError) {
         trace.result = error.reason === "credential_revoked" ? "rejected" : "suspended";
-        const reason = rejectionReasonForRevocation(error.reason);
+        const reason = inferenceCredentialRevocationReason(error.reason);
         logStandingDenial({
           status: error.reason === "credential_revoked" ? 401 : 403,
           reason,
@@ -773,7 +781,20 @@ export async function resolveInferenceAuthContext(
     trace.result = "authorized_origin";
     const cacheWriteStartedAt = performance.now();
     if (!authCacheEnabled) {
-      return { kind: "authorized", ctx, source: "origin" };
+      return {
+        kind: "authorized",
+        ctx,
+        source: "origin",
+        ...(deferStrongCredentialCheck
+          ? {
+              credential: {
+                kind: "api_key" as const,
+                credentialId: ctx.apiKeyId,
+                userId: ctx.userId,
+              },
+            }
+          : {}),
+      };
     }
     const cacheWrite = writeInferenceAuthContext(ctx);
     if (cacheAvailable && typeof options.executionCtx?.waitUntil === "function") {
@@ -792,7 +813,20 @@ export async function resolveInferenceAuthContext(
       trace.cacheWrite = write.kind;
       trace.cacheBackend = write.backend;
     }
-    return { kind: "authorized", ctx, source: "origin" };
+    return {
+      kind: "authorized",
+      ctx,
+      source: "origin",
+      ...(deferStrongCredentialCheck
+        ? {
+            credential: {
+              kind: "api_key" as const,
+              credentialId: ctx.apiKeyId,
+              userId: ctx.userId,
+            },
+          }
+        : {}),
+    };
   } catch (error) {
     if (authoritativeStandingReason && !standingDenialLogged) {
       const status = getErrorStatusCode(error);
