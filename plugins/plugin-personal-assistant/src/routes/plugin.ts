@@ -439,6 +439,7 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/features/toggle" },
   { type: "GET", path: "/api/lifeops/agreements" },
+  { type: "POST", path: "/api/lifeops/agreements" },
   {
     type: "POST",
     path: "/api/lifeops/agreement-uploads",

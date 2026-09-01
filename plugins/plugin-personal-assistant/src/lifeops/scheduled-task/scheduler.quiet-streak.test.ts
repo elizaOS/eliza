@@ -7,7 +7,7 @@
  * (no history, streak broken by a reply, approvals) prove the softening is
  * scoped and reversible.
  */
-import { EventType, type Memory } from "@elizaos/core";
+import { EventType, type Memory, stringToUuid } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -29,7 +29,7 @@ import {
 
 type Runtime = RealTestRuntimeResult["runtime"];
 
-const OWNER_ENTITY_ID = "owner-entity-1";
+const OWNER_ENTITY_ID = stringToUuid("quiet-streak-owner");
 
 let runtimeResult: RealTestRuntimeResult | undefined;
 
@@ -381,7 +381,7 @@ describe("processDueScheduledTasks — quiet streak softens the next no-reply la
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", OWNER_ENTITY_ID, false);
-    const roomId = "room-quiet-streak-1";
+    const roomId = stringToUuid("room-quiet-streak-1");
 
     const repo = new LifeOpsRepository(runtime);
     const firedAtIso = new Date(Date.now() - 5 * 60_000).toISOString();
@@ -410,7 +410,7 @@ describe("processDueScheduledTasks — quiet streak softens the next no-reply la
 
     await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
       message: {
-        id: "msg-quiet-streak-reply",
+        id: stringToUuid("msg-quiet-streak-reply"),
         entityId: OWNER_ENTITY_ID,
         roomId,
         agentId: runtime.agentId,
