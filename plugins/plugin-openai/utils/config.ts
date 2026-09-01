@@ -94,7 +94,7 @@ export function isCerebrasMode(runtime: IAgentRuntime): boolean {
     return true;
   }
   const baseURL = getSetting(runtime, "OPENAI_BASE_URL");
-  if (baseURL && /(^|\.)cerebras\.ai(\/|$)/i.test(baseURL)) {
+  if (baseURL && providerForEndpoint(baseURL) === "cerebras") {
     return true;
   }
   const cerebrasKey = getSetting(runtime, "CEREBRAS_API_KEY");
@@ -124,7 +124,7 @@ export function isEvoLinkMode(runtime: IAgentRuntime): boolean {
     return true;
   }
   const baseURL = getSetting(runtime, "OPENAI_BASE_URL");
-  if (baseURL && /(^|\.)evolink\.ai(\/|$)/i.test(baseURL)) {
+  if (baseURL && providerForEndpoint(baseURL) === "evolink") {
     return true;
   }
   const evolinkKey = getSetting(runtime, "EVOLINK_API_KEY");

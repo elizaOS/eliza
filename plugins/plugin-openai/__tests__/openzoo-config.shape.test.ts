@@ -110,6 +110,26 @@ describe("key and endpoint belong to the same vendor", () => {
     expect(getApiKey(cross)).toBeUndefined();
   });
 
+  it("ignores sibling lookalikes smuggled into the URL's query or fragment", () => {
+    // The predicates classify by PARSED host via providerForEndpoint, so a
+    // cerebras.ai/evolink.ai string in a query or fragment must not flip the
+    // key or the label while the request goes elsewhere with the OpenAI key.
+    const query = buildRuntime({
+      OPENAI_API_KEY: "sk-openai",
+      OPENAI_BASE_URL: "https://proxy.example.com/v1?next=.cerebras.ai/",
+    });
+    expect(isCerebrasMode(query)).toBe(false);
+    expect(getUsageProvider(query)).toBe("openai");
+    expect(getApiKey(query)).toBe("sk-openai");
+
+    const fragment = buildRuntime({
+      OPENAI_API_KEY: "sk-openai",
+      OPENAI_BASE_URL: "https://proxy.example.com/v1#.evolink.ai/",
+    });
+    expect(getUsageProvider(fragment)).toBe("openai");
+    expect(getApiKey(fragment)).toBe("sk-openai");
+  });
+
   it("keeps key-alias inference for an undeclared environment", () => {
     const bare = buildRuntime({ CEREBRAS_API_KEY: "csk-live" });
     expect(isCerebrasMode(bare)).toBe(true);
