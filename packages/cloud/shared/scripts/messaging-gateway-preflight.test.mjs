@@ -50,6 +50,9 @@ const EXPECTED_SOURCE_ONLY_WORKFLOW = {
       steps: [
         {
           uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          with: {
+            "persist-credentials": false,
+          },
         },
         {
           uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
