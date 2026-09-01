@@ -1123,6 +1123,66 @@ describe("hydration escape (#18246 — warming must not loop forever)", () => {
     release?.();
   });
 
+  test("a late projection re-checks freshness after its strong-credential await", async () => {
+    // The generation check is check-then-act: gen-1 can pass it, then block in
+    // assertInferenceCredentialActive while gen-2 starts and writes. The stale
+    // write must not land behind the newer one.
+    let releaseCredential: (() => void) | undefined;
+    let credentialCalls = 0;
+    assertCredentialActive = async () => {
+      credentialCalls++;
+      if (credentialCalls === 1) {
+        await new Promise<void>((resolve) => {
+          releaseCredential = resolve;
+        });
+      }
+    };
+    authImpl = () =>
+      new Promise((resolve) => {
+        setTimeout(
+          () =>
+            resolve({
+              user: { id: "user-1", organization_id: "org-1" },
+              apiKey: { id: "key-1" },
+            }),
+          150,
+        );
+      });
+    const first: Promise<unknown>[] = [];
+    expect(
+      (
+        await resolveInferenceAuthContext(reqWithApiKey(), {
+          cacheOnly: true,
+          inlineContinuationDeadlineMs: 0,
+          executionCtx: workerCtx(first),
+        })
+      ).kind,
+    ).toBe("warming");
+    await Promise.all(first.splice(0));
+    // gen-1's late result is now parked inside the strong-credential await.
+    await new Promise((r) => setTimeout(r, 250));
+
+    // gen-2 runs to completion and owns the cache.
+    authImpl = async () => ({
+      user: { id: "user-2", organization_id: "org-2" },
+      apiKey: { id: "key-1" },
+    });
+    const second: Promise<unknown>[] = [];
+    await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      inlineContinuationDeadlineMs: 0,
+      executionCtx: workerCtx(second),
+    });
+    await Promise.all(second.splice(0));
+    expect((await readInferenceAuthContext(hashApiKey(KEY)))?.userId).toBe("user-2");
+
+    // Now let gen-1's parked projection proceed. It must observe that it is no
+    // longer current and leave gen-2's entry alone.
+    releaseCredential?.();
+    await new Promise((r) => setTimeout(r, 200));
+    expect((await readInferenceAuthContext(hashApiKey(KEY)))?.userId).toBe("user-2");
+  });
+
   test("a definitive rejection arriving after the deadline is still cached fail-closed", async () => {
     // The late stage must project a negative decision as well as a positive
     // one: a rejection that lands after the deadline is still authoritative.

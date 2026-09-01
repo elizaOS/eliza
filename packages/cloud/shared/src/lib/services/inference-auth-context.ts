@@ -454,13 +454,23 @@ function getOrCreateApiKeyHydration(
     }),
   ]);
 
-  const projectResolution = async (result: InferenceAuthResolution): Promise<void> => {
+  /**
+   * Projects one authoritative resolution into the decision cache. `isCurrent`
+   * is re-evaluated immediately before each write rather than once up front:
+   * the awaits below (the strong-credential gate in particular) are exactly
+   * where a newer hydration can overtake this one.
+   */
+  const projectResolution = async (
+    result: InferenceAuthResolution,
+    isCurrent?: () => boolean,
+  ): Promise<void> => {
     if (result.kind === "authorized" && "keyHash" in result.ctx) {
       await assertInferenceCredentialActive(result.ctx.orgId, {
         kind: "api_key",
         credentialId: result.ctx.apiKeyId,
         userId: result.ctx.userId,
       });
+      if (isCurrent && !isCurrent()) return;
       const startedAt = performance.now();
       const write = await writeInferenceAuthContext(result.ctx);
       const telemetry = freezeCacheWriteTrace(options.traceId, write, startedAt);
@@ -479,6 +489,7 @@ function getOrCreateApiKeyHydration(
     const decision = result.kind === "suspended" ? "suspended" : "rejected";
     const reason =
       result.reason ?? (result.kind === "suspended" ? "moderation_blocked" : "credential_invalid");
+    if (isCurrent && !isCurrent()) return;
     const write = await writeInferenceApiKeyAuthRejection(keyHash, decision, status, reason);
     if (write.kind !== "written") {
       logger.warn("[InferenceAuth] negative decision cache write failed", {
@@ -496,15 +507,26 @@ function getOrCreateApiKeyHydration(
         // fresh attempt. The attempt itself may still succeed, so project that
         // late result without holding this promise: a never-settling attempt
         // must not keep waitUntil open.
+        const isCurrentGeneration = () =>
+          apiKeyHydrationGenerations.get(keyHash) === generation;
         void attempt
           .then((late) => {
             // A newer hydration already owns this key: it is strictly closer to
             // the authoritative state, so drop this late result rather than
-            // overwrite the cache behind it.
-            if (!late || apiKeyHydrationGenerations.get(keyHash) !== generation) return;
-            return projectResolution(late);
+            // overwrite the cache behind it. Re-checked inside the projection,
+            // after its awaits, because this one can go stale in between.
+            if (!late || !isCurrentGeneration()) return;
+            return projectResolution(late, isCurrentGeneration);
           })
-          .catch(() => undefined);
+          .catch((error) => {
+            // error-policy:J7 the authoritative decision is independently
+            // observed; a failed late projection remains fail-closed and must
+            // not surface as an unhandled rejection.
+            logger.warn("[InferenceAuth] late cache projection failed", {
+              traceId: boundedTraceId(options.traceId),
+              errorName: error instanceof Error ? error.name : "UnknownError",
+            });
+          });
         return;
       }
       return await projectResolution(result);
