@@ -155,4 +155,27 @@ describe("api-key IAC validators", () => {
     await Promise.all(cleanup);
     await expect(cache.get(key)).resolves.toBeNull();
   });
+
+  test("a positive entry without its subscription entitlement reads as invalid", async () => {
+    const key = CacheKeys.inference.authContext(KEY_HASH);
+    const { subscriptionFunded: _subscriptionFunded, ...incompleteAdmission } = ADMISSION;
+    await cache.set(
+      key,
+      {
+        v: INFERENCE_AUTH_CONTEXT_VERSION,
+        cachedAt: Date.now(),
+        userId: "user-1",
+        orgId: "org-1",
+        apiKeyId: "key-1",
+        keyHash: KEY_HASH,
+        appScopeId: null,
+        admission: incompleteAdmission,
+      },
+      60,
+    );
+
+    await expect(readInferenceAuthContextWithOutcome(KEY_HASH)).resolves.toMatchObject({
+      kind: "invalid",
+    });
+  });
 });
