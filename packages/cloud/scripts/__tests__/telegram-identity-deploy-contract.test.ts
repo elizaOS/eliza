@@ -82,7 +82,8 @@ describe("protected Telegram identity workflow contract", () => {
     });
     expect(attest.run).toContain("verify-telegram-bot-identity.mjs");
     expect(select.run).toContain("packages/homepage/src/lib/contact.ts");
-    expect(select.run).toContain("STAGING_TELEGRAM_BOT_ID");
+    expect(select.run).toContain("ENVIRONMENT_TELEGRAM_BOT_ID");
+    expect(select.run).toContain("TELEGRAM_IDENTITY_AUTHORITY_SHA256");
 
     const prepare = namedStep(
       deploy,

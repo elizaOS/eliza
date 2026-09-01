@@ -1,6 +1,7 @@
 /** Exercises value-safe Telegram getMe attestation without real provider traffic. */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import {
   __resetTelegramIdentityAttestationCacheForTests,
   attestTelegramBotIdentity,
@@ -13,6 +14,17 @@ const expected = {
   botId: "123456789",
   botUsername: "ElizaTestBot",
 };
+
+async function captureFailure<T>(promise: Promise<T>): Promise<unknown> {
+  try {
+    await promise;
+    throw new Error("Expected Telegram identity attestation to reject");
+  } catch (error) {
+    // error-policy:J1 the test assertion boundary observes the exact typed
+    // rejection instead of suppressing it.
+    return error;
+  }
+}
 
 function providerIdentity(overrides: Record<string, unknown> = {}): Response {
   return Response.json({
@@ -56,13 +68,18 @@ describe("attestTelegramBotIdentity", () => {
     const provider = mock(async () => providerIdentity());
     globalThis.fetch = provider as unknown as typeof fetch;
 
-    const error = await attestTelegramBotIdentity({
-      ...expected,
-      botToken: "987654321:test-credential",
-    }).catch((failure) => failure);
+    const error = await captureFailure(
+      attestTelegramBotIdentity({
+        ...expected,
+        botToken: "987654321:test-credential",
+      }),
+    );
 
     expect(error).toBeInstanceOf(TelegramIdentityAttestationError);
+    expect(error).toBeInstanceOf(ElizaError);
     expect(error).toMatchObject({
+      code: "TELEGRAM_IDENTITY_ATTESTATION_FAILED",
+      context: { reason: "identity_mismatch", retryable: false },
       reason: "identity_mismatch",
       retryable: false,
     });
@@ -78,9 +95,7 @@ describe("attestTelegramBotIdentity", () => {
       globalThis.fetch = mock(async () =>
         providerIdentity(result),
       ) as unknown as typeof fetch;
-      const error = await attestTelegramBotIdentity(expected).catch(
-        (failure) => failure,
-      );
+      const error = await captureFailure(attestTelegramBotIdentity(expected));
       expect(error).toMatchObject({
         name: "TelegramIdentityAttestationError",
         reason: "identity_mismatch",
@@ -98,9 +113,7 @@ describe("attestTelegramBotIdentity", () => {
       }),
     ) as unknown as typeof fetch;
 
-    const error = await attestTelegramBotIdentity(expected).catch(
-      (failure) => failure,
-    );
+    const error = await captureFailure(attestTelegramBotIdentity(expected));
 
     expect(error).toMatchObject({
       name: "TelegramIdentityAttestationError",
@@ -120,9 +133,7 @@ describe("attestTelegramBotIdentity", () => {
       { ...expected, botId: "0" },
       { ...expected, botUsername: "not-a-managed-name" },
     ]) {
-      const error = await attestTelegramBotIdentity(config).catch(
-        (failure) => failure,
-      );
+      const error = await captureFailure(attestTelegramBotIdentity(config));
       expect(error).toBeInstanceOf(TelegramIdentityAttestationError);
       expect(error).toMatchObject({ retryable: false });
     }

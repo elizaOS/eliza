@@ -11,10 +11,12 @@ const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_BOT_ID = 4_503_599_627_370_495;
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-export class TelegramIdentityVerificationError extends Error {
+class TelegramIdentityVerificationError extends Error {
   constructor(reason) {
     super("Telegram bot identity verification failed");
     this.name = "TelegramIdentityVerificationError";
+    this.code = "TELEGRAM_IDENTITY_VERIFICATION_FAILED";
+    this.context = { reason };
     this.reason = reason;
   }
 }
@@ -66,6 +68,8 @@ export async function verifyTelegramBotIdentity(input, dependencies = {}) {
       },
     );
   } catch {
+    // error-policy:J1 the provider boundary discards the credential-bearing
+    // transport cause and exposes only a bounded deployment failure reason.
     fail("provider_unavailable");
   }
 
@@ -73,6 +77,8 @@ export async function verifyTelegramBotIdentity(input, dependencies = {}) {
   try {
     payload = await response.json();
   } catch {
+    // error-policy:J3 Telegram response JSON is untrusted and produces an
+    // explicit bounded invalid-provider result.
     fail("provider_unavailable");
   }
   if (!response.ok || payload?.ok !== true) fail("provider_unavailable");
@@ -123,6 +129,8 @@ async function main() {
     });
     console.log(`Telegram identity attestation passed for ${context}.`);
   } catch (error) {
+    // error-policy:J1 the CLI boundary emits only the allowlisted reason and
+    // never provider payloads, expected identity values, or credentials.
     const reason =
       error instanceof TelegramIdentityVerificationError
         ? error.reason

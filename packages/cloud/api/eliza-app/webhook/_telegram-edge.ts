@@ -249,6 +249,8 @@ export async function personalTelegramIdentityFailure(
     await requirePersonalTelegramIdentity(c.env);
     return null;
   } catch (error) {
+    // error-policy:J1 the authenticated gateway boundary returns a sanitized
+    // fail-closed identity response before delivery state is allocated.
     return personalTelegramIdentityFailureResponse(c, error);
   }
 }
@@ -261,6 +263,8 @@ export async function handlePersonalTelegramIdentityReadiness(
     const identity = await requirePersonalTelegramIdentity(c.env);
     return c.json({ status: "attested", project: identity.project });
   } catch (error) {
+    // error-policy:J1 the public readiness boundary exposes only the bounded
+    // identity reason and never credential or provider details.
     return personalTelegramIdentityFailureResponse(c, error);
   }
 }
@@ -721,6 +725,8 @@ export async function dispatchPersonalTelegramReminder(
   try {
     identity = await requirePersonalTelegramIdentity(env);
   } catch (error) {
+    // error-policy:J1 proactive delivery translates an unattested identity to
+    // an explicit not-accepted result before ledger or provider work.
     return {
       ok: false,
       acceptance: "not_accepted",
@@ -969,6 +975,8 @@ export async function handlePersonalTelegramEdge(
   try {
     identity = await requirePersonalTelegramIdentity(c.env);
   } catch (error) {
+    // error-policy:J1 the provider webhook boundary fails closed with a
+    // sanitized identity response before parsing or allocating delivery state.
     return personalTelegramIdentityFailureResponse(c, error);
   }
   const rawBody = await c.req.text();
