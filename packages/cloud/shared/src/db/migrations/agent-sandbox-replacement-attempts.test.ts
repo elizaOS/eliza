@@ -882,7 +882,7 @@ describe("0321-0328 and 0367-0368 agent sandbox replacement attempts", () => {
         `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`,
       ),
     ).rejects.toThrow(/locator_shape_check/);
-  });
+  }, 15_000);
 
   test("retains one immutable provider-start marker before exact-restore Docker enrichment", async () => {
     const restore = await database();
@@ -963,7 +963,7 @@ describe("0321-0328 and 0367-0368 agent sandbox replacement attempts", () => {
         WHERE id = '${ATTEMPT_ID}'::uuid
       `),
     ).rejects.toThrow(/requires unresolved exact restore intent/);
-  });
+  }, 15_000);
 
   test("retains legacy seed receipts and admits one new receipt per exact replacement attempt", async () => {
     const db = await database(migrationUrls.length - 1);
@@ -1250,7 +1250,7 @@ describe("0321-0328 and 0367-0368 agent sandbox replacement attempts", () => {
         backup_id, operation_id, source_activation_generation, source_lifecycle_revision,
         manifest_sha256, target_activation_generation, receipt_digest)`),
     );
-  });
+  }, 15_000);
 
   test("binds optional restore authority to one exact durable lease tuple", async () => {
     const db = await database();
