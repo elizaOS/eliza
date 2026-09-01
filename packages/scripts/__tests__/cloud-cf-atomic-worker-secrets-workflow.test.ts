@@ -102,6 +102,20 @@ describe("Cloud CF atomic Worker secrets deploy", () => {
     expect(verify.run).toContain('"VOICE_REALTIME_ELIZA_AUTHORIZATION"');
   });
 
+  test("publishes the controlled inference-auth probe token only in staging", () => {
+    const prepare = step("Prepare Worker secrets for atomic deploy");
+    expect(prepare.env?.INFERENCE_AUTH_PROBE_TOKEN).toBe(
+      "$" +
+        "{{ steps.env.outputs.deploy_environment == 'staging' && secrets.INFERENCE_AUTH_PROBE_TOKEN || '' }}",
+    );
+    expect(prepare.run).toContain(
+      'if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then\n  queue_secret INFERENCE_AUTH_PROBE_TOKEN || exit 1\nfi',
+    );
+    expect(prepare.run).not.toContain(
+      "queue_toggle_secret INFERENCE_AUTH_PROBE_TOKEN",
+    );
+  });
+
   test("preflights and atomically verifies protected mobile App Auth bindings", () => {
     const preflight = step("Validate protected mobile App Auth registration");
     const prepare = step("Prepare Worker secrets for atomic deploy");

@@ -1,5 +1,6 @@
-// app/api/v1/chat/completions/route.ts
+/** Implements the OpenAI-compatible chat-completions boundary and its streaming accounting. */
 import { Hono } from "hono";
+import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -103,6 +104,13 @@ import {
   resolveInferenceAuthContext,
 } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import {
+  assertInferenceCredentialActive,
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+  isInferenceStrongRevocationEnabled,
+} from "@/lib/services/inference-credential-revocation";
 import {
   createPassthroughStreamMeter,
   isPassthroughStreamingEnabled,
@@ -1207,19 +1215,23 @@ export async function handleChatCompletionsPOST(
 
   try {
     // 1. Authenticate (+ moderation). API-key and Steward-session requests
-    // resolve auth + org + moderation from a combined cache decision. Cold
-    // Workers schedule authoritative hydration and return a retryable response;
-    // only non-Worker callers may join that hydration inline.
+    // resolve auth + org + moderation from a combined cache decision. On one
+    // true cold miss, Workers may consume the retained authoritative decision
+    // under a bounded deadline; its cache projection remains off-path.
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
     let moderationAlreadyChecked = false;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+    let admissionCredential: InferenceCredentialCheck | undefined;
     let appScopeId: string | null = null;
 
+    const deferStrongCredentialCheck =
+      Boolean(options.executionCtx) && isInferenceStrongRevocationEnabled();
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
       cacheOnly: Boolean(options.executionCtx),
+      deferStrongCredentialCheck,
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },
@@ -1241,43 +1253,48 @@ export async function handleChatCompletionsPOST(
       );
     }
     if (resolution.kind === "suspended") {
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "chat_completions",
+        traceId,
+      });
       return attachPreforwardTelemetry(
         addCorsHeaders(
           Response.json(
             {
               error: {
-                message:
-                  "Your account has been suspended due to policy violations.",
-                type: "account_suspended",
-                code: "moderation_violation",
+                message: denial.message,
+                type: denial.type,
+                code: denial.code,
+                details: { reason: denial.reason },
               },
             },
-            { status: 403 },
+            { status: denial.status },
           ),
         ),
       );
     }
     if (resolution.kind === "rejected") {
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "chat_completions",
+        traceId,
+      });
       return attachPreforwardTelemetry(
         addCorsHeaders(
           Response.json(
             {
               error: {
-                message:
-                  resolution.status === 403
-                    ? "Account or organization access is disabled."
-                    : "Authentication required.",
-                type:
-                  resolution.status === 403
-                    ? "permission_error"
-                    : "authentication_error",
-                code:
-                  resolution.status === 403
-                    ? "access_denied"
-                    : "authentication_required",
+                message: denial.message,
+                type: denial.type,
+                code: denial.code,
+                details: { reason: denial.reason },
               },
             },
-            { status: resolution.status },
+            {
+              status: denial.status,
+              headers: denial.retryAfterSeconds
+                ? { "Retry-After": String(denial.retryAfterSeconds) }
+                : undefined,
+            },
           ),
         ),
       );
@@ -1289,6 +1306,7 @@ export async function handleChatCompletionsPOST(
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       admissionSnapshot = resolution.ctx.admission;
+      admissionCredential = resolution.credential;
       appScopeId =
         "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null;
       // The resolver already verified not-suspended (cache hit = at populate;
@@ -1702,9 +1720,21 @@ export async function handleChatCompletionsPOST(
           useMonetizedAppBilling,
         })
       ) {
+        if (admissionCredential) {
+          await assertInferenceCredentialActive(
+            user.organization_id,
+            admissionCredential,
+          );
+        }
         settleReservation = async () => null;
         settleUnknown = async () => null;
       } else if (useAppCredits && appId && monetizedApp) {
+        if (admissionCredential) {
+          await assertInferenceCredentialActive(
+            user.organization_id,
+            admissionCredential,
+          );
+        }
         assertInferenceAppAffiliateSupported(appId, affiliateCode);
         const { totalCost } = await calculateCost(
           normalizedModel,
@@ -1779,6 +1809,7 @@ export async function handleChatCompletionsPOST(
           affiliateCode,
           executionCtx: options.executionCtx,
           admissionSnapshot,
+          credential: admissionCredential,
         });
         settleReservation = admission.settle;
         settleUnknown = admission.settleUnknown;
@@ -1786,6 +1817,33 @@ export async function handleChatCompletionsPOST(
         billingReservation = admission.reservation;
       }
     } catch (error) {
+      if (error instanceof InferenceCredentialRevokedError) {
+        const reason = inferenceCredentialRevocationReason(error.reason);
+        const denial = resolveInferenceAuthStandingDenial(
+          reason === "moderation_blocked" ||
+            reason === "organization_inactive" ||
+            reason === "account_inactive" ||
+            reason === "membership_missing"
+            ? { kind: "suspended", reason }
+            : { kind: "rejected", status: 401, reason },
+          { route: "chat_completions", traceId },
+        );
+        return attachPreforwardTelemetry(
+          addCorsHeaders(
+            Response.json(
+              {
+                error: {
+                  message: denial.message,
+                  type: denial.type,
+                  code: denial.code,
+                  details: { reason: denial.reason },
+                },
+              },
+              { status: denial.status },
+            ),
+          ),
+        );
+      }
       if (error instanceof InferenceAppAffiliateUnsupportedError) {
         return addCorsHeaders(
           Response.json(

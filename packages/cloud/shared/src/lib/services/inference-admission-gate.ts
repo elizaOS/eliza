@@ -19,6 +19,10 @@ import { getCloudBinding } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { type CreditReconciliationResult, creditsService } from "./credits";
 import type { InferenceAdmissionRecoveryContext } from "./inference-admission-recovery";
+import {
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+} from "./inference-credential-revocation";
 import type { EndpointType } from "./org-rate-limits";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
@@ -529,6 +533,8 @@ export async function acquireInferenceAdmissionLease(params: {
   balanceRevision: string;
   estimatedCostUsd: number;
   recovery: InferenceAdmissionRecoveryContext;
+  /** Strong standing proof fused into the lease transaction when supplied. */
+  credential?: InferenceCredentialCheck;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }): Promise<InferenceAdmissionLease> {
   const balanceUsd = finiteNonNegative(params.balanceUsd, "balanceUsd");
@@ -547,7 +553,7 @@ export async function acquireInferenceAdmissionLease(params: {
   const stub = gateStub(params.organizationId);
   const response = await gateFetch(
     params.organizationId,
-    "/lease",
+    params.credential ? "/lease-authorized" : "/lease",
     {
       organizationId: params.organizationId,
       requestId: params.requestId,
@@ -555,10 +561,28 @@ export async function acquireInferenceAdmissionLease(params: {
       balanceRevision: params.balanceRevision,
       estimatedCostUsd,
       recovery: params.recovery,
+      ...(params.credential
+        ? {
+            credential: {
+              organizationId: params.organizationId,
+              ...params.credential,
+            },
+          }
+        : {}),
     },
     stub,
     AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
+  if (response.status === 403 && params.credential) {
+    let reason = "revoked";
+    try {
+      const payload = (await response.json()) as { reason?: unknown };
+      if (typeof payload.reason === "string") reason = payload.reason;
+    } catch {
+      // error-policy:J3 malformed denial output remains a fail-closed generic revocation.
+    }
+    throw new InferenceCredentialRevokedError(reason);
+  }
   if (response.status === 503) {
     const code = await readGateErrorCode(response);
     if (code === "inference_admission_gate_uninitialized" && params.executionCtx) {

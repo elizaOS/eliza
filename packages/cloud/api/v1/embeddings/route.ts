@@ -10,6 +10,7 @@
 
 import { APICallError, embed, embedMany, RetryError } from "ai";
 import { Hono } from "hono";
+import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -124,37 +125,40 @@ app.post("/", async (c) => {
       );
     }
     if (resolution.kind === "suspended") {
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "embeddings",
+        traceId: c.get("traceId") ?? c.get("requestId"),
+      });
       return c.json(
         {
           error: {
-            message:
-              "Your account has been suspended due to policy violations.",
-            type: "account_suspended",
-            code: "moderation_violation",
+            message: denial.message,
+            type: denial.type,
+            code: denial.code,
+            details: { reason: denial.reason },
           },
         },
-        403,
+        denial.status,
       );
     }
     if (resolution.kind === "rejected") {
+      const denial = resolveInferenceAuthStandingDenial(resolution, {
+        route: "embeddings",
+        traceId: c.get("traceId") ?? c.get("requestId"),
+      });
       return c.json(
         {
           error: {
-            message:
-              resolution.status === 403
-                ? "Account or organization access is disabled."
-                : "Authentication required.",
-            type:
-              resolution.status === 403
-                ? "permission_error"
-                : "authentication_error",
-            code:
-              resolution.status === 403
-                ? "access_denied"
-                : "authentication_required",
+            message: denial.message,
+            type: denial.type,
+            code: denial.code,
+            details: { reason: denial.reason },
           },
         },
-        resolution.status,
+        denial.status,
+        denial.retryAfterSeconds
+          ? { "Retry-After": String(denial.retryAfterSeconds) }
+          : undefined,
       );
     }
     if (resolution.kind === "authorized") {

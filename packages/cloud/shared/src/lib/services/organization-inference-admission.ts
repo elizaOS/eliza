@@ -60,6 +60,7 @@ import {
   createLedgerDebitSettler,
   resolveInferenceBillingLedger,
 } from "./inference-billing-ledger";
+import type { InferenceCredentialCheck } from "./inference-credential-revocation";
 
 export type InferenceAdmissionMode =
   | "durable_object_debit"
@@ -100,6 +101,8 @@ export interface OrganizationInferenceAdmissionParams {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   /** Combined auth-cache projection; skips the separate balance KV read. */
   admissionSnapshot?: InferenceAdmissionSnapshot;
+  /** Strong standing proof consumed atomically by the primary admission gate. */
+  credential?: InferenceCredentialCheck;
 }
 
 /** Retryable signal preserving route compatibility while identifying pricing hydration. */
@@ -384,6 +387,7 @@ export async function admitOrganizationInference(
               }
             : { kind: "direct_debit" },
         },
+        credential: params.credential,
         executionCtx: params.executionCtx,
       });
     } catch (error) {

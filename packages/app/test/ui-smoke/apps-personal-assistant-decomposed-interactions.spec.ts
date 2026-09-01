@@ -8,7 +8,7 @@
 // real state-changing interaction (channel/kind/status filters, calendar day
 // selection and month navigation). This is the interaction owner that closes
 
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -45,118 +45,74 @@ async function expectTopmostAtCenter(
   ).toBe(true);
 }
 
-test("calendar decomposed view: day selection and month navigation", async ({
-  page,
-}) => {
-  // /calendar mounts the canonical SimpleCalendarView (#17859 swapped the view
-  // bundle from the canonical Calendar view): a month grid with month/year
-  // navigation and a per-day agenda, always fetching a 42-day month-grid
-  // window. There is no Day/Week/Month mode control here anymore — that
-  // belongs to the retired unified CalendarView. The shipped month-grid
-  // behavior is covered by SimpleCalendarView.test.tsx.
-  // The feed mock anchors "Design sync" at the requested window start (the
-  // grid's first cell), so the populated feed renders as a day-cell event
-  // badge ("1 event on <date>").
-  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  const feedWindows: Array<{ timeMin: number; timeMax: number }> = [];
-  page.on("request", (request) => {
-    if (!request.url().includes("/api/lifeops/calendar/feed")) return;
-    const url = new URL(request.url());
-    const timeMin = Date.parse(url.searchParams.get("timeMin") ?? "");
-    const timeMax = Date.parse(url.searchParams.get("timeMax") ?? "");
-    if (Number.isFinite(timeMin) && Number.isFinite(timeMax)) {
-      feedWindows.push({ timeMin, timeMax });
-    }
-  });
-
+async function openPopulatedCalendar(page: Page): Promise<void> {
   await openAppPath(page, "/calendar");
-  await expect(page.getByTestId("simple-calendar-view")).toBeVisible({
+  await expect(page.getByTestId("lifeops-calendar-section")).toBeVisible({
     timeout: 60_000,
   });
-  // Today's cell is marked and the mocked feed rendered into the grid as an
-  // event badge (the events sit on the grid's first two days, which usually
-  // belong to the previous month, so the badge — not the agenda — is the
-  // deterministic populated signal).
-  await expect(page.locator('[aria-current="date"]').first()).toBeVisible({
+  await expect(page.getByText("Design sync").first()).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+test("calendar decomposed view: responsive modes and event creation", async ({
+  page,
+}) => {
+  await openPopulatedCalendar(page);
+
+  const monthMode = page.getByRole("button", { name: "Month", exact: true });
+  await expectTopmostAtCenter(monthMode, "Calendar Month mode");
+  await monthMode.click();
+  await expect(monthMode).toHaveAttribute("aria-pressed", "true");
+
+  const newEvent = page.getByTestId("lifeops-calendar-new-event");
+  await expectTopmostAtCenter(newEvent, "Calendar New event");
+  await newEvent.click();
+  await expect(page.getByTestId("event-editor-drawer")).toBeVisible({
     timeout: 15_000,
   });
   await expect(
-    page.getByRole("img", { name: /^1 event on / }).first(),
-  ).toBeVisible({ timeout: 15_000 });
-  // The initial fetch is a month-grid window (42 local days; ±1 for DST).
-  await expect
-    .poll(() => feedWindows.length, { timeout: 15_000 })
-    .toBeGreaterThan(0);
-  const initialWindow = feedWindows[0];
-  expect(initialWindow.timeMax - initialWindow.timeMin).toBeGreaterThanOrEqual(
-    41 * ONE_DAY_MS,
-  );
-  expect(initialWindow.timeMax - initialWindow.timeMin).toBeLessThanOrEqual(
-    43 * ONE_DAY_MS,
-  );
+    page.getByRole("button", { name: "Create event" }),
+  ).toBeVisible();
+});
 
-  // Day selection is a real client-side state change: the agenda panel's
-  // accessible name carries the raw selected date key, so pick an in-month,
-  // event-free day (the 15th, or the 16th when today IS the 15th, so the
-  // click always changes the selection) and assert the agenda re-targets it
-  // with the designed empty state.
-  const today = new Date();
-  const targetDay = today.getDate() === 15 ? 16 : 15;
-  const targetKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
-  const targetCell = page.locator(
-    `[data-agent-id="calendar-day-${targetKey}"]`,
-  );
-  await expect(targetCell).toBeVisible({ timeout: 15_000 });
-  await targetCell.scrollIntoViewIfNeeded();
-  await expectTopmostAtCenter(targetCell, `Calendar day cell ${targetKey}`);
-  await targetCell.click();
-  await expect(targetCell).toHaveAttribute("aria-pressed", "true", {
-    timeout: 15_000,
-  });
+test("calendar mobile layout keeps navigation and editor inside 390px viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPopulatedCalendar(page);
+
+  const dayMode = page.getByRole("button", { name: "Day", exact: true });
+  await expectTopmostAtCenter(dayMode, "Calendar Day mode");
+  await dayMode.click();
+  await expect(dayMode).toHaveAttribute("aria-pressed", "true");
+
+  const newEvent = page.getByTestId("lifeops-calendar-new-event");
+  await expectTopmostAtCenter(newEvent, "Calendar New event");
+  await expect(newEvent).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Previous" })).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Today" })).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Next" })).toBeInViewport();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+    "Calendar mobile shell must not introduce page-level horizontal overflow",
+  ).toBe(390);
+
+  await newEvent.click();
+  const editor = page.getByTestId("event-editor-drawer");
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  const editorBounds = await editor.boundingBox();
+  expect(editorBounds).not.toBeNull();
+  expect(editorBounds?.x).toBeGreaterThanOrEqual(0);
+  expect(
+    (editorBounds?.x ?? 0) + (editorBounds?.width ?? 0),
+  ).toBeLessThanOrEqual(390);
+  await expect(page.getByLabel("Event title")).toBeInViewport();
+  await expect(page.getByLabel("Start time")).toBeInViewport();
+  await expect(page.getByLabel("End time")).toBeInViewport();
   await expect(
-    page.locator(`section[aria-label="Events for ${targetKey}"]`),
-  ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("No plans yet").first()).toBeVisible({
-    timeout: 15_000,
-  });
-
-  // Month navigation is a real server-visible state change: "Next month"
-  // shifts the base date, useCalendarWeek refetches a later month-grid
-  // window, and the header label changes. The mock re-anchors its events to
-  // the new window start, so the event badge stays rendered.
-  const monthTrigger = page.getByRole("button", {
-    name: /^Choose month and year/,
-  });
-  await expect(monthTrigger).toBeVisible({ timeout: 15_000 });
-  const initialMonthLabel = (await monthTrigger.innerText()).trim();
-  const requestCountBeforeNav = feedWindows.length;
-  await page.getByRole("button", { name: /^Next month/ }).click();
-  await expect
-    .poll(
-      () =>
-        feedWindows
-          .slice(requestCountBeforeNav)
-          .some(
-            (window) =>
-              window.timeMin > initialWindow.timeMin &&
-              window.timeMax - window.timeMin >= 41 * ONE_DAY_MS &&
-              window.timeMax - window.timeMin <= 43 * ONE_DAY_MS,
-          ),
-      { timeout: 15_000 },
-    )
-    .toBe(true);
-  await expect(monthTrigger).not.toHaveText(initialMonthLabel, {
-    timeout: 15_000,
-  });
-  await expect(
-    page.getByRole("img", { name: /^1 event on / }).first(),
-  ).toBeVisible({ timeout: 15_000 });
-
-  // Reverse path: "Today" returns the grid to the current month.
-  await page.getByRole("button", { name: "Today", exact: true }).click();
-  await expect(monthTrigger).toHaveText(initialMonthLabel, {
-    timeout: 15_000,
-  });
+    page.getByRole("button", { name: "Create event" }),
+  ).toBeVisible();
 });
 
 test("inbox decomposed view: channel filters toggle", async ({ page }) => {
@@ -292,7 +248,7 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
   // branch. Toggling the "Organizations" kind filter narrows the node list to
   // the organization node only; "All" restores it.
   await openAppPath(page, "/relationships");
-  await expect(page.getByText("Graph (3)").first()).toBeVisible({
+  await expect(page.getByText("3 entities").first()).toBeVisible({
     timeout: 60_000,
   });
   await expect(page.getByText("Pat Doe").first()).toBeVisible({
@@ -319,10 +275,14 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     }
   }
 
+  const kindFilter = page.getByRole("button", {
+    name: /^Filter relationship type/,
+  });
+  await kindFilter.click();
   await page
-    .getByRole("button", { name: "Organizations", exact: true })
+    .getByRole("menuitemradio", { name: "Organizations", exact: true })
     .click();
-  await expect(page.getByText("Graph (1)").first()).toBeVisible({
+  await expect(page.getByText("1 entity").first()).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("Pat Doe")).toHaveCount(0, { timeout: 15_000 });
@@ -330,15 +290,13 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     timeout: 15_000,
   });
 
-  // #11144 guard: the first "All" kind chip is the one that used to sit under
-  // the removed global corner back button. Drive the real restore path through
-  // it, then assert every kind is visible again.
-  const allChip = page
-    .getByRole("button", { name: "All", exact: true })
-    .first();
-  await expectTopmostAtCenter(allChip, "Relationships All kind chip");
-  await allChip.click();
-  await expect(page.getByText("Graph (3)").first()).toBeVisible({
+  // #11144 guard: the filter trigger must remain reachable above the graph.
+  // Drive the real restore path through the dropdown and assert every kind is
+  // visible again.
+  await expectTopmostAtCenter(kindFilter, "Relationships kind filter");
+  await kindFilter.click();
+  await page.getByRole("menuitemradio", { name: "All", exact: true }).click();
+  await expect(page.getByText("3 entities").first()).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("Pat Doe").first()).toBeVisible({

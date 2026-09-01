@@ -26,6 +26,18 @@ function PassthroughComponent(props: { children?: ReactNode }): ReactNode {
   return createElement(Fragment, null, props.children);
 }
 
+function TestAlert({ children }: { children?: ReactNode }): ReactNode {
+  return createElement("div", { role: "alert" }, children);
+}
+
+function TestAlertDescription({
+  children,
+}: {
+  children?: ReactNode;
+}): ReactNode {
+  return createElement("div", null, children);
+}
+
 export class ElizaClient {}
 
 export const client = new ElizaClient();
@@ -149,7 +161,11 @@ export async function loadDesktopWorkspaceSnapshot(): Promise<{
 }
 
 export const Badge = PassthroughComponent;
+export const Alert = TestAlert;
+export const AlertDescription = TestAlertDescription;
+export const AlertTitle = PassthroughComponent;
 export const Button = TestButton;
+export const Card = PassthroughComponent;
 export const Checkbox = TestCheckbox;
 export const Input = (
   props: InputHTMLAttributes<HTMLInputElement>,

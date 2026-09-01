@@ -7,8 +7,8 @@ const requireServiceKey = mock(async () => ({
 }));
 const findOrCreateUserByWalletAddress = mock(async (walletAddress: string) => ({
   isNewAccount: true,
-  initialCreditsGranted: false,
-  initialFreeCreditsUsd: 0,
+  initialCreditsGranted: true,
+  initialFreeCreditsUsd: 5,
   user: {
     id: "agent-wallet-user",
     organization_id: "agent-wallet-org",

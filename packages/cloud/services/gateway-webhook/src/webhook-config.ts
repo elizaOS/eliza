@@ -25,9 +25,13 @@ export function resolveSharedWebhookConfig(
 
   switch (platform) {
     case "telegram":
-      base.botToken = getProjectEnv(project, "TELEGRAM_BOT_TOKEN");
-      base.botUsername = getProjectEnv(project, "TELEGRAM_BOT_USERNAME");
-      base.webhookSecret = getProjectEnv(project, "TELEGRAM_WEBHOOK_SECRET");
+      base.botToken = getProjectEnv(project, "TELEGRAM_BOT_TOKEN").trim();
+      base.botId = getProjectEnv(project, "TELEGRAM_BOT_ID").trim();
+      base.botUsername = getProjectEnv(project, "TELEGRAM_BOT_USERNAME").trim();
+      base.webhookSecret = getProjectEnv(
+        project,
+        "TELEGRAM_WEBHOOK_SECRET",
+      ).trim();
       break;
     case "blooio":
       base.apiKey = getProjectEnv(project, "BLOOIO_API_KEY");

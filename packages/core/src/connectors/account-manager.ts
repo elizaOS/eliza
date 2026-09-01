@@ -59,6 +59,8 @@ export type ConnectorOAuthFlowStatus =
 export interface ConnectorAccount {
 	id: string;
 	provider: string;
+	/** Provider-owned durable identity; never accepted from public HTTP bodies. */
+	accountKey?: string;
 	label?: string;
 	role: ConnectorAccountRole;
 	purpose: ConnectorAccountPurpose[];
@@ -74,6 +76,8 @@ export interface ConnectorAccount {
 }
 
 export interface ConnectorAccountPatch {
+	/** Provider-owned durable identity; never accepted from public HTTP bodies. */
+	accountKey?: string;
 	label?: string;
 	role?: ConnectorAccountRole;
 	purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
@@ -378,6 +382,7 @@ type ActionWithConnectorAccountPolicy = Action & {
 const runtimeManagers = new WeakMap<IAgentRuntime, ConnectorAccountManager>();
 let standaloneManager: ConnectorAccountManager | null = null;
 const oauthCodeVerifierSecrets = new Map<string, string>();
+const oauthCompletionQueues = new Map<string, Promise<void>>();
 
 function nowMs(): number {
 	return Date.now();
@@ -452,6 +457,7 @@ function mergeStoredAndProviderAccount(
 		...providerAccount,
 		id: stored.id,
 		provider: stored.provider,
+		accountKey: stored.accountKey ?? providerAccount.accountKey,
 		label: stored.label ?? providerAccount.label,
 		role: stored.role,
 		purpose: [...stored.purpose],
@@ -495,6 +501,10 @@ function normalizeAccount(
 	return {
 		id,
 		provider: normalizedProvider,
+		accountKey:
+			typeof full.accountKey === "string" && full.accountKey.trim()
+				? full.accountKey.trim()
+				: undefined,
 		label: typeof full.label === "string" ? full.label : undefined,
 		role: normalizeConnectorAccountRole(full.role),
 		purpose: normalizeStringArray(full.purpose),
@@ -532,6 +542,7 @@ function mergeAccountPatch(
 			...patch,
 			provider: account.provider,
 			id: account.id,
+			accountKey: patch.accountKey ?? account.accountKey,
 			purpose:
 				patch.purpose !== undefined
 					? normalizeStringArray(patch.purpose)
@@ -611,7 +622,14 @@ export class InMemoryConnectorAccountStorage
 		provider: string,
 		accountId: string,
 	): Promise<ConnectorAccount | null> {
-		const account = this.accounts.get(accountKey(provider, accountId));
+		const normalizedProvider = normalizeProvider(provider);
+		const account =
+			this.accounts.get(accountKey(normalizedProvider, accountId)) ??
+			Array.from(this.accounts.values()).find(
+				(candidate) =>
+					candidate.provider === normalizedProvider &&
+					candidate.accountKey === accountId,
+			);
 		return account ? cloneAccount(account) : null;
 	}
 
@@ -625,7 +643,10 @@ export class InMemoryConnectorAccountStorage
 	}
 
 	async deleteAccount(provider: string, accountId: string): Promise<boolean> {
-		return this.accounts.delete(accountKey(provider, accountId));
+		const account = await this.getAccount(provider, accountId);
+		return account
+			? this.accounts.delete(accountKey(account.provider, account.id))
+			: false;
 	}
 
 	async createOAuthFlow(flow: ConnectorOAuthFlow): Promise<ConnectorOAuthFlow> {
@@ -800,7 +821,7 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 		const record = await this.adapter.upsertConnectorAccount({
 			...(looksLikeUuid(account.id) ? { id: account.id } : {}),
 			provider: normalizeProvider(account.provider),
-			accountKey: account.externalId ?? account.id,
+			accountKey: account.accountKey ?? account.externalId ?? account.id,
 			externalId: account.externalId ?? null,
 			displayName: account.label ?? null,
 			username: account.displayHandle ?? null,
@@ -1110,6 +1131,7 @@ function databaseRecordToAccount(
 	return {
 		id: record.id,
 		provider: normalizeProvider(record.provider),
+		accountKey: record.accountKey,
 		label:
 			record.displayName ??
 			record.email ??
@@ -1122,7 +1144,7 @@ function databaseRecordToAccount(
 		),
 		accessGate: (record.accessGate ?? "open") as ConnectorAccountAccessGate,
 		status,
-		externalId: record.externalId ?? record.accountKey,
+		externalId: record.externalId ?? undefined,
 		displayHandle: record.username ?? record.email ?? undefined,
 		ownerBindingId: record.ownerBindingId ?? undefined,
 		ownerIdentityId: record.ownerIdentityId ?? undefined,
@@ -1513,13 +1535,15 @@ export class ConnectorAccountManager extends Service {
 		const providerAccounts = (await registered.listAccounts(this)).map(
 			cloneAccount,
 		);
-		const providerAccount = providerAccounts.find(
-			(account) =>
-				account.id === accountId ||
-				account.externalId === accountId ||
-				account.displayHandle === accountId,
+		const exactAccount = providerAccounts.find(
+			(account) => account.id === accountId || account.accountKey === accountId,
 		);
-		return providerAccount ?? null;
+		if (exactAccount) return exactAccount;
+		const aliases = providerAccounts.filter(
+			(account) =>
+				account.externalId === accountId || account.displayHandle === accountId,
+		);
+		return aliases.length === 1 ? aliases[0] : null;
 	}
 
 	async upsertAccount(
@@ -1567,8 +1591,13 @@ export class ConnectorAccountManager extends Service {
 		const providerId = normalizeProvider(provider);
 		const registered = this.providers.get(providerId);
 		if (registered?.patchAccount) {
+			const existing = await this.storage.getAccount(providerId, accountId);
 			const patched = await registered.patchAccount(accountId, patch, this);
-			return this.upsertAccount(providerId, patched, accountId);
+			return this.upsertAccount(
+				providerId,
+				existing ? mergeAccountPatch(existing, patched) : patched,
+				accountId,
+			);
 		}
 		const existing = await this.storage.getAccount(providerId, accountId);
 		if (!existing) return null;
@@ -1691,6 +1720,52 @@ export class ConnectorAccountManager extends Service {
 		redirectUrl?: string;
 	}> {
 		const providerId = normalizeProvider(provider);
+		return this.runSerializedOAuthCompletion(providerId, () =>
+			this.completeOAuthUnserialized(providerId, input),
+		);
+	}
+
+	private runSerializedOAuthCompletion<T>(
+		providerId: string,
+		operation: () => Promise<T>,
+	): Promise<T> {
+		// Completion spans provider verification, account/credential writes,
+		// compensation, and terminal flow persistence. Keep that whole sequence
+		// single-filed for every manager serving the same agent in this process.
+		// This intentionally makes no cross-process active-active claim: that would
+		// require a distributed lease with fencing across DB, vault, and provider
+		// side effects, which the connector provider contract does not expose.
+		const agentId = this.runtime?.agentId ?? "standalone";
+		const queueKey = `${agentId}\u0000${providerId}`;
+		const previous = oauthCompletionQueues.get(queueKey) ?? Promise.resolve();
+		const next = previous.catch(() => undefined).then(operation);
+		const tail = next.then(
+			() => undefined,
+			() => undefined,
+		);
+		oauthCompletionQueues.set(queueKey, tail);
+		return next.finally(() => {
+			if (oauthCompletionQueues.get(queueKey) === tail) {
+				oauthCompletionQueues.delete(queueKey);
+			}
+		});
+	}
+
+	private async completeOAuthUnserialized(
+		providerId: string,
+		input: {
+			state: string;
+			code?: string;
+			error?: string;
+			errorDescription?: string;
+			query?: Record<string, string>;
+			body?: Record<string, unknown>;
+		},
+	): Promise<{
+		flow: ConnectorOAuthFlow;
+		account?: ConnectorAccount;
+		redirectUrl?: string;
+	}> {
 		const flow = await this.storage.consumeOAuthFlow(
 			providerId,
 			input.state,

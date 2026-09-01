@@ -9,12 +9,14 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 const getCurrentUserMock = mock(
   async (): Promise<{ id: string; organization_id: string } | null> => null,
 );
+const readStewardSessionTokenMock = mock((): string | null => null);
 const endAllUserSessionsMock = mock(async () => undefined);
 const verifyStewardTokenMock = mock(async () => ({
   userId: "steward-1",
   issuedAt: 100,
 }));
 const revokeInferenceSessionsThroughMock = mock(async () => undefined);
+const markSsoBridgeLogoutMock = mock(async () => undefined);
 
 mock.module("@/lib/auth", () => ({
   invalidateSessionCaches: mock(async () => undefined),
@@ -22,6 +24,7 @@ mock.module("@/lib/auth", () => ({
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   getCurrentUser: getCurrentUserMock,
+  readStewardSessionToken: readStewardSessionTokenMock,
 }));
 mock.module("@/lib/auth/steward-client", () => ({
   verifyStewardTokenCached: verifyStewardTokenMock,
@@ -42,6 +45,9 @@ mock.module("@/lib/services/inference-credential-revocation", () => ({
   isInferenceStrongRevocationEnabled: (env: Record<string, unknown>) =>
     env.INFERENCE_STRONG_REVOCATION_ENABLED === "true",
   revokeInferenceSessionsThrough: revokeInferenceSessionsThroughMock,
+}));
+mock.module("@/lib/services/sso-bridge-codes", () => ({
+  markSsoBridgeLogout: markSsoBridgeLogoutMock,
 }));
 
 mock.module("@/api-app/services/audit-dispatcher-singleton", () => ({
@@ -69,15 +75,42 @@ function deletedCookieNames(res: Response): string[] {
 
 beforeEach(() => {
   getCurrentUserMock.mockResolvedValue(null);
+  readStewardSessionTokenMock.mockReturnValue(null);
   verifyStewardTokenMock.mockResolvedValue({
     userId: "steward-1",
     issuedAt: 100,
   });
   revokeInferenceSessionsThroughMock.mockResolvedValue(undefined);
+  markSsoBridgeLogoutMock.mockClear();
 });
 
 describe("POST /api/auth/logout cookie clearing", () => {
+  test("stamps logout authority for a bearer-authenticated hosted session", async () => {
+    readStewardSessionTokenMock.mockReturnValue("header.payload.signature");
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          origin: "https://cloud-staging.eliza.app",
+          authorization: "Bearer header.payload.signature",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "production" },
+    );
+
+    expect(res.status).toBe(200);
+    expect(verifyStewardTokenMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "header.payload.signature",
+    );
+    expect(markSsoBridgeLogoutMock).toHaveBeenCalledWith("steward-1");
+  });
+
   test("strong rollout commits the session cutoff before reporting logout success", async () => {
+    readStewardSessionTokenMock.mockReturnValue("prod-token");
     getCurrentUserMock.mockResolvedValue({
       id: "user-1",
       organization_id: "org-1",
@@ -111,6 +144,7 @@ describe("POST /api/auth/logout cookie clearing", () => {
   });
 
   test("strong rollout clears cookies but returns 503 when the cutoff is unconfirmed", async () => {
+    readStewardSessionTokenMock.mockReturnValue("prod-token");
     getCurrentUserMock.mockResolvedValue({
       id: "user-1",
       organization_id: "org-1",

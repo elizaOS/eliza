@@ -153,14 +153,12 @@ test("stream view renders the offline status surface", async ({ page }) => {
   });
 });
 
-test("rolodex resolves to the launcher with registered view tiles", async ({
-  page,
-}) => {
+test("rolodex renders its designed unavailable boundary", async ({ page }) => {
   await openAppPath(page, "/rolodex");
-  await expect(page.getByTestId("launcher")).toBeVisible({
-    timeout: 60_000,
-  });
   await expect(
-    page.locator('[data-testid^="launcher-tile-"]').first(),
-  ).toBeVisible();
+    page.locator(
+      '[data-view-status="unavailable"][data-view-id="rolodex"]',
+    ),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 });

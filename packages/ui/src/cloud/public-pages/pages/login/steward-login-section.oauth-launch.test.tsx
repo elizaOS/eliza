@@ -35,6 +35,7 @@ const oauthState = vi.hoisted(() => ({
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     isNativePlatform: () => oauthState.nativePlatform,
+    registerPlugin: () => ({}),
   },
   registerPlugin: () => ({}),
 }));
@@ -411,40 +412,46 @@ describe("StewardLoginSection OAuth launch", () => {
     );
   });
 
-  it("releases the OAuth provider lock after a back-forward cache restoration", async () => {
-    renderSection();
+  it.each([
+    ["Google", "google"],
+    ["Discord", "discord"],
+    ["GitHub", "github"],
+    ["X", "twitter"],
+    ["Apple", "apple"],
+  ])(
+    "releases the %s OAuth lock after a back-forward cache restoration",
+    async (providerLabel, provider) => {
+      renderSection();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Google" }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: providerLabel }),
+      );
 
-    await waitFor(() =>
-      expect(window.location.href).toContain(
-        "/steward/auth/oauth/google/authorize",
-      ),
-    );
-    expect(
-      (screen.getByRole("button", { name: "Google" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+      await waitFor(() =>
+        expect(window.location.href).toContain(
+          `/steward/auth/oauth/${provider}/authorize`,
+        ),
+      );
+      const providerButton = screen.getByRole("button", {
+        name: providerLabel,
+      }) as HTMLButtonElement;
+      expect(providerButton.disabled).toBe(true);
 
-    const historyRestore = new Event("pageshow");
-    Object.defineProperty(historyRestore, "persisted", { value: true });
-    fireEvent(window, historyRestore);
+      const historyRestore = new Event("pageshow");
+      Object.defineProperty(historyRestore, "persisted", { value: true });
+      fireEvent(window, historyRestore);
 
-    await waitFor(() =>
-      expect(
-        (screen.getByRole("button", { name: "Google" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false),
-    );
-    expect(
-      (screen.getByRole("button", { name: "Discord" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
-    expect(
-      (screen.getByRole("button", { name: "GitHub" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
-  });
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByRole("button", {
+              name: providerLabel,
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false),
+      );
+    },
+  );
 
   it("keeps the form retryable when browser storage cannot save the verifier", async () => {
     oauthState.storeVerifier = false;

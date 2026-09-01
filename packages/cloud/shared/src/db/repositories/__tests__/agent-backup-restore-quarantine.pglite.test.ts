@@ -232,7 +232,7 @@ function expectCanonicalQuarantineLockOrder(body: string): void {
 
 async function installExactCleanupOperationGuard(): Promise<void> {
   const cleanupMigration = readFileSync(
-    new URL("../../migrations/0367_agent_sandbox_replacement_restore_locator.sql", import.meta.url),
+    new URL("../../migrations/0370_agent_sandbox_replacement_restore_locator.sql", import.meta.url),
     "utf8",
   );
   const cleanupGuard = cleanupMigration
@@ -240,10 +240,10 @@ async function installExactCleanupOperationGuard(): Promise<void> {
     .find((statement) =>
       statement.includes('CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_operation"'),
     );
-  if (!cleanupGuard) throw new Error("0367 exact cleanup operation guard is missing");
+  if (!cleanupGuard) throw new Error("0370 exact cleanup operation guard is missing");
   const exactImageMigration = readFileSync(
     new URL(
-      "../../migrations/0369_agent_backup_restore_exact_image_authority.sql",
+      "../../migrations/0372_agent_backup_restore_exact_image_authority.sql",
       import.meta.url,
     ),
     "utf8",
@@ -255,7 +255,7 @@ async function installExactCleanupOperationGuard(): Promise<void> {
         'CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_exact_image_authority"',
       ),
     );
-  if (!exactImageGuard) throw new Error("0369 exact image authority guard is missing");
+  if (!exactImageGuard) throw new Error("0372 exact image authority guard is missing");
 
   await dbWrite.execute(sql.raw(cleanupGuard));
   await dbWrite.execute(sql.raw(exactImageGuard));

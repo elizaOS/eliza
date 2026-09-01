@@ -205,6 +205,7 @@ import {
   clearCloudAuthFirstScreenGreeting,
   markCloudAuthFirstScreenGreeting,
 } from "./state/cloud-auth-first-screen";
+import { cloudAuthFirstScreenOwnsHost } from "./state/cloud-auth-first-screen-policy";
 import { hasUsableStoredStewardToken } from "./state/cloud-steward-login";
 import { isAuthoritativeFirstRunOpen } from "./state/first-run-chat-release";
 import {
@@ -3258,9 +3259,15 @@ function AppContent() {
     !isPopout &&
     !isAuxiliaryAppWindow &&
     !cloudPairToken &&
-    (branding.cloudOnly === true ||
-      (isAndroidCloudBuild() && branding.cloudOnly !== false) ||
-      isElizaCloudRuntimeLocked());
+    (cloudAuthFirstScreenOwnsHost({
+      cloudOnlyBranding: branding.cloudOnly === true,
+      isAgentlessCloudOrigin,
+      isNative,
+      isDesktopShell: isElectrobunRuntime(),
+    }) ||
+      (isNative &&
+        ((isAndroidCloudBuild() && branding.cloudOnly !== false) ||
+          isElizaCloudRuntimeLocked())));
   const hasUsableCloudSession =
     elizaCloudConnected ||
     hasUsableStoredStewardToken() ||

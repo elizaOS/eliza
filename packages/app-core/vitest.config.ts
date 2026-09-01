@@ -31,6 +31,7 @@ const pluginAppManagerSrc = path.join(
 );
 const appWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src/ui");
 const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql/src");
+const pluginTodosSrc = path.join(monorepoRoot, "plugins/plugin-todos/src");
 const pluginAgentSkillsSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-skills/src",
@@ -158,6 +159,7 @@ export default defineConfig({
       "platforms/electrobun/**",
       "scripts/run-mobile-build-policy.test.mjs",
       "scripts/run-mobile-build-android-app-actions.test.mjs",
+      "scripts/build-experimental-exact-window-helper.test.mjs",
       "scripts/aosp/compile-libllama-fused.test.mjs",
       "scripts/mas-smoke.test.mjs",
       // The runner-based suites above are excluded from vitest because they use
@@ -238,6 +240,18 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/(.+)$/,
         replacement: path.join(agentSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-todos\/plugin$/,
+        replacement: path.join(pluginTodosSrc, "plugin.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-todos\/service$/,
+        replacement: path.join(pluginTodosSrc, "service.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-todos\/db\/schema$/,
+        replacement: path.join(pluginTodosSrc, "db/schema.ts"),
       },
       {
         find: /^@elizaos\/auth$/,

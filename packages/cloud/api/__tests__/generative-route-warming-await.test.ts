@@ -1,7 +1,6 @@
 /**
- * Covers the voice-only bounded hydration await on the generative auth gate:
- * warming converts to authorized inside the budget, budget expiry stays a
- * retryable 503, and the default unset option keeps chat's fast-fail path.
+ * Covers bounded continuation-deadline forwarding to the shared auth resolver
+ * and fail-closed handling of its authorized, denied, and warming outcomes.
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -74,12 +73,9 @@ describe("requireGenerativeRouteCaller awaitWarmingMs", () => {
     resolveInferenceAuthContext.mockReset();
   });
 
-  test("converts warming to authorized when hydration settles inside the budget", async () => {
+  test("accepts the resolver's authorized inline continuation result", async () => {
     const { c } = workerContext();
-    const hydration = Promise.resolve({ kind: "authorized" });
-    resolveInferenceAuthContext
-      .mockResolvedValueOnce({ kind: "warming", hydration })
-      .mockResolvedValueOnce(authorized);
+    resolveInferenceAuthContext.mockResolvedValueOnce(authorized);
 
     const caller = await requireGenerativeRouteCaller(c as never, {
       awaitWarmingMs: 1500,
@@ -89,7 +85,10 @@ describe("requireGenerativeRouteCaller awaitWarmingMs", () => {
       authSource: "combined_cache",
       user: { id: "user-1", organization_id: "org-1" },
     });
-    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(2);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      inlineContinuationDeadlineMs: 1500,
+    });
   });
 
   test("returns the retryable warming 503 when the budget expires", async () => {
@@ -98,9 +97,11 @@ describe("requireGenerativeRouteCaller awaitWarmingMs", () => {
     const hydration = new Promise((resolve) => {
       release = () => resolve({ kind: "authorized" });
     });
-    resolveInferenceAuthContext
-      .mockResolvedValueOnce({ kind: "warming", hydration })
-      .mockResolvedValueOnce({ kind: "warming", hydration });
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "warming",
+      hydration,
+      continuation: hydration,
+    });
 
     await expect(
       requireGenerativeRouteCaller(c as never, { awaitWarmingMs: 20 }),
@@ -108,7 +109,10 @@ describe("requireGenerativeRouteCaller awaitWarmingMs", () => {
       status: 503,
       code: "service_unavailable",
     });
-    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(2);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      inlineContinuationDeadlineMs: 20,
+    });
     release?.();
   });
 
@@ -124,12 +128,11 @@ describe("requireGenerativeRouteCaller awaitWarmingMs", () => {
 
   test("definitive rejection after hydration is surfaced, not swallowed", async () => {
     const { c } = workerContext();
-    resolveInferenceAuthContext
-      .mockResolvedValueOnce({
-        kind: "warming",
-        hydration: Promise.resolve({ kind: "rejected", status: 401 }),
-      })
-      .mockResolvedValueOnce({ kind: "rejected", status: 401 });
+    const rejection = {
+      kind: "rejected" as const,
+      status: 401 as const,
+    };
+    resolveInferenceAuthContext.mockResolvedValueOnce(rejection);
 
     await expect(
       requireGenerativeRouteCaller(c as never, { awaitWarmingMs: 1500 }),
@@ -137,9 +140,10 @@ describe("requireGenerativeRouteCaller awaitWarmingMs", () => {
       status: 401,
       code: "authentication_required",
     });
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
   });
 
-  test("default unset budget keeps the original warming 503", async () => {
+  test("a shared-resolver timeout remains a retryable warming 503", async () => {
     const { c } = workerContext();
     resolveInferenceAuthContext.mockResolvedValueOnce({
       kind: "warming",

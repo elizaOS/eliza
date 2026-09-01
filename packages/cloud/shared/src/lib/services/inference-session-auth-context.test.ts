@@ -1,14 +1,14 @@
 /**
  * Exercises the real inference-session cache while replacing only the
- * authoritative user/moderation stores, proving cold hydration is detached and
- * warm session authorization performs no database service call.
+ * authoritative user/moderation stores, proving cold hydration is detached,
+ * uses one combined cache read, and bypasses secondary user caches.
  */
 
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
 process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 let claims: {
   userId: string;
@@ -42,9 +42,9 @@ mock.module("../auth/steward-client", () => ({
   verifyStewardTokenCached: async () => claims,
 }));
 
-mock.module("./users", () => ({
-  usersService: {
-    getByStewardId: async () => {
+mock.module("../../db/repositories/users", () => ({
+  usersRepository: {
+    findByStewardIdWithOrganizationForWrite: async () => {
       userReads++;
       return await getUser?.();
     },
@@ -80,6 +80,9 @@ mock.module("./inference-credential-revocation", () => ({
     _organizationId: string,
     credential: Record<string, unknown>,
   ) => {
+    if (process.env.INFERENCE_STRONG_REVOCATION_ENABLED !== "true") {
+      return Promise.resolve();
+    }
     strongCredentialChecks.push(credential);
     return assertSessionActive();
   },
@@ -96,6 +99,8 @@ const { __clearInferenceSessionAuthHydrations, resolveInferenceSessionAuthContex
 const { invalidateInferenceSessionAuthContext, readInferenceSessionAuthDecision } = await import(
   "./inference-auth-cache"
 );
+const { cache } = await import("../cache/client");
+const { logger } = await import("../utils/logger");
 
 function request(): Request {
   return new Request("https://api.example/api/v1/chat/completions", {
@@ -104,6 +109,7 @@ function request(): Request {
 }
 
 beforeEach(async () => {
+  process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
   __clearInferenceSessionAuthHydrations();
   claims = {
     userId: "steward-1",
@@ -138,21 +144,39 @@ describe("resolveInferenceSessionAuthContext", () => {
           });
       });
     const waited: Promise<unknown>[] = [];
+    const cacheRead = spyOn(cache, "getWithOutcome");
 
     const result = await resolveInferenceSessionAuthContext(request(), {
       cacheOnly: true,
       useAuthCache: true,
+      deferStrongCredentialCheck: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
 
     expect(result).toMatchObject({ kind: "warming" });
     expect(result.kind === "warming" && result.hydration).toBeTruthy();
+    expect(result.kind === "warming" && result.continuation).toBeTruthy();
     expect(waited).toHaveLength(1);
+    expect(cacheRead).toHaveBeenCalledTimes(1);
     expect(userReads).toBe(1);
     expect(moderationReads).toBe(0);
     releaseUser();
+    if (result.kind !== "warming" || !result.continuation) throw new Error("unreachable");
+    await expect(result.continuation).resolves.toMatchObject({
+      kind: "authorized",
+      source: "origin",
+      credential: {
+        kind: "steward_session",
+        userId: "user-1",
+        stewardUserId: "steward-1",
+        issuedAt: claims?.issuedAt,
+      },
+    });
     await Promise.all(waited);
     expect(moderationReads).toBe(1);
+    expect(strongCredentialChecks).toHaveLength(1);
+    expect(cacheRead).toHaveBeenCalledTimes(1);
+    cacheRead.mockRestore();
   });
 
   test("warm verified session reads the combined cache and never calls users or moderation", async () => {
@@ -189,6 +213,59 @@ describe("resolveInferenceSessionAuthContext", () => {
       stewardUserId: "steward-1",
       issuedAt: claims?.issuedAt,
     });
+  });
+
+  test("warm verified session carries its signed credential into admission without a standalone check", async () => {
+    const waited: Promise<unknown>[] = [];
+    await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    await Promise.all(waited);
+    strongCredentialChecks.length = 0;
+    const cacheRead = spyOn(cache, "getWithOutcome");
+
+    const result = await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      deferStrongCredentialCheck: true,
+    });
+
+    expect(result).toMatchObject({
+      kind: "authorized",
+      source: "cache",
+      credential: {
+        kind: "steward_session",
+        userId: "user-1",
+        stewardUserId: "steward-1",
+        issuedAt: claims?.issuedAt,
+      },
+    });
+    expect(cacheRead).toHaveBeenCalledTimes(1);
+    expect(strongCredentialChecks).toHaveLength(0);
+  });
+
+  test("flag-off Steward auth never defers its signed credential into admission", async () => {
+    const waited: Promise<unknown>[] = [];
+    await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    await Promise.all(waited);
+    process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "false";
+    strongCredentialChecks.length = 0;
+
+    const result = await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: true,
+      useAuthCache: true,
+      deferStrongCredentialCheck: true,
+    });
+
+    expect(result).toMatchObject({ kind: "authorized", source: "cache" });
+    expect(result).not.toHaveProperty("credential");
+    expect(strongCredentialChecks).toHaveLength(0);
   });
 
   test("warm verified session is denied when its issued-at cutoff is revoked", async () => {
@@ -275,10 +352,50 @@ describe("resolveInferenceSessionAuthContext", () => {
     expect(moderationReads).toBe(1);
   });
 
+  test("the session projection barrier prevents rehydration while its write is pending", async () => {
+    let finishWrite = (): void => {};
+    const writeSpy = spyOn(cache, "setWithOutcome").mockImplementation(
+      async () =>
+        await new Promise((resolve) => {
+          finishWrite = () => resolve({ kind: "written" as const, backend: "memory" as const });
+        }),
+    );
+    const firstWaited: Promise<unknown>[] = [];
+    const secondWaited: Promise<unknown>[] = [];
+    try {
+      const first = await resolveInferenceSessionAuthContext(request(), {
+        cacheOnly: true,
+        useAuthCache: true,
+        executionCtx: { waitUntil: (promise) => firstWaited.push(promise) },
+      });
+      if (first.kind !== "warming" || !first.continuation) throw new Error("unreachable");
+      await expect(first.continuation).resolves.toMatchObject({ kind: "authorized" });
+
+      const second = await resolveInferenceSessionAuthContext(request(), {
+        cacheOnly: true,
+        useAuthCache: true,
+        executionCtx: { waitUntil: (promise) => secondWaited.push(promise) },
+      });
+      if (second.kind !== "warming" || !second.continuation) throw new Error("unreachable");
+      await expect(second.continuation).resolves.toMatchObject({ kind: "authorized" });
+      expect(userReads).toBe(1);
+      expect(firstWaited).toHaveLength(1);
+      expect(secondWaited).toHaveLength(1);
+      expect(firstWaited[0]).toBe(secondWaited[0]);
+
+      finishWrite();
+      await Promise.all([...firstWaited, ...secondWaited]);
+    } finally {
+      finishWrite();
+      writeSpy.mockRestore();
+    }
+  });
+
   test("flag-off origin resolution performs no session-auth cache write", async () => {
     const result = await resolveInferenceSessionAuthContext(request(), {
       cacheOnly: false,
       useAuthCache: false,
+      deferStrongCredentialCheck: true,
     });
 
     expect(result).toMatchObject({
@@ -286,6 +403,7 @@ describe("resolveInferenceSessionAuthContext", () => {
       source: "origin",
       ctx: { userId: "user-1", orgId: "org-1", stewardUserId: "steward-1" },
     });
+    expect(result).not.toHaveProperty("credential");
     expect(userReads).toBe(1);
     // The authoritative decision must NOT have been persisted: the real cache
     // stays cold for the subject, so nothing exists for a later flag flip to
@@ -305,6 +423,31 @@ describe("resolveInferenceSessionAuthContext", () => {
       orgId: "org-1",
       stewardUserId: "steward-1",
     });
+  });
+
+  test("a rejected deferred session write is structured and does not reject waitUntil", async () => {
+    const writeSpy = spyOn(cache, "setWithOutcome").mockRejectedValue(
+      new TypeError("sensitive session backend detail"),
+    );
+    const warning = spyOn(logger, "warn").mockImplementation(() => undefined);
+    const waited: Promise<unknown>[] = [];
+    try {
+      const result = await resolveInferenceSessionAuthContext(request(), {
+        cacheOnly: true,
+        useAuthCache: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      });
+      expect(result).toMatchObject({ kind: "warming" });
+      await expect(Promise.all(waited)).resolves.toBeArray();
+      expect(warning).toHaveBeenCalledWith(
+        "[InferenceSessionAuth] Deferred cache projection failed",
+        { errorName: "TypeError" },
+      );
+      expect(JSON.stringify(warning.mock.calls)).not.toContain("sensitive session backend detail");
+    } finally {
+      writeSpy.mockRestore();
+      warning.mockRestore();
+    }
   });
 
   test("invalid session is rejected without authoritative hydration", async () => {

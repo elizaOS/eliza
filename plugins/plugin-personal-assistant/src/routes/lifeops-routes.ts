@@ -49,6 +49,7 @@ import {
 } from "@elizaos/plugin-finances/finances-service";
 import type { AddPaymentSourceRequest } from "@elizaos/plugin-finances/payment-types";
 import { PLAID_WEBHOOK_MAX_BODY_BYTES } from "@elizaos/plugin-finances/plaid-webhook";
+import { SELF_ENTITY_ID } from "@elizaos/shared";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -112,9 +113,20 @@ import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
+import { createApprovalQueue } from "../lifeops/approval-queue.js";
+import {
+  CalendarCardAccessError,
+  CalendarCardAccessStore,
+  type CalendarCardEvent,
+  type CalendarCardPrivacyMode,
+  calendarCardApprovalPayload,
+  composeDailyCalendarCard,
+} from "../lifeops/calendar-card.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { entityHasVerifiedMachineAuthBinding } from "./authenticated-entity-principal.js";
+import { handleFamilyWorkflowRoutes } from "./family-workflows.js";
 
 export interface LifeOpsRouteContext {
   req: http.IncomingMessage;
@@ -125,6 +137,7 @@ export interface LifeOpsRouteContext {
   state: {
     runtime: AgentRuntime | null;
     adminEntityId: UUID | null;
+    requestEntityId?: string | null;
   };
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
@@ -242,6 +255,9 @@ const LIFEOPS_RATE_LIMITS = {
   calendar_source_write: { maxRequests: 20, windowMs: 60_000 },
   calendar_source_sync: { maxRequests: 30, windowMs: 60_000 },
   calendar_imported_data_purge: { maxRequests: 10, windowMs: 60_000 },
+  calendar_link_read: { maxRequests: 120, windowMs: 60_000 },
+  calendar_link_write: { maxRequests: 20, windowMs: 60_000 },
+  calendar_card: { maxRequests: 10, windowMs: 60_000 },
   // OAuth + connector lifecycle: tight cap because these mutate stored
   // credentials or initiate consent flows.
   oauth_init: { maxRequests: 5, windowMs: 60_000 },
@@ -1185,6 +1201,164 @@ export async function handleLifeOpsRoutes(
   ctx: LifeOpsRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, url, json, readJsonBody } = ctx;
+  const calendarCardMatch = pathname.match(
+    /^\/api\/lifeops\/calendar\/cards\/([^/]+)$/,
+  );
+  if (calendarCardMatch && method === "GET") {
+    if (!requireAuthorizedRouteContext(ctx)) return true;
+    const runtime = ctx.state.runtime;
+    if (!runtime) return true;
+    if (rateLimitRequest(ctx, "calendar_card")) return true;
+    const cardId = ctx.decodePathComponent(
+      calendarCardMatch[1],
+      res,
+      "card id",
+    );
+    if (!cardId) return true;
+    const token = url.searchParams.get("token")?.trim() ?? "";
+    try {
+      const bytes = await new CalendarCardAccessStore(runtime).consume({
+        cardId,
+        token,
+        principalEntityId: String(ctx.state.requestEntityId ?? ""),
+      });
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Length": String(bytes.length),
+        "Cache-Control": "private, no-store, max-age=0",
+        Pragma: "no-cache",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "X-Frame-Options": "DENY",
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
+        "Content-Security-Policy":
+          "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+      });
+      res.end(bytes);
+    } catch (error) {
+      if (error instanceof CalendarCardAccessError) {
+        json(res, { error: error.code }, error.status);
+      } else {
+        throw error;
+      }
+    }
+    return true;
+  }
+  if (calendarCardMatch && method === "DELETE") {
+    if (!requireAuthorizedRouteContext(ctx)) return true;
+    const runtime = ctx.state.runtime;
+    if (!runtime) return true;
+    if (rateLimitRequest(ctx, "calendar_card")) return true;
+    const cardId = ctx.decodePathComponent(
+      calendarCardMatch[1],
+      res,
+      "card id",
+    );
+    if (!cardId) return true;
+    json(res, {
+      revoked: await new CalendarCardAccessStore(runtime).revoke(cardId),
+    });
+    return true;
+  }
+  if (method === "POST" && pathname === "/api/lifeops/calendar/cards") {
+    if (!requireAuthorizedRouteContext(ctx)) return true;
+    const runtime = ctx.state.runtime;
+    if (!runtime) return true;
+    if (rateLimitRequest(ctx, "calendar_card")) return true;
+    const body = await readJsonBody<{
+      date: string;
+      timeZone: string;
+      privacyMode: CalendarCardPrivacyMode;
+      recipient: string;
+      recipientEntityId?: string;
+      events: CalendarCardEvent[];
+      ttlMs?: number;
+    }>(req, res);
+    if (!body) return true;
+    const authenticatedEntityId = String(
+      ctx.state.requestEntityId ?? ctx.state.adminEntityId ?? SELF_ENTITY_ID,
+    );
+    const recipientEntityId = String(
+      body.recipientEntityId ?? authenticatedEntityId,
+    );
+    const recipientCanAuthenticate =
+      recipientEntityId === authenticatedEntityId ||
+      (await entityHasVerifiedMachineAuthBinding(runtime, recipientEntityId));
+    if (
+      !body.recipient?.trim() ||
+      !Array.isArray(body.events) ||
+      !["full", "times_only", "busy_only"].includes(body.privacyMode) ||
+      !recipientCanAuthenticate
+    ) {
+      json(res, { error: "Invalid calendar card request" }, 400);
+      return true;
+    }
+    const placeholder = composeDailyCalendarCard({
+      date: body.date,
+      timeZone: body.timeZone,
+      privacyMode: body.privacyMode,
+      events: body.events,
+      accessUrl: "https://invalid.local/pending",
+    });
+    const store = new CalendarCardAccessStore(runtime);
+    const issued = await store.issue({
+      recipientEntityId,
+      html: placeholder.html,
+      ttlMs: body.ttlMs ?? 24 * 60 * 60_000,
+      baseUrl: url.origin,
+    });
+    const composition = composeDailyCalendarCard({
+      date: body.date,
+      timeZone: body.timeZone,
+      privacyMode: body.privacyMode,
+      events: body.events,
+      accessUrl: issued.accessUrl,
+    });
+    if (composition.htmlSha256 !== issued.htmlSha256) {
+      await store.revoke(issued.cardId);
+      throw new Error(
+        "Calendar card renderer changed between storage and approval",
+      );
+    }
+    const payload = calendarCardApprovalPayload({
+      recipient: body.recipient.trim(),
+      recipientEntityId,
+      cardId: issued.cardId,
+      composition,
+    });
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+    let approval: Awaited<ReturnType<typeof queue.enqueue>>;
+    try {
+      approval = await queue.enqueue({
+        requestedBy: "OWNER_CALENDAR_CARD",
+        subjectUserId: recipientEntityId,
+        action: "send_message",
+        payload,
+        channel: "imessage",
+        reason: `Send the private ${body.privacyMode} calendar card for ${body.date}.`,
+        idempotencyKey: `calendar-card:v1:${composition.envelopeSha256}`,
+        expiresAt: new Date(Date.now() + (body.ttlMs ?? 24 * 60 * 60_000)),
+      });
+      await queue.surfaceEnqueuedApproval(approval);
+    } catch (error) {
+      await store.revoke(issued.cardId);
+      throw error;
+    }
+    json(
+      res,
+      {
+        approvalId: approval.id,
+        cardId: issued.cardId,
+        state: approval.state,
+        textSha256: composition.textSha256,
+        htmlSha256: composition.htmlSha256,
+        envelopeSha256: composition.envelopeSha256,
+      },
+      202,
+    );
+    return true;
+  }
   const isMutationGateway = (
     value: unknown,
   ): value is CalendarOwnerMutationGateway =>
@@ -1195,7 +1369,17 @@ export async function handleLifeOpsRoutes(
     "update" in value &&
     typeof value.update === "function" &&
     "cancel" in value &&
-    typeof value.cancel === "function";
+    typeof value.cancel === "function" &&
+    "linkCalendar" in value &&
+    typeof value.linkCalendar === "function" &&
+    "reconcileLinkedCalendar" in value &&
+    typeof value.reconcileLinkedCalendar === "function" &&
+    "resolveLinkedCalendarConflict" in value &&
+    typeof value.resolveLinkedCalendarConflict === "function" &&
+    "disconnectLinkedCalendar" in value &&
+    typeof value.disconnectLinkedCalendar === "function" &&
+    "reconcileLinkedCalendarProviderChanges" in value &&
+    typeof value.reconcileLinkedCalendarProviderChanges === "function";
   const mutationGateway = (): CalendarOwnerMutationGateway => {
     const gateway = ctx.state.runtime?.getService(
       CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
@@ -1208,6 +1392,8 @@ export async function handleLifeOpsRoutes(
     }
     return gateway;
   };
+
+  if (await handleFamilyWorkflowRoutes(ctx)) return true;
 
   // Calendar routes are owned by @elizaos/plugin-calendar; the path -> service
   // mapping lives there. We inject LifeOps' HTTP plumbing so the calendar plugin
@@ -1235,6 +1421,34 @@ export async function handleLifeOpsRoutes(
           mutationGateway().update(requestUrl, request),
         cancel: (requestUrl, request) =>
           mutationGateway().cancel(requestUrl, request),
+        linkCalendar: (requestUrl, request) =>
+          mutationGateway().linkCalendar(requestUrl, request),
+        reconcileLinkedCalendar: (requestUrl, linkId, request) =>
+          mutationGateway().reconcileLinkedCalendar(
+            requestUrl,
+            linkId,
+            request,
+          ),
+        resolveLinkedCalendarConflict: (requestUrl, linkId, request) =>
+          mutationGateway().resolveLinkedCalendarConflict(
+            requestUrl,
+            linkId,
+            request,
+          ),
+        disconnectLinkedCalendar: (requestUrl, linkId, request) =>
+          mutationGateway().disconnectLinkedCalendar(
+            requestUrl,
+            linkId,
+            request,
+          ),
+        reconcileLinkedCalendarProviderChanges: (
+          requestUrl,
+          providerEventIds,
+        ) =>
+          mutationGateway().reconcileLinkedCalendarProviderChanges(
+            requestUrl,
+            providerEventIds,
+          ),
       },
     })
   ) {

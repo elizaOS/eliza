@@ -283,6 +283,9 @@ export const AgentBackupRestoreV3ExactReadReceiptProofSchema = z
       proof.completion.keyFingerprint !== proof.catalog.keyFingerprint ||
       proof.completion.version !== expectedVersion ||
       proof.completion.versionSource !== expectedVersionSource ||
+      (proof.catalog.providerChecksum !== null &&
+        proof.catalog.providerChecksum !==
+          `sha256:base64:${proof.completion.checksumSha256Base64}`) ||
       proof.completion.sizeBytes !== proof.catalog.sizeBytes ||
       proof.completion.ciphertextSha256 !== proof.catalog.ciphertextSha256
     ) {

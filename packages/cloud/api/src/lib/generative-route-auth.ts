@@ -15,9 +15,14 @@ import {
   AiPricingCacheUnavailableError,
   AiPricingCacheWarmingError,
 } from "@/lib/services/ai-pricing/cache";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+import type { GenerativeOperationContext } from "@/lib/services/generative-operation";
+import type {
+  InferenceAdmissionSnapshot,
+  InferenceAuthRejectionReason,
+} from "@/lib/services/inference-auth-cache";
 import type { EndpointType } from "@/lib/services/org-rate-limits";
 import type { OrganizationInferenceAdmission } from "@/lib/services/organization-inference-admission";
+import { logger } from "@/lib/utils/logger";
 import type { AppContext } from "@/types/cloud-worker-env";
 
 export interface GenerativeRouteCaller {
@@ -29,6 +34,104 @@ export interface GenerativeRouteCaller {
   authSource: "combined_cache" | "compatibility";
   admissionSnapshot?: InferenceAdmissionSnapshot;
   appScopeId: string | null;
+}
+
+export interface InferenceAuthStandingDenial {
+  status: 401 | 403 | 503;
+  type: "authentication_error" | "permission_error" | "service_unavailable";
+  code: "authentication_required" | "access_denied" | "service_unavailable";
+  message: string;
+  reason:
+    | InferenceAuthRejectionReason
+    | "account_suspended"
+    | "authentication_rejected"
+    | "authorization_unavailable";
+  retryAfterSeconds?: number;
+}
+
+type InferenceAuthStandingResolution =
+  | { kind: "suspended"; reason?: InferenceAuthRejectionReason }
+  | {
+      kind: "rejected";
+      status: 401 | 403 | 503;
+      reason?: InferenceAuthRejectionReason;
+    };
+
+function standingMessage(
+  reason: InferenceAuthRejectionReason | undefined,
+  fallback: string,
+): string {
+  switch (reason) {
+    case "moderation_blocked":
+      return "Account access is blocked by policy moderation";
+    case "organization_inactive":
+      return "Organization is inactive";
+    case "account_inactive":
+      return "Account is inactive";
+    case "credential_inactive":
+      return "API key is inactive";
+    case "membership_missing":
+      return "Account is not associated with an active organization";
+    case "credential_invalid":
+      return "Authentication required";
+    default:
+      return fallback;
+  }
+}
+
+/**
+ * Maps cache and authoritative standing decisions to one bounded API contract.
+ * Routes retain their native response envelope, but status, reason, code, and
+ * retry semantics must come from this mapping without another identity read.
+ */
+export function resolveInferenceAuthStandingDenial(
+  resolution: InferenceAuthStandingResolution,
+  logContext?: { route: string; traceId?: string },
+): InferenceAuthStandingDenial {
+  let denial: InferenceAuthStandingDenial;
+  if (resolution.kind === "suspended") {
+    denial = {
+      status: 403,
+      type: "permission_error",
+      code: "access_denied",
+      message: standingMessage(resolution.reason, "Account suspended"),
+      reason: resolution.reason ?? "account_suspended",
+    };
+  } else if (resolution.status === 503) {
+    denial = {
+      status: 503,
+      type: "service_unavailable",
+      code: "service_unavailable",
+      message: "Authorization service is unavailable. Retry shortly.",
+      reason: resolution.reason ?? "authorization_unavailable",
+      retryAfterSeconds: 1,
+    };
+  } else {
+    denial = {
+      status: resolution.status,
+      type:
+        resolution.status === 403 ? "permission_error" : "authentication_error",
+      code:
+        resolution.status === 403 ? "access_denied" : "authentication_required",
+      message: standingMessage(
+        resolution.reason,
+        resolution.status === 403 ? "Forbidden" : "Authentication required",
+      ),
+      reason: resolution.reason ?? "authentication_rejected",
+    };
+  }
+
+  if (logContext) {
+    logger.warn("[InferenceAuth] blocked provider dispatch at route boundary", {
+      route: logContext.route,
+      traceId: logContext.traceId ?? "unavailable",
+      decision: resolution.kind,
+      status: denial.status,
+      reason: denial.reason,
+      retryable: denial.status === 503,
+    });
+  }
+  return denial;
 }
 
 export function getGenerativeExecutionContext(
@@ -44,11 +147,89 @@ export function getGenerativeExecutionContext(
   }
 }
 
+export function getGenerativeOperationContext(
+  c: AppContext,
+  caller: GenerativeRouteCaller,
+): GenerativeOperationContext {
+  return {
+    organizationId: caller.user.organization_id,
+    userId: caller.user.id,
+    apiKeyId: caller.apiKeyId,
+    requestId: c.get("requestId") ?? c.get("traceId") ?? crypto.randomUUID(),
+    admissionSnapshot: caller.admissionSnapshot,
+    executionCtx: getGenerativeExecutionContext(c),
+  };
+}
+
 export function getGenerativePricingCacheOptions(
   c: AppContext,
 ): PricingCacheReadOptions {
   const executionCtx = getGenerativeExecutionContext(c);
   return { cacheOnly: Boolean(executionCtx), executionCtx };
+}
+
+/** Revalidates a signed non-Steward session before paid provider admission. */
+export async function requireGenerativeKnownIdentity(
+  c: AppContext,
+  identity: { userId: string; organizationId: string },
+): Promise<GenerativeRouteCaller> {
+  const [{ usersRepository }, { adminService }] = await Promise.all([
+    import("@/db/repositories/users"),
+    import("@/lib/services/admin"),
+  ]);
+  const user = await usersRepository.findWithOrganization(identity.userId);
+  const reason = !user
+    ? "account_inactive"
+    : user.organization_id !== identity.organizationId || !user.organization
+      ? "membership_missing"
+      : !user.is_active
+        ? "account_inactive"
+        : !user.organization.is_active
+          ? "organization_inactive"
+          : (await adminService.shouldBlockUser(user.id))
+            ? "moderation_blocked"
+            : null;
+  if (reason) {
+    logger.warn(
+      "[InferenceAuth] blocked known identity before provider dispatch",
+      {
+        traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+        route: "eliza-app/provisioning-agent/chat",
+        reason,
+        status: 403,
+      },
+    );
+    throw new ApiError(
+      403,
+      "access_denied",
+      "Account is not eligible for generative work",
+      {
+        reason,
+      },
+    );
+  }
+
+  const executionCtx = getGenerativeExecutionContext(c);
+  const admissionSnapshot = executionCtx
+    ? await import("@/lib/services/inference-admission-snapshot").then(
+        (module) =>
+          module.getInferenceAdmissionSnapshotCacheOnly(
+            identity.organizationId,
+            executionCtx,
+          ),
+      )
+    : await import("@/lib/services/inference-admission-snapshot").then(
+        (module) =>
+          module.loadInferenceAdmissionSnapshot(identity.organizationId),
+      );
+
+  return {
+    user: { id: identity.userId, organization_id: identity.organizationId },
+    apiKeyId: null,
+    authSource: "compatibility",
+    admissionSnapshot,
+    appScopeId: null,
+  };
 }
 
 export function asGenerativeCacheApiError(error: unknown): ApiError | null {
@@ -147,11 +328,11 @@ export async function admitFlatGenerativeOperation(params: {
 }
 
 /**
- * Cache misses fail closed with a retryable response while authoritative
- * hydration runs under the Worker lifetime. Wallet proof remains on the
- * compatibility path because replay-protected signatures cannot be cached.
- * Voice routes may opt into one bounded await of the already-coalesced
- * hydration so a 60s idle cache miss does not 503 the first utterance.
+ * Cache misses consume the already-coalesced authoritative continuation under
+ * one bounded deadline. The continuation does not re-read the combined cache;
+ * it returns the origin decision directly. The route invokes the real limiter
+ * once after authorization. Wallet proof remains on the compatibility path
+ * because replay-protected signatures cannot be cached.
  */
 export async function requireGenerativeRouteCaller(
   c: AppContext,
@@ -159,9 +340,8 @@ export async function requireGenerativeRouteCaller(
     compatibility?: "hono" | "raw";
     rateLimitEndpoint?: EndpointType;
     /**
-     * When set, a cache-only warming resolution awaits the coalesced
-     * hydration for at most this many milliseconds and then re-resolves.
-     * Chat and every other generative route leave this unset.
+     * Override the default bounded wait for the one-shot origin continuation.
+     * Zero preserves an immediate retryable warming response.
      */
     awaitWarmingMs?: number;
   } = {},
@@ -196,28 +376,9 @@ export async function requireGenerativeRouteCaller(
       traceId: c.get("traceId") ?? c.get("requestId"),
       cacheOnly: Boolean(executionCtx),
       executionCtx,
+      inlineContinuationDeadlineMs: options.awaitWarmingMs,
     });
-  let resolution = await resolveCallerAuth();
-
-  if (
-    resolution.kind === "warming" &&
-    typeof options.awaitWarmingMs === "number" &&
-    options.awaitWarmingMs > 0 &&
-    resolution.hydration
-  ) {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        resolution.hydration,
-        new Promise<void>((resolve) => {
-          timeoutId = setTimeout(resolve, options.awaitWarmingMs);
-        }),
-      ]);
-    } finally {
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
-    }
-    resolution = await resolveCallerAuth();
-  }
+  const resolution = await resolveCallerAuth();
 
   if (resolution.kind === "authorized") {
     const user = {
@@ -282,37 +443,25 @@ export async function requireGenerativeRouteCaller(
     );
   }
   if (resolution.kind === "suspended") {
-    const reason = resolution.reason;
-    const message =
-      reason === "moderation_blocked"
-        ? "Account access is blocked by policy moderation"
-        : reason === "organization_inactive"
-          ? "Organization is inactive"
-          : reason === "account_inactive"
-            ? "Account is inactive"
-            : "Account suspended";
-    throw new ApiError(403, "access_denied", message, {
-      reason: reason ?? "account_suspended",
+    const denial = resolveInferenceAuthStandingDenial(resolution, {
+      route: "generative",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    });
+    throw new ApiError(denial.status, denial.code, denial.message, {
+      reason: denial.reason,
     });
   }
   if (resolution.kind === "rejected") {
-    const reason = resolution.reason;
-    throw new ApiError(
-      resolution.status,
-      resolution.status === 403 ? "access_denied" : "authentication_required",
-      reason === "organization_inactive"
-        ? "Organization is inactive"
-        : reason === "account_inactive"
-          ? "Account is inactive"
-          : reason === "credential_inactive"
-            ? "API key is inactive"
-            : reason === "membership_missing"
-              ? "Account is not associated with an active organization"
-              : resolution.status === 403
-                ? "Forbidden"
-                : "Authentication required",
-      { reason: reason ?? "authentication_rejected" },
-    );
+    const denial = resolveInferenceAuthStandingDenial(resolution, {
+      route: "generative",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    });
+    throw new ApiError(denial.status, denial.code, denial.message, {
+      reason: denial.reason,
+      ...(denial.retryAfterSeconds
+        ? { retryAfterSeconds: denial.retryAfterSeconds, retryable: true }
+        : {}),
+    });
   }
 
   // Wallet signatures are timestamped and replay-protected, so they retain the

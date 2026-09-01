@@ -8,6 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { logger } from "../utils/logger";
 
 export const AGENT_BACKUP_RESTORE_EXACT_IMAGE_FETCH_TIMEOUT_MS = 5_000;
 export const AGENT_BACKUP_RESTORE_EXACT_IMAGE_TOKEN_MAX_BYTES = 64 * 1024;
@@ -155,7 +156,18 @@ function canonicalImageAuthority(
         "Restore image reference has extra authority",
       );
     }
-    repository = locator.slice(0, atIndex);
+    const repositoryLocator = locator.slice(0, atIndex);
+    const lastSlash = repositoryLocator.lastIndexOf("/");
+    const tagIndex = repositoryLocator.lastIndexOf(":");
+    if (tagIndex > lastSlash) {
+      const tag = repositoryLocator.slice(tagIndex + 1);
+      if (!TAG.test(tag)) {
+        throw resolutionError("IMAGE_REFERENCE_INVALID", "Restore image tag locator is invalid");
+      }
+      repository = repositoryLocator.slice(0, tagIndex);
+    } else {
+      repository = repositoryLocator;
+    }
     const referenceDigest = locator.slice(atIndex + 1);
     if (!SHA256_DIGEST.test(referenceDigest)) {
       throw resolutionError(
@@ -262,8 +274,13 @@ async function readBoundedBody(
     if (totalBytes > maxBytes) {
       try {
         await reader.cancel();
-      } catch {
-        // The size failure is authoritative even if cancellation also fails.
+      } catch (error) {
+        // error-policy:J6 the size failure remains authoritative; cancellation is
+        // best-effort teardown, but its failure remains observable.
+        logger.warn("[AgentBackupRestoreExactImagePlatform] Failed to cancel oversized body", {
+          context,
+          error,
+        });
       }
       throw resolutionError(
         "REGISTRY_RESPONSE_TOO_LARGE",
@@ -291,6 +308,7 @@ function parseJsonObject(body: Uint8Array, context: string): Record<string, unkn
     const text = new TextDecoder("utf-8", { fatal: true }).decode(body);
     parsed = JSON.parse(text);
   } catch (cause) {
+    // error-policy:J3 untrusted registry bytes become an explicit invalid response.
     throw resolutionError("REGISTRY_RESPONSE_INVALID", `${context} is not valid UTF-8 JSON`, cause);
   }
   if (!isRecord(parsed)) {
@@ -373,6 +391,7 @@ async function registryFetch(params: {
     params.signal.throwIfAborted();
     return { response, body };
   } catch (cause) {
+    // error-policy:J2 preserve caller aborts and add typed registry context with cause.
     if (params.callerSignal?.aborted) throw params.callerSignal.reason;
     if (params.deadlineSignal.aborted) {
       throw resolutionError("REGISTRY_TIMEOUT", "Restore image registry deadline expired", cause);
@@ -394,6 +413,7 @@ function requireGhcrConfigBlobRedirect(response: Response, expectedDigest: strin
   try {
     url = new URL(location);
   } catch (cause) {
+    // error-policy:J3 an untrusted Location becomes an explicit invalid response.
     throw resolutionError(
       "REGISTRY_RESPONSE_INVALID",
       "GHCR config blob redirect is not an absolute URL",
@@ -405,7 +425,6 @@ function requireGhcrConfigBlobRedirect(response: Response, expectedDigest: strin
   const hasSafePath =
     url.pathname.length > expectedPathSuffix.length &&
     url.pathname.endsWith(expectedPathSuffix) &&
-    pathSegments[0] === "" &&
     pathSegments.slice(1).every((segment) => /^[A-Za-z0-9._~:-]+$/.test(segment));
   if (
     url.protocol !== "https:" ||

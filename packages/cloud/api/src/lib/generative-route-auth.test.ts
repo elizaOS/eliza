@@ -46,6 +46,7 @@ const reserveFlatUsageCredits = vi.fn();
 const admitOrganizationInference = vi.fn();
 const enforceOrgRateLimit = vi.fn();
 const inferenceRateLimitConfig = vi.fn();
+const loggerWarn = vi.fn();
 
 vi.mock("@/lib/api/cloud-worker-errors", () => ({ ApiError }));
 vi.mock("@/lib/services/ai-pricing/cache", () => ({
@@ -66,6 +67,9 @@ vi.mock("@/lib/services/organization-inference-admission", () => ({
 vi.mock("@/lib/middleware/rate-limit", () => ({ enforceOrgRateLimit }));
 vi.mock("@/lib/services/inference-admission-snapshot", () => ({
   inferenceRateLimitConfig,
+}));
+vi.mock("@/lib/utils/logger", () => ({
+  logger: { warn: loggerWarn },
 }));
 
 if (typeof Bun !== "undefined") {
@@ -97,6 +101,9 @@ if (typeof Bun !== "undefined") {
   bunTest.mock.module("@/lib/services/inference-admission-snapshot", () => ({
     inferenceRateLimitConfig,
   }));
+  bunTest.mock.module("@/lib/utils/logger", () => ({
+    logger: { warn: loggerWarn },
+  }));
 }
 
 const {
@@ -105,6 +112,7 @@ const {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
+  resolveInferenceAuthStandingDenial,
 } = await import("./generative-route-auth");
 
 const FLAT_COST = {
@@ -588,6 +596,74 @@ describe("admitFlatGenerativeOperation", () => {
   });
 });
 
+describe("resolveInferenceAuthStandingDenial", () => {
+  beforeEach(() => {
+    loggerWarn.mockReset();
+  });
+
+  test("preserves a retryable resolver 503 and logs only bounded fields", () => {
+    const denial = resolveInferenceAuthStandingDenial(
+      { kind: "rejected", status: 503 },
+      { route: "embeddings", traceId: "trace-1" },
+    );
+
+    expect(denial).toEqual({
+      status: 503,
+      type: "service_unavailable",
+      code: "service_unavailable",
+      message: "Authorization service is unavailable. Retry shortly.",
+      reason: "authorization_unavailable",
+      retryAfterSeconds: 1,
+    });
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[InferenceAuth] blocked provider dispatch at route boundary",
+      {
+        route: "embeddings",
+        traceId: "trace-1",
+        decision: "rejected",
+        status: 503,
+        reason: "authorization_unavailable",
+        retryable: true,
+      },
+    );
+  });
+
+  test("maps every typed standing reason without replacing resolver status", () => {
+    expect(
+      resolveInferenceAuthStandingDenial({
+        kind: "rejected",
+        status: 403,
+        reason: "organization_inactive",
+      }),
+    ).toMatchObject({
+      status: 403,
+      message: "Organization is inactive",
+      reason: "organization_inactive",
+    });
+    expect(
+      resolveInferenceAuthStandingDenial({
+        kind: "rejected",
+        status: 401,
+        reason: "credential_invalid",
+      }),
+    ).toMatchObject({
+      status: 401,
+      message: "Authentication required",
+      reason: "credential_invalid",
+    });
+    expect(
+      resolveInferenceAuthStandingDenial({
+        kind: "suspended",
+        reason: "moderation_blocked",
+      }),
+    ).toMatchObject({
+      status: 403,
+      message: "Account access is blocked by policy moderation",
+      reason: "moderation_blocked",
+    });
+  });
+});
+
 describe("requireGenerativeRouteCaller", () => {
   beforeEach(() => {
     resolveInferenceAuthContext.mockReset();
@@ -793,7 +869,7 @@ describe("requireGenerativeRouteCaller", () => {
     });
   });
 
-  test("fails closed on warming without awaiting when the budget is unset", async () => {
+  test("fails closed when warming has no one-shot continuation", async () => {
     const { c } = workerContext();
     resolveInferenceAuthContext.mockResolvedValueOnce({
       kind: "warming",
@@ -819,6 +895,9 @@ describe("requireGenerativeRouteCaller", () => {
       requireGenerativeRouteCaller(c as never, { awaitWarmingMs: 0 }),
     ).rejects.toMatchObject({ status: 503 });
     expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      inlineContinuationDeadlineMs: 0,
+    });
   });
 
   test("fails fast when warming has no hydration promise even with a budget", async () => {
@@ -830,19 +909,35 @@ describe("requireGenerativeRouteCaller", () => {
     expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
   });
 
-  test("re-resolves after hydration settles inside the budget", async () => {
+  test("uses the inline origin result returned by the shared resolver", async () => {
     const { c } = workerContext();
-    resolveInferenceAuthContext
-      .mockResolvedValueOnce({
-        kind: "warming",
-        hydration: Promise.resolve(sessionAuthorized),
-      })
-      .mockResolvedValueOnce(sessionAuthorized);
+    resolveInferenceAuthContext.mockResolvedValueOnce(sessionAuthorized);
     const caller = await requireGenerativeRouteCaller(c as never, {
-      awaitWarmingMs: 1500,
+      rateLimitEndpoint: "strict",
     });
     expect(caller.authSource).toBe("combined_cache");
-    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(2);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(enforceOrgRateLimit).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      inlineContinuationDeadlineMs: undefined,
+    });
+  });
+
+  test("surfaces a definitive continuation denial before rate limit admission", async () => {
+    const { c } = workerContext();
+    const denial = {
+      kind: "rejected" as const,
+      status: 403 as const,
+      reason: "organization_inactive" as const,
+    };
+    resolveInferenceAuthContext.mockResolvedValueOnce(denial);
+
+    await expect(
+      requireGenerativeRouteCaller(c as never, { rateLimitEndpoint: "strict" }),
+    ).rejects.toMatchObject({ status: 403, code: "access_denied" });
+
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(enforceOrgRateLimit).not.toHaveBeenCalled();
   });
 
   test("still 503s when the warming budget expires", async () => {
@@ -851,16 +946,22 @@ describe("requireGenerativeRouteCaller", () => {
     const hydration = new Promise((resolve) => {
       release = () => resolve(sessionAuthorized);
     });
-    resolveInferenceAuthContext
-      .mockResolvedValueOnce({ kind: "warming", hydration })
-      .mockResolvedValueOnce({ kind: "warming", hydration });
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "warming",
+      hydration,
+      continuation: hydration,
+    });
     await expect(
       requireGenerativeRouteCaller(c as never, { awaitWarmingMs: 20 }),
     ).rejects.toMatchObject({
       status: 503,
       code: "service_unavailable",
     });
-    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(2);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(enforceOrgRateLimit).not.toHaveBeenCalled();
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      inlineContinuationDeadlineMs: 20,
+    });
     release?.();
   });
 

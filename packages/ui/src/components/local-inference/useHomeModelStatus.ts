@@ -196,7 +196,9 @@ export function useHomeModelStatus(): HomeModelStatus {
       );
       // On-device runtimes are addressed via the native IPC base, which
       // EventSource cannot open — fall back to the one-shot `refresh()` above.
-      eventSource = openEventSource(url, { withCredentials: false });
+      eventSource = getElizaApiToken()
+        ? null
+        : openEventSource(url, { withCredentials: false });
       if (eventSource) {
         eventSource.onmessage = () => {
           // The stream carries download/active deltas but not recomputed

@@ -3,6 +3,7 @@ import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   ensureLifeOpsGooglePluginRegistered,
+  ensureLifeOpsPdfPluginRegistered,
   personalAssistantPlugin,
 } from "./plugin.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
@@ -98,6 +99,26 @@ describe("LifeOps Google plugin registration", () => {
     );
     expect(personalAssistantRoutesPlugin.dependencies).toContain(
       "@elizaos/plugin-google-workspace",
+    );
+  });
+
+  it("declares and registers the PDF service required by LifeOps document workflows", async () => {
+    expect(personalAssistantPlugin.dependencies).toContain(
+      "@elizaos/plugin-pdf",
+    );
+    const { runtime, plugins, registerPlugin } =
+      createRuntimeWithPluginRegistration();
+
+    await ensureLifeOpsPdfPluginRegistered(runtime);
+    await ensureLifeOpsPdfPluginRegistered(runtime);
+
+    expect(registerPlugin).toHaveBeenCalledTimes(1);
+    expect(plugins.map((plugin) => plugin.name)).toContain("pdf");
+    expect(registerPlugin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "pdf",
+        services: expect.any(Array),
+      }),
     );
   });
 

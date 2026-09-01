@@ -603,9 +603,7 @@ export class DockerNodesRepository {
 
   /**
    * Reconcile allocated_count from primary workload authority (used during
-   * sync). The caller's count is only a cheap drift hint: it may have been read
-   * before a concurrent reserve/cleanup committed and is never written
-   * directly.
+   * sync).
    *
    * Locking the node before the recount serializes this absolute repair with
    * exact-restore `allocated_count +/- 1` writers. Under READ COMMITTED, the
@@ -613,10 +611,7 @@ export class DockerNodesRepository {
    * the node lock is visible with its attempt row, while a cleanup that waits
    * behind the recount applies its decrement after this transaction commits.
    */
-  async setAllocatedCount(
-    nodeId: string,
-    _observedCount: number,
-  ): Promise<DockerNodeAllocationRecount | null> {
+  async setAllocatedCount(nodeId: string): Promise<DockerNodeAllocationRecount | null> {
     return reconcileAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId);
   }
 }

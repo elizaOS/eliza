@@ -29,6 +29,7 @@ import type {
   SharedTurnClaimStore,
   SharedTurnTerminalResult,
 } from "@/lib/services/shared-runtime/shared-runtime-chat";
+import { SharedRuntimeTurnError } from "@/lib/services/shared-runtime/shared-runtime-errors";
 import { mergeSharedRuntimeHistoryMessages } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -2049,9 +2050,9 @@ export class SharedRuntimeConversation {
       return this.releaseWhenConsumed(response, release);
     } catch (error) {
       // error-policy:J1 the Durable Object transport boundary translates cache
-      // warming and credit insufficiency into structured responses (class
-      // identity cannot survive the stub fetch boundary); every other failure
-      // remains observable to Workers.
+      // warming, turn failure classification, and credit insufficiency into
+      // structured responses (class identity cannot survive the stub fetch
+      // boundary); every other failure remains observable to Workers.
       release();
       if (error instanceof Error && error.name === "SharedTurnConflictError") {
         return Response.json(
@@ -2077,6 +2078,18 @@ export class SharedRuntimeConversation {
             retryable: true,
           },
           { status: 503, headers: { "Retry-After": "1" } },
+        );
+      }
+      if (error instanceof SharedRuntimeTurnError) {
+        return Response.json(
+          {
+            success: false,
+            error: "Shared runtime turn failed.",
+            code: "shared_runtime_turn_failed",
+            failureName: error.failureName,
+            retryable: error.retryable,
+          },
+          { status: error.retryable ? 503 : 500 },
         );
       }
       const { InsufficientCreditsError, RateLimitError } = await import(

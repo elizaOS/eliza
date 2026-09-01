@@ -7,6 +7,7 @@
  */
 import { setBootConfig as setSharedBootConfig } from "@elizaos/shared/config/boot-config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearElizaApiToken, setElizaApiToken } from "../utils/eliza-globals";
 
 const bootConfigMock = vi.hoisted(() => ({
   getBootConfig: vi.fn(),
@@ -97,6 +98,7 @@ describe("fetchWithCsrf", () => {
     clearCookie("eliza_csrf");
     clearCookie("other");
     setSharedBootConfig({ branding: {} });
+    clearElizaApiToken();
     vi.clearAllMocks();
   });
 
@@ -165,6 +167,16 @@ describe("fetchWithCsrf", () => {
     expect(
       localAgentTokenMock.hydrateAndroidLocalAgentTokenForUrl,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("attaches the paired runtime bearer when boot config has no token", async () => {
+    setElizaApiToken("  paired-runtime-token  ");
+
+    await fetchWithCsrf("/api/apps/favorites");
+
+    const headers = fetchTransportMock.fetchAgentTransport.request.mock
+      .calls[0]?.[1].headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer paired-runtime-token");
   });
 
   it("routes external desktop HTTP auth requests through the desktop transport", async () => {

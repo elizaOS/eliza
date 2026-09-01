@@ -13,7 +13,7 @@
  *  - **No synchronous "ready" on create.** `POST /droplets` returns a droplet
  *    in status `new`; the droplet boots out of band. `createServer` therefore
  *    returns a `ProvisionedServer` immediately (status `new`) and callers poll
- *    `getServer` — identical contract to Hetzner.
+ *    `getServer`.
  *  - **No root password.** DO never returns a root password on create, so
  *    `ProvisionedServer.rootPassword` is always `null`.
  *  - **Volume ids are UUID strings**, not numbers. Droplet / action / image
@@ -452,7 +452,13 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const data = await this.request<{ action: DOAction }>("GET", `/actions/${actionId}`);
-      if (data.action.status !== "in-progress") return mapAction(data.action);
+      if (data.action.status === "completed") return mapAction(data.action);
+      if (data.action.status === "errored") {
+        throw new DigitalOceanComputeError(
+          "server_error",
+          `DigitalOcean action ${actionId} failed`,
+        );
+      }
       await this.sleep(2000);
     }
     throw new DigitalOceanComputeError(

@@ -363,10 +363,19 @@ test("warm Worker admission writes only the Durable Object lease before provider
   fetchEntriesForSource.mockClear();
 
   const background: Promise<unknown>[] = [];
-  const admission = await admitOrganizationInference(admissionParams(model, background));
+  const credential = {
+    kind: "api_key" as const,
+    credentialId: "key-1",
+    userId: "user-1",
+  };
+  const admission = await admitOrganizationInference({
+    ...admissionParams(model, background),
+    credential,
+  });
   const leaseParams = acquireInferenceAdmissionLease.mock.calls.at(-1)?.[0] as
     | {
         requestId: string;
+        credential?: typeof credential;
         recovery: {
           version: number;
           kind: string;
@@ -380,6 +389,7 @@ test("warm Worker admission writes only the Durable Object lease before provider
   if (!leaseParams) throw new Error("expected inference admission lease");
 
   expect(admission.mode).toBe("durable_object_debit");
+  expect(leaseParams.credential).toEqual(credential);
   expect(leaseParams.recovery).toMatchObject({
     version: 1,
     kind: "organization",

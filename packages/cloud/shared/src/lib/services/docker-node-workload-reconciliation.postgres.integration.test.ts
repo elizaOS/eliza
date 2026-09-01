@@ -161,6 +161,48 @@ afterAll(async () => {
 const realPostgres = postgres ? describe : describe.skip;
 
 realPostgres("Docker capacity recount PostgreSQL serialization", () => {
+  test("standalone aggregate count keeps one statement snapshot across lifecycle transfer", async () => {
+    if (!isolatedDsn || !pool || !database) throw new Error("PostgreSQL harness unavailable");
+    await pool.query(
+      `INSERT INTO agent_sandbox_replacement_attempts
+         (id, locator_node_id, locator_allocation_counted, restore_attempt_id, state)
+       VALUES ($1, $2, true, $3, 'provider_succeeded')`,
+      [ATTEMPT_ID, NODE_ID, RESTORE_ID],
+    );
+    const writer = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([writer.connect(), observer.connect()]);
+    try {
+      await writer.query("BEGIN");
+      await writer.query("SELECT id FROM docker_nodes WHERE node_id = $1 FOR UPDATE", [NODE_ID]);
+      await writer.query("LOCK TABLE agent_sandbox_replacement_attempts IN ACCESS EXCLUSIVE MODE");
+      const pid = (await writer.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]!
+        .pid;
+      const count = countAllocatedWorkloadsOnNodeWithDatabase(database, NODE_ID);
+      await waitUntilBlockedBy(observer, pid);
+      // The old serial implementation had already observed no canonical
+      // sandbox when it blocked on its final replacement-attempt SELECT. This
+      // atomic handoff then made that last SELECT observe no reservation too,
+      // returning zero. The aggregate implementation can observe only the
+      // complete pre-commit or post-commit state of its one statement.
+      await writer.query(
+        "UPDATE agent_sandbox_replacement_attempts SET state = 'lifecycle_committed' WHERE id = $1",
+        [ATTEMPT_ID],
+      );
+      await writer.query(
+        "INSERT INTO agent_sandboxes (id, node_id, status) VALUES ($1, $2, 'running')",
+        [SANDBOX_ID, NODE_ID],
+      );
+      await writer.query("COMMIT");
+
+      expect(await count).toBe(1);
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(1);
+    } finally {
+      await writer.query("ROLLBACK").catch(() => {});
+      await Promise.all([writer.end(), observer.end()]);
+    }
+  }, 10_000);
+
   test("reserve followed by recount preserves the newly owned slot", async () => {
     if (!isolatedDsn || !pool || !database) throw new Error("PostgreSQL harness unavailable");
     const writer = new Client({ connectionString: isolatedDsn });

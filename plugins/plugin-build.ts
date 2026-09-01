@@ -11,7 +11,7 @@
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   type ExternalsFromPackageJsonOptions,
   externalsFromPackageJson,
@@ -100,6 +100,12 @@ export interface BuildPluginConfig {
    * default; adopters that don't set it are unaffected.
    */
   dtsCopies?: ReadonlyArray<{ from: string; to: string }>;
+  /**
+   * Paths below `dist/` to remove after declaration emit and shim/copy steps.
+   * Use this when TypeScript follows a renderer-only import and emits declarations
+   * that are not part of the package's published runtime or type surface.
+   */
+  pruneAfterDts?: readonly string[];
 }
 
 const RM_RECURSIVE = resolve(
@@ -251,6 +257,22 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
     const dest = join(distDir, to);
     await mkdir(dirname(dest), { recursive: true });
     await copyFile(join(distDir, from), dest);
+  }
+
+  for (const relativePath of config.pruneAfterDts ?? []) {
+    const target = resolve(distDir, relativePath);
+    const targetRelative = relative(resolve(distDir), target);
+    if (
+      !targetRelative ||
+      targetRelative === ".." ||
+      targetRelative.startsWith(`..${sep}`) ||
+      isAbsolute(targetRelative)
+    ) {
+      throw new Error(`Refusing to prune path outside dist: ${relativePath}`);
+    }
+    if (existsSync(target)) {
+      await Bun.$`node ${RM_RECURSIVE} ${target}`;
+    }
   }
 
   if (config.rewriteDistImports) {
