@@ -1,8 +1,8 @@
 /**
  * iMessage domain for LifeOps: reads and sends the owner's iMessages through the
- * native runtime-service delegates (Full Disk Access-gated chat DB on macOS) and
- * projects native status into assistant connector DTOs. The bridge implementation
- * lives in the native macOS packages; this layer owns the assistant projection.
+ * registered runtime service and projects its active native or Blooio transport
+ * into assistant connector DTOs. The connector plugin owns transport behavior;
+ * this layer owns only the LifeOps projection and native plugin-load fallback.
  */
 import { basename } from "node:path";
 import type { Plugin } from "@elizaos/core";
@@ -16,7 +16,8 @@ import {
 import type { Constructor, LifeOpsServiceBase } from "../service-mixin-core.js";
 import { fail } from "../service-normalize.js";
 
-type NativeIMessageStatus = {
+type RuntimeIMessageStatus = {
+  transport: "native" | "blooio";
   available: boolean;
   connected: boolean;
   chatDbAvailable: boolean;
@@ -29,6 +30,8 @@ type NativeIMessageStatus = {
     url: string;
     instructions: string[];
   } | null;
+  webhookPath: string | null;
+  channelId: string | null;
 };
 
 type NativeIMessageMessage = {
@@ -49,9 +52,9 @@ type NativeIMessageChat = {
   participants: Array<{ handle: string; isPhoneNumber: boolean }>;
 };
 
-type NativeIMessageServiceLike = {
+type RuntimeIMessageServiceLike = {
   isConnected(): boolean;
-  getStatus?(): NativeIMessageStatus;
+  getStatus?(): RuntimeIMessageStatus;
   sendMessage(
     to: string,
     text: string,
@@ -213,12 +216,12 @@ async function ensureNativeIMessagePluginLoaded(
   return false;
 }
 
-async function getNativeIMessageService(
+async function getRuntimeIMessageService(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
-): Promise<NativeIMessageServiceLike | null> {
+): Promise<RuntimeIMessageServiceLike | null> {
   let service = runtime.getService(
     "imessage",
-  ) as NativeIMessageServiceLike | null;
+  ) as RuntimeIMessageServiceLike | null;
   if (service) {
     return service;
   }
@@ -233,7 +236,7 @@ async function getNativeIMessageService(
     );
   }
 
-  service = runtime.getService("imessage") as NativeIMessageServiceLike | null;
+  service = runtime.getService("imessage") as RuntimeIMessageServiceLike | null;
   return service ?? null;
 }
 
@@ -257,15 +260,16 @@ function unavailableIMessageStatus(
   };
 }
 
-function nativeStatusToLifeOps(
-  service: NativeIMessageServiceLike,
+function runtimeStatusToLifeOps(
+  service: RuntimeIMessageServiceLike,
   checkedAt: string,
 ): LifeOpsIMessageConnectorStatus {
   const status = service.getStatus?.();
   const diagnostics: string[] = [];
   const connected = status?.connected ?? service.isConnected();
+  const transport = status?.transport ?? "native";
 
-  if (status && !status.chatDbAvailable) {
+  if (transport === "native" && status && !status.chatDbAvailable) {
     diagnostics.push(
       status.permissionAction?.type === "full_disk_access"
         ? "full_disk_access_required"
@@ -273,31 +277,45 @@ function nativeStatusToLifeOps(
     );
   }
   if (!connected) {
-    diagnostics.push("native_bridge_not_connected");
+    diagnostics.push(
+      transport === "blooio"
+        ? "blooio_transport_not_connected"
+        : "native_bridge_not_connected",
+    );
   }
 
   return {
     available: status?.available ?? true,
     connected,
-    bridgeType: "native",
+    bridgeType: transport === "blooio" ? "blooio" : "native",
     hostPlatform: normalizeHostPlatform(),
     accountHandle: null,
-    sendMode: connected ? "apple-script" : "none",
+    sendMode:
+      connected && transport === "blooio"
+        ? "provider-api"
+        : connected
+          ? "apple-script"
+          : "none",
     helperConnected: null,
     privateApiEnabled: null,
     diagnostics,
     lastSyncAt: null,
     lastCheckedAt: checkedAt,
     error: status?.reason ?? null,
-    chatDbAvailable: status?.chatDbAvailable ?? false,
-    sendOnly: status?.sendOnly ?? !status?.chatDbAvailable,
-    chatDbPath: status?.chatDbPath,
+    chatDbAvailable:
+      transport === "native" ? (status?.chatDbAvailable ?? false) : undefined,
+    sendOnly:
+      transport === "native"
+        ? (status?.sendOnly ?? !status?.chatDbAvailable)
+        : undefined,
+    chatDbPath: transport === "native" ? status?.chatDbPath : undefined,
     reason: status?.reason ?? null,
-    permissionAction: status?.permissionAction ?? null,
+    permissionAction:
+      transport === "native" ? (status?.permissionAction ?? null) : null,
   };
 }
 
-function nativeServiceCanRead(service: NativeIMessageServiceLike): boolean {
+function nativeServiceCanRead(service: RuntimeIMessageServiceLike): boolean {
   const status = service.getStatus?.();
   if (status && !status.chatDbAvailable) {
     return false;
@@ -367,17 +385,17 @@ function unknownDeliveryStatus(messageIds: string[]): IMessageDeliveryResult[] {
 }
 
 /**
- * Native iMessage connector reads/sends, delegated to the runtime
- * `@elizaos/plugin-imessage` service with a native AppleScript fallback.
+ * iMessage connector reads and sends through the active transport exposed by
+ * the runtime `@elizaos/plugin-imessage` service.
  */
 export class IMessageDomain {
   constructor(private readonly ctx: LifeOpsContext) {}
 
   async getIMessageConnectorStatus(): Promise<LifeOpsIMessageConnectorStatus> {
     const checkedAt = new Date().toISOString();
-    const nativeService = await getNativeIMessageService(this.ctx.runtime);
-    return nativeService
-      ? nativeStatusToLifeOps(nativeService, checkedAt)
+    const runtimeService = await getRuntimeIMessageService(this.ctx.runtime);
+    return runtimeService
+      ? runtimeStatusToLifeOps(runtimeService, checkedAt)
       : unavailableIMessageStatus(checkedAt);
   }
 
@@ -410,7 +428,7 @@ export class IMessageDomain {
       }
     }
 
-    const nativeService = await getNativeIMessageService(this.ctx.runtime);
+    const nativeService = await getRuntimeIMessageService(this.ctx.runtime);
     if (!nativeService) {
       fail(503, IMESSAGE_PLUGIN_SETUP_MESSAGE);
     }
@@ -460,7 +478,7 @@ export class IMessageDomain {
       );
     }
 
-    const nativeService = await getNativeIMessageService(this.ctx.runtime);
+    const nativeService = await getRuntimeIMessageService(this.ctx.runtime);
     if (!nativeService || !nativeServiceCanRead(nativeService)) {
       fail(503, IMESSAGE_PLUGIN_SETUP_MESSAGE);
     }
@@ -474,7 +492,7 @@ export class IMessageDomain {
   }
 
   async listIMessageChats(): Promise<IMessageChat[]> {
-    const nativeService = await getNativeIMessageService(this.ctx.runtime);
+    const nativeService = await getRuntimeIMessageService(this.ctx.runtime);
     if (nativeService?.getChats && nativeServiceCanRead(nativeService)) {
       return (await nativeService.getChats()).map(nativeChatToLifeOps);
     }
@@ -486,7 +504,7 @@ export class IMessageDomain {
     chatId?: string;
     limit?: number;
   }): Promise<IMessageRecord[]> {
-    const nativeService = await getNativeIMessageService(this.ctx.runtime);
+    const nativeService = await getRuntimeIMessageService(this.ctx.runtime);
     if (!nativeService || !nativeServiceCanRead(nativeService)) {
       fail(503, IMESSAGE_PLUGIN_SETUP_MESSAGE);
     }

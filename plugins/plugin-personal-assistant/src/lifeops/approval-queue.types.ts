@@ -129,6 +129,11 @@ export interface CalendarApprovalAttendee {
   readonly optional?: boolean;
 }
 
+export interface CalendarApprovalAllDayRange {
+  readonly startDate: string;
+  readonly endDateExclusive: string;
+}
+
 /** String entries remain readable for approvals persisted before attendee metadata was retained. */
 export type CalendarApprovalAttendeeInput = string | CalendarApprovalAttendee;
 
@@ -176,6 +181,7 @@ export type ApprovalPayload =
       title: string;
       startsAtMs: number;
       endsAtMs: number;
+      allDay?: CalendarApprovalAllDayRange | null;
       timeZone?: string | null;
       durationMinutes?: number | null;
       windowPreset?:
@@ -218,6 +224,7 @@ export type ApprovalPayload =
         title: string | null;
         startsAtMs: number | null;
         endsAtMs: number | null;
+        allDay?: CalendarApprovalAllDayRange | null;
         timeZone?: string | null;
         attendees: ReadonlyArray<CalendarApprovalAttendeeInput> | null;
         location: string | null;

@@ -28,10 +28,6 @@ import {
   sqlQuote,
   toText,
 } from "../sql.js";
-import {
-  buildUtcDateFromLocalParts,
-  formatInstantAsRfc3339InTimeZone,
-} from "../time.js";
 
 export const CONCORD_SCHOOL_CALENDAR_SOURCE: SchoolCalendarSourceConfig = {
   sourceId: "concord-cps-school-year-calendar",
@@ -54,6 +50,7 @@ const MAX_LANDING_BYTES = 512 * 1024;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
 const LEASE_MS = 5 * 60_000;
+const SCHOOL_CALENDAR_CONTRACT_VERSION = 2;
 
 const SCHEMA = [
   `CREATE SCHEMA IF NOT EXISTS app_lifeops`,
@@ -63,6 +60,7 @@ const SCHEMA = [
     lease_expires_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     PRIMARY KEY (agent_id, source_id)
   )`,
+  `ALTER TABLE app_lifeops.life_school_calendar_sources ADD COLUMN IF NOT EXISTS calendar_contract_version INTEGER NOT NULL DEFAULT 1`,
   `CREATE TABLE IF NOT EXISTS app_lifeops.life_school_calendar_runs (
     agent_id TEXT NOT NULL, run_id TEXT NOT NULL, source_id TEXT NOT NULL,
     state TEXT NOT NULL, trigger_kind TEXT NOT NULL, discovered_pdf_url TEXT,
@@ -148,6 +146,7 @@ export type SchoolCalendarChange =
 
 export interface SchoolCalendarApprovalPlan {
   version: 1;
+  calendarContractVersion: 2;
   sourceId: string;
   runId: string;
   contentSha256: string;
@@ -223,34 +222,6 @@ export class SchoolCalendarWorkflowError extends Error {
     super(message, options);
     this.name = "SchoolCalendarWorkflowError";
   }
-}
-
-const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/u;
-
-function allDayBoundary(dateOnly: string, timeZone: string): string {
-  const match = DATE_ONLY.exec(dateOnly);
-  if (!match) {
-    throw new SchoolCalendarWorkflowError(
-      "School calendar event has an invalid local date.",
-      "SCHOOL_CALENDAR_DATE_INVALID",
-    );
-  }
-  const instant = buildUtcDateFromLocalParts(timeZone, {
-    year: Number(match[1]),
-    month: Number(match[2]),
-    day: Number(match[3]),
-    hour: 0,
-    minute: 0,
-    second: 0,
-  });
-  const boundary = formatInstantAsRfc3339InTimeZone(instant, timeZone);
-  if (!boundary.startsWith(`${dateOnly}T00:00:00`)) {
-    throw new SchoolCalendarWorkflowError(
-      "School calendar local date cannot be represented at midnight in its timezone.",
-      "SCHOOL_CALENDAR_DATE_INVALID",
-    );
-  }
-  return boundary;
 }
 
 function sha256(value: Buffer | string): string {
@@ -642,6 +613,7 @@ function parsePositionedSchoolCalendar(
 export function diffSchoolCalendarEvents(
   previous: readonly PersistedEvent[],
   current: readonly SchoolCalendarSemanticEvent[],
+  options: { migrateToAllDay?: boolean } = {},
 ): SchoolCalendarChange[] {
   const oldByKey = new Map(
     previous
@@ -682,6 +654,21 @@ export function diffSchoolCalendarEvents(
         endDateExclusive: event.endDateExclusive,
       })
     ) {
+      if (options.migrateToAllDay) {
+        if (!before.providerEventId || !before.providerVersion) {
+          throw new SchoolCalendarWorkflowError(
+            `Cannot migrate ${key} to all-day without its provider identity and version.`,
+            "SCHOOL_CALENDAR_PROVIDER_IDENTITY_MISSING",
+          );
+        }
+        return {
+          kind: "update",
+          before,
+          event,
+          providerEventId: before.providerEventId,
+          providerVersion: before.providerVersion,
+        };
+      }
       return { kind: "unchanged", event };
     }
     if (!before.providerEventId || !before.providerVersion) {
@@ -807,7 +794,10 @@ export class SchoolCalendarWorkflow {
         );
       }
       const source = await this.source(config.sourceId);
-      if (source.lastContentSha256 === contentSha256) {
+      if (
+        source.lastContentSha256 === contentSha256 &&
+        source.calendarContractVersion >= SCHOOL_CALENDAR_CONTRACT_VERSION
+      ) {
         await this.completeNoop(
           runId,
           config.sourceId,
@@ -826,7 +816,10 @@ export class SchoolCalendarWorkflow {
       const text = await this.extract(bytes);
       const current = parseSchoolCalendarText(text);
       const previous = await this.events(config.sourceId);
-      const changes = diffSchoolCalendarEvents(previous, current);
+      const changes = diffSchoolCalendarEvents(previous, current, {
+        migrateToAllDay:
+          source.calendarContractVersion < SCHOOL_CALENDAR_CONTRACT_VERSION,
+      });
       if (changes.every((change) => change.kind === "unchanged")) {
         await this.completeNoop(
           runId,
@@ -845,6 +838,7 @@ export class SchoolCalendarWorkflow {
       }
       const plan: SchoolCalendarApprovalPlan = {
         version: 1,
+        calendarContractVersion: SCHOOL_CALENDAR_CONTRACT_VERSION,
         sourceId: config.sourceId,
         runId,
         contentSha256,
@@ -961,11 +955,10 @@ export class SchoolCalendarWorkflow {
             grantId: config.targetGrantId,
             calendarId: config.targetCalendarId,
             title: change.event.title,
-            startAt: allDayBoundary(change.event.startDate, config.timeZone),
-            endAt: allDayBoundary(
-              change.event.endDateExclusive,
-              config.timeZone,
-            ),
+            allDay: {
+              startDate: change.event.startDate,
+              endDateExclusive: change.event.endDateExclusive,
+            },
             timeZone: config.timeZone,
             notifyAttendees: false,
             idempotencyKey: `${config.sourceId}:${change.event.eventKey}:${plan.contentSha256}`,
@@ -989,11 +982,10 @@ export class SchoolCalendarWorkflow {
             calendarId: config.targetCalendarId,
             eventId: change.providerEventId,
             title: change.event.title,
-            startAt: allDayBoundary(change.event.startDate, config.timeZone),
-            endAt: allDayBoundary(
-              change.event.endDateExclusive,
-              config.timeZone,
-            ),
+            allDay: {
+              startDate: change.event.startDate,
+              endDateExclusive: change.event.endDateExclusive,
+            },
             timeZone: config.timeZone,
             expectedProviderVersion: change.providerVersion,
             idempotencyKey: `${config.sourceId}:${change.event.eventKey}:${plan.contentSha256}`,
@@ -1048,7 +1040,7 @@ export class SchoolCalendarWorkflow {
         );
       await executeRawSql(
         this.runtime,
-        `UPDATE app_lifeops.life_school_calendar_sources SET last_content_sha256=${sqlQuote(plan.contentSha256)},last_media_url=${sqlQuote(plan.mediaUrl)},updated_at=${sqlQuote(completedAt)} WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND source_id=${sqlQuote(config.sourceId)}`,
+        `UPDATE app_lifeops.life_school_calendar_sources SET last_content_sha256=${sqlQuote(plan.contentSha256)},last_media_url=${sqlQuote(plan.mediaUrl)},calendar_contract_version=${SCHOOL_CALENDAR_CONTRACT_VERSION},updated_at=${sqlQuote(completedAt)} WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND source_id=${sqlQuote(config.sourceId)}`,
       );
     } catch (error) {
       // error-policy:J2 Restore the exact owned apply leases, then rethrow a
@@ -1238,17 +1230,19 @@ export class SchoolCalendarWorkflow {
     );
   }
 
-  private async source(
-    sourceId: string,
-  ): Promise<{ lastContentSha256: string | null }> {
+  private async source(sourceId: string): Promise<{
+    lastContentSha256: string | null;
+    calendarContractVersion: number;
+  }> {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT last_content_sha256 FROM app_lifeops.life_school_calendar_sources WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND source_id = ${sqlQuote(sourceId)} LIMIT 1`,
+      `SELECT last_content_sha256, calendar_contract_version FROM app_lifeops.life_school_calendar_sources WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND source_id = ${sqlQuote(sourceId)} LIMIT 1`,
     );
     return {
       lastContentSha256: rows[0]?.last_content_sha256
         ? toText(rows[0].last_content_sha256)
         : null,
+      calendarContractVersion: Number(rows[0]?.calendar_contract_version ?? 1),
     };
   }
 
@@ -1286,7 +1280,7 @@ export class SchoolCalendarWorkflow {
     );
     await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_school_calendar_sources SET last_content_sha256 = ${sqlQuote(hash)}, last_media_url = ${sqlQuote(mediaUrl)}, updated_at = ${sqlQuote(at)} WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND source_id = ${sqlQuote(sourceId)}`,
+      `UPDATE app_lifeops.life_school_calendar_sources SET last_content_sha256 = ${sqlQuote(hash)}, last_media_url = ${sqlQuote(mediaUrl)}, calendar_contract_version = ${SCHOOL_CALENDAR_CONTRACT_VERSION}, updated_at = ${sqlQuote(at)} WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND source_id = ${sqlQuote(sourceId)}`,
     );
     await this.release(sourceId, lease, at);
   }
@@ -1363,6 +1357,8 @@ function parseApprovalPlan(
 ): SchoolCalendarApprovalPlan {
   if (
     value.version !== 1 ||
+    (value.calendarContractVersion !== undefined &&
+      value.calendarContractVersion !== SCHOOL_CALENDAR_CONTRACT_VERSION) ||
     typeof value.sourceId !== "string" ||
     typeof value.runId !== "string" ||
     typeof value.contentSha256 !== "string" ||
@@ -1375,6 +1371,7 @@ function parseApprovalPlan(
   }
   return {
     version: 1,
+    calendarContractVersion: SCHOOL_CALENDAR_CONTRACT_VERSION,
     sourceId: value.sourceId,
     runId: value.runId,
     contentSha256: value.contentSha256,
