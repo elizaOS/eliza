@@ -2148,9 +2148,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(events.indexOf("persist-intent")).toBeLessThan(events.indexOf("docker-create"));
     expect(events.indexOf("persist-created")).toBeLessThan(events.indexOf("docker-start"));
     expect(events.indexOf("vpn-registration")).toBeLessThan(events.indexOf("tailnet-bound"));
-    expect(registrationOptions?.registrationStartedAt?.toISOString()).toBe(
-      REGISTRATION_STARTED_AT,
-    );
+    expect(registrationOptions?.registrationStartedAt?.toISOString()).toBe(REGISTRATION_STARTED_AT);
     expect(events.indexOf("tailnet-bound")).toBeLessThan(events.indexOf("persist-vpn"));
     expect(events.at(-1)).toBe("settlement-succeeded");
     expect(dockerCreateCommand).toContain(`ai.elizaos.replacement-attempt=${ATTEMPT_ID}`);
