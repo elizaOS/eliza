@@ -28,6 +28,10 @@ import {
   sqlQuote,
   toText,
 } from "../sql.js";
+import {
+  buildUtcDateFromLocalParts,
+  formatInstantAsRfc3339InTimeZone,
+} from "../time.js";
 
 export const CONCORD_SCHOOL_CALENDAR_SOURCE: SchoolCalendarSourceConfig = {
   sourceId: "concord-cps-school-year-calendar",
@@ -214,10 +218,39 @@ export class SchoolCalendarWorkflowError extends Error {
   constructor(
     message: string,
     readonly code: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "SchoolCalendarWorkflowError";
   }
+}
+
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/u;
+
+function allDayBoundary(dateOnly: string, timeZone: string): string {
+  const match = DATE_ONLY.exec(dateOnly);
+  if (!match) {
+    throw new SchoolCalendarWorkflowError(
+      "School calendar event has an invalid local date.",
+      "SCHOOL_CALENDAR_DATE_INVALID",
+    );
+  }
+  const instant = buildUtcDateFromLocalParts(timeZone, {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: 0,
+    minute: 0,
+    second: 0,
+  });
+  const boundary = formatInstantAsRfc3339InTimeZone(instant, timeZone);
+  if (!boundary.startsWith(`${dateOnly}T00:00:00`)) {
+    throw new SchoolCalendarWorkflowError(
+      "School calendar local date cannot be represented at midnight in its timezone.",
+      "SCHOOL_CALENDAR_DATE_INVALID",
+    );
+  }
+  return boundary;
 }
 
 function sha256(value: Buffer | string): string {
@@ -871,122 +904,135 @@ export class SchoolCalendarWorkflow {
           : "SCHOOL_CALENDAR_RUN_NOT_APPLICABLE",
       );
     }
-    const plan = parseApprovalPlan(parseJsonRecord(row.plan_json));
-    const actionable = plan.changes.filter(
-      (change) => change.kind !== "unchanged",
-    );
-    for (const [index, change] of actionable.entries()) {
-      await executeRawSql(
-        this.runtime,
-        `INSERT INTO app_lifeops.life_school_calendar_apply_operations
+    try {
+      const plan = parseApprovalPlan(parseJsonRecord(row.plan_json));
+      const actionable = plan.changes.filter(
+        (change) => change.kind !== "unchanged",
+      );
+      for (const [index, change] of actionable.entries()) {
+        await executeRawSql(
+          this.runtime,
+          `INSERT INTO app_lifeops.life_school_calendar_apply_operations
          (agent_id,run_id,operation_index,event_key,kind,change_json,state,created_at,updated_at)
          VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(args.runId)},${index},
            ${sqlQuote(change.event.eventKey)},${sqlQuote(change.kind)},${sqlQuote(canonicalJson(change))},
            'pending',${sqlQuote(at)},${sqlQuote(at)})
          ON CONFLICT (agent_id,run_id,operation_index) DO NOTHING`,
-      );
-    }
-    for (const [index, change] of actionable.entries()) {
-      const operationNow = this.now();
-      const operationAt = operationNow.toISOString();
-      const operationExpiresAt = new Date(
-        operationNow.getTime() + LEASE_MS,
-      ).toISOString();
-      await executeRawSql(
-        this.runtime,
-        `UPDATE app_lifeops.life_school_calendar_runs SET
+        );
+      }
+      for (const [index, change] of actionable.entries()) {
+        const operationNow = this.now();
+        const operationAt = operationNow.toISOString();
+        const operationExpiresAt = new Date(
+          operationNow.getTime() + LEASE_MS,
+        ).toISOString();
+        await executeRawSql(
+          this.runtime,
+          `UPDATE app_lifeops.life_school_calendar_runs SET
          apply_lease_expires_at=${sqlQuote(operationExpiresAt)},updated_at=${sqlQuote(operationAt)}
          WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(args.runId)}
            AND state='applying' AND apply_lease_token=${sqlQuote(applyToken)}`,
-      );
-      const operation = await executeRawSql(
-        this.runtime,
-        `UPDATE app_lifeops.life_school_calendar_apply_operations SET
+        );
+        const operation = await executeRawSql(
+          this.runtime,
+          `UPDATE app_lifeops.life_school_calendar_apply_operations SET
          state='executing',lease_token=${sqlQuote(applyToken)},
          lease_expires_at=${sqlQuote(operationExpiresAt)},updated_at=${sqlQuote(operationAt)}
          WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(args.runId)}
            AND operation_index=${index}
            AND (state='pending' OR (state='executing' AND lease_expires_at < ${sqlQuote(operationAt)}))
          RETURNING operation_index`,
-      );
-      if (operation.length === 0) {
-        const persisted = await executeRawSql(
-          this.runtime,
-          `SELECT state FROM app_lifeops.life_school_calendar_apply_operations
+        );
+        if (operation.length === 0) {
+          const persisted = await executeRawSql(
+            this.runtime,
+            `SELECT state FROM app_lifeops.life_school_calendar_apply_operations
            WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(args.runId)}
              AND operation_index=${index} LIMIT 1`,
-        );
-        if (toText(persisted[0]?.state) === "applied") continue;
-        throw new SchoolCalendarWorkflowError(
-          "A school calendar operation is already executing.",
-          "SCHOOL_CALENDAR_APPLY_IN_PROGRESS",
-        );
-      }
-      if (change.kind === "add") {
-        const result = await args.gateway.create(args.requestUrl, {
-          grantId: config.targetGrantId,
-          calendarId: config.targetCalendarId,
-          title: change.event.title,
-          startAt: `${change.event.startDate}T00:00:00`,
-          endAt: `${change.event.endDateExclusive}T00:00:00`,
-          timeZone: config.timeZone,
-          notifyAttendees: false,
-          idempotencyKey: `${config.sourceId}:${change.event.eventKey}:${plan.contentSha256}`,
-        });
-        if (result.outcome !== "event" || !result.event) {
+          );
+          if (toText(persisted[0]?.state) === "applied") continue;
           throw new SchoolCalendarWorkflowError(
-            "School event create did not return a readable event.",
-            "SCHOOL_CALENDAR_CREATE_READBACK_REQUIRED",
+            "A school calendar operation is already executing.",
+            "SCHOOL_CALENDAR_APPLY_IN_PROGRESS",
           );
         }
-        await this.upsertEvent(config.sourceId, change.event, result.event);
-        await this.completeApplyOperation(
-          args.runId,
-          index,
-          applyToken,
-          result,
-        );
-      } else if (change.kind === "update") {
-        const event = await args.gateway.update(args.requestUrl, {
-          grantId: config.targetGrantId,
-          calendarId: config.targetCalendarId,
-          eventId: change.providerEventId,
-          title: change.event.title,
-          startAt: `${change.event.startDate}T00:00:00`,
-          endAt: `${change.event.endDateExclusive}T00:00:00`,
-          timeZone: config.timeZone,
-          expectedProviderVersion: change.providerVersion,
-          idempotencyKey: `${config.sourceId}:${change.event.eventKey}:${plan.contentSha256}`,
-        });
-        await this.upsertEvent(config.sourceId, change.event, event);
-        await this.completeApplyOperation(args.runId, index, applyToken, event);
-      } else {
-        const result = await args.gateway.cancel(args.requestUrl, {
-          grantId: config.targetGrantId,
-          calendarId: config.targetCalendarId,
-          eventId: change.providerEventId,
-          notifyAttendees: false,
-          expectedProviderVersion: change.providerVersion,
-          cancellationMode: "organizer_cancel",
-          idempotencyKey: `${config.sourceId}:${change.event.eventKey}:${plan.contentSha256}`,
-        });
-        await executeRawSql(
-          this.runtime,
-          `UPDATE app_lifeops.life_school_calendar_events SET active = FALSE, updated_at = ${sqlQuote(this.now().toISOString())} WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND source_id = ${sqlQuote(config.sourceId)} AND event_key = ${sqlQuote(change.event.eventKey)}`,
-        );
-        await this.completeApplyOperation(
-          args.runId,
-          index,
-          applyToken,
-          result,
-        );
+        if (change.kind === "add") {
+          const result = await args.gateway.create(args.requestUrl, {
+            grantId: config.targetGrantId,
+            calendarId: config.targetCalendarId,
+            title: change.event.title,
+            startAt: allDayBoundary(change.event.startDate, config.timeZone),
+            endAt: allDayBoundary(
+              change.event.endDateExclusive,
+              config.timeZone,
+            ),
+            timeZone: config.timeZone,
+            notifyAttendees: false,
+            idempotencyKey: `${config.sourceId}:${change.event.eventKey}:${plan.contentSha256}`,
+          });
+          if (result.outcome !== "event" || !result.event) {
+            throw new SchoolCalendarWorkflowError(
+              "School event create did not return a readable event.",
+              "SCHOOL_CALENDAR_CREATE_READBACK_REQUIRED",
+            );
+          }
+          await this.upsertEvent(config.sourceId, change.event, result.event);
+          await this.completeApplyOperation(
+            args.runId,
+            index,
+            applyToken,
+            result,
+          );
+        } else if (change.kind === "update") {
+          const event = await args.gateway.update(args.requestUrl, {
+            grantId: config.targetGrantId,
+            calendarId: config.targetCalendarId,
+            eventId: change.providerEventId,
+            title: change.event.title,
+            startAt: allDayBoundary(change.event.startDate, config.timeZone),
+            endAt: allDayBoundary(
+              change.event.endDateExclusive,
+              config.timeZone,
+            ),
+            timeZone: config.timeZone,
+            expectedProviderVersion: change.providerVersion,
+            idempotencyKey: `${config.sourceId}:${change.event.eventKey}:${plan.contentSha256}`,
+          });
+          await this.upsertEvent(config.sourceId, change.event, event);
+          await this.completeApplyOperation(
+            args.runId,
+            index,
+            applyToken,
+            event,
+          );
+        } else {
+          const result = await args.gateway.cancel(args.requestUrl, {
+            grantId: config.targetGrantId,
+            calendarId: config.targetCalendarId,
+            eventId: change.providerEventId,
+            notifyAttendees: false,
+            expectedProviderVersion: change.providerVersion,
+            cancellationMode: "organizer_cancel",
+            idempotencyKey: `${config.sourceId}:${change.event.eventKey}:${plan.contentSha256}`,
+          });
+          await executeRawSql(
+            this.runtime,
+            `UPDATE app_lifeops.life_school_calendar_events SET active = FALSE, updated_at = ${sqlQuote(this.now().toISOString())} WHERE agent_id = ${sqlQuote(this.runtime.agentId)} AND source_id = ${sqlQuote(config.sourceId)} AND event_key = ${sqlQuote(change.event.eventKey)}`,
+          );
+          await this.completeApplyOperation(
+            args.runId,
+            index,
+            applyToken,
+            result,
+          );
+        }
       }
-    }
-    const completedAt = this.now().toISOString();
-    const completed = await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_school_calendar_runs SET state='applied',
-       apply_lease_token=NULL,apply_lease_expires_at=NULL,updated_at=${sqlQuote(completedAt)}
+      const completedAt = this.now().toISOString();
+      const completed = await executeRawSql(
+        this.runtime,
+        `UPDATE app_lifeops.life_school_calendar_runs SET state='applied',
+       apply_lease_token=NULL,apply_lease_expires_at=NULL,
+       error_code=NULL,error_message=NULL,updated_at=${sqlQuote(completedAt)}
        WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(args.runId)}
          AND state='applying' AND apply_lease_token=${sqlQuote(applyToken)}
          AND NOT EXISTS (
@@ -994,15 +1040,59 @@ export class SchoolCalendarWorkflow {
            WHERE op.agent_id=${sqlQuote(this.runtime.agentId)} AND op.run_id=${sqlQuote(args.runId)}
              AND op.state <> 'applied'
          ) RETURNING run_id`,
-    );
-    if (completed.length !== 1)
-      throw new SchoolCalendarWorkflowError(
-        "School calendar apply ownership was lost before completion.",
-        "SCHOOL_CALENDAR_APPLY_LEASE_LOST",
       );
+      if (completed.length !== 1)
+        throw new SchoolCalendarWorkflowError(
+          "School calendar apply ownership was lost before completion.",
+          "SCHOOL_CALENDAR_APPLY_LEASE_LOST",
+        );
+      await executeRawSql(
+        this.runtime,
+        `UPDATE app_lifeops.life_school_calendar_sources SET last_content_sha256=${sqlQuote(plan.contentSha256)},last_media_url=${sqlQuote(plan.mediaUrl)},updated_at=${sqlQuote(completedAt)} WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND source_id=${sqlQuote(config.sourceId)}`,
+      );
+    } catch (error) {
+      // error-policy:J2 Restore the exact owned apply leases, then rethrow a
+      // typed failure with the provider or persistence error preserved.
+      await this.releaseApplyForRetry(args.runId, applyToken, error);
+      const code =
+        error instanceof SchoolCalendarWorkflowError
+          ? error.code
+          : "SCHOOL_CALENDAR_APPLY_FAILED";
+      const message = error instanceof Error ? error.message : String(error);
+      throw new SchoolCalendarWorkflowError(
+        `School calendar apply failed: ${message}`,
+        code,
+        { cause: error },
+      );
+    }
+  }
+
+  private async releaseApplyForRetry(
+    runId: string,
+    applyToken: string,
+    error: unknown,
+  ): Promise<void> {
+    const at = this.now().toISOString();
+    const code =
+      error instanceof SchoolCalendarWorkflowError
+        ? error.code
+        : "SCHOOL_CALENDAR_APPLY_FAILED";
+    const message = error instanceof Error ? error.message : String(error);
     await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_school_calendar_sources SET last_content_sha256=${sqlQuote(plan.contentSha256)},last_media_url=${sqlQuote(plan.mediaUrl)},updated_at=${sqlQuote(completedAt)} WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND source_id=${sqlQuote(config.sourceId)}`,
+      `WITH reset_operations AS (
+       UPDATE app_lifeops.life_school_calendar_apply_operations SET
+         state='pending',lease_token=NULL,lease_expires_at=NULL,
+         error_code=${sqlQuote(code)},error_message=${sqlQuote(message)},updated_at=${sqlQuote(at)}
+       WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(runId)}
+         AND state='executing' AND lease_token=${sqlQuote(applyToken)}
+       RETURNING operation_index
+       )
+       UPDATE app_lifeops.life_school_calendar_runs SET
+       state='awaiting_approval',apply_lease_token=NULL,apply_lease_expires_at=NULL,
+       error_code=${sqlQuote(code)},error_message=${sqlQuote(message)},updated_at=${sqlQuote(at)}
+       WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(runId)}
+         AND state='applying' AND apply_lease_token=${sqlQuote(applyToken)}`,
     );
   }
 
@@ -1016,7 +1106,8 @@ export class SchoolCalendarWorkflow {
       this.runtime,
       `UPDATE app_lifeops.life_school_calendar_apply_operations SET
        state='applied',receipt_json=${sqlQuote(canonicalJson(receipt))},
-       lease_token=NULL,lease_expires_at=NULL,updated_at=${sqlQuote(this.now().toISOString())}
+       lease_token=NULL,lease_expires_at=NULL,error_code=NULL,error_message=NULL,
+       updated_at=${sqlQuote(this.now().toISOString())}
        WHERE agent_id=${sqlQuote(this.runtime.agentId)} AND run_id=${sqlQuote(runId)}
          AND operation_index=${operationIndex} AND state='executing'
          AND lease_token=${sqlQuote(applyToken)} RETURNING operation_index`,
