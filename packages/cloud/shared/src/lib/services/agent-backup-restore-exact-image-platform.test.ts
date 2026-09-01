@@ -291,6 +291,21 @@ describe("resolveAgentBackupRestoreExactImagePlatform — exact success", () => 
     expect(registry.calls[1]?.url).toBe(registry.calls[2]?.url);
   });
 
+  test("accepts a matching tagged digest locator and canonicalizes it without the tag", async () => {
+    const source = fixture({ platform: "linux/amd64" });
+    const registry = queueFetch(successResponses(source));
+
+    const result = await resolveFixture(
+      source,
+      registry.fetchFn,
+      `ghcr.io/${REPOSITORY}:restore-generation@${source.top.digest}`,
+    );
+
+    expect(result.imageReference).toBe(`ghcr.io/${REPOSITORY}@${source.top.digest}`);
+    expect(registry.calls.some((call) => call.url.includes("restore-generation"))).toBe(false);
+    expect(registry.calls[1]?.url).toEndWith(`/manifests/${encodeURIComponent(source.top.digest)}`);
+  });
+
   test("does not cache verified authorities", async () => {
     const source = fixture({ platform: "linux/amd64" });
     const registry = queueFetch([...successResponses(source), ...successResponses(source)]);
@@ -339,7 +354,13 @@ describe("resolveAgentBackupRestoreExactImagePlatform — reference authority", 
       ["elizaos/eliza:latest", "IMAGE_REFERENCE_INVALID"],
       ["ghcr.io/elizaos/eliza", "IMAGE_REFERENCE_INVALID"],
       ["ghcr.io/ElizaOS/eliza:latest", "IMAGE_REFERENCE_INVALID"],
+      [`ghcr.io/${REPOSITORY}:bad!tag@${source.top.digest}`, "IMAGE_REFERENCE_INVALID"],
+      [`ghcr.io/${REPOSITORY}:@${source.top.digest}`, "IMAGE_REFERENCE_INVALID"],
       [`ghcr.io/${REPOSITORY}@${sha256("different")}`, "IMAGE_AUTHORITY_MISMATCH"],
+      [
+        `ghcr.io/${REPOSITORY}:restore-generation@${sha256("different")}`,
+        "IMAGE_AUTHORITY_MISMATCH",
+      ],
     ];
 
     for (const [imageReference, code] of cases) {

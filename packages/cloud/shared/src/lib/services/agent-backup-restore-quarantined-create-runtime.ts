@@ -407,40 +407,84 @@ function reserveInput(
   };
 }
 
+const IMAGE_SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
+const IMAGE_REPOSITORY_SEGMENT = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+const IMAGE_TAG = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
+
 function digestPinnedImageReference(imageReference: string, imageDigest: string): string {
-  if (!/^sha256:[0-9a-f]{64}$/.test(imageDigest)) {
+  if (!IMAGE_SHA256_DIGEST.test(imageDigest)) {
     throw runtimeError(
       "AGENT_BACKUP_RESTORE_IMAGE_DIGEST_INVALID",
       "Restore image digest is not canonical",
     );
   }
   const trimmed = imageReference.trim();
-  if (trimmed !== imageReference || trimmed.length === 0 || /\s/.test(trimmed)) {
+  if (
+    trimmed !== imageReference ||
+    trimmed.length === 0 ||
+    /\s/.test(trimmed) ||
+    !trimmed.startsWith("ghcr.io/")
+  ) {
     throw runtimeError(
       "AGENT_BACKUP_RESTORE_IMAGE_REFERENCE_INVALID",
-      "Restore image reference is not canonical",
+      "Restore image reference must use canonical ghcr.io authority",
     );
   }
-  const at = trimmed.indexOf("@");
-  if (at !== -1) {
-    if (at !== trimmed.lastIndexOf("@") || trimmed.slice(at + 1) !== imageDigest) {
+
+  const locator = trimmed.slice("ghcr.io/".length);
+  const at = locator.indexOf("@");
+  let repositoryLocator: string;
+  if (at === -1) {
+    repositoryLocator = locator;
+  } else {
+    if (at !== locator.lastIndexOf("@")) {
       throw runtimeError(
-        "AGENT_BACKUP_RESTORE_IMAGE_AUTHORITY_MISMATCH",
-        "Restore image reference differs from its manifest digest",
+        "AGENT_BACKUP_RESTORE_IMAGE_REFERENCE_INVALID",
+        "Restore image reference has extra authority",
       );
     }
-    return trimmed;
+    repositoryLocator = locator.slice(0, at);
+    if (!IMAGE_SHA256_DIGEST.test(locator.slice(at + 1))) {
+      throw runtimeError(
+        "AGENT_BACKUP_RESTORE_IMAGE_REFERENCE_INVALID",
+        "Digest-pinned restore image reference is not canonical",
+      );
+    }
   }
-  const lastSlash = trimmed.lastIndexOf("/");
-  const lastColon = trimmed.lastIndexOf(":");
-  const repository = lastColon > lastSlash ? trimmed.slice(0, lastColon) : trimmed;
-  if (!repository.includes("/") || repository !== repository.toLowerCase()) {
+
+  const lastSlash = repositoryLocator.lastIndexOf("/");
+  const tagIndex = repositoryLocator.lastIndexOf(":");
+  let repository: string;
+  if (tagIndex > lastSlash) {
+    if (!IMAGE_TAG.test(repositoryLocator.slice(tagIndex + 1))) {
+      throw runtimeError(
+        "AGENT_BACKUP_RESTORE_IMAGE_REFERENCE_INVALID",
+        "Restore image tag locator is invalid",
+      );
+    }
+    repository = repositoryLocator.slice(0, tagIndex);
+  } else {
+    if (at === -1) {
+      throw runtimeError(
+        "AGENT_BACKUP_RESTORE_IMAGE_REFERENCE_INVALID",
+        "Restore image locator must include a tag or digest",
+      );
+    }
+    repository = repositoryLocator;
+  }
+
+  const repositorySegments = repository.split("/");
+  if (
+    repository.length > 255 ||
+    repositorySegments.length < 2 ||
+    repositorySegments.some((segment) => !IMAGE_REPOSITORY_SEGMENT.test(segment))
+  ) {
     throw runtimeError(
       "AGENT_BACKUP_RESTORE_IMAGE_REFERENCE_INVALID",
-      "Restore image repository must be registry-qualified lowercase authority",
+      "Restore image repository is not canonical lowercase GHCR authority",
     );
   }
-  return `${repository}@${imageDigest}`;
+  return `ghcr.io/${repository}@${imageDigest}`;
 }
 
 function exactImageAuthorityFromOperation(
@@ -1317,8 +1361,12 @@ export async function runAgentBackupRestoreQuarantinedCreate(
           "Restore exact image authority must bind before the first provider effect",
         );
       }
+      const targetImageReference = digestPinnedImageReference(
+        authority.sandbox.dockerImageReference,
+        authority.target.imageDigest,
+      );
       const resolvedImage = await dependencies.resolveImagePlatform({
-        imageReference: authority.sandbox.dockerImageReference,
+        imageReference: targetImageReference,
         imageDigest: authority.target.imageDigest,
         platform: authority.target.platform,
         signal: input.signal,

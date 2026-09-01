@@ -155,7 +155,18 @@ function canonicalImageAuthority(
         "Restore image reference has extra authority",
       );
     }
-    repository = locator.slice(0, atIndex);
+    const repositoryLocator = locator.slice(0, atIndex);
+    const lastSlash = repositoryLocator.lastIndexOf("/");
+    const tagIndex = repositoryLocator.lastIndexOf(":");
+    if (tagIndex > lastSlash) {
+      const tag = repositoryLocator.slice(tagIndex + 1);
+      if (!TAG.test(tag)) {
+        throw resolutionError("IMAGE_REFERENCE_INVALID", "Restore image tag locator is invalid");
+      }
+      repository = repositoryLocator.slice(0, tagIndex);
+    } else {
+      repository = repositoryLocator;
+    }
     const referenceDigest = locator.slice(atIndex + 1);
     if (!SHA256_DIGEST.test(referenceDigest)) {
       throw resolutionError(

@@ -36,6 +36,7 @@ const CLAIM_GENERATIONS = [
 const RECEIPT_ID = "00000000-0000-4000-8000-000000000013";
 const VAULT_GENERATION_ID = "00000000-0000-4000-8000-000000000014";
 const IMAGE_DIGEST = `sha256:${"a".repeat(64)}`;
+const CURRENT_IMAGE_DIGEST = `sha256:${"8".repeat(64)}`;
 const IMAGE_PLATFORM_DIGEST = `sha256:${"9".repeat(64)}`;
 const MANIFEST_SHA256 = "b".repeat(64);
 const ACTIVATION_TOKEN_SHA256 = "d".repeat(64);
@@ -178,6 +179,7 @@ interface HarnessOptions {
   providerThrowsAfterSettlement?: boolean;
   seedReceiptExists?: boolean;
   persistedProviderReceiptDigest?: string;
+  sandboxImageReference?: string;
   mutateProviderHandle?: (stage: ProviderHandleStage, handle: SandboxHandle) => SandboxHandle;
 }
 
@@ -238,7 +240,7 @@ function harness(options: HarnessOptions = {}) {
       environmentVars: { RESTORE_TEST: "true" },
       agentConfig: { testMode: true },
       routeAgentId: "route-agent",
-      dockerImageReference: "ghcr.io/elizaos/eliza:source",
+      dockerImageReference: options.sandboxImageReference ?? "ghcr.io/elizaos/eliza:source",
       activationTokenSha256: ACTIVATION_TOKEN_SHA256,
       activationTokenCiphertext: "kms:activation-token-ciphertext",
       activationGeneration: RESTORE_ATTEMPT_ID,
@@ -344,7 +346,7 @@ function harness(options: HarnessOptions = {}) {
     resolveImagePlatform: async (input) => {
       events.push("image:resolve");
       expect(input).toEqual({
-        imageReference: "ghcr.io/elizaos/eliza:source",
+        imageReference: IMAGE_REFERENCE,
         imageDigest: IMAGE_DIGEST,
         platform: IMAGE_PLATFORM,
         signal: undefined,
@@ -668,6 +670,69 @@ describe("runAgentBackupRestoreQuarantinedCreate", () => {
       "provider:success-cas",
     ]);
   });
+
+  for (const currentImageReference of [
+    `ghcr.io/elizaos/eliza@${CURRENT_IMAGE_DIGEST}`,
+    `ghcr.io/elizaos/eliza:production@${CURRENT_IMAGE_DIGEST}`,
+  ]) {
+    test(`repins historical image authority from ${currentImageReference.includes(":production") ? "tag@B" : "repo@B"} to repo@A`, async () => {
+      const fixture = harness({
+        initialPhase: "vault_seeded",
+        sandboxImageReference: currentImageReference,
+      });
+      let resolvedInput:
+        | Parameters<AgentBackupRestoreQuarantinedCreateDependencies["resolveImagePlatform"]>[0]
+        | null = null;
+      const result = await runAgentBackupRestoreQuarantinedCreate(INPUT, {
+        ...fixture.dependencies,
+        resolveImagePlatform: async (input) => {
+          resolvedInput = input;
+          return IMAGE_AUTHORITY;
+        },
+      });
+
+      expect(result.status).toBe("created");
+      expect(resolvedInput).toEqual({
+        imageReference: IMAGE_REFERENCE,
+        imageDigest: IMAGE_DIGEST,
+        platform: IMAGE_PLATFORM,
+        signal: undefined,
+      });
+    });
+  }
+
+  test("does not hide a repository change while repinning a historical digest", async () => {
+    const fixture = harness({
+      initialPhase: "vault_seeded",
+      initialImageAuthority: "persisted",
+      sandboxImageReference: `ghcr.io/other/project:production@${CURRENT_IMAGE_DIGEST}`,
+    });
+
+    await expect(
+      runAgentBackupRestoreQuarantinedCreate(INPUT, fixture.dependencies),
+    ).rejects.toThrow("differs from its persisted exact image generation");
+    expect(fixture.providerCreateCalls).toBe(0);
+  });
+
+  for (const malformedImageReference of [
+    `ghcr.io/elizaos/eliza:bad tag@${CURRENT_IMAGE_DIGEST}`,
+    `ghcr.io/elizaos/eliza:production@${CURRENT_IMAGE_DIGEST}@${CURRENT_IMAGE_DIGEST}`,
+    "ghcr.io/ElizaOS/eliza:production",
+    "ghcr.io/elizaos/eliza",
+  ]) {
+    test(`rejects malformed current image reference ${malformedImageReference}`, async () => {
+      const fixture = harness({
+        initialPhase: "vault_seeded",
+        sandboxImageReference: malformedImageReference,
+      });
+
+      await expect(
+        runAgentBackupRestoreQuarantinedCreate(INPUT, fixture.dependencies),
+      ).rejects.toThrow();
+      expect(fixture.events).not.toContain("image:resolve");
+      expect(fixture.providerCreateCalls).toBe(0);
+    });
+  }
 
   test("replays the attempt-scoped seed before a response-loss provider retry", async () => {
     const fixture = harness({ initialPhase: "vault_seeded" });
