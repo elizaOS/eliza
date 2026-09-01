@@ -67,6 +67,8 @@ export function inferenceCredentialRevocationReason(reason: string): InferenceAu
     case "subject_moderation_disabled":
       return "moderation_blocked";
     case "credential_revoked":
+    case "session_revoked":
+    case "session_binding_revoked":
       return "credential_inactive";
     default:
       return "credential_invalid";

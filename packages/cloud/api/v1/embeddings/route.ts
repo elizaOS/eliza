@@ -103,6 +103,23 @@ app.post("/", async (c) => {
   let billed = false;
   let providerDispatched = false;
   try {
+    const request = (await c.req
+      .json()
+      .catch(() => null)) as EmbeddingsRequest | null;
+    if (!request?.model || !request.input) {
+      return c.json(
+        {
+          error: {
+            message: "Missing required fields: model and input",
+            type: "invalid_request_error",
+            param: !request?.model ? "model" : "input",
+            code: "missing_required_parameter",
+          },
+        },
+        400,
+      );
+    }
+
     // Resolve auth (+ org + moderation) in a SINGLE cache read for API-key
     // inference requests (#9899) — the same fast-path as /v1/chat/completions.
     // This route is on the agent reply hot path: the always-on
@@ -206,11 +223,6 @@ app.post("/", async (c) => {
     // Guard a malformed/empty body to a 400 instead of a 500 (mirrors the agents
     // routes). An unguarded parse throws a SyntaxError that failureResponse maps
     // to 500 on this always-on agent-recall hot path.
-    const requestPromise = c.req.json().catch(() => {
-      // error-policy:J3 malformed JSON becomes an explicit invalid-request
-      // signal and is never interpreted as a valid empty payload.
-      return null;
-    }) as Promise<EmbeddingsRequest | null>;
     let orgRateLimited: Response | null;
     try {
       orgRateLimited = await orgRateLimitPromise;
@@ -238,21 +250,6 @@ app.post("/", async (c) => {
       throw error;
     }
     if (orgRateLimited) return orgRateLimited;
-    const request = await requestPromise;
-
-    if (!request?.model || !request.input) {
-      return c.json(
-        {
-          error: {
-            message: "Missing required fields: model and input",
-            type: "invalid_request_error",
-            param: !request?.model ? "model" : "input",
-            code: "missing_required_parameter",
-          },
-        },
-        400,
-      );
-    }
 
     if (Array.isArray(request.input) && request.input.length === 0) {
       return c.json(

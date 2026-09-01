@@ -22,9 +22,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 async function handleGET(c: AppContext, context: RouteContext<{ id: string }>) {
   try {
-    const caller = await requireGenerativeRouteCaller(c, {
-      deferStrongCredentialCheck: true,
-    });
+    const caller = await requireGenerativeRouteCaller(c);
     const { id } = await context.params;
     const snapshot = await getHostedBrowserSnapshot(id, {
       apiKeyId: caller.apiKeyId,

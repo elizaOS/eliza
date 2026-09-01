@@ -562,6 +562,28 @@ app.post("/", async (c) => {
       503,
     );
   }
+  const decodedBody = await decodeRequestJson(c.req);
+  if (!decodedBody.ok) {
+    // error-policy:J3 malformed JSON is invalid request input.
+    return anthropicError("invalid_request_error", "Invalid JSON body", 400);
+  }
+  const body = decodedBody.value;
+  if (!body || typeof body !== "object") {
+    return anthropicError("invalid_request_error", "Invalid JSON body", 400);
+  }
+  const request = body as AnthropicMessagesRequest;
+  if (
+    !request.model ||
+    request.max_tokens == null ||
+    !request.messages?.length
+  ) {
+    return anthropicError(
+      "invalid_request_error",
+      "Missing required fields: model, max_tokens, messages",
+      400,
+    );
+  }
+
   let settleReservation:
     | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
     | null = null;
@@ -748,30 +770,6 @@ app.post("/", async (c) => {
     }
     appId = monetizedApp?.id ?? null;
     useAppCredits = Boolean(monetizedApp?.monetization_enabled);
-  }
-
-  const decodedBody = await decodeRequestJson(c.req);
-  if (!decodedBody.ok) {
-    // error-policy:J3 malformed JSON is invalid request input.
-    return anthropicError("invalid_request_error", "Invalid JSON body", 400);
-  }
-  const body = decodedBody.value;
-
-  if (!body || typeof body !== "object") {
-    return anthropicError("invalid_request_error", "Invalid JSON body", 400);
-  }
-
-  const request = body as AnthropicMessagesRequest;
-  if (
-    !request.model ||
-    request.max_tokens == null ||
-    !request.messages?.length
-  ) {
-    return anthropicError(
-      "invalid_request_error",
-      "Missing required fields: model, max_tokens, messages",
-      400,
-    );
   }
 
   const model = normalizeModelId(request.model);

@@ -47,7 +47,11 @@ class InferenceCredentialRevokedError extends Error {
 }
 
 function inferenceCredentialRevocationReason(reason: string) {
-  return reason === "credential_revoked" ? "credential_inactive" : reason;
+  return reason === "credential_revoked" ||
+    reason === "session_revoked" ||
+    reason === "session_binding_revoked"
+    ? "credential_inactive"
+    : reason;
 }
 
 const resolveInferenceAuthContext = vi.fn();
@@ -333,6 +337,18 @@ describe("asGenerativeCacheApiError", () => {
       }),
     );
   });
+
+  test.each(["session_revoked", "session_binding_revoked"])(
+    "maps Steward %s to the same 401 standing contract",
+    (reason) => {
+      const mapped = asGenerativeCacheApiError(
+        new InferenceCredentialRevokedError(reason),
+      );
+      expect(mapped?.status).toBe(401);
+      expect(mapped?.code).toBe("authentication_required");
+      expect(mapped?.details).toEqual({ reason: "credential_inactive" });
+    },
+  );
 
   test("maps AiPricingCacheWarmingError to a retryable 503", () => {
     const mapped = asGenerativeCacheApiError(new AiPricingCacheWarmingError());

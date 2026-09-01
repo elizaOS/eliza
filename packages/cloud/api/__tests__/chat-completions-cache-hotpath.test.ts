@@ -12,6 +12,7 @@ import * as languageModelActual from "@/lib/providers/language-model";
 import * as appsActual from "@/lib/services/apps";
 import * as contentModerationActual from "@/lib/services/content-moderation";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
+import * as inferenceCredentialRevocationActual from "@/lib/services/inference-credential-revocation";
 import * as modelCatalogActual from "@/lib/services/model-catalog";
 import * as teamPoolActual from "@/lib/services/team-credential-pool";
 
@@ -29,12 +30,14 @@ let poolHydration: Promise<void> | null = null;
 let catalogCacheState: "ready" | "warming" = "ready";
 let catalogHydration: Promise<void> | null = null;
 let platformCredentialConfigured = true;
+const assertInferenceCredentialActive = mock(async () => undefined);
 
 const resolveInferenceAuthContext = mock(
   async (
     _request: Request,
     options: {
       cacheOnly?: boolean;
+      deferStrongCredentialCheck?: boolean;
       executionCtx?: { waitUntil(promise: Promise<unknown>): void };
     } = {},
   ) => {
@@ -51,12 +54,26 @@ const resolveInferenceAuthContext = mock(
         apiKeyId: API_KEY_ID,
         keyHash: "a".repeat(64),
       },
+      ...(options.deferStrongCredentialCheck
+        ? {
+            credential: {
+              kind: "api_key" as const,
+              credentialId: API_KEY_ID,
+              userId: USER,
+            },
+          }
+        : {}),
     };
   },
 );
 mock.module("@/lib/services/inference-auth-context", () => ({
   ...inferenceAuthActual,
   resolveInferenceAuthContext,
+}));
+mock.module("@/lib/services/inference-credential-revocation", () => ({
+  ...inferenceCredentialRevocationActual,
+  assertInferenceCredentialActive,
+  isInferenceStrongRevocationEnabled: () => true,
 }));
 
 const requireAuthOrApiKeyWithOrg = mock(async () => {
@@ -317,6 +334,7 @@ beforeEach(() => {
   cacheOnlyPoolSelection.mockClear();
   calculateCost.mockClear();
   admitAppInferenceCacheOnly.mockClear();
+  assertInferenceCredentialActive.mockClear();
   assertInferenceAppAffiliateSupported.mockClear();
   settle.mockClear();
   settleUnknown.mockClear();
@@ -338,6 +356,7 @@ test("warm Worker request reaches provider with authoritative stores tripwired",
   expect(cacheOnlyCatalogLookup).toHaveBeenCalledTimes(1);
   expect(cacheOnlyPoolSelection).toHaveBeenCalledTimes(1);
   expect(admitAppInferenceCacheOnly).toHaveBeenCalledTimes(1);
+  expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
   expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
   expect(authoritativeAppLookup).not.toHaveBeenCalled();
   expect(authoritativeCatalogLookup).not.toHaveBeenCalled();

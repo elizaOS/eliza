@@ -37,9 +37,7 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
   try {
-    const caller = await requireGenerativeRouteCaller(c, {
-      deferStrongCredentialCheck: true,
-    });
+    const caller = await requireGenerativeRouteCaller(c);
     const { user } = caller;
     const sessions = await listHostedBrowserSessions({
       apiKeyId: null,
@@ -57,10 +55,6 @@ app.get("/", async (c) => {
 
 app.post("/", async (c) => {
   try {
-    const caller = await requireGenerativeRouteCaller(c, {
-      deferStrongCredentialCheck: true,
-    });
-    const { user } = caller;
     const decodedBody = await decodeRequestJson(c.req);
     if (!decodedBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
@@ -77,6 +71,11 @@ app.post("/", async (c) => {
         400,
       );
     }
+
+    const caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: true,
+    });
+    const { user } = caller;
 
     const session = await createHostedBrowserSession(bodyResult.data, {
       apiKeyId: caller.apiKeyId,

@@ -3,10 +3,35 @@
 import { expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
+import * as aiPricingActual from "@/lib/services/ai-pricing";
 
 const invokeFalProxy = mock(
   async () => new Response("upstream", { status: 200 }),
 );
+let routeCallerError: ApiError | null = new ApiError(
+  403,
+  "access_denied",
+  "Account is inactive",
+  { reason: "account_inactive" },
+);
+let admissionError: ApiError | null = null;
+const admitFlatGenerativeOperation = mock(async () => {
+  if (admissionError) throw admissionError;
+  throw new Error("unexpected admission success");
+});
+const requireGenerativeRouteCaller = mock(async () => {
+  if (routeCallerError) throw routeCallerError;
+  return {
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: "key-1",
+    admissionSnapshot: undefined,
+    credential: {
+      kind: "api_key" as const,
+      credentialId: "key-1",
+      userId: "user-1",
+    },
+  };
+});
 
 mock.module("@fal-ai/server-proxy", () => ({
   DEFAULT_ALLOWED_URL_PATTERNS: [],
@@ -17,17 +42,20 @@ mock.module("@fal-ai/server-proxy", () => ({
 mock.module("@fal-ai/server-proxy/hono", () => ({
   createRouteHandler: () => invokeFalProxy,
 }));
+mock.module("@/lib/services/ai-pricing", () => ({
+  ...aiPricingActual,
+  calculateVideoGenerationCostFromCatalog: async () => ({
+    totalCost: 0.1,
+    baseTotalCost: 0.1,
+    platformMarkup: 0,
+  }),
+}));
 mock.module("@/api-app/lib/generative-route-auth", () => ({
-  admitFlatGenerativeOperation: mock(async () => {
-    throw new Error("admission must not run after standing denial");
-  }),
-  asGenerativeCacheApiError: () => null,
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError: (error: unknown) =>
+    error instanceof ApiError ? error : null,
   getGenerativeExecutionContext: () => undefined,
-  requireGenerativeRouteCaller: mock(async () => {
-    throw new ApiError(403, "access_denied", "Account is inactive", {
-      reason: "account_inactive",
-    });
-  }),
+  requireGenerativeRouteCaller,
 }));
 mock.module("@/lib/utils/logger", () => ({
   logger: { error: mock(() => undefined) },
@@ -41,7 +69,7 @@ test("standing denial prevents fal pricing, credit admission, and provider dispa
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-fal-target-url": "fal-ai/test",
+      "x-fal-target-url": "fal-ai/veo3",
     },
     body: "{}",
   });
@@ -51,6 +79,32 @@ test("standing denial prevents fal pricing, credit admission, and provider dispa
     code: "access_denied",
     error: "Account is inactive",
     details: { reason: "account_inactive" },
+  });
+  expect(invokeFalProxy).not.toHaveBeenCalled();
+});
+
+test("combined credential denial is returned before fal provider dispatch", async () => {
+  routeCallerError = null;
+  admissionError = new ApiError(
+    401,
+    "authentication_required",
+    "Authentication required",
+    { reason: "credential_inactive" },
+  );
+  const response = await app.request("/fal/proxy", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-fal-target-url": "fal-ai/veo3",
+    },
+    body: JSON.stringify({ model: "fal-ai/veo3" }),
+  });
+
+  expect(response.status).toBe(401);
+  await expect(response.json()).resolves.toMatchObject({
+    code: "authentication_required",
+    error: "Authentication required",
+    details: { reason: "credential_inactive" },
   });
   expect(invokeFalProxy).not.toHaveBeenCalled();
 });

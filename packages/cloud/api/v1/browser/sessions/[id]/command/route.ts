@@ -53,9 +53,6 @@ async function handlePOST(
   context: RouteContext<{ id: string }>,
 ) {
   try {
-    const caller = await requireGenerativeRouteCaller(c, {
-      deferStrongCredentialCheck: true,
-    });
     const { id } = await context.params;
     const decodedRawBody = await decodeRequestJson(c.req);
     if (!decodedRawBody.ok) {
@@ -73,6 +70,10 @@ async function handlePOST(
         { status: 400 },
       );
     }
+
+    const caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: true,
+    });
 
     const result = await executeHostedBrowserCommand(id, bodyResult.data, {
       apiKeyId: caller.apiKeyId,

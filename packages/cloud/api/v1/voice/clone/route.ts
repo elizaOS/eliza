@@ -110,16 +110,6 @@ app.post("/", async (c) => {
 
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
-    caller = await requireGenerativeRouteCaller(c, {
-      deferStrongCredentialCheck: true,
-    });
-  } catch (error) {
-    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
-  }
-  user = caller.user;
-  apiKeyId = caller.apiKeyId;
-
-  try {
     const apiKey = c.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
       logger.error("[Voice Clone API] ELEVENLABS_API_KEY not configured");
@@ -208,6 +198,12 @@ app.post("/", async (c) => {
       );
     }
     fileCount = files.length;
+
+    caller = await requireGenerativeRouteCaller(c, {
+      deferStrongCredentialCheck: true,
+    });
+    user = caller.user;
+    apiKeyId = caller.apiKeyId;
 
     logger.info(
       `[Voice Clone API] Creating ${cloneType} voice clone: ${voiceName}`,
@@ -444,6 +440,7 @@ app.post("/", async (c) => {
     );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const admissionError = asGenerativeCacheApiError(error);
 
     // Deletion pass runs only when we have partial state to undo (i.e.
     // the user_voices row was never written). Once that row is committed,
@@ -571,6 +568,8 @@ app.post("/", async (c) => {
           }),
       );
     }
+
+    if (admissionError) return failureResponse(c, admissionError);
 
     if (error instanceof Error) {
       const lower = errorMessage.toLowerCase();

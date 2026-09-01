@@ -150,7 +150,6 @@ async function __hono_GET(c: AppContext) {
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       compatibility: "raw",
-      deferStrongCredentialCheck: true,
     });
     const { user } = caller;
     const voiceId = c.req.param("id")!;

@@ -180,18 +180,37 @@ const handle: Handler<AppEnv> = async (c) => {
     null;
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
 
+  if (willAdmitMutation) {
+    try {
+      pricedMutation = await priceFalMutation(c);
+    } catch (error) {
+      if (error instanceof Error && error.message === "missing_target") {
+        return c.json({ error: "Invalid request" }, 400);
+      }
+      if (
+        error instanceof Error &&
+        error.message.startsWith("Unpriced fal endpoint")
+      ) {
+        return c.json({ error: error.message }, 400);
+      }
+      logger.error("[fal proxy] Failed to price mutation", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return c.json({ error: "fal pricing unavailable" }, 503);
+    }
+  }
+
   try {
     caller = await requireGenerativeRouteCaller(c, {
       rateLimitEndpoint: "strict",
-      deferStrongCredentialCheck: willAdmitMutation,
+      deferStrongCredentialCheck: Boolean(pricedMutation),
     });
   } catch (error) {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 
-  if (isMutation && c.req.header(TARGET_URL_HEADER)) {
+  if (pricedMutation) {
     try {
-      pricedMutation = await priceFalMutation(c);
       const billingContext: BillingContext = {
         organizationId: caller.user.organization_id,
         userId: caller.user.id,
@@ -211,6 +230,8 @@ const handle: Handler<AppEnv> = async (c) => {
         credential: caller.credential,
       });
     } catch (error) {
+      const admissionError = asGenerativeCacheApiError(error);
+      if (admissionError) return failureResponse(c, admissionError);
       if (error instanceof InsufficientCreditsError) {
         return c.json(
           {
@@ -221,20 +242,7 @@ const handle: Handler<AppEnv> = async (c) => {
           402,
         );
       }
-      if (error instanceof Error && error.message === "missing_target") {
-        return c.json({ error: "Invalid request" }, 400);
-      }
-      if (
-        error instanceof Error &&
-        error.message.startsWith("Unpriced fal endpoint")
-      ) {
-        return c.json({ error: error.message }, 400);
-      }
-
-      logger.error("[fal proxy] Failed to price mutation", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return c.json({ error: "fal pricing unavailable" }, 503);
+      throw error;
     }
   }
 

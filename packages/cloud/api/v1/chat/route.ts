@@ -236,6 +236,20 @@ app.post("/", async (c) => {
   let providerDispatchStarted = false;
 
   try {
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = decodedBody.value;
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const preflightMessages = (body as { messages?: unknown }).messages;
+    if (!Array.isArray(preflightMessages) || preflightMessages.length === 0) {
+      return c.json({ error: "At least one message is required" }, 400);
+    }
+
     let user: ChatBillingUser;
     let apiKey: ApiKeyIdentity | undefined;
     let isAnonymous = false;
@@ -393,16 +407,6 @@ app.post("/", async (c) => {
         throw error;
       }
       if (orgRateLimited) return orgRateLimited;
-    }
-
-    const decodedBody = await decodeRequestJson(c.req);
-    if (!decodedBody.ok) {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-    const body = decodedBody.value;
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid JSON body" }, 400);
     }
 
     const {

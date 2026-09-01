@@ -58,7 +58,8 @@ const createUsage = mock(async () => undefined);
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   admitFlatGenerativeOperation,
-  asGenerativeCacheApiError: () => null,
+  asGenerativeCacheApiError: (error: unknown) =>
+    error instanceof ApiError ? error : null,
   getGenerativeExecutionContext: () => undefined,
   requireGenerativeRouteCaller,
 }));
@@ -125,9 +126,16 @@ test("cached bad standing denies before pricing, admission, provider, or storage
   const blobPut = mock(async () => undefined);
 
   try {
+    const form = new FormData();
+    form.set("name", "Denied Voice");
+    form.set("cloneType", "instant");
+    form.set(
+      "file0",
+      new File([new Uint8Array([1])], "sample.wav", { type: "audio/wav" }),
+    );
     const response = await app.request(
       "/v1/voice/clone",
-      { method: "POST" },
+      { method: "POST", body: form },
       { ELEVENLABS_API_KEY: "configured", BLOB: { put: blobPut } },
     );
 
@@ -148,7 +156,63 @@ test("cached bad standing denies before pricing, admission, provider, or storage
   }
 });
 
+test("combined credential denial is sanitized before ElevenLabs dispatch", async () => {
+  requireGenerativeRouteCaller.mockImplementationOnce(async () => ({
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: "key-1",
+    credential: {
+      kind: "api_key",
+      credentialId: "key-1",
+      userId: "user-1",
+    },
+  }));
+  calculateVoiceCloneCostFromCatalog.mockImplementationOnce(async () => ({
+    totalCost: 1,
+    baseTotalCost: 0.8,
+    platformMarkup: 0.2,
+    pricingSource: "catalog",
+  }));
+  admitFlatGenerativeOperation.mockImplementationOnce(async () => {
+    throw new ApiError(
+      401,
+      "authentication_required",
+      "Authentication required",
+      { reason: "credential_inactive" },
+    );
+  });
+  const providerFetch = mock(async () => new Response("provider"));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = providerFetch as unknown as typeof fetch;
+  const form = new FormData();
+  form.set("name", "Revoked Voice");
+  form.set("cloneType", "instant");
+  form.set(
+    "file0",
+    new File([new Uint8Array([1])], "sample.wav", { type: "audio/wav" }),
+  );
+
+  try {
+    const response = await app.request(
+      "/v1/voice/clone",
+      { method: "POST", body: form },
+      { ELEVENLABS_API_KEY: "configured", BLOB: { put: mock() } },
+    );
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "authentication_required",
+      error: "Authentication required",
+      details: { reason: "credential_inactive" },
+    });
+    expect(createCloningJob).not.toHaveBeenCalled();
+    expect(providerFetch).not.toHaveBeenCalled();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("admits before ElevenLabs and settles the flat charge without a readback", async () => {
+  admitFlatGenerativeOperation.mockClear();
+  createUsage.mockClear();
   requireGenerativeRouteCaller.mockImplementationOnce(async () => ({
     user: { id: "user-1", organization_id: "org-1" },
     apiKeyId: "key-1",

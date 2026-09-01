@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
@@ -78,6 +79,9 @@ async function handlePOST(c: AppContext) {
     logger.error("[/api/v1/search] Request failed", {
       error: error instanceof Error ? error.message : String(error),
     });
+
+    const admissionError = asGenerativeCacheApiError(error);
+    if (admissionError) return failureResponse(c, admissionError);
 
     return Response.json(
       {
