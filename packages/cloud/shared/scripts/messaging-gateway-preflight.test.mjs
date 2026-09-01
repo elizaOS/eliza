@@ -21,7 +21,80 @@ const SCRIPT = path.join(
 );
 const WORKFLOW = path.join(REPOSITORY_ROOT, ".github/workflows/cloud-gateway-discord.yml");
 const DEVELOP_WORKFLOW = path.join(REPOSITORY_ROOT, ".github/workflows/develop-full.yml");
-const SECRETS_CONTEXT_IDENTIFIER = /(^|[^A-Za-z0-9_])secrets(?=$|[^A-Za-z0-9_])/i;
+const CONFIGURATION_CONTEXT_IDENTIFIER =
+  /(^|[^A-Za-z0-9_])(secrets|vars|inputs)(?=$|[^A-Za-z0-9_])/i;
+const GITHUB_EXPRESSION = /\$\{\{([\s\S]*?)\}\}/g;
+const EXPECTED_SOURCE_ONLY_WORKFLOW = {
+  name: "Cloud Gateway Discord",
+  on: { workflow_call: null },
+  concurrency: {
+    group: "cloud-gateway-discord-${{ github.ref }}",
+    "cancel-in-progress": true,
+  },
+  defaults: {
+    run: {
+      "working-directory": "packages/cloud/shared",
+    },
+  },
+  env: {
+    BUN_VERSION: "1.3.14",
+  },
+  permissions: {
+    contents: "read",
+  },
+  jobs: {
+    test: {
+      name: "Test",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 10,
+      steps: [
+        {
+          uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        },
+        {
+          uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+          with: {
+            "bun-version": "${{ env.BUN_VERSION }}",
+          },
+        },
+        {
+          name: "Install root dependencies",
+          run: "bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock",
+        },
+        {
+          name: "Verify source-only workflow contract",
+          "working-directory": ".",
+          run: "node --test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
+        },
+        {
+          name: "Generate source keyword modules",
+          "working-directory": ".",
+          run: "bun run --cwd packages/shared build:i18n",
+        },
+        {
+          name: "Run service tests",
+          "working-directory": "packages/cloud/services/gateway-discord",
+          run: "bun --conditions=eliza-source test tests/ --timeout 60000",
+          env: {
+            SKIP_SERVER_CHECK: "true",
+          },
+        },
+        {
+          name: "Run lib tests",
+          run: "bun --conditions=eliza-source test src/lib/services/gateway-discord/__tests__ --timeout 60000",
+          env: {
+            SKIP_SERVER_CHECK: "true",
+          },
+        },
+      ],
+    },
+  },
+};
+const EXPECTED_DEVELOP_CALLER = {
+  needs: "plan",
+  if: "needs.plan.outputs.run_cloud_gateway_discord == 'true'",
+  uses: "./.github/workflows/cloud-gateway-discord.yml",
+};
 
 function isMapping(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -44,15 +117,48 @@ function parseWorkflow(source, label) {
   return requireMapping(document.toJS(), label);
 }
 
-function findSecretsContextReferences(value, valuePath = "$", references = []) {
+function expressionReferencesConfigurationContext(expression) {
+  const withoutStringLiterals = expression.replace(/'(?:''|[^'])*'|"(?:\\.|[^"\\])*"/g, "");
+  return CONFIGURATION_CONTEXT_IDENTIFIER.test(withoutStringLiterals);
+}
+
+function stringReferencesConfigurationContext(value, implicitExpression) {
+  if (implicitExpression && expressionReferencesConfigurationContext(value)) return true;
+
+  return Array.from(value.matchAll(GITHUB_EXPRESSION)).some((match) =>
+    expressionReferencesConfigurationContext(match[1]),
+  );
+}
+
+function isSemanticConfigurationKey(valuePath, key) {
+  if (key === "inputs") {
+    return valuePath === "$.on.workflow_call" || valuePath === "$.on.workflow_dispatch";
+  }
+  if (key !== "secrets") return false;
+  return valuePath === "$.on.workflow_call" || /^\$\.jobs\.[^.]+$/.test(valuePath);
+}
+
+function findConfigurationContextReferences(
+  value,
+  valuePath = "$",
+  references = [],
+  implicitExpression = false,
+) {
   if (typeof value === "string") {
-    if (SECRETS_CONTEXT_IDENTIFIER.test(value)) references.push(valuePath);
+    if (stringReferencesConfigurationContext(value, implicitExpression)) {
+      references.push(valuePath);
+    }
     return references;
   }
 
   if (Array.isArray(value)) {
     value.forEach((item, index) =>
-      findSecretsContextReferences(item, `${valuePath}[${index}]`, references),
+      findConfigurationContextReferences(
+        item,
+        `${valuePath}[${index}]`,
+        references,
+        implicitExpression,
+      ),
     );
     return references;
   }
@@ -60,21 +166,17 @@ function findSecretsContextReferences(value, valuePath = "$", references = []) {
   if (!isMapping(value)) return references;
 
   for (const [key, item] of Object.entries(value)) {
-    if (SECRETS_CONTEXT_IDENTIFIER.test(key)) references.push(`${valuePath}{key:${key}}`);
-    findSecretsContextReferences(item, `${valuePath}.${key}`, references);
+    if (isSemanticConfigurationKey(valuePath, key)) {
+      references.push(`${valuePath}{key:${key}}`);
+    }
+    findConfigurationContextReferences(item, `${valuePath}.${key}`, references, key === "if");
   }
 
   return references;
 }
 
 function assertSourceTestOnlyWorkflow(workflow) {
-  const triggers = requireMapping(workflow.on, "cloud-gateway-discord triggers");
-  const permissions = requireMapping(workflow.permissions, "cloud-gateway-discord permissions");
   const jobs = requireMapping(workflow.jobs, "cloud-gateway-discord jobs");
-
-  assert.deepEqual(Object.keys(triggers), ["workflow_call"]);
-  assert.deepEqual(permissions, { contents: "read" });
-  assert.deepEqual(Object.keys(jobs), ["test"]);
 
   for (const [jobName, value] of Object.entries(jobs)) {
     const job = requireMapping(value, `cloud-gateway-discord job ${jobName}`);
@@ -85,27 +187,68 @@ function assertSourceTestOnlyWorkflow(workflow) {
     );
   }
 
+  assert.deepEqual(Object.keys(jobs), ["test"], "cloud-gateway-discord must contain only test");
   assert.deepEqual(
-    findSecretsContextReferences(workflow),
-    [],
-    "cloud-gateway-discord must not reference or inherit the secrets context",
+    Object.keys(workflow),
+    Object.keys(EXPECTED_SOURCE_ONLY_WORKFLOW),
+    "cloud-gateway-discord top-level keys must match the exact source-only contract",
   );
-
   const testJob = requireMapping(jobs.test, "cloud-gateway-discord test job");
-  assert.equal(Object.hasOwn(testJob, "if"), false);
-  assert.equal(testJob["runs-on"], "ubuntu-24.04");
-  assert.ok(Array.isArray(testJob.steps), "cloud-gateway-discord test job must define steps");
+  assert.equal(Object.hasOwn(testJob, "env"), false, "test job must not define environment values");
+  assert.equal(
+    Object.hasOwn(testJob, "permissions"),
+    false,
+    "test job must not override workflow permissions",
+  );
+  assert.deepEqual(
+    Object.keys(testJob),
+    ["name", "runs-on", "timeout-minutes", "steps"],
+    "test job keys must match the exact source-only contract",
+  );
+  assert.deepEqual(
+    findConfigurationContextReferences(workflow),
+    [],
+    "cloud-gateway-discord must not reference secrets, variables, or reusable-workflow inputs",
+  );
+  assert.deepEqual(
+    workflow,
+    EXPECTED_SOURCE_ONLY_WORKFLOW,
+    "cloud-gateway-discord must match the exact source-only workflow contract",
+  );
 
   return testJob;
 }
 
-function requireNamedStep(job, name) {
-  const matchingSteps = job.steps.filter(
-    (step) => isMapping(step) && Object.hasOwn(step, "name") && step.name === name,
+function assertDevelopSourceOnlyCaller(caller) {
+  assert.deepEqual(
+    findConfigurationContextReferences(caller),
+    [],
+    "develop-full caller must not pass configuration contexts",
   );
+  assert.deepEqual(
+    caller,
+    EXPECTED_DEVELOP_CALLER,
+    "develop-full caller must match the exact source-only contract",
+  );
+}
 
-  assert.equal(matchingSteps.length, 1, `expected exactly one ${name} step`);
-  return matchingSteps[0];
+function replaceExactlyOnce(source, expected, replacement) {
+  const firstIndex = source.indexOf(expected);
+  assert.notEqual(firstIndex, -1, `mutation target not found: ${expected}`);
+  assert.equal(
+    source.indexOf(expected, firstIndex + expected.length),
+    -1,
+    `mutation target is not unique: ${expected}`,
+  );
+  return source.slice(0, firstIndex) + replacement + source.slice(firstIndex + expected.length);
+}
+
+function assertWorkflowSourceRejected(source, expectedError) {
+  assert.throws(
+    () =>
+      assertSourceTestOnlyWorkflow(parseWorkflow(source, "mutated cloud-gateway-discord workflow")),
+    expectedError,
+  );
 }
 
 const SHARED_ENV = {
@@ -339,7 +482,7 @@ test("reusable workflow keeps the develop caller source-test-only", () => {
     readFileSync(DEVELOP_WORKFLOW, "utf8"),
     "develop-full workflow",
   );
-  const testJob = assertSourceTestOnlyWorkflow(workflow);
+  assertSourceTestOnlyWorkflow(workflow);
   const developPush = requireMapping(developWorkflow.on, "develop-full triggers").push;
   const caller = requireMapping(
     requireMapping(developWorkflow.jobs, "develop-full jobs")["cloud-gateway-discord"],
@@ -347,53 +490,182 @@ test("reusable workflow keeps the develop caller source-test-only", () => {
   );
 
   assert.deepEqual(requireMapping(developPush, "develop-full push trigger").branches, ["develop"]);
-  assert.equal(caller.uses, "./.github/workflows/cloud-gateway-discord.yml");
-  assert.equal(Object.hasOwn(caller, "secrets"), false);
-  assert.deepEqual(findSecretsContextReferences(caller), []);
-  assert.deepEqual(requireNamedStep(testJob, "Verify source-only workflow contract"), {
-    name: "Verify source-only workflow contract",
-    "working-directory": ".",
-    run: "node --test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
-  });
-  assert.deepEqual(requireNamedStep(testJob, "Generate source keyword modules"), {
-    name: "Generate source keyword modules",
-    "working-directory": ".",
-    run: "bun run --cwd packages/shared build:i18n",
-  });
-  assert.deepEqual(requireNamedStep(testJob, "Run service tests"), {
-    name: "Run service tests",
-    "working-directory": "packages/cloud/services/gateway-discord",
-    run: "bun --conditions=eliza-source test tests/ --timeout 60000",
-    env: { SKIP_SERVER_CHECK: "true" },
-  });
-  assert.deepEqual(requireNamedStep(testJob, "Run lib tests"), {
-    name: "Run lib tests",
-    run: "bun --conditions=eliza-source test src/lib/services/gateway-discord/__tests__ --timeout 60000",
-    env: { SKIP_SERVER_CHECK: "true" },
-  });
+  assertDevelopSourceOnlyCaller(caller);
 });
 
-test("source-only workflow guard rejects job environments and nested secrets contexts", () => {
-  const workflow = parseWorkflow(readFileSync(WORKFLOW, "utf8"), "cloud-gateway-discord workflow");
-  const withEnvironment = structuredClone(workflow);
-  withEnvironment.jobs.test.environment = "production";
-  assert.throws(
-    () => assertSourceTestOnlyWorkflow(withEnvironment),
+test("configuration-context scan accepts benign prose", () => {
+  const benignWorkflow = parseWorkflow(
+    [
+      "name: Mention secrets safely",
+      "on:",
+      "  workflow_call:",
+      "jobs:",
+      "  test:",
+      "    runs-on: ubuntu-24.04",
+      "    steps:",
+      "      - name: Explain secrets, vars, and inputs",
+      "        uses: owner/action@0123456789abcdef",
+      "        with:",
+      "          note: Secrets, vars, and inputs remain unavailable.",
+    ].join("\n"),
+    "benign prose workflow",
+  );
+
+  assert.deepEqual(findConfigurationContextReferences(benignWorkflow), []);
+
+  const workflowSource = readFileSync(WORKFLOW, "utf8");
+  assert.doesNotThrow(() =>
+    assertSourceTestOnlyWorkflow(
+      parseWorkflow(
+        "# Benign prose: secrets, vars, and inputs are unavailable.\n" + workflowSource,
+        "commented cloud-gateway-discord workflow",
+      ),
+    ),
+  );
+});
+
+test("source-only workflow guard rejects adversarial YAML source mutations", () => {
+  const workflowSource = readFileSync(WORKFLOW, "utf8");
+  const testName = "    name: Test";
+  const contractStep = [
+    "      - name: Verify source-only workflow contract",
+    "        working-directory: .",
+    "        run: node --test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
+  ].join("\n");
+
+  assertWorkflowSourceRejected(
+    replaceExactlyOnce(workflowSource, testName, testName + "\n    environment: production"),
     /job test must not attach an environment/,
   );
 
-  for (const expression of [
+  for (const scalarSource of [
     "${{ secrets.DOT_TOKEN }}",
-    "${{ secrets['BRACKET_TOKEN'] }}",
-    '${{ secrets["DOUBLE_QUOTED_TOKEN"] }}',
+    "\"${{ secrets['BRACKET_TOKEN'] }}\"",
+    JSON.stringify('${{ secrets["ESCAPED_TOKEN"] }}'),
+    '"${{ ' + "\\u0073" + 'ecrets[\\"YAML_ESCAPED_TOKEN\\"] }}"',
     "${{ secrets }}",
     "${{ toJSON(secrets) }}",
   ]) {
-    const withSecret = structuredClone(workflow);
-    withSecret.jobs.test.steps.at(-1).env.TOKEN = expression;
-    assert.throws(
-      () => assertSourceTestOnlyWorkflow(withSecret),
-      /must not reference or inherit the secrets context/,
+    assertWorkflowSourceRejected(
+      replaceExactlyOnce(
+        workflowSource,
+        contractStep,
+        contractStep + "\n        env:\n          TOKEN: " + scalarSource,
+      ),
+      /must not reference secrets, variables, or reusable-workflow inputs/,
     );
   }
+
+  assertWorkflowSourceRejected(
+    replaceExactlyOnce(
+      workflowSource,
+      contractStep,
+      contractStep +
+        "\n\n      - name: Unvalidated command\n        run: curl https://example.invalid",
+    ),
+    /must match the exact source-only workflow contract/,
+  );
+
+  assertWorkflowSourceRejected(
+    replaceExactlyOnce(
+      workflowSource,
+      testName,
+      testName + "\n    env:\n      ENDPOINT: ${{ vars.DISCORD_ENDPOINT }}",
+    ),
+    /test job must not define environment values/,
+  );
+
+  assertWorkflowSourceRejected(
+    replaceExactlyOnce(
+      workflowSource,
+      testName,
+      testName + "\n    permissions:\n      contents: write\n      id-token: write",
+    ),
+    /test job must not override workflow permissions/,
+  );
+
+  assertWorkflowSourceRejected(
+    replaceExactlyOnce(workflowSource, testName, testName + "\n    container: node:24"),
+    /test job keys must match the exact source-only contract/,
+  );
+
+  assertWorkflowSourceRejected(
+    replaceExactlyOnce(
+      workflowSource,
+      "name: Cloud Gateway Discord",
+      "name: Cloud Gateway Discord\nrun-name: Unvalidated",
+    ),
+    /top-level keys must match the exact source-only contract/,
+  );
+
+  const inputWorkflow = replaceExactlyOnce(
+    replaceExactlyOnce(
+      workflowSource,
+      "  workflow_call:",
+      [
+        "  workflow_call:",
+        "    inputs:",
+        "      CONFIG:",
+        "        required: false",
+        "        type: string",
+      ].join("\n"),
+    ),
+    contractStep,
+    contractStep + "\n        env:\n          CONFIG: ${{ inputs.CONFIG }}",
+  );
+  assertWorkflowSourceRejected(
+    inputWorkflow,
+    /must not reference secrets, variables, or reusable-workflow inputs/,
+  );
+
+  assertWorkflowSourceRejected(
+    replaceExactlyOnce(
+      workflowSource,
+      "    runs-on: ubuntu-24.04",
+      "    runs-on: ubuntu-24.04\n    runs-on: self-hosted",
+    ),
+    /must be valid YAML/,
+  );
+
+  let mergedEnvironmentWorkflow = replaceExactlyOnce(
+    workflowSource,
+    "jobs:",
+    ["x-job-defaults: &job-defaults", "  environment: production", "", "jobs:"].join("\n"),
+  );
+  mergedEnvironmentWorkflow = replaceExactlyOnce(
+    mergedEnvironmentWorkflow,
+    "  test:",
+    "  test:\n    <<: *job-defaults",
+  );
+  assertWorkflowSourceRejected(
+    mergedEnvironmentWorkflow,
+    /job test must not attach an environment/,
+  );
+
+  const developSource = readFileSync(DEVELOP_WORKFLOW, "utf8");
+  const callerBlock = [
+    "  cloud-gateway-discord:",
+    "    needs: plan",
+    "    if: needs.plan.outputs.run_cloud_gateway_discord == 'true'",
+    "    uses: ./.github/workflows/cloud-gateway-discord.yml",
+  ].join("\n");
+  const callerWithInputSource = replaceExactlyOnce(
+    developSource,
+    callerBlock,
+    callerBlock + "\n    with:\n      CONFIG: untrusted",
+  );
+  const callerWithInputWorkflow = parseWorkflow(
+    callerWithInputSource,
+    "mutated develop-full workflow",
+  );
+  const callerWithInput = requireMapping(
+    requireMapping(callerWithInputWorkflow.jobs, "mutated develop-full jobs")[
+      "cloud-gateway-discord"
+    ],
+    "mutated develop-full cloud-gateway-discord caller",
+  );
+  assert.throws(
+    () => assertDevelopSourceOnlyCaller(callerWithInput),
+    /caller must match the exact source-only contract/,
+  );
 });
