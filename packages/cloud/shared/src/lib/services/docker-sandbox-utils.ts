@@ -1412,7 +1412,7 @@ export function buildExactRestoreStagingVolumeCleanupCommand(
     safeDirectoryProof(restoreRoot, false),
     safeDirectoryProof(agentRoot, true),
     `if test -L ${volume}; then exit 76; fi`,
-    `if test -e ${volume}; then ${safeDirectoryProof(exactVolumePath, false)}; if findmnt -rn -o FSROOT,TARGET | awk -v root=${volume} '$1 == root || index($1, root "/") == 1 || $2 == root || index($2, root "/") == 1 { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; rm -rf --one-file-system -- ${volume}; fi`,
+    `if test -e ${volume}; then ${safeDirectoryProof(exactVolumePath, false)}; mount_inventory=$(findmnt -rn -o FSROOT,TARGET) || exit 76; if printf '%s\n' "$mount_inventory" | awk -v root=${volume} '$1 == root || index($1, root "/") == 1 || $2 == root || index($2, root "/") == 1 { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; rm -rf --one-file-system -- ${volume}; fi`,
     `if test -e ${volume} || test -L ${volume}; then exit 76; fi`,
     `if test -e ${shellQuote(agentRoot)} && test ! -L ${shellQuote(agentRoot)}; then rmdir -- ${shellQuote(agentRoot)} 2>/dev/null || :; fi`,
     'secure_private_regular_file_proof "$attempt_cancelled" 75',

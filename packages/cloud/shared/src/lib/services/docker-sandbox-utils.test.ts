@@ -403,7 +403,10 @@ describe("secret container environment transport (#22060)", () => {
     expect(volumeCleanupCommand).toContain("flock -w 30 9");
     expect(volumeCleanupCommand).toContain("docker container ls -aq --no-trunc");
     expect(volumeCleanupCommand).toContain("docker inspect --format");
-    expect(volumeCleanupCommand).toContain("findmnt -rn -o FSROOT,TARGET | awk");
+    expect(volumeCleanupCommand).toContain(
+      "mount_inventory=$(findmnt -rn -o FSROOT,TARGET) || exit 76",
+    );
+    expect(volumeCleanupCommand).toContain(`printf '%s\n' "$mount_inventory" | awk`);
     expect(volumeCleanupCommand).toContain('index($0, root "/") == 1');
     expect(volumeCleanupCommand).toContain('index(root, $0 "/") == 1');
     expect(volumeCleanupCommand).toContain("rm -rf --one-file-system --");
@@ -460,7 +463,7 @@ describe("secret container environment transport (#22060)", () => {
     );
     fs.writeFileSync(
       path.join(bin, "findmnt"),
-      '#!/bin/sh\nif test -n "$ELIZA_TEST_HOST_MOUNT_SOURCE"; then printf "%s %s\\n" "$ELIZA_TEST_HOST_MOUNT_SOURCE" /outside-consumer; elif test -n "$ELIZA_TEST_HOST_MOUNT_TARGET"; then printf "%s %s\\n" / "$ELIZA_TEST_HOST_MOUNT_TARGET"; fi\n',
+      '#!/bin/sh\nif test -n "$ELIZA_TEST_FINDMNT_FAILURE"; then exit 64; elif test -n "$ELIZA_TEST_HOST_MOUNT_SOURCE"; then printf "%s %s\\n" "$ELIZA_TEST_HOST_MOUNT_SOURCE" /outside-consumer; elif test -n "$ELIZA_TEST_HOST_MOUNT_TARGET"; then printf "%s %s\\n" / "$ELIZA_TEST_HOST_MOUNT_TARGET"; fi\n',
       { mode: 0o700 },
     );
     fs.writeFileSync(
@@ -505,6 +508,10 @@ describe("secret container environment transport (#22060)", () => {
       expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
 
       expect(await run({ ELIZA_TEST_HOST_MOUNT_SOURCE: `${volume}/eliza` })).toBe(76);
+      expect(fs.existsSync(rmMarker)).toBe(false);
+      expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
+
+      expect(await run({ ELIZA_TEST_FINDMNT_FAILURE: "1" })).toBe(76);
       expect(fs.existsSync(rmMarker)).toBe(false);
       expect(fs.readFileSync(sentinel, "utf8")).toBe("durable-data");
 
