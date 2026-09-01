@@ -985,6 +985,7 @@ jobs:
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 2m
+          envs: CANARY_DIAGNOSTIC_SUFFIX
           script: |
             set -euo pipefail
             raw="$(
