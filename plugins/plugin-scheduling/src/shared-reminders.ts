@@ -550,7 +550,8 @@ function reportReminderError(
   try {
     runtime.reportError?.(scope, error, context);
   } catch {
-    // Diagnostics are best-effort and must never hide the grounded result.
+    // error-policy:J7 diagnostics are best-effort and must never hide the
+    // grounded action result.
   }
 }
 
@@ -769,6 +770,8 @@ function validTimeZone(value: string | undefined): string | undefined {
       timeZone: value,
     }).resolvedOptions().timeZone;
   } catch {
+    // error-policy:J3 an invalid or unsupported timezone remains explicitly
+    // unavailable instead of being replaced with a fabricated zone.
     return undefined;
   }
 }
@@ -1909,6 +1912,8 @@ export function createSharedRemindersEdgeAction(
               );
               receipts.push(lifecycleReceipt("dismiss", dismissed));
             } catch (error) {
+              // error-policy:J1 the action boundary reports an honest partial
+              // replacement result after attempting every original copy.
               failedDismissals += 1;
               reportReminderError(
                 runtime,
@@ -2084,6 +2089,8 @@ export function createSharedRemindersEdgeAction(
               );
               receipts.push(lifecycleReceipt("dismiss", applied));
             } catch (error) {
+              // error-policy:J1 the confirmed-clear action boundary reports
+              // exact succeeded and unverified counts to the user.
               failedCount += 1;
               reportReminderError(
                 runtime,
@@ -2274,6 +2281,8 @@ export function createSharedRemindersEdgeAction(
                 ),
               );
             } catch (error) {
+              // error-policy:J1 delete is an explicit multi-row action whose
+              // boundary returns an honest partial outcome; other verbs rethrow.
               reportReminderError(
                 runtime,
                 "SharedReminders.lifecycleMutation",
@@ -2332,6 +2341,8 @@ export function createSharedRemindersEdgeAction(
           { operation: operation ?? "unknown" },
         );
       } catch (error) {
+        // error-policy:J1 this action boundary translates an unverified durable
+        // mutation into an explicit failure and never claims success.
         reportReminderError(runtime, "SharedReminders.handler", error, {
           operation: operation ?? "unknown",
           phase: "durable-operation",
