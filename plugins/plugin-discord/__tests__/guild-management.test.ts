@@ -1130,3 +1130,17 @@ describe("apply_template reconcile", () => {
 		).toEqual(["CODE OPS", "builds", "prs"]);
 	});
 });
+
+describe("auditReason surrogate safety", () => {
+  it("formats audit reason cleanly and preserves surrogate pairs without severing", async () => {
+    const { auditReason } = await import("../guild-management");
+    const ROCKET = "\u{1F680}";
+    const longReason = "a".repeat(500) + ROCKET + "extra";
+    const result = auditReason(
+      { reasonPrefix: "eliza" } as any,
+      { reason: longReason } as any
+    );
+    expect(result.isWellFormed()).toBe(true);
+    expect(result.length).toBeLessThanOrEqual(512);
+  });
+});
