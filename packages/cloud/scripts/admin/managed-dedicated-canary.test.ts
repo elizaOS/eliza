@@ -441,6 +441,7 @@ describe("managed dedicated canary", () => {
       expectedAgentName: `managed-dedicated-canary-${SUFFIX}`,
       expectedCreatedAt: "2026-07-13T02:30:00.000Z",
       expectedExecutionTier: "dedicated-always",
+      stateLossAcknowledged: true,
     });
     expect(
       fixture.calls.filter(
@@ -665,6 +666,7 @@ describe("managed dedicated canary", () => {
       expectedAgentName: `managed-dedicated-canary-${STALE_SUFFIX}`,
       expectedCreatedAt: "2026-07-13T08:17:00.000Z",
       expectedExecutionTier: "dedicated-always",
+      stateLossAcknowledged: true,
     });
     expect(fixture.calls.filter((call) => call.method === "DELETE")).toEqual([
       {
@@ -712,6 +714,7 @@ describe("managed dedicated canary", () => {
       expectedAgentName: `managed-dedicated-canary-${STALE_SUFFIX}`,
       expectedCreatedAt: "2026-07-13T08:17:00.000Z",
       expectedExecutionTier: "dedicated-always",
+      stateLossAcknowledged: true,
       expectedDeployCommit: DEPLOYED_COMMIT,
     });
     expect(fixture.calls.filter((call) => call.method === "DELETE")).toEqual([
@@ -744,7 +747,10 @@ describe("managed dedicated canary", () => {
 
     // The precondition deliberately rides in the strict JSON body: an older
     // route rejects this unknown key before reaching its deletion service.
-    expect(legacyUnknownKeys).toEqual(["expectedDeployCommit"]);
+    expect(legacyUnknownKeys).toEqual([
+      "stateLossAcknowledged",
+      "expectedDeployCommit",
+    ]);
   });
 
   test("cleanup-only validation rejects full-canary work and contradictory evidence", async () => {

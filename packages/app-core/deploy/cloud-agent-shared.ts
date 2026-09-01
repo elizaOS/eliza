@@ -823,18 +823,19 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       req.method === "GET" &&
       (req.url === "/health" || req.url === "/api/health")
     ) {
+      const runtimeReady = agentRuntime !== null;
       const databaseLiveness = await checkRuntimeDatabaseLiveness(agentRuntime);
       const lastActivityAge =
         Date.now() - new Date(state.lastActivityAt).getTime();
       const possiblyHung =
-        agentRuntime !== null &&
+        runtimeReady &&
         state.memories.length > 0 &&
         lastActivityAge > HUNG_RUNTIME_THRESHOLD_MS;
 
       let status: string;
       if (databaseLiveness.terminal) {
         status = "unhealthy";
-      } else if (!agentRuntime) {
+      } else if (!runtimeReady) {
         status = "initializing";
       } else if (possiblyHung) {
         status = "possibly_hung";
@@ -842,7 +843,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         status = "healthy";
       }
 
-      res.writeHead(databaseLiveness.terminal ? 503 : 200, {
+      res.writeHead(databaseLiveness.terminal || !runtimeReady ? 503 : 200, {
         "Content-Type": "application/json",
       });
       res.end(
@@ -852,7 +853,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           startedAt: state.startedAt,
           lastActivityAt: state.lastActivityAt,
           memoryUsage: process.memoryUsage().rss,
-          runtimeReady: agentRuntime !== null,
+          runtimeReady,
           database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
           databaseLiveness: publicDatabaseLiveness(databaseLiveness),
         }),
@@ -896,12 +897,13 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
     // host-only REST mapping. Keep this response aligned with the REST health
     // contract so lifecycle recovery never marks a healthy runtime dead.
     if (req.method === "GET" && req.url === "/api/health") {
+      const runtimeReady = agentRuntime !== null;
       const databaseLiveness = await checkRuntimeDatabaseLiveness(agentRuntime);
-      res.writeHead(databaseLiveness.terminal ? 503 : 200);
+      res.writeHead(databaseLiveness.terminal || !runtimeReady ? 503 : 200);
       res.end(
         JSON.stringify({
-          status: agentRuntime ? "healthy" : "initializing",
-          runtimeReady: agentRuntime !== null,
+          status: runtimeReady ? "healthy" : "initializing",
+          runtimeReady,
           database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
           databaseLiveness: publicDatabaseLiveness(databaseLiveness),
           lastActivityAt: state.lastActivityAt,
