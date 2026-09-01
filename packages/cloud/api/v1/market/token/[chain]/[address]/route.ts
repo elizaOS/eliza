@@ -1,7 +1,7 @@
 // Handles v1 cloud API v1 market token chain address route traffic with route-local auth expectations.
 import { Hono } from "hono";
+import { executeGuardedPaidProxyWithBody } from "@/api-app/lib/guarded-paid-proxy";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { executeWithBody } from "@/lib/services/proxy/engine";
 import {
   isValidAddress,
   isValidChain,
@@ -10,7 +10,7 @@ import {
   marketDataConfig,
   marketDataHandler,
 } from "@/lib/services/proxy/services/market-data";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, OPTIONS";
 
@@ -19,7 +19,7 @@ async function __hono_OPTIONS() {
 }
 
 async function __hono_GET(
-  request: Request,
+  c: AppContext,
   { params }: { params: Promise<{ chain: string; address: string }> },
 ) {
   const { chain, address } = await params;
@@ -59,7 +59,12 @@ async function __hono_GET(
   };
 
   return applyCorsHeaders(
-    await executeWithBody(marketDataConfig, marketDataHandler, request, body),
+    await executeGuardedPaidProxyWithBody(
+      c,
+      marketDataConfig,
+      marketDataHandler,
+      body,
+    ),
     CORS_METHODS,
   );
 }
@@ -67,7 +72,7 @@ async function __hono_GET(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", async () => __hono_OPTIONS());
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, {
+  __hono_GET(c, {
     params: Promise.resolve({
       chain: c.req.param("chain")!,
       address: c.req.param("address")!,

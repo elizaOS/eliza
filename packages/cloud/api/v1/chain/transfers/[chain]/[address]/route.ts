@@ -1,7 +1,7 @@
 // Handles v1 cloud API v1 chain transfers chain address route traffic with route-local auth expectations.
 import { Hono } from "hono";
+import { executeGuardedPaidProxyWithBody } from "@/api-app/lib/guarded-paid-proxy";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { executeWithBody } from "@/lib/services/proxy/engine";
 import { isValidAddress } from "@/lib/services/proxy/services/address-validation";
 import {
   chainDataConfig,
@@ -61,12 +61,19 @@ app.get("/", async (c) => {
   }
 
   return applyCorsHeaders(
-    await executeWithBody(chainDataConfig, chainDataHandler, c.req.raw, {
-      method: "getAssetTransfers",
-      chain,
-      params:
-        direction === "in" ? { toAddress: address } : { fromAddress: address },
-    }),
+    await executeGuardedPaidProxyWithBody(
+      c,
+      chainDataConfig,
+      chainDataHandler,
+      {
+        method: "getAssetTransfers",
+        chain,
+        params:
+          direction === "in"
+            ? { toAddress: address }
+            : { fromAddress: address },
+      },
+    ),
     CORS_METHODS,
   );
 });

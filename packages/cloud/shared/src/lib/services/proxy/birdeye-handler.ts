@@ -6,10 +6,10 @@
 import type { Context } from "hono";
 import type { AppEnv } from "../../../types/cloud-worker-env";
 import { failureResponse } from "../../api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "../../auth/workers-hono-auth";
 import { logger } from "../../utils/logger";
-import { creditsService } from "../credits";
+import { executeWithBody, type ProxyCombinedAdmission } from "./engine";
 import { getServiceMethodCost } from "./pricing";
+import type { ServiceConfig, ServiceHandler } from "./types";
 
 const BIRDEYE_BASE = "https://public-api.birdeye.so";
 
@@ -32,9 +32,87 @@ export const BIRDEYE_PRICED_PATHS: Record<string, string> = {
   "v1/wallet/tx_list": "getWalletTxList",
 };
 
-export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promise<Response> {
+const combinedBirdeyeConfig: ServiceConfig = {
+  id: "market-data",
+  name: "Birdeye market data proxy",
+  auth: "apiKeyWithOrg",
+  getCost: async (body) => {
+    if (!body || Array.isArray(body) || typeof body !== "object") {
+      throw new Error("Invalid Birdeye proxy request");
+    }
+    const method = "method" in body ? String(body.method) : "";
+    return getServiceMethodCost("market-data", method);
+  },
+};
+
+function createCombinedBirdeyeHandler(
+  c: Context<AppEnv>,
+  pathStr: string,
+  birdeyeApiKey: string,
+): ServiceHandler {
+  return async () => {
+    const upstreamUrl = new URL(`${BIRDEYE_BASE}/${pathStr}`);
+    const requestUrl = new URL(c.req.url);
+    requestUrl.searchParams.forEach((value, key) => {
+      upstreamUrl.searchParams.set(key, value);
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const upstreamResponse = await fetch(upstreamUrl.toString(), {
+        headers: {
+          Accept: "application/json",
+          "x-chain": c.req.header("x-chain") ?? "solana",
+          "X-API-KEY": birdeyeApiKey,
+        },
+        signal: controller.signal,
+      });
+      const body = await upstreamResponse.text();
+      return {
+        response: new Response(body, {
+          status: upstreamResponse.status,
+          headers: {
+            "Content-Type": upstreamResponse.headers.get("Content-Type") ?? "application/json",
+          },
+        }),
+        ...(upstreamResponse.status >= 500 ? { actualCost: 0 } : {}),
+      };
+    } catch (error) {
+      // error-policy:J1 the paid proxy boundary returns an explicit upstream
+      // failure while the engine asynchronously reconciles the admission to 0.
+      const isAbort = error instanceof Error && error.name === "AbortError";
+      logger.warn("[BirdeyeProxy] upstream dispatch failed", {
+        path: pathStr,
+        kind: isAbort ? "timeout" : "transport",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        response: Response.json(
+          {
+            error: isAbort ? "Upstream service timeout" : "Upstream service unavailable",
+          },
+          { status: isAbort ? 504 : 502 },
+        ),
+        actualCost: 0,
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+}
+
+export async function handleBirdeyeMarketDataProxyGet(
+  c: Context<AppEnv>,
+  combinedAdmission: ProxyCombinedAdmission,
+): Promise<Response> {
   try {
-    const pathStr = (c.req.param("*") ?? "").replace(/^\/+|\/+$/g, "");
+    const routePath = c.req.param("*");
+    const pathStr = (
+      routePath && routePath.length > 0
+        ? routePath
+        : new URL(c.req.url).pathname.replace(/^\/api\/v1\/apis\/birdeye\/?/, "")
+    ).replace(/^\/+|\/+$/g, "");
     const pricedMethod = BIRDEYE_PRICED_PATHS[pathStr];
     if (!pricedMethod) {
       return c.json(
@@ -46,127 +124,19 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
       );
     }
 
-    const user = await requireUserOrApiKeyWithOrg(c);
-    const { organization_id } = user;
-
     const birdeyeApiKey = c.env.BIRDEYE_API_KEY as string | undefined;
     if (!birdeyeApiKey) {
       logger.error("BIRDEYE_API_KEY not configured on cloud server");
       return c.json({ error: "Birdeye proxy not available — server misconfigured" }, 503);
     }
 
-    const cost = await getServiceMethodCost("market-data", pricedMethod);
-    const deductResult = await creditsService.deductCredits({
-      organizationId: organization_id,
-      amount: cost,
-      description: `API proxy: market-data — ${pricedMethod}`,
-      metadata: {
-        type: "proxy_market-data",
-        service: "market-data",
-        provider: "birdeye",
-        method: pricedMethod,
-        path: pathStr,
-      },
-    });
-
-    if (!deductResult.success) {
-      return c.json(
-        {
-          error: "Insufficient credits",
-          topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
-        },
-        402,
-      );
-    }
-
-    const upstreamUrl = new URL(`${BIRDEYE_BASE}/${pathStr}`);
-    const url = new URL(c.req.url);
-    url.searchParams.forEach((value, key) => {
-      upstreamUrl.searchParams.set(key, value);
-    });
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10_000);
-    let upstreamResponse: Response;
-    let body: string;
-    try {
-      upstreamResponse = await fetch(upstreamUrl.toString(), {
-        headers: {
-          Accept: "application/json",
-          "x-chain": c.req.header("x-chain") ?? "solana",
-          "X-API-KEY": birdeyeApiKey,
-        },
-        signal: controller.signal,
-      });
-      body = await upstreamResponse.text();
-    } catch (error) {
-      // error-policy:J1 upstream boundary — transport and deadline failures
-      // become explicit 502/504 responses after the prepaid cost is refunded.
-      const isAbort = error instanceof Error && error.name === "AbortError";
-      await creditsService
-        .refundCredits({
-          organizationId: organization_id,
-          amount: cost,
-          description: `API proxy refund: market-data — ${pricedMethod} (${isAbort ? "upstream timeout" : "upstream transport failure"})`,
-          metadata: {
-            type: "proxy_market-data_refund",
-            service: "market-data",
-            provider: "birdeye",
-            method: pricedMethod,
-          },
-        })
-        .catch((refundError) => {
-          // error-policy:J4 the upstream request is already a visible failure;
-          // preserve that response while recording the secondary refund fault.
-          logger.warn("[BirdeyeProxy] refund after upstream failure failed", {
-            method: pricedMethod,
-            error: refundError instanceof Error ? refundError.message : String(refundError),
-          });
-        });
-      if (isAbort) {
-        return c.json({ error: "Upstream service timeout" }, 504);
-      }
-      return c.json({ error: "Upstream service unavailable" }, 502);
-    } finally {
-      clearTimeout(timeoutId);
-    }
-
-    // Mirror the engine's billing policy (resolveBillableCost refunds on >=500):
-    // we already debited `cost` upfront, so refund it when the upstream FAILS
-    // server-side (Birdeye 5xx outage) — the customer got no usable response. We
-    // keep the charge on 4xx (the customer's own bad request still consumed our
-    // Birdeye quota). Engine-backed market-data routes already refund; this
-    // direct handler must match.
-    if (upstreamResponse.status >= 500) {
-      await creditsService
-        .refundCredits({
-          organizationId: organization_id,
-          amount: cost,
-          description: `API proxy refund: market-data — ${pricedMethod} (upstream ${upstreamResponse.status})`,
-          metadata: {
-            type: "proxy_market-data_refund",
-            service: "market-data",
-            provider: "birdeye",
-            method: pricedMethod,
-          },
-        })
-        .catch((refundError) => {
-          // error-policy:J4 the upstream 5xx remains visible to the caller;
-          // preserve it while recording the secondary refund fault.
-          logger.warn("[BirdeyeProxy] refund after upstream failure failed", {
-            method: pricedMethod,
-            status: upstreamResponse.status,
-            error: refundError instanceof Error ? refundError.message : String(refundError),
-          });
-        });
-    }
-
-    return new Response(body, {
-      status: upstreamResponse.status,
-      headers: {
-        "Content-Type": upstreamResponse.headers.get("Content-Type") ?? "application/json",
-      },
-    });
+    return executeWithBody(
+      combinedBirdeyeConfig,
+      createCombinedBirdeyeHandler(c, pathStr, birdeyeApiKey),
+      c.req.raw,
+      { method: pricedMethod, path: pathStr },
+      combinedAdmission,
+    );
   } catch (error) {
     // error-policy:J1 route boundary — translate any handler throw (auth
     // rejection, pricing lookup, upstream fetch) into a structured failure

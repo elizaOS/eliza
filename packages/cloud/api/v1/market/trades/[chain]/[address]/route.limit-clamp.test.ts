@@ -12,14 +12,14 @@ import { Hono } from "hono";
 const SOLANA_TOKEN = "So11111111111111111111111111111111111111112";
 
 type ExecuteWithBody =
-  typeof import("@/lib/services/proxy/engine").executeWithBody;
+  typeof import("@/api-app/lib/guarded-paid-proxy").executeGuardedPaidProxyWithBody;
 
 const executeWithBody = mock(async (..._args: Parameters<ExecuteWithBody>) =>
   Response.json({ success: true }),
 );
 
-mock.module("@/lib/services/proxy/engine", () => ({
-  executeWithBody,
+mock.module("@/api-app/lib/guarded-paid-proxy", () => ({
+  executeGuardedPaidProxyWithBody: executeWithBody,
 }));
 mock.module("@/lib/services/proxy/cors", () => ({
   applyCorsHeaders: (response: Response) => response,

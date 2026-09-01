@@ -11,7 +11,7 @@
  */
 
 import { Hono } from "hono";
-import { executeWithBody } from "@/lib/services/proxy/engine";
+import { executeGuardedPaidProxyWithBody } from "@/api-app/lib/guarded-paid-proxy";
 import {
   rpcConfigForChain,
   rpcHandlerForChain,
@@ -89,11 +89,12 @@ app.post("/", async (c) => {
     headers,
   });
 
-  return executeWithBody(
+  return executeGuardedPaidProxyWithBody(
+    c,
     rpcConfigForChain(target.chain),
     rpcHandlerForChain(target.chain),
-    request,
     body,
+    { request },
   );
 });
 

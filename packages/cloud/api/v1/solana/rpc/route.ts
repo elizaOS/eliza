@@ -8,7 +8,7 @@
  */
 
 import { Hono } from "hono";
-import { executeWithBody } from "@/lib/services/proxy/engine";
+import { executeGuardedPaidProxyWithBody } from "@/api-app/lib/guarded-paid-proxy";
 import {
   solanaRpcConfig,
   solanaRpcHandler,
@@ -43,7 +43,13 @@ app.post("/", async (c) => {
     headers,
   });
 
-  return executeWithBody(solanaRpcConfig, solanaRpcHandler, request, body);
+  return executeGuardedPaidProxyWithBody(
+    c,
+    solanaRpcConfig,
+    solanaRpcHandler,
+    body,
+    { request },
+  );
 });
 
 export default app;

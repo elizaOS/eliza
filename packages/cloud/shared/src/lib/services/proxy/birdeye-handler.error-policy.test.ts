@@ -1,166 +1,72 @@
 /**
- * Error-policy proof for the Birdeye market-data proxy handler (#13415).
- *
- * Pins that a designed-invalid / not-configured result stays visually distinct
- * from an internal failure, and that an internal failure PROPAGATES through the
- * J1 route boundary (`failureResponse`) as a structured `{ success: false }`
- * rather than being swallowed into a fabricated 2xx/empty body. The auth,
- * pricing, and credits boundaries plus `fetch` are mocked; `failureResponse`
- * runs for real so the boundary translation is the unit under test. mock.module
- * is process-global but the suite runs under `bun test --isolate`, so each file
- * gets a fresh registry.
+ * Proves designed Birdeye route failures remain explicit and that the shared
+ * paid engine's failure response is returned without fabricating success.
  */
 
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, expect, mock, test } from "bun:test";
 import type { Context } from "hono";
 import type { AppEnv } from "../../../types/cloud-worker-env";
-import * as authActual from "../../auth/workers-hono-auth";
-import * as creditsActual from "../credits";
-import * as pricingActual from "./pricing";
 
-const realCredits = { ...creditsActual };
-const realPricing = { ...pricingActual };
-const realAuth = { ...authActual };
-
-const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
-const COST = 0.0003;
-
-const deductCredits = mock<(args: unknown) => Promise<{ success: boolean }>>();
-const refundCredits = mock<(args: unknown) => Promise<{ success: boolean }>>();
-const getServiceMethodCost = mock<(service: string, method: string) => Promise<number>>();
-const requireUserOrApiKeyWithOrg = mock<(c: unknown) => Promise<{ organization_id: string }>>();
-
-mock.module("../credits", () => ({
-  ...realCredits,
-  creditsService: { ...realCredits.creditsService, deductCredits, refundCredits },
-}));
-
-mock.module("./pricing", () => ({ ...realPricing, getServiceMethodCost }));
-
-mock.module("../../auth/workers-hono-auth", () => ({
-  ...realAuth,
-  requireUserOrApiKeyWithOrg,
-}));
+const executeWithBody = mock();
+mock.module("./engine", () => ({ executeWithBody }));
 
 const { handleBirdeyeMarketDataProxyGet } = await import("./birdeye-handler");
 
-const originalFetch = globalThis.fetch;
+const admission = {
+  mode: "compatibility" as const,
+  auth: {
+    user: {
+      id: "user-1",
+      organization_id: "00000000-0000-4000-8000-0000000000aa",
+    },
+  },
+  requestId: "birdeye-errors",
+};
 
-function makeContext(path: string, env: Record<string, unknown> = {}): Context<AppEnv> {
+function makeContext(path: string, env: Record<string, unknown>): Context<AppEnv> {
   const url = `https://api.elizacloud.ai/proxy/${path}`;
+  const raw = new Request(url);
   return {
     env,
     req: {
+      raw,
       param: (key: string) => (key === "*" ? path : undefined),
       url,
-      header: (_name: string) => undefined,
+      header: () => undefined,
     },
     json: (body: unknown, status?: number) => Response.json(body, { status: status ?? 200 }),
   } as unknown as Context<AppEnv>;
 }
 
-function mockUpstream(status: number, body = "{}") {
-  globalThis.fetch = mock(
-    async () => new Response(body, { status, headers: { "Content-Type": "application/json" } }),
-  ) as unknown as typeof fetch;
-}
+beforeEach(() => executeWithBody.mockReset());
 
-beforeEach(() => {
-  deductCredits.mockReset();
-  refundCredits.mockReset();
-  getServiceMethodCost.mockReset();
-  requireUserOrApiKeyWithOrg.mockReset();
-  deductCredits.mockResolvedValue({ success: true });
-  refundCredits.mockResolvedValue({ success: true });
-  getServiceMethodCost.mockResolvedValue(COST);
-  requireUserOrApiKeyWithOrg.mockResolvedValue({ organization_id: ORG_ID });
-  mockUpstream(200, '{"data":{"value":1}}');
+test("unpriced path is a designed 400 before provider admission", async () => {
+  const response = await handleBirdeyeMarketDataProxyGet(
+    makeContext("defi/not_a_real_path", { BIRDEYE_API_KEY: "key" }),
+    admission,
+  );
+
+  expect(response.status).toBe(400);
+  expect(executeWithBody).not.toHaveBeenCalled();
 });
 
-afterEach(() => {
-  globalThis.fetch = originalFetch;
+test("missing provider configuration is a designed 503 before dispatch", async () => {
+  const response = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price", {}), admission);
+
+  expect(response.status).toBe(503);
+  expect(executeWithBody).not.toHaveBeenCalled();
 });
 
-afterAll(() => {
-  mock.module("../credits", () => realCredits);
-  mock.module("./pricing", () => realPricing);
-  mock.module("../../auth/workers-hono-auth", () => realAuth);
-});
+test("shared engine failure stays a visible non-success response", async () => {
+  executeWithBody.mockResolvedValueOnce(
+    Response.json({ error: "Upstream service error" }, { status: 502 }),
+  );
+  const response = await handleBirdeyeMarketDataProxyGet(
+    makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
+    admission,
+  );
 
-describe("birdeye proxy — designed-invalid results stay distinct from failures", () => {
-  test("unpriced path is a designed 400 reject, not a boundary failure", async () => {
-    const res = await handleBirdeyeMarketDataProxyGet(
-      makeContext("defi/not_a_real_path", { BIRDEYE_API_KEY: "key" }),
-    );
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string; supportedPaths: string[] };
-    expect(body.error).toContain("Unpriced Birdeye proxy path");
-    expect(Array.isArray(body.supportedPaths)).toBe(true);
-    // Short-circuits BEFORE any auth / billing work.
-    expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
-    expect(deductCredits).not.toHaveBeenCalled();
-  });
-
-  test("missing BIRDEYE_API_KEY is a designed 503 not-configured, no debit", async () => {
-    const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price", {}));
-    expect(res.status).toBe(503);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("server misconfigured");
-    expect(deductCredits).not.toHaveBeenCalled();
-  });
-});
-
-describe("birdeye proxy — internal failures propagate through the J1 boundary", () => {
-  test("a pricing-store failure surfaces as a structured 5xx, never a fake 2xx", async () => {
-    getServiceMethodCost.mockRejectedValue(new Error("pricing store unavailable"));
-
-    const res = await handleBirdeyeMarketDataProxyGet(
-      makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
-    );
-
-    expect(res.status).toBe(500);
-    const body = (await res.json()) as { success: boolean };
-    expect(body.success).toBe(false);
-    // The failure aborts before any debit — nothing charged for a broken call.
-    expect(deductCredits).not.toHaveBeenCalled();
-  });
-
-  test("an auth failure is translated, not swallowed into a healthy response", async () => {
-    requireUserOrApiKeyWithOrg.mockRejectedValue(new Error("token verification failed"));
-
-    const res = await handleBirdeyeMarketDataProxyGet(
-      makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
-    );
-
-    expect(res.ok).toBe(false);
-    const body = (await res.json()) as { success: boolean };
-    expect(body.success).toBe(false);
-    expect(deductCredits).not.toHaveBeenCalled();
-  });
-});
-
-describe("birdeye proxy — money-path debit failures stay distinct", () => {
-  // Designed insufficient balance is a user-facing 402. A thrown debit failure
-  // is an internal ledger failure and must go through the route boundary as a
-  // structured 5xx, never the same 402 as a legitimate empty balance.
-  test("designed insufficient balance returns 402", async () => {
-    deductCredits.mockResolvedValue({ success: false });
-    const res = await handleBirdeyeMarketDataProxyGet(
-      makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
-    );
-    expect(res.status).toBe(402);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("Insufficient credits");
-  });
-
-  test("an internal debit failure surfaces as a structured 5xx", async () => {
-    deductCredits.mockRejectedValue(new Error("credits ledger write failed"));
-    const res = await handleBirdeyeMarketDataProxyGet(
-      makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
-    );
-    expect(res.status).toBe(500);
-    const body = (await res.json()) as { success: boolean; error: string };
-    expect(body.success).toBe(false);
-    expect(body.error).toBe("An unexpected error occurred");
-  });
+  expect(response.status).toBe(502);
+  expect(response.ok).toBe(false);
+  expect(executeWithBody).toHaveBeenCalledTimes(1);
 });

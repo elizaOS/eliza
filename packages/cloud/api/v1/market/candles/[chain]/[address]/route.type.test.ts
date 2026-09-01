@@ -24,8 +24,8 @@ const executeWithBody = mock(
   ) => Response.json({ success: true }),
 );
 
-mock.module("@/lib/services/proxy/engine", () => ({
-  executeWithBody,
+mock.module("@/api-app/lib/guarded-paid-proxy", () => ({
+  executeGuardedPaidProxyWithBody: executeWithBody,
 }));
 mock.module("@/lib/services/proxy/cors", () => ({
   applyCorsHeaders: (response: Response) => response,

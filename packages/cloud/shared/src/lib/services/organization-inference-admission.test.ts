@@ -421,6 +421,28 @@ test("warm Worker admission writes only the Durable Object lease before provider
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBe(0.01);
 });
 
+test("strong proof on and off each acquire exactly one Durable Object lease", async () => {
+  const model = nextModel();
+  await hydratePricing(model);
+  const credential = {
+    kind: "api_key" as const,
+    credentialId: "key-1",
+    userId: "user-1",
+  };
+
+  for (const strongProof of [credential, undefined]) {
+    acquireInferenceAdmissionLease.mockClear();
+    await admitOrganizationInference({
+      ...admissionParams(model, []),
+      ...(strongProof ? { credential: strongProof } : {}),
+    });
+
+    expect(acquireInferenceAdmissionLease).toHaveBeenCalledTimes(1);
+    expect(acquireInferenceAdmissionLease.mock.calls[0]?.[0].credential).toEqual(strongProof);
+  }
+  expect(reserveCredits).not.toHaveBeenCalled();
+});
+
 test("flat Worker admission leases the fixed catalog cost without token pricing reads", async () => {
   const background: Promise<unknown>[] = [];
   const flatCost = {
