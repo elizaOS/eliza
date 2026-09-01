@@ -161,12 +161,7 @@ describe("computeContainerBillingPlan — money math fails closed on garbage inp
     ],
   ];
 
-  for (const [
-    label,
-    dailyCost,
-    currentBalance,
-    ownerEarningsAvailable,
-  ] of invalidInputs) {
+  for (const [label, dailyCost, currentBalance, ownerEarningsAvailable] of invalidInputs) {
     test(`${label} throws a typed error instead of returning a plan`, () => {
       let thrown: unknown;
       try {
@@ -204,9 +199,7 @@ describe("computeContainerBillingPlan — money math fails closed on garbage inp
       thrown = error;
     }
     expect(thrown).toBeInstanceOf(ElizaError);
-    expect((thrown as { code?: string }).code).toBe(
-      "CONTAINER_BILLING_PLAN_INPUT_INVALID",
-    );
+    expect((thrown as { code?: string }).code).toBe("CONTAINER_BILLING_PLAN_INPUT_INVALID");
   });
 });
 
