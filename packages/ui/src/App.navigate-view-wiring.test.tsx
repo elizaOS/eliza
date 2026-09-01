@@ -816,7 +816,9 @@ describe("App navigate-view event wiring", () => {
 
     await waitFor(() => {
       expect(
-        container.querySelector('[data-view-status="unavailable"]'),
+        container.querySelector(
+          '[data-view-status="unavailable"][data-view-id="phone"]',
+        ),
       ).toBeTruthy();
     });
     expect(container.querySelector('[data-testid="home-screen"]')).toBeNull();

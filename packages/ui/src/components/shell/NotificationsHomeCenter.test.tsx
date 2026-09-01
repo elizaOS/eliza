@@ -27,6 +27,7 @@ vi.mock("../../api/client", () => ({
       notifications: [],
       unreadCount: 0,
     })),
+    listPendingActions: vi.fn(async () => ({ pending: [] })),
     onWsEvent: vi.fn(),
     // notificationProbesEnabled reads the configured base URL before every
     // hydration request; empty string = same-origin (probes enabled).
@@ -39,6 +40,8 @@ vi.mock("../../api/client", () => ({
 }));
 
 const navigateDeepLink = vi.hoisted(() => vi.fn());
+const dispatchChatOpen = vi.hoisted(() => vi.fn());
+const dispatchChatPrefill = vi.hoisted(() => vi.fn());
 
 /** Typed authenticated owner fixture for the auth-gated hydration probes. */
 const AUTHENTICATED_OWNER: AuthStatusState = {
@@ -56,8 +59,13 @@ vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
   ...(await orig()),
   navigateDeepLink,
 }));
+vi.mock("../../events", () => ({
+  NETWORK_STATUS_CHANGE_EVENT: "eliza:network-status-change",
+  dispatchChatOpen,
+  dispatchChatPrefill,
+}));
 
-import type { AgentNotification } from "@elizaos/core";
+import type { AgentNotification, PendingUserAction } from "@elizaos/core";
 import { client } from "../../api/client";
 import {
   __resetAuthStatusForTests,
@@ -89,9 +97,38 @@ import {
   notificationPullOvershootOffset,
   PULL_TRAVEL_PX,
 } from "./notification-shade-presentation";
+import {
+  readPersistedResolvedPendingActionIds,
+  resolvedPendingActionIdsStorageKey,
+  usePendingActions,
+} from "./pending-action-notifications";
 
 let seq = 0;
 let restoreMatchMediaForTest: (() => void) | null = null;
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function PendingActionRenderProbe({
+  onRender,
+}: {
+  onRender: (state: { loaded: boolean; titles: readonly string[] }) => void;
+}) {
+  const state = usePendingActions();
+  onRender({
+    loaded: state.loaded,
+    titles: state.pending.map((item) => item.title),
+  });
+  return null;
+}
 
 describe("notificationScrollFadeEdges", () => {
   it("reports only edges with hidden content across the full scroll range", () => {
@@ -263,8 +300,13 @@ function setOverflowingListGeometry(list: HTMLElement): void {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  window.localStorage.clear();
   seq = 0;
   vi.mocked(client.getBaseUrl).mockReset().mockReturnValue("");
+  vi.mocked(client.listPendingActions)
+    .mockReset()
+    .mockResolvedValue({ pending: [] });
+  vi.mocked(client.removeNotification).mockClear();
 });
 
 afterEach(() => {
@@ -275,6 +317,9 @@ afterEach(() => {
   __resetNotificationStoreForTests();
   __resetAuthStatusForTests();
   navigateDeepLink.mockClear();
+  dispatchChatOpen.mockClear();
+  dispatchChatPrefill.mockClear();
+  window.localStorage.clear();
 });
 
 describe("orderDashboardNotifications", () => {
@@ -1049,6 +1094,274 @@ describe("NotificationsHomeCenter", () => {
     );
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.queryByText("Dismiss me")).toBeNull();
+  });
+
+  it("keeps unresolved choices in the normal shade and routes a typed reply", async () => {
+    const pendingAction: PendingUserAction = {
+      id: "request-1",
+      kind: "choice",
+      source: "lifeops",
+      title: "Send the weekly report?",
+      createdAt: 1_700_000_000_000,
+      options: [
+        { id: "approve", label: "Yes" },
+        { id: "later", label: "Ask me later", isCancel: true },
+      ],
+    };
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    vi.mocked(client.listPendingActions).mockResolvedValueOnce({
+      pending: [pendingAction],
+    });
+
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const row = screen.getByTestId("notification-row");
+    const swipe = screen.getByTestId("notification-row-swipe");
+    expect(swipe.getAttribute("data-notification-dismissible")).toBe("false");
+    fireEvent.pointerDown(swipe, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 120,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(swipe, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 10,
+      clientY: 20,
+    });
+    fireEvent.pointerUp(swipe, {
+      pointerType: "touch",
+      pointerId: 1,
+      clientX: 10,
+      clientY: 20,
+    });
+    expect(swipe.style.transform).not.toContain("120%");
+
+    fireEvent.click(row);
+    const options = screen.getByTestId("pending-action-options");
+    expect(options.getAttribute("aria-label")).toBe(
+      "Respond to: Send the weekly report?",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    expect(dispatchChatPrefill).toHaveBeenCalledWith({
+      text: "Approve: Send the weekly report?",
+      select: true,
+    });
+    expect(client.removeNotification).not.toHaveBeenCalled();
+    expect(screen.getByText("Send the weekly report?")).toBeTruthy();
+  });
+
+  it("keeps canonical resolution terminal after the notification center remounts", async () => {
+    const pendingAction: PendingUserAction = {
+      id: "request-remount",
+      kind: "approval",
+      source: "lifeops",
+      title: "Approve the durable transition?",
+      createdAt: 1_700_000_000_000,
+    };
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    __ingestNotificationForTests(
+      makeNotification({
+        title: "Approval needed",
+        category: "approval",
+        source: "lifeops",
+        groupKey: "approval:request-remount",
+        data: { requestId: "request-remount" },
+        readAt: null,
+      }),
+    );
+    vi.mocked(client.listPendingActions)
+      .mockResolvedValueOnce({ pending: [pendingAction] })
+      .mockResolvedValue({ pending: [] });
+
+    const firstMount = renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Approve the durable transition?")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(20_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+    const persisted = readPersistedResolvedPendingActionIds(
+      window.localStorage,
+      resolvedPendingActionIdsStorageKey(AUTHENTICATED_OWNER.identity.id, ""),
+    );
+    expect(persisted.status).toBe("valid");
+    if (persisted.status !== "valid") {
+      throw new Error("Expected a durable resolution fence");
+    }
+    expect(persisted.ids).toContain("request-remount");
+
+    firstMount.unmount();
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+  });
+
+  it("ignores an older same-owner poll that resolves after newer canonical state", async () => {
+    const pendingAction: PendingUserAction = {
+      id: "request-order",
+      kind: "approval",
+      source: "lifeops",
+      title: "Approve the ordered transition?",
+      createdAt: 1_700_000_000_000,
+    };
+    const older = deferred<{ pending: PendingUserAction[] }>();
+    const newer = deferred<{ pending: PendingUserAction[] }>();
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    __ingestNotificationForTests(
+      makeNotification({
+        title: "Approval needed",
+        category: "approval",
+        source: "lifeops",
+        groupKey: "approval:request-order",
+        data: { requestId: "request-order" },
+        readAt: null,
+      }),
+    );
+    vi.mocked(client.listPendingActions)
+      .mockResolvedValueOnce({ pending: [pendingAction] })
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Approve the ordered transition?")).toBeTruthy();
+
+    act(() => vi.advanceTimersByTime(20_000));
+    act(() => vi.advanceTimersByTime(20_000));
+    await act(async () => {
+      newer.resolve({ pending: [] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+
+    await act(async () => {
+      older.resolve({ pending: [pendingAction] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Approval needed")).toBeNull();
+    expect(screen.queryByText("Approve the ordered transition?")).toBeNull();
+  });
+
+  it("drops an old-owner response after the authenticated owner changes", async () => {
+    const ownerAResponse = deferred<{ pending: PendingUserAction[] }>();
+    const ownerB: AuthStatusState = {
+      ...AUTHENTICATED_OWNER,
+      identity: { ...AUTHENTICATED_OWNER.identity, id: "u-2" },
+      session: { ...AUTHENTICATED_OWNER.session, id: "s-2" },
+    };
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    __setHydratedForTests(true);
+    vi.mocked(client.listPendingActions)
+      .mockImplementationOnce(() => ownerAResponse.promise)
+      .mockResolvedValue({ pending: [] });
+
+    renderRestedNotifications();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      __setAuthStatusForTests(ownerB);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    ownerAResponse.resolve({
+      pending: [
+        {
+          id: "owner-a-request",
+          kind: "approval",
+          source: "lifeops",
+          title: "Owner A only",
+          createdAt: 1_700_000_000_000,
+        },
+      ],
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Owner A only")).toBeNull();
+    expect(
+      window.localStorage.getItem(
+        resolvedPendingActionIdsStorageKey(ownerB.identity.id, ""),
+      ) ?? "",
+    ).not.toContain("owner-a-request");
+  });
+
+  it("never exposes a committed owner snapshot during an account switch", async () => {
+    const ownerBResponse = deferred<{ pending: PendingUserAction[] }>();
+    const ownerB: AuthStatusState = {
+      ...AUTHENTICATED_OWNER,
+      identity: { ...AUTHENTICATED_OWNER.identity, id: "u-2" },
+      session: { ...AUTHENTICATED_OWNER.session, id: "s-2" },
+    };
+    const renders: Array<{ loaded: boolean; titles: readonly string[] }> = [];
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    vi.mocked(client.listPendingActions)
+      .mockResolvedValueOnce({
+        pending: [
+          {
+            id: "owner-a-committed",
+            kind: "approval",
+            source: "lifeops",
+            title: "Owner A committed",
+            createdAt: 1_700_000_000_000,
+          },
+        ],
+      })
+      .mockImplementationOnce(() => ownerBResponse.promise);
+
+    render(
+      <PendingActionRenderProbe onRender={(state) => renders.push(state)} />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(renders.at(-1)).toEqual({
+      loaded: true,
+      titles: ["Owner A committed"],
+    });
+
+    renders.length = 0;
+    act(() => {
+      __setAuthStatusForTests(ownerB);
+    });
+    expect(renders.length).toBeGreaterThan(0);
+    expect(
+      renders.every(
+        (state) => !state.loaded && !state.titles.includes("Owner A committed"),
+      ),
+    ).toBe(true);
+
+    await act(async () => {
+      ownerBResponse.resolve({ pending: [] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
   });
 
   it("acting on a row removes it; surviving rows keep their stable order", () => {

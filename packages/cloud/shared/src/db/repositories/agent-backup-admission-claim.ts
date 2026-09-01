@@ -640,7 +640,9 @@ function exactScheduleSourceSql(): ReturnType<typeof sql> {
       AND source_sandbox.organization_id = work.organization_id
       AND source_sandbox.status = 'running'
       AND source_sandbox.pool_status IS NULL
-      AND source_sandbox.execution_tier <> 'shared'
+      AND source_sandbox.execution_tier IN ('dedicated-lazy', 'dedicated-always', 'custom')
+      AND source_sandbox.deleted_at IS NULL
+      AND source_sandbox.deletion_attempt_id IS NULL
       AND source_sandbox.activation_phase = 'active'
       AND source_sandbox.activation_generation = work.source_activation_generation
       AND source_sandbox.activation_lifecycle_revision = work.source_lifecycle_revision

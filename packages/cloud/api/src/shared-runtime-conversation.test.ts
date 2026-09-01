@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, expect, mock, test } from "bun:test";
+import { SharedRuntimeTurnError } from "@/lib/services/shared-runtime/shared-runtime-errors";
 
 class RateLimitError extends Error {
   retryAfter?: number;
@@ -188,6 +189,23 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       }
       if (rpc.id === "rate-limited") {
         throw new RateLimitError("Organization rate limit exceeded.", 29);
+      }
+      if (rpc.id === "provider-unavailable") {
+        throw new SharedRuntimeTurnError(
+          "Shared runtime turn failed for private provider response",
+          Object.assign(new Error("private provider response"), {
+            name: "AI_APICallError",
+            statusCode: 503,
+          }),
+        );
+      }
+      if (rpc.id === "action-contract-failed") {
+        throw new SharedRuntimeTurnError(
+          "Shared runtime turn failed for private action payload",
+          new Error(
+            "Eliza Shared runtime completed an executable REMINDERS request without an action result",
+          ),
+        );
       }
       const channelId = rpc.params?.roomId ?? agent.id;
       const history = await options.historyStore.load(
@@ -469,6 +487,57 @@ test("buffered bridge releases the room before its response body is consumed", a
     ]),
   ).resolves.not.toBe("queue-blocked");
   await firstResponse.arrayBuffer();
+});
+
+test("serializes only safe turn failure classification across the object boundary", async () => {
+  const object = new SharedRuntimeConversation(
+    makeState(new Map<string, unknown>(), []) as never,
+    {} as never,
+  );
+  const invoke = async (id: string) => {
+    const response = await object.fetch(
+      new Request("https://shared-runtime.internal/bridge", {
+        method: "POST",
+        body: JSON.stringify({
+          operation: "bridge",
+          agent: AGENT_FIXTURE,
+          rpc: {
+            jsonrpc: "2.0",
+            id,
+            method: "message.send",
+            params: { text: "hi", roomId: "room-1" },
+          },
+        }),
+      }),
+    );
+    return { status: response.status, body: await response.json() };
+  };
+
+  const retryable = await invoke("provider-unavailable");
+  expect(retryable).toEqual({
+    status: 503,
+    body: {
+      success: false,
+      error: "Shared runtime turn failed.",
+      code: "shared_runtime_turn_failed",
+      failureName: "SharedRuntimeProviderUnavailableError",
+      retryable: true,
+    },
+  });
+  expect(JSON.stringify(retryable)).not.toContain("private provider response");
+
+  const terminal = await invoke("action-contract-failed");
+  expect(terminal).toEqual({
+    status: 500,
+    body: {
+      success: false,
+      error: "Shared runtime turn failed.",
+      code: "shared_runtime_turn_failed",
+      failureName: "SharedRuntimeActionContractError",
+      retryable: false,
+    },
+  });
+  expect(JSON.stringify(terminal)).not.toContain("private action payload");
 });
 
 async function pushOperation(

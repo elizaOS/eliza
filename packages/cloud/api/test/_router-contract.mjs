@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import {
@@ -48,39 +48,23 @@ function assertBefore(routes, first, second) {
   );
 }
 
-const { entries, intentionallySkippedFiles, unmountedFiles } =
-  await collectRouteEntries(API_ROOT);
+const { entries, unmountedFiles } = await collectRouteEntries(API_ROOT);
 const expectedRoutes = entries.map((entry) => entry.path);
 const actualRoutes = generatedRoutes();
-const expectedIntentionallySkippedFiles = [
-  "v1/cron/remote-host-managed-cleanup/route.ts",
-  "v1/remote/hosts/[id]/managed-network/activate/route.ts",
-  "v1/remote/sessions/activate/route.ts",
-];
-const intentionallySkippedRoutes = [
+const requiredLiveRoutes = [
   "/api/v1/cron/remote-host-managed-cleanup",
   "/api/v1/remote/hosts/:id/managed-network/activate",
   "/api/v1/remote/sessions/activate",
 ];
 
 assertNoUnmountedRouteFiles(unmountedFiles, API_ROOT);
-assert.deepEqual(
-  intentionallySkippedFiles
-    .map((file) => relative(API_ROOT, file).replace(/\\/g, "/"))
-    .sort(),
-  expectedIntentionallySkippedFiles,
-  "only the reviewed dormant route files may opt out of codegen",
-);
-assert.deepEqual(
-  expectedRoutes.filter((path) => intentionallySkippedRoutes.includes(path)),
-  [],
-  "intentionally skipped paths must be absent from the expected mount tree",
-);
-assert.deepEqual(
-  actualRoutes.filter((path) => intentionallySkippedRoutes.includes(path)),
-  [],
-  "intentionally skipped paths must be absent from the generated mount tree",
-);
+for (const path of requiredLiveRoutes) {
+  assert.ok(expectedRoutes.includes(path), `${path} must be Hono-converted`);
+  assert.ok(
+    actualRoutes.includes(path),
+    `${path} must be mounted in production`,
+  );
+}
 
 assert.deepEqual(
   actualRoutes,
@@ -169,7 +153,7 @@ console.log(
       "named catch-all conversion",
       "method dispatch",
       "trailing slash compatibility",
-      "explicit dormant-route exclusions",
+      "all Hono leaves mounted",
     ],
   }),
 );

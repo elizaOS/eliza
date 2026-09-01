@@ -550,6 +550,112 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		]);
 	});
 
+	it("announces the shortcut's tool call on the streaming hook before execution (SSE running_tool parity)", async () => {
+		const order: string[] = [];
+		const { runtime } = makeRuntime({
+			actions: [
+				echoAction({
+					onOptions: () => {
+						order.push("handler");
+					},
+				}),
+			],
+		});
+		const onToolCall = vi.fn((_payload: unknown) => {
+			order.push("onToolCall");
+		});
+		const onToolResult = vi.fn((_payload: unknown) => {
+			order.push("onToolResult");
+		});
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "00000000-0000-0000-0000-0000000000f2" as UUID,
+				onToolCall,
+				onToolResult,
+			} as never,
+			() =>
+				runShortcutGate({
+					// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+					runtime: runtime as any,
+					message: msg("/echo hi"),
+					state: {} as State,
+					responseId,
+					senderRole: "OWNER",
+				}),
+		);
+
+		expect(result?.kind).toBe("direct_reply");
+		// The running_tool announcement precedes execution so the chat SSE
+		// surface shows activity while the action runs, not only its result.
+		expect(order).toEqual(["onToolCall", "handler", "onToolResult"]);
+		expect(onToolCall).toHaveBeenCalledTimes(1);
+		const announced = onToolCall.mock.calls[0]?.[0] as {
+			toolCall?: { id?: string };
+		};
+		const settled = onToolResult.mock.calls[0]?.[0] as {
+			toolCallId?: string;
+		};
+		expect(announced).toMatchObject({
+			toolCall: {
+				id: "shortcut:ECHOCOMMAND",
+				name: "ECHO_COMMAND",
+				status: "pending",
+			},
+			metadata: { deterministic: true },
+		});
+		expect(onToolResult).toHaveBeenCalledTimes(1);
+		expect(settled.toolCallId).toBe(announced.toolCall?.id);
+	});
+
+	it("settles the shortcut announcement exactly once when infrastructure throws", async () => {
+		const connectorAction = {
+			...echoAction(),
+			connectorAccountPolicy: { provider: "gmail" },
+		} as Action;
+		const { runtime } = makeRuntime({ actions: [connectorAction] });
+		const infrastructureError = new Error("account storage unavailable");
+		Object.assign(runtime, {
+			getService: vi.fn(() => {
+				throw infrastructureError;
+			}),
+		});
+		const onToolCall = vi.fn();
+		const onToolResult = vi.fn();
+
+		await expect(
+			runWithStreamingContext(
+				{
+					onToolCall,
+					onToolResult,
+				} as never,
+				() =>
+					runShortcutGate({
+						// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+						runtime: runtime as any,
+						message: msg("/echo hi"),
+						state: {} as State,
+						responseId,
+						senderRole: "OWNER",
+					}),
+			),
+		).rejects.toBe(infrastructureError);
+
+		expect(onToolCall).toHaveBeenCalledTimes(1);
+		expect(onToolResult).toHaveBeenCalledTimes(1);
+		const announced = onToolCall.mock.calls[0]?.[0] as {
+			toolCall?: { id?: string };
+		};
+		expect(onToolResult.mock.calls[0]?.[0]).toMatchObject({
+			toolCallId: announced.toolCall?.id,
+			status: "failed",
+			result: expect.objectContaining({
+				success: false,
+				error: infrastructureError.message,
+			}),
+		});
+	});
+
 	it("allows an OWNER to trigger the same OWNER-gated shortcut action", async () => {
 		const handler = vi.fn(
 			async (

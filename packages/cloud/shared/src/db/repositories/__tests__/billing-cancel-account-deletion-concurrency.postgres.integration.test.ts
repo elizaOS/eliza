@@ -453,6 +453,18 @@ realPostgres("billing-cancel crossed account deletion concurrency", () => {
         id uuid PRIMARY KEY,
         organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT
       );
+      CREATE TABLE agent_backup_admission_work (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        state text NOT NULL DEFAULT 'queued',
+        deferred_reason text,
+        lease_owner text,
+        lease_generation uuid,
+        lease_expires_at timestamptz,
+        settled_at timestamptz,
+        settled_reason text,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
     `),
     );
     await applyBillingCancelMigrations();

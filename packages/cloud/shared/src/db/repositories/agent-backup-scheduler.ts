@@ -972,16 +972,19 @@ export async function reserveClaimedAgentBackupSchedule(params: {
   });
   return dbWrite.transaction(async (tx) => {
     await lockAgentBackupReservationReplayInTransaction(tx, claim);
-    const source = await lockClaimedSandbox(tx, claim);
     const [organization] = await tx
       .select({ id: organizations.id })
       .from(organizations)
-      .where(eq(organizations.id, source.organizationId))
+      .where(eq(organizations.id, claim.organizationId))
       .for("update")
       .limit(1);
     if (!organization) {
       throw new AgentBackupScheduleFenceError("Periodic backup organization authority disappeared");
     }
+    // Account deletion and admission settlement both lock the organization
+    // before the sandbox. Keep the legacy scheduler on that same order so the
+    // two reservation paths cannot form an organization/sandbox AB-BA cycle.
+    const source = await lockClaimedSandbox(tx, claim);
     const [node] = await tx
       .select({
         recordId: dockerNodes.id,

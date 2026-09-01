@@ -8,6 +8,7 @@ import {
   __setAuthStatusForTests,
   type AuthStatusState,
 } from "../hooks/useAuthStatus";
+import { RoleProvider } from "../hooks/useRole";
 import {
   HOME_WIDGET_MOCK_PLUGINS,
   installHomeWidgetFetchMock,
@@ -48,7 +49,8 @@ export function WithAuthenticatedSession({
     return null;
   });
   useEffect(() => () => restoreAuth.current?.(), []);
-  return <>{children}</>;
+  // biome-ignore lint/a11y/useValidAriaRole: RoleProvider.role is a canonical role tier, not an ARIA role.
+  return <RoleProvider role="OWNER">{children}</RoleProvider>;
 }
 
 /**

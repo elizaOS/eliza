@@ -2,11 +2,12 @@
  * Exercises the live-stack child-output privacy boundary with hostile bytes.
  * The helper is deterministic and writes only schema-owned categories.
  */
-import { describe, expect, test } from "bun:test";
+
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
+import { describe, expect, test } from "vitest";
 import {
   attachSafeChildOutputObserver,
   createSafeChildOutputObserver,

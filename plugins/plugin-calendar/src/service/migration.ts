@@ -331,6 +331,48 @@ export async function ensureCalendarFeedPreferenceTable(
 }
 
 /**
+ * Linked events are calendar-native and never copied from the legacy LifeOps
+ * schema. This bootstrap keeps upgrades safe when Drizzle schema registration
+ * occurs after the migration service starts.
+ */
+export async function ensureLinkedCalendarEventTable(
+  exec: SqlExecutor,
+): Promise<void> {
+  await exec(`
+    CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.linked_calendar_events (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      local_event_id TEXT NOT NULL,
+      connector_account_id TEXT NOT NULL,
+      provider_calendar_id TEXT NOT NULL,
+      provider_event_id TEXT,
+      provider_etag TEXT,
+      local_revision INTEGER NOT NULL DEFAULT 0,
+      last_common_semantic_hash TEXT,
+      state TEXT NOT NULL DEFAULT 'dirty',
+      pending_operation TEXT,
+      idempotency_key TEXT NOT NULL,
+      last_error_code TEXT,
+      last_error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CONSTRAINT linked_calendar_events_local_unique
+        UNIQUE (agent_id, local_event_id),
+      CONSTRAINT linked_calendar_events_provider_unique
+        UNIQUE (
+          agent_id, connector_account_id, provider_calendar_id, provider_event_id
+        ),
+      CONSTRAINT linked_calendar_events_state_valid
+        CHECK (state IN ('clean', 'dirty', 'conflicted', 'quarantined', 'paused')),
+      CONSTRAINT linked_calendar_events_operation_valid
+        CHECK (pending_operation IS NULL OR pending_operation IN ('create', 'update', 'delete'))
+    )`);
+  await exec(`
+    CREATE INDEX IF NOT EXISTS linked_calendar_events_reconcile_idx
+      ON ${TARGET_SCHEMA}.linked_calendar_events (agent_id, state, updated_at)`);
+}
+
+/**
  * Push channels are calendar-owned state rather than connector credentials.
  * The explicit migration path creates their table before a public callback can
  * arrive, including direct PGlite and older plugin-sql boot orders.
@@ -444,6 +486,7 @@ export async function migrateCalendarTables(
   await ensureIcsSecretCleanupTable(exec);
   await ensureCalendarFeedPreferenceTable(exec);
   await ensureGoogleCalendarWatchChannelTable(exec);
+  await ensureLinkedCalendarEventTable(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_CALENDAR_TABLES) {
     results.push(await migrateCalendarTable(exec, table));

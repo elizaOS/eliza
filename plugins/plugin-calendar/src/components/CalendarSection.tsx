@@ -139,8 +139,8 @@ function groupEventsByDay(
 // values rather than Tailwind classes: the view bundle is built separately from
 // the host's Tailwind pass, so arbitrary opacity-modified utility classes never
 // make it into the compiled CSS. Inline `color-mix` over fixed seeds renders
-// identically everywhere the bundle mounts. Text is a dark ink derived from each
-// seed so filled blocks read on the light surface.
+// identically everywhere the bundle mounts. Text stays near-white so both warm
+// and neutral event fills remain readable on the app's dark calendar surface.
 interface EventPaletteEntry {
   readonly seed: string;
 }
@@ -172,9 +172,7 @@ interface EventColor {
 }
 
 function eventColorFor(entry: EventPaletteEntry): EventColor {
-  // Dark ink derived from the seed: readable on both the filled block and the
-  // tinted soft pill over the light surface.
-  const ink = `color-mix(in srgb, ${entry.seed} 30%, #1a1a1a)`;
+  const ink = `color-mix(in srgb, ${entry.seed} 12%, #f8f8f8)`;
   return {
     bg: `color-mix(in srgb, ${entry.seed} 38%, var(--background, #eef8ff))`,
     softBg: `color-mix(in srgb, ${entry.seed} 18%, transparent)`,
@@ -655,7 +653,7 @@ function TimeGrid({
   const gridTemplateColumns = `${RAIL_WIDTH_REM}rem repeat(${days.length}, minmax(0, 1fr))`;
 
   return (
-    <div className="overflow-hidden">
+    <div className="overflow-hidden" data-testid="calendar-time-grid">
       {/* Header row: empty cell above rail, then weekday + date per column */}
       <div
         className="grid border-b border-border/12"
@@ -776,15 +774,21 @@ function MonthGrid({
   );
 
   return (
-    <div className="overflow-hidden">
-      <div className="grid grid-cols-7 border-b border-border/12 text-[10px] font-medium text-muted">
+    <div className="overflow-hidden" data-testid="calendar-month-grid">
+      <div
+        className="grid border-b border-border/12 text-[10px] font-medium text-muted"
+        style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+      >
         {weekdayLabels.map((label) => (
           <div key={label} className="px-2 py-1.5 text-center">
             {label}
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-px bg-border/8">
+      <div
+        className="grid gap-px bg-border/8"
+        style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+      >
         {days.map((day) => {
           const key = toLocalDayKey(day);
           const dayEvents = eventsByDay.get(key) ?? [];
@@ -1016,8 +1020,8 @@ export interface CalendarSectionProps {
   selectedEventId: string | null;
   /** Notify the host shell that the selected event id changed. */
   onSelectEvent: (eventId: string | null) => void;
-  /** Launch a chat about the given event (host-provided). */
-  onChatAboutEvent: (event: LifeOpsCalendarEvent) => void;
+  /** Launch a chat about the given event when the embedding host owns that flow. */
+  onChatAboutEvent?: (event: LifeOpsCalendarEvent) => void;
   /**
    * Resolve an event that was primed by the host shell (e.g. a deep link or
    * widget row) but is outside the currently-loaded feed window.
@@ -1297,13 +1301,15 @@ export function CalendarSection({
               defaultValue: "Calendar could not load",
             })}
           />
-        ) : calendar.status === "empty" ? (
+        ) : compactLayout && calendar.status === "empty" ? (
           <CalendarStatusIcon
             label={t("lifeopsCalendar.noEvents", {
               defaultValue: "No events in this range",
             })}
           />
-        ) : calendar.status === "partial" && calendar.events.length === 0 ? (
+        ) : compactLayout &&
+          calendar.status === "partial" &&
+          calendar.events.length === 0 ? (
           <CalendarStatusIcon
             label={t("lifeopsCalendar.noEventsPartial", {
               defaultValue: "No events from available sources",

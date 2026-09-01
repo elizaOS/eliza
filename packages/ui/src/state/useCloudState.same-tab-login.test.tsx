@@ -24,6 +24,7 @@ import {
   prepareDesktopCloudLoginSession,
 } from "./cloud-login-launch";
 import { registerStewardLoginLauncher } from "./cloud-steward-login";
+import { savePersistedActiveServer } from "./persistence";
 import { useCloudState } from "./useCloudState";
 
 const DEVICE_CODE_SENTINEL = "device-code-flow-reached";
@@ -1208,6 +1209,77 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     delete globalWithPlatform.Capacitor;
     restorePinnedRemote();
     vi.restoreAllMocks();
+  });
+
+  it("does not poll a selected remote runtime's unrelated Cloud billing state", async () => {
+    expect(
+      savePersistedActiveServer({
+        id: "remote-vps",
+        kind: "remote",
+        label: "Eliza VPS",
+        apiBase: "https://bot.nubs.site",
+        accessToken: "paired-test-token",
+      }),
+    ).toBe(true);
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      hasApiKey: true,
+      cloudVoiceProxyAvailable: false,
+    });
+    getCloudCreditsSpy.mockResolvedValue({ authRejected: true });
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    let connected = true;
+    await act(async () => {
+      connected = await result.current.pollCloudCredits();
+    });
+
+    expect(connected).toBe(false);
+    expect(getCloudStatusSpy).not.toHaveBeenCalled();
+    expect(getCloudCreditsSpy).not.toHaveBeenCalled();
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
+    expect(result.current.elizaCloudPollInterval.current).toBeNull();
+    unmount();
+  });
+
+  it("does not poll Cloud billing for a build-pinned self-hosted runtime", async () => {
+    runtimeWithPinnedRemote.__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__ =
+      "https://bot.nubs.site";
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.pollCloudCredits();
+    });
+
+    expect(getCloudStatusSpy).not.toHaveBeenCalled();
+    expect(getCloudCreditsSpy).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("keeps polling for a Cloud-managed active runtime", async () => {
+    expect(
+      savePersistedActiveServer({
+        id: "cloud-personal",
+        kind: "cloud",
+        label: "Eliza Cloud",
+        cloudRuntime: "dedicated",
+      }),
+    ).toBe(true);
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: true,
+      connected: false,
+      hasApiKey: false,
+      cloudVoiceProxyAvailable: false,
+    });
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.pollCloudCredits();
+    });
+
+    expect(getCloudStatusSpy).toHaveBeenCalledTimes(1);
+    unmount();
   });
 
   it("applies a connected snapshot: enabled, credits balance, low/critical flags, and status reason", async () => {

@@ -9,6 +9,7 @@ process.env.MOCK_REDIS = "1";
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import type { SharedReminderActionProvenance } from "./run-shared-agent-turn";
 
 let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
@@ -433,6 +434,7 @@ type TestMessage = {
   content: string;
   createdAt?: number;
   interrupted?: boolean;
+  reminderAction?: SharedReminderActionProvenance;
   grounding?:
     | {
         kind: "web_search";
@@ -641,6 +643,24 @@ describe("SharedRuntimeChatService", () => {
     expect(billCalls).toHaveLength(1);
     expect((billCalls[0] as unknown[])[2]).toBe(payoutAwareReservation);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("does not dispatch a second model call to extract facts after a landed turn", async () => {
+    process.env.SHARED_FACTS_ENABLED = "true";
+    const recordFacts = mock(async () => undefined);
+    sharedMemoryStoreOverride = {
+      listFacts: async () => [],
+      recordFacts,
+      recordTurnPair,
+    };
+    const h = harness();
+
+    const response = await new SharedRuntimeChatService().bridge(agent, rpc, h);
+    expect(response.result?.text).toBe("hello back");
+    await Promise.all(h.background);
+
+    expect(turnCalls).toBe(1);
+    expect(recordFacts).not.toHaveBeenCalled();
   });
 
   test("samples success, error, and abort terminal receipts exactly once without content", async () => {
@@ -1322,6 +1342,45 @@ describe("SharedRuntimeChatService", () => {
     expect(memoryScopes[0]?.roomKey).not.toBe(agent.id);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("persists validated reminder action provenance from a buffered terminal stream", async () => {
+    const reminderAction = {
+      actionName: "REMINDERS" as const,
+      operation: "create" as const,
+      success: true,
+      taskIds: ["created-reminder-1"],
+      deliveryScope: '{"chatId":"room-1","platform":"telegram"}',
+    };
+    streamTurn = {
+      degraded: false,
+      get history() {
+        const assistantId = (lastStreamTurnInput?.messageIds as { assistant?: string } | undefined)
+          ?.assistant;
+        return [
+          {
+            id: assistantId,
+            role: "assistant",
+            content: "hello back",
+            reminderAction,
+          },
+        ];
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "hello " };
+        yield { type: "finish", text: "hello back" };
+      })(),
+    };
+    const h = harness();
+
+    await (await new SharedRuntimeChatService().stream(agent, rpc, h)).text();
+
+    expect(h.history().at(-1)).toMatchObject({
+      role: "assistant",
+      content: "hello back",
+      interrupted: false,
+      reminderAction,
+    });
   });
 
   test("terminal done frame is not held open by a stalled long-term-memory mirror (#25689)", async () => {

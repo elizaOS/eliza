@@ -151,6 +151,12 @@ interface BaseRoute {
 	routeHandler?: RouteHandler;
 	isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
 	/**
+	 * Maximum HTTP request body bytes this route permits. Hosts retain their
+	 * default limit when omitted; use only for a reviewed endpoint whose payload
+	 * contract requires a larger bounded body.
+	 */
+	maxBodyBytes?: number;
+	/**
 	 * When true, the route path is used as-is without the plugin-name prefix.
 	 * Use for legacy API paths that must remain stable (e.g. `/api/telegram-setup/status`).
 	 */
@@ -230,6 +236,14 @@ export type Route = PublicRoute | PrivateRoute;
 const PUBLIC_WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export function assertPublicRouteIntent(route: Route, source = "plugin"): void {
+	if (
+		route.maxBodyBytes !== undefined &&
+		(!Number.isSafeInteger(route.maxBodyBytes) || route.maxBodyBytes <= 0)
+	) {
+		throw new Error(
+			`[RouteBody] Route ${source}:${route.type} ${route.path} maxBodyBytes must be a positive safe integer`,
+		);
+	}
 	if (route.public !== true) return;
 	const reason = (route as { publicReason?: unknown }).publicReason;
 	if (typeof reason !== "string" || reason.trim().length === 0) {
@@ -1601,6 +1615,7 @@ export interface RouteManifest {
 	name?: string;
 	public?: boolean;
 	isMultipart?: boolean;
+	maxBodyBytes?: number;
 	filePath?: string;
 	x402?: X402Config;
 }

@@ -54,6 +54,20 @@ describe("persistActiveServerCredential", () => {
     });
   });
 
+  it("pins a same-origin browser pairing before its first reload", async () => {
+    savePersistedActiveServer(createPersistedActiveServer({ kind: "local" }));
+
+    await persistActiveServerCredential("paired-token");
+
+    expect(loadPersistedActiveServer()).toEqual({
+      id: `remote:${window.location.origin}`,
+      kind: "remote",
+      label: window.location.host,
+      apiBase: window.location.origin,
+      accessToken: "paired-token",
+    });
+  });
+
   it("does not copy a remote pairing bearer into a stale Cloud profile", async () => {
     savePersistedActiveServer(
       createPersistedActiveServer({

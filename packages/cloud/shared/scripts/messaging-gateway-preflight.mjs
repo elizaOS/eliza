@@ -9,15 +9,32 @@
 
 import { missingWhatsAppCredentialRefs } from "./messaging-gateway-preflight-contract.mjs";
 
-const args = new Set(process.argv.slice(2));
+const cliArgs = process.argv.slice(2);
+const args = new Set(cliArgs);
 const strict = args.has("--strict");
-const channelsArg = process.argv.find((arg) => arg.startsWith("--channels="));
-const selectedChannels = new Set(
-  (channelsArg?.split("=")[1] ?? "shared,telegram,discord,whatsapp,imessage")
-    .split(",")
-    .map((channel) => channel.trim())
-    .filter(Boolean),
-);
+const supportedChannels = ["shared", "telegram", "discord", "whatsapp", "imessage"];
+const supportedChannelSet = new Set(supportedChannels);
+const channelArgs = cliArgs.filter((arg) => arg.startsWith("--channels="));
+const requestedChannels =
+  channelArgs.length === 0
+    ? supportedChannels
+    : channelArgs[0]
+        .slice("--channels=".length)
+        .split(",")
+        .map((channel) => channel.trim());
+const selectedChannels = new Set(requestedChannels);
+const invalidChannelSelection =
+  channelArgs.length > 1 ||
+  requestedChannels.length === 0 ||
+  requestedChannels.some((channel) => !supportedChannelSet.has(channel)) ||
+  selectedChannels.size !== requestedChannels.length;
+
+if (invalidChannelSelection) {
+  console.error(
+    `Invalid --channels selection. Use a non-empty comma-separated subset of: ${supportedChannels.join(", ")}. Each channel may appear once.`,
+  );
+  process.exit(2);
+}
 
 const checks = [];
 
@@ -25,57 +42,74 @@ function addCheck(channel, name, ok, detail, fix = "") {
   checks.push({ channel, name, ok: Boolean(ok), detail, fix });
 }
 
-function optionNames(option) {
-  return Array.isArray(option) ? option : [option];
-}
-
 function hasAny(names) {
-  return names.some((option) =>
-    optionNames(option).some((name) => Boolean(process.env[name]?.trim())),
-  );
+  return names.some((name) => Boolean(process.env[name]?.trim()));
 }
 
-function missing(names) {
-  return names
-    .filter((option) => optionNames(option).every((name) => !process.env[name]?.trim()))
-    .map((option) => optionNames(option).join(" or "));
+function hasConfiguredValue(valueNames, presenceName) {
+  return hasAny(valueNames) || process.env[presenceName] === "true";
 }
 
 function checkTelegram() {
   addCheck(
     "telegram",
     "bot token",
-    hasAny(["ELIZA_APP_TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN"]),
+    hasConfiguredValue(
+      ["ELIZA_APP_TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN"],
+      "HAS_ELIZA_APP_TELEGRAM_BOT_TOKEN",
+    ),
     "Telegram bot token is configured",
     "Create a bot with BotFather and set ELIZA_APP_TELEGRAM_BOT_TOKEN.",
   );
   addCheck(
     "telegram",
     "webhook secret",
-    hasAny(["TELEGRAM_WEBHOOK_SECRET", "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"]),
+    hasConfiguredValue(
+      ["TELEGRAM_WEBHOOK_SECRET", "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"],
+      "HAS_ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+    ),
     "Telegram webhook secret is configured",
     "Set a per-environment secret and configure it as x-telegram-bot-api-secret-token.",
   );
 }
 
 function checkDiscord() {
-  const missingDiscord = missing([
-    ["DISCORD_CLIENT_ID", "ELIZA_APP_DISCORD_APPLICATION_ID"],
-    ["DISCORD_CLIENT_SECRET", "ELIZA_APP_DISCORD_CLIENT_SECRET"],
-  ]);
+  const systemBotApplicationIdConfigured = hasConfiguredValue(
+    ["ELIZA_APP_DISCORD_APPLICATION_ID"],
+    "HAS_ELIZA_APP_DISCORD_APPLICATION_ID",
+  );
+  const systemBotEnabled = process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true";
+  const systemBotTokenConfigured = hasConfiguredValue(
+    ["ELIZA_APP_DISCORD_BOT_TOKEN"],
+    "HAS_ELIZA_APP_DISCORD_BOT_TOKEN",
+  );
+
   addCheck(
     "discord",
-    "application credentials",
-    missingDiscord.length === 0,
-    "Discord OAuth client id/secret are configured",
-    `Missing: ${missingDiscord.join(", ")}`,
+    "system bot application id",
+    systemBotApplicationIdConfigured,
+    systemBotApplicationIdConfigured
+      ? "Discord system bot application id is configured"
+      : "Discord system bot application id is not configured",
+    "Set ELIZA_APP_DISCORD_APPLICATION_ID for the maintained Eliza App bot.",
   );
   addCheck(
     "discord",
-    "bot token",
-    hasAny(["DISCORD_BOT_TOKEN", "ELIZA_APP_DISCORD_BOT_TOKEN"]),
-    "Discord system bot token is configured",
-    "Set DISCORD_BOT_TOKEN for the managed Eliza App bot gateway.",
+    "system bot enabled",
+    systemBotEnabled,
+    systemBotEnabled
+      ? "Discord system bot is explicitly enabled"
+      : "Discord system bot is not explicitly enabled",
+    "Set ELIZA_APP_DISCORD_BOT_ENABLED to exactly true.",
+  );
+  addCheck(
+    "discord",
+    "system bot token",
+    systemBotTokenConfigured,
+    systemBotTokenConfigured
+      ? "Discord system bot token is configured"
+      : "Discord system bot token is not configured",
+    "Set ELIZA_APP_DISCORD_BOT_TOKEN for the maintained Eliza App bot.",
   );
 }
 
@@ -127,14 +161,17 @@ function checkShared() {
   addCheck(
     "shared",
     "cloud API base",
-    hasAny(["ELIZACLOUD_API_URL", "ELIZA_CLOUD_API_URL", "ELIZA_CLOUD_URL", "PUBLIC_API_BASE_URL"]),
+    hasConfiguredValue(
+      ["ELIZACLOUD_API_URL", "ELIZA_CLOUD_API_URL", "ELIZA_CLOUD_URL", "PUBLIC_API_BASE_URL"],
+      "HAS_ELIZACLOUD_API_URL",
+    ),
     "Cloud API base URL is configured",
     "Set the production Cloud API base URL used by gateway services.",
   );
   addCheck(
     "shared",
     "Cerebras onboarding model",
-    hasAny(["CEREBRAS_API_KEY"]),
+    hasConfiguredValue(["CEREBRAS_API_KEY"], "HAS_CEREBRAS_API_KEY"),
     "Cerebras API key is configured",
     "Set CEREBRAS_API_KEY for the stateless onboarding worker.",
   );
@@ -147,21 +184,27 @@ function checkShared() {
   addCheck(
     "shared",
     "webhook gateway URL",
-    hasAny(["ELIZA_APP_WEBHOOK_GATEWAY_URL", "WEBHOOK_GATEWAY_URL", "GATEWAY_WEBHOOK_URL"]),
+    hasConfiguredValue(
+      ["ELIZA_APP_WEBHOOK_GATEWAY_URL", "WEBHOOK_GATEWAY_URL", "GATEWAY_WEBHOOK_URL"],
+      "HAS_ELIZA_APP_WEBHOOK_GATEWAY_URL",
+    ),
     "Webhook gateway upstream URL is configured",
     "Set ELIZA_APP_WEBHOOK_GATEWAY_URL (or WEBHOOK_GATEWAY_URL / GATEWAY_WEBHOOK_URL) to the gateway-webhook service URL.",
   );
   addCheck(
     "shared",
     "webhook gateway forwarder secret",
-    hasAny(["ELIZA_APP_WEBHOOK_GATEWAY_SECRET"]),
+    hasConfiguredValue(
+      ["ELIZA_APP_WEBHOOK_GATEWAY_SECRET"],
+      "HAS_ELIZA_APP_WEBHOOK_GATEWAY_SECRET",
+    ),
     "Webhook gateway forwarder secret is configured",
     "Set ELIZA_APP_WEBHOOK_GATEWAY_SECRET to the shared BFF→gateway trust secret.",
   );
   addCheck(
     "shared",
     "internal delivery secret",
-    hasAny(["GATEWAY_INTERNAL_SECRET"]),
+    hasConfiguredValue(["GATEWAY_INTERNAL_SECRET"], "HAS_GATEWAY_INTERNAL_SECRET"),
     "Internal reminder delivery secret is configured",
     "Set GATEWAY_INTERNAL_SECRET consistently on the Cloud Worker and messaging gateways.",
   );

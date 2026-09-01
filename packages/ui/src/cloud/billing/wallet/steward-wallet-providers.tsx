@@ -106,7 +106,15 @@ export function buildStewardEvmConfig(options: {
   });
 }
 
-export function StewardWalletProviders({ children }: { children: ReactNode }) {
+export function StewardWalletProviders({
+  children,
+  enableEvm = false,
+  enableSolana = false,
+}: {
+  children: ReactNode;
+  enableEvm?: boolean;
+  enableSolana?: boolean;
+}) {
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     (typeof window !== "undefined"
@@ -121,41 +129,62 @@ export function StewardWalletProviders({ children }: { children: ReactNode }) {
       ? `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`
       : DEFAULT_SOLANA_RPC_URL);
 
-  const evmConfig = useMemo<Config>(
+  const evmConfig = useMemo<Config | null>(
     () =>
-      buildStewardEvmConfig({
-        appUrl,
-        walletConnectProjectId,
-        alchemyKey: alchemyKey || undefined,
-      }),
-    [alchemyKey, appUrl, walletConnectProjectId],
+      enableEvm
+        ? buildStewardEvmConfig({
+            appUrl,
+            walletConnectProjectId,
+            alchemyKey: alchemyKey || undefined,
+          })
+        : null,
+    [alchemyKey, appUrl, enableEvm, walletConnectProjectId],
   );
 
   const rainbowTheme = useMemo(
     () =>
-      darkTheme({
-        accentColor: BRAND_COLORS.orange,
-        accentColorForeground: BRAND_COLORS.white,
-        borderRadius: "medium",
-        overlayBlur: "small",
-      }),
-    [],
+      enableEvm
+        ? darkTheme({
+            accentColor: BRAND_COLORS.orange,
+            accentColorForeground: BRAND_COLORS.white,
+            borderRadius: "medium",
+            overlayBlur: "small",
+          })
+        : null,
+    [enableEvm],
   );
 
   const solanaWallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
-    [],
+    () =>
+      enableSolana
+        ? [new PhantomWalletAdapter(), new SolflareWalletAdapter()]
+        : [],
+    [enableSolana],
   );
 
-  return (
-    <WagmiProvider config={evmConfig}>
-      <RainbowKitProvider theme={rainbowTheme} modalSize="compact">
-        <ConnectionProvider endpoint={solanaEndpoint}>
-          <WalletProvider wallets={solanaWallets} autoConnect>
-            <WalletModalProvider>{children}</WalletModalProvider>
-          </WalletProvider>
-        </ConnectionProvider>
-      </RainbowKitProvider>
-    </WagmiProvider>
-  );
+  let providerTree = children;
+
+  // These flags are an authentication capability boundary, not merely a
+  // presentation choice. A chain the server did not advertise must not mount
+  // a provider, construct adapters, or auto-reconnect persisted wallet state.
+  if (enableSolana) {
+    providerTree = (
+      <ConnectionProvider endpoint={solanaEndpoint}>
+        <WalletProvider wallets={solanaWallets} autoConnect>
+          <WalletModalProvider>{providerTree}</WalletModalProvider>
+        </WalletProvider>
+      </ConnectionProvider>
+    );
+  }
+  if (enableEvm && evmConfig && rainbowTheme) {
+    providerTree = (
+      <WagmiProvider config={evmConfig}>
+        <RainbowKitProvider theme={rainbowTheme} modalSize="compact">
+          {providerTree}
+        </RainbowKitProvider>
+      </WagmiProvider>
+    );
+  }
+
+  return <>{providerTree}</>;
 }

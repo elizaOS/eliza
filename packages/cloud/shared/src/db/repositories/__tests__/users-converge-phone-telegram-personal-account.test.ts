@@ -260,7 +260,7 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     ).resolves.toEqual({ status: "identity_projection_conflict" });
   });
 
-  test("converges exactly two $0 provisional accounts and retains an idempotent alias receipt", async () => {
+  test("converges two signup accounts without doubling the $5 opening balance", async () => {
     const pair = await createPair();
     const proof = proofFor(pair);
     const inspection = await usersRepository.inspectPhoneTelegramPersonalAccountConvergence(proof);
@@ -289,7 +289,7 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
       phone_number: pair.phoneNumber,
       phone_verified: true,
     });
-    expect(result.organization.credit_balance).toBe("0.000000");
+    expect(result.organization.credit_balance).toBe("5.000000");
     expect(await dbWrite.select().from(users)).toHaveLength(1);
     expect(await dbWrite.select().from(organizations)).toHaveLength(1);
     expect(await dbWrite.select().from(userIdentities)).toHaveLength(1);
@@ -366,6 +366,35 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
       phone_number: pair.phoneNumber,
       phone_verified: true,
     });
+  });
+
+  test("converges a new $5 phone account into an untouched legacy $0 Telegram account", async () => {
+    const pair = await createPair();
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: "0.000000", balance_revision: 0 })
+      .where(eq(organizations.id, pair.telegram.organization.id));
+    const proof = proofFor(pair);
+    const inspection = await usersRepository.inspectPhoneTelegramPersonalAccountConvergence(proof);
+    expect(inspection.status).toBe("eligible");
+    if (inspection.status !== "eligible") return;
+
+    const result = await usersRepository.commitPhoneTelegramPersonalAccountConvergence({
+      ...proof,
+      sourceUserId: pair.phone.user.id,
+      sourceOrganizationId: pair.phone.organization.id,
+      sourceAgentId: "personal:legacy-source",
+      targetUserId: pair.telegram.user.id,
+      targetOrganizationId: pair.telegram.organization.id,
+      targetAgentId: "personal:legacy-target",
+      token: `phone-telegram-legacy:${pair.phone.user.id}:${pair.telegram.user.id}`,
+    });
+
+    expect(result.status).toBe("committed");
+    if (result.status !== "committed") return;
+    expect(result.organization.credit_balance).toBe("5.000000");
+    expect(await dbWrite.select().from(users)).toHaveLength(1);
+    expect(await dbWrite.select().from(organizations)).toHaveLength(1);
   });
 
   test("moves source Todos and replay authority into the retained Telegram scope", async () => {

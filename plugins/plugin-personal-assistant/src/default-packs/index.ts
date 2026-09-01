@@ -60,6 +60,11 @@ import {
   executiveAssistantPack,
 } from "./executive-assistant.js";
 import {
+  FAMILY_COORDINATION_PACK_KEY,
+  FAMILY_COORDINATION_RECORD_IDS,
+  familyCoordinationPack,
+} from "./family-coordination.js";
+import {
   buildFollowupTaskForRelationship,
   DEFAULT_FOLLOWUP_CADENCE_DAYS,
   deriveOverdueFollowupTasks,
@@ -141,6 +146,7 @@ export const DEFAULT_PACKS: ReadonlyArray<DefaultPack> = [
   inboxTriageStarterPack,
   habitStartersPack,
   executiveAssistantPack,
+  familyCoordinationPack,
   // Persona packs (issue #12186): offered at customize, not auto-seeded.
   ...PERSONA_PACKS,
   // Health ships the byte-identical DefaultPack shape but types
@@ -221,8 +227,11 @@ export {
   EXECUTIVE_ASSISTANT_PACK_KEY,
   EXECUTIVE_ASSISTANT_RECORD_IDS,
   executiveAssistantPack,
+  FAMILY_COORDINATION_PACK_KEY,
+  FAMILY_COORDINATION_RECORD_IDS,
   FOLLOWUP_STARTER_PACK_KEY,
   FOLLOWUP_STARTER_RECORD_IDS,
+  familyCoordinationPack,
   followupStarterPack,
   formatFindings,
   HABIT_STARTER_KEYS,

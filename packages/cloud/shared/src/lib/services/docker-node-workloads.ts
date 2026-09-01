@@ -94,7 +94,9 @@ export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<num
   // that was already failing rather than taking down placement wholesale.
   try {
     // Capacity is admission authority. Replica lag must never erase a slot that
-    // an exact-restore transaction has already reserved on the primary.
+    // an exact-restore transaction has already reserved on the primary. The
+    // counter composes its ledgers in one statement snapshot so a lifecycle
+    // transfer is counted on exactly one side.
     return await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId);
   } catch (error) {
     // error-policy:J2 context-adding rethrow — only the known pre-migration

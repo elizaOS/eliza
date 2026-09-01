@@ -3,6 +3,7 @@
  * public messaging identity preflight that must succeed before release
  * mutations can begin.
  */
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -35,14 +36,26 @@ interface WorkflowJob {
   if?: string;
   needs?: string | string[];
   outputs?: Record<string, string>;
+  secrets?: "inherit" | Record<string, string>;
   steps?: WorkflowStep[];
   uses?: string;
   with?: Record<string, string | boolean>;
 }
 
+interface WorkflowCallInput {
+  required?: boolean;
+  type?: string;
+}
+
 interface WorkflowFile {
   jobs?: Record<string, WorkflowJob>;
-  on?: Record<string, unknown>;
+  on?: {
+    workflow_call?: {
+      inputs?: Record<string, WorkflowCallInput>;
+      secrets?: Record<string, { required?: boolean }>;
+    };
+    [event: string]: unknown;
+  };
 }
 
 interface TelegramExecution {
@@ -59,6 +72,14 @@ const qualityWorkflow = readFileSync(qualityWorkflowPath, "utf8");
 const contactSource = readFileSync(contactPath, "utf8");
 const parsedWorkflow = Bun.YAML.parse(workflow) as WorkflowFile;
 const parsedReleaseWorkflow = Bun.YAML.parse(releaseWorkflow) as WorkflowFile;
+const telegramAuthorityGuardName =
+  "Reject stale Telegram configuration authority";
+const guardedReleaseJobNames = [
+  "migrate-db",
+  "deploy-api",
+  "build-pages",
+  "deploy-app",
+] as const;
 
 const resolver =
   parsedReleaseWorkflow.jobs?.["resolve-pages-environment-config"];
@@ -87,6 +108,21 @@ const stagingTelegram = {
   botUsername: "ElizaStage29206Bot",
 };
 
+function telegramIdentityAuthoritySha256(
+  botId: string,
+  botUsername: string,
+): string {
+  const framed = [
+    "elizaOS/eliza",
+    "staging",
+    "telegram-public-identity",
+    "v1",
+    botId,
+    botUsername.toLowerCase(),
+  ].join("\0");
+  return createHash("sha256").update(`${framed}\n`).digest("hex");
+}
+
 function readOptionalFile(filePath: string): string {
   return existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
 }
@@ -95,9 +131,15 @@ function runTelegramPreflight(
   overrides: Partial<{
     botId: string;
     botUsername: string;
+    authorityRunAttempt: string;
+    authoritySha256: string;
+    releaseRunAttempt: string;
     targetEnvironment: string;
   }> = {},
 ): TelegramExecution {
+  // This executes the checked-in shell contract locally. Environment-secret
+  // provenance is enforced separately by the structural caller-allowlist test;
+  // a local GITHUB_OUTPUT file cannot model hosted runner scope or filtering.
   if (!telegramValidation?.run) {
     throw new Error("Missing executable Telegram public identity preflight");
   }
@@ -109,16 +151,22 @@ function runTelegramPreflight(
   const summaryPath = path.join(fixtureRoot, "step-summary.md");
 
   try {
+    const botId = overrides.botId ?? stagingTelegram.botId;
+    const botUsername = overrides.botUsername ?? stagingTelegram.botUsername;
     const result = Bun.spawnSync(["bash", "-c", telegramValidation.run], {
       cwd: repositoryRoot,
       env: {
         ...process.env,
         GITHUB_OUTPUT: githubOutputPath,
         GITHUB_STEP_SUMMARY: summaryPath,
+        RELEASE_RUN_ATTEMPT: overrides.releaseRunAttempt ?? "1",
         TARGET_ENVIRONMENT: overrides.targetEnvironment ?? "staging",
-        STAGING_TELEGRAM_BOT_ID: overrides.botId ?? stagingTelegram.botId,
-        STAGING_TELEGRAM_BOT_USERNAME:
-          overrides.botUsername ?? stagingTelegram.botUsername,
+        TELEGRAM_AUTHORITY_RUN_ATTEMPT: overrides.authorityRunAttempt ?? "1",
+        ENVIRONMENT_TELEGRAM_BOT_ID: botId,
+        ENVIRONMENT_TELEGRAM_BOT_USERNAME: botUsername,
+        TELEGRAM_IDENTITY_AUTHORITY_SHA256:
+          overrides.authoritySha256 ??
+          telegramIdentityAuthoritySha256(botId, botUsername),
       },
       stderr: "pipe",
       stdout: "pipe",
@@ -159,6 +207,53 @@ function namedStep(job: WorkflowJob | undefined, name: string): WorkflowStep {
   const found = job?.steps?.find((candidate) => candidate.name === name);
   if (!found) throw new Error(`Missing workflow step: ${name}`);
   return found;
+}
+
+function runTelegramAuthorityGuard(
+  jobName: (typeof guardedReleaseJobNames)[number],
+  authorityRunAttempt: string,
+  releaseRunAttempt: string,
+  botId = stagingTelegram.botId,
+  botUsername = stagingTelegram.botUsername,
+): TelegramExecution {
+  const guard = namedStep(
+    parsedReleaseWorkflow.jobs?.[jobName],
+    telegramAuthorityGuardName,
+  );
+  if (!guard.run) throw new Error(`Missing executable guard in ${jobName}`);
+
+  const fixtureRoot = mkdtempSync(
+    path.join(tmpdir(), "homepage-telegram-authority-guard-"),
+  );
+  const githubOutputPath = path.join(fixtureRoot, "github-output.txt");
+  const summaryPath = path.join(fixtureRoot, "step-summary.md");
+
+  try {
+    const result = Bun.spawnSync(["bash", "-c", guard.run], {
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        GITHUB_OUTPUT: githubOutputPath,
+        GITHUB_STEP_SUMMARY: summaryPath,
+        ADMITTED_TELEGRAM_BOT_ID: botId,
+        ADMITTED_TELEGRAM_BOT_USERNAME: botUsername,
+        RELEASE_RUN_ATTEMPT: releaseRunAttempt,
+        TELEGRAM_AUTHORITY_RUN_ATTEMPT: authorityRunAttempt,
+      },
+      stderr: "pipe",
+      stdout: "pipe",
+    });
+
+    return {
+      exitCode: result.exitCode,
+      githubOutput: readOptionalFile(githubOutputPath),
+      stderr: result.stderr.toString(),
+      stdout: result.stdout.toString(),
+      summary: readOptionalFile(summaryPath),
+    };
+  } finally {
+    rmSync(fixtureRoot, { force: true, recursive: true });
+  }
 }
 
 describe("homepage deployment workflow", () => {
@@ -217,6 +312,93 @@ describe("homepage deployment workflow", () => {
     expect(release?.with?.target_environment).toContain("production");
   });
 
+  it("binds the release attempt before entering a GitHub Environment", () => {
+    const attemptBinder =
+      parsedWorkflow.jobs?.["bind-telegram-release-attempt"];
+    const attemptStep = namedStep(
+      attemptBinder,
+      "Bind Telegram release attempt",
+    );
+    const release = parsedWorkflow.jobs?.release;
+    const attemptInput =
+      parsedReleaseWorkflow.on?.workflow_call?.inputs
+        ?.telegram_authority_run_attempt;
+
+    expect(attemptBinder?.environment).toBeUndefined();
+    expect(attemptBinder?.outputs?.run_attempt).toBe(
+      githubExpression("steps.attempt.outputs.run_attempt"),
+    );
+    expect(attemptStep.env).toEqual({
+      TELEGRAM_AUTHORITY_RUN_ATTEMPT: githubExpression("github.run_attempt"),
+    });
+    expect(release?.environment).toBeUndefined();
+    expect(jobNeeds(release)).toContain("bind-telegram-release-attempt");
+    expect(release?.if).toContain(
+      "needs.bind-telegram-release-attempt.result == 'success'",
+    );
+    expect(release?.with?.telegram_authority_run_attempt).toBe(
+      githubExpression(
+        "needs.bind-telegram-release-attempt.outputs.run_attempt",
+      ),
+    );
+    expect(
+      parsedReleaseWorkflow.on?.workflow_call?.inputs
+        ?.telegram_repo_or_org_configured,
+    ).toBeUndefined();
+    expect(attemptInput).toMatchObject({
+      required: true,
+      type: "string",
+    });
+  });
+
+  it("forwards an exact caller-secret allowlist without the Environment authority receipt", () => {
+    const release = parsedWorkflow.jobs?.release;
+    const callerSecrets = release?.secrets;
+    const environmentOnlySecrets = [
+      "TELEGRAM_IDENTITY_AUTHORITY_SHA256",
+    ] as const;
+    const referencedSecrets = [
+      ...releaseWorkflow.matchAll(/\bsecrets\.([A-Z0-9_]+)/g),
+    ]
+      .map((match) => match[1])
+      .filter((name): name is string => Boolean(name));
+    const expectedCallerSecrets = [
+      ...new Set(
+        referencedSecrets.filter(
+          (name) =>
+            !environmentOnlySecrets.includes(
+              name as (typeof environmentOnlySecrets)[number],
+            ),
+        ),
+      ),
+    ].sort();
+
+    expect(callerSecrets).not.toBe("inherit");
+    expect(callerSecrets).toBeTypeOf("object");
+    const callerSecretMap = callerSecrets as Record<string, string>;
+    expect(Object.keys(callerSecretMap).sort()).toEqual(expectedCallerSecrets);
+    expect(
+      Object.keys(
+        parsedReleaseWorkflow.on?.workflow_call?.secrets ?? {},
+      ).sort(),
+    ).toEqual([...expectedCallerSecrets, ...environmentOnlySecrets].sort());
+    for (const name of expectedCallerSecrets) {
+      expect(callerSecretMap[name], name).toBe(
+        githubExpression(`secrets.${name}`),
+      );
+      expect(
+        parsedReleaseWorkflow.on?.workflow_call?.secrets?.[name],
+        name,
+      ).toEqual({ required: false });
+    }
+    for (const name of environmentOnlySecrets) {
+      expect(callerSecretMap).not.toHaveProperty(name);
+      expect(parsedReleaseWorkflow.on?.workflow_call?.secrets?.[name]).toEqual({
+        required: false,
+      });
+    }
+  });
+
   it("runs the Telegram resolver before every release mutation", () => {
     const jobs = parsedReleaseWorkflow.jobs ?? {};
     const jobNames = Object.keys(jobs);
@@ -235,12 +417,23 @@ describe("homepage deployment workflow", () => {
     );
     expect(resolver?.steps?.[0]?.uses).toContain("actions/checkout@");
     expect(telegramValidation?.env).toEqual({
+      RELEASE_RUN_ATTEMPT: githubExpression("github.run_attempt"),
       TARGET_ENVIRONMENT: githubExpression("inputs.target_environment"),
-      STAGING_TELEGRAM_BOT_ID: githubExpression("vars.VITE_TELEGRAM_BOT_ID"),
-      STAGING_TELEGRAM_BOT_USERNAME: githubExpression(
+      TELEGRAM_AUTHORITY_RUN_ATTEMPT: githubExpression(
+        "inputs.telegram_authority_run_attempt",
+      ),
+      ENVIRONMENT_TELEGRAM_BOT_ID: githubExpression(
+        "vars.VITE_TELEGRAM_BOT_ID",
+      ),
+      ENVIRONMENT_TELEGRAM_BOT_USERNAME: githubExpression(
         "vars.VITE_TELEGRAM_BOT_USERNAME",
       ),
+      TELEGRAM_IDENTITY_AUTHORITY_SHA256: githubExpression(
+        "secrets.TELEGRAM_IDENTITY_AUTHORITY_SHA256",
+      ),
     });
+    expect(releaseWorkflow).not.toContain("secrets.VITE_TELEGRAM_BOT_ID");
+    expect(releaseWorkflow).not.toContain("secrets.VITE_TELEGRAM_BOT_USERNAME");
 
     expect(jobNeeds(migration)).toEqual(["resolve-pages-environment-config"]);
     expect(migration?.if).toContain(
@@ -262,7 +455,74 @@ describe("homepage deployment workflow", () => {
     );
   });
 
-  it("accepts valid repository-scoped staging Telegram identities", () => {
+  it("guards the first selected job for every partial-rerun mutation path", () => {
+    const guardScripts: string[] = [];
+
+    for (const jobName of guardedReleaseJobNames) {
+      const job = parsedReleaseWorkflow.jobs?.[jobName];
+      const guard = namedStep(job, telegramAuthorityGuardName);
+
+      expect(job?.steps?.[0]?.name, jobName).toBe(telegramAuthorityGuardName);
+      expect(guard.env, jobName).toEqual({
+        ADMITTED_TELEGRAM_BOT_ID: githubExpression(
+          "needs.resolve-pages-environment-config.outputs.telegram_bot_id",
+        ),
+        ADMITTED_TELEGRAM_BOT_USERNAME: githubExpression(
+          "needs.resolve-pages-environment-config.outputs.telegram_bot_username",
+        ),
+        RELEASE_RUN_ATTEMPT: githubExpression("github.run_attempt"),
+        TELEGRAM_AUTHORITY_RUN_ATTEMPT: githubExpression(
+          "inputs.telegram_authority_run_attempt",
+        ),
+      });
+      expect(guard.run, jobName).toBeTruthy();
+      guardScripts.push(guard.run ?? "");
+
+      const initialAttempt = runTelegramAuthorityGuard(jobName, "1", "1");
+      expect(initialAttempt.exitCode, `${jobName} attempt 1`).toBe(0);
+      expect(initialAttempt.githubOutput, `${jobName} attempt 1`).toBe("");
+      expect(initialAttempt.stdout, `${jobName} attempt 1`).toBe("");
+      expect(initialAttempt.stderr, `${jobName} attempt 1`).toBe("");
+      expect(initialAttempt.summary, `${jobName} attempt 1`).toBe("");
+
+      const partialRerun = runTelegramAuthorityGuard(jobName, "1", "2");
+      expect(partialRerun.exitCode, `${jobName} partial rerun`).toBe(1);
+      expect(partialRerun.githubOutput, `${jobName} partial rerun`).toBe("");
+      expect(partialRerun.stdout, `${jobName} partial rerun`).toBe("");
+      expect(partialRerun.summary, `${jobName} partial rerun`).toBe("");
+      expect(partialRerun.stderr, `${jobName} partial rerun`).toContain(
+        "Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs",
+      );
+
+      for (const suppressed of [
+        { botId: "", botUsername: stagingTelegram.botUsername },
+        { botId: stagingTelegram.botId, botUsername: "" },
+        { botId: "4503599627370496", botUsername: stagingTelegram.botUsername },
+        { botId: stagingTelegram.botId, botUsername: "not-a-bot-name" },
+      ]) {
+        const missingOutput = runTelegramAuthorityGuard(
+          jobName,
+          "1",
+          "1",
+          suppressed.botId,
+          suppressed.botUsername,
+        );
+        expect(missingOutput.exitCode, `${jobName} suppressed output`).toBe(1);
+        expect(missingOutput.githubOutput).toBe("");
+        expect(missingOutput.stdout).toBe("");
+        expect(missingOutput.summary).toBe("");
+        expect(missingOutput.stderr).toContain("Admitted Telegram");
+        assertNoPublicSurfaceLeak(missingOutput, [
+          suppressed.botId,
+          suppressed.botUsername,
+        ]);
+      }
+    }
+
+    expect(new Set(guardScripts).size).toBe(1);
+  });
+
+  it("accepts valid staging-Environment Telegram identities", () => {
     for (const valid of [
       { target: "staging", ...stagingTelegram },
       {
@@ -287,11 +547,101 @@ describe("homepage deployment workflow", () => {
     }
   });
 
-  it("derives production Telegram identity from source and ignores repository staging input", () => {
+  it("binds the accepted public pair to a framed protected authority receipt", () => {
+    const authoritySha256 = telegramIdentityAuthoritySha256(
+      stagingTelegram.botId,
+      stagingTelegram.botUsername,
+    );
+    const equivalentCase = runTelegramPreflight({
+      authoritySha256,
+      botUsername: stagingTelegram.botUsername.toLowerCase(),
+    });
+    expect(equivalentCase.exitCode).toBe(0);
+    expect(equivalentCase.githubOutput).toContain(
+      `bot_username=${stagingTelegram.botUsername.toLowerCase()}\n`,
+    );
+    assertNoPublicSurfaceLeak(equivalentCase, [
+      stagingTelegram.botId,
+      stagingTelegram.botUsername,
+      authoritySha256,
+    ]);
+
+    for (const invalid of [
+      { label: "missing receipt", authoritySha256: "" },
+      { label: "malformed receipt", authoritySha256: "not-a-sha256" },
+      {
+        label: "uppercase receipt",
+        authoritySha256: authoritySha256.toUpperCase(),
+      },
+      {
+        label: "receipt for another ID",
+        authoritySha256: telegramIdentityAuthoritySha256(
+          `${stagingTelegram.botId.slice(0, -1)}4`,
+          stagingTelegram.botUsername,
+        ),
+      },
+      {
+        label: "receipt for another username",
+        authoritySha256: telegramIdentityAuthoritySha256(
+          stagingTelegram.botId,
+          "AnotherStageBot",
+        ),
+      },
+    ]) {
+      const execution = runTelegramPreflight({
+        authoritySha256: invalid.authoritySha256,
+      });
+      expect(execution.exitCode, invalid.label).toBe(1);
+      expect(execution.githubOutput, invalid.label).toBe("");
+      expect(execution.summary, invalid.label).toBe("");
+      assertNoPublicSurfaceLeak(execution, [
+        stagingTelegram.botId,
+        stagingTelegram.botUsername,
+        invalid.authoritySha256,
+      ]);
+    }
+
+    expect(telegramIdentityAuthoritySha256("1", "2345Bot")).not.toBe(
+      telegramIdentityAuthoritySha256("12", "345Bot"),
+    );
+    expect(telegramValidation?.run).toContain(
+      "elizaOS/eliza\\0staging\\0telegram-public-identity\\0v1\\0%s\\0%s\\n",
+    );
+  });
+
+  it("rejects a stale Telegram authority receipt reused by a partial rerun", () => {
+    const environmentTelegram = {
+      botId: "partial-rerun-environment-id-fixture",
+      botUsername: "partial-rerun-environment-username-fixture",
+    };
+    const execution = runTelegramPreflight({
+      ...environmentTelegram,
+      authorityRunAttempt: "1",
+      releaseRunAttempt: "2",
+      targetEnvironment: "staging",
+    });
+
+    expect(execution.exitCode).toBe(1);
+    expect(execution.githubOutput).toBe("");
+    expect(execution.summary).toBe("");
+    expect(execution.stderr).toContain(
+      "Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs",
+    );
+    expect(execution.stderr).not.toContain("must match the Telegram");
+    assertNoPublicSurfaceLeak(execution, [
+      environmentTelegram.botId,
+      environmentTelegram.botUsername,
+    ]);
+  });
+
+  it("derives production Telegram identity from source and ignores all staging inputs", () => {
     for (const configuredStagingPair of [
       { botId: "", botUsername: "" },
       stagingTelegram,
-      { botId: "not-a-number", botUsername: "not-a-valid-name!" },
+      {
+        botId: "not-a-number",
+        botUsername: "not-a-valid-name!",
+      },
     ]) {
       const execution = runTelegramPreflight({
         ...configuredStagingPair,
@@ -436,7 +786,7 @@ describe("homepage deployment workflow", () => {
     }
   });
 
-  it("preserves resolver outputs through the primary and legacy Pages builds", () => {
+  it("passes guarded resolver outputs directly to primary and legacy Pages builds", () => {
     const pagesBuild = parsedReleaseWorkflow.jobs?.["build-pages"];
     const appDeploy = parsedReleaseWorkflow.jobs?.["deploy-app"];
     const primaryBuild = namedStep(
@@ -448,16 +798,8 @@ describe("homepage deployment workflow", () => {
       "Legacy inline fallback - build app",
     );
 
-    expect(pagesBuild?.outputs?.telegram_bot_id).toBe(
-      githubExpression(
-        "needs.resolve-pages-environment-config.outputs.telegram_bot_id",
-      ),
-    );
-    expect(pagesBuild?.outputs?.telegram_bot_username).toBe(
-      githubExpression(
-        "needs.resolve-pages-environment-config.outputs.telegram_bot_username",
-      ),
-    );
+    expect(pagesBuild?.outputs).not.toHaveProperty("telegram_bot_id");
+    expect(pagesBuild?.outputs).not.toHaveProperty("telegram_bot_username");
     expect(primaryBuild.env?.VITE_TELEGRAM_BOT_ID).toBe(
       githubExpression(
         "needs.resolve-pages-environment-config.outputs.telegram_bot_id",
@@ -469,10 +811,17 @@ describe("homepage deployment workflow", () => {
       ),
     );
     expect(legacyBuild.env?.VITE_TELEGRAM_BOT_ID).toBe(
-      githubExpression("needs.build-pages.outputs.telegram_bot_id"),
+      githubExpression(
+        "needs.resolve-pages-environment-config.outputs.telegram_bot_id",
+      ),
     );
     expect(legacyBuild.env?.VITE_TELEGRAM_BOT_USERNAME).toBe(
-      githubExpression("needs.build-pages.outputs.telegram_bot_username"),
+      githubExpression(
+        "needs.resolve-pages-environment-config.outputs.telegram_bot_username",
+      ),
+    );
+    expect(jobNeeds(parsedReleaseWorkflow.jobs?.["deploy-app"])).toContain(
+      "resolve-pages-environment-config",
     );
     expect(releaseWorkflow).not.toContain("7684336618");
     expect(releaseWorkflow).not.toContain("Elizav2_Bot");
