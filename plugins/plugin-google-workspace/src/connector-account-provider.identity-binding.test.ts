@@ -51,7 +51,7 @@ function createRuntimeHarness(options?: {
   }
   const adapter = {
     listConnectorAccountCredentialRefs: vi.fn(async () => options?.credentialRefs ?? []),
-    deleteConnectorAccountCredentialRefs: vi.fn(async () => 0),
+    deleteConnectorAccountCredentialRefs: vi.fn(async () => options?.credentialRefs?.length ?? 0),
     setConnectorAccountCredentialRef: vi.fn(async () => undefined),
   };
   const vaultService = {

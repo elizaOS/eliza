@@ -22,6 +22,10 @@ const EXTERNAL_ROLE_MIGRATION_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../drizzle/migrations/0005_connector_account_external_role.sql"
 );
+const EXTERNAL_ROLE_ROLLBACK_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../drizzle/rollbacks/0005_connector_account_external_role.sql"
+);
 
 async function applySqlMigrationFile(db: DrizzleDatabase, filePath: string): Promise<void> {
   const migrationSql = fs.readFileSync(filePath, "utf8");
@@ -238,6 +242,57 @@ describe("Connector account storage", () => {
         expect.objectContaining({ accountKey: agentKey, externalId: subject, role: "AGENT" }),
       ])
     );
+  });
+
+  it("archives role siblings before restoring the legacy external-identity index", async () => {
+    const subject = "rollback-google-subject";
+    const owner = await adapter.upsertConnectorAccount({
+      provider: "google",
+      accountKey: "rollback-owner-key",
+      externalId: subject,
+      role: "OWNER",
+    });
+    const agent = await adapter.upsertConnectorAccount({
+      provider: "google",
+      accountKey: "rollback-agent-key",
+      externalId: subject,
+      role: "AGENT",
+    });
+    await adapter.setConnectorAccountCredentialRef({
+      accountId: agent.id,
+      credentialType: "oauth.tokens",
+      vaultRef: `connector.${testAgentId}.google.${agent.id}.oauth_tokens`,
+    });
+
+    await applySqlMigrationFile(db, EXTERNAL_ROLE_ROLLBACK_PATH);
+
+    const rows = await db.execute(sql`
+      SELECT "id", "role", "deleted_at"
+      FROM "connector_accounts"
+      WHERE "external_id" = ${subject}
+      ORDER BY "role"
+    `);
+    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: owner.id, role: "OWNER", deleted_at: null }),
+        expect.objectContaining({ id: agent.id, role: "AGENT" }),
+      ])
+    );
+    expect(rows.rows.find((row) => row.id === agent.id)?.deleted_at).not.toBeNull();
+    const archivedCredential = await db.execute(sql`
+      SELECT "account_id" FROM "connector_account_credentials"
+      WHERE "account_id" = ${agent.id} AND "credential_type" = 'oauth.tokens'
+    `);
+    expect(archivedCredential.rows).toEqual([expect.objectContaining({ account_id: agent.id })]);
+
+    const indexes = await db.execute(sql`
+      SELECT indexname FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename = 'connector_accounts'
+    `);
+    const names = indexes.rows.map((row) => String(row.indexname));
+    expect(names).toContain("connector_accounts_agent_provider_external_uniq");
+    expect(names).not.toContain("connector_accounts_agent_provider_external_role_uniq");
   });
 
   it("redacts audit metadata before insert", async () => {

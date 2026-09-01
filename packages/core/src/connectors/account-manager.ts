@@ -1144,7 +1144,7 @@ function databaseRecordToAccount(
 		),
 		accessGate: (record.accessGate ?? "open") as ConnectorAccountAccessGate,
 		status,
-		externalId: record.externalId ?? record.accountKey,
+		externalId: record.externalId ?? undefined,
 		displayHandle: record.username ?? record.email ?? undefined,
 		ownerBindingId: record.ownerBindingId ?? undefined,
 		ownerIdentityId: record.ownerIdentityId ?? undefined,
