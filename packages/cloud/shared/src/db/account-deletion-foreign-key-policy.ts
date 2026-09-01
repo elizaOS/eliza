@@ -202,6 +202,10 @@ const RETAINED_AUDIT_TABLES = new Set([
   "voice_imprint_observations",
 ]);
 
+/**
+ * Classifies the handling obligation imposed by an FK, not the final row operation.
+ * Provider adapters may satisfy retained-record obligations by erasing privacy-bearing rows.
+ */
 export function classifyAccountDeletionForeignKey(
   descriptor: AccountDeletionForeignKeyDescriptor,
 ): AccountDeletionForeignKeyAction {

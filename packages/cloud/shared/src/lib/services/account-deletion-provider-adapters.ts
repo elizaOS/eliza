@@ -524,6 +524,8 @@ async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContex
         );
       }
     }
+    // Belt-and-braces disarm for readers and future statements; the setting is
+    // transaction-local and would be cleared automatically at commit.
     await tx.execute(
       sql`SELECT set_config('eliza.subscription_account_deletion_authority', '', true)`,
     );

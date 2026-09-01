@@ -17,6 +17,8 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   IF current_setting('eliza.subscription_account_deletion_authority', true) = 'on' THEN
+    -- Both guards are statement-level, where PostgreSQL ignores the trigger return value;
+    -- NULL therefore permits the statement instead of cancelling an individual row.
     RETURN NULL;
   END IF;
   RAISE EXCEPTION '% is append-only', TG_TABLE_NAME USING ERRCODE = '23514';
