@@ -208,6 +208,18 @@ describe("managed dedicated live-smoke workflow contract", () => {
       "dedicated_heartbeat_failure_category=",
     );
     expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "container_oom_killed",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "container_module_resolution",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "container_database_terminal",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "container_inspect_unavailable",
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
       "dedicated_delete_failure_category=",
     );
 

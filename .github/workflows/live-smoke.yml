@@ -1116,6 +1116,21 @@ jobs:
             done
             case "$lower" in
               *'terminal database liveness'*) heartbeat_category='database_terminal' ;;
+              *'containerruntimefailurekind'*'oom_killed'*) heartbeat_category='container_oom_killed' ;;
+              *'containerruntimefailurekind'*'module_resolution'*) heartbeat_category='container_module_resolution' ;;
+              *'containerruntimefailurekind'*'heap_oom'*) heartbeat_category='container_heap_oom' ;;
+              *'containerruntimefailurekind'*'startup_failed'*) heartbeat_category='container_startup_failed' ;;
+              *'containerruntimefailurekind'*'terminal_database'*) heartbeat_category='container_database_terminal' ;;
+              *'containerruntimefailurekind'*'memory_watchdog_restart'*) heartbeat_category='container_memory_watchdog_restart' ;;
+              *'containerruntimefailurekind'*'port_conflict'*) heartbeat_category='container_port_conflict' ;;
+              *'containerruntimefailurekind'*'mesh_auth'*) heartbeat_category='container_mesh_auth' ;;
+              *'containerruntimefailurekind'*'restarting'*) heartbeat_category='container_restarting' ;;
+              *'containerruntimefailurekind'*'exited_nonzero'*) heartbeat_category='container_exited_nonzero' ;;
+              *'containerruntimefailurekind'*'exited_zero'*) heartbeat_category='container_exited_zero' ;;
+              *'containerruntimefailurekind'*'unhealthy'*) heartbeat_category='container_unhealthy' ;;
+              *'containerruntimefailurekind'*'starting'*) heartbeat_category='container_starting' ;;
+              *'containerruntimefailurekind'*'not_running'*) heartbeat_category='container_not_running' ;;
+              *'containerruntimefailurekind'*'inspect_unavailable'*) heartbeat_category='container_inspect_unavailable' ;;
               *'reconcileoutcome'*'container-dead'*) heartbeat_category='container_dead' ;;
               *'reconcileoutcome'*'ip-unresolvable'*) heartbeat_category='tailnet_ip_unresolvable' ;;
               *'reconcileoutcome'*'unrepairable'*) heartbeat_category='tailnet_unrepairable' ;;

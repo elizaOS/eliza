@@ -1208,9 +1208,85 @@ type ReconcilableSandbox = Pick<
 /** Outcome of a stale-tailnet-IP reconcile attempt (see reconcileStaleTailnetIp). */
 type TailnetIpReconcileResult =
   | { outcome: "repaired"; headscaleIp: string; bridgeUrl: string; healthUrl: string }
-  | { outcome: "container-dead" }
+  | { outcome: "container-dead"; failureKind: ContainerRuntimeFailureKind }
   | { outcome: "ip-unresolvable" }
   | { outcome: "unrepairable" };
+
+type ContainerRuntimeFailureKind =
+  | "healthy"
+  | "inspect_unavailable"
+  | "oom_killed"
+  | "module_resolution"
+  | "heap_oom"
+  | "startup_failed"
+  | "terminal_database"
+  | "memory_watchdog_restart"
+  | "port_conflict"
+  | "mesh_auth"
+  | "restarting"
+  | "exited_nonzero"
+  | "exited_zero"
+  | "unhealthy"
+  | "starting"
+  | "not_running"
+  | "unknown";
+
+type ContainerRuntimeHealthObservation = {
+  healthy: boolean;
+  failureKind: ContainerRuntimeFailureKind;
+};
+
+/** Reduces the closed Docker/log observation to one operator-safe liveness cause. */
+export function classifyContainerRuntimeHealthObservation(
+  output: string,
+): ContainerRuntimeHealthObservation {
+  const inspect = /^state=(\S+) health=(\S+) exit=(-?\d+) oom=(true|false) restarts=(\d+)$/m.exec(
+    output,
+  );
+  if (!inspect) return { healthy: false, failureKind: "inspect_unavailable" };
+  const state = inspect[1];
+  const health = inspect[2];
+  const exitCode = Number.parseInt(inspect[3]!, 10);
+  const oomKilled = inspect[4] === "true";
+  const signal = (name: string): boolean => new RegExp(`^${name}=true$`, "m").test(output);
+
+  if (state === "running" && health === "healthy") {
+    return { healthy: true, failureKind: "healthy" };
+  }
+  if (oomKilled) return { healthy: false, failureKind: "oom_killed" };
+  if (signal("module_resolution")) {
+    return { healthy: false, failureKind: "module_resolution" };
+  }
+  if (signal("heap_oom")) return { healthy: false, failureKind: "heap_oom" };
+  if (signal("startup_failed")) {
+    return { healthy: false, failureKind: "startup_failed" };
+  }
+  if (signal("terminal_database")) {
+    return { healthy: false, failureKind: "terminal_database" };
+  }
+  if (signal("memory_watchdog")) {
+    return { healthy: false, failureKind: "memory_watchdog_restart" };
+  }
+  if (signal("port_conflict")) {
+    return { healthy: false, failureKind: "port_conflict" };
+  }
+  if (signal("mesh_auth")) return { healthy: false, failureKind: "mesh_auth" };
+  if (state === "restarting") return { healthy: false, failureKind: "restarting" };
+  if (state === "exited" || state === "dead") {
+    return {
+      healthy: false,
+      failureKind: exitCode === 0 ? "exited_zero" : "exited_nonzero",
+    };
+  }
+  if (state === "running" && health === "unhealthy") {
+    return { healthy: false, failureKind: "unhealthy" };
+  }
+  if (state === "running" && health === "starting") {
+    return { healthy: false, failureKind: "starting" };
+  }
+  if (state !== "running") return { healthy: false, failureKind: "not_running" };
+  return { healthy: false, failureKind: "unknown" };
+}
 
 interface AdminCanaryImageExecutionPolicy {
   operation: "upgrade" | "rollback";
@@ -8624,6 +8700,9 @@ export class ElizaSandboxService {
         downForMs,
         reason: probe.reason,
         reconcileOutcome: reconcile.outcome,
+        ...(reconcile.outcome === "container-dead"
+          ? { containerRuntimeFailureKind: reconcile.failureKind }
+          : {}),
       });
       await this.updateObservedRunningGeneration(rec, {
         status: "disconnected",
@@ -8854,26 +8933,40 @@ export class ElizaSandboxService {
    * from a live one whose stored tailnet IP went stale (must be repaired, not
    * destroyed).
    */
-  private async isContainerDockerHealthy(rec: ReconcilableSandbox): Promise<boolean> {
-    if (!rec.container_name) return false;
+  private async inspectContainerDockerHealth(
+    rec: ReconcilableSandbox,
+  ): Promise<ContainerRuntimeHealthObservation> {
+    if (!rec.container_name) {
+      return { healthy: false, failureKind: "inspect_unavailable" };
+    }
     const ssh = await this.getNodeSshForAgent(rec);
-    if (!ssh) return false;
+    if (!ssh) return { healthy: false, failureKind: "inspect_unavailable" };
     // error-policy:J4 best-effort probe — an exec failure yields "not proven
     // healthy" (falls through to the existing disconnect self-heal), never a throw.
     try {
-      const status = (
-        await ssh.exec(
-          `docker inspect --format '{{.State.Health.Status}}' ${shellQuote(rec.container_name)}`,
-          RECONCILE_SSH_CMD_TIMEOUT_MS,
-        )
-      ).trim();
-      return status === "healthy";
+      const container = shellQuote(rec.container_name);
+      const output = await ssh.exec(
+        [
+          `docker inspect --format 'state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} restarts={{.RestartCount}}' ${container} 2>/dev/null || true`,
+          `logs="$(docker logs --tail 200 ${container} 2>&1 || true)"`,
+          `printf 'module_resolution=%s\\n' "$(printf '%s' "$logs" | grep -Eqi 'ERR_MODULE_NOT_FOUND|Cannot find package|Cannot find module' && echo true || echo false)"`,
+          `printf 'heap_oom=%s\\n' "$(printf '%s' "$logs" | grep -Eqi 'heap out of memory|allocation failed.*javascript heap' && echo true || echo false)"`,
+          `printf 'startup_failed=%s\\n' "$(printf '%s' "$logs" | grep -Fqi '[eliza-autonomous] Failed to start:' && echo true || echo false)"`,
+          `printf 'terminal_database=%s\\n' "$(printf '%s' "$logs" | grep -Eqi 'PGlite is closed|Database is shutting down' && echo true || echo false)"`,
+          `printf 'memory_watchdog=%s\\n' "$(printf '%s' "$logs" | grep -Eqi '\\[MemoryWatchdog\\].*requesting clean restart' && echo true || echo false)"`,
+          `printf 'port_conflict=%s\\n' "$(printf '%s' "$logs" | grep -Fqi 'EADDRINUSE' && echo true || echo false)"`,
+          `printf 'mesh_auth=%s\\n' "$(printf '%s' "$logs" | grep -Eqi 'headscale auth key expired/rejected|tailscale requires interactive authorization' && echo true || echo false)"`,
+          "unset logs",
+        ].join("; "),
+        RECONCILE_SSH_CMD_TIMEOUT_MS,
+      );
+      return classifyContainerRuntimeHealthObservation(output);
     } catch (error) {
       logger.debug("[agent-sandbox] Docker health inspect failed during reconcile", {
         agentId: rec.id,
         error: error instanceof Error ? error.message : String(error),
       });
-      return false;
+      return { healthy: false, failureKind: "inspect_unavailable" };
     }
   }
 
@@ -8924,7 +9017,13 @@ export class ElizaSandboxService {
   private async reconcileStaleTailnetIp(
     rec: ReconcilableSandbox,
   ): Promise<TailnetIpReconcileResult> {
-    if (!(await this.isContainerDockerHealthy(rec))) return { outcome: "container-dead" };
+    const containerHealth = await this.inspectContainerDockerHealth(rec);
+    if (!containerHealth.healthy) {
+      return {
+        outcome: "container-dead",
+        failureKind: containerHealth.failureKind,
+      };
+    }
     const currentIp = await this.resolveCurrentAgentTailnetIp(rec);
     if (!currentIp) return { outcome: "ip-unresolvable" };
     // Same IP as stored = nothing to repair: the miss is genuine

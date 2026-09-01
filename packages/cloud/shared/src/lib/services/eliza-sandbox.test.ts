@@ -3307,7 +3307,16 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
     const exec = mock(async (cmd: string) => {
       if (cmd.includes("docker inspect")) {
         if (opts.health instanceof Error) throw opts.health;
-        return opts.health;
+        return [
+          `state=running health=${opts.health} exit=0 oom=false restarts=0`,
+          "module_resolution=false",
+          "heap_oom=false",
+          "startup_failed=false",
+          "terminal_database=false",
+          "memory_watchdog=false",
+          "port_conflict=false",
+          "mesh_auth=false",
+        ].join("\n");
       }
       if (cmd.includes("tailscale --socket")) {
         if (opts.tailscaleIp instanceof Error) throw opts.tailscaleIp;
@@ -3386,6 +3395,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
     );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(nodeRecord());
     const { exec, getClientSpy } = mockNodeSsh({ health: "unhealthy", tailscaleIp: NEW_IP });
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
     fetchAllDead();
 
     try {
@@ -3395,6 +3405,13 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       const [, patch] = updateSpy.mock.calls[0] as [string, Record<string, unknown>];
       expect(patch.status).toBe("disconnected");
       expect(patch.headscale_ip).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[agent-sandbox] Heartbeat failed past grace window, marking disconnected",
+        expect.objectContaining({
+          reconcileOutcome: "container-dead",
+          containerRuntimeFailureKind: "unhealthy",
+        }),
+      );
       // A dead container short-circuits — no IP resolve is attempted on it.
       const tailscaleCalls = exec.mock.calls.filter(([cmd]) =>
         String(cmd).includes("tailscale --socket"),
@@ -3405,6 +3422,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       updateSpy.mockRestore();
       nodeSpy.mockRestore();
       getClientSpy.mockRestore();
+      warnSpy.mockRestore();
     }
   }, 20_000);
 
@@ -3604,6 +3622,70 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       getClientSpy.mockRestore();
     }
   }, 30_000);
+});
+
+describe("container runtime health classification", () => {
+  const closed = (
+    header = "state=running health=unhealthy exit=1 oom=false restarts=2",
+    overrides: string[] = [],
+  ): string =>
+    [
+      header,
+      "module_resolution=false",
+      "heap_oom=false",
+      "startup_failed=false",
+      "terminal_database=false",
+      "memory_watchdog=false",
+      "port_conflict=false",
+      "mesh_auth=false",
+      ...overrides,
+    ].join("\n");
+
+  test("prioritizes authoritative OOM and closed fatal-log signals", async () => {
+    const { classifyContainerRuntimeHealthObservation } = await import("./eliza-sandbox.ts?actual");
+
+    expect(
+      classifyContainerRuntimeHealthObservation(
+        closed("state=exited health=unhealthy exit=137 oom=true restarts=5"),
+      ),
+    ).toEqual({ healthy: false, failureKind: "oom_killed" });
+    expect(
+      classifyContainerRuntimeHealthObservation(closed(undefined, ["module_resolution=true"])),
+    ).toEqual({
+      healthy: false,
+      failureKind: "module_resolution",
+    });
+    expect(
+      classifyContainerRuntimeHealthObservation(closed(undefined, ["terminal_database=true"])),
+    ).toEqual({
+      healthy: false,
+      failureKind: "terminal_database",
+    });
+  });
+
+  test("distinguishes healthy, restart, exit, and unavailable observations", async () => {
+    const { classifyContainerRuntimeHealthObservation } = await import("./eliza-sandbox.ts?actual");
+
+    expect(
+      classifyContainerRuntimeHealthObservation(
+        closed("state=running health=healthy exit=0 oom=false restarts=0"),
+      ),
+    ).toEqual({ healthy: true, failureKind: "healthy" });
+    expect(
+      classifyContainerRuntimeHealthObservation(
+        closed("state=restarting health=starting exit=1 oom=false restarts=4"),
+      ),
+    ).toEqual({ healthy: false, failureKind: "restarting" });
+    expect(
+      classifyContainerRuntimeHealthObservation(
+        closed("state=exited health=none exit=0 oom=false restarts=0"),
+      ),
+    ).toEqual({ healthy: false, failureKind: "exited_zero" });
+    expect(classifyContainerRuntimeHealthObservation("missing")).toEqual({
+      healthy: false,
+      failureKind: "inspect_unavailable",
+    });
+  });
 });
 
 // The daemon handler for the `agent_resume` job. Covers the branch logic the
