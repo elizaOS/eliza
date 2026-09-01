@@ -12,8 +12,9 @@ export const CLOUD_ROOT = resolve(import.meta.dirname, "../..");
 
 const SIGNAL_PATTERNS: Readonly<Record<SubscriptionDebitSignal, RegExp>> = {
   credit_service_deduct: /\.deductCredits\s*\(/g,
-  // `reserve` is too generic to scan receiver-agnostically without matching unrelated quota APIs.
-  credit_service_reserve: /\bcreditsService\.reserve\s*\(/g,
+  // `reserve` is generic, so require a receiver whose name identifies credit authority while
+  // remaining agnostic to singleton aliases and injected members such as `this.credits`.
+  credit_service_reserve: /\b(?:[\w$]*credits?[\w$]*|this\.credits)\.reserve\s*\(/gi,
   credit_service_reserve_and_deduct: /\.reserveAndDeductCredits\s*\(/g,
   credit_transaction_repository_create: /\bcreditTransactionsRepository\.create\s*\(/g,
   debit_ledger_literal: /\btype\s*:\s*["']debit["']/g,
@@ -25,6 +26,8 @@ const SIGNAL_PATTERNS: Readonly<Record<SubscriptionDebitSignal, RegExp>> = {
 };
 
 function isProductionTypeScript(relativePath: string): boolean {
+  // Operational scripts, migrations, and test harnesses are excluded deliberately: the ratchet
+  // owns runtime debit boundaries, and those directories have separate execution authorities.
   const segments = relativePath.split("/");
   const fileName = segments.at(-1) ?? "";
   return (

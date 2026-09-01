@@ -63,11 +63,14 @@ describe("subscription funding production debit inventory", () => {
     expect(
       scanSubscriptionDebitSignals(`
         await usageCreditsService.deductCredits({ amount: 1 });
+        await billingCredits.reserve({ amount: 1 });
+        await this.credits.reserve({ amount: 1 });
         await billingAuthority.reserveAndDeductCredits({ amount: 2 });
         await renamedOrganizationsRepository.deductCreditsWithTransaction({ amount: 3 });
       `),
     ).toEqual({
       credit_service_deduct: 1,
+      credit_service_reserve: 2,
       credit_service_reserve_and_deduct: 1,
       organization_repository_deduct: 1,
     });
