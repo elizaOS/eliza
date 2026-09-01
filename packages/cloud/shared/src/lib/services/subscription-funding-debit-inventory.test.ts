@@ -49,10 +49,12 @@ describe("subscription funding production debit inventory", () => {
   test("ignores debit-shaped prose and quoted strings", () => {
     expect(
       scanSubscriptionDebitSignals(`
+        const query = sql\`SELECT \${account.id} FROM accounts\`;
         // credit_balance = organizations.credit_balance - amount;
         /* await renamedOrganizationsRepository.deductCreditsWithTransaction({ amount: 3 }); */
         /** type: "debit" */
         const example = "credit_balance = organizations.credit_balance - amount";
+        const pattern = /credit_balance = organizations.credit_balance - amount/;
       `),
     ).toEqual({});
   });

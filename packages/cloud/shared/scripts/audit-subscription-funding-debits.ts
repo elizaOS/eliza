@@ -54,23 +54,41 @@ function listProductionTypeScript(directory: string): string[] {
 
 function maskCommentsAndNonSignalStrings(source: string): string {
   const masked = [...source];
-  const scanner = ts.createScanner(
-    ts.ScriptTarget.Latest,
-    false,
-    ts.LanguageVariant.Standard,
+  const sourceFile = ts.createSourceFile(
+    "subscription-debit-audit.ts",
     source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
   );
-  for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-    const isComment =
-      token === ts.SyntaxKind.SingleLineCommentTrivia ||
-      token === ts.SyntaxKind.MultiLineCommentTrivia;
-    const isNonSignalString =
-      token === ts.SyntaxKind.StringLiteral && scanner.getTokenValue() !== "debit";
-    if (!isComment && !isNonSignalString) continue;
-    for (let index = scanner.getTokenPos(); index < scanner.getTextPos(); index += 1) {
+  const blank = (start: number, end: number): void => {
+    for (let index = start; index < end; index += 1) {
       if (masked[index] !== "\n" && masked[index] !== "\r") masked[index] = " ";
     }
-  }
+  };
+  const visitedCommentPositions = new Set<number>();
+  const blankCommentsAt = (position: number): void => {
+    if (visitedCommentPositions.has(position)) return;
+    visitedCommentPositions.add(position);
+    for (const range of ts.getLeadingCommentRanges(source, position) ?? []) {
+      blank(range.pos, range.end);
+    }
+    for (const range of ts.getTrailingCommentRanges(source, position) ?? []) {
+      blank(range.pos, range.end);
+    }
+  };
+  const visit = (node: ts.Node): void => {
+    blankCommentsAt(node.pos);
+    if (
+      (ts.isStringLiteral(node) && node.text !== "debit") ||
+      ts.isRegularExpressionLiteral(node)
+    ) {
+      blank(node.getStart(sourceFile), node.getEnd());
+    }
+    node.forEachChild(visit);
+  };
+  visit(sourceFile);
+  blankCommentsAt(sourceFile.endOfFileToken.pos);
   return masked.join("");
 }
 
