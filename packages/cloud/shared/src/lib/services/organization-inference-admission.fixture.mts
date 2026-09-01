@@ -358,6 +358,18 @@ test("subscriber inference bypasses every optimistic purchased-only lane", async
   expect(pairReads).toBe(0);
 });
 
+test("subscriber inference bypasses stale purchased-credit refusal state", async () => {
+  subscriptionFunded = true;
+  orgRefused = true;
+
+  const admission = await admitOrganizationInference(admissionParams(nextModel(), []));
+
+  expect(admission.mode).toBe("synchronous_reservation");
+  expect(reserveCredits).toHaveBeenCalledTimes(1);
+  expect(reserveCredits.mock.calls[0]?.[3]).toEqual({ subscriptionFunded: true });
+  expect(acquireInferenceAdmissionLease).not.toHaveBeenCalled();
+});
+
 test("warm Worker admission writes only the Durable Object lease before provider dispatch", async () => {
   const model = nextModel();
   await hydratePricing(model);

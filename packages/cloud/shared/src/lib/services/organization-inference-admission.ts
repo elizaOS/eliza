@@ -1,7 +1,9 @@
 /**
  * Cache-gated admission for organization-funded inference.
  *
- * The warm Worker path reads only pricing, affiliate-policy, and balance
+ * Admission reads current subscription authority before refusal state so a
+ * newly funded subscriber cannot be trapped by a stale purchased-credit
+ * refusal. Non-subscribers then use pricing, affiliate-policy, and balance
  * caches before acquiring a Durable Object lease. Post-provider accounting
  * replays one deterministic debit identity; the lease alarm is the durable
  * backstop when a response-side task disappears.
