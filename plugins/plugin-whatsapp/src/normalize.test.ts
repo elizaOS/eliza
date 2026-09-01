@@ -167,3 +167,25 @@ describe("text chunking", () => {
     expect(chunks.join("")).toBe(text);
   });
 });
+
+describe("resolveWhatsAppSystemLocation", () => {
+  it("resolves location with chatName when present", () => {
+    expect(
+      resolveWhatsAppSystemLocation({
+        chatType: "group",
+        chatId: "1234567890",
+        chatName: "Family Group",
+      })
+    ).toBe("WhatsApp group:Family Group");
+  });
+
+  it("truncates chatId safely with surrogate pairs when chatName is absent", () => {
+    const ROCKET = "\u{1F680}";
+    const result = resolveWhatsAppSystemLocation({
+      chatType: "user",
+      chatId: `1234567${ROCKET}rest`,
+    });
+    expect(result.isWellFormed()).toBe(true);
+    expect(result).toBe("WhatsApp user:1234567");
+  });
+});
