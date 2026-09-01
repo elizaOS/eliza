@@ -328,11 +328,11 @@ export async function admitFlatGenerativeOperation(params: {
 }
 
 /**
- * Cache misses fail closed with a retryable response while authoritative
- * hydration runs under the Worker lifetime. Wallet proof remains on the
- * compatibility path because replay-protected signatures cannot be cached.
- * Voice routes may opt into one bounded await of the already-coalesced
- * hydration so a 60s idle cache miss does not 503 the first utterance.
+ * Cache misses consume the already-coalesced authoritative continuation under
+ * one bounded deadline. The continuation does not re-read the combined cache;
+ * it returns the origin decision directly. The route invokes the real limiter
+ * once after authorization. Wallet proof remains on the compatibility path
+ * because replay-protected signatures cannot be cached.
  */
 export async function requireGenerativeRouteCaller(
   c: AppContext,
@@ -340,9 +340,8 @@ export async function requireGenerativeRouteCaller(
     compatibility?: "hono" | "raw";
     rateLimitEndpoint?: EndpointType;
     /**
-     * When set, a cache-only warming resolution awaits the coalesced
-     * hydration for at most this many milliseconds and then re-resolves.
-     * Chat and every other generative route leave this unset.
+     * Override the default bounded wait for the one-shot origin continuation.
+     * Zero preserves an immediate retryable warming response.
      */
     awaitWarmingMs?: number;
   } = {},
@@ -369,44 +368,17 @@ export async function requireGenerativeRouteCaller(
       appScopeId: null,
     };
   }
-  const { observeInferenceApiKeyUsage, resolveInferenceAuthContext } =
-    await import("@/lib/services/inference-auth-context");
+  const { resolveInferenceAuthContext } = await import(
+    "@/lib/services/inference-auth-context"
+  );
   const resolveCallerAuth = () =>
     resolveInferenceAuthContext(c.req.raw, {
       traceId: c.get("traceId") ?? c.get("requestId"),
       cacheOnly: Boolean(executionCtx),
       executionCtx,
+      inlineContinuationDeadlineMs: options.awaitWarmingMs,
     });
-  let resolution = await resolveCallerAuth();
-
-  if (
-    resolution.kind === "warming" &&
-    typeof options.awaitWarmingMs === "number" &&
-    options.awaitWarmingMs > 0 &&
-    resolution.continuation
-  ) {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timedOut = Symbol("inference-auth-continuation-timeout");
-    try {
-      const continued = await Promise.race([
-        resolution.continuation,
-        new Promise<typeof timedOut>((resolve) => {
-          timeoutId = setTimeout(
-            () => resolve(timedOut),
-            options.awaitWarmingMs,
-          );
-        }),
-      ]);
-      if (continued !== timedOut && continued) {
-        if (continued.kind === "authorized") {
-          observeInferenceApiKeyUsage(continued, executionCtx);
-        }
-        resolution = continued;
-      }
-    } finally {
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
-    }
-  }
+  const resolution = await resolveCallerAuth();
 
   if (resolution.kind === "authorized") {
     const user = {
