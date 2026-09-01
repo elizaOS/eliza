@@ -78,9 +78,11 @@ jobs:
       # Step scoping keeps DATABASE_URL out of the earlier steps' declared
       # environments, preventing direct or accidental injection there. It is
       # not an adversarial isolation boundary: every preceding step shares this
-      # mutable job and can persist state. The exact reviewed develop SHA plus
-      # staging Environment approval therefore defines the trusted computing
-      # base.
+      # mutable job and can persist state. Admission proves only that the
+      # operator-supplied SHA equals github.sha on develop before the staging
+      # Environment is attached; it does not prove reviewer approval. Human
+      # source review and effective develop admission remain external parts of
+      # the trusted computing base.
       - name: Emit redacted staging identity receipts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
