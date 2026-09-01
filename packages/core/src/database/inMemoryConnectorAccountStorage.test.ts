@@ -14,6 +14,71 @@ import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 const agentId = "00000000-0000-0000-0000-000000000001" as UUID;
 
 describe("InMemoryDatabaseAdapter connector account storage", () => {
+	it("keeps external identities role-scoped and rejects split identity keys", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const subject = "shared-google-subject";
+		const ownerKey = "acct_google_owner_key";
+		const agentKey = "acct_google_agent_key";
+		const legacyOwner = await adapter.upsertConnectorAccount({
+			agentId,
+			provider: "google",
+			accountKey: subject,
+			externalId: subject,
+			role: "OWNER",
+		});
+
+		const owner = await adapter.upsertConnectorAccount({
+			agentId,
+			provider: "google",
+			accountKey: ownerKey,
+			externalId: subject,
+			role: "OWNER",
+		});
+		const agent = await adapter.upsertConnectorAccount({
+			agentId,
+			provider: "google",
+			accountKey: agentKey,
+			externalId: subject,
+			role: "AGENT",
+		});
+
+		expect(owner.id).toBe(legacyOwner.id);
+		expect(agent.id).not.toBe(owner.id);
+		await expect(
+			adapter.upsertConnectorAccount({
+				agentId,
+				provider: "google",
+				accountKey: agentKey,
+				externalId: subject,
+				role: "OWNER",
+			}),
+		).rejects.toThrow(/different accounts/);
+		await expect(
+			adapter.upsertConnectorAccount({
+				id: "00000000-0000-0000-0000-000000000099" as UUID,
+				agentId,
+				provider: "google",
+				accountKey: ownerKey,
+				externalId: "different-google-subject",
+				role: "OWNER",
+			}),
+		).rejects.toThrow(/different accounts/);
+		await expect(
+			adapter.upsertConnectorAccount({
+				agentId,
+				provider: "google",
+				accountKey: ownerKey,
+				externalId: "another-google-subject",
+				role: "OWNER",
+			}),
+		).rejects.toThrow(/different accounts/);
+		expect(await adapter.getConnectorAccount({ id: owner.id })).toMatchObject({
+			accountKey: ownerKey,
+			externalId: subject,
+		});
+	});
+
 	it("returns every account when pagination was not requested", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.initialize();

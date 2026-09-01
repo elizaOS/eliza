@@ -40,35 +40,47 @@ function stubIdTokenVerification(payload: Record<string, unknown>) {
   } as never);
 }
 
-function runtime() {
+function createRuntimeHarness(options?: {
+  credentialRefs?: Array<Record<string, unknown>>;
+  failVaultSet?: boolean;
+  vaultEntries?: Record<string, string>;
+}) {
   const vault = new Map<string, string>();
-  return {
+  for (const [key, value] of Object.entries(options?.vaultEntries ?? {})) {
+    vault.set(key, value);
+  }
+  const adapter = {
+    listConnectorAccountCredentialRefs: vi.fn(async () => options?.credentialRefs ?? []),
+    deleteConnectorAccountCredentialRefs: vi.fn(async () => options?.credentialRefs?.length ?? 0),
+    setConnectorAccountCredentialRef: vi.fn(async () => undefined),
+  };
+  const vaultService = {
+    set: vi.fn(async (key: string, value: string) => {
+      if (options?.failVaultSet) throw new Error("vault write rejected");
+      vault.set(key, value);
+    }),
+    get: vi.fn(async (key: string) => vault.get(key) ?? null),
+    has: vi.fn(async (key: string) => vault.has(key)),
+    remove: vi.fn(async (key: string) => {
+      vault.delete(key);
+    }),
+  };
+  const value = {
     agentId: "agent-1",
-    adapter: {
-      listConnectorAccountCredentialRefs: vi.fn(async () => []),
-      deleteConnectorAccountCredentialRefs: vi.fn(async () => 0),
-      setConnectorAccountCredentialRef: vi.fn(async () => undefined),
-    },
+    adapter,
     getSetting: (key: string) =>
       ({
         GOOGLE_CLIENT_ID: "client-id",
         GOOGLE_CLIENT_SECRET: "client-secret",
         GOOGLE_REDIRECT_URI: "http://127.0.0.1:31437/api/connectors/google/oauth/callback",
       })[key],
-    getService: (serviceType: string) =>
-      serviceType === "vault"
-        ? {
-            set: vi.fn(async (key: string, value: string) => {
-              vault.set(key, value);
-            }),
-            get: vi.fn(async (key: string) => vault.get(key) ?? null),
-            has: vi.fn(async (key: string) => vault.has(key)),
-            remove: vi.fn(async (key: string) => {
-              vault.delete(key);
-            }),
-          }
-        : null,
+    getService: (serviceType: string) => (serviceType === "vault" ? vaultService : null),
   } as never;
+  return { value, adapter, vault, vaultService };
+}
+
+function runtime() {
+  return createRuntimeHarness().value;
 }
 
 function manager(existing: ConnectorAccount | null = null) {
@@ -76,6 +88,7 @@ function manager(existing: ConnectorAccount | null = null) {
   const restoreAccount = vi.fn(async (account: ConnectorAccount) => account);
   const deleteAccount = vi.fn(async () => true);
   const getAccount = vi.fn(async () => existing);
+  const listAccounts = vi.fn(async () => (existing ? [existing] : []));
   const upsertAccount = vi.fn(
     async (
       provider: string,
@@ -86,6 +99,7 @@ function manager(existing: ConnectorAccount | null = null) {
       return {
         id: accountId,
         provider,
+        accountKey: input.accountKey,
         role: input.role ?? "OWNER",
         purpose: Array.isArray(input.purpose)
           ? input.purpose
@@ -104,6 +118,7 @@ function manager(existing: ConnectorAccount | null = null) {
   return {
     value: {
       getAccount,
+      listAccounts,
       upsertAccount,
       getStorage: () => ({
         setConnectorAccountCredentialRef,
@@ -112,6 +127,9 @@ function manager(existing: ConnectorAccount | null = null) {
       }),
     } as unknown as ConnectorAccountManager,
     getAccount,
+    listAccounts,
+    restoreAccount,
+    deleteAccount,
     upsertAccount,
   };
 }
@@ -219,9 +237,10 @@ describe("Google OAuth connector-account identity binding", () => {
 
     const expected = stableGoogleConnectorAccountId("subject-1", "OWNER");
     expect(result?.account?.id).toBe(expected);
+    expect(result?.account?.accountKey).toBe(expected);
     expect(harness.upsertAccount).toHaveBeenCalledWith(
       "google",
-      expect.objectContaining({ externalId: "subject-1" }),
+      expect.objectContaining({ accountKey: expected, externalId: "subject-1" }),
       expected
     );
   });
@@ -300,9 +319,125 @@ describe("Google OAuth connector-account identity binding", () => {
     expect(result?.account?.role).toBe("AGENT");
     expect(harness.upsertAccount).toHaveBeenCalledWith(
       "google",
-      expect.objectContaining({ role: "AGENT" }),
+      expect.objectContaining({
+        accountKey: stableGoogleConnectorAccountId("original-subject", "AGENT"),
+        role: "AGENT",
+      }),
       "existing-account"
     );
+  });
+
+  it("lazy-upgrades a role-matched legacy account and removes its prior credential", async () => {
+    stubToken("legacy-subject", "expected-nonce");
+    const priorVaultRef = "connector.agent-1.google.legacy-account.oauth.tokens";
+    const runtimeHarness = createRuntimeHarness({
+      credentialRefs: [
+        {
+          accountId: "00000000-0000-0000-0000-000000000042",
+          credentialType: "oauth.tokens",
+          vaultRef: priorVaultRef,
+        },
+      ],
+      vaultEntries: { [priorVaultRef]: "old-token-set" },
+    });
+    const provider = createGoogleConnectorAccountProvider(runtimeHarness.value);
+    const legacyAccount: ConnectorAccount = {
+      id: "00000000-0000-0000-0000-000000000042",
+      provider: "google",
+      accountKey: "legacy-subject",
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      externalId: "legacy-subject",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const harness = manager(legacyAccount);
+
+    const result = await provider.completeOAuth?.(callback(), harness.value);
+
+    expect(result?.account?.id).toBe(legacyAccount.id);
+    expect(result?.account?.accountKey).toBe(
+      stableGoogleConnectorAccountId("legacy-subject", "OWNER")
+    );
+    expect(runtimeHarness.adapter.listConnectorAccountCredentialRefs).toHaveBeenCalledWith({
+      accountId: legacyAccount.id,
+    });
+    expect(runtimeHarness.vault.has(priorVaultRef)).toBe(false);
+    expect(harness.upsertAccount).toHaveBeenCalledWith(
+      "google",
+      expect.objectContaining({
+        accountKey: stableGoogleConnectorAccountId("legacy-subject", "OWNER"),
+      }),
+      legacyAccount.id
+    );
+  });
+
+  it("loads reauthorization credential refs by the resolved canonical account id", async () => {
+    stubToken("original-subject", "expected-nonce");
+    const runtimeHarness = createRuntimeHarness();
+    const provider = createGoogleConnectorAccountProvider(runtimeHarness.value);
+    const existing: ConnectorAccount = {
+      id: "00000000-0000-0000-0000-000000000043",
+      provider: "google",
+      accountKey: stableGoogleConnectorAccountId("original-subject", "OWNER"),
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      externalId: "original-subject",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const harness = manager(existing);
+
+    await provider.completeOAuth?.(callback(existing.accountKey), harness.value);
+
+    expect(runtimeHarness.adapter.listConnectorAccountCredentialRefs).toHaveBeenCalledWith({
+      accountId: existing.id,
+    });
+    expect(harness.upsertAccount).toHaveBeenCalledWith("google", expect.any(Object), existing.id);
+  });
+
+  it("does not delete a lazy-matched legacy account when credential persistence fails", async () => {
+    stubToken("legacy-subject", "expected-nonce");
+    const priorVaultRef = "connector.agent-1.google.legacy-account.oauth.tokens";
+    const runtimeHarness = createRuntimeHarness({
+      credentialRefs: [
+        {
+          accountId: "00000000-0000-0000-0000-000000000044",
+          credentialType: "oauth.tokens",
+          vaultRef: priorVaultRef,
+        },
+      ],
+      failVaultSet: true,
+      vaultEntries: { [priorVaultRef]: "old-token-set" },
+    });
+    const provider = createGoogleConnectorAccountProvider(runtimeHarness.value);
+    const legacyAccount: ConnectorAccount = {
+      id: "00000000-0000-0000-0000-000000000044",
+      provider: "google",
+      accountKey: "legacy-subject",
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      externalId: "legacy-subject",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const harness = manager(legacyAccount);
+
+    await expect(provider.completeOAuth?.(callback(), harness.value)).rejects.toThrow(
+      "vault write rejected"
+    );
+
+    expect(harness.deleteAccount).not.toHaveBeenCalled();
+    expect(harness.restoreAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ id: legacyAccount.id, status: "error" })
+    );
+    expect(runtimeHarness.vault.has(priorVaultRef)).toBe(false);
   });
 
   it("rejects a reauthorization flow for an account that was deleted", async () => {
