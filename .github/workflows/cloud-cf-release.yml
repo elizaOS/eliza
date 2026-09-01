@@ -11,6 +11,10 @@ on:
         description: staging or production
         required: true
         type: string
+      telegram_authority_run_attempt:
+        description: Workflow attempt bound before the protected Telegram configuration is resolved
+        required: true
+        type: string
       force:
         description: Bypass the deploy freshness guard
         required: false
@@ -36,6 +40,117 @@ on:
         required: false
         type: string
         default: ""
+    # Keep caller-scope secrets explicit. The Telegram authority receipt is
+    # declared for the reusable-workflow type contract but intentionally not
+    # forwarded by the caller, so jobs below may resolve it only from their
+    # protected GitHub Environment.
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+      CARTESIA_API_KEY:
+        required: false
+      CEREBRAS_API_KEY:
+        required: false
+      CLOUDFLARE_ACCOUNT_ID:
+        required: false
+      CLOUDFLARE_API_TOKEN:
+        required: false
+      CONTAINERS_SSH_KEY:
+        required: false
+      DATABASE_URL:
+        required: false
+      DEEPGRAM_API_KEY:
+        required: false
+      ELEVENLABS_API_KEY:
+        required: false
+      ELIZACLOUD_API_KEY:
+        required: false
+      ELIZAOS_CLOUD_API_KEY:
+        required: false
+      ELIZA_APNS_KEY:
+        required: false
+      ELIZA_APNS_KEY_ID:
+        required: false
+      ELIZA_APNS_TEAM_ID:
+        required: false
+      ELIZA_APP_BLOOIO_API_KEY:
+        required: false
+      ELIZA_APP_BLOOIO_PHONE_NUMBER:
+        required: false
+      ELIZA_APP_BLOOIO_WEBHOOK_SECRET:
+        required: false
+      ELIZA_APP_TELEGRAM_BOT_TOKEN:
+        required: false
+      ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:
+        required: false
+      ELIZA_APP_WEBHOOK_GATEWAY_SECRET:
+        required: false
+      ELIZA_MOBILE_APP_AUTH_APP_ID:
+        required: false
+      ELIZA_SERVICE_JWT_SECRET:
+        required: false
+      ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64:
+        required: false
+      ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64:
+        required: false
+      FAL_API_KEY:
+        required: false
+      FAL_KEY:
+        required: false
+      FISH_AUDIO_API_KEY:
+        required: false
+      FISH_AUDIO_REFERENCE_ID:
+        required: false
+      GATEWAY_INTERNAL_SECRET:
+        required: false
+      GROQ_API_KEY:
+        required: false
+      HEADSCALE_API_KEY:
+        required: false
+      INFERENCE_AUTH_PROBE_TOKEN:
+        required: false
+      LOCAL_EMBEDDINGS_API_KEY:
+        required: false
+      NEON_DATABASE_URL:
+        required: false
+      OIDC_CLIENTS:
+        required: false
+      OIDC_SIGNING_JWKS:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+      OPENROUTER_API_KEY:
+        required: false
+      RAILWAY_DATABASE_URL:
+        required: false
+      RAILWAY_TOKEN:
+        required: false
+      SECRETS_MASTER_KEY:
+        required: false
+      STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+        required: false
+      STEWARD_API_URL:
+        required: false
+      STEWARD_JWT_SECRET:
+        required: false
+      STEWARD_PLATFORM_KEYS:
+        required: false
+      STEWARD_REQUEST_SIGNING_SECRET:
+        required: false
+      STEWARD_SESSION_SECRET:
+        required: false
+      STEWARD_TENANT_API_KEY:
+        required: false
+      TELEGRAM_IDENTITY_AUTHORITY_SHA256:
+        required: false
+      TUNNEL_HOSTNAME_SIGNING_SECRET:
+        required: false
+      VAST_API_KEY:
+        required: false
+      VAST_BASE_URL:
+        required: false
+      VOICE_REALTIME_ELIZA_AUTHORIZATION:
+        required: false
     outputs:
       superseded:
         description: >-
@@ -56,6 +171,8 @@ jobs:
     # GitHub cannot create or enter an arbitrary environment before the shell
     # rejects it. The target value itself is never normalized.
     environment: ${{ inputs.target_environment == 'production' && 'production' || 'staging' }}
+    # These outputs contain only the accepted public identity. The protected
+    # authority digest is never emitted or passed to another job.
     outputs:
       telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
       telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
@@ -68,12 +185,16 @@ jobs:
       - name: Validate Telegram public identity preflight
         id: telegram
         env:
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
-          # GitHub Environment variables cannot overwrite values already
-          # resolved through the vars context. Treat this repository pair as
-          # staging-only input; production ignores it and uses source truth.
-          STAGING_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
-          STAGING_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+          # Configuration variables carry only public values. A protected
+          # Environment secret binds the accepted pair; that secret is
+          # deliberately absent from the caller's forwarding map, so a
+          # repository/organization secret cannot substitute for it.
+          ENVIRONMENT_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          ENVIRONMENT_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+          TELEGRAM_IDENTITY_AUTHORITY_SHA256: ${{ secrets.TELEGRAM_IDENTITY_AUTHORITY_SHA256 }}
         run: |
           set -euo pipefail
 
@@ -87,6 +208,13 @@ jobs:
             [[ "$candidate" =~ ^[1-9][0-9]{0,15}$ ]] || return 1
             (( 10#$candidate <= 4503599627370495 ))
           }
+
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || \
+            fail "Telegram configuration authority run attempt is missing or invalid"
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || \
+            fail "Cloud release run attempt is missing or invalid"
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || \
+            fail "Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs"
 
           case "$TARGET_ENVIRONMENT" in
             staging|production) ;;
@@ -108,23 +236,32 @@ jobs:
             resolved_bot_id="$canonical_bot_id"
             resolved_bot_username="$canonical_bot_username"
           else
-            if [ -z "$STAGING_TELEGRAM_BOT_ID" ] || \
-              [ -z "$STAGING_TELEGRAM_BOT_USERNAME" ]; then
-              fail "Repository VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME must configure the complete staging pair"
+            if [ -z "$ENVIRONMENT_TELEGRAM_BOT_ID" ] || \
+              [ -z "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" ]; then
+              fail "The protected staging Telegram identity must configure the complete VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME pair"
             fi
-            valid_bot_id "$STAGING_TELEGRAM_BOT_ID" || \
-              fail "Repository VITE_TELEGRAM_BOT_ID must match the Telegram bot ID contract"
-            [[ "$STAGING_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
-              fail "Repository VITE_TELEGRAM_BOT_USERNAME must match the Telegram username contract"
-            staging_bot_username_key="$(printf '%s' "$STAGING_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
+            valid_bot_id "$ENVIRONMENT_TELEGRAM_BOT_ID" || \
+              fail "The protected staging VITE_TELEGRAM_BOT_ID must match the Telegram bot ID contract"
+            [[ "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+              fail "The protected staging VITE_TELEGRAM_BOT_USERNAME must match the Telegram username contract"
+            staging_bot_username_key="$(printf '%s' "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
             [[ "$staging_bot_username_key" == *bot ]] || \
-              fail "Repository VITE_TELEGRAM_BOT_USERNAME must use the managed bot suffix"
-            if [ "$STAGING_TELEGRAM_BOT_ID" = "$canonical_bot_id" ] || \
+              fail "The protected staging VITE_TELEGRAM_BOT_USERNAME must use the managed bot suffix"
+            if [ "$ENVIRONMENT_TELEGRAM_BOT_ID" = "$canonical_bot_id" ] || \
               [ "$staging_bot_username_key" = "$canonical_bot_username_key" ]; then
               fail "Staging Telegram configuration must use an identity fully distinct from production"
             fi
-            resolved_bot_id="$STAGING_TELEGRAM_BOT_ID"
-            resolved_bot_username="$STAGING_TELEGRAM_BOT_USERNAME"
+            [[ "$TELEGRAM_IDENTITY_AUTHORITY_SHA256" =~ ^[0-9a-f]{64}$ ]] || \
+              fail "The staging GitHub Environment must provide a valid TELEGRAM_IDENTITY_AUTHORITY_SHA256 receipt"
+            computed_identity_sha256="$(
+              printf 'elizaOS/eliza\0staging\0telegram-public-identity\0v1\0%s\0%s\n' \
+                "$ENVIRONMENT_TELEGRAM_BOT_ID" "$staging_bot_username_key" \
+                | sha256sum | cut -d ' ' -f 1
+            )"
+            [ "$computed_identity_sha256" = "$TELEGRAM_IDENTITY_AUTHORITY_SHA256" ] || \
+              fail "The staging Telegram identity does not match its protected Environment authority receipt"
+            resolved_bot_id="$ENVIRONMENT_TELEGRAM_BOT_ID"
+            resolved_bot_username="$ENVIRONMENT_TELEGRAM_BOT_USERNAME"
           fi
 
           printf 'bot_id=%s\n' "$resolved_bot_id" >> "$GITHUB_OUTPUT"
@@ -190,6 +327,40 @@ jobs:
       # and the caller's certification job gate on it.
       superseded: ${{ steps.source_guard.outputs.superseded }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          ADMITTED_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          ADMITTED_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+          [[ "$ADMITTED_TELEGRAM_BOT_ID" =~ ^[1-9][0-9]{0,15}$ ]] && \
+            (( 10#$ADMITTED_TELEGRAM_BOT_ID <= 4503599627370495 )) || {
+            echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
+          [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
+            echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
@@ -709,6 +880,40 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          ADMITTED_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          ADMITTED_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+          [[ "$ADMITTED_TELEGRAM_BOT_ID" =~ ^[1-9][0-9]{0,15}$ ]] && \
+            (( 10#$ADMITTED_TELEGRAM_BOT_ID <= 4503599627370495 )) || {
+            echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
+          [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
+            echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+
       - name: Reclaim disk from leaked checkouts of prior runs
         continue-on-error: true
         run: |
@@ -2179,10 +2384,42 @@ jobs:
       artifact_run_id: ${{ steps.pages-artifact.outputs.run_id }}
       artifact_run_attempt: ${{ steps.pages-artifact.outputs.run_attempt }}
       artifact_source_sha: ${{ steps.pages-artifact.outputs.source_sha }}
-      telegram_bot_id: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
-      telegram_bot_username: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
       whatsapp_phone_number: ${{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          ADMITTED_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          ADMITTED_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+          [[ "$ADMITTED_TELEGRAM_BOT_ID" =~ ^[1-9][0-9]{0,15}$ ]] && \
+            (( 10#$ADMITTED_TELEGRAM_BOT_ID <= 4503599627370495 )) || {
+            echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
+          [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
+            echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Bind Pages artifacts to this producer attempt
@@ -2272,8 +2509,8 @@ jobs:
     timeout-minutes: 75
     # Release gate (#11208/#18088): canonical Pages aliases wait for the matching
     # API deployment and the artifact built by this protected release.
-    needs: [deploy-api, build-pages]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
+    needs: [resolve-pages-environment-config, deploy-api, build-pages]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.resolve-pages-environment-config.result == 'success' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -2285,6 +2522,40 @@ jobs:
       # github.run_attempt.
       pages_authority_artifact: pages-deployment-authority-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          ADMITTED_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          ADMITTED_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+          [[ "$ADMITTED_TELEGRAM_BOT_ID" =~ ^[1-9][0-9]{0,15}$ ]] && \
+            (( 10#$ADMITTED_TELEGRAM_BOT_ID <= 4503599627370495 )) || {
+            echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
+          [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
+            echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+
       - name: Reclaim disk from leaked checkouts of prior runs
         continue-on-error: true
         run: |
@@ -2497,8 +2768,8 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run --cwd packages/app build:web
         env:
-          VITE_TELEGRAM_BOT_ID: ${{ needs.build-pages.outputs.telegram_bot_id }}
-          VITE_TELEGRAM_BOT_USERNAME: ${{ needs.build-pages.outputs.telegram_bot_username }}
+          VITE_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          VITE_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
           VITE_WHATSAPP_PHONE_NUMBER: ${{ needs.build-pages.outputs.whatsapp_phone_number }}
           VITE_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           NEXT_PUBLIC_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
