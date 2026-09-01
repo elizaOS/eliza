@@ -1353,11 +1353,10 @@ export class DockerNodeManager {
     const changes = new Map<string, { before: number; after: number }>();
 
     for (const node of nodes) {
-      const actualCount = await countAllocatedWorkloadsOnNode(node.node_id);
       // Always enter the primary, node-locked recount. `findEnabled()` is an
-      // operational replica read, so equality here is only a logging hint and
-      // must never suppress repair of a divergent primary counter.
-      const recount = await dockerNodesRepository.setAllocatedCount(node.node_id, actualCount);
+      // operational replica read and must never suppress repair of a divergent
+      // primary counter.
+      const recount = await dockerNodesRepository.setAllocatedCount(node.node_id);
 
       if (recount && recount.before !== recount.after) {
         logger.info(

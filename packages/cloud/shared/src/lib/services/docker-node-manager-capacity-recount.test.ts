@@ -54,23 +54,22 @@ import { DockerNodeManager } from "./docker-node-manager";
 describe("DockerNodeManager primary capacity recount", () => {
   beforeEach(() => {
     countAllocated.mockReset();
-    countAllocated.mockResolvedValue(1);
     setAllocatedCount.mockReset();
     setAllocatedCount.mockResolvedValue({ before: 1, after: 1 });
   });
 
-  test("replica equality cannot skip the transaction-locked primary repair", async () => {
+  test("performs exactly one transaction-locked primary recount", async () => {
     const changes = await DockerNodeManager.getInstance().syncAllocatedCounts();
 
-    expect(countAllocated).toHaveBeenCalledWith(node.node_id);
+    expect(countAllocated).not.toHaveBeenCalled();
     expect(setAllocatedCount).toHaveBeenCalledTimes(1);
-    expect(setAllocatedCount).toHaveBeenCalledWith(node.node_id, 1);
+    expect(setAllocatedCount).toHaveBeenCalledWith(node.node_id);
     expect(changes.size).toBe(0);
   });
 
   test("reports only the transaction-locked primary recount result", async () => {
-    // Both replica-derived inputs say 1, but the primary recount authoritatively
-    // repairs 7 -> 2. The result must not be reconstructed from either hint.
+    // The replica-derived node says 1, but the primary recount authoritatively
+    // repairs 7 -> 2. The result must not be reconstructed from the replica.
     setAllocatedCount.mockResolvedValue({ before: 7, after: 2 });
 
     const changes = await DockerNodeManager.getInstance().syncAllocatedCounts();
@@ -79,12 +78,11 @@ describe("DockerNodeManager primary capacity recount", () => {
   });
 
   test("does not report stale replica drift when the primary recount is unchanged", async () => {
-    countAllocated.mockResolvedValue(3);
     setAllocatedCount.mockResolvedValue({ before: 4, after: 4 });
 
     const changes = await DockerNodeManager.getInstance().syncAllocatedCounts();
 
-    expect(setAllocatedCount).toHaveBeenCalledWith(node.node_id, 3);
+    expect(setAllocatedCount).toHaveBeenCalledWith(node.node_id);
     expect(changes.size).toBe(0);
   });
 });
