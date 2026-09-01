@@ -4221,10 +4221,10 @@ export type LifeOpsIMessageHostPlatform =
 export interface LifeOpsIMessageConnectorStatus {
   available: boolean;
   connected: boolean;
-  bridgeType: "native" | "imsg" | "bluebubbles" | "none";
+  bridgeType: "native" | "blooio" | "imsg" | "bluebubbles" | "none";
   hostPlatform: LifeOpsIMessageHostPlatform;
   accountHandle: string | null;
-  sendMode: "cli" | "private-api" | "apple-script" | "none";
+  sendMode: "cli" | "private-api" | "provider-api" | "apple-script" | "none";
   helperConnected: boolean | null;
   privateApiEnabled: boolean | null;
   diagnostics: string[];
