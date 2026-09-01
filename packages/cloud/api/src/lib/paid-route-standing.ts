@@ -72,6 +72,9 @@ async function compatibilityStandingReason(
   // that primary authority once here; this path never addresses Redis again.
   if (compatibility === "raw") {
     const { usersRepository } = await import("@/db/repositories/users");
+    const { organizationLifecycleAllowsNewWork } = await import(
+      "@/lib/services/account-lifecycle-authority"
+    );
     const current = await usersRepository.findWithOrganizationForWrite(
       caller.user.id,
     );
@@ -82,7 +85,20 @@ async function compatibilityStandingReason(
     ) {
       return "membership_missing";
     }
-    if (!current.organization.is_active) return "organization_inactive";
+    const lifecycleState = current.organization.account_lifecycle_state;
+    if (
+      (lifecycleState !== "active" &&
+        lifecycleState !== "deletion_recovery" &&
+        lifecycleState !== "deletion_irreversible") ||
+      !organizationLifecycleAllowsNewWork({
+        state: lifecycleState,
+        revision: current.organization.account_lifecycle_revision,
+        active: current.organization.is_active,
+        deletionRequestId: current.organization.account_deletion_request_id,
+      })
+    ) {
+      return "organization_inactive";
+    }
   }
 
   const { adminService } = await import("@/lib/services/admin");

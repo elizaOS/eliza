@@ -53,7 +53,13 @@ beforeEach(() => {
     id: "user-1",
     organization_id: "org-1",
     is_active: true,
-    organization: { id: "org-1", is_active: true },
+    organization: {
+      id: "org-1",
+      is_active: true,
+      account_lifecycle_state: "active",
+      account_lifecycle_revision: 1,
+      account_deletion_request_id: null,
+    },
   });
 });
 
@@ -156,7 +162,13 @@ describe("requirePaidRouteStanding", () => {
         id: "user-1",
         organization_id: "org-1",
         is_active: false,
-        organization: { id: "org-1", is_active: true },
+        organization: {
+          id: "org-1",
+          is_active: true,
+          account_lifecycle_state: "active",
+          account_lifecycle_revision: 1,
+          account_deletion_request_id: null,
+        },
       },
       "account_inactive",
     ],
@@ -166,7 +178,45 @@ describe("requirePaidRouteStanding", () => {
         id: "user-1",
         organization_id: "org-1",
         is_active: true,
-        organization: { id: "org-1", is_active: false },
+        organization: {
+          id: "org-1",
+          is_active: false,
+          account_lifecycle_state: "active",
+          account_lifecycle_revision: 1,
+          account_deletion_request_id: null,
+        },
+      },
+      "organization_inactive",
+    ],
+    [
+      "lifecycle-fenced wallet organization",
+      {
+        id: "user-1",
+        organization_id: "org-1",
+        is_active: true,
+        organization: {
+          id: "org-1",
+          is_active: true,
+          account_lifecycle_state: "deletion_recovery",
+          account_lifecycle_revision: 2,
+          account_deletion_request_id: null,
+        },
+      },
+      "organization_inactive",
+    ],
+    [
+      "deletion-requested mobile-key organization",
+      {
+        id: "user-1",
+        organization_id: "org-1",
+        is_active: true,
+        organization: {
+          id: "org-1",
+          is_active: true,
+          account_lifecycle_state: "active",
+          account_lifecycle_revision: 2,
+          account_deletion_request_id: "00000000-0000-4000-8000-000000000001",
+        },
       },
       "organization_inactive",
     ],
@@ -191,6 +241,7 @@ describe("requirePaidRouteStanding", () => {
       });
 
       expect(findWithOrganizationForWrite).toHaveBeenCalledTimes(1);
+      expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
       expect(shouldBlockUser).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(
         "[PaidRouteStanding] blocked external work",
