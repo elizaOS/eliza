@@ -133,16 +133,45 @@ export function isEvoLinkMode(runtime: IAgentRuntime): boolean {
 }
 
 /**
+ * True when the resolved base URL or `ELIZA_PROVIDER` marks the runtime as
+ * using OpenZoo — either its hosted endpoint or the local `npx openzoo`
+ * gateway on port 8402, which is the path that actually settles requests
+ * (over x402) from this plugin. There is no OpenZoo key alias: the service
+ * accepts any bearer value, so `OPENAI_API_KEY` is already sufficient.
+ */
+export function isOpenZooMode(runtime: IAgentRuntime): boolean {
+  const explicitProvider = getSetting(runtime, "ELIZA_PROVIDER");
+  if (explicitProvider && explicitProvider.toLowerCase() === "openzoo") {
+    return true;
+  }
+  const baseURL = getSetting(runtime, "OPENAI_BASE_URL");
+  if (baseURL && /(^|\.)openzoo\.fun(\/|$|:)/i.test(baseURL)) {
+    return true;
+  }
+  // The documented local gateway address. Billing attribution is the point:
+  // requests through it are handled and billed by OpenZoo, not OpenAI.
+  if (baseURL && /^https?:\/\/(localhost|127\.0\.0\.1):8402(\/|$)/i.test(baseURL)) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Identifies the backend selected by this OpenAI-compatible plugin. Telemetry
  * must distinguish the transport implementation from the service that
  * actually handled and billed the request.
  */
-export function getUsageProvider(runtime: IAgentRuntime): "cerebras" | "evolink" | "openai" {
+export function getUsageProvider(
+  runtime: IAgentRuntime,
+): "cerebras" | "evolink" | "openzoo" | "openai" {
   if (isCerebrasMode(runtime)) {
     return "cerebras";
   }
   if (isEvoLinkMode(runtime)) {
     return "evolink";
+  }
+  if (isOpenZooMode(runtime)) {
+    return "openzoo";
   }
   return "openai";
 }
