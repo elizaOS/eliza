@@ -917,6 +917,66 @@ jobs:
             echo "replacement_cleanup_failure_category=$category"
             echo "replacement_cleanup_failure_signals=${signals:-none}"
 
+      - name: Classify private mesh observation failure
+        if: steps.cleanup_reconciliation.outputs.fence_present == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            block="$(
+              sudo journalctl \
+                -u eliza-provisioning-worker.service \
+                --since '25 minutes ago' \
+                -o cat \
+                --no-pager 2>/dev/null \
+                | tail -n 4000 \
+                || true
+            )"
+            lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
+            case "$lower" in
+              *'docker candidate cannot complete required headscale registration: auth_required'*) category='mesh_auth_required' ;;
+              *'docker candidate cannot complete required headscale registration: container_exited'*) category='candidate_container_exited' ;;
+              *'headscale registration does not match the exact docker candidate'*) category='candidate_identity_mismatch' ;;
+              *'auth error polling vpn'*) category='headscale_api_auth' ;;
+              *'headscale api '*' failed:'*) category='headscale_api_failure' ;;
+              *'headscale registration did not reach an exact observable completion'*) category='registration_unresolved' ;;
+              *'headscale rename completion'*) category='rename_unresolved' ;;
+              *'vpn registration failed'*) category='registration_failed' ;;
+              *'vpn registration timeout'*) category='registration_timeout' ;;
+              *' registered on vpn:'*) category='registration_observed' ;;
+              '') category='missing' ;;
+              *) category='unclassified' ;;
+            esac
+            signals=''
+            for signal in \
+              auth_required container_exited identity_mismatch api_auth api_failure \
+              registration_failed registration_timeout registration_observed \
+              rename_unresolved exact_completion_unresolved; do
+              case "$signal:$lower" in
+                auth_required:*'required headscale registration: auth_required'*) matched=true ;;
+                container_exited:*'required headscale registration: container_exited'*) matched=true ;;
+                identity_mismatch:*'headscale registration does not match the exact docker candidate'*) matched=true ;;
+                api_auth:*'auth error polling vpn'*) matched=true ;;
+                api_failure:*'headscale api '*' failed:'*) matched=true ;;
+                registration_failed:*'vpn registration failed'*) matched=true ;;
+                registration_timeout:*'vpn registration timeout'*) matched=true ;;
+                registration_observed:*' registered on vpn:'*) matched=true ;;
+                rename_unresolved:*'headscale rename completion'*) matched=true ;;
+                exact_completion_unresolved:*'headscale registration did not reach an exact observable completion'*) matched=true ;;
+                *) matched=false ;;
+              esac
+              if [ "$matched" = true ]; then
+                signals="${signals:+$signals,}$signal"
+              fi
+            done
+            unset block lower
+            echo "private_mesh_failure_category=$category"
+            echo "private_mesh_failure_signals=${signals:-none}"
+
       - name: Upload privacy-safe provision diagnostic
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
