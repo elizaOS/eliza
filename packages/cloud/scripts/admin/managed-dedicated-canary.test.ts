@@ -29,6 +29,7 @@ interface FixtureOptions {
   existingCanaryCount?: number;
   existingCanarySuffix?: string;
   staleCleanupFails?: boolean;
+  staleCleanupError?: string;
   staleDeleteThrows?: boolean;
   staleIdentityMismatch?: boolean;
   staleTier?: string;
@@ -223,7 +224,10 @@ function createFixture(options: FixtureOptions = {}) {
       }
       if (options.staleCleanupFails) {
         return response(
-          { success: false, error: "provisioning is in progress" },
+          {
+            success: false,
+            error: options.staleCleanupError ?? "provisioning is in progress",
+          },
           409,
         );
       }
@@ -883,6 +887,28 @@ describe("managed dedicated canary", () => {
           call.pathname === `/api/v1/eliza/agents/${STALE_AGENT_ID}`,
       ),
     ).toHaveLength(1);
+  });
+
+  test("stale recovery classifies a non-quiescent lifecycle conflict without persisting identifiers", async () => {
+    const { fixture, evidence } = await runFixture(
+      {
+        existingCanary: true,
+        existingCanarySuffix: STALE_SUFFIX,
+        staleCleanupFails: true,
+        staleCleanupError:
+          "Agent private-agent-id has non-quiescent agent_provision job private-job-id",
+      },
+      { staleCanarySuffix: STALE_SUFFIX, cleanupOnly: true },
+    );
+
+    expect(evidence.failure).toEqual({
+      phase: "capacity_guard",
+      code: "non_quiescent_lifecycle_job",
+    });
+    expect(JSON.stringify(evidence)).not.toContain("private-agent-id");
+    expect(JSON.stringify(evidence)).not.toContain("private-job-id");
+    expect(fixture.created).toBe(false);
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
   });
 
   test("stale recovery records an ambiguous delete transport and never creates a second canary", async () => {

@@ -141,6 +141,11 @@ const PRIVACY_SAFE_FAILURE_CODES = new Set([
   "expected_stale_canary_missing",
   "stale_canary_disappeared",
   "missing_agent_id",
+  "conditional_delete_deploy_mismatch",
+  "non_quiescent_lifecycle_job",
+  "delete_identity_changed",
+  "warm_claim_handoff_in_progress",
+  "delete_authority_changed",
 ]);
 
 export interface ManagedDedicatedCanaryEvidence {
@@ -226,6 +231,31 @@ function dataRecord(body: JsonObject): JsonObject | null {
 function stringField(record: JsonObject | null, key: string): string | null {
   const value = record?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Reduce conditional-delete conflicts to fixed operational categories. The API
+ * message can contain agent and job identifiers, so it must never enter the
+ * privacy-safe artifact verbatim.
+ */
+function classifyConditionalDeleteConflict(body: JsonObject): string {
+  const message = stringField(body, "error")?.toLowerCase() ?? "";
+  if (message === "conditional delete deploy mismatch") {
+    return "conditional_delete_deploy_mismatch";
+  }
+  if (message.includes(" has non-quiescent ") && message.includes(" job ")) {
+    return "non_quiescent_lifecycle_job";
+  }
+  if (message === "agent identity changed before deletion") {
+    return "delete_identity_changed";
+  }
+  if (message === "warm-claim credential handoff is still in progress") {
+    return "warm_claim_handoff_in_progress";
+  }
+  if (message === "agent deletion changed while recording state-loss authority") {
+    return "delete_authority_changed";
+  }
+  return "unexpected_http_409";
 }
 
 /**
@@ -1051,11 +1081,16 @@ export async function runManagedDedicatedCanary(
     if (phase === "create" && response.status === 402) {
       throw new CanaryFailure(phase, "insufficient_hosting_credit");
     }
-    if (!expectedStatuses.includes(response.status)) {
-      throw new CanaryFailure(phase, `unexpected_http_${response.status}`);
-    }
     if (!isRecord(parsed)) {
       throw new CanaryFailure(phase, "invalid_response_shape");
+    }
+    if (!expectedStatuses.includes(response.status)) {
+      throw new CanaryFailure(
+        phase,
+        response.status === 409
+          ? classifyConditionalDeleteConflict(parsed)
+          : `unexpected_http_${response.status}`,
+      );
     }
     return { status: response.status, body: parsed };
   }
