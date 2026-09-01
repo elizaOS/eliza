@@ -527,9 +527,17 @@ describe("0321-0328 and 0367-0368 agent sandbox replacement attempts", () => {
       tag: "0368_agent_vault_key_seed_receipts_per_replacement",
     });
     const expectedTags = migrationUrls.map(migrationTag);
-    expect(
-      journal.entries.filter(({ tag }) => expectedTags.includes(tag)).map(({ tag }) => tag),
-    ).toEqual(expectedTags);
+    const initialRangeTags = expectedTags.slice(0, 8);
+    const rangeStart = journal.entries.findIndex(({ tag }) => tag === initialRangeTags[0]);
+    expect(rangeStart).toBeGreaterThanOrEqual(0);
+    const range = journal.entries.slice(rangeStart, rangeStart + initialRangeTags.length);
+    expect(range.map(({ idx }) => idx)).toEqual(
+      Array.from({ length: initialRangeTags.length }, (_, offset) => 304 + offset),
+    );
+    expect(range.map(({ tag }) => tag)).toEqual(initialRangeTags);
+    const matchingEntries = journal.entries.filter(({ tag }) => expectedTags.includes(tag));
+    expect(matchingEntries.map(({ tag }) => tag)).toEqual(expectedTags);
+    expect(matchingEntries).toHaveLength(expectedTags.length);
 
     const db = await database();
     const schema = getTableConfig(agentSandboxReplacementAttempts);

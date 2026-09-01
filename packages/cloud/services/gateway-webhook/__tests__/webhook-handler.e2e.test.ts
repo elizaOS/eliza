@@ -1,5 +1,6 @@
 /** Exercises gateway webhook routing with deterministic cloud-service fixtures. */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { PERSONAL_SHARED_FAILURE_REPLY } from "@elizaos/cloud-services-common/personal-shared-failure";
 import type {
   ChatEvent,
   PlatformAdapter,
@@ -265,6 +266,43 @@ describe("gateway webhook handler e2e routing", () => {
       () => [...redis.store.values()].includes("delivered"),
       "durable delivered state",
     );
+  });
+
+  test("keeps terminal retry headers opt-in so phone attempts do not change", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM_terminal_retry_scope" });
+    const adapter = createAdapter(event);
+    let sharedAttempts = 0;
+    globalThis.fetch = mock(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/internal/eliza-app/personal-shared/messages")) {
+        sharedAttempts += 1;
+        return new Response("private upstream body", {
+          status: 500,
+          headers: {
+            "Retry-After": "0",
+            "X-Eliza-Retryable": "false",
+          },
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => sharedAttempts === 3, "phone Shared retry budget");
+    expect(adapter.replies).toEqual([]);
   });
 
   test("persists an ambiguous provider failure and refuses an unsafe replay", async () => {
@@ -1073,7 +1111,7 @@ describe("gateway webhook handler e2e routing", () => {
     ).toBe(false);
   });
 
-  test("releases Telegram processing ownership after a pre-egress failure so the update can retry immediately", async () => {
+  test("delivers one Telegram fallback after retryable Shared attempts are exhausted", async () => {
     process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
     const event: ChatEvent = {
       platform: "telegram",
@@ -1106,13 +1144,16 @@ describe("gateway webhook handler e2e routing", () => {
     let sharedAttempts = 0;
     globalThis.fetch = mock(async () => {
       sharedAttempts += 1;
-      if (sharedAttempts <= 3) {
-        return new Response("temporarily unavailable", { status: 503 });
-      }
-      return new Response(
-        JSON.stringify({ data: { reply: "personal Shared reply" } }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+      return new Response("private provider detail", {
+        status: 503,
+        headers: {
+          "Retry-After": "0",
+          "X-Eliza-Failure-Stage": "shared_runtime",
+          "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
+          "X-Eliza-Failure-Cause-Name": "SharedRuntimeProviderUnavailableError",
+          "X-Eliza-Retryable": "true",
+        },
+      });
     }) as typeof fetch;
     const request = () =>
       new Request("https://gateway.example/webhook/eliza-app/telegram", {
@@ -1127,15 +1168,291 @@ describe("gateway webhook handler e2e routing", () => {
     const processingKey =
       "webhook:telegram:scope:message:update-retry-before-egress:processing";
 
-    await expect(
-      handleWebhook(request(), adapter, deps, "eliza-app"),
-    ).rejects.toThrow(/personal Shared chat failed \(503\)/);
-    expect(redis.store.has(processingKey)).toBe(false);
+    const first = await handleWebhook(request(), adapter, deps, "eliza-app");
+    const duplicate = await handleWebhook(
+      request(),
+      adapter,
+      deps,
+      "eliza-app",
+    );
 
-    const retry = await handleWebhook(request(), adapter, deps, "eliza-app");
-    expect(retry.status).toBe(200);
+    expect(first.status).toBe(200);
+    expect(duplicate.status).toBe(200);
+    expect(sharedAttempts).toBe(3);
     expect(sendReply).toHaveBeenCalledTimes(1);
+    expect(sendReply.mock.calls[0]?.[2]).toBe(PERSONAL_SHARED_FAILURE_REPLY);
     expect(redis.store.has(processingKey)).toBe(false);
+  });
+
+  test("delivers one Telegram fallback without replaying a terminal Shared turn", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "update-terminal-before-egress",
+      platformRecordId: "message-terminal-before-egress",
+      chatId: "chat-1",
+      chatType: "private",
+      senderId: "sender-1",
+      senderName: "Ada",
+      text: "remove that reminder",
+      rawPayload: {},
+    };
+    const sendReply = mock(async () => undefined);
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-terminal-1"] };
+      }),
+    };
+    const redis = new MemoryRedis();
+    redis.store.set(
+      "identity:telegram:sender-1",
+      JSON.stringify({ notFound: true }),
+    );
+    let sharedAttempts = 0;
+    globalThis.fetch = mock(async () => {
+      sharedAttempts += 1;
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode("private action payload"),
+          );
+        },
+        cancel() {
+          throw new Error("private body cleanup detail");
+        },
+      });
+      return new Response(body, {
+        status: 500,
+        headers: {
+          "X-Eliza-Failure-Stage": "shared_runtime",
+          "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
+          "X-Eliza-Failure-Cause-Name": "SharedRuntimeActionContractError",
+          "X-Eliza-Retryable": "false",
+        },
+      });
+    }) as typeof fetch;
+    const request = () =>
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      });
+    const deps = {
+      redis,
+      cloudBaseUrl: "https://api.elizacloud.ai",
+      getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+    };
+
+    expect(
+      (await handleWebhook(request(), adapter, deps, "eliza-app")).status,
+    ).toBe(200);
+    expect(
+      (await handleWebhook(request(), adapter, deps, "eliza-app")).status,
+    ).toBe(200);
+    expect(sharedAttempts).toBe(1);
+    expect(sendReply).toHaveBeenCalledTimes(1);
+    expect(sendReply.mock.calls[0]?.[2]).toBe(PERSONAL_SHARED_FAILURE_REPLY);
+  });
+
+  test("delivers one Telegram fallback when private voice resolution fails", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "update-voice-resolution-failure",
+      chatId: "chat-1",
+      chatType: "private",
+      senderId: "sender-1",
+      text: "",
+      voiceNote: {
+        fileId: "private-provider-file-id",
+        durationSeconds: 2,
+        sizeBytes: 8,
+        mimeType: "audio/ogg",
+      },
+      rawPayload: {},
+    };
+    const sendReply = mock(async () => undefined);
+    const resolveVoiceNote = mock(async () => {
+      throw new Error("private provider download detail");
+    });
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      resolveVoiceNote,
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-voice-fallback-1"] };
+      }),
+    };
+    const cloudFetch = mock(async () =>
+      Response.json({ data: { reply: "must not run" } }),
+    );
+    globalThis.fetch = cloudFetch as typeof fetch;
+
+    expect(
+      (
+        await handleWebhook(
+          new Request("https://gateway.example/webhook/eliza-app/telegram", {
+            method: "POST",
+            body: "{}",
+          }),
+          adapter,
+          {
+            redis: new MemoryRedis(),
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+    expect(resolveVoiceNote).toHaveBeenCalledTimes(1);
+    expect(cloudFetch).not.toHaveBeenCalled();
+    expect(sendReply).toHaveBeenCalledTimes(1);
+    expect(sendReply.mock.calls[0]?.[2]).toBe(PERSONAL_SHARED_FAILURE_REPLY);
+  });
+
+  test.each([
+    [
+      "group message",
+      {
+        chatType: "supergroup",
+        text: "@eliza help",
+      },
+    ],
+    [
+      "membership update",
+      {
+        chatType: "supergroup",
+        text: "",
+        membershipChange: "removed" as const,
+      },
+    ],
+  ])(
+    "never injects a fallback into a Telegram %s",
+    async (_name, overrides) => {
+      process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+      const event: ChatEvent = {
+        platform: "telegram",
+        messageId: `no-fallback-${_name.replaceAll(" ", "-")}`,
+        chatId: "-100123456789",
+        senderId: "sender-1",
+        rawPayload: {},
+        ...overrides,
+      };
+      const sendReply = mock(async () => undefined);
+      const sendReplyWithReceipt = mock(async () => ({
+        providerMessageIds: ["must-not-send"],
+      }));
+      const adapter: PlatformAdapter = {
+        platform: "telegram",
+        getDedupeScope: () => "scope",
+        verifyWebhook: mock(async () => true),
+        extractEvent: mock(async () => event),
+        sendTypingIndicator: mock(async () => undefined),
+        sendReply,
+        sendReplyWithReceipt,
+      };
+      const redis = new MemoryRedis();
+      globalThis.fetch = mock(
+        async () =>
+          new Response("private upstream body", {
+            status: 500,
+            headers: {
+              "X-Eliza-Failure-Stage": "shared_runtime",
+              "X-Eliza-Failure-Name": "SharedRuntimeTurnError",
+              "X-Eliza-Failure-Cause-Name": "SharedRuntimeActionContractError",
+              "X-Eliza-Retryable": "false",
+            },
+          }),
+      ) as typeof fetch;
+
+      await expect(
+        handleWebhook(
+          new Request("https://gateway.example/webhook/eliza-app/telegram", {
+            method: "POST",
+            body: "{}",
+          }),
+          adapter,
+          {
+            redis,
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        ),
+      ).rejects.toMatchObject({ name: "PersonalSharedPreEgressError" });
+      expect(sendReply).not.toHaveBeenCalled();
+      expect(sendReplyWithReceipt).not.toHaveBeenCalled();
+    },
+  );
+
+  test("never logs raw Shared bodies or malformed classification headers", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "update-sanitized-diagnostics",
+      chatId: "chat-1",
+      chatType: "private",
+      senderId: "sender-1",
+      text: "hello",
+      rawPayload: {},
+    };
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply: mock(async () => undefined),
+      sendReplyWithReceipt: mock(async () => ({
+        providerMessageIds: ["provider-sanitized-1"],
+      })),
+    };
+    const warnLog = spyOn(logger, "warn").mockImplementation(() => undefined);
+    globalThis.fetch = mock(
+      async () =>
+        new Response("TOP SECRET PROVIDER BODY", {
+          status: 500,
+          headers: {
+            "X-Eliza-Failure-Stage": "TOP_SECRET_STAGE",
+            "X-Eliza-Failure-Name": "PrivateProviderToken",
+            "X-Eliza-Retryable": "false",
+          },
+        }),
+    ) as typeof fetch;
+
+    expect(
+      (
+        await handleWebhook(
+          new Request("https://gateway.example/webhook/eliza-app/telegram", {
+            method: "POST",
+            body: "{}",
+          }),
+          adapter,
+          {
+            redis: new MemoryRedis(),
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+    const logged = JSON.stringify(warnLog.mock.calls);
+    expect(logged).not.toContain("TOP SECRET PROVIDER BODY");
+    expect(logged).not.toContain("TOP_SECRET_STAGE");
+    expect(logged).not.toContain("PrivateProviderToken");
   });
 
   test("routes an unlinked Telegram DM to rowless personal Shared", async () => {

@@ -28,6 +28,15 @@ export {
   type ServiceLoggerOptions,
 } from "./logger";
 export {
+  ELIZA_FAILURE_CAUSE_NAME_HEADER,
+  ELIZA_FAILURE_NAME_HEADER,
+  ELIZA_FAILURE_STAGE_HEADER,
+  ELIZA_RETRYABLE_HEADER,
+  PERSONAL_SHARED_FAILURE_REPLY,
+  type PersonalSharedFailureMetadata,
+  readPersonalSharedFailureMetadata,
+} from "./personal-shared-failure";
+export {
   executeResponseAttempts,
   type ResponseAttemptObservation,
   type ResponseAttemptsOptions,
