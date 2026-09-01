@@ -103,6 +103,20 @@ async function main() {
           `${auditCase.viewport}/${auditCase.state} month grid has invalid width ${box?.width ?? "missing"}`,
         );
       }
+      const monthLayout =
+        auditCase.mode === "month" && auditCase.viewport === "desktop"
+          ? await page
+              .getByTestId("calendar-month-grid")
+              .locator(":scope > div")
+              .evaluateAll((rows) =>
+                rows.map((row) => ({
+                  columns: getComputedStyle(row).gridTemplateColumns
+                    .split(" ")
+                    .filter(Boolean).length,
+                  cells: row.children.length,
+                })),
+              )
+          : null;
       const imagePath = path.join(
         outputDir,
         `${auditCase.viewport}-${auditCase.mode}-${auditCase.state}.png`,
@@ -113,6 +127,7 @@ async function main() {
         target,
         imagePath,
         box,
+        monthLayout,
         renderError,
         consoleErrors,
         pageErrors,
@@ -128,7 +143,13 @@ async function main() {
     (entry) =>
       entry.renderError ||
       entry.consoleErrors.length > 0 ||
-      entry.pageErrors.length > 0,
+      entry.pageErrors.length > 0 ||
+      (entry.monthLayout !== null &&
+        (entry.monthLayout.length !== 2 ||
+          entry.monthLayout[0]?.columns !== 7 ||
+          entry.monthLayout[0]?.cells !== 7 ||
+          entry.monthLayout[1]?.columns !== 7 ||
+          entry.monthLayout[1]?.cells !== 42)),
   );
   const reportPath = path.join(outputDir, "report.json");
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
