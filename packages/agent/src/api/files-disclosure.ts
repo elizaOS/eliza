@@ -37,7 +37,11 @@ export function selectFilesForViewer(
 ): FilesListDto {
   if (!accessContext) return { files, restricted: false };
   const actor = actorFromAccessContext(accessContext, agentId);
-  if (actor.role === "OWNER" || actor.role === "AGENT") {
+  if (
+    actor.role === "OWNER" ||
+    actor.role === "ADMIN" ||
+    actor.role === "AGENT"
+  ) {
     return { files, restricted: false };
   }
   return { files: [], restricted: true };
