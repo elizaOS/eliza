@@ -64,7 +64,7 @@ const EXPECTED_SOURCE_ONLY_WORKFLOW = {
         {
           name: "Verify source-only workflow contract",
           "working-directory": ".",
-          run: "node --test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
+          run: "bun test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
         },
         {
           name: "Generate source keyword modules",
@@ -530,7 +530,7 @@ test("source-only workflow guard rejects adversarial YAML source mutations", () 
   const contractStep = [
     "      - name: Verify source-only workflow contract",
     "        working-directory: .",
-    "        run: node --test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
+    "        run: bun test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
   ].join("\n");
 
   assertWorkflowSourceRejected(
