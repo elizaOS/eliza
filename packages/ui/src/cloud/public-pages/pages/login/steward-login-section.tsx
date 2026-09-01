@@ -721,6 +721,7 @@ export default function StewardLoginSection() {
     string | null
   >(null);
   const [providerDiscoveryAttempt, setProviderDiscoveryAttempt] = useState(0);
+  const providerDiscoveryEpochRef = useRef(0);
   const [providers, setProviders] = useState<StewardProviders | null>(
     () =>
       cachedStewardProviders ??
@@ -824,6 +825,7 @@ export default function StewardLoginSection() {
       // remount the section or rerun discovery. Revoke live wallet authority
       // before doing anything else so persisted adapters cannot auto-reconnect
       // under a capability result from the prior page lifetime.
+      providerDiscoveryEpochRef.current += 1;
       discardStewardProvidersRequest();
       setWalletProvidersConfirmed(false);
       setProviderDiscoveryError(null);
@@ -867,17 +869,20 @@ export default function StewardLoginSection() {
     // effect re-runs, so the retry surface still gets live discovery.
     if (completingCallback) return;
     let cancelled = false;
+    const discoveryEpoch = providerDiscoveryEpochRef.current;
+    const stillOwnsDiscovery = () =>
+      !cancelled && providerDiscoveryEpochRef.current === discoveryEpoch;
     loadStewardProvidersWithTimeout(auth)
       .then((loadedProviders) => {
-        if (!cancelled) {
+        if (stillOwnsDiscovery()) {
           setProviderDiscoveryError(null);
           setProviders(loadedProviders);
           setWalletProvidersConfirmed(true);
         }
       })
       .catch((providerError: unknown) => {
+        if (!stillOwnsDiscovery()) return;
         discardStewardProvidersRequest();
-        if (cancelled) return;
         // A cached non-wallet method can remain usable, but wallet mounts stay
         // gated on live discovery. Always retain the failure so wallet-only
         // tenants receive a recovery surface instead of an empty form, while
@@ -887,7 +892,7 @@ export default function StewardLoginSection() {
         );
       })
       .finally(() => {
-        if (!cancelled) setProvidersLoaded(true);
+        if (stillOwnsDiscovery()) setProvidersLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -897,6 +902,7 @@ export default function StewardLoginSection() {
   const retryProviderDiscovery = useCallback(() => {
     // Return to the reserved loading geometry and trigger a fresh server query;
     // never render a fabricated subset of sign-in methods.
+    providerDiscoveryEpochRef.current += 1;
     discardStewardProvidersRequest();
     setProviderDiscoveryError(null);
     setProvidersLoaded(false);

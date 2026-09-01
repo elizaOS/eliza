@@ -305,6 +305,14 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
   });
 
   it("revokes mounted wallets on BFCache restore until fresh discovery succeeds", async () => {
+    let resolveStaleProviders!: (
+      providers: ReturnType<typeof walletProviders>,
+    ) => void;
+    const staleProviders = new Promise<ReturnType<typeof walletProviders>>(
+      (resolve) => {
+        resolveStaleProviders = resolve;
+      },
+    );
     let resolveFreshProviders!: (
       providers: ReturnType<typeof walletProviders>,
     ) => void;
@@ -315,6 +323,7 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     );
     stewardAuthSpies.getProviders
       .mockResolvedValueOnce(walletProviders())
+      .mockReturnValueOnce(staleProviders)
       .mockReturnValueOnce(freshProviders)
       .mockRejectedValueOnce(new Error("provider discovery unavailable"));
 
@@ -337,6 +346,20 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     );
     expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
 
+    // A second persisted restoration supersedes the still-pending request.
+    // Resolving that stale promise must not restore the retained wallet intent.
+    const secondRestore = new Event("pageshow");
+    Object.defineProperty(secondRestore, "persisted", { value: true });
+    fireEvent(window, secondRestore);
+    await waitFor(() =>
+      expect(stewardAuthSpies.getProviders).toHaveBeenCalledTimes(3),
+    );
+    await act(async () => {
+      resolveStaleProviders(walletProviders());
+      await staleProviders;
+    });
+    expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
+
     await act(async () => {
       resolveFreshProviders(walletProviders());
       await freshProviders;
@@ -349,7 +372,7 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
 
     expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
     await waitFor(() =>
-      expect(stewardAuthSpies.getProviders).toHaveBeenCalledTimes(3),
+      expect(stewardAuthSpies.getProviders).toHaveBeenCalledTimes(4),
     );
     await screen.findByRole("alert");
     expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
