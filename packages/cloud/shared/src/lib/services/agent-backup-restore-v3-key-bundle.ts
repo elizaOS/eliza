@@ -1,12 +1,14 @@
 /**
  * Validates and unwraps the exact manifest-v3 operation key bundle for one
- * callback lifetime. No plaintext key or KMS handle can escape a successful
- * wrapper resolution: use completes first, then release is acknowledged and
- * every locally observable key view is erased.
+ * structured callback lifetime. The trusted callback owns copied key views
+ * until its promise is genuinely quiescent; only then may provider release and
+ * local zeroization begin. Cancellation closes admission immediately but does
+ * not fabricate quiescence for JavaScript work that is already running.
  */
 
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   computeKmsAeadOperationKeyBundleLocalReceiptDigest,
   KMS_AEAD_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
@@ -21,6 +23,7 @@ import {
   type AgentBackupManifestV3,
   canonicalizeAgentBackupOperationKeyBundleContext,
 } from "@elizaos/shared";
+import { logger } from "../utils/logger";
 import type { AgentBackupRestoreV3Control } from "./agent-backup-restore-v3-control";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
@@ -52,6 +55,14 @@ export interface AgentBackupRestoreV3OperationKeys {
   readonly contentHmacKey: Uint8Array;
 }
 
+/** Cooperative fence exposed to the structured key-use callback. */
+export interface AgentBackupRestoreV3OperationKeyUseControl {
+  readonly signal: AbortSignal;
+  readonly deadlineEpochMs: number;
+  assertActive(label?: string): void;
+  settle<T>(label: string, operation: () => T | PromiseLike<T>): Promise<T>;
+}
+
 export interface WithAgentBackupRestoreV3OperationKeysInput {
   readonly authority: Readonly<AgentBackupRestoreV3OperationKeyBundleAuthority>;
   readonly manifest: Readonly<AgentBackupManifestV3>;
@@ -59,16 +70,11 @@ export interface WithAgentBackupRestoreV3OperationKeysInput {
   readonly control: AgentBackupRestoreV3Control;
 }
 
-export class AgentBackupRestoreV3KeyBundleError extends Error {
+export class AgentBackupRestoreV3KeyBundleError extends ElizaError {
   override readonly name = "AgentBackupRestoreV3KeyBundleError";
 
-  constructor(
-    readonly code: string,
-    message: string,
-    options?: { cause?: unknown },
-  ) {
-    super(message, { cause: options?.cause });
-    Object.setPrototypeOf(this, new.target.prototype);
+  constructor(code: string, message: string, options?: { cause?: unknown }) {
+    super(message, { code, cause: options?.cause, severity: "fatal" });
   }
 }
 
@@ -173,6 +179,8 @@ function manifestKeyAuthority(manifest: Readonly<AgentBackupManifestV3>): {
       localReceiptDigest: wrapped.localReceiptDigest,
     });
   } catch (cause) {
+    // error-policy:J3 the manifest is an untrusted persisted boundary; malformed
+    // authority is rejected explicitly and never becomes a usable key context.
     keyBundleError(
       "AGENT_BACKUP_RESTORE_V3_KEY_AUTHORITY_MISMATCH",
       "Restore-v3 manifest has invalid operation key-bundle authority",
@@ -287,6 +295,8 @@ function buildExactUnwrapAuthority(
       context,
     };
   } catch (cause) {
+    // error-policy:J6 exact envelope/context copies are teardown-only after
+    // validation fails; the original typed failure remains authoritative.
     wrappedKeyBundle.fill(0);
     context.fill(0);
     throw cause;
@@ -299,7 +309,13 @@ function observableKeyViews(handle: unknown): Uint8Array[] {
   try {
     const dek = (handle as { dek?: unknown }).dek;
     if (dek instanceof Uint8Array) views.push(dek);
-  } catch (_invalidHandle: unknown) {
+  } catch (_cause) {
+    // error-policy:J6 a hostile/released getter must not prevent observation of
+    // the other view or provider release during mandatory teardown.
+    logger.warn("[AgentBackupRestoreV3KeyBundle] Failed to observe DEK for teardown", {
+      phase: "release-zeroization",
+      view: "dek",
+    });
     // The other view and provider release remain independently observable.
   }
   try {
@@ -307,7 +323,12 @@ function observableKeyViews(handle: unknown): Uint8Array[] {
     if (contentHmacKey instanceof Uint8Array && !views.includes(contentHmacKey)) {
       views.push(contentHmacKey);
     }
-  } catch (_invalidHandle: unknown) {
+  } catch (_cause) {
+    // error-policy:J6 see the independent DEK observation above.
+    logger.warn("[AgentBackupRestoreV3KeyBundle] Failed to observe HMAC key for teardown", {
+      phase: "release-zeroization",
+      view: "content-hmac",
+    });
     // Provider release and every other observable view still run.
   }
   return views;
@@ -321,8 +342,8 @@ function validateKeyViews(
   readonly contentHmacKey: Uint8Array;
 } {
   const dek = handle.dek;
-  const contentHmacKey = handle.contentHmacKey;
   if (dek instanceof Uint8Array) retainedViews.push(dek);
+  const contentHmacKey = handle.contentHmacKey;
   if (contentHmacKey instanceof Uint8Array && !retainedViews.includes(contentHmacKey)) {
     retainedViews.push(contentHmacKey);
   }
@@ -346,7 +367,11 @@ function validateKeyViews(
       "KMS returned an invalid restore-v3 operation key-bundle handle",
     );
   }
-  return { dek, contentHmacKey };
+  const callbackDek = Uint8Array.from(dek);
+  retainedViews.push(callbackDek);
+  const callbackContentHmacKey = Uint8Array.from(contentHmacKey);
+  retainedViews.push(callbackContentHmacKey);
+  return { dek: callbackDek, contentHmacKey: callbackContentHmacKey };
 }
 
 /**
@@ -366,6 +391,8 @@ async function releaseAndZeroize(
   try {
     pending = Promise.resolve(provider.release(handle));
   } catch (cause) {
+    // error-policy:J2 synchronous provider release failure is retained and
+    // rethrown after every locally observable view has been wiped.
     releaseFailed = true;
     releaseFailure = cause;
   }
@@ -374,6 +401,8 @@ async function releaseAndZeroize(
     try {
       Uint8Array.prototype.fill.call(view, 0);
     } catch (cause) {
+      // error-policy:J2 every wipe is attempted and all failures are retained
+      // for the terminal release/zeroization aggregate.
       wipeFailures.push(cause);
     }
   }
@@ -387,6 +416,8 @@ async function releaseAndZeroize(
         );
       }
     } catch (cause) {
+      // error-policy:J2 asynchronous acknowledgement failure is retained with
+      // any local wipe failures instead of being mistaken for release success.
       releaseFailed = true;
       releaseFailure = cause;
     }
@@ -406,24 +437,43 @@ function releaseLateHandle(
   handle: KmsAeadOperationKeyBundleHandle,
 ): Promise<void> {
   // `control.wait` wraps this callback in a fresh bounded cleanup control and
-  // observes any release failure after cancellation/deadline is authoritative.
+  // reports any detached release failure after cancellation is authoritative.
   return releaseAndZeroize(provider, handle);
 }
 
+function operationKeyUseControl(
+  control: AgentBackupRestoreV3Control,
+): Readonly<AgentBackupRestoreV3OperationKeyUseControl> {
+  return Object.freeze({
+    signal: control.signal,
+    deadlineEpochMs: control.deadlineEpochMs,
+    assertActive: (label?: string) => control.assertActive(label),
+    settle: <T>(label: string, operation: () => T | PromiseLike<T>) =>
+      control.settle(label, operation),
+  });
+}
+
 /**
- * Use one exact operation key bundle without exposing its handle or extending
- * plaintext-key lifetime beyond the callback. Release failure is terminal.
+ * Use one exact operation key bundle without exposing its provider handle.
+ * The trusted callback must not copy, return, retain, or detach the key bytes;
+ * its promise and `useControl.settle()` joins must cover every key-dependent
+ * operation and effect. Cancellation is cooperative for that callback, and
+ * release failure is terminal.
  */
-export async function withAgentBackupRestoreV3OperationKeys<T>(
+export async function withAgentBackupRestoreV3OperationKeys(
   input: Readonly<WithAgentBackupRestoreV3OperationKeysInput>,
-  use: (keys: Readonly<AgentBackupRestoreV3OperationKeys>) => T | PromiseLike<T>,
-): Promise<T> {
+  use: (
+    keys: Readonly<AgentBackupRestoreV3OperationKeys>,
+    control: Readonly<AgentBackupRestoreV3OperationKeyUseControl>,
+  ) => void | Promise<void>,
+): Promise<void> {
   if (
     !input ||
     typeof input !== "object" ||
     typeof input.provider?.unwrap !== "function" ||
     typeof input.provider?.release !== "function" ||
     typeof input.control?.wait !== "function" ||
+    typeof input.control?.settle !== "function" ||
     typeof input.control?.cleanup !== "function" ||
     typeof use !== "function"
   ) {
@@ -453,7 +503,6 @@ export async function withAgentBackupRestoreV3OperationKeys<T>(
 
   let processingFailed = false;
   let processingFailure: unknown;
-  let result: T | undefined;
   const retainedViews: Uint8Array[] = [];
   try {
     const views = validateKeyViews(handle, retainedViews);
@@ -462,14 +511,16 @@ export async function withAgentBackupRestoreV3OperationKeys<T>(
       dek: views.dek,
       contentHmacKey: views.contentHmacKey,
     });
-    input.control.assertActive("Restore-v3 operation key use");
-    // The wrapper deliberately waits for the callback itself to settle. The
-    // callback composes its individual I/O through `control.wait`; releasing
-    // while it still owns key views would create a use-after-zeroize race.
-    result = await input.control.wait("Restore-v3 operation key use", () =>
-      Promise.resolve().then(() => use(keys)),
-    );
+    const useControl = operationKeyUseControl(input.control);
+    // `settle` never treats cancellation as proof that JavaScript stopped. The
+    // callback remains inside this trusted computing base and must become
+    // genuinely quiescent before any supplied view is erased. It must not copy
+    // key bytes into a closure or detach key-dependent work; arbitrary callback
+    // code cannot be forced to honor those lifetime rules by this API alone.
+    await input.control.settle("Restore-v3 operation key use", () => use(keys, useControl));
   } catch (cause) {
+    // error-policy:J2 processing failure remains authoritative until mandatory
+    // release completes; a release failure is aggregated below.
     processingFailed = true;
     processingFailure = cause;
   }
@@ -481,6 +532,8 @@ export async function withAgentBackupRestoreV3OperationKeys<T>(
       releaseAndZeroize(input.provider, handle, retainedViews),
     );
   } catch (cause) {
+    // error-policy:J2 release is mandatory and its failure is rethrown alone or
+    // aggregated with the key-use failure below.
     releaseFailed = true;
     releaseFailure = cause;
   }
@@ -489,6 +542,8 @@ export async function withAgentBackupRestoreV3OperationKeys<T>(
     try {
       input.control.assertActive("Restore-v3 operation key use completion");
     } catch (cause) {
+      // error-policy:J2 cancellation/deadline after a successful callback is
+      // retained as the terminal processing failure after safe release.
       processingFailed = true;
       processingFailure = cause;
     }
@@ -501,6 +556,5 @@ export async function withAgentBackupRestoreV3OperationKeys<T>(
     );
   }
   if (releaseFailed) throw releaseFailure;
-  if (processingFailed) throw processingFailure;
-  return result as T;
+  if (processingFailed) throw normalizeFailure(processingFailure);
 }
