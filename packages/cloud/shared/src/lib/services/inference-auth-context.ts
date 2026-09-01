@@ -445,42 +445,54 @@ function getOrCreateApiKeyHydration(
     }),
   ]);
 
-  const projection = decision
-    .then(async (result) => {
-      if (!result) return;
-      if (result.kind === "authorized" && "keyHash" in result.ctx) {
-        await assertInferenceCredentialActive(result.ctx.orgId, {
-          kind: "api_key",
-          credentialId: result.ctx.apiKeyId,
-          userId: result.ctx.userId,
-        });
-        const startedAt = performance.now();
-        const write = await writeInferenceAuthContext(result.ctx);
-        const telemetry = freezeCacheWriteTrace(options.traceId, write, startedAt);
-        logger.info("[InferenceAuth] trace", telemetry);
-        options.onCacheWriteTelemetry?.(telemetry);
-        if (write.kind !== "written") {
-          logger.warn("[InferenceAuth] positive decision cache write failed", {
-            traceId: boundedTraceId(options.traceId),
-            cacheWrite: write.kind,
-          });
-        }
-        return;
-      }
-      if (result.kind !== "suspended" && result.kind !== "rejected") return;
-      const status = result.kind === "suspended" ? 403 : result.status;
-      const decision = result.kind === "suspended" ? "suspended" : "rejected";
-      const reason =
-        result.reason ??
-        (result.kind === "suspended" ? "moderation_blocked" : "credential_invalid");
-      const write = await writeInferenceApiKeyAuthRejection(keyHash, decision, status, reason);
+  const projectResolution = async (result: InferenceAuthResolution): Promise<void> => {
+    if (result.kind === "authorized" && "keyHash" in result.ctx) {
+      await assertInferenceCredentialActive(result.ctx.orgId, {
+        kind: "api_key",
+        credentialId: result.ctx.apiKeyId,
+        userId: result.ctx.userId,
+      });
+      const startedAt = performance.now();
+      const write = await writeInferenceAuthContext(result.ctx);
+      const telemetry = freezeCacheWriteTrace(options.traceId, write, startedAt);
+      logger.info("[InferenceAuth] trace", telemetry);
+      options.onCacheWriteTelemetry?.(telemetry);
       if (write.kind !== "written") {
-        logger.warn("[InferenceAuth] negative decision cache write failed", {
+        logger.warn("[InferenceAuth] positive decision cache write failed", {
           traceId: boundedTraceId(options.traceId),
-          status,
           cacheWrite: write.kind,
         });
       }
+      return;
+    }
+    if (result.kind !== "suspended" && result.kind !== "rejected") return;
+    const status = result.kind === "suspended" ? 403 : result.status;
+    const decision = result.kind === "suspended" ? "suspended" : "rejected";
+    const reason =
+      result.reason ?? (result.kind === "suspended" ? "moderation_blocked" : "credential_invalid");
+    const write = await writeInferenceApiKeyAuthRejection(keyHash, decision, status, reason);
+    if (write.kind !== "written") {
+      logger.warn("[InferenceAuth] negative decision cache write failed", {
+        traceId: boundedTraceId(options.traceId),
+        status,
+        cacheWrite: write.kind,
+      });
+    }
+  };
+
+  const projection = decision
+    .then(async (result) => {
+      if (!result) {
+        // The deadline won the race, which frees the single-flight slot for a
+        // fresh attempt. The attempt itself may still succeed, so project that
+        // late result without holding this promise: a never-settling attempt
+        // must not keep waitUntil open.
+        void attempt
+          .then((late) => (late ? projectResolution(late) : undefined))
+          .catch(() => undefined);
+        return;
+      }
+      return await projectResolution(result);
     })
     .catch((error) => {
       // error-policy:J7 the authoritative decision is independently observed;

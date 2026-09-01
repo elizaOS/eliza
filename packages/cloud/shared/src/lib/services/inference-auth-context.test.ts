@@ -1122,4 +1122,31 @@ describe("hydration escape (#18246 — warming must not loop forever)", () => {
     expect(escaped.kind).toBe("authorized");
     release?.();
   });
+
+  test("a slow but successful hydration still projects to cache after the deadline", async () => {
+    // The deadline frees the single-flight slot, but the attempt can still
+    // succeed. Its result must reach the cache, or a key whose authoritative
+    // lookup routinely exceeds the deadline never populates and warms forever.
+    authImpl = () =>
+      new Promise((resolve) => {
+        setTimeout(
+          () =>
+            resolve({
+              user: { id: "user-1", organization_id: "org-1" },
+              apiKey: { id: "key-1" },
+            }),
+          150,
+        );
+      });
+    const hydrations: Promise<unknown>[] = [];
+    const res = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      inlineContinuationDeadlineMs: 0,
+      executionCtx: workerCtx(hydrations),
+    });
+    expect(res.kind).toBe("warming");
+    await Promise.all(hydrations.splice(0));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(await readInferenceAuthContext(hashApiKey(KEY))).not.toBeNull();
+  });
 });
