@@ -33,14 +33,15 @@ function executable(file: string, source: string) {
 describe("voice matrix CLI", () => {
   test("fails closed when a platform/id filter selects no cells", () => {
     const filterCanary = "FILTER_CANARY_room-private-9911";
-    const { report, result } = runVoiceMatrix([
-      "--platform",
-      filterCanary,
-      "--require-green",
-    ]);
+    const { report, result } = runVoiceMatrix(
+      ["--platform", filterCanary, "--require-green"],
+      { ELIZA_VOICE_MATRIX_SESSION_ID: "voice-matrix-session-123" },
+    );
 
     expect(result.status).toBe(1);
     expect(report.schema).toBe("eliza_voice_live_matrix_v2");
+    expect(report.revision).toMatch(/^[0-9a-f]{40}$/);
+    expect(report.sessionId).toBe("voice-matrix-session-123");
     expect(report.selection).toEqual({
       filterCount: 1,
       matched: 0,

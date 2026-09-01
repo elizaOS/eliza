@@ -218,6 +218,7 @@ jobs:
       E2E_RECORD: "1"
       ELIZA_UI_SMOKE_LIVE_STACK: "1"
       ELIZA_VOICE_LIVE_RAILWAY: "1"
+      ELIZA_VOICE_MATRIX_SESSION_ID: ${{ github.run_id }}-${{ github.run_attempt }}-web-live
       ELIZA_PROVIDER: "cerebras"
       KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
       WHISPER_STT_URL: ${{ vars.ELIZA_VOICE_WHISPER_STT_URL }}

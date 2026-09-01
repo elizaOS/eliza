@@ -41,7 +41,9 @@ test-results/evidence/9958-voice-matrix/
 
 The JSON report uses `eliza_voice_live_matrix_v2`. Version 2 replaces raw host,
 probe, filter, and child-process diagnostics with closed codes and aggregate
-counters suitable for uploaded CI evidence.
+counters suitable for uploaded CI evidence. Every report also carries the exact
+Git revision and a per-execution session ID so downstream finalizers can reject
+stale or cross-cell evidence instead of relabeling it as the current run.
 
 Use `--run` to execute available cell commands:
 
