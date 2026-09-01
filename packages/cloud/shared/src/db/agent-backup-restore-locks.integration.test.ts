@@ -741,6 +741,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         fleet_kind: "robot",
         infrastructure_provider: "hetzner",
         node_incarnation: NODE_INCARNATION,
+        metadata: { architecture: "amd64" },
         status: "healthy",
         enabled: true,
       })
@@ -1245,7 +1246,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         infrastructure_provider: "hetzner",
         provider_server_id: null,
         node_incarnation: LOCK_TARGET_NODE_INCARNATION,
-        metadata: {},
+        metadata: { architecture: "amd64" },
       })
       .returning({ historyId: dockerNodes.current_node_history_id });
     const targetNodeHistoryId = targetNode?.historyId;
@@ -1323,6 +1324,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         nodeIncarnation: LOCK_TARGET_NODE_INCARNATION,
         nodeHistoryId: targetNodeHistoryId,
         imageDigest: `sha256:${SHA}`,
+        platform: "linux/amd64",
+        imageReference: null,
+        imagePlatformDigest: null,
       });
       expect(reservationResult?.operation.expected_node_record_id).toBe(LOCK_TARGET_NODE_RECORD_ID);
       expect(reservationResult?.operation.expected_node_incarnation).toBe(
@@ -1330,6 +1334,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       );
       expect(reservationResult?.operation.expected_node_history_id).toBe(targetNodeHistoryId);
       expect(reservationResult?.operation.expected_image_digest).toBe(`sha256:${SHA}`);
+      expect(reservationResult?.operation.expected_image_platform).toBe("linux/amd64");
       const [targetNode] = await dbWrite
         .select({ allocatedCount: dockerNodes.allocated_count })
         .from(dockerNodes)
@@ -1495,6 +1500,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       expected_node_incarnation: NODE_INCARNATION,
       expected_container_id: null,
       expected_image_digest: `sha256:${SHA}`,
+      expected_image_platform: "linux/amd64",
     });
     await dbWrite
       .update(agentSandboxes)

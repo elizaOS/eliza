@@ -2486,6 +2486,13 @@
       "when": 1794254400062,
       "tag": "0371_agent_vault_key_seed_receipts_per_replacement",
       "breakpoints": true
+    },
+    {
+      "idx": 355,
+      "version": "7",
+      "when": 1794254400063,
+      "tag": "0372_agent_backup_restore_exact_image_authority",
+      "breakpoints": true
     }
   ]
 }

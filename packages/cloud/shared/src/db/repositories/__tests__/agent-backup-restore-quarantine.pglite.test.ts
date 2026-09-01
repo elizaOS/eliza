@@ -86,6 +86,8 @@ const HASH = "a".repeat(64);
 const OTHER_SHA = "b".repeat(64);
 const IMAGE_DIGEST = `sha256:${"c".repeat(64)}`;
 const CANONICAL_IMAGE_DIGEST = `sha256:${"d".repeat(64)}`;
+const EXACT_IMAGE_REFERENCE = `ghcr.io/elizaos/eliza@${IMAGE_DIGEST}`;
+const IMAGE_PLATFORM_DIGEST = `sha256:${"9".repeat(64)}`;
 const TOKEN_SHA = "e".repeat(64);
 const OTHER_TOKEN_SHA = "f".repeat(64);
 const TOKEN_CIPHERTEXT = "test-only-field-ciphertext-v1";
@@ -229,17 +231,44 @@ function expectCanonicalQuarantineLockOrder(body: string): void {
 }
 
 async function installExactCleanupOperationGuard(): Promise<void> {
-  const migration = readFileSync(
+  const cleanupMigration = readFileSync(
     new URL("../../migrations/0370_agent_sandbox_replacement_restore_locator.sql", import.meta.url),
     "utf8",
   );
-  const guard = migration
+  const cleanupGuard = cleanupMigration
     .split("--> statement-breakpoint")
     .find((statement) =>
       statement.includes('CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_operation"'),
     );
-  if (!guard) throw new Error("0370 exact cleanup operation guard is missing");
-  await dbWrite.execute(sql.raw(guard));
+  if (!cleanupGuard) throw new Error("0370 exact cleanup operation guard is missing");
+  const exactImageMigration = readFileSync(
+    new URL(
+      "../../migrations/0372_agent_backup_restore_exact_image_authority.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const exactImageGuard = exactImageMigration
+    .split("--> statement-breakpoint")
+    .find((statement) =>
+      statement.includes(
+        'CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_exact_image_authority"',
+      ),
+    );
+  if (!exactImageGuard) throw new Error("0372 exact image authority guard is missing");
+
+  await dbWrite.execute(sql.raw(cleanupGuard));
+  await dbWrite.execute(sql.raw(exactImageGuard));
+  await dbWrite.execute(
+    sql.raw(`DROP TRIGGER IF EXISTS test_agent_backup_restore_exact_image_authority_guard
+      ON agent_backup_restore_operations`),
+  );
+  await dbWrite.execute(
+    sql.raw(`CREATE TRIGGER test_agent_backup_restore_exact_image_authority_guard
+      BEFORE UPDATE OF expected_image_platform, expected_image_reference,
+        expected_image_platform_digest ON agent_backup_restore_operations
+      FOR EACH ROW EXECUTE FUNCTION guard_agent_backup_restore_exact_image_authority()`),
+  );
   await dbWrite.execute(
     sql.raw(`DROP TRIGGER IF EXISTS test_agent_backup_restore_operation_guard
       ON agent_backup_restore_operations`),
@@ -310,6 +339,7 @@ async function seedFixture(): Promise<void> {
       infrastructure_provider: "hetzner",
       provider_server_id: null,
       node_incarnation: TARGET_NODE_INCARNATION,
+      metadata: { architecture: "amd64" },
     })
     .returning();
   if (!targetNode?.current_node_history_id) {
@@ -481,6 +511,23 @@ async function openAndClaimVaultSeeded(): Promise<string> {
   return claim.claimGeneration;
 }
 
+async function bindExactImagePlatformAuthorityFixture(): Promise<void> {
+  const [bound] = await dbWrite
+    .update(agentBackupRestoreOperations)
+    .set({
+      expected_image_reference: EXACT_IMAGE_REFERENCE,
+      expected_image_platform_digest: IMAGE_PLATFORM_DIGEST,
+    })
+    .where(
+      and(
+        eq(agentBackupRestoreOperations.id, operationId),
+        eq(agentBackupRestoreOperations.phase, "vault_seeded"),
+      ),
+    )
+    .returning();
+  if (!bound) throw new Error("exact image platform fixture lost its operation");
+}
+
 async function readRows() {
   const [sandbox] = await dbWrite
     .select()
@@ -512,6 +559,9 @@ async function resetLegacyReservationForCombinedIntent(): Promise<string> {
       expected_node_incarnation: null,
       expected_node_history_id: null,
       expected_image_digest: null,
+      expected_image_platform: null,
+      expected_image_reference: null,
+      expected_image_platform_digest: null,
     })
     .where(eq(agentBackupRestoreOperations.id, operationId))
     .returning();
@@ -600,6 +650,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await dbWrite.execute(
+    sql.raw(`DROP TRIGGER IF EXISTS test_agent_backup_restore_exact_image_authority_guard
+      ON agent_backup_restore_operations`),
+  );
+  await dbWrite.execute(
     sql.raw(`DROP TRIGGER IF EXISTS test_agent_backup_restore_operation_guard
       ON agent_backup_restore_operations`),
   );
@@ -640,6 +694,9 @@ describe("restore activation quarantine", () => {
         nodeIncarnation: TARGET_NODE_INCARNATION,
         nodeHistoryId: targetNodeHistoryId,
         imageDigest: IMAGE_DIGEST,
+        platform: "linux/amd64",
+        imageReference: null,
+        imagePlatformDigest: null,
       });
       expect(first.sandbox).toMatchObject({
         agentId: AGENT_ID,
@@ -711,6 +768,7 @@ describe("restore activation quarantine", () => {
         ownerId: "restore-worker",
         claimMs: 60_000,
       });
+      await bindExactImagePlatformAuthorityFixture();
       const loaded = await reserveAgentBackupRestoreTargetAndStartReplacementIntent({
         ...combinedIntentInput(targetNodeHistoryId),
         claimGeneration: providerClaim.claimGeneration,
@@ -935,6 +993,7 @@ describe("restore activation quarantine", () => {
         ownerId: "restore-worker",
         claimMs: 60_000,
       });
+      await bindExactImagePlatformAuthorityFixture();
       const providerInput = {
         operationId,
         ownerId: "restore-worker",
@@ -978,6 +1037,72 @@ describe("restore activation quarantine", () => {
   );
 
   test(
+    "cleans an unstarted replacement while exact image reference authority is still unbound",
+    async () => {
+      const targetNodeHistoryId = await resetLegacyReservationForCombinedIntent();
+      await reserveAgentBackupRestoreTargetAndStartReplacementIntent(
+        combinedIntentInput(targetNodeHistoryId),
+      );
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          phase: "vault_seeded",
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operationId));
+
+      const cleanupClaim = await claimAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        claimMs: 60_000,
+      });
+      expect(cleanupClaim.status).toBe("claimed");
+      if (cleanupClaim.status !== "claimed") throw new Error("cleanup claim was not acquired");
+
+      const begun = await beginAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: cleanupClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      });
+      expect(begun).toMatchObject({
+        replayed: false,
+        operation: {
+          expected_image_platform: "linux/amd64",
+          expected_image_reference: null,
+          expected_image_platform_digest: null,
+        },
+        attempt: { state: "cleanup_in_progress", provider_started_at: null },
+        locator: { containerId: null },
+      });
+
+      const finished = await finishAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: cleanupClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator: begun.locator,
+        cleanupReceiptDigest: OTHER_SHA,
+      });
+      expect(finished).toMatchObject({
+        replayed: false,
+        operation: {
+          phase: "vault_seeded",
+          claim_generation: null,
+          expected_image_reference: null,
+          expected_image_platform_digest: null,
+        },
+        attempt: { state: "cleanup_proven", provider_started_at: null },
+      });
+      expect((await readRows()).node.allocated_count).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test(
     "fences cleanup before SSH, serializes takeover, and releases exact capacity once",
     async () => {
       const targetNodeHistoryId = await resetLegacyReservationForCombinedIntent();
@@ -1002,6 +1127,7 @@ describe("restore activation quarantine", () => {
       });
       expect(cleanupClaim.status).toBe("claimed");
       if (cleanupClaim.status !== "claimed") throw new Error("cleanup claim was not acquired");
+      await bindExactImagePlatformAuthorityFixture();
       await markAgentSandboxExactRestoreProviderStarted({
         operationId,
         ownerId: "restore-worker",
@@ -1138,7 +1264,7 @@ describe("restore activation quarantine", () => {
   );
 
   test(
-    "cleans a provider-settled candidate, retains its receipt, and replays lost finish once",
+    "coexists with the exact-image guard while cleanup rearms a provider-settled candidate",
     async () => {
       const targetNodeHistoryId = await resetLegacyReservationForCombinedIntent();
       const intent = await reserveAgentBackupRestoreTargetAndStartReplacementIntent(
@@ -1159,6 +1285,7 @@ describe("restore activation quarantine", () => {
         ownerId: "restore-worker",
         claimMs: 60_000,
       });
+      await bindExactImagePlatformAuthorityFixture();
       const providerInput = {
         operationId,
         ownerId: "restore-worker",
@@ -1269,6 +1396,9 @@ describe("restore activation quarantine", () => {
           phase: "vault_seeded",
           expected_container_id: null,
           claim_generation: null,
+          expected_image_platform: "linux/amd64",
+          expected_image_reference: EXACT_IMAGE_REFERENCE,
+          expected_image_platform_digest: IMAGE_PLATFORM_DIGEST,
         },
         attempt: {
           state: "cleanup_proven",
@@ -1453,6 +1583,7 @@ describe("restore activation quarantine", () => {
         claimMs: 60_000,
       });
       if (claim.status !== "claimed") throw new Error("race cleanup claim was not acquired");
+      await bindExactImagePlatformAuthorityFixture();
       await markAgentSandboxExactRestoreProviderStarted({
         operationId,
         ownerId: "restore-worker",
@@ -1644,7 +1775,10 @@ describe("restore activation quarantine", () => {
         { enabled: false },
         { enabled: true, status: "degraded" as const },
         { status: "healthy" as const, placement_state: "cordoned" as const },
-        { placement_state: "open" as const, metadata: { capacityProvisional: true } },
+        {
+          placement_state: "open" as const,
+          metadata: { architecture: "amd64", capacityProvisional: true },
+        },
       ];
       for (const state of ineligibleStates) {
         await dbWrite
@@ -1653,7 +1787,7 @@ describe("restore activation quarantine", () => {
             enabled: true,
             status: "healthy",
             placement_state: "open",
-            metadata: {},
+            metadata: { architecture: "amd64" },
             ...state,
           })
           .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
@@ -1667,7 +1801,12 @@ describe("restore activation quarantine", () => {
 
       await dbWrite
         .update(dockerNodes)
-        .set({ enabled: true, status: "healthy", placement_state: "open", metadata: {} })
+        .set({
+          enabled: true,
+          status: "healthy",
+          placement_state: "open",
+          metadata: { architecture: "amd64" },
+        })
         .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
       await openAgentBackupRestoreQuarantine(openInput());
       await dbWrite
@@ -1676,7 +1815,7 @@ describe("restore activation quarantine", () => {
           enabled: false,
           status: "degraded",
           placement_state: "cordoned",
-          metadata: { capacityProvisional: true },
+          metadata: { architecture: "amd64", capacityProvisional: true },
         })
         .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
       const replay = await openAgentBackupRestoreQuarantine(openInput());
@@ -1743,7 +1882,7 @@ describe("restore activation quarantine", () => {
           enabled: false,
           status: "degraded",
           placement_state: "cordoned",
-          metadata: { capacityProvisional: true },
+          metadata: { architecture: "amd64", capacityProvisional: true },
         })
         .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
       expect((await recordAgentBackupRestoreQuarantinedContainer(request)).replayed).toBe(true);

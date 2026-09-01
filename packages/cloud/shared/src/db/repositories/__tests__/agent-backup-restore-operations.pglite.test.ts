@@ -64,7 +64,9 @@ import {
   claimAgentBackupRestoreOperation,
   failAgentBackupRestoreOperation,
   heartbeatAgentBackupRestoreOperation,
+  markAgentSandboxExactRestoreProviderStarted,
   openAgentBackupRestoreOperation,
+  recordAgentBackupRestoreExactImagePlatformAuthority,
   reserveAgentBackupRestoreTargetAndStartReplacementIntent,
   reserveAgentBackupRestoreTarget as reserveAgentBackupRestoreTargetRepository,
 } from "../agent-backup-restore-operations";
@@ -82,6 +84,8 @@ const FENCE = "00000000-0000-4000-8000-00000000f008";
 const SHA = "a".repeat(64);
 const CONTAINER = "b".repeat(64);
 const RECEIPT_SHA = "d".repeat(64);
+const IMAGE_REFERENCE = `ghcr.io/elizaos/eliza@sha256:${SHA}`;
+const IMAGE_PLATFORM_DIGEST = `sha256:${"e".repeat(64)}`;
 const KEY_BUNDLE = Buffer.alloc(AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappedBytes, 0x44).toString(
   "base64",
 );
@@ -90,6 +94,7 @@ const TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f010";
 const TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f011";
 const OTHER_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f012";
 const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f013";
+const REPLAY_ONLY_CLAIM_GENERATION = "00000000-0000-4000-8000-00000000f014";
 const USER_ID = "00000000-0000-4000-8000-00000000f020";
 const REPLACEMENT_ATTEMPT_ID = "00000000-0000-4000-8000-00000000f021";
 const VAULT_SEED_RECEIPT_ID = "00000000-0000-4000-8000-00000000f022";
@@ -276,7 +281,9 @@ async function seedTargetNode(
       provider_server_id: null,
       node_incarnation:
         input.incarnation === undefined ? TARGET_NODE_INCARNATION : input.incarnation,
-      metadata: input.capacityProvisional ? { capacityProvisional: true } : {},
+      metadata: input.capacityProvisional
+        ? { architecture: "amd64", capacityProvisional: true }
+        : { architecture: "amd64" },
     })
     .returning();
   if (!node) throw new Error("restore target fixture was not inserted");
@@ -351,7 +358,7 @@ async function openAndClaim(): Promise<{
 async function startExactRestoreReplacementIntentFixture(
   operationId: string,
   claimGeneration: string,
-): Promise<string> {
+) {
   const targetNodeHistoryId = await currentTargetNodeHistoryId(TARGET_NODE_RECORD_ID);
   await dbWrite.execute(
     sql.raw(`
@@ -384,7 +391,7 @@ async function startExactRestoreReplacementIntentFixture(
       activationTokenSha256: SHA,
       activationTokenCiphertext: "sealed-restore-operation-quarantine-token",
     });
-    return intent.target.nodeHistoryId;
+    return intent;
   } finally {
     await dbWrite.execute(
       sql.raw("DROP TRIGGER test_restore_ops_lifecycle_revision_trigger ON agent_sandboxes"),
@@ -469,14 +476,14 @@ async function walkTo(operationId: string, target: AgentBackupRestorePhase): Pro
     ownerId: "restore-worker",
     claimMs: 60_000,
   });
-  const targetNodeHistoryId = await startExactRestoreReplacementIntentFixture(
+  const intent = await startExactRestoreReplacementIntentFixture(
     operationId,
     reservedClaim.claimGeneration,
   );
   await recordVaultSeedReceiptFixture(
     operationId,
     reservedClaim.claimGeneration,
-    targetNodeHistoryId,
+    intent.target.nodeHistoryId,
   );
   for (let index = 0; order[index] !== target; index += 1) {
     const claim = await claimAgentBackupRestoreOperation({
@@ -736,6 +743,185 @@ describe("restore operation spine", () => {
   );
 
   test(
+    "rejects unknown node architecture before mutating capacity or target authority",
+    async () => {
+      await seedTargetNode();
+      await dbWrite
+        .update(dockerNodes)
+        .set({ metadata: {} })
+        .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+      const authority = await openAndClaim();
+
+      await expect(
+        reserveAgentBackupRestoreTarget({
+          ...authority,
+          ownerId: "restore-worker",
+          targetNodeRecordId: TARGET_NODE_RECORD_ID,
+          targetNodeIncarnation: TARGET_NODE_INCARNATION,
+        }),
+      ).rejects.toThrow("explicit amd64 or arm64");
+
+      const [node] = await dbWrite.select().from(dockerNodes);
+      const [operation] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(node?.allocated_count).toBe(0);
+      expect(operation).toMatchObject({
+        expected_node_record_id: null,
+        expected_node_incarnation: null,
+        expected_node_history_id: null,
+        expected_image_digest: null,
+        expected_image_platform: null,
+        expected_image_reference: null,
+        expected_image_platform_digest: null,
+      });
+
+      await dbWrite
+        .update(dockerNodes)
+        .set({ metadata: { architecture: "arm64" } })
+        .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+      const arm64 = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      expect(arm64.target.platform).toBe("linux/arm64");
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "binds exact image platform authority once and replays it after container settlement",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const intent = await startExactRestoreReplacementIntentFixture(
+        authority.operationId,
+        authority.claimGeneration,
+      );
+      expect(intent.target).toMatchObject({
+        platform: "linux/amd64",
+        imageReference: null,
+        imagePlatformDigest: null,
+      });
+      await recordVaultSeedReceiptFixture(
+        authority.operationId,
+        authority.claimGeneration,
+        intent.target.nodeHistoryId,
+      );
+      const imageClaim = await claimAgentBackupRestoreOperation({
+        operationId: authority.operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+
+      const input = {
+        operationId: authority.operationId,
+        ownerId: "restore-worker",
+        claimGeneration: imageClaim.claimGeneration,
+        imageReference: IMAGE_REFERENCE,
+        imagePlatformDigest: IMAGE_PLATFORM_DIGEST,
+      } as const;
+      const first = await recordAgentBackupRestoreExactImagePlatformAuthority(input);
+      expect(first.replayed).toBe(false);
+      expect(first.target).toMatchObject({
+        nodeRecordId: TARGET_NODE_RECORD_ID,
+        imageDigest: "sha256:" + SHA,
+        platform: "linux/amd64",
+        imageReference: IMAGE_REFERENCE,
+        imagePlatformDigest: IMAGE_PLATFORM_DIGEST,
+      });
+
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+        })
+        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+      await expect(recordAgentBackupRestoreExactImagePlatformAuthority(input)).rejects.toThrow(
+        "claim is not live",
+      );
+
+      const settlementClaim = await claimAgentBackupRestoreOperation({
+        operationId: authority.operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      await recordQuarantinedContainerFixture(
+        authority.operationId,
+        settlementClaim.claimGeneration,
+      );
+      const replay = await recordAgentBackupRestoreExactImagePlatformAuthority(input);
+      expect(replay.replayed).toBe(true);
+      expect(replay.operation.expected_image_reference).toBe(IMAGE_REFERENCE);
+      // Settlement consumed the claim generation, so an exact read replay can
+      // only authenticate against the durable lease owner at this point.
+      expect(
+        (
+          await recordAgentBackupRestoreExactImagePlatformAuthority({
+            ...input,
+            claimGeneration: REPLAY_ONLY_CLAIM_GENERATION,
+          })
+        ).replayed,
+      ).toBe(true);
+      await expect(
+        recordAgentBackupRestoreExactImagePlatformAuthority({
+          ...input,
+          ownerId: "other-restore-worker",
+        }),
+      ).rejects.toThrow("claim is not live");
+
+      await expect(
+        recordAgentBackupRestoreExactImagePlatformAuthority({
+          ...input,
+          imagePlatformDigest: "sha256:" + "f".repeat(64),
+        }),
+      ).rejects.toThrow("replay mismatch");
+      await expect(
+        recordAgentBackupRestoreExactImagePlatformAuthority({
+          ...input,
+          imageReference: "ghcr.io/elizaos/other@sha256:" + SHA,
+        }),
+      ).rejects.toThrow("replay mismatch");
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses provider start until the verified image platform bundle is bound",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const intent = await startExactRestoreReplacementIntentFixture(
+        authority.operationId,
+        authority.claimGeneration,
+      );
+      await recordVaultSeedReceiptFixture(
+        authority.operationId,
+        authority.claimGeneration,
+        intent.target.nodeHistoryId,
+      );
+      const providerClaim = await claimAgentBackupRestoreOperation({
+        operationId: authority.operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+
+      await expect(
+        markAgentSandboxExactRestoreProviderStarted({
+          operationId: authority.operationId,
+          ownerId: "restore-worker",
+          claimGeneration: providerClaim.claimGeneration,
+          replacementAttemptId: intent.attempt.id,
+          locator: intent.locator,
+        }),
+      ).rejects.toThrow("requires verified image platform authority");
+    },
+    TIMEOUT,
+  );
+
+  test(
     "rejects expired lease, stale claim, and wrong incarnation before reserving capacity",
     async () => {
       await seedTargetNode();
@@ -799,7 +985,10 @@ describe("restore operation spine", () => {
         { enabled: false },
         { enabled: true, status: "degraded" as const },
         { status: "healthy" as const, placement_state: "cordoned" as const },
-        { placement_state: "open" as const, metadata: { capacityProvisional: true } },
+        {
+          placement_state: "open" as const,
+          metadata: { architecture: "amd64", capacityProvisional: true },
+        },
       ]) {
         await dbWrite
           .update(dockerNodes)
@@ -808,7 +997,7 @@ describe("restore operation spine", () => {
             enabled: true,
             status: "healthy",
             placement_state: "open",
-            metadata: {},
+            metadata: { architecture: "amd64" },
             ...ineligible,
           })
           .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
@@ -1247,7 +1436,7 @@ describe("restore operation spine", () => {
         "agent_backup_restore_operations_expected_shape_check",
       );
 
-      const targetNodeHistoryId = await startExactRestoreReplacementIntentFixture(
+      const intent = await startExactRestoreReplacementIntentFixture(
         operation.id,
         claim.claimGeneration,
       );
@@ -1255,7 +1444,7 @@ describe("restore operation spine", () => {
       const { operation: advanced } = await recordVaultSeedReceiptFixture(
         operation.id,
         claim.claimGeneration,
-        targetNodeHistoryId,
+        intent.target.nodeHistoryId,
       );
       expect(advanced.phase).toBe("vault_seeded");
       expect(advanced.expected_container_id).toBeNull();

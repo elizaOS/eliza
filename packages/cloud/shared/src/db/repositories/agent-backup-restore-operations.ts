@@ -80,6 +80,10 @@ const MIN_CLAIM_MS = 1_000;
 const MAX_CLAIM_MS = 3_600_000;
 const MAX_RETRY_DELAY_MS = 3_600_000;
 const MAX_ACTIVATION_TOKEN_CIPHERTEXT_BYTES = 16_384;
+const SHA256_IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/;
+const GHCR_REPOSITORY_SEGMENT = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+
+export type AgentBackupRestoreExactImagePlatform = "linux/amd64" | "linux/arm64";
 
 export interface OpenAgentBackupRestoreOperationInput {
   authority: AgentBackupRestoreLeaseAuthorityReceipt;
@@ -115,12 +119,34 @@ export interface AgentBackupRestoreTargetAuthority {
   nodeIncarnation: string;
   nodeHistoryId: string;
   imageDigest: string;
+  platform: AgentBackupRestoreExactImagePlatform;
+  imageReference: string | null;
+  imagePlatformDigest: string | null;
 }
 
 export interface ReserveAgentBackupRestoreTargetResult {
   operation: Readonly<AgentBackupRestoreOperation>;
   target: Readonly<AgentBackupRestoreTargetAuthority>;
   replayed: boolean;
+}
+
+export interface RecordAgentBackupRestoreExactImagePlatformAuthorityInput {
+  readonly operationId: string;
+  readonly ownerId: string;
+  readonly claimGeneration: string;
+  readonly imageReference: string;
+  readonly imagePlatformDigest: string;
+}
+
+export interface RecordAgentBackupRestoreExactImagePlatformAuthorityResult {
+  readonly operation: Readonly<AgentBackupRestoreOperation>;
+  readonly target: Readonly<
+    Omit<AgentBackupRestoreTargetAuthority, "imageReference" | "imagePlatformDigest"> & {
+      imageReference: string;
+      imagePlatformDigest: string;
+    }
+  >;
+  readonly replayed: boolean;
 }
 
 export interface ReserveAgentBackupRestoreTargetAndStartReplacementIntentInput {
@@ -221,6 +247,55 @@ function requireActivationTokenCiphertext(value: string): string {
   if (bytes < 1 || bytes > MAX_ACTIVATION_TOKEN_CIPHERTEXT_BYTES || value.includes("\0")) {
     throw new AgentBackupCatalogConflictError(
       `activationTokenCiphertext must contain between 1 and ${MAX_ACTIVATION_TOKEN_CIPHERTEXT_BYTES} UTF-8 bytes`,
+    );
+  }
+  return value;
+}
+
+function requireNodeExactImagePlatform(
+  metadata: Readonly<Record<string, unknown>>,
+): AgentBackupRestoreExactImagePlatform {
+  if (metadata.architecture === "amd64") return "linux/amd64";
+  if (metadata.architecture === "arm64") return "linux/arm64";
+  throw new AgentBackupCatalogConflictError(
+    "Restore target requires explicit amd64 or arm64 node architecture authority",
+  );
+}
+
+function requireImageDigest(value: string, field: string): string {
+  if (typeof value !== "string" || !SHA256_IMAGE_DIGEST.test(value)) {
+    throw new AgentBackupCatalogConflictError(
+      `${field} must be a canonical lowercase sha256 image digest`,
+    );
+  }
+  return value;
+}
+
+function requireExactGhcrImageReference(value: string, parentDigest: string): string {
+  requireImageDigest(parentDigest, "expectedImageDigest");
+  if (
+    typeof value !== "string" ||
+    value.length < 1 ||
+    value.length > 335 ||
+    value !== value.trim() ||
+    /\s/.test(value) ||
+    !value.startsWith("ghcr.io/") ||
+    !value.endsWith(`@${parentDigest}`)
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      "imageReference must be the canonical GHCR reference for the reserved parent digest",
+    );
+  }
+  const suffix = `@${parentDigest}`;
+  const repository = value.slice("ghcr.io/".length, -suffix.length);
+  const segments = repository.split("/");
+  if (
+    repository.length > 255 ||
+    segments.length < 2 ||
+    segments.some((segment) => !GHCR_REPOSITORY_SEGMENT.test(segment))
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      "imageReference must contain a canonical lowercase GHCR repository",
     );
   }
   return value;
@@ -1259,6 +1334,7 @@ export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
       targetNodeIncarnation,
       targetNodeHistoryId,
     );
+    const targetPlatform = requireNodeExactImagePlatform(node.metadata);
 
     const catalogAuthority = await lockAgentBackupCatalogAuthority(
       tx,
@@ -1290,23 +1366,41 @@ export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
       nodeIncarnation: targetNodeIncarnation,
       nodeHistoryId: targetNodeHistoryId,
       imageDigest: manifest.runtime.imageDigest,
+      platform: targetPlatform,
+      imageReference: operation.expected_image_reference,
+      imagePlatformDigest: operation.expected_image_platform_digest,
     });
     const targetFieldCount = [
       operation.expected_node_record_id,
       operation.expected_node_incarnation,
       operation.expected_node_history_id,
       operation.expected_image_digest,
+      operation.expected_image_platform,
     ].filter((value) => value !== null).length;
-    if (targetFieldCount !== 0 && targetFieldCount !== 4) {
+    if (targetFieldCount !== 0 && targetFieldCount !== 5) {
       throw new AgentBackupCatalogConflictError("Restore target authority is only partially set");
     }
-    const targetAlreadyRecorded = targetFieldCount === 4;
+    if (
+      (operation.expected_image_reference === null) !==
+      (operation.expected_image_platform_digest === null)
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image platform authority is only partially set",
+      );
+    }
+    const targetAlreadyRecorded = targetFieldCount === 5;
+    if (!targetAlreadyRecorded && operation.expected_image_reference !== null) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image authority exists without its reserved target",
+      );
+    }
     if (
       targetAlreadyRecorded &&
       (operation.expected_node_record_id !== target.nodeRecordId ||
         operation.expected_node_incarnation !== target.nodeIncarnation ||
         operation.expected_node_history_id !== target.nodeHistoryId ||
-        operation.expected_image_digest !== target.imageDigest)
+        operation.expected_image_digest !== target.imageDigest ||
+        operation.expected_image_platform !== target.platform)
     ) {
       throw new AgentBackupCatalogConflictError("Restore target replay authority mismatch");
     }
@@ -1478,6 +1572,7 @@ export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
           expected_node_incarnation: target.nodeIncarnation,
           expected_node_history_id: target.nodeHistoryId,
           expected_image_digest: target.imageDigest,
+          expected_image_platform: target.platform,
           updated_at: databaseNow,
         })
         .where(
@@ -1490,6 +1585,7 @@ export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
             isNull(agentBackupRestoreOperations.expected_node_incarnation),
             isNull(agentBackupRestoreOperations.expected_node_history_id),
             isNull(agentBackupRestoreOperations.expected_image_digest),
+            isNull(agentBackupRestoreOperations.expected_image_platform),
           ),
         )
         .returning();
@@ -1627,6 +1723,335 @@ export async function reserveAgentBackupRestoreTargetAndStartReplacementIntent(
   });
 }
 
+/**
+ * Bind the registry-verified child manifest after vault seeding and before the
+ * first provider effect. The node platform was already frozen at reservation;
+ * this CAS only accepts the canonical GHCR parent reference and exact child
+ * digest selected for that platform. A response-loss replay adopts the
+ * byte-identical winner, including after atomic provider settlement.
+ */
+export async function recordAgentBackupRestoreExactImagePlatformAuthority(
+  input: RecordAgentBackupRestoreExactImagePlatformAuthorityInput,
+): Promise<RecordAgentBackupRestoreExactImagePlatformAuthorityResult> {
+  const operationId = requireUuid(input.operationId, "operationId");
+  const claimGeneration = requireUuid(input.claimGeneration, "claimGeneration");
+  const ownerId = requireOwnerId(input.ownerId);
+  const imagePlatformDigest = requireImageDigest(input.imagePlatformDigest, "imagePlatformDigest");
+
+  // The first read supplies only immutable lock-order keys and the write-once
+  // parent digest. Exact reference fields are deliberately re-read under lock
+  // so concurrent response-loss callers can adopt the committed winner.
+  const [operationAuthority] = await dbWrite
+    .select()
+    .from(agentBackupRestoreOperations)
+    .where(eq(agentBackupRestoreOperations.id, operationId))
+    .limit(1);
+  if (!operationAuthority) {
+    throw new AgentBackupCatalogConflictError("Restore operation is missing");
+  }
+  if (
+    operationAuthority.expected_node_record_id === null ||
+    operationAuthority.expected_node_incarnation === null ||
+    operationAuthority.expected_node_history_id === null ||
+    operationAuthority.expected_image_digest === null ||
+    operationAuthority.expected_image_platform === null
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      "Restore exact image binding requires complete reserved target authority",
+    );
+  }
+  const imageReference = requireExactGhcrImageReference(
+    input.imageReference,
+    operationAuthority.expected_image_digest,
+  );
+
+  return await dbWrite.transaction(async (tx) => {
+    const [organization] = await tx
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, operationAuthority.organization_id))
+      .for("key share")
+      .limit(1);
+    if (!organization) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image organization authority is missing",
+      );
+    }
+
+    const [backup] = await tx
+      .select({
+        catalogState: agentSandboxBackups.catalog_state,
+        manifestVersion: agentSandboxBackups.manifest_version,
+        canonicalManifestDraft: agentSandboxBackups.manifest_canonical_draft,
+        imageDigest: agentSandboxBackups.image_digest,
+      })
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.id, operationAuthority.backup_id),
+          eq(agentSandboxBackups.catalog_organization_id, operationAuthority.organization_id),
+          eq(agentSandboxBackups.catalog_agent_id, operationAuthority.agent_id),
+          eq(agentSandboxBackups.backup_operation_id, operationAuthority.expected_operation_id),
+          eq(
+            agentSandboxBackups.lifecycle_generation,
+            operationAuthority.expected_activation_generation,
+          ),
+          eq(
+            agentSandboxBackups.lifecycle_revision,
+            operationAuthority.expected_lifecycle_revision,
+          ),
+          eq(agentSandboxBackups.manifest_digest, operationAuthority.expected_manifest_sha256),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !backup ||
+      !hasAgentBackupRestoreAuthority(backup.catalogState) ||
+      backup.manifestVersion !== 3 ||
+      !backup.canonicalManifestDraft ||
+      backup.imageDigest !== operationAuthority.expected_image_digest
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image source lost manifest-v3 authority",
+      );
+    }
+    const { manifest } = await parseAgentBackupManifestV3Authority({
+      canonicalManifestDraft: backup.canonicalManifestDraft,
+      expectedManifestSha256: operationAuthority.expected_manifest_sha256,
+    });
+    if (
+      manifest.operationId !== operationAuthority.expected_operation_id ||
+      manifest.identity.organizationId !== operationAuthority.organization_id ||
+      manifest.identity.agentId !== operationAuthority.agent_id ||
+      manifest.identity.activationGeneration !==
+        operationAuthority.expected_activation_generation ||
+      manifest.identity.lifecycleRevision !==
+        operationAuthority.expected_lifecycle_revision.toString() ||
+      manifest.runtime.imageDigest !== operationAuthority.expected_image_digest
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image manifest authority diverged from its operation",
+      );
+    }
+
+    const [operation] = await tx
+      .select()
+      .from(agentBackupRestoreOperations)
+      .where(eq(agentBackupRestoreOperations.id, operationId))
+      .for("update")
+      .limit(1);
+    if (
+      !operation ||
+      !immutableOperationAuthorityMatches(operation, operationAuthority) ||
+      operation.expected_node_record_id !== operationAuthority.expected_node_record_id ||
+      operation.expected_node_incarnation !== operationAuthority.expected_node_incarnation ||
+      operation.expected_node_history_id !== operationAuthority.expected_node_history_id ||
+      operation.expected_image_digest !== operationAuthority.expected_image_digest ||
+      operation.expected_image_platform !== operationAuthority.expected_image_platform
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image target authority changed before lock",
+      );
+    }
+    const targetNodeRecordId = operation.expected_node_record_id;
+    const targetNodeIncarnation = operation.expected_node_incarnation;
+    const targetNodeHistoryId = operation.expected_node_history_id;
+    const targetImageDigest = operation.expected_image_digest;
+    const targetPlatform = operation.expected_image_platform;
+    if (
+      targetNodeRecordId === null ||
+      targetNodeIncarnation === null ||
+      targetNodeHistoryId === null ||
+      targetImageDigest === null ||
+      targetPlatform === null
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image target authority is incomplete under lock",
+      );
+    }
+
+    const [lease] = await tx
+      .select()
+      .from(agentBackupRestoreLeases)
+      .where(
+        and(
+          eq(agentBackupRestoreLeases.id, operation.lease_id),
+          eq(agentBackupRestoreLeases.organization_id, operation.organization_id),
+          eq(agentBackupRestoreLeases.agent_id, operation.agent_id),
+          eq(agentBackupRestoreLeases.backup_id, operation.backup_id),
+          eq(agentBackupRestoreLeases.restore_attempt_id, operation.restore_attempt_id),
+          eq(agentBackupRestoreLeases.owner_id, operation.lease_owner_id),
+          eq(agentBackupRestoreLeases.generation, operation.lease_generation),
+          eq(agentBackupRestoreLeases.catalog_epoch, operation.catalog_epoch),
+          eq(agentBackupRestoreLeases.copy_role, operation.copy_role),
+          eq(agentBackupRestoreLeases.operation_id, operation.expected_operation_id),
+          eq(
+            agentBackupRestoreLeases.activation_generation,
+            operation.expected_activation_generation,
+          ),
+          eq(agentBackupRestoreLeases.lifecycle_revision, operation.expected_lifecycle_revision),
+          eq(agentBackupRestoreLeases.expected_manifest_sha256, operation.expected_manifest_sha256),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!lease) {
+      throw new AgentBackupCatalogConflictError("Restore exact image lease fence was lost");
+    }
+
+    const [node] = await tx
+      .select()
+      .from(dockerNodes)
+      .where(eq(dockerNodes.id, targetNodeRecordId))
+      .for("update")
+      .limit(1);
+    if (
+      !node ||
+      node.node_incarnation !== targetNodeIncarnation ||
+      node.current_node_history_id !== targetNodeHistoryId
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image target node occurrence changed",
+      );
+    }
+    await proveExactAgentNodeOccurrenceForLockedNode(
+      tx,
+      node,
+      targetNodeIncarnation,
+      targetNodeHistoryId,
+    );
+    if (requireNodeExactImagePlatform(node.metadata) !== targetPlatform) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image target platform differs from reserved authority",
+      );
+    }
+
+    const catalogAuthority = await lockAgentBackupCatalogAuthority(
+      tx,
+      operation.organization_id,
+      operation.agent_id,
+    );
+    if (catalogAuthority.catalog_revision !== operation.catalog_epoch) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image authority was invalidated by a catalogue revision",
+      );
+    }
+
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (lease.released_at !== null || lease.expires_at <= databaseNow) {
+      throw new AgentBackupCatalogConflictError("Restore exact image lease is expired or released");
+    }
+    const referenceIsSet = operation.expected_image_reference !== null;
+    const platformDigestIsSet = operation.expected_image_platform_digest !== null;
+    if (referenceIsSet !== platformDigestIsSet) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image platform authority is only partially set",
+      );
+    }
+    const settledReplay =
+      referenceIsSet &&
+      operation.phase === "container_created" &&
+      operation.expected_container_id !== null;
+    const claimIsLive =
+      operation.claim_owner === ownerId &&
+      operation.claim_generation === claimGeneration &&
+      operation.claim_expires_at !== null &&
+      operation.claim_expires_at > databaseNow;
+    // Provider settlement atomically consumes its claim. Permit only an
+    // immutable, byte-identical read replay when no later worker owns the
+    // operation and the caller is still the durable lease owner. The consumed
+    // claim generation is intentionally not reconstructed or caller-trusted.
+    const unclaimedSettledReplay =
+      settledReplay &&
+      operation.claim_owner === null &&
+      operation.claim_generation === null &&
+      operation.claim_expires_at === null &&
+      operation.lease_owner_id === ownerId;
+    if (!claimIsLive && !unclaimedSettledReplay) {
+      throw new AgentBackupCatalogConflictError("Restore exact image operation claim is not live");
+    }
+
+    if (referenceIsSet) {
+      if (
+        (operation.phase !== "vault_seeded" || operation.expected_container_id !== null) &&
+        !settledReplay
+      ) {
+        throw new AgentBackupCatalogConflictError(
+          "Restore exact image authority cannot replay from this phase",
+        );
+      }
+      if (
+        operation.expected_image_reference !== imageReference ||
+        operation.expected_image_platform_digest !== imagePlatformDigest
+      ) {
+        throw new AgentBackupCatalogConflictError(
+          "Restore exact image platform authority replay mismatch",
+        );
+      }
+      return Object.freeze({
+        operation: Object.freeze(operation),
+        target: Object.freeze({
+          nodeRecordId: node.id,
+          nodeId: node.node_id,
+          nodeIncarnation: targetNodeIncarnation,
+          nodeHistoryId: targetNodeHistoryId,
+          imageDigest: targetImageDigest,
+          platform: targetPlatform,
+          imageReference,
+          imagePlatformDigest,
+        }),
+        replayed: true,
+      });
+    }
+    if (operation.phase !== "vault_seeded" || operation.expected_container_id !== null) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image authority can first bind only in vault_seeded phase",
+      );
+    }
+
+    const [recorded] = await tx
+      .update(agentBackupRestoreOperations)
+      .set({
+        expected_image_reference: imageReference,
+        expected_image_platform_digest: imagePlatformDigest,
+        updated_at: databaseNow,
+      })
+      .where(
+        and(
+          eq(agentBackupRestoreOperations.id, operation.id),
+          eq(agentBackupRestoreOperations.phase, "vault_seeded"),
+          isNull(agentBackupRestoreOperations.expected_container_id),
+          eq(agentBackupRestoreOperations.claim_owner, ownerId),
+          eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
+          gt(agentBackupRestoreOperations.claim_expires_at, databaseNow),
+          isNull(agentBackupRestoreOperations.expected_image_reference),
+          isNull(agentBackupRestoreOperations.expected_image_platform_digest),
+        ),
+      )
+      .returning();
+    if (!recorded) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore exact image platform authority lost its CAS",
+      );
+    }
+    return Object.freeze({
+      operation: Object.freeze(recorded),
+      target: Object.freeze({
+        nodeRecordId: node.id,
+        nodeId: node.node_id,
+        nodeIncarnation: recorded.expected_node_incarnation!,
+        nodeHistoryId: recorded.expected_node_history_id!,
+        imageDigest: recorded.expected_image_digest!,
+        platform: recorded.expected_image_platform!,
+        imageReference,
+        imagePlatformDigest,
+      }),
+      replayed: false,
+    });
+  });
+}
+
 type ExactRestoreProviderBoundaryMode =
   | "start"
   | "created"
@@ -1674,10 +2099,20 @@ async function runAgentSandboxExactRestoreProviderBoundary(
     operationAuthority.expected_node_record_id === null ||
     operationAuthority.expected_node_incarnation === null ||
     operationAuthority.expected_node_history_id === null ||
-    operationAuthority.expected_image_digest === null
+    operationAuthority.expected_image_digest === null ||
+    operationAuthority.expected_image_platform === null
   ) {
     throw new AgentBackupCatalogConflictError(
       "Exact restore provider boundary requires complete target authority",
+    );
+  }
+  if (
+    !cleanupBoundary &&
+    (operationAuthority.expected_image_reference === null ||
+      operationAuthority.expected_image_platform_digest === null)
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      "Exact restore provider boundary requires verified image platform authority",
     );
   }
 
@@ -1774,6 +2209,10 @@ async function runAgentSandboxExactRestoreProviderBoundary(
       operation.expected_node_incarnation !== operationAuthority.expected_node_incarnation ||
       operation.expected_node_history_id !== operationAuthority.expected_node_history_id ||
       operation.expected_image_digest !== operationAuthority.expected_image_digest ||
+      operation.expected_image_platform !== operationAuthority.expected_image_platform ||
+      operation.expected_image_reference !== operationAuthority.expected_image_reference ||
+      operation.expected_image_platform_digest !==
+        operationAuthority.expected_image_platform_digest ||
       operation.expected_container_id !== operationAuthority.expected_container_id
     ) {
       throw new AgentBackupCatalogConflictError(
@@ -1882,6 +2321,14 @@ async function runAgentSandboxExactRestoreProviderBoundary(
       operation.expected_node_incarnation!,
       operation.expected_node_history_id!,
     );
+    if (
+      !cleanupBoundary &&
+      requireNodeExactImagePlatform(node.metadata) !== operation.expected_image_platform
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Exact restore provider target platform differs from reserved authority",
+      );
+    }
 
     const catalogAuthority = await lockAgentBackupCatalogAuthority(
       tx,
@@ -2452,6 +2899,7 @@ export async function reserveAgentBackupRestoreTarget(params: {
       targetNodeIncarnation,
       targetNodeHistoryId,
     );
+    const targetPlatform = requireNodeExactImagePlatform(node.metadata);
 
     const catalogAuthority = await lockAgentBackupCatalogAuthority(
       tx,
@@ -2486,6 +2934,9 @@ export async function reserveAgentBackupRestoreTarget(params: {
       nodeIncarnation: targetNodeIncarnation,
       nodeHistoryId: targetNodeHistoryId,
       imageDigest: manifest.runtime.imageDigest,
+      platform: targetPlatform,
+      imageReference: operation.expected_image_reference,
+      imagePlatformDigest: operation.expected_image_platform_digest,
     });
     const targetAlreadyRecorded = operation.expected_node_record_id !== null;
     if (targetAlreadyRecorded) {
@@ -2493,7 +2944,8 @@ export async function reserveAgentBackupRestoreTarget(params: {
         operation.expected_node_record_id !== target.nodeRecordId ||
         operation.expected_node_incarnation !== target.nodeIncarnation ||
         operation.expected_node_history_id !== target.nodeHistoryId ||
-        operation.expected_image_digest !== target.imageDigest
+        operation.expected_image_digest !== target.imageDigest ||
+        operation.expected_image_platform !== target.platform
       ) {
         throw new AgentBackupCatalogConflictError("Restore target replay authority mismatch");
       }
@@ -2502,7 +2954,10 @@ export async function reserveAgentBackupRestoreTarget(params: {
     if (
       operation.expected_node_incarnation !== null ||
       operation.expected_node_history_id !== null ||
-      operation.expected_image_digest !== null
+      operation.expected_image_digest !== null ||
+      operation.expected_image_platform !== null ||
+      operation.expected_image_reference !== null ||
+      operation.expected_image_platform_digest !== null
     ) {
       throw new AgentBackupCatalogConflictError("Restore target authority is only partially set");
     }
@@ -2550,6 +3005,7 @@ export async function reserveAgentBackupRestoreTarget(params: {
         expected_node_incarnation: target.nodeIncarnation,
         expected_node_history_id: target.nodeHistoryId,
         expected_image_digest: target.imageDigest,
+        expected_image_platform: target.platform,
         updated_at: databaseNow,
       })
       .where(
@@ -2561,6 +3017,9 @@ export async function reserveAgentBackupRestoreTarget(params: {
           sql`${agentBackupRestoreOperations.expected_node_incarnation} IS NULL`,
           sql`${agentBackupRestoreOperations.expected_node_history_id} IS NULL`,
           sql`${agentBackupRestoreOperations.expected_image_digest} IS NULL`,
+          sql`${agentBackupRestoreOperations.expected_image_platform} IS NULL`,
+          sql`${agentBackupRestoreOperations.expected_image_reference} IS NULL`,
+          sql`${agentBackupRestoreOperations.expected_image_platform_digest} IS NULL`,
         ),
       )
       .returning();
@@ -2603,6 +3062,13 @@ export async function advanceAgentBackupRestoreOperation(params: {
   } else if (toRank < 0) {
     throw new AgentBackupCatalogConflictError(`${params.toPhase} is not a resumable phase`);
   }
+  // Fail closed for structurally typed or JavaScript callers still sending the
+  // retired generic identity bag before classifying any requested phase.
+  if ("recordedIdentity" in params) {
+    throw new AgentBackupCatalogConflictError(
+      "Generic restore advance cannot record a container identity",
+    );
+  }
   if (params.toPhase === "vault_seeded") {
     throw new AgentBackupCatalogConflictError(
       "Restore vault seeding must be recorded through vault-seed receipt authority",
@@ -2612,14 +3078,6 @@ export async function advanceAgentBackupRestoreOperation(params: {
   if (params.toPhase === "container_created" && !resumingRecordedContainer) {
     throw new AgentBackupCatalogConflictError(
       "Restore container creation must be recorded through quarantine authority",
-    );
-  }
-  // Fail closed for structurally typed or JavaScript callers still sending the
-  // retired generic identity bag. The quarantine writer is the only API allowed
-  // to bind a container id and advance the matching phase atomically.
-  if ("recordedIdentity" in params) {
-    throw new AgentBackupCatalogConflictError(
-      "Generic restore advance cannot record a container identity",
     );
   }
   if (params.receiptDigest !== undefined) requireSha256(params.receiptDigest, "receiptDigest");
