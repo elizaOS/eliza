@@ -2,9 +2,10 @@
  * Proves Worker organization admission reads caches and writes only its
  * Durable Object lease before provider dispatch.
  *
- * The real pricing lookup runs against repository/catalog tripwires: a cold
- * request must reject before those reads finish, while the retry after its
- * `waitUntil` hydration performs zero authoritative pricing calls.
+ * The real pricing lookup runs against repository/catalog tripwires: a normal
+ * cold request consumes its coalesced authoritative rates before admission,
+ * while persistence remains under `waitUntil` and later requests perform zero
+ * authoritative pricing calls.
  */
 
 process.env.MOCK_REDIS = "1";
@@ -235,11 +236,7 @@ mock.module("./inference-billing-deferred", () => ({
   },
 }));
 
-const {
-  admitOrganizationInference,
-  InferencePricingCacheWarmingError,
-  InferencePricingCacheUnavailableError,
-} = await import("./organization-inference-admission");
+const { admitOrganizationInference } = await import("./organization-inference-admission");
 const { __clearPersistedPricingCache } = await import("./ai-pricing/cache");
 const { __clearInferenceAffiliateCacheState } = await import("./inference-affiliate-cache");
 
@@ -274,16 +271,11 @@ function admissionParams(
 
 async function hydratePricing(model: string): Promise<void> {
   const background: Promise<unknown>[] = [];
-  const error = await admitOrganizationInference(admissionParams(model, background)).then(
-    () => null,
-    (reason: unknown) => reason,
-  );
-  expect(
-    error instanceof InferencePricingCacheWarmingError ||
-      error instanceof InferencePricingCacheUnavailableError,
-  ).toBe(true);
+  const admission = await admitOrganizationInference(admissionParams(model, background));
+  expect(admission.mode).toBe("durable_object_debit");
   expect(background).toHaveLength(1);
   await background[0];
+  acquireInferenceAdmissionLease.mockClear();
 }
 
 beforeEach(() => {
@@ -320,33 +312,29 @@ afterEach(() => {
   setSystemTime();
 });
 
-test("cold pricing rejects immediately and owns authoritative hydration under waitUntil", async () => {
+test("cold pricing joins authoritative hydration before admission while persistence stays background", async () => {
   const model = nextModel();
   const releaseRepository = Promise.withResolvers<void>();
   repositoryBlock = releaseRepository.promise;
   const background: Promise<unknown>[] = [];
 
-  const outcome = await Promise.race([
-    admitOrganizationInference(admissionParams(model, background)).then(
-      () => ({ kind: "resolved" as const }),
-      (error: unknown) => ({ kind: "rejected" as const, error }),
-    ),
+  const pending = admitOrganizationInference(admissionParams(model, background));
+  const early = await Promise.race([
+    pending.then(() => ({ kind: "resolved" as const })),
     new Promise<{ kind: "timeout" }>((resolve) =>
       setTimeout(() => resolve({ kind: "timeout" }), 100),
     ),
   ]);
 
-  expect(outcome.kind).toBe("rejected");
-  if (outcome.kind !== "rejected") throw new Error("cold admission joined pricing hydration");
-  expect(
-    outcome.error instanceof InferencePricingCacheWarmingError ||
-      outcome.error instanceof InferencePricingCacheUnavailableError,
-  ).toBe(true);
+  expect(early.kind).toBe("timeout");
   expect(background).toHaveLength(1);
   expect(reserveCredits).not.toHaveBeenCalled();
+  expect(acquireInferenceAdmissionLease).not.toHaveBeenCalled();
 
   releaseRepository.resolve();
-  await background[0];
+  const admission = await pending;
+  expect(admission.mode).toBe("durable_object_debit");
+  await Promise.all(background);
   expect(pairReads).toBe(2);
   expect(fallbackReads).toBe(0);
   expect(catalogReads).toBe(0);
