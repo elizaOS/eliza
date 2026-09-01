@@ -104,18 +104,29 @@ changes in unknown arrays plus every non-default or unknown nested rule-policy
 field fail closed with redacted field paths.
 
 `repository-ruleset-drift.yml` performs a read-only semantic readback of the
-active main manifest every six hours, by manual dispatch, and through the
+active main manifest every six hours and through the
 `repository_ruleset_drift` external repository-dispatch event. It contains no
-apply route. A green readback proves configuration parity only; owner audit-log
-review plus red/green and direct-push canaries remain required after an
-authorized apply. External and scheduled readback requires an owner-provisioned
-`REPOSITORY_RULESET_READ_TOKEN` Actions secret with repository
-`Administration: read`; the workflow-scoped `GITHUB_TOKEN` cannot request
-that repository permission and is never used for this readback. The disabled
-develop candidate is checked by source contract tests, not treated as live
-configuration. Until the credential is provisioned and the reviewed main
-manifest receives its separately authorized initial apply, scheduled drift
-runs are expected to fail closed; merging this source alone cannot make the
+arbitrary-ref manual dispatch and checks out the immutable event
+`${{ github.sha }}`, never a floating branch tip. The job also refuses any event
+whose ref is not exact `refs/heads/develop`. It contains no apply route. A
+green readback proves configuration parity only; owner audit-log review plus
+red/green and direct-push canaries remain required after an authorized apply.
+
+External and scheduled readback requires a dedicated
+`repository-ruleset-readback` GitHub Environment whose deployment branch policy
+allows only exact branch `develop`. The Administration-read credential must be
+stored only in that Environment as `REPOSITORY_RULESET_READ_ENV_TOKEN`; a
+repository- or organization-scoped secret with that name is forbidden. The
+workflow-scoped `GITHUB_TOKEN` cannot request repository Administration and is
+never used for this readback. Owners must first make `develop` admission
+effective, complete semantic readback and owner canaries, then attest the
+Environment policy, and only then provision the Environment secret. The token
+must be removed before any admission or Environment policy is weakened.
+
+The disabled develop candidate is checked by source contract tests, not treated
+as live configuration. Until that protection-before-token sequence is complete,
+the dedicated Environment and credential are expected to be absent and
+scheduled drift runs fail closed; merging this source alone cannot make the
 readback green.
 
 The GitHub Actions App pin rejects a same-name status from another app, but it

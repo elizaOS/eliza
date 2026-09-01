@@ -54,7 +54,8 @@ const rulesetDriftSchedule = `name: Repository Ruleset Drift
 on:
   schedule:
     - cron: "17 */6 * * *"
-  workflow_dispatch:
+  repository_dispatch:
+    types: [repository_ruleset_drift]
 jobs: {}
 `;
 
