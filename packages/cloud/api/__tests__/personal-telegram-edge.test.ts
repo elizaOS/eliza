@@ -1,8 +1,9 @@
 /** Drives the edge Telegram connector through Hono with real shared state-machine code. */
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { PERSONAL_SHARED_FAILURE_REPLY } from "@elizaos/cloud-services-common/personal-shared-failure";
 import { Hono } from "hono";
+import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import {
   dispatchPersonalTelegramReminder,
@@ -834,8 +835,10 @@ describe("Personal Shared Telegram edge", () => {
 
   test("delivers one exact-once fallback after transport attempts are exhausted", async () => {
     const ledger = namespace();
+    const info = spyOn(logger, "info").mockImplementation(() => undefined);
+    const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
     const turn = mock(async () => {
-      throw new Error("private transport detail");
+      throw new TypeError("private transport detail");
     });
     const sentTexts: string[] = [];
     globalThis.fetch = mock(async (_input, init) => {
@@ -852,6 +855,31 @@ describe("Personal Shared Telegram edge", () => {
     expect(turn).toHaveBeenCalledTimes(3);
     expect(sentTexts).toEqual([PERSONAL_SHARED_FAILURE_REPLY]);
     expect(JSON.stringify(sentTexts)).not.toContain("private transport detail");
+    expect(warn).toHaveBeenCalledWith(
+      "[PersonalTelegramEdge] pre-egress turn failed; sending safe fallback",
+      expect.objectContaining({ attempts: 3 }),
+    );
+    expect(info).toHaveBeenCalledWith(
+      "[PersonalTelegramEdge] connector message completed",
+      expect.objectContaining({ attempts: 3, fallbackDelivered: true }),
+    );
+  });
+
+  test("propagates an unexpected turn fault without sending a fallback", async () => {
+    const ledger = namespace();
+    const turn = mock(async () => {
+      throw new RangeError("unexpected programmer fault");
+    });
+    const sentTexts: string[] = [];
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      if (body.text) sentTexts.push(body.text);
+      return Response.json({ ok: true, result: true });
+    }) as unknown as typeof fetch;
+
+    expect((await run(ledger, turn, telegramRequest(81623))).status).toBe(500);
+    expect(turn).toHaveBeenCalledTimes(3);
+    expect(sentTexts).toEqual([]);
   });
 
   test.each([

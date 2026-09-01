@@ -70,6 +70,41 @@ function safeObservedErrorName(error: unknown): string {
   return SAFE_OBSERVED_ERROR_NAMES.has(name) ? name : "OtherError";
 }
 
+class PersonalTelegramPreEgressError extends Error {
+  override readonly name = "PersonalTelegramPreEgressError";
+  readonly failure: ReturnType<typeof readPersonalSharedFailureMetadata> | null;
+  readonly attempts: number | null;
+  readonly turnMs: number | null;
+
+  constructor(
+    message: string,
+    options?: {
+      cause?: unknown;
+      failure?: ReturnType<typeof readPersonalSharedFailureMetadata> | null;
+      attempts?: number;
+      turnMs?: number;
+    },
+  ) {
+    super(
+      message,
+      options?.cause === undefined ? undefined : { cause: options.cause },
+    );
+    this.failure = options?.failure ?? null;
+    this.attempts = options?.attempts ?? null;
+    this.turnMs = options?.turnMs ?? null;
+  }
+}
+
+function isExpectedTurnTransportFailure(error: unknown): boolean {
+  const transportCause = error instanceof Error ? error.cause : undefined;
+  return (
+    transportCause instanceof TypeError ||
+    (transportCause instanceof DOMException &&
+      (transportCause.name === "AbortError" ||
+        transportCause.name === "TimeoutError"))
+  );
+}
+
 export interface TelegramEdgeDeps {
   runTurn(
     body: Record<string, unknown>,
@@ -726,47 +761,65 @@ async function runTurnWithRetry(
   traceId: string,
 ): Promise<{ response: Response; attempts: number; turnMs: number }> {
   const maxAttempts = event.voiceNote ? VOICE_MAX_ATTEMPTS : MAX_ATTEMPTS;
-  const result = await executeResponseAttempts({
-    maxAttempts,
-    honorExplicitRetryable: true,
-    request: () => deps.runTurn(body, traceId, c.env, c.executionCtx),
-    retryStatuses: !event.voiceNote,
-    retryTransport: !event.voiceNote,
-    retryDelayCapMs: RETRY_DELAY_CAP_MS,
-    observe: (observation) => {
-      const response = observation.response;
-      const failure = response
-        ? readPersonalSharedFailureMetadata(response)
-        : null;
-      const context = {
-        traceId,
-        platform: "telegram",
-        messageId: event.messageId,
-        attempt: observation.attempt,
-        maxAttempts: observation.maxAttempts,
-        durationMs: observation.durationMs,
-        status: response?.status ?? null,
-        retryable: observation.retryable,
-        retryReason: observation.retryReason,
-        retryAfterSeconds: observation.retryAfterSeconds,
-        retryDelayMs: observation.retryDelayMs,
-        workerServerTiming: response?.headers.get("Server-Timing") ?? null,
-        failureStage: failure?.stage ?? null,
-        failureName: failure?.name ?? null,
-        failureCauseName: failure?.causeName ?? null,
-        ...(observation.error
-          ? {
-              errorName: safeObservedErrorName(observation.error),
-            }
-          : {}),
-      };
-      if (response?.ok) {
-        logger.info("[PersonalTelegramEdge] turn attempt completed", context);
-      } else {
-        logger.warn("[PersonalTelegramEdge] turn attempt failed", context);
-      }
-    },
-  });
+  const startedAt = performance.now();
+  let observedAttempts = 0;
+  let result: Awaited<ReturnType<typeof executeResponseAttempts>>;
+  try {
+    result = await executeResponseAttempts({
+      maxAttempts,
+      honorExplicitRetryable: true,
+      request: () => deps.runTurn(body, traceId, c.env, c.executionCtx),
+      retryStatuses: !event.voiceNote,
+      retryTransport: !event.voiceNote,
+      retryDelayCapMs: RETRY_DELAY_CAP_MS,
+      observe: (observation) => {
+        observedAttempts = observation.attempt;
+        const response = observation.response;
+        const failure = response
+          ? readPersonalSharedFailureMetadata(response)
+          : null;
+        const context = {
+          traceId,
+          platform: "telegram",
+          messageId: event.messageId,
+          attempt: observation.attempt,
+          maxAttempts: observation.maxAttempts,
+          durationMs: observation.durationMs,
+          status: response?.status ?? null,
+          retryable: observation.retryable,
+          retryReason: observation.retryReason,
+          retryAfterSeconds: observation.retryAfterSeconds,
+          retryDelayMs: observation.retryDelayMs,
+          workerServerTiming: response?.headers.get("Server-Timing") ?? null,
+          failureStage: failure?.stage ?? null,
+          failureName: failure?.name ?? null,
+          failureCauseName: failure?.causeName ?? null,
+          ...(observation.error
+            ? {
+                errorName: safeObservedErrorName(observation.error),
+              }
+            : {}),
+        };
+        if (response?.ok) {
+          logger.info("[PersonalTelegramEdge] turn attempt completed", context);
+        } else {
+          logger.warn("[PersonalTelegramEdge] turn attempt failed", context);
+        }
+      },
+    });
+  } catch (error) {
+    if (!isExpectedTurnTransportFailure(error)) throw error;
+    // error-policy:J2 preserve the exact observed retry receipt when a known
+    // transport failure exhausts before the caller can receive a result.
+    throw new PersonalTelegramPreEgressError(
+      "Personal Shared turn transport failed before egress",
+      {
+        cause: error,
+        attempts: observedAttempts,
+        turnMs: Math.round(performance.now() - startedAt),
+      },
+    );
+  }
   return {
     response: result.response,
     attempts: result.attempts,
@@ -883,14 +936,23 @@ export async function handlePersonalTelegramEdge(
             return;
           }
           let reply: string | null = null;
-          let fallbackFailure: ReturnType<
-            typeof readPersonalSharedFailureMetadata
-          > | null = null;
-          let preEgressErrorName: string | null = null;
+          let preEgressError: PersonalTelegramPreEgressError | null = null;
           try {
-            const voiceNote = event.voiceNote
-              ? await resolveTelegramVoiceNote(config, event)
-              : undefined;
+            let voiceNote:
+              | Awaited<ReturnType<typeof resolveTelegramVoiceNote>>
+              | undefined;
+            try {
+              voiceNote = event.voiceNote
+                ? await resolveTelegramVoiceNote(config, event)
+                : undefined;
+            } catch (error) {
+              // error-policy:J2 provider-backed voice resolution failures gain
+              // explicit pre-egress context while preserving their cause.
+              throw new PersonalTelegramPreEgressError(
+                "Telegram voice note resolution failed before egress",
+                { cause: error },
+              );
+            }
             const turn = await runTurnWithRetry(
               c,
               deps,
@@ -907,34 +969,71 @@ export async function handlePersonalTelegramEdge(
             turnMs = turn.turnMs;
             attempts = turn.attempts;
             if (!turn.response.ok) {
-              fallbackFailure = readPersonalSharedFailureMetadata(
-                turn.response,
+              const failure = readPersonalSharedFailureMetadata(turn.response);
+              try {
+                await turn.response.body?.cancel();
+              } catch (error) {
+                // error-policy:J6 response cleanup cannot replace the typed
+                // pre-egress failure already established by the status.
+                logger.warn(
+                  "[PersonalTelegramEdge] turn failure body cleanup failed",
+                  {
+                    traceId,
+                    platform: "telegram",
+                    messageId: event.messageId,
+                    status: turn.response.status,
+                    errorName: safeObservedErrorName(error),
+                  },
+                );
+              }
+              throw new PersonalTelegramPreEgressError(
+                `Personal Shared turn failed before egress (${turn.response.status})`,
+                { failure },
               );
-              await turn.response.body?.cancel();
             } else {
-              const payload: unknown = await turn.response.json();
+              let payload: unknown;
+              try {
+                payload = await turn.response.json();
+              } catch (error) {
+                // error-policy:J3 a successful response remains untrusted
+                // until its JSON contract parses before provider egress.
+                throw new PersonalTelegramPreEgressError(
+                  "Personal Shared turn returned invalid JSON",
+                  { cause: error },
+                );
+              }
               const candidate =
                 payload && typeof payload === "object" && "data" in payload
                   ? (payload.data as { reply?: unknown } | null)?.reply
                   : undefined;
               if (typeof candidate !== "string") {
-                throw new TypeError(
+                throw new PersonalTelegramPreEgressError(
                   "Personal Shared edge turn returned no reply",
                 );
               }
               reply = candidate;
             }
           } catch (error) {
-            // error-policy:J4 authenticated private Telegram turns degrade to
-            // the explicit safe failure reply before any provider egress.
-            preEgressErrorName = safeObservedErrorName(error);
+            // error-policy:J4 only the typed, expected pre-egress failure
+            // shape may degrade to the explicit private Telegram reply.
+            if (!(error instanceof PersonalTelegramPreEgressError)) throw error;
+            preEgressError = error;
+            if (error.attempts !== null) attempts = error.attempts;
+            if (error.turnMs !== null) turnMs = error.turnMs;
           }
-          if (fallbackFailure || preEgressErrorName) {
+          if (preEgressError) {
             if (event.chatType !== "private" || event.membershipChange) {
-              throw new Error(
+              // error-policy:J2 add the non-private delivery context while
+              // preserving the exact typed pre-egress failure as the cause.
+              throw new PersonalTelegramPreEgressError(
                 "Personal Shared non-private turn failed before egress",
+                {
+                  cause: preEgressError,
+                  failure: preEgressError.failure,
+                },
               );
             }
+            const fallbackFailure = preEgressError.failure;
             logger.warn(
               "[PersonalTelegramEdge] pre-egress turn failed; sending safe fallback",
               {
@@ -947,7 +1046,7 @@ export async function handlePersonalTelegramEdge(
                 failureName: fallbackFailure?.name ?? null,
                 failureCauseName: fallbackFailure?.causeName ?? null,
                 retryable: fallbackFailure?.retryable ?? false,
-                preEgressErrorName,
+                preEgressErrorName: safeObservedErrorName(preEgressError.cause),
               },
             );
             const egressStartedAt = performance.now();
