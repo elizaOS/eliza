@@ -8,6 +8,7 @@ import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarAllDayRange,
   LifeOpsCalendarEvent,
   LifeOpsCalendarRecurrenceScope,
 } from "@elizaos/shared";
@@ -150,6 +151,7 @@ export interface CalendarMutationUpdateRequest {
   readonly location?: string;
   readonly startAt?: string;
   readonly endAt?: string;
+  readonly allDay?: LifeOpsCalendarAllDayRange;
   readonly timeZone?: string;
   readonly attendees?: CreateLifeOpsCalendarEventAttendee[];
   readonly recurrence?: string[];

@@ -134,6 +134,7 @@ export interface MicrosoftGraphCalendarPort {
     location?: string | null;
     startAt: string;
     endAt: string;
+    isAllDay: boolean;
     attendees: readonly CreateLifeOpsCalendarEventAttendee[];
     notifyAttendees: boolean;
     idempotencyKey: string;
@@ -902,6 +903,7 @@ export class DefaultMicrosoftGraphCalendarPort
     location?: string | null;
     startAt: string;
     endAt: string;
+    isAllDay: boolean;
     attendees: readonly CreateLifeOpsCalendarEventAttendee[];
     notifyAttendees: boolean;
     idempotencyKey: string;
@@ -965,6 +967,7 @@ export class DefaultMicrosoftGraphCalendarPort
           },
           start: { dateTime: startAt, timeZone: "UTC" },
           end: { dateTime: endAt, timeZone: "UTC" },
+          isAllDay: args.isAllDay,
           location: { displayName: args.location?.trim() ?? "" },
           attendees: args.attendees.map((attendee) => ({
             emailAddress: {

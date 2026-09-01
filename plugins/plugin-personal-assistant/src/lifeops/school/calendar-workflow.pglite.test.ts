@@ -250,6 +250,11 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     title: string;
     startAt: string | undefined;
     endAt: string | undefined;
+    allDay: { startDate: string; endDateExclusive: string } | undefined;
+  }>;
+  let updatedRanges: Array<{
+    eventId: string;
+    allDay: { startDate: string; endDateExclusive: string } | undefined;
   }>;
   let clock: Date;
 
@@ -270,6 +275,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     text = twoColumnText;
     creates = 0;
     createdRanges = [];
+    updatedRanges = [];
     clock = new Date("2026-08-30T12:00:00.000Z");
     const lookupFn = async () => [{ address: "93.184.216.34", family: 4 }];
     const pinnedFetchImpl = vi.fn(async ({ url }: { url: URL }) => {
@@ -302,6 +308,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
           title: request.title,
           startAt: request.startAt,
           endAt: request.endAt,
+          allDay: request.allDay,
         });
         return {
           outcome: "event",
@@ -310,6 +317,10 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
         };
       },
       async update(_url, request) {
+        updatedRanges.push({
+          eventId: request.eventId,
+          allDay: request.allDay,
+        });
         return event(request.eventId, request.title ?? "updated");
       },
       async cancel() {
@@ -376,7 +387,7 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     expect(creates).toBe(2);
   });
 
-  it("sends all-day boundaries with DST-aware RFC 3339 offsets", async () => {
+  it("sends civil all-day ranges across standard and daylight time", async () => {
     text = ["2026-01-15 | Winter event", "Summer event | 2026-07-15"].join(
       "\n",
     );
@@ -392,15 +403,66 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     expect(createdRanges).toEqual([
       {
         title: "Winter event",
-        startAt: "2026-01-15T00:00:00-05:00",
-        endAt: "2026-01-16T00:00:00-05:00",
+        startAt: undefined,
+        endAt: undefined,
+        allDay: {
+          startDate: "2026-01-15",
+          endDateExclusive: "2026-01-16",
+        },
       },
       {
         title: "Summer event",
-        startAt: "2026-07-15T00:00:00-04:00",
-        endAt: "2026-07-16T00:00:00-04:00",
+        startAt: undefined,
+        endAt: undefined,
+        allDay: {
+          startDate: "2026-07-15",
+          endDateExclusive: "2026-07-16",
+        },
       },
     ]);
+  });
+
+  it("creates a reviewable one-time migration for legacy timed school rows, then returns to hash no-op", async () => {
+    const first = await workflow.run();
+    if (first.state !== "awaiting_approval") throw new Error("expected plan");
+    await workflow.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    await db.exec(
+      "UPDATE app_lifeops.life_school_calendar_sources SET calendar_contract_version = 1",
+    );
+
+    const migration = await workflow.run(undefined, "scheduled");
+    expect(migration.state).toBe("awaiting_approval");
+    if (migration.state !== "awaiting_approval") {
+      throw new Error("expected migration plan");
+    }
+    expect(migration.plan.calendarContractVersion).toBe(2);
+    expect(migration.plan.changes.map((change) => change.kind)).toEqual([
+      "update",
+      "update",
+    ]);
+    await workflow.applyApprovedPlan({
+      runId: migration.runId,
+      requestUrl: new URL("http://localhost"),
+      gateway,
+    });
+    expect(updatedRanges).toEqual([
+      {
+        eventId: "provider-1",
+        allDay: { startDate: "2026-09-01", endDateExclusive: "2026-09-02" },
+      },
+      {
+        eventId: "provider-2",
+        allDay: { startDate: "2026-10-09", endDateExclusive: "2026-10-10" },
+      },
+    ]);
+    await expect(workflow.run(undefined, "scheduled")).resolves.toMatchObject({
+      state: "unchanged",
+      contentSha256: hash(pdfBytes),
+    });
   });
 
   it("rejects a concurrent apply owner while the first lease is active", async () => {

@@ -501,6 +501,12 @@ export interface CreateLifeOpsCalendarEventAttendee {
   optional?: boolean;
 }
 
+/** A provider-neutral all-day interval using an exclusive civil-date end. */
+export interface LifeOpsCalendarAllDayRange {
+  startDate: string;
+  endDateExclusive: string;
+}
+
 export interface CreateLifeOpsCalendarEventRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -511,6 +517,8 @@ export interface CreateLifeOpsCalendarEventRequest {
   location?: string;
   startAt?: string;
   endAt?: string;
+  /** Mutually exclusive with timed bounds and window presets. */
+  allDay?: LifeOpsCalendarAllDayRange;
   timeZone?: string;
   durationMinutes?: number;
   windowPreset?: LifeOpsCalendarWindowPreset;
@@ -592,6 +600,8 @@ export interface LifeOpsCalendarEventUpdate {
   title?: string;
   startAt?: string;
   endAt?: string;
+  /** Replaces timed bounds with one all-day civil-date interval. */
+  allDay?: LifeOpsCalendarAllDayRange;
   timeZone?: string;
   notes?: string;
   location?: string;
