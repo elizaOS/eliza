@@ -84,7 +84,9 @@ export async function signVoiceModelCatalog(args: {
 }): Promise<string> {
   const secretRaw = decodeBase64Strict(args.secretKeyBase64);
   if (secretRaw.byteLength !== 32) {
-    throw new Error(`Ed25519 secret key must be 32 bytes, got ${secretRaw.byteLength}`);
+    throw new Error(
+      `Ed25519 secret key must be 32 bytes, got ${secretRaw.byteLength}`,
+    );
   }
   // Web Crypto's importKey requires the "pkcs8" or "jwk" format for
   // Ed25519 private keys. Wrap the raw 32-byte seed in a minimal PKCS8
@@ -109,7 +111,9 @@ export async function signVoiceModelCatalog(args: {
 export function fingerprintPublicKey(rawPublicKeyBase64: string): string {
   const raw = decodeBase64Strict(rawPublicKeyBase64);
   if (raw.byteLength !== 32) {
-    throw new Error(`Ed25519 public key must be 32 bytes, got ${raw.byteLength}`);
+    throw new Error(
+      `Ed25519 public key must be 32 bytes, got ${raw.byteLength}`,
+    );
   }
   return encodeBase64(raw);
 }
@@ -124,30 +128,45 @@ function toArrayBufferView(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
  * Decode a base64 credential, failing closed on malformed input.
  *
  * Surrounding whitespace is trimmed first — keys pasted from files
- * routinely carry a trailing newline — but any remaining character
- * outside the canonical base64 alphabet (including interior whitespace)
- * throws instead of being silently discarded by the lenient Buffer
- * decoder: a corrupted or mistyped signing secret must never decode to
- * "some" bytes. Unpadded final quanta are accepted (a legitimate
- * spelling of the same bytes); a final quantum whose discarded slack
- * bits are non-zero (e.g. `AAB=` where the canonical spelling is `AAA=`)
- * and `=` padding anywhere but the tail also throw.
+ * routinely carry a trailing newline — and a pure RFC 4648 §5 URL-safe
+ * spelling (`-`/`_` throughout) is normalized to the standard alphabet
+ * before validation: base64url is the same bytes in a standard alternate
+ * encoding (JWK `d`, `basenc --base64url`, most JOSE tooling), not a
+ * mistyped secret, and must keep working. A MIXED alphabet (standard
+ * `+`/`/` and URL-safe `-`/`_` in the same credential) is rejected: no
+ * standard tool emits one, and it is the signature of a hand-mangled
+ * value. Any remaining character outside the canonical base64 alphabet
+ * (including interior whitespace) throws instead of being silently
+ * discarded by the lenient Buffer decoder: a corrupted or mistyped
+ * signing secret must never decode to "some" bytes. Unpadded final
+ * quanta are accepted (a legitimate spelling of the same bytes); a
+ * final quantum whose discarded slack bits are non-zero (e.g. `AAB=`
+ * where the canonical spelling is `AAA=`) and `=` padding anywhere but
+ * the tail also throw.
  */
 const CANONICAL_BASE64 =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{2,3})?$/;
 
 function decodeBase64Strict(input: string): Uint8Array {
   const trimmed = input.trim();
-  if (!CANONICAL_BASE64.test(trimmed)) {
+  const hasStandardAlphabetChars = /[+/]/.test(trimmed);
+  const hasUrlSafeAlphabetChars = /[-_]/.test(trimmed);
+  if (hasStandardAlphabetChars && hasUrlSafeAlphabetChars) {
+    throw new Error(
+      `Invalid base64: mixed alphabets (standard +// and URL-safe -/_ in the same credential) — no standard encoding emits both`,
+    );
+  }
+  const normalized = trimmed.replace(/-/g, "+").replace(/_/g, "/");
+  if (!CANONICAL_BASE64.test(normalized)) {
     throw new Error(
       `Invalid base64: input contains characters outside the canonical base64 alphabet after trimming surrounding whitespace`,
     );
   }
   const bytes =
     typeof Buffer !== "undefined"
-      ? new Uint8Array(Buffer.from(trimmed, "base64"))
+      ? new Uint8Array(Buffer.from(normalized, "base64"))
       : (() => {
-          const bin = atob(trimmed);
+          const bin = atob(normalized);
           const out = new Uint8Array(bin.length);
           for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
           return out;
@@ -157,7 +176,7 @@ function decodeBase64Strict(input: string): Uint8Array {
   // discarded — a hand-mangled spelling, not an alternate encoding any
   // standard tool emits. Re-encoding the decoded bytes must reproduce
   // the input after restoring omitted padding.
-  const padded = trimmed.padEnd(Math.ceil(trimmed.length / 4) * 4, "=");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   if (encodeBase64(bytes) !== padded) {
     throw new Error(
       `Invalid base64: non-canonical final quantum (discarded slack bits are non-zero)`,
@@ -192,7 +211,8 @@ function wrapEd25519SeedInPkcs8(seed: Uint8Array): Uint8Array {
     throw new Error(`Ed25519 seed must be 32 bytes`);
   }
   const prefix = new Uint8Array([
-    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70,
+    0x04, 0x22, 0x04, 0x20,
   ]);
   const out = new Uint8Array(prefix.length + seed.length);
   out.set(prefix, 0);
