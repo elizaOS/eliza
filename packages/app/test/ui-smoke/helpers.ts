@@ -2789,6 +2789,23 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fallback();
   });
 
+  await page.route("**/api/lifeops/calendar/sources**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (
+      request.method() !== "GET" ||
+      url.pathname !== "/api/lifeops/calendar/sources"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ sources: [] }),
+    });
+  });
+
   await page.route("**/api/lifeops/calendar/feed**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
