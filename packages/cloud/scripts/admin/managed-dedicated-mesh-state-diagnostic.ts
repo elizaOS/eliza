@@ -119,16 +119,29 @@ async function run(suffix: string): Promise<void> {
   let rows: MeshLocator[];
   try {
     const result = await database.query<MeshLocator>(
-      `SELECT
-         sandbox.replacement_cleanup_container_id AS container_id,
+      `WITH target AS (
+         SELECT
+           *,
+           COALESCE(
+             replacement_cleanup_container_id,
+             activation_container_id,
+             CASE WHEN sandbox_id ~ '^[0-9a-f]{12,64}$' THEN sandbox_id END
+           ) AS diagnostic_container_id,
+           COALESCE(replacement_cleanup_node_id, activation_node_id, node_id)
+             AS diagnostic_node_id
+         FROM agent_sandboxes
+         WHERE agent_name = $1
+       )
+       SELECT
+         sandbox.diagnostic_container_id AS container_id,
          node.hostname,
          node.ssh_port,
          node.ssh_user,
          node.host_key_fingerprint
-       FROM agent_sandboxes AS sandbox
+       FROM target AS sandbox
        INNER JOIN docker_nodes AS node
-         ON node.node_id = sandbox.replacement_cleanup_node_id
-       WHERE sandbox.agent_name = $1`,
+         ON node.node_id = sandbox.diagnostic_node_id
+       WHERE sandbox.diagnostic_container_id IS NOT NULL`,
       [`managed-dedicated-canary-${suffix}`],
     );
     rows = result.rows;

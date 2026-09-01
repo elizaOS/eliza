@@ -711,7 +711,15 @@ jobs:
               id,
               organization_id,
               replacement_cleanup_created_at,
-              replacement_cleanup_sandbox_id IS NOT NULL AS cleanup_fence_present
+              replacement_cleanup_sandbox_id IS NOT NULL AS cleanup_fence_present,
+              (
+                COALESCE(
+                  replacement_cleanup_container_id,
+                  activation_container_id,
+                  CASE WHEN sandbox_id ~ '^[0-9a-f]{12,64}$' THEN sandbox_id END
+                ) IS NOT NULL
+                AND COALESCE(replacement_cleanup_node_id, activation_node_id, node_id) IS NOT NULL
+              ) AS inspectable_candidate_present
             FROM agent_sandboxes
             WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
           ),
@@ -748,6 +756,7 @@ jobs:
             SELECT
               target.replacement_cleanup_created_at,
               target.cleanup_fence_present,
+              target.inspectable_candidate_present,
               target.replacement_cleanup_created_at <= NOW() - INTERVAL '30 minutes'
                 AS grace_elapsed,
               (
@@ -781,6 +790,7 @@ jobs:
           SELECT json_build_object(
             'targetCount', (SELECT count(*) FROM target),
             'cleanupFencePresent', COALESCE((SELECT cleanup_fence_present FROM facts), false),
+            'inspectableCandidatePresent', COALESCE((SELECT inspectable_candidate_present FROM facts), false),
             'cleanupCreatedAt', (SELECT replacement_cleanup_created_at FROM facts),
             'graceElapsed', COALESCE((SELECT grace_elapsed FROM facts), false),
             'activeExclusiveJobs', COALESCE((SELECT active_exclusive_jobs FROM facts), 0),
@@ -791,7 +801,7 @@ jobs:
           SQL
           } | sed '/^[[:space:]]*$/d' | head -n 1)"
           jq -e '
-            keys == ["activeExclusiveJobs", "cleanupCreatedAt", "cleanupFencePresent", "graceElapsed", "olderEligibleFences", "targetCount", "totalEligibleFences"] and
+            keys == ["activeExclusiveJobs", "cleanupCreatedAt", "cleanupFencePresent", "graceElapsed", "inspectableCandidatePresent", "olderEligibleFences", "targetCount", "totalEligibleFences"] and
             .targetCount == 1 and
             (.cleanupFencePresent | type == "boolean") and
             (
@@ -803,16 +813,19 @@ jobs:
               ((.cleanupFencePresent | not) and .cleanupCreatedAt == null)
             ) and
             (.graceElapsed | type == "boolean") and
+            (.inspectableCandidatePresent | type == "boolean") and
             (.activeExclusiveJobs | type == "number") and
             (.olderEligibleFences | type == "number") and
             (.totalEligibleFences | type == "number")
           ' <<<"$summary" >/dev/null
           echo "fence_present=$(jq -r '.cleanupFencePresent' <<<"$summary")" >> "$GITHUB_OUTPUT"
+          echo "inspectable_candidate_present=$(jq -r '.inspectableCandidatePresent' <<<"$summary")" >> "$GITHUB_OUTPUT"
           echo "### Replacement cleanup reconciliation" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           jq -r '
             "- cleanup fence present: `" + (.cleanupFencePresent | tostring) + "`\n" +
             "- cleanup fence created: `" + (.cleanupCreatedAt // "none") + "`\n" +
+            "- inspectable candidate present: `" + (.inspectableCandidatePresent | tostring) + "`\n" +
             "- grace elapsed: `" + (.graceElapsed | tostring) + "`\n" +
             "- active exclusive jobs: `" + (.activeExclusiveJobs | tostring) + "`\n" +
             "- older eligible fences: `" + (.olderEligibleFences | tostring) + "`\n" +
@@ -978,7 +991,7 @@ jobs:
             echo "private_mesh_failure_signals=${signals:-none}"
 
       - name: Inspect exact private mesh candidate
-        if: steps.cleanup_reconciliation.outputs.fence_present == 'true'
+        if: steps.cleanup_reconciliation.outputs.fence_present == 'true' || steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}

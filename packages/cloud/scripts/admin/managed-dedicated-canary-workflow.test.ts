@@ -179,8 +179,17 @@ describe("managed dedicated live-smoke workflow contract", () => {
     );
     expect(reconciliation?.id).toBe("cleanup_reconciliation");
     expect(reconciliation?.run).toContain("cleanupFencePresent");
+    expect(reconciliation?.run).toContain("inspectableCandidatePresent");
     expect(reconciliation?.run).toContain(".cleanupCreatedAt == null");
     expect(reconciliation?.run).toContain("fence_present=");
+    expect(reconciliation?.run).toContain("inspectable_candidate_present=");
+
+    const meshInspection = diagnostic.steps.find(
+      (step) => step.name === "Inspect exact private mesh candidate",
+    );
+    expect(meshInspection?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.fence_present == 'true' || steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'",
+    );
 
     const cleanupFailure = diagnostic.steps.find(
       (step) =>
