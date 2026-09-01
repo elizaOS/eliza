@@ -5,6 +5,7 @@ import {
   REMOTE_CONTROL_PROTOCOL_VERSION,
 } from "@elizaos/shared/contracts/remote-control";
 import { Hono } from "hono";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
   generateRemoteHostToken,
   hashRemoteHostToken,
@@ -67,7 +68,6 @@ app.get("/", async (c) => {
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
     let value: unknown;
     try {
       value = await c.req.json();
@@ -114,6 +114,17 @@ app.post("/", async (c) => {
         409,
       );
     }
+    // Credential recovery restores access and never provisions Headscale, so
+    // it remains available to an authenticated owner while new work is fenced.
+    // New enrollment uses the one-read standing guard before any host record,
+    // bearer credential, or optional Headscale pre-auth key is created.
+    const user = recoveryHostId
+      ? await requireUserOrApiKeyWithOrg(c)
+      : (
+          await requirePaidRouteStanding(c, {
+            route: "remote.hosts.enroll",
+          })
+        ).user;
     let networkConfig = null;
     if (managedNetworkRequested) {
       try {

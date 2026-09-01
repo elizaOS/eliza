@@ -29,6 +29,7 @@ process.env.MOCK_REDIS = "1";
 
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
+import * as realPaidRouteStanding from "@/api-app/lib/paid-route-standing";
 import { closeDatabaseConnectionsForTests, dbRead, dbWrite } from "@/db/client";
 // Via cloud-shared so `drizzle-kit` (its devDependency) resolves at runtime.
 import { pushSchema } from "@/db/push-schema-for-tests";
@@ -115,6 +116,14 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
   ...realAuth,
   requireUserOrApiKeyWithOrg,
 }));
+mock.module("@/api-app/lib/paid-route-standing", () => ({
+  requirePaidRouteStanding: async () => ({
+    user: await requireUserOrApiKeyWithOrg(),
+    apiKeyId: null,
+    authSource: "combined_cache",
+    appScopeId: null,
+  }),
+}));
 mock.module("@/lib/services/cloudflare-registrar", () => ({
   ...realRegistrar,
   cloudflareRegistrarService: {
@@ -160,6 +169,7 @@ afterAll(async () => {
   // Restore ALL mocked modules — bun's mock.module is process-global, so a
   // leaked seam mock corrupts sibling suites in a combined run.
   mock.module("@/lib/auth/workers-hono-auth", () => realAuth);
+  mock.module("@/api-app/lib/paid-route-standing", () => realPaidRouteStanding);
   mock.module("@/lib/services/cloudflare-registrar", () => realRegistrar);
   mock.module("@/lib/services/cloudflare-dns", () => realDns);
   mock.module("@/lib/services/email", () => realEmail);
