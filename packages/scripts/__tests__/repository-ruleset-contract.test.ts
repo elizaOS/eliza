@@ -1017,24 +1017,21 @@ describe("repository ruleset contract", () => {
     }
   });
 
-  test("keeps scheduled live readback limited to the active manifest", () => {
-    expect(Object.keys(drift.on).sort()).toEqual([
-      "repository_dispatch",
-      "schedule",
-    ]);
-    expect(drift.on.schedule).toEqual([{ cron: "17 */6 * * *" }]);
+  test("keeps external live readback pinned and limited to the active manifest", () => {
+    expect(Object.keys(drift.on).sort()).toEqual(["repository_dispatch"]);
     expect(drift.on.repository_dispatch.types).toEqual([
       "repository_ruleset_drift",
     ]);
     expect(drift.permissions).toEqual({ contents: "read" });
     expect(drift.jobs.readback.if).toBe("github.ref == 'refs/heads/develop'");
-    expect(drift.jobs.readback.environment).toBe("repository-ruleset-readback");
+    expect(drift.jobs.readback.environment).toBeUndefined();
     expect(drift.jobs.readback.strategy.matrix.manifest).toEqual([
       ".github/rulesets/required-main.json",
     ]);
     expect(driftSource).not.toContain("github.token");
     expect(driftSource).not.toContain("--apply");
     expect(driftSource).not.toContain("workflow_dispatch");
+    expect(driftSource).not.toContain("schedule:");
     const checkout = drift.jobs.readback.steps.find(
       (step: Record<string, any>) =>
         step.uses ===
@@ -1056,12 +1053,12 @@ describe("repository ruleset contract", () => {
         step.name === "Require the Administration-read credential",
     );
     expect(credential.env.GH_TOKEN).toBe(
-      "${{ secrets.REPOSITORY_RULESET_READ_ENV_TOKEN }}",
+      "${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}",
     );
     expect(credential.run).toContain('if [ -z "${GH_TOKEN:-}" ]');
     const readback = drift.jobs.readback.steps.at(-1);
     expect(readback.env.GH_TOKEN).toBe(
-      "${{ secrets.REPOSITORY_RULESET_READ_ENV_TOKEN }}",
+      "${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}",
     );
     expect(readback.run).toContain("--manifest");
     expect(readback.run).toContain("--check");

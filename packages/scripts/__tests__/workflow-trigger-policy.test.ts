@@ -1,4 +1,4 @@
-/** Exercises the single PR Static Smoke and latest-tip Develop Full authorities plus the narrow read-only ruleset-drift schedule exception. */
+/** Exercises the single PR Static Smoke and latest-tip Develop Full trigger authorities. */
 
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -22,10 +22,7 @@ function validateFixture(
   workflow: string,
   name = "develop-full.yml",
 ): ReturnType<typeof validateWorkflowTriggerPolicy> {
-  const root = buildRepo({
-    "repository-ruleset-drift.yml": rulesetDriftSchedule,
-    [name]: workflow,
-  });
+  const root = buildRepo({ [name]: workflow });
   try {
     return validateWorkflowTriggerPolicy(root);
   } finally {
@@ -50,15 +47,6 @@ on:
 jobs: {}
 `;
 
-const rulesetDriftSchedule = `name: Repository Ruleset Drift
-on:
-  schedule:
-    - cron: "17 */6 * * *"
-  repository_dispatch:
-    types: [repository_ruleset_drift]
-jobs: {}
-`;
-
 describe("workflow trigger policy", () => {
   test("accepts the Develop Full push alongside manual operations", () => {
     expect(
@@ -69,92 +57,33 @@ on:
   workflow_dispatch:
 jobs: {}
 `),
-    ).toEqual({ developPushWorkflows: 1, files: 2 });
+    ).toEqual({ developPushWorkflows: 1, files: 1 });
   });
 
-  test("rejects the workflow_run automation trigger", () => {
-    expect(() =>
-      validateFixture(
-        "on:\n  push:\n    branches: [develop]\n  workflow_run:\n    workflows: [CI]\n    types: [completed]\njobs: {}\n",
-      ),
-    ).toThrow(/is forbidden/);
-  });
-
-  test("accepts only the exact six-hour ruleset-drift schedule", () => {
-    const root = buildRepo({
-      "develop-full.yml": developPush,
-      "repository-ruleset-drift.yml": rulesetDriftSchedule,
-    });
-    try {
-      expect(validateWorkflowTriggerPolicy(root)).toEqual({
-        developPushWorkflows: 1,
-        files: 2,
-      });
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("rejects deletion of the required ruleset-drift workflow", () => {
-    const root = buildRepo({ "develop-full.yml": developPush });
-    try {
-      expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
-        /repository-ruleset-drift\.yml: required workflow is absent/,
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("rejects schedules outside the ruleset-drift workflow", () => {
-    const root = buildRepo({
-      "develop-full.yml": developPush,
-      "periodic.yml": rulesetDriftSchedule,
-      "repository-ruleset-drift.yml": rulesetDriftSchedule,
-    });
-    try {
-      expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
-        /schedule is reserved for repository-ruleset-drift\.yml/,
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("rejects a missing, shifted, or duplicated ruleset-drift schedule", () => {
-    const variants = [
-      rulesetDriftSchedule.replace(/ {2}schedule:\n {4}- cron: .*\n/, ""),
-      rulesetDriftSchedule.replace("17 */6 * * *", "0 */6 * * *"),
-      rulesetDriftSchedule.replace(
-        '    - cron: "17 */6 * * *"',
-        '    - cron: "17 */6 * * *"\n    - cron: "47 */6 * * *"',
-      ),
-    ];
-    for (const workflow of variants) {
-      const root = buildRepo({
-        "develop-full.yml": developPush,
-        "repository-ruleset-drift.yml": workflow,
-      });
-      try {
-        expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
-          /required six-hour schedule is absent or invalid|schedule must be exactly/,
-        );
-      } finally {
-        rmSync(root, { recursive: true, force: true });
-      }
-    }
-  });
+  test.each(["schedule", "workflow_run"])(
+    "rejects the %s automation trigger",
+    (eventName) => {
+      const eventConfig =
+        eventName === "schedule"
+          ? '    - cron: "0 7 * * *"'
+          : "    workflows: [CI]\n    types: [completed]";
+      expect(() =>
+        validateFixture(
+          `on:\n  push:\n    branches: [develop]\n  ${eventName}:\n${eventConfig}\njobs: {}\n`,
+        ),
+      ).toThrow(/is forbidden/);
+    },
+  );
 
   test("accepts tag-only release pushes", () => {
     const root = buildRepo({
       "develop-full.yml": `on:\n  push:\n    branches: [develop]\njobs: {}\n`,
       "release.yml": `on:\n  push:\n    tags: ["v*"]\njobs: {}\n`,
-      "repository-ruleset-drift.yml": rulesetDriftSchedule,
     });
     try {
       expect(validateWorkflowTriggerPolicy(root)).toEqual({
         developPushWorkflows: 1,
-        files: 3,
+        files: 2,
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -186,12 +115,11 @@ jobs: {}
     const root = buildRepo({
       "pr-static-smoke.yml": canonicalAdmission,
       "develop-full.yml": developPush,
-      "repository-ruleset-drift.yml": rulesetDriftSchedule,
     });
     try {
       expect(validateWorkflowTriggerPolicy(root)).toEqual({
         developPushWorkflows: 1,
-        files: 3,
+        files: 2,
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -213,7 +141,6 @@ jobs: {}
       const root = buildRepo({
         "pr-static-smoke.yml": workflow,
         "develop-full.yml": developPush,
-        "repository-ruleset-drift.yml": rulesetDriftSchedule,
       });
       try {
         expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
@@ -257,7 +184,6 @@ jobs: {}
     const root = buildRepo({
       "develop-full.yml": developPush,
       "duplicate.yml": developPush,
-      "repository-ruleset-drift.yml": rulesetDriftSchedule,
     });
     try {
       expect(() => validateWorkflowTriggerPolicy(root)).toThrow(

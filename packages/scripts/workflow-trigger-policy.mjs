@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Enforces one lightweight pull-request authority and one latest-tip develop
- * authority. Completion-chained triggers remain forbidden; the sole periodic
- * exception is the read-only six-hour repository-ruleset drift readback.
+ * authority. Periodic and completion-chained triggers remain forbidden so a
+ * merged develop tip is the repository's only automatic full-validation event.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -18,9 +18,7 @@ const FORBIDDEN_EVENTS = new Set([
 ]);
 const CANONICAL_ADMISSION_WORKFLOW = "pr-static-smoke.yml";
 const DEVELOP_AUTHORITY_WORKFLOW = "develop-full.yml";
-const RULESET_DRIFT_WORKFLOW = "repository-ruleset-drift.yml";
-const RULESET_DRIFT_CRON = "17 */6 * * *";
-const FORBIDDEN_AUTOMATION_EVENTS = new Set(["workflow_run"]);
+const FORBIDDEN_AUTOMATION_EVENTS = new Set(["schedule", "workflow_run"]);
 const REQUIRED_PR_BRANCHES = ["develop", "main"];
 const REQUIRED_PR_TYPES = [
   "opened",
@@ -48,18 +46,6 @@ function sameStrings(actual, expected) {
   );
 }
 
-function isExactRulesetDriftSchedule(value) {
-  return (
-    Array.isArray(value) &&
-    value.length === 1 &&
-    value[0] &&
-    typeof value[0] === "object" &&
-    !Array.isArray(value[0]) &&
-    Object.keys(value[0]).length === 1 &&
-    value[0].cron === RULESET_DRIFT_CRON
-  );
-}
-
 export function validateWorkflowTriggerPolicy(repoRoot) {
   const workflowsDir = path.join(repoRoot, ".github", "workflows");
   const failures = [];
@@ -68,8 +54,6 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
   let sawCanonicalWorkflow = false;
   let sawCanonicalPullRequest = false;
   let sawCanonicalMergeGroup = false;
-  let sawRulesetDriftWorkflow = false;
-  let sawRulesetDriftSchedule = false;
 
   for (const name of readdirSync(workflowsDir).sort()) {
     if (!name.endsWith(".yml") && !name.endsWith(".yaml")) continue;
@@ -86,7 +70,6 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
     const workflow = document.toJS();
     const entries = triggerEntries(workflow?.on);
     if (name === CANONICAL_ADMISSION_WORKFLOW) sawCanonicalWorkflow = true;
-    if (name === RULESET_DRIFT_WORKFLOW) sawRulesetDriftWorkflow = true;
 
     for (const [eventName, config] of entries) {
       if (FORBIDDEN_AUTOMATION_EVENTS.has(eventName)) {
@@ -98,20 +81,6 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
         failures.push(
           `${name}: forbidden pull-request event trigger: ${eventName}`,
         );
-      }
-
-      if (eventName === "schedule") {
-        if (name !== RULESET_DRIFT_WORKFLOW) {
-          failures.push(
-            `${name}: schedule is reserved for ${RULESET_DRIFT_WORKFLOW}`,
-          );
-        } else if (!isExactRulesetDriftSchedule(config)) {
-          failures.push(
-            `${name}: schedule must be exactly [{"cron":"${RULESET_DRIFT_CRON}"}]`,
-          );
-        } else {
-          sawRulesetDriftSchedule = true;
-        }
       }
 
       if (eventName === "pull_request") {
@@ -195,13 +164,6 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
   if (sawCanonicalWorkflow && !sawCanonicalMergeGroup) {
     failures.push(
       `${CANONICAL_ADMISSION_WORKFLOW}: canonical merge_group trigger is absent or invalid`,
-    );
-  }
-  if (!sawRulesetDriftWorkflow) {
-    failures.push(`${RULESET_DRIFT_WORKFLOW}: required workflow is absent`);
-  } else if (!sawRulesetDriftSchedule) {
-    failures.push(
-      `${RULESET_DRIFT_WORKFLOW}: required six-hour schedule is absent or invalid`,
     );
   }
   if (failures.length > 0) {

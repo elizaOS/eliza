@@ -4,8 +4,6 @@
 name: Repository Ruleset Drift
 
 on:
-  schedule:
-    - cron: "17 */6 * * *"
   repository_dispatch:
     types: [repository_ruleset_drift]
 
@@ -22,7 +20,6 @@ jobs:
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    environment: repository-ruleset-readback
     strategy:
       fail-fast: false
       matrix:
@@ -41,16 +38,16 @@ jobs:
 
       - name: Require the Administration-read credential
         env:
-          GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_ENV_TOKEN }}
+          GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}
         run: |
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::REPOSITORY_RULESET_READ_ENV_TOKEN is required from the repository-ruleset-readback Environment with repository Administration: read permission"
+            echo "::error::REPOSITORY_RULESET_READ_TOKEN is required with repository Administration: read permission"
             exit 1
           fi
 
       - name: Compare live ruleset with the reviewed manifest
         env:
-          GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_ENV_TOKEN }}
+          GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}
         run: >-
           ./scripts/security/apply-branch-protection.sh
           --manifest "${{ matrix.manifest }}"
