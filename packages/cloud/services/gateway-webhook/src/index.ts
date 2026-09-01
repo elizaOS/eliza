@@ -67,6 +67,8 @@ app.get("/ready", async (c) => {
     await attestCanonicalTelegramProject();
     return c.json({ status: "ready" });
   } catch (error) {
+    // error-policy:J1 the probe boundary exposes only the bounded identity
+    // reason while retaining a fail-closed readiness state.
     return c.json(
       {
         status: "not-ready",

@@ -4,6 +4,8 @@
  * Provider credentials stay in the caller's runtime and are never logged.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_MESSAGE_LENGTH = 4096;
 export const TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER =
@@ -44,13 +46,18 @@ export interface TelegramAttestedBotIdentity {
  * boundaries; the credential, expected identity, and provider payload are
  * deliberately excluded.
  */
-export class TelegramIdentityAttestationError extends Error {
+export class TelegramIdentityAttestationError extends ElizaError {
+  override readonly name = "TelegramIdentityAttestationError";
+
   constructor(
     readonly reason: TelegramIdentityAttestationFailureReason,
     readonly retryable: boolean,
   ) {
-    super("Telegram bot identity attestation failed");
-    this.name = "TelegramIdentityAttestationError";
+    super("Telegram bot identity attestation failed", {
+      code: "TELEGRAM_IDENTITY_ATTESTATION_FAILED",
+      context: { reason, retryable },
+      severity: retryable ? "ephemeral" : "fatal",
+    });
   }
 }
 
@@ -561,6 +568,8 @@ export async function attestTelegramBotIdentity(
           username?: unknown;
         }>(expected.botToken, "getMe");
       } catch {
+        // error-policy:J1 the provider boundary exposes only a value-safe
+        // attestation classification and discards credential-bearing causes.
         throw new TelegramIdentityAttestationError(
           "provider_unavailable",
           true,
