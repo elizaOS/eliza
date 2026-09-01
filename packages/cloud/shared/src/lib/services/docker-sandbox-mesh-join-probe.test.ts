@@ -4,6 +4,7 @@ import {
   classifyDockerMeshJoinObservation,
   classifyDockerMeshJoinProbe,
   formatDockerMeshJoinObservation,
+  probeDockerMeshJoinTerminalFailure,
   requiredHeadscaleIngressFailure,
 } from "./docker-sandbox-provider";
 import { jobErrorText } from "./job-error-text";
@@ -68,6 +69,68 @@ describe("classifyDockerMeshJoinProbe", () => {
 });
 
 describe("Docker mesh-join observation", () => {
+  test("records unavailable transport and accepts a later reconnect-backed observation", async () => {
+    const failureKinds: string[] = [];
+    const observations: ReturnType<typeof classifyDockerMeshJoinObservation>[] = [];
+    const unavailableSsh = {
+      exec: async () => {
+        throw new Error("[docker-ssh] stream error on node: channel closed");
+      },
+    };
+
+    expect(
+      await probeDockerMeshJoinTerminalFailure(
+        unavailableSsh,
+        "a".repeat(64),
+        (observation) => observations.push(observation),
+        (kind) => failureKinds.push(kind),
+      ),
+    ).toBeNull();
+    expect(failureKinds).toEqual(["transport"]);
+    expect(observations).toEqual([]);
+
+    const reconnectedSsh = {
+      exec: async () =>
+        [
+          "state=running exit=0",
+          "__eliza_mesh_probe_section__=socket",
+          "socket=present",
+          "daemon=present",
+          "__eliza_mesh_probe_section__=status",
+          JSON.stringify({
+            BackendState: "Running",
+            Self: { MachineAuthorized: true },
+          }),
+          "__eliza_mesh_probe_section__=ip",
+          "100.64.0.2",
+          "__eliza_mesh_probe_section__=logs",
+          "server started",
+          "__eliza_mesh_probe_section__=end",
+        ].join("\n"),
+    };
+
+    expect(
+      await probeDockerMeshJoinTerminalFailure(
+        reconnectedSsh,
+        "a".repeat(64),
+        (observation) => observations.push(observation),
+        (kind) => failureKinds.push(kind),
+      ),
+    ).toBeNull();
+    expect(failureKinds).toEqual(["transport"]);
+    expect(observations).toHaveLength(1);
+    expect(observations[0]).toMatchObject({
+      containerState: "running",
+      socketPresent: true,
+      daemonPresent: true,
+      statusQuery: "success",
+      backendState: "Running",
+      machineAuthorized: true,
+      ipPresent: true,
+      agentStarted: true,
+    });
+  });
+
   test("reduces raw Tailscale output and logs to closed diagnostic fields", () => {
     const raw = [
       "state=running exit=0",

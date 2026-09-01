@@ -1342,6 +1342,8 @@ const DOCKER_CMD_TIMEOUT_MS = 60_000;
 
 /** Bound each inline probe so transport loss cannot replace the 180s VPN budget. */
 const MESH_JOIN_PROBE_TIMEOUT_MS = 5_000;
+/** One reconnect-backed observation after Headscale exhausts its full budget. */
+const MESH_JOIN_FINAL_PROBE_TIMEOUT_MS = 20_000;
 
 export type DockerMeshJoinProbeVerdict =
   | { readonly status: "pending" }
@@ -1532,10 +1534,12 @@ export function requiredHeadscaleIngressFailure(
   return new AggregateError([...causes], message, { cause: causes[0] });
 }
 
-async function probeDockerMeshJoinTerminalFailure(
-  ssh: DockerSSHClient,
+export async function probeDockerMeshJoinTerminalFailure(
+  ssh: Pick<DockerSSHClient, "exec">,
   containerId: string,
   observe?: (observation: DockerMeshJoinObservation) => void,
+  observeUnavailable?: (kind: ReturnType<typeof classifyDockerSshProbeError>) => void,
+  timeoutMs: number = MESH_JOIN_PROBE_TIMEOUT_MS,
 ): Promise<Error | null> {
   let output: string;
   try {
@@ -1553,17 +1557,19 @@ async function probeDockerMeshJoinTerminalFailure(
         `docker logs --tail 80 ${shellQuote(containerId)} 2>&1 || true`,
         `echo ${MESH_PROBE_SECTION}end`,
       ].join("; "),
-      MESH_JOIN_PROBE_TIMEOUT_MS,
+      timeoutMs,
     );
   } catch (error) {
     // error-policy:J1 This is an early transport observation, not the
     // authoritative registration verdict. Preserve the normal Headscale
     // budget unless Docker returned positive terminal evidence.
+    const failureKind = classifyDockerSshProbeError(error);
+    observeUnavailable?.(failureKind);
     logger.debug(
       "[docker-sandbox] Early mesh-join probe unavailable; registration remains pending",
       {
         containerId,
-        failureKind: classifyDockerSshProbeError(error),
+        failureKind,
       },
     );
     return null;
@@ -3287,6 +3293,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     let createdContainerId: string | undefined;
     let vpnEnvVars: Record<string, string> = {};
     let lastMeshJoinObservation: DockerMeshJoinObservation | null = null;
+    let lastMeshJoinProbeFailureKind: ReturnType<typeof classifyDockerSshProbeError> | null = null;
     const markRemoteCompletionUnresolved = (cause: unknown): void => {
       remoteCompletionTracker?.causes.push(cause);
     };
@@ -3956,9 +3963,17 @@ export class DockerSandboxProvider implements SandboxProvider {
             ...(meshJoinCandidateId
               ? {
                   probeTerminalCandidateFailure: () =>
-                    probeDockerMeshJoinTerminalFailure(ssh, meshJoinCandidateId, (observation) => {
-                      lastMeshJoinObservation = observation;
-                    }),
+                    probeDockerMeshJoinTerminalFailure(
+                      ssh,
+                      meshJoinCandidateId,
+                      (observation) => {
+                        lastMeshJoinObservation = observation;
+                        lastMeshJoinProbeFailureKind = null;
+                      },
+                      (failureKind) => {
+                        lastMeshJoinProbeFailureKind = failureKind;
+                      },
+                    ),
                 }
               : {}),
           },
@@ -4044,6 +4059,27 @@ export class DockerSandboxProvider implements SandboxProvider {
           }
         }
         if (registration === null) {
+          // The pooled SSH channel can be severed or left unusable during the
+          // three-minute Headscale wait. Reconnect once and take a longer,
+          // synchronous observation while the exact candidate still exists;
+          // cleanup immediately below is the last boundary at which Docker,
+          // Tailscale, and entrypoint evidence can be read without guessing.
+          if (!lastMeshJoinObservation && meshJoinCandidateId) {
+            await ssh.disconnect();
+            const finalTerminalFailure = await probeDockerMeshJoinTerminalFailure(
+              ssh,
+              meshJoinCandidateId,
+              (observation) => {
+                lastMeshJoinObservation = observation;
+                lastMeshJoinProbeFailureKind = null;
+              },
+              (failureKind) => {
+                lastMeshJoinProbeFailureKind = failureKind;
+              },
+              MESH_JOIN_FINAL_PROBE_TIMEOUT_MS,
+            );
+            if (finalTerminalFailure) markRemoteCompletionUnresolved(finalTerminalFailure);
+          }
           if (lastMeshJoinObservation) {
             const closedObservation = formatDockerMeshJoinObservation(lastMeshJoinObservation);
             markRemoteCompletionUnresolved(
@@ -4058,6 +4094,20 @@ export class DockerSandboxProvider implements SandboxProvider {
             );
             logger.warn(
               `[docker-sandbox] Docker candidate mesh observation before cleanup: ${closedObservation}`,
+            );
+          } else if (lastMeshJoinProbeFailureKind) {
+            markRemoteCompletionUnresolved(
+              new ElizaError(
+                `Docker candidate mesh observation unavailable before cleanup: ${lastMeshJoinProbeFailureKind}`,
+                {
+                  code: "SANDBOX_MESH_JOIN_OBSERVATION_UNAVAILABLE",
+                  context: { failureKind: lastMeshJoinProbeFailureKind },
+                  severity: "ephemeral",
+                },
+              ),
+            );
+            logger.warn(
+              `[docker-sandbox] Docker candidate mesh observation unavailable before cleanup: ${lastMeshJoinProbeFailureKind}`,
             );
           }
           markRemoteCompletionUnresolved(
