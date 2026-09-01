@@ -894,6 +894,19 @@ export function EventEditorDrawer({
         <DialogContent
           className="fixed bottom-0 right-0 top-0 !left-auto !right-0 !top-0 m-0 h-full w-[min(28rem,100vw)] max-w-[100vw] !translate-x-0 !translate-y-0 overflow-y-auto bg-bg p-0 duration-200 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-right-full"
           data-testid="event-editor-drawer"
+          style={{
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: "auto",
+            width: "28rem",
+            maxWidth: "100vw",
+            height: "100dvh",
+            margin: 0,
+            padding: 0,
+            overflowY: "auto",
+            transform: "none",
+          }}
         >
           <div className="flex items-center justify-between gap-3 px-5 py-4">
             <div>

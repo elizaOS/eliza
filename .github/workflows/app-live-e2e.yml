@@ -27,6 +27,10 @@ on:
         description: "Also run the staging Cloud login+personal-identity+chat lane (requires the staging Environment's ELIZAOS_CLOUD_API_KEY)."
         type: boolean
         default: false
+      approve_staging_billable_dedicated_confirmation:
+        description: "Explicitly approve one visible Dedicated confirmation click in the staging Cloud lane. This may start billable compute."
+        type: boolean
+        default: false
       run_cloud_production:
         description: "Also run the production Cloud login+personal-identity+chat lane. Keep false for staging-only evidence."
         type: boolean
@@ -372,6 +376,10 @@ jobs:
     env:
       ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
       ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: staging
+      # Default/scheduled/release runs stay read-only. Only a recorded manual
+      # dispatch input can authorize one rendered UI confirmation; the spec
+      # independently rejects this opt-in outside staging workflow_dispatch.
+      ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: ${{ github.event_name == 'workflow_dispatch' && inputs.approve_staging_billable_dedicated_confirmation && '1' || '0' }}
       ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
       # Keep the target on every subprocess, including the live-stack harness's
       # guarded renderer rebuild path; the explicit prebuild step is not the

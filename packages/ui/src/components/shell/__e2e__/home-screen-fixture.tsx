@@ -15,6 +15,7 @@ import {
   seedHomeWidgetNotifications,
 } from "../../../widgets/__fixtures__/home-widget-mock-data";
 import { ShaderBackground } from "../../../backgrounds/ShaderBackground";
+import { RoleProvider } from "../../../hooks/useRole";
 import { LauncherSurface } from "../../pages/LauncherSurface";
 import { HomeLauncherSurface } from "../HomeLauncherSurface";
 import { HomeScreen, type HomeTileTarget } from "../HomeScreen";
@@ -33,23 +34,25 @@ const showNativeOsTiles = params.has("native");
 
 function Harness(): React.JSX.Element {
   return (
-    <div
-      data-testid="home-fixture-root"
-      style={{ position: "fixed", inset: 0, overflow: "hidden" }}
-    >
-      <ShaderBackground />
-      <HomeLauncherSurface
-        home={
-          <HomeScreen
-            onOpenTile={(t: HomeTileTarget) =>
-              console.log(`[fixture] open ${JSON.stringify(t)}`)
-            }
-            showNativeOsTiles={showNativeOsTiles}
-          />
-        }
-        launcher={<LauncherSurface />}
-      />
-    </div>
+    <RoleProvider role="OWNER">
+      <div
+        data-testid="home-fixture-root"
+        style={{ position: "fixed", inset: 0, overflow: "hidden" }}
+      >
+        <ShaderBackground />
+        <HomeLauncherSurface
+          home={
+            <HomeScreen
+              onOpenTile={(t: HomeTileTarget) =>
+                console.log(`[fixture] open ${JSON.stringify(t)}`)
+              }
+              showNativeOsTiles={showNativeOsTiles}
+            />
+          }
+          launcher={<LauncherSurface />}
+        />
+      </div>
+    </RoleProvider>
   );
 }
 

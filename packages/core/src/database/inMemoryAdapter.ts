@@ -2660,14 +2660,66 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			provider: params.provider,
 			accountKey: params.accountKey,
 		});
-		const existingId = params.id
-			? String(params.id)
-			: this.connectorAccountIdsByKey.get(lookupKey);
+		const requestedRole = params.role ?? "OWNER";
+		const existingByExternalRole =
+			params.externalId != null
+				? Array.from(this.connectorAccountsById.values()).find(
+						(account) =>
+							account.agentId === agentId &&
+							account.provider === params.provider &&
+							account.externalId === params.externalId &&
+							account.role === requestedRole &&
+							account.deletedAt == null,
+					)
+				: undefined;
+		const existingByAccountKeyId = this.connectorAccountIdsByKey.get(lookupKey);
+		const requestedId = params.id ? String(params.id) : undefined;
+		const existingByRequestedId = requestedId
+			? this.connectorAccountsById.get(requestedId)
+			: undefined;
+		if (existingByRequestedId?.deletedAt != null) {
+			throw new Error(
+				"Connector account id already belongs to a deleted account",
+			);
+		}
+
+		let existingId: string | undefined;
+		if (existingByRequestedId) {
+			if (
+				existingByAccountKeyId &&
+				existingByAccountKeyId !== existingByRequestedId.id
+			) {
+				throw new Error(
+					"Connector account id and account key resolve to different accounts",
+				);
+			}
+			if (
+				existingByExternalRole &&
+				existingByExternalRole.id !== existingByRequestedId.id
+			) {
+				throw new Error(
+					"Connector account id and external identity resolve to different accounts",
+				);
+			}
+			existingId = existingByRequestedId.id;
+		} else if (params.externalId != null) {
+			if (
+				existingByAccountKeyId &&
+				existingByAccountKeyId !== existingByExternalRole?.id
+			) {
+				throw new Error(
+					"Connector account key and external identity resolve to different accounts",
+				);
+			}
+			existingId = existingByExternalRole?.id;
+		} else {
+			existingId = existingByAccountKeyId;
+		}
 		const existing = existingId
 			? this.connectorAccountsById.get(existingId)
 			: undefined;
 		const now = Date.now();
-		const id = params.id ?? existing?.id ?? randomUuid();
+		const id = existing?.id ?? params.id ?? randomUuid();
 		const profile = cloneConnectorJsonObject(
 			params.profile !== undefined ? params.profile : existing?.profile,
 		);

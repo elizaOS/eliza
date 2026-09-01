@@ -6,7 +6,6 @@
  */
 
 import {
-  homeWidgetApprovalsResponse,
   homeWidgetNotificationsResponse,
   homeWidgetTodosResponse,
 } from "../../../widgets/__fixtures__/home-widget-mock-data";
@@ -26,6 +25,7 @@ export const client = {
   // Empty base → widgets fetch `/api/lifeops/...` which the window.fetch mock
   // (installed in the fixture) intercepts.
   getBaseUrl: () => "",
+  getRestAuthToken: () => null,
   // Typed widget requests still pass through the fixture's window.fetch mock;
   // mirror the production client's JSON boundary so constructor-based imports
   // and the shared singleton observe the same seeded responses.
@@ -53,9 +53,6 @@ export const client = {
   // card renders with a todo row alongside its flagged at-risk goal row
   // (spec §E item 5). Quiet mode returns zero work so the card self-hides.
   listWorkbenchTodos: async () => homeWidgetTodosResponse(),
-  // Needs-response home card: attention mode seeds pending approvals; quiet
-  // mode returns none so the card self-hides.
-  listPendingActions: async () => homeWidgetApprovalsResponse(),
   // Notification store hydrate + live subscription.
   listNotifications: async () => homeWidgetNotificationsResponse(),
   onWsEvent: () => {},

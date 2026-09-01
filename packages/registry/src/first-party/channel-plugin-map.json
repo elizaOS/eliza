@@ -1,5 +1,5 @@
 {
-  "blooio": "@elizaos/plugin-blooio",
+  "blooio": "@elizaos/plugin-imessage",
   "discord": "@elizaos/plugin-discord",
   "discordLocal": "@elizaos/plugin-discord",
   "googlechat": "@elizaos/plugin-google-workspace",

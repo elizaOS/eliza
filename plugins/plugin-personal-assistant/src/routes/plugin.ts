@@ -39,8 +39,18 @@ import {
   readJsonBody as httpReadJsonBody,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
+  SELF_ENTITY_ID,
 } from "@elizaos/shared";
+import {
+  AGREEMENT_UPLOAD_CHUNK_BYTES,
+  AGREEMENT_UPLOAD_METADATA_BYTES,
+} from "../lifeops/household/agreement-upload-limits.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
+import { handleAgreementKnowledgeRoutes } from "./agreement-knowledge-routes.js";
+import {
+  type LifeOpsAuthenticatedPrincipal,
+  resolveLifeOpsAuthenticatedPrincipal,
+} from "./authenticated-entity-principal.js";
 import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
@@ -52,6 +62,11 @@ import {
 import { handleSleepRoutes } from "./sleep-routes.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
 import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
+
+const requestPrincipals = new WeakMap<
+  http.IncomingMessage,
+  LifeOpsAuthenticatedPrincipal
+>();
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
@@ -184,6 +199,8 @@ function buildLifeOpsContext(
     state: {
       runtime,
       adminEntityId: routeOwnerEntityId(runtime),
+      requestEntityId:
+        requestPrincipals.get(req)?.entityId ?? routeOwnerEntityId(runtime),
     },
     json,
     error,
@@ -272,6 +289,8 @@ interface PrivateRouteSpec {
   type: HttpRouteType;
   path: string;
   public?: false;
+  access?: "owner" | "authenticated_entity";
+  maxBodyBytes?: number;
 }
 
 interface PublicRouteSpec {
@@ -282,6 +301,7 @@ interface PublicRouteSpec {
   publicReason: string;
   /** Required for non-GET public routes: names the out-of-band auth. */
   publicWrite?: string;
+  maxBodyBytes?: number;
 }
 
 type RouteSpec = PrivateRouteSpec | PublicRouteSpec;
@@ -300,6 +320,9 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/calendar/calendars" },
   { type: "PUT", path: "/api/lifeops/calendar/calendars/:id/include" },
   { type: "GET", path: "/api/lifeops/calendar/next-context" },
+  { type: "GET", path: "/api/lifeops/calendar/links" },
+  { type: "POST", path: "/api/lifeops/calendar/links" },
+  { type: "POST", path: "/api/lifeops/calendar/cards" },
   { type: "GET", path: "/api/lifeops/gmail/triage" },
   { type: "GET", path: "/api/lifeops/gmail/sync-health" },
   { type: "POST", path: "/api/lifeops/gmail/seed" },
@@ -415,6 +438,32 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/features/toggle" },
+  { type: "GET", path: "/api/lifeops/agreements" },
+  {
+    type: "POST",
+    path: "/api/lifeops/agreement-uploads",
+    maxBodyBytes: AGREEMENT_UPLOAD_METADATA_BYTES,
+  },
+  { type: "GET", path: "/api/lifeops/agreement-uploads/:id" },
+  {
+    type: "PUT",
+    path: "/api/lifeops/agreement-uploads/:id/chunks/:index",
+    maxBodyBytes: AGREEMENT_UPLOAD_CHUNK_BYTES,
+  },
+  {
+    type: "POST",
+    path: "/api/lifeops/agreement-uploads/:id/commit",
+    maxBodyBytes: AGREEMENT_UPLOAD_METADATA_BYTES,
+  },
+  { type: "POST", path: "/api/lifeops/agreements/grants/preview" },
+  { type: "POST", path: "/api/lifeops/agreements/grants" },
+  { type: "PUT", path: "/api/lifeops/family-workflows/school/source" },
+  { type: "GET", path: "/api/lifeops/family-workflows/school/status" },
+  { type: "POST", path: "/api/lifeops/family-workflows/school/run" },
+  { type: "POST", path: "/api/lifeops/family-workflows/school/apply" },
+  { type: "POST", path: "/api/lifeops/family-workflows/run-now" },
+  { type: "GET", path: "/api/lifeops/family-workflows/packets" },
+  { type: "POST", path: "/api/lifeops/family-workflows/packets" },
   // Knowledge-graph: entities + relationships.
   { type: "GET", path: "/api/lifeops/entities" },
   { type: "POST", path: "/api/lifeops/entities" },
@@ -426,6 +475,19 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
 ];
 
 const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
+  {
+    type: "GET",
+    path: "/api/lifeops/family-workflows/school/runs/:runId",
+  },
+  { type: "GET", path: "/api/lifeops/family-workflows/packets/:packetId" },
+  {
+    type: "POST",
+    path: "/api/lifeops/family-workflows/packets/:packetId/drafts",
+  },
+  {
+    type: "POST",
+    path: "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/approval",
+  },
   {
     type: "GET",
     path: "/api/lifeops/connectors/health/:provider/status",
@@ -451,6 +513,17 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   // /api/lifeops/calendar/events/:eventId
   { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
   { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },
+  // /api/lifeops/calendar/links/:id
+  { type: "GET", path: "/api/lifeops/calendar/links/:id" },
+  { type: "POST", path: "/api/lifeops/calendar/links/:id/reconcile" },
+  { type: "POST", path: "/api/lifeops/calendar/links/:id/resolve" },
+  { type: "POST", path: "/api/lifeops/calendar/links/:id/disconnect" },
+  {
+    type: "GET",
+    path: "/api/lifeops/calendar/cards/:cardId",
+    access: "authenticated_entity",
+  },
+  { type: "DELETE", path: "/api/lifeops/calendar/cards/:cardId" },
   // /api/lifeops/calendar/sources/:sourceId
   { type: "PATCH", path: "/api/lifeops/calendar/sources/:sourceId" },
   { type: "DELETE", path: "/api/lifeops/calendar/sources/:sourceId" },
@@ -488,9 +561,25 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/entities/:id" },
   { type: "PATCH", path: "/api/lifeops/entities/:id" },
   { type: "POST", path: "/api/lifeops/entities/:id/identities" },
+  { type: "POST", path: "/api/lifeops/entities/:id/auth-bindings" },
   { type: "GET", path: "/api/lifeops/relationships/:id" },
   { type: "PATCH", path: "/api/lifeops/relationships/:id" },
   { type: "POST", path: "/api/lifeops/relationships/:id/retire" },
+  { type: "GET", path: "/api/lifeops/agreements/:id" },
+  { type: "GET", path: "/api/lifeops/agreements/:id/download" },
+  {
+    type: "GET",
+    path: "/api/lifeops/agreements/:id/guest-projection",
+  },
+  { type: "POST", path: "/api/lifeops/agreements/:id/obligations" },
+  { type: "GET", path: "/api/lifeops/agreements/:id/pins" },
+  { type: "POST", path: "/api/lifeops/agreements/:id/pins" },
+  {
+    type: "POST",
+    path: "/api/lifeops/agreements/obligations/:id/decision",
+  },
+  { type: "DELETE", path: "/api/lifeops/agreements/pins/:id" },
+  { type: "POST", path: "/api/lifeops/agreements/grants/:id/revoke" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -588,7 +677,57 @@ function withOwnerAdminGate(handler: LegacyRouteHandler): LegacyRouteHandler {
     if (!allowed) {
       return;
     }
-    await handler(req as never, res as never, runtime as never);
+    requestPrincipals.set(httpReq, {
+      kind: "owner",
+      entityId: String(routeOwnerEntityId(agentRuntime) ?? SELF_ENTITY_ID),
+      authIdentityId: null,
+    });
+    try {
+      await handler(req as never, res as never, runtime as never);
+    } finally {
+      requestPrincipals.delete(httpReq);
+    }
+  };
+}
+
+function withAuthenticatedEntityGate(
+  handler: LegacyRouteHandler,
+): LegacyRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const agentRuntime = (runtime as AgentRuntime) ?? null;
+    if (!agentRuntime) {
+      error(httpRes, "Agent runtime is not available", 503);
+      return;
+    }
+    const resolved = await resolveLifeOpsAuthenticatedPrincipal({
+      req: httpReq,
+      runtime: agentRuntime,
+    });
+    if (!resolved.ok) {
+      error(httpRes, resolved.reason, resolved.status);
+      return;
+    }
+    const principal =
+      resolved.principal.kind === "owner"
+        ? {
+            ...resolved.principal,
+            entityId: String(
+              routeOwnerEntityId(agentRuntime) ?? SELF_ENTITY_ID,
+            ),
+          }
+        : resolved.principal;
+    requestPrincipals.set(httpReq, principal);
+    try {
+      await handler(req as never, res as never, runtime as never);
+    } finally {
+      requestPrincipals.delete(httpReq);
+    }
   };
 }
 
@@ -606,6 +745,9 @@ function buildRawRoutes(
         name: spec.name,
         publicReason: spec.publicReason,
         ...(spec.publicWrite ? { publicWrite: spec.publicWrite } : {}),
+        ...(spec.maxBodyBytes === undefined
+          ? {}
+          : { maxBodyBytes: spec.maxBodyBytes }),
         handler,
       };
     }
@@ -613,7 +755,13 @@ function buildRawRoutes(
       type: spec.type,
       path: spec.path,
       rawPath: true,
-      handler: withOwnerAdminGate(handler),
+      ...(spec.maxBodyBytes === undefined
+        ? {}
+        : { maxBodyBytes: spec.maxBodyBytes }),
+      handler:
+        spec.access === "authenticated_entity"
+          ? withAuthenticatedEntityGate(handler)
+          : withOwnerAdminGate(handler),
     };
   });
 }
@@ -633,6 +781,7 @@ function lifeOpsRouteHandler(): LegacyRouteHandler {
     );
     if (await handleEntityRoutes(ctx)) return;
     if (await handleRelationshipRoutes(ctx)) return;
+    if (await handleAgreementKnowledgeRoutes(ctx)) return;
     await handleLifeOpsRoutes(ctx);
   };
 }

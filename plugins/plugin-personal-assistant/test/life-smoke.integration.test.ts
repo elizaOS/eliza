@@ -1,7 +1,8 @@
 /**
  * Smoke tests for the LIFE action -- verifies the full handler chain
  * with a real PGLite-backed LifeOps service and real runtime, exercising
- * the handler path with and without explicit action parameters.
+ * the handler path with and without explicit action parameters. Grounded
+ * reply generation uses the production canonical fallback deterministically.
  *
  * These simulate what happens when the LLM selects the LIFE action
  * with various parameter combinations:
@@ -17,7 +18,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app-core/test/helpers/real-runtime.ts";
@@ -73,6 +74,27 @@ function restoreIsolatedLifeSmokeEnv(): void {
   }
 }
 
+async function renderCanonicalFallback(
+  _runtime: AgentRuntime,
+  params: Record<string, unknown>,
+): Promise<string> {
+  const prompt = params.prompt;
+  if (typeof prompt !== "string") {
+    throw new Error("life smoke text model requires a string prompt");
+  }
+  const marker = "\nCanonical fallback: ";
+  const markerIndex = prompt.lastIndexOf(marker);
+  if (markerIndex < 0) {
+    throw new Error("life smoke text model requires a canonical fallback");
+  }
+  const encodedFallback = prompt.slice(markerIndex + marker.length);
+  const fallback = JSON.parse(encodedFallback);
+  if (typeof fallback !== "string") {
+    throw new Error("life smoke canonical fallback must be text");
+  }
+  return fallback;
+}
+
 function send(params: Record<string, unknown>, messageText?: string) {
   return runLifeOperationHandler(
     runtime,
@@ -117,6 +139,16 @@ beforeAll(async () => {
     plugins: [schedulingPlugin, personalAssistantPlugin],
   });
   runtime = result.runtime;
+  runtime.registerModel(
+    ModelType.TEXT_SMALL,
+    renderCanonicalFallback,
+    "life-smoke-deterministic",
+  );
+  runtime.registerModel(
+    ModelType.TEXT_LARGE,
+    async () => "{}",
+    "life-smoke-deterministic",
+  );
   cleanup = result.cleanup;
 }, 180_000);
 

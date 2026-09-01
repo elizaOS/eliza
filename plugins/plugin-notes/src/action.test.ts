@@ -222,6 +222,18 @@ describe("NOTES operation parsing", () => {
     });
   });
 
+  it('stores "titled X saying Y" planner content as label plus body, not one merged title', async () => {
+    const runtime = await harness();
+    // Live planner output for "create a note titled Demo Checklist saying
+    // mic, charger, water" arrives as one colon-joined content field.
+    const created = await run(runtime, {
+      action: "create",
+      content: "Demo Checklist: mic, charger, water",
+    });
+    expect(created.success).toBe(true);
+    expect(created.text).toContain("Demo Checklist — mic, charger, water");
+  });
+
   it("lets the owner create, search/list, update, and delete in one store", async () => {
     const runtime = await harness();
     const created = await run(runtime, {

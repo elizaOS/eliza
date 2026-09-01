@@ -16,6 +16,8 @@
 export const CLOUD_AUTH_COMPLETE_MESSAGE_TYPE = "eliza-cloud-auth-complete";
 
 export const CLOUD_AUTH_COMPLETE_CHANNEL = "eliza-cloud-auth-complete";
+const CLOUD_AUTH_COMPLETE_STORAGE_PREFIX = "eliza-cloud-auth-complete:";
+const CLOUD_AUTH_COMPLETE_TTL_MS = 10 * 60 * 1000;
 
 export type CloudAuthCompleteMessage = {
   type: typeof CLOUD_AUTH_COMPLETE_MESSAGE_TYPE;
@@ -44,6 +46,15 @@ export function publishCloudAuthComplete(sessionId: string): void {
     sessionId: trimmed,
   };
   try {
+    window.localStorage.setItem(
+      `${CLOUD_AUTH_COMPLETE_STORAGE_PREFIX}${trimmed}`,
+      String(Date.now()),
+    );
+  } catch (error) {
+    void error;
+    // error-policy:J6 durable cross-tab replay is best-effort; live signaling remains available.
+  }
+  try {
     if (typeof BroadcastChannel === "undefined") return;
     const channel = new BroadcastChannel(CLOUD_AUTH_COMPLETE_CHANNEL);
     channel.postMessage(payload);
@@ -51,6 +62,29 @@ export function publishCloudAuthComplete(sessionId: string): void {
   } catch (error) {
     void error;
     // error-policy:J6 broadcast is best-effort; opener poll still completes login.
+  }
+}
+
+/** True when this browser recently completed the exact CLI session. */
+export function hasCloudAuthCompleted(sessionId: string): boolean {
+  const trimmed = sessionId.trim();
+  if (!trimmed || typeof window === "undefined") return false;
+  const key = `${CLOUD_AUTH_COMPLETE_STORAGE_PREFIX}${trimmed}`;
+  try {
+    const completedAt = Number(window.localStorage.getItem(key));
+    if (
+      !Number.isFinite(completedAt) ||
+      completedAt > Date.now() ||
+      Date.now() - completedAt > CLOUD_AUTH_COMPLETE_TTL_MS
+    ) {
+      window.localStorage.removeItem(key);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    void error;
+    // error-policy:J4 storage-denied browsers retain the live BroadcastChannel path.
+    return false;
   }
 }
 

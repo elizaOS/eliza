@@ -1,6 +1,7 @@
 /**
- * Real admin route + PGlite coverage for selecting one retained existing
- * personal Dedicated row without provisioning or touching duplicate inventory.
+ * Real admin route + PGlite coverage for selecting and explicitly re-reviewing
+ * one retained personal Dedicated row without provisioning or touching
+ * duplicate compute inventory.
  */
 
 import {
@@ -177,6 +178,96 @@ async function previewFingerprint(): Promise<string> {
     data: { inventoryFingerprint: string };
   };
   return body.data.inventoryFingerprint;
+}
+
+function rereviewRequestBody(
+  retainedAgentId: string,
+  dryRun: true,
+): Record<string, unknown>;
+function rereviewRequestBody(
+  retainedAgentId: string,
+  dryRun: false,
+  preview: {
+    receiptFingerprint: string;
+    receiptUpdatedAt: string;
+    previousRetainedAgentId: string;
+    inventoryFingerprint: string;
+    stateDisposition:
+      | "verified_backup_present"
+      | "fresh_boot_no_verified_backup";
+  },
+): Record<string, unknown>;
+function rereviewRequestBody(
+  retainedAgentId: string,
+  dryRun: boolean,
+  preview?: {
+    receiptFingerprint: string;
+    receiptUpdatedAt: string;
+    previousRetainedAgentId: string;
+    inventoryFingerprint: string;
+    stateDisposition:
+      | "verified_backup_present"
+      | "fresh_boot_no_verified_backup";
+  },
+) {
+  return {
+    action: "rereview_existing_personal_dedicated",
+    targetOwnerOrganizationId: ORG_A,
+    targetOwnerUserId: USER_A,
+    retainedAgentId,
+    reason: "duplicate_owned_dedicated_inventory",
+    dryRun,
+    ...(dryRun
+      ? {}
+      : {
+          receiptFingerprint: preview?.receiptFingerprint,
+          receiptUpdatedAt: preview?.receiptUpdatedAt,
+          previousRetainedAgentId: preview?.previousRetainedAgentId,
+          inventoryFingerprint: preview?.inventoryFingerprint,
+          stateDisposition: preview?.stateDisposition,
+          confirmation: "rereview_without_provisioning_or_deleting",
+        }),
+  };
+}
+
+async function seedStaleSelection() {
+  await seedAmbiguousInventory();
+  const inventoryFingerprint = await previewFingerprint();
+  await personalDedicatedAdoptionSelectionService.execute({
+    organizationId: ORG_A,
+    userId: USER_A,
+    sourceAgentId: SOURCE_A,
+    retainedAgentId: RETAINED,
+    selectedByUserId: ADMIN,
+    reason: "duplicate_owned_dedicated_inventory",
+    expectedInventoryFingerprint: inventoryFingerprint,
+    expectedStateDisposition: "fresh_boot_no_verified_backup",
+  });
+  const [selection] = await dbWrite
+    .select()
+    .from(personalDedicatedAdoptionSelections);
+  if (!selection) throw new Error("selection fixture was not persisted");
+  return selection;
+}
+
+async function rereviewPreview(retainedAgentId = RETAINED) {
+  const response = await post(rereviewRequestBody(retainedAgentId, true));
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    data: {
+      receiptFingerprint: string;
+      receiptUpdatedAt: string;
+      inventoryFingerprint: string;
+      stateDisposition:
+        | "verified_backup_present"
+        | "fresh_boot_no_verified_backup";
+      candidateCount: number;
+      previousRetainedAgentId: string;
+      retainedAgentId: string;
+      replacesTarget: boolean;
+    };
+  };
+  return body.data;
 }
 
 beforeAll(async () => {
@@ -684,6 +775,245 @@ describe("admin personal Dedicated adoption selection", () => {
         sourceAgentId: SOURCE_A,
       }),
     ).toEqual({ state: "unavailable" });
+  });
+
+  test("explicitly re-reviews fingerprint drift without changing original audit identity", async () => {
+    const original = await seedStaleSelection();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ lifecycle_revision: 5750 })
+      .where(eq(agentSandboxes.id, RETAINED));
+
+    const preview = await rereviewPreview();
+    expect(preview).toMatchObject({
+      receiptFingerprint: original.inventory_fingerprint,
+      previousRetainedAgentId: RETAINED,
+      retainedAgentId: RETAINED,
+      candidateCount: 2,
+      replacesTarget: false,
+    });
+    expect(preview.inventoryFingerprint).not.toBe(
+      original.inventory_fingerprint,
+    );
+
+    const response = await post(rereviewRequestBody(RETAINED, false, preview));
+    expect(response.status).toBe(200);
+    const [refreshed] = await dbWrite
+      .select()
+      .from(personalDedicatedAdoptionSelections);
+    expect(refreshed).toMatchObject({
+      id: original.id,
+      selected_by_user_id: original.selected_by_user_id,
+      selected_at: original.selected_at,
+      created_at: original.created_at,
+      dedicated_agent_id: RETAINED,
+      inventory_fingerprint: preview.inventoryFingerprint,
+      candidate_count: 2,
+    });
+    expect(
+      await resolvePersonalDedicatedAdoption({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: SOURCE_A,
+      }),
+    ).toMatchObject({ state: "available", agent: { id: RETAINED } });
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("re-reviews candidate-count drift and can explicitly replace the retained target", async () => {
+    const original = await seedStaleSelection();
+    const third = "cccccccc-3333-4333-8333-333333333333";
+    await seedCandidate({ id: third, status: "stopped" });
+
+    const preview = await rereviewPreview(STALE);
+    expect(preview).toMatchObject({
+      receiptFingerprint: original.inventory_fingerprint,
+      previousRetainedAgentId: RETAINED,
+      retainedAgentId: STALE,
+      candidateCount: 3,
+      replacesTarget: true,
+    });
+    const response = await post(rereviewRequestBody(STALE, false, preview));
+    expect(response.status).toBe(200);
+    const [replaced] = await dbWrite
+      .select()
+      .from(personalDedicatedAdoptionSelections);
+    expect(replaced).toMatchObject({
+      id: original.id,
+      selected_by_user_id: original.selected_by_user_id,
+      dedicated_agent_id: STALE,
+      candidate_count: 3,
+      inventory_fingerprint: preview.inventoryFingerprint,
+    });
+    expect(
+      await resolvePersonalDedicatedAdoption({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: SOURCE_A,
+      }),
+    ).toMatchObject({ state: "available", agent: { id: STALE } });
+    expect(await dbWrite.select().from(agentSandboxes)).toHaveLength(3);
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("rejects re-review when the named target is deleted or ineligible", async () => {
+    const original = await seedStaleSelection();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "disconnected" })
+      .where(eq(agentSandboxes.id, RETAINED));
+
+    const response = await post(rereviewRequestBody(RETAINED, true));
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      code: "personal_dedicated_selection_not_found",
+    });
+    expect(
+      await dbWrite.select().from(personalDedicatedAdoptionSelections),
+    ).toEqual([original]);
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("rejects re-review when activation authority already owns the source", async () => {
+    const original = await seedStaleSelection();
+    await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+      organization_id: ORG_A,
+      user_id: USER_A,
+      source_agent_id: SOURCE_A,
+      dedicated_agent_id: RETAINED,
+    });
+
+    const response = await post(rereviewRequestBody(RETAINED, true));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "personal_dedicated_selection_conflict",
+    });
+    expect(
+      await dbWrite.select().from(personalDedicatedAdoptionSelections),
+    ).toEqual([original]);
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("serializes concurrent stale-receipt refreshes with an exact receipt CAS", async () => {
+    await seedStaleSelection();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ lifecycle_revision: 5750 })
+      .where(eq(agentSandboxes.id, RETAINED));
+    const preview = await rereviewPreview();
+    const input = {
+      organizationId: ORG_A,
+      userId: USER_A,
+      sourceAgentId: SOURCE_A,
+      retainedAgentId: RETAINED,
+      selectedByUserId: ADMIN,
+      reason: "duplicate_owned_dedicated_inventory" as const,
+      expectedReceiptFingerprint: preview.receiptFingerprint,
+      expectedReceiptUpdatedAt: preview.receiptUpdatedAt,
+      expectedPreviousRetainedAgentId: preview.previousRetainedAgentId,
+      expectedInventoryFingerprint: preview.inventoryFingerprint,
+      expectedStateDisposition: preview.stateDisposition,
+    };
+
+    const results = await Promise.allSettled([
+      personalDedicatedAdoptionSelectionService.executeRereview(input),
+      personalDedicatedAdoptionSelectionService.executeRereview(input),
+    ]);
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected).toMatchObject({
+      status: "rejected",
+      reason: {
+        code: "PERSONAL_DEDICATED_SELECTION_INVENTORY_CHANGED",
+      },
+    });
+    expect(
+      await resolvePersonalDedicatedAdoption({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: SOURCE_A,
+      }),
+    ).toMatchObject({ state: "available", agent: { id: RETAINED } });
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("rejects a newer committed receipt target with the previewed fingerprint and version", async () => {
+    await seedStaleSelection();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ lifecycle_revision: 5750 })
+      .where(eq(agentSandboxes.id, RETAINED));
+    const preview = await rereviewPreview();
+
+    await dbWrite
+      .update(personalDedicatedAdoptionSelections)
+      .set({ dedicated_agent_id: STALE })
+      .where(eq(personalDedicatedAdoptionSelections.source_agent_id, SOURCE_A));
+
+    await expect(
+      personalDedicatedAdoptionSelectionService.executeRereview({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: SOURCE_A,
+        retainedAgentId: RETAINED,
+        selectedByUserId: ADMIN,
+        reason: "duplicate_owned_dedicated_inventory",
+        expectedReceiptFingerprint: preview.receiptFingerprint,
+        expectedReceiptUpdatedAt: preview.receiptUpdatedAt,
+        expectedPreviousRetainedAgentId: preview.previousRetainedAgentId,
+        expectedInventoryFingerprint: preview.inventoryFingerprint,
+        expectedStateDisposition: preview.stateDisposition,
+      }),
+    ).rejects.toMatchObject({
+      code: "PERSONAL_DEDICATED_SELECTION_INVENTORY_CHANGED",
+    });
+    const [receipt] = await dbWrite
+      .select()
+      .from(personalDedicatedAdoptionSelections);
+    expect(receipt?.dedicated_agent_id).toBe(STALE);
+    expect(receipt?.inventory_fingerprint).toBe(preview.receiptFingerprint);
+  });
+
+  test("rejects a newer committed receipt version with the previewed fingerprint and target", async () => {
+    await seedStaleSelection();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ lifecycle_revision: 5750 })
+      .where(eq(agentSandboxes.id, RETAINED));
+    const preview = await rereviewPreview();
+    const newerReceiptVersion = new Date("2026-08-30T12:01:00.000Z");
+
+    await dbWrite
+      .update(personalDedicatedAdoptionSelections)
+      .set({ updated_at: newerReceiptVersion })
+      .where(eq(personalDedicatedAdoptionSelections.source_agent_id, SOURCE_A));
+
+    await expect(
+      personalDedicatedAdoptionSelectionService.executeRereview({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: SOURCE_A,
+        retainedAgentId: RETAINED,
+        selectedByUserId: ADMIN,
+        reason: "duplicate_owned_dedicated_inventory",
+        expectedReceiptFingerprint: preview.receiptFingerprint,
+        expectedReceiptUpdatedAt: preview.receiptUpdatedAt,
+        expectedPreviousRetainedAgentId: preview.previousRetainedAgentId,
+        expectedInventoryFingerprint: preview.inventoryFingerprint,
+        expectedStateDisposition: preview.stateDisposition,
+      }),
+    ).rejects.toMatchObject({
+      code: "PERSONAL_DEDICATED_SELECTION_INVENTORY_CHANGED",
+    });
+    const [receipt] = await dbWrite
+      .select()
+      .from(personalDedicatedAdoptionSelections);
+    expect(receipt?.dedicated_agent_id).toBe(RETAINED);
+    expect(receipt?.updated_at.toISOString()).toBe(
+      newerReceiptVersion.toISOString(),
+    );
   });
 
   test("target deletion preserves selection and authority tombstones and fails closed", async () => {

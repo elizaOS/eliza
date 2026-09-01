@@ -13,6 +13,7 @@ const coreMocks = vi.hoisted(() => {
   type TestAccount = {
     id: string;
     provider: string;
+    accountKey?: string;
     label?: string;
     role?: string;
     purpose?: string[];
@@ -623,6 +624,174 @@ describe("connector account routes", () => {
     });
   });
 
+  it.each([
+    ["root-relative", "/lifeops/connections?oauth=google#accounts"],
+    [
+      "absolute same-origin",
+      "https://eliza.example/lifeops/connections?oauth=google#accounts",
+    ],
+  ])(
+    "returns a successful browser callback to a %s app target",
+    async (_shape, redirectUrl) => {
+      const { ctx, captured, runtime, storage } = createConnectorAccountHarness(
+        {
+          method: "GET",
+          pathname:
+            "/api/connectors/google/oauth/callback?state=state-return&code=ok",
+          settings: { ELIZA_EXTERNAL_BASE_URL: "https://eliza.example" },
+          authorize: null,
+        },
+      );
+      const manager = getConnectorAccountManager(runtime as never, storage);
+      manager.registerProvider({
+        provider: "google",
+        completeOAuth: () => ({
+          flow: { status: "completed" },
+        }),
+      });
+      await storage.createOAuthFlow({
+        id: "flow-return",
+        provider: "google",
+        state: "state-return",
+        status: "pending",
+        createdAt: 1,
+        updatedAt: 1,
+        expiresAt: Date.now() + 60_000,
+        metadata: { redirectUrl },
+      });
+
+      await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+      expect(captured.status).toBe(303);
+      expect(captured.body).toBeNull();
+      expect(ctx.res.setHeader).toHaveBeenCalledWith(
+        "Location",
+        "https://eliza.example/lifeops/connections?oauth=google#accounts",
+      );
+      expect(ctx.res.setHeader).toHaveBeenCalledWith(
+        "Cache-Control",
+        "no-store",
+      );
+    },
+  );
+
+  it.each([
+    "https://attacker.example/oauth-finished",
+    "//attacker.example/oauth-finished",
+    "javascript:alert(1)",
+    "https://user:password@eliza.example/oauth-finished",
+  ])(
+    "does not redirect a browser callback to unsafe target %s",
+    async (redirectUrl) => {
+      const { ctx, captured, runtime, storage } = createConnectorAccountHarness(
+        {
+          method: "GET",
+          pathname:
+            "/api/connectors/google/oauth/callback?state=state-unsafe&code=ok",
+          settings: { ELIZA_EXTERNAL_BASE_URL: "https://eliza.example" },
+          authorize: null,
+        },
+      );
+      const manager = getConnectorAccountManager(runtime as never, storage);
+      manager.registerProvider({
+        provider: "google",
+        completeOAuth: () => ({ flow: { status: "completed" } }),
+      });
+      await storage.createOAuthFlow({
+        id: "flow-unsafe",
+        provider: "google",
+        state: "state-unsafe",
+        status: "pending",
+        createdAt: 1,
+        updatedAt: 1,
+        expiresAt: Date.now() + 60_000,
+        metadata: { redirectUrl },
+      });
+
+      await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+      expect(captured.status).toBe(200);
+      expect(captured.body).toMatchObject({ ok: true });
+      expect(ctx.res.setHeader).not.toHaveBeenCalledWith(
+        "Location",
+        expect.anything(),
+      );
+    },
+  );
+
+  it("keeps POST OAuth callbacks on the JSON contract even with a safe return target", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/oauth/callback",
+      body: { state: "state-post", code: "ok" },
+      settings: { ELIZA_EXTERNAL_BASE_URL: "https://eliza.example" },
+      authorize: null,
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    manager.registerProvider({
+      provider: "google",
+      completeOAuth: () => ({ flow: { status: "completed" } }),
+    });
+    await storage.createOAuthFlow({
+      id: "flow-post",
+      provider: "google",
+      state: "state-post",
+      status: "pending",
+      createdAt: 1,
+      updatedAt: 1,
+      expiresAt: Date.now() + 60_000,
+      metadata: { redirectUrl: "/lifeops/connections" },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(200);
+    expect(captured.body).toMatchObject({ ok: true });
+    expect(ctx.res.setHeader).not.toHaveBeenCalledWith(
+      "Location",
+      expect.anything(),
+    );
+  });
+
+  it("keeps failed browser callbacks on JSON so the provider error remains visible", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname:
+        "/api/connectors/google/oauth/callback?state=state-failed&error=access_denied",
+      settings: { ELIZA_EXTERNAL_BASE_URL: "https://eliza.example" },
+      authorize: null,
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    manager.registerProvider({
+      provider: "google",
+      completeOAuth: () => ({
+        flow: { status: "failed", error: "access_denied" },
+      }),
+    });
+    await storage.createOAuthFlow({
+      id: "flow-failed",
+      provider: "google",
+      state: "state-failed",
+      status: "pending",
+      createdAt: 1,
+      updatedAt: 1,
+      expiresAt: Date.now() + 60_000,
+      metadata: { redirectUrl: "/lifeops/connections" },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(200);
+    expect(captured.body).toMatchObject({
+      ok: true,
+      flow: { status: "failed", error: "access_denied" },
+    });
+    expect(ctx.res.setHeader).not.toHaveBeenCalledWith(
+      "Location",
+      expect.anything(),
+    );
+  });
+
   it("uses the configured external base as the trusted proxy origin", async () => {
     const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
       method: "POST",
@@ -937,7 +1106,7 @@ describe("connector account routes", () => {
   });
 
   it("strips client-controlled policy metadata and owner-binding fields", async () => {
-    const { ctx, captured } = createConnectorAccountHarness({
+    const { ctx, captured, storage } = createConnectorAccountHarness({
       method: "POST",
       pathname: "/api/connectors/google/accounts",
       body: {
@@ -946,6 +1115,7 @@ describe("connector account routes", () => {
         accessGate: "owner_binding",
         ownerBindingId: "client-binding",
         ownerIdentityId: "client-identity",
+        accountKey: "client-controlled-account-key",
         metadata: {
           safe: "visible",
           privacy: "public",
@@ -979,6 +1149,9 @@ describe("connector account routes", () => {
       ownerBindingId: "client-binding",
       ownerIdentityId: "client-identity",
     });
+    await expect(
+      storage.getAccount("google", "acct_policy"),
+    ).resolves.not.toHaveProperty("accountKey");
     expect(JSON.stringify(captured.body)).not.toContain("refresh-secret");
     expect(JSON.stringify(captured.body)).not.toContain("credentialRefs");
   });

@@ -2373,9 +2373,8 @@ export interface ManageLifeOpsGmailMessagesRequest {
   maxResults?: number;
   labelIds?: string[];
   /**
-   * Approval captured immediately before a destructive provider-side mailbox
-   * mutation (`trash`, `delete`, `spam`). Non-destructive operations execute
-   * without it, matching the original contract.
+   * Approval captured immediately before any provider-side mailbox mutation,
+   * including archive, read state, labels, trash, delete, and spam.
    */
   confirmAction?: boolean;
   /** Legacy destructive confirmation; either flag satisfies the destructive gate. */

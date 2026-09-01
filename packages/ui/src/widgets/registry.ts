@@ -31,7 +31,6 @@ export {
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
 import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
 import { MODEL_DOWNLOAD_HOME_WIDGET } from "../components/chat/widgets/model-download";
-import { NEEDS_ATTENTION_HOME_WIDGET } from "../components/chat/widgets/needs-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 
 // The wallet / goals / sleep resident components are no longer registered
@@ -75,9 +74,11 @@ registerWidgetComponent(
 // snapshot. Goals + health left this set (spec §E items 4-5): the at-risk goal
 // is absorbed into the Today (todo) card and sleep moved to its routed dashboard,
 // so neither registers a home component here anymore.
-for (const w of [CALENDAR_HOME_WIDGET, NEEDS_ATTENTION_HOME_WIDGET]) {
-  registerWidgetComponent(w.pluginId, w.id, w.Component);
-}
+registerWidgetComponent(
+  CALENDAR_HOME_WIDGET.pluginId,
+  CALENDAR_HOME_WIDGET.id,
+  CALENDAR_HOME_WIDGET.Component,
+);
 
 /**
  * Public API for plugins outside app-core to append widget declarations to the
@@ -140,23 +141,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
   // Home keeps only essential, low-noise cards. Rich domain surfaces like inbox,
   // finances, relationships, workflow activity, feed activity, and orchestrator
   // app runs remain available through launcher/routed views, not resident cards.
-  // Needs response - the canonical "actions requiring your response" card
-  // (#9449). Backed by the core ApprovalService (GET /api/approvals), not a
-  // loadable plugin, so it is always-visible (declaration `visibility:
-  // "always"`) and self-hides when nothing is pending. Floats up at
-  // approval/escalation weight on its own data.
-  {
-    id: NEEDS_ATTENTION_HOME_WIDGET.id,
-    pluginId: NEEDS_ATTENTION_HOME_WIDGET.pluginId,
-    slot: "home",
-    label: "Needs response",
-    icon: "CircleHelp",
-    order: NEEDS_ATTENTION_HOME_WIDGET.order,
-    defaultEnabled: true,
-    // Backed by the core ApprovalService, not a loadable plugin (#9449).
-    visibility: "always",
-    signalKinds: NEEDS_ATTENTION_HOME_WIDGET.signalKinds,
-  },
   {
     id: CALENDAR_HOME_WIDGET.id,
     pluginId: CALENDAR_HOME_WIDGET.pluginId,
@@ -242,6 +226,15 @@ export type WidgetPluginState = Pick<PluginInfo, "id" | "enabled" | "isActive">;
  */
 const EXTERNAL_FALLBACK_PLUGIN_IDS = new Set<string>();
 
+/** Retired resident keys stay retired even if a stale server advertises them. */
+const RETIRED_WIDGET_KEYS = new Set([
+  "needs-attention/needs-attention.pending",
+]);
+
+function isRetiredWidget(declaration: PluginWidgetDeclaration): boolean {
+  return RETIRED_WIDGET_KEYS.has(`${declaration.pluginId}/${declaration.id}`);
+}
+
 /**
  * Visibility class for a built-in declaration, derived from its own
  * `visibility` field with a back-compat fallback to the third-party allow set.
@@ -276,8 +269,8 @@ function isWidgetEnabled(
   // Some always-visible ids (calendar / health) ARE backed by
   // real loadable plugins, so an explicit "present + disabled" snapshot entry
   // must still hide them - the always/fallback short-circuits are for core
-  // surfaces with NO plugin package (welcome/notifications/needs-attention/
-  // wallet/…), which never appear in the snapshot and so pass this check
+  // surfaces with NO plugin package (welcome/notifications/wallet/…), which
+  // never appear in the snapshot and so pass this check
   // untouched.
   const snapshotPlugin = plugins.find((p) => p.id === declaration.pluginId);
   const explicitlyDisabled =
@@ -340,7 +333,7 @@ export function resolveWidgetsForSlot(
   >();
 
   for (const decl of BUILTIN_WIDGET_DECLARATIONS) {
-    if (decl.slot === slot) {
+    if (decl.slot === slot && !isRetiredWidget(decl)) {
       declarationMap.set(`${decl.pluginId}/${decl.id}`, {
         declaration: decl,
         source: "builtin",
@@ -350,7 +343,7 @@ export function resolveWidgetsForSlot(
 
   if (serverDeclarations) {
     for (const decl of serverDeclarations) {
-      if (decl.slot === slot) {
+      if (decl.slot === slot && !isRetiredWidget(decl)) {
         declarationMap.set(`${decl.pluginId}/${decl.id}`, {
           declaration: decl,
           source: "server",

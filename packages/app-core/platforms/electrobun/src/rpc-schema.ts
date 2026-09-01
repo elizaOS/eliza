@@ -1103,7 +1103,8 @@ export type CharacterSnapshot = Record<string, unknown>;
  * Typed response for `getAuthStatus` — pairing/auth gate state for
  * the polling-backend startup phase. Mirrors `GET /api/auth/status`
  * on the agent. `required` decides whether to prompt for pairing;
- * `pairingEnabled` + `expiresAt` drive the pairing code UI.
+ * `pairingEnabled` + `expiresAt` drive the pairing code UI, and `instanceId`
+ * binds redemption to the same backend process that advertised the code.
  */
 export interface AuthStatusSnapshot {
   required: boolean;
@@ -1115,6 +1116,7 @@ export interface AuthStatusSnapshot {
   bootstrapRequired?: boolean;
   localAccess?: boolean;
   passwordConfigured?: boolean;
+  instanceId?: string;
 }
 
 /**

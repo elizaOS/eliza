@@ -4,22 +4,30 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-	MAX_PDF_BUFFER_BYTES,
-	MAX_PDF_PAGES,
-	PdfService,
-} from "../services/pdf";
+import { PdfService } from "../services/pdf";
 
 const getDocumentProxyMock = vi.hoisted(() => vi.fn());
+const renderPageAsImageMock = vi.hoisted(() => vi.fn());
 
 vi.mock("unpdf", () => ({
 	getDocumentProxy: getDocumentProxyMock,
+	getResolvedPDFJS: vi.fn(async () => ({
+		OPS: {
+			paintImageXObject: 85,
+			paintInlineImageXObject: 86,
+			paintImageMaskXObject: 83,
+			paintSolidColorImageMask: 90,
+		},
+	})),
+	renderPageAsImage: renderPageAsImageMock,
 }));
+
 
 interface MockPageInput {
 	items: unknown;
 	width?: number;
 	height?: number;
+	operators?: number[];
 }
 
 function makeDeclaredPdf(numPages: number) {
@@ -28,6 +36,7 @@ function makeDeclaredPdf(numPages: number) {
 		getPage: vi.fn(async () => ({
 			getTextContent: vi.fn(async () => ({ items: [{ str: "p" }] })),
 			getViewport: vi.fn(() => ({ width: 612, height: 792 })),
+			getOperatorList: vi.fn(async () => ({ fnArray: [] })),
 		})),
 		getMetadata: vi.fn(async () => ({ info: {} })),
 	};
@@ -48,14 +57,17 @@ function makePdf(
 					width: page.width ?? 612,
 					height: page.height ?? 792,
 				})),
+				getOperatorList: vi.fn(async () => ({
+					fnArray: page.operators ?? [],
+				})),
 			};
 		}),
 		getMetadata: vi.fn(async () => ({ info })),
 	};
 }
 
-function service(): PdfService {
-	return new PdfService({} as IAgentRuntime);
+function service(runtime: Partial<IAgentRuntime> = {}): PdfService {
+	return new PdfService(runtime as IAgentRuntime);
 }
 
 function validPdfBuffer(body = "body"): Buffer {
@@ -65,6 +77,8 @@ function validPdfBuffer(body = "body"): Buffer {
 describe("PdfService", () => {
 	beforeEach(() => {
 		getDocumentProxyMock.mockReset();
+		renderPageAsImageMock.mockReset();
+		renderPageAsImageMock.mockResolvedValue("data:image/png;base64,cGFnZQ==");
 	});
 
 	it("extracts text from every page, ignores non-text items, and cleans control characters", async () => {
@@ -81,6 +95,49 @@ describe("PdfService", () => {
 		const parserInput = getDocumentProxyMock.mock.calls[0]?.[0];
 		expect(parserInput).toBeInstanceOf(Uint8Array);
 		expect(Buffer.isBuffer(parserInput)).toBe(false);
+	});
+
+	it("preserves caller-owned bytes when the parser transfers its input buffer", async () => {
+		const input = Uint8Array.from(validPdfBuffer());
+		const expected = Uint8Array.from(input);
+		getDocumentProxyMock.mockImplementation(async (parserInput: Uint8Array) => {
+			structuredClone(parserInput.buffer, {
+				transfer: [parserInput.buffer as ArrayBuffer],
+			});
+			return makePdf([{ items: [{ str: "preserved" }] }]);
+		});
+
+		await expect(service().convertPdfToText(input)).resolves.toBe("preserved");
+		expect(input).toEqual(expected);
+		expect(input.byteLength).toBe(expected.byteLength);
+	});
+
+	it("retains page geometry for layout-sensitive consumers", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([
+				{
+					items: [
+						{ str: "Aug 31 First Day Students", transform: [1, 0, 0, 1, 172, 714], width: 120, height: 9 },
+					],
+				},
+			]),
+		);
+
+		await expect(
+			service().convertPdfToPositionedText(validPdfBuffer()),
+		).resolves.toEqual({
+			pageCount: 1,
+			items: [
+				{
+					page: 1,
+					text: "Aug 31 First Day Students",
+					x: 172,
+					y: 714,
+					width: 120,
+					height: 9,
+				},
+			],
+		});
 	});
 
 	it("honors start/end page bounds and returns page count for ranged extraction", async () => {
@@ -279,33 +336,15 @@ describe("PdfService", () => {
 		expect(getDocumentProxyMock).not.toHaveBeenCalled();
 	});
 
-	it("rejects a declared page count above the page budget before getPage", async () => {
-		const pdf = makeDeclaredPdf(MAX_PDF_PAGES + 1);
-		getDocumentProxyMock.mockResolvedValue(pdf);
-
-		await expect(service().convertPdfToText(validPdfBuffer())).rejects.toThrow(
-			`PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`,
-		);
-		await expect(
-			service().convertPdfToTextWithOptions(validPdfBuffer()),
-		).resolves.toEqual({
-			success: false,
-			error: `PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`,
-		});
-		await expect(service().getDocumentInfo(validPdfBuffer())).rejects.toThrow(
-			`PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`,
-		);
-		expect(pdf.getPage).not.toHaveBeenCalled();
-	});
-
-	it("extracts a last-fit document at the page budget", async () => {
-		const pdf = makeDeclaredPdf(MAX_PDF_PAGES);
+	it("does not impose a semantic page-count ceiling", async () => {
+		const pageCount = 2_049;
+		const pdf = makeDeclaredPdf(pageCount);
 		getDocumentProxyMock.mockResolvedValue(pdf);
 
 		await expect(service().convertPdfToText(validPdfBuffer())).resolves.toBe(
-			Array.from({ length: MAX_PDF_PAGES }, () => "p").join("\n"),
+			Array.from({ length: pageCount }, () => "p").join("\n"),
 		);
-		expect(pdf.getPage).toHaveBeenCalledTimes(MAX_PDF_PAGES);
+		expect(pdf.getPage).toHaveBeenCalledTimes(pageCount);
 	});
 
 	it.each([
@@ -326,16 +365,150 @@ describe("PdfService", () => {
 		expect(pdf.getPage).not.toHaveBeenCalled();
 	});
 
-	it("rejects oversized PDF inputs before extraction", async () => {
-		const oversizedPdf = Buffer.concat([
-			Buffer.from("%PDF-1.7\n"),
-			Buffer.alloc(MAX_PDF_BUFFER_BYTES),
-		]);
 
-		await expect(service().convertPdfToText(oversizedPdf)).rejects.toThrow(
-			`PDF input exceeds maximum size of ${MAX_PDF_BUFFER_BYTES} bytes`
+	it("renders and vision-reconciles every page while accounting for blank pages", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([
+				{ items: [{ str: "Native one" }] },
+				{ items: [{ str: "Native two" }], operators: [85] },
+				{ items: [], operators: [42] },
+				{ items: [] },
+			]),
 		);
-		expect(getDocumentProxyMock).not.toHaveBeenCalled();
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({ title: "page 1", description: "Vision one" })
+			.mockResolvedValueOnce({ title: "page 2", description: "Vision two" })
+			.mockResolvedValueOnce({ title: "page 3", description: "Vision three" })
+			.mockResolvedValueOnce({ title: "page 4", description: "[BLANK PAGE]" });
+		const completed: number[] = [];
+
+		const result = await service({ useModel }).extractCompleteDocument(
+			validPdfBuffer(),
+			{ onPageComplete: (page) => completed.push(page.pageNumber) },
+		);
+
+		expect(result.complete).toBe(true);
+		expect(result.pageCount).toBe(4);
+		expect(result.pages.map((page) => page.method)).toEqual([
+			"native+vision",
+			"native+vision",
+			"vision",
+			"blank",
+		]);
+		expect(result.text).toContain(
+			"--- Page 1 ---\nNative one\n\n[Rendered-page transcription and visual context]\nVision one",
+		);
+		expect(result.text).toContain(
+			"Native two\n\n[Rendered-page transcription and visual context]\nVision two",
+		);
+		expect(result.text).toContain(
+			"--- Page 3 ---\n[Rendered-page transcription and visual context]\nVision three",
+		);
+		expect(result.text).toContain(
+			"--- Page 4 ---\n[Rendered-page transcription and visual context]\n[BLANK PAGE]",
+		);
+		expect(completed).toEqual([1, 2, 3, 4]);
+		expect(renderPageAsImageMock).toHaveBeenCalledTimes(4);
+		expect(useModel).toHaveBeenCalledTimes(4);
+		expect(useModel).toHaveBeenNthCalledWith(
+			1,
+			"IMAGE_DESCRIPTION",
+			expect.objectContaining({
+				prompt: expect.stringContaining('Native flattened text evidence: "Native one"'),
+			}),
+		);
+	});
+
+	it("rejects the complete document when one required vision page fails", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([
+				{ items: [{ str: "first" }] },
+				{ items: [], operators: [85] },
+				{ items: [{ str: "never reached" }] },
+			]),
+		);
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({ title: "page 1", description: "first" })
+			.mockRejectedValueOnce(new Error("vision unavailable"));
+
+		await expect(
+			service({ useModel }).extractCompleteDocument(validPdfBuffer()),
+		).rejects.toThrow(
+			"Complete PDF extraction failed on page 2 of 3: vision unavailable",
+		);
+	});
+
+	it("preserves OCR text alongside native and vision page evidence", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([
+				{
+					items: [
+						{
+							str: "Native label",
+							transform: [1, 0, 0, 1, 72, 700],
+							width: 80,
+							height: 12,
+						},
+					],
+					operators: [85],
+				},
+			]),
+		);
+		const ocrPage = vi.fn(async () => "OCR table cell");
+		const useModel = vi.fn(async () => ({
+			title: "page",
+			description: "Vision layout",
+		}));
+
+		const result = await service({ useModel }).extractCompleteDocument(validPdfBuffer(), {
+			ocrPage,
+		});
+		expect(result.pages[0]).toMatchObject({
+			nativeText: "Native label",
+			nativePositionedText: [
+				{
+					page: 1,
+					text: "Native label",
+					x: 72,
+					y: 700,
+					width: 80,
+					height: 12,
+				},
+			],
+			ocrText: "OCR table cell",
+			visionText: "Vision layout",
+		});
+		expect(result.text).toContain("[Rendered-page OCR]\nOCR table cell");
+		expect(result.text).toContain(
+			"[Rendered-page transcription and visual context]\nVision layout",
+		);
+		expect(ocrPage).toHaveBeenCalledWith(
+			expect.objectContaining({ pageNumber: 1 }),
+		);
+		expect(useModel).toHaveBeenCalledWith(
+			"IMAGE_DESCRIPTION",
+			expect.objectContaining({
+				prompt: expect.stringContaining('OCR evidence: "OCR table cell"'),
+			}),
+		);
+	});
+
+	it("rejects a blank vision result that conflicts with native evidence", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([{ items: [{ str: "Native content" }] }]),
+		);
+		const useModel = vi.fn(async () => ({
+			title: "page",
+			description: "[BLANK PAGE]",
+		}));
+
+		await expect(
+			service({ useModel }).extractCompleteDocument(validPdfBuffer()),
+		).rejects.toThrow(
+			"Complete PDF extraction failed on page 1 of 1: IMAGE_DESCRIPTION reported a blank page that conflicts with native or OCR evidence",
+		);
 	});
 
 	it("returns structured validation errors for malformed option-based inputs", async () => {

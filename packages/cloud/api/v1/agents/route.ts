@@ -334,8 +334,8 @@ app.post("/", async (c) => {
       throw error;
     }
 
-    const initialCreditsGranted = false;
-    const initialFreeCreditsUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd;
+    const initialCreditsGranted = walletAccount?.initialCreditsGranted ?? false;
+    const initialFreeCreditsUsd = walletAccount?.initialFreeCreditsUsd ?? 0;
     const welcomeBonusWithheld = false;
     const welcomeBonusWithheldReason = undefined;
     const welcomeBonusWithheldMessage = undefined;

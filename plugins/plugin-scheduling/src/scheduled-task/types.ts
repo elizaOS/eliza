@@ -377,6 +377,13 @@ export interface ScheduledTaskApplyResult {
   replayed: boolean;
 }
 
+/** Durable, non-mutating intent marker used to fence a multi-task mutation. */
+export interface ScheduledTaskApplyIntentResult {
+  task: ScheduledTask;
+  idempotencyKey: string;
+  replayed: boolean;
+}
+
 export interface ScheduledTaskRunner {
   scheduleWithResult(
     task: Omit<ScheduledTask, "taskId" | "state">,
@@ -401,8 +408,23 @@ export interface ScheduledTaskRunner {
     taskId: string,
     verb: ScheduledTaskReceiptVerb,
     payload: unknown,
-    options: { idempotencyKey: string },
+    options: {
+      idempotencyKey: string;
+      /** Internal durable context bound to this exact receipt-keyed effect. */
+      receiptContext?: Record<string, unknown>;
+    },
   ): Promise<ScheduledTaskApplyResult>;
+  /**
+   * Persist request context before any lifecycle effect. Implementations must
+   * never change task state or write a lifecycle log for this reservation.
+   */
+  reserveApplyIntent?(
+    taskId: string,
+    options: {
+      idempotencyKey: string;
+      context: Record<string, unknown>;
+    },
+  ): Promise<ScheduledTaskApplyIntentResult>;
   pipeline(taskId: string, outcome: TerminalState): Promise<ScheduledTask[]>;
 }
 

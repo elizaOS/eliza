@@ -87,6 +87,7 @@ import {
 } from "@elizaos/ui/api";
 import {
   type AuthStatusState,
+  getAuthStatusSnapshot,
   isAuthenticatedNow,
   subscribeAuthStatus,
 } from "@elizaos/ui/auth-status";
@@ -791,13 +792,21 @@ export function startLifeOpsActivitySignalCapture(
   };
 
   const handleAuthStatus = (state: AuthStatusState): void => {
-    updateSessionAvailability(state.phase === "authenticated", "runtime-ready");
+    updateSessionAvailability(
+      state.phase === "authenticated" && state.access.role === "OWNER",
+      "runtime-ready",
+    );
   };
 
   // Subscribe before reading the snapshot so an auth publication racing this
   // startup cannot be missed. A duplicate authenticated publication is a no-op.
   const unsubscribeAuthStatus = subscribeAuthStatus(handleAuthStatus);
-  if (isAuthenticatedNow()) {
+  const initialAuth = getAuthStatusSnapshot();
+  if (
+    isAuthenticatedNow() &&
+    initialAuth.phase === "authenticated" &&
+    initialAuth.access.role === "OWNER"
+  ) {
     updateSessionAvailability(true, "mount");
   }
 

@@ -8,11 +8,9 @@
  *   POST /api/setup/imessage/start    mark iMessage as enabled in connector config
  *   POST /api/setup/imessage/cancel   clear stored iMessage connector config
  *
- * iMessage on macOS does not have a credential/pairing flow — it reads chat.db
- * directly and sends through Messages.app via osascript. "Setup" is just the
- * permission gate (Full Disk Access) plus marking the connector enabled in
- * config so the service spins up. The status endpoint exposes the permission
- * state so the UI can guide the user.
+ * Native iMessage setup is a macOS permission gate. The Blooio transport uses
+ * an API credential, webhook secret, sender number, and channel id supplied as
+ * settings; status reports which transport owns the service.
  *
  * Post-setup data routes (messages, chats, contacts) live in
  * `./data-routes.ts` under `/api/imessage/` since they are CRUD against a
@@ -42,6 +40,7 @@ const IMESSAGE_SERVICE_NAME = "imessage";
 interface IMessageServiceLike {
   isConnected(): boolean;
   getStatus?(): {
+    transport: "native" | "blooio";
     available: boolean;
     connected: boolean;
     chatDbAvailable: boolean;
@@ -54,6 +53,8 @@ interface IMessageServiceLike {
       url: string;
       instructions: string[];
     } | null;
+    webhookPath: string | null;
+    channelId: string | null;
   };
 }
 
@@ -88,6 +89,7 @@ function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
 }
 
 interface IMessageSetupDetail {
+  transport?: "native" | "blooio";
   available: boolean;
   connected: boolean;
   chatDbAvailable?: boolean;
@@ -100,6 +102,8 @@ interface IMessageSetupDetail {
     url: string;
     instructions: string[];
   } | null;
+  webhookPath?: string | null;
+  channelId?: string | null;
 }
 
 function buildStatusResponse(runtime: IAgentRuntime): SetupStatusResponse<IMessageSetupDetail> {
@@ -126,11 +130,14 @@ function buildStatusResponse(runtime: IAgentRuntime): SetupStatusResponse<IMessa
       connected,
       ...(status
         ? {
+            transport: status.transport,
             chatDbAvailable: status.chatDbAvailable,
             sendOnly: status.sendOnly,
             chatDbPath: status.chatDbPath,
             reason: status.reason,
             permissionAction: status.permissionAction,
+            webhookPath: status.webhookPath,
+            channelId: status.channelId,
           }
         : {}),
     },

@@ -230,7 +230,7 @@ function expectCanonicalQuarantineLockOrder(body: string): void {
 
 async function installExactCleanupOperationGuard(): Promise<void> {
   const migration = readFileSync(
-    new URL("../../migrations/0367_agent_sandbox_replacement_restore_locator.sql", import.meta.url),
+    new URL("../../migrations/0370_agent_sandbox_replacement_restore_locator.sql", import.meta.url),
     "utf8",
   );
   const guard = migration
@@ -238,7 +238,7 @@ async function installExactCleanupOperationGuard(): Promise<void> {
     .find((statement) =>
       statement.includes('CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_operation"'),
     );
-  if (!guard) throw new Error("0367 exact cleanup operation guard is missing");
+  if (!guard) throw new Error("0370 exact cleanup operation guard is missing");
   await dbWrite.execute(sql.raw(guard));
   await dbWrite.execute(
     sql.raw(`DROP TRIGGER IF EXISTS test_agent_backup_restore_operation_guard

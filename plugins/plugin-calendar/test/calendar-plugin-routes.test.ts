@@ -119,6 +119,8 @@ function makeCalendarService() {
       eventCount: 0,
       duplicateEventCount: 0,
     })),
+    listLinkedCalendarEvents: vi.fn(async () => []),
+    getLinkedCalendarEvent: vi.fn(async () => null),
   };
 }
 

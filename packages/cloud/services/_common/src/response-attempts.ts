@@ -4,6 +4,8 @@
  * retry classification, Retry-After bounds, delay, and transport failure.
  */
 
+import { readPersonalSharedFailureMetadata } from "./personal-shared-failure";
+
 export type ResponseRetryReason = "auth_refresh" | "status" | "transport";
 
 export interface ResponseAttemptObservation {
@@ -30,6 +32,12 @@ export interface ResponseAttemptsOptions {
   refreshAuth?(): Promise<void>;
   retryStatuses: boolean;
   retryTransport: boolean;
+  /**
+   * Honor the sanitized `X-Eliza-Retryable` disposition. Opt-in so callers
+   * that do not yet deliver a terminal user-visible fallback retain their
+   * historical status-based retry behavior.
+   */
+  honorExplicitRetryable?: boolean;
   retryDelayCapMs?: number;
   observe(observation: ResponseAttemptObservation): void | Promise<void>;
 }
@@ -38,10 +46,6 @@ export interface ResponseAttemptsResult {
   response: Response;
   attempts: number;
   durationMs: number;
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
 export async function executeResponseAttempts(
@@ -94,19 +98,19 @@ export async function executeResponseAttempts(
       }
 
       budgetAttempts += 1;
-      const retryable = isRetryableStatus(response.status);
+      const failure = readPersonalSharedFailureMetadata(response);
+      const retryable = options.honorExplicitRetryable
+        ? failure.retryable
+        : response.status === 408 ||
+          response.status === 425 ||
+          response.status === 429 ||
+          response.status >= 500;
       const shouldRetry =
         !response.ok &&
         retryable &&
         options.retryStatuses &&
         budgetAttempts < options.maxAttempts;
-      const parsedRetryAfter = Number.parseInt(
-        response.headers.get("Retry-After") ?? "",
-        10,
-      );
-      const retryAfterSeconds = Number.isFinite(parsedRetryAfter)
-        ? parsedRetryAfter
-        : null;
+      const retryAfterSeconds = failure.retryAfterSeconds;
       const retryDelayMs = shouldRetry
         ? retryAfterSeconds === null
           ? 200 * budgetAttempts

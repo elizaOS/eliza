@@ -628,12 +628,14 @@ describe("personal Shared messaging deliveries", () => {
         "shared_runtime",
       );
       expect(response.headers.get("x-eliza-failure-name")).toBe("TypeError");
+      expect(response.headers.get("x-eliza-retryable")).toBe("false");
       expect(errorLog).toHaveBeenCalledWith(
         "[personal-shared-messaging] delivery failed",
         {
           traceId: "22222222-2222-4222-8222-222222222222",
           stage: "shared_runtime",
           errorName: "TypeError",
+          retryable: false,
         },
       );
       expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
@@ -665,12 +667,63 @@ describe("personal Shared messaging deliveries", () => {
     expect(response.headers.get("x-eliza-failure-name")).toBe(
       "SharedRuntimeCacheWarmingError",
     );
+    expect(response.headers.get("x-eliza-retryable")).toBe("true");
     await expect(response.json()).resolves.toEqual({
       success: false,
       error: "Shared Eliza is warming. Retry this turn shortly.",
       code: "service_unavailable",
       retryable: true,
     });
+  });
+
+  test("preserves a transient AgentRuntime cause as a retryable 503", async () => {
+    const { SharedRuntimeTurnError } = await import(
+      "@/lib/services/shared-runtime/shared-runtime-errors"
+    );
+    const provider = Object.assign(new Error("private provider body"), {
+      name: "AI_APICallError",
+      statusCode: 503,
+    });
+    sharedRestMessageSend.mockImplementationOnce(async () => {
+      throw new SharedRuntimeTurnError("private turn identity", provider);
+    });
+
+    const response = await request(valid);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("1");
+    expect(response.headers.get("x-eliza-failure-name")).toBe(
+      "SharedRuntimeTurnError",
+    );
+    expect(response.headers.get("x-eliza-failure-cause-name")).toBe(
+      "SharedRuntimeProviderUnavailableError",
+    );
+    expect(response.headers.get("x-eliza-retryable")).toBe("true");
+    expect(await response.text()).not.toContain("private provider body");
+  });
+
+  test("keeps an action-contract failure terminal and sanitized", async () => {
+    const { SharedRuntimeTurnError } = await import(
+      "@/lib/services/shared-runtime/shared-runtime-errors"
+    );
+    const cause = new Error(
+      "Eliza Shared runtime completed an executable REMINDERS request without an action result",
+    );
+    sharedRestMessageSend.mockImplementationOnce(async () => {
+      throw new SharedRuntimeTurnError("private turn identity", cause);
+    });
+
+    const response = await request(valid);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("x-eliza-failure-name")).toBe(
+      "SharedRuntimeTurnError",
+    );
+    expect(response.headers.get("x-eliza-failure-cause-name")).toBe(
+      "SharedRuntimeActionContractError",
+    );
+    expect(response.headers.get("x-eliza-retryable")).toBe("false");
+    expect(await response.text()).not.toContain("REMINDERS");
   });
 
   test("classifies a both-path account resolution failure as a retryable 503", async () => {

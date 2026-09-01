@@ -903,6 +903,14 @@ export function getVolumeVaultPassphrasePath(volumePath: string): string {
   return `${volumePath}/.vault-passphrase`;
 }
 
+function getVolumeVaultPassphrasePublicationCandidatePath(
+  volumePath: string,
+  replacementAttemptId: string,
+): string {
+  assertCanonicalReplacementPathAttemptId(replacementAttemptId);
+  return `${getVolumeVaultPassphrasePath(volumePath)}.candidate.${replacementAttemptId}`;
+}
+
 /**
  * Shell command that establishes and validates the per-agent vault master
  * passphrase persisted on the host volume. A versioned frame containing an
@@ -938,10 +946,33 @@ export function buildVolumeVaultPassphraseCommand(
   const vaultSnapshotFile = replacementAttemptId
     ? shellQuote(getReplacementControlVaultPassphrasePath(replacementAttemptId))
     : undefined;
-  const cleanupTargets = '"$stdin_file" "$override_file" "$generated_file" "$normalized_file"';
+  // The publication candidate must share the durable key's filesystem: `ln`
+  // is the atomic first-writer primitive and cannot cross a mount boundary.
+  // Other plaintext temporaries remain in the root-only control directory.
+  const keyCandidateFile = replacementAttemptId
+    ? shellQuote(getVolumeVaultPassphrasePublicationCandidatePath(volumePath, replacementAttemptId))
+    : undefined;
+  const cleanupTargets = [
+    '"$stdin_file"',
+    '"$override_file"',
+    '"$generated_file"',
+    '"$normalized_file"',
+    ...(keyCandidateFile ? ['"$key_candidate_file"'] : []),
+  ].join(" ");
+  const cleanupAbsenceProof = [
+    'test -e "$stdin_file"',
+    'test -L "$stdin_file"',
+    'test -e "$override_file"',
+    'test -L "$override_file"',
+    'test -e "$generated_file"',
+    'test -L "$generated_file"',
+    'test -e "$normalized_file"',
+    'test -L "$normalized_file"',
+    ...(keyCandidateFile ? ['test -e "$key_candidate_file"', 'test -L "$key_candidate_file"'] : []),
+  ].join(" || ");
   const cleanupFunction =
     `cleanup_vault_temp_files() { cleanup_status=$?; if ! rm -f -- ${cleanupTargets}; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ` +
-    'if test -e "$stdin_file" || test -L "$stdin_file" || test -e "$override_file" || test -L "$override_file" || test -e "$generated_file" || test -L "$generated_file" || test -e "$normalized_file" || test -L "$normalized_file"; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ' +
+    `if ${cleanupAbsenceProof}; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; ` +
     (vaultSnapshotFile
       ? 'if test "$cleanup_status" -ne 0 || test "$vault_snapshot_ready" -ne 1; then if ! rm -f -- "$vault_snapshot_file"; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; if test -e "$vault_snapshot_file" || test -L "$vault_snapshot_file"; then if test "$cleanup_status" -eq 0; then cleanup_status=70; fi; fi; fi; '
       : "") +
@@ -954,11 +985,50 @@ export function buildVolumeVaultPassphraseCommand(
     1 +
     Buffer.byteLength(VOLUME_VAULT_STDIN_FRAME_END) +
     1;
+  const createFencedDurableKeyCommand = [
+    'if test -e "$key_file" || test -L "$key_file"; then',
+    'secure_private_regular_file_proof "$key_file";',
+    "else",
+    // Generate under the root-only control tree first, then copy through
+    // verified descriptors into an exclusively-created candidate beside the
+    // durable key. Only that final candidate crosses into the agent volume.
+    'secure_reset_file "$generated_file";',
+    'exec 8>>"$generated_file";',
+    'if test -s "$override_file"; then secure_private_regular_file_proof "$override_file"; exec 7<"$override_file"; secure_private_regular_fd_proof 7; cat <&7 >&8; exec 7<&-; else head -c 32 /dev/urandom | od -An -tx1 | tr -d \' \\n\' >&8; fi;',
+    "exec 8>&-;",
+    'secure_private_regular_file_proof "$generated_file";',
+    'if ! rm -f -- "$key_candidate_file"; then exit 70; fi;',
+    "set -C;",
+    'if exec 8>"$key_candidate_file"; then set +C; else set +C; exit 70; fi;',
+    "secure_private_regular_fd_proof 8;",
+    "key_candidate_fd_identity=$(secure_fd_stat_identity 8);",
+    'secure_private_regular_file_proof "$key_candidate_file";',
+    'test "$(secure_stat_identity "$key_candidate_file")" = "$key_candidate_fd_identity" || exit 70;',
+    'exec 7<"$generated_file";',
+    "secure_private_regular_fd_proof 7;",
+    "generated_fd_identity=$(secure_fd_stat_identity 7);",
+    "generated_fd_fingerprint_before=$(secure_fd_stat_fingerprint 7);",
+    'test "$(secure_stat_identity "$generated_file")" = "$generated_fd_identity" || exit 70;',
+    "cat <&7 >&8;",
+    "generated_fd_fingerprint_after=$(secure_fd_stat_fingerprint 7);",
+    'test "$generated_fd_fingerprint_before" = "$generated_fd_fingerprint_after" || exit 70;',
+    "exec 7<&-;",
+    "secure_private_regular_fd_proof 8;",
+    'test "$(secure_fd_stat_identity 8)" = "$key_candidate_fd_identity" || exit 70;',
+    'secure_private_regular_file_proof "$key_candidate_file";',
+    'test "$(secure_stat_identity "$key_candidate_file")" = "$key_candidate_fd_identity" || exit 70;',
+    "exec 8>&-;",
+    'secure_private_regular_file_proof "$key_candidate_file";',
+    'test "$(secure_stat_identity "$key_candidate_file")" = "$key_candidate_fd_identity" || exit 70;',
+    "created_key_identity=$key_candidate_fd_identity;",
+    'if ln "$key_candidate_file" "$key_file" 2>/dev/null; then rm -f -- "$key_candidate_file"; test ! -e "$key_candidate_file" && test ! -L "$key_candidate_file" || exit 70; elif test -e "$key_file" || test -L "$key_file"; then created_key_identity=; secure_private_regular_file_proof "$key_file"; else exit 43; fi;',
+    "fi",
+  ].join(" ");
   const durableKeyCommands = replacementAttemptId
     ? [
         `key_file=${keyFile}`,
         "created_key_identity=",
-        'if test -e "$key_file" || test -L "$key_file"; then secure_private_regular_file_proof "$key_file"; else secure_reset_file "$generated_file"; exec 8>>"$generated_file"; if test -s "$override_file"; then secure_private_regular_file_proof "$override_file"; exec 7<"$override_file"; cat <&7 >&8; exec 7<&-; else head -c 32 /dev/urandom | od -An -tx1 | tr -d \' \\n\' >&8; fi; exec 8>&-; secure_private_regular_file_proof "$generated_file"; created_key_identity=$(secure_stat_identity "$generated_file"); if ln "$generated_file" "$key_file" 2>/dev/null; then rm -f -- "$generated_file"; elif test -e "$key_file" || test -L "$key_file"; then created_key_identity=; secure_private_regular_file_proof "$key_file"; else exit 43; fi; fi',
+        createFencedDurableKeyCommand,
         'secure_private_regular_file_proof "$key_file"',
         'key_identity_before=$(secure_stat_identity "$key_file")',
         'if test -n "$created_key_identity"; then test "$key_identity_before" = "$created_key_identity" || exit 70; fi',
@@ -1034,6 +1104,7 @@ export function buildVolumeVaultPassphraseCommand(
     `override_file=${overrideFile}`,
     `generated_file=${generatedFile}`,
     `normalized_file=${normalizedFile}`,
+    ...(keyCandidateFile ? [`key_candidate_file=${keyCandidateFile}`] : []),
     ...(vaultSnapshotFile
       ? [`vault_snapshot_file=${vaultSnapshotFile}`, "vault_snapshot_ready=0"]
       : []),
@@ -1232,6 +1303,7 @@ export function buildReplacementSecretArtifactsCleanupCommand(
     ...(["stdin", "override", "generated", "normalized"] as const).map(
       (kind) => `${legacyVaultPassphrasePath}.${kind}.${replacementAttemptId}`,
     ),
+    getVolumeVaultPassphrasePublicationCandidatePath(volumePath, replacementAttemptId),
   ];
   const existingArtifactProof = artifactPaths
     .map(
@@ -1340,7 +1412,7 @@ export function buildExactRestoreStagingVolumeCleanupCommand(
     safeDirectoryProof(restoreRoot, false),
     safeDirectoryProof(agentRoot, true),
     `if test -L ${volume}; then exit 76; fi`,
-    `if test -e ${volume}; then ${safeDirectoryProof(exactVolumePath, false)}; if findmnt -rn -o FSROOT,TARGET | awk -v root=${volume} '$1 == root || index($1, root "/") == 1 || $2 == root || index($2, root "/") == 1 { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; rm -rf --one-file-system -- ${volume}; fi`,
+    `if test -e ${volume}; then ${safeDirectoryProof(exactVolumePath, false)}; mount_inventory=$(findmnt -rn -o FSROOT,TARGET) || exit 76; if printf '%s\n' "$mount_inventory" | awk -v root=${volume} '$1 == root || index($1, root "/") == 1 || $2 == root || index($2, root "/") == 1 { found=1 } END { exit found ? 0 : 1 }'; then exit 76; fi; rm -rf --one-file-system -- ${volume}; fi`,
     `if test -e ${volume} || test -L ${volume}; then exit 76; fi`,
     `if test -e ${shellQuote(agentRoot)} && test ! -L ${shellQuote(agentRoot)}; then rmdir -- ${shellQuote(agentRoot)} 2>/dev/null || :; fi`,
     'secure_private_regular_file_proof "$attempt_cancelled" 75',

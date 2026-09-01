@@ -1,7 +1,14 @@
 /** Verifies StewardLoginSection wallet-method collapse (#19217). */
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,6 +41,18 @@ const sessionSpies = vi.hoisted(() => ({
   recover: vi.fn(),
   hasCookie: false,
 }));
+
+const mountedWalletCapabilities = vi.hoisted(() => ({
+  siwe: null as boolean | null,
+  siws: null as boolean | null,
+}));
+
+const mountedProviderCapabilities = vi.hoisted(() => ({
+  enableEvm: null as boolean | null,
+  enableSolana: null as boolean | null,
+}));
+
+const PROVIDERS_CACHE_KEY = "eliza.steward.providers.v1:elizacloud";
 
 vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
   const actual =
@@ -107,20 +126,36 @@ vi.mock("../../lib/login-return-to", () => ({
 // Lazy wallet stack is heavy; for disclosure/intent tests stub both pieces so
 // clicking a chain button can exercise the post-intent lock without RainbowKit.
 vi.mock("../../../billing/wallet/steward-wallet-providers", () => ({
-  StewardWalletProviders: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
+  StewardWalletProviders: ({
+    children,
+    enableEvm,
+    enableSolana,
+  }: {
+    children: React.ReactNode;
+    enableEvm: boolean;
+    enableSolana: boolean;
+  }) => {
+    mountedProviderCapabilities.enableEvm = enableEvm;
+    mountedProviderCapabilities.enableSolana = enableSolana;
+    return <>{children}</>;
+  },
 }));
 
 vi.mock("./wallet-buttons", () => ({
-  WalletButtons: () => (
-    <div data-testid="mounted-wallet-buttons">Mounted wallet stack</div>
-  ),
+  WalletButtons: ({ siwe, siws }: { siwe: boolean; siws: boolean }) => {
+    mountedWalletCapabilities.siwe = siwe;
+    mountedWalletCapabilities.siws = siws;
+    return <div data-testid="mounted-wallet-buttons">Mounted wallet stack</div>;
+  },
 }));
 
-import StewardLoginSection from "./steward-login-section";
-
-function renderSection() {
+// The section caches provider discovery at module scope. Import a fresh module
+// for each case so one test's served chains cannot leak into the next case.
+async function renderSection() {
+  vi.resetModules();
+  const { default: StewardLoginSection } = await import(
+    "./steward-login-section"
+  );
   return render(
     <MemoryRouter initialEntries={["/login"]}>
       <StewardLoginSection />
@@ -166,15 +201,21 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     });
     sessionSpies.recover.mockResolvedValue(null);
     sessionSpies.hasCookie = false;
+    mountedWalletCapabilities.siwe = null;
+    mountedWalletCapabilities.siws = null;
+    mountedProviderCapabilities.enableEvm = null;
+    mountedProviderCapabilities.enableSolana = null;
+    window.sessionStorage.removeItem(PROVIDERS_CACHE_KEY);
   });
 
   afterEach(() => {
     cleanup();
+    window.sessionStorage.removeItem(PROVIDERS_CACHE_KEY);
     vi.clearAllMocks();
   });
 
   it("collapses wallet methods behind a two-way disclosure toggle", async () => {
-    renderSection();
+    await renderSection();
 
     // Wait for provider discovery to settle, then the collapsed toggle appears.
     const walletToggle = await screen.findByRole("button", {
@@ -224,7 +265,7 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
   });
 
   it("locks the disclosure only after wallet intent and moves focus into the live region", async () => {
-    renderSection();
+    await renderSection();
 
     const walletToggle = await screen.findByRole("button", {
       name: /Continue with a wallet/i,
@@ -249,6 +290,11 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     expect(lockedToggle.hasAttribute("disabled")).toBe(true);
     expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
     expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
+    expect(mountedWalletCapabilities).toEqual({ siwe: true, siws: true });
+    expect(mountedProviderCapabilities).toEqual({
+      enableEvm: true,
+      enableSolana: true,
+    });
 
     const liveRegion = document.getElementById("steward-wallet-options");
     expect(liveRegion).toBeTruthy();
@@ -257,4 +303,117 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     // toggle) after the peer button unmounts and the disclosure locks.
     expect(document.activeElement).toBe(liveRegion);
   });
+
+  it("revokes mounted wallets on BFCache restore until fresh discovery succeeds", async () => {
+    let resolveStaleProviders!: (
+      providers: ReturnType<typeof walletProviders>,
+    ) => void;
+    const staleProviders = new Promise<ReturnType<typeof walletProviders>>(
+      (resolve) => {
+        resolveStaleProviders = resolve;
+      },
+    );
+    let resolveFreshProviders!: (
+      providers: ReturnType<typeof walletProviders>,
+    ) => void;
+    const freshProviders = new Promise<ReturnType<typeof walletProviders>>(
+      (resolve) => {
+        resolveFreshProviders = resolve;
+      },
+    );
+    stewardAuthSpies.getProviders
+      .mockResolvedValueOnce(walletProviders())
+      .mockReturnValueOnce(staleProviders)
+      .mockReturnValueOnce(freshProviders)
+      .mockRejectedValueOnce(new Error("provider discovery unavailable"));
+
+    await renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Continue with a wallet/i,
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /EVM wallet/i }));
+    expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
+
+    const historyRestore = new Event("pageshow");
+    Object.defineProperty(historyRestore, "persisted", { value: true });
+    fireEvent(window, historyRestore);
+
+    expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
+    await waitFor(() =>
+      expect(stewardAuthSpies.getProviders).toHaveBeenCalledTimes(2),
+    );
+    expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
+
+    // A second persisted restoration supersedes the still-pending request.
+    // Resolving that stale promise must not restore the retained wallet intent.
+    const secondRestore = new Event("pageshow");
+    Object.defineProperty(secondRestore, "persisted", { value: true });
+    fireEvent(window, secondRestore);
+    await waitFor(() =>
+      expect(stewardAuthSpies.getProviders).toHaveBeenCalledTimes(3),
+    );
+    await act(async () => {
+      resolveStaleProviders(walletProviders());
+      await staleProviders;
+    });
+    expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
+
+    await act(async () => {
+      resolveFreshProviders(walletProviders());
+      await freshProviders;
+    });
+    expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
+
+    const failedRestore = new Event("pageshow");
+    Object.defineProperty(failedRestore, "persisted", { value: true });
+    fireEvent(window, failedRestore);
+
+    expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
+    await waitFor(() =>
+      expect(stewardAuthSpies.getProviders).toHaveBeenCalledTimes(4),
+    );
+    await screen.findByRole("alert");
+    expect(screen.queryByTestId("mounted-wallet-buttons")).toBeNull();
+  });
+
+  it.each([
+    {
+      label: "SIWE-only",
+      siwe: true,
+      siws: false,
+      intentName: /EVM wallet/i,
+    },
+    {
+      label: "SIWS-only",
+      siwe: false,
+      siws: true,
+      intentName: /Solana wallet/i,
+    },
+  ])(
+    "keeps provider initialization inside $label discovery",
+    async ({ siwe, siws, intentName }) => {
+      stewardAuthSpies.getProviders.mockResolvedValue({
+        ...walletProviders(),
+        siwe,
+        siws,
+      });
+      await renderSection();
+
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: /Continue with a wallet/i,
+        }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: intentName }));
+
+      expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
+      expect(mountedWalletCapabilities).toEqual({ siwe, siws });
+      expect(mountedProviderCapabilities).toEqual({
+        enableEvm: siwe,
+        enableSolana: siws,
+      });
+    },
+  );
 });

@@ -1,6 +1,12 @@
 // Handles v1 cloud API v1 apps id promote route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
@@ -9,7 +15,7 @@ import {
   type PromotionConfig,
 } from "@/lib/services/app-promotion";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const SocialPlatformSchema = z.enum([
   "twitter",
@@ -169,16 +175,17 @@ async function __hono_GET(
 }
 
 async function __hono_POST(
-  request: Request,
+  c: AppContext,
   { params }: RouteContext<{ id: string }>,
+  caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
 ) {
-  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+  const { user } = caller;
   const { id } = await params;
-  if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+  if (caller.appScopeId && caller.appScopeId !== id) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
-  const body = await request.json();
+  const body = await c.req.json();
   const parsed = PromotionConfigSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -267,6 +274,7 @@ async function __hono_POST(
     user.id,
     id,
     config,
+    getGenerativeOperationContext(c, caller),
   );
 
   logger.info("[Promote API] Promotion complete", {
@@ -286,9 +294,18 @@ __hono_app.get("/", async (c) =>
     params: Promise.resolve({ id: c.req.param("id")! }),
   }),
 );
-__hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
-);
+__hono_app.post("/", async (c) => {
+  try {
+    const caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+    });
+    return await __hono_POST(
+      c,
+      { params: Promise.resolve({ id: c.req.param("id")! }) },
+      caller,
+    );
+  } catch (error) {
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
+  }
+});
 export default __hono_app;

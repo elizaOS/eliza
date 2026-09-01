@@ -173,7 +173,22 @@ export function denyOnAuthStoreError(scope: string): (error: unknown) => null {
     logger.error(
       {
         scope,
-        error: error instanceof Error ? error.message : String(error),
+        // cause FIRST: the pretty transport truncates long fields, and the
+        // multi-line SQL in `error` swallowed everything after it — the cause
+        // chain is the only place the real PG failure lives (live 2026-08-28:
+        // hours of continuous auth denies undiagnosable from this log line).
+        cause:
+          error instanceof Error && error.cause
+            ? String(
+                error.cause instanceof Error
+                  ? error.cause.message
+                  : error.cause,
+              ).slice(0, 240)
+            : "(no cause)",
+        error: (error instanceof Error ? error.message : String(error)).slice(
+          0,
+          120,
+        ),
         stack: error instanceof Error ? error.stack : undefined,
       },
       `[Auth] ${scope} failed; failing closed (deny)`,
