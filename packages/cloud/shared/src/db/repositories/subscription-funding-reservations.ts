@@ -309,20 +309,18 @@ export class SubscriptionFundingReservationsRepository {
     if (actualAllowance > reservedAllowance || actualPurchased > reservedPurchased) {
       conflict("Terminal amounts exceed reserved sources", { reservationId: reservation.id });
     }
-    if (purchasedAllocation) {
-      await requireCreditReference(
-        tx,
-        reservation.organization_id,
-        input.purchasedCreditSettlementTransactionId,
-        actualPurchased,
-      );
-      await requireCreditReference(
-        tx,
-        reservation.organization_id,
-        input.purchasedCreditRefundTransactionId,
-        reservedPurchased - actualPurchased,
-      );
-    }
+    await requireCreditReference(
+      tx,
+      reservation.organization_id,
+      input.purchasedCreditSettlementTransactionId,
+      actualPurchased,
+    );
+    await requireCreditReference(
+      tx,
+      reservation.organization_id,
+      input.purchasedCreditRefundTransactionId,
+      reservedPurchased - actualPurchased,
+    );
     const updatedAllocations: BillingFundingAllocation[] = [];
     for (const allocation of allocations) {
       const actual = allocation.source === "allowance" ? actualAllowance : actualPurchased;

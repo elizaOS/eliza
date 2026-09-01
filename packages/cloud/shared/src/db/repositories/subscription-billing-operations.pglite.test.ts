@@ -547,6 +547,20 @@ describe("SubscriptionBillingOperationsRepository", () => {
       available_amount: "0.000000",
       reserved_amount: "5.000000",
     });
+    await expect(
+      writeTransaction((tx) =>
+        allowance.finalize(tx, {
+          organizationId: ORG_A,
+          reservationId: reserved.reservation.id,
+          idempotencyKey: "settle.invalid-credit-reference",
+          requestDigest: DIGEST_B,
+          actualAllowanceAmount: microsToMoney(3_000_000n),
+          actualPurchasedCreditAmount: microsToMoney(0n),
+          purchasedCreditSettlementTransactionId: "00000000-0000-4000-8000-000000000099",
+          purchasedCreditRefundTransactionId: null,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_FUNDING_CONFLICT" });
     const finalized = await writeTransaction((tx) =>
       allowance.finalize(tx, {
         organizationId: ORG_A,
