@@ -654,7 +654,7 @@ describe("SubscriptionBillingOperationsRepository", () => {
     );
     await getPgliteClientForTests().exec(`
       UPDATE subscription_allowance_periods
-      SET expires_at = '2000-01-01Z'
+      SET period_start = '1999-01-01Z', period_end = '2000-01-01Z', expires_at = '2000-01-01Z'
       WHERE id = '${EXPIRED_PERIOD}';
     `);
 
