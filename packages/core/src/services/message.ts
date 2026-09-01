@@ -8396,28 +8396,38 @@ export async function runShortcutGate(args: {
 	// Shortcuts enter the same executor as planner-selected tools so component
 	// gates, argument validation, callback buffering, audience revalidation, and
 	// action events remain one non-bypassable contract.
-	const shortcutActionResult = await executePlannedToolCall(
-		args.runtime,
-		{
-			message: args.message,
-			state: args.state,
-			userRoles: [args.senderRole],
-			activeContexts: ["general"],
-			callback: async (content) => {
-				if (typeof content?.text === "string" && content.text) {
-					captured = content.text;
-				}
-				return [];
+	let shortcutActionResult: ActionResult;
+	try {
+		shortcutActionResult = await executePlannedToolCall(
+			args.runtime,
+			{
+				message: args.message,
+				state: args.state,
+				userRoles: [args.senderRole],
+				activeContexts: ["general"],
+				callback: async (content) => {
+					if (typeof content?.text === "string" && content.text) {
+						captured = content.text;
+					}
+					return [];
+				},
 			},
-		},
-		shortcutToolCall,
-		{
-			actions: [action],
-			...(args.onSettledActionResult
-				? { onSettledResult: args.onSettledActionResult }
-				: {}),
-		},
-	);
+			shortcutToolCall,
+			{
+				actions: [action],
+				...(args.onSettledActionResult
+					? { onSettledResult: args.onSettledActionResult }
+					: {}),
+			},
+		);
+	} catch (error) {
+		await settleFailedDirectToolCallOnStream(
+			args.runtime,
+			shortcutToolCall,
+			error,
+		);
+		throw error;
+	}
 	if (captured === undefined) {
 		const executionError = shortcutActionResult.data?.error;
 		if (executionError !== undefined) {
