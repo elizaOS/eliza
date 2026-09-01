@@ -439,13 +439,18 @@ export function createSchedulingSqlScheduledTaskStore(
       // authoritative for lifecycle changes, while the receipt map is merged
       // from that current row so distinct committed keys cannot erase one
       // another.
+      const proposedMetadataSql = `${sqlJson(task.metadata ?? {})}::jsonb`;
+      const proposedReceiptValueSql = `COALESCE(
+        ${proposedMetadataSql} -> 'schedulingApplyReceipts' -> ${sqlQuote(receiptKey)},
+        'true'::jsonb
+      )`;
       const mergedMetadataSql = `jsonb_set(
-        ${sqlJson(task.metadata ?? {})}::jsonb,
+        ${proposedMetadataSql},
         '{schedulingApplyReceipts}',
         COALESCE(
           metadata_json::jsonb -> 'schedulingApplyReceipts',
           '{}'::jsonb
-        ) || jsonb_build_object(${sqlQuote(receiptKey)}, TRUE),
+        ) || jsonb_build_object(${sqlQuote(receiptKey)}, ${proposedReceiptValueSql}),
         true
       )::text`;
       const rows = await executeSql(
@@ -527,6 +532,67 @@ export function createSchedulingSqlScheduledTaskStore(
       }
       throw new Error(
         `commitApply: task ${task.taskId} could not commit receipt ${receiptKey}`,
+      );
+    },
+    async reserveApplyIntent({ task, intentKey }) {
+      const now = isoNow();
+      const proposedMetadataSql = `${sqlJson(task.metadata ?? {})}::jsonb`;
+      const proposedIntentValueSql = `COALESCE(
+        ${proposedMetadataSql} -> 'schedulingApplyIntents' -> ${sqlQuote(intentKey)},
+        'true'::jsonb
+      )`;
+      const rows = await executeSql(
+        `UPDATE ${TASK_TABLE}
+            SET metadata_json = jsonb_set(
+                                  metadata_json::jsonb,
+                                  '{schedulingApplyIntents}',
+                                  COALESCE(
+                                    metadata_json::jsonb -> 'schedulingApplyIntents',
+                                    '{}'::jsonb
+                                  ) || jsonb_build_object(
+                                    ${sqlQuote(intentKey)},
+                                    ${proposedIntentValueSql}
+                                  ),
+                                  true
+                                )::text,
+                updated_at = ${sqlQuote(now)},
+                version = version + 1
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND id = ${sqlQuote(task.taskId)}
+            AND transfer_status IS NULL
+            AND COALESCE(
+              metadata_json::jsonb #>> '{sharedCutoverImport,status}',
+              ''
+            ) <> 'reserved'
+            AND NOT (
+              COALESCE(
+                metadata_json::jsonb -> 'schedulingApplyIntents',
+                '{}'::jsonb
+              ) ? ${sqlQuote(intentKey)}
+            )
+          RETURNING *`,
+      );
+      const reserved = rows[0];
+      if (reserved) {
+        return { kind: "reserved", task: parseScheduledTaskRow(reserved) };
+      }
+      const replayRows = await executeSql(
+        `SELECT *
+           FROM ${TASK_TABLE}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND id = ${sqlQuote(task.taskId)}
+            AND COALESCE(
+              metadata_json::jsonb -> 'schedulingApplyIntents',
+              '{}'::jsonb
+            ) ? ${sqlQuote(intentKey)}
+          LIMIT 1`,
+      );
+      const replayed = replayRows[0];
+      if (replayed) {
+        return { kind: "replayed", task: parseScheduledTaskRow(replayed) };
+      }
+      throw new Error(
+        `reserveApplyIntent: task ${task.taskId} could not reserve intent ${intentKey}`,
       );
     },
     async get(taskId: string) {
