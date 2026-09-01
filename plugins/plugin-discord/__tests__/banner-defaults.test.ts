@@ -80,3 +80,19 @@ describe("printDiscordBanner conversational defaults", () => {
 		expect(prefix.length).toBe(6); // backed off by 1 unit to avoid splitting U+1D11E
 	});
 });
+
+describe("mask surrogate safety in banner", () => {
+  it("masks short values fully", async () => {
+    const { mask } = await import("../banner");
+    expect(mask("")).toBe("••••••••");
+    expect(mask("12345678")).toBe("••••••••");
+  });
+
+  it("preserves surrogate integrity without severing astral code pairs", async () => {
+    const { mask } = await import("../banner");
+    const ROCKET = "\u{1F680}";
+    const masked = mask(`012${ROCKET}3456789abcdefghij`);
+    expect(masked.isWellFormed()).toBe(true);
+    expect(masked.startsWith("012")).toBe(true);
+  });
+});
