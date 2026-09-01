@@ -38,12 +38,16 @@ const blooioValues: Record<(typeof blooioNames)[number], string> = {
   ELIZA_APP_BLOOIO_PHONE_NUMBER: "+15555550200",
   ELIZA_APP_BLOOIO_WEBHOOK_SECRET: "railway-webhook-private-canary",
 };
-const telegramValues = {
-  ELIZA_APP_TELEGRAM_BOT_ID: "123456789",
-  ELIZA_APP_TELEGRAM_BOT_USERNAME: "eliza_fixture_bot",
-  ELIZA_APP_TELEGRAM_BOT_TOKEN: "telegram-token-private-canary",
-  ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "telegram-webhook-private-canary",
-} as const;
+const telegramNames = [
+  "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+  "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+] as const;
+const telegramValues: Record<(typeof telegramNames)[number], string> = {
+  ELIZA_APP_TELEGRAM_BOT_TOKEN: "railway-telegram-token-private-canary",
+  ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "railway-telegram-webhook-private-canary",
+};
+const protectedNames = [...blooioNames, ...telegramNames] as const;
+const protectedValues = { ...blooioValues, ...telegramValues };
 interface WorkflowStep {
   env?: Record<string, string>;
   id?: string;
@@ -175,11 +179,15 @@ function verifyRailwayVariableInventory(
           ELIZA_CLOUD_URL: "https://api-staging.eliza.app",
           AGENT_ROUTER_ORIGIN_HOST: "eliza-staging-1.eliza.app",
           ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud-staging.eliza.app",
+          ELIZA_APP_TELEGRAM_BOT_ID: "1111111111",
+          ELIZA_APP_TELEGRAM_BOT_USERNAME: "eliza_staging_bot",
         }
       : {
           ELIZA_CLOUD_URL: "https://api.eliza.app",
           AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.eliza.app",
           ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+          ELIZA_APP_TELEGRAM_BOT_ID: "2222222222",
+          ELIZA_APP_TELEGRAM_BOT_USERNAME: "eliza_production_bot",
         };
   const variables: Record<string, string | undefined> = {
     ...canonical,
@@ -188,23 +196,16 @@ function verifyRailwayVariableInventory(
     AGENT_SERVER_SHARED_SECRET: "server-private-canary",
     ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "forwarder-private-canary",
     REDIS_URL: "redis-private-canary",
-    ...blooioValues,
-    ...telegramValues,
+    ...protectedValues,
     ...overrides,
   };
   // The Worker side receives these as GitHub Environment secrets; by default
   // they agree with Railway, so only an explicit override models divergence.
   const workerEnvironment: Record<string, string> = {};
-  for (const name of blooioNames) {
+  for (const name of protectedNames) {
     const value =
-      name in workerOverrides ? workerOverrides[name] : blooioValues[name];
+      name in workerOverrides ? workerOverrides[name] : protectedValues[name];
     if (value !== undefined) workerEnvironment[`WORKER_${name}`] = value;
-  }
-  for (const name of [
-    "ELIZA_APP_TELEGRAM_BOT_TOKEN",
-    "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
-  ] as const) {
-    workerEnvironment[`WORKER_${name}`] = telegramValues[name];
   }
   writeFileSync(
     join(binRoot, "railway"),
@@ -228,7 +229,21 @@ fi
 exit 98
 `,
   );
-  writeFileSync(join(binRoot, "node"), "#!/bin/sh\nexit 0\n");
+  writeFileSync(
+    join(binRoot, "node"),
+    `#!/bin/sh
+set -eu
+if [ "$1" = "packages/cloud/scripts/verify-telegram-bot-identity.mjs" ] &&
+   [ -n "\${TELEGRAM_BOT_TOKEN:-}" ] &&
+   [ -n "\${TELEGRAM_WEBHOOK_SECRET:-}" ] &&
+   [ -n "\${TELEGRAM_EXPECTED_BOT_ID:-}" ] &&
+   [ -n "\${TELEGRAM_EXPECTED_BOT_USERNAME:-}" ] &&
+   [ "$TELEGRAM_ATTESTATION_CONTEXT" = "$TARGET_ENVIRONMENT" ]; then
+  exit 0
+fi
+exit 99
+`,
+  );
   chmodSync(join(binRoot, "railway"), 0o755);
   chmodSync(join(binRoot, "shred"), 0o755);
   chmodSync(join(binRoot, "node"), 0o755);
@@ -250,9 +265,9 @@ exit 98
         RAILWAY_VARIABLES_FIXTURE: JSON.stringify(variables),
         RUNNER_TEMP: fixtureRoot,
         TARGET_ENVIRONMENT: target,
-        TELEGRAM_EXPECTED_BOT_ID: telegramValues.ELIZA_APP_TELEGRAM_BOT_ID,
+        TELEGRAM_EXPECTED_BOT_ID: canonical.ELIZA_APP_TELEGRAM_BOT_ID,
         TELEGRAM_EXPECTED_BOT_USERNAME:
-          telegramValues.ELIZA_APP_TELEGRAM_BOT_USERNAME,
+          canonical.ELIZA_APP_TELEGRAM_BOT_USERNAME,
         ...workerEnvironment,
       },
       stderr: "pipe",
@@ -301,14 +316,22 @@ function assertExactForwarderAuthReadinessProbe(run: string): void {
     readiness: '.status == "enforced"',
     project: '.project == "eliza-app"',
   } as const;
-  const routeStart = run.indexOf(required.route);
-  const routeEnd = run.indexOf("telegram_probe_path=", routeStart);
-  if (routeStart < 0 || routeEnd < 0) {
+  const forwarderBlockStart = run.indexOf(
+    'forwarder_probe_path="$RUNNER_TEMP/gateway-webhook-forwarder-auth-readiness.json"',
+  );
+  if (forwarderBlockStart < 0) {
     throw new Error("forwarder readiness route contract drifted");
   }
-  const forwarderProbe = run.slice(routeStart, routeEnd);
+  const forwarderBlockEnd = run.indexOf(
+    'telegram_probe_path="$RUNNER_TEMP/gateway-webhook-telegram-identity-readiness.json"',
+    forwarderBlockStart,
+  );
+  if (forwarderBlockEnd < 0) {
+    throw new Error("forwarder readiness block boundary drifted");
+  }
+  const forwarderBlock = run.slice(forwarderBlockStart, forwarderBlockEnd);
   for (const [contract, fragment] of Object.entries(required)) {
-    if (!forwarderProbe.includes(fragment)) {
+    if (!forwarderBlock.includes(fragment)) {
       throw new Error(`forwarder readiness ${contract} contract drifted`);
     }
   }
@@ -318,12 +341,13 @@ function assertExactForwarderAuthReadinessProbe(run: string): void {
     "--data '{}'",
     "/webhook/eliza-app/telegram",
   ]) {
-    if (run.includes(forbidden)) {
+    if (forwarderBlock.includes(forbidden)) {
       throw new Error("forwarder readiness probe entered a forbidden path");
     }
   }
   if (
-    run.indexOf("assert_active_deployment after") < run.indexOf(required.route)
+    run.indexOf("assert_active_deployment after") <
+    run.indexOf(required.route, forwarderBlockStart)
   ) {
     throw new Error("forwarder readiness active-deployment recheck drifted");
   }
@@ -763,8 +787,8 @@ describe("protected gateway-webhook deployment workflow", () => {
     expect(() =>
       assertExactForwarderAuthReadinessProbe(
         verifyRun.replace(
-          "--max-time 15",
-          "--max-time 15 --header X-Eliza-Webhook-Forwarder-Secret:guess",
+          '--output "$forwarder_probe_path"',
+          '--header X-Eliza-Webhook-Forwarder-Secret:guess --output "$forwarder_probe_path"',
         ),
       ),
     ).toThrow("forwarder readiness probe entered a forbidden path");
