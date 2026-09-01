@@ -22,18 +22,26 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import type { Context } from "hono";
 import type { AppEnv } from "../../../types/cloud-worker-env";
 import * as authActual from "../../auth/workers-hono-auth";
+import * as cacheActual from "../../cache/client";
 import * as creditsActual from "../credits";
+import * as usageActual from "../usage";
+import type { ProxyCombinedAdmission } from "./engine";
 import * as pricingActual from "./pricing";
 
 const realCredits = { ...creditsActual };
 const realPricing = { ...pricingActual };
 const realAuth = { ...authActual };
+const realUsage = { ...usageActual };
+const realCache = { ...cacheActual };
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
+const USER_ID = "00000000-0000-4000-8000-0000000000bb";
 const COST = 0.0003;
 
 const deductCredits = mock<(args: unknown) => Promise<{ success: boolean }>>();
 const refundCredits = mock<(args: unknown) => Promise<{ success: boolean }>>();
+const reconcile = mock<(actualCost: number) => Promise<void>>();
+const reserve = mock<(args: unknown) => Promise<{ reconcile: typeof reconcile }>>();
 
 mock.module("../credits", () => ({
   ...realCredits,
@@ -41,7 +49,16 @@ mock.module("../credits", () => ({
     ...realCredits.creditsService,
     deductCredits,
     refundCredits,
+    reserve,
   },
+}));
+mock.module("../usage", () => ({
+  ...realUsage,
+  usageService: { ...realUsage.usageService, create: mock(async () => undefined) },
+}));
+mock.module("../../cache/client", () => ({
+  ...realCache,
+  cache: { get: async () => null, set: async () => {} },
 }));
 
 mock.module("./pricing", () => ({
@@ -60,14 +77,23 @@ const { handleDexscreenerProxyGet } = await import("./dexscreener-handler");
 const originalFetch = globalThis.fetch;
 
 /** Minimal Hono Context stub covering exactly what the handlers read. */
+function stubAdmission(): ProxyCombinedAdmission {
+  return {
+    auth: { user: { id: USER_ID, organization_id: ORG_ID } },
+    requestId: "birdeye-refund",
+  };
+}
+
 function makeContext(path: string, env: Record<string, unknown> = {}): Context<AppEnv> {
   const url = `https://api.elizacloud.ai/proxy/${path}`;
+  const raw = new Request(url, { method: "GET" });
   return {
     env,
     req: {
       param: (key: string) => (key === "*" ? path : undefined),
       url,
       header: (_name: string) => undefined,
+      raw,
     },
     json: (body: unknown, status?: number) => Response.json(body, { status: status ?? 200 }),
   } as unknown as Context<AppEnv>;
@@ -86,8 +112,12 @@ function mockUpstream(status: number, body = "{}") {
 beforeEach(() => {
   deductCredits.mockReset();
   refundCredits.mockReset();
+  reconcile.mockReset();
+  reserve.mockReset();
   deductCredits.mockResolvedValue({ success: true });
   refundCredits.mockResolvedValue({ success: true });
+  reconcile.mockResolvedValue(undefined);
+  reserve.mockResolvedValue({ reconcile });
 });
 
 afterEach(() => {
@@ -98,6 +128,8 @@ afterAll(() => {
   mock.module("../credits", () => realCredits);
   mock.module("./pricing", () => realPricing);
   mock.module("../../auth/workers-hono-auth", () => realAuth);
+  mock.module("../usage", () => realUsage);
+  mock.module("../../cache/client", () => realCache);
 });
 
 describe("birdeye proxy refund-on-failure", () => {
@@ -106,18 +138,14 @@ describe("birdeye proxy refund-on-failure", () => {
 
     const res = await handleBirdeyeMarketDataProxyGet(
       makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
+      async () => stubAdmission(),
     );
 
     // Status is passed through (the customer sees the upstream failure).
     expect(res.status).toBe(500);
-    expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(refundCredits).toHaveBeenCalledTimes(1);
-    const refundArg = refundCredits.mock.calls[0]?.[0] as {
-      organizationId: string;
-      amount: number;
-    };
-    expect(refundArg.organizationId).toBe(ORG_ID);
-    expect(refundArg.amount).toBeCloseTo(COST, 12);
+    expect(reserve).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile.mock.calls[0]?.[0]).toBe(0);
   });
 
   test("upstream 4xx does NOT refund (paid API, customer's bad request)", async () => {
@@ -125,11 +153,13 @@ describe("birdeye proxy refund-on-failure", () => {
 
     const res = await handleBirdeyeMarketDataProxyGet(
       makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
+      async () => stubAdmission(),
     );
 
     expect(res.status).toBe(400);
-    expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(refundCredits).not.toHaveBeenCalled();
+    expect(reserve).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile.mock.calls[0]?.[0]).toBe(COST);
   });
 
   test("upstream 200 does NOT refund (successful call)", async () => {
@@ -137,11 +167,13 @@ describe("birdeye proxy refund-on-failure", () => {
 
     const res = await handleBirdeyeMarketDataProxyGet(
       makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
+      async () => stubAdmission(),
     );
 
     expect(res.status).toBe(200);
-    expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(refundCredits).not.toHaveBeenCalled();
+    expect(reserve).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile.mock.calls[0]?.[0]).toBe(COST);
   });
 });
 

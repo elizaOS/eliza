@@ -15,8 +15,9 @@ interface ProxyBody {
   params: Record<string, string>;
 }
 
-const executeWithBody = mock(
+const executePaidProxyWithCombinedAdmission = mock(
   async (
+    _c: unknown,
     _config: unknown,
     _handler: unknown,
     _request: Request,
@@ -24,8 +25,8 @@ const executeWithBody = mock(
   ) => Response.json({ success: true }),
 );
 
-mock.module("@/lib/services/proxy/engine", () => ({
-  executeWithBody,
+mock.module("@/api-app/lib/legacy-proxy-combined-admission", () => ({
+  executePaidProxyWithCombinedAdmission,
 }));
 mock.module("@/lib/services/proxy/cors", () => ({
   applyCorsHeaders: (response: Response) => response,
@@ -49,7 +50,7 @@ function candles(query = "") {
 
 describe("GET /api/v1/market/candles OHLCV interval identity", () => {
   beforeEach(() => {
-    executeWithBody.mockClear();
+    executePaidProxyWithCombinedAdmission.mockClear();
   });
 
   test.each(["", "?type="])(
@@ -57,8 +58,8 @@ describe("GET /api/v1/market/candles OHLCV interval identity", () => {
     async (query) => {
       const response = await candles(query);
       expect(response.status).toBe(200);
-      expect(executeWithBody).toHaveBeenCalledTimes(1);
-      const body = executeWithBody.mock.calls[0][3];
+      expect(executePaidProxyWithCombinedAdmission).toHaveBeenCalledTimes(1);
+      const body = executePaidProxyWithCombinedAdmission.mock.calls[0][4];
       expect(body.method).toBe("getOHLCV");
       expect(body.params.address).toBe(SOLANA_TOKEN);
       expect(body.params.type).toBeUndefined();
@@ -70,21 +71,23 @@ describe("GET /api/v1/market/candles OHLCV interval identity", () => {
     async (type) => {
       const response = await candles(`?type=${type}`);
       expect(response.status).toBe(200);
-      expect(executeWithBody).toHaveBeenCalledTimes(1);
-      expect(executeWithBody.mock.calls[0][3]).toMatchObject({
+      expect(executePaidProxyWithCombinedAdmission).toHaveBeenCalledTimes(1);
+      expect(
+        executePaidProxyWithCombinedAdmission.mock.calls[0][4],
+      ).toMatchObject({
         params: { type },
       });
     },
   );
 
   test.each(["1h", "1d", "HOUR", "daily", "foo", "1e2"])(
-    "rejects type=%s before executeWithBody",
+    "rejects type=%s before executePaidProxyWithCombinedAdmission",
     async (token) => {
       const response = await candles(`?type=${encodeURIComponent(token)}`);
       expect(response.status).toBe(400);
       const body = (await response.json()) as { error: string };
       expect(body.error).toBe("Invalid type");
-      expect(executeWithBody).not.toHaveBeenCalled();
+      expect(executePaidProxyWithCombinedAdmission).not.toHaveBeenCalled();
     },
   );
 });

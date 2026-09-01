@@ -203,7 +203,21 @@ export function createHandler(
     const searchParams = new URL(request.url).searchParams;
 
     try {
-      const auth = combinedAdmission?.auth ?? (await getAuthForLevel(request, config.auth));
+      if (combinedAdmission?.executionCtx && !combinedAdmission.admissionSnapshot) {
+        return Response.json(
+          {
+            success: false,
+            error: "Provider admission is unavailable; retry shortly",
+            code: "service_unavailable",
+            details: { retryable: true, retryAfterSeconds: 1 },
+          },
+          { status: 503, headers: { "Retry-After": "1" } },
+        );
+      }
+
+      const auth = combinedAdmission
+        ? combinedAdmission.auth
+        : await getAuthForLevel(request, config.auth);
       const { user } = auth;
       const apiKey = "apiKey" in auth ? auth.apiKey : undefined;
       const organizationId = user.organization_id;
@@ -516,8 +530,9 @@ export async function executeWithBody(
   work: ServiceHandler,
   request: Request,
   body: ProxyRequestBody,
+  combinedAdmission?: ProxyCombinedAdmission,
 ): Promise<Response> {
-  const handler = createHandler(config, work);
+  const handler = createHandler(config, work, combinedAdmission);
   const mockRequest = new Request(request.url, {
     method: "POST",
     headers: request.headers,

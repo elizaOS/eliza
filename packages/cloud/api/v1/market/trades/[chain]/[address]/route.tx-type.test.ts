@@ -11,15 +11,15 @@ import { Hono } from "hono";
 const SOLANA_TOKEN = "So11111111111111111111111111111111111111112";
 const EXPECTED_TOKEN_TRADE_TYPES = ["swap", "add", "remove", "all"] as const;
 
-type ExecuteWithBody =
-  typeof import("@/lib/services/proxy/engine").executeWithBody;
+type ExecutePaid =
+  typeof import("@/api-app/lib/legacy-proxy-combined-admission").executePaidProxyWithCombinedAdmission;
 
-const executeWithBody = mock(async (..._args: Parameters<ExecuteWithBody>) =>
-  Response.json({ success: true }),
+const executePaidProxyWithCombinedAdmission = mock(
+  async (..._args: Parameters<ExecutePaid>) => Response.json({ success: true }),
 );
 
-mock.module("@/lib/services/proxy/engine", () => ({
-  executeWithBody,
+mock.module("@/api-app/lib/legacy-proxy-combined-admission", () => ({
+  executePaidProxyWithCombinedAdmission,
 }));
 mock.module("@/lib/services/proxy/cors", () => ({
   applyCorsHeaders: (response: Response) => response,
@@ -43,7 +43,7 @@ function trades(query = "") {
 
 describe("GET /api/v1/market/trades token-trade type identity", () => {
   beforeEach(() => {
-    executeWithBody.mockClear();
+    executePaidProxyWithCombinedAdmission.mockClear();
   });
 
   test.each(["", "?tx_type="])(
@@ -51,8 +51,8 @@ describe("GET /api/v1/market/trades token-trade type identity", () => {
     async (query) => {
       const response = await trades(query);
       expect(response.status).toBe(200);
-      expect(executeWithBody).toHaveBeenCalledTimes(1);
-      const body = executeWithBody.mock.calls[0][3] as {
+      expect(executePaidProxyWithCombinedAdmission).toHaveBeenCalledTimes(1);
+      const body = executePaidProxyWithCombinedAdmission.mock.calls[0][4] as {
         method: string;
         params: Record<string, string>;
       };
@@ -72,15 +72,17 @@ describe("GET /api/v1/market/trades token-trade type identity", () => {
     async (txType) => {
       const response = await trades(`?tx_type=${txType}`);
       expect(response.status).toBe(200);
-      expect(executeWithBody).toHaveBeenCalledTimes(1);
-      expect(executeWithBody.mock.calls[0][3]).toMatchObject({
+      expect(executePaidProxyWithCombinedAdmission).toHaveBeenCalledTimes(1);
+      expect(
+        executePaidProxyWithCombinedAdmission.mock.calls[0][4],
+      ).toMatchObject({
         params: { tx_type: txType },
       });
     },
   );
 
   test.each(["SWAP", "buy", "sell", "foo", "1e2"])(
-    "rejects tx_type=%s before executeWithBody",
+    "rejects tx_type=%s before executePaidProxyWithCombinedAdmission",
     async (token) => {
       const response = await trades(`?tx_type=${encodeURIComponent(token)}`);
       expect(response.status).toBe(400);
@@ -90,7 +92,7 @@ describe("GET /api/v1/market/trades token-trade type identity", () => {
       };
       expect(body.error).toBe("Invalid tx_type");
       expect(body.details).toContain("swap, add, remove, all");
-      expect(executeWithBody).not.toHaveBeenCalled();
+      expect(executePaidProxyWithCombinedAdmission).not.toHaveBeenCalled();
     },
   );
 });

@@ -8,7 +8,10 @@
  */
 
 import { Hono } from "hono";
-import { executeWithBody } from "@/lib/services/proxy/engine";
+import {
+  applyLegacyProxyQueryApiKey,
+  executePaidProxyWithCombinedAdmission,
+} from "@/api-app/lib/legacy-proxy-combined-admission";
 import {
   solanaRpcConfig,
   solanaRpcHandler,
@@ -21,15 +24,7 @@ const app = new Hono<AppEnv>();
 app.post("/", async (c) => {
   // Support auth via query param for @solana/web3.js Connection clients that
   // cannot set custom headers (mirrors apps/api/v1/proxy/solana-rpc).
-  const headers = new Headers(c.req.raw.headers);
-  const queryApiKey = c.req.query("api_key");
-  if (
-    queryApiKey &&
-    !c.req.header("authorization") &&
-    !c.req.header("X-API-Key")
-  ) {
-    headers.set("authorization", `Bearer ${queryApiKey}`);
-  }
+  const headers = applyLegacyProxyQueryApiKey(c);
 
   let body: ProxyRequestBody;
   try {
@@ -43,7 +38,13 @@ app.post("/", async (c) => {
     headers,
   });
 
-  return executeWithBody(solanaRpcConfig, solanaRpcHandler, request, body);
+  return executePaidProxyWithCombinedAdmission(
+    c,
+    solanaRpcConfig,
+    solanaRpcHandler,
+    request,
+    body,
+  );
 });
 
 export default app;
