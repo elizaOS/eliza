@@ -105,6 +105,13 @@ import {
 } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
 import {
+  assertInferenceCredentialActive,
+  type InferenceCredentialCheck,
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+  isInferenceStrongRevocationEnabled,
+} from "@/lib/services/inference-credential-revocation";
+import {
   createPassthroughStreamMeter,
   isPassthroughStreamingEnabled,
   type PassthroughStreamTail,
@@ -1215,12 +1222,16 @@ export async function handleChatCompletionsPOST(
     let apiKey: { id: string } | null;
     let moderationAlreadyChecked = false;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+    let admissionCredential: InferenceCredentialCheck | undefined;
     let appScopeId: string | null = null;
 
+    const deferStrongCredentialCheck =
+      Boolean(options.executionCtx) && isInferenceStrongRevocationEnabled();
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
       cacheOnly: Boolean(options.executionCtx),
+      deferStrongCredentialCheck,
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },
@@ -1295,6 +1306,7 @@ export async function handleChatCompletionsPOST(
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       admissionSnapshot = resolution.ctx.admission;
+      admissionCredential = resolution.credential;
       appScopeId =
         "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null;
       // The resolver already verified not-suspended (cache hit = at populate;
@@ -1708,9 +1720,21 @@ export async function handleChatCompletionsPOST(
           useMonetizedAppBilling,
         })
       ) {
+        if (admissionCredential) {
+          await assertInferenceCredentialActive(
+            user.organization_id,
+            admissionCredential,
+          );
+        }
         settleReservation = async () => null;
         settleUnknown = async () => null;
       } else if (useAppCredits && appId && monetizedApp) {
+        if (admissionCredential) {
+          await assertInferenceCredentialActive(
+            user.organization_id,
+            admissionCredential,
+          );
+        }
         assertInferenceAppAffiliateSupported(appId, affiliateCode);
         const { totalCost } = await calculateCost(
           normalizedModel,
@@ -1785,6 +1809,7 @@ export async function handleChatCompletionsPOST(
           affiliateCode,
           executionCtx: options.executionCtx,
           admissionSnapshot,
+          credential: admissionCredential,
         });
         settleReservation = admission.settle;
         settleUnknown = admission.settleUnknown;
@@ -1792,6 +1817,33 @@ export async function handleChatCompletionsPOST(
         billingReservation = admission.reservation;
       }
     } catch (error) {
+      if (error instanceof InferenceCredentialRevokedError) {
+        const reason = inferenceCredentialRevocationReason(error.reason);
+        const denial = resolveInferenceAuthStandingDenial(
+          reason === "moderation_blocked" ||
+            reason === "organization_inactive" ||
+            reason === "account_inactive" ||
+            reason === "membership_missing"
+            ? { kind: "suspended", reason }
+            : { kind: "rejected", status: 401, reason },
+          { route: "chat_completions", traceId },
+        );
+        return attachPreforwardTelemetry(
+          addCorsHeaders(
+            Response.json(
+              {
+                error: {
+                  message: denial.message,
+                  type: denial.type,
+                  code: denial.code,
+                  details: { reason: denial.reason },
+                },
+              },
+              { status: denial.status },
+            ),
+          ),
+        );
+      }
       if (error instanceof InferenceAppAffiliateUnsupportedError) {
         return addCorsHeaders(
           Response.json(

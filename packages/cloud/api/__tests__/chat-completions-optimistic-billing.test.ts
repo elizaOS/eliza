@@ -17,6 +17,7 @@ import * as inferenceAuthContextActual from "@/lib/services/inference-auth-conte
 import * as billingDeferredActual from "@/lib/services/inference-billing-deferred";
 import * as fastPathActual from "@/lib/services/inference-billing-fast-path";
 import * as billingLedgerActual from "@/lib/services/inference-billing-ledger";
+import * as inferenceCredentialRevocationActual from "@/lib/services/inference-credential-revocation";
 import * as modelCatalogActual from "@/lib/services/model-catalog";
 import * as organizationAdmissionActual from "@/lib/services/organization-inference-admission";
 import * as teamPoolActual from "@/lib/services/team-credential-pool";
@@ -43,6 +44,8 @@ let deferredEnabled = false;
 let ledgerAdmits = true;
 let reserveCreditsThrows: Error | null = null;
 let organizationAdmissionError: Error | null = null;
+let strongRevocationEnabled = true;
+const callOrder: string[] = [];
 
 // Direct storage operations are deliberately observable but must remain unused.
 const writePendingInferenceCharge = mock(async () => backstopPersists);
@@ -66,11 +69,15 @@ const createLedgerDebitSettler = mock(() => ledgerInnerSettler);
 const createCreditReservationSettler = mock(() => async () => null);
 const organizationSettler = mock(async (_actualCostUsd: number) => null);
 const organizationUnknownSettler = mock(async () => null);
+const markProviderDispatched = mock(async () => {
+  callOrder.push("dispatch");
+});
 type OrganizationAdmissionParams = Parameters<
   typeof organizationAdmissionActual.admitOrganizationInference
 >[0];
 const admitOrganizationInference = mock(
   async (params: OrganizationAdmissionParams) => {
+    callOrder.push("combined-admission");
     if (organizationAdmissionError) throw organizationAdmissionError;
     return {
       mode: params.executionCtx
@@ -78,10 +85,13 @@ const admitOrganizationInference = mock(
         : ("synchronous_reservation" as const),
       settle: organizationSettler,
       settleUnknown: organizationUnknownSettler,
+      markProviderDispatched,
     };
   },
 );
-const enforceOrgRateLimit = mock(async () => null);
+const enforceOrgRateLimit = mock(async () => {
+  callOrder.push("rate-limit");
+});
 
 // Auth: resolve straight to an authorized org user via the hot-path resolver so
 // the org-credits branch (not app-credits) is taken and moderation is skipped.
@@ -103,6 +113,7 @@ const ADMISSION = {
 };
 const resolveInferenceAuthContext = mock(
   async (_request: Request, options: AuthResolveOptions = {}) => {
+    callOrder.push("auth");
     authResolveOptions.push(options);
     options.onTelemetry?.({
       v: 1,
@@ -139,6 +150,15 @@ const resolveInferenceAuthContext = mock(
         appScopeId: null,
         admission: ADMISSION,
       },
+      ...(options.deferStrongCredentialCheck
+        ? {
+            credential: {
+              kind: "api_key" as const,
+              credentialId: API_KEY_ID,
+              userId: USER,
+            },
+          }
+        : {}),
     };
   },
 );
@@ -146,6 +166,10 @@ mock.module("@/lib/services/inference-auth-context", () => ({
   ...inferenceAuthContextActual,
   isInferenceHotPathCacheEnabled: () => true,
   resolveInferenceAuthContext,
+}));
+mock.module("@/lib/services/inference-credential-revocation", () => ({
+  ...inferenceCredentialRevocationActual,
+  isInferenceStrongRevocationEnabled: () => strongRevocationEnabled,
 }));
 
 // Provider config: pretend a provider is configured; the model object is unused
@@ -256,6 +280,7 @@ mock.module("@/lib/utils/credit-reservation", () => ({
 // Keep spies so reasoning-effort tests can also assert the exact configuration
 // that survives the full route pipeline.
 const generateText = mock((_config: Record<string, unknown>) => {
+  callOrder.push("provider");
   throw new Error("model-call-stub");
 });
 const streamText = mock((_config: Record<string, unknown>) => {
@@ -279,6 +304,10 @@ afterAll(() => {
   mock.module(
     "@/lib/services/inference-auth-context",
     () => inferenceAuthContextActual,
+  );
+  mock.module(
+    "@/lib/services/inference-credential-revocation",
+    () => inferenceCredentialRevocationActual,
   );
   mock.module("@/lib/providers/language-model", () => languageModelActual);
   mock.module("@/lib/pricing", () => pricingActual);
@@ -363,6 +392,8 @@ describe("chat/completions cache-only organization admission", () => {
     ledgerAdmits = true;
     reserveCreditsThrows = null;
     organizationAdmissionError = null;
+    strongRevocationEnabled = true;
+    callOrder.length = 0;
     billingDeferredActual.__clearDeferredAdmissionState();
     writePendingInferenceCharge.mockClear();
     reserveCredits.mockClear();
@@ -377,6 +408,7 @@ describe("chat/completions cache-only organization admission", () => {
     admitOrganizationInference.mockClear();
     organizationSettler.mockClear();
     organizationUnknownSettler.mockClear();
+    markProviderDispatched.mockClear();
     enforceOrgRateLimit.mockClear();
     generateText.mockClear();
     streamText.mockClear();
@@ -477,6 +509,7 @@ describe("chat/completions cache-only organization admission", () => {
     expect(authResolveOptions).toHaveLength(1);
     expect(authResolveOptions[0]?.executionCtx).toBeDefined();
     expect(authResolveOptions[0]?.cacheOnly).toBe(true);
+    expect(authResolveOptions[0]?.deferStrongCredentialCheck).toBe(true);
     expect(enforceOrgRateLimit).toHaveBeenCalledWith(
       ORG,
       "completions",
@@ -496,6 +529,13 @@ describe("chat/completions cache-only organization admission", () => {
       "auth_resolve;dur=1.2",
     );
     expect(generateText).toHaveBeenCalledTimes(1);
+    expect(callOrder).toEqual([
+      "auth",
+      "rate-limit",
+      "combined-admission",
+      "dispatch",
+      "provider",
+    ]);
     await Promise.all(waitUntilPromises);
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     const admission = (
@@ -504,9 +544,38 @@ describe("chat/completions cache-only organization admission", () => {
       >
     )[0]?.[0];
     expect(admission?.executionCtx).toBeDefined();
+    expect(admission?.credential).toEqual({
+      kind: "api_key",
+      credentialId: API_KEY_ID,
+      userId: USER,
+    });
     expect(organizationUnknownSettler).toHaveBeenCalled();
     expect(reserveCredits).not.toHaveBeenCalled();
     expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+  });
+
+  test("a flag-off Worker preserves legacy admission without credential fusion", async () => {
+    strongRevocationEnabled = false;
+    const captured: Promise<unknown>[] = [];
+
+    const response = await driveWithCtx(captured);
+
+    expect(response.status).toBe(500);
+    expect(authResolveOptions).toHaveLength(1);
+    expect(authResolveOptions[0]?.deferStrongCredentialCheck).toBe(false);
+    const admission = (
+      admitOrganizationInference.mock.calls as unknown as Array<
+        [OrganizationAdmissionParams]
+      >
+    )[0]?.[0];
+    expect(admission?.credential).toBeUndefined();
+    expect(callOrder).toEqual([
+      "auth",
+      "combined-admission",
+      "dispatch",
+      "provider",
+    ]);
+    await Promise.all(captured);
   });
 
   test("billing requestId is server-generated, not copied from x-request-id", async () => {

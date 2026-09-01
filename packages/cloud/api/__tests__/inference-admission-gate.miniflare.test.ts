@@ -315,6 +315,77 @@ describe("Miniflare Durable Object integration", () => {
     );
   });
 
+  test("authorized lease checks revocation and balance in one Durable Object request", async () => {
+    const organizationId = "org-miniflare-authorized-lease";
+    const credential = {
+      organizationId,
+      kind: "api_key",
+      credentialId: "00000000-0000-0000-0000-000000000106",
+      userId: "00000000-0000-0000-0000-000000000206",
+    };
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 1, balanceRevision: "1" },
+          organizationId,
+        )
+      ).status,
+    ).toBe(200);
+    const leaseBody = (requestId: string) => ({
+      organizationId,
+      requestId,
+      balanceUsd: 1,
+      balanceRevision: "1",
+      estimatedCostUsd: 1,
+      credential,
+      recovery: {
+        version: 1,
+        kind: "organization",
+        organizationId,
+        userId: credential.userId,
+        requestId,
+        model: "test-model",
+        provider: "test-provider",
+        billingSource: "test",
+        description: "authorized Miniflare admission test",
+        accounting: { kind: "direct_debit" },
+      },
+    });
+    expect(
+      (
+        await post(
+          "/lease-authorized",
+          leaseBody("authorized-before-revocation"),
+          organizationId,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(
+          "/credential/revoke",
+          {
+            organizationId,
+            kind: credential.kind,
+            credentialId: credential.credentialId,
+          },
+          organizationId,
+        )
+      ).status,
+    ).toBe(200);
+    const denied = await post(
+      "/lease-authorized",
+      leaseBody("authorized-after-revocation"),
+      organizationId,
+    );
+    expect(denied.status).toBe(403);
+    expect(JSON.parse(await denied.text())).toEqual({
+      allowed: false,
+      reason: "credential_revoked",
+    });
+  });
+
   test("session cutoff revokes old tokens without rejecting a later login", async () => {
     const base = {
       organizationId: "org-miniflare",

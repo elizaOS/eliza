@@ -96,7 +96,15 @@ mock.module("./inference-credential-revocation", () => ({
   assertInferenceCredentialActive: (
     organizationId: string,
     credential: { kind: string; credentialId?: string; userId: string },
-  ) => assertCredentialActive(organizationId, credential),
+  ) =>
+    process.env.INFERENCE_STRONG_REVOCATION_ENABLED === "true"
+      ? assertCredentialActive(organizationId, credential)
+      : Promise.resolve(),
+  inferenceCredentialRevocationReason: (reason: string) => {
+    if (reason === "credential_revoked") return "credential_inactive";
+    if (reason === "organization_disabled") return "organization_inactive";
+    return "credential_invalid";
+  },
   revokeInferenceApiKey: async () => undefined,
   setInferenceSessionBindingActive: async () => undefined,
   revokeInferenceSessionsThrough: async () => undefined,
@@ -133,6 +141,7 @@ function reqWithApiKey(key = KEY): Request {
 }
 
 beforeEach(async () => {
+  process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
   authImpl = async () => ({
     user: { id: "user-1", organization_id: "org-1" },
     apiKey: { id: "key-1" },
@@ -503,6 +512,51 @@ describe("resolveInferenceAuthContext", () => {
     expect(res.source).toBe("cache");
     expect(chainCalls).toBe(0); // zero auth/moderation DB work on warm hit
     expect(incrementUsageCalls).toContain("key-1"); // usage tracking preserved
+  });
+
+  test("warm hit can carry its strong credential into admission after one cache read", async () => {
+    await resolveInferenceAuthContext(reqWithApiKey());
+    let strongChecks = 0;
+    assertCredentialActive = async () => {
+      strongChecks++;
+    };
+    const cacheRead = spyOn(cache, "getWithOutcome");
+
+    const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+      deferStrongCredentialCheck: true,
+    });
+
+    expect(result).toMatchObject({
+      kind: "authorized",
+      source: "cache",
+      credential: {
+        kind: "api_key",
+        credentialId: "key-1",
+        userId: "user-1",
+      },
+    });
+    expect(cacheRead).toHaveBeenCalledTimes(1);
+    expect(strongChecks).toBe(0);
+  });
+
+  test("flag-off origin auth never defers a credential into admission", async () => {
+    process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "false";
+    let strongChecks = 0;
+    assertCredentialActive = async () => {
+      strongChecks++;
+    };
+
+    const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+      forceAuthoritative: true,
+      deferStrongCredentialCheck: true,
+    });
+
+    expect(result).toMatchObject({
+      kind: "authorized",
+      source: "origin",
+    });
+    expect(result).not.toHaveProperty("credential");
+    expect(strongChecks).toBe(0);
   });
 
   test("warm positive is denied immediately when the strong boundary revokes it", async () => {

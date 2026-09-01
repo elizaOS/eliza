@@ -34,7 +34,9 @@ import {
 } from "./inference-auth-cache";
 import {
   assertInferenceCredentialActive,
+  type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
+  isInferenceStrongRevocationEnabled,
 } from "./inference-credential-revocation";
 
 const sessionHydrations = new Map<string, Promise<InferenceSessionAuthDecision>>();
@@ -44,6 +46,8 @@ export interface ResolveInferenceSessionAuthOptions {
   cacheOnly?: boolean;
   useAuthCache?: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  /** The caller will fuse this strong check into its admission lease. */
+  deferStrongCredentialCheck?: boolean;
 }
 
 export type InferenceSessionContinuationResolution =
@@ -51,6 +55,7 @@ export type InferenceSessionContinuationResolution =
       kind: "authorized";
       ctx: InferenceSessionAuthContext;
       source: "cache" | "origin";
+      credential?: InferenceCredentialCheck;
     }
   | { kind: "suspended"; userId?: string; reason?: InferenceAuthRejectionReason }
   | { kind: "rejected"; status: 401 | 403; reason?: InferenceAuthRejectionReason };
@@ -159,16 +164,19 @@ async function enforceStrongSessionBoundary(
   stewardUserId: string,
   issuedAt: number,
   source: "cache" | "origin",
+  deferStrongCredentialCheck = false,
 ): Promise<InferenceSessionContinuationResolution> {
   const resolved = toResolution(decision, source);
   if (resolved.kind !== "authorized") return resolved;
+  const credential: InferenceCredentialCheck = {
+    kind: "steward_session",
+    userId: resolved.ctx.userId,
+    stewardUserId,
+    issuedAt,
+  };
+  if (deferStrongCredentialCheck) return { ...resolved, credential };
   try {
-    await assertInferenceCredentialActive(resolved.ctx.orgId, {
-      kind: "steward_session",
-      userId: resolved.ctx.userId,
-      stewardUserId,
-      issuedAt,
-    });
+    await assertInferenceCredentialActive(resolved.ctx.orgId, credential);
     return resolved;
   } catch (error) {
     if (error instanceof InferenceCredentialRevokedError) {
@@ -244,6 +252,8 @@ export async function resolveInferenceSessionAuthContext(
   if (!token) return { kind: "not_session" };
 
   const env = getCloudAwareEnv();
+  const deferStrongCredentialCheck =
+    options.deferStrongCredentialCheck === true && isInferenceStrongRevocationEnabled(env);
   const claims = await verifyStewardTokenCached(
     {
       NODE_ENV: env.NODE_ENV,
@@ -296,6 +306,7 @@ export async function resolveInferenceSessionAuthContext(
       claims.userId,
       claims.issuedAt,
       "origin",
+      deferStrongCredentialCheck,
     );
   }
 
@@ -332,7 +343,13 @@ export async function resolveInferenceSessionAuthContext(
           });
         options.executionCtx.waitUntil(refresh);
       }
-      return await enforceStrongSessionBoundary(cached, claims.userId, claims.issuedAt, "cache");
+      return await enforceStrongSessionBoundary(
+        cached,
+        claims.userId,
+        claims.issuedAt,
+        "cache",
+        deferStrongCredentialCheck,
+      );
     }
   }
 
@@ -372,7 +389,13 @@ export async function resolveInferenceSessionAuthContext(
         ),
         continuation: hydrationDecision.then(
           (decision) =>
-            enforceStrongSessionBoundary(decision, claims.userId, claims.issuedAt, "origin"),
+            enforceStrongSessionBoundary(
+              decision,
+              claims.userId,
+              claims.issuedAt,
+              "origin",
+              deferStrongCredentialCheck,
+            ),
           (error) => {
             // error-policy:J7 the retained hydration above owns failure logging;
             // a voice continuation keeps the original warming outcome.
@@ -404,6 +427,7 @@ export async function resolveInferenceSessionAuthContext(
     claims.userId,
     claims.issuedAt,
     "origin",
+    deferStrongCredentialCheck,
   );
   if (resolved.kind === "rejected") {
     if (resolved.status === 401) throw AuthenticationError();
