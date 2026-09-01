@@ -1123,6 +1123,40 @@ describe("hydration escape (#18246 — warming must not loop forever)", () => {
     release?.();
   });
 
+  test("a definitive rejection arriving after the deadline is still cached fail-closed", async () => {
+    // The late stage must project a negative decision as well as a positive
+    // one: a rejection that lands after the deadline is still authoritative.
+    authImpl = () =>
+      new Promise((_resolve, reject) => {
+        setTimeout(() => {
+          const error = new Error("Invalid or expired API key");
+          error.name = "AuthenticationError";
+          reject(error);
+        }, 150);
+      });
+    const hydrations: Promise<unknown>[] = [];
+    expect(
+      (
+        await resolveInferenceAuthContext(reqWithApiKey(), {
+          cacheOnly: true,
+          inlineContinuationDeadlineMs: 0,
+          executionCtx: workerCtx(hydrations),
+        })
+      ).kind,
+    ).toBe("warming");
+    await Promise.all(hydrations.splice(0));
+    await new Promise((r) => setTimeout(r, 400));
+
+    const errorSpy = spyOn(logger, "error").mockImplementation(() => undefined);
+    expect(
+      await resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+        executionCtx: workerCtx(hydrations),
+      }),
+    ).toEqual({ kind: "rejected", status: 401, reason: "credential_invalid" });
+    errorSpy.mockRestore();
+  });
+
   test("a late projection defers to a newer in-flight hydration", async () => {
     // A resolves after its deadline; by then a newer hydration owns the key.
     // The late result must not be written behind that newer hydration.
