@@ -296,6 +296,7 @@ export class SubscriptionFundingReservationsRepository {
       input.actualPurchasedCreditAmount,
       "actualPurchasedCreditAmount",
     );
+    // Canonical-form assertion: persistence stores this input directly after validation.
     moneyToMicros(input.uncollectedOverageAmount, "uncollectedOverageAmount");
     if (input.kind === "cancellation" && (actualAllowance !== 0n || actualPurchased !== 0n)) {
       conflict("Canceled reservations cannot finalize usage", {

@@ -21,11 +21,9 @@ const SUB = "20000000-0000-4000-8000-000000000001";
 const PERIOD = "30000000-0000-4000-8000-000000000001";
 const DIGEST = "a".repeat(64);
 const migrations = await Promise.all(
-  [
-    "0373_subscription_authority.sql",
-    "0374_subscription_funding_transaction_uniqueness.sql",
-    "0375_subscription_uncollected_overage.sql",
-  ].map((name) => readFile(new URL(name, import.meta.url), "utf8")),
+  ["0373_subscription_authority.sql", "0374_subscription_funding_transaction_uniqueness.sql"].map(
+    (name) => readFile(new URL(name, import.meta.url), "utf8"),
+  ),
 );
 const databases: PGlite[] = [];
 setDefaultTimeout(120_000);
@@ -82,8 +80,8 @@ describe("subscription authority migrations", () => {
       await readFile(new URL("meta/_journal.json", import.meta.url), "utf8"),
     ) as { entries: Array<{ idx: number; tag: string }> };
     expect(journal.entries.at(-1)).toMatchObject({
-      idx: 358,
-      tag: "0375_subscription_uncollected_overage",
+      idx: 357,
+      tag: "0374_subscription_funding_transaction_uniqueness",
     });
   });
   test("tenant-fences revisions and excludes overlapping allowance periods", async () => {

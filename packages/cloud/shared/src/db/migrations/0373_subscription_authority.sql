@@ -103,6 +103,7 @@ CREATE TABLE "billing_funding_reservations" (
   "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "billing_funding_reservations_identity_check" CHECK (logical_operation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$' AND request_digest ~ '^[0-9a-f]{64}$'),
   CONSTRAINT "billing_funding_reservations_amount_check" CHECK (requested_amount > 0 AND reserved_amount = requested_amount),
+  CONSTRAINT "billing_funding_reservations_uncollected_overage_check" CHECK (uncollected_overage_amount >= 0 AND (status = 'finalized' OR uncollected_overage_amount = 0)),
   CONSTRAINT "billing_funding_reservations_funding_class_check" CHECK (funding_class IN ('allowance_eligible','cash_only')),
   CONSTRAINT "billing_funding_reservations_terminal_shape_check" CHECK ((status = 'reserved' AND finalized_at IS NULL AND canceled_at IS NULL AND settlement_key IS NULL AND settlement_digest IS NULL AND cancellation_key IS NULL AND cancellation_digest IS NULL) OR (status = 'finalized' AND finalized_at IS NOT NULL AND canceled_at IS NULL AND settlement_key IS NOT NULL AND settlement_digest ~ '^[0-9a-f]{64}$' AND cancellation_key IS NULL AND cancellation_digest IS NULL) OR (status = 'canceled' AND canceled_at IS NOT NULL AND finalized_at IS NULL AND cancellation_key IS NOT NULL AND cancellation_digest ~ '^[0-9a-f]{64}$' AND settlement_key IS NULL AND settlement_digest IS NULL)),
   CONSTRAINT "billing_funding_reservations_expiry_check" CHECK (expires_at > created_at)

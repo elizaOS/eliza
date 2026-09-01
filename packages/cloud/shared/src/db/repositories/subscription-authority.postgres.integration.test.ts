@@ -62,7 +62,6 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       [
         "../migrations/0373_subscription_authority.sql",
         "../migrations/0374_subscription_funding_transaction_uniqueness.sql",
-        "../migrations/0375_subscription_uncollected_overage.sql",
       ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),
     );
     for (const migration of migrations) {
