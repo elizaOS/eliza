@@ -716,7 +716,9 @@ jobs:
                 COALESCE(
                   replacement_cleanup_container_id,
                   activation_container_id,
-                  CASE WHEN sandbox_id ~ '^[0-9a-f]{12,64}$' THEN sandbox_id END
+                  CASE WHEN sandbox_id ~ '^[0-9a-f]{12,64}$' THEN sandbox_id END,
+                  replacement_cleanup_container_name,
+                  container_name
                 ) IS NOT NULL
                 AND COALESCE(replacement_cleanup_node_id, activation_node_id, node_id) IS NOT NULL
               ) AS inspectable_candidate_present

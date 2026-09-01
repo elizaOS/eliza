@@ -10,6 +10,8 @@ import { DockerSSHClient } from "../../shared/src/lib/services/docker-ssh";
 
 const SUFFIX_PATTERN = /^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$/;
 const CONTAINER_ID_PATTERN = /^[0-9a-f]{12,64}$/;
+const CONTAINER_NAME_PATTERN =
+  /^agent-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const NODE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const BACKEND_STATES = new Set([
   "NeedsLogin",
@@ -21,7 +23,7 @@ const BACKEND_STATES = new Set([
 ]);
 
 type MeshLocator = {
-  container_id: string | null;
+  container_ref: string | null;
   hostname: string | null;
   ssh_port: number | null;
   ssh_user: string | null;
@@ -125,15 +127,17 @@ async function run(suffix: string): Promise<void> {
            COALESCE(
              replacement_cleanup_container_id,
              activation_container_id,
-             CASE WHEN sandbox_id ~ '^[0-9a-f]{12,64}$' THEN sandbox_id END
-           ) AS diagnostic_container_id,
+             CASE WHEN sandbox_id ~ '^[0-9a-f]{12,64}$' THEN sandbox_id END,
+             replacement_cleanup_container_name,
+             container_name
+           ) AS diagnostic_container_ref,
            COALESCE(replacement_cleanup_node_id, activation_node_id, node_id)
              AS diagnostic_node_id
          FROM agent_sandboxes
          WHERE agent_name = $1
        )
        SELECT
-         sandbox.diagnostic_container_id AS container_id,
+         sandbox.diagnostic_container_ref AS container_ref,
          node.hostname,
          node.ssh_port,
          node.ssh_user,
@@ -141,7 +145,7 @@ async function run(suffix: string): Promise<void> {
        FROM target AS sandbox
        INNER JOIN docker_nodes AS node
          ON node.node_id = sandbox.diagnostic_node_id
-       WHERE sandbox.diagnostic_container_id IS NOT NULL`,
+       WHERE sandbox.diagnostic_container_ref IS NOT NULL`,
       [`managed-dedicated-canary-${suffix}`],
     );
     rows = result.rows;
@@ -158,8 +162,9 @@ async function run(suffix: string): Promise<void> {
   const [locator] = rows;
   if (!locator) throw new Error("private mesh locator disappeared");
   if (
-    typeof locator.container_id !== "string" ||
-    !CONTAINER_ID_PATTERN.test(locator.container_id) ||
+    typeof locator.container_ref !== "string" ||
+    (!CONTAINER_ID_PATTERN.test(locator.container_ref) &&
+      !CONTAINER_NAME_PATTERN.test(locator.container_ref)) ||
     typeof locator.hostname !== "string" ||
     !NODE_ID_PATTERN.test(locator.hostname) ||
     typeof locator.ssh_port !== "number" ||
@@ -180,7 +185,7 @@ async function run(suffix: string): Promise<void> {
     locator.host_key_fingerprint,
     locator.ssh_user,
   );
-  const id = locator.container_id;
+  const id = locator.container_ref;
   try {
     // One pooled SSH client is intentionally observed serially. Concurrent
     // first-use execs can each attempt to establish the same session and keep
