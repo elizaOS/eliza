@@ -149,24 +149,22 @@ describe("generateOnPriorityLane — lock priority (#11914)", () => {
     }
   });
 
-  it("rejects an unsupported background output request before the loader", async () => {
+  it("preserves a background output request once the lane is available", async () => {
     setInferencePriorityGate(new InferencePriorityGate());
     const lane = makeFakeLane();
     lane.setDecodeMs(1);
 
     await withEnv({ ELIZA_INFERENCE_RAM_CLASS: "constrained" }, async () => {
-      await expect(
-        generateOnPriorityLane(lane.loader, lane.lifecycle, {
-          prompt: "x".repeat(11_169),
-          maxTokens: 8_192,
-          priority: "background",
-        }),
-      ).rejects.toMatchObject({
-        code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_EXCEEDED",
+      await generateOnPriorityLane(lane.loader, lane.lifecycle, {
+        prompt: "x".repeat(11_169),
+        maxTokens: 8_192,
+        priority: "background",
       });
     });
 
-    expect(lane.calls).toHaveLength(0);
+    expect(lane.calls).toHaveLength(1);
+    expect(lane.calls[0].prompt).toBe("x".repeat(11_169));
+    expect(lane.calls[0].maxTokens).toBe(8_192);
   });
 
   it("never rewrites an interactive turn", async () => {
