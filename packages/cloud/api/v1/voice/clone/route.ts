@@ -100,6 +100,9 @@ app.post("/", async (c) => {
   let totalSize = 0;
   let fileCount = 0;
   let voiceName = "";
+  let description: string | undefined;
+  let settings: Record<string, unknown> = {};
+  let files: File[] = [];
 
   // Track partial state so the catch branch can delete R2 and DB orphans
   // when the clone fails before we've successfully persisted a `user_voices`
@@ -111,9 +114,10 @@ app.post("/", async (c) => {
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
     const apiKey = c.env.ELEVENLABS_API_KEY;
+    let pendingConfigResponse: Response | undefined;
     if (!apiKey) {
       logger.error("[Voice Clone API] ELEVENLABS_API_KEY not configured");
-      return jsonError(
+      pendingConfigResponse = jsonError(
         c,
         500,
         "Voice cloning is not configured",
@@ -121,89 +125,103 @@ app.post("/", async (c) => {
       );
     }
 
-    const formData = await c.req.formData();
+    let validationError: unknown;
+    try {
+      const formData = await c.req.formData();
 
-    const nameField = formData.get("name");
-    if (typeof nameField !== "string" || nameField.length === 0) {
-      throw ValidationError("Missing required field: name");
-    }
-    voiceName = nameField;
+      const nameField = formData.get("name");
+      if (typeof nameField !== "string" || nameField.length === 0) {
+        throw ValidationError("Missing required field: name");
+      }
+      voiceName = nameField;
 
-    const cloneTypeField = formData.get("cloneType");
-    if (cloneTypeField !== "instant" && cloneTypeField !== "professional") {
-      throw ValidationError(
-        "Invalid cloneType. Must be 'instant' or 'professional'",
-      );
-    }
-    cloneType = cloneTypeField;
+      const cloneTypeField = formData.get("cloneType");
+      if (cloneTypeField !== "instant" && cloneTypeField !== "professional") {
+        throw ValidationError(
+          "Invalid cloneType. Must be 'instant' or 'professional'",
+        );
+      }
+      cloneType = cloneTypeField;
 
-    const descriptionField = formData.get("description");
-    const description =
-      typeof descriptionField === "string" && descriptionField.length > 0
-        ? descriptionField
-        : undefined;
+      const descriptionField = formData.get("description");
+      description =
+        typeof descriptionField === "string" && descriptionField.length > 0
+          ? descriptionField
+          : undefined;
 
-    const settingsField = formData.get("settings");
-    let settings: Record<string, unknown> = {};
-    if (typeof settingsField === "string" && settingsField.length > 0) {
-      try {
-        const parsed: unknown = JSON.parse(settingsField);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          settings = parsed as Record<string, unknown>;
-        } else {
-          throw ValidationError("settings must be a JSON object");
+      const settingsField = formData.get("settings");
+      settings = {};
+      if (typeof settingsField === "string" && settingsField.length > 0) {
+        try {
+          const parsed: unknown = JSON.parse(settingsField);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            settings = parsed as Record<string, unknown>;
+          } else {
+            throw ValidationError("settings must be a JSON object");
+          }
+        } catch {
+          throw ValidationError("Invalid settings JSON");
         }
-      } catch {
-        throw ValidationError("Invalid settings JSON");
       }
-    }
 
-    const files: File[] = [];
-    for (const [key, value] of formData.entries()) {
-      if (!key.startsWith("file")) continue;
-      if (!isUploadedFile(value)) continue;
-      files.push(value);
-    }
-
-    if (files.length === 0) {
-      throw ValidationError("At least one audio file is required");
-    }
-    if (files.length > MAX_FILES) {
-      throw ValidationError(`Maximum ${MAX_FILES} files allowed`);
-    }
-
-    for (const file of files) {
-      if (file.size === 0) {
-        throw ValidationError(`File "${file.name}" is empty`);
+      files = [];
+      for (const [key, value] of formData.entries()) {
+        if (!key.startsWith("file")) continue;
+        if (!isUploadedFile(value)) continue;
+        files.push(value);
       }
-      if (file.size > MAX_FILE_SIZE) {
+
+      if (files.length === 0) {
+        throw ValidationError("At least one audio file is required");
+      }
+      if (files.length > MAX_FILES) {
+        throw ValidationError(`Maximum ${MAX_FILES} files allowed`);
+      }
+
+      for (const file of files) {
+        if (file.size === 0) {
+          throw ValidationError(`File "${file.name}" is empty`);
+        }
+        if (file.size > MAX_FILE_SIZE) {
+          throw ValidationError(
+            `File "${file.name}" exceeds maximum size of ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+          );
+        }
+        const isAudio =
+          file.type.startsWith("audio/") ||
+          file.type === "" ||
+          file.type.startsWith("video/mp4");
+        if (!isAudio) {
+          throw ValidationError(
+            `File "${file.name}" has invalid type "${file.type}". Only audio files are allowed.`,
+          );
+        }
+        totalSize += file.size;
+      }
+      if (totalSize > MAX_TOTAL_SIZE) {
         throw ValidationError(
-          `File "${file.name}" exceeds maximum size of ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+          `Total file size exceeds ${MAX_TOTAL_SIZE / 1024 / 1024}MB limit`,
         );
       }
-      const isAudio =
-        file.type.startsWith("audio/") ||
-        file.type === "" ||
-        file.type.startsWith("video/mp4");
-      if (!isAudio) {
-        throw ValidationError(
-          `File "${file.name}" has invalid type "${file.type}". Only audio files are allowed.`,
-        );
-      }
-      totalSize += file.size;
+      fileCount = files.length;
+    } catch (error) {
+      // error-policy:J1 validation is emitted only after the one strong-auth
+      // resolver call below, so malformed protected requests cannot bypass it.
+      validationError = error;
     }
-    if (totalSize > MAX_TOTAL_SIZE) {
-      throw ValidationError(
-        `Total file size exceeds ${MAX_TOTAL_SIZE / 1024 / 1024}MB limit`,
-      );
-    }
-    fileCount = files.length;
 
     caller = await requireGenerativeRouteCaller(c, {
-      deferStrongCredentialCheck: true,
+      deferStrongCredentialCheck:
+        pendingConfigResponse === undefined && validationError === undefined,
     });
     user = caller.user;
     apiKeyId = caller.apiKeyId;
+    if (pendingConfigResponse) return pendingConfigResponse;
+    if (!apiKey) throw new Error("Voice-clone provider key was not retained");
+    if (validationError) throw validationError;
+    if (!cloneType || !voiceName || files.length === 0) {
+      throw new Error("Validated voice-clone request was not retained");
+    }
 
     logger.info(
       `[Voice Clone API] Creating ${cloneType} voice clone: ${voiceName}`,

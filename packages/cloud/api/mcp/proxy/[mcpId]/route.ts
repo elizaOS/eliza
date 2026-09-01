@@ -279,7 +279,10 @@ app.post("/", async (c) => {
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
     caller = await requireGenerativeRouteCaller(c, {
-      deferStrongCredentialCheck: true,
+      // MCP existence, visibility, endpoint safety, and JSON-RPC validity are
+      // resolved after caller identity. Any may stop before admission, so this
+      // route must perform the standalone strong check rather than defer it.
+      deferStrongCredentialCheck: false,
     });
   } catch (error) {
     logger.warn("[MCP Proxy] Caller admission denied", {

@@ -96,7 +96,11 @@ describe("POST /api/v1/generate-sfx malformed JSON", () => {
       error: "Invalid JSON body",
     });
     expect(assertSafeForPublicUse).not.toHaveBeenCalled();
-    expect(requireGenerativeRouteCaller).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
     expect(generateAudio).not.toHaveBeenCalled();
   });
 

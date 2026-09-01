@@ -27,21 +27,24 @@ async function __hono_POST(
   const { chain } = await params;
   const normalized = chain.toLowerCase();
 
-  if (!isValidRpcChain(normalized)) {
-    return applyCorsHeaders(
-      Response.json(
-        { error: "Unsupported chain", supported: [...SUPPORTED_RPC_CHAINS] },
-        { status: 400 },
-      ),
-      CORS_METHODS,
-    );
-  }
+  const chainIsValid = isValidRpcChain(normalized);
+  const pendingResponse = !chainIsValid
+    ? applyCorsHeaders(
+        Response.json(
+          { error: "Unsupported chain", supported: [...SUPPORTED_RPC_CHAINS] },
+          { status: 400 },
+        ),
+        CORS_METHODS,
+      )
+    : undefined;
 
-  const config = rpcConfigForChain(normalized);
   const caller = await requireGenerativeRouteCaller(c, {
     rateLimitEndpoint: "standard",
-    deferStrongCredentialCheck: true,
+    deferStrongCredentialCheck: chainIsValid,
   });
+  if (pendingResponse) return pendingResponse;
+  if (!chainIsValid) throw new Error("Validated RPC chain was not retained");
+  const config = rpcConfigForChain(normalized);
   const executionCtx = getGenerativeExecutionContext(c);
   if (executionCtx && !caller.admissionSnapshot) {
     return applyCorsHeaders(

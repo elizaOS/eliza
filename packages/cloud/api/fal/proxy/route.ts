@@ -178,6 +178,7 @@ const handle: Handler<AppEnv> = async (c) => {
   > | null = null;
   let pricedMutation: Awaited<ReturnType<typeof priceFalMutation>> | null =
     null;
+  let pendingResponse: Response | undefined;
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
 
   if (willAdmitMutation) {
@@ -185,18 +186,18 @@ const handle: Handler<AppEnv> = async (c) => {
       pricedMutation = await priceFalMutation(c);
     } catch (error) {
       if (error instanceof Error && error.message === "missing_target") {
-        return c.json({ error: "Invalid request" }, 400);
-      }
-      if (
+        pendingResponse = c.json({ error: "Invalid request" }, 400);
+      } else if (
         error instanceof Error &&
         error.message.startsWith("Unpriced fal endpoint")
       ) {
-        return c.json({ error: error.message }, 400);
+        pendingResponse = c.json({ error: error.message }, 400);
+      } else {
+        logger.error("[fal proxy] Failed to price mutation", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        pendingResponse = c.json({ error: "fal pricing unavailable" }, 503);
       }
-      logger.error("[fal proxy] Failed to price mutation", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return c.json({ error: "fal pricing unavailable" }, 503);
     }
   }
 
@@ -208,6 +209,7 @@ const handle: Handler<AppEnv> = async (c) => {
   } catch (error) {
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
+  if (pendingResponse) return pendingResponse;
 
   if (pricedMutation) {
     try {

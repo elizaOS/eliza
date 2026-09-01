@@ -237,18 +237,21 @@ app.post("/", async (c) => {
 
   try {
     const decodedBody = await decodeRequestJson(c.req);
-    if (!decodedBody.ok) {
-      // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-    const body = decodedBody.value;
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-    const preflightMessages = (body as { messages?: unknown }).messages;
-    if (!Array.isArray(preflightMessages) || preflightMessages.length === 0) {
-      return c.json({ error: "At least one message is required" }, 400);
-    }
+    const body = decodedBody.ok ? decodedBody.value : undefined;
+    const bodyIsObject = Boolean(body && typeof body === "object");
+    const preflightMessages = bodyIsObject
+      ? (body as { messages?: unknown }).messages
+      : undefined;
+    const requestIsValid =
+      bodyIsObject &&
+      Array.isArray(preflightMessages) &&
+      preflightMessages.length > 0;
+    const invalidRequestResponse =
+      !decodedBody.ok || !bodyIsObject
+        ? c.json({ error: "Invalid JSON body" }, 400)
+        : !requestIsValid
+          ? c.json({ error: "At least one message is required" }, 400)
+          : undefined;
 
     let user: ChatBillingUser;
     let apiKey: ApiKeyIdentity | undefined;
@@ -266,7 +269,7 @@ app.post("/", async (c) => {
       const authResolution = await resolveInferenceAuthContext(c.req.raw, {
         executionCtx,
         cacheOnly: true,
-        deferStrongCredentialCheck: true,
+        deferStrongCredentialCheck: requestIsValid,
       });
       if (authResolution.kind === "warming") {
         return retryableWarmingResponse(c, "Authentication");
@@ -313,7 +316,9 @@ app.post("/", async (c) => {
         moderationAlreadyChecked = true;
         admissionSnapshot = authResolution.ctx.admission;
         admissionCredential = authResolution.credential;
+        if (invalidRequestResponse) return invalidRequestResponse;
       } else {
+        if (invalidRequestResponse) return invalidRequestResponse;
         const anonymousResolution = await resolveAnonymousChatContext(
           c.req.raw,
           executionCtx,
@@ -377,6 +382,8 @@ app.post("/", async (c) => {
         isAnonymous = true;
       }
     }
+
+    if (invalidRequestResponse) return invalidRequestResponse;
 
     if (user.organization_id) {
       let orgRateLimited: Response | null;

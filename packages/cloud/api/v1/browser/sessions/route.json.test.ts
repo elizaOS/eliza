@@ -54,7 +54,11 @@ describe("POST /api/v1/browser/sessions malformed JSON", () => {
       error: "Invalid JSON body",
     });
     expect(createHostedBrowserSession).not.toHaveBeenCalled();
-    expect(requireGenerativeRouteCaller).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
   });
 
   test("canonical JSON still creates a session", async () => {

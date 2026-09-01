@@ -364,6 +364,30 @@ test("warm Worker request reaches provider with authoritative stores tripwired",
   expect(shouldBlockUser).not.toHaveBeenCalled();
 });
 
+test("malformed Worker request performs one standalone strong auth check and no admission", async () => {
+  const background: Promise<unknown>[] = [];
+  const malformed = new Request("https://api.example/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": "eliza_test",
+    },
+    body: JSON.stringify({ model: "gpt-4o-mini" }),
+  });
+
+  const response = await handleChatCompletionsPOST(malformed, {
+    executionCtx: executionCtx(background),
+  });
+
+  expect(response.status).toBe(400);
+  expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+  expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+    deferStrongCredentialCheck: false,
+  });
+  expect(admitAppInferenceCacheOnly).not.toHaveBeenCalled();
+  expect(generateText).not.toHaveBeenCalled();
+});
+
 test("preserves a cached standing 503 before provider dispatch", async () => {
   resolveInferenceAuthContext.mockResolvedValueOnce({
     kind: "rejected",

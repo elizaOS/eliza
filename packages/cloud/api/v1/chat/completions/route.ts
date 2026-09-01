@@ -1215,26 +1215,27 @@ export async function handleChatCompletionsPOST(
 
   try {
     const request = (await req.json().catch(() => null)) as ChatRequest | null;
-    if (
-      !request?.model ||
-      !Array.isArray(request.messages) ||
-      !request.messages.length
-    ) {
-      return attachPreforwardTelemetry(
-        addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message: "Missing required fields: model and messages",
-                type: "invalid_request_error",
-                code: "missing_required_parameter",
+    const requestIsValid = Boolean(
+      request?.model &&
+        Array.isArray(request.messages) &&
+        request.messages.length,
+    );
+    const invalidRequestResponse = !requestIsValid
+      ? attachPreforwardTelemetry(
+          addCorsHeaders(
+            Response.json(
+              {
+                error: {
+                  message: "Missing required fields: model and messages",
+                  type: "invalid_request_error",
+                  code: "missing_required_parameter",
+                },
               },
-            },
-            { status: 400 },
+              { status: 400 },
+            ),
           ),
-        ),
-      );
-    }
+        )
+      : undefined;
 
     // 1. Authenticate (+ moderation). API-key and Steward-session requests
     // resolve auth + org + moderation from a combined cache decision. On one
@@ -1248,7 +1249,9 @@ export async function handleChatCompletionsPOST(
     let appScopeId: string | null = null;
 
     const deferStrongCredentialCheck =
-      Boolean(options.executionCtx) && isInferenceStrongRevocationEnabled();
+      requestIsValid &&
+      Boolean(options.executionCtx) &&
+      isInferenceStrongRevocationEnabled();
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
@@ -1396,6 +1399,14 @@ export async function handleChatCompletionsPOST(
       throw error;
     }
     if (orgRateLimited) return orgRateLimited;
+
+    if (
+      !request?.model ||
+      !Array.isArray(request.messages) ||
+      !request.messages.length
+    ) {
+      return invalidRequestResponse!;
+    }
 
     // 2. Prepare app monetization lookup
     const requestedAppId = options.requiredAppId ?? req.headers.get("X-App-Id");

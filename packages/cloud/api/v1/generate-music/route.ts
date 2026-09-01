@@ -149,12 +149,38 @@ app.post("/", async (c) => {
   let chargeSettled = false;
 
   try {
+    const decodedRawBody = await decodeRequestJson(c.req);
+    const preflight = decodedRawBody.ok
+      ? musicRequestSchema.safeParse(decodedRawBody.value)
+      : undefined;
+    const preflightRequest = preflight?.success ? preflight.data : undefined;
+    const preflightDefinition = preflightRequest
+      ? getSupportedMusicModelDefinition(preflightRequest.model)
+      : undefined;
+    const preflightProvider = preflightRequest
+      ? (preflightRequest.provider ?? preflightDefinition?.provider)
+      : undefined;
+    const willAdmit = Boolean(
+      preflightRequest &&
+        preflightDefinition &&
+        preflightProvider === preflightDefinition.provider &&
+        !(
+          preflightProvider === "fal" && preflightRequest.prompt.length > 2000
+        ) &&
+        !(
+          preflightDefinition.durationControl === "unsupported" &&
+          preflightRequest.durationSeconds !== undefined
+        ) &&
+        providerConfigured(c.env, preflightProvider) &&
+        !checkGenerativeProviderHealth(
+          `music:${preflightProvider}:${preflightRequest.model}`,
+        ).degraded,
+    );
     const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         rateLimitEndpoint: "strict",
-        deferStrongCredentialCheck: true,
+        deferStrongCredentialCheck: willAdmit,
       });
-    const decodedRawBody = await decodeRequestJson(c.req);
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is an explicit invalid request.
       return c.json({ error: "Invalid JSON body" }, 400);

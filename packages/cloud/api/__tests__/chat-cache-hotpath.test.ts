@@ -256,6 +256,35 @@ beforeEach(() => {
 });
 
 describe("/v1/chat Worker cache hot path", () => {
+  test("malformed request resolves auth once without deferral or provider admission", async () => {
+    const executionCtx = {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext;
+    const response = await chatRoute.fetch(
+      new Request("https://api.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer eliza_cached",
+        },
+        body: JSON.stringify({ messages: [] }),
+      }),
+      {} as never,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(400);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
   test("enabled Worker admission rejects a missing execution context without database fallback", async () => {
     const response = await chatRoute.fetch(
       new Request("https://api.test/", {

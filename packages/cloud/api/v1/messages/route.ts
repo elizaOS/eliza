@@ -563,26 +563,24 @@ app.post("/", async (c) => {
     );
   }
   const decodedBody = await decodeRequestJson(c.req);
-  if (!decodedBody.ok) {
-    // error-policy:J3 malformed JSON is invalid request input.
-    return anthropicError("invalid_request_error", "Invalid JSON body", 400);
-  }
-  const body = decodedBody.value;
-  if (!body || typeof body !== "object") {
-    return anthropicError("invalid_request_error", "Invalid JSON body", 400);
-  }
-  const request = body as AnthropicMessagesRequest;
-  if (
-    !request.model ||
-    request.max_tokens == null ||
-    !request.messages?.length
-  ) {
-    return anthropicError(
-      "invalid_request_error",
-      "Missing required fields: model, max_tokens, messages",
-      400,
-    );
-  }
+  const body = decodedBody.ok ? decodedBody.value : undefined;
+  const request =
+    body && typeof body === "object"
+      ? (body as AnthropicMessagesRequest)
+      : undefined;
+  const requestIsValid = Boolean(
+    request?.model && request.max_tokens != null && request.messages?.length,
+  );
+  const invalidRequestResponse =
+    !decodedBody.ok || !request
+      ? anthropicError("invalid_request_error", "Invalid JSON body", 400)
+      : !requestIsValid
+        ? anthropicError(
+            "invalid_request_error",
+            "Missing required fields: model, max_tokens, messages",
+            400,
+          )
+        : undefined;
 
   let settleReservation:
     | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
@@ -607,7 +605,7 @@ app.post("/", async (c) => {
       executionCtx,
       traceId,
       cacheOnly: Boolean(executionCtx),
-      deferStrongCredentialCheck: Boolean(executionCtx),
+      deferStrongCredentialCheck: Boolean(executionCtx) && requestIsValid,
     });
     if (resolution.kind === "warming") {
       return anthropicError(
@@ -692,6 +690,7 @@ app.post("/", async (c) => {
       status >= 400 && status <= 599 ? status : 500,
     );
   }
+  if (!requestIsValid || !request) return invalidRequestResponse!;
   const tAuth = performance.now();
 
   let orgRateLimited: Response | null;

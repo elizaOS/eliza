@@ -470,7 +470,9 @@ async function __hono_POST(c: AppContext) {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         awaitWarmingMs: 1500,
-        deferStrongCredentialCheck: true,
+        // Multipart content/signature validation can still stop before the
+        // paid admission below, so this route must not defer strong checking.
+        deferStrongCredentialCheck: false,
       });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;

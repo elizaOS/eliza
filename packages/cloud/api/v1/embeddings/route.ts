@@ -106,19 +106,20 @@ app.post("/", async (c) => {
     const request = (await c.req
       .json()
       .catch(() => null)) as EmbeddingsRequest | null;
-    if (!request?.model || !request.input) {
-      return c.json(
-        {
-          error: {
-            message: "Missing required fields: model and input",
-            type: "invalid_request_error",
-            param: !request?.model ? "model" : "input",
-            code: "missing_required_parameter",
+    const requestIsValid = Boolean(request?.model && request.input);
+    const invalidRequestResponse = !requestIsValid
+      ? c.json(
+          {
+            error: {
+              message: "Missing required fields: model and input",
+              type: "invalid_request_error",
+              param: !request?.model ? "model" : "input",
+              code: "missing_required_parameter",
+            },
           },
-        },
-        400,
-      );
-    }
+          400,
+        )
+      : undefined;
 
     // Resolve auth (+ org + moderation) in a SINGLE cache read for API-key
     // inference requests (#9899) — the same fast-path as /v1/chat/completions.
@@ -133,7 +134,7 @@ app.post("/", async (c) => {
     const resolution = await resolveInferenceAuthContext(c.req.raw, {
       executionCtx,
       cacheOnly: Boolean(executionCtx),
-      deferStrongCredentialCheck: Boolean(executionCtx),
+      deferStrongCredentialCheck: Boolean(executionCtx) && requestIsValid,
     });
     if (resolution.kind === "warming") {
       return c.json(
@@ -223,6 +224,8 @@ app.post("/", async (c) => {
     // Guard a malformed/empty body to a 400 instead of a 500 (mirrors the agents
     // routes). An unguarded parse throws a SyntaxError that failureResponse maps
     // to 500 on this always-on agent-recall hot path.
+    if (!request?.model || !request.input) return invalidRequestResponse!;
+
     let orgRateLimited: Response | null;
     try {
       orgRateLimited = await orgRateLimitPromise;

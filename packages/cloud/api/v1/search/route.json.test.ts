@@ -52,6 +52,11 @@ describe("POST /api/v1/search malformed JSON", () => {
       error: "Invalid JSON body",
     });
     expect(executeHostedGoogleSearch).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
   });
 
   test("preserves non-syntax request decoding failures as server errors", async () => {
@@ -82,6 +87,10 @@ describe("POST /api/v1/search malformed JSON", () => {
     expect(response.status).toBe(200);
     expect(executeHostedGoogleSearch).toHaveBeenCalled();
     expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: true }),
+    );
     expect(getGenerativeOperationContext).toHaveBeenCalledTimes(1);
   });
 

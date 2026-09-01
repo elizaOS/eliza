@@ -56,28 +56,33 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const decodedBody = await decodeRequestJson(c.req);
+    let pendingResponse: Response | undefined;
+    let body: z.infer<typeof createSessionSchema> | undefined;
     if (!decodedBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-    const rawBody = decodedBody.value;
-    const bodyResult = createSessionSchema.safeParse(rawBody);
-    if (!bodyResult.success) {
-      return c.json(
-        {
-          error: "Invalid browser session request",
-          details: bodyResult.error.flatten(),
-        },
-        400,
-      );
+      pendingResponse = c.json({ error: "Invalid JSON body" }, 400);
+    } else {
+      const bodyResult = createSessionSchema.safeParse(decodedBody.value);
+      if (bodyResult.success) {
+        body = bodyResult.data;
+      } else {
+        pendingResponse = c.json(
+          {
+            error: "Invalid browser session request",
+            details: bodyResult.error.flatten(),
+          },
+          400,
+        );
+      }
     }
 
     const caller = await requireGenerativeRouteCaller(c, {
-      deferStrongCredentialCheck: true,
+      deferStrongCredentialCheck: pendingResponse === undefined,
     });
+    if (pendingResponse) return pendingResponse;
     const { user } = caller;
 
-    const session = await createHostedBrowserSession(bodyResult.data, {
+    const session = await createHostedBrowserSession(body!, {
       apiKeyId: caller.apiKeyId,
       organizationId: user.organization_id,
       requestSource: "api",

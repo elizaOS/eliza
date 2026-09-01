@@ -34,37 +34,41 @@ async function handlePOST(
   try {
     const { id } = await context.params;
     const decodedRawBody = await decodeRequestJson(c.req);
+    let pendingResponse: Response | undefined;
+    let body: z.infer<typeof navigateSchema> | undefined;
     if (!decodedRawBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
-    const rawBody = decodedRawBody.value;
-    const bodyResult = navigateSchema.safeParse(rawBody);
-    if (!bodyResult.success) {
-      return Response.json(
-        {
-          error: "Invalid navigate request",
-          details: bodyResult.error.flatten(),
-        },
+      pendingResponse = Response.json(
+        { error: "Invalid JSON body" },
         { status: 400 },
       );
+    } else {
+      const bodyResult = navigateSchema.safeParse(decodedRawBody.value);
+      if (bodyResult.success) {
+        body = bodyResult.data;
+      } else {
+        pendingResponse = Response.json(
+          {
+            error: "Invalid navigate request",
+            details: bodyResult.error.flatten(),
+          },
+          { status: 400 },
+        );
+      }
     }
 
     const caller = await requireGenerativeRouteCaller(c, {
-      deferStrongCredentialCheck: true,
+      deferStrongCredentialCheck: pendingResponse === undefined,
     });
+    if (pendingResponse) return pendingResponse;
 
-    const session = await navigateHostedBrowserSession(
-      id,
-      bodyResult.data.url,
-      {
-        apiKeyId: caller.apiKeyId,
-        organizationId: caller.user.organization_id,
-        requestSource: "api",
-        userId: caller.user.id,
-        operationContext: getGenerativeOperationContext(c, caller),
-      },
-    );
+    const session = await navigateHostedBrowserSession(id, body!.url, {
+      apiKeyId: caller.apiKeyId,
+      organizationId: caller.user.organization_id,
+      requestSource: "api",
+      userId: caller.user.id,
+      operationContext: getGenerativeOperationContext(c, caller),
+    });
 
     return Response.json({ session });
   } catch (error) {

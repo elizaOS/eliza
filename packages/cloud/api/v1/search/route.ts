@@ -32,17 +32,21 @@ const searchRequestSchema = z.object({
 async function handlePOST(c: AppContext) {
   try {
     let raw: unknown;
+    let pendingResponse: Response | undefined;
     try {
       raw = await c.req.raw.json();
     } catch (error) {
       if (!(error instanceof SyntaxError)) throw error;
       // error-policy:J3 malformed JSON is an explicit invalid request.
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+      pendingResponse = Response.json(
+        { error: "Invalid JSON body" },
+        { status: 400 },
+      );
     }
     const bodyResult = searchRequestSchema.safeParse(raw);
 
     if (!bodyResult.success) {
-      return Response.json(
+      pendingResponse ??= Response.json(
         {
           error: "Invalid search request",
           details: bodyResult.error.flatten(),
@@ -51,12 +55,14 @@ async function handlePOST(c: AppContext) {
       );
     }
 
-    const body = bodyResult.data;
     const caller = await requireGenerativeRouteCaller(c, {
       compatibility: "raw",
       rateLimitEndpoint: "standard",
-      deferStrongCredentialCheck: true,
+      deferStrongCredentialCheck: pendingResponse === undefined,
     });
+    if (pendingResponse) return pendingResponse;
+    if (!bodyResult.success) throw bodyResult.error;
+    const body = bodyResult.data;
     const result = await executeHostedGoogleSearch(
       {
         query: body.query,

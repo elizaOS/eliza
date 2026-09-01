@@ -51,6 +51,11 @@ describe("POST /api/v1/browser/sessions/:id/navigate malformed JSON", () => {
       error: "Invalid JSON body",
     });
     expect(navigateHostedBrowserSession).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
   });
 
   test("canonical JSON still navigates", async () => {
@@ -60,6 +65,10 @@ describe("POST /api/v1/browser/sessions/:id/navigate malformed JSON", () => {
       body: JSON.stringify({ url: "https://example.com" }),
     });
     expect(response.status).toBe(200);
+    expect(requireGenerativeRouteCaller).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: true }),
+    );
     expect(navigateHostedBrowserSession).toHaveBeenCalled();
   });
 });

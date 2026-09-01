@@ -14,7 +14,12 @@ class ApiError extends Error {
   }
 }
 
-const requireGenerativeRouteCaller = mock<() => Promise<unknown>>(async () => {
+const requireGenerativeRouteCaller = mock<
+  (
+    context?: unknown,
+    options?: { deferStrongCredentialCheck?: boolean },
+  ) => Promise<unknown>
+>(async () => {
   throw new ApiError(403, "access_denied", "Account is inactive", {
     reason: "account_inactive",
   });
@@ -119,7 +124,32 @@ mock.module("@/lib/utils/logger", () => ({
 const { default: voiceCloneRoute } = await import("./route");
 const app = new Hono().route("/v1/voice/clone", voiceCloneRoute);
 
+test("invalid form performs one standalone strong check without admission", async () => {
+  requireGenerativeRouteCaller.mockClear();
+  admitFlatGenerativeOperation.mockClear();
+  calculateVoiceCloneCostFromCatalog.mockClear();
+  requireGenerativeRouteCaller.mockImplementationOnce(async () => ({
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: "key-1",
+  }));
+
+  const response = await app.request(
+    "/v1/voice/clone",
+    { method: "POST", body: new FormData() },
+    { ELEVENLABS_API_KEY: "configured" },
+  );
+
+  expect(response.status).toBe(400);
+  expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+  expect(requireGenerativeRouteCaller.mock.calls[0]?.[1]).toMatchObject({
+    deferStrongCredentialCheck: false,
+  });
+  expect(calculateVoiceCloneCostFromCatalog).not.toHaveBeenCalled();
+  expect(admitFlatGenerativeOperation).not.toHaveBeenCalled();
+});
+
 test("cached bad standing denies before pricing, admission, provider, or storage", async () => {
+  requireGenerativeRouteCaller.mockClear();
   const providerFetch = mock(async () => new Response("provider"));
   const originalFetch = globalThis.fetch;
   globalThis.fetch = providerFetch as unknown as typeof fetch;
