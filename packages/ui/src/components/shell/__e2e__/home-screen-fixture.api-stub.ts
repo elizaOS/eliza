@@ -25,6 +25,7 @@ export const client = {
   // Empty base → widgets fetch `/api/lifeops/...` which the window.fetch mock
   // (installed in the fixture) intercepts.
   getBaseUrl: () => "",
+  getRestAuthToken: () => null,
   // Typed widget requests still pass through the fixture's window.fetch mock;
   // mirror the production client's JSON boundary so constructor-based imports
   // and the shared singleton observe the same seeded responses.

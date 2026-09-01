@@ -301,6 +301,11 @@ describe("anti-larp test discovery", () => {
     expect(forms('describe.skipIf(!hasBackend)("store", () => {});')).toEqual([
       "skipIf",
     ]);
+    expect(
+      forms(
+        'test("Windows only", { skip: process.platform !== "win32" ? "Windows contract" : false }, () => {});',
+      ),
+    ).toEqual(["conditional-options-skip"]);
     // Documented-but-unconditional skips pass the gate yet never bless a file.
     expect(
       forms('it.skip("[live] requires OPENAI_API_KEY", () => {});'),
@@ -308,6 +313,11 @@ describe("anti-larp test discovery", () => {
     expect(forms('describe.skipIf(true)("off", () => {}); // #1234')).toEqual(
       [],
     );
+    expect(
+      forms(
+        'test("always skipped", { skip: "requires external hardware" }, () => {});',
+      ),
+    ).toEqual([]);
     // A file with any gate violation yields zero sites.
     expect(
       forms(
