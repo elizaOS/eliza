@@ -11,6 +11,7 @@
  * fields compose SettingsStack / SettingsGroup / SettingsInputRow.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { Loader2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -255,7 +256,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
             label="Full name"
             type="text"
             value={name}
-            onValueChange={(value) => setName(value.slice(0, NAME_MAX_LENGTH))}
+            onValueChange={(value) => setName(truncateWellFormed(toWellFormedUnicode(value), NAME_MAX_LENGTH))}
             placeholder="Enter your full name"
             autoComplete="name"
             disabled={isPending}
