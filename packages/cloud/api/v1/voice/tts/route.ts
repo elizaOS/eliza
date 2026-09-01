@@ -66,6 +66,12 @@ import {
   synthesizeCartesiaWav,
 } from "./cartesia-synthesis";
 import {
+  GANDR_MAX_INPUT_CHARS,
+  GandrRestTtsError,
+  synthesizeGandrBytes,
+  synthesizeGandrWav,
+} from "./gandr-synthesis";
+import {
   buildKokoroCacheKey,
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
@@ -205,9 +211,11 @@ async function __hono_POST(c: AppContext) {
     const kokoroBaseUrl = env.KOKORO_TTS_URL?.trim();
     const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
     const cartesiaVoiceId = resolveCartesiaVoiceId(env);
+    const gandrApiKey = env.GANDR_API_KEY?.trim();
     const providerSelection = selectTtsProvider({
       voiceId,
       cartesiaConfigured: Boolean(cartesiaApiKey),
+      gandrConfigured: Boolean(gandrApiKey),
       kokoroConfigured: Boolean(kokoroBaseUrl),
     });
     // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
@@ -249,6 +257,27 @@ async function __hono_POST(c: AppContext) {
             providerSelection.provider,
             timings,
           ),
+        },
+      );
+    }
+
+    // Gandr caps input at 2000 characters per request while the route-wide
+    // MAX_TEXT_LENGTH is 5000. Reject the overage explicitly on the Gandr
+    // lane before safety and admission; truncated speech must never be
+    // served as success.
+    if (
+      providerSelection.provider === "gandr" &&
+      text.length > GANDR_MAX_INPUT_CHARS
+    ) {
+      timings.admissionMs = Date.now() - admissionStart;
+      return Response.json(
+        {
+          error: `Gandr voices support up to ${GANDR_MAX_INPUT_CHARS} characters per request`,
+          code: "gandr_text_too_long",
+        },
+        {
+          status: 400,
+          headers: buildTtsObservabilityHeaders("gandr", timings),
         },
       );
     }
@@ -430,7 +459,9 @@ async function __hono_POST(c: AppContext) {
     const resolvedVoiceId =
       providerSelection.provider === "cartesia"
         ? cartesiaVoiceId
-        : voiceId || "EXAVITQu4vr4xnSDxMaL";
+        : providerSelection.provider === "gandr"
+          ? providerSelection.voiceId
+          : voiceId || "EXAVITQu4vr4xnSDxMaL";
     const resolvedModelId = modelId || "eleven_flash_v2_5";
     const snipResult = firstSentenceSnip(text);
     const cacheBypass = shouldBypassCloudFirstLineCache({
@@ -438,11 +469,17 @@ async function __hono_POST(c: AppContext) {
     });
     const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
     const mp3CacheProvider =
-      providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
+      providerSelection.provider === "cartesia"
+        ? "cartesia"
+        : providerSelection.provider === "gandr"
+          ? "gandr"
+          : "elevenlabs";
     const mp3VoiceRevision =
       providerSelection.provider === "cartesia"
         ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
-        : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
+        : providerSelection.provider === "gandr"
+          ? `gandr:${resolvedVoiceId}:tts-1:mp3`
+          : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
     const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
       outputFormat: DEFAULT_OUTPUT_FORMAT,
     });
@@ -502,6 +539,12 @@ async function __hono_POST(c: AppContext) {
     // MP3 and WAV entries can never collide.
     const cartesiaEligible =
       providerSelection.provider === "cartesia" && Boolean(cartesiaApiKey);
+    const gandrEligible =
+      providerSelection.provider === "gandr" && Boolean(gandrApiKey);
+    // NOTE: the WAV first-line cache below is Cartesia-only today. The Gandr
+    // lane synthesizes WAV through the same shape and could join the cache,
+    // but parity is left to a follow-up with its own evidence pass rather
+    // than riding along on this PR.
     const wavCacheKey =
       cartesiaEligible &&
       wantWav &&
@@ -630,7 +673,7 @@ async function __hono_POST(c: AppContext) {
     // the user's price (Cartesia's upstream cost is lower, not higher).
     let wav: Uint8Array<ArrayBuffer> | undefined;
     let audioStream: ReadableStream<Uint8Array> | undefined;
-    let synthesisEngine: "elevenlabs" | "cartesia" = "elevenlabs";
+    let synthesisEngine: "elevenlabs" | "cartesia" | "gandr" = "elevenlabs";
     let cartesiaMp3ContentType = "audio/mpeg";
     await markProviderDispatched?.();
     if (cartesiaEligible && cartesiaApiKey) {
@@ -685,6 +728,38 @@ async function __hono_POST(c: AppContext) {
       }
     }
 
+    // Gandr lane: explicit gandr-* voice ids only, selected fail-closed in
+    // provider-selection. Same response shapes as the Cartesia lane: the MP3
+    // body streams through for default callers; the WAV path drains Gandr's
+    // raw PCM output and wraps it for codec-less clients.
+    if (gandrEligible && gandrApiKey) {
+      if (wantWav) {
+        const gandr = await synthesizeGandrWav({
+          apiKey: gandrApiKey,
+          voice: resolvedVoiceId,
+          text,
+          maxPcmBytes: MAX_WAV_PCM_BYTES,
+        });
+        wav = gandr.wav;
+        synthesisEngine = "gandr";
+        logger.info("[Voice TTS API] Gandr WAV synthesis", {
+          totalMs: gandr.totalMs,
+          wavBytes: gandr.wav.byteLength,
+        });
+      } else {
+        const gandr = await synthesizeGandrBytes({
+          apiKey: gandrApiKey,
+          voice: resolvedVoiceId,
+          text,
+        });
+        audioStream = gandr.body;
+        // Reuses the MP3 content-type slot the final Response reads; the
+        // Cartesia and Gandr lanes are mutually exclusive per request.
+        cartesiaMp3ContentType = gandr.contentType;
+        synthesisEngine = "gandr";
+      }
+    }
+
     if (wav === undefined) {
       if (audioStream === undefined) {
         const elevenlabs = getElevenLabsService(env);
@@ -723,7 +798,9 @@ async function __hono_POST(c: AppContext) {
             model:
               synthesisEngine === "cartesia"
                 ? "cartesia/sonic-3.5"
-                : billingContext.model,
+                : synthesisEngine === "gandr"
+                  ? "gandr/tts-1"
+                  : billingContext.model,
             provider: synthesisEngine,
           },
           billingCost,
@@ -752,7 +829,9 @@ async function __hono_POST(c: AppContext) {
           model:
             synthesisEngine === "cartesia"
               ? "sonic-3.5"
-              : modelId || "eleven_flash_v2_5",
+              : synthesisEngine === "gandr"
+                ? "tts-1"
+                : modelId || "eleven_flash_v2_5",
           provider: synthesisEngine,
           input_tokens: Math.ceil(text.length / 4),
           output_tokens: 0,
@@ -819,11 +898,19 @@ async function __hono_POST(c: AppContext) {
                     text: snipResult.raw,
                   })
                 ).body
-              : await getElevenLabsService(env).textToSpeech({
-                  text: snipResult.raw,
-                  voiceId,
-                  modelId,
-                });
+              : synthesisEngine === "gandr" && gandrApiKey
+                ? (
+                    await synthesizeGandrBytes({
+                      apiKey: gandrApiKey,
+                      voice: resolvedVoiceId,
+                      text: snipResult.raw,
+                    })
+                  ).body
+                : await getElevenLabsService(env).textToSpeech({
+                    text: snipResult.raw,
+                    voiceId,
+                    modelId,
+                  });
           const reader = snipStream.getReader();
           const chunks: Uint8Array[] = [];
           let total = 0;
@@ -927,6 +1014,28 @@ async function __hono_POST(c: AppContext) {
         {
           error: error.safeProviderMessage,
           provider: "cartesia",
+          code: error.classification,
+        },
+        { status },
+      );
+    }
+
+    if (error instanceof GandrRestTtsError) {
+      const status =
+        error.classification === "auth"
+          ? error.status === 403
+            ? 403
+            : 401
+          : error.classification === "rate_limit" ||
+              error.classification === "quota"
+            ? 429
+            : error.classification === "bad_request"
+              ? 400
+              : 502;
+      return Response.json(
+        {
+          error: error.safeProviderMessage,
+          provider: "gandr",
           code: error.classification,
         },
         { status },

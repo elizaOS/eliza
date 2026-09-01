@@ -156,6 +156,16 @@ export interface Bindings {
   /** Legacy name accepted while deploy environments migrate to CARTESIA_VOICE_ID. */
   CARTESIA_DEFAULT_VOICE_ID?: string;
 
+  // ---- Gandr ----
+  /**
+   * Server-side Gandr API key. When set, explicit `gandr-*` voice ids
+   * synthesize with Gandr over its OpenAI compatible speech endpoint (MP3 by
+   * default, raw PCM wrapped as WAV for codec-less clients). Unset, explicit
+   * `gandr-*` voice ids fail closed with 503 and every other request is
+   * unchanged. Keys at https://gandr.ai.
+   */
+  GANDR_API_KEY?: string;
+
   // ---- Free self-hosted voice (default) ----
   /**
    * Base URL of the self-hosted Kokoro TTS service (e.g. the Railway deploy).
