@@ -233,7 +233,7 @@ describe("isOptimisticEligible", () => {
 describe("isPendingInferenceCharge shape guard", () => {
   test("accepts a full record, rejects partial / wrong version", () => {
     const ok = {
-      v: 2,
+      v: 3,
       requestId: "r",
       organizationId: "o",
       userId: "u",

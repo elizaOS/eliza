@@ -26,4 +26,6 @@ test("AI billing subscription funding contract passes in isolation", async () =>
     new Response(child.stderr).text(),
   ]);
   expect(exitCode, `${stdout}\n${stderr}`).toBe(0);
+  const passed = Number(/(\d+) pass/.exec(`${stdout}\n${stderr}`)?.[1] ?? 0);
+  expect(passed, `${stdout}\n${stderr}`).toBeGreaterThanOrEqual(3);
 });

@@ -148,6 +148,7 @@ let gateBalance = 50;
 let eligible = true;
 let orgRefused = false;
 let subscriptionFunded = false;
+const isSubscriptionFundedOrganization = mock(async () => subscriptionFunded);
 const isOptimisticEligible = mock(() => eligible);
 const acquireInferenceAdmissionLease = mock(
   async (params: { organizationId: string; requestId: string; estimatedCostUsd: number }) => ({
@@ -163,7 +164,7 @@ const settleInferenceAdmissionLease = mock(async () => undefined);
 mock.module("./ai-billing", () => ({
   reserveCredits,
   reserveFlatUsageCredits,
-  isSubscriptionFundedOrganization: async () => subscriptionFunded,
+  isSubscriptionFundedOrganization,
   getAffiliatePayoutSourceId: (context: { requestId?: string | null }) =>
     `ai_billing:affiliate:${context.requestId}`,
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
@@ -286,6 +287,7 @@ beforeEach(() => {
   eligible = true;
   orgRefused = false;
   subscriptionFunded = false;
+  isSubscriptionFundedOrganization.mockClear();
   repositoryBlock = null;
   affiliateRepositoryBlock = null;
   affiliateDebitError = null;
@@ -347,7 +349,14 @@ test("subscriber inference bypasses every optimistic purchased-only lane", async
   subscriptionFunded = true;
   const model = nextModel();
 
-  const admission = await admitOrganizationInference(admissionParams(model, []));
+  const admission = await admitOrganizationInference({
+    ...admissionParams(model, []),
+    admissionSnapshot: {
+      subscriptionFunded: true,
+      balance: { balanceUsd: 50, balanceAt: Date.now(), balanceRevision: "snapshot-1" },
+      rateLimits: { completionsRpm: 60, embeddingsRpm: 60, standardRpm: 60, strictRpm: 60 },
+    },
+  });
 
   expect(admission.mode).toBe("synchronous_reservation");
   expect(reserveCredits).toHaveBeenCalledTimes(1);
@@ -356,18 +365,27 @@ test("subscriber inference bypasses every optimistic purchased-only lane", async
   expect(writePendingInferenceCharge).not.toHaveBeenCalled();
   expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
   expect(pairReads).toBe(0);
+  expect(isSubscriptionFundedOrganization).not.toHaveBeenCalled();
 });
 
 test("subscriber inference bypasses stale purchased-credit refusal state", async () => {
   subscriptionFunded = true;
   orgRefused = true;
 
-  const admission = await admitOrganizationInference(admissionParams(nextModel(), []));
+  const admission = await admitOrganizationInference({
+    ...admissionParams(nextModel(), []),
+    admissionSnapshot: {
+      subscriptionFunded: true,
+      balance: { balanceUsd: 50, balanceAt: Date.now(), balanceRevision: "snapshot-2" },
+      rateLimits: { completionsRpm: 60, embeddingsRpm: 60, standardRpm: 60, strictRpm: 60 },
+    },
+  });
 
   expect(admission.mode).toBe("synchronous_reservation");
   expect(reserveCredits).toHaveBeenCalledTimes(1);
   expect(reserveCredits.mock.calls[0]?.[3]).toEqual({ subscriptionFunded: true });
   expect(acquireInferenceAdmissionLease).not.toHaveBeenCalled();
+  expect(isSubscriptionFundedOrganization).not.toHaveBeenCalled();
 });
 
 test("warm Worker admission writes only the Durable Object lease before provider dispatch", async () => {

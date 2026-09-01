@@ -254,7 +254,9 @@ export async function admitOrganizationInference(
   const executionCtx = params.executionCtx;
   const workerHotPath = typeof executionCtx?.waitUntil === "function";
   const affiliateMarked = Boolean(params.affiliateCode?.trim());
-  const subscriptionFunded = await isSubscriptionFundedOrganization(params.context.organizationId);
+  const subscriptionFunded =
+    params.admissionSnapshot?.subscriptionFunded ??
+    (await isSubscriptionFundedOrganization(params.context.organizationId));
   if (subscriptionFunded) {
     return await reserveSynchronously(params, true);
   }

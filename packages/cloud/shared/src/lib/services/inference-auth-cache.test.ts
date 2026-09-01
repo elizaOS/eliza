@@ -28,6 +28,7 @@ const {
 const KEY_HASH = hashApiKey("eliza_validator_test_key");
 const STEWARD_USER_ID = "steward-validator-1";
 const ADMISSION = {
+  subscriptionFunded: false,
   balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
   rateLimits: {
     completionsRpm: 60,
