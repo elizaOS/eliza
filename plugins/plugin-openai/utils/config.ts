@@ -177,10 +177,52 @@ export function isOpenZooMode(runtime: IAgentRuntime): boolean {
  * must distinguish the transport implementation from the service that
  * actually handled and billed the request.
  */
+/**
+ * Classify an endpoint URL by host. "openai" is returned only for hosts that
+ * are definitively OpenAI's; anything unrecognised is "unknown" so the caller
+ * can weigh other evidence (an unrecognised host is not proof of OpenAI).
+ */
+export function providerForEndpoint(baseURL: string): OpenAiUsageProvider | "unknown" {
+  let host = "";
+  let port = "";
+  try {
+    const url = new URL(baseURL);
+    host = url.hostname.toLowerCase();
+    port = url.port;
+  } catch {
+    return "unknown";
+  }
+  if (host === "cerebras.ai" || host.endsWith(".cerebras.ai")) {
+    return "cerebras";
+  }
+  if (host === "evolink.ai" || host.endsWith(".evolink.ai")) {
+    return "evolink";
+  }
+  if (host === "openzoo.fun" || host.endsWith(".openzoo.fun")) {
+    return "openzoo";
+  }
+  if ((host === "localhost" || host === "127.0.0.1") && port === "8402") {
+    return "openzoo";
+  }
+  if (host === "openai.com" || host.endsWith(".openai.com")) {
+    return "openai";
+  }
+  return "unknown";
+}
+
 export function getUsageProvider(runtime: IAgentRuntime): OpenAiUsageProvider {
-  // An explicit ELIZA_PROVIDER beats every key-alias inference: an operator
-  // who declared their provider should not lose attribution to a stray
-  // sibling key left in the environment.
+  // Derived from the RESOLVED endpoint, not computed in parallel with it, so
+  // attribution and routing agree structurally: the union names "the service
+  // that actually handled and billed the request", and the resolved base URL
+  // is the ground truth for which service that is. An explicit ELIZA_PROVIDER
+  // steers resolveOpenAIBaseURL, so a declaration reaches attribution by way
+  // of the endpoint it selects — with one tiebreak: when the resolved host is
+  // unrecognised (e.g. the gateway on a non-standard OPENZOO_BASE_URL port),
+  // the declaration is better evidence of who bills than the openai default.
+  const endpoint = providerForEndpoint(getBaseURL(runtime));
+  if (endpoint !== "unknown") {
+    return endpoint;
+  }
   const explicitProvider = getSetting(runtime, "ELIZA_PROVIDER")?.toLowerCase();
   if (
     explicitProvider === "cerebras" ||
@@ -189,15 +231,6 @@ export function getUsageProvider(runtime: IAgentRuntime): OpenAiUsageProvider {
     explicitProvider === "openai"
   ) {
     return explicitProvider;
-  }
-  if (isCerebrasMode(runtime)) {
-    return "cerebras";
-  }
-  if (isEvoLinkMode(runtime)) {
-    return "evolink";
-  }
-  if (isOpenZooMode(runtime)) {
-    return "openzoo";
   }
   return "openai";
 }
@@ -278,13 +311,18 @@ export function resolveOpenAIBaseURL(
   const cerebrasMode =
     explicitProvider === "cerebras" ||
     (openAIBaseURL !== undefined && /(^|\.)cerebras\.ai(\/|$)/i.test(openAIBaseURL)) ||
-    (read("CEREBRAS_API_KEY") !== undefined &&
+    // Key-alias inference only applies when the operator declared nothing:
+    // an explicit ELIZA_PROVIDER outranks a stray sibling key for ROUTING as
+    // well as attribution, so the two cannot disagree through this arm.
+    (explicitProvider === undefined &&
+      read("CEREBRAS_API_KEY") !== undefined &&
       read("OPENAI_API_KEY") === undefined &&
       openAIBaseURL === undefined);
   const evolinkMode =
     explicitProvider === "evolink" ||
     (openAIBaseURL !== undefined && /(^|\.)evolink\.ai(\/|$)/i.test(openAIBaseURL)) ||
-    (read("EVOLINK_API_KEY") !== undefined &&
+    (explicitProvider === undefined &&
+      read("EVOLINK_API_KEY") !== undefined &&
       read("OPENAI_API_KEY") === undefined &&
       openAIBaseURL === undefined);
   // OpenZoo carries a default endpoint so a bare `ELIZA_PROVIDER=openzoo`
@@ -302,7 +340,7 @@ export function resolveOpenAIBaseURL(
     openAIBaseURL ??
     (cerebrasMode ? (read("CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1") : undefined) ??
     (evolinkMode ? (read("EVOLINK_BASE_URL") ?? "https://direct.evolink.ai/v1") : undefined) ??
-    (openZooMode ? "http://localhost:8402/v1" : undefined) ??
+    (openZooMode ? (read("OPENZOO_BASE_URL") ?? "http://localhost:8402/v1") : undefined) ??
     "https://api.openai.com/v1"
   );
 }

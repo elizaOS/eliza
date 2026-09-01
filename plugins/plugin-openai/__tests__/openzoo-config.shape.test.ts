@@ -20,6 +20,7 @@ const ENV_KEYS = [
   "OPENAI_BASE_URL",
   "OPENAI_API_KEY",
   "CEREBRAS_API_KEY",
+  "OPENZOO_BASE_URL",
   "EVOLINK_API_KEY",
 ] as const;
 
@@ -123,6 +124,82 @@ describe("isOpenZooMode", () => {
   });
 });
 
+describe("attribution/endpoint agreement ratchet", () => {
+  // The property this module is about: for every settings combination,
+  // getUsageProvider names the service that the endpoint getBaseURL resolves
+  // to. Table-driven so the next precedence change has to keep it true.
+  const CASES: Array<{
+    name: string;
+    settings: Record<string, string>;
+    endpointHost: string;
+    provider: string;
+  }> = [
+    {
+      name: "explicit openai + cerebras base URL",
+      settings: { ELIZA_PROVIDER: "openai", OPENAI_BASE_URL: "https://api.cerebras.ai/v1" },
+      endpointHost: "api.cerebras.ai",
+      provider: "cerebras",
+    },
+    {
+      name: "explicit openai + stray EVOLINK_API_KEY",
+      settings: { ELIZA_PROVIDER: "openai", EVOLINK_API_KEY: "evk-stale" },
+      endpointHost: "api.openai.com",
+      provider: "openai",
+    },
+    {
+      name: "explicit openai + stray CEREBRAS_API_KEY",
+      settings: { ELIZA_PROVIDER: "openai", CEREBRAS_API_KEY: "csk-stale" },
+      endpointHost: "api.openai.com",
+      provider: "openai",
+    },
+    {
+      name: "explicit evolink + stray CEREBRAS_API_KEY",
+      settings: { ELIZA_PROVIDER: "evolink", CEREBRAS_API_KEY: "csk-stale" },
+      endpointHost: "direct.evolink.ai",
+      provider: "evolink",
+    },
+    {
+      name: "explicit openai + openzoo base URL",
+      settings: { ELIZA_PROVIDER: "openai", OPENAI_BASE_URL: "https://api.openzoo.fun/v1" },
+      endpointHost: "api.openzoo.fun",
+      provider: "openzoo",
+    },
+    {
+      name: "explicit openzoo + openai base URL (explicit URL outranks the default)",
+      settings: { ELIZA_PROVIDER: "openzoo", OPENAI_BASE_URL: "https://api.openai.com/v1" },
+      endpointHost: "api.openai.com",
+      provider: "openai",
+    },
+    {
+      name: "bare explicit openzoo routes to the gateway",
+      settings: { ELIZA_PROVIDER: "openzoo" },
+      endpointHost: "localhost",
+      provider: "openzoo",
+    },
+    {
+      name: "explicit openzoo honours OPENZOO_BASE_URL and keeps attribution",
+      settings: { ELIZA_PROVIDER: "openzoo", OPENZOO_BASE_URL: "http://localhost:9999/v1" },
+      endpointHost: "localhost",
+      provider: "openzoo",
+    },
+    {
+      name: "key-alias inference still applies when nothing is declared",
+      settings: { CEREBRAS_API_KEY: "csk-live" },
+      endpointHost: "api.cerebras.ai",
+      provider: "cerebras",
+    },
+  ];
+
+  for (const c of CASES) {
+    it(`agrees for ${c.name}`, () => {
+      const runtime = buildRuntime(c.settings);
+      const endpoint = new URL(getBaseURL(runtime));
+      expect(endpoint.hostname).toBe(c.endpointHost);
+      expect(getUsageProvider(runtime)).toBe(c.provider);
+    });
+  }
+});
+
 describe("getUsageProvider with OpenZoo", () => {
   it("attributes hosted and gateway requests to openzoo", () => {
     expect(getUsageProvider(buildRuntime({ OPENAI_BASE_URL: "https://api.openzoo.fun/v1" }))).toBe(
@@ -148,7 +225,7 @@ describe("getUsageProvider with OpenZoo", () => {
     expect(getBaseURL(runtime)).toBe("http://localhost:8402/v1");
   });
 
-  it("lets an explicit ELIZA_PROVIDER win over a stray sibling key", () => {
+  it("lets an explicit ELIZA_PROVIDER win over a stray sibling key, in routing and attribution", () => {
     expect(
       getUsageProvider(
         buildRuntime({
