@@ -144,7 +144,10 @@ also the pull-request author, while rebase admission requires every source
 commit to be signed. An owner may propose signature enforcement separately only
 after proving contributor-safe signed squash/rebase canaries; ordinary approval,
 last-push approval, thread resolution, status checks, and the force-push/deletion
-bans remain active for both refs, while main also retains linear history.
+bans are declared in both manifests. They are active on `main`; the disabled
+`develop` source candidate has no live effect until a separately reviewed
+transition to `active`, an authorized apply, semantic readback, and owner
+canaries all succeed. Main also retains linear history.
 
 ## On-demand security analysis
 
