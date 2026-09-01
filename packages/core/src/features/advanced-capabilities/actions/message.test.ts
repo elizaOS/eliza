@@ -717,6 +717,41 @@ describe("MESSAGE op=send delivery evidence", () => {
 		expect(createMemory).not.toHaveBeenCalled();
 	});
 
+	it("does not direct local-effect sends to provider reconciliation when the outbound record fails", async () => {
+		const localEffectReceipt: SendHandlerReceipt = {
+			providerMessageIds: [
+				"imessage-effect:9c1e5b1a-0000-4000-8000-000000000003:send",
+			],
+			acceptedAt: 1_780_000_000_000,
+			persistence: { status: "persisted", memoryIds: [] },
+			evidenceKind: "local-effect",
+		};
+		const { result } = await sendWithOutcome(
+			{
+				kind: "delivered",
+				receipt: localEffectReceipt,
+				memories: [],
+			},
+			{ outboundPersistenceFailure: new Error("database unavailable") },
+		);
+		expect(result.success).toBe(false);
+		expect(result.data).toMatchObject({
+			error: "MESSAGE_DELIVERED_PERSISTENCE_FAILED",
+			acceptance: "accepted",
+			persistenceStatus: "failed",
+			persistenceCode: "MESSAGE_OUTBOUND_MEMORY_PERSISTENCE_FAILED",
+			newDelivery: true,
+			persisted: false,
+		});
+		expect(result.text).toMatch(/do not resend/i);
+		expect(result.text).toContain("the requested local outbound record failed");
+		expect(result.text).toMatch(/no provider message ids to reconcile/i);
+		expect(result.text).toContain("reached its target");
+		expect(result.text).not.toMatch(/reconcile provider messages/i);
+		expect(result.text).not.toMatch(/reconcile the accepted provider message/i);
+		expect(result.text).not.toContain("imessage-effect:");
+	});
+
 	it("reports provider acceptance when local persistence failed without resending", async () => {
 		const failedReceipt: SendHandlerReceipt = {
 			providerMessageIds: ["discord-message-accepted"],
