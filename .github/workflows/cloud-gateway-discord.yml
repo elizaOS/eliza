@@ -43,6 +43,10 @@ jobs:
       - name: Install root dependencies
         run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
 
+      - name: Verify source-only workflow contract
+        working-directory: .
+        run: node --test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs
+
       - name: Generate source keyword modules
         working-directory: .
         run: bun run --cwd packages/shared build:i18n

@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { parseDocument } from "yaml";
 import {
   missingWhatsAppCredentialRefs,
   WHATSAPP_CREDENTIAL_SETS,
@@ -20,6 +21,92 @@ const SCRIPT = path.join(
 );
 const WORKFLOW = path.join(REPOSITORY_ROOT, ".github/workflows/cloud-gateway-discord.yml");
 const DEVELOP_WORKFLOW = path.join(REPOSITORY_ROOT, ".github/workflows/develop-full.yml");
+const SECRETS_CONTEXT_IDENTIFIER = /(^|[^A-Za-z0-9_])secrets(?=$|[^A-Za-z0-9_])/i;
+
+function isMapping(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function requireMapping(value, label) {
+  assert.ok(isMapping(value), `${label} must be a YAML mapping`);
+  return value;
+}
+
+function parseWorkflow(source, label) {
+  const document = parseDocument(source, { merge: true, uniqueKeys: true });
+
+  assert.equal(
+    document.errors.length,
+    0,
+    `${label} must be valid YAML: ${document.errors.map((error) => error.message).join("; ")}`,
+  );
+
+  return requireMapping(document.toJS(), label);
+}
+
+function findSecretsContextReferences(value, valuePath = "$", references = []) {
+  if (typeof value === "string") {
+    if (SECRETS_CONTEXT_IDENTIFIER.test(value)) references.push(valuePath);
+    return references;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      findSecretsContextReferences(item, `${valuePath}[${index}]`, references),
+    );
+    return references;
+  }
+
+  if (!isMapping(value)) return references;
+
+  for (const [key, item] of Object.entries(value)) {
+    if (SECRETS_CONTEXT_IDENTIFIER.test(key)) references.push(`${valuePath}{key:${key}}`);
+    findSecretsContextReferences(item, `${valuePath}.${key}`, references);
+  }
+
+  return references;
+}
+
+function assertSourceTestOnlyWorkflow(workflow) {
+  const triggers = requireMapping(workflow.on, "cloud-gateway-discord triggers");
+  const permissions = requireMapping(workflow.permissions, "cloud-gateway-discord permissions");
+  const jobs = requireMapping(workflow.jobs, "cloud-gateway-discord jobs");
+
+  assert.deepEqual(Object.keys(triggers), ["workflow_call"]);
+  assert.deepEqual(permissions, { contents: "read" });
+  assert.deepEqual(Object.keys(jobs), ["test"]);
+
+  for (const [jobName, value] of Object.entries(jobs)) {
+    const job = requireMapping(value, `cloud-gateway-discord job ${jobName}`);
+    assert.equal(
+      Object.hasOwn(job, "environment"),
+      false,
+      `cloud-gateway-discord job ${jobName} must not attach an environment`,
+    );
+  }
+
+  assert.deepEqual(
+    findSecretsContextReferences(workflow),
+    [],
+    "cloud-gateway-discord must not reference or inherit the secrets context",
+  );
+
+  const testJob = requireMapping(jobs.test, "cloud-gateway-discord test job");
+  assert.equal(Object.hasOwn(testJob, "if"), false);
+  assert.equal(testJob["runs-on"], "ubuntu-24.04");
+  assert.ok(Array.isArray(testJob.steps), "cloud-gateway-discord test job must define steps");
+
+  return testJob;
+}
+
+function requireNamedStep(job, name) {
+  const matchingSteps = job.steps.filter(
+    (step) => isMapping(step) && Object.hasOwn(step, "name") && step.name === name,
+  );
+
+  assert.equal(matchingSteps.length, 1, `expected exactly one ${name} step`);
+  return matchingSteps[0];
+}
 
 const SHARED_ENV = {
   ELIZACLOUD_API_URL: "https://api.example.invalid",
@@ -247,46 +334,66 @@ test("WhatsApp strict preflight wires complete and split authorities without lea
 });
 
 test("reusable workflow keeps the develop caller source-test-only", () => {
-  const workflow = readFileSync(WORKFLOW, "utf8");
-  const developWorkflow = readFileSync(DEVELOP_WORKFLOW, "utf8");
-  const testJobStart = workflow.indexOf("\n  test:");
+  const workflow = parseWorkflow(readFileSync(WORKFLOW, "utf8"), "cloud-gateway-discord workflow");
+  const developWorkflow = parseWorkflow(
+    readFileSync(DEVELOP_WORKFLOW, "utf8"),
+    "develop-full workflow",
+  );
+  const testJob = assertSourceTestOnlyWorkflow(workflow);
+  const developPush = requireMapping(developWorkflow.on, "develop-full triggers").push;
+  const caller = requireMapping(
+    requireMapping(developWorkflow.jobs, "develop-full jobs")["cloud-gateway-discord"],
+    "develop-full cloud-gateway-discord caller",
+  );
 
-  assert.notEqual(testJobStart, -1);
+  assert.deepEqual(requireMapping(developPush, "develop-full push trigger").branches, ["develop"]);
+  assert.equal(caller.uses, "./.github/workflows/cloud-gateway-discord.yml");
+  assert.equal(Object.hasOwn(caller, "secrets"), false);
+  assert.deepEqual(findSecretsContextReferences(caller), []);
+  assert.deepEqual(requireNamedStep(testJob, "Verify source-only workflow contract"), {
+    name: "Verify source-only workflow contract",
+    "working-directory": ".",
+    run: "node --test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
+  });
+  assert.deepEqual(requireNamedStep(testJob, "Generate source keyword modules"), {
+    name: "Generate source keyword modules",
+    "working-directory": ".",
+    run: "bun run --cwd packages/shared build:i18n",
+  });
+  assert.deepEqual(requireNamedStep(testJob, "Run service tests"), {
+    name: "Run service tests",
+    "working-directory": "packages/cloud/services/gateway-discord",
+    run: "bun --conditions=eliza-source test tests/ --timeout 60000",
+    env: { SKIP_SERVER_CHECK: "true" },
+  });
+  assert.deepEqual(requireNamedStep(testJob, "Run lib tests"), {
+    name: "Run lib tests",
+    run: "bun --conditions=eliza-source test src/lib/services/gateway-discord/__tests__ --timeout 60000",
+    env: { SKIP_SERVER_CHECK: "true" },
+  });
+});
 
-  const testJob = workflow.slice(testJobStart);
+test("source-only workflow guard rejects job environments and nested secrets contexts", () => {
+  const workflow = parseWorkflow(readFileSync(WORKFLOW, "utf8"), "cloud-gateway-discord workflow");
+  const withEnvironment = structuredClone(workflow);
+  withEnvironment.jobs.test.environment = "production";
+  assert.throws(
+    () => assertSourceTestOnlyWorkflow(withEnvironment),
+    /job test must not attach an environment/,
+  );
 
-  assert.match(workflow, /on:\s+workflow_call:\s+concurrency:/);
-  assert.doesNotMatch(
-    workflow,
-    /workflow_dispatch|pull_request|dispatch-admission|trusted-config|environment:\s+staging|secrets\./,
-  );
-  assert.match(developWorkflow, /on:\s+push:\s+branches: \[develop\]/);
-  assert.match(
-    developWorkflow,
-    /cloud-gateway-discord:\s+[\s\S]*?uses: \.\/\.github\/workflows\/cloud-gateway-discord\.yml/,
-  );
-  assert.doesNotMatch(
-    developWorkflow,
-    /cloud-gateway-discord:\s+[\s\S]*?uses: \.\/\.github\/workflows\/cloud-gateway-discord\.yml\s+secrets: inherit/,
-  );
-  assert.doesNotMatch(testJob, /^\s{4}if:/m);
-  assert.match(testJob, /^\s{4}runs-on:\s+ubuntu-24\.04$/m);
-  assert.doesNotMatch(workflow, /HETZNER_FLEET_ONLINE|self-hosted|hetzner-robot/);
-  assert.match(
-    workflow,
-    /name: Generate source keyword modules\s+working-directory: \.\s+run: bun run --cwd packages\/shared build:i18n/,
-  );
-  assert.match(
-    workflow,
-    /working-directory: packages\/cloud\/services\/gateway-discord\s+[\s\S]*?run: bun --conditions=eliza-source test tests\/ --timeout 60000/,
-  );
-  assert.match(
-    workflow,
-    /run: bun --conditions=eliza-source test src\/lib\/services\/gateway-discord\/__tests__ --timeout 60000/,
-  );
-  assert.doesNotMatch(workflow, /run: bun test tests\/ --timeout 60000/);
-  assert.doesNotMatch(
-    workflow,
-    /run: bun test src\/lib\/services\/gateway-discord\/__tests__ --timeout 60000/,
-  );
+  for (const expression of [
+    "${{ secrets.DOT_TOKEN }}",
+    "${{ secrets['BRACKET_TOKEN'] }}",
+    '${{ secrets["DOUBLE_QUOTED_TOKEN"] }}',
+    "${{ secrets }}",
+    "${{ toJSON(secrets) }}",
+  ]) {
+    const withSecret = structuredClone(workflow);
+    withSecret.jobs.test.steps.at(-1).env.TOKEN = expression;
+    assert.throws(
+      () => assertSourceTestOnlyWorkflow(withSecret),
+      /must not reference or inherit the secrets context/,
+    );
+  }
 });
