@@ -58,7 +58,7 @@ describe("flattenTextValues", () => {
 	});
 
 	it("handles arrays with holes", () => {
-		const arr = ["a", , "c"];
+		const arr = ["a", undefined, "c"];
 		expect(flattenTextValues(arr)).toEqual(["a", "c"]);
 	});
 
