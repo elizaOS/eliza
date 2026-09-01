@@ -111,6 +111,20 @@ function allZero(bytes: Uint8Array): boolean {
   return bytes.every((byte) => byte === 0);
 }
 
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+  readonly reject: (cause: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (cause: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
 function objectId(index: number): string {
   return `e0000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
 }
@@ -179,8 +193,13 @@ interface EncryptedComponentFixture {
 }
 
 interface FixtureOptions {
+  readonly deadlineEpochMs?: number;
   readonly loseAuthorityAtFinalRead?: boolean;
   readonly loseSealResponse?: boolean;
+  readonly hangSealResponse?: boolean;
+  readonly hangSealBeforeCommit?: boolean;
+  readonly failStageAtComponentIndex?: number;
+  readonly abortAcknowledged?: boolean;
 }
 
 interface RestoreFixture {
@@ -221,6 +240,7 @@ interface RestoreFixture {
 }
 
 async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixture> {
+  const deadlineEpochMs = options.deadlineEpochMs ?? DEADLINE_EPOCH_MS;
   const events: string[] = [];
   const counts = {
     begin: 0,
@@ -585,6 +605,9 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
       expect(candidateState).toBe("active");
       expect(stagingSession.executionToken).toBe(session.executionToken);
       ephemeralStagingViews.push(record.payload);
+      if (options.failStageAtComponentIndex === record.componentIndex) {
+        throw new Error("synthetic isolated staging failure");
+      }
       stagedPayloadCopies.push(Uint8Array.from(record.payload));
       return {
         componentIndex: record.componentIndex,
@@ -603,7 +626,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
       expect(stagingSession.executionToken).toBe(session.executionToken);
       return receipt;
     },
-    seal(stagingSession, receipt, authorization) {
+    seal(stagingSession, receipt, authorization, operationControl) {
       counts.seal += 1;
       expect(stagingSession.executionToken).toBe(session.executionToken);
       expect(authorization.sessionExecutionToken).toBe(session.executionToken);
@@ -617,12 +640,25 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
         expect(consumedProofTokens.has(authorization.proofToken)).toBe(true);
         return durableSealedReceipt;
       }
+      if (options.hangSealBeforeCommit && !lostSealResponse) {
+        lostSealResponse = true;
+        events.push("staging:seal-pending-before-commit");
+        return new Promise<AgentBackupRestoreV3CandidateReceipt>(() => undefined);
+      }
+      if (operationControl.signal.aborted) {
+        events.push("staging:seal-replay-rejected-before-commit");
+        throw new Error("an interrupted seal replay cannot create a transition");
+      }
       events.push("staging:seal");
       expect(candidateState).toBe("active");
       expect(consumedProofTokens.has(authorization.proofToken)).toBe(false);
       consumedProofTokens.add(authorization.proofToken);
       candidateState = "sealed";
       durableSealedReceipt = receipt;
+      if (options.hangSealResponse && !lostSealResponse) {
+        lostSealResponse = true;
+        return new Promise<AgentBackupRestoreV3CandidateReceipt>(() => undefined);
+      }
       if (options.loseSealResponse && !lostSealResponse) {
         lostSealResponse = true;
         throw new Error("synthetic seal response loss after durable commit");
@@ -633,6 +669,10 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
       counts.abort += 1;
       abortExecutionTokens.push(stagingSession.executionToken);
       expect(stagingSession.executionToken).toBe(session.executionToken);
+      if (options.abortAcknowledged === false) {
+        events.push("staging:abort-unconfirmed");
+        return false as true;
+      }
       if (candidateState === "active") {
         events.push("staging:abort-active");
         candidateState = "aborted";
@@ -677,7 +717,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
       events.push(`storage:open:${prepared.authority.componentName}`);
       expect(control.signal).toBeInstanceOf(AbortSignal);
       expect(control.signal.aborted).toBe(false);
-      expect(control.deadlineEpochMs).toBe(DEADLINE_EPOCH_MS);
+      expect(control.deadlineEpochMs).toBe(deadlineEpochMs);
       const component = encryptedComponents[prepared.authority.componentIndex];
       if (!component) throw new Error("Fixture ciphertext slot is absent");
       expect(prepared.locator.key).toBe(`backups/${IDS.backup}/${component.name}/0.enc`);
@@ -744,7 +784,8 @@ async function createFixture(options: FixtureOptions = {}): Promise<RestoreFixtu
     candidateSealAuthority,
     isolatedCandidateStaging: staging,
     signal: abortController.signal,
-    deadlineEpochMs: DEADLINE_EPOCH_MS,
+    deadlineEpochMs,
+    reportDetachedFailure: () => undefined,
     now: () => NOW_EPOCH_MS,
   };
   return {
@@ -781,6 +822,54 @@ function expectBefore(events: readonly string[], first: string, second: string):
 }
 
 describe("streamAgentBackupRestoreV3", () => {
+  test("requires a detached-failure reporter before any collaborator effect", async () => {
+    const fixture = await createFixture();
+
+    const failure = await captureFailure(
+      streamAgentBackupRestoreV3({
+        ...fixture.input,
+        reportDetachedFailure: undefined as never,
+      }),
+    );
+
+    expect(failure).toBeInstanceOf(AgentBackupRestoreV3StreamError);
+    expect((failure as AgentBackupRestoreV3StreamError).code).toBe(
+      "AGENT_BACKUP_RESTORE_V3_COLLABORATOR_INVALID",
+    );
+    expect(fixture.events).toEqual([]);
+    expect(fixture.state()).toBe("idle");
+  });
+
+  test("rejects an oversized prepared inventory before traversing its extra entry", async () => {
+    const fixture = await createFixture();
+    let extraEntryRead = false;
+    const extraEntry = Object.defineProperty({}, "authority", {
+      enumerable: true,
+      get() {
+        extraEntryRead = true;
+        throw new Error("oversized prepared entry must not be traversed");
+      },
+    }) as AgentBackupRestoreV3PreparedObject;
+
+    const failure = await captureFailure(
+      streamAgentBackupRestoreV3({
+        ...fixture.input,
+        source: {
+          ...fixture.input.source,
+          objects: [...fixture.preparedObjects, extraEntry],
+        },
+      }),
+    );
+
+    expect(failure).toBeInstanceOf(AgentBackupRestoreV3StreamError);
+    expect((failure as AgentBackupRestoreV3StreamError).code).toBe(
+      "AGENT_BACKUP_RESTORE_V3_SOURCE_INCOMPLETE",
+    );
+    expect(extraEntryRead).toBe(false);
+    expect(fixture.events).toEqual([]);
+    expect(fixture.state()).toBe("idle");
+  });
+
   test("authenticates five real exact objects and releases keys before final authority and seal", async () => {
     const fixture = await createFixture();
 
@@ -901,6 +990,85 @@ describe("streamAgentBackupRestoreV3", () => {
     expectBefore(fixture.events, "authority:read:2", "staging:abort-active");
   });
 
+  test("releases and zeroizes keys before rolling back a staging failure", async () => {
+    const fixture = await createFixture({ failStageAtComponentIndex: 2 });
+
+    const failure = await captureFailure(streamAgentBackupRestoreV3(fixture.input));
+
+    expect((failure as { code?: unknown }).code).toBe(
+      "AGENT_BACKUP_RESTORE_V3_RECORD_STREAM_INVALID",
+    );
+    expect(fixture.counts.release).toBe(1);
+    expect(fixture.counts.abort).toBe(1);
+    expect(fixture.counts.authorize).toBe(0);
+    expect(fixture.counts.seal).toBe(0);
+    expect(fixture.keyViews.released()).toBe(true);
+    expect(allZero(fixture.keyViews.dek)).toBe(true);
+    expect(allZero(fixture.keyViews.contentHmacKey)).toBe(true);
+    expect(fixture.ephemeralStagingViews.every((payload) => allZero(payload))).toBe(true);
+    expect(fixture.state()).toBe("aborted");
+    expectBefore(fixture.events, "kms:release", "staging:abort-active");
+  });
+
+  test("retains both the staging failure and an unconfirmed rollback", async () => {
+    const fixture = await createFixture({
+      failStageAtComponentIndex: 0,
+      abortAcknowledged: false,
+    });
+
+    const failure = await captureFailure(streamAgentBackupRestoreV3(fixture.input));
+
+    expect(failure).toBeInstanceOf(AgentBackupRestoreV3StreamError);
+    expect((failure as AgentBackupRestoreV3StreamError).code).toBe(
+      "AGENT_BACKUP_RESTORE_V3_ROLLBACK_FAILED",
+    );
+    const combined = (failure as AgentBackupRestoreV3StreamError).cause;
+    expect(combined).toBeInstanceOf(AggregateError);
+    expect((combined as AggregateError).errors).toHaveLength(2);
+    expect(fixture.counts.release).toBe(1);
+    expect(fixture.counts.abort).toBe(1);
+    expect(fixture.state()).toBe("active");
+  });
+
+  test("rolls back a session whose begin response arrives after cancellation", async () => {
+    const fixture = await createFixture();
+    const caller = new AbortController();
+    const beginStarted = deferred<void>();
+    const releaseBeginResponse = deferred<void>();
+    const lateAbortObserved = deferred<void>();
+    const originalStaging = fixture.input.isolatedCandidateStaging;
+    const delayedStaging: AgentBackupRestoreV3IsolatedCandidateStaging = {
+      ...originalStaging,
+      async begin(request, control) {
+        const opened = originalStaging.begin(request, control);
+        beginStarted.resolve(undefined);
+        await releaseBeginResponse.promise;
+        return opened;
+      },
+      async abort(session, reason, control) {
+        const acknowledged = await originalStaging.abort(session, reason, control);
+        lateAbortObserved.resolve(undefined);
+        return acknowledged;
+      },
+    };
+    const operation = streamAgentBackupRestoreV3({
+      ...fixture.input,
+      isolatedCandidateStaging: delayedStaging,
+      signal: caller.signal,
+    });
+
+    await beginStarted.promise;
+    caller.abort(new Error("synthetic cancellation after durable begin"));
+    releaseBeginResponse.resolve(undefined);
+    const failure = await captureFailure(operation);
+    await lateAbortObserved.promise;
+
+    expect((failure as { code?: unknown }).code).toBe("AGENT_BACKUP_RESTORE_V3_ABORTED");
+    expect(fixture.counts.abort).toBe(1);
+    expect(fixture.counts.unwrap).toBe(0);
+    expect(fixture.state()).toBe("aborted");
+  });
+
   test("recovers a durably sealed candidate by exact replay when its first response is lost", async () => {
     const fixture = await createFixture({ loseSealResponse: true });
 
@@ -916,5 +1084,52 @@ describe("streamAgentBackupRestoreV3", () => {
     expect(fixture.state()).toBe("sealed");
     expect(fixture.sealedReceipt()).toBeDefined();
     expectBefore(fixture.events, "staging:seal", "staging:seal-exact-replay");
+  });
+
+  test("recovers a durable seal whose first response hangs past the operation deadline", async () => {
+    const fixture = await createFixture({
+      deadlineEpochMs: NOW_EPOCH_MS + 100,
+      hangSealResponse: true,
+    });
+
+    const result = await streamAgentBackupRestoreV3(fixture.input);
+
+    expect(result.sealed).toBe(true);
+    expect(result.receipt).toEqual(fixture.sealedReceipt());
+    expect(fixture.counts.authorize).toBe(1);
+    expect(fixture.counts.seal).toBe(2);
+    expect(fixture.counts.abort).toBe(0);
+    expect(fixture.state()).toBe("sealed");
+    expectBefore(fixture.events, "staging:seal", "staging:seal-exact-replay");
+  });
+
+  test("does not create a seal after cancellation when the first request never committed", async () => {
+    const fixture = await createFixture({
+      deadlineEpochMs: NOW_EPOCH_MS + 100,
+      hangSealBeforeCommit: true,
+    });
+
+    const failure = await captureFailure(streamAgentBackupRestoreV3(fixture.input));
+
+    expect(failure).toBeInstanceOf(AgentBackupRestoreV3StreamError);
+    expect((failure as AgentBackupRestoreV3StreamError).code).toBe(
+      "AGENT_BACKUP_RESTORE_V3_SEAL_REPLAY_FAILED",
+    );
+    expect(fixture.counts.authorize).toBe(1);
+    expect(fixture.counts.seal).toBe(2);
+    expect(fixture.counts.abort).toBe(1);
+    expect(fixture.sealedReceipt()).toBeUndefined();
+    expect(fixture.consumedProofTokens).toEqual(new Set());
+    expect(fixture.state()).toBe("aborted");
+    expectBefore(
+      fixture.events,
+      "staging:seal-pending-before-commit",
+      "staging:seal-replay-rejected-before-commit",
+    );
+    expectBefore(
+      fixture.events,
+      "staging:seal-replay-rejected-before-commit",
+      "staging:abort-active",
+    );
   });
 });

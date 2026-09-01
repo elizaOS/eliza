@@ -1,3 +1,9 @@
+/**
+ * Exercises isolated component parsing with deterministic record streams and
+ * contract-faithful staging adapters; provider and durable DB effects remain
+ * outside this focused boundary.
+ */
+
 import { describe, expect, test } from "bun:test";
 import { createHash, createHmac } from "node:crypto";
 import {
@@ -38,6 +44,17 @@ function join(parts: readonly Uint8Array[]): Uint8Array {
     offset += part.byteLength;
   }
   return joined;
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
 }
 
 function componentWire(payload: Uint8Array): Uint8Array {
@@ -138,6 +155,7 @@ describe("stageAgentBackupRestoreV3Component", () => {
     const control = createAgentBackupRestoreV3Control({
       signal: caller.signal,
       deadlineEpochMs: Date.now() + 5_000,
+      reportDetachedFailure: () => undefined,
     });
 
     try {
@@ -168,6 +186,64 @@ describe("stageAgentBackupRestoreV3Component", () => {
       });
       expect(result.exactReadProofs).toEqual([exactResult(0).proof, exactResult(1).proof]);
       expect(result.sourceObjects).toEqual([exactResult(0).receipt, exactResult(1).receipt]);
+    } finally {
+      control.close();
+    }
+  });
+
+  test("does not advance component finalization while an isolated record write is pending", async () => {
+    const payload = new TextEncoder().encode("backpressured isolated state");
+    const wire = componentWire(payload);
+    const stageStarted = deferred<void>();
+    const releaseStage = deferred<void>();
+    let finishCount = 0;
+    const staging: AgentBackupRestoreV3IsolatedCandidateStaging = {
+      begin: () => SESSION,
+      async stageRecord(_session, record) {
+        stageStarted.resolve(undefined);
+        await releaseStage.promise;
+        return {
+          componentIndex: record.componentIndex,
+          componentName: record.componentName,
+          dataIndex: record.dataIndex,
+          offsetBytes: record.offsetBytes,
+          entry: record.entry,
+          payloadBytes: record.payload.byteLength,
+          payloadSha256: createHash("sha256").update(record.payload).digest("hex"),
+        };
+      },
+      finishComponent: (_session, receipt) => {
+        finishCount += 1;
+        return receipt;
+      },
+      seal: () => {
+        throw new Error("not used by component staging");
+      },
+      abort: () => true,
+    };
+    const control = createAgentBackupRestoreV3Control({
+      signal: new AbortController().signal,
+      deadlineEpochMs: Date.now() + 5_000,
+      reportDetachedFailure: () => undefined,
+    });
+
+    try {
+      const operation = stageAgentBackupRestoreV3Component({
+        manifest: manifestFor(wire, 1),
+        componentIndex: 0,
+        objectStreams: [exactStream(wire, exactResult(0))],
+        session: SESSION,
+        staging,
+        contentHmacKey: CONTENT_HMAC_KEY,
+        observeFramedPlaintext: () => undefined,
+        control,
+      });
+
+      await stageStarted.promise;
+      expect(finishCount).toBe(0);
+      releaseStage.resolve(undefined);
+      await operation;
+      expect(finishCount).toBe(1);
     } finally {
       control.close();
     }
@@ -209,6 +285,7 @@ describe("stageAgentBackupRestoreV3Component", () => {
     const control = createAgentBackupRestoreV3Control({
       signal: new AbortController().signal,
       deadlineEpochMs: Date.now() + 5_000,
+      reportDetachedFailure: () => undefined,
     });
 
     try {

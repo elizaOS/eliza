@@ -1,10 +1,17 @@
 /**
- * Parses one authenticated multi-object component stream into isolated staging.
- * It owns no source selection, KMS lifetime, database, Agent, or live state.
+ * Parses one multi-object component stream into rollbackable isolated staging.
+ * Plaintext records remain unauthenticated until every exact-object generator
+ * returns its proof and the component HMAC and terminal receipt agree. Staging
+ * must never expose them to boot, live state, or another consumer before the
+ * enclosing candidate is authorized and sealed.
+ *
+ * This boundary owns no source selection, KMS lifetime, database, Agent, or
+ * live state.
  */
 
 import { createHash, createHmac } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_RECORD_STREAM_V1_LIMITS,
   AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
@@ -18,6 +25,7 @@ import {
   type AgentBackupRestoreV3StagingSession,
   parseAgentBackupRecordStreamV1,
 } from "@elizaos/shared";
+import { logger } from "../utils/logger";
 import type { AgentBackupRestoreV3Control } from "./agent-backup-restore-v3-control";
 
 export interface AgentBackupRestoreV3ExactObjectResult {
@@ -50,21 +58,54 @@ export interface StageAgentBackupRestoreV3ComponentResult {
   readonly sourceObjects: readonly AgentBackupRestoreV3SourceObjectReceipt[];
 }
 
-export class AgentBackupRestoreV3ComponentStageError extends Error {
+export type AgentBackupRestoreV3ComponentStageErrorCode =
+  | "AGENT_BACKUP_RESTORE_V3_COMPONENT_HMAC_MISMATCH"
+  | "AGENT_BACKUP_RESTORE_V3_COMPONENT_INPUT_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_COMPONENT_RECEIPT_CONFLICT"
+  | "AGENT_BACKUP_RESTORE_V3_DESCRIPTOR_MISMATCH"
+  | "AGENT_BACKUP_RESTORE_V3_OBJECT_RECEIPT_MISSING"
+  | "AGENT_BACKUP_RESTORE_V3_PLAINTEXT_FRAGMENT_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_RECORD_STATE_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_RECORD_STREAM_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_RECORD_STREAM_TRUNCATED"
+  | "AGENT_BACKUP_RESTORE_V3_RECORD_TERMINAL_MISMATCH"
+  | "AGENT_BACKUP_RESTORE_V3_SHA_STATE_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_STAGE_RECEIPT_CONFLICT";
+
+export class AgentBackupRestoreV3ComponentStageError extends ElizaError {
   override readonly name = "AgentBackupRestoreV3ComponentStageError";
 
   constructor(
-    readonly code: string,
+    code: AgentBackupRestoreV3ComponentStageErrorCode,
     message: string,
     options?: { cause?: unknown },
   ) {
-    super(message, { cause: options?.cause });
-    Object.setPrototypeOf(this, new.target.prototype);
+    super(message, {
+      code,
+      cause: options?.cause,
+      context: { subsystem: "agent-backup-restore-v3-component-stage" },
+      severity: "fatal",
+    });
   }
 }
 
-function stageError(code: string, message: string, cause?: unknown): never {
+function stageError(
+  code: AgentBackupRestoreV3ComponentStageErrorCode,
+  message: string,
+  cause?: unknown,
+): never {
   throw new AgentBackupRestoreV3ComponentStageError(code, message, { cause });
+}
+
+function teardownErrorShape(cause: unknown): Readonly<{ name: string; code?: string }> {
+  if (!cause || typeof cause !== "object") {
+    return Object.freeze({ name: "UnknownError" });
+  }
+  const value = cause as { name?: unknown; code?: unknown };
+  return Object.freeze({
+    name: typeof value.name === "string" ? value.name : "UnknownError",
+    ...(typeof value.code === "string" ? { code: value.code } : {}),
+  });
 }
 
 function sha256StreamFactory(): {
@@ -96,7 +137,11 @@ function sha256StreamFactory(): {
   };
 }
 
-/** Stage one component; exact-object return receipts are captured, never inferred. */
+/**
+ * Stage one component without exposing its unauthenticated plaintext. Exact
+ * object return receipts are captured, never inferred; only the enclosing
+ * candidate seal may authorize later use of the staged bytes.
+ */
 export async function stageAgentBackupRestoreV3Component(
   input: Readonly<StageAgentBackupRestoreV3ComponentInput>,
 ): Promise<StageAgentBackupRestoreV3ComponentResult> {
@@ -126,7 +171,7 @@ export async function stageAgentBackupRestoreV3Component(
     let recordStreamBytes = 0;
 
     async function* plaintext(): AsyncGenerator<Uint8Array> {
-      for (const createStream of input.objectStreams) {
+      for (const [objectIndex, createStream] of input.objectStreams.entries()) {
         input.control.assertActive("Exact restore object");
         const iterator = createStream();
         let completed = false;
@@ -160,9 +205,17 @@ export async function stageAgentBackupRestoreV3Component(
           if (!completed) {
             try {
               await iterator.return(undefined as never);
-            } catch (_closeFailure: unknown) {
-              // The parser/crypto failure is authoritative; the exact-object
-              // helper independently bounds reader cancellation in its finally.
+            } catch (closeFailure: unknown) {
+              // error-policy:J6 the parser/crypto failure remains authoritative;
+              // the exact-object helper independently bounds reader cancellation.
+              logger.warn(
+                "[AgentBackupRestoreV3ComponentStage] exact-object iterator close failed",
+                {
+                  componentIndex: input.componentIndex,
+                  objectIndex,
+                  error: teardownErrorShape(closeFailure),
+                },
+              );
             }
           }
         }
@@ -258,6 +311,8 @@ export async function stageAgentBackupRestoreV3Component(
         sawEnd = true;
       }
     } catch (cause) {
+      // error-policy:J2 preserve the strict parser or exact-object failure behind
+      // this component boundary while retaining already-structured stage errors.
       if (cause instanceof AgentBackupRestoreV3ComponentStageError) throw cause;
       stageError(
         "AGENT_BACKUP_RESTORE_V3_RECORD_STREAM_INVALID",

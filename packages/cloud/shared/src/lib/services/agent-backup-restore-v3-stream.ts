@@ -6,6 +6,7 @@
 
 import { createHash, createHmac } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_PAYLOAD_DIGEST_DERIVATION,
   AGENT_BACKUP_RECORD_STREAM_V1_FORMAT,
@@ -47,6 +48,7 @@ import {
 } from "./agent-backup-restore-v3-component-stage";
 import {
   type AgentBackupRestoreV3Control,
+  type AgentBackupRestoreV3DetachedFailureEvent,
   createAgentBackupRestoreV3Control,
 } from "./agent-backup-restore-v3-control";
 import { streamAgentBackupRestoreV3ExactObject } from "./agent-backup-restore-v3-exact-object";
@@ -93,6 +95,10 @@ export interface StreamAgentBackupRestoreV3Input {
   readonly isolatedCandidateStaging: AgentBackupRestoreV3IsolatedCandidateStaging;
   readonly signal: AbortSignal;
   readonly deadlineEpochMs: number;
+  /** Mandatory sink for cleanup/settlement failures observed after interruption. */
+  readonly reportDetachedFailure: (
+    event: Readonly<AgentBackupRestoreV3DetachedFailureEvent>,
+  ) => void | PromiseLike<void>;
   /** Injected only for deterministic boundary tests. */
   readonly now?: () => number;
 }
@@ -120,38 +126,61 @@ interface AuthenticatedCandidateParts {
   readonly stagedDataRecordCount: number;
 }
 
-export class AgentBackupRestoreV3StreamError extends Error {
+export type AgentBackupRestoreV3StreamErrorCode =
+  | "AGENT_BACKUP_RESTORE_V3_ABORT_UNCONFIRMED"
+  | "AGENT_BACKUP_RESTORE_V3_AUTHORITY_MISMATCH"
+  | "AGENT_BACKUP_RESTORE_V3_AUTHORITY_STALE"
+  | "AGENT_BACKUP_RESTORE_V3_CLOCK_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_COLLABORATOR_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_COMPONENT_SET_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_FAILED"
+  | "AGENT_BACKUP_RESTORE_V3_FRAMED_HMAC_MISMATCH"
+  | "AGENT_BACKUP_RESTORE_V3_FRAMING_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_KEY_USE_RESULT_MISSING"
+  | "AGENT_BACKUP_RESTORE_V3_LOCATOR_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_LOCATOR_MISMATCH"
+  | "AGENT_BACKUP_RESTORE_V3_ROLLBACK_FAILED"
+  | "AGENT_BACKUP_RESTORE_V3_SEAL_CONFLICT"
+  | "AGENT_BACKUP_RESTORE_V3_SEAL_REPLAY_FAILED"
+  | "AGENT_BACKUP_RESTORE_V3_SOURCE_INCOMPLETE"
+  | "AGENT_BACKUP_RESTORE_V3_SOURCE_INVALID"
+  | "AGENT_BACKUP_RESTORE_V3_SOURCE_SLOT_MISMATCH"
+  | "AGENT_BACKUP_RESTORE_V3_STAGING_SESSION_INVALID";
+
+export class AgentBackupRestoreV3StreamError extends ElizaError {
   override readonly name = "AgentBackupRestoreV3StreamError";
 
   constructor(
-    readonly code: string,
+    code: AgentBackupRestoreV3StreamErrorCode,
     message: string,
     options?: { cause?: unknown },
   ) {
-    super(message, { cause: options?.cause });
-    Object.setPrototypeOf(this, new.target.prototype);
+    super(message, {
+      code,
+      cause: options?.cause,
+      context: { subsystem: "agent-backup-restore-v3-stream" },
+      severity: "fatal",
+    });
   }
 }
 
-function streamError(code: string, message: string, cause?: unknown): never {
+function streamError(
+  code: AgentBackupRestoreV3StreamErrorCode,
+  message: string,
+  cause?: unknown,
+): never {
   throw new AgentBackupRestoreV3StreamError(code, message, { cause });
 }
 
 function isStreamError(cause: unknown): cause is AgentBackupRestoreV3StreamError {
-  return (
-    cause instanceof AgentBackupRestoreV3StreamError ||
-    (typeof cause === "object" &&
-      cause !== null &&
-      (cause as { name?: unknown }).name === "AgentBackupRestoreV3StreamError" &&
-      typeof (cause as { code?: unknown }).code === "string")
-  );
+  return cause instanceof AgentBackupRestoreV3StreamError;
 }
 
-function normalizeFailure(cause: unknown): Error {
-  if (cause instanceof Error) return cause;
+function normalizeFailure(cause: unknown): ElizaError {
+  if (cause instanceof ElizaError) return cause;
   return new AgentBackupRestoreV3StreamError(
     "AGENT_BACKUP_RESTORE_V3_FAILED",
-    "Restore-v3 streaming failed with a non-error cause",
+    "Restore-v3 streaming failed at an untrusted collaborator boundary",
     { cause },
   );
 }
@@ -222,6 +251,8 @@ function snapshotLocator(value: ExactObjectReadLocator): ExactObjectReadLocator 
       }),
     });
   } catch (cause) {
+    // error-policy:J3 private locator fields are untrusted persisted input and
+    // must become a structured failure without leaking their values.
     streamError(
       "AGENT_BACKUP_RESTORE_V3_LOCATOR_INVALID",
       "Restore-v3 prepared object locator is malformed",
@@ -274,11 +305,12 @@ function locatorMatchesAuthority(prepared: Readonly<AgentBackupRestoreV3Prepared
 
 function snapshotPreparedObjects(
   value: readonly AgentBackupRestoreV3PreparedObject[],
+  expectedCount: number,
 ): readonly Readonly<AgentBackupRestoreV3PreparedObject>[] {
-  if (!Array.isArray(value)) {
+  if (!Array.isArray(value) || value.length !== expectedCount) {
     streamError(
-      "AGENT_BACKUP_RESTORE_V3_SOURCE_INVALID",
-      "Restore-v3 prepared object inventory is absent",
+      "AGENT_BACKUP_RESTORE_V3_SOURCE_INCOMPLETE",
+      "Restore-v3 prepared object inventory cardinality differs from source authority",
     );
   }
   try {
@@ -300,6 +332,8 @@ function snapshotPreparedObjects(
       }),
     );
   } catch (cause) {
+    // error-policy:J3 the prepared inventory and provider receipts are
+    // untrusted persisted input; malformed entries fail closed before effects.
     if (isStreamError(cause)) throw cause;
     streamError(
       "AGENT_BACKUP_RESTORE_V3_SOURCE_INVALID",
@@ -350,12 +384,14 @@ async function validatePreparedSource(
   try {
     authority = parseAgentBackupRestoreV3AuthorityFence(sourceInput.authority);
     sourceAuthority = parseAgentBackupRestoreV3SourceAuthority(sourceInput.sourceAuthority);
-    objects = snapshotPreparedObjects(sourceInput.objects);
+    objects = snapshotPreparedObjects(sourceInput.objects, sourceAuthority.objects.length);
     operationKeyBundle = freezeDeep({ ...sourceInput.operationKeyBundle });
     // The async parser snapshots its complete Zod shell synchronously before
     // its first await, closing manifest mutation during digest validation.
     manifestValidation = parseAgentBackupManifestV3(sourceInput.manifest);
   } catch (cause) {
+    // error-policy:J3 every persisted source shell is snapshotted and parsed
+    // before staging or provider I/O; malformed input never degrades.
     if (isStreamError(cause)) throw cause;
     streamError(
       "AGENT_BACKUP_RESTORE_V3_SOURCE_INVALID",
@@ -367,6 +403,8 @@ async function validatePreparedSource(
   try {
     manifest = freezeDeep(await control.wait("Manifest-v3 validation", () => manifestValidation));
   } catch (cause) {
+    // error-policy:J2 canonical async manifest validation is translated at the
+    // source boundary while preserving its cause.
     streamError(
       "AGENT_BACKUP_RESTORE_V3_SOURCE_INVALID",
       "Restore-v3 manifest failed canonical validation",
@@ -467,6 +505,8 @@ function validateSession(
     }
     return session;
   } catch (cause) {
+    // error-policy:J3 a staging adapter response is an untrusted authority
+    // boundary and must match the exact session before it can be retained.
     if (isStreamError(cause)) throw cause;
     streamError(
       "AGENT_BACKUP_RESTORE_V3_STAGING_SESSION_INVALID",
@@ -490,6 +530,8 @@ function validateAuthorityObservation(
       );
     }
   } catch (cause) {
+    // error-policy:J3 a durable authority observation is untrusted adapter
+    // output and cannot be treated as current unless its exact fence parses.
     if (isStreamError(cause)) throw cause;
     streamError(
       "AGENT_BACKUP_RESTORE_V3_AUTHORITY_STALE",
@@ -522,9 +564,11 @@ async function sealCandidateWithExactReplay(
   candidate: Readonly<AgentBackupRestoreV3CandidateReceipt>,
   authorization: Readonly<AgentBackupRestoreV3CandidateSealAuthorization>,
 ): Promise<AgentBackupRestoreV3CandidateReceipt> {
-  const seal = async (label: string): Promise<AgentBackupRestoreV3CandidateReceipt> => {
+  const seal = async (
+    sealControl: Readonly<AgentBackupRestoreV3OperationControl>,
+  ): Promise<AgentBackupRestoreV3CandidateReceipt> => {
     const sealed = AgentBackupRestoreV3CandidateReceiptSchema.parse(
-      await control.wait(label, () => staging.seal(session, candidate, authorization, control)),
+      await staging.seal(session, candidate, authorization, sealControl),
     );
     if (!isDeepStrictEqual(sealed, candidate)) {
       streamError(
@@ -535,20 +579,32 @@ async function sealCandidateWithExactReplay(
     return sealed;
   };
 
+  let firstSealStarted = false;
   try {
-    return await seal("Isolated candidate seal");
+    return await control.wait("Isolated candidate seal", () => {
+      firstSealStarted = true;
+      return seal(control);
+    });
   } catch (firstFailure) {
+    // error-policy:J2 an ambiguous first seal failure permits only one
+    // byte-identical replay under the same durable authorization.
+    if (!firstSealStarted) throw firstFailure;
     try {
-      control.assertActive("Candidate seal exact response-loss replay");
-    } catch (_inactive: unknown) {
-      throw firstFailure;
-    }
-    try {
-      return await seal("Isolated candidate seal exact response-loss replay");
+      // A fresh bounded control lets the adapter perform the contract's
+      // read-only exact replay after the operation deadline. The original
+      // operation control remains visible to the adapter, so an interrupted
+      // call may read an already-sealed exact receipt but cannot create a new
+      // transition. The fresh cleanup control only bounds that reconciliation.
+      return await control.cleanup("Isolated candidate seal exact response-loss replay", () =>
+        seal(control),
+      );
     } catch (replayFailure) {
-      throw new AggregateError(
-        [normalizeFailure(firstFailure), normalizeFailure(replayFailure)],
+      // error-policy:J2 both exact attempts are retained behind one structured
+      // terminal error for reconciliation.
+      streamError(
+        "AGENT_BACKUP_RESTORE_V3_SEAL_REPLAY_FAILED",
         "Candidate seal and exact response-loss replay both failed",
+        new AggregateError([normalizeFailure(firstFailure), normalizeFailure(replayFailure)]),
       );
     }
   }
@@ -562,7 +618,8 @@ async function authenticateCandidate(
   keyBundle: AgentBackupRestoreV3KeyBundleProvider,
   openExactObject: StreamAgentBackupRestoreV3Input["openExactObject"],
 ): Promise<AuthenticatedCandidateParts> {
-  return withAgentBackupRestoreV3OperationKeys(
+  let authenticatedParts: AuthenticatedCandidateParts | undefined;
+  await withAgentBackupRestoreV3OperationKeys(
     {
       authority: source.operationKeyBundle,
       manifest: source.manifest,
@@ -637,7 +694,7 @@ async function authenticateCandidate(
             "Restore-v3 framed five-component HMAC differs from manifest-v3",
           );
         }
-        return Object.freeze({
+        authenticatedParts = Object.freeze({
           keyBundleGenerationId: keys.generationId,
           components: Object.freeze(components),
           exactReadProofs: Object.freeze(exactReadProofs),
@@ -650,6 +707,13 @@ async function authenticateCandidate(
       }
     },
   );
+  if (!authenticatedParts) {
+    streamError(
+      "AGENT_BACKUP_RESTORE_V3_KEY_USE_RESULT_MISSING",
+      "Restore-v3 key use completed without an authenticated candidate result",
+    );
+  }
+  return authenticatedParts;
 }
 
 interface SnapshottedCollaborators {
@@ -661,6 +725,7 @@ interface SnapshottedCollaborators {
   readonly authorizeCandidateSeal: AgentBackupRestoreV3CandidateSealAuthority["authorize"];
   readonly signal: AbortSignal;
   readonly deadlineEpochMs: number;
+  readonly reportDetachedFailure: StreamAgentBackupRestoreV3Input["reportDetachedFailure"];
   readonly now: () => number;
 }
 
@@ -681,6 +746,7 @@ function snapshotCollaborators(
   const seal = staging?.seal;
   const abort = staging?.abort;
   const authorize = sealAuthority?.authorize;
+  const reportDetachedFailure = input?.reportDetachedFailure;
   if (
     !input ||
     typeof input !== "object" ||
@@ -698,7 +764,9 @@ function snapshotCollaborators(
     typeof stageRecord !== "function" ||
     typeof finishComponent !== "function" ||
     typeof seal !== "function" ||
-    typeof abort !== "function"
+    typeof abort !== "function" ||
+    typeof reportDetachedFailure !== "function" ||
+    (input.now !== undefined && typeof input.now !== "function")
   ) {
     streamError(
       "AGENT_BACKUP_RESTORE_V3_COLLABORATOR_INVALID",
@@ -729,13 +797,16 @@ function snapshotCollaborators(
     authorizeCandidateSeal: authorize.bind(sealAuthority),
     signal: input.signal,
     deadlineEpochMs: input.deadlineEpochMs,
+    reportDetachedFailure: reportDetachedFailure.bind(input),
     now: input.now ?? Date.now,
   });
 }
 
 /**
  * Authenticate and seal one full exact generation as an isolated candidate.
- * The returned receipt is not a boot, activation, route, or restore commit.
+ * Before successful return, every staged plaintext byte is unauthenticated and
+ * must remain rollbackable and invisible to boot or live state. The returned
+ * receipt is not a boot, activation, route, or restore commit.
  */
 export async function streamAgentBackupRestoreV3(
   input: Readonly<StreamAgentBackupRestoreV3Input>,
@@ -745,6 +816,7 @@ export async function streamAgentBackupRestoreV3(
   const control = createAgentBackupRestoreV3Control({
     signal: collaborators.signal,
     deadlineEpochMs: collaborators.deadlineEpochMs,
+    reportDetachedFailure: collaborators.reportDetachedFailure,
     now,
   });
   const { staging, keyBundle, openExactObject, revalidateAuthority, authorizeCandidateSeal } =
@@ -840,14 +912,21 @@ export async function streamAgentBackupRestoreV3(
     await sealCandidateWithExactReplay(control, staging, session, candidate, authorization);
     return Object.freeze({ sealed: true, receipt: validated.receipt });
   } catch (cause) {
+    // error-policy:J2 every post-acquisition failure is normalized before the
+    // fenced rollback, preserving an already-structured inner domain error.
     const primary = normalizeFailure(cause);
     if (!cleanupSession) throw primary;
     try {
       await abortSession(control, staging, cleanupSession);
     } catch (abortFailure) {
-      throw new AggregateError(
-        [primary, normalizeFailure(abortFailure)],
+      // error-policy:J2 rollback failure cannot replace the primary failure;
+      // both are retained behind a structured terminal reconciliation error.
+      throw new AgentBackupRestoreV3StreamError(
+        "AGENT_BACKUP_RESTORE_V3_ROLLBACK_FAILED",
         "Restore-v3 streaming and isolated rollback both failed",
+        {
+          cause: new AggregateError([primary, normalizeFailure(abortFailure)]),
+        },
       );
     }
     throw primary;
