@@ -13,7 +13,7 @@ OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Ad
 - **Deep research** — `ModelType.RESEARCH` via the OpenAI Responses API (`o3-deep-research` by default); returns annotated, multi-source research reports.
 - **Tokenizer** — encode/decode using js-tiktoken (browser-safe, no network calls).
 
-Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, EvoLink, OpenRouter, local servers, etc.
+Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, EvoLink, OpenRouter, OpenZoo, local servers, etc.
 
 ## Enabling the plugin
 
@@ -208,6 +208,10 @@ Then set `OPENAI_BROWSER_BASE_URL=http://localhost:3000/openai`.
 ## Cerebras compatibility
 
 Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: structured output uses `json_object` mode, `reasoning_effort` defaults to `"low"` for reasoning-capable models (to prevent empty responses), and `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no explicit embedding URL is set, since Cerebras does not provide an embeddings endpoint.
+
+## OpenZoo compatibility
+
+Point `OPENAI_BASE_URL` at `https://api.openzoo.fun/v1` (or run `npx openzoo` and use `http://localhost:8402/v1`). OpenZoo has no signup: set `OPENAI_API_KEY` to any value (e.g. `sk-openzoo`) — usage is paid per request via x402, or automatically by the local gateway. The model list at `GET /v1/models` is free to fetch.
 
 ## EvoLink compatibility
 
