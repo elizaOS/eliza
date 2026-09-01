@@ -307,6 +307,13 @@ export class HeadscaleIntegration {
        *  the exact race the reclaim-mode deletion used to guard against. */
       excludeNodeId?: string;
       /**
+       * Earliest instant at which this exact provisioning attempt could have
+       * registered. Docker can join Headscale before this polling method is
+       * entered, so the collision-suffix safety gate must start at the
+       * persisted attempt boundary rather than at the first poll.
+       */
+      registrationStartedAt?: Date;
+      /**
        * Inspect the exact Docker candidate after a Headscale miss. Returning
        * an error proves that candidate cannot register and aborts immediately;
        * `null` means it is still pending. The probe is awaited inline, so no
@@ -320,10 +327,13 @@ export class HeadscaleIntegration {
     );
 
     // Suffixed (collision-renamed) matches are gated to nodes created during
-    // THIS poll: renamed nodes keep their suffix forever, so without the gate a
-    // poll would adopt the previous cycle's live green node or a stale orphan
-    // from an earlier failed upgrade. Exact-name matches are not gated.
+    // THIS provisioning attempt: renamed nodes keep their suffix forever, so
+    // without the gate a poll would adopt the previous cycle's live green node
+    // or a stale orphan from an earlier failed upgrade. Docker may register
+    // before polling begins, so callers with a durable attempt boundary pass it
+    // explicitly. Exact-name matches are not gated.
     const pollStart = new Date();
+    const registrationStartedAt = options?.registrationStartedAt ?? pollStart;
     const deadline = Date.now() + timeoutMs;
     let interval = POLL_INTERVAL_INITIAL_MS;
 
@@ -335,7 +345,7 @@ export class HeadscaleIntegration {
         // healthy registration.
         const node = await this.client.getNodeByNameOrSuffixed(nodeName, {
           excludeNodeId: options?.excludeNodeId,
-          createdAfter: pollStart,
+          createdAfter: registrationStartedAt,
         });
 
         if (node) assertCanonicalHeadscaleNode(node);

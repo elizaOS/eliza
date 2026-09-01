@@ -3803,6 +3803,13 @@ export class DockerSandboxProvider implements SandboxProvider {
             // hostname — matching it would route the new sandbox to the OLD
             // container, the race the reclaim-mode deletion used to guard (#16565).
             ...(previousVpnNodeId ? { excludeNodeId: previousVpnNodeId } : {}),
+            // The container can complete a collision-suffixed Headscale join
+            // between Docker start and this poll. Use the persisted attempt
+            // boundary so that valid early registration is not filtered out
+            // as an orphan from a previous provision.
+            ...(vpnRegistrationStartedAt
+              ? { registrationStartedAt: new Date(vpnRegistrationStartedAt) }
+              : {}),
             // The entrypoint is mesh-first, so app readiness cannot make
             // progress after an interactive AuthURL or terminal container exit.
             // Await this probe inside the registration loop: exact-success

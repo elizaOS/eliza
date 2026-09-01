@@ -511,6 +511,24 @@ describe("waitForVPNRegistration adopts Headscale collision-renamed nodes (real 
     expect(renames).toEqual([`https://headscale.example/api/v1/node/8/rename/${baseName}`]);
   });
 
+  test("adopts a suffixed node that registered after attempt start but before polling", async () => {
+    const registrationStartedAt = new Date(Date.now() - 5_000);
+    const renames = stubHeadscale([
+      makeNode("3", baseName, "100.64.0.56", new Date(Date.now() - 60 * 60 * 1000)),
+      makeNode("8", `${baseName}-cnpx9uop`, "100.64.0.8", new Date(Date.now() - 1_000)),
+    ]);
+
+    const registration = await integration().waitForVPNRegistration(baseName, 5_000, {
+      excludeNodeId: "3",
+      registrationStartedAt,
+    });
+
+    expect(registration?.nodeId).toBe("8");
+    expect(registration?.ip).toBe("100.64.0.8");
+    expect(registration?.rename).toEqual({ outcome: "succeeded" });
+    expect(renames).toEqual([`https://headscale.example/api/v1/node/8/rename/${baseName}`]);
+  });
+
   test("a 5xx rename-back remains explicitly unresolved without losing adoption", async () => {
     // While the green node still holds the base name Headscale rejects the
     // rename; registration is already secured and must succeed regardless.

@@ -2057,14 +2057,20 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         previousNodeId: PREVIOUS_VPN_NODE_ID,
       };
     });
-    spyOn(headscaleIntegration, "waitForVPNRegistration").mockImplementation(async () => {
-      events.push("vpn-registration");
-      return {
-        ip: "100.64.0.42",
-        nodeId: EXACT_VPN_NODE_ID,
-        rename: { outcome: "succeeded" },
-      };
-    });
+    let registrationOptions:
+      | Parameters<typeof headscaleIntegration.waitForVPNRegistration>[2]
+      | undefined;
+    spyOn(headscaleIntegration, "waitForVPNRegistration").mockImplementation(
+      async (_nodeName, _timeoutMs, options) => {
+        events.push("vpn-registration");
+        registrationOptions = options;
+        return {
+          ip: "100.64.0.42",
+          nodeId: EXACT_VPN_NODE_ID,
+          rename: { outcome: "succeeded" },
+        };
+      },
+    );
     const ssh = {
       exec: mock(async (command: string) => {
         if (command.includes("docker network inspect")) events.push("network-ready");
@@ -2142,6 +2148,9 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(events.indexOf("persist-intent")).toBeLessThan(events.indexOf("docker-create"));
     expect(events.indexOf("persist-created")).toBeLessThan(events.indexOf("docker-start"));
     expect(events.indexOf("vpn-registration")).toBeLessThan(events.indexOf("tailnet-bound"));
+    expect(registrationOptions?.registrationStartedAt?.toISOString()).toBe(
+      REGISTRATION_STARTED_AT,
+    );
     expect(events.indexOf("tailnet-bound")).toBeLessThan(events.indexOf("persist-vpn"));
     expect(events.at(-1)).toBe("settlement-succeeded");
     expect(dockerCreateCommand).toContain(`ai.elizaos.replacement-attempt=${ATTEMPT_ID}`);
