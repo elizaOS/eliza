@@ -180,6 +180,13 @@ interface ApiKeyHydration {
 }
 
 const apiKeyHydrations = new Map<string, ApiKeyHydration>();
+/**
+ * Monotonic per-key hydration generation. A late projection may only write if
+ * no newer hydration has started for the same key; the cache write is an
+ * unconditional set, so ordering has to be enforced here. One small integer
+ * per key hash, over the same key space as `apiKeyHydrations`.
+ */
+const apiKeyHydrationGenerations = new Map<string, number>();
 const SKIP_CACHE_PROJECTION_WRITE = Symbol("skip-cache-projection-write");
 const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
 const DEFAULT_HYDRATION_DEADLINE_MS = 10_000;
@@ -400,6 +407,8 @@ function getOrCreateApiKeyHydration(
       authoritativeRejectionReason = reason;
     },
   };
+  const generation = (apiKeyHydrationGenerations.get(keyHash) ?? 0) + 1;
+  apiKeyHydrationGenerations.set(keyHash, generation);
   const attempt = resolveInferenceAuthContext(req, hydrationOptions)
     .then((result): InferenceAuthResolution => {
       apiKeyHydrationFailures.delete(keyHash);
@@ -488,7 +497,13 @@ function getOrCreateApiKeyHydration(
         // late result without holding this promise: a never-settling attempt
         // must not keep waitUntil open.
         void attempt
-          .then((late) => (late ? projectResolution(late) : undefined))
+          .then((late) => {
+            // A newer hydration already owns this key: it is strictly closer to
+            // the authoritative state, so drop this late result rather than
+            // overwrite the cache behind it.
+            if (!late || apiKeyHydrationGenerations.get(keyHash) !== generation) return;
+            return projectResolution(late);
+          })
           .catch(() => undefined);
         return;
       }

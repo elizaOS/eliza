@@ -1123,6 +1123,49 @@ describe("hydration escape (#18246 — warming must not loop forever)", () => {
     release?.();
   });
 
+  test("a late projection defers to a newer in-flight hydration", async () => {
+    // A resolves after its deadline; by then a newer hydration owns the key.
+    // The late result must not be written behind that newer hydration.
+    authImpl = () =>
+      new Promise((resolve) => {
+        setTimeout(
+          () =>
+            resolve({
+              user: { id: "user-1", organization_id: "org-1" },
+              apiKey: { id: "key-1" },
+            }),
+          150,
+        );
+      });
+    const first: Promise<unknown>[] = [];
+    expect(
+      (
+        await resolveInferenceAuthContext(reqWithApiKey(), {
+          cacheOnly: true,
+          inlineContinuationDeadlineMs: 0,
+          executionCtx: workerCtx(first),
+        })
+      ).kind,
+    ).toBe("warming");
+    await Promise.all(first.splice(0));
+
+    // The deadline freed the slot; a newer hydration takes it and stays pending.
+    authImpl = () => new Promise(() => {});
+    const second: Promise<unknown>[] = [];
+    expect(
+      (
+        await resolveInferenceAuthContext(reqWithApiKey(), {
+          cacheOnly: true,
+          inlineContinuationDeadlineMs: 0,
+          executionCtx: workerCtx(second),
+        })
+      ).kind,
+    ).toBe("warming");
+
+    await new Promise((r) => setTimeout(r, 400));
+    expect(await readInferenceAuthContext(hashApiKey(KEY))).toBeNull();
+  });
+
   test("a slow but successful hydration still projects to cache after the deadline", async () => {
     // The deadline frees the single-flight slot, but the attempt can still
     // succeed. Its result must reach the cache, or a key whose authoritative
