@@ -7,10 +7,8 @@ import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, gt, lte } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { writeTransaction } from "../../db/helpers";
-import {
-  readPostLockDatabaseNow,
-  subscriptionAllowanceRepository,
-} from "../../db/repositories/subscription-allowance";
+import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
+import { subscriptionAllowanceRepository } from "../../db/repositories/subscription-allowance";
 import {
   type CanonicalMoney,
   microsToMoney,
