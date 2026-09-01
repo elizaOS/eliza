@@ -1,7 +1,9 @@
 /** Exercises early Docker mesh-join classification with deterministic evidence. */
 import { describe, expect, test } from "bun:test";
 import {
+  classifyDockerMeshJoinObservation,
   classifyDockerMeshJoinProbe,
+  formatDockerMeshJoinObservation,
   requiredHeadscaleIngressFailure,
 } from "./docker-sandbox-provider";
 import { jobErrorText } from "./job-error-text";
@@ -62,6 +64,75 @@ describe("classifyDockerMeshJoinProbe", () => {
       containerState: "exited",
       exitCode: 137,
     });
+  });
+});
+
+describe("Docker mesh-join observation", () => {
+  test("reduces raw Tailscale output and logs to closed diagnostic fields", () => {
+    const raw = [
+      "state=running exit=0",
+      "authkey-marker=absent",
+      "__eliza_mesh_probe_section__=socket",
+      "socket=present",
+      "daemon=present",
+      "__eliza_mesh_probe_section__=status",
+      JSON.stringify({
+        BackendState: "NeedsLogin",
+        AuthURL: "https://private.example/register/token",
+        Self: { MachineAuthorized: false },
+      }),
+      "__eliza_mesh_probe_section__=ip",
+      "",
+      "__eliza_mesh_probe_section__=logs",
+      "control: waiting for network map",
+      "__eliza_mesh_probe_section__=end",
+    ].join("\n");
+
+    const observation = classifyDockerMeshJoinObservation(raw);
+    expect(observation).toEqual({
+      containerState: "running",
+      exitCode: 0,
+      socketPresent: true,
+      daemonPresent: true,
+      statusQuery: "success",
+      backendState: "NeedsLogin",
+      machineAuthorized: false,
+      authUrlPresent: true,
+      ipPresent: false,
+      authKeyRejected: false,
+      interactiveAuthRequired: false,
+      tailscaleUpFailed: false,
+      agentStarted: false,
+    });
+    expect(formatDockerMeshJoinObservation(observation)).toBe(
+      "container=running,exit=0,socket=true,daemon=true,status=success,backend=NeedsLogin,authorized=false,authurl=true,ip=false,authkey_rejected=false,interactive=false,up_failed=false,agent_started=false",
+    );
+    expect(formatDockerMeshJoinObservation(observation)).not.toContain("private.example");
+  });
+
+  test("fails closed on malformed status and unrecognized state values", () => {
+    const observation = classifyDockerMeshJoinObservation(
+      [
+        "state=private-state exit=0",
+        "__eliza_mesh_probe_section__=socket",
+        "socket=absent",
+        "daemon=absent",
+        "__eliza_mesh_probe_section__=status",
+        "not-json",
+        "__eliza_mesh_probe_section__=ip",
+        "command failed",
+        "__eliza_mesh_probe_section__=logs",
+        "tailscale up failed",
+        "__eliza_mesh_probe_section__=end",
+      ].join("\n"),
+    );
+
+    expect(observation.containerState).toBeNull();
+    expect(observation.statusQuery).toBe("error");
+    expect(observation.backendState).toBeNull();
+    expect(observation.machineAuthorized).toBeNull();
+    expect(observation.ipPresent).toBe(false);
+    expect(observation.tailscaleUpFailed).toBe(true);
   });
 });
 

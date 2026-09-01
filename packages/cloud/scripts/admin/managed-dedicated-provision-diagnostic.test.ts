@@ -95,6 +95,24 @@ describe("managed Dedicated provision diagnostic", () => {
     ).toBe("ingress_headscale_ip_missing");
     expect(
       classifyManagedDedicatedProvisionFailure(
+        "Replacement cleanup is unresolved: Headscale routing is required, but the sandbox did not register a headscale_ip.\ncaused by: ElizaError: Docker candidate mesh observation before cleanup: container=running,exit=0,socket=true,daemon=true,status=success,backend=NeedsLogin,authorized=false,authurl=false,ip=false,authkey_rejected=false,interactive=false,up_failed=false,agent_started=false",
+        "x",
+      ),
+    ).toBe("ingress_mesh_needs_login");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Replacement cleanup is unresolved.\ncaused by: ElizaError: Docker candidate mesh observation before cleanup: container=running,exit=0,socket=false,daemon=false,status=error,backend=unknown,authorized=unknown,authurl=false,ip=false,authkey_rejected=false,interactive=false,up_failed=false,agent_started=false",
+        "x",
+      ),
+    ).toBe("ingress_mesh_socket_missing");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
+        "Replacement cleanup is unresolved.\ncaused by: ElizaError: Docker candidate mesh observation before cleanup: container=running,exit=0,socket=true,daemon=true,status=success,backend=Running,authorized=true,authurl=false,ip=false,authkey_rejected=false,interactive=false,up_failed=false,agent_started=false",
+        "x",
+      ),
+    ).toBe("ingress_mesh_running_without_ip");
+    expect(
+      classifyManagedDedicatedProvisionFailure(
         "Headscale routing is required, but HEADSCALE_API_KEY is not configured.",
         "x",
       ),

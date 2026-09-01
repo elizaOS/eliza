@@ -45,6 +45,15 @@ export type ManagedDedicatedProvisionFailureCode =
   | "ingress_headscale_api_failure"
   | "ingress_mesh_auth_required"
   | "ingress_mesh_candidate_exited"
+  | "ingress_mesh_socket_missing"
+  | "ingress_mesh_daemon_missing"
+  | "ingress_mesh_status_unavailable"
+  | "ingress_mesh_needs_login"
+  | "ingress_mesh_needs_machine_auth"
+  | "ingress_mesh_starting"
+  | "ingress_mesh_stopped"
+  | "ingress_mesh_running_without_ip"
+  | "ingress_mesh_observation_other"
   | "ingress_headscale_identity_missing"
   | "ingress_headscale_identity_mismatch"
   | "ingress_headscale_registration_unresolved"
@@ -206,6 +215,52 @@ function elapsedMs(start: string | null, end: string | null): number | null {
   return elapsed;
 }
 
+function classifyClosedMeshObservation(
+  diagnostic: string,
+): ManagedDedicatedProvisionFailureCode | null {
+  const observation =
+    /Docker candidate mesh observation before cleanup: container=(?:created|running|paused|restarting|removing|exited|dead|unknown),exit=(?:-?\d+|unknown),socket=(true|false),daemon=(true|false),status=(success|error),backend=(NeedsLogin|NeedsMachineAuth|NoState|Running|Starting|Stopped|unknown),authorized=(?:true|false|unknown),authurl=(true|false),ip=(true|false),authkey_rejected=(true|false),interactive=(true|false),up_failed=(true|false),agent_started=(true|false)/i.exec(
+      diagnostic,
+    );
+  if (!observation) return null;
+  const [
+    ,
+    socket,
+    daemon,
+    status,
+    backend,
+    authUrl,
+    ip,
+    authKeyRejected,
+    interactive,
+  ] = observation;
+  if (
+    authUrl === "true" ||
+    authKeyRejected === "true" ||
+    interactive === "true"
+  ) {
+    return "ingress_mesh_auth_required";
+  }
+  if (socket === "false") return "ingress_mesh_socket_missing";
+  if (daemon === "false") return "ingress_mesh_daemon_missing";
+  if (status === "error") return "ingress_mesh_status_unavailable";
+  switch (backend) {
+    case "NeedsLogin":
+      return "ingress_mesh_needs_login";
+    case "NeedsMachineAuth":
+      return "ingress_mesh_needs_machine_auth";
+    case "Starting":
+    case "NoState":
+      return "ingress_mesh_starting";
+    case "Stopped":
+      return "ingress_mesh_stopped";
+    case "Running":
+      return ip === "false" ? "ingress_mesh_running_without_ip" : null;
+    default:
+      return "ingress_mesh_observation_other";
+  }
+}
+
 export function classifyManagedDedicatedProvisionFailure(
   value: unknown,
   label: string,
@@ -226,6 +281,9 @@ export function classifyManagedDedicatedProvisionFailure(
   });
   const diagnostic = diagnosticLines.join("\n");
   const primary = diagnosticLines[0] ?? "";
+
+  const meshObservationCode = classifyClosedMeshObservation(diagnostic);
+  if (meshObservationCode) return meshObservationCode;
 
   if (
     /Headscale routing is required.*HEADSCALE_API_KEY is not configured/i.test(

@@ -1352,6 +1352,133 @@ export type DockerMeshJoinProbeVerdict =
       readonly exitCode: number | null;
     };
 
+export interface DockerMeshJoinObservation {
+  readonly containerState: string | null;
+  readonly exitCode: number | null;
+  readonly socketPresent: boolean;
+  readonly daemonPresent: boolean;
+  readonly statusQuery: "success" | "error";
+  readonly backendState: string | null;
+  readonly machineAuthorized: boolean | null;
+  readonly authUrlPresent: boolean;
+  readonly ipPresent: boolean;
+  readonly authKeyRejected: boolean;
+  readonly interactiveAuthRequired: boolean;
+  readonly tailscaleUpFailed: boolean;
+  readonly agentStarted: boolean;
+}
+
+const DOCKER_CONTAINER_STATES = new Set([
+  "created",
+  "running",
+  "paused",
+  "restarting",
+  "removing",
+  "exited",
+  "dead",
+]);
+const TAILSCALE_BACKEND_STATES = new Set([
+  "NeedsLogin",
+  "NeedsMachineAuth",
+  "NoState",
+  "Running",
+  "Starting",
+  "Stopped",
+]);
+const MESH_PROBE_SECTION = "__eliza_mesh_probe_section__=";
+
+function meshProbeSection(output: string, name: string, next: string): string {
+  const startMarker = `${MESH_PROBE_SECTION}${name}`;
+  const endMarker = `${MESH_PROBE_SECTION}${next}`;
+  const start = output.indexOf(startMarker);
+  if (start < 0) return "";
+  const contentStart = start + startMarker.length;
+  const end = output.indexOf(endMarker, contentStart);
+  return output.slice(contentStart, end < 0 ? output.length : end).trim();
+}
+
+/** Converts raw exact-candidate output into closed, privacy-safe mesh facts. */
+export function classifyDockerMeshJoinObservation(output: string): DockerMeshJoinObservation {
+  const stateMatch = /^state=(\S+) exit=(-?\d+)$/m.exec(output);
+  const rawContainerState = stateMatch?.[1] ?? null;
+  const containerState =
+    rawContainerState && DOCKER_CONTAINER_STATES.has(rawContainerState) ? rawContainerState : null;
+  const exitCode = stateMatch ? Number.parseInt(stateMatch[2]!, 10) : null;
+  const socket = meshProbeSection(output, "socket", "status");
+  const statusOutput = meshProbeSection(output, "status", "ip");
+  const ipOutput = meshProbeSection(output, "ip", "logs");
+  const logs = meshProbeSection(output, "logs", "end");
+
+  let statusQuery: "success" | "error" = "error";
+  let backendState: string | null = null;
+  let machineAuthorized: boolean | null = null;
+  let authUrlPresent = false;
+  try {
+    const parsed = JSON.parse(statusOutput) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Tailscale status is not an object");
+    }
+    const status = parsed as Record<string, unknown>;
+    const self =
+      status.Self && typeof status.Self === "object" && !Array.isArray(status.Self)
+        ? (status.Self as Record<string, unknown>)
+        : null;
+    statusQuery = "success";
+    backendState =
+      typeof status.BackendState === "string" && TAILSCALE_BACKEND_STATES.has(status.BackendState)
+        ? status.BackendState
+        : null;
+    machineAuthorized =
+      typeof self?.MachineAuthorized === "boolean" ? self.MachineAuthorized : null;
+    authUrlPresent = typeof status.AuthURL === "string" && status.AuthURL.trim().length > 0;
+  } catch {
+    // error-policy:J3 Raw CLI output becomes an explicit closed query failure.
+  }
+
+  return {
+    containerState,
+    exitCode: Number.isSafeInteger(exitCode) ? exitCode : null,
+    socketPresent: /^socket=present$/m.test(socket),
+    daemonPresent: /^daemon=present$/m.test(socket),
+    statusQuery,
+    backendState,
+    machineAuthorized,
+    authUrlPresent,
+    ipPresent: ipOutput
+      .split(/\r?\n/)
+      .some((line) => /^(?:\d{1,3}\.){3}\d{1,3}$/.test(line.trim())),
+    authKeyRejected:
+      /(?:auth(?:entication)? key|authkey).*(?:invalid|expired|already used)|(?:invalid|expired|already used).*(?:auth(?:entication)? key|authkey)/i.test(
+        logs,
+      ),
+    interactiveAuthRequired: /requires interactive authorization/i.test(logs),
+    tailscaleUpFailed: /tailscale up failed|tailscale authentication failed/i.test(logs),
+    agentStarted:
+      /starting (?:eliza|agent)|server (?:started|listening)|agent runtime started/i.test(logs),
+  };
+}
+
+/** Encodes only closed observation fields for durable job diagnosis. */
+export function formatDockerMeshJoinObservation(observation: DockerMeshJoinObservation): string {
+  const value = (input: string | number | boolean | null): string =>
+    input === null ? "unknown" : String(input);
+  return [
+    `container=${value(observation.containerState)}`,
+    `exit=${value(observation.exitCode)}`,
+    `socket=${observation.socketPresent}`,
+    `daemon=${observation.daemonPresent}`,
+    `status=${observation.statusQuery}`,
+    `backend=${value(observation.backendState)}`,
+    `authorized=${value(observation.machineAuthorized)}`,
+    `authurl=${observation.authUrlPresent}`,
+    `ip=${observation.ipPresent}`,
+    `authkey_rejected=${observation.authKeyRejected}`,
+    `interactive=${observation.interactiveAuthRequired}`,
+    `up_failed=${observation.tailscaleUpFailed}`,
+    `agent_started=${observation.agentStarted}`,
+  ].join(",");
+}
+
 const ENTRYPOINT_MESH_AUTH_TERMINAL_PREFIXES: readonly string[] = [
   "[docker-entrypoint] tailscale requires interactive authorization (authurl/needsmachineauth);",
   "[cloud-agent-entrypoint] tailscale requires interactive authorization (authurl/needsmachineauth);",
@@ -1408,6 +1535,7 @@ export function requiredHeadscaleIngressFailure(
 async function probeDockerMeshJoinTerminalFailure(
   ssh: DockerSSHClient,
   containerId: string,
+  observe?: (observation: DockerMeshJoinObservation) => void,
 ): Promise<Error | null> {
   let output: string;
   try {
@@ -1415,7 +1543,15 @@ async function probeDockerMeshJoinTerminalFailure(
       [
         `docker inspect --format 'state={{.State.Status}} exit={{.State.ExitCode}}' ${shellQuote(containerId)} 2>/dev/null`,
         `docker exec ${shellQuote(containerId)} sh -c 'test -f "\${TS_STATE_DIR:-/var/lib/tailscale}/${TS_AUTHKEY_EXPIRED_MARKER_BASENAME}" && echo authkey-marker=present || echo authkey-marker=absent' 2>/dev/null || echo authkey-marker=unknown`,
+        `echo ${MESH_PROBE_SECTION}socket`,
+        `docker exec ${shellQuote(containerId)} sh -c 'test -S /tmp/tailscaled.sock && echo socket=present || echo socket=absent; pgrep -x tailscaled >/dev/null && echo daemon=present || echo daemon=absent' 2>/dev/null || true`,
+        `echo ${MESH_PROBE_SECTION}status`,
+        `docker exec ${shellQuote(containerId)} tailscale --socket=/tmp/tailscaled.sock status --json 2>/dev/null || true`,
+        `echo ${MESH_PROBE_SECTION}ip`,
+        `docker exec ${shellQuote(containerId)} tailscale --socket=/tmp/tailscaled.sock ip -4 2>/dev/null || true`,
+        `echo ${MESH_PROBE_SECTION}logs`,
         `docker logs --tail 80 ${shellQuote(containerId)} 2>&1 || true`,
+        `echo ${MESH_PROBE_SECTION}end`,
       ].join("; "),
       MESH_JOIN_PROBE_TIMEOUT_MS,
     );
@@ -1433,6 +1569,7 @@ async function probeDockerMeshJoinTerminalFailure(
     return null;
   }
 
+  observe?.(classifyDockerMeshJoinObservation(output));
   const verdict = classifyDockerMeshJoinProbe(output);
   if (verdict.status === "pending") return null;
   return new ElizaError(
@@ -3149,6 +3286,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     let replacementIntentPersisted = false;
     let createdContainerId: string | undefined;
     let vpnEnvVars: Record<string, string> = {};
+    let lastMeshJoinObservation: DockerMeshJoinObservation | null = null;
     const markRemoteCompletionUnresolved = (cause: unknown): void => {
       remoteCompletionTracker?.causes.push(cause);
     };
@@ -3818,7 +3956,9 @@ export class DockerSandboxProvider implements SandboxProvider {
             ...(meshJoinCandidateId
               ? {
                   probeTerminalCandidateFailure: () =>
-                    probeDockerMeshJoinTerminalFailure(ssh, meshJoinCandidateId),
+                    probeDockerMeshJoinTerminalFailure(ssh, meshJoinCandidateId, (observation) => {
+                      lastMeshJoinObservation = observation;
+                    }),
                 }
               : {}),
           },
@@ -3904,6 +4044,22 @@ export class DockerSandboxProvider implements SandboxProvider {
           }
         }
         if (registration === null) {
+          if (lastMeshJoinObservation) {
+            const closedObservation = formatDockerMeshJoinObservation(lastMeshJoinObservation);
+            markRemoteCompletionUnresolved(
+              new ElizaError(
+                `Docker candidate mesh observation before cleanup: ${closedObservation}`,
+                {
+                  code: "SANDBOX_MESH_JOIN_OBSERVED",
+                  context: { observation: lastMeshJoinObservation },
+                  severity: "ephemeral",
+                },
+              ),
+            );
+            logger.warn(
+              `[docker-sandbox] Docker candidate mesh observation before cleanup: ${closedObservation}`,
+            );
+          }
           markRemoteCompletionUnresolved(
             new ElizaError("Headscale registration did not reach an exact observable completion", {
               code: "HEADSCALE_REGISTRATION_COMPLETION_UNRESOLVED",
