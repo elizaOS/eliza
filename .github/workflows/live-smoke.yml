@@ -990,7 +990,7 @@ jobs:
             set -euo pipefail
             set +e
             raw="$(
-              timeout --signal=TERM --kill-after=5s 105s sudo systemd-run \
+              timeout --signal=TERM --kill-after=5s 75s sudo systemd-run \
                 --quiet \
                 --wait \
                 --pipe \

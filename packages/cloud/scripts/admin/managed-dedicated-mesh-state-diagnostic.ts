@@ -97,7 +97,7 @@ export function classifyContainerLogs(output: string): {
 async function observe(
   client: DockerSSHClient,
   command: string,
-  timeoutMs = 20_000,
+  timeoutMs = 8_000,
 ): Promise<CommandObservation> {
   try {
     return { ok: true, output: await client.exec(command, timeoutMs) };
@@ -169,22 +169,26 @@ async function run(suffix: string): Promise<void> {
   );
   const id = locator.container_id;
   try {
-    const [inspect, processState, status, ip, logs] = await Promise.all([
-      observe(ssh, `docker inspect --format '{{json .State}}' ${id}`),
-      observe(
-        ssh,
-        `docker exec ${id} sh -c 'test -S /tmp/tailscaled.sock && echo socket=present || echo socket=absent; pgrep -x tailscaled >/dev/null && echo daemon=present || echo daemon=absent'`,
-      ),
-      observe(
-        ssh,
-        `docker exec ${id} tailscale --socket=/tmp/tailscaled.sock status --json`,
-      ),
-      observe(
-        ssh,
-        `docker exec ${id} tailscale --socket=/tmp/tailscaled.sock ip -4`,
-      ),
-      observe(ssh, `docker logs --tail 400 ${id}`),
-    ]);
+    // One pooled SSH client is intentionally observed serially. Concurrent
+    // first-use execs can each attempt to establish the same session and keep
+    // the operator probe alive past its outer workflow deadline.
+    const inspect = await observe(
+      ssh,
+      `docker inspect --format '{{json .State}}' ${id}`,
+    );
+    const processState = await observe(
+      ssh,
+      `docker exec ${id} sh -c 'test -S /tmp/tailscaled.sock && echo socket=present || echo socket=absent; pgrep -x tailscaled >/dev/null && echo daemon=present || echo daemon=absent'`,
+    );
+    const status = await observe(
+      ssh,
+      `docker exec ${id} tailscale --socket=/tmp/tailscaled.sock status --json`,
+    );
+    const ip = await observe(
+      ssh,
+      `docker exec ${id} tailscale --socket=/tmp/tailscaled.sock ip -4`,
+    );
+    const logs = await observe(ssh, `docker logs --tail 400 ${id}`);
 
     let state: Record<string, unknown> | null = null;
     if (inspect.ok) {
@@ -241,5 +245,14 @@ async function run(suffix: string): Promise<void> {
 }
 
 if (import.meta.main) {
-  await run(process.argv[2] ?? "");
+  try {
+    await run(process.argv[2] ?? "");
+    await DockerSSHClient.disconnectAll();
+    process.exit(0);
+  } catch {
+    // error-policy:J1 The workflow receives only a non-zero diagnostic status;
+    // raw database, SSH, and container failures must stay on the host.
+    await DockerSSHClient.disconnectAll();
+    process.exit(1);
+  }
 }
