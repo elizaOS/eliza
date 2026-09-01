@@ -977,6 +977,66 @@ jobs:
             echo "private_mesh_failure_category=$category"
             echo "private_mesh_failure_signals=${signals:-none}"
 
+      - name: Inspect exact private mesh candidate
+        if: steps.cleanup_reconciliation.outputs.fence_present == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            raw="$(
+              sudo systemd-run \
+                --quiet \
+                --wait \
+                --pipe \
+                --collect \
+                --uid=deploy \
+                --gid=deploy \
+                --property=EnvironmentFile=/opt/eliza/cloud/.env.local \
+                --property=WorkingDirectory=/opt/eliza \
+                --property=Environment=PATH=/home/deploy/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin \
+                /usr/bin/env bun --conditions=eliza-source \
+                packages/cloud/scripts/admin/managed-dedicated-mesh-state-diagnostic.ts \
+                "$CANARY_DIAGNOSTIC_SUFFIX" 2>&1
+            )"
+            diagnostic="$(printf '%s\n' "$raw" | sed -n 's/^MESH_DIAGNOSTIC=//p' | tail -n 1)"
+            unset raw
+            jq -e '
+              keys == ["container", "logs", "schemaVersion", "tailscale", "targetCount"] and
+              .schemaVersion == 1 and
+              .targetCount == 1 and
+              (.container | keys == ["exitCode", "inspect", "status"]) and
+              (.container.inspect == "success" or .container.inspect == "error") and
+              (.container.status | IN("created", "running", "paused", "restarting", "removing", "exited", "dead", "unknown")) and
+              (.container.exitCode == null or (.container.exitCode | type == "number")) and
+              (.tailscale | keys == ["authUrlPresent", "backendState", "daemonPresent", "ipPresent", "machineAuthorized", "query", "socketPresent"]) and
+              (.tailscale.query == "success" or .tailscale.query == "error") and
+              (.tailscale.backendState == null or (.tailscale.backendState | IN("NeedsLogin", "NeedsMachineAuth", "NoState", "Running", "Starting", "Stopped"))) and
+              (.tailscale.machineAuthorized == null or (.tailscale.machineAuthorized | type == "boolean")) and
+              ([.tailscale.authUrlPresent, .tailscale.daemonPresent, .tailscale.ipPresent, .tailscale.socketPresent] | all(type == "boolean")) and
+              (.logs | keys == ["agentStarted", "authKeyRejected", "interactiveAuthRequired", "tailscaleUpFailed"]) and
+              ([.logs.agentStarted, .logs.authKeyRejected, .logs.interactiveAuthRequired, .logs.tailscaleUpFailed] | all(type == "boolean"))
+            ' <<<"$diagnostic" >/dev/null
+            jq -r '
+              "private_mesh_container_status=" + .container.status,
+              "private_mesh_container_exit_code=" + ((.container.exitCode // "none") | tostring),
+              "private_mesh_tailscale_query=" + .tailscale.query,
+              "private_mesh_tailscale_backend=" + (.tailscale.backendState // "unknown"),
+              "private_mesh_tailscale_machine_authorized=" + ((.tailscale.machineAuthorized // "unknown") | tostring),
+              "private_mesh_tailscale_auth_url=" + (.tailscale.authUrlPresent | tostring),
+              "private_mesh_tailscale_socket=" + (.tailscale.socketPresent | tostring),
+              "private_mesh_tailscale_daemon=" + (.tailscale.daemonPresent | tostring),
+              "private_mesh_tailscale_ip=" + (.tailscale.ipPresent | tostring),
+              "private_mesh_log_auth_key_rejected=" + (.logs.authKeyRejected | tostring),
+              "private_mesh_log_interactive_auth=" + (.logs.interactiveAuthRequired | tostring),
+              "private_mesh_log_tailscale_up_failed=" + (.logs.tailscaleUpFailed | tostring),
+              "private_mesh_log_agent_started=" + (.logs.agentStarted | tostring)
+            ' <<<"$diagnostic"
+            unset diagnostic
+
       - name: Upload privacy-safe provision diagnostic
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
