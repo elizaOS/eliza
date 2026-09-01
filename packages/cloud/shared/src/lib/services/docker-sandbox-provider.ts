@@ -59,6 +59,8 @@ import {
   getContainerName,
   getContainerSecretEnvPath,
   getReplacementCandidateObservedReceipt,
+  getReplacementControlSecretEnvPath,
+  getReplacementControlVaultPassphrasePath,
   getReplacementDockerCreateQuiescentReceipt,
   getReplacementSecretArtifactsCleanupReceipt,
   getVolumePath,
@@ -2502,7 +2504,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
 
       const envTransport = buildDockerContainerEnvTransport(allEnv);
-      const secretEnvPath = getContainerSecretEnvPath(volumePath, replacementAttemptId);
+      const secretEnvPath = remoteCompletionTracker
+        ? getReplacementControlSecretEnvPath(replacementAttemptId)
+        : getContainerSecretEnvPath(volumePath, replacementAttemptId);
+      const vaultPassphrasePath = remoteCompletionTracker
+        ? getReplacementControlVaultPassphrasePath(replacementAttemptId)
+        : getVolumeVaultPassphrasePath(volumePath);
 
       const dockerCreateCmd = [
         "docker create",
@@ -2563,7 +2570,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       const dockerCreateWithSecretEnvCmd = buildDockerCreateWithSecretEnvCommand({
         dockerCreateCommand: dockerCreateCmd,
         secretEnvPath,
-        vaultPassphrasePath: getVolumeVaultPassphrasePath(volumePath),
+        vaultPassphrasePath,
         ...(remoteCompletionTracker
           ? { exactReplacement: { containerName, replacementAttemptId } }
           : {}),
