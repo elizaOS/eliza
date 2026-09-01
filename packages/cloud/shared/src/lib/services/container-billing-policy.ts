@@ -57,19 +57,16 @@ export interface ContainerBillingPlan {
  * (`CONTAINER_BILLING_PLAN_INPUT_INVALID`) instead of returning a NaN-bearing
  * plan — under float comparison a NaN `totalAvailable < dailyCost` is false,
  * so the pre-fix function silently returned `action: "billed"` with NaN debit
- * legs. A negative `currentBalance` is legitimate (raw SQL storage debits can
- * leave it below zero) and fails closed through the ordinary
- * `totalAvailable < dailyCost` insufficiency path instead of throwing.
+ * legs. A negative `currentBalance` falls through to the ordinary
+ * `totalAvailable < dailyCost` insufficiency path instead of throwing: the
+ * read at route.ts (`Number(org.credit_balance)`) has no other guard, so a
+ * non-finite parse must throw here, while a finite negative must keep the
+ * container on the warn/shutdown track rather than erroring the run.
  */
 export function computeContainerBillingPlan(
   input: ContainerBillingPlanInput,
 ): ContainerBillingPlan {
-  const {
-    dailyCost,
-    currentBalance,
-    ownerEarningsAvailable,
-    payAsYouGoFromEarnings,
-  } = input;
+  const { dailyCost, currentBalance, ownerEarningsAvailable, payAsYouGoFromEarnings } = input;
 
   for (const [field, value] of Object.entries({
     dailyCost,
@@ -104,9 +101,13 @@ export function computeContainerBillingPlan(
     );
   }
   if (ownerEarningsAvailable < 0) {
-    // The redeemable-earnings schema CHECK-constrains available_balance >= 0;
-    // unlike credit_balance (raw SQL debits can go negative), negative
-    // earnings are invalid data, not a live state.
+    // Negative earnings are invalid data, not a live state:
+    // redeemable_earnings.available_balance is CHECK-constrained >= 0
+    // (0000_last_reavers.sql, `available_balance_non_negative`). This guard is
+    // defense-in-depth — getAvailableEarnings already throws on non-finite
+    // parses — and deliberately validates even when the toggle is off, because
+    // the input contract validates every field regardless of whether this
+    // call reads it (pinned by the suite).
     throw new ElizaError(
       `Container billing plan input ownerEarningsAvailable must be >= 0, received ${ownerEarningsAvailable}`,
       {
@@ -163,12 +164,8 @@ export interface ContainerBillingPeriod {
  * idempotency key and the `container_billing_records(container_id,
  * billing_period_start)` unique index both collide and prevent a double-debit.
  */
-export function computeContainerBillingPeriod(
-  now: Date,
-): ContainerBillingPeriod {
-  const periodStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
+export function computeContainerBillingPeriod(now: Date): ContainerBillingPeriod {
+  const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const periodEnd = new Date(periodStart.getTime() + 24 * 60 * 60 * 1000);
   return { periodStart, periodEnd };
 }
