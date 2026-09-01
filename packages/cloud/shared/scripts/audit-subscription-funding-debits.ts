@@ -17,9 +17,8 @@ const SIGNAL_PATTERNS: Readonly<Record<SubscriptionDebitSignal, RegExp>> = {
   credit_transaction_repository_create: /\bcreditTransactionsRepository\.create\s*\(/g,
   debit_ledger_literal: /\btype\s*:\s*["']debit["']/g,
   organization_repository_deduct: /\.deductCreditsWithTransaction\s*\(/g,
-  // Keep the scan local to one balance expression; the exact inventory test catches missed call sites.
-  raw_credit_balance_decrement:
-    /credit_balance\s*(?:=|:\s*sql`)\s*(?:(?![;`]).|\r?\n){0,420}?\s-\s/g,
+  // The terminators keep this scan local to one balance expression without a silent length cliff.
+  raw_credit_balance_decrement: /credit_balance\s*(?:=|:\s*sql`)\s*(?:(?![;`]).|\r?\n)*?\s-\s/g,
   raw_credit_transaction_sql_insert: /\bINSERT\s+INTO\s+"?credit_transactions"?/gi,
   raw_credit_transaction_insert: /\.insert\s*\(\s*creditTransactions\s*\)/g,
 };

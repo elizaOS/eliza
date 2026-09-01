@@ -33,6 +33,19 @@ describe("subscription funding production debit inventory", () => {
     });
   });
 
+  test("detects balance decrements across long expressions", () => {
+    const longExpressionPrefix = "WHEN balance_is_pending THEN balance ".repeat(40);
+    expect(
+      scanSubscriptionDebitSignals(`
+        credit_balance: sql\`
+          CASE ${longExpressionPrefix}
+          ELSE \${organizations.credit_balance} - \${amount}
+          END
+        \`,
+      `),
+    ).toEqual({ raw_credit_balance_decrement: 1 });
+  });
+
   test("detects renamed credit-service receivers", () => {
     expect(
       scanSubscriptionDebitSignals(`
