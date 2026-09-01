@@ -203,6 +203,17 @@ export function getUsageProvider(runtime: IAgentRuntime): OpenAiUsageProvider {
   ) {
     return explicitProvider;
   }
+  // Key-alias evidence, consulted LAST but before the blind default: a custom
+  // CEREBRAS_BASE_URL/EVOLINK_BASE_URL can resolve to a host the classifier
+  // does not recognise (a proxy, mirror, or bare IP) while getApiKey still
+  // selects that vendor's key. Attribution must follow the key that is
+  // actually sent, so the same predicates getApiKey uses break the tie.
+  if (isCerebrasMode(runtime)) {
+    return "cerebras";
+  }
+  if (isEvoLinkMode(runtime)) {
+    return "evolink";
+  }
   return "openai";
 }
 

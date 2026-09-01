@@ -27,6 +27,8 @@ const ENV_KEYS = [
   "OPENAI_API_KEY",
   "CEREBRAS_API_KEY",
   "OPENZOO_BASE_URL",
+  "CEREBRAS_BASE_URL",
+  "EVOLINK_BASE_URL",
   "EVOLINK_API_KEY",
 ] as const;
 
@@ -172,6 +174,18 @@ describe("attribution/endpoint agreement ratchet", () => {
       settings: { ELIZA_PROVIDER: "openzoo", OPENZOO_BASE_URL: "http://localhost:9999/v1" },
       endpointHost: "localhost",
       provider: "openzoo",
+    },
+    {
+      name: "custom CEREBRAS_BASE_URL on a non-vendor host keeps cerebras attribution",
+      settings: { CEREBRAS_API_KEY: "csk-live", CEREBRAS_BASE_URL: "https://proxy.example.com/v1" },
+      endpointHost: "proxy.example.com",
+      provider: "cerebras",
+    },
+    {
+      name: "custom EVOLINK_BASE_URL on a non-vendor host keeps evolink attribution",
+      settings: { EVOLINK_API_KEY: "evk-live", EVOLINK_BASE_URL: "https://proxy.example.com/v1" },
+      endpointHost: "proxy.example.com",
+      provider: "evolink",
     },
     {
       name: "key-alias inference still applies when nothing is declared",
