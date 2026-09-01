@@ -2472,6 +2472,20 @@
       "when": 1794254400060,
       "tag": "0369_agent_backup_admission_recovery_cursor",
       "breakpoints": true
+    },
+    {
+      "idx": 353,
+      "version": "7",
+      "when": 1794254400061,
+      "tag": "0370_agent_sandbox_replacement_restore_locator",
+      "breakpoints": true
+    },
+    {
+      "idx": 354,
+      "version": "7",
+      "when": 1794254400062,
+      "tag": "0371_agent_vault_key_seed_receipts_per_replacement",
+      "breakpoints": true
     }
   ]
 }

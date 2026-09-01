@@ -1,6 +1,6 @@
 /** Real-primary-DB proofs for the dormant restore activation quarantine. */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import {
@@ -21,7 +21,7 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import {
@@ -30,6 +30,7 @@ import {
   agentBackupRestoreOperations,
 } from "../../schemas/agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "../../schemas/agent-backup-restore-history";
+import { agentSandboxReplacementAttempts } from "../../schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
 import {
   AGENT_VAULT_KEY_AUTHORITY_FORMAT,
@@ -42,14 +43,24 @@ import { users } from "../../schemas/users";
 import type { AgentBackupRestoreLeaseAuthorityReceipt } from "../agent-backup-restore-lease";
 import {
   advanceAgentBackupRestoreOperation,
+  beginAgentSandboxExactRestoreCleanup,
   claimAgentBackupRestoreOperation,
+  claimAgentSandboxExactRestoreCleanup,
+  finishAgentSandboxExactRestoreCleanup,
+  markAgentSandboxExactRestoreProviderStarted,
   openAgentBackupRestoreOperation,
+  recordAgentSandboxExactRestoreProviderCreated,
+  recordAgentSandboxExactRestoreProviderSucceeded,
+  releaseAgentBackupRestoreOperationClaim,
+  releaseAgentSandboxExactRestoreCleanupClaim,
   reserveAgentBackupRestoreTarget,
+  reserveAgentBackupRestoreTargetAndStartReplacementIntent,
 } from "../agent-backup-restore-operations";
 import {
   openAgentBackupRestoreQuarantine,
   recordAgentBackupRestoreQuarantinedContainer,
 } from "../agent-backup-restore-quarantine";
+import { verifyAgentSandboxExactRestoreReplacementIntent } from "../agent-sandbox-replacement-attempts";
 
 const TIMEOUT = 60_000;
 const ORG_ID = "00000000-0000-4000-8000-00000000e101";
@@ -69,6 +80,8 @@ const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000e110";
 const VAULT_GENERATION_ID = "00000000-0000-4000-8000-00000000e111";
 const SOURCE_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000e112";
 const KEY_BUNDLE_GENERATION_ID = "00000000-0000-4000-8000-00000000e113";
+const REPLACEMENT_ATTEMPT_ID = "00000000-0000-4000-8000-00000000e114";
+const OTHER_REPLACEMENT_ATTEMPT_ID = "00000000-0000-4000-8000-00000000e115";
 const HASH = "a".repeat(64);
 const OTHER_SHA = "b".repeat(64);
 const IMAGE_DIGEST = `sha256:${"c".repeat(64)}`;
@@ -186,7 +199,9 @@ function quarantineTransactionBody(functionName: string, nextFunctionName?: stri
     new URL("../agent-backup-restore-quarantine.ts", import.meta.url),
     "utf8",
   );
-  const functionStart = source.indexOf(`export async function ${functionName}`);
+  const exportedStart = source.indexOf(`export async function ${functionName}`);
+  const functionStart =
+    exportedStart >= 0 ? exportedStart : source.indexOf(`async function ${functionName}`);
   const transactionStart = source.indexOf("return dbWrite.transaction", functionStart);
   const functionEnd = nextFunctionName
     ? source.indexOf(`export async function ${nextFunctionName}`, transactionStart)
@@ -211,6 +226,29 @@ function expectCanonicalQuarantineLockOrder(body: string): void {
   const positions = anchors.map((anchor) => body.indexOf(anchor));
   expect(positions.every((position) => position >= 0)).toBe(true);
   expect(positions).toEqual([...positions].sort((left, right) => left - right));
+}
+
+async function installExactCleanupOperationGuard(): Promise<void> {
+  const migration = readFileSync(
+    new URL("../../migrations/0370_agent_sandbox_replacement_restore_locator.sql", import.meta.url),
+    "utf8",
+  );
+  const guard = migration
+    .split("--> statement-breakpoint")
+    .find((statement) =>
+      statement.includes('CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_operation"'),
+    );
+  if (!guard) throw new Error("0370 exact cleanup operation guard is missing");
+  await dbWrite.execute(sql.raw(guard));
+  await dbWrite.execute(
+    sql.raw(`DROP TRIGGER IF EXISTS test_agent_backup_restore_operation_guard
+      ON agent_backup_restore_operations`),
+  );
+  await dbWrite.execute(
+    sql.raw(`CREATE TRIGGER test_agent_backup_restore_operation_guard
+      BEFORE UPDATE OR DELETE ON agent_backup_restore_operations
+      FOR EACH ROW EXECUTE FUNCTION guard_agent_backup_restore_operation()`),
+  );
 }
 
 const openInput = () => ({
@@ -286,6 +324,10 @@ async function seedFixture(): Promise<void> {
     user_id: USER_ID,
     status: "running",
     execution_tier: "dedicated-always",
+    agent_name: "restore-agent",
+    docker_image: "registry.invalid/eliza-agent:restore-source",
+    environment_vars: { RESTORE_TEST: "true" },
+    agent_config: { testMode: true },
     sandbox_id: "canonical-provider-handle",
     node_id: "canonical-node",
     image_digest: CANONICAL_IMAGE_DIGEST,
@@ -414,13 +456,23 @@ async function seedFixture(): Promise<void> {
 
 async function openAndClaimVaultSeeded(): Promise<string> {
   await openAgentBackupRestoreQuarantine(openInput());
-  await advanceAgentBackupRestoreOperation({
-    operationId,
-    ownerId: "restore-worker",
-    claimGeneration: initialClaimGeneration,
-    fromPhase: "reserved",
-    toPhase: "vault_seeded",
-  });
+  const [seeded] = await dbWrite
+    .update(agentBackupRestoreOperations)
+    .set({
+      phase: "vault_seeded",
+      claim_owner: null,
+      claim_generation: null,
+      claim_expires_at: null,
+    })
+    .where(
+      and(
+        eq(agentBackupRestoreOperations.id, operationId),
+        eq(agentBackupRestoreOperations.phase, "reserved"),
+        eq(agentBackupRestoreOperations.claim_generation, initialClaimGeneration),
+      ),
+    )
+    .returning();
+  if (!seeded) throw new Error("vault-seeded test fixture lost its exact operation CAS");
   const claim = await claimAgentBackupRestoreOperation({
     operationId,
     ownerId: "restore-worker",
@@ -446,6 +498,42 @@ async function readRows() {
   return { sandbox, operation, node };
 }
 
+async function resetLegacyReservationForCombinedIntent(): Promise<string> {
+  const [node] = await dbWrite
+    .update(dockerNodes)
+    .set({ allocated_count: 0 })
+    .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID))
+    .returning();
+  if (!node?.current_node_history_id) throw new Error("combined target occurrence is missing");
+  const [operation] = await dbWrite
+    .update(agentBackupRestoreOperations)
+    .set({
+      expected_node_record_id: null,
+      expected_node_incarnation: null,
+      expected_node_history_id: null,
+      expected_image_digest: null,
+    })
+    .where(eq(agentBackupRestoreOperations.id, operationId))
+    .returning();
+  if (!operation) throw new Error("combined restore operation fixture is missing");
+  return node.current_node_history_id;
+}
+
+function combinedIntentInput(targetNodeHistoryId: string) {
+  return {
+    operationId,
+    ownerId: "restore-worker",
+    claimGeneration: initialClaimGeneration,
+    targetNodeRecordId: TARGET_NODE_RECORD_ID,
+    targetNodeId: "restore-target",
+    targetNodeIncarnation: TARGET_NODE_INCARNATION,
+    targetNodeHistoryId,
+    replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+    activationTokenSha256: TOKEN_SHA,
+    activationTokenCiphertext: TOKEN_CIPHERTEXT,
+  } as const;
+}
+
 beforeAll(async () => {
   try {
     manifestFixture = await buildManifestFixture();
@@ -459,6 +547,7 @@ beforeAll(async () => {
         agentBackupCatalogAuthorities,
         agentBackupRestoreLeases,
         agentBackupRestoreOperations,
+        agentSandboxReplacementAttempts,
         agentNodeIncarnationHistories,
         dockerNodes,
       } as never,
@@ -495,6 +584,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(schemaFailure).toBe("");
+  await dbWrite.delete(agentSandboxReplacementAttempts);
   await dbWrite.delete(agentBackupRestoreOperations);
   await dbWrite.delete(agentBackupRestoreLeases);
   await dbWrite.delete(agentSandboxBackups);
@@ -506,6 +596,13 @@ beforeEach(async () => {
   await dbWrite.delete(users);
   await dbWrite.delete(organizations);
   await seedFixture();
+});
+
+afterEach(async () => {
+  await dbWrite.execute(
+    sql.raw(`DROP TRIGGER IF EXISTS test_agent_backup_restore_operation_guard
+      ON agent_backup_restore_operations`),
+  );
 });
 
 afterAll(async () => {
@@ -521,9 +618,763 @@ describe("restore activation quarantine", () => {
       ),
     );
     expectCanonicalQuarantineLockOrder(
-      quarantineTransactionBody("recordAgentBackupRestoreQuarantinedContainer"),
+      quarantineTransactionBody("recordAgentBackupRestoreQuarantinedContainerBoundary"),
     );
   });
+
+  test(
+    "atomically reserves exact intent, adopts canonical response-loss authority, and composes onCreated",
+    async () => {
+      const targetNodeHistoryId = await resetLegacyReservationForCombinedIntent();
+      const first = await reserveAgentBackupRestoreTargetAndStartReplacementIntent(
+        combinedIntentInput(targetNodeHistoryId),
+      );
+      expect(first.replayed).toEqual({
+        target: false,
+        quarantine: false,
+        replacementIntent: false,
+      });
+      expect(first.target).toEqual({
+        nodeRecordId: TARGET_NODE_RECORD_ID,
+        nodeId: "restore-target",
+        nodeIncarnation: TARGET_NODE_INCARNATION,
+        nodeHistoryId: targetNodeHistoryId,
+        imageDigest: IMAGE_DIGEST,
+      });
+      expect(first.sandbox).toMatchObject({
+        agentId: AGENT_ID,
+        agentName: "restore-agent",
+        organizationId: ORG_ID,
+        executionTier: "dedicated-always",
+        environmentVars: { RESTORE_TEST: "true" },
+        agentConfig: { testMode: true },
+        dockerImageReference: "registry.invalid/eliza-agent:restore-source",
+        activationTokenSha256: TOKEN_SHA,
+        activationTokenCiphertext: TOKEN_CIPHERTEXT,
+        activationGeneration: RESTORE_ATTEMPT_ID,
+        lifecycleRevision: "8",
+      });
+      expect(first.attempt).toMatchObject({
+        id: REPLACEMENT_ATTEMPT_ID,
+        operation_kind: "provision",
+        restore_attempt_id: RESTORE_ATTEMPT_ID,
+        locator_container_name: `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`,
+        locator_vpn_node_name: null,
+        locator_previous_vpn_node_id: null,
+      });
+      expect(first.locator).toMatchObject({
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        containerName: `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`,
+        containerId: null,
+        vpnNodeName: null,
+        vpnRegistrationStartedAt: null,
+        previousVpnNodeId: null,
+        vpnNodeId: null,
+      });
+      await expect(
+        verifyAgentSandboxExactRestoreReplacementIntent(
+          { attemptId: REPLACEMENT_ATTEMPT_ID, organizationId: ORG_ID, agentId: AGENT_ID },
+          first.locator,
+        ),
+      ).resolves.toMatchObject({ replayed: true });
+
+      const replay = await reserveAgentBackupRestoreTargetAndStartReplacementIntent({
+        ...combinedIntentInput(targetNodeHistoryId),
+        replacementAttemptId: OTHER_REPLACEMENT_ATTEMPT_ID,
+        activationTokenSha256: OTHER_TOKEN_SHA,
+        activationTokenCiphertext: "newly-generated-response-loss-ciphertext",
+      });
+      expect(replay.replayed).toEqual({
+        target: true,
+        quarantine: true,
+        replacementIntent: true,
+      });
+      expect(replay.attempt.id).toBe(REPLACEMENT_ATTEMPT_ID);
+      expect(replay.locator.replacementAttemptId).toBe(REPLACEMENT_ATTEMPT_ID);
+      expect(replay.sandbox.activationTokenSha256).toBe(TOKEN_SHA);
+      expect(replay.sandbox.activationTokenCiphertext).toBe(TOKEN_CIPHERTEXT);
+      expect((await readRows()).node.allocated_count).toBe(1);
+
+      const [seeded] = await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          phase: "vault_seeded",
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operationId))
+        .returning();
+      if (!seeded) throw new Error("combined vault-seeded fixture is missing");
+      const providerClaim = await claimAgentBackupRestoreOperation({
+        operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const loaded = await reserveAgentBackupRestoreTargetAndStartReplacementIntent({
+        ...combinedIntentInput(targetNodeHistoryId),
+        claimGeneration: providerClaim.claimGeneration,
+        replacementAttemptId: OTHER_REPLACEMENT_ATTEMPT_ID,
+        activationTokenSha256: OTHER_TOKEN_SHA,
+        activationTokenCiphertext: "another-unused-replay-ciphertext",
+      });
+      expect(loaded.operation.phase).toBe("vault_seeded");
+      expect(loaded.attempt.id).toBe(REPLACEMENT_ATTEMPT_ID);
+      expect(loaded.sandbox.activationTokenCiphertext).toBe(TOKEN_CIPHERTEXT);
+
+      const providerStartInput = {
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: providerClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator: loaded.locator,
+      } as const;
+      const providerStarted = await markAgentSandboxExactRestoreProviderStarted(providerStartInput);
+      expect(providerStarted.replayed).toBe(false);
+      expect(providerStarted.attempt.provider_started_at).toBeInstanceOf(Date);
+      const providerStartedAt = providerStarted.attempt.provider_started_at?.getTime();
+      const providerStartReplay =
+        await markAgentSandboxExactRestoreProviderStarted(providerStartInput);
+      expect(providerStartReplay.replayed).toBe(true);
+      expect(providerStartReplay.attempt.provider_started_at?.getTime()).toBe(providerStartedAt);
+
+      const createdLocator = { ...loaded.locator, containerId: CONTAINER_A } as const;
+      const created = await recordAgentSandboxExactRestoreProviderCreated({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: providerClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator: createdLocator,
+      });
+      expect(created).toMatchObject({
+        replayed: false,
+        operation: {
+          phase: "vault_seeded",
+          expected_container_id: null,
+          claim_generation: providerClaim.claimGeneration,
+        },
+        attempt: { locator_container_id: CONTAINER_A },
+      });
+      expect((await readRows()).sandbox).toMatchObject({
+        activation_phase: "container_pending",
+        activation_container_id: null,
+      });
+      expect((await readRows()).node.allocated_count).toBe(1);
+
+      const settlementInput = {
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: providerClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator: createdLocator,
+        receiptDigest: HASH,
+      } as const;
+      const settled = await recordAgentSandboxExactRestoreProviderSucceeded(settlementInput);
+      expect(settled).toMatchObject({
+        replayed: false,
+        operation: {
+          phase: "container_created",
+          expected_container_id: CONTAINER_A,
+          claim_generation: null,
+        },
+        attempt: { state: "provider_succeeded", provider_receipt_digest: HASH },
+      });
+      expect((await readRows()).sandbox).toMatchObject({
+        activation_phase: "restore_pending",
+        activation_container_id: CONTAINER_A,
+      });
+      const [expiredClock] = await dbWrite
+        .select({ value: sql<Date | string>`clock_timestamp()` })
+        .from(agentBackupRestoreLeases)
+        .where(eq(agentBackupRestoreLeases.id, LEASE_ID))
+        .limit(1);
+      if (!expiredClock) throw new Error("primary expiry clock was not returned");
+      const expiredAt =
+        expiredClock.value instanceof Date ? expiredClock.value : new Date(expiredClock.value);
+      await dbWrite.transaction(async (tx) => {
+        await tx
+          .update(agentBackupRestoreLeases)
+          .set({ expires_at: expiredAt })
+          .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+        await tx
+          .update(agentSandboxReplacementAttempts)
+          .set({ restore_lease_expires_at: expiredAt })
+          .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+      });
+      const settlementReplay =
+        await recordAgentSandboxExactRestoreProviderSucceeded(settlementInput);
+      expect(settlementReplay.replayed).toBe(true);
+      const renewedUntil = new Date(Date.now() + 600_000);
+      await dbWrite.transaction(async (tx) => {
+        await tx
+          .update(agentBackupRestoreLeases)
+          .set({ expires_at: renewedUntil })
+          .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+        await tx
+          .update(agentSandboxReplacementAttempts)
+          .set({ restore_lease_expires_at: renewedUntil })
+          .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+      });
+
+      const resumeClaim = await claimAgentBackupRestoreOperation({
+        operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const replayWithResumeClaim =
+        await recordAgentSandboxExactRestoreProviderSucceeded(settlementInput);
+      expect(replayWithResumeClaim).toMatchObject({
+        replayed: true,
+        operation: {
+          phase: "container_created",
+          claim_generation: resumeClaim.claimGeneration,
+        },
+        attempt: { state: "provider_succeeded", provider_receipt_digest: HASH },
+      });
+      const providerSucceededResume =
+        await reserveAgentBackupRestoreTargetAndStartReplacementIntent({
+          ...combinedIntentInput(targetNodeHistoryId),
+          claimGeneration: resumeClaim.claimGeneration,
+          replacementAttemptId: OTHER_REPLACEMENT_ATTEMPT_ID,
+          activationTokenSha256: OTHER_TOKEN_SHA,
+          activationTokenCiphertext: "discarded-after-provider-success",
+        });
+      expect(providerSucceededResume.attempt.state).toBe("provider_succeeded");
+      expect(providerSucceededResume.attempt.provider_started_at?.getTime()).toBe(
+        providerStartedAt,
+      );
+
+      const beforeRelease = providerSucceededResume.operation;
+      const released = await releaseAgentBackupRestoreOperationClaim({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: resumeClaim.claimGeneration,
+      });
+      expect(released).toMatchObject({
+        phase: "container_created",
+        attempts: beforeRelease.attempts,
+        next_attempt_at: beforeRelease.next_attempt_at,
+        claim_owner: null,
+        claim_generation: null,
+        claim_expires_at: null,
+      });
+      const restoringClaim = await claimAgentBackupRestoreOperation({
+        operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const restoring = await advanceAgentBackupRestoreOperation({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: restoringClaim.claimGeneration,
+        fromPhase: "container_created",
+        toPhase: "restoring",
+      });
+      expect(restoring.phase).toBe("restoring");
+      const replayAfterAdvance =
+        await recordAgentSandboxExactRestoreProviderSucceeded(settlementInput);
+      expect(replayAfterAdvance).toMatchObject({
+        replayed: true,
+        operation: {
+          phase: "restoring",
+          expected_container_id: CONTAINER_A,
+          claim_generation: null,
+        },
+        attempt: { state: "provider_succeeded", provider_receipt_digest: HASH },
+      });
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "rolls capacity, target, and quarantine back when a late active-effect fence rejects intent",
+    async () => {
+      const targetNodeHistoryId = await resetLegacyReservationForCombinedIntent();
+      await dbWrite.insert(agentSandboxReplacementAttempts).values({
+        id: OTHER_REPLACEMENT_ATTEMPT_ID,
+        organization_id: ORG_ID,
+        agent_id: AGENT_ID,
+        operation_kind: "upgrade",
+        lifecycle_revision: 7n,
+        activation_generation: PREVIOUS_ACTIVATION_GENERATION,
+      });
+
+      await expect(
+        reserveAgentBackupRestoreTargetAndStartReplacementIntent(
+          combinedIntentInput(targetNodeHistoryId),
+        ),
+      ).rejects.toThrow(/active effect|already owned/i);
+      const { sandbox, operation, node } = await readRows();
+      expect(node.allocated_count).toBe(0);
+      expect(operation.expected_node_record_id).toBeNull();
+      expect(operation.expected_node_history_id).toBeNull();
+      expect(sandbox.activation_generation).toBe(PREVIOUS_ACTIVATION_GENERATION);
+      expect(await dbWrite.select().from(agentSandboxReplacementAttempts)).toHaveLength(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "keeps a first provider-success settlement live-lease-only",
+    async () => {
+      const targetNodeHistoryId = await resetLegacyReservationForCombinedIntent();
+      const intent = await reserveAgentBackupRestoreTargetAndStartReplacementIntent(
+        combinedIntentInput(targetNodeHistoryId),
+      );
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          phase: "vault_seeded",
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operationId));
+      const claim = await claimAgentBackupRestoreOperation({
+        operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const providerInput = {
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: claim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      } as const;
+      await markAgentSandboxExactRestoreProviderStarted({
+        ...providerInput,
+        locator: intent.locator,
+      });
+      const locator = { ...intent.locator, containerId: CONTAINER_A } as const;
+      await recordAgentSandboxExactRestoreProviderCreated({ ...providerInput, locator });
+      await dbWrite
+        .update(agentBackupRestoreLeases)
+        .set({ expires_at: new Date(Date.now() - 1_000) })
+        .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+
+      await expect(
+        recordAgentSandboxExactRestoreProviderSucceeded({
+          ...providerInput,
+          locator,
+          receiptDigest: HASH,
+        }),
+      ).rejects.toThrow(/lease is expired or released/i);
+      const [attempt] = await dbWrite
+        .select()
+        .from(agentSandboxReplacementAttempts)
+        .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+      expect(attempt).toMatchObject({
+        state: "in_flight_unresolved",
+        locator_container_id: CONTAINER_A,
+        provider_receipt_digest: null,
+      });
+      expect(await readRows()).toMatchObject({
+        sandbox: { activation_phase: "container_pending", activation_container_id: null },
+        operation: { phase: "vault_seeded", expected_container_id: null },
+        node: { allocated_count: 1 },
+      });
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "fences cleanup before SSH, serializes takeover, and releases exact capacity once",
+    async () => {
+      const targetNodeHistoryId = await resetLegacyReservationForCombinedIntent();
+      const intent = await reserveAgentBackupRestoreTargetAndStartReplacementIntent(
+        combinedIntentInput(targetNodeHistoryId),
+      );
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          phase: "vault_seeded",
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operationId));
+
+      const cleanupClaim = await claimAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        claimMs: 60_000,
+      });
+      expect(cleanupClaim.status).toBe("claimed");
+      if (cleanupClaim.status !== "claimed") throw new Error("cleanup claim was not acquired");
+      await markAgentSandboxExactRestoreProviderStarted({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: cleanupClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator: intent.locator,
+      });
+      const createdLocator = { ...intent.locator, containerId: CONTAINER_A } as const;
+      await recordAgentSandboxExactRestoreProviderCreated({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: cleanupClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator: createdLocator,
+      });
+
+      const begun = await beginAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: cleanupClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      });
+      expect(begun).toMatchObject({
+        replayed: false,
+        operation: { phase: "vault_seeded", claim_generation: cleanupClaim.claimGeneration },
+        attempt: { state: "cleanup_in_progress" },
+        locator: { containerId: CONTAINER_A },
+      });
+      await expect(
+        recordAgentSandboxExactRestoreProviderSucceeded({
+          operationId,
+          ownerId: "restore-worker",
+          claimGeneration: cleanupClaim.claimGeneration,
+          replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+          locator: createdLocator,
+          receiptDigest: HASH,
+        }),
+      ).rejects.toThrow(/cleanup|terminal/i);
+      await expect(
+        claimAgentSandboxExactRestoreCleanup({
+          operationId,
+          ownerId: "restore-worker",
+          replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+          claimMs: 60_000,
+        }),
+      ).rejects.toThrow(/claimed/i);
+      await expect(
+        releaseAgentSandboxExactRestoreCleanupClaim({
+          operationId,
+          ownerId: "restore-worker",
+          claimGeneration: OTHER_REPLACEMENT_ATTEMPT_ID,
+          replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        }),
+      ).rejects.toThrow(/stale|expired/i);
+      await releaseAgentSandboxExactRestoreCleanupClaim({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: cleanupClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      });
+
+      await dbWrite
+        .update(agentBackupRestoreLeases)
+        .set({ expires_at: new Date(Date.now() - 1_000) })
+        .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+      const takeover = await claimAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        claimMs: 60_000,
+      });
+      expect(takeover.status).toBe("claimed");
+      if (takeover.status !== "claimed") throw new Error("cleanup takeover was not acquired");
+      const replayedBegin = await beginAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: takeover.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      });
+      expect(replayedBegin.replayed).toBe(true);
+
+      const finished = await finishAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: takeover.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator: replayedBegin.locator,
+        cleanupReceiptDigest: OTHER_SHA,
+      });
+      expect(finished).toMatchObject({
+        replayed: false,
+        operation: { phase: "vault_seeded", claim_generation: null },
+        attempt: { state: "cleanup_proven", cleanup_receipt_digest: OTHER_SHA },
+      });
+      expect((await readRows()).node.allocated_count).toBe(0);
+
+      await dbWrite
+        .update(agentBackupRestoreLeases)
+        .set({ expires_at: new Date(Date.now() + 600_000), released_at: null })
+        .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+      const genericClaim = await claimAgentBackupRestoreOperation({
+        operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const lostFinishReplay = await finishAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: takeover.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator: replayedBegin.locator,
+        cleanupReceiptDigest: OTHER_SHA,
+      });
+      expect(lostFinishReplay).toMatchObject({
+        replayed: true,
+        operation: { claim_generation: genericClaim.claimGeneration },
+        attempt: { cleanup_receipt_digest: OTHER_SHA },
+      });
+      const terminalClaim = await claimAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        claimMs: 60_000,
+      });
+      expect(terminalClaim).toMatchObject({
+        status: "cleanup_proven",
+        claimGeneration: null,
+        operation: { claim_generation: genericClaim.claimGeneration },
+        attempt: { cleanup_receipt_digest: OTHER_SHA },
+      });
+      expect((await readRows()).node.allocated_count).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "cleans a provider-settled candidate, retains its receipt, and replays lost finish once",
+    async () => {
+      const targetNodeHistoryId = await resetLegacyReservationForCombinedIntent();
+      const intent = await reserveAgentBackupRestoreTargetAndStartReplacementIntent(
+        combinedIntentInput(targetNodeHistoryId),
+      );
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          phase: "vault_seeded",
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operationId));
+
+      const providerClaim = await claimAgentBackupRestoreOperation({
+        operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const providerInput = {
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: providerClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      } as const;
+      await markAgentSandboxExactRestoreProviderStarted({
+        ...providerInput,
+        locator: intent.locator,
+      });
+      const createdLocator = { ...intent.locator, containerId: CONTAINER_A } as const;
+      await recordAgentSandboxExactRestoreProviderCreated({
+        ...providerInput,
+        locator: createdLocator,
+      });
+      await recordAgentSandboxExactRestoreProviderSucceeded({
+        ...providerInput,
+        locator: createdLocator,
+        receiptDigest: HASH,
+      });
+      expect((await readRows()).node.allocated_count).toBe(1);
+      await installExactCleanupOperationGuard();
+
+      const firstCleanupClaim = await claimAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        claimMs: 60_000,
+      });
+      expect(firstCleanupClaim).toMatchObject({
+        status: "claimed",
+        operation: { phase: "container_created", expected_container_id: CONTAINER_A },
+        attempt: { state: "provider_succeeded", provider_receipt_digest: HASH },
+      });
+      if (firstCleanupClaim.status !== "claimed") {
+        throw new Error("provider-settled cleanup claim was not acquired");
+      }
+      await expect(
+        Promise.resolve(
+          dbWrite.execute(sql`
+          UPDATE agent_backup_restore_operations
+          SET phase = 'vault_seeded', expected_container_id = NULL,
+            claim_owner = NULL, claim_generation = NULL, claim_expires_at = NULL
+          WHERE id = ${operationId}::uuid
+          `),
+        ),
+      ).rejects.toThrow();
+      const released = await releaseAgentSandboxExactRestoreCleanupClaim({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: firstCleanupClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      });
+      expect(released).toMatchObject({
+        phase: "container_created",
+        expected_container_id: CONTAINER_A,
+        claim_generation: null,
+      });
+
+      const cleanupClaim = await claimAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        claimMs: 60_000,
+      });
+      if (cleanupClaim.status !== "claimed") {
+        throw new Error("provider-settled cleanup takeover was not acquired");
+      }
+      const begun = await beginAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: cleanupClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+      });
+      expect(begun).toMatchObject({
+        replayed: false,
+        operation: { phase: "container_created", expected_container_id: CONTAINER_A },
+        attempt: {
+          state: "cleanup_in_progress",
+          provider_receipt_digest: HASH,
+          cleanup_receipt_digest: null,
+        },
+        locator: { containerId: CONTAINER_A },
+      });
+      expect(
+        (
+          await beginAgentSandboxExactRestoreCleanup({
+            operationId,
+            ownerId: "restore-worker",
+            claimGeneration: cleanupClaim.claimGeneration,
+            replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+          })
+        ).replayed,
+      ).toBe(true);
+
+      const finishInput = {
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: cleanupClaim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator: begun.locator,
+        cleanupReceiptDigest: OTHER_SHA,
+      } as const;
+      const finished = await finishAgentSandboxExactRestoreCleanup(finishInput);
+      expect(finished).toMatchObject({
+        replayed: false,
+        operation: {
+          phase: "vault_seeded",
+          expected_container_id: null,
+          claim_generation: null,
+        },
+        attempt: {
+          state: "cleanup_proven",
+          provider_receipt_digest: HASH,
+          cleanup_receipt_digest: OTHER_SHA,
+        },
+      });
+      expect(await readRows()).toMatchObject({
+        sandbox: {
+          lifecycle_revision: 10,
+          activation_lifecycle_revision: 10n,
+          activation_phase: "container_pending",
+          activation_container_id: null,
+          activation_node_id: null,
+          activation_image_digest: null,
+          activation_boot_id: null,
+        },
+        operation: {
+          phase: "vault_seeded",
+          expected_container_id: null,
+          claim_generation: null,
+        },
+        node: { allocated_count: 0 },
+      });
+
+      const genericClaim = await claimAgentBackupRestoreOperation({
+        operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      expect(genericClaim.operation).toMatchObject({
+        phase: "vault_seeded",
+        expected_container_id: null,
+        claim_generation: genericClaim.claimGeneration,
+      });
+
+      const lostResponseReplay = await finishAgentSandboxExactRestoreCleanup(finishInput);
+      expect(lostResponseReplay).toMatchObject({
+        replayed: true,
+        operation: {
+          phase: "vault_seeded",
+          expected_container_id: null,
+          claim_generation: genericClaim.claimGeneration,
+        },
+        attempt: {
+          state: "cleanup_proven",
+          provider_receipt_digest: HASH,
+          cleanup_receipt_digest: OTHER_SHA,
+        },
+      });
+      expect((await readRows()).node.allocated_count).toBe(0);
+      expect(
+        (
+          await beginAgentSandboxExactRestoreCleanup({
+            operationId,
+            ownerId: "restore-worker",
+            claimGeneration: cleanupClaim.claimGeneration,
+            replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+          })
+        ).replayed,
+      ).toBe(true);
+      await expect(
+        finishAgentSandboxExactRestoreCleanup({
+          ...finishInput,
+          cleanupReceiptDigest: TOKEN_SHA,
+        }),
+      ).rejects.toThrow(/receipt replay mismatch/i);
+      expect(
+        await claimAgentSandboxExactRestoreCleanup({
+          operationId,
+          ownerId: "restore-worker",
+          replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+          claimMs: 60_000,
+        }),
+      ).toMatchObject({
+        status: "cleanup_proven",
+        claimGeneration: null,
+        operation: {
+          phase: "vault_seeded",
+          expected_container_id: null,
+          claim_generation: genericClaim.claimGeneration,
+        },
+      });
+
+      const replacement = await reserveAgentBackupRestoreTargetAndStartReplacementIntent({
+        ...combinedIntentInput(targetNodeHistoryId),
+        claimGeneration: genericClaim.claimGeneration,
+        replacementAttemptId: OTHER_REPLACEMENT_ATTEMPT_ID,
+      });
+      expect(replacement).toMatchObject({
+        operation: { phase: "vault_seeded", expected_container_id: null },
+        attempt: {
+          id: OTHER_REPLACEMENT_ATTEMPT_ID,
+          state: "in_flight_unresolved",
+          locator_container_id: null,
+        },
+        sandbox: { activationGeneration: RESTORE_ATTEMPT_ID },
+      });
+      expect(await readRows()).toMatchObject({
+        sandbox: { activation_phase: "container_pending", activation_container_id: null },
+        operation: { phase: "vault_seeded", expected_container_id: null },
+        node: { allocated_count: 1 },
+      });
+    },
+    TIMEOUT,
+  );
 
   test(
     "opens once, replays exactly, derives the target generation, and preserves the canonical route",
@@ -575,6 +1426,80 @@ describe("restore activation quarantine", () => {
       expect(operation.claim_generation).toBe(initialClaimGeneration);
       expect(operation.expected_node_history_id).toBe(node.current_node_history_id);
       expect(node.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "serializes provider settlement against cleanup-begin with one durable winner",
+    async () => {
+      const targetNodeHistoryId = await resetLegacyReservationForCombinedIntent();
+      const intent = await reserveAgentBackupRestoreTargetAndStartReplacementIntent(
+        combinedIntentInput(targetNodeHistoryId),
+      );
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          phase: "vault_seeded",
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operationId));
+      const claim = await claimAgentSandboxExactRestoreCleanup({
+        operationId,
+        ownerId: "restore-worker",
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        claimMs: 60_000,
+      });
+      if (claim.status !== "claimed") throw new Error("race cleanup claim was not acquired");
+      await markAgentSandboxExactRestoreProviderStarted({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: claim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator: intent.locator,
+      });
+      const locator = { ...intent.locator, containerId: CONTAINER_A } as const;
+      await recordAgentSandboxExactRestoreProviderCreated({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: claim.claimGeneration,
+        replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        locator,
+      });
+
+      const contenders = await Promise.allSettled([
+        beginAgentSandboxExactRestoreCleanup({
+          operationId,
+          ownerId: "restore-worker",
+          claimGeneration: claim.claimGeneration,
+          replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+        }),
+        recordAgentSandboxExactRestoreProviderSucceeded({
+          operationId,
+          ownerId: "restore-worker",
+          claimGeneration: claim.claimGeneration,
+          replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+          locator,
+          receiptDigest: HASH,
+        }),
+      ]);
+      expect(contenders.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(contenders.filter((result) => result.status === "rejected")).toHaveLength(1);
+      const { operation } = await readRows();
+      const [attempt] = await dbWrite
+        .select()
+        .from(agentSandboxReplacementAttempts)
+        .where(eq(agentSandboxReplacementAttempts.id, REPLACEMENT_ATTEMPT_ID));
+      expect(
+        (operation.phase === "vault_seeded" &&
+          operation.expected_container_id === null &&
+          attempt?.state === "cleanup_in_progress") ||
+          (operation.phase === "container_created" &&
+            operation.expected_container_id === CONTAINER_A &&
+            attempt?.state === "provider_succeeded"),
+      ).toBe(true);
     },
     TIMEOUT,
   );
