@@ -199,6 +199,22 @@ describe("PaymentStateDetailPage fetch states", () => {
     }
   });
 
+  it("rejects a success row with a non-finite amount, never rendering $∞ / $NaN", async () => {
+    // typeof x === "number" passes for Infinity and NaN, and JSON produces
+    // Infinity from 1e999 — Number.isFinite is the only clause between the
+    // transport and the rendered amount. The list-surface suite pins each
+    // of the six guarded numeric fields individually; this detail-surface
+    // test covers the rendered amount path (attentionhead third-pass
+    // review of #26752).
+    apiMock.api.mockResolvedValueOnce({
+      state: stateRow({ amountCents: Number.POSITIVE_INFINITY }),
+    });
+    renderDetail();
+    await screen.findByTestId("payment-detail-error");
+    expect(screen.getByText(/malformed/i)).toBeTruthy();
+    expect(screen.queryByTestId("payment-detail-title")).toBeNull();
+  });
+
   it("rejects a success row whose id does not match the active route id", async () => {
     // The route contract binds /payments/:id to the requested row: a
     // well-formed payload for a DIFFERENT payment must not render as this

@@ -442,6 +442,46 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
     }
   });
 
+  it("rejects non-finite numeric rows (Infinity / NaN), never rendering $∞ or $NaN", async () => {
+    // typeof x === "number" passes for Infinity and NaN, and JSON produces
+    // Infinity from 1e999 — Number.isFinite is the only clause standing
+    // between the transport and formatAmount. Each of the six guarded
+    // numeric fields gets its own non-finite row so every clause is
+    // individually load-bearing (RP review r5: a single amountCents row
+    // leaves the other five clauses removable without a failing test).
+    // Regression control: with the clauses removed, formatAmount renders
+    // "$∞" / "$NaN" in a billing row (#26752 attentionhead third-pass
+    // review).
+    const nonFiniteRows: Record<string, unknown>[] = [
+      { ...stateRow(), amountCents: Number.POSITIVE_INFINITY },
+      { ...stateRow(), amountCents: Number.NaN },
+      { ...stateRow(), cumulativeRefundedChargeCurrency: JSON.parse("1e999") },
+      {
+        ...stateRow(),
+        cumulativeDisputedChargeCurrency: Number.POSITIVE_INFINITY,
+      },
+      { ...stateRow(), cumulativeClawbackCredits: Number.NaN },
+      { ...stateRow(), reinstatedCredits: JSON.parse("1e999") },
+      { ...stateRow(), unrecoveredShortfallCredits: Number.NaN },
+    ];
+    for (const invalid of nonFiniteRows) {
+      apiMock.mockReset();
+      apiMock.mockResolvedValueOnce({ states: [invalid] });
+      render(
+        <MemoryRouter>
+          <PaymentActivityCard />
+        </MemoryRouter>,
+      );
+      // eslint-disable-next-line no-await-in-loop
+      await screen.findByText(/Payment activity could not be loaded/i);
+      // eslint-disable-next-line no-await-in-loop
+      expect(screen.getByText(/malformed/i)).toBeTruthy();
+      // eslint-disable-next-line no-await-in-loop
+      expect(screen.queryByTestId("payment-state-row")).toBeNull();
+      cleanup();
+    }
+  });
+
   it("renders the policy-effect line only when the authoritative row carries one", async () => {
     // A fully refunded row with policyEffect: null must not display the
     // "Policy effect unavailable" line the response never contained — the
