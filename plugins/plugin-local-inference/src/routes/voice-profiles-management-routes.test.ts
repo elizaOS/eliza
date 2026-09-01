@@ -20,6 +20,7 @@ import {
 } from "./voice-profiles-management-routes";
 
 const OWNER_ENTITY_ID = "entity-owner";
+const REQUEST_BODY = Symbol.for("eliza.http.cachedRequestBody");
 const JSON_BODY = Symbol.for("eliza.http.cachedJsonBody");
 
 let rootDir: string;
@@ -53,7 +54,12 @@ function request(
 	req.method = method;
 	req.url = pathname;
 	if (body !== undefined) {
-		(req as http.IncomingMessage & { [JSON_BODY]?: unknown })[JSON_BODY] = body;
+		const cached = req as http.IncomingMessage & {
+			[REQUEST_BODY]?: string;
+			[JSON_BODY]?: unknown;
+		};
+		cached[REQUEST_BODY] = JSON.stringify(body);
+		cached[JSON_BODY] = body;
 	}
 	return req;
 }
