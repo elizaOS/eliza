@@ -567,12 +567,10 @@ export async function performSsoExchange(
 }
 
 /**
- * Destroy a code this origin refuses to exchange (state mismatch, missing
- * verifier). The server consumes atomically BEFORE checking the verifier, so
- * presenting the bare code burns it: without this, an abandoned handshake
- * leaves a live code sitting in the address bar and both origins' request
- * logs for the rest of its TTL. Fire-and-forget — the reply is always 401 and
- * failure to burn only restores the pre-existing exposure.
+ * Destroy a code this document refuses to hand off or exchange. The dedicated
+ * endpoint accepts either exact bridge origin but can only consume: it never
+ * returns a session. Keepalive lets the tiny fire-and-forget POST survive the
+ * fallback navigation; failure leaves only the code's short server TTL.
  */
 export function burnSsoBridgeCode(
   code: string,
@@ -581,9 +579,10 @@ export function burnSsoBridgeCode(
 ): void {
   const base = apiBaseForHostname(hostname);
   if (!base || !isWellFormedSsoCode(code)) return;
-  void fetchFn(`${base}/api/auth/sso-bridge/exchange`, {
+  void fetchFn(`${base}/api/auth/sso-bridge/burn`, {
     method: "POST",
     credentials: "include",
+    keepalive: true,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code }),
   }).catch(() => {

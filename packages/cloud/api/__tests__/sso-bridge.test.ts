@@ -1,5 +1,5 @@
 /**
- * Route-level contract for POST /api/auth/sso-bridge/{mint,exchange} through
+ * Route-level contract for POST /api/auth/sso-bridge/{mint,exchange,burn} through
  * the REAL route module: real HS256 Steward JWTs (jose) verified by the real
  * `verifyStewardTokenCached`, and the real POSTGRES-backed single-use code
  * store + logout-marker service on PGlite — the same atomic
@@ -156,6 +156,13 @@ function exchange(code: string, verifier?: string): Promise<Response> {
   });
 }
 
+function burn(
+  code: string,
+  origin: string = "https://eliza.app",
+): Promise<Response> {
+  return call("/burn", { origin, body: { code } });
+}
+
 /** Assert a 200 exchange body carries a REAL re-minted token for `userId`,
  * accepted by the production verifier. */
 async function expectUsableToken(
@@ -234,6 +241,7 @@ describe("origin gating", () => {
   test("exchange requires an app-host origin — the dashboard cannot exchange", async () => {
     for (const origin of [
       undefined,
+      "https://eliza.app",
       "https://elizacloud.ai",
       "https://evil.elizacloud.ai",
       "https://sandbox-1.elizacloud.ai",
@@ -244,6 +252,22 @@ describe("origin gating", () => {
       });
       expect(res.status).toBe(403);
     }
+  });
+
+  test("burn accepts only exact bridge origins", async () => {
+    const code = `esso_${"0".repeat(64)}`;
+    for (const origin of [
+      undefined,
+      "https://evil.eliza.app",
+      "https://sandbox-1.cloud.eliza.app",
+      "https://eliza.app.evil.com",
+    ]) {
+      expect((await call("/burn", { origin, body: { code } })).status).toBe(
+        403,
+      );
+    }
+    expect((await burn(code, "https://eliza.app")).status).toBe(204);
+    expect((await burn(code, "https://cloud.eliza.app")).status).toBe(204);
   });
 });
 
@@ -391,6 +415,22 @@ describe("code lifecycle", () => {
 
     const after = await exchange(code, verifier);
     expect(after.status).toBe(401);
+  });
+
+  test("the mint origin can burn through the destruction-only endpoint", async () => {
+    const token = await mintToken("user-mint-origin-burn");
+    const { verifier, challenge } = await makeVerifierPair();
+    const code = await mintCode(token, challenge);
+
+    const burned = await burn(code);
+    expect(burned.status).toBe(204);
+    expect(await burned.text()).toBe("");
+
+    const after = await exchange(code, verifier);
+    expect(after.status).toBe(401);
+    expect(((await after.json()) as { code: string }).code).toBe(
+      "invalid_code",
+    );
   });
 
   test("an expired code fails", async () => {

@@ -4,6 +4,7 @@
  *
  *   POST /api/auth/sso-bridge/mint      (Bearer-authenticated) → { code }
  *   POST /api/auth/sso-bridge/exchange  (public, code+verifier) → { token }
+ *   POST /api/auth/sso-bridge/burn      (public, code only) → 204
  *
  * WHY A HANDSHAKE AND NOT A SHARED JS-READABLE COOKIE: the SPA session is a
  * per-origin localStorage JWT, and this platform serves user-controlled
@@ -79,6 +80,12 @@ const MINT_ORIGIN_HOSTS = new Set<string>([
 const EXCHANGE_ORIGIN_HOSTS = new Set<string>([
   new URL(ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin).hostname,
   new URL(ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin).hostname,
+]);
+
+/** Either trusted leg may destroy a code, but this endpoint never exchanges. */
+const BURN_ORIGIN_HOSTS = new Set<string>([
+  ...MINT_ORIGIN_HOSTS,
+  ...EXCHANGE_ORIGIN_HOSTS,
 ]);
 
 /** Only honored when the worker is NOT production (local dev / tests). */
@@ -212,6 +219,36 @@ app.post("/mint", async (c) => {
     // This is also the logout-marker fail-CLOSED path: an unreadable marker
     // store throws and lands here, so an outage can never mint.
     logger.error("[sso-bridge] mint failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return c.json(errorBody("SSO bridge unavailable", "sso_unavailable"), 503);
+  }
+});
+
+app.post("/burn", async (c) => {
+  try {
+    const isProduction = c.env.NODE_ENV === "production";
+    if (!checkBridgeOrigin(c, BURN_ORIGIN_HOSTS, isProduction)) {
+      return c.json(errorBody("Forbidden", "forbidden_origin"), 403);
+    }
+
+    const body = (await c.req.json().catch(() => ({}))) as {
+      code?: unknown;
+    };
+    const code = typeof body.code === "string" ? body.code : null;
+    if (!looksLikeSsoBridgeCode(code)) {
+      return c.json(errorBody("Code required", "missing_code"), 400);
+    }
+
+    // `consumeSsoBridgeCode` atomically deletes before checking the missing
+    // verifier. Always return the same empty response so this destruction-only
+    // endpoint cannot reveal whether the code existed or was already spent.
+    await consumeSsoBridgeCode(code, null);
+    return c.body(null, 204);
+  } catch (error) {
+    // error-policy:J1 route boundary — a failed best-effort burn remains a
+    // structured outage; the code's short TTL is still the final boundary.
+    logger.error("[sso-bridge] burn failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return c.json(errorBody("SSO bridge unavailable", "sso_unavailable"), 503);

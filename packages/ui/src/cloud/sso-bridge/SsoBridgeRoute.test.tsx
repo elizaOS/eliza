@@ -2,9 +2,17 @@
 // @vitest-environment jsdom
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
+import {
+  MemoryRouter,
+  type NavigateFunction,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { appModeNavigation } from "../app-mode/app-mode";
 import { SsoBridgeRoute } from "./SsoBridgeRoute";
 
@@ -67,6 +75,15 @@ function json(status: number, body: unknown): Response {
 function LocationProbe({ id }: { id: string }): React.JSX.Element {
   const location = useLocation();
   return <div data-testid={id}>{`${location.pathname}${location.search}`}</div>;
+}
+
+function NavigationCapture({
+  capture,
+}: {
+  capture: (navigate: NavigateFunction) => void;
+}): null {
+  capture(useNavigate());
+  return null;
 }
 
 function renderBridge(hostname: string, search: string): void {
@@ -186,6 +203,215 @@ describe("SsoBridgeRoute — mint leg (eliza.app auth host)", () => {
     });
   });
 
+  it("keeps a successful mint single-shot through StrictMode effect replay", async () => {
+    setReferrer("https://cloud.eliza.app/");
+    localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
+    stubNetwork((url) =>
+      url.endsWith("/api/auth/sso-bridge/mint")
+        ? json(200, { ok: true, code: CODE })
+        : json(401, { error: "invalid_verifier" }),
+    );
+
+    render(
+      <StrictMode>
+        <MemoryRouter initialEntries={[`/auth/bridge${MINT_QS}`]}>
+          <Routes>
+            <Route
+              path="/auth/bridge"
+              element={<SsoBridgeRoute hostname="eliza.app" />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </StrictMode>,
+    );
+
+    await waitFor(() =>
+      expect(replacedUrls).toEqual([
+        `https://cloud.eliza.app/auth/bridge?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
+      ]),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchLog).toHaveLength(1);
+  });
+
+  it("burns a minted code when the bridge route unmounts before navigation", async () => {
+    setReferrer("https://cloud.eliza.app/");
+    localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
+    let resolveMint!: (response: Response) => void;
+    fetchLog = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      fetchLog.push({ url, init });
+      if (url.endsWith("/api/auth/sso-bridge/mint")) {
+        return new Promise<Response>((resolve) => {
+          resolveMint = resolve;
+        });
+      }
+      return Promise.resolve(json(401, { error: "invalid_verifier" }));
+    }) as typeof fetch;
+    replacedUrls = [];
+    appModeNavigation.replace = (url: string) => {
+      replacedUrls.push(url);
+    };
+
+    const view = render(
+      <MemoryRouter initialEntries={[`/auth/bridge${MINT_QS}`]}>
+        <Routes>
+          <Route
+            path="/auth/bridge"
+            element={<SsoBridgeRoute hostname="eliza.app" />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(fetchLog).toHaveLength(1));
+    view.unmount();
+
+    await act(async () => {
+      resolveMint(json(200, { ok: true, code: CODE }));
+      await Promise.resolve();
+    });
+
+    expect(replacedUrls).toEqual([]);
+    await waitFor(() => expect(fetchLog).toHaveLength(2));
+    expect(fetchLog[1].url).toBe("https://eliza.app/api/auth/sso-bridge/burn");
+    expect(JSON.parse(String(fetchLog[1].init?.body))).toEqual({ code: CODE });
+  });
+
+  it("burns a stale mint when the challenge changes and only hands off the current code", async () => {
+    const nextChallenge = "f".repeat(64);
+    const nextCode = `esso_${"c".repeat(64)}`;
+    setReferrer("https://cloud.eliza.app/");
+    localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
+    const resolveMints: Array<(response: Response) => void> = [];
+    fetchLog = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      fetchLog.push({ url, init });
+      if (url.endsWith("/api/auth/sso-bridge/mint")) {
+        return new Promise<Response>((resolve) => {
+          resolveMints.push(resolve);
+        });
+      }
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }) as typeof fetch;
+    replacedUrls = [];
+    appModeNavigation.replace = (url: string) => {
+      replacedUrls.push(url);
+    };
+    let navigate!: NavigateFunction;
+
+    render(
+      <MemoryRouter initialEntries={[`/auth/bridge${MINT_QS}`]}>
+        <NavigationCapture
+          capture={(capturedNavigate) => {
+            navigate = capturedNavigate;
+          }}
+        />
+        <Routes>
+          <Route
+            path="/auth/bridge"
+            element={<SsoBridgeRoute hostname="eliza.app" />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(resolveMints).toHaveLength(1));
+
+    act(() => {
+      navigate(
+        `/auth/bridge?state=${OTHER_STATE}&challenge=${nextChallenge}&returnTo=%2Fchat`,
+      );
+    });
+    await waitFor(() => expect(resolveMints).toHaveLength(2));
+
+    await act(async () => {
+      resolveMints[1](json(200, { ok: true, code: nextCode }));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(replacedUrls).toEqual([
+        `https://cloud.eliza.app/auth/bridge?code=${nextCode}&state=${OTHER_STATE}&returnTo=%2Fchat`,
+      ]),
+    );
+
+    await act(async () => {
+      resolveMints[0](json(200, { ok: true, code: CODE }));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(
+        fetchLog.filter(({ url }) => url.endsWith("/sso-bridge/burn")),
+      ).toHaveLength(1),
+    );
+    expect(JSON.parse(String(fetchLog[2].init?.body))).toEqual({ code: CODE });
+  });
+
+  it("does not burn after a successful handoff is transferred and then unmounted", async () => {
+    setReferrer("https://cloud.eliza.app/");
+    localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
+    stubNetwork((url) =>
+      url.endsWith("/api/auth/sso-bridge/mint")
+        ? json(200, { ok: true, code: CODE })
+        : new Response(null, { status: 204 }),
+    );
+
+    const view = render(
+      <MemoryRouter initialEntries={[`/auth/bridge${MINT_QS}`]}>
+        <Routes>
+          <Route
+            path="/auth/bridge"
+            element={<SsoBridgeRoute hostname="eliza.app" />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(replacedUrls).toHaveLength(1));
+
+    view.unmount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(fetchLog).toHaveLength(1);
+    expect(fetchLog[0].url).toBe("https://eliza.app/api/auth/sso-bridge/mint");
+  });
+
+  it("burns once and falls back to app login when code handoff navigation throws", async () => {
+    setReferrer("https://cloud.eliza.app/");
+    localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
+    stubNetwork((url) =>
+      url.endsWith("/api/auth/sso-bridge/mint")
+        ? json(200, { ok: true, code: CODE })
+        : json(401, { error: "invalid_verifier" }),
+    );
+    const exchangeUrl = `https://cloud.eliza.app/auth/bridge?code=${CODE}&state=${STATE}&returnTo=%2Fchat`;
+    appModeNavigation.replace = (url: string) => {
+      replacedUrls.push(url);
+      if (url === exchangeUrl) {
+        throw new DOMException("Blocked", "SecurityError");
+      }
+    };
+
+    renderBridge("eliza.app", MINT_QS);
+
+    await waitFor(() =>
+      expect(replacedUrls).toEqual([
+        exchangeUrl,
+        "https://cloud.eliza.app/login?returnTo=%2Fchat",
+      ]),
+    );
+    expect(
+      fetchLog.filter(({ url }) => url.endsWith("/sso-bridge/mint")),
+    ).toHaveLength(1);
+    expect(
+      fetchLog.filter(({ url }) => url.endsWith("/sso-bridge/burn")),
+    ).toHaveLength(1);
+    expect(JSON.parse(String(fetchLog[1].init?.body))).toEqual({ code: CODE });
+  });
+
   it("mint failure → the app host's own login, never a loop back here", async () => {
     setReferrer("https://cloud.eliza.app/");
     localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
@@ -223,8 +449,9 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
   function expectBurnOnly(): void {
     expect(fetchLog).toHaveLength(1);
     expect(fetchLog[0].url).toBe(
-      "https://cloud.eliza.app/api/auth/sso-bridge/exchange",
+      "https://cloud.eliza.app/api/auth/sso-bridge/burn",
     );
+    expect(fetchLog[0].init?.keepalive).toBe(true);
     expect(JSON.parse(String(fetchLog[0].init?.body))).toEqual({ code: CODE });
   }
 

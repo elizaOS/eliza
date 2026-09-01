@@ -119,6 +119,103 @@ function referrerIsPairedAppOrigin(
   }
 }
 
+type MintedCodeHandoff = {
+  /** Destroy the code while this document still owns it. Idempotent. */
+  burn(): void;
+  /** Relinquish custody after the browser accepts the app-origin navigation. */
+  transfer(): void;
+};
+
+type MintLegOutcome =
+  | { kind: "not-initiated" }
+  | { handoff?: MintedCodeHandoff; kind: "redirect"; url: string };
+
+/** Run one challenge-bound mint transaction for the component lifetime. */
+async function runMintLegOperation(
+  hostname: string,
+  state: string,
+  challenge: string,
+  returnTo: string,
+): Promise<MintLegOutcome> {
+  const appOrigin = pairedAppOrigin(hostname);
+  if (!appOrigin) return { kind: "not-initiated" };
+
+  const referrer = document.referrer;
+  const appInitiated = referrerIsPairedAppOrigin(appOrigin, referrer);
+  const remembered = hasRememberedMintIntent(state);
+  if (!appInitiated && !remembered) {
+    if (!referrer) {
+      // Referrer-stripping privacy settings make a legitimate app handoff
+      // indistinguishable from a direct visit. Keep minting fail-closed, but
+      // send the user to the app's ordinary login instead of stranding them
+      // on the public homepage.
+      return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+    }
+    // Not a handshake the app origin initiated (direct visit, or a
+    // third-party page forcing a signed-in user here): mint nothing.
+    return { kind: "not-initiated" };
+  }
+
+  if (appInitiated && !remembered && !rememberMintIntent(state)) {
+    return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+  }
+
+  if (!hasHydratableStewardToken()) {
+    // Login is owned by this public/auth origin. Preserve the exact bridge
+    // leg as a same-origin returnTo; once Steward succeeds, the remembered
+    // referrer-approved intent permits minting and sends the user back to
+    // the managed app. No credential is ever entered on the app host.
+    const bridgeReturnTo = `${SSO_BRIDGE_PATH}?state=${encodeURIComponent(state)}&challenge=${encodeURIComponent(challenge)}&returnTo=${encodeURIComponent(returnTo)}`;
+    return {
+      kind: "redirect",
+      url: `/login?returnTo=${encodeURIComponent(bridgeReturnTo)}`,
+    };
+  }
+
+  forgetMintIntent(state);
+  let mintedCode: string | null = null;
+  const burnMintedCodeOnce = (): void => {
+    if (!mintedCode) return;
+    const code = mintedCode;
+    mintedCode = null;
+    try {
+      burnSsoBridgeCode(code, hostname);
+    } catch {
+      // error-policy:J6 the abandoned code still expires after its short
+      // server TTL; clearing local custody keeps this teardown exactly-once.
+    }
+  };
+
+  try {
+    const result = await mintSsoCode(hostname, challenge);
+    if (!result.ok) {
+      return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+    }
+
+    mintedCode = result.code;
+    const url = buildBridgeExchangeUrl(hostname, result.code, state, returnTo);
+    if (!url) {
+      burnMintedCodeOnce();
+      return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+    }
+
+    return {
+      handoff: {
+        burn: burnMintedCodeOnce,
+        transfer: () => {
+          mintedCode = null;
+        },
+      },
+      kind: "redirect",
+      url,
+    };
+  } catch {
+    // A late failure after mint must not leave a live code without a consumer.
+    burnMintedCodeOnce();
+    return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+  }
+}
+
 function MintLeg({
   hostname,
   state,
@@ -130,57 +227,80 @@ function MintLeg({
   challenge: string;
   returnTo: string;
 }): React.JSX.Element {
-  const startedRef = useRef(false);
+  const operationRef = useRef<{
+    activeEffects: Set<number>;
+    key: string;
+    promise: Promise<MintLegOutcome>;
+  } | null>(null);
+  const effectGenerationRef = useRef(0);
   const [notInitiated, setNotInitiated] = useState(false);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    const appOrigin = pairedAppOrigin(hostname);
-    if (!appOrigin) return;
+    const effectGeneration = effectGenerationRef.current + 1;
+    effectGenerationRef.current = effectGeneration;
+    const effectIsCurrent = () =>
+      effectGenerationRef.current === effectGeneration;
+    const operationKey = JSON.stringify([hostname, state, challenge, returnTo]);
+    const previousOperation = operationRef.current;
+    const operation =
+      previousOperation?.key === operationKey
+        ? previousOperation
+        : {
+            activeEffects: new Set<number>(),
+            key: operationKey,
+            promise: runMintLegOperation(hostname, state, challenge, returnTo),
+          };
+    operationRef.current = operation;
+    operation.activeEffects.add(effectGeneration);
 
-    const referrer = document.referrer;
-    const appInitiated = referrerIsPairedAppOrigin(appOrigin, referrer);
-    const remembered = hasRememberedMintIntent(state);
-    if (!appInitiated && !remembered) {
-      if (!referrer) {
-        // Referrer-stripping privacy settings make a legitimate app handoff
-        // indistinguishable from a direct visit. Keep minting fail-closed, but
-        // send the user to the app's ordinary login instead of stranding them
-        // on the public homepage.
-        appModeNavigation.replace(appLoginUrl(appOrigin, returnTo));
-        return;
+    const redirectToAppLogin = (): void => {
+      const appOrigin = pairedAppOrigin(hostname);
+      try {
+        appModeNavigation.replace(
+          appOrigin ? appLoginUrl(appOrigin, returnTo) : "/",
+        );
+      } catch {
+        // error-policy:J6 navigation is unavailable; any owned code has already
+        // been burned and its short server TTL remains the final boundary.
       }
-      // Not a handshake the app origin initiated (direct visit, or a
-      // third-party page forcing a signed-in user here): mint nothing.
-      setNotInitiated(true);
-      return;
-    }
+    };
 
-    if (appInitiated && !remembered && !rememberMintIntent(state)) {
-      appModeNavigation.replace(appLoginUrl(appOrigin, returnTo));
-      return;
-    }
+    void operation.promise
+      .then((outcome) => {
+        if (!effectIsCurrent()) {
+          if (outcome.kind === "redirect" && outcome.handoff) {
+            // StrictMode immediately re-subscribes to the same operation. A
+            // microtask distinguishes that replay from a real abandonment.
+            queueMicrotask(() => {
+              if (operation.activeEffects.size === 0) outcome.handoff?.burn();
+            });
+          }
+          return;
+        }
+        if (outcome.kind === "not-initiated") {
+          setNotInitiated(true);
+          return;
+        }
+        try {
+          appModeNavigation.replace(outcome.url);
+          outcome.handoff?.transfer();
+        } catch {
+          outcome.handoff?.burn();
+          redirectToAppLogin();
+        }
+      })
+      .catch(() => {
+        // error-policy:J4 an unforeseen operation failure must still leave the
+        // current user on a recoverable terminal surface.
+        if (effectIsCurrent()) redirectToAppLogin();
+      });
 
-    if (!hasHydratableStewardToken()) {
-      // Login is owned by this public/auth origin. Preserve the exact bridge
-      // leg as a same-origin returnTo; once Steward succeeds, the remembered
-      // referrer-approved intent permits minting and sends the user back to
-      // the managed app. No credential is ever entered on the app host.
-      const bridgeReturnTo = `${SSO_BRIDGE_PATH}?state=${encodeURIComponent(state)}&challenge=${encodeURIComponent(challenge)}&returnTo=${encodeURIComponent(returnTo)}`;
-      appModeNavigation.replace(
-        `/login?returnTo=${encodeURIComponent(bridgeReturnTo)}`,
-      );
-      return;
-    }
-
-    forgetMintIntent(state);
-    void mintSsoCode(hostname, challenge).then((result) => {
-      const url = result.ok
-        ? buildBridgeExchangeUrl(hostname, result.code, state, returnTo)
-        : null;
-      appModeNavigation.replace(url ?? appLoginUrl(appOrigin, returnTo));
-    });
+    return () => {
+      operation.activeEffects.delete(effectGeneration);
+      if (effectIsCurrent()) {
+        effectGenerationRef.current = effectGeneration + 1;
+      }
+    };
   }, [hostname, state, challenge, returnTo]);
 
   if (notInitiated) {
