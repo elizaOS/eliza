@@ -9,6 +9,7 @@ import { ApiError } from "@/lib/api/cloud-worker-errors";
 
 const requireGenerativeRouteCaller = mock();
 const shouldBlockUser = mock();
+const findWithOrganizationForWrite = mock();
 const warn = mock();
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
@@ -16,6 +17,9 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
 }));
 mock.module("@/lib/services/admin", () => ({
   adminService: { shouldBlockUser },
+}));
+mock.module("@/db/repositories/users", () => ({
+  usersRepository: { findWithOrganizationForWrite },
 }));
 mock.module("@/lib/utils/logger", () => ({
   logger: { warn },
@@ -42,8 +46,15 @@ const authorized = {
 beforeEach(() => {
   requireGenerativeRouteCaller.mockReset();
   shouldBlockUser.mockReset();
+  findWithOrganizationForWrite.mockReset();
   warn.mockReset();
   shouldBlockUser.mockResolvedValue(false);
+  findWithOrganizationForWrite.mockResolvedValue({
+    id: "user-1",
+    organization_id: "org-1",
+    is_active: true,
+    organization: { id: "org-1", is_active: true },
+  });
 });
 
 describe("requirePaidRouteStanding", () => {
@@ -137,4 +148,54 @@ describe("requirePaidRouteStanding", () => {
     expect(shouldBlockUser).toHaveBeenCalledWith("user-1");
     expect(warn).toHaveBeenCalledTimes(1);
   });
+
+  test.each([
+    [
+      "inactive wallet user",
+      {
+        id: "user-1",
+        organization_id: "org-1",
+        is_active: false,
+        organization: { id: "org-1", is_active: true },
+      },
+      "account_inactive",
+    ],
+    [
+      "inactive mobile-key organization",
+      {
+        id: "user-1",
+        organization_id: "org-1",
+        is_active: true,
+        organization: { id: "org-1", is_active: false },
+      },
+      "organization_inactive",
+    ],
+  ])(
+    "fences a %s through primary lifecycle authority",
+    async (_name, current, reason) => {
+      requireGenerativeRouteCaller.mockResolvedValueOnce({
+        ...authorized,
+        apiKeyId: null,
+        authSource: "compatibility",
+      });
+      findWithOrganizationForWrite.mockResolvedValueOnce(current);
+
+      await expect(
+        requirePaidRouteStanding(context(), {
+          route: "connections.broker",
+          compatibility: "raw",
+        }),
+      ).rejects.toMatchObject({
+        status: 403,
+        details: { reason },
+      });
+
+      expect(findWithOrganizationForWrite).toHaveBeenCalledTimes(1);
+      expect(shouldBlockUser).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        "[PaidRouteStanding] blocked external work",
+        expect.objectContaining({ reason, providerDispatched: false }),
+      );
+    },
+  );
 });

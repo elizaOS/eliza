@@ -16,6 +16,12 @@ import type { AppContext } from "@/types/cloud-worker-env";
 
 const DEFAULT_COLD_STANDING_DEADLINE_MS = 2_500;
 
+type CompatibilityStandingReason =
+  | "account_inactive"
+  | "membership_missing"
+  | "moderation_blocked"
+  | "organization_inactive";
+
 export interface PaidRouteStandingOptions {
   /** Stable, secret-free route label used in denial diagnostics. */
   route: string;
@@ -42,6 +48,49 @@ function errorStatus(error: unknown): number | undefined {
   return typeof status === "number" ? status : undefined;
 }
 
+function standingMessage(reason: CompatibilityStandingReason): string {
+  switch (reason) {
+    case "moderation_blocked":
+      return "Account access is blocked by policy moderation";
+    case "organization_inactive":
+      return "Organization is inactive";
+    case "membership_missing":
+      return "Account is not associated with an active organization";
+    case "account_inactive":
+      return "Account is inactive";
+  }
+}
+
+async function compatibilityStandingReason(
+  caller: GenerativeRouteCaller,
+  compatibility: "hono" | "raw" | undefined,
+): Promise<CompatibilityStandingReason | null> {
+  if (caller.authSource !== "compatibility") return null;
+
+  // Raw wallet/mobile auth proves possession and organization presence but
+  // does not uniformly prove current user and organization lifecycle. Resolve
+  // that primary authority once here; this path never addresses Redis again.
+  if (compatibility === "raw") {
+    const { usersRepository } = await import("@/db/repositories/users");
+    const current = await usersRepository.findWithOrganizationForWrite(
+      caller.user.id,
+    );
+    if (!current?.is_active) return "account_inactive";
+    if (
+      current.organization_id !== caller.user.organization_id ||
+      !current.organization
+    ) {
+      return "membership_missing";
+    }
+    if (!current.organization.is_active) return "organization_inactive";
+  }
+
+  const { adminService } = await import("@/lib/services/admin");
+  return (await adminService.shouldBlockUser(caller.user.id))
+    ? "moderation_blocked"
+    : null;
+}
+
 /**
  * Resolve one paid-route caller from the combined standing cache. A cold
  * continuation is awaited once and consumed directly, so a miss still has one
@@ -52,6 +101,7 @@ export async function requirePaidRouteStanding(
   options: PaidRouteStandingOptions,
 ): Promise<GenerativeRouteCaller> {
   const traceId = c.get("traceId") ?? c.get("requestId") ?? "unavailable";
+  let denialLogged = false;
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       compatibility: options.compatibility,
@@ -59,29 +109,26 @@ export async function requirePaidRouteStanding(
         options.coldDeadlineMs ?? DEFAULT_COLD_STANDING_DEADLINE_MS,
     });
 
-    // Wallet proofs and non-Worker compatibility callers cannot reuse the
-    // combined cache. Their auth path already proves current user, org, key,
-    // and lifecycle state; moderation is the remaining standing authority.
-    const blockedByModeration =
-      caller.authSource === "compatibility" &&
-      (await import("@/lib/services/admin").then(({ adminService }) =>
-        adminService.shouldBlockUser(caller.user.id),
-      ));
-    if (blockedByModeration) {
+    const compatibilityReason = await compatibilityStandingReason(
+      caller,
+      options.compatibility,
+    );
+    if (compatibilityReason) {
+      denialLogged = true;
       logger.warn("[PaidRouteStanding] blocked external work", {
         route: options.route,
         traceId,
         authSource: caller.authSource,
         decision: "denied",
         status: 403,
-        reason: "moderation_blocked",
+        reason: compatibilityReason,
         providerDispatched: false,
       });
       throw new ApiError(
         403,
         "access_denied",
-        "Account access is blocked by policy moderation",
-        { reason: "moderation_blocked" },
+        standingMessage(compatibilityReason),
+        { reason: compatibilityReason },
       );
     }
 
@@ -92,7 +139,7 @@ export async function requirePaidRouteStanding(
     // The combined resolver already logs its cache/authoritative phase. This
     // route-bound record provides the missing external-side-effect decision
     // without including credentials, provider payloads, or raw cache values.
-    if (errorReason(error) !== "moderation_blocked") {
+    if (!denialLogged) {
       logger.warn("[PaidRouteStanding] blocked external work", {
         route: options.route,
         traceId,

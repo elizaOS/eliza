@@ -6,6 +6,9 @@
  *   - Public paths pass through with no auth.
  *   - Programmatic auth (X-API-Key, Bearer eliza_*) — pass through; per-route
  *     handlers validate the key against the DB.
+ *   - Durable paid routes with a local combined-standing guard pass through;
+ *     that guard authenticates Steward sessions and keys without a preceding
+ *     session hydration or duplicate database lookup.
  *   - The two remote-host activation routes accept their exact host credential;
  *     their handlers still validate the revocable token against the DB.
  *   - Steward cookie / Steward Bearer JWT — verify via `getCurrentUser` and
@@ -266,6 +269,41 @@ export function isRouteAuthenticatedInferencePath(
 }
 
 /**
+ * Durable paid routes perform their own combined identity-and-standing check.
+ * Keep this allowlist method- and shape-exact: neighboring read, recovery, and
+ * management routes retain the global session boundary unless their own route
+ * handler is explicitly responsible for authentication.
+ */
+export function isRouteAuthenticatedPaidStandingPath(
+  method: string,
+  pathname: string,
+): boolean {
+  if (
+    (method === "GET" || method === "HEAD") &&
+    /^\/api\/v1\/apis\/storage\/list\/?$/.test(pathname)
+  ) {
+    return true;
+  }
+  if (
+    method === "POST" &&
+    (/^\/api\/v1\/apis\/storage\/presign\/?$/.test(pathname) ||
+      /^\/api\/v1\/apis\/tunnels\/tailscale\/auth-key\/?$/.test(pathname) ||
+      /^\/api\/v1\/apps\/[^/]+\/domains\/buy\/?$/.test(pathname) ||
+      /^\/api\/v1\/connections\/[^/]+\/broker\/?$/.test(pathname) ||
+      /^\/api\/v1\/remote\/hosts\/?$/.test(pathname))
+  ) {
+    return true;
+  }
+  return (
+    (method === "GET" ||
+      method === "HEAD" ||
+      method === "PUT" ||
+      method === "DELETE") &&
+    /^\/api\/v1\/apis\/storage\/objects(?:\/.*)?$/.test(pathname)
+  );
+}
+
+/**
  * Remote hosts reach these activation handlers before they have a Cloud
  * session. Keep this pre-auth delegation exact: a syntactically valid,
  * host-bound credential may reach only the two handlers introduced by the
@@ -361,6 +399,11 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   if (isRouteAuthenticatedInferencePath(c.req.method, pathname)) {
+    await next();
+    return;
+  }
+
+  if (isRouteAuthenticatedPaidStandingPath(c.req.method, pathname)) {
     await next();
     return;
   }
