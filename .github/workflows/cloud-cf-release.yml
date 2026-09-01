@@ -352,8 +352,11 @@ jobs:
             echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
             exit 1
           }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
           [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
-            [[ "${ADMITTED_TELEGRAM_BOT_USERNAME,,}" == *bot ]] || {
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
             echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
             exit 1
           }
@@ -902,8 +905,11 @@ jobs:
             echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
             exit 1
           }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
           [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
-            [[ "${ADMITTED_TELEGRAM_BOT_USERNAME,,}" == *bot ]] || {
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
             echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
             exit 1
           }
@@ -2405,8 +2411,11 @@ jobs:
             echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
             exit 1
           }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
           [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
-            [[ "${ADMITTED_TELEGRAM_BOT_USERNAME,,}" == *bot ]] || {
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
             echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
             exit 1
           }
@@ -2538,8 +2547,11 @@ jobs:
             echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
             exit 1
           }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
           [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
-            [[ "${ADMITTED_TELEGRAM_BOT_USERNAME,,}" == *bot ]] || {
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
             echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
             exit 1
           }
