@@ -183,12 +183,26 @@ describe("managed dedicated live-smoke workflow contract", () => {
     expect(reconciliation?.run).toContain(".cleanupCreatedAt == null");
     expect(reconciliation?.run).toContain("fence_present=");
     expect(reconciliation?.run).toContain("inspectable_candidate_present=");
+    expect(reconciliation?.run).toContain("agent_id=");
 
     const meshInspection = diagnostic.steps.find(
       (step) => step.name === "Inspect exact private mesh candidate",
     );
     expect(meshInspection?.if).toBe(
       "steps.cleanup_reconciliation.outputs.fence_present == 'true' || steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'",
+    );
+
+    const lifecycleJournal = diagnostic.steps.find(
+      (step) => step.name === "Classify exact dedicated lifecycle journal",
+    );
+    expect(lifecycleJournal?.if).toBe(
+      "steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'",
+    );
+    expect(lifecycleJournal?.env?.CANARY_AGENT_ID).toBe(
+      githubExpression("steps.cleanup_reconciliation.outputs.agent_id"),
+    );
+    expect(lifecycleJournal?.run ?? lifecycleJournal?.with?.script).toContain(
+      "dedicated_lifecycle_signals=",
     );
 
     const cleanupFailure = diagnostic.steps.find(

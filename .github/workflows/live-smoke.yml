@@ -791,6 +791,7 @@ jobs:
           )
           SELECT json_build_object(
             'targetCount', (SELECT count(*) FROM target),
+            'agentId', (SELECT id FROM target),
             'cleanupFencePresent', COALESCE((SELECT cleanup_fence_present FROM facts), false),
             'inspectableCandidatePresent', COALESCE((SELECT inspectable_candidate_present FROM facts), false),
             'cleanupCreatedAt', (SELECT replacement_cleanup_created_at FROM facts),
@@ -803,8 +804,9 @@ jobs:
           SQL
           } | sed '/^[[:space:]]*$/d' | head -n 1)"
           jq -e '
-            keys == ["activeExclusiveJobs", "cleanupCreatedAt", "cleanupFencePresent", "graceElapsed", "inspectableCandidatePresent", "olderEligibleFences", "targetCount", "totalEligibleFences"] and
+            keys == ["activeExclusiveJobs", "agentId", "cleanupCreatedAt", "cleanupFencePresent", "graceElapsed", "inspectableCandidatePresent", "olderEligibleFences", "targetCount", "totalEligibleFences"] and
             .targetCount == 1 and
+            (.agentId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")) and
             (.cleanupFencePresent | type == "boolean") and
             (
               (
@@ -820,6 +822,10 @@ jobs:
             (.olderEligibleFences | type == "number") and
             (.totalEligibleFences | type == "number")
           ' <<<"$summary" >/dev/null
+          agent_id="$(jq -r '.agentId' <<<"$summary")"
+          echo "::add-mask::$agent_id"
+          echo "agent_id=$agent_id" >> "$GITHUB_OUTPUT"
+          unset agent_id
           echo "fence_present=$(jq -r '.cleanupFencePresent' <<<"$summary")" >> "$GITHUB_OUTPUT"
           echo "inspectable_candidate_present=$(jq -r '.inspectableCandidatePresent' <<<"$summary")" >> "$GITHUB_OUTPUT"
           echo "### Replacement cleanup reconciliation" >> "$GITHUB_STEP_SUMMARY"
@@ -1060,6 +1066,56 @@ jobs:
               "private_mesh_log_agent_started=" + (.logs.agentStarted | tostring)
             ' <<<"$diagnostic"
             unset diagnostic
+
+      - name: Classify exact dedicated lifecycle journal
+        if: steps.cleanup_reconciliation.outputs.inspectable_candidate_present == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        env:
+          CANARY_AGENT_ID: ${{ steps.cleanup_reconciliation.outputs.agent_id }}
+        with:
+          host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+          username: deploy
+          key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          command_timeout: 2m
+          envs: CANARY_AGENT_ID
+          script: |
+            set -euo pipefail
+            [[ "$CANARY_AGENT_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || exit 1
+            block="$(
+              sudo journalctl \
+                -u eliza-provisioning-worker.service \
+                --since '4 hours ago' \
+                -o cat \
+                --no-pager 2>/dev/null \
+                | grep -F "$CANARY_AGENT_ID" \
+                | tail -n 300 \
+                || true
+            )"
+            lower="$(printf '%s' "$block" | tr '[:upper:]' '[:lower:]')"
+            signals=''
+            for signal in \
+              provision_completed heartbeat_grace heartbeat_disconnected \
+              terminal_database restart_enqueued disconnected_recovery \
+              delete_started delete_completed delete_failed credential_revocation; do
+              case "$signal:$lower" in
+                provision_completed:*'agent_provision completed'*) matched=true ;;
+                heartbeat_grace:*'heartbeat miss within grace window'*) matched=true ;;
+                heartbeat_disconnected:*'heartbeat failed past grace window, marking disconnected'*) matched=true ;;
+                terminal_database:*'terminal database liveness'*) matched=true ;;
+                restart_enqueued:*'enqueued restart for terminal database liveness failure'*) matched=true ;;
+                disconnected_recovery:*'disconnected recovery failed'*) matched=true ;;
+                delete_started:*'executing agent_delete'*|*'deleting agent'*) matched=true ;;
+                delete_completed:*'agent_delete completed'*) matched=true ;;
+                delete_failed:*'marked sandbox as deletion_failed'*|*'unknown agent_delete failure'*) matched=true ;;
+                credential_revocation:*'inference revocation'*|*'revokeforagent'*) matched=true ;;
+                *) matched=false ;;
+              esac
+              if [ "$matched" = true ]; then
+                signals="${signals:+$signals,}$signal"
+              fi
+            done
+            unset block lower CANARY_AGENT_ID
+            echo "dedicated_lifecycle_signals=${signals:-none}"
 
       - name: Upload privacy-safe provision diagnostic
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
