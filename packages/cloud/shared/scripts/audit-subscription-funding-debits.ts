@@ -11,11 +11,13 @@ export const CLOUD_ROOT = resolve(import.meta.dirname, "../..");
 
 const SIGNAL_PATTERNS: Readonly<Record<SubscriptionDebitSignal, RegExp>> = {
   credit_service_deduct: /\.deductCredits\s*\(/g,
+  // `reserve` is too generic to scan receiver-agnostically without matching unrelated quota APIs.
   credit_service_reserve: /\bcreditsService\.reserve\s*\(/g,
   credit_service_reserve_and_deduct: /\.reserveAndDeductCredits\s*\(/g,
   credit_transaction_repository_create: /\bcreditTransactionsRepository\.create\s*\(/g,
   debit_ledger_literal: /\btype\s*:\s*["']debit["']/g,
-  organization_repository_deduct: /\borganizationsRepository\.deductCreditsWithTransaction\s*\(/g,
+  organization_repository_deduct: /\.deductCreditsWithTransaction\s*\(/g,
+  // Keep the scan local to one balance expression; the exact inventory test catches missed call sites.
   raw_credit_balance_decrement:
     /credit_balance\s*(?:=|:\s*sql`)\s*(?:(?![;`]).|\r?\n){0,420}?\s-\s/g,
   raw_credit_transaction_sql_insert: /\bINSERT\s+INTO\s+"?credit_transactions"?/gi,
