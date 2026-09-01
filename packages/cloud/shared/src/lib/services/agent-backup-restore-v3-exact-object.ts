@@ -12,8 +12,10 @@
 
 import { Buffer } from "node:buffer";
 import { createDecipheriv, createHash, createHmac, type DecipherGCM } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_CHUNK_ENVELOPE_V1,
+  AGENT_BACKUP_MANIFEST_V2_LIMITS,
   AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
   type AgentBackupManifestV3,
   type AgentBackupRestoreV3ExactReadReceiptProof,
@@ -53,18 +55,24 @@ export type AgentBackupRestoreV3ExactObjectErrorCode =
   | "AGENT_BACKUP_RESTORE_V3_AEAD_AUTHENTICATION_FAILED"
   | "AGENT_BACKUP_RESTORE_V3_PLAINTEXT_OVERFLOW"
   | "AGENT_BACKUP_RESTORE_V3_COMPLETION_FAILED"
-  | "AGENT_BACKUP_RESTORE_V3_CHUNK_PROOF_MISMATCH";
+  | "AGENT_BACKUP_RESTORE_V3_CHUNK_PROOF_MISMATCH"
+  | "AGENT_BACKUP_RESTORE_V3_INGRESS_FRAGMENT_LIMIT_EXCEEDED"
+  | "AGENT_BACKUP_RESTORE_V3_RECEIPT_INVALID";
 
-export class AgentBackupRestoreV3ExactObjectError extends Error {
+export class AgentBackupRestoreV3ExactObjectError extends ElizaError {
   override readonly name = "AgentBackupRestoreV3ExactObjectError";
 
   constructor(
-    readonly code: AgentBackupRestoreV3ExactObjectErrorCode,
+    code: AgentBackupRestoreV3ExactObjectErrorCode,
     message: string,
     options?: { cause?: unknown },
   ) {
-    super(message, { cause: options?.cause });
-    Object.setPrototypeOf(this, new.target.prototype);
+    super(message, {
+      code,
+      cause: options?.cause,
+      context: { subsystem: "agent-backup-restore-v3-exact-object" },
+      severity: "fatal",
+    });
   }
 }
 
@@ -162,6 +170,46 @@ function ownedBytes(bytes: Uint8Array): Uint8Array {
   const output = new Uint8Array(bytes.byteLength);
   output.set(bytes);
   return output;
+}
+
+interface PlaintextCoalescer {
+  push(bytes: Uint8Array): Uint8Array | undefined;
+  finish(): Uint8Array | undefined;
+  wipe(): void;
+}
+
+function createPlaintextCoalescer(): PlaintextCoalescer {
+  let buffer = new Uint8Array(MAX_CRYPTO_FRAGMENT_BYTES);
+  let length = 0;
+  return {
+    push(bytes) {
+      let offset = 0;
+      let complete: Uint8Array | undefined;
+      while (offset < bytes.byteLength) {
+        const take = Math.min(bytes.byteLength - offset, buffer.byteLength - length);
+        buffer.set(bytes.subarray(offset, offset + take), length);
+        offset += take;
+        length += take;
+        if (length === buffer.byteLength) {
+          complete = buffer;
+          buffer = new Uint8Array(MAX_CRYPTO_FRAGMENT_BYTES);
+          length = 0;
+        }
+      }
+      return complete;
+    },
+    finish() {
+      if (length === 0) return undefined;
+      const remainder = buffer.subarray(0, length);
+      buffer = new Uint8Array(MAX_CRYPTO_FRAGMENT_BYTES);
+      length = 0;
+      return remainder;
+    },
+    wipe() {
+      buffer.fill(0);
+      length = 0;
+    },
+  };
 }
 
 function freezeDeep<T>(value: T): T {
@@ -271,6 +319,7 @@ function exactReadShapeMatches(
       checksum.value === expectedCipherSha256Base64(ciphertextSha256)
     );
   } catch (_failure: unknown) {
+    // error-policy:J3 an untrusted provider read shape must fail closed.
     return false;
   }
 }
@@ -329,6 +378,7 @@ function completionMatches(
       locator.versionSource === version.source
     );
   } catch (_failure: unknown) {
+    // error-policy:J3 an untrusted completion shape must fail closed.
     return false;
   }
 }
@@ -384,6 +434,8 @@ function validateAndResolveSlot(input: Readonly<StreamAgentBackupRestoreV3ExactO
       AgentBackupRestoreV3SourceAuthorityObjectSchema.parse(input.sourceObject),
     );
   } catch (cause) {
+    // error-policy:J3 source authority is persisted untrusted input and must
+    // become one structured invalid-authority failure.
     fail(
       "AGENT_BACKUP_RESTORE_V3_EXACT_OBJECT_INVALID",
       "Exact restore source object authority is invalid",
@@ -403,6 +455,9 @@ function validateAndResolveSlot(input: Readonly<StreamAgentBackupRestoreV3ExactO
     chunk.contentHmacSha256 !== sourceObject.contentHmacSha256 ||
     chunk.sha256 !== sourceObject.catalog.ciphertextSha256 ||
     chunk.encryptedBytes !== sourceObject.catalog.sizeBytes ||
+    (sourceObject.catalog.providerChecksum !== null &&
+      sourceObject.catalog.providerChecksum !==
+        `sha256:base64:${expectedCipherSha256Base64(sourceObject.catalog.ciphertextSha256)}`) ||
     chunk.encryptedBytes !==
       chunk.compressedBytes +
         AGENT_BACKUP_CHUNK_ENVELOPE_V1.nonceBytes +
@@ -485,6 +540,8 @@ export async function* streamAgentBackupRestoreV3ExactObject(
     ) {
       throw cause;
     }
+    // error-policy:J2 preserve the provider open failure behind a bounded
+    // restore-v3 error without exposing its locator in the public message.
     fail(
       "AGENT_BACKUP_RESTORE_V3_EXACT_OBJECT_OPEN_FAILED",
       "Opening the exact restore object failed",
@@ -514,6 +571,8 @@ export async function* streamAgentBackupRestoreV3ExactObject(
   } catch (cause) {
     aad.fill(0);
     await discardInvalidExactRead(input, read);
+    // error-policy:J2 a locked or malformed provider stream is translated at
+    // this exact-read boundary and the original cause remains attached.
     fail(
       "AGENT_BACKUP_RESTORE_V3_EXACT_READ_INVALID",
       "Exact object body is already locked",
@@ -525,8 +584,10 @@ export async function* streamAgentBackupRestoreV3ExactObject(
   const tag = new Uint8Array(AGENT_BACKUP_CHUNK_ENVELOPE_V1.tagBytes);
   const encryptedHash = createHash("sha256");
   const contentHmac = createHmac("sha256", input.contentHmacKey);
+  const plaintextCoalescer = createPlaintextCoalescer();
   const tagStart = chunk.encryptedBytes - tag.byteLength;
   let encryptedOffset = 0;
+  let ingressFragmentCount = 0;
   let plaintextBytes = 0;
   let decipher: DecipherGCM | undefined;
   let bodyComplete = false;
@@ -549,6 +610,8 @@ export async function* streamAgentBackupRestoreV3ExactObject(
         ) {
           throw cause;
         }
+        // error-policy:J2 preserve provider read failure as a structured exact
+        // restore error while the outer finally owns bounded cancellation.
         fail(
           "AGENT_BACKUP_RESTORE_V3_EXACT_READ_FAILED",
           "Reading the exact restore object failed",
@@ -565,6 +628,13 @@ export async function* streamAgentBackupRestoreV3ExactObject(
           "Exact object body yielded an invalid byte fragment",
         );
       }
+      ingressFragmentCount += 1;
+      if (ingressFragmentCount > AGENT_BACKUP_MANIFEST_V2_LIMITS.maxPlaintextFragmentsPerChunk) {
+        fail(
+          "AGENT_BACKUP_RESTORE_V3_INGRESS_FRAGMENT_LIMIT_EXCEEDED",
+          "Exact object body exceeded its bounded ingress fragment count",
+        );
+      }
       const ingress = next.value;
       try {
         if (ingress.byteLength === 0) continue;
@@ -576,6 +646,7 @@ export async function* streamAgentBackupRestoreV3ExactObject(
         }
         let ingressOffset = 0;
         while (ingressOffset < ingress.byteLength) {
+          input.control.assertActive("Exact restore object decrypt");
           const absolute = encryptedOffset + ingressOffset;
           const regionEnd =
             absolute < nonce.byteLength
@@ -624,23 +695,31 @@ export async function* streamAgentBackupRestoreV3ExactObject(
             const decipherOutput = decipher.update(fragment);
             const plaintext = ownedBytes(decipherOutput);
             decipherOutput.fill(0);
+            let completePlaintext: Uint8Array | undefined;
             if (plaintext.byteLength > 0) {
-              plaintextBytes += plaintext.byteLength;
-              if (
-                plaintext.byteLength > MAX_CRYPTO_FRAGMENT_BYTES ||
-                plaintextBytes > chunk.plainBytes
-              ) {
-                plaintext.fill(0);
-                fail(
-                  "AGENT_BACKUP_RESTORE_V3_PLAINTEXT_OVERFLOW",
-                  "Decrypted object exceeds its manifest-v3 byte length",
-                );
-              }
-              contentHmac.update(plaintext);
               try {
-                yield plaintext;
+                plaintextBytes += plaintext.byteLength;
+                if (
+                  plaintext.byteLength > MAX_CRYPTO_FRAGMENT_BYTES ||
+                  plaintextBytes > chunk.plainBytes
+                ) {
+                  fail(
+                    "AGENT_BACKUP_RESTORE_V3_PLAINTEXT_OVERFLOW",
+                    "Decrypted object exceeds its manifest-v3 byte length",
+                  );
+                }
+                contentHmac.update(plaintext);
+                completePlaintext = plaintextCoalescer.push(plaintext);
               } finally {
                 plaintext.fill(0);
+              }
+            }
+            if (completePlaintext) {
+              input.control.assertActive("Exact restore object plaintext");
+              try {
+                yield completePlaintext;
+              } finally {
+                completePlaintext.fill(0);
               }
             }
           } else {
@@ -667,6 +746,8 @@ export async function* streamAgentBackupRestoreV3ExactObject(
       final = ownedBytes(decipherOutput);
       decipherOutput.fill(0);
     } catch (cause) {
+      // error-policy:J2 AES-GCM authentication failure is a terminal structured
+      // restore error; the crypto cause remains attached for diagnostics.
       fail(
         "AGENT_BACKUP_RESTORE_V3_AEAD_AUTHENTICATION_FAILED",
         "AES-GCM authentication failed for the exact restore object",
@@ -674,6 +755,7 @@ export async function* streamAgentBackupRestoreV3ExactObject(
       );
     }
     if (final.byteLength > 0) {
+      let completePlaintext: Uint8Array | undefined;
       try {
         plaintextBytes += final.byteLength;
         if (final.byteLength > MAX_CRYPTO_FRAGMENT_BYTES || plaintextBytes > chunk.plainBytes) {
@@ -683,9 +765,26 @@ export async function* streamAgentBackupRestoreV3ExactObject(
           );
         }
         contentHmac.update(final);
-        yield final;
+        completePlaintext = plaintextCoalescer.push(final);
       } finally {
         final.fill(0);
+      }
+      if (completePlaintext) {
+        input.control.assertActive("Exact restore object plaintext");
+        try {
+          yield completePlaintext;
+        } finally {
+          completePlaintext.fill(0);
+        }
+      }
+    }
+    const remainingPlaintext = plaintextCoalescer.finish();
+    if (remainingPlaintext) {
+      input.control.assertActive("Exact restore object plaintext");
+      try {
+        yield remainingPlaintext;
+      } finally {
+        remainingPlaintext.fill(0);
       }
     }
 
@@ -703,6 +802,8 @@ export async function* streamAgentBackupRestoreV3ExactObject(
       ) {
         throw cause;
       }
+      // error-policy:J2 provider completion rejection is translated without
+      // weakening the exact-generation proof requirement.
       fail(
         "AGENT_BACKUP_RESTORE_V3_COMPLETION_FAILED",
         "Exact object completion proof failed",
@@ -722,35 +823,83 @@ export async function* streamAgentBackupRestoreV3ExactObject(
         "Authenticated object proof differs from manifest-v3 authority",
       );
     }
-    const proof = completionProof(receiptIdentity, sourceObject, completion.locator);
-    const exactReadReceiptSha256 = await awaitControlled(
-      input,
-      "Exact restore object receipt digest",
-      () => computeAgentBackupRestoreV3ExactReadReceiptSha256(proof),
-    );
-    const receipt = Object.freeze(
-      AgentBackupRestoreV3SourceObjectReceiptSchema.parse({
-        componentIndex: sourceObject.componentIndex,
-        componentName: sourceObject.componentName,
-        chunkIndex: sourceObject.chunkIndex,
-        copyRole: sourceObject.copyRole,
-        objectId: sourceObject.objectId,
-        exactReadReceiptDerivation: AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
-        exactReadReceiptSha256,
-        ciphertextSha256: sourceObject.catalog.ciphertextSha256,
-        sizeBytes: sourceObject.catalog.sizeBytes,
-      }),
-    );
+    let proof: AgentBackupRestoreV3ExactReadReceiptProof;
+    try {
+      proof = completionProof(receiptIdentity, sourceObject, completion.locator);
+    } catch (cause) {
+      if (
+        cause instanceof AgentBackupRestoreV3ExactObjectError ||
+        cause instanceof AgentBackupRestoreV3ControlError
+      ) {
+        throw cause;
+      }
+      // error-policy:J3 proof parsing may contain private locator values in its
+      // rejected input, so expose only a stable locator-free terminal error.
+      fail(
+        "AGENT_BACKUP_RESTORE_V3_CHUNK_PROOF_MISMATCH",
+        "Exact object completion could not form a canonical locator-free proof",
+      );
+    }
+    let exactReadReceiptSha256: string;
+    try {
+      exactReadReceiptSha256 = await awaitControlled(
+        input,
+        "Exact restore object receipt digest",
+        () => computeAgentBackupRestoreV3ExactReadReceiptSha256(proof),
+      );
+    } catch (cause) {
+      if (
+        cause instanceof AgentBackupRestoreV3ExactObjectError ||
+        cause instanceof AgentBackupRestoreV3ControlError
+      ) {
+        throw cause;
+      }
+      // error-policy:J2 the proof is already locator-free and canonical, so its
+      // digest failure may retain the original diagnostic cause.
+      fail(
+        "AGENT_BACKUP_RESTORE_V3_RECEIPT_INVALID",
+        "Exact object receipt digest could not be computed",
+        cause,
+      );
+    }
+    let receipt: AgentBackupRestoreV3SourceObjectReceipt;
+    try {
+      receipt = Object.freeze(
+        AgentBackupRestoreV3SourceObjectReceiptSchema.parse({
+          componentIndex: sourceObject.componentIndex,
+          componentName: sourceObject.componentName,
+          chunkIndex: sourceObject.chunkIndex,
+          copyRole: sourceObject.copyRole,
+          objectId: sourceObject.objectId,
+          exactReadReceiptDerivation: AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
+          exactReadReceiptSha256,
+          ciphertextSha256: sourceObject.catalog.ciphertextSha256,
+          sizeBytes: sourceObject.catalog.sizeBytes,
+        }),
+      );
+    } catch (cause) {
+      // error-policy:J2 receipt fields are locator-free; retain the schema cause
+      // behind a stable terminal receipt error.
+      fail(
+        "AGENT_BACKUP_RESTORE_V3_RECEIPT_INVALID",
+        "Exact object source receipt is invalid",
+        cause,
+      );
+    }
     return Object.freeze({ proof, receipt });
   } finally {
+    plaintextCoalescer.wipe();
+    decipher?.destroy();
+    contentHmac.destroy();
+    encryptedHash.destroy();
+    nonce.fill(0);
+    tag.fill(0);
+    aad.fill(0);
     if (!bodyComplete) await cancelReaderBounded(input.control, reader);
     try {
       reader.releaseLock();
     } catch (_failure: unknown) {
       // error-policy:J6 cancellation may still own a non-cooperative reader.
     }
-    nonce.fill(0);
-    tag.fill(0);
-    aad.fill(0);
   }
 }

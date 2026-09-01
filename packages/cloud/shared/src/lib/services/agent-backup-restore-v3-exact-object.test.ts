@@ -1,6 +1,11 @@
+/**
+ * Exercises the exact-object restore boundary with real AES-256-GCM bytes and
+ * deterministic adversarial provider streams, deadlines, and completions.
+ */
+
 import { describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
-import { createCipheriv, createHash, createHmac } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac } from "node:crypto";
 import {
   AGENT_BACKUP_CHUNK_ENVELOPE_V1,
   AGENT_BACKUP_RECORD_STREAM_V1_FORMAT,
@@ -8,8 +13,13 @@ import {
   type AgentBackupRestoreV3SourceAuthorityObject,
   canonicalizeAgentBackupChunkAad,
   canonicalizeAgentBackupRestoreV3ExactReadReceiptProof,
+  computeAgentBackupRestoreV3ExactReadReceiptSha256,
 } from "@elizaos/shared";
-import { type ExactObjectRead, ObjectLocatorReceipt } from "../storage/object-store";
+import {
+  type ExactObjectRead,
+  type ExactObjectReadReceipt,
+  ObjectLocatorReceipt,
+} from "../storage/object-store";
 import { createAgentBackupRestoreV3Control } from "./agent-backup-restore-v3-control";
 import {
   AgentBackupRestoreV3ExactObjectError,
@@ -48,6 +58,28 @@ function checksumBase64(hex: string): string {
   return Buffer.from(hex, "hex").toString("base64");
 }
 
+function withCompletionLocator(
+  receipt: ExactObjectReadReceipt,
+  overrides: Partial<ConstructorParameters<typeof ObjectLocatorReceipt>[0]>,
+): ExactObjectReadReceipt {
+  const locator = receipt.locator;
+  return {
+    ...receipt,
+    locator: new ObjectLocatorReceipt({
+      transport: locator.transport,
+      provider: locator.provider,
+      endpointAlias: locator.endpointAlias,
+      backendIdentityFingerprint: locator.backendIdentityFingerprint,
+      bucket: locator.bucket,
+      region: locator.region,
+      keyFingerprint: locator.keyFingerprint,
+      version: locator.version,
+      versionSource: locator.versionSource,
+      ...overrides,
+    }),
+  };
+}
+
 function joinBytes(parts: readonly Uint8Array[]): Uint8Array {
   const output = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0));
   let offset = 0;
@@ -81,7 +113,13 @@ interface FixtureOptions {
   readonly expectedCiphertextSha256?: string;
   readonly bodyTransform?: (body: Uint8Array) => Uint8Array;
   readonly declaredSizeDelta?: number;
+  readonly declaredChecksumSha256?: string;
+  readonly providerKind?: "r2" | "hetzner";
+  readonly r2Transport?: "worker-r2" | "s3-compatible";
+  readonly generationMode?: "version" | "etag" | "checksum";
+  readonly providerChecksumSha256?: string;
   readonly completionLocator?: ObjectLocatorReceipt;
+  readonly completionTransform?: (receipt: ExactObjectReadReceipt) => unknown;
   readonly completion?: Deferred<
     ExactObjectRead["completion"] extends Promise<infer T> ? T : never
   >;
@@ -135,6 +173,12 @@ function fixture(options: FixtureOptions = {}) {
   const body = options.bodyTransform?.(canonicalBody.slice()) ?? canonicalBody.slice();
   const actualCiphertextSha256 = sha256Hex(canonicalBody);
   const expectedCiphertextSha256 = options.expectedCiphertextSha256 ?? actualCiphertextSha256;
+  const providerKind = options.providerKind ?? "r2";
+  const storageTransport =
+    providerKind === "r2" ? (options.r2Transport ?? "worker-r2") : "s3-compatible";
+  const generationMode = options.generationMode ?? "version";
+  const providerChecksumSha256 = options.providerChecksumSha256 ?? expectedCiphertextSha256;
+  const providerChecksumBase64 = checksumBase64(providerChecksumSha256);
   const chunk = {
     index: 0,
     offsetBytes: 0,
@@ -163,19 +207,20 @@ function fixture(options: FixtureOptions = {}) {
     componentIndex: 0,
     componentName: "character",
     chunkIndex: 0,
-    copyRole: "primary",
+    copyRole: providerKind === "r2" ? "primary" : "secondary",
     contentHmacSha256: declaredContentHmacSha256,
     catalog: {
-      transport: "worker-r2",
-      provider: "cloudflare-r2",
+      transport: storageTransport,
+      provider: providerKind === "r2" ? "cloudflare-r2" : "hetzner-object-storage",
       endpointIdentityFingerprint: BACKEND_FINGERPRINT,
       endpointAliasFingerprint: fingerprint(ENDPOINT_ALIAS),
       bucketFingerprint: fingerprint(BUCKET),
       regionFingerprint: fingerprint(REGION),
       keyFingerprint: KEY_FINGERPRINT,
-      providerVersionId: PROVIDER_VERSION,
-      providerEtag: null,
-      providerChecksum: null,
+      providerVersionId: generationMode === "version" ? PROVIDER_VERSION : null,
+      providerEtag: generationMode === "etag" ? PROVIDER_VERSION : null,
+      providerChecksum:
+        generationMode === "checksum" ? `sha256:base64:${providerChecksumBase64}` : null,
       uploadReceiptDigest: "d".repeat(64),
       ciphertextSha256: expectedCiphertextSha256,
       sizeBytes: canonicalBody.byteLength,
@@ -184,17 +229,18 @@ function fixture(options: FixtureOptions = {}) {
   const locator =
     options.completionLocator ??
     new ObjectLocatorReceipt({
-      transport: "worker-r2-binding",
-      provider: "r2",
+      transport: storageTransport === "worker-r2" ? "worker-r2-binding" : "s3-compatible",
+      provider: providerKind === "r2" ? "r2" : "s3",
       endpointAlias: ENDPOINT_ALIAS,
       backendIdentityFingerprint: BACKEND_FINGERPRINT,
       bucket: BUCKET,
       region: REGION,
       keyFingerprint: KEY_FINGERPRINT,
-      version: PROVIDER_VERSION,
-      versionSource: "provider",
+      version: generationMode === "checksum" ? providerChecksumBase64 : PROVIDER_VERSION,
+      versionSource:
+        generationMode === "version" ? "provider" : generationMode === "etag" ? "etag" : "checksum",
     });
-  const completionReceipt = {
+  const completionReceipt: ExactObjectReadReceipt = {
     locator,
     metadata: {
       sizeBytes: canonicalBody.byteLength,
@@ -206,6 +252,7 @@ function fixture(options: FixtureOptions = {}) {
     },
     verifiedComplete: true as const,
   };
+  const completionValue = options.completionTransform?.(completionReceipt) ?? completionReceipt;
   const completion = options.completion;
   const fragments: Uint8Array[] = [];
   const fragmentSizes = options.fragmentSizes ?? [1, 4, 7, 13, 31, 64];
@@ -242,16 +289,17 @@ function fixture(options: FixtureOptions = {}) {
       checksum: {
         algorithm: "sha256",
         encoding: "base64",
-        value: checksumBase64(expectedCiphertextSha256),
+        value: checksumBase64(options.declaredChecksumSha256 ?? expectedCiphertextSha256),
       },
     },
-    completion: completion?.promise ?? Promise.resolve(completionReceipt),
+    completion: completion?.promise ?? Promise.resolve(completionValue as ExactObjectReadReceipt),
   };
   const abortController = new AbortController();
   const control = createAgentBackupRestoreV3Control({
     signal: abortController.signal,
     deadlineEpochMs: Date.now() + 60_000,
     cleanupDeadlineMs: options.cleanupDeadlineMs,
+    reportDetachedFailure: () => undefined,
   });
   let openCount = 0;
   const input: StreamAgentBackupRestoreV3ExactObjectInput = {
@@ -274,6 +322,7 @@ function fixture(options: FixtureOptions = {}) {
   return {
     input,
     plaintext,
+    encryptedBody: body.slice(),
     manifest,
     sourceObject,
     read,
@@ -309,7 +358,12 @@ async function expectCode(
     throw new Error("Expected exact-object operation to reject");
   } catch (cause) {
     expect(cause).toBeInstanceOf(AgentBackupRestoreV3ExactObjectError);
-    expect((cause as AgentBackupRestoreV3ExactObjectError).code).toBe(code);
+    const failure = cause as AgentBackupRestoreV3ExactObjectError;
+    expect(failure.code).toBe(code);
+    expect(failure.severity).toBe("fatal");
+    expect(failure.context).toMatchObject({
+      subsystem: "agent-backup-restore-v3-exact-object",
+    });
   }
 }
 
@@ -333,6 +387,11 @@ describe("streamAgentBackupRestoreV3ExactObject", () => {
       expect(canonical).not.toContain(BUCKET);
       expect(canonical).not.toContain(REGION);
       expect(canonical).toContain(fingerprint(BUCKET));
+      expect(restored.result.receipt.exactReadReceiptSha256).toBe(
+        await computeAgentBackupRestoreV3ExactReadReceiptSha256(restored.result.proof),
+      );
+      expect(Object.isFrozen(restored.result.proof)).toBe(true);
+      expect(Object.isFrozen(restored.result.receipt)).toBe(true);
       expect(exact.openCount()).toBe(1);
       expect(exact.cancelCount()).toBe(0);
     } finally {
@@ -358,6 +417,45 @@ describe("streamAgentBackupRestoreV3ExactObject", () => {
       expect(joinBytes(plaintext)).toEqual(exact.plaintext);
     } finally {
       exact.control.close();
+    }
+  });
+
+  test("coalesces tiny provider fragments into bounded plaintext output", async () => {
+    const exact = fixture({ fragmentSizes: [1] });
+    try {
+      const iterator = streamAgentBackupRestoreV3ExactObject(exact.input);
+      const fragments: Uint8Array[] = [];
+      while (true) {
+        const next = await iterator.next();
+        if (next.done) break;
+        fragments.push(next.value.slice());
+      }
+      expect(fragments).toHaveLength(1);
+      expect(joinBytes(fragments)).toEqual(exact.plaintext);
+    } finally {
+      exact.control.close();
+    }
+  });
+
+  test("accepts exact version, etag, and checksum generations across both providers", async () => {
+    const variants = [
+      fixture({ generationMode: "version" }),
+      fixture({ generationMode: "etag", r2Transport: "s3-compatible" }),
+      fixture({ generationMode: "checksum", providerKind: "hetzner" }),
+    ];
+    try {
+      for (const exact of variants) {
+        const restored = await drain(exact.input);
+        expect(restored.plaintext).toEqual(exact.plaintext);
+        expect(restored.result.proof.completion.versionSource).toBe(
+          exact.completionReceipt.locator.versionSource,
+        );
+        expect(restored.result.proof.completion.provider).toBe(
+          exact.completionReceipt.locator.provider,
+        );
+      }
+    } finally {
+      for (const exact of variants) exact.control.close();
     }
   });
 
@@ -404,21 +502,109 @@ describe("streamAgentBackupRestoreV3ExactObject", () => {
     }
   });
 
-  test("rejects exact provider completion identity drift", async () => {
-    const driftedLocator = new ObjectLocatorReceipt({
-      transport: "worker-r2-binding",
-      provider: "r2",
-      endpointAlias: ENDPOINT_ALIAS,
-      backendIdentityFingerprint: BACKEND_FINGERPRINT,
-      bucket: `${BUCKET}-replaced`,
-      region: REGION,
-      keyFingerprint: KEY_FINGERPRINT,
-      version: PROVIDER_VERSION,
-      versionSource: "provider",
-    });
-    const exact = fixture({ completionLocator: driftedLocator });
+  test("rejects a provider-declared checksum that differs from exact authority", async () => {
+    const exact = fixture({ declaredChecksumSha256: "0".repeat(64) });
     try {
-      await expectCode(drain(exact.input), "AGENT_BACKUP_RESTORE_V3_CHUNK_PROOF_MISMATCH");
+      await expectCode(drain(exact.input), "AGENT_BACKUP_RESTORE_V3_EXACT_READ_INVALID");
+      expect(exact.cancelCount()).toBe(1);
+    } finally {
+      exact.control.close();
+    }
+  });
+
+  test("rejects drift in every exact provider completion field", async () => {
+    const variants = [
+      fixture({
+        completionTransform: (receipt) => ({
+          ...receipt,
+          verifiedComplete: false,
+        }),
+      }),
+      fixture({
+        completionTransform: (receipt) => ({
+          ...receipt,
+          metadata: {
+            ...receipt.metadata,
+            sizeBytes: receipt.metadata.sizeBytes + 1,
+          },
+        }),
+      }),
+      fixture({
+        completionTransform: (receipt) => ({
+          ...receipt,
+          metadata: {
+            ...receipt.metadata,
+            checksum: {
+              ...receipt.metadata.checksum,
+              value: checksumBase64("0".repeat(64)),
+            },
+          },
+        }),
+      }),
+      fixture({
+        completionTransform: (receipt) =>
+          withCompletionLocator(receipt, { transport: "s3-compatible" }),
+      }),
+      fixture({
+        completionTransform: (receipt) => withCompletionLocator(receipt, { provider: "s3" }),
+      }),
+      fixture({
+        completionTransform: (receipt) =>
+          withCompletionLocator(receipt, {
+            backendIdentityFingerprint: `sha256:${"e".repeat(64)}`,
+          }),
+      }),
+      fixture({
+        completionTransform: (receipt) =>
+          withCompletionLocator(receipt, {
+            endpointAlias: `${receipt.locator.endpointAlias}-replaced`,
+          }),
+      }),
+      fixture({
+        completionTransform: (receipt) =>
+          withCompletionLocator(receipt, {
+            bucket: `${receipt.locator.bucket}-replaced`,
+          }),
+      }),
+      fixture({
+        completionTransform: (receipt) =>
+          withCompletionLocator(receipt, {
+            region: `${receipt.locator.region}-replaced`,
+          }),
+      }),
+      fixture({
+        completionTransform: (receipt) =>
+          withCompletionLocator(receipt, {
+            keyFingerprint: `sha256:${"f".repeat(64)}`,
+          }),
+      }),
+      fixture({
+        completionTransform: (receipt) =>
+          withCompletionLocator(receipt, {
+            version: `${receipt.locator.version}-stale`,
+          }),
+      }),
+      fixture({
+        completionTransform: (receipt) => withCompletionLocator(receipt, { versionSource: "etag" }),
+      }),
+    ];
+    try {
+      for (const exact of variants) {
+        await expectCode(drain(exact.input), "AGENT_BACKUP_RESTORE_V3_CHUNK_PROOF_MISMATCH");
+      }
+    } finally {
+      for (const exact of variants) exact.control.close();
+    }
+  });
+
+  test("rejects contradictory checksum generation authority before provider I/O", async () => {
+    const exact = fixture({
+      generationMode: "checksum",
+      providerChecksumSha256: "e".repeat(64),
+    });
+    try {
+      await expectCode(drain(exact.input), "AGENT_BACKUP_RESTORE_V3_EXACT_OBJECT_INVALID");
+      expect(exact.openCount()).toBe(0);
     } finally {
       exact.control.close();
     }
@@ -445,9 +631,26 @@ describe("streamAgentBackupRestoreV3ExactObject", () => {
     }
   });
 
+  test("rejects excessive provider fragmentation before unbounded work", async () => {
+    const exact = fixture({
+      plaintextBytes: 70_000,
+      fragmentSizes: [1],
+    });
+    try {
+      await expectCode(
+        drain(exact.input),
+        "AGENT_BACKUP_RESTORE_V3_INGRESS_FRAGMENT_LIMIT_EXCEEDED",
+      );
+      expect(exact.cancelCount()).toBe(1);
+    } finally {
+      exact.control.close();
+    }
+  });
+
   test("applies consumer backpressure and bounds hanging cancellation on early return", async () => {
     const exact = fixture({
-      fragmentSizes: [12, 17, 17, 17],
+      plaintextBytes: 600_000,
+      fragmentSizes: [12_000, 17_000, 17_000, 17_000],
       cancelHangs: true,
     });
     try {
@@ -466,6 +669,110 @@ describe("streamAgentBackupRestoreV3ExactObject", () => {
     }
   });
 
+  test("destroys active HMAC and decipher contexts on early return", async () => {
+    const exact = fixture({
+      plaintextBytes: 600_000,
+      fragmentSizes: [1_000_000],
+    });
+    const hmacProbe = createHmac("sha256", CONTENT_HMAC_KEY);
+    const decipherProbe = createDecipheriv("aes-256-gcm", DEK, NONCE, {
+      authTagLength: AGENT_BACKUP_CHUNK_ENVELOPE_V1.tagBytes,
+    });
+    const hmacPrototype = Object.getPrototypeOf(hmacProbe) as {
+      destroy(error?: Error): unknown;
+    };
+    const decipherPrototype = Object.getPrototypeOf(decipherProbe) as {
+      destroy(error?: Error): unknown;
+    };
+    const originalHmacDestroy = hmacPrototype.destroy;
+    const originalDecipherDestroy = decipherPrototype.destroy;
+    const hmacDestroyDescriptor = Object.getOwnPropertyDescriptor(hmacPrototype, "destroy");
+    const decipherDestroyDescriptor = Object.getOwnPropertyDescriptor(decipherPrototype, "destroy");
+    let hmacDestroyCount = 0;
+    let decipherDestroyCount = 0;
+    hmacProbe.destroy();
+    decipherProbe.destroy();
+    Object.defineProperty(hmacPrototype, "destroy", {
+      configurable: true,
+      writable: true,
+      value(this: unknown, error?: Error) {
+        hmacDestroyCount += 1;
+        return originalHmacDestroy.call(this, error);
+      },
+    });
+    Object.defineProperty(decipherPrototype, "destroy", {
+      configurable: true,
+      writable: true,
+      value(this: unknown, error?: Error) {
+        decipherDestroyCount += 1;
+        return originalDecipherDestroy.call(this, error);
+      },
+    });
+    try {
+      const iterator = streamAgentBackupRestoreV3ExactObject(exact.input);
+      const first = await iterator.next();
+      expect(first.done).toBe(false);
+      const returned = await iterator.return(undefined as never);
+      expect(returned.done).toBe(true);
+      expect(hmacDestroyCount).toBe(1);
+      expect(decipherDestroyCount).toBe(1);
+    } finally {
+      if (hmacDestroyDescriptor) {
+        Object.defineProperty(hmacPrototype, "destroy", hmacDestroyDescriptor);
+      } else {
+        Reflect.deleteProperty(hmacPrototype, "destroy");
+      }
+      if (decipherDestroyDescriptor) {
+        Object.defineProperty(decipherPrototype, "destroy", decipherDestroyDescriptor);
+      } else {
+        Reflect.deleteProperty(decipherPrototype, "destroy");
+      }
+      exact.control.close();
+    }
+  });
+
+  test("does not yield another plaintext fragment after cancellation", async () => {
+    const exact = fixture({
+      plaintextBytes: 600_000,
+      fragmentSizes: [1_000_000],
+    });
+    let emitted = false;
+    let cancelCount = 0;
+    const hangingRead: ExactObjectRead = {
+      ...exact.read,
+      body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (!emitted) {
+            emitted = true;
+            controller.enqueue(exact.encryptedBody.slice());
+            return;
+          }
+          return new Promise<never>(() => undefined);
+        },
+        cancel() {
+          cancelCount += 1;
+        },
+      }),
+    };
+    const input: StreamAgentBackupRestoreV3ExactObjectInput = {
+      ...exact.input,
+      openExactObject: () => hangingRead,
+    };
+    try {
+      const iterator = streamAgentBackupRestoreV3ExactObject(input);
+      const first = await iterator.next();
+      expect(first.done).toBe(false);
+      expect(first.value.byteLength).toBeLessThanOrEqual(256 * 1024);
+      exact.abortController.abort(new Error("stop between plaintext fragments"));
+      await expect(iterator.next()).rejects.toMatchObject({
+        code: "AGENT_BACKUP_RESTORE_V3_ABORTED",
+      });
+      expect(cancelCount).toBe(1);
+    } finally {
+      exact.control.close();
+    }
+  });
+
   test("does not return a receipt before provider completion settles", async () => {
     const completion =
       deferred<ExactObjectRead["completion"] extends Promise<infer T> ? T : never>();
@@ -473,32 +780,62 @@ describe("streamAgentBackupRestoreV3ExactObject", () => {
     try {
       const iterator = streamAgentBackupRestoreV3ExactObject(exact.input);
       const plaintext: Uint8Array[] = [];
-      let pendingFinal:
-        | Promise<IteratorResult<Uint8Array, StreamAgentBackupRestoreV3ExactObjectResult>>
-        | undefined;
-      while (true) {
-        const nextPromise = iterator.next();
-        const state = await Promise.race([
-          nextPromise.then((next) => ({ kind: "next" as const, next })),
-          new Promise<{ kind: "pending" }>((resolve) =>
-            setTimeout(() => resolve({ kind: "pending" }), 5),
-          ),
-        ]);
-        if (state.kind === "pending") {
-          pendingFinal = nextPromise;
-          break;
-        }
-        if (state.next.done) throw new Error("Receipt preceded provider completion");
-        plaintext.push(state.next.value.slice());
+      let plaintextBytes = 0;
+      while (plaintextBytes < exact.plaintext.byteLength) {
+        const next = await iterator.next();
+        if (next.done) throw new Error("Receipt preceded complete plaintext");
+        plaintext.push(next.value.slice());
+        plaintextBytes += next.value.byteLength;
       }
       expect(joinBytes(plaintext)).toEqual(exact.plaintext);
-      expect(pendingFinal).toBeDefined();
+      const pendingFinal = iterator.next();
+      let settled = false;
+      void pendingFinal.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(settled).toBe(false);
       completion.resolve(exact.completionReceipt);
       const final = await pendingFinal;
-      expect(final?.done).toBe(true);
-      expect(final?.value.receipt.objectId).toBe(OBJECT_ID);
+      expect(final.done).toBe(true);
+      expect(final.value.receipt.objectId).toBe(OBJECT_ID);
     } finally {
       exact.control.close();
+    }
+  });
+
+  test("retries exactly after provider completion is lost after full plaintext", async () => {
+    const completion =
+      deferred<ExactObjectRead["completion"] extends Promise<infer T> ? T : never>();
+    const first = fixture({ completion });
+    const retry = fixture();
+    const sharedOwners = first.input.operationNonceOwners;
+    const retryInput = { ...retry.input, operationNonceOwners: sharedOwners };
+    try {
+      const iterator = streamAgentBackupRestoreV3ExactObject(first.input);
+      let plaintextBytes = 0;
+      while (plaintextBytes < first.plaintext.byteLength) {
+        const next = await iterator.next();
+        if (next.done) throw new Error("Completion preceded complete plaintext");
+        plaintextBytes += next.value.byteLength;
+      }
+      expect(plaintextBytes).toBe(first.plaintext.byteLength);
+      const pendingFinal = iterator.next();
+      completion.reject(new Error("simulated lost provider completion"));
+      await expectCode(pendingFinal, "AGENT_BACKUP_RESTORE_V3_COMPLETION_FAILED");
+      const restored = await drain(retryInput);
+      expect(restored.plaintext).toEqual(retry.plaintext);
+      expect(restored.result.receipt.objectId).toBe(OBJECT_ID);
+      expect(sharedOwners.size).toBe(1);
+    } finally {
+      first.control.close();
+      retry.control.close();
     }
   });
 
@@ -549,6 +886,54 @@ describe("streamAgentBackupRestoreV3ExactObject", () => {
       expect(sharedOwners.size).toBe(1);
     } finally {
       first.control.close();
+      retry.control.close();
+    }
+  });
+
+  test("withholds the final receipt after corrupt ciphertext and permits an exact retry", async () => {
+    const corrupt = fixture({
+      plaintextBytes: 600_000,
+      fragmentSizes: [1_000_000],
+      bodyTransform(body) {
+        body[AGENT_BACKUP_CHUNK_ENVELOPE_V1.nonceBytes + 100] ^= 0xff;
+        return body;
+      },
+    });
+    const retry = fixture({
+      plaintextBytes: 600_000,
+      fragmentSizes: [1_000_000],
+    });
+    const sharedOwners = corrupt.input.operationNonceOwners;
+    const retryInput = { ...retry.input, operationNonceOwners: sharedOwners };
+    let corruptResult: StreamAgentBackupRestoreV3ExactObjectResult | undefined;
+    let stagedPlaintextBytes = 0;
+    try {
+      const iterator = streamAgentBackupRestoreV3ExactObject(corrupt.input);
+      try {
+        while (true) {
+          const next = await iterator.next();
+          if (next.done) {
+            corruptResult = next.value;
+            break;
+          }
+          stagedPlaintextBytes += next.value.byteLength;
+        }
+        throw new Error("Expected corrupt ciphertext to reject");
+      } catch (cause) {
+        expect(cause).toBeInstanceOf(AgentBackupRestoreV3ExactObjectError);
+        expect(cause).toMatchObject({
+          code: "AGENT_BACKUP_RESTORE_V3_AEAD_AUTHENTICATION_FAILED",
+        });
+      }
+      expect(stagedPlaintextBytes).toBeGreaterThan(0);
+      expect(corruptResult).toBeUndefined();
+
+      const restored = await drain(retryInput);
+      expect(restored.plaintext).toEqual(retry.plaintext);
+      expect(restored.result.receipt.objectId).toBe(OBJECT_ID);
+      expect(sharedOwners.size).toBe(1);
+    } finally {
+      corrupt.control.close();
       retry.control.close();
     }
   });
