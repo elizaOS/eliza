@@ -318,6 +318,60 @@ describe("MCP settlement balanced ledger (#22961)", () => {
     );
   });
 
+  test("conservation: buyer debit vs every credited, redeemable and platform leg (#22961)", async () => {
+    if (!pgliteReady) return;
+    const params = await prepaidParams(fx);
+    const debitTxId = params.metadata.preChargeTransactionId as string;
+    const result = await userMcpsService.recordUsageWithoutDeduction(params);
+    expect(result.success).toBe(true);
+
+    // Production-linked debit: the actual credit_transactions row the
+    // precharge wrote, not a constant — if the charge ever stops matching the
+    // settled legs, this test sees it in real units.
+    const [debitRow] = await dbWrite
+      .select()
+      .from(creditTransactions)
+      .where(eq(creditTransactions.id, debitTxId));
+    const buyerDebit = Math.abs(Number(debitRow.amount));
+
+    const s = await balances(fx);
+    const [receipt] = s.settlements;
+    const creatorOrgCredit = s.creatorOrg; // organizations.credit_balance leg
+    const creatorRedeemable = s.creatorRedeemable; // redeemable_earnings leg
+    const affiliateRedeemable = s.affiliateRedeemable;
+    const platformEarnings = Number(receipt.platform_earnings_usd);
+
+    // The receipt's charge decomposition must reconstruct the real debit.
+    expect(Number(receipt.total_amount_usd)).toBeCloseTo(buyerDebit, 6);
+
+    // EXPECTED-AT-HEAD (review round 2026-09-01, #22961 ruling pending):
+    // creator 70% of 10 points = $0.07 to the org AND $0.07 to the creator's
+    // redeemable balance, affiliate $0.02, platform $0.05, debit $0.14. The
+    // credited legs + platform total $0.21 — a surplus of exactly ONE creator
+    // leg over the debit. If the maintainer ruling on #22961 drops the
+    // duplicated creator leg, these pins MUST be updated together: the
+    // surplus expectation below goes to 0 and the creatorRedeemable pin goes
+    // to 0. They exist so the economics cannot drift silently.
+    expect(creatorOrgCredit).toBeCloseTo(0.07, 6);
+    expect(creatorRedeemable).toBeCloseTo(0.07, 6);
+    expect(affiliateRedeemable).toBeCloseTo(0.02, 6);
+    expect(platformEarnings).toBeCloseTo(0.05, 6);
+    expect(buyerDebit).toBeCloseTo(0.14, 6);
+
+    const creditedPlusPlatform =
+      creatorOrgCredit + creatorRedeemable + affiliateRedeemable + platformEarnings;
+    expect(creditedPlusPlatform).toBeCloseTo(0.21, 6);
+
+    // The conservation sum: the divergence from the debit is exactly one
+    // creator leg (creatorRedeemable), to six decimals, on every settlement.
+    // This equality is the invariant the maintainer ruling will settle; when
+    // it settles the other way, this assertion fails loudly and forces the
+    // conscious update above.
+    const surplus = creditedPlusPlatform - buyerDebit;
+    expect(surplus).toBeCloseTo(creatorRedeemable, 6);
+    expect(surplus).toBeCloseTo(0.07, 6);
+  });
+
   test("retry of the same settlement: cumulative ledger delta is zero", async () => {
     if (!pgliteReady) return;
     const params = await prepaidParams(fx);
