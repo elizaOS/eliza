@@ -201,6 +201,80 @@ mock.module("../../db/repositories", () => ({
       usageStats.uniqueOrgs = 1;
       return { id: "usage-1" };
     },
+    async createWithStats(
+      data: {
+        mcp_id: string;
+        credits_charged: string;
+        base_amount_usd: string;
+        affiliate_fee_usd: string;
+        platform_fee_usd: string;
+        total_amount_usd: string;
+      },
+      stats: { mcpId: string; creatorEarnings: number; x402EarnedUsd: number },
+    ) {
+      const inserted = await this.create(data);
+      return { usage: inserted, inserted: true };
+    },
+  },
+}));
+
+// In-memory settlements authority backing the mocked settlement repository.
+// Mirrors the first-committed-wins contract of the real mcp-settlements repo
+// (claim creates once and replays stored rows; legs patch in place) so the
+// unit suite can exercise recordUsageWithoutDeduction through the keyed
+// settlement path without Postgres/PGlite.
+let settlementStore: Map<string, Record<string, unknown>>;
+let settlementIdCounter: number;
+
+mock.module("../../db/repositories/mcp-settlements", () => ({
+  mcpSettlementsRepository: {
+    async isDebitTransaction(id: string): Promise<boolean> {
+      // The fixture supplies the precharge transaction id as the payment
+      // event; this mock treats every non-empty id as a committed debit row.
+      return id.length > 0;
+    },
+    async claimPrechargeForSettlement(): Promise<boolean> {
+      return true;
+    },
+    async prechargeSweptByRefund(): Promise<boolean> {
+      return false;
+    },
+    async claim(row: Record<string, unknown>) {
+      const key = `${row.payment_type}:${row.payment_event_id}`;
+      const existing = settlementStore.get(key);
+      if (existing) {
+        return { settlement: existing, created: false };
+      }
+      settlementIdCounter += 1;
+      const settlement = {
+        id: `settlement-${settlementIdCounter}`,
+        status: "settling",
+        mcp_usage_id: null,
+        affiliate_ledger_entry_id: null,
+        creator_credit_transaction_id: null,
+        creator_ledger_entry_id: null,
+        ...row,
+      };
+      settlementStore.set(key, settlement);
+      return { settlement, created: true };
+    },
+    async recordLeg(id: string, patch: Record<string, unknown>) {
+      for (const row of settlementStore.values()) {
+        if (row.id === id) {
+          Object.assign(row, patch);
+          return;
+        }
+      }
+    },
+    async markSettled(id: string) {
+      for (const row of settlementStore.values()) {
+        if (row.id === id) {
+          row.status = "settled";
+          return row;
+        }
+      }
+      return null;
+    },
   },
 }));
 
@@ -260,6 +334,8 @@ function baseCreateParams(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   store = new Map();
   idCounter = 0;
+  settlementStore = new Map();
+  settlementIdCounter = 0;
   usageStats = {
     totalRequests: 0,
     totalCreditsCharged: 0,
@@ -627,7 +703,12 @@ describe("userMcpsService fee-inclusive receipt stats", () => {
       creditsCharged: 100,
       affiliateFeeCredits: 25,
       platformFeeCredits: 20,
-      metadata: { totalCreditsCharged: 145 },
+      // Keyed the way the proxy keys it: the precharge debit's transaction id
+      // is the payment event, without which the settlement fails closed.
+      metadata: {
+        totalCreditsCharged: 145,
+        preChargeTransactionId: "11111111-1111-4111-8111-111111111111",
+      },
     });
 
     expect(result).toMatchObject({
