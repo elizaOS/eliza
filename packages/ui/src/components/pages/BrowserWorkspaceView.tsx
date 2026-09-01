@@ -2657,7 +2657,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       >
         <RefreshCw className="size-4" />
       </BrowserNavButton>
-      <span className="max-md:hidden">
+      <span className="hidden md:inline">
         <BrowserNavButton
           agentId="close-all-tabs"
           agentLabel={t("browserworkspace.CloseAllTabs", {
@@ -2756,7 +2756,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       >
         <ArrowRight className="size-4" aria-hidden />
       </BrowserNavButton>
-      <span className="max-md:hidden">
+      <span className="hidden md:inline">
         <BrowserNavButton
           agentId="open-external"
           agentLabel={t("browserworkspace.OpenExternal", {
@@ -3276,7 +3276,7 @@ function BrowserWorkspaceForAuthority(): React.JSX.Element {
       data-chat-clearance-aware="true"
       aria-busy={loading || busyAction !== null}
       tabIndex={-1}
-      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-hidden bg-bg px-4 pt-[calc(0.75rem+var(--safe-area-top,0px))] pb-[calc(1rem+var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem))] lg:px-6 lg:pt-[calc(1.5rem+var(--safe-area-top,0px))] lg:pb-[calc(1.5rem+var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem))]"
+      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-3 overflow-hidden bg-bg px-4 pt-[calc(0.75rem+var(--safe-area-top,0px))] pb-[calc(1rem+var(--eliza-chat-clearance,5.25rem))] lg:px-6 lg:pt-[calc(1.5rem+var(--safe-area-top,0px))] lg:pb-[calc(1.5rem+var(--eliza-chat-clearance,5.25rem))]"
     >
       <div
         data-testid="browser-workspace-toolbar"

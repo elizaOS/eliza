@@ -25,7 +25,7 @@
  *     (declared in `message-fetcher.ts`), implemented by the host's connector
  *     projections.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   type GetLifeOpsInboxRequest,
   LIFEOPS_INBOX_CHANNELS,
@@ -162,7 +162,26 @@ export function toInboxMessage(
     channel === "gmail"
       ? (message.gmailMessageId ?? message.id)
       : (message.entityId ?? message.roomId ?? message.id);
-  const receivedAt = new Date(message.timestamp).toISOString();
+  if (!Number.isFinite(message.timestamp)) {
+    throw new ElizaError(
+      "Inbox message timestamp must be a finite epoch value",
+      {
+        code: "INBOX_MESSAGE_TIMESTAMP_INVALID",
+        context: { messageId: message.id, source: message.source },
+      },
+    );
+  }
+  const receivedDate = new Date(message.timestamp);
+  if (!Number.isFinite(receivedDate.getTime())) {
+    throw new ElizaError(
+      "Inbox message timestamp is outside the supported date range",
+      {
+        code: "INBOX_MESSAGE_TIMESTAMP_INVALID",
+        context: { messageId: message.id, source: message.source },
+      },
+    );
+  }
+  const receivedAt = receivedDate.toISOString();
   const subject =
     channel === "gmail"
       ? message.channelName.startsWith("Email from ")

@@ -150,7 +150,7 @@ export function BrowserTabFoldControl({
       aria-label={openLabel}
       aria-haspopup="dialog"
       data-testid="browser-workspace-tab-fold-control"
-      className="relative min-w-0 shrink-0 px-0 md:px-4"
+      className="relative min-w-11 shrink-0 px-0 md:px-4"
     >
       <SquareStack
         className="size-4 shrink-0 text-muted"

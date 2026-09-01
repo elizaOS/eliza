@@ -52,6 +52,7 @@ function install(latestJobCreatedAt: Date | null | Error) {
         return latestJobCreatedAt;
       }),
     },
+    readCloudApiDbHeartbeatAt: mock(async () => null),
     reconcileOrphanContainersOnNodes,
     reconcileOrphanAppContainersOnNodes,
   } as unknown as Exclude<WorkerDeps, null>;

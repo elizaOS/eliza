@@ -917,6 +917,10 @@ export class SchoolSourceFactRuntimeService extends Service {
   }> {
     return this.school.reconcileNotice(noticeKey);
   }
+
+  listFacts(): Promise<SourceFact[]> {
+    return this.school.listFacts();
+  }
 }
 
 export function getSchoolSourceFactRuntimeService(

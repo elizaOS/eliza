@@ -1,7 +1,8 @@
 /**
- * Finalizes live voice captures into revision-bound evidence. The web path
- * muxes a real system-sink recording, while desktop requires separate physical
- * microphone and speaker-loopback captures; payload bytes remain diagnostics.
+ * Finalizes live voice captures into revision-bound evidence. Web and desktop
+ * privately validate their real acoustic captures, then publish only black
+ * video and non-intelligible, duration-only tone projections. Source waveforms,
+ * speech, transcripts, and correlation inputs never enter public artifacts.
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -95,6 +96,16 @@ export function classifyPhysicalMicrophoneEndpoint(
 
 const require = createRequire(import.meta.url);
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
+const ACOUSTIC_PROJECTION = Object.freeze({
+  schema: "eliza_voice_duration_only_acoustic_projection_v1",
+  privacyClass: "non-intelligible-non-reconstructible",
+  sourceFeature: "duration-only",
+  signal: "fixed-frequency-sine",
+  frequencyHz: 997,
+  sampleRateHz: 48_000,
+  channels: 1,
+  peakAmplitude: 0.03125,
+});
 
 function executable(command) {
   if (!command) return false;
@@ -560,13 +571,6 @@ function revision(expected) {
   return head;
 }
 
-function copy(file, outDir, name = path.basename(file)) {
-  requireFile(file, "evidence artifact");
-  const destination = path.join(outDir, name);
-  fs.copyFileSync(file, destination);
-  return destination;
-}
-
 export function snapshotEvidenceFile(
   file,
   root,
@@ -731,14 +735,361 @@ function assertFreshCapture(file, startedAt, label) {
   }
 }
 
-function manifest(outDir, kind, head, media, artifacts) {
+function projectedMedia(inspected, synchronizationCode) {
+  return {
+    acousticProjection: ACOUSTIC_PROJECTION,
+    durationMs: Math.round(inspected.duration * 1_000),
+    maxVolumeMilliDb: Math.round(inspected.maxVolumeDb * 1_000),
+    audioStreamCount: inspected.streams.filter(
+      (stream) => stream.codec_type === "audio",
+    ).length,
+    videoStreamCount: inspected.streams.filter(
+      (stream) => stream.codec_type === "video",
+    ).length,
+    synchronizationCode,
+  };
+}
+
+function lstatIfPresent(file) {
+  try {
+    return fs.lstatSync(file);
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+function establishPublicationTrust(parent) {
+  if (process.platform === "win32") {
+    const configuredRoot = process.env.RUNNER_TEMP?.trim() || os.tmpdir();
+    const root = fs.realpathSync(configuredRoot);
+    const rootStat = fs.lstatSync(root);
+    const relative = path.relative(root, parent);
+    if (
+      rootStat.isSymbolicLink() ||
+      !rootStat.isDirectory() ||
+      relative.startsWith("..") ||
+      path.isAbsolute(relative)
+    ) {
+      throw new Error(
+        "Voice evidence output must remain inside the canonical runner temp root.",
+      );
+    }
+    return { root, rootDev: rootStat.dev, rootIno: rootStat.ino };
+  }
+  const currentUid = process.getuid?.();
+  let current = parent;
+  while (true) {
+    const stat = fs.lstatSync(current);
+    const writableByOthers = (stat.mode & 0o022) !== 0;
+    const sticky = (stat.mode & 0o1000) !== 0;
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error("Voice evidence publication ancestry is not canonical.");
+    }
+    if (currentUid !== undefined && stat.uid !== currentUid && stat.uid !== 0) {
+      throw new Error(
+        "Voice evidence publication ancestry is owned by another principal.",
+      );
+    }
+    if (writableByOthers && !sticky) {
+      throw new Error(
+        "Voice evidence publication ancestry is writable by another principal.",
+      );
+    }
+    const container = path.dirname(current);
+    if (container === current) break;
+    current = container;
+  }
+  return null;
+}
+
+function assertPublicationTrust(parent, trust) {
+  if (process.platform !== "win32") {
+    establishPublicationTrust(parent);
+    return;
+  }
+  if (!trust) {
+    throw new Error("Voice evidence runner temp trust is missing.");
+  }
+  const rootStat = lstatIfPresent(trust.root);
+  const relative = path.relative(trust.root, parent);
+  if (
+    !rootStat ||
+    rootStat.isSymbolicLink() ||
+    !rootStat.isDirectory() ||
+    rootStat.dev !== trust.rootDev ||
+    rootStat.ino !== trust.rootIno ||
+    relative.startsWith("..") ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error("Voice evidence runner temp root changed identity.");
+  }
+}
+
+function prepareOutputPublication(outDir) {
+  if (!outDir) throw new Error("Voice evidence output directory is required.");
+  const requestedDestination = path.resolve(outDir);
+  if (requestedDestination === path.parse(requestedDestination).root) {
+    throw new Error(
+      "Voice evidence output directory cannot be a filesystem root.",
+    );
+  }
+  const requestedDestinationStat = lstatIfPresent(requestedDestination);
+  if (requestedDestinationStat?.isSymbolicLink()) {
+    throw new Error("Voice evidence output directory cannot be a symlink.");
+  }
+  if (requestedDestinationStat && !requestedDestinationStat.isDirectory()) {
+    throw new Error("Voice evidence output path must be a directory.");
+  }
+  const requestedParent = path.dirname(requestedDestination);
+  fs.mkdirSync(requestedParent, { recursive: true, mode: 0o700 });
+  const parent = fs.realpathSync(requestedParent);
+  const parentStat = fs.lstatSync(parent);
+  if (parentStat.isSymbolicLink() || !parentStat.isDirectory()) {
+    throw new Error(
+      "Voice evidence output parent must be a real directory, not a symlink.",
+    );
+  }
+  const trust = establishPublicationTrust(parent);
+  const destination = path.join(parent, path.basename(requestedDestination));
+  if (lstatIfPresent(destination)) {
+    throw new Error("Voice evidence output directory must not already exist.");
+  }
+  const stagingPrefix = `.${path.basename(destination)}.voice-evidence-staging-`;
+  const staging = fs.mkdtempSync(path.join(parent, stagingPrefix));
+  fs.chmodSync(staging, 0o700);
+  const stagingStat = fs.lstatSync(staging);
+  return {
+    destination,
+    parent,
+    parentStat,
+    trust,
+    staging,
+    stagingPrefix,
+    stagingStat,
+  };
+}
+
+function assertPublicationParentIdentity(publication) {
+  const {
+    destination,
+    parent,
+    parentStat: expectedParentStat,
+    staging,
+  } = publication;
+  if (
+    path.dirname(destination) !== parent ||
+    path.dirname(staging) !== parent
+  ) {
+    throw new Error("Evidence publication paths escaped their owned parent.");
+  }
+  const parentStat = lstatIfPresent(parent);
+  if (
+    !parentStat ||
+    parentStat.isSymbolicLink() ||
+    !parentStat.isDirectory() ||
+    parentStat.dev !== expectedParentStat.dev ||
+    parentStat.ino !== expectedParentStat.ino
+  ) {
+    throw new Error("Evidence publication parent changed identity.");
+  }
+  assertPublicationTrust(parent, publication.trust);
+  return parentStat;
+}
+
+function assertStagingIdentity(publication, { allowMissing = false } = {}) {
+  const {
+    parent,
+    staging,
+    stagingPrefix,
+    stagingStat: expectedStagingStat,
+  } = publication;
+  assertPublicationParentIdentity(publication);
+  if (
+    path.dirname(staging) !== parent ||
+    !path.basename(staging).startsWith(stagingPrefix)
+  ) {
+    throw new Error("Refusing to clean an unowned evidence staging path.");
+  }
+  const stagingStat = lstatIfPresent(staging);
+  if (!stagingStat) {
+    if (allowMissing) return undefined;
+    throw new Error("Evidence staging directory disappeared.");
+  }
+  if (
+    stagingStat.isSymbolicLink() ||
+    !stagingStat.isDirectory() ||
+    stagingStat.dev !== expectedStagingStat.dev ||
+    stagingStat.ino !== expectedStagingStat.ino
+  ) {
+    throw new Error("Evidence staging directory changed identity.");
+  }
+  return stagingStat;
+}
+
+function removeOwnedStagingDirectory(publication) {
+  if (!assertStagingIdentity(publication, { allowMissing: true })) return;
+  const tombstone = `${publication.staging}.cleanup`;
+  if (lstatIfPresent(tombstone)) {
+    throw new Error("Evidence cleanup tombstone already exists.");
+  }
+  fs.renameSync(publication.staging, tombstone);
+  const tombstoneStat = fs.lstatSync(tombstone);
+  if (
+    tombstoneStat.isSymbolicLink() ||
+    !tombstoneStat.isDirectory() ||
+    tombstoneStat.dev !== publication.stagingStat.dev ||
+    tombstoneStat.ino !== publication.stagingStat.ino
+  ) {
+    throw new Error("Evidence cleanup tombstone changed identity.");
+  }
+  // `fs.rm` unlinks directory symlinks instead of traversing them. The root is
+  // the exact inode created above and atomically moved to this private name.
+  fs.rmSync(tombstone, { recursive: true, force: true, maxRetries: 2 });
+}
+
+function childPath(root, file, label) {
+  const relative = path.relative(root, path.resolve(file));
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`${label} is outside the evidence staging directory.`);
+  }
+  return relative;
+}
+
+function verifyStagedEvidence(publication, result) {
+  assertStagingIdentity(publication);
+  const { staging } = publication;
+  const manifestRelative = childPath(
+    staging,
+    result.manifestPath,
+    "Evidence manifest",
+  );
+  const persistedManifest = readJson(result.manifestPath, "evidence manifest");
+  if (
+    JSON.stringify(persistedManifest) !== JSON.stringify(result.manifest) ||
+    persistedManifest.schema !== "eliza_voice_evidence_v1" ||
+    persistedManifest.privacy?.publicAudio !==
+      "non-intelligible-duration-only-fixed-tone" ||
+    persistedManifest.privacy?.privateAudioPublished !== false ||
+    !Array.isArray(persistedManifest.artifacts) ||
+    persistedManifest.artifacts.length !== result.manifest.artifacts.length
+  ) {
+    throw new Error(
+      "Staged evidence manifest is incomplete or privacy-unsafe.",
+    );
+  }
+  const expectedFiles = new Set([manifestRelative]);
+  for (const artifact of persistedManifest.artifacts) {
+    if (path.basename(artifact.path) !== artifact.path) {
+      throw new Error(`Evidence artifact path is not flat: ${artifact.path}`);
+    }
+    const file = path.join(staging, artifact.path);
+    const relative = childPath(staging, file, "Evidence artifact");
+    if (expectedFiles.has(relative)) {
+      throw new Error(`Evidence manifest contains a duplicate: ${relative}`);
+    }
+    const fileStat = fs.lstatSync(file);
+    if (
+      fileStat.isSymbolicLink() ||
+      !fileStat.isFile() ||
+      fileStat.size !== artifact.bytes ||
+      sha256(file) !== artifact.sha256
+    ) {
+      throw new Error(`Evidence artifact hash verification failed: ${file}`);
+    }
+    expectedFiles.add(relative);
+  }
+  const stagedFiles = fs
+    .readdirSync(staging, { withFileTypes: true })
+    .map((entry) => {
+      const file = path.join(staging, entry.name);
+      const fileStat = fs.lstatSync(file);
+      if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
+        throw new Error(`Evidence staging contains a non-file: ${file}`);
+      }
+      return childPath(staging, file, "Staged evidence file");
+    });
+  if (
+    stagedFiles.length !== expectedFiles.size ||
+    stagedFiles.some((file) => !expectedFiles.has(file))
+  ) {
+    throw new Error("Evidence staging contains unmanifested public files.");
+  }
+}
+
+function publishStagedEvidence(publication, result) {
+  verifyStagedEvidence(publication, result);
+  assertStagingIdentity(publication);
+  const publishedResult = {
+    ...result,
+    mp4: path.join(
+      publication.destination,
+      childPath(publication.staging, result.mp4, "Evidence MP4"),
+    ),
+    manifestPath: path.join(
+      publication.destination,
+      childPath(publication.staging, result.manifestPath, "Evidence manifest"),
+    ),
+  };
+  const currentDestination = lstatIfPresent(publication.destination);
+  if (currentDestination) {
+    throw new Error(
+      "Voice evidence output path appeared before atomic publication.",
+    );
+  }
+  assertPublicationParentIdentity(publication);
+  assertStagingIdentity(publication);
+  fs.renameSync(publication.staging, publication.destination);
+  return publishedResult;
+}
+
+function atomicallyPublishEvidence(outDir, build) {
+  const publication = prepareOutputPublication(outDir);
+  let published = false;
+  try {
+    const result = build(publication.staging);
+    const publishedResult = publishStagedEvidence(publication, result);
+    published = true;
+    return publishedResult;
+  } finally {
+    if (!published) removeOwnedStagingDirectory(publication);
+  }
+}
+
+function writeProof(outDir, kind, head, proof) {
+  const file = path.join(outDir, `voice-${kind}-proof.json`);
+  fs.writeFileSync(
+    file,
+    `${JSON.stringify(
+      {
+        schema: "eliza_voice_private_input_projection_v1",
+        revision: head,
+        kind,
+        phase: "correlation",
+        code: `VOICE_${kind.toUpperCase()}_CORRELATED`,
+        checks: proof,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return file;
+}
+
+function manifest(outDir, kind, head, media, proof, artifacts) {
   const value = {
     schema: "eliza_voice_evidence_v1",
     issue: 16937,
     kind,
     revision: head,
     generatedAt: new Date().toISOString(),
+    privacy: {
+      publicAudio: "non-intelligible-duration-only-fixed-tone",
+      privateAudioPublished: false,
+      sourceFeaturePublished: "duration-only",
+    },
     media,
+    proof,
     artifacts: artifacts.map(({ file, role }) => ({
       role,
       path: path.basename(file),
@@ -778,6 +1129,12 @@ function mux(video, audioInputs, output, tools) {
       "0:v:0",
       "-map",
       "[a]",
+      "-map_metadata",
+      "-1",
+      "-map_chapters",
+      "-1",
+      "-vf",
+      "drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill",
       "-c:v",
       "libx264",
       "-pix_fmt",
@@ -791,6 +1148,40 @@ function mux(video, audioInputs, output, tools) {
     ],
     "voice recording mux",
   );
+}
+
+function projectAcousticSignal(duration, output, tools) {
+  if (!Number.isFinite(duration) || duration < 0.25) {
+    throw new Error(
+      `Cannot project an invalid acoustic duration: ${String(duration)}.`,
+    );
+  }
+  runChecked(
+    tools.ffmpeg,
+    [
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `sine=frequency=${ACOUSTIC_PROJECTION.frequencyHz}:sample_rate=${ACOUSTIC_PROJECTION.sampleRateHz}:duration=${duration.toFixed(6)}`,
+      "-af",
+      "volume=0.25",
+      "-ac",
+      String(ACOUSTIC_PROJECTION.channels),
+      "-map_metadata",
+      "-1",
+      "-map_chapters",
+      "-1",
+      "-vn",
+      "-c:a",
+      "pcm_s16le",
+      output,
+    ],
+    "privacy-safe acoustic projection",
+  );
+  return output;
 }
 
 function transcodeFailures(root, outDir, tools) {
@@ -817,6 +1208,12 @@ function transcodeFailures(root, outDir, tools) {
         input,
         "-map",
         "0:v:0",
+        "-map_metadata",
+        "-1",
+        "-map_chapters",
+        "-1",
+        "-vf",
+        "drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill",
         "-c:v",
         "libx264",
         "-pix_fmt",
@@ -875,6 +1272,38 @@ export function finalizeWebVoiceEvidence(args) {
   }
 }
 
+export function assertLiveMatrixReport(matrix, head, expectedSession) {
+  if (
+    matrix?.schema !== "eliza_voice_live_matrix_v2" ||
+    matrix?.revision !== head ||
+    typeof expectedSession !== "string" ||
+    !/^[A-Za-z0-9-]{12,128}$/.test(expectedSession) ||
+    matrix?.sessionId !== expectedSession ||
+    matrix?.mode !== "run" ||
+    matrix?.selection?.filterCount !== 1 ||
+    matrix?.selection?.matched !== 1 ||
+    matrix?.selection?.errorCode !== null ||
+    matrix?.summary?.pass !== 1 ||
+    matrix?.summary?.fail !== 0 ||
+    matrix?.summary?.pending !== 0 ||
+    matrix?.summary?.skip !== 0 ||
+    !Array.isArray(matrix?.cells) ||
+    matrix.cells.length !== 1 ||
+    matrix.cells[0]?.id !== "web.live.railway-roundtrip" ||
+    matrix.cells[0]?.platform !== "web" ||
+    matrix.cells[0]?.status !== "pass" ||
+    matrix.cells[0]?.probe?.available !== true ||
+    matrix.cells[0]?.probe?.code !== "WEB_LIVE_READY" ||
+    matrix.cells[0]?.execution?.exitCode !== 0 ||
+    matrix.cells[0]?.execution?.signalCode !== null ||
+    matrix.cells[0]?.execution?.code !== "COMMAND_PASSED"
+  ) {
+    throw new Error(
+      "Live matrix report is not the revision- and session-bound Railway cell pass.",
+    );
+  }
+}
+
 function finalizeWebVoiceEvidenceSnapshot({
   resultsDir,
   failureResultsDir,
@@ -884,6 +1313,7 @@ function finalizeWebVoiceEvidenceSnapshot({
   matrixReport,
   outDir,
   expectedRevision,
+  expectedSession,
   tools = resolveMediaTools(),
 }) {
   const files = walkFiles(resultsDir);
@@ -908,7 +1338,7 @@ function finalizeWebVoiceEvidenceSnapshot({
     (file) => path.basename(file) === "video.webm" && file.startsWith(liveRoot),
     "live Playwright video",
   );
-  const trace = requireOne(
+  requireOne(
     files,
     (file) => path.basename(file) === "trace.zip" && file.startsWith(liveRoot),
     "live Playwright trace",
@@ -930,16 +1360,12 @@ function finalizeWebVoiceEvidenceSnapshot({
     );
   }
   const matrix = readJson(matrixReport, "live matrix report");
-  if (
-    matrix?.selection?.matched !== 1 ||
-    matrix?.summary?.pass !== 1 ||
-    matrix?.summary?.fail !== 0 ||
-    matrix?.summary?.skip !== 0
-  ) {
-    throw new Error("Live matrix report is not an executed single-cell pass.");
-  }
+  const head = revision(expectedRevision);
+  assertLiveMatrixReport(matrix, head, expectedSession);
   assertFreshCapture(systemLoopback, networkValue.startedAt, "system loopback");
-  inspectAudibleMedia(systemLoopback, tools);
+  const loopbackInspection = inspectAudibleMedia(systemLoopback, tools);
+  const micInspection = inspectAudibleMedia(mic, tools);
+  const ttsInspection = inspectAudibleMedia(tts, tools);
   const audioSegments = assertLoopbackSegments(
     systemLoopback,
     loopbackClock,
@@ -949,53 +1375,84 @@ function finalizeWebVoiceEvidenceSnapshot({
     tools,
   );
   requireFile(backendLog, "backend log");
-  fs.mkdirSync(outDir, { recursive: true });
-  const mp4 = path.join(outDir, "voice-web-live-roundtrip.mp4");
-  mux(video, [systemLoopback], mp4, tools);
-  const inspected = inspectAudibleMp4(mp4, tools);
-  const failures = transcodeFailures(failureResultsDir, outDir, tools);
-  const artifacts = [
-    {
-      file: mp4,
-      role: "web-screen-plus-system-loopback-composite-unsynchronized",
-    },
-    {
-      file: copy(systemLoopback, outDir, "voice-web-system-loopback.wav"),
-      role: "browser-system-loopback",
-    },
-    {
-      file: copy(loopbackClock, outDir, "voice-web-loopback-clock.json"),
-      role: "loopback-clock",
-    },
-    { file: copy(mic, outDir), role: "captured-microphone-payload" },
-    { file: copy(tts, outDir), role: "returned-tts-payload" },
-    { file: copy(trajectory, outDir), role: "live-llm-trajectory" },
-    { file: copy(network, outDir), role: "frontend-network" },
-    { file: copy(trace, outDir), role: "frontend-trace" },
-    {
-      file: copy(backendLog, outDir, "voice-web-backend.log"),
-      role: "backend-log",
-    },
-    {
-      file: copy(matrixReport, outDir, "voice-web-matrix.json"),
-      role: "matrix-report",
-    },
-    ...failures.map((file) => ({ file, role: "failure-path-video" })),
-  ];
-  return {
-    mp4,
-    ...manifest(
-      outDir,
-      "web",
-      revision(expectedRevision),
+  return atomicallyPublishEvidence(outDir, (stagingDir) => {
+    const safeLoopback = projectAcousticSignal(
+      loopbackInspection.duration,
+      path.join(stagingDir, "voice-web-projected-loopback.wav"),
+      tools,
+    );
+    const safeMic = projectAcousticSignal(
+      micInspection.duration,
+      path.join(stagingDir, "voice-web-projected-input.wav"),
+      tools,
+    );
+    const safeTts = projectAcousticSignal(
+      ttsInspection.duration,
+      path.join(stagingDir, "voice-web-projected-tts.wav"),
+      tools,
+    );
+    const mp4 = path.join(stagingDir, "voice-web-live-roundtrip.mp4");
+    mux(video, [safeLoopback], mp4, tools);
+    const inspected = inspectAudibleMp4(mp4, tools);
+    const failures = transcodeFailures(failureResultsDir, stagingDir, tools);
+    const proof = {
+      modelResponsePresent: true,
+      networkStagePassCount: 3,
+      trajectoryMatched: true,
+      roomMatched: true,
+      messageMatched: true,
+      matrixCellCount: 1,
+      matrixPassCount: 1,
+      backendEvidencePresent: true,
+      referenceAudioMatched: true,
+      ttsAudioMatched: true,
+      publicAudioProjectedFromDurationOnly: true,
+      privateAudioPublished: false,
+      failurePathCount: failures.length,
+    };
+    const proofFile = writeProof(stagingDir, "web", head, proof);
+    const artifacts = [
       {
-        ...inspected,
-        synchronization: "not-established-between-screen-and-loopback",
-        segments: audioSegments,
+        file: mp4,
+        role: "privacy-safe-black-video-plus-projected-loopback-tone",
       },
-      artifacts,
-    ),
-  };
+      {
+        file: safeLoopback,
+        role: "privacy-safe-projected-loopback-duration-tone",
+      },
+      {
+        file: safeMic,
+        role: "privacy-safe-projected-microphone-duration-tone",
+      },
+      {
+        file: safeTts,
+        role: "privacy-safe-projected-tts-duration-tone",
+      },
+      { file: proofFile, role: "privacy-safe-correlation-proof" },
+      ...failures.map((file) => ({
+        file,
+        role: "privacy-safe-black-failure-path-video",
+      })),
+    ];
+    return {
+      mp4,
+      ...manifest(
+        stagingDir,
+        "web",
+        head,
+        {
+          ...projectedMedia(
+            inspected,
+            "SCREEN_AUDIO_SYNCHRONIZATION_NOT_ESTABLISHED",
+          ),
+          audibleSegmentCount: 2,
+          correlatedSignalCount: Object.keys(audioSegments.correlations).length,
+        },
+        proof,
+        artifacts,
+      ),
+    };
+  });
 }
 
 function assertDesktopReport(file, head) {
@@ -1303,7 +1760,12 @@ function finalizeDesktopVoiceEvidenceSnapshot({
     );
   }
   inspectAudibleMedia(microphoneAudio, tools);
-  inspectAudibleMedia(speakerLoopbackAudio, tools);
+  const speakerLoopbackInspection = inspectAudibleMedia(
+    speakerLoopbackAudio,
+    tools,
+  );
+  const referenceInspection = inspectAudibleMedia(referencePayload, tools);
+  const ttsInspection = inspectAudibleMedia(ttsPayload, tools);
   const asrStage = desktopEvidence.report.stages.find(
     (stage) => stage.stage === "asr",
   );
@@ -1367,44 +1829,82 @@ function finalizeDesktopVoiceEvidenceSnapshot({
     ),
     tools,
   );
-  fs.mkdirSync(outDir, { recursive: true });
-  const mp4 = path.join(outDir, "voice-desktop-live-roundtrip.mp4");
-  mux(screenRecording, [microphoneAudio, speakerLoopbackAudio], mp4, tools);
-  const inspected = inspectAudibleMp4(mp4, tools);
-  const artifacts = [
-    { file: mp4, role: "desktop-mic-and-speaker-loopback-walkthrough" },
-    { file: copy(report, outDir), role: "packaged-desktop-report" },
-    { file: copy(trajectory, outDir), role: "live-llm-trajectory" },
-    { file: copy(backendLog, outDir), role: "backend-log" },
-    { file: copy(microphoneAudio, outDir), role: "physical-microphone" },
-    { file: copy(speakerLoopbackAudio, outDir), role: "speaker-loopback" },
-    { file: copy(microphonePayload, outDir), role: "app-microphone-payload" },
-    { file: copy(referencePayload, outDir), role: "known-phrase-reference" },
-    { file: copy(ttsPayload, outDir), role: "returned-tts-payload" },
-    {
-      file: copy(captureProvenance, outDir),
-      role: "physical-hardware-capture-provenance",
-    },
-  ];
-  return {
-    mp4,
-    ...manifest(
-      outDir,
-      "desktop",
-      head,
+  return atomicallyPublishEvidence(outDir, (stagingDir) => {
+    const safeSpeakerLoopback = projectAcousticSignal(
+      speakerLoopbackInspection.duration,
+      path.join(stagingDir, "voice-desktop-projected-speaker-loopback.wav"),
+      tools,
+    );
+    const safeReference = projectAcousticSignal(
+      referenceInspection.duration,
+      path.join(stagingDir, "voice-desktop-projected-reference.wav"),
+      tools,
+    );
+    const safeTts = projectAcousticSignal(
+      ttsInspection.duration,
+      path.join(stagingDir, "voice-desktop-projected-tts.wav"),
+      tools,
+    );
+    const mp4 = path.join(stagingDir, "voice-desktop-live-roundtrip.mp4");
+    mux(screenRecording, [safeSpeakerLoopback], mp4, tools);
+    const inspected = inspectAudibleMp4(mp4, tools);
+    const proof = {
+      modelResponsePresent: true,
+      trajectoryMatched: true,
+      physicalMicrophoneClassified: true,
+      backendEvidencePresent: true,
+      packagedStageCount: desktopEvidence.report.stages.length,
+      packagedStagePassCount: desktopEvidence.report.stages.filter(
+        (stage) => stage.status === "pass",
+      ).length,
+      synchronizedCaptureCount: 3,
+      audioCorrelationCount: 4,
+      publicAudioProjectedFromDurationOnly: true,
+      privateAudioPublished: false,
+    };
+    const proofFile = writeProof(stagingDir, "desktop", head, proof);
+    const artifacts = [
       {
-        ...inspected,
-        synchronization: "session-clock-aligned-within-250ms",
-        correlations: {
-          microphone: microphoneCorrelation,
-          acousticReference: acousticReferenceCorrelation,
-          loopbackReference: loopbackReferenceCorrelation,
-          tts: ttsCorrelation,
-        },
+        file: mp4,
+        role: "privacy-safe-black-video-plus-projected-loopback-tone",
       },
-      artifacts,
-    ),
-  };
+      {
+        file: safeSpeakerLoopback,
+        role: "privacy-safe-projected-speaker-loopback-duration-tone",
+      },
+      {
+        file: safeReference,
+        role: "privacy-safe-projected-reference-duration-tone",
+      },
+      {
+        file: safeTts,
+        role: "privacy-safe-projected-tts-duration-tone",
+      },
+      {
+        file: proofFile,
+        role: "privacy-safe-correlation-proof",
+      },
+    ];
+    return {
+      mp4,
+      ...manifest(
+        stagingDir,
+        "desktop",
+        head,
+        {
+          ...projectedMedia(inspected, "SESSION_CLOCK_ALIGNED_WITHIN_250MS"),
+          correlatedSignalCount: [
+            microphoneCorrelation,
+            acousticReferenceCorrelation,
+            loopbackReferenceCorrelation,
+            ttsCorrelation,
+          ].length,
+        },
+        proof,
+        artifacts,
+      ),
+    };
+  });
 }
 
 function options(argv) {
@@ -1427,6 +1927,7 @@ function main() {
     outDir: values.out,
     backendLog: values.backend,
     expectedRevision: process.env.ELIZA_VOICE_EVIDENCE_REVISION,
+    expectedSession: process.env.ELIZA_VOICE_MATRIX_SESSION_ID,
   };
   const result =
     command === "web"
@@ -1456,8 +1957,9 @@ function main() {
               "Usage: voice-evidence-media.mjs web|desktop --<artifact> <path> ...",
             );
           })();
-  console.log(`[voice-evidence] manifest=${result.manifestPath}`);
-  console.log(`[voice-evidence] mp4=${result.mp4}`);
+  console.log(
+    `[voice-evidence] phase=finalize status=passed code=EVIDENCE_READY artifacts=${result.manifest.artifacts.length}`,
+  );
 }
 
 if (
@@ -1468,8 +1970,9 @@ if (
     main();
   } catch (error) {
     // error-policy:J1 CLI boundary — incomplete evidence exits non-zero.
+    void error;
     console.error(
-      `[voice-evidence] ${error instanceof Error ? error.message : String(error)}`,
+      "[voice-evidence] phase=finalize status=failed code=EVIDENCE_REJECTED",
     );
     process.exitCode = 1;
   }

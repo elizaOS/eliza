@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -177,6 +177,78 @@ describe("workspace in-place fast-path", () => {
 });
 
 describe("content-keyed staging cache", () => {
+  it("rebuilds the declared dependency closure behind workspace symlinks", async () => {
+    const dependencyStore = path.join(tmpDir, "dependency-store");
+    const transitiveRoot = path.join(dependencyStore, "transitive-package");
+    const directRoot = path.join(dependencyStore, "direct-package");
+    await fsp.mkdir(transitiveRoot, { recursive: true });
+    await fsp.writeFile(
+      path.join(transitiveRoot, "package.json"),
+      JSON.stringify({
+        name: "transitive-package",
+        type: "module",
+        exports: "./index.mjs",
+      }),
+    );
+    await fsp.writeFile(
+      path.join(transitiveRoot, "index.mjs"),
+      "export const transitiveMarker = 'nested-ok';\n",
+    );
+
+    await fsp.mkdir(path.join(directRoot, "node_modules"), { recursive: true });
+    await fsp.writeFile(
+      path.join(directRoot, "package.json"),
+      JSON.stringify({
+        name: "direct-package",
+        type: "module",
+        exports: "./index.mjs",
+        dependencies: { "transitive-package": "workspace:*" },
+      }),
+    );
+    await fsp.writeFile(
+      path.join(directRoot, "index.mjs"),
+      "export { transitiveMarker } from 'transitive-package';\n",
+    );
+    await fsp.symlink(
+      transitiveRoot,
+      path.join(directRoot, "node_modules", "transitive-package"),
+    );
+
+    const name = "stage-cache-dependency-closure-fixture";
+    const installPath = await createSourceFixture(tmpDir, name, "closure");
+    await fsp.writeFile(
+      path.join(installPath, "package.json"),
+      JSON.stringify({
+        name,
+        type: "module",
+        main: "index.mjs",
+        dependencies: { "direct-package": "workspace:*" },
+      }),
+    );
+    await fsp.writeFile(
+      path.join(installPath, "index.mjs"),
+      "export { transitiveMarker } from 'direct-package';\n",
+    );
+    await fsp.mkdir(path.join(installPath, "node_modules"), {
+      recursive: true,
+    });
+    await fsp.symlink(
+      directRoot,
+      path.join(installPath, "node_modules", "direct-package"),
+    );
+
+    const stagedRoot = await stageColdPluginImportRoot(
+      coldStageParams(installPath, name),
+    );
+    const stagedModule = (await import(
+      pathToFileURL(path.join(stagedRoot, "index.mjs")).href
+    )) as { transitiveMarker: string };
+
+    expect(stagedModule.transitiveMarker).toBe("nested-ok");
+    await fsp.rm(dependencyStore, { recursive: true, force: true });
+    expect(stagedModule.transitiveMarker).toBe("nested-ok");
+  });
+
   it("does not stage bytes or links that escape the plugin tree", async () => {
     const name = "stage-cache-symlink-confinement-fixture";
     const installPath = await createSourceFixture(tmpDir, name, "confined");

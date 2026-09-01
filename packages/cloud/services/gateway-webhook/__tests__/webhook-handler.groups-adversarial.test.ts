@@ -13,6 +13,12 @@ import type { ChatEvent, PlatformAdapter } from "../src/adapters/types";
 import { logger } from "../src/logger";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
+import {
+  configureTelegramIdentity,
+  resetTelegramIdentityAttestation,
+  TELEGRAM_CONNECTOR_ACCOUNT_ID,
+  withTelegramIdentity,
+} from "./telegram-identity-fixture";
 
 type RedisSetOptions = { ex?: number; nx?: boolean };
 
@@ -61,6 +67,9 @@ class MemoryRedis implements GatewayRedis {
 const originalFetch = globalThis.fetch;
 const envKeys = [
   "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+  "ELIZA_APP_TELEGRAM_BOT_ID",
+  "ELIZA_APP_TELEGRAM_BOT_USERNAME",
+  "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
   "ELIZA_APP_BLOOIO_PHONE_NUMBER",
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -190,6 +199,7 @@ describe("gateway webhook group egress adversarial paths", () => {
         process.env[key] = value;
       }
     }
+    resetTelegramIdentityAttestation();
     mock.restore();
   });
 
@@ -393,7 +403,7 @@ describe("gateway webhook group egress adversarial paths", () => {
   });
 
   test("runs a Telegram supergroup turn through the delivery ledger, not the edge forward", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     const event: ChatEvent = {
       platform: "telegram",
@@ -433,40 +443,42 @@ describe("gateway webhook group egress adversarial paths", () => {
       requiresAllAdultsConsent: true,
     };
 
-    globalThis.fetch = mock(async (input, init) => {
-      const request = new Request(input, init);
-      if (request.url.endsWith("/api/eliza-app/webhook/telegram/edge")) {
-        throw new Error(
-          "group turn was rerouted onto the personal edge forward",
-        );
-      }
-      if (request.url.endsWith(SHARED_MESSAGES_PATH)) {
-        const body = (await request.json()) as Record<string, unknown>;
-        if (body.eventType === "delivery_authorization") {
-          authorizationBody = body;
-          return ledger.authorize(body);
+    globalThis.fetch = mock(
+      withTelegramIdentity(async (input, init) => {
+        const request = new Request(input, init);
+        if (request.url.endsWith("/api/eliza-app/webhook/telegram/edge")) {
+          throw new Error(
+            "group turn was rerouted onto the personal edge forward",
+          );
         }
-        if (body.eventType === "delivery_commit") {
-          commitBody = body;
-          return ledger.commit(body);
+        if (request.url.endsWith(SHARED_MESSAGES_PATH)) {
+          const body = (await request.json()) as Record<string, unknown>;
+          if (body.eventType === "delivery_authorization") {
+            authorizationBody = body;
+            return ledger.authorize(body);
+          }
+          if (body.eventType === "delivery_commit") {
+            commitBody = body;
+            return ledger.commit(body);
+          }
+          if (body.eventType === "delivery_receipt") {
+            receiptBody = body;
+            return Response.json({
+              success: true,
+              data: {
+                code: "group_delivery_receipt_recorded",
+                recorded: true,
+                inserted: 1,
+              },
+            });
+          }
+          turnCalls += 1;
+          turnBody = body;
+          return turnResponse("group turn reply", allAdultsAuthority);
         }
-        if (body.eventType === "delivery_receipt") {
-          receiptBody = body;
-          return Response.json({
-            success: true,
-            data: {
-              code: "group_delivery_receipt_recorded",
-              recorded: true,
-              inserted: 1,
-            },
-          });
-        }
-        turnCalls += 1;
-        turnBody = body;
-        return turnResponse("group turn reply", allAdultsAuthority);
-      }
-      throw new Error(`Unexpected fetch: ${request.url}`);
-    }) as typeof fetch;
+        throw new Error(`Unexpected fetch: ${request.url}`);
+      }),
+    ) as typeof fetch;
 
     const deps = {
       redis,
@@ -489,8 +501,7 @@ describe("gateway webhook group egress adversarial paths", () => {
       platform: "telegram",
       chatType: "supergroup",
       project: "eliza-app",
-      connectorAccountId:
-        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
+      connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
       chatId: "-100123456789",
       providerThreadId: "909",
       actor: {
@@ -510,8 +521,7 @@ describe("gateway webhook group egress adversarial paths", () => {
       eventType: "delivery_receipt",
       platform: "telegram",
       project: "eliza-app",
-      connectorAccountId:
-        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
+      connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
       chatId: "-100123456789",
       sourceMessageId: "telegram:eliza-app:tg-group-update-1",
       providerMessageIds: ["tg-provider-7"],

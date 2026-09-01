@@ -23,10 +23,19 @@ export async function persistActiveServerCredential(
   pairedApiBase?: string,
 ): Promise<void> {
   const activeServer = loadPersistedActiveServer();
-  const fallbackRemote = pairedApiBase?.trim()
+  const explicitPairingBase = pairedApiBase?.trim() || null;
+  const sameOriginPairingBase =
+    (!activeServer || activeServer.kind === "local") &&
+    typeof window !== "undefined" &&
+    (window.location.protocol === "http:" ||
+      window.location.protocol === "https:")
+      ? window.location.origin
+      : null;
+  const pairingBase = explicitPairingBase ?? sameOriginPairingBase;
+  const fallbackRemote = pairingBase
     ? createPersistedActiveServer({
         kind: "remote",
-        apiBase: pairedApiBase,
+        apiBase: pairingBase,
         accessToken: token,
       })
     : null;

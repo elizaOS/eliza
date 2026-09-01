@@ -18,6 +18,7 @@
 
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { fetchWithCsrf } from "../../../api/csrf-client";
 
 /** Home-card poll cadence — matches the TodosView 15s background refresh. */
 export const TODAY_TODOS_REFRESH_INTERVAL_MS = 15_000;
@@ -118,10 +119,15 @@ export async function fetchTodayTodos(
   callerSignal?: AbortSignal,
 ): Promise<TodayTodo[]> {
   const deadline = AbortSignal.timeout(TODAY_TODOS_REQUEST_TIMEOUT_MS);
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/todos`, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
+  const response = await fetchWithCsrf(
+    `${client.getBaseUrl()}/api/lifeops/todos`,
+    {
+      method: "GET",
+      signal: callerSignal
+        ? AbortSignal.any([callerSignal, deadline])
+        : deadline,
+    },
+  );
   if (!response.ok) {
     throw new Error(`Todos request failed (${response.status})`);
   }
@@ -134,7 +140,7 @@ export async function fetchTodayTodos(
  * caller roll the optimistic completion back.
  */
 export async function completeTodayTodo(id: string): Promise<void> {
-  const response = await fetch(
+  const response = await fetchWithCsrf(
     `${client.getBaseUrl()}/api/lifeops/occurrences/${encodeURIComponent(id)}/complete`,
     {
       method: "POST",

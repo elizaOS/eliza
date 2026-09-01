@@ -2,6 +2,7 @@
 
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
+import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
 import { agentBackupAdmissionWork } from "../schemas/agent-backup-admission";
 import { agentNodeIncarnationHistories } from "../schemas/agent-node-incarnation-histories";
@@ -18,8 +19,6 @@ import { readPostLockDatabaseNow } from "./primary-database-clock";
 export const DEFAULT_AGENT_BACKUP_ADMISSION_RETENTION_MS = 7 * 24 * 60 * 60_000;
 export const AGENT_BACKUP_ADMISSION_RESERVED_REASON = "CAPTURE_RESERVED" as const;
 
-const MIN_RETENTION_MS = 24 * 60 * 60_000;
-const MAX_RETENTION_MS = 365 * 24 * 60 * 60_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export interface AgentBackupAdmissionReservation {
@@ -53,15 +52,6 @@ function requireDate(value: Date, field: string): void {
   if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
     throw new Error(`${field} must be a valid Date`);
   }
-}
-
-function requireRetentionMs(value: number): number {
-  if (!Number.isSafeInteger(value) || value < MIN_RETENTION_MS || value > MAX_RETENTION_MS) {
-    throw new Error(
-      `retentionMs must be a safe integer between ${MIN_RETENTION_MS} and ${MAX_RETENTION_MS}`,
-    );
-  }
-  return value;
 }
 
 function validateClaim(claim: AgentBackupAdmissionClaim): void {
@@ -275,14 +265,21 @@ async function readSourceOccurrence(tx: DbTransaction, claim: AgentBackupAdmissi
   return source;
 }
 
+interface PersistedReservationAuthority {
+  sourceProvider: "operator-onboarded" | "hetzner-cloud";
+  retentionUntil: Date;
+  payloadDigest: string;
+}
+
 function assertPersistedReservationMatches(params: {
   backup: typeof agentSandboxBackups.$inferSelect;
   claim: AgentBackupAdmissionClaim;
   source: Awaited<ReturnType<typeof readSourceOccurrence>>;
-}): void {
+}): PersistedReservationAuthority {
   const { backup, claim, source } = params;
   const sourceProvider = source.fleetKind === "robot" ? "operator-onboarded" : "hetzner-cloud";
   if (
+    backup.catalog_version !== 2 ||
     backup.backup_operation_id !== claim.workId ||
     backup.catalog_organization_id !== claim.organizationId ||
     backup.catalog_agent_id !== claim.sandboxId ||
@@ -309,22 +306,119 @@ function assertPersistedReservationMatches(params: {
   ) {
     conflict("Backup admission operation was already reserved with a different payload");
   }
+
+  return {
+    sourceProvider,
+    retentionUntil: backup.retention_until,
+    payloadDigest: backup.catalog_payload_digest,
+  };
+}
+
+async function assertSettledReservationPayloadDigestMatches(params: {
+  backup: typeof agentSandboxBackups.$inferSelect;
+  claim: AgentBackupAdmissionClaim;
+  source: Awaited<ReturnType<typeof readSourceOccurrence>>;
+}): Promise<void> {
+  const { claim, source } = params;
+  const authority = assertPersistedReservationMatches(params);
+
+  // This mirrors agent-backup-catalog's canonical reservation projection. The
+  // catalogue helper is intentionally private today, but settled admission
+  // replay must still authenticate every immutable field, including the
+  // original database-owned retention timestamp, instead of trusting a merely
+  // present digest.
+  const canonicalPayload = JSON.stringify({
+    organizationId: claim.organizationId.toLowerCase(),
+    agentId: claim.sandboxId.toLowerCase(),
+    sandboxRecordId: claim.sandboxId.toLowerCase(),
+    operationId: claim.workId.toLowerCase(),
+    activationGeneration: claim.sourceActivationGeneration.toLowerCase(),
+    lifecycleRevision: claim.sourceLifecycleRevision,
+    snapshotType: "auto",
+    backupKind: "full",
+    parentBackupId: null,
+    baseBackupId: null,
+    sourceProvider: authority.sourceProvider,
+    sourceNodeRecordId: source.nodeRecordId.toLowerCase(),
+    sourceNodeId: source.nodeId,
+    sourceNodeIncarnation: source.nodeIncarnation,
+    sourceNodeHistoryId: source.nodeHistoryId,
+    sourceProviderServerId: source.providerServerId,
+    sourceProviderHandle: claim.sourceProviderHandle,
+    sourceContainerId: claim.sourceContainerId,
+    retentionReason: "schedule",
+    retentionUntil: authority.retentionUntil.toISOString(),
+  });
+  const canonicalBytes = new TextEncoder().encode(canonicalPayload);
+  const stableBytes = new Uint8Array(new ArrayBuffer(canonicalBytes.byteLength));
+  stableBytes.set(canonicalBytes);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", stableBytes));
+  const expectedDigest = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  if (authority.payloadDigest !== expectedDigest) {
+    conflict("Backup admission operation was already reserved with a different payload");
+  }
+}
+
+async function assertReservationLanesRemainAvailable(params: {
+  tx: DbTransaction;
+  backupId: string;
+  claim: AgentBackupAdmissionClaim;
+  source: Awaited<ReturnType<typeof readSourceOccurrence>>;
+}): Promise<void> {
+  const { tx, backupId, claim, source } = params;
+  const [lanes] = await sqlRows<{
+    organization_conflict: boolean;
+    node_conflict: boolean;
+  }>(
+    tx,
+    sql`SELECT EXISTS (
+      SELECT 1
+      FROM ${agentSandboxBackups} AS active_backup
+      WHERE active_backup.id <> ${backupId}::uuid
+        AND active_backup.catalog_organization_id = ${claim.organizationId}::uuid
+        AND active_backup.catalog_state IN (
+          'scheduled', 'capturing', 'captured', 'uploading', 'primary_uploaded',
+          'primary_verified', 'secondary_pending', 'failed_retryable'
+        )
+    ) AS organization_conflict,
+    EXISTS (
+      SELECT 1
+      FROM ${agentSandboxBackups} AS active_backup
+      WHERE active_backup.id <> ${backupId}::uuid
+        AND (
+          active_backup.source_node_history_id = ${claim.nodeHistoryId}::uuid
+          OR (
+            active_backup.source_node_history_id IS NULL
+            AND active_backup.source_node_record_id = ${source.nodeRecordId}::uuid
+            AND active_backup.source_node_incarnation = ${source.nodeIncarnation}::uuid
+          )
+        )
+        AND (
+          active_backup.catalog_state IN ('scheduled', 'capturing')
+          OR (
+            active_backup.catalog_state = 'failed_retryable'
+            AND active_backup.catalog_resume_state IN ('scheduled', 'capturing')
+          )
+        )
+    ) AS node_conflict`,
+  );
+  if (!lanes || lanes.organization_conflict || lanes.node_conflict) {
+    conflict("Backup admission fair-lane authority was superseded before settlement");
+  }
 }
 
 /**
  * Reserve `operationId = workId` and consume the exact admission fence in one
- * primary-database transaction. This repository performs no remote effect,
- * node-capacity mutation, provider discovery, or autoscaling.
+ * primary-database transaction. Scheduled admission has one canonical
+ * seven-day retention policy because no caller-selected policy is persisted in
+ * durable work. This repository performs no remote effect, node-capacity
+ * mutation, provider discovery, or autoscaling.
  */
 export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
   claim: AgentBackupAdmissionClaim;
-  retentionMs?: number;
 }): Promise<AgentBackupAdmissionReservation> {
   const claim = params.claim;
   validateClaim(claim);
-  const retentionMs = requireRetentionMs(
-    params.retentionMs ?? DEFAULT_AGENT_BACKUP_ADMISSION_RETENTION_MS,
-  );
 
   return dbWrite.transaction(async (tx) => {
     // This must remain the first lock: catalog capture paths lock an existing
@@ -359,7 +453,11 @@ export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
       if (!existingBackup) {
         conflict("Settled backup admission work has no catalogue reservation");
       }
-      assertPersistedReservationMatches({ backup: existingBackup, claim, source });
+      await assertSettledReservationPayloadDigestMatches({
+        backup: existingBackup,
+        claim,
+        source,
+      });
       return {
         workId: claim.workId,
         operationId: claim.workId,
@@ -393,7 +491,7 @@ export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
     }
     const retentionUntil = existingBackup?.retention_until
       ? existingBackup.retention_until
-      : new Date(databaseNow.getTime() + retentionMs);
+      : new Date(databaseNow.getTime() + DEFAULT_AGENT_BACKUP_ADMISSION_RETENTION_MS);
     const backup = await reserveAgentBackupOperationInTransaction(tx, {
       organizationId: claim.organizationId,
       agentId: claim.sandboxId,
@@ -421,6 +519,19 @@ export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
     // Fail before settlement so the tentative catalogue insert/revision rolls
     // back together with this old claim.
     assertPersistedReservationMatches({ backup, claim, source });
+
+    // Claim-time fair-lane checks are only a snapshot. The catalogue helper
+    // now holds the sandbox and current-node-occurrence locks, while the
+    // organization lock acquired above is still held. Recheck both catalogue
+    // lanes after the tentative reservation so a legacy scheduler reservation
+    // committed after claim cannot coexist; any conflict rolls this insert and
+    // its catalogue revision back with the unsettled work.
+    await assertReservationLanesRemainAvailable({
+      tx,
+      backupId: backup.id,
+      claim,
+      source,
+    });
 
     const [settled] = await tx
       .update(agentBackupAdmissionWork)

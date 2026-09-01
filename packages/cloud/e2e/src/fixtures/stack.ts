@@ -331,19 +331,19 @@ export async function startCloudStack(
   const pgDataDir = join(dataDir, "pgdata");
   await mkdir(pgDataDir, { recursive: true });
 
-  const hetznerPort = await pickFreePort();
-  const controlPlanePort = await pickFreePort();
   const pglitePort = await pickFreePort();
   const apiPort = opts.apiPort ?? (await pickFreePort());
   const frontendPort = opts.frontendPort ?? (await pickFreePort());
 
   // 1. In-process mocks
   const hetzner = await startHetznerMock({
-    port: hetznerPort,
+    // Let the listening server claim its ephemeral port atomically. Probing a
+    // free port and closing the probe first leaves a race with parallel CI.
+    port: 0,
     actionMs: Number(process.env.MOCK_HETZNER_ACTION_MS ?? "30"),
   });
   const controlPlane = await startControlPlaneMock({
-    port: controlPlanePort,
+    port: 0,
     hetznerUrl: hetzner.url,
     tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
   });

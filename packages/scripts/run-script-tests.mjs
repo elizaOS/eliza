@@ -420,7 +420,11 @@ export function runScriptTests(options = {}) {
   const driverArgs = [
     ISOLATED_TEST_DRIVER,
     `--config=${SCRIPT_TEST_BUN_CONFIG}`,
-    "--concurrency=2",
+    // Several real-harness suites create temporary workspace packages under
+    // the repository so workspace discovery can exercise them. Separate Bun
+    // processes isolate globals, but not that shared filesystem; serial file
+    // execution prevents one suite's cleanup from deleting another's fixture.
+    "--concurrency=1",
     "--timeout-ms=120000",
   ];
   if (absoluteJunitPath) {

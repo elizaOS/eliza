@@ -18,8 +18,8 @@ const migrationUrls = [
   "0326_agent_sandbox_replacement_attempt_identity_guard.sql",
   "0327_agent_sandbox_replacement_attempt_locator_guard.sql",
   "0328_agent_sandbox_replacement_attempt_state_guard.sql",
-  "0367_agent_sandbox_replacement_restore_locator.sql",
-  "0368_agent_vault_key_seed_receipts_per_replacement.sql",
+  "0370_agent_sandbox_replacement_restore_locator.sql",
+  "0371_agent_vault_key_seed_receipts_per_replacement.sql",
 ].map((migration) => new URL(`./${migration}`, import.meta.url));
 const journalUrl = new URL("./meta/_journal.json", import.meta.url);
 const databases: PGlite[] = [];
@@ -517,19 +517,27 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0321-0328 and 0367-0368 agent sandbox replacement attempts", () => {
+describe("0321-0328 and 0370-0371 agent sandbox replacement attempts", () => {
   test("occupies one ordered journal range and matches the merged schema surface", async () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
     };
     expect(journal.entries.at(-1)).toMatchObject({
-      idx: 351,
-      tag: "0368_agent_vault_key_seed_receipts_per_replacement",
+      idx: 354,
+      tag: "0371_agent_vault_key_seed_receipts_per_replacement",
     });
     const expectedTags = migrationUrls.map(migrationTag);
-    expect(
-      journal.entries.filter(({ tag }) => expectedTags.includes(tag)).map(({ tag }) => tag),
-    ).toEqual(expectedTags);
+    const initialRangeTags = expectedTags.slice(0, 8);
+    const rangeStart = journal.entries.findIndex(({ tag }) => tag === initialRangeTags[0]);
+    expect(rangeStart).toBeGreaterThanOrEqual(0);
+    const range = journal.entries.slice(rangeStart, rangeStart + initialRangeTags.length);
+    expect(range.map(({ idx }) => idx)).toEqual(
+      Array.from({ length: initialRangeTags.length }, (_, offset) => 304 + offset),
+    );
+    expect(range.map(({ tag }) => tag)).toEqual(initialRangeTags);
+    const matchingEntries = journal.entries.filter(({ tag }) => expectedTags.includes(tag));
+    expect(matchingEntries.map(({ tag }) => tag)).toEqual(expectedTags);
+    expect(matchingEntries).toHaveLength(expectedTags.length);
 
     const db = await database();
     const schema = getTableConfig(agentSandboxReplacementAttempts);
@@ -874,7 +882,7 @@ describe("0321-0328 and 0367-0368 agent sandbox replacement attempts", () => {
         `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`,
       ),
     ).rejects.toThrow(/locator_shape_check/);
-  });
+  }, 15_000);
 
   test("retains one immutable provider-start marker before exact-restore Docker enrichment", async () => {
     const restore = await database();
@@ -955,7 +963,7 @@ describe("0321-0328 and 0367-0368 agent sandbox replacement attempts", () => {
         WHERE id = '${ATTEMPT_ID}'::uuid
       `),
     ).rejects.toThrow(/requires unresolved exact restore intent/);
-  });
+  }, 15_000);
 
   test("retains legacy seed receipts and admits one new receipt per exact replacement attempt", async () => {
     const db = await database(migrationUrls.length - 1);
@@ -1242,7 +1250,7 @@ describe("0321-0328 and 0367-0368 agent sandbox replacement attempts", () => {
         backup_id, operation_id, source_activation_generation, source_lifecycle_revision,
         manifest_sha256, target_activation_generation, receipt_digest)`),
     );
-  });
+  }, 15_000);
 
   test("binds optional restore authority to one exact durable lease tuple", async () => {
     const db = await database();

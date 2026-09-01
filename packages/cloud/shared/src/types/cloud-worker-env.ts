@@ -530,6 +530,10 @@ export interface Bindings {
   /** Collision-free secret used by the protected production edge cutover; inert outside production. */
   PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED?: string;
   ELIZA_APP_TELEGRAM_BOT_TOKEN?: string;
+  /** Public bot id selected by the protected environment and attested through getMe. */
+  ELIZA_APP_TELEGRAM_BOT_ID?: string;
+  /** Public bot username selected by the protected environment and attested through getMe. */
+  ELIZA_APP_TELEGRAM_BOT_USERNAME?: string;
   ELIZA_APP_TELEGRAM_WEBHOOK_SECRET?: string;
   // Dedicated shared secret stamped onto forwarded webhook calls so the internal
   // gateway can reject traffic that didn't transit the BFF forwarder (finding

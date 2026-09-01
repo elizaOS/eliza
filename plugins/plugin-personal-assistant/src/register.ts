@@ -33,6 +33,21 @@ registerAppShellPage({
     ),
 });
 
+registerAppShellPage({
+  id: "family-operations",
+  pluginId: "@elizaos/plugin-personal-assistant",
+  label: "Family Operations",
+  icon: "UsersRound",
+  path: "/lifeops/family",
+  order: 906,
+  viewKind: "release",
+  surface: { header: "fullscreen", capabilities: ["agent-surface"] },
+  loader: () =>
+    import("./components/family-operations/FamilyOperationsView.tsx").then(
+      (module) => ({ default: module.FamilyOperationsView }),
+    ),
+});
+
 registerRendererService({
   id: "personal-assistant.lifeops-activity-signals",
   shells: ["main"],

@@ -400,6 +400,7 @@ interface CreditMutationRow {
   org_exists: boolean | string | number | null;
   current_balance: string | number | null;
   new_balance: string | number | null;
+  balance_revision?: string | number | bigint | null;
   id: string | null;
   organization_id: string | null;
   user_id: string | null;
@@ -428,6 +429,14 @@ function parseNumeric(value: string | number | null | undefined, fieldName: stri
     throw new Error(`[CreditsService] Invalid numeric ${fieldName}`);
   }
   return parsed;
+}
+
+function parseBalanceRevision(value: string | number | bigint | null | undefined): string {
+  const revision = String(value ?? "");
+  if (!/^(0|[1-9]\d*)$/.test(revision)) {
+    throw new Error("[CreditsService] Invalid organization balance revision");
+  }
+  return revision;
 }
 
 function parseMetadata(value: CreditMutationRow["metadata"]): Record<string, unknown> {
@@ -768,6 +777,7 @@ export class CreditsService {
   async deductCredits(params: DeductCreditsParams): Promise<{
     success: boolean;
     newBalance: number;
+    balanceRevision: string;
     transaction: CreditTransaction | null;
     reason?: "insufficient_balance" | "below_minimum" | "org_not_found";
   }> {
@@ -785,6 +795,7 @@ export class CreditsService {
   async reserveAndDeductCredits(params: ReserveAndDeductParams): Promise<{
     success: boolean;
     newBalance: number;
+    balanceRevision: string;
     transaction: CreditTransaction | null;
     reason?: "insufficient_balance" | "below_minimum" | "org_not_found";
   }> {
@@ -813,6 +824,7 @@ export class CreditsService {
     const committedKeyedDeduction = async (): Promise<{
       success: true;
       newBalance: number;
+      balanceRevision: string;
       transaction: CreditTransaction;
     } | null> => {
       if (!stripePaymentIntentId) return null;
@@ -824,9 +836,11 @@ export class CreditsService {
           "[CreditsService] Deduction idempotency key belongs to another organization",
         );
       }
+      const snapshot = await this.getOrganizationBalanceSnapshot(organizationId);
       return {
         success: true,
-        newBalance: await this.getOrganizationBalanceUsd(organizationId),
+        newBalance: snapshot.balanceUsd,
+        balanceRevision: snapshot.revision,
         transaction: existing,
       };
     };
@@ -842,7 +856,7 @@ export class CreditsService {
         tx,
         sql`
         WITH org AS (
-          SELECT id, credit_balance::numeric AS current_balance
+          SELECT id, credit_balance::numeric AS current_balance, balance_revision
           FROM organizations
           WHERE id = ${organizationId}
           FOR UPDATE
@@ -895,12 +909,16 @@ export class CreditsService {
           FROM eligible
           WHERE o.id = eligible.id
             AND EXISTS (SELECT 1 FROM inserted)
-          RETURNING eligible.new_balance
+          RETURNING eligible.new_balance, o.balance_revision
         )
         SELECT
           EXISTS(SELECT 1 FROM org) AS org_exists,
           (SELECT current_balance FROM org) AS current_balance,
           (SELECT new_balance FROM updated) AS new_balance,
+          COALESCE(
+            (SELECT balance_revision FROM updated),
+            (SELECT balance_revision FROM org)
+          ) AS balance_revision,
           inserted.id,
           inserted.organization_id,
           inserted.user_id,
@@ -934,11 +952,13 @@ export class CreditsService {
       | {
           success: true;
           newBalance: number;
+          balanceRevision: string;
           transaction: CreditTransaction;
         }
       | {
           success: false;
           newBalance: number;
+          balanceRevision: string;
           transaction: null;
           reason: "insufficient_balance" | "below_minimum" | "org_not_found";
         };
@@ -947,6 +967,7 @@ export class CreditsService {
       result = {
         success: false,
         newBalance: 0,
+        balanceRevision: "0",
         transaction: null,
         reason: "org_not_found",
       };
@@ -955,6 +976,7 @@ export class CreditsService {
       result = {
         success: false,
         newBalance: currentBalance,
+        balanceRevision: parseBalanceRevision(row.balance_revision),
         transaction: null,
         reason:
           minimumBalanceRequired > 0 && currentBalance < minimumBalanceRequired
@@ -965,6 +987,7 @@ export class CreditsService {
       result = {
         success: true,
         newBalance: parseNumeric(row.new_balance, "new_balance"),
+        balanceRevision: parseBalanceRevision(row.balance_revision),
         transaction: toCreditTransaction(row),
       };
     }

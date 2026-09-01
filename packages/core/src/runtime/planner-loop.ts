@@ -612,6 +612,27 @@ async function runPlannerLoopIterations(
 		lastMissAnswerText = candidate;
 		return accepted;
 	};
+	// One-pass clarifying-question termination, shared by both required-tool
+	// miss branches. A user-directed terminal reply that is a user-safe
+	// CLARIFYING QUESTION is a terminal outcome by construction: the planner
+	// is asking the user for input it needs before any tool can act, so a
+	// corrective re-prompt cannot progress the turn — it only re-drafts the
+	// same question against the same context (observed live: "create a mew
+	// event for today" burned four planner passes, ~13.7s, each drafting the
+	// identical "What's the event for?" REPLY before the miss-budget hatch
+	// shipped it, tj-28a877e591e5f3). Deliver the question on the pass that
+	// produced it — the same request-for-input contract as the widget escape
+	// (#15230), one pass earlier because a prose question carries no widget
+	// identity worth a re-emission check. Coding builds keep the full
+	// corrective budget: their gate exists to convert narration into
+	// FILE/SHELL work, so a premature question there is still re-prompted.
+	// Callers must feed only user-directed sources (explicit messageToUser,
+	// REPLY tool-call text) — never the native free-text fallback, which can
+	// be a pre-tool thought.
+	const clarifyingQuestionTermination = (
+		candidate: string | undefined,
+	): string | undefined =>
+		codingMode ? undefined : userSafeClarificationReplyCandidate(candidate);
 
 	// Coding/full-surface mode (selected explicitly for this turn):
 	// when the model emits a batch of tool calls in a single response, execute
@@ -968,6 +989,22 @@ async function runPlannerLoopIterations(
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
 					if (captured) lastTerminalRefusalText = captured;
+					// A clarifying question ends the turn NOW (see
+					// clarifyingQuestionTermination). Explicit messageToUser only —
+					// the native free-text fallback can be a pre-tool thought. A
+					// widget-bearing reply keeps its own re-emission identity check.
+					const clarifyingQuestion =
+						widgetCandidate === undefined
+							? clarifyingQuestionTermination(lastPlannerExplicitMessageToUser)
+							: undefined;
+					if (clarifyingQuestion !== undefined) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: clarifyingQuestion,
+						});
+					}
 					// Only the EXPLICIT messageToUser is a safe answer source in
 					// this branch — the native free-text fallback can be a pre-tool
 					// thought (#9874 item 3), so it is never captured as an answer.
@@ -1233,6 +1270,25 @@ async function runPlannerLoopIterations(
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
 					if (captured) lastTerminalRefusalText = captured;
+					// A clarifying question ends the turn NOW (see
+					// clarifyingQuestionTermination). Source is the REPLY call's OWN
+					// params text — user-directed by construction — with no
+					// messageToUser fallback (same discipline as the answer capture
+					// below). A widget-bearing reply keeps its own identity check.
+					const clarifyingQuestion =
+						widgetCandidate === undefined
+							? clarifyingQuestionTermination(
+									terminalMessageFromToolCalls(plannerOutput.toolCalls),
+								)
+							: undefined;
+					if (clarifyingQuestion !== undefined) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: clarifyingQuestion,
+						});
+					}
 					// A REPLY tool call's OWN params text is user-directed by
 					// construction; a STOP/IGNORE-only terminal's free text is scratch
 					// reasoning (see the hasReplyCall comment below) and is never
@@ -4814,6 +4870,27 @@ function handleRequiredToolPlannerMiss(params: {
 		},
 		"Planner returned terminal output before satisfying a required tool call; retrying",
 	);
+	// Identity of the rejected draft, id-insensitive (providers re-mint tool
+	// call ids across re-emissions of the same call). Duplicate identical
+	// drafts must never stack into the planner transcript: the corrective
+	// instruction content is constant, so re-appending it for a verbatim
+	// re-draft adds prompt tokens (+~100/pass observed live,
+	// tj-28a877e591e5f3) but zero information. When the immediately previous
+	// context event is a required-tool-retry carrying this same draft, count
+	// the miss (caller) and log (above) but leave the transcript unchanged.
+	const draftIdentity = [
+		params.plannerOutput.messageToUser ?? "",
+		...params.plannerOutput.toolCalls.map(toolCallIdentity),
+	].join("\n");
+	const events = params.trajectory.context.events ?? [];
+	const previousEvent = events[events.length - 1];
+	if (
+		typeof previousEvent?.id === "string" &&
+		previousEvent.id.startsWith("required-tool-retry:") &&
+		previousEvent.metadata?.draftIdentity === draftIdentity
+	) {
+		return;
+	}
 	appendPlannerModelFeedbackEvent(params.trajectory, {
 		id: `required-tool-retry:${params.iteration}:${params.reason}`,
 		type: "instruction",
@@ -4829,6 +4906,10 @@ function handleRequiredToolPlannerMiss(params: {
 			reason: params.reason,
 			messageToUser: params.plannerOutput.messageToUser,
 			toolCalls: stringifyForModel(params.plannerOutput.toolCalls),
+			// Diagnostic-only (instruction events render `content`, never
+			// metadata): the id-insensitive draft identity the dedup guard
+			// above compares against.
+			draftIdentity,
 		},
 	});
 }

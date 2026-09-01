@@ -1,4 +1,4 @@
-/** Verifies PR admission combines affected static checks, billing replay, and Windows browser-bridge security. */
+/** Verifies PR admission combines source contracts, affected static checks, billing replay, and Windows security. */
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -22,6 +22,7 @@ const workflow = Bun.YAML.parse(source) as {
     {
       name?: string;
       uses?: string;
+      "runs-on"?: string;
       needs?: string[];
       steps?: Array<{
         id?: string;
@@ -169,6 +170,7 @@ describe("PR Static Smoke workflow", () => {
   });
 
   test("fails closed over mergeability, secrets, workflows, and affected static checks", () => {
+    expect(workflow.jobs?.["source-smoke"]?.["runs-on"]).toBe("ubuntu-24.04");
     const commands = (workflow.jobs?.["source-smoke"]?.steps ?? [])
       .map((step) => step.run ?? "")
       .join("\n");
@@ -176,6 +178,12 @@ describe("PR Static Smoke workflow", () => {
     expect(commands).toContain("git diff --check");
     expect(commands).toContain("gitleaks detect");
     expect(commands).toContain("actionlint");
+    expect(commands).toContain(
+      "packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs",
+    );
+    expect(commands).toContain(
+      "packages/scripts/__tests__/pr-static-smoke-workflow.test.ts",
+    );
     expect(commands).toContain("bun run build:core");
     expect(commands).toContain("run lint:check --concurrency=4 --affected");
     expect(commands).toContain("run typecheck --concurrency=4 --affected");

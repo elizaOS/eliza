@@ -9,6 +9,7 @@
 import { assertModelOutputComplete } from "@elizaos/core";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { Hono } from "hono";
+import { resolveInferenceAuthStandingDenial } from "@/api-app/lib/generative-route-auth";
 import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
@@ -251,23 +252,34 @@ app.post("/", async (c) => {
         return retryableWarmingResponse(c, "Authentication");
       }
       if (authResolution.kind === "suspended") {
+        const denial = resolveInferenceAuthStandingDenial(authResolution, {
+          route: "chat",
+          traceId: c.get("traceId") ?? c.get("requestId"),
+        });
         return c.json(
           {
-            error:
-              "Your account has been suspended due to policy violations. Please contact support.",
+            error: denial.message,
+            code: denial.code,
+            reason: denial.reason,
           },
-          403,
+          denial.status,
         );
       }
       if (authResolution.kind === "rejected") {
+        const denial = resolveInferenceAuthStandingDenial(authResolution, {
+          route: "chat",
+          traceId: c.get("traceId") ?? c.get("requestId"),
+        });
         return c.json(
           {
-            error:
-              authResolution.status === 403
-                ? "Account or organization access is disabled."
-                : "Authentication required",
+            error: denial.message,
+            code: denial.code,
+            reason: denial.reason,
           },
-          authResolution.status,
+          denial.status,
+          denial.retryAfterSeconds
+            ? { "Retry-After": String(denial.retryAfterSeconds) }
+            : undefined,
         );
       }
       if (authResolution.kind === "authorized") {

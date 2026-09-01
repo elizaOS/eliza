@@ -208,7 +208,13 @@ export function useLocalModelDownloads(): LocalModelDownloads {
     const url = appendTokenParam(
       resolveApiUrl("/api/local-inference/downloads/stream"),
     );
-    const es = openEventSource(url, { withCredentials: false });
+    // Paired/self-hosted sessions authenticate with a bearer token that
+    // EventSource cannot attach. Keep the authenticated one-shot hub fetch and
+    // skip the stream instead of leaking the session token through the URL or
+    // entering EventSource's unauthenticated reconnect loop.
+    const es = client.getRestAuthToken()
+      ? null
+      : openEventSource(url, { withCredentials: false });
     if (es) {
       es.onmessage = () => {
         if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
@@ -426,7 +432,7 @@ function ModelProgressCard({
       data-testid="chat-widget-model-download"
       aria-label={ariaLabel}
       onClick={onActivate}
-      variant="surface"
+      variant="homeWidget"
       size="card"
       align="start"
       className="group transition-opacity hover:opacity-80"

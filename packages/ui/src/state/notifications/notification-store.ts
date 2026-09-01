@@ -38,7 +38,6 @@ import {
 import {
   type AuthStatusState,
   getAuthStatusSnapshot,
-  isAuthenticatedNow,
   subscribeAuthStatus,
 } from "../../hooks/useAuthStatus";
 import { protectedAgentProbesEnabled } from "../../hooks/useProtectedAgentProbesEnabled";
@@ -125,10 +124,21 @@ let notificationEventUnsub: (() => void) | null = null;
  * module-scope hydrate path can re-evaluate on auth/base changes.
  */
 function notificationProbesEnabled(): boolean {
+  const authStatus = getAuthStatusSnapshot();
+  if (
+    authStatus.phase === "loading" ||
+    authStatus.phase === "server_unavailable" ||
+    (authStatus.phase === "unauthenticated" &&
+      (authStatus.reason === "remote_auth_required" ||
+        authStatus.reason === "remote_password_not_configured" ||
+        authStatus.access?.mode === "remote"))
+  ) {
+    return false;
+  }
   const origin = typeof window !== "undefined" ? window.location.origin : null;
   if (
     !protectedAgentProbesEnabled(
-      isAuthenticatedNow(),
+      authStatus.phase === "authenticated",
       origin,
       undefined,
       Capacitor.isNativePlatform() && !client.getBaseUrl().trim(),
@@ -484,7 +494,14 @@ function clearForAuthorityChange(): void {
 function reconcileAuthority(authStatus: AuthStatusState): void {
   const baseUrl = client.getBaseUrl();
   const nextKey = computeAuthorityKey(authStatus, baseUrl);
-  if (nextKey === currentAuthorityKey) return;
+  if (nextKey === currentAuthorityKey) {
+    // The boot-time loading snapshot and a resolved anonymous session share
+    // the same authority key. Re-evaluate a hydrate that was deliberately
+    // held while auth was unknown without refetching an already-ready inbox
+    // on ordinary same-session auth refreshes.
+    if (state.hydrationStatus === "disabled") void requestHydration();
+    return;
+  }
   // Only rotate when the authority being LEFT had a real, hydration-worthy
   // identity — not the boot-time "anon" seed or placeholder, which never
   // held anything worth protecting — and the base is unchanged (a base

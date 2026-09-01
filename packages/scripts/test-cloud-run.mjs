@@ -60,12 +60,23 @@ export const MAX_ARGS_CHARS_POSIX = 100000;
 export const DEFAULT_BATCH_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_BATCH_KILL_GRACE_MS = 2000;
 export const MAX_CLASSIFICATION_OUTPUT_CHARS = 1024 * 1024;
+export const TEST_FILES_REQUIRING_FRESH_PROCESS = [
+  path.join(
+    "packages",
+    "cloud",
+    "shared",
+    "src",
+    "lib",
+    "services",
+    "agent-backup-capture-v2-pipeline.test.ts",
+  ),
+];
 const MAX_TIMER_MS = 2_147_483_647;
-// A cold Windows PowerShell process can take several seconds to initialize on
-// the hosted windows-2025 image. Keep the identity query bounded, but allow the
-// universal powershell.exe path enough time to return the immutable StartTime
-// ticks before any PID-targeted teardown is considered.
+// Prefer the already-provisioned PowerShell 7 host on CI: the legacy Windows
+// PowerShell process can exceed the entire cold-start allowance on windows-2025.
+// Keep the universal powershell.exe path as a bounded local-machine fallback.
 const WINDOWS_PROCESS_IDENTITY_QUERY_TIMEOUT_MS = 10_000;
+const WINDOWS_POWERSHELL_IDENTITY_COMMANDS = ["pwsh.exe", "powershell.exe"];
 const POSIX_PROCESS_GROUP_SUPERVISOR = `
 terminating=0
 trap 'terminating=1' TERM INT
@@ -88,24 +99,48 @@ fi
 exit "$status"
 `;
 
-export function chunkByBudget(files, maxFilesPerBatch, maxArgsChars) {
-  const batches = [];
+export function chunkByBudget(
+  files,
+  maxFilesPerBatch,
+  maxArgsChars,
+  isolatedFiles = new Set(),
+) {
+  const budgetBatches = [];
   let current = [];
   let chars = 0;
+  const flush = () => {
+    if (current.length === 0) return;
+    budgetBatches.push(current);
+    current = [];
+    chars = 0;
+  };
   for (const file of files) {
     const cost = file.length + 1;
     if (
       current.length > 0 &&
       (current.length >= maxFilesPerBatch || chars + cost > maxArgsChars)
     ) {
-      batches.push(current);
-      current = [];
-      chars = 0;
+      flush();
     }
     current.push(file);
     chars += cost;
   }
-  if (current.length > 0) batches.push(current);
+  flush();
+
+  const batches = [];
+  for (const budgetBatch of budgetBatches) {
+    let sharedBatch = [];
+    for (const file of budgetBatch) {
+      if (isolatedFiles.has(file)) {
+        if (sharedBatch.length > 0) batches.push(sharedBatch);
+        batches.push([file]);
+        sharedBatch = [];
+      } else {
+        sharedBatch.push(file);
+      }
+    }
+    if (sharedBatch.length > 0) batches.push(sharedBatch);
+  }
   return batches;
 }
 
@@ -298,27 +333,31 @@ function readWindowsProcessIdentity(pid, spawnSyncFn) {
     "if ($null -eq $process) { exit 3 }",
     "[Console]::Write($process.StartTime.ToUniversalTime().Ticks)",
   ].join("; ");
-  let result;
-  try {
-    result = spawnSyncFn(
-      "powershell.exe",
-      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
-      {
-        encoding: "utf8",
-        windowsHide: true,
-        timeout: WINDOWS_PROCESS_IDENTITY_QUERY_TIMEOUT_MS,
-        maxBuffer: 4096,
-      },
-    );
-  } catch {
-    // error-policy:J3 An unavailable identity is explicit and makes teardown fail closed.
-    return undefined;
+  for (const executable of WINDOWS_POWERSHELL_IDENTITY_COMMANDS) {
+    let result;
+    try {
+      result = spawnSyncFn(
+        executable,
+        ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: WINDOWS_PROCESS_IDENTITY_QUERY_TIMEOUT_MS,
+          maxBuffer: 4096,
+        },
+      );
+    } catch {
+      // error-policy:J3 Try the universal Windows PowerShell fallback before failing closed.
+      continue;
+    }
+    if (result?.status === 3) return undefined;
+    if (result?.error || result?.status !== 0) continue;
+    const creationTicks = result.stdout?.trim();
+    if (/^\d+$/.test(creationTicks ?? "")) {
+      return `win-creation:${creationTicks}`;
+    }
   }
-  if (result?.error || result?.status !== 0) return undefined;
-  const creationTicks = result.stdout?.trim();
-  return /^\d+$/.test(creationTicks ?? "")
-    ? `win-creation:${creationTicks}`
-    : undefined;
+  return undefined;
 }
 
 export function readProcessIdentity(
@@ -727,7 +766,7 @@ export function runCommandWithWatchdog(
           platform,
           graceMs: terminationGraceMs,
           expectedIdentity: childIdentity,
-          identityCaptured: true,
+          identityCaptured: childIdentity !== undefined,
           identityFn,
         })
           .catch((error) => {
@@ -1181,13 +1220,37 @@ async function main() {
     process.exit(1);
   }
 
+  // The capture-v2 pipeline suite contains a measured 128 MiB streaming RSS
+  // bound. Bun loads every file in a batch before executing the suite, so its
+  // allocator watermark changes when unrelated files cross an 80-file batch
+  // boundary. Give this resource proof a fresh process: the production bound
+  // stays strict and adding an unrelated test cannot make it flaky.
+  const isolatedTestFiles = new Set(
+    TEST_FILES_REQUIRING_FRESH_PROCESS.map((file) => path.join(repoRoot, file)),
+  );
+  const missingIsolatedTestFiles = [...isolatedTestFiles].filter(
+    (file) => !allTestFiles.includes(file),
+  );
+  if (missingIsolatedTestFiles.length > 0) {
+    console.error(
+      `[test:cloud] fresh-process test file(s) not found in the unit manifest:\n  ${missingIsolatedTestFiles.join("\n  ")}\n` +
+        "Update TEST_FILES_REQUIRING_FRESH_PROCESS in packages/scripts/test-cloud-run.mjs.",
+    );
+    process.exit(1);
+  }
+
   const maxArgsChars =
     process.platform === "win32" ? MAX_ARGS_CHARS_WIN32 : MAX_ARGS_CHARS_POSIX;
   const maxFilesPerBatch =
     process.platform === "win32"
       ? MAX_FILES_PER_BATCH_WIN32
       : MAX_FILES_PER_BATCH;
-  const batches = chunkByBudget(allTestFiles, maxFilesPerBatch, maxArgsChars);
+  const batches = chunkByBudget(
+    allTestFiles,
+    maxFilesPerBatch,
+    maxArgsChars,
+    isolatedTestFiles,
+  );
 
   const writeOut = (text) => writeSyncAll(1, text);
   const writeErr = (text) => writeSyncAll(2, text);

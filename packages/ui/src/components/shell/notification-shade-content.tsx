@@ -10,6 +10,7 @@ import {
   createElement,
   type JSX,
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
@@ -45,6 +46,12 @@ export function orderDashboardNotifications(
       (NOTIFICATION_PRIORITY_RANK[b.priority] ?? 1) -
       (NOTIFICATION_PRIORITY_RANK[a.priority] ?? 1);
     if (byPriority !== 0) return byPriority;
+    const aPending = typeof a.data?.pendingActionId === "string";
+    const bPending = typeof b.data?.pendingActionId === "string";
+    if (aPending !== bPending) return aPending ? -1 : 1;
+    if (aPending && bPending && a.createdAt !== b.createdAt) {
+      return a.createdAt - b.createdAt;
+    }
     if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt;
     return a.id.localeCompare(b.id);
   });
@@ -314,6 +321,8 @@ function NotificationStackPreviewTime({
 
 export interface NotificationRowProps {
   notification: AgentNotification;
+  actionContent?: ReactNode;
+  dismissible?: boolean;
   stackKey?: string;
   stackCount?: number;
   stackCountVisibility?: number;
@@ -349,6 +358,8 @@ export function rowPropsEqual(
     a.body === b.body &&
     a.deepLink === b.deepLink &&
     a.source === b.source &&
+    previous.actionContent === next.actionContent &&
+    previous.dismissible === next.dismissible &&
     previous.stackKey === next.stackKey &&
     previous.stackCount === next.stackCount &&
     previous.stackCountVisibility === next.stackCountVisibility &&
@@ -405,6 +416,8 @@ export function __setNotificationRowRenderObserverForTests(
 /** One notification card with tap/open and horizontal dismiss behavior. */
 export const NotificationRow = memo(function NotificationRow({
   notification,
+  actionContent,
+  dismissible = true,
   stackKey,
   stackCount,
   stackCountVisibility,
@@ -442,6 +455,7 @@ export const NotificationRow = memo(function NotificationRow({
 
   const commitDismiss = useCallback(
     (direction: "left" | "right") => {
+      if (!dismissible) return;
       suppressClick.current = true;
       setDismissing(direction);
       dismissTimer.current = window.setTimeout(
@@ -449,18 +463,22 @@ export const NotificationRow = memo(function NotificationRow({
         NOTIFICATION_ROW_DISMISS_COMMIT_MS,
       );
     },
-    [notification.id, onDismiss],
+    [dismissible, notification.id, onDismiss],
   );
 
-  const onPointerDown = useCallback((event: React.PointerEvent) => {
-    suppressClick.current = false;
-    gesture.current = {
-      id: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      axis: "none",
-    };
-  }, []);
+  const onPointerDown = useCallback(
+    (event: React.PointerEvent) => {
+      suppressClick.current = false;
+      if (!dismissible) return;
+      gesture.current = {
+        id: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        axis: "none",
+      };
+    },
+    [dismissible],
+  );
 
   const onPointerMove = useCallback((event: React.PointerEvent) => {
     const current = gesture.current;
@@ -550,6 +568,7 @@ export const NotificationRow = memo(function NotificationRow({
     >
       <div
         data-testid="notification-row-swipe"
+        data-notification-dismissible={dismissible ? "true" : "false"}
         data-swipe-dragging={dragging ? "" : undefined}
         style={{
           transform: dismissing
@@ -619,6 +638,14 @@ export const NotificationRow = memo(function NotificationRow({
             ) : null}
           </span>
         </Button>
+        {actionContent ? (
+          <div
+            className="ml-14 flex min-w-0 flex-wrap items-center gap-1.5 px-3 pb-3"
+            data-notification-actions=""
+          >
+            {actionContent}
+          </div>
+        ) : null}
       </div>
       {stackPeeks
         ? STACK_PEEK_LAYERS.slice(0, stackPeeks.count).map((layer, index) => {

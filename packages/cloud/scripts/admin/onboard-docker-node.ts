@@ -16,7 +16,7 @@
  *      overrides anonymous access and bricks the public-image pull with
  *      `denied`). Reuses `ensureRegistryAccess`.
  *   4. clean zombie/stale agent containers (exited/created orphans matching the
- *      agent naming scheme — never an active sandbox),
+ *      agent naming scheme — never an active sandbox or exact-restore candidate),
  *   5. ensure the local-embedding sidecar is running (same contract the
  *      cloud-init bootstrap installs; see `embedding-sidecar.ts`),
  *   6. pre-pull the agent image,
@@ -94,6 +94,17 @@ export const AGENT_CONTAINER_PREFIXES = ["agent-", "cloud-container-"] as const;
 /** Docker states that mean a container is NOT actively serving — safe to reap. */
 const REAPABLE_STATES = ["exited", "created", "dead"] as const;
 
+// Exact restore candidates are deliberately created stopped and remain so
+// until the restore coordinator adopts them. Re-onboarding must not interpret
+// that quarantine state as zombie evidence. Keep the lexical UUID shape broad
+// enough for every canonical UUID version accepted by PostgreSQL and future
+// restore authorities; preserving an exact-name candidate is fail-closed.
+const CANONICAL_UUID =
+  "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const EXACT_RESTORE_CONTAINER_NAME = new RegExp(
+  `^agent-restore-${CANONICAL_UUID}-${CANONICAL_UUID}$`,
+);
+
 export interface DockerPsRow {
   name: string;
   state: string;
@@ -119,8 +130,9 @@ export function parseDockerPs(output: string): DockerPsRow[] {
 }
 
 /**
- * Conservative zombie filter: an agent-named container in a non-running state.
- * Running / restarting / paused containers are NEVER selected, so an active
+ * Conservative zombie filter: an ordinary agent-named container in a
+ * non-running state. Running / restarting / paused containers and stopped
+ * exact-restore candidates are NEVER selected, so an active or quarantined
  * sandbox is never touched even if its DB row drifted.
  */
 export function selectZombieAgentContainers(rows: DockerPsRow[]): string[] {
@@ -129,7 +141,9 @@ export function selectZombieAgentContainers(rows: DockerPsRow[]): string[] {
       (row) =>
         AGENT_CONTAINER_PREFIXES.some((prefix) =>
           row.name.startsWith(prefix),
-        ) && (REAPABLE_STATES as readonly string[]).includes(row.state),
+        ) &&
+        !EXACT_RESTORE_CONTAINER_NAME.test(row.name) &&
+        (REAPABLE_STATES as readonly string[]).includes(row.state),
     )
     .map((row) => row.name);
 }

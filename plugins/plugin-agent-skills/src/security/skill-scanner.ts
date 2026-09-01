@@ -137,7 +137,7 @@ export function scanCodeSource(
 		}
 		if (matchLine === 0) {
 			matchLine = 1;
-			matchEvidence = source.slice(0, 120);
+			matchEvidence = source;
 		}
 
 		findings.push({

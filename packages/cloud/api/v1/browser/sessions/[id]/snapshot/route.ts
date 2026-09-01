@@ -1,12 +1,15 @@
 // Handles v1 cloud API v1 browser sessions id snapshot route traffic with route-local auth expectations.
 import { Hono } from "hono";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getErrorStatusCode, getSafeErrorMessage } from "@/lib/api/errors";
 import {
   nextStyleParams,
   type RouteContext,
 } from "@/lib/api/hono-next-style-params";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -15,28 +18,23 @@ import {
   getHostedBrowserSnapshot,
   logHostedBrowserFailure,
 } from "@/lib/services/browser-tools";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
-async function handleGET(
-  request: Request,
-  context: RouteContext<{ id: string }>,
-) {
+async function handleGET(c: AppContext, context: RouteContext<{ id: string }>) {
   try {
-    const authResult = await requireAuthOrApiKeyWithOrg(request);
+    const caller = await requireGenerativeRouteCaller(c);
     const { id } = await context.params;
     const snapshot = await getHostedBrowserSnapshot(id, {
-      apiKeyId: authResult.apiKey?.id ?? null,
-      organizationId: authResult.user.organization_id,
+      apiKeyId: caller.apiKeyId,
+      organizationId: caller.user.organization_id,
       requestSource: "api",
-      userId: authResult.user.id,
+      userId: caller.user.id,
+      operationContext: getGenerativeOperationContext(c, caller),
     });
     return Response.json(snapshot);
   } catch (error) {
     logHostedBrowserFailure("browser_snapshot", error);
-    return Response.json(
-      { error: getSafeErrorMessage(error) },
-      { status: getErrorStatusCode(error) },
-    );
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 }
 
@@ -44,9 +42,9 @@ const ROUTE_PARAM_SPEC = [{ name: "id", splat: false }] as const;
 const honoRouter = new Hono<AppEnv>();
 honoRouter.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
-    return await handleGET(c.req.raw, nextStyleParams(c, ROUTE_PARAM_SPEC));
+    return await handleGET(c, nextStyleParams(c, ROUTE_PARAM_SPEC));
   } catch (error) {
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 export default honoRouter;

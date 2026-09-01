@@ -6,12 +6,13 @@ process.env.DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
 
 import { pushSchema } from "drizzle-kit/api";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   acquireProviderAdmission,
   releaseProviderAdmission,
 } from "../../lib/services/provider-admission";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../client";
+import { sqlRows } from "../execute-helpers";
 import { accountDeletionExports } from "../schemas/account-deletion-exports";
 import { accountDeletionPhaseReceipts } from "../schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../schemas/account-deletion-requests";
@@ -26,6 +27,23 @@ const organizationId = "10000000-0000-4000-8000-000000000001";
 const userId = "20000000-0000-4000-8000-000000000001";
 const now = new Date("2026-08-22T12:00:00Z");
 const recoveryExpiresAt = new Date("2026-09-21T12:00:00Z");
+const BACKUP_ADMISSION_GUARD_SQL = await Promise.all(
+  [
+    "0349_agent_backup_admission_cohort_authority.sql",
+    "0353_agent_backup_admission_work_state_shapes.sql",
+    "0354_agent_backup_admission_work_stage_policy.sql",
+    "0355_agent_backup_admission_work_indexes.sql",
+    "0356_agent_backup_admission_work_identity_guard.sql",
+    "0357_agent_backup_admission_work_state_guard.sql",
+    "0358_agent_backup_admission_work_delete_guard.sql",
+    "0359_agent_backup_admission_shard_guard.sql",
+    "0360_agent_backup_admission_claim_authority.sql",
+    "0361_agent_backup_admission_claim_seed.sql",
+    // 0362 is nontransactional index coverage owned by the migrator lane.
+    "0363_agent_backup_admission_claim_guard.sql",
+    "0364_agent_backup_admission_claim_eligibility.sql",
+  ].map((name) => Bun.file(new URL(`../migrations/${name}`, import.meta.url)).text()),
+);
 const billingCancelMigrations = await Promise.all(
   [
     "0335_billing_cancel_commands.sql",
@@ -110,9 +128,89 @@ beforeAll(async () => {
   await dbWrite.execute(`
     CREATE TABLE agent_sandbox_replacement_attempts (
       id uuid PRIMARY KEY,
-      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      state text NOT NULL DEFAULT 'in_flight_unresolved'
     )
   `);
+  // The real PostgreSQL race suite applies production migrations 0321-0328.
+  // This bounded PGlite fixture mirrors their deletion authority exactly:
+  // direct child deletion is forbidden and only a terminal owner cascade wins.
+  await dbWrite.execute(`
+    CREATE FUNCTION guard_test_replacement_attempt_delete() RETURNS trigger
+    LANGUAGE plpgsql AS $guard$
+    BEGIN
+      IF pg_trigger_depth() = 2
+        AND OLD.state IN ('lifecycle_committed', 'cleanup_proven')
+        AND NOT EXISTS (
+          SELECT 1 FROM organizations WHERE id = OLD.organization_id
+        ) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'replacement attempts cannot be deleted before terminal owner erasure';
+    END;
+    $guard$;
+  `);
+  await dbWrite.execute(`
+    CREATE TRIGGER agent_sandbox_replacement_attempts_guard_delete
+      BEFORE DELETE ON agent_sandbox_replacement_attempts
+      FOR EACH ROW EXECUTE FUNCTION guard_test_replacement_attempt_delete()
+  `);
+  await dbWrite.execute(`
+    CREATE TABLE agent_backup_admission_work (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      work_kind text NOT NULL,
+      work_stage text NOT NULL,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      sandbox_id uuid,
+      backup_id uuid,
+      gc_object_id uuid,
+      node_history_id uuid,
+      source_activation_generation uuid,
+      source_lifecycle_revision bigint,
+      source_provider_handle text,
+      source_container_id text,
+      source_image_digest text,
+      source_rpo_ms integer,
+      requires_node_lane boolean NOT NULL,
+      priority_class text NOT NULL,
+      base_priority smallint NOT NULL,
+      source_due_at timestamptz NOT NULL,
+      rpo_deadline_at timestamptz,
+      first_eligible_at timestamptz GENERATED ALWAYS AS (source_due_at) STORED,
+      state text NOT NULL DEFAULT 'queued',
+      not_before timestamptz NOT NULL,
+      deferred_reason text,
+      ready_cohort bigint NOT NULL,
+      cohort_ordinal integer NOT NULL,
+      shard_id smallint NOT NULL,
+      lease_owner text,
+      lease_generation uuid,
+      lease_expires_at timestamptz,
+      attempts integer NOT NULL DEFAULT 0,
+      settled_at timestamptz,
+      settled_reason text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  for (const migration of BACKUP_ADMISSION_GUARD_SQL) {
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await dbWrite.execute(statement);
+    }
+  }
+  const stateGuard = await sqlRows<{ definition: string }>(
+    dbWrite,
+    sql`
+      SELECT pg_get_functiondef(procedure.oid) AS definition
+      FROM pg_proc AS procedure
+      JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+      WHERE namespace.nspname = 'public'
+        AND procedure.proname = 'guard_agent_backup_admission_work_state'
+    `,
+  );
+  expect(stateGuard).toHaveLength(1);
+  expect(stateGuard[0]?.definition).toContain("agent_backup_admission_effective_priority");
+  expect(stateGuard[0]?.definition).toContain("backup admission claim requires ready work");
 });
 afterAll(async () => {
   await closeDatabaseConnectionsForTests();
@@ -148,6 +246,86 @@ async function seedPersonalAccount(): Promise<void> {
   });
 }
 
+async function seedBackupAdmissionWork(
+  id: string,
+  state: "queued" | "deferred" | "leased" = "queued",
+): Promise<void> {
+  await dbWrite.execute(sql`INSERT INTO agent_backup_admission_work (
+      id, work_kind, work_stage, organization_id, sandbox_id, node_history_id,
+      source_activation_generation, source_lifecycle_revision, source_provider_handle,
+      source_container_id, source_image_digest, source_rpo_ms, requires_node_lane,
+      priority_class, base_priority, source_due_at, rpo_deadline_at, not_before,
+      ready_cohort, cohort_ordinal, shard_id
+    ) VALUES (
+      ${id}::uuid, 'schedule_capture', 'reserve_capture', ${organizationId}::uuid,
+      '73000000-0000-4000-8000-000000000001'::uuid,
+      '74000000-0000-4000-8000-000000000001'::uuid,
+      ${id}::uuid, 7, 'sandbox-provider',
+      ${"a".repeat(64)}, ${`sha256:${"b".repeat(64)}`}, 900000, TRUE,
+      'periodic_capture', 3, ${now}, ${recoveryExpiresAt}, ${now}, 1, 0, 50
+    )`);
+  if (state === "deferred") {
+    await dbWrite.execute(sql`UPDATE agent_backup_admission_work
+      SET state = 'deferred', deferred_reason = 'TEST_BACKPRESSURE'
+      WHERE id = ${id}::uuid`);
+  } else if (state === "leased") {
+    // This fixture tests deletion settlement, not claim acquisition. Seed an
+    // already-authorized lease with the complete write-once proof shape from
+    // migration 0357 so the deletion path cannot mint or rewrite that proof.
+    await dbWrite.execute(
+      "ALTER TABLE agent_backup_admission_work DISABLE TRIGGER agent_backup_admission_work_20_state_guard",
+    );
+    try {
+      await dbWrite.execute(sql`UPDATE agent_backup_admission_work
+        SET state = 'leased', lease_owner = 'deletion-test-worker',
+          lease_generation = '90000000-0000-4000-8000-000000000001',
+          lease_expires_at = clock_timestamp() + interval '1 day', attempts = 1,
+          claim_cycle_start_turn = 101, claim_proof_turn = 102,
+          claim_proof_xid = pg_current_xact_id(), claim_proof_priority_pass = 0,
+          claim_proof_attempt = 1
+        WHERE id = ${id}::uuid`);
+    } finally {
+      await dbWrite.execute(
+        "ALTER TABLE agent_backup_admission_work ENABLE TRIGGER agent_backup_admission_work_20_state_guard",
+      );
+    }
+  }
+}
+
+async function readBackupAdmissionClaimProof(id: string): Promise<Record<string, unknown>> {
+  const proof = await dbWrite.execute(sql`SELECT
+      claim_cycle_start_turn::text AS claim_cycle_start_turn,
+      claim_proof_turn::text AS claim_proof_turn,
+      claim_proof_xid::text AS claim_proof_xid,
+      claim_proof_priority_pass,
+      claim_proof_attempt
+    FROM agent_backup_admission_work WHERE id = ${id}::uuid`);
+  const row = proof.rows[0];
+  if (!row) throw new Error(`missing backup admission proof for ${id}`);
+  return row;
+}
+
+async function seedNonCaptureAdmissionWork(
+  id: string,
+  workKind: "catalog_operation" | "gc_object",
+): Promise<void> {
+  await dbWrite.execute(sql`INSERT INTO agent_backup_admission_work (
+      id, work_kind, work_stage, organization_id, backup_id, gc_object_id,
+      requires_node_lane, priority_class, base_priority, source_due_at, not_before,
+      ready_cohort, cohort_ordinal, shard_id
+    ) VALUES (
+      ${id}::uuid, ${workKind},
+      ${workKind === "catalog_operation" ? "primary_publication" : "delete_object"},
+      ${organizationId}::uuid,
+      ${workKind === "catalog_operation" ? id : null}::uuid,
+      ${workKind === "gc_object" ? id : null}::uuid,
+      FALSE,
+      ${workKind === "catalog_operation" ? "periodic_capture" : "garbage_collection"},
+      ${workKind === "catalog_operation" ? 3 : 6},
+      ${now}, ${now}, 1, 0, 50
+    )`);
+}
+
 async function activateReservation(tokenSuffix: string, activatedAt = now) {
   return accountDeletionRequestsRepository.activateReservedPersonalAccountDeletion({
     recoveryTokenHash: `recovery-${tokenSuffix}`,
@@ -171,7 +349,12 @@ beforeEach(async () => {
     "ALTER TABLE billing_cancel_commands ENABLE TRIGGER billing_cancel_commands_authority_immutable",
   );
   await dbWrite.execute("DELETE FROM account_deletion_restrictive_fixture");
+  await dbWrite.execute("ALTER TABLE agent_sandbox_replacement_attempts DISABLE TRIGGER USER");
   await dbWrite.execute("DELETE FROM agent_sandbox_replacement_attempts");
+  await dbWrite.execute("ALTER TABLE agent_sandbox_replacement_attempts ENABLE TRIGGER USER");
+  await dbWrite.execute("ALTER TABLE agent_backup_admission_work DISABLE TRIGGER USER");
+  await dbWrite.execute("DELETE FROM agent_backup_admission_work");
+  await dbWrite.execute("ALTER TABLE agent_backup_admission_work ENABLE TRIGGER USER");
   await dbWrite.delete(providerAdmissions);
   await dbWrite.delete(accountDeletionRequests);
   await dbWrite.delete(organizations);
@@ -434,6 +617,8 @@ describe("personal account deletion reservation", () => {
     );
     expect(reserved.outcome).toBe("reserved");
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    const recoverableWorkId = "72000000-0000-4000-8000-000000000001";
+    await seedBackupAdmissionWork(recoverableWorkId);
     await expect(activateReservation("undo")).resolves.toMatchObject({ outcome: "activated" });
 
     const staleDeactivation = await accountDeletionRequestsRepository.leasePhase({
@@ -628,6 +813,9 @@ describe("personal account deletion reservation", () => {
       account_deletion_request_id: null,
       auth_fenced_at: null,
     });
+    const recoverableWork = await dbWrite.execute(sql`SELECT state, settled_reason
+      FROM agent_backup_admission_work WHERE id = ${recoverableWorkId}::uuid`);
+    expect(recoverableWork.rows).toEqual([{ state: "queued", settled_reason: null }]);
   });
 
   test("never restores authority after the recovery deadline", async () => {
@@ -746,6 +934,197 @@ describe("personal account deletion reservation", () => {
     });
   });
 
+  test("rearms revocation when an exact export PUT is acknowledged after deletion", async () => {
+    const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000060", "late-export-put"),
+    );
+    if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("late-export-put")).resolves.toMatchObject({
+      outcome: "activated",
+    });
+
+    const exportLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export",
+      leaseOwnerDigest: "late-export-worker",
+      now,
+      leaseMilliseconds: 60_000,
+    });
+    if (!exportLease) throw new Error("export lease failed");
+    expect(
+      await accountDeletionRequestsRepository.markExportBuilding({
+        requestId: reserved.request.id,
+        phaseReceiptId: exportLease.receipt.id,
+        generation: exportLease.generation,
+        now,
+      }),
+    ).toBe(true);
+    expect(
+      await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+        exportLease.receipt.id,
+        exportLease.generation,
+        now,
+      ),
+    ).toBe(true);
+
+    const revokeAt = new Date(now.getTime() + 1_000);
+    await accountDeletionRequestsRepository.ensureExportRevocationPhase({
+      requestId: reserved.request.id,
+      idempotencyKeyDigest: "late-export-revoke",
+      nextAttemptAt: revokeAt,
+      now: revokeAt,
+    });
+    const firstRevokeLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export_revoke",
+      leaseOwnerDigest: "first-revoke-worker",
+      now: revokeAt,
+      leaseMilliseconds: 60_000,
+    });
+    if (!firstRevokeLease) throw new Error("first export revocation lease failed");
+    expect(
+      await accountDeletionRequestsRepository.completeExportRevocation({
+        requestId: reserved.request.id,
+        phaseReceiptId: firstRevokeLease.receipt.id,
+        generation: firstRevokeLease.generation,
+        providerReceiptDigest: "first-delete-receipt",
+        now: revokeAt,
+      }),
+    ).toBe(true);
+
+    const lateAcknowledgementAt = new Date(revokeAt.getTime() + 1_000);
+    expect(
+      await accountDeletionRequestsRepository.completeExportPhase({
+        requestId: reserved.request.id,
+        phaseReceiptId: exportLease.receipt.id,
+        generation: exportLease.generation,
+        contentDigest: "late-content-digest",
+        objectReceiptDigest: "late-object-receipt",
+        byteCount: 321,
+        now: lateAcknowledgementAt,
+      }),
+    ).toBe(false);
+
+    const [fencedExport] = await dbWrite
+      .select()
+      .from(accountDeletionExports)
+      .where(eq(accountDeletionExports.request_id, reserved.request.id));
+    const phases = await accountDeletionRequestsRepository.listPhaseReceipts(reserved.request.id);
+    const fencedExportPhase = phases.find((phase) => phase.phase === "export");
+    const rearmedRevoke = phases.find((phase) => phase.phase === "export_revoke");
+    expect(fencedExport).toMatchObject({
+      status: "expired",
+      content_digest: "late-content-digest",
+      object_receipt_digest: "late-object-receipt",
+      byte_count: 321,
+      ready_at: null,
+      deleted_at: null,
+      last_error_code: "ACCOUNT_DELETION_EXPORT_LATE_PUT_REQUIRES_REVOCATION",
+    });
+    expect(fencedExportPhase).toMatchObject({
+      status: "canceled",
+      lease_generation: exportLease.generation,
+      provider_receipt_digest: "late-object-receipt",
+      last_error_code: "ACCOUNT_DELETION_EXPORT_LATE_PUT_REQUIRES_REVOCATION",
+    });
+    expect(rearmedRevoke).toMatchObject({
+      id: firstRevokeLease.receipt.id,
+      status: "pending",
+      lease_generation: firstRevokeLease.generation,
+      attempt_count: 0,
+      provider_receipt_digest: "first-delete-receipt",
+      next_attempt_at: lateAcknowledgementAt,
+      last_error_code: "ACCOUNT_DELETION_EXPORT_LATE_PUT_REQUIRES_REVOCATION",
+    });
+    expect(
+      await accountDeletionRequestsRepository.findExportRevocationsDue(lateAcknowledgementAt, 10),
+    ).toContainEqual({
+      requestId: reserved.request.id,
+      requestDigest: "request-late-export-put",
+    });
+
+    const secondRevokeLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export_revoke",
+      leaseOwnerDigest: "second-revoke-worker",
+      now: new Date(lateAcknowledgementAt.getTime() + 1),
+      leaseMilliseconds: 60_000,
+    });
+    if (!secondRevokeLease) throw new Error("rearmed export revocation lease failed");
+    expect(secondRevokeLease.generation).toBe(firstRevokeLease.generation + 1);
+    expect(
+      await accountDeletionRequestsRepository.completeExportRevocation({
+        requestId: reserved.request.id,
+        phaseReceiptId: secondRevokeLease.receipt.id,
+        generation: secondRevokeLease.generation,
+        providerReceiptDigest: "second-delete-receipt",
+        now: new Date(lateAcknowledgementAt.getTime() + 1),
+      }),
+    ).toBe(true);
+    const [deletedAgain] = await dbWrite
+      .select()
+      .from(accountDeletionExports)
+      .where(eq(accountDeletionExports.request_id, reserved.request.id));
+    expect(deletedAgain).toMatchObject({
+      status: "deleted",
+      content_digest: null,
+      object_receipt_digest: "second-delete-receipt",
+      byte_count: null,
+    });
+  });
+
+  test("rejects a leased export after revocation scheduling fences its generation", async () => {
+    const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000061", "fenced-export-lease"),
+    );
+    if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("fenced-export-lease")).resolves.toMatchObject({
+      outcome: "activated",
+    });
+    const exportLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export",
+      leaseOwnerDigest: "fenced-export-worker",
+      now,
+      leaseMilliseconds: 60_000,
+    });
+    if (!exportLease) throw new Error("export lease failed");
+
+    const revokeAt = new Date(now.getTime() + 1);
+    await accountDeletionRequestsRepository.ensureExportRevocationPhase({
+      requestId: reserved.request.id,
+      idempotencyKeyDigest: "fenced-export-revoke",
+      nextAttemptAt: revokeAt,
+      now: revokeAt,
+    });
+    expect(
+      await accountDeletionRequestsRepository.markExportBuilding({
+        requestId: reserved.request.id,
+        phaseReceiptId: exportLease.receipt.id,
+        generation: exportLease.generation,
+        now: new Date(revokeAt.getTime() + 1),
+      }),
+    ).toBe(false);
+
+    const [fencedExport] = await dbWrite
+      .select()
+      .from(accountDeletionExports)
+      .where(eq(accountDeletionExports.request_id, reserved.request.id));
+    const phases = await accountDeletionRequestsRepository.listPhaseReceipts(reserved.request.id);
+    expect(fencedExport?.status).toBe("expired");
+    expect(phases.find((phase) => phase.phase === "export")).toMatchObject({
+      status: "canceled",
+      lease_generation: exportLease.generation,
+      lease_owner_digest: null,
+      lease_expires_at: null,
+      last_error_code: "ACCOUNT_DELETION_EXPORT_REVOCATION_FENCED",
+    });
+    expect(phases.find((phase) => phase.phase === "export_revoke")).toMatchObject({
+      status: "pending",
+      next_attempt_at: revokeAt,
+    });
+  });
+
   test("preserves reconciliation mode across an explicit lost-response retry", async () => {
     const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
       reservationInput("50000000-0000-4000-8000-000000000006", "reconcile"),
@@ -795,6 +1174,14 @@ describe("personal account deletion reservation", () => {
       reservationInput("50000000-0000-4000-8000-000000000007", "expiry"),
     );
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await seedBackupAdmissionWork("72000000-0000-4000-8000-000000000010", "queued");
+    await seedBackupAdmissionWork("72000000-0000-4000-8000-000000000011", "deferred");
+    await seedBackupAdmissionWork("72000000-0000-4000-8000-000000000012", "leased");
+    const leasedProofBeforeSettlement = await readBackupAdmissionClaimProof(
+      "72000000-0000-4000-8000-000000000012",
+    );
+    await seedNonCaptureAdmissionWork("72000000-0000-4000-8000-000000000013", "catalog_operation");
+    await seedNonCaptureAdmissionWork("72000000-0000-4000-8000-000000000014", "gc_object");
     await expect(activateReservation("expiry")).resolves.toMatchObject({ outcome: "activated" });
 
     const exportLease = await accountDeletionRequestsRepository.leasePhase({
@@ -889,6 +1276,106 @@ describe("personal account deletion reservation", () => {
       account_lifecycle_state: "deletion_irreversible",
       account_lifecycle_revision: 2,
     });
+    const settledAdmission = await dbWrite.execute(`SELECT id, work_kind, state,
+      deferred_reason, lease_owner, lease_generation, lease_expires_at, attempts,
+      not_before, ready_cohort, cohort_ordinal, sandbox_id, settled_at, settled_reason,
+      updated_at
+      FROM agent_backup_admission_work
+      WHERE work_kind = 'schedule_capture' ORDER BY id`);
+    expect(
+      settledAdmission.rows.map(
+        ({
+          id,
+          work_kind,
+          state,
+          deferred_reason,
+          lease_owner,
+          lease_generation,
+          lease_expires_at,
+          attempts,
+          ready_cohort,
+          cohort_ordinal,
+          sandbox_id,
+          settled_reason,
+        }) => ({
+          id,
+          work_kind,
+          state,
+          deferred_reason,
+          lease_owner,
+          lease_generation,
+          lease_expires_at,
+          attempts,
+          ready_cohort: String(ready_cohort),
+          cohort_ordinal,
+          sandbox_id,
+          settled_reason,
+        }),
+      ),
+    ).toEqual([
+      {
+        id: "72000000-0000-4000-8000-000000000010",
+        work_kind: "schedule_capture",
+        state: "settled",
+        deferred_reason: null,
+        lease_owner: null,
+        lease_generation: null,
+        lease_expires_at: null,
+        attempts: 0,
+        ready_cohort: "1",
+        cohort_ordinal: 0,
+        sandbox_id: "73000000-0000-4000-8000-000000000001",
+        settled_reason: "ACCOUNT_DELETION_IRREVERSIBLE",
+      },
+      {
+        id: "72000000-0000-4000-8000-000000000011",
+        work_kind: "schedule_capture",
+        state: "settled",
+        deferred_reason: null,
+        lease_owner: null,
+        lease_generation: null,
+        lease_expires_at: null,
+        attempts: 0,
+        ready_cohort: "1",
+        cohort_ordinal: 0,
+        sandbox_id: "73000000-0000-4000-8000-000000000001",
+        settled_reason: "ACCOUNT_DELETION_IRREVERSIBLE",
+      },
+      {
+        id: "72000000-0000-4000-8000-000000000012",
+        work_kind: "schedule_capture",
+        state: "settled",
+        deferred_reason: null,
+        lease_owner: null,
+        lease_generation: null,
+        lease_expires_at: null,
+        attempts: 1,
+        ready_cohort: "1",
+        cohort_ordinal: 0,
+        sandbox_id: "73000000-0000-4000-8000-000000000001",
+        settled_reason: "ACCOUNT_DELETION_IRREVERSIBLE",
+      },
+    ]);
+    expect(await readBackupAdmissionClaimProof("72000000-0000-4000-8000-000000000012")).toEqual(
+      leasedProofBeforeSettlement,
+    );
+    expect(
+      settledAdmission.rows.every(
+        ({ not_before, settled_at, updated_at }) =>
+          new Date(String(not_before)).getTime() === now.getTime() &&
+          new Date(String(settled_at)).getTime() === new Date(String(updated_at)).getTime(),
+      ),
+    ).toBe(true);
+    expect(new Set(settledAdmission.rows.map(({ settled_at }) => String(settled_at))).size).toBe(1);
+    const unrelatedAdmission = await dbWrite.execute(`SELECT work_kind, state, settled_reason
+      FROM agent_backup_admission_work WHERE work_kind <> 'schedule_capture' ORDER BY work_kind`);
+    expect(unrelatedAdmission.rows).toEqual(
+      ["catalog_operation", "gc_object"].map((work_kind) => ({
+        work_kind,
+        state: "queued",
+        settled_reason: null,
+      })),
+    );
     expect(phases.filter((phase) => phase.phase === "export_revoke")).toHaveLength(1);
   });
 
@@ -934,6 +1421,12 @@ describe("personal account deletion reservation", () => {
     });
     const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(input);
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    const durableAdmissionWorkId = "72000000-0000-4000-8000-000000000020";
+    await seedBackupAdmissionWork(durableAdmissionWorkId, "leased");
+    const durableProofBeforeSettlement =
+      await readBackupAdmissionClaimProof(durableAdmissionWorkId);
+    await seedNonCaptureAdmissionWork("72000000-0000-4000-8000-000000000022", "catalog_operation");
+    await seedNonCaptureAdmissionWork("72000000-0000-4000-8000-000000000023", "gc_object");
     const commandId = "72000000-0000-4000-8000-000000000001";
     const jobId = "73000000-0000-4000-8000-000000000001";
     const historicalActorCommandId = "72000000-0000-4000-8000-000000000002";
@@ -1028,8 +1521,12 @@ describe("personal account deletion reservation", () => {
       .where(eq(users.id, userId));
     await expect(activateReservation("erase")).resolves.toMatchObject({ outcome: "activated" });
     await dbWrite.execute(`
-      INSERT INTO agent_sandbox_replacement_attempts (id, organization_id)
-      VALUES ('71000000-0000-4000-8000-000000000001', '${organizationId}')
+      INSERT INTO agent_sandbox_replacement_attempts (id, organization_id, state)
+      VALUES (
+        '71000000-0000-4000-8000-000000000001',
+        '${organizationId}',
+        'cleanup_proven'
+      )
     `);
 
     const exportLease = await accountDeletionRequestsRepository.leasePhase({
@@ -1088,6 +1585,33 @@ describe("personal account deletion reservation", () => {
         now: irreversibleAt,
       }),
     ).toMatchObject({ outcome: "activated" });
+    let lateInsertFailure: unknown;
+    try {
+      await seedBackupAdmissionWork("72000000-0000-4000-8000-000000000021");
+    } catch (cause) {
+      lateInsertFailure = cause;
+    }
+    expect(lateInsertFailure).toBeDefined();
+    expect(String((lateInsertFailure as { cause?: unknown }).cause)).toMatch(
+      /requires active account authority/i,
+    );
+    const settledBeforeFinalization = await dbWrite.execute(sql`SELECT state, attempts
+      FROM agent_backup_admission_work WHERE id = ${durableAdmissionWorkId}::uuid`);
+    expect(settledBeforeFinalization.rows).toEqual([
+      {
+        state: "settled",
+        attempts: 1,
+      },
+    ]);
+    expect(await readBackupAdmissionClaimProof(durableAdmissionWorkId)).toEqual(
+      durableProofBeforeSettlement,
+    );
+    const purgeOwnedBeforeFinalization = await dbWrite.execute(`SELECT work_kind, state
+      FROM agent_backup_admission_work WHERE work_kind <> 'schedule_capture' ORDER BY work_kind`);
+    expect(purgeOwnedBeforeFinalization.rows).toEqual([
+      { work_kind: "catalog_operation", state: "queued" },
+      { work_kind: "gc_object", state: "queued" },
+    ]);
     const revokeLease = await accountDeletionRequestsRepository.leasePhase({
       requestId: reserved.request.id,
       phase: "export_revoke",
@@ -1130,6 +1654,8 @@ describe("personal account deletion reservation", () => {
     ]);
     expect(await dbWrite.select().from(accountDeletionPhaseReceipts)).toHaveLength(0);
     expect(await dbWrite.select().from(accountDeletionExports)).toHaveLength(0);
+    const admissionWork = await dbWrite.execute("SELECT id FROM agent_backup_admission_work");
+    expect(admissionWork.rows).toHaveLength(0);
     const replacementAttempts = await dbWrite.execute(
       "SELECT id FROM agent_sandbox_replacement_attempts",
     );

@@ -48,8 +48,31 @@ const auditModule = (await import(
 };
 const auditEmits = auditModule.__auditEmits;
 
-const { authMiddleware, isPublicPath, isRouteAuthenticatedInferencePath } =
-  await import("./auth");
+const {
+  authMiddleware,
+  isPublicPath,
+  isRouteAuthenticatedInferencePath,
+  isRouteAuthenticatedRemoteHostRequest,
+} = await import("./auth");
+
+const REMOTE_HOST_ID = "40000000-0000-4000-8000-000000000001";
+const OTHER_REMOTE_HOST_ID = "40000000-0000-4000-8000-000000000002";
+const REMOTE_HOST_TOKEN = `rhost_v1_${"A".repeat(43)}`;
+
+function remoteHostRequest(pathname: string, init: RequestInit = {}): Request {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${REMOTE_HOST_TOKEN}`);
+  }
+  if (!headers.has("X-Remote-Host-Id")) {
+    headers.set("X-Remote-Host-Id", REMOTE_HOST_ID);
+  }
+  return new Request(`http://localhost${pathname}`, {
+    ...init,
+    method: init.method ?? "POST",
+    headers,
+  });
+}
 
 const PUBLIC_PREFIXES = [
   "/api/health",
@@ -366,6 +389,83 @@ describe("isRouteAuthenticatedInferencePath", () => {
   });
 });
 
+describe("isRouteAuthenticatedRemoteHostRequest", () => {
+  test("accepts exact POST activation paths with a well-formed host credential", () => {
+    for (const path of [
+      "/api/v1/remote/sessions/activate",
+      "/api/v1/remote/sessions/activate/",
+      `/api/v1/remote/hosts/${REMOTE_HOST_ID}/managed-network/activate`,
+      `/api/v1/remote/hosts/${REMOTE_HOST_ID}/managed-network/activate/`,
+    ]) {
+      expect(
+        isRouteAuthenticatedRemoteHostRequest(remoteHostRequest(path)),
+      ).toBe(true);
+    }
+  });
+
+  test("rejects absent, malformed, non-UUID, and path-mismatched credentials", () => {
+    const managedPath = `/api/v1/remote/hosts/${REMOTE_HOST_ID}/managed-network/activate`;
+    expect(
+      isRouteAuthenticatedRemoteHostRequest(
+        remoteHostRequest(managedPath, {
+          headers: { Authorization: "", "X-Remote-Host-Id": REMOTE_HOST_ID },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isRouteAuthenticatedRemoteHostRequest(
+        remoteHostRequest(managedPath, {
+          headers: {
+            Authorization: "Bearer rhost_v1_too-short",
+            "X-Remote-Host-Id": REMOTE_HOST_ID,
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isRouteAuthenticatedRemoteHostRequest(
+        remoteHostRequest(managedPath, {
+          headers: {
+            Authorization: `Bearer ${REMOTE_HOST_TOKEN}`,
+            "X-Remote-Host-Id": "not-a-uuid",
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isRouteAuthenticatedRemoteHostRequest(
+        remoteHostRequest(managedPath, {
+          headers: {
+            Authorization: `Bearer ${REMOTE_HOST_TOKEN}`,
+            "X-Remote-Host-Id": OTHER_REMOTE_HOST_ID,
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  test("does not delegate neighboring routes, extra segments, or other verbs", () => {
+    for (const path of [
+      "/api/v1/me",
+      "/api/v1/remote/hosts",
+      "/api/v1/remote/pair",
+      "/api/v1/remote/sessions/activate/extra",
+      `/api/v1/remote/hosts/${REMOTE_HOST_ID}/managed-network/activate/extra`,
+    ]) {
+      expect(
+        isRouteAuthenticatedRemoteHostRequest(remoteHostRequest(path)),
+      ).toBe(false);
+    }
+    for (const method of ["GET", "PUT", "PATCH", "DELETE"]) {
+      expect(
+        isRouteAuthenticatedRemoteHostRequest(
+          remoteHostRequest("/api/v1/remote/sessions/activate", { method }),
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
 describe("authMiddleware", () => {
   test("passes non-/api/ paths through without a session", async () => {
     const res = await dispatch("http://localhost/steward/login");
@@ -397,6 +497,34 @@ describe("authMiddleware", () => {
       { method: "POST" },
     );
     expect(res.status).toBe(200);
+  });
+
+  test("delegates only exact remote-host activation requests", async () => {
+    for (const path of [
+      "/api/v1/remote/sessions/activate",
+      `/api/v1/remote/hosts/${REMOTE_HOST_ID}/managed-network/activate`,
+    ]) {
+      const request = remoteHostRequest(path);
+      const res = await dispatch(request.url, {
+        method: request.method,
+        headers: request.headers,
+      });
+      expect(res.status).toBe(200);
+    }
+
+    for (const path of [
+      "/api/v1/me",
+      "/api/v1/remote/hosts",
+      "/api/v1/remote/pair",
+      "/api/v1/remote/sessions/activate/extra",
+    ]) {
+      const request = remoteHostRequest(path);
+      const res = await dispatch(request.url, {
+        method: request.method,
+        headers: request.headers,
+      });
+      expect(res.status).toBe(401);
+    }
   });
 
   test("does not treat GET on an inference path as a bypass", async () => {

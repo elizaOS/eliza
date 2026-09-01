@@ -76,7 +76,10 @@ const h = vi.hoisted(() => {
     }),
     isElectrobunRuntime: vi.fn(() => false),
     loadDesktopWorkspaceSnapshot: vi.fn(async () => ({ supported: false })),
-    authState: { phase: "authenticated" } as { phase: string },
+    authState: { phase: "authenticated", access: { role: "OWNER" } } as {
+      phase: string;
+      access?: { role: string };
+    },
     authSubscribers: new Set<(state: { phase: string }) => void>(),
     dispatchStatus: vi.fn(),
     capacitorGetPlatform: vi.fn(() => "web"),
@@ -102,6 +105,7 @@ vi.mock("@elizaos/ui/api", () => ({
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
+  getAuthStatusSnapshot: () => h.authState,
   isAuthenticatedNow: () => h.authState.phase === "authenticated",
   subscribeAuthStatus: (listener: (state: { phase: string }) => void) => {
     h.authSubscribers.add(listener);
@@ -110,6 +114,14 @@ vi.mock("@elizaos/ui/api", () => ({
   client: {
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
+  },
+}));
+vi.mock("@elizaos/ui/auth-status", () => ({
+  getAuthStatusSnapshot: () => h.authState,
+  isAuthenticatedNow: () => h.authState.phase === "authenticated",
+  subscribeAuthStatus: (listener: (state: typeof h.authState) => void) => {
+    h.authSubscribers.add(listener);
+    return () => h.authSubscribers.delete(listener);
   },
 }));
 vi.mock("@elizaos/ui/bridge", () => ({
@@ -124,6 +136,7 @@ vi.mock("@elizaos/ui/bridge", () => ({
   isCloudAgentGoneError: h.isCloudAgentGoneError,
   ElizaClient: h.ElizaClient,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
+  getAuthStatusSnapshot: () => h.authState,
   isAuthenticatedNow: () => h.authState.phase === "authenticated",
   subscribeAuthStatus: (listener: (state: { phase: string }) => void) => {
     h.authSubscribers.add(listener);
@@ -142,6 +155,7 @@ vi.mock("@elizaos/ui/events", () => ({
   isCloudAgentGoneError: h.isCloudAgentGoneError,
   ElizaClient: h.ElizaClient,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
+  getAuthStatusSnapshot: () => h.authState,
   isAuthenticatedNow: () => h.authState.phase === "authenticated",
   subscribeAuthStatus: (listener: (state: { phase: string }) => void) => {
     h.authSubscribers.add(listener);
@@ -156,6 +170,7 @@ vi.mock("@elizaos/ui/browser", () => ({
   ElizaClient: h.ElizaClient,
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
+  getAuthStatusSnapshot: () => h.authState,
   isAuthenticatedNow: () => h.authState.phase === "authenticated",
   subscribeAuthStatus: (listener: (state: { phase: string }) => void) => {
     h.authSubscribers.add(listener);
@@ -249,7 +264,10 @@ function mockNativeMobile(): void {
 }
 
 function publishAuthStatus(phase: string): void {
-  h.authState = { phase };
+  h.authState =
+    phase === "authenticated"
+      ? { phase, access: { role: "OWNER" } }
+      : { phase };
   for (const subscriber of h.authSubscribers) {
     subscriber(h.authState);
   }
@@ -267,7 +285,7 @@ describe("startLifeOpsActivitySignalCapture", () => {
     h.isApiError.mockReturnValue(false);
     h.isElectrobunRuntime.mockReturnValue(false);
     h.loadDesktopWorkspaceSnapshot.mockResolvedValue({ supported: false });
-    h.authState = { phase: "authenticated" };
+    h.authState = { phase: "authenticated", access: { role: "OWNER" } };
     h.authSubscribers.clear();
     h.capacitorGetPlatform.mockReturnValue("web");
     h.capacitorIsNative.mockReturnValue(false);

@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 
-const MIGRATION_TAG = "0369_agent_backup_restore_exact_image_authority";
+const MIGRATION_TAG = "0372_agent_backup_restore_exact_image_authority";
 const MIGRATION = readFileSync(join(import.meta.dir, "migrations", MIGRATION_TAG + ".sql"), "utf8");
 const OPERATION = "00000000-0000-4000-8000-000000000901";
 const NODE = "00000000-0000-4000-8000-000000000902";
@@ -83,7 +83,7 @@ function bindTarget(platform = "linux/amd64"): string {
   );
 }
 
-describe("0369 exact restore image platform authority", () => {
+describe("0372 exact restore image platform authority", () => {
   test("requires the reserved target platform and exact image pair as complete bundles", async () => {
     const database = await databaseBeforeMigration();
     try {
@@ -212,9 +212,9 @@ describe("0369 exact restore image platform authority", () => {
       }>;
     };
     expect(journal.entries.find(({ tag }) => tag === MIGRATION_TAG)).toEqual({
-      idx: 352,
+      idx: 355,
       version: "7",
-      when: 1794254400060,
+      when: 1794254400063,
       tag: MIGRATION_TAG,
       breakpoints: true,
     });

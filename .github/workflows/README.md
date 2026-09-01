@@ -136,11 +136,11 @@ Representative examples:
   an explicit trusted caller.
   Artifact names include the run ID and attempt so reruns cannot overwrite or
   link a prior attempt's bundle. Both jobs initialize a revision-bound artifact
-  root after checkout, then run the bundle-owning runners with `--output`. A
-  started runner finalizes the full bundle (`inline/`, `logs/`, `summary.json`,
-  `junit.xml`) on success and failure; an earlier toolchain or device failure
-  retains the bootstrap record plus the Actions log. No job reads a repository
-  secret.
+  root after checkout, then run the bundle-owning runners with `--output`.
+  Android retains its bootstrap record under `android/logs/` and atomically
+  publishes its allowlisted proof under `android/evidence/`; iOS retains its
+  existing full bundle layout. An earlier toolchain or device failure retains
+  the bootstrap record plus the Actions log. No job reads a repository secret.
 - `android-arm64-local-e2e.yml` is the separate trusted repository-dispatch
   self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
   `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
@@ -357,16 +357,27 @@ tokens so staging automation cannot mutate production zones.
 
 The Cloud release resolves the public Telegram bot ID and username before
 database migration or API deployment. Staging consumes the complete
-repository-scoped `VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` pair
-and requires both components to differ from production. Production ignores
-that repository pair and derives its exact canonical identity from the checked
-out `packages/homepage/src/lib/contact.ts`. Missing, partial, malformed,
-out-of-range, or cross-environment staging values stop the release without
-printing either value. Do not expect same-named GitHub Environment variables
-to override the repository pair: GitHub makes Environment variables available
-after values in the `vars` context have already been resolved. Implicit Vite
-fallback use remains local/direct-only; protected production explicitly selects
-and validates the canonical source constants. Pull requests are validated by
+`VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` configuration-variable
+pair only when it matches the protected `staging` GitHub Environment secret
+`TELEGRAM_IDENTITY_AUTHORITY_SHA256`, and requires both components to differ
+from production. The receipt is the lowercase SHA-256 of the framed bytes
+`elizaOS/eliza\0staging\0telegram-public-identity\0v1\0<ID>\0<lowercase-username>\n`.
+The reusable release uses an exact caller-secret allowlist that deliberately
+does not forward that receipt, so a repository or organization secret cannot
+substitute for the Environment authority. A repository/organization variable
+may resolve the same committed public pair, but cannot select a different pair.
+Because GitHub preserves successful job outputs during failed-job reruns, the
+migration, API deploy, Pages build, and Pages deploy jobs each repeat the bound
+attempt check as their first step; a partial rerun must be replaced with a full
+rerun before stale admitted values can reach a release mutation. Cancel and
+fully rerun any in-flight release when rotating the pair or receipt. Missing,
+partial, malformed, out-of-range, receipt-mismatched, or cross-environment
+staging configuration stops the release without printing either value or the
+receipt. Production continues to ignore every GitHub Telegram input and
+derives its exact canonical identity from the checked out
+`packages/homepage/src/lib/contact.ts`. Implicit Vite fallback use remains
+local/direct-only; protected production explicitly selects and validates the
+canonical source constants. Pull requests are validated by
 `pr-static-smoke.yml`; there is no credentialed or artifact-only Pages preview
 path in `cloud-cf-deploy.yml`.
 

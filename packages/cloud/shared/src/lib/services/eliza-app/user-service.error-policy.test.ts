@@ -81,17 +81,17 @@ describe("ElizaAppUserService account opening balance", () => {
     addCredits.mockReset();
   });
 
-  test("creates a phone-first personal account at zero without an automatic credit transaction", async () => {
+  test("creates a phone-first personal account with the fixed opening credit", async () => {
     findOrCreatePhonePersonalAccount.mockResolvedValue({
       user: { id: "user-new", phone_number: "+15551234567" },
-      organization: { id: "org-new", credit_balance: "0.00" },
+      organization: { id: "org-new", credit_balance: "5.00" },
       isNew: true,
     });
 
     const result = await elizaAppUserService.findOrCreateByPhone("+15551234567");
 
     expect(result.isNew).toBe(true);
-    expect(result.organization.credit_balance).toBe("0.00");
+    expect(result.organization.credit_balance).toBe("5.00");
     expect(findOrCreatePhonePersonalAccount).toHaveBeenCalledWith(
       expect.objectContaining({ phoneNumber: "+15551234567" }),
     );

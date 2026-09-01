@@ -87,6 +87,8 @@ const MIME_BY_EXT: Record<string, string> = {
 
 /** Strict content-addressed name: 64-hex sha256 + short alphanumeric extension. */
 const MEDIA_FILE_NAME = /^[a-f0-9]{64}\.[a-z0-9]{1,8}$/;
+const PRIVATE_MEDIA_FILE_NAME =
+  /^[a-f0-9]{64}\.private-[a-f0-9]{16}\.[a-z0-9]{1,8}$/;
 
 /** Validate the only filename shape accepted by the content-addressed store. */
 export function isValidStoredMediaFileName(fileName: string): boolean {
@@ -251,10 +253,15 @@ export function selectMediaToEvict(
   files: MediaFileStat[],
   cap: number,
 ): string[] {
-  let total = files.reduce((sum, file) => sum + file.size, 0);
+  // Private files have explicit owner/revocation lifecycles and cannot be
+  // reconstructed from public attachment references after blind eviction.
+  const evictable = files.filter(
+    (file) => !PRIVATE_MEDIA_FILE_NAME.test(file.name),
+  );
+  let total = evictable.reduce((sum, file) => sum + file.size, 0);
   if (total <= cap) return [];
   const target = Math.floor(cap * 0.9);
-  const oldestFirst = [...files].sort((a, b) => a.mtimeMs - b.mtimeMs);
+  const oldestFirst = evictable.sort((a, b) => a.mtimeMs - b.mtimeMs);
   const evict: string[] = [];
   for (const file of oldestFirst) {
     if (total <= target) break;
@@ -322,6 +329,50 @@ export interface PersistedMedia {
   /** sha256 of the bytes — also the description-cache key. */
   hash: string;
   fileName: string;
+}
+
+export interface PersistedPrivateMedia {
+  hash: string;
+  fileName: string;
+}
+
+/**
+ * Persist sensitive bytes in the canonical media directory under a filename
+ * shape the pre-authenticated `/api/media` route deliberately rejects.
+ */
+export function persistPrivateMediaBytes(
+  buffer: Buffer,
+  mimeType: string,
+): PersistedPrivateMedia {
+  const hash = crypto.createHash("sha256").update(buffer).digest("hex");
+  // A nonce prevents two independent private capabilities with identical bytes
+  // from sharing a lifecycle: consuming one must never delete the other's file.
+  const nonce = crypto.randomBytes(8).toString("hex");
+  const fileName = `${hash}.private-${nonce}.${extForMime(mimeType)}`;
+  const filePath = path.join(mediaDir(), fileName);
+  if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, buffer);
+  return { hash, fileName };
+}
+
+/** Read private media bytes; public media names and traversal are rejected. */
+export function readPrivateMediaBytes(fileName: string): Buffer | null {
+  if (!PRIVATE_MEDIA_FILE_NAME.test(fileName)) return null;
+  const filePath = path.join(mediaDir(), fileName);
+  if (path.dirname(filePath) !== mediaDir() || !fs.existsSync(filePath)) {
+    return null;
+  }
+  return fs.readFileSync(filePath);
+}
+
+/** Delete private media bytes after expiry, revocation, or single-use access. */
+export function deletePrivateMediaFile(fileName: string): boolean {
+  if (!PRIVATE_MEDIA_FILE_NAME.test(fileName)) return false;
+  const filePath = path.join(mediaDir(), fileName);
+  if (path.dirname(filePath) !== mediaDir() || !fs.existsSync(filePath)) {
+    return false;
+  }
+  fs.unlinkSync(filePath);
+  return true;
 }
 
 /** Write bytes to the content-addressed store (idempotent) and return the served URL. */

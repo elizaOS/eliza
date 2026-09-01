@@ -28,6 +28,15 @@ export {
   type ServiceLoggerOptions,
 } from "./logger";
 export {
+  ELIZA_FAILURE_CAUSE_NAME_HEADER,
+  ELIZA_FAILURE_NAME_HEADER,
+  ELIZA_FAILURE_STAGE_HEADER,
+  ELIZA_RETRYABLE_HEADER,
+  PERSONAL_SHARED_FAILURE_REPLY,
+  type PersonalSharedFailureMetadata,
+  readPersonalSharedFailureMetadata,
+} from "./personal-shared-failure";
+export {
   executeResponseAttempts,
   type ResponseAttemptObservation,
   type ResponseAttemptsOptions,
@@ -35,6 +44,8 @@ export {
   type ResponseRetryReason,
 } from "./response-attempts";
 export {
+  __resetTelegramIdentityAttestationCacheForTests,
+  attestTelegramBotIdentity,
   parseTelegramWebhook,
   resolveTelegramVoiceNote,
   sendTelegramReply,
@@ -45,10 +56,13 @@ export {
   TELEGRAM_VOICE_MAX_DURATION_SECONDS,
   TelegramApiResponseError,
   TelegramApiTransportError,
+  type TelegramAttestedBotIdentity,
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
   type TelegramConnectorLogger,
   type TelegramDeliveryReceipt,
+  TelegramIdentityAttestationError,
+  type TelegramIdentityAttestationFailureReason,
   type TelegramReplyDeliveryHooks,
   type TelegramResolvedVoiceNote,
   verifyTelegramWebhook,
