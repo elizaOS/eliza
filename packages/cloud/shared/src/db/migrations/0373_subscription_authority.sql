@@ -97,7 +97,8 @@ ALTER TABLE "subscription_allowance_periods" ADD CONSTRAINT "subscription_allowa
 CREATE TABLE "billing_funding_reservations" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE RESTRICT,
   "logical_operation_id" text NOT NULL, "request_digest" text NOT NULL, "funding_class" text NOT NULL, "requested_amount" numeric(16,6) NOT NULL,
-  "reserved_amount" numeric(16,6) NOT NULL, "status" text NOT NULL DEFAULT 'reserved', "settlement_key" text, "settlement_digest" text,
+  "reserved_amount" numeric(16,6) NOT NULL, "uncollected_overage_amount" numeric(16,6) NOT NULL DEFAULT 0,
+  "status" text NOT NULL DEFAULT 'reserved', "settlement_key" text, "settlement_digest" text,
   "cancellation_key" text, "cancellation_digest" text, "expires_at" timestamptz NOT NULL, "finalized_at" timestamptz, "canceled_at" timestamptz,
   "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "billing_funding_reservations_identity_check" CHECK (logical_operation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$' AND request_digest ~ '^[0-9a-f]{64}$'),

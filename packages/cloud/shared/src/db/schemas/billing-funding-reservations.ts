@@ -35,6 +35,12 @@ export const billingFundingReservations = pgTable(
     funding_class: text("funding_class").$type<BillingFundingClass>().notNull(),
     requested_amount: numeric("requested_amount", { precision: 16, scale: 6 }).notNull(),
     reserved_amount: numeric("reserved_amount", { precision: 16, scale: 6 }).notNull(),
+    uncollected_overage_amount: numeric("uncollected_overage_amount", {
+      precision: 16,
+      scale: 6,
+    })
+      .notNull()
+      .default("0.000000"),
     status: text("status").$type<BillingFundingReservationStatus>().notNull().default("reserved"),
     settlement_key: text("settlement_key"),
     settlement_digest: text("settlement_digest"),
@@ -73,6 +79,10 @@ export const billingFundingReservations = pgTable(
     amount_check: check(
       "billing_funding_reservations_amount_check",
       sql`${table.requested_amount} > 0 AND ${table.reserved_amount} = ${table.requested_amount}`,
+    ),
+    uncollected_overage_check: check(
+      "billing_funding_reservations_uncollected_overage_check",
+      sql`${table.uncollected_overage_amount} >= 0 AND (${table.status} = 'finalized' OR ${table.uncollected_overage_amount} = 0)`,
     ),
     funding_class_check: check(
       "billing_funding_reservations_funding_class_check",

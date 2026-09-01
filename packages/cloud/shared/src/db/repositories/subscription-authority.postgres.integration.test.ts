@@ -62,6 +62,7 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
       [
         "../migrations/0373_subscription_authority.sql",
         "../migrations/0374_subscription_funding_transaction_uniqueness.sql",
+        "../migrations/0375_subscription_uncollected_overage.sql",
       ].map((path) => readFile(new URL(path, import.meta.url), "utf8")),
     );
     for (const migration of migrations) {
@@ -465,6 +466,13 @@ describe.skipIf(!databaseUrl)("subscription authority PostgreSQL constraints", (
           released_amount: "0.000000",
         },
       ]);
+      const persistedSettlement = await setupClient!.query(
+        `SELECT uncollected_overage_amount::text
+         FROM billing_funding_reservations
+         WHERE id=$1`,
+        [result.reservation.id],
+      );
+      expect(persistedSettlement.rows).toEqual([{ uncollected_overage_amount: "1.000000" }]);
     } finally {
       setSystemTime();
     }

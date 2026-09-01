@@ -353,6 +353,7 @@ export class SubscriptionFundingService {
         requestDigest: digest,
         actualAllowanceAmount: microsToMoney(actualAllowance),
         actualPurchasedCreditAmount: microsToMoney(actualPurchased),
+        uncollectedOverageAmount: microsToMoney(uncollectedOverage),
         purchasedCreditSettlementTransactionId:
           actualPurchased > 0n
             ? (purchasedAllocation?.purchased_credit_reservation_transaction_id ?? null)
@@ -374,6 +375,7 @@ export class SubscriptionFundingService {
         digest,
         actualAllowanceAmount: terminalInput.actualAllowanceAmount,
         actualPurchasedCreditAmount: terminalInput.actualPurchasedCreditAmount,
+        uncollectedOverageAmount: terminalInput.uncollectedOverageAmount,
         allowanceExpired: false,
         purchasedCreditSettlementTransactionId:
           terminalInput.purchasedCreditSettlementTransactionId,

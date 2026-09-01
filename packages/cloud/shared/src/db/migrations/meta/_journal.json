@@ -2507,6 +2507,13 @@
       "when": 1796083200001,
       "tag": "0374_subscription_funding_transaction_uniqueness",
       "breakpoints": true
+    },
+    {
+      "idx": 358,
+      "version": "7",
+      "when": 1796083200002,
+      "tag": "0375_subscription_uncollected_overage",
+      "breakpoints": true
     }
   ]
 }

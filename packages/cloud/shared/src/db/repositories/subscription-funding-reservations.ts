@@ -265,6 +265,7 @@ export class SubscriptionFundingReservationsRepository {
       digest: string;
       actualAllowanceAmount: CanonicalMoney;
       actualPurchasedCreditAmount: CanonicalMoney;
+      uncollectedOverageAmount: CanonicalMoney;
       allowanceExpired: boolean;
       purchasedCreditSettlementTransactionId: string | null;
       purchasedCreditRefundTransactionId: string | null;
@@ -295,6 +296,7 @@ export class SubscriptionFundingReservationsRepository {
       input.actualPurchasedCreditAmount,
       "actualPurchasedCreditAmount",
     );
+    moneyToMicros(input.uncollectedOverageAmount, "uncollectedOverageAmount");
     if (input.kind === "cancellation" && (actualAllowance !== 0n || actualPurchased !== 0n)) {
       conflict("Canceled reservations cannot finalize usage", {
         reservationId: reservation.id,
@@ -375,7 +377,11 @@ export class SubscriptionFundingReservationsRepository {
           };
     const [updatedReservation] = await tx
       .update(billingFundingReservations)
-      .set({ ...terminalValues, updated_at: input.databaseNow })
+      .set({
+        ...terminalValues,
+        uncollected_overage_amount: input.uncollectedOverageAmount,
+        updated_at: input.databaseNow,
+      })
       .where(
         and(
           eq(billingFundingReservations.id, reservation.id),

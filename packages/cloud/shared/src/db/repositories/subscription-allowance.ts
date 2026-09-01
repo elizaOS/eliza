@@ -130,6 +130,7 @@ export interface FinalizeAllowanceInput {
   requestDigest: string;
   actualAllowanceAmount: CanonicalMoney;
   actualPurchasedCreditAmount: CanonicalMoney;
+  uncollectedOverageAmount: CanonicalMoney;
   purchasedCreditSettlementTransactionId: string | null;
   purchasedCreditRefundTransactionId: string | null;
 }
@@ -266,7 +267,10 @@ export class SubscriptionAllowanceRepository {
 
   async cancel(
     tx: DbTransaction,
-    input: Omit<FinalizeAllowanceInput, "actualAllowanceAmount" | "actualPurchasedCreditAmount">,
+    input: Omit<
+      FinalizeAllowanceInput,
+      "actualAllowanceAmount" | "actualPurchasedCreditAmount" | "uncollectedOverageAmount"
+    >,
   ): Promise<AuthorityResult> {
     return this.finish(
       tx,
@@ -274,6 +278,7 @@ export class SubscriptionAllowanceRepository {
         ...input,
         actualAllowanceAmount: microsToMoney(0n),
         actualPurchasedCreditAmount: microsToMoney(0n),
+        uncollectedOverageAmount: microsToMoney(0n),
       },
       "cancellation",
     );
@@ -402,6 +407,7 @@ export class SubscriptionAllowanceRepository {
       digest: input.requestDigest,
       actualAllowanceAmount: input.actualAllowanceAmount,
       actualPurchasedCreditAmount: input.actualPurchasedCreditAmount,
+      uncollectedOverageAmount: input.uncollectedOverageAmount,
       allowanceExpired: expiredRelease,
       purchasedCreditSettlementTransactionId: input.purchasedCreditSettlementTransactionId,
       purchasedCreditRefundTransactionId: input.purchasedCreditRefundTransactionId,
