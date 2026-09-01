@@ -385,6 +385,47 @@ describe("DiscordService.getAccountLabel", () => {
 	});
 });
 
+describe("DiscordService installation lifecycle facade wiring", () => {
+	it("exposes the per-account lifecycle scope from the pool facade (#23107 review round 5)", () => {
+		const { service } = makeService();
+		const workState = service.accountPool.get("work");
+		expect(workState).not.toBeNull();
+
+		const facade = service.createAccountServiceFacade(workState);
+
+		// The pool facade must derive its own client's lifecycle scope from
+		// the single parent derivation — attentionhead's mutation M2 survived
+		// at the previous head because the facade omitted this method and the
+		// production call sites always short-circuited to the accountId
+		// fallback. Removing this wiring regresses the guildCreate/guildDelete
+		// attribution back to the parent's active account.
+		expect(typeof facade.discordInstallationAccountId === "function").toBe(
+			true,
+		);
+		const facadeScope = (
+			facade as {
+				discordInstallationAccountId(): ReturnType<
+					DiscordService["discordInstallationAccountId"]
+				>;
+			}
+		).discordInstallationAccountId();
+		const parentScope = service.discordInstallationAccountId();
+		expect(facadeScope).not.toBe(parentScope);
+		expect(facadeScope).toBe(service.discordInstallationAccountId("work"));
+		expect(facadeScope).not.toBe(
+			service.discordInstallationAccountId("default"),
+		);
+
+		// The parent derivation with no argument keeps resolving the service's
+		// active account; the no-state facade defers to that same parent field
+		// (which aliases the default account in production pool wiring).
+		const facadeNoState = service.createAccountServiceFacade(null);
+		expect(facadeNoState.discordInstallationAccountId()).toBe(
+			service.discordInstallationAccountId("default"),
+		);
+	});
+});
+
 describe("DiscordService account-scoped primitives", () => {
 	it("projects interaction-only and long relay payloads through the real send handler", async () => {
 		const { graph, runtime, service } = makeService();

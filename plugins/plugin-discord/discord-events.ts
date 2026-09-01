@@ -689,9 +689,11 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			const lifecycleService = service.runtime.getService?.("installation");
 			const joinedReport = await reportDiscordGuildJoined(service.runtime, {
 				// Canonical lifecycle account scope: the production facade's
-				// active accountId; legacy facades without the method fall back
-				// to the same derivation from their accountId field so the
-				// default account keeps its historical record key.
+				// Per-account scope: the production pool facade carries
+				// discordInstallationAccountId() derived from its own account;
+				// legacy facades without the method fall back to the same
+				// derivation from their accountId field so the default
+				// account keeps its historical record key.
 				connectorAccountId:
 					service.discordInstallationAccountId?.() ??
 					discordInstallationAccountUuid(

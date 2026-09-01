@@ -860,12 +860,14 @@ export class DiscordService extends Service implements IDiscordService {
 	 * (stable UUID per Discord account; default account keeps the historical
 	 * `discord-default-account` record key). Implements the facade seam
 	 * `setupDiscordEventListeners` consumes at the guildCreate/guildDelete
-	 * lifecycle reporting boundaries (#23107).
+	 * lifecycle reporting boundaries (#23107). Accepts an explicit account id
+	 * so the per-account pool facade can derive its own client's scope from
+	 * the parent service — the single derivation both call sites use.
 	 */
-	public discordInstallationAccountId(): UUID {
+	public discordInstallationAccountId(accountId?: string | null): UUID {
 		return discordInstallationAccountUuid(
 			this.runtime,
-			this.accountId ?? DEFAULT_ACCOUNT_ID,
+			accountId ?? this.accountId ?? DEFAULT_ACCOUNT_ID,
 		);
 	}
 
@@ -1505,6 +1507,12 @@ export class DiscordService extends Service implements IDiscordService {
 			},
 			registerSlashCommands: (commands: DiscordSlashCommand[]) =>
 				parent.registerSlashCommands(commands, state?.accountId),
+			// Per-account lifecycle scope: derives from the same single
+			// parent derivation with this facade's account, so
+			// guildCreate/guildDelete reporting uses the pool client's own
+			// record instead of falling back to the parent's active account.
+			discordInstallationAccountId: () =>
+				parent.discordInstallationAccountId(state?.accountId),
 			// MessageManager is constructed before initializeAccount assigns the
 			// ready promise. Keep this live rather than snapshotting the initial null,
 			// otherwise a messageCreate racing ClientReady can be attributed before

@@ -41,10 +41,12 @@ function makeGuild(id: string, joinedAtIso: string | null): GuildLike {
 
 /**
  * Production-shaped facade: mirrors DiscordServiceInternals with the real
- * accountId field. The per-account pool facade in service.ts does NOT
- * expose discordInstallationAccountId() — only the parent service does —
- * so these facades deliberately omit the method too, driving the same
- * `service.accountId`-derived fallback the production pool path takes.
+ * accountId field. The production per-account pool facade in service.ts
+ * exposes discordInstallationAccountId() derived from its own account state;
+ * these harness facades intentionally omit the method to pin the legacy
+ * `service.accountId`-derived fallback path, which remains the contract for
+ * facades that predate the seam (e.g. test doubles and third-party
+ * subclasses).
  */
 function makeServiceFacade(runtime: Record<string, unknown>, account: string) {
 	const client = new EventEmitter() as EventEmitter & {
