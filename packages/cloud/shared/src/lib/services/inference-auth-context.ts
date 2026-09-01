@@ -507,8 +507,7 @@ function getOrCreateApiKeyHydration(
         // fresh attempt. The attempt itself may still succeed, so project that
         // late result without holding this promise: a never-settling attempt
         // must not keep waitUntil open.
-        const isCurrentGeneration = () =>
-          apiKeyHydrationGenerations.get(keyHash) === generation;
+        const isCurrentGeneration = () => apiKeyHydrationGenerations.get(keyHash) === generation;
         void attempt
           .then((late) => {
             // A newer hydration already owns this key: it is strictly closer to
