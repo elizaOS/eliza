@@ -2,6 +2,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import {
   getLifeOpsSimulatorPerson,
@@ -27,10 +28,31 @@ interface DynamicFixtureResponse {
   headers?: Record<string, string>;
 }
 
+export type GoogleAuthLedgerStatus =
+  | "admitted"
+  | "rejected"
+  | "unauthenticated"
+  | "fault"
+  | "reset";
+
+export interface GoogleAuthLedgerMetadata {
+  action?: "auth" | "reset";
+  authStatus: GoogleAuthLedgerStatus;
+  admittedAccountId?: string;
+  admittedAccountEmail?: string;
+  admittedGrantId?: string;
+  requiredScopes?: readonly string[];
+  grantedScopeCount?: number;
+  resetGeneration?: number;
+  statusCode?: number;
+}
+
 interface GoogleMockLedgerEntry {
   gmail?: GmailRequestLedgerMetadata;
   calendar?: GoogleCalendarRequestLedgerMetadata;
+  googleAuth?: GoogleAuthLedgerMetadata;
   runId?: string;
+  statusCode?: number;
 }
 
 function jsonFixture(
@@ -524,6 +546,8 @@ export interface GoogleMockState {
   gmailFaultInjection: GoogleGmailFaultInjection | null;
   googleTokens: Map<string, GoogleMockToken>;
   calendar: GoogleCalendarMockState;
+  resetGeneration: number;
+  options?: GoogleMockStateOptions;
 }
 
 export interface GoogleMockStateOptions {
@@ -639,6 +663,7 @@ function buildGmailFixtureManifest(
 export function createGoogleMockState(
   opts?: GoogleMockStateOptions,
 ): GoogleMockState {
+  discoveredGoogleGrantDirs.clear();
   const accounts = gmailAccountsMap();
   const messages = new Map<string, GmailMockMessage>();
   for (const fixture of gmailFixtureMessages(opts)) {
@@ -674,7 +699,7 @@ export function createGoogleMockState(
     account: accounts.get(DEFAULT_GMAIL_ACCOUNT_ID),
   });
 
-  return {
+  const state: GoogleMockState = {
     gmailAccounts: accounts,
     gmailMessages: messages,
     gmailFixtureManifest: buildGmailFixtureManifest(
@@ -709,7 +734,11 @@ export function createGoogleMockState(
     gmailFaultInjection: null,
     googleTokens: new Map(),
     calendar: createGoogleCalendarMockState(opts),
+    resetGeneration: 0,
+    ...(opts ? { options: opts } : {}),
   };
+  admitSeededGoogleGrants(state);
+  return state;
 }
 
 export function setGoogleGmailFaultInjection(
@@ -1590,15 +1619,34 @@ function bearerToken(headers: http.IncomingHttpHeaders): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
+const discoveredGoogleGrantDirs = new Set<string>();
+
+function rememberGoogleGrantDir(dir: string): void {
+  discoveredGoogleGrantDirs.add(path.resolve(dir));
+}
+
+function defaultCredentialsGoogleDir(): string {
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const xdg = process.env.XDG_STATE_HOME?.trim();
+  const stateDir = xdg
+    ? path.join(xdg, namespace)
+    : path.join(os.homedir(), ".local", "state", namespace);
+  return path.join(stateDir, "credentials", "lifeops", "google");
+}
+
 function googleOAuthSearchDirs(): string[] {
-  const explicitOAuthDir = process.env.ELIZA_OAUTH_DIR?.trim();
-  if (explicitOAuthDir) {
-    return [path.join(explicitOAuthDir, "lifeops", "google")];
-  }
+  const dirs: string[] = [];
+  const add = (dir: string) => {
+    const resolved = path.resolve(dir);
+    if (!dirs.includes(resolved)) dirs.push(resolved);
+  };
+  const oauthDir = process.env.ELIZA_OAUTH_DIR?.trim();
+  if (oauthDir) add(path.join(oauthDir, "lifeops", "google"));
   const stateDir = process.env.ELIZA_STATE_DIR?.trim();
-  return stateDir
-    ? [path.join(stateDir, "credentials", "lifeops", "google")]
-    : [];
+  if (stateDir) add(path.join(stateDir, "credentials", "lifeops", "google"));
+  if (!oauthDir) add(defaultCredentialsGoogleDir());
+  for (const remembered of discoveredGoogleGrantDirs) add(remembered);
+  return dirs;
 }
 
 function readJsonFilesRecursively(
@@ -1622,23 +1670,17 @@ function readJsonFilesRecursively(
   return remaining;
 }
 
-function refreshGoogleTokensFromSeededGrants(state: GoogleMockState): void {
-  const files: string[] = [];
-  for (const dir of googleOAuthSearchDirs()) {
-    readJsonFilesRecursively(dir, files, 100);
+function tokenFromGrantRecord(
+  record: Record<string, JsonValue>,
+): { accessToken: string; token: GoogleMockToken } | null {
+  const accessToken = record.accessToken;
+  const grantedScopes = record.grantedScopes;
+  if (typeof accessToken !== "string" || !isStringArray(grantedScopes)) {
+    return null;
   }
-  for (const file of files) {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as JsonValue;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      continue;
-    }
-    const record = parsed as Record<string, JsonValue>;
-    const accessToken = record.accessToken;
-    const grantedScopes = record.grantedScopes;
-    if (typeof accessToken !== "string" || !isStringArray(grantedScopes)) {
-      continue;
-    }
-    state.googleTokens.set(accessToken, {
+  return {
+    accessToken,
+    token: {
       scopes: new Set(grantedScopes),
       ...(typeof record.gmailAccountId === "string"
         ? { gmailAccountId: record.gmailAccountId }
@@ -1651,7 +1693,109 @@ function refreshGoogleTokensFromSeededGrants(state: GoogleMockState): void {
         : typeof record.email === "string"
           ? { gmailAccountEmail: record.email }
           : {}),
-    });
+    },
+  };
+}
+
+export function admitSeededGoogleGrants(state: GoogleMockState): number {
+  const files: string[] = [];
+  for (const dir of googleOAuthSearchDirs()) {
+    const before = files.length;
+    readJsonFilesRecursively(dir, files, Math.max(0, 100 - files.length));
+    if (files.length > before) rememberGoogleGrantDir(dir);
+  }
+  let admitted = 0;
+  for (const file of files) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as JsonValue;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        continue;
+      }
+      const loaded = tokenFromGrantRecord(parsed as Record<string, JsonValue>);
+      if (!loaded) continue;
+      state.googleTokens.set(loaded.accessToken, loaded.token);
+      rememberGoogleGrantDir(path.dirname(file));
+      admitted += 1;
+    } catch {}
+  }
+  return admitted;
+}
+
+function refreshGoogleTokensFromSeededGrants(state: GoogleMockState): void {
+  admitSeededGoogleGrants(state);
+}
+
+function persistIssuedGoogleAccessToken(args: {
+  accessToken: string;
+  scopes: string[];
+  grantId?: string;
+  accountEmail?: string;
+  gmailAccountId?: string;
+  refreshToken?: string;
+}): void {
+  const files: string[] = [];
+  for (const dir of googleOAuthSearchDirs()) {
+    readJsonFilesRecursively(dir, files, Math.max(0, 100 - files.length));
+  }
+  const matches = (record: Record<string, JsonValue>): boolean => {
+    if (args.grantId && record.grantId === args.grantId) return true;
+    if (
+      args.accountEmail &&
+      (record.accountEmail === args.accountEmail ||
+        record.email === args.accountEmail)
+    ) {
+      return true;
+    }
+    if (args.refreshToken && record.refreshToken === args.refreshToken) {
+      return true;
+    }
+    return false;
+  };
+  for (const file of files) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as JsonValue;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        continue;
+      }
+      const record = parsed as Record<string, JsonValue>;
+      if (!matches(record)) continue;
+      record.accessToken = args.accessToken;
+      record.grantedScopes = args.scopes;
+      record.updatedAt = new Date().toISOString();
+      fs.writeFileSync(file, JSON.stringify(record, null, 2), {
+        encoding: "utf-8",
+        mode: 0o600,
+      });
+      rememberGoogleGrantDir(path.dirname(file));
+    } catch {}
+  }
+}
+
+export function resetGoogleMockState(state: GoogleMockState): number {
+  const generation = (state.resetGeneration ?? 0) + 1;
+  const next = createGoogleMockState(state.options);
+  state.gmailAccounts = next.gmailAccounts;
+  state.gmailMessages = next.gmailMessages;
+  state.gmailFixtureManifest = next.gmailFixtureManifest;
+  state.gmailDrafts = next.gmailDrafts;
+  state.gmailHistoryId = next.gmailHistoryId;
+  state.gmailHistory = next.gmailHistory;
+  state.gmailFaultInjection = null;
+  state.googleTokens = next.googleTokens;
+  state.calendar = next.calendar;
+  state.options = next.options;
+  state.resetGeneration = generation;
+  admitSeededGoogleGrants(state);
+  return generation;
+}
+
+function recordGoogleAuth(
+  ledgerEntry: GoogleMockLedgerEntry,
+  metadata: GoogleAuthLedgerMetadata,
+): void {
+  ledgerEntry.googleAuth = metadata;
+  if (typeof metadata.statusCode === "number") {
+    ledgerEntry.statusCode = metadata.statusCode;
   }
 }
 
@@ -1697,6 +1841,7 @@ function enforceGoogleAuthIfPresent(
   method: string,
   pathname: string,
   headers: http.IncomingHttpHeaders,
+  ledgerEntry: GoogleMockLedgerEntry,
 ): DynamicFixtureResponse | null {
   const requiredScopes = requiredGoogleScopes(method, pathname);
   if (requiredScopes.length === 0) return null;
@@ -1705,13 +1850,38 @@ function enforceGoogleAuthIfPresent(
   if (!state.googleTokens.has(token)) {
     refreshGoogleTokensFromSeededGrants(state);
   }
-  const scopes = state.googleTokens.get(token);
-  if (!scopes) {
+  const admitted = state.googleTokens.get(token);
+  if (!admitted) {
+    recordGoogleAuth(ledgerEntry, {
+      action: "auth",
+      authStatus: "rejected",
+      requiredScopes: [...requiredScopes],
+      resetGeneration: state.resetGeneration,
+      statusCode: 401,
+    });
     return jsonError(401, "Unknown or expired mock Google access token");
   }
-  return requiredScopes.some((scope) => scopes.scopes.has(scope))
-    ? null
-    : jsonError(403, "Google mock token is missing required scope");
+  if (!requiredScopes.some((scope) => admitted.scopes.has(scope))) {
+    recordGoogleAuth(ledgerEntry, {
+      action: "auth",
+      authStatus: "rejected",
+      requiredScopes: [...requiredScopes],
+      grantedScopeCount: admitted.scopes.size,
+      ...(admitted.gmailAccountId
+        ? { admittedAccountId: admitted.gmailAccountId }
+        : {}),
+      ...(admitted.gmailAccountEmail
+        ? { admittedAccountEmail: admitted.gmailAccountEmail }
+        : {}),
+      ...(admitted.gmailGrantId
+        ? { admittedGrantId: admitted.gmailGrantId }
+        : {}),
+      resetGeneration: state.resetGeneration,
+      statusCode: 403,
+    });
+    return jsonError(403, "Google mock token is missing required scope");
+  }
+  return null;
 }
 
 function googleTokenForRequest(
@@ -1760,16 +1930,42 @@ export function googleDynamicFixture(
       typeof requestBody.accountEmail === "string"
         ? requestBody.accountEmail
         : undefined;
+    const refreshToken =
+      typeof requestBody.refresh_token === "string"
+        ? requestBody.refresh_token
+        : typeof requestBody.refreshToken === "string"
+          ? requestBody.refreshToken
+          : undefined;
+    persistIssuedGoogleAccessToken({
+      accessToken,
+      scopes,
+      ...(gmailGrantId ? { grantId: gmailGrantId } : {}),
+      ...(gmailAccountEmail ? { accountEmail: gmailAccountEmail } : {}),
+      ...(gmailAccountId ? { gmailAccountId } : {}),
+      ...(refreshToken ? { refreshToken } : {}),
+    });
+    admitSeededGoogleGrants(state);
     state.googleTokens.set(accessToken, {
       scopes: new Set(scopes),
       ...(gmailAccountId ? { gmailAccountId } : {}),
       ...(gmailGrantId ? { gmailGrantId } : {}),
       ...(gmailAccountEmail ? { gmailAccountEmail } : {}),
     });
+    recordGoogleAuth(ledgerEntry, {
+      action: "auth",
+      authStatus: "admitted",
+      ...(gmailAccountId ? { admittedAccountId: gmailAccountId } : {}),
+      ...(gmailAccountEmail ? { admittedAccountEmail: gmailAccountEmail } : {}),
+      ...(gmailGrantId ? { admittedGrantId: gmailGrantId } : {}),
+      requiredScopes: scopes,
+      grantedScopeCount: scopes.length,
+      resetGeneration: state.resetGeneration,
+      statusCode: 200,
+    });
     return jsonFixture({
       access_token: accessToken,
       expires_in: 3600,
-      refresh_token: "mock-google-refresh-token",
+      refresh_token: refreshToken ?? "mock-google-refresh-token",
       token_type: "Bearer",
       scope: scopes.join(" "),
     });
@@ -1783,7 +1979,15 @@ export function googleDynamicFixture(
     headers,
   );
   if (gmailFault && gmailFault !== "partial_failure") {
-    return gmailFaultError(gmailFault);
+    const faultResponse = gmailFaultError(gmailFault);
+    recordGoogleAuth(ledgerEntry, {
+      action: "auth",
+      authStatus: "fault",
+      requiredScopes: [...requiredGoogleScopes(method, pathname)],
+      resetGeneration: state.resetGeneration,
+      statusCode: faultResponse.statusCode,
+    });
+    return faultResponse;
   }
 
   const authFailure = enforceGoogleAuthIfPresent(
@@ -1791,9 +1995,38 @@ export function googleDynamicFixture(
     method,
     pathname,
     headers,
+    ledgerEntry,
   );
   if (authFailure) return authFailure;
   const googleToken = googleTokenForRequest(state, headers);
+  if (googleToken) {
+    const account = gmailTokenAccount(state, googleToken);
+    recordGoogleAuth(ledgerEntry, {
+      action: "auth",
+      authStatus: "admitted",
+      ...(account
+        ? {
+            admittedAccountId: account.id,
+            admittedAccountEmail: account.email,
+            admittedGrantId: account.grantId,
+          }
+        : {
+            ...(googleToken.gmailAccountId
+              ? { admittedAccountId: googleToken.gmailAccountId }
+              : {}),
+            ...(googleToken.gmailAccountEmail
+              ? { admittedAccountEmail: googleToken.gmailAccountEmail }
+              : {}),
+            ...(googleToken.gmailGrantId
+              ? { admittedGrantId: googleToken.gmailGrantId }
+              : {}),
+          }),
+      requiredScopes: [...requiredGoogleScopes(method, pathname)],
+      grantedScopeCount: googleToken.scopes.size,
+      resetGeneration: state.resetGeneration,
+      statusCode: 200,
+    });
+  }
   const gmailSelection = gmailAccountSelection(
     state,
     searchParams,
