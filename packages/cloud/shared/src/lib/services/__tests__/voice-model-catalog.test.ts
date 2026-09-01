@@ -23,16 +23,22 @@ function seedFromPkcs8PrivateKey(
 ): string {
   const der = privateKey.export({ format: "der", type: "pkcs8" }) as Buffer;
   if (der.byteLength !== 48) {
-    throw new Error(`expected 48-byte Ed25519 PKCS8 DER, got ${der.byteLength}`);
+    throw new Error(
+      `expected 48-byte Ed25519 PKCS8 DER, got ${der.byteLength}`,
+    );
   }
   return Buffer.from(der.subarray(16)).toString("base64");
 }
 
 /** SPKI DER for Ed25519 is 44 bytes: 12-byte prefix + 32-byte raw public key. */
-function rawPublicKey(publicKey: ReturnType<typeof generateKeyPairSync>["publicKey"]): Uint8Array {
+function rawPublicKey(
+  publicKey: ReturnType<typeof generateKeyPairSync>["publicKey"],
+): Uint8Array {
   const spki = publicKey.export({ format: "der", type: "spki" }) as Buffer;
   if (spki.byteLength !== 44) {
-    throw new Error(`expected 44-byte Ed25519 SPKI DER, got ${spki.byteLength}`);
+    throw new Error(
+      `expected 44-byte Ed25519 SPKI DER, got ${spki.byteLength}`,
+    );
   }
   return new Uint8Array(spki.subarray(12));
 }
@@ -41,7 +47,9 @@ function b64ToBytes(b64: string): Uint8Array {
   return new Uint8Array(Buffer.from(b64, "base64"));
 }
 
-async function importVerifyKey(publicKey: ReturnType<typeof generateKeyPairSync>["publicKey"]) {
+async function importVerifyKey(
+  publicKey: ReturnType<typeof generateKeyPairSync>["publicKey"],
+) {
   return crypto.subtle.importKey(
     "raw",
     rawPublicKey(publicKey) as unknown as ArrayBuffer,
@@ -51,11 +59,35 @@ async function importVerifyKey(publicKey: ReturnType<typeof generateKeyPairSync>
   );
 }
 
+/**
+ * Generate a key pair whose base64 seed is GUARANTEED to contain a
+ * URL-mappable character (`+` or `/`), so base64url tests are never
+ * vacuous. A single draw misses with probability (31/32)^43 < 0.26, so
+ * 32 draws fail with probability ~1e-19 — the bound throw below is a
+ * hard guard, not a probabilistic pass.
+ */
+function generateKeyPairWithMappableSeed(): ReturnType<
+  typeof generateKeyPairSync
+> {
+  for (let i = 0; i < 32; i++) {
+    const kp = generateKeyPairSync("ed25519");
+    if (/[+\/]/.test(seedFromPkcs8PrivateKey(kp.privateKey))) {
+      return kp;
+    }
+  }
+  throw new Error(
+    "32 consecutive draws without a mappable seed character (p ~1e-19)",
+  );
+}
+
 describe("buildVoiceModelCatalogBody", () => {
   test("pins the body shape: schema literal, ISO generatedAt, full in-binary version list, fingerprint passthrough", () => {
     const now = new Date("2026-08-26T04:00:00.000Z");
     const fingerprints = ["AkZiDEp0bWx0", "TmV4dEtleUZw=="];
-    const body = buildVoiceModelCatalogBody({ now, publicKeyFingerprints: fingerprints });
+    const body = buildVoiceModelCatalogBody({
+      now,
+      publicKeyFingerprints: fingerprints,
+    });
 
     expect(body.schema).toBe("eliza-1-voice-models.v1");
     // The device updater treats generatedAt as an ISO timestamp; a raw
@@ -140,7 +172,10 @@ describe("signVoiceModelCatalog", () => {
   test("a single flipped body byte fails verification (exact-bytes contract)", async () => {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");
     const bodyText = JSON.stringify(
-      buildVoiceModelCatalogBody({ now: new Date(), publicKeyFingerprints: [] }),
+      buildVoiceModelCatalogBody({
+        now: new Date(),
+        publicKeyFingerprints: [],
+      }),
     );
     const signatureB64 = await signVoiceModelCatalog({
       bodyText,
@@ -163,7 +198,10 @@ describe("signVoiceModelCatalog", () => {
     const { publicKey } = generateKeyPairSync("ed25519");
     const other = generateKeyPairSync("ed25519");
     const bodyText = JSON.stringify(
-      buildVoiceModelCatalogBody({ now: new Date(), publicKeyFingerprints: [] }),
+      buildVoiceModelCatalogBody({
+        now: new Date(),
+        publicKeyFingerprints: [],
+      }),
     );
     const signatureB64 = await signVoiceModelCatalog({
       bodyText,
@@ -192,9 +230,9 @@ describe("signVoiceModelCatalog", () => {
     ).rejects.toThrow(/32 bytes/);
     // An unconfigured (empty) signing key must fail closed rather than
     // sign anything — the route's own missing-env guard mirrors this.
-    await expect(signVoiceModelCatalog({ bodyText: "{}", secretKeyBase64: "" })).rejects.toThrow(
-      /32 bytes/,
-    );
+    await expect(
+      signVoiceModelCatalog({ bodyText: "{}", secretKeyBase64: "" }),
+    ).rejects.toThrow(/32 bytes/);
   });
 
   test("fails closed on malformed signing keys: junk characters are rejected, not silently discarded", async () => {
@@ -221,6 +259,47 @@ describe("signVoiceModelCatalog", () => {
     });
     expect(b64ToBytes(signatureB64).byteLength).toBe(64);
   });
+
+  test("base64url spellings of the seed sign with the identical signature", async () => {
+    // RFC 4648 §5 URL-safe spellings (`-`/`_` for `+`/`/`) decode to the
+    // SAME bytes, and JWK `d`, `basenc --base64url`, and most JOSE
+    // tooling emit them — an operator configured from any of those has a
+    // correctly-signing deployment, so the strict decoder must normalize
+    // the alphabet rather than reject. The signatures must be identical
+    // (same seed ⇒ same signature), not merely both-valid.
+    // The key is drawn until its base64 spelling contains a mappable
+    // character (helper guarantees it), so the test always exercises the
+    // normalization path.
+    const { privateKey } = generateKeyPairWithMappableSeed();
+    const seedB64 = seedFromPkcs8PrivateKey(privateKey);
+    const seedUrl = seedB64
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replaceAll("=", "");
+    expect(/[+\/]/.test(seedB64)).toBe(true);
+    const bodyText = JSON.stringify({ schema: "eliza-1-voice-models.v1" });
+    const sigStd = await signVoiceModelCatalog({
+      bodyText,
+      secretKeyBase64: seedB64,
+    });
+    const sigUrl = await signVoiceModelCatalog({
+      bodyText,
+      secretKeyBase64: seedUrl,
+    });
+    expect(sigUrl).toBe(sigStd);
+    // Mixed alphabets (standard +// and URL-safe -/_ in ONE credential)
+    // are hand-mangled values no standard encoding emits: rejected even
+    // though per-character substitution alone would normalize them. The
+    // mixed spelling is built position-aware: keep the standard mappable
+    // char, replace an unrelated alphanumeric char with `-`.
+    const m = seedB64.search(/[+/]/);
+    let j = 0;
+    while (j === m || !/[A-Za-z0-9]/.test(seedB64[j] ?? "")) j += 1;
+    const mixedSeed = `${seedB64.slice(0, j)}-${seedB64.slice(j + 1)}`;
+    await expect(
+      signVoiceModelCatalog({ bodyText, secretKeyBase64: mixedSeed }),
+    ).rejects.toThrow(/mixed alphabets/);
+  });
 });
 
 describe("fingerprintPublicKey", () => {
@@ -233,12 +312,34 @@ describe("fingerprintPublicKey", () => {
     // check) would not: the passthrough returns the newline-terminated
     // spelling.
     const raw = crypto.getRandomValues(new Uint8Array(32));
-    const rawB64 = Buffer.from(raw).toString("base64");
+    let rawB64 = Buffer.from(raw).toString("base64");
     expect(fingerprintPublicKey(`${rawB64}\n`)).toBe(rawB64);
     expect(fingerprintPublicKey(` ${rawB64}`)).toBe(rawB64);
     // 43-char unpadded spelling of the same 32 bytes also canonicalizes
     // to the padded form.
     expect(fingerprintPublicKey(rawB64.replaceAll("=", ""))).toBe(rawB64);
+    // RFC 4648 §5 base64url spellings (`-`/`_`, padded or unpadded) are
+    // the same bytes in the alphabet JWK/JOSE tooling emits — they must
+    // canonicalize to the standard fingerprint, never throw. Redraw the
+    // random key until its base64 spelling contains a mappable char so the
+    // assertions always execute (p of 32 straight misses ~1e-19).
+    while (!/[+/]/.test(rawB64)) {
+      rawB64 = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
+        "base64",
+      );
+    }
+    const rawUrl = rawB64.replaceAll("+", "-").replaceAll("/", "_");
+    expect(fingerprintPublicKey(rawUrl)).toBe(rawB64);
+    expect(fingerprintPublicKey(rawUrl.replaceAll("=", ""))).toBe(rawB64);
+    // Mixed alphabets in one credential are rejected, not normalized
+    // (position-aware: keep the standard mappable char, swap an
+    // unrelated alphanumeric char to `-`).
+    const m = rawB64.search(/[+/]/);
+    let j = 0;
+    while (j === m || !/[A-Za-z0-9]/.test(rawB64[j] ?? "")) j += 1;
+    expect(() =>
+      fingerprintPublicKey(`${rawB64.slice(0, j)}-${rawB64.slice(j + 1)}`),
+    ).toThrow(/mixed alphabets/);
     // Non-base64 junk is NOT a spelling of the same bytes: it throws
     // rather than canonicalizing (mirrors the signing-key fail-closed
     // contract above — a mistyped key must be rejected, not silently

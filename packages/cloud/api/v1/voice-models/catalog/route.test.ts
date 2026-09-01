@@ -204,4 +204,44 @@ describe("GET /api/v1/voice-models/catalog (route + device verifier, e2e)", () =
     const bodyText = await res.text();
     await verifyManifestSignatureText(bodyText, signature!, [pubRaw]);
   });
+
+  test("base64url-spelled credentials (JWK/JOSE tooling output) keep signing and verifying", async () => {
+    // RFC 4648 §5 spellings decoded fine under Node's lenient decoder, so
+    // deployments configured from JWK `d` / `basenc --base64url` exist in
+    // the field and MUST NOT become 500s on a public endpoint. The key is
+    // drawn until its base64 spelling contains a mappable character, so
+    // the test always exercises the normalization path (never vacuous).
+    const toUrl = (b64: string) =>
+      b64.replaceAll("+", "-").replaceAll("/", "_");
+    // Redraw until BOTH credentials contain a mappable char, so the seed
+    // signing path AND the public-key fingerprint path are each exercised
+    // through the normalization (never vacuous). P(both per draw) is about
+    // 0.55, so 64 draws fail with probability ~1e-19; the assertions below
+    // are hard guards.
+    for (
+      let i = 0;
+      i < 64 && !(/[+/]/.test(seedB64) && /[+/]/.test(pubB64));
+      i++
+    ) {
+      const kp = generateKeyPairSync("ed25519");
+      seedB64 = seedB64From(kp.privateKey);
+      pubRaw = rawPublicKey(kp.publicKey);
+      pubB64 = Buffer.from(pubRaw).toString("base64");
+    }
+    expect(/[+/]/.test(seedB64)).toBe(true);
+    expect(/[+/]/.test(pubB64)).toBe(true);
+    const seedUrl = toUrl(seedB64);
+    const pubUrl = toUrl(pubB64);
+    const res = await fetchCatalog({
+      ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64: seedUrl,
+      ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: pubUrl,
+    });
+    expect(res.status).toBe(200);
+    const signature = res.headers.get("X-Eliza-Signature");
+    expect(signature).toBeTruthy();
+    const bodyText = await res.text();
+    await verifyManifestSignatureText(bodyText, signature!, [pubRaw]);
+    const parsed = JSON.parse(bodyText);
+    expect(parsed.publicKeyFingerprints).toContain(pubB64);
+  });
 });
