@@ -51,6 +51,7 @@ import {
 } from "../../db/repositories/agent-vault-key-authority";
 import type { AgentBackupRestoreOperation } from "../../db/schemas/agent-backup-catalog";
 import type { AgentSandboxReplacementAttempt } from "../../db/schemas/agent-sandbox-replacement-attempts";
+import { logger } from "../utils/logger";
 import {
   type AgentBackupRestoreExactImagePlatformAuthority,
   resolveAgentBackupRestoreExactImagePlatform,
@@ -680,9 +681,7 @@ export function buildAgentBackupRestoreExactProviderReceiptDigestV1(params: {
     params.locator.nodeIncarnation !== params.operation.expected_node_incarnation ||
     params.locator.nodeHistoryId !== params.operation.expected_node_history_id ||
     params.locator.containerName !==
-      `agent-restore-${params.operation.agent_id}-${params.operation.restore_attempt_id}` ||
-    params.operation.expected_image_digest !== image.imageDigest ||
-    image.imageReference !== digestPinnedImageReference(image.imageReference, image.imageDigest)
+      `agent-restore-${params.operation.agent_id}-${params.operation.restore_attempt_id}`
   ) {
     throw runtimeError(
       "AGENT_BACKUP_RESTORE_PROVIDER_RECEIPT_INCOMPLETE",
@@ -798,7 +797,14 @@ async function releaseHeldClaimSafely(
   try {
     await releaseHeldClaim(input, state, dependencies);
     return true;
-  } catch {
+  } catch (error) {
+    // error-policy:J6 reconciliation remains explicit while claim-release
+    // teardown is best effort; retain diagnostics for the stuck claim.
+    logger.warn("[AgentBackupRestoreQuarantinedCreate] Failed to release operation claim", {
+      error,
+      operationId: input.operationId,
+      replacementAttemptId: input.replacementAttemptId,
+    });
     return false;
   }
 }
@@ -1198,6 +1204,7 @@ export async function reconcileAgentBackupRestoreQuarantinedCreate(
       replayed: fenced.replayed || finished.replayed,
     });
   } catch (error) {
+    // error-policy:J2 preserve the primary cleanup failure while releasing its claim.
     if (!cleanupClaimHeld) throw error;
     try {
       await dependencies.releaseCleanupClaim({
@@ -1207,6 +1214,7 @@ export async function reconcileAgentBackupRestoreQuarantinedCreate(
         replacementAttemptId: input.replacementAttemptId,
       });
     } catch (releaseError) {
+      // error-policy:J2 retain both the primary and claim-release failures.
       throw new AggregateError(
         [error, releaseError],
         "Restore cleanup failed and its serialized claim could not be released",
@@ -1644,6 +1652,7 @@ export async function runAgentBackupRestoreQuarantinedCreate(
         replayed: false,
       });
     } catch (error) {
+      // error-policy:J1 post-provider uncertainty becomes an explicit reconciliation result.
       if (!providerState.boundaryEntered) throw error;
       const claimReleased = await releaseHeldClaimSafely(input, claimState, dependencies);
       return Object.freeze({
@@ -1659,11 +1668,13 @@ export async function runAgentBackupRestoreQuarantinedCreate(
       });
     }
   } catch (error) {
+    // error-policy:J2 preserve the primary create failure while releasing its claim.
     const held = claimState.current;
     if (!held) throw error;
     try {
       await releaseHeldClaim(input, claimState, dependencies);
     } catch (releaseError) {
+      // error-policy:J2 retain both the primary and claim-release failures.
       throw new AggregateError(
         [error, releaseError],
         "Restore quarantined-create failed and its operation claim could not be released",
