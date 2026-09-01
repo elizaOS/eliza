@@ -38,6 +38,12 @@ const blooioValues: Record<(typeof blooioNames)[number], string> = {
   ELIZA_APP_BLOOIO_PHONE_NUMBER: "+15555550200",
   ELIZA_APP_BLOOIO_WEBHOOK_SECRET: "railway-webhook-private-canary",
 };
+const telegramValues = {
+  ELIZA_APP_TELEGRAM_BOT_ID: "123456789",
+  ELIZA_APP_TELEGRAM_BOT_USERNAME: "eliza_fixture_bot",
+  ELIZA_APP_TELEGRAM_BOT_TOKEN: "telegram-token-private-canary",
+  ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "telegram-webhook-private-canary",
+} as const;
 interface WorkflowStep {
   env?: Record<string, string>;
   id?: string;
@@ -183,6 +189,7 @@ function verifyRailwayVariableInventory(
     ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "forwarder-private-canary",
     REDIS_URL: "redis-private-canary",
     ...blooioValues,
+    ...telegramValues,
     ...overrides,
   };
   // The Worker side receives these as GitHub Environment secrets; by default
@@ -192,6 +199,12 @@ function verifyRailwayVariableInventory(
     const value =
       name in workerOverrides ? workerOverrides[name] : blooioValues[name];
     if (value !== undefined) workerEnvironment[`WORKER_${name}`] = value;
+  }
+  for (const name of [
+    "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+    "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
+  ] as const) {
+    workerEnvironment[`WORKER_${name}`] = telegramValues[name];
   }
   writeFileSync(
     join(binRoot, "railway"),
@@ -215,8 +228,10 @@ fi
 exit 98
 `,
   );
+  writeFileSync(join(binRoot, "node"), "#!/bin/sh\nexit 0\n");
   chmodSync(join(binRoot, "railway"), 0o755);
   chmodSync(join(binRoot, "shred"), 0o755);
+  chmodSync(join(binRoot, "node"), 0o755);
 
   try {
     const verification = step(
@@ -235,6 +250,9 @@ exit 98
         RAILWAY_VARIABLES_FIXTURE: JSON.stringify(variables),
         RUNNER_TEMP: fixtureRoot,
         TARGET_ENVIRONMENT: target,
+        TELEGRAM_EXPECTED_BOT_ID: telegramValues.ELIZA_APP_TELEGRAM_BOT_ID,
+        TELEGRAM_EXPECTED_BOT_USERNAME:
+          telegramValues.ELIZA_APP_TELEGRAM_BOT_USERNAME,
         ...workerEnvironment,
       },
       stderr: "pipe",
@@ -283,8 +301,14 @@ function assertExactForwarderAuthReadinessProbe(run: string): void {
     readiness: '.status == "enforced"',
     project: '.project == "eliza-app"',
   } as const;
+  const routeStart = run.indexOf(required.route);
+  const routeEnd = run.indexOf("telegram_probe_path=", routeStart);
+  if (routeStart < 0 || routeEnd < 0) {
+    throw new Error("forwarder readiness route contract drifted");
+  }
+  const forwarderProbe = run.slice(routeStart, routeEnd);
   for (const [contract, fragment] of Object.entries(required)) {
-    if (!run.includes(fragment)) {
+    if (!forwarderProbe.includes(fragment)) {
       throw new Error(`forwarder readiness ${contract} contract drifted`);
     }
   }
@@ -505,7 +529,7 @@ describe("protected gateway-webhook deployment workflow", () => {
         }
       }
     }
-  }, 15_000);
+  }, 30_000);
 
   test("requires protected Worker and Railway Blooio values to actually match", () => {
     const variables = step(
@@ -520,7 +544,7 @@ describe("protected gateway-webhook deployment workflow", () => {
     // compared, echoed, or written in the clear.
     expect(variables.run).toContain("openssl rand -hex 32");
     expect(variables.run).toContain(
-      'openssl dgst -sha256 -hmac "$blooio_match_salt" -r',
+      'openssl dgst -sha256 -hmac "$protected_match_salt" -r',
     );
     expect(variables.run).not.toContain('"$worker_value" != "$railway_value"');
     expect(variables.run).not.toContain('echo "$worker_value"');

@@ -140,10 +140,6 @@ const Github = ({ className }: { className?: string }) => (
 );
 
 const STEWARD_TENANT_ID = configuredStewardTenantId(DEFAULT_STEWARD_TENANT_ID);
-const PLAYWRIGHT_TEST_AUTH_ENABLED =
-  import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
-  (typeof process !== "undefined" &&
-    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 /**
  * Optional local-stack API key for the "Continue with local test account"
  * shortcut. It is never bundled by default: the operator who arms
@@ -161,10 +157,6 @@ function readLocalDedicatedTestApiKey(): string | null {
   if (typeof fromNext === "string" && fromNext.trim()) return fromNext.trim();
   return null;
 }
-const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
-const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
-  PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
-
 type AuthStep =
   | "idle"
   | "loading"
@@ -601,6 +593,16 @@ function loadStewardProvidersWithTimeout(auth: {
 }
 
 export default function StewardLoginSection() {
+  // Resolve the build-time test switches for each mounted section. Vite still
+  // replaces these values in production builds, while tests can exercise each
+  // supported configuration without invalidating React's module instance.
+  const PLAYWRIGHT_TEST_AUTH_ENABLED =
+    import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+    (typeof process !== "undefined" &&
+      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
+  const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
+  const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
+    PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
   const t = useCloudT();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -897,7 +899,12 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [auth, completingCallback, providerDiscoveryAttempt]);
+  }, [
+    auth,
+    completingCallback,
+    providerDiscoveryAttempt,
+    PLAYWRIGHT_TEST_AUTH_ENABLED,
+  ]);
 
   const retryProviderDiscovery = useCallback(() => {
     // Return to the reserved loading geometry and trigger a fresh server query;
@@ -921,7 +928,7 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
     const code = consumeStewardCodeFromQuery();
@@ -1032,7 +1039,7 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, pathname, searchParams]);
+  }, [navigate, pathname, searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
@@ -1095,7 +1102,7 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams]);
+  }, [searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
     const errorCode = searchParams.get("error");

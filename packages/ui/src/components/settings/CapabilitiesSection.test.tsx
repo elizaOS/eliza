@@ -82,14 +82,14 @@ describe("CapabilitiesSection proactive-suggestions control", () => {
     await waitFor(() => {
       expect(
         within(group)
-          .getByRole("radio", { name: "Chatty" })
-          .getAttribute("aria-checked"),
+          .getByRole("button", { name: "Chatty" })
+          .getAttribute("aria-pressed"),
       ).toBe("true");
     });
     expect(
       within(group)
-        .getByRole("radio", { name: "Subtle" })
-        .getAttribute("aria-checked"),
+        .getByRole("button", { name: "Subtle" })
+        .getAttribute("aria-pressed"),
     ).toBe("false");
   });
 
@@ -104,12 +104,12 @@ describe("CapabilitiesSection proactive-suggestions control", () => {
     await waitFor(() => {
       expect(
         within(group)
-          .getByRole("radio", { name: "Subtle" })
-          .getAttribute("aria-checked"),
+          .getByRole("button", { name: "Subtle" })
+          .getAttribute("aria-pressed"),
       ).toBe("true");
     });
 
-    await user.click(within(group).getByRole("radio", { name: "Off" }));
+    await user.click(within(group).getByRole("button", { name: "Off" }));
 
     await waitFor(() => {
       expect(clientMock.updateConfig).toHaveBeenCalledWith({
@@ -118,8 +118,8 @@ describe("CapabilitiesSection proactive-suggestions control", () => {
     });
     expect(
       within(group)
-        .getByRole("radio", { name: "Off" })
-        .getAttribute("aria-checked"),
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
     ).toBe("true");
   });
 });

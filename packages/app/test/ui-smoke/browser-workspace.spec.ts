@@ -53,6 +53,32 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
+test("mobile browser actions close across the desktop breakpoint", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await resetBrowserWorkspaceTabs(request);
+  await openAppPath(page, "/browser");
+
+  const mobileMoreButton = page.getByTestId("browser-workspace-mobile-more");
+  await expect(mobileMoreButton).toBeVisible({ timeout: 60_000 });
+  await mobileMoreButton.click();
+
+  const newTabItem = page.getByRole("menuitem", {
+    name: "New tab",
+    exact: true,
+  });
+  await expect(newTabItem).toBeVisible();
+
+  // The menu content is portaled outside the responsive trigger wrapper, so
+  // it must carry its own desktop visibility guard when an open mobile menu is
+  // resized or rotated across the breakpoint.
+  await page.setViewportSize({ width: 900, height: 800 });
+  await expect(mobileMoreButton).toBeHidden();
+  await expect(newTabItem).toBeHidden();
+});
+
 test("browser workspace can create, navigate, switch, and close tabs", async ({
   page,
   request,

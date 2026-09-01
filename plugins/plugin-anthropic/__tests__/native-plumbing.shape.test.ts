@@ -45,9 +45,7 @@ describe("Anthropic native text plumbing", () => {
     const { handleTextSmall } = await import("../models/text");
     await expect(
       handleTextSmall(createRuntime(), { prompt: "complete this" })
-    ).rejects.toMatchObject({
-      cause: expect.objectContaining({ code: "MODEL_OUTPUT_INCOMPLETE" }),
-    });
+    ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
   }, 60_000);
 
   it("forwards nested __proto__ provider data without changing prototypes", async () => {

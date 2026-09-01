@@ -4469,7 +4469,10 @@ export function ChatOverlay({
   const submit = React.useCallback(() => {
     const isExplicitSlashCommand = parseSlashDraft(draft).isSlash;
     const optimisticNavigation =
-      !firstRunOpen && !isExplicitSlashCommand && pendingImages.length === 0
+      slash.naturalShortcutsEnabled &&
+      !firstRunOpen &&
+      !isExplicitSlashCommand &&
+      pendingImages.length === 0
         ? resolveOptimisticNavigationExecution(
             slash.commands,
             draft,
@@ -4514,6 +4517,26 @@ export function ChatOverlay({
           )
         : null;
     if (shortcut) {
+      if (
+        shortcut.kind === "navigate-tab" ||
+        shortcut.kind === "navigate-settings" ||
+        shortcut.kind === "navigate-view"
+      ) {
+        runSlashExecution(shortcut, {
+          navigateTab: slash.navigateTab,
+          navigateSettings: slash.navigateSettings,
+          navigateView: slash.navigateView,
+          clearChat: () => {},
+          newConversation: () => {},
+          toggleFullscreen: () => {},
+          openCommandPalette: () => {},
+          showCommands: () => {},
+          toggleTranscription: () => {},
+          send: () => {},
+        });
+        submitText(draft, pendingImages);
+        return;
+      }
       runExecution(shortcut);
       return;
     }

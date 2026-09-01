@@ -173,7 +173,7 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 			op: "generate",
 			prompt: "what is 2+2?",
 			maxTokens: 32,
-			stopSequences: ["<end_of_turn>", "<start_of_turn>"],
+			stopSequences: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
 			bundleDir: "/data/x/eliza-1/bundle",
 		});
 	});
@@ -385,7 +385,7 @@ describeLinuxOnly("BionicHostLoader streaming generate (#11913)", () => {
 			prompt: "what is 2+2?",
 			maxTokens: 20,
 			streamStep: 8,
-			stopSequences: ["<end_of_turn>"],
+			stopSequences: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
 			bundleDir: "/data/x/eliza-1/bundle",
 		});
 	});
@@ -470,7 +470,7 @@ describeLinuxOnly("BionicHostLoader streaming generate (#11913)", () => {
 		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
 		await expect(
 			loader.generate({ prompt: "x", onTextChunk: () => {} }),
-		).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+		).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
 	});
 
 	it("throws when the host closes mid-stream before the done frame", async () => {
