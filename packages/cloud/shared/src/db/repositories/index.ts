@@ -119,6 +119,7 @@ export * from "./organizations";
 export * from "./phone-message-logs";
 export * from "./phone-metadata-readers";
 export * from "./press-releases";
+export * from "./primary-database-clock";
 export * from "./provider-health";
 // ============================================
 // Referrals & Rewards

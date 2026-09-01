@@ -4,9 +4,8 @@
  * never accepts caller time or escapes to a global database connection.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { DbTransaction } from "../client";
-import { sqlRows } from "../execute-helpers";
 import {
   billingFundingAllocations,
   billingFundingReservations,
@@ -15,6 +14,7 @@ import { billingSubscriptions } from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
 import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
 import { subscriptionAllowanceTransactions } from "../schemas/subscription-allowance-transactions";
+import { readPostLockDatabaseNow } from "./primary-database-clock";
 import {
   type CanonicalMoney,
   microsToMoney,
@@ -36,18 +36,6 @@ function conflict(message: string, context: Record<string, unknown>): never {
 
 function requireDigest(value: string): void {
   if (!DIGEST_PATTERN.test(value)) conflict("Request digest must be lowercase SHA-256", {});
-}
-
-/** Reads wall time after the transaction has acquired its organization lock. */
-export async function readPostLockDatabaseNow(tx: DbTransaction): Promise<Date> {
-  const [row] = await sqlRows<{ database_now: Date | string }>(
-    tx,
-    sql`SELECT clock_timestamp() AS database_now`,
-  );
-  if (!row) throw new Error("Post-lock database clock returned no row");
-  const value = row.database_now instanceof Date ? row.database_now : new Date(row.database_now);
-  if (!Number.isFinite(value.getTime())) throw new Error("Post-lock database clock is invalid");
-  return value;
 }
 
 async function lockOrganization(tx: DbTransaction, organizationId: string): Promise<Date> {

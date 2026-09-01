@@ -28,6 +28,7 @@ const COMMAND = "54000000-0000-4000-8000-000000000001";
 const RECEIPT = "55000000-0000-4000-8000-000000000001";
 const INCIDENT = "56000000-0000-4000-8000-000000000001";
 const PERIOD = "57000000-0000-4000-8000-000000000001";
+const EXPIRED_PERIOD = "57000000-0000-4000-8000-000000000002";
 const DIGEST_A = "a".repeat(64);
 const DIGEST_B = "b".repeat(64);
 const BASE = Date.parse("2026-08-20T12:00:00.000Z");
@@ -617,6 +618,81 @@ describe("SubscriptionBillingOperationsRepository", () => {
         }),
       ),
     ).toMatchObject({ replayed: true });
+  });
+
+  test("forfeits a partial reservation release after its allowance period expires", async () => {
+    await getPgliteClientForTests().exec(`
+      INSERT INTO subscription_allowance_periods (
+        id, organization_id, subscription_id, subscription_revision,
+        provider_environment, stripe_invoice_id, plan_key, catalog_version,
+        period_start, period_end, expires_at, granted_amount, available_amount
+      ) VALUES (
+        '${EXPIRED_PERIOD}', '${ORG_A}', '${SUB_A}', 1, 'test', 'in_expired1',
+        'plus_monthly', 'v1', '2026-08-01Z', '2099-09-01Z', '2099-09-01Z', 5, 5
+      );
+      INSERT INTO subscription_allowance_transactions (
+        organization_id, allowance_period_id, sequence, kind, amount,
+        available_before, available_after, reserved_before, reserved_after,
+        settled_before, settled_after, expired_before, expired_after,
+        clawed_back_before, clawed_back_after, idempotency_key, request_digest
+      ) VALUES (
+        '${ORG_A}', '${EXPIRED_PERIOD}', 1, 'grant', 5, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0,
+        'grant.expired-release', '${DIGEST_A}'
+      );
+    `);
+    const reserved = await writeTransaction((tx) =>
+      allowance.reserve(tx, {
+        organizationId: ORG_A,
+        periodId: EXPIRED_PERIOD,
+        logicalOperationId: "operation.allowance.expired-release",
+        requestDigest: DIGEST_A,
+        requestedAmount: microsToMoney(5_000_000n),
+        allowanceAmount: microsToMoney(5_000_000n),
+        purchasedCreditAmount: microsToMoney(0n),
+        purchasedCreditReservationTransactionId: null,
+      }),
+    );
+    await getPgliteClientForTests().exec(`
+      UPDATE subscription_allowance_periods
+      SET expires_at = '2000-01-01Z'
+      WHERE id = '${EXPIRED_PERIOD}';
+    `);
+
+    const finalized = await writeTransaction((tx) =>
+      allowance.finalize(tx, {
+        organizationId: ORG_A,
+        reservationId: reserved.reservation.id,
+        idempotencyKey: "settle.expired-release",
+        requestDigest: DIGEST_B,
+        actualAllowanceAmount: microsToMoney(3_000_000n),
+        actualPurchasedCreditAmount: microsToMoney(0n),
+        purchasedCreditSettlementTransactionId: null,
+        purchasedCreditRefundTransactionId: null,
+      }),
+    );
+    expect(finalized.period).toMatchObject({
+      available_amount: "0.000000",
+      reserved_amount: "0.000000",
+      settled_amount: "3.000000",
+      expired_amount: "2.000000",
+    });
+    const releaseRows = await getPgliteClientForTests().query<{
+      kind: string;
+      amount: string;
+      idempotency_key: string;
+    }>(
+      `SELECT kind, amount, idempotency_key
+       FROM subscription_allowance_transactions
+       WHERE allowance_period_id = $1 AND kind = 'expired_refund'`,
+      [EXPIRED_PERIOD],
+    );
+    expect(releaseRows.rows).toEqual([
+      {
+        kind: "expired_refund",
+        amount: "2.000000",
+        idempotency_key: `${reserved.allocations[0]?.id}.release.${DIGEST_B.slice(0, 16)}`,
+      },
+    ]);
   });
 
   test("records exact incidents, scans due work, and resolves tenant-scoped evidence", async () => {
