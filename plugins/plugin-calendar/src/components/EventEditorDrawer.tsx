@@ -892,20 +892,25 @@ export function EventEditorDrawer({
     <>
       <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
         <DialogContent
-          className="fixed bottom-0 right-0 top-0 !left-auto !right-0 !top-0 m-0 h-full w-[min(28rem,100vw)] max-w-[100vw] !translate-x-0 !translate-y-0 overflow-y-auto bg-bg p-0 duration-200 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-right-full"
+          className="fixed bottom-0 right-0 top-0 !left-auto !right-0 !top-0 m-0 h-full min-w-0 max-w-none !translate-x-0 !translate-y-0 overflow-x-hidden overflow-y-auto bg-bg p-0"
           data-testid="event-editor-drawer"
           style={{
             top: 0,
             right: 0,
             bottom: 0,
             left: "auto",
-            width: "28rem",
-            maxWidth: "100vw",
+            width: "100vw",
+            maxWidth: "28rem",
+            boxSizing: "border-box",
             height: "100dvh",
+            maxHeight: "100dvh",
             margin: 0,
             padding: 0,
+            overflowX: "hidden",
             overflowY: "auto",
             transform: "none",
+            translate: "none",
+            animation: "none",
           }}
         >
           <div className="flex items-center justify-between gap-3 px-5 py-4">
@@ -923,7 +928,7 @@ export function EventEditorDrawer({
             </Button>
           </div>
 
-          <div className="space-y-4 p-5">
+          <div className="min-w-0 space-y-4 p-5">
             {error ? (
               <div className="p-1 text-xs text-danger">{error}</div>
             ) : null}
@@ -962,8 +967,8 @@ export function EventEditorDrawer({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
+            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="min-w-0 space-y-1.5">
                 <label
                   htmlFor="event-editor-start-at"
                   className="block text-xs font-medium text-muted"
@@ -984,7 +989,7 @@ export function EventEditorDrawer({
                   })}
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="min-w-0 space-y-1.5">
                 <label
                   htmlFor="event-editor-end-at"
                   className="block text-xs font-medium text-muted"
