@@ -60,4 +60,15 @@ describe("subscription funding production debit inventory", () => {
       expect(entry.fundingClass).toBe(SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[entry.operation]);
     }
   });
+
+  test("requires every classified operation to have a reviewed debit boundary", () => {
+    const reviewedOperations: ReadonlySet<string> = new Set(
+      SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES.map((entry) => entry.operation),
+    );
+    expect(
+      Object.keys(SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION).filter(
+        (operation) => !reviewedOperations.has(operation),
+      ),
+    ).toEqual([]);
+  });
 });
