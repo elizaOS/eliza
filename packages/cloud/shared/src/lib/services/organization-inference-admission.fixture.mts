@@ -368,6 +368,17 @@ test("subscriber inference bypasses every optimistic purchased-only lane", async
   expect(isSubscriptionFundedOrganization).not.toHaveBeenCalled();
 });
 
+test("subscriber cache miss resolves authority before purchased-credit admission", async () => {
+  subscriptionFunded = true;
+
+  const admission = await admitOrganizationInference(admissionParams(nextModel(), []));
+
+  expect(admission.mode).toBe("synchronous_reservation");
+  expect(reserveCredits).toHaveBeenCalledTimes(1);
+  expect(reserveCredits.mock.calls[0]?.[3]).toEqual({ subscriptionFunded: true });
+  expect(isSubscriptionFundedOrganization).toHaveBeenCalledTimes(1);
+});
+
 test("subscriber inference bypasses stale purchased-credit refusal state", async () => {
   subscriptionFunded = true;
   orgRefused = true;

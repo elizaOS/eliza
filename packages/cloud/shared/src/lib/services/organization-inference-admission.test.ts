@@ -27,5 +27,5 @@ test("organization inference admission contract passes in isolation", async () =
   ]);
   expect(exitCode, `${stdout}\n${stderr}`).toBe(0);
   const passed = Number(/(\d+) pass/.exec(`${stdout}\n${stderr}`)?.[1] ?? 0);
-  expect(passed, `${stdout}\n${stderr}`).toBeGreaterThanOrEqual(16);
+  expect(passed, `${stdout}\n${stderr}`).toBeGreaterThanOrEqual(17);
 });

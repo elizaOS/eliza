@@ -3,10 +3,11 @@
  *
  * Admission reads current subscription authority before refusal state so a
  * newly funded subscriber cannot be trapped by a stale purchased-credit
- * refusal. Non-subscribers then use pricing, affiliate-policy, and balance
- * caches before acquiring a Durable Object lease. Post-provider accounting
- * replays one deterministic debit identity; the lease alarm is the durable
- * backstop when a response-side task disappears.
+ * refusal or any optimistic purchased-credit-only lane. Non-subscribers then
+ * use pricing, affiliate-policy, and balance caches before acquiring a Durable
+ * Object lease. Post-provider accounting replays one deterministic debit
+ * identity; the lease alarm is the durable backstop when a response-side task
+ * disappears.
  */
 
 import { calculateCost, normalizeModelName } from "../pricing";
@@ -254,6 +255,9 @@ export async function admitOrganizationInference(
   const executionCtx = params.executionCtx;
   const workerHotPath = typeof executionCtx?.waitUntil === "function";
   const affiliateMarked = Boolean(params.affiliateCode?.trim());
+  // Cache misses deliberately pay one authoritative entitlement read. This
+  // keeps the first request after a cache-version rollout from treating a
+  // subscriber as purchased-credit-only on the Worker hot path.
   const subscriptionFunded =
     params.admissionSnapshot?.subscriptionFunded ??
     (await isSubscriptionFundedOrganization(params.context.organizationId));
