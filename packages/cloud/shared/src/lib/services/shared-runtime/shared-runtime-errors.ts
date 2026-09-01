@@ -7,6 +7,8 @@
  * `error.name` because the class cannot survive the Durable Object fetch
  * boundary).
  */
+import { ElizaError } from "@elizaos/core";
+
 export class SharedRuntimeCacheWarmingError extends Error {
   constructor(message: string) {
     super(message);
@@ -168,7 +170,7 @@ function classifySharedRuntimeTurnFailure(error: unknown): SharedRuntimeTurnFail
  * Adds turn identity while retaining a bounded failure class and disposition.
  * Raw provider/action messages remain only on `cause` inside the isolate.
  */
-export class SharedRuntimeTurnError extends Error {
+export class SharedRuntimeTurnError extends ElizaError {
   override readonly name = "SharedRuntimeTurnError";
   readonly failureName: SharedRuntimeTurnFailureName;
   readonly retryable: boolean;
@@ -178,8 +180,16 @@ export class SharedRuntimeTurnError extends Error {
     cause: unknown,
     classification?: SharedRuntimeTurnFailureClassification,
   ) {
-    super(message, { cause });
     const resolved = classification ?? classifySharedRuntimeTurnFailure(cause);
+    super(message, {
+      code: "SHARED_RUNTIME_TURN_FAILED",
+      context: {
+        failureName: resolved.failureName,
+        retryable: resolved.retryable,
+      },
+      cause,
+      severity: resolved.retryable ? "ephemeral" : "fatal",
+    });
     this.failureName = resolved.failureName;
     this.retryable = resolved.retryable;
   }

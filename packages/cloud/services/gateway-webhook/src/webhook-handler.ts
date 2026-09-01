@@ -862,6 +862,8 @@ async function processMessage(
         totalMs: Date.now() - startedAt,
       });
     } catch (error) {
+      // error-policy:J4 only a typed pre-egress failure on a private Telegram
+      // turn degrades to the explicit safe reply below.
       if (
         adapter.platform === "telegram" &&
         event.chatType === "private" &&
@@ -1214,6 +1216,8 @@ async function sendPersonalSharedReply(
       ? await adapter.resolveVoiceNote?.(config, event)
       : undefined;
   } catch (error) {
+    // error-policy:J2 voice resolution failures gain pre-egress context while
+    // preserving the connector error as their cause.
     throw new PersonalSharedPreEgressError(
       "connector failed to resolve the supplied voice note",
       { cause: error },
@@ -1399,7 +1403,7 @@ async function sendPersonalSharedReply(
     try {
       await response.body?.cancel();
     } catch (error) {
-      // error-policy:J4 response-body cleanup is best-effort and must never
+      // error-policy:J6 response-body cleanup is best-effort and must never
       // bypass the classified pre-egress failure or the private DM fallback.
       logger.warn("Personal Shared failure body cleanup failed", {
         traceId,

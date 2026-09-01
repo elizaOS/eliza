@@ -1,6 +1,7 @@
 /** Verifies Shared turn failures retain safe cause and retry classification. */
 
 import { describe, expect, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import { SharedRuntimeTurnError } from "./shared-runtime-errors";
 
 describe("SharedRuntimeTurnError", () => {
@@ -10,6 +11,13 @@ describe("SharedRuntimeTurnError", () => {
     );
     const error = new SharedRuntimeTurnError("turn failed", cause);
 
+    expect(error).toBeInstanceOf(ElizaError);
+    expect(error.code).toBe("SHARED_RUNTIME_TURN_FAILED");
+    expect(error.context).toEqual({
+      failureName: "SharedRuntimeActionContractError",
+      retryable: false,
+    });
+    expect(error.severity).toBe("fatal");
     expect(error.cause).toBe(cause);
     expect(error.failureName).toBe("SharedRuntimeActionContractError");
     expect(error.retryable).toBe(false);
@@ -27,6 +35,7 @@ describe("SharedRuntimeTurnError", () => {
 
     expect(error.failureName).toBe("SharedRuntimeProviderUnavailableError");
     expect(error.retryable).toBe(true);
+    expect(error.severity).toBe("ephemeral");
     expect(JSON.stringify(error)).not.toContain("private provider response");
   });
 

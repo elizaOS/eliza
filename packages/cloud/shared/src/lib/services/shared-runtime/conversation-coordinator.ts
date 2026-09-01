@@ -258,17 +258,20 @@ function requireHistoryCoordinator(
 
 async function requireCoordinatorResponse(response: Response, surface: string): Promise<Response> {
   if (response.ok) return response;
-  // error-policy:J3 a malformed internal error body remains an explicit typed
-  // failure rather than fabricating a successful response.
-  const body = (await response
-    .clone()
-    .json()
-    .catch(() => null)) as {
+  let body: {
     code?: unknown;
     error?: unknown;
     failureName?: unknown;
     retryable?: unknown;
-  } | null;
+  } | null = null;
+  try {
+    const parsed: unknown = await response.clone().json();
+    body = typeof parsed === "object" && parsed !== null ? parsed : null;
+  } catch {
+    // error-policy:J3 a malformed internal error body remains an explicit
+    // invalid result and is translated by the status-specific typed boundary.
+    body = null;
+  }
   const readErrorMessage = (): string | null =>
     typeof body?.error === "string" ? body.error : null;
   if (

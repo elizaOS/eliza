@@ -925,6 +925,8 @@ export async function handlePersonalTelegramEdge(
               reply = candidate;
             }
           } catch (error) {
+            // error-policy:J4 authenticated private Telegram turns degrade to
+            // the explicit safe failure reply before any provider egress.
             preEgressErrorName = safeObservedErrorName(error);
           }
           if (fallbackFailure || preEgressErrorName) {
