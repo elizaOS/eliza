@@ -26,6 +26,12 @@ export class ConnectionMonitor {
   private timer: ReturnType<typeof setInterval> | null = null;
   private consecutiveFailures = 0;
   private reconnecting = false;
+  // stop() advances this. A reconnect ladder captures it on entry and abandons
+  // itself after every await once it has moved, so a monitor the host tore
+  // down never provisions again or reports "connected" on a stale client.
+  private epoch = 0;
+  private backoffTimer: ReturnType<typeof setTimeout> | null = null;
+  private wakeBackoff: (() => void) | null = null;
 
   constructor(
     private client: ElizaCloudClient,
@@ -47,10 +53,12 @@ export class ConnectionMonitor {
   }
 
   stop(): void {
+    this.epoch += 1;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
+    this.cancelBackoff();
     this.consecutiveFailures = 0;
     this.reconnecting = false;
     logger.info("[cloud-monitor] Connection monitor stopped");
@@ -88,7 +96,30 @@ export class ConnectionMonitor {
     }
   }
 
+  /** Wake a pending backoff sleep so the ladder can observe stop() at once. */
+  private cancelBackoff(): void {
+    if (this.backoffTimer) {
+      clearTimeout(this.backoffTimer);
+      this.backoffTimer = null;
+    }
+    const wake = this.wakeBackoff;
+    this.wakeBackoff = null;
+    wake?.();
+  }
+
+  private sleepBackoff(delayMs: number): Promise<void> {
+    return new Promise((resolve) => {
+      this.wakeBackoff = resolve;
+      this.backoffTimer = setTimeout(() => {
+        this.backoffTimer = null;
+        this.wakeBackoff = null;
+        resolve();
+      }, delayMs);
+    });
+  }
+
   private async attemptReconnect(): Promise<void> {
+    const epoch = this.epoch;
     this.reconnecting = true;
     this.callbacks.onStatusChange?.("reconnecting");
 
@@ -99,6 +130,7 @@ export class ConnectionMonitor {
         .provision(this.agentId)
         .then(() => true)
         .catch(() => false);
+      if (epoch !== this.epoch) return;
 
       if (ok) {
         logger.info("[cloud-monitor] Reconnection successful");
@@ -109,7 +141,8 @@ export class ConnectionMonitor {
         return;
       }
 
-      await new Promise((r) => setTimeout(r, delay));
+      await this.sleepBackoff(delay);
+      if (epoch !== this.epoch) return;
       delay = Math.min(delay * 2, 60_000);
     }
 
